@@ -326,7 +326,7 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
         }
     } else {
         // Over the plain object the unit decoded to, in the step that installs it:
-        // nothing has changed it yet, so the fingerprint is what a put-back compares to.
+        // nothing has changed it yet, so the retained record's fingerprint is of the content as it was stored.
         retainOnRestore(characters[index], target, restored)
     }
     noteRestoredBytes(chaId, readSizeOf(result))

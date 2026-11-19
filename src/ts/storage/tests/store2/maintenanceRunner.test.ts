@@ -199,8 +199,6 @@ describe('only a boot that did not install starts the runner', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['legacy', { kind: 'legacy', convertedFrom: null }],
-        ['block', { kind: 'block' }],
         ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
         ['undecided', { kind: 'unset' }],
     ])('reproducer: a %s page starts nothing even with a ready session in hand', async (_name, mode) => {
@@ -564,7 +562,7 @@ describe('the clean-up pass after the old-data deletion', () => {
         const trigger = fakeTrigger()
         const deletion = vi.fn(async () => COMPLETED)
         startStore2Maintenance(noStore, { session: () => page.session, startTrigger: trigger.start, deletion, gcPageFacts: CLEAN })
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
 
         trigger.fire()
         await getStartupCleanup()
@@ -934,7 +932,7 @@ describe('the asset sweep after the clean-up pass', () => {
             { store: async () => store, listBackupTimes: async () => [] },
             { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, sweepFacts: ACTIVE_SWEEP },
         )
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
 
         trigger.fire()
         await getStartupCleanup()

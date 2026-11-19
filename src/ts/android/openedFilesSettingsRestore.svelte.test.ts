@@ -35,6 +35,7 @@ const harness = vi.hoisted(() => ({ made: {} as { fs: FakeFs, desktop: DesktopFa
 
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
 const setDatabaseMock = vi.hoisted(() => vi.fn())
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
 const alertWaitMock = vi.hoisted(() => vi.fn())
@@ -106,6 +107,16 @@ vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => {
         writeAssetBatchB64: (entries: readonly { key: string, data: Uint8Array }[]) => run(entries),
     }
 })
+
+/** The commit the restore ends with: a landed one. */
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real module with one answer fixed: a clean page, so the restore's save-first step returns at its clean check and
+// the unsaved-edits question does not take one of the planned confirmations.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveClean: () => true,
+}))
 
 vi.mock(import('src/ts/storage/readOnlyPage'), () => ({
     refuseOnReadOnlyPage: async () => false,
@@ -260,7 +271,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
         getColdStorageBackupKey,
         getColdStorageItem: vi.fn(async () => null),
         isColdStorageBackupData: vi.fn(() => true),
-        listColdDataKeys: vi.fn(async () => []),
         setColdStorageItem: vi.fn(async () => true),
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
@@ -268,11 +278,10 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 //#endregion
 
 // Imported first: it settles the module cycle between the store, the save format and the global API.
+import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from 'src/ts/drive/tests/store2ShellStub'
 import 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
-import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
-import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
 import { resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
@@ -357,7 +366,10 @@ function gateOf(): { gate: Promise<void>, open: () => void } {
     return { gate, open }
 }
 
+/** The page module instance, on a store2 page: each fresh module graph starts with the mode set. */
 async function loadOpenedFiles(): Promise<typeof import('src/ts/android/openedFiles')> {
+    const pageMode = await import('src/ts/storage/pageStorageMode')
+    pageMode.setPageStorageMode({ kind: 'store2' })
     return await import('src/ts/android/openedFiles')
 }
 
@@ -380,12 +392,12 @@ beforeEach(async () => {
     noticeMock.mockClear()
     importedMock.mockClear()
     reloadMark.marked = false
+    resetStore2ShellBox(shell)
     native = []
     takes.length = 0
     ;(await loadOpenedFiles()).resetOpenedFilesForTests()
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
-    injectRestoreStore(createTauriFilesStore({ platform: 'posix' }))
     getDatabaseMock.mockImplementation(() => ({ didFirstSetup: true, characters: [], personas: [], characterOrder: [], botPresets: [] }) as unknown as Database)
     window.__risuTaniumOpenedFilesHost = fakeHost
     window.__risuTaniumOpenedFiles = undefined
@@ -397,6 +409,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+    // The restore's save-first step returned at its clean check; it never waited out its bound.
+    expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
     stopRefusalWatch()
     resetStartupCleanupForTests()
     delete window.__risuTaniumOpenedFilesHost
@@ -483,7 +497,7 @@ describe('a card opened on Android during a Settings .bin restore', () => {
         await choosing
         await restore.done
         // Positive pairing: the restore did land, so a "not imported" reading is not a restore that never ran.
-        expect(setDatabaseMock, 'the restore installed its database').toHaveBeenCalled()
+        expect(shell.commits, 'the restore called its commit').toHaveLength(1)
         expect(reloadMark.marked, 'the restore requested its reload').toBe(true)
         expect(during, 'what the hook did while the restore worked').toEqual({ takes: 0, imported: 0, queued: 1 })
     })
@@ -505,7 +519,7 @@ describe('a card opened on Android during a Settings .bin restore', () => {
         await restore.done
         await waitForCondition(() => importedMock.mock.calls.length >= 1)
         await settleFew()
-        expect(setDatabaseMock, 'the restore did not land').not.toHaveBeenCalled()
+        expect(shell.commits, 'the restore did not reach its commit').toEqual([])
         expect(importedMock).toHaveBeenCalledTimes(1)
         expect(native.length).toBe(0)
     })
@@ -517,7 +531,7 @@ describe('a card opened on Android during a Settings .bin restore', () => {
         const restore = await startSettingsRestore()
         await restore.choose(smallBin())
         await restore.done
-        expect(setDatabaseMock, 'the restore installed its database').toHaveBeenCalled()
+        expect(shell.commits, 'the restore called its commit').toHaveLength(1)
         expect(reloadMark.marked, 'the reload was requested').toBe(true)
         const baseline = takes.length
         native.push(openedFile('card1.charx'))

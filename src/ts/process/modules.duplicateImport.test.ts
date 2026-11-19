@@ -129,10 +129,20 @@ vi.mock(import('src/ts/bootWindow'), () => ({
     markBootWrite: vi.fn(() => { h.marks.push(h.db.modules.length) }),
 }) as unknown as typeof import('src/ts/bootWindow'))
 
-import { getModules, importModule } from 'src/ts/process/modules'
+import { getModules, importModule as importModuleOnCard } from 'src/ts/process/modules'
 import { ReloadGUIPointer } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
+
+/** The card the last `importModule` ended on, or null when the import closed without one. */
+let lastCard: ImportCard = null
+
+/** Runs the import, answers its result card with OK and keeps the card in `lastCard`. */
+async function importModule() {
+    lastCard = await answerImportCard(importModuleOnCard)
+}
 
 const risum = (fileName: string, moduleName: string | undefined, over: { records?: Uint8Array[], module?: Record<string, unknown> } = {}) =>
     new File([risumBytes({ records: over.records, module: { name: moduleName, description: 'new', ...over.module } })], fileName)
@@ -157,11 +167,13 @@ beforeEach(() => {
     h.marks = []
     h.ids = 0
     h.card = null
+    lastCard = null
     ReloadGUIPointer.set(0)
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
@@ -183,15 +195,17 @@ describe('replace', () => {
         h.files = [risum('dup.risum', 'Dup', { module: { namespace: 'new-ns' } })]
         h.answers = ['0']
         await importModule()
-        expect(h.log).toEqual(['normal:' + language.moduleReplaceNamespaceChanged('Dup', 'old-ns', 'new-ns')])
+        expect(h.log).toEqual([])
+        expect(lastCard?.result?.summary).toEqual([language.moduleReplaceNamespaceChanged('Dup', 'old-ns', 'new-ns')])
     })
 
-    test('feature: a replace that keeps the namespace shows nothing', async () => {
+    test('feature: a replace that keeps the namespace shows a one-item result card and no alert', async () => {
         h.db.modules = [installed('t', 'Dup', { namespace: 'same' })]
         h.files = [risum('dup.risum', 'Dup', { module: { namespace: 'same' } })]
         h.answers = ['0']
         await importModule()
         expect(h.log).toEqual([])
+        expect(lastCard?.result?.summary).toBeUndefined()
         expect(list()[0].description).toBe('new')
     })
 
@@ -201,9 +215,10 @@ describe('replace', () => {
         h.files = [charx('dup.charx')]
         h.answers = ['0']
         await importModule()
-        const message = `${language.successImport}\n${language.moduleReplaceNamespaceChanged('Dup', 'old-ns', 'new-ns')}`
-        expect(h.log).toEqual(['normal:' + message])
-        expect(h.last).toBe('normal:' + message)
+        expect(h.log).toEqual([])
+        expect(h.last).toBe('none')
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(1))
+        expect(lastCard?.result?.summary).toEqual([language.moduleReplaceNamespaceChanged('Dup', 'old-ns', 'new-ns')])
         expect(list()).toMatchObject([{ id: 't', description: 'card', namespace: 'new-ns' }])
     })
 
@@ -341,11 +356,12 @@ describe('batches', () => {
         h.answers = ['3']
         await importModule()
         expect(get(ReloadGUIPointer)).toBe(1)
-        expect(h.log).toEqual(['normal:' + [
-            language.importModulesDone(2, 0),
+        expect(h.log).toEqual([])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(2))
+        expect(lastCard?.result?.summary).toEqual([
             language.moduleReplaceNamespaceChanged('A', 'one', 'one-new'),
             language.moduleReplaceNamespaceChanged('B', 'two', 'two-new'),
-        ].join('\n')])
+        ])
     })
 
     test('feature: skipped files are counted in the end message', async () => {
@@ -353,7 +369,9 @@ describe('batches', () => {
         h.files = [risum('a.risum', 'Dup'), risum('b.risum', 'Other')]
         h.answers = ['1']
         await importModule()
-        expect(h.log).toEqual(['normal:' + language.importModulesDone(1, 1)])
+        expect(h.log).toEqual([])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(1))
+        expect(lastCard?.result?.summary).toEqual([language.importTaskDuplicatesLeftOut(1)])
     })
 })
 

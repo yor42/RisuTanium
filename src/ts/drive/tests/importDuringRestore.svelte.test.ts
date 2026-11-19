@@ -18,7 +18,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/characterCards'), () => ({
-    importCharacterProcess: vi.fn(async (card: { name: string }) => { h.imported.push(card.name) }),
+    importCharacterFile: vi.fn(async (card: { name: string }) => { h.imported.push(card.name); return { kind: 'imported', index: 0 } }),
 }) as unknown as typeof import('src/ts/characterCards'))
 
 vi.mock(import('src/ts/process/modules'), () => ({
@@ -44,6 +44,8 @@ import { importDroppedFile } from 'src/ts/dropImport'
 import { busyRefusalLine, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { beginRestoreRun, resetRestoreInProgressForTests, restorePhase } from 'src/ts/drive/restoreInProgress'
 import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 
 const card = () => new File([new Uint8Array([1])], 'c.charx')
 const shown = () => get(alertStore)
@@ -57,6 +59,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     resetBusyActionsForTest()
     resetRestoreInProgressForTests()
 })
@@ -101,7 +104,9 @@ describe('a card dropped during a restore', () => {
         expect(get(busyRefusalLine)).toBeNull()
 
         alertStore.set({ type: 'none', msg: '' })
-        await importDroppedFile(card())
+        //an accepted drop ends on the result card, which the drop waits for
+        const ended = await answerImportCard(() => importDroppedFile(card()))
+        expect(ended?.result?.headline).toBe(language.importTaskImported(1))
         expect(h.imported).toEqual(['c.charx'])
     })
 })

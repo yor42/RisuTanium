@@ -10,7 +10,8 @@
  * the reload that ends a landed restore is a double. A mocked host and reload are not evidence of a content provider or
  * a WebView; the device re-check covers those.
  *
- * Labels: R-W and R-W2 are regression reproducers (red on the base, where the hook drains in any wait before the pick);
+ * Labels: R-W is a regression reproducer (red on the base, where the hook drains in any wait before the pick); R-W2 is a
+ * compatibility guard on the store2 route (passes before and after);
  * R-N is a compatibility guard for the new live-end re-drain (on base the card is imported earlier, so a base failure
  * does not count). Each "not imported" reading is paired with the positive "imported once after the live end".
  */
@@ -240,9 +241,8 @@ describe('CHORE-398 a card opened on Android before the restore point or snapsho
         expect(cards.queued()).toBe(0)
     })
 
-    test('R-W2 (regression reproducer): on a legacy page with the read-only check held, the card stays queued, and imports once when the restore ends live', async () => {
+    test('R-W2 (guard): on a store2 page with the read-only check held, the card stays queued, and imports once when the restore ends live', async () => {
         const page = await openPage()
-        page.w.pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: null })
         const cards = await installCards(page)
         const hold = gateOf()
         readOnlyBox.hold = hold.gate

@@ -636,7 +636,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       const role = m % 2 === 0 ? 'char' : 'user'
       const data = chat.hangulShare !== undefined ? unitText(chat.messageBytes[m], chat.hangulShare) : text(chat.messageBytes ? chat.messageBytes[m] : chat.bytes / count, chat.hangul)
       const entry = { role, data, time: T + m * 60000 }
-      if (m % 5 === 0) entry.chatId = chat.id
+      if (m % 5 === 0) entry.chatId = `${chat.id}-m${m}`
       if (memberIds && role === 'char') entry.saying = memberIds[m % memberIds.length]
       return entry
     })

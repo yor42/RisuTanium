@@ -4,8 +4,10 @@
  * The bounded thumbnail path of `avatarThumb.ts`: an avatar above the 64 MiB
  * limit is never read whole into JS where its size can be learned without
  * reading it, and on Android never reaches a URL decode. Its thumbnail comes
- * from the Exif thumbnail inside a prefix read of at most 256 KiB; without one,
- * Android stores a skip and the other platforms decode once per page load.
+ * from the Exif thumbnail inside a prefix read of at most 256 KiB; without one
+ * (or when its render fails) Tauri asks the native preview by key, and the
+ * other platforms decode once per page load. The native lane is replaced
+ * through `__avatarThumbTestHooks.setNativePreview`.
  *
  * The over-limit size is declared, never materialised: a mocked stat, a piece
  * `total`, a `Content-Range` total, or a Blob subclass with a declared `size`
@@ -110,7 +112,7 @@ vi.mock('../storage/tauriByteTransport', async (importOriginal) => {
     }
 })
 
-import { __avatarThumbTestHooks, THUMB_VERSION, getAvatarThumbSrc, planEmbeddedDraw, sweepAvatarThumbs } from './avatarThumb'
+import { __avatarThumbTestHooks, THUMB_SHORT_SIDE, THUMB_VERSION, getAvatarThumbSrc, planEmbeddedDraw, sweepAvatarThumbs } from './avatarThumb'
 import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, androidWholeReadQueue, resetAssetUrlGateForTest } from '../storage/assetUrlGate'
 import { OpfsStorage } from '../storage/opfsStorage'
 import { createOpfsTransitionalStore } from '../storage/store/opfsTransitionalStore'
@@ -370,6 +372,12 @@ function installPlatform(kind: 'android' | 'desktop' | 'node' | 'web'): void {
 }
 
 const renderMock = vi.fn()
+/** The native preview lane: a transient answer unless a row arranges another. */
+const nativeMock = vi.fn()
+
+function nativePixels(width = 280, height = 168): { kind: 'pixels', width: number, height: number, rgba: Uint8ClampedArray } {
+    return { kind: 'pixels', width, height, rgba: new Uint8ClampedArray(width * height * 4) }
+}
 
 function renderedKinds(): string[] {
     return renderMock.mock.calls.map((call) => (call[0] as { kind: string }).kind)
@@ -422,6 +430,10 @@ beforeEach(() => {
     __avatarThumbTestHooks.setStore(store as never)
     __avatarThumbTestHooks.setReadbackCheck(() => true)
     __avatarThumbTestHooks.setRenderThumb(renderMock)
+    nativeMock.mockReset()
+    nativeMock.mockResolvedValue({ kind: 'transient' })
+    // Optional: on the code before the native preview the hook does not exist, and a reproducer must fail on its assertions, not on setup.
+    __avatarThumbTestHooks.setNativePreview?.(nativeMock)
 })
 
 afterEach(() => {
@@ -452,6 +464,7 @@ describe('Android: an avatar over the limit gets its embedded thumbnail from one
         expect(fetchMock).not.toHaveBeenCalled()
         expect(readImageMock).not.toHaveBeenCalled()
         expect(renderedKinds()).toEqual(['embedded'])
+        expect(nativeMock).not.toHaveBeenCalled()
         expect(renderMock.mock.calls[0][0]).toMatchObject({ orientation: 6, crop: { x: 0, y: 7, w: 160, h: 107 } })
         expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, src: 'thumb:embedded' })
     })
@@ -568,7 +581,7 @@ describe('Android: an avatar over the limit gets its embedded thumbnail from one
     test.each([
         ['rejects', () => renderFailing(['embedded'])],
         ['resolves null', () => renderMock.mockImplementation(async () => null)],
-    ])('spec: an embedded render that %s gives null, stores nothing and renders again on the next request', async (_label, arrange) => {
+    ])('spec: an embedded render that %s goes on to the native preview; its transient answer gives null, stores nothing and asks again', async (_label, arrange) => {
         arrange()
         const loc = addFile('assets/cam.jpg', exifJpeg(), OVER)
 
@@ -576,42 +589,100 @@ describe('Android: an avatar over the limit gets its embedded thumbnail from one
         expect(await getAvatarThumbSrc(loc)).toBeNull()
 
         expect(renderedKinds()).toEqual(['embedded', 'embedded'])
+        expect(nativeMock).toHaveBeenCalledTimes(2)
         expect(store.setItem).not.toHaveBeenCalled()
         expect(urlForMock).not.toHaveBeenCalled()
         expect(readImageMock).not.toHaveBeenCalled()
     })
 
-    test('guard: a still PNG over the limit is a persisted skip with no URL, no whole read and no render', async () => {
+    test('reproducer: a still PNG over the limit gets the native preview by its key, with no URL, no grant, no whole read and no URL render', async () => {
+        const acquire = vi.spyOn(androidWholeReadQueue(), 'acquire')
+        nativeMock.mockResolvedValue(nativePixels())
+        const loc = addFile('assets/huge.png', stillPng(), OVER)
+
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
+
+        expect(nativeMock).toHaveBeenCalledTimes(1)
+        expect(nativeMock).toHaveBeenCalledWith(loc, { shortSide: THUMB_SHORT_SIDE, stillWanted: expect.any(Function) })
+        expect(acquire).not.toHaveBeenCalled()
+        expect(urlForMock).not.toHaveBeenCalled()
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(readImageMock).not.toHaveBeenCalled()
+        expect(renderedKinds()).toEqual(['pixels'])
+        expect(renderMock.mock.calls[0][0]).toMatchObject({ kind: 'pixels', width: 280, height: 168, orientation: 1 })
+        expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, src: 'thumb:pixels' })
+    })
+
+    test('reproducer: a PNG whose first 256 KiB cannot decide animation gets the native preview, never a URL decode', async () => {
+        nativeMock.mockResolvedValue(nativePixels())
+        const loc = addFile('assets/text.png', textHeavyPng(), OVER)
+
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
+
+        expect(nativeMock).toHaveBeenCalledWith(loc, expect.anything())
+        expect(urlForMock).not.toHaveBeenCalled()
+        expect(readImageMock).not.toHaveBeenCalled()
+        expect(renderedKinds()).toEqual(['pixels'])
+    })
+
+    test('reproducer: a JPEG without an Exif thumbnail gets the native preview and an upright render', async () => {
+        const plain = new Uint8Array(300 * 1024)
+        plain.set([0xFF, 0xD8, 0xFF, 0xDB, 0, 4, 0, 1, 0xFF, 0xD9])
+        nativeMock.mockResolvedValue(nativePixels())
+        const loc = addFile('assets/plain.jpg', plain, OVER)
+
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
+
+        expect(renderedKinds()).toEqual(['pixels'])
+        expect(renderMock.mock.calls[0][0]).toMatchObject({ orientation: 1 })
+        expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, src: 'thumb:pixels' })
+    })
+
+    test('reproducer: the IFD0 orientation of a JPEG without a usable thumbnail reaches the pixel render', async () => {
+        // An IFD1 pointer of zero leaves no thumbnail while IFD0 still carries the orientation.
+        const noThumb = exifJpeg({ orientation: 6 })
+        const bytes = Array.from(noThumb.subarray(0, 64))
+        const tiffAt = bytes.findIndex((_, i) => bytes[i] === 0x49 && bytes[i + 1] === 0x49 && bytes[i + 2] === 42)
+        const ifd0Entries = 1
+        const nextPtrAt = tiffAt + 8 + 2 + 12 * ifd0Entries
+        noThumb.set([0, 0, 0, 0], nextPtrAt)
+        nativeMock.mockResolvedValue(nativePixels())
+        const loc = addFile('assets/rot.jpg', noThumb, OVER)
+
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
+
+        expect(renderedKinds()).toEqual(['pixels'])
+        expect(renderMock.mock.calls[0][0]).toMatchObject({ kind: 'pixels', orientation: 6 })
+    })
+
+    test.each([1, 2, 3, 4, 5])('guard: a native refusal with status %i is a persisted skip with no render', async (status) => {
+        nativeMock.mockResolvedValue({ kind: 'refused', status })
         const loc = addFile('assets/huge.png', stillPng(), OVER)
 
         expect(await getAvatarThumbSrc(loc)).toBeNull()
 
-        expect(urlForMock).not.toHaveBeenCalled()
-        expect(fetchMock).not.toHaveBeenCalled()
-        expect(readImageMock).not.toHaveBeenCalled()
         expect(renderMock).not.toHaveBeenCalled()
+        expect(urlForMock).not.toHaveBeenCalled()
         expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, skip: true })
     })
 
-    test('guard: a PNG whose first 256 KiB cannot decide animation is a persisted skip with no URL decode', async () => {
-        const loc = addFile('assets/text.png', textHeavyPng(), OVER)
+    test('guard: a transient native answer is not stored or memoized, and the next request asks again', async () => {
+        const loc = addFile('assets/huge.png', stillPng(), OVER)
 
         expect(await getAvatarThumbSrc(loc)).toBeNull()
+        expect(await getAvatarThumbSrc(loc)).toBeNull()
 
-        expect(urlForMock).not.toHaveBeenCalled()
-        expect(readImageMock).not.toHaveBeenCalled()
+        expect(nativeMock).toHaveBeenCalledTimes(2)
+        expect(store.setItem).not.toHaveBeenCalled()
         expect(renderMock).not.toHaveBeenCalled()
-        expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, skip: true })
     })
 
-    test('guard: a JPEG without an Exif thumbnail over the limit is a persisted skip', async () => {
-        const plain = new Uint8Array(300 * 1024)
-        plain.set([0xFF, 0xD8, 0xFF, 0xDB, 0, 4, 0, 1, 0xFF, 0xD9])
-        const loc = addFile('assets/plain.jpg', plain, OVER)
+    test('guard: an animated GIF over the limit is a persisted skip and never asks the native preview', async () => {
+        const loc = addFile('assets/a.gif', gif(300 * 1024), OVER)
 
         expect(await getAvatarThumbSrc(loc)).toBeNull()
 
-        expect(renderMock).not.toHaveBeenCalled()
+        expect(nativeMock).not.toHaveBeenCalled()
         expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, skip: true })
     })
 
@@ -620,6 +691,18 @@ describe('Android: an avatar over the limit gets its embedded thumbnail from one
         const loc = addFile('assets/cam.jpg', exifJpeg(), OVER)
 
         expect(await getAvatarThumbSrc(loc)).toBe('thumb:embedded')
+    })
+
+    test('reproducer: the literal skip record version 2 wrote no longer hides an over-limit PNG', async () => {
+        const loc = 'assets/huge.png'
+        __avatarThumbTestHooks.setStore((store = makeMemoryStore({ [loc]: { v: 2, skip: true } })) as never)
+        addFile(loc, stillPng(), OVER)
+        nativeMock.mockResolvedValue(nativePixels())
+
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
+
+        expect(THUMB_VERSION).toBe(3)
+        expect(nativeMock).toHaveBeenCalledTimes(1)
     })
 
     test('guard: a task that times out during the prefix read stores nothing and asks the reader to close', async () => {
@@ -673,74 +756,77 @@ describe('desktop: an avatar over the limit is never decoded from its URL when i
         expect(store.setItem).not.toHaveBeenCalled()
     })
 
-    test('spec: an embedded render that rejects goes on to one URL decode', async () => {
+    test('reproducer: an embedded render that rejects goes on to the native preview, not to a URL decode', async () => {
         renderFailing(['embedded'])
-        const loc = addFile('assets/cam.jpg', exifJpeg(), OVER)
+        nativeMock.mockResolvedValue(nativePixels())
+        const loc = addFile('assets/cam.jpg', exifJpeg({ orientation: 6 }), OVER)
 
-        expect(await getAvatarThumbSrc(loc)).toBe('thumb:url')
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
 
-        expect(renderedKinds()).toEqual(['embedded', 'url'])
+        expect(renderedKinds()).toEqual(['embedded', 'pixels'])
+        expect(nativeMock).toHaveBeenCalledWith(loc, { shortSide: THUMB_SHORT_SIDE, stillWanted: expect.any(Function) })
+        expect(urlForMock).not.toHaveBeenCalled()
         expect(readImageMock).not.toHaveBeenCalled()
     })
 
-    test('reproducer: a still PNG whose URL decode rejects is never read whole, is not stored and is not tried again in the page load', async () => {
-        renderMock.mockImplementation(async (source: { kind: string, url?: string }) => {
-            if (source.kind === 'url' && source.url?.includes('huge')) {
-                throw new Error('the url image failed to decode')
-            }
-            return { src: `thumb:${source.kind}` }
-        })
-        __avatarThumbTestHooks.setLimits({ memoMaxEntries: 1 })
+    test('reproducer: a still PNG goes to the native preview, not to a URL decode, and is never read whole', async () => {
+        nativeMock.mockResolvedValue(nativePixels())
         const loc = addFile('assets/huge.png', stillPng(), OVER)
-        const other = addFile('assets/small.png', stillPng(), 1000)
 
-        expect(await getAvatarThumbSrc(loc)).toBeNull()
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
+
+        expect(renderedKinds()).toEqual(['pixels'])
+        expect(urlForMock).not.toHaveBeenCalled()
         expect(readImageMock).not.toHaveBeenCalled()
-        expect(renderedKinds()).toEqual(['url'])
-        expect(store.setItem).not.toHaveBeenCalled()
+        expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, src: 'thumb:pixels' })
+    })
 
-        // Evict the memoised "no thumbnail" of the huge avatar, then ask again.
-        expect(await getAvatarThumbSrc(other)).toBe('thumb:url')
-        renderMock.mockClear()
+    test('guard: a pixel render that rejects is remembered for this page load only, stores nothing, and the next page load asks the native preview again', async () => {
+        renderFailing(['pixels'])
+        nativeMock.mockResolvedValue(nativePixels())
+        const loc = addFile('assets/huge.png', stillPng(), OVER)
+
         expect(await getAvatarThumbSrc(loc)).toBeNull()
-        expect(renderMock).not.toHaveBeenCalled()
+        expect(await getAvatarThumbSrc(loc)).toBeNull()
+
+        expect(nativeMock).toHaveBeenCalledTimes(1)
+        expect(store.setItem).not.toHaveBeenCalled()
 
         // A new page load tries again.
         __avatarThumbTestHooks.reset()
         __avatarThumbTestHooks.setStore(store as never)
         __avatarThumbTestHooks.setReadbackCheck(() => true)
         __avatarThumbTestHooks.setRenderThumb(renderMock)
+        __avatarThumbTestHooks.setNativePreview?.(nativeMock)
         expect(await getAvatarThumbSrc(loc)).toBeNull()
-        expect(renderedKinds()).toEqual(['url'])
+        expect(nativeMock).toHaveBeenCalledTimes(2)
     })
 
-    test('reproducer: a URL decode that never settles is not tried again after the timeout', async () => {
+    test('guard: a native preview that outlives the queue timeout still lands, because the task no longer holds a slot or a timer', async () => {
         vi.useFakeTimers()
         __avatarThumbTestHooks.setLimits({ timeoutMs: 50 })
-        renderMock.mockImplementation(() => new Promise(() => {}))
+        let finish: (outcome: unknown) => void = () => {}
+        nativeMock.mockImplementation(() => new Promise((resolve) => { finish = resolve }))
         const loc = addFile('assets/huge.png', stillPng(), OVER)
 
-        const first = getAvatarThumbSrc(loc)
+        const pending = getAvatarThumbSrc(loc)
         await flush(60)
-        await vi.advanceTimersByTimeAsync(50)
-        expect(await first).toBeNull()
+        await vi.advanceTimersByTimeAsync(500)
+        finish(nativePixels())
 
-        const second = getAvatarThumbSrc(loc)
-        await flush(60)
-        await vi.advanceTimersByTimeAsync(50)
-        expect(await second).toBeNull()
-
-        expect(renderedKinds()).toEqual(['url'])
-        expect(store.setItem).not.toHaveBeenCalled()
+        expect(await pending).toBe('thumb:pixels')
+        expect(store.setItem).toHaveBeenCalledWith(loc, { v: THUMB_VERSION, src: 'thumb:pixels' })
+        expect(__avatarThumbTestHooks.stats().running).toBe(0)
     })
 
-    test('reproducer: a PNG whose first 256 KiB cannot decide animation gets one URL decode and no whole read', async () => {
+    test('reproducer: a PNG whose first 256 KiB cannot decide animation goes to the native preview and no whole read', async () => {
+        nativeMock.mockResolvedValue(nativePixels())
         const loc = addFile('assets/text.png', textHeavyPng(), OVER)
 
-        expect(await getAvatarThumbSrc(loc)).toBe('thumb:url')
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
 
         expect(readImageMock).not.toHaveBeenCalled()
-        expect(renderedKinds()).toEqual(['url'])
+        expect(renderedKinds()).toEqual(['pixels'])
     })
 
     test('guard: an animated GIF over the limit is a persisted skip', async () => {
@@ -761,10 +847,12 @@ describe('desktop: an avatar over the limit is never decoded from its URL when i
         expect(readRangedPiecesMock).toHaveBeenCalledTimes(1)
         expect(readRangedPiecesMock).toHaveBeenCalledWith(loc, HEADER)
         expect(renderedKinds()).toEqual(['url'])
+        expect(nativeMock).not.toHaveBeenCalled()
     })
 
-    test('reproducer: with the URL decode switched off, an avatar over the limit gets no URL decode and no whole read', async () => {
+    test('reproducer: with the URL decode switched off, an avatar over the limit still gets the native preview (not a URL decode) and no whole read', async () => {
         renderFailing(['url'])
+        nativeMock.mockResolvedValue(nativePixels())
         const first = addFile('assets/first.png', stillPng(), 100 * 1024)
         const loc = addFile('assets/huge.png', stillPng(), OVER)
 
@@ -772,11 +860,11 @@ describe('desktop: an avatar over the limit is never decoded from its URL when i
         readImageMock.mockClear()
         renderMock.mockClear()
 
-        expect(await getAvatarThumbSrc(loc)).toBeNull()
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:pixels')
 
+        expect(nativeMock).toHaveBeenCalledWith(loc, expect.anything())
         expect(readImageMock).not.toHaveBeenCalled()
-        expect(renderMock).not.toHaveBeenCalled()
-        expect(store.setItem).not.toHaveBeenCalledWith(loc, expect.anything())
+        expect(renderedKinds()).toEqual(['pixels'])
     })
 })
 
@@ -808,6 +896,7 @@ describe('Node-hosted page: a ranged GET of at most 256 KiB', () => {
         expect(readImageMock).not.toHaveBeenCalled()
         expect(renderedKinds()).toEqual(['url'])
         expect(store.setItem).not.toHaveBeenCalled()
+        expect(nativeMock).not.toHaveBeenCalled()
     })
 
     test('reproducer: a PNG whose first 256 KiB cannot decide animation gets one URL decode and no whole read', async () => {
@@ -817,6 +906,7 @@ describe('Node-hosted page: a ranged GET of at most 256 KiB', () => {
 
         expect(readImageMock).not.toHaveBeenCalled()
         expect(renderedKinds()).toEqual(['url'])
+        expect(nativeMock).not.toHaveBeenCalled()
     })
 
     test('guard: a camera JPEG at exactly the limit keeps the URL decode and makes one GET', async () => {
@@ -826,6 +916,7 @@ describe('Node-hosted page: a ranged GET of at most 256 KiB', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1)
         expect(renderedKinds()).toEqual(['url'])
+        expect(nativeMock).not.toHaveBeenCalled()
     })
 
     test('reproducer: with the URL decode switched off, an avatar over the limit gets no URL decode and no whole read', async () => {

@@ -175,7 +175,6 @@ import { isBusy } from 'src/ts/process/memory/busyActions'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
@@ -277,7 +276,6 @@ function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 }
 

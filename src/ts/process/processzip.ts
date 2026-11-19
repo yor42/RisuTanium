@@ -2,7 +2,7 @@ import { pieceStoreOrNull, saveAsset, saveAssetFromPieces, type LocalWriter, typ
 import * as fflate from "fflate";
 import crc32 from "crc/crc32";
 import { asBuffer, Semaphore, sleep } from "../util";
-import { alertStore } from "../alert";
+import type { ProgressSink } from "../progressSink";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { storeAssetLimitBytes } from "../storage/assetLimit";
@@ -890,6 +890,14 @@ export type CharXSizeDetail = { entryName: string, limitBytes: number }
  * `origin` alone (and, for 'size', from `entryName` and `limitBytes`) and never from the underlying error's code,
  * name, message or class.
  */
+/** parse() was ended by abandon() before the archive was read to its end. It is the owner's own stop, not a failure of the archive. */
+export class CharXAbandonedError extends Error {
+    constructor() {
+        super('The import was abandoned')
+        this.name = 'CharXAbandonedError'
+    }
+}
+
 export class CharXParseError extends Error {
     readonly origin: CharXFailureOrigin
     readonly cause: unknown
@@ -1408,7 +1416,6 @@ export class CharXImporter{
     private completionPromise?: Promise<void>
     private completionSettled: boolean = false
     private errors: Error[] = []
-    private onProgress?: (done: number, total: number) => void
 
     // The first parse failure. Once set, no entry is started, no data is handled, no save is queued or started,
     // and no progress is shown; parse() rejects with it.
@@ -1453,8 +1460,28 @@ export class CharXImporter{
     // is not, and the later pass refuses on it before it reads any chunk.
     sizes:{[key:string]:number} = {}
 
-    // Configuration
-    alertInfo:boolean = false  // Show progress alerts to user
+    // The reader of the archive while parse() reads it, so abandon() can end a read that is waiting on the source.
+    #reader: ReadableStreamDefaultReader<Uint8Array>|undefined
+
+    /** Archive bytes read so far and the archive's size (0 for a stream of unknown size); ends with (total, total). */
+    readProgress?: ProgressSink
+    /** Saves finished and saves queued so far. Not called after a failure or abandon(). */
+    saveProgress?: ProgressSink
+    /**
+     * Called synchronously right before each asset save starts. Returning false abandons the importer and skips that
+     * save; so does any later save. The first call is the importer's first write.
+     */
+    beforeWrite?: () => boolean
+
+    /** Saves that have ended, whether they stored the asset or failed. */
+    get savedCount():number{
+        return this.totalCompleted
+    }
+
+    /** Saves queued so far, including those that have ended. */
+    get queuedCount():number{
+        return this.totalEnqueued
+    }
 
     readonly #route: EntryRouter
 
@@ -1465,13 +1492,11 @@ export class CharXImporter{
         this.unzip.onfile = (file) => this.#handleFile(file)
 
         this.semaphore = new Semaphore(MAX_CONCURRENT_ASSET_SAVES)
-        this.onProgress = (done, total) => {
-            if(this.alertInfo && !this.#failure && !this.#abandoned){
-                alertStore.set({
-                    type: 'wait',
-                    msg: fillLang(language.alerts.savingAssets, { done: String(done), total: String(total) })
-                })
-            }
+    }
+
+    #reportSaves(){
+        if(!this.#failure && !this.#abandoned){
+            this.saveProgress?.(this.totalCompleted, this.totalEnqueued)
         }
     }
 
@@ -1550,19 +1575,34 @@ export class CharXImporter{
             throw this.#failure
         }
 
-        while(!this.#failure){
+        const totalBytes = data instanceof ReadableStream ? 0 : inputSizeOf(data)
+        let readBytes = 0
+        this.#reader = reader
+        while(!this.#failure && !this.#abandoned){
             await this.#waitForBacklog()
-            if(this.#failure){
+            if(this.#failure || this.#abandoned){
                 break
             }
             let chunk:ReadableStreamReadResult<Uint8Array>
             try {
                 chunk = await reader.read()
             } catch (error) {
-                this.#record('input', error)
+                // A read ended by abandon() is the owner's stop, not an input failure.
+                if(!this.#abandoned){
+                    this.#record('input', error)
+                }
+                break
+            }
+            if(this.#abandoned){
                 break
             }
             if(chunk.value){
+                readBytes += chunk.value.byteLength
+                this.readProgress?.(totalBytes > 0 ? Math.min(readBytes, totalBytes) : readBytes, totalBytes)
+                // The progress hook may have abandoned the importer: nothing more is fed.
+                if(this.#abandoned){
+                    break
+                }
                 this.#feedChunk(chunk.value, false)
             }
             if(this.#failure){
@@ -1573,11 +1613,23 @@ export class CharXImporter{
                 break
             }
         }
+        this.#reader = undefined
 
         // The failure is thrown before #finalize(), so the completion promise is never rejected without a listener.
         if(this.#failure){
             reader.cancel().catch(() => {})
             throw this.#failure
+        }
+        if(this.#abandoned){
+            reader.cancel().catch(() => {})
+            throw new CharXAbandonedError()
+        }
+        if(this.readProgress){
+            const finalBytes = totalBytes > 0 ? totalBytes : readBytes
+            this.readProgress(finalBytes, finalBytes)
+            if(this.#abandoned){
+                throw new CharXAbandonedError()
+            }
         }
         // An entry still receiving when the archive ends was cut short: its save fails, so it is never stored under a key.
         this.#failQueues(this.#receiving.values(), new Error('The archive ended before an entry was complete'))
@@ -1615,7 +1667,7 @@ export class CharXImporter{
     /** Resolves once the decoded assets waiting to be saved are at most charxLimits.backlogBytes, or a failure is recorded. */
     async #waitForBacklog() {
         // Woken by #releaseBacklog on every drain, including the release of a failed save's queued bytes.
-        while(!this.#failure && this.#pendingBytes > charxLimits.backlogBytes){
+        while(!this.#failure && !this.#abandoned && this.#pendingBytes > charxLimits.backlogBytes){
             await new Promise<void>(resolve => { this.#wakeReader = resolve })
         }
     }
@@ -1659,10 +1711,16 @@ export class CharXImporter{
      * queue ends by throwing, the writer discards its temporary file and nothing is stored under the entry's key.
      * Call it when the import stops after parse() succeeded without a call to done() having returned; it is harmless
      * after done() has settled.
+     * During parse() it also ends the read: the loop stops at once, a reader waiting on the backlog or on the source
+     * is woken, the source is cancelled and parse() rejects with CharXAbandonedError.
      */
     abandon(){
         this.#abandoned = true
         this.#failQueues(this.#saving, new Error('The import was abandoned'))
+        this.#reader?.cancel().catch(() => {})
+        const wake = this.#wakeReader
+        this.#wakeReader = undefined
+        wake?.()
         this.completionPromise?.catch(() => {})
     }
 
@@ -1920,12 +1978,27 @@ export class CharXImporter{
         void this.#saveStreamed(fileName, queue)
     }
 
+    /**
+     * Asks the owner whether the next save may start, synchronously right before it. A refusal abandons the importer, so
+     * this save and every later one is skipped. No hook means no refusal.
+     */
+    #allowWrite(): boolean {
+        if(this.beforeWrite && !this.beforeWrite()){
+            this.abandon()
+            return false
+        }
+        return true
+    }
+
     async #saveStreamed(fileName: string, queue: PieceQueue) {
         let acquired = false
         try {
             await this.semaphore.acquire()
             acquired = true
             if(this.#failure || this.#abandoned){
+                return
+            }
+            if(!this.#allowWrite()){
                 return
             }
             // No file name: the key is the one `saveAsset` gives the same bytes.
@@ -1940,7 +2013,7 @@ export class CharXImporter{
             queue.dispose()
             this.#saving.delete(queue)
             this.totalCompleted += 1
-            this.onProgress?.(this.totalCompleted, this.totalEnqueued)
+            this.#reportSaves()
             this.#checkCompletion()
         }
     }
@@ -1959,6 +2032,9 @@ export class CharXImporter{
             if(this.#failure || this.#abandoned){
                 return
             }
+            if(!this.#allowWrite()){
+                return
+            }
             this.assets[asset.id] = await saveAsset(asset.data)
         } catch (error) {
             this.errors.push(error instanceof Error ? error : new Error(String(error)))
@@ -1968,7 +2044,7 @@ export class CharXImporter{
             }
             this.#releaseBacklog(byteLength)
             this.totalCompleted += 1
-            this.onProgress?.(this.totalCompleted, this.totalEnqueued)
+            this.#reportSaves()
             this.#checkCompletion()
         }
     }

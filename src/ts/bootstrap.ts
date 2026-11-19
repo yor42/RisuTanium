@@ -1,5 +1,5 @@
 import { appFsMkdirAll } from "./storage/appFs"
-import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
+import { changeFullscreen, checkNullish, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import localforage from "localforage"
 import { v4 as uuidv4 } from 'uuid';
@@ -12,13 +12,15 @@ import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertInput, alertToast } from "./alert";
+import { queueNotice, noticesSettled, askPrompt } from "./alertPrompts";
 import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
 import { androidOpenedFilesImport } from "./android/openedFiles";
 import { startLaunchNavigation } from "./android/launchTarget";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
-import { decodeRisuSave, encodeRisuSaveLegacy } from "./storage/risuSave";
+import { decodeRisuSave, decodeRisuSaveReporting, encodeRisuSaveLegacy, type SalvageOmittedBlock } from "./storage/risuSave";
+import { legacyPartialFact, legacyPartialNoticeText, setLegacyPartialSave, type LegacyPartialSave } from "./storage/legacyPartialSave";
 import { getPageStorageMode, pageMayGoLive, setPageStorageMode } from "./storage/pageStorageMode";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
@@ -33,7 +35,6 @@ import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
-import { cleanRouteServedCacheOnce } from "./storage/routeCacheCleanup";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { startInlayCopy } from "./process/files/inlayCopy";
 import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
@@ -51,11 +52,23 @@ import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { isTrashPurgeDue } from "./storage/trashPurge";
 import { startAvatarThumbSweep } from "./media/avatarThumb";
 import {
+    afterNextSaveCommit,
+    characterCommitVerdict,
     forageStorage,
+    getCommittedSaveMarkCount,
+    getSaveMarkCount,
+    requestSaveNow,
     saveDb,
-    setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
+import { fillLang } from "./../lang/fill";
+import { isAndroidTransport } from "./storage/tauriByteTransport";
+import { markCharacterForSave } from "./storage/characterSaveMarks";
+import { configurePageState, requestReconcile, setReconcileTrigger } from "./nativeReply/pageState";
+import { createReconciler, recoveredText, type ReconcileNotes } from "./nativeReply/reconcile";
+import { reconcileGateOpen } from "./nativeReply/gate";
+import { setParkedReplyAsker, showParkedReplies } from "./nativeReply/parkedDialog";
+import { createReplyStore } from "./nativeReply/store";
 import { isTauri } from "./platform";
 import { isTauriDesktop } from "./tauriDesktop";
 import { registerModelDynamic } from "./model/modellist";
@@ -64,7 +77,7 @@ const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 /**
  * Resolves the next time the alert store returns to `type: 'none'`, the way
- * a blocking notice below is acknowledged -- reacts to the store write
+ * the storage-fallback notice below is acknowledged -- reacts to the store write
  * directly instead of polling on a timer, so it settles on the very write
  * that clears the alert regardless of how that write is scheduled.
  */
@@ -87,6 +100,9 @@ export async function loadData() {
     if (!loaded) {
         // Whether a page that only reads its legacy profile from OPFS must say so, posted once after the dispatch's own notices.
         let opfsReadOnlyNotice = false
+        // What a read-only legacy page installed that is not the whole current save (a partly decoded main file, or a
+        // numbered backup), kept for the export and told once after the page may go live. Null for everything else.
+        let legacyPartial: LegacyPartialSave | null = null
         // The notices the store2 boot dispatch raised, posted after the database is installed so they are in its language.
         let store2Notices: readonly Store2BootNotice[] = []
         // What the character list of the installed tree needed before it was
@@ -140,6 +156,7 @@ export async function loadData() {
                     let installed = false
                     if (readed !== null) {
                         let decodedTree: Database | null = null
+                        let decodedOmitted: ReadonlyMap<string, SalvageOmittedBlock> = new Map()
                         try {
                             LoadingStatusState.text = "Decoding Save File..."
                             const decoded = await decodeMainFile(readed)
@@ -149,6 +166,7 @@ export async function loadData() {
                                 clearArchiveMemo()
                             }
                             decodedTree = decoded.tree
+                            decodedOmitted = decoded.omitted
                         } catch (error) {
                             decodedTree = null
                         }
@@ -157,6 +175,7 @@ export async function loadData() {
                                 await repairBootTree(decodedTree, bootRepairs)
                                 setDatabase(decodedTree)
                                 installed = true
+                                legacyPartial = legacyPartialFact(null, decodedOmitted)
                             } catch (error) {
                                 console.error(error)
                             }
@@ -172,10 +191,11 @@ export async function loadData() {
                                 try {
                                     LoadingStatusState.text = `Reading Backup File ${backup}...`
                                     const backupData = await readBackupBytes(backup)
-                                    const backupTree = await decodeRisuSave(backupData)
-                                    await repairBootTree(backupTree, bootRepairs)
-                                    setDatabase(backupTree)
+                                    const backupDecoded = await decodeRisuSaveReporting(backupData)
+                                    await repairBootTree(backupDecoded.db, bootRepairs)
+                                    setDatabase(backupDecoded.db)
                                     backupLoaded = true
+                                    legacyPartial = legacyPartialFact(backup, backupDecoded.omitted)
                                 } catch (error) {
                                     console.error(error)
                                 }
@@ -187,8 +207,11 @@ export async function loadData() {
                     }
                 }
                 assertPageMayGoLive()
-                await postStore2Notices(store2Notices)
-                await postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                // Informational notices are queued, not awaited: the boot goes on while the person reads them, and the
+                // notice queue shows them one at a time. An update question asked below takes the screen over a notice.
+                postStore2Notices(store2Notices)
+                postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                postLegacyPartialNotice(legacyPartial)
                 LoadingStatusState.text = "Checking Update..."
                 await checkRisuUpdate()
                 await changeFullscreen()
@@ -203,24 +226,6 @@ export async function loadData() {
                         throw language.browserStorageUnavailable
                     }
                     throw error
-                }
-                // A page the service worker does not control yet reloads once to be controlled. That is decided after the
-                // store is selected (which may itself run the OPFS copy-back and its progress alert; a failed copy-back is
-                // attempted again by the next life) and before the profile is read or any boot prompt or notice is posted,
-                // so the life that reloads shows and consumes none of them and the next life does. A stale account profile
-                // never reaches the service worker: it ends at its own notice below.
-                if (!forageStorage.staleAccountProfile) {
-                    LoadingStatusState.text = "Checking Service Worker..."
-                    if (navigator.serviceWorker) {
-                        setUsingSw(true)
-                        if (await registerSw()) {
-                            await sleepForever()
-                            return
-                        }
-                    }
-                    else {
-                        setUsingSw(false)
-                    }
                 }
                 const store2Boot = await runStore2Boot()
                 if (store2Boot.kind === 'stopped') {
@@ -263,6 +268,7 @@ export async function loadData() {
                     let installed = false
                     if (mainReadable) {
                         let decodedTree: Database | null = null
+                        let decodedOmitted: ReadonlyMap<string, SalvageOmittedBlock> = new Map()
                         try {
                             const decoded = await decodeMainFile(gotStorage as Uint8Array)
                             // The file's bytes are not kept past the decode.
@@ -274,6 +280,7 @@ export async function loadData() {
                                 clearArchiveMemo()
                             }
                             decodedTree = decoded.tree
+                            decodedOmitted = decoded.omitted
                         } catch (error) {
                             console.error(error)
                             decodedTree = null
@@ -283,6 +290,7 @@ export async function loadData() {
                                 await repairBootTree(decodedTree, bootRepairs)
                                 setDatabase(decodedTree)
                                 installed = true
+                                legacyPartial = legacyPartialFact(null, decodedOmitted)
                             } catch (error) {
                                 console.error(error)
                             }
@@ -307,10 +315,11 @@ export async function loadData() {
                             try {
                                 LoadingStatusState.text = `Reading Backup File ${backup}...`
                                 const backupData = await readBackupBytes(backup)
-                                const backupTree = await decodeRisuSave(backupData)
-                                await repairBootTree(backupTree, bootRepairs)
-                                setDatabase(backupTree)
+                                const backupDecoded = await decodeRisuSaveReporting(backupData)
+                                await repairBootTree(backupDecoded.db, bootRepairs)
+                                setDatabase(backupDecoded.db)
                                 backupLoaded = true
+                                legacyPartial = legacyPartialFact(backup, backupDecoded.omitted)
                             } catch (error) { }
                         }
                         if (!backupLoaded) {
@@ -324,10 +333,9 @@ export async function loadData() {
                 // IndexedDB could not run records its reason in the page's
                 // store selection, which runs before setDatabase() above has
                 // picked the boot language. Shown once, after decode, so the
-                // notice is translated. Both this notice and the stale-account
-                // notice below are posted before loadedStore is set; they never
-                // collide because this one is awaited to clear before the
-                // stale-account check runs.
+                // notice is translated. This notice holds the boot until its OK:
+                // it is awaited to clear before the queued notices and the
+                // stale-account check below, so none of them collides with it.
                 const fallbackNotice = takeStorageFallbackNotice()
                 if (fallbackNotice) {
                     const message = fallbackNotice.reason === 'space' ? language.opfsFallbackNoticeSpace
@@ -338,22 +346,25 @@ export async function loadData() {
                     await waitForAlertCleared()
                 }
 
-                // The dispatch's notices and then the OPFS read-only notice follow the
-                // notice above (each is awaited, so none overwrites another in the
-                // single alert slot) and come before anything else that can post
-                // an alert.
-                await postStore2Notices(store2Notices)
-                await postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                // The dispatch's notices and then the OPFS read-only notice are
+                // queued after the notice above, in that order. The notice queue
+                // shows them one at a time in FIFO order, never overwrites one
+                // with another, and ends each only by the person's own close.
+                // They are not awaited here: the boot goes on behind them.
+                postStore2Notices(store2Notices)
+                postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                postLegacyPartialNotice(legacyPartial)
 
                 // I6: a returning RisuAccount-sync profile (AutoStorage.Init()
                 // detected `accountst === 'able'`) never boots past this point
-                // silently. The notice is blocking and re-posts itself against
-                // any other alertStore write; only its own OK acknowledges it.
-                // Acknowledging removes the three account-sync keys and reloads
-                // -- this page life never reaches characterURLImport,
-                // plugins, loadedStore or saveDb below, and it never
-                // registered the service worker above.
+                // silently. The queued notices are drained first, so the consent
+                // is never shown over one; the consent is blocking and re-posts
+                // itself against any other alertStore write, and only its own OK
+                // acknowledges it. Acknowledging removes the three account-sync
+                // keys and reloads -- this page life never reaches
+                // characterURLImport, plugins, loadedStore or saveDb below.
                 if (forageStorage.staleAccountProfile) {
+                    await noticesSettled()
                     void alertStaleAccountNotice().then(() => {
                         localStorage.removeItem('accountst')
                         localStorage.removeItem('dosync')
@@ -371,8 +382,6 @@ export async function loadData() {
                 localStorage.removeItem('dosync')
                 localStorage.removeItem('fallbackRisuToken')
 
-                // Never awaited: the clean-up must not delay the app.
-                void cleanRouteServedCacheOnce(typeof localStorage === 'undefined' ? null : localStorage)
                 if (getDatabase().didFirstSetup) {
                     characterURLImport()
                 }
@@ -383,9 +392,8 @@ export async function loadData() {
             }
             // Both boot branches reach here on the non-stale path of a life
             // that stays (the stale-profile notice above returns before this
-            // point, and so does a life that reloads for the service worker;
-            // the next boot's ordinary path runs it instead). Drops the leftovers
-            // of two upstream services this app does not offer: the
+            // point). Drops the leftovers of two upstream services this app does
+            // not offer: the
             // account-sync LocalForage instance named "risuaiAccountCached",
             // and the Google Drive backup's last-saved timestamp
             // (`risu_lastsaved`) and save/load flag (`localStorage['backup']`,
@@ -458,7 +466,7 @@ export async function loadData() {
             selectedCharID.set(-1)
             startObserveDom()
             assignIds()
-            // A store2 page starts the put-back too: it unloads a loaded, unchanged character through the residency, not the cold-storage re-archive.
+            // A store2 page starts the put-back too: it unloads a loaded, unchanged character through the residency.
             if (getPageStorageMode().kind !== 'read-only') {
                 try {
                     startCharacterPutBack()
@@ -469,6 +477,9 @@ export async function loadData() {
             registerModelDynamic()
             if (getPageStorageMode().kind !== 'read-only') {
                 saveDb()
+                // After saving has started: the reconcile appends replies the native side received while this page
+                // could not see them, and their saves are waited for through the commits saveDb makes.
+                startNativeReply()
             }
             moduleUpdate()
             // Recording attaches handlers to the promise, which marks a failure
@@ -574,13 +585,23 @@ async function readBackupBytes(backup: number): Promise<Uint8Array> {
     return bytes
 }
 
-/** Posts the read-only notice of a page that runs from OPFS, awaiting its acknowledgement. */
-async function postOpfsReadOnlyNotice(shown: boolean) {
+/** Queues the read-only notice of a page that runs from OPFS; it does not wait for the person to close it. */
+function postOpfsReadOnlyNotice(shown: boolean): void {
     if (!shown) {
         return
     }
-    alertNormal(language.opfsReadOnlyNotice)
-    await waitForAlertCleared()
+    queueNotice(language.opfsReadOnlyNotice)
+}
+
+/**
+ * Keeps the legacy-partial fact for the export and queues its notice once. Runs only after `assertPageMayGoLive`, so a page
+ * that does not go live neither tells nor keeps it; the notice follows the notices that say why the page is read-only.
+ */
+function postLegacyPartialNotice(fact: LegacyPartialSave | null): void {
+    setLegacyPartialSave(fact)
+    if (fact !== null) {
+        queueNotice(legacyPartialNoticeText(fact))
+    }
 }
 
 /**
@@ -597,10 +618,11 @@ function assertPageMayGoLive(): void {
 }
 
 /**
- * Posts each notice the store2 boot raised once, in order, awaiting its acknowledgement before the next. It runs after
- * the database is installed, so the text is in the database's language; a notice that ended the boot has no text here.
+ * Queues each notice the store2 boot raised once, in order, on the notice queue, which shows them one at a time and ends
+ * each only by the person's own close. It does not wait for them. It runs after the database is installed, so the text is
+ * in the database's language; a notice that ended the boot has no text here.
  */
-async function postStore2Notices(notices: readonly Store2BootNotice[]) {
+function postStore2Notices(notices: readonly Store2BootNotice[]): void {
     const posted = new Set<Store2BootNotice['name']>()
     for (const notice of notices) {
         const text = noticeText(notice)
@@ -608,39 +630,22 @@ async function postStore2Notices(notices: readonly Store2BootNotice[]) {
             continue
         }
         posted.add(notice.name)
-        alertNormal(text)
-        await waitForAlertCleared()
+        queueNotice(text)
     }
 }
 
 /**
  * The main file decoded for boot: strictly first. A strict decode that fails
  * falls back to the lenient decode, whose tree may be missing blocks; either
- * tree is installed as it is.
+ * tree is installed as it is. The caller is told what the lenient tree lacks: a strict tree lacks nothing.
  */
-async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, strict: boolean }> {
+async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, strict: boolean, omitted: ReadonlyMap<string, SalvageOmittedBlock> }> {
     try {
-        return { tree: await decodeRisuSave(bytes, { strict: true }), strict: true }
+        return { tree: await decodeRisuSave(bytes, { strict: true }), strict: true, omitted: new Map() }
     } catch (error) {
-        return { tree: await decodeRisuSave(bytes), strict: false }
+        const lenient = await decodeRisuSaveReporting(bytes)
+        return { tree: lenient.db, strict: false, omitted: lenient.omitted }
     }
-}
-
-/**
- * Registers the service worker and initializes it. Answers whether it started a reload, which ends this page life.
- */
-async function registerSw(): Promise<boolean> {
-    await navigator.serviceWorker.register("/sw.js", {
-        scope: "/"
-    });
-    await sleep(100);
-    const da = await fetch('/sw/init');
-    if (!(da.status >= 200 && da.status < 300)) {
-        markAppInitiatedReload();
-        location.reload();
-        return true;
-    }
-    return false;
 }
 
 /**
@@ -866,4 +871,88 @@ async function checkNewFormat(): Promise<void> {
  */
 export function assignIds() {
     repairDatabaseIds({ characters: DBState?.db?.characters })
+}
+
+let nativeReplyStarted = false
+
+/**
+ * Starts the native reply reconcile of an Android page: the page state that waits for saves, the reconcile that places
+ * replies recorded while the page could not see them, and its triggers (launch and every return to visible). Other
+ * platforms own no replies, so nothing is installed. Runs once, after saving has started.
+ */
+function startNativeReply(): void {
+    if (nativeReplyStarted || !isAndroidTransport()) {
+        return
+    }
+    nativeReplyStarted = true
+    const store = createReplyStore()
+    const notes: ReconcileNotes = {
+        failedElsewhere: (name) => fillLang(language.replyFailedElsewhere, { name }),
+        stoppedElsewhere: (name) => fillLang(language.replyStoppedElsewhere, { name }),
+        interrupted: (name) => fillLang(language.nativeReplyInterrupted, { name }),
+        unreadable: (key, problem) => fillLang(language.nativeReplyUnreadable, { key, problem }),
+    }
+    // Back and every other way out of the dialog answer `later`: only a press on Discard removes a record.
+    setParkedReplyAsker(async (reply) => {
+        const answer = await askPrompt({
+            type: 'parkedReply',
+            msg: language.parkedReplyTitle,
+            parkedReply: { name: reply.name, text: reply.text },
+        })
+        return answer === 'discard' ? 'discard' : 'later'
+    })
+    const reconciler = createReconciler({
+        store,
+        gate: () => reconcileGateOpen({
+            readOnly: getPageStorageMode().kind === 'read-only',
+            didFirstSetup: getDatabase().didFirstSetup,
+            visible: document.visibilityState === 'visible',
+        }),
+        notice: queueNotice,
+        notes,
+        recoverText: async (listing, blob, bodyText) => {
+            const [{ risuEscape }, { pluginV2 }, { createRunSubject }] = await Promise.all([
+                import('./parser/parser.svelte'),
+                import('./plugins/plugins.svelte'),
+                import('./process/chatOrigin'),
+            ])
+            return await recoveredText(listing.status, bodyText, blob, {
+                escape: risuEscape,
+                replacers: async (text) => {
+                    let replaced = text
+                    for (const replacer of pluginV2.replacerafterRequest) {
+                        replaced = await replacer(replaced, 'model')
+                    }
+                    return replaced
+                },
+                subject: createRunSubject({ chaId: blob.target.chaId, chatId: blob.target.chatId }),
+            })
+        },
+        apply: async (input) => (await import('./process/index.svelte')).applyRecoveredReply(input),
+        restoreCharacter: async (chaId) => (await import('./process/coldMemberRestore')).restoreColdCharacterByChaId(chaId),
+        preLoadChat: async (characterIndex, chatIndex) => (await import('./process/coldstorage.svelte')).preLoadChat(characterIndex, chatIndex),
+        showParked: (items) => showParkedReplies(items, {
+            discard: (key) => store.discard(key),
+            discardFailed: (reply, error) => alertToast(`${reply.name}: ${error instanceof Error ? error.message : String(error)}`),
+        }),
+    })
+    configurePageState({
+        store,
+        waiter: {
+            committedMarkCount: getCommittedSaveMarkCount,
+            markCount: getSaveMarkCount,
+            verdict: characterCommitVerdict,
+            afterNextCommit: afterNextSaveCommit,
+            markCharacter: markCharacterForSave,
+            requestSaveNow,
+        },
+        onUnreadable: reconciler.reportUnreadable,
+    })
+    setReconcileTrigger(() => { void reconciler.request() })
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            requestReconcile()
+        }
+    })
+    requestReconcile()
 }

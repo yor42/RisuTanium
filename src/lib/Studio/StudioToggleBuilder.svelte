@@ -1,3 +1,8 @@
+<script module lang="ts">
+    type UsesView = typeof import('./StudioToggleUses.svelte').default
+    let usesLoaded: UsesView | null = null
+</script>
+
 <script lang="ts">
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
@@ -6,15 +11,21 @@
 import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { beginModuleAck, endModuleAck, ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
-    import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
+    import { EyeIcon } from '@lucide/svelte'
+    import { closeStudioTogglePreview, registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
     import { studioScreen } from '../../ts/studio/studioScreen.svelte'
-    import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type EditOutcome, type ToggleTarget } from '../../ts/studio/toggleBuilder.svelte'
+    import { sameRef } from '../../ts/chatShell/toggleFavourites'
+    import { currentFavourites, updateFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
+    import { createCarryDbPort, readCarryReach } from '../../ts/studio/edit/toggleCarryDb'
+    import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type CarryDeps, type EditOutcome, type ToggleTarget } from '../../ts/studio/toggleBuilder.svelte'
     import { caretOffsetOf, rowAtLine, rowViewOf, type MoveDirection, type NewKind } from '../../ts/studio/toggleBuilderModel'
     import { lineById, type LineId } from '../../ts/studio/toggleDef'
     import { ownerStem } from '../../ts/studio/toggleKeys'
     import { DBState } from '../../ts/stores.svelte'
-    import type { ToastHost } from '../../ts/toast/toastHost.svelte'
+    import { toastHost, type ToastHost, type ToastId } from '../../ts/toast/toastHost.svelte'
+    import StudioToggleCarryBanner from './StudioToggleCarryBanner.svelte'
     import StudioToggleEditor from './StudioToggleEditor.svelte'
+    import type { PreviewCurrent } from './StudioTogglePreview.svelte'
     import StudioToggleList from './StudioToggleList.svelte'
     import StudioToggleText from './StudioToggleText.svelte'
 
@@ -45,11 +56,26 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
         const character = DBState.db.characters?.find((candidate) => candidate?.chaId === fixed.chaId)
         return ownerStem(character && character.type !== 'group' ? character.name ?? '' : '', fixed.chaId)
     }
+    // Where the saved-values question reads and writes: the database through one port, and the device-local favourites.
+    const carryDeps: CarryDeps = {
+        reach: () => readCarryReach(fixed),
+        values: createCarryDbPort(),
+        starSource: fixed.kind === 'character' ? `character:${fixed.chaId}` : `module:${fixed.moduleId}`,
+        stars: {
+            has: (ref) => currentFavourites().items.some((known) => sameRef(known, ref)),
+            rename: (ref, to) => updateFavourites({ type: 'rename', ref, to }),
+        },
+        reachKind: fixed.kind === 'character' ? 'own' : 'loaded',
+    }
     const builder = createToggleBuilder(port, {
         keyEditsLive: TOGGLE_KEY_EDITS_LIVE,
         stem: stemOf(),
         appKeys: appToggleKeys(fixed),
+        carry: carryDeps,
     })
+    const toastsHost = untrack(() => host) ?? toastHost
+    let carriedToast: ToastId | null = null
+    let carryError = $state('')
 
     const service = $derived(getStudioHistoryService())
     $effect(() => {
@@ -115,13 +141,87 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
             else builder.open(id)
         }
         mode = 'list'
+        builder.checkpoint()
     }
 
-    // The editor as a page of its own sits over the list like the detail over the tree: Back closes it first.
+    // The editor as a page of its own sits over the list like the detail over the tree: Back closes it first. It yields
+    // to the preview sheet, which is opened over it.
+    const editorPageShown = $derived(mode === 'list' && !wide && editorOpen)
+    // Detail to list reads this and yields, so the editor page closes before the phone leaves for the list. The visit id
+    // is read so that a new visit on a builder that stays mounted publishes the flag again after the reset cleared it.
+    $effect(() => {
+        void studioScreen.visitId
+        studioScreen.toggleEditorPageOpen = editorPageShown
+    })
     registerStudioBackLayer({
-        isOpen: () => mode === 'list' && !wide && editorOpen &&!studioScreen.searchOpen && !studioScreen.drawerOpen && !studioScreen.historyOpen,
+        isOpen: () => editorPageShown &&!studioScreen.searchOpen && !studioScreen.drawerOpen && !studioScreen.historyOpen && !studioScreen.togglePreviewOpen,
         close: () => closeEditor(),
     })
+
+    // A row opened from the preview sheet must leave focus in the sheet, so its editor skips the first-field focus.
+    let editorFocus = $state(true)
+
+    // The preview opens a row only where a list click could: in the list view, with no unnamed new row to drop.
+    // It says whether the row was opened.
+    function selectFromPreview(id: LineId): boolean {
+        if (mode !== 'list' || builder.pending !== null) return false
+        const group = builder.def.outline.parentOf.get(id)
+        if (group !== undefined && builder.collapsed.has(group)) builder.toggleCollapsed(group)
+        editorFocus = false
+        builder.open(id)
+        void afterFlush().then(() => { editorFocus = true })
+        return true
+    }
+
+    function ownerNameOf(): string {
+        if (fixed.kind === 'module') {
+            const [slot] = moduleSlotsWithId(DBState.db.modules, fixed.moduleId)
+            const name = slot ? (slot.module as { name?: unknown }).name : ''
+            return typeof name === 'string' ? name : ''
+        }
+        const character = DBState.db.characters?.find((candidate) => candidate?.chaId === fixed.chaId)
+        return character && character.type !== 'group' ? character.name ?? '' : ''
+    }
+
+    const previewCurrent = $derived<PreviewCurrent>({
+        target: fixed,
+        name: ownerNameOf(),
+        def: builder.def,
+        selected: builder.editor?.id ?? null,
+        select: selectFromPreview,
+    })
+
+    // The uses list reads every owner's texts, a heavy module the builder does not otherwise need: it is loaded with the
+    // first question that renames a key. Once it was loaded, a new builder of the page shows its result line at once.
+    let usesView = $state.raw<UsesView | null>(usesLoaded)
+    $effect(() => {
+        if (usesView !== null || builder.usesRenames.length === 0) return
+        let live = true
+        void import('./StudioToggleUses.svelte').then((loaded) => {
+            usesLoaded = loaded.default
+            if (live) usesView = loaded.default
+        }).catch((error) => { console.error(error) })
+        return () => { live = false }
+    })
+
+    // The sheet reads the chat panel's sources, a heavy module the builder does not otherwise need: it is loaded with
+    // the first opening, as the chat loads its own panel.
+    let previewSheet = $state.raw<typeof import('./StudioTogglePreview.svelte').default | null>(null)
+    $effect(() => {
+        if (!studioScreen.togglePreviewOpen || previewSheet !== null) return
+        let live = true
+        // A failed load must not leave the flag and the Back layer up with no sheet drawn.
+        void import('./StudioTogglePreview.svelte').then((loaded) => { if (live) previewSheet = loaded.default }).catch((error) => {
+            console.error(error)
+            if (live) closeStudioTogglePreview()
+        })
+        return () => { live = false }
+    })
+
+    function togglePreview(): void {
+        if (studioScreen.togglePreviewOpen) closeStudioTogglePreview()
+        else studioScreen.togglePreviewOpen = true
+    }
 
     async function focusRow(id: LineId | null): Promise<void> {
         await afterFlush()
@@ -197,8 +297,54 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
         },
         closeStep(): void {
             port.closeOpenStep()
+            builder.checkpoint()
         },
     }
+
+    function undoRefusalText(reason: 'gone' | 'changed'): string {
+        return reason === 'gone' ? language.studioTgCarryUndoGone : language.studioTgCarryUndoRefused
+    }
+
+    // The banner's answers. A carry's toast Undo is bound to this builder instance and to that one carry.
+    const carryActions = {
+        carry(): void {
+            carryError = ''
+            const outcome = builder.carryValues()
+            if (outcome.ok === true) {
+                const token = outcome.token
+                carriedToast = toasts.postUndoAction(language.studioTgCarried, () => {
+                    const undone = builder.undoCarry(token)
+                    return undone.ok === false ? { ok: false, text: undoRefusalText(undone.reason) } : { ok: true, text: language.studioTgCarryUndone }
+                })
+            } else if (outcome.ok === false && outcome.reason === 'failed') {
+                carryError = refusalTextOf({ reason: 'unknown' }, port.owner)
+            }
+        },
+        answer(): void {
+            carryError = ''
+            builder.answerCarry()
+        },
+        undo(): void {
+            carryError = ''
+            const undone = builder.undoCarry()
+            if (undone.ok === true) {
+                if (carriedToast !== null) toastsHost.dismiss(carriedToast)
+                carriedToast = null
+            } else {
+                carryError = undoRefusalText(undone.reason)
+            }
+        },
+    }
+
+    // What the question announces: its first show, a recheck, a cancellation and an undo.
+    $effect(() => {
+        const event = builder.carryEvent
+        if (event === null) return
+        announcement = event.kind === 'shown' ? language.studioTgCarryTitle
+            : event.kind === 'recheck' ? language.studioTgCarryRecheck
+            : event.kind === 'cancelled' ? language.studioTgCarryCancelled
+            : language.studioTgCarryUndone
+    })
 
     function retry(): void {
         ensureStudioHistory()
@@ -206,6 +352,11 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
 
     onDestroy(() => {
         port.closeOpenStep()
+        builder.dispose()
+        if (carriedToast !== null) toastsHost.dismiss(carriedToast)
+        // The sheet is rendered here, so it ends with its host; the Back layer that follows the flag must not outlive it.
+        if (studioScreen.togglePreviewOpen) studioScreen.togglePreviewOpen = false
+        studioScreen.toggleEditorPageOpen = false
         // The module's ack ends with its builder: a switch of owner, a change of kind or a cleared selection destroys it.
         if (fixed.kind === 'module') {
             endModuleAck(fixed.moduleId)
@@ -225,23 +376,41 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
         {#if view.banner}
             <p role="status" data-part="studio-form-banner" class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{view.banner}</p>
         {/if}
-        <div role="group" aria-label={language.studioTgViewLabel} class="flex self-start overflow-hidden rounded-md border border-darkborderc">
-            <button type="button" data-part="studio-toggle-view-list" aria-pressed={mode === 'list'} class={`min-h-11 px-3 cursor-pointer hover:bg-selected ${mode === 'list' ? 'bg-selected' : ''}`} onclick={showList}>{language.studioTgViewList}</button>
-            <button type="button" data-part="studio-toggle-view-text" aria-pressed={mode === 'text'} class={`min-h-11 px-3 cursor-pointer hover:bg-selected ${mode === 'text' ? 'bg-selected' : ''}`} onclick={showText}>{language.studioTgViewText}</button>
+        <div class="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label={language.studioTgViewLabel} class="flex self-start overflow-hidden rounded-md border border-darkborderc">
+                <button type="button" data-part="studio-toggle-view-list" aria-pressed={mode === 'list'} class={`min-h-11 px-3 cursor-pointer hover:bg-selected ${mode === 'list' ? 'bg-selected' : ''}`} onclick={showList}>{language.studioTgViewList}</button>
+                <button type="button" data-part="studio-toggle-view-text" aria-pressed={mode === 'text'} class={`min-h-11 px-3 cursor-pointer hover:bg-selected ${mode === 'text' ? 'bg-selected' : ''}`} onclick={showText}>{language.studioTgViewText}</button>
+            </div>
+            <button type="button" data-part="studio-toggle-preview-eye" aria-expanded={studioScreen.togglePreviewOpen} class="flex min-h-11 items-center gap-2 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={togglePreview}>
+                <EyeIcon size={16} aria-hidden="true" />
+                <span>{language.studioTgPreview}</span>
+            </button>
         </div>
+        {#if studioScreen.togglePreviewOpen && previewSheet}
+            {@const Sheet = previewSheet}
+            <Sheet chaId={fixed.kind === 'character' ? fixed.chaId : studioScreen.chaId} current={previewCurrent} />
+        {/if}
+        <!-- The editor page, on a narrow layout, carries the banner inside itself, under its own header. -->
+        {#if !(mode === 'list' && !wide && editorOpen)}
+            <StudioToggleCarryBanner {builder} {editable} error={carryError} actions={carryActions} />
+            {#if usesView}
+                {@const Uses = usesView}
+                <Uses {builder} target={fixed} chaId={fixed.kind === 'character' ? fixed.chaId : studioScreen.chaId} {editable} announce={(text) => { announcement = text }} {toasts} host={toastsHost} />
+            {/if}
+        {/if}
         {#if mode === 'text'}
             <StudioToggleText bind:this={textView} {builder} {port} {editable} {caretAt} />
         {:else if !wide && editorOpen}
             <button type="button" data-part="studio-toggle-back" class="min-h-11 self-start rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={closeEditor}>{language.studioTgBack}</button>
             {#key editorKey}
-                <StudioToggleEditor {builder} {editable} id={builder.pending !== null ? null : (builder.editor?.id ?? null)} {actions} />
+                <StudioToggleEditor {builder} {editable} id={builder.pending !== null ? null : (builder.editor?.id ?? null)} {actions} carry={{ error: carryError, actions: carryActions }} focusOnOpen={editorFocus} />
             {/key}
         {:else}
             <div class={wide ? 'grid grid-cols-[minmax(0,1fr)_minmax(560px,1.2fr)] items-start gap-3' : 'flex flex-col gap-3'}>
                 <StudioToggleList {builder} {editable} {actions} />
                 {#if wide && editorOpen}
                     {#key editorKey}
-                        <StudioToggleEditor {builder} {editable} id={builder.pending !== null ? null : (builder.editor?.id ?? null)} {actions} />
+                        <StudioToggleEditor {builder} {editable} id={builder.pending !== null ? null : (builder.editor?.id ?? null)} {actions} focusOnOpen={editorFocus} />
                     {/key}
                 {/if}
             </div>

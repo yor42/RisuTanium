@@ -185,6 +185,8 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 import { downloadRisuHub } from 'src/ts/characterCards'
 import { recordCaughtError } from 'src/ts/caughtErrors'
 import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic files (no real images, no user data)
@@ -272,6 +274,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     process.off('unhandledRejection', onUnhandled)
     //Only fetch is put back: the setup file stubs other globals that the import needs.
     globalThis.fetch = realFetch
@@ -290,7 +293,7 @@ describe('a Realm download that opens the card at once, when the open throws', (
         h.open = async () => { throw failure }
         stubFetch(response())
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await answerImportCard(() => downloadRisuHub('id', { creator: 'someone' }))
         await macrotask()
 
         expect(h.changed).toEqual([0])
@@ -305,7 +308,7 @@ describe('a Realm download that opens the card at once, when the open throws', (
         h.open = async () => { throw failure }
         stubFetch(realmPng('Realm'))
 
-        await downloadRisuHub('id', { creator: 'someone', forceRedirect: true })
+        await answerImportCard(() => downloadRisuHub('id', { creator: 'someone', forceRedirect: true }))
         await macrotask()
 
         expect(unhandled).toEqual([])
@@ -319,7 +322,7 @@ describe('a Realm download that opens the card at once, when the open throws', (
         vi.mocked(changeChar).mockImplementationOnce(() => { throw failure })
         stubFetch(hubJson('Hub'))
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await answerImportCard(() => downloadRisuHub('id', { creator: 'someone' }))
         await macrotask()
 
         expect(unhandled).toEqual([])
@@ -333,7 +336,7 @@ describe('a Realm download that opens the card at once, when the open resolves',
         h.db.characters.push({ name: 'Existing' })
         stubFetch(response())
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await answerImportCard(() => downloadRisuHub('id', { creator: 'someone' }))
         await macrotask()
 
         expect(h.changed).toEqual([1])
@@ -347,7 +350,7 @@ describe('a Realm download that opens the card at once, when the open resolves',
             h.open = async () => outcome
             stubFetch(response())
 
-            await downloadRisuHub('id', { creator: 'someone' })
+            await answerImportCard(() => downloadRisuHub('id', { creator: 'someone' }))
             await macrotask()
 
             expect(h.changed).toEqual([0])
@@ -361,7 +364,7 @@ describe('a Realm download that opens the card at once, when the open resolves',
         h.open = async () => { throw new TypeError('never called') }
         stubFetch(realmPng('Realm'))
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await answerImportCard(() => downloadRisuHub('id', { creator: 'someone' }))
         await macrotask()
 
         expect(h.changed).toEqual([])

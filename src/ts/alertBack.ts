@@ -1,6 +1,8 @@
 import { get } from 'svelte/store'
 import type { alertData } from './alert'
-import { answerShownPrompt } from './alertPrompts'
+import { answerShownPrompt, promptWaiting } from './alertPrompts'
+import { coversPage } from './alertEscape'
+import { taskBackPress } from './alertTask.svelte'
 import { PATTERN_PROMPT_CANCEL } from './patternPromptAnswer'
 import { alertStore } from './stores.svelte'
 
@@ -38,6 +40,7 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     cardexport: { kind: 'answer', message: JSON.stringify({ type: 'cancel', type2: '' }) },
     addchar: { kind: 'answer', message: 'cancel' },
     chatOptions: { kind: 'answer', message: 'cancel' },
+    parkedReply: { kind: 'answer', message: 'later' },
     patternSelect: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     patternInput: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     normal: CLOSE,
@@ -93,6 +96,11 @@ export function cancelHasOwnButton(a: alertData): boolean {
 export function closeDialogForBack(): void {
     const shown = get(alertStore)
     const action = ALERT_BACK_ACTIONS[shown.type]
+    // A task card takes Back only when no legacy alert covers it and no prompt waits: a prompt held under a toast keeps
+    // Back (its table entry holds), so the task is never cancelled by a press meant for the prompt.
+    if (!coversPage(shown.type) && !promptWaiting() && taskBackPress()) {
+        return
+    }
     switch (action.kind) {
         case 'close':
             alertStore.set({ type: 'none', msg: '' })

@@ -3,6 +3,7 @@
     import { afterFlush } from "../../../ts/afterFlush";
     import { ChevronDownIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon, PencilIcon } from "@lucide/svelte";
     import { language } from "src/lang";
+    import { appIntlTag } from "src/ts/appIntl.svelte";
     import type { Chat } from "src/ts/storage/database.svelte";
     import { DBState } from "src/ts/stores.svelte";
     import * as composerDrafts from "../../../ts/process/composerDrafts.svelte";
@@ -42,7 +43,7 @@
     // A row only reads what the chat already holds: an archived chat shows a placeholder and is never loaded here.
     const archived = $derived(isArchivedChat(chat));
     const preview = $derived(archived ? language.chatShellRowArchived : previewLine(chat));
-    const time = $derived(archived ? "" : rowTime(chat, Date.now(), DBState.db.language || undefined));
+    const time = $derived(archived ? "" : rowTime(chat, Date.now(), appIntlTag()));
     const draft = $derived.by(() => {
         const record = composerDrafts.peek(chaId && chat.id ? { chaId, chatId: chat.id } : null);
         return record.messageInput !== "" || record.messageInputTranslate !== "" || record.fileInput.length > 0;

@@ -6,7 +6,7 @@
  * Labels: "new behaviour" fails on the base, where the flag does not exist.
  */
 
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
     imports: [] as Array<{ name: string, archive?: boolean }>,
@@ -18,8 +18,9 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormal: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
+//The drop reads a card through `importCharacterFile`, handing it the archive flag.
 vi.mock(import('src/ts/characterCards'), () => ({
-    importCharacterProcess: vi.fn(async (f: { name: string, archive?: boolean }) => { h.imports.push(f); return 0 }),
+    importCharacterFile: vi.fn(async (f: { name: string, archive?: boolean }) => { h.imports.push(f); return { kind: 'imported', index: 0 } }),
 }) as unknown as typeof import('src/ts/characterCards'))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
@@ -43,6 +44,8 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 import { importDroppedFile } from 'src/ts/dropImport'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 
 const file = (name: string) => new File([new Uint8Array([1, 2, 3])], name)
 
@@ -50,9 +53,13 @@ beforeEach(() => {
     h.imports = []
 })
 
+afterEach(() => {
+    resetTaskHostForTests()
+})
+
 describe('a dropped file', () => {
     test.each(['card.png', 'card.charx', 'card.json'])('new behaviour: %s is imported with the archive flag', async (name) => {
-        await importDroppedFile(file(name))
+        await answerImportCard(() => importDroppedFile(file(name)))
 
         expect(h.imports).toHaveLength(1)
         expect(h.imports[0].name).toBe(name)
@@ -60,7 +67,7 @@ describe('a dropped file', () => {
     })
 
     test.each(['preset.risup', 'module.risum'])('guard: %s never reaches the character importer', async (name) => {
-        await importDroppedFile(file(name))
+        await answerImportCard(() => importDroppedFile(file(name)))
 
         expect(h.imports).toEqual([])
     })

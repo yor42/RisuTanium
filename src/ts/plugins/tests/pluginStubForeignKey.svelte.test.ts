@@ -123,7 +123,6 @@ vi.mock(import('../../process/index.svelte'), () => ({
 
 import { incomingCharacterRefusal, withoutStubDowngrades } from '../stubDowngrade'
 import { DBState } from '../../stores.svelte'
-import { resetPageBlockOwnerForTests } from '../../storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from '../../storage/pageStorageMode'
 import { resetStore2BootForTest } from '../../storage/store2/bootActive'
 import { resetResidencyForTest } from '../../storage/store2/residencyActive'
@@ -140,7 +139,6 @@ function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     resetRetainedForTest()
 }

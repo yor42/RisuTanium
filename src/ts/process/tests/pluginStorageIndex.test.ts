@@ -16,7 +16,6 @@ import {
     mergeIndexIntoSlotMap,
     pluginIndexPointer,
     slotsOfIndex,
-    unavailableKeysOfMissing,
     type PluginIndexIo,
     type PluginIndexRead,
     type PluginStorageIndex,
@@ -323,18 +322,6 @@ describe('convertPluginStorageIndex', () => {
         const result = await convertPluginStorageIndex(fixture, io)
 
         expect(result.missing.map(item => item.slotKey)).toEqual(['a', 'b'])
-    })
-
-    test('guard: the legacy-page restore question counts one unavailable key per failed slot', async () => {
-        const { fixture, units } = storageWith(indexOf([{ k: 'a', s: '{not json' }, { k: 'b', s: 'also not json' }]))
-        const { io } = makeIo({ units })
-        const { missing } = await convertPluginStorageIndex(fixture, io)
-
-        expect(new Set(unavailableKeysOfMissing(missing)).size).toBe(2)
-    })
-
-    test('guard: an index-level failure keeps its unit id as the unavailable key', () => {
-        expect(unavailableKeysOfMissing([{ id: POINTER, slotKey: '_coldpluginIndex' }, { id: '../x', slotKey: '_coldpluginIndex' }])).toEqual([POINTER, '../x'])
     })
 
     test('a large id that is no unit id is reported and not mapped', async () => {

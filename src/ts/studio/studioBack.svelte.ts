@@ -1,8 +1,10 @@
 import { afterFlush } from '../afterFlush'
 import { backCloseHandler, registerBackHandler } from '../backHandlers'
+import { SettingsMenuIndex, settingsOpen } from '../stores.svelte'
 import { returnFocusAfterClose } from './layerFocus'
 import {
     closeStudio,
+    closeStudioTogglePreview,
     setStudioHistoryOpen,
     setStudioRestoreSheetOpen,
     showStudioList,
@@ -10,6 +12,10 @@ import {
     studioViaList,
     type StudioOpener,
 } from './studioScreen.svelte'
+
+// The preview sheet's close lives with the screen state, which the combined view imports without this module's Back
+// handler chain; the Back layer and every host reach it from here too.
+export { closeStudioTogglePreview }
 
 interface BackLayer {
     isOpen: () => boolean
@@ -37,10 +43,20 @@ function focusTargetOf(opener: StudioOpener | null): HTMLElement | null {
     return document.querySelector<HTMLElement>('[data-part="chat-transcript"]')
 }
 
-/** Leaves Studio for the origin and hands focus back to the control that opened it. */
+/**
+ * Leaves Studio for the origin and hands focus back to the control that opened it. A visit a Settings link opened
+ * reopens Settings at the page it left instead, and Settings places its own focus.
+ */
 export function leaveStudio(): void {
+    // Closing the visit resets its state synchronously, so both are read first.
     const opener = studioScreen.opener
+    const settingsReturn = studioScreen.settingsReturn
     closeStudio()
+    if (settingsReturn !== null) {
+        SettingsMenuIndex.set(settingsReturn)
+        settingsOpen.set(true)
+        return
+    }
     // The chat surface is laid out again only after the flush that follows the close: its own release waits one
     // flush, so the opener is focused one flush later, and never while the surface is still hidden.
     void afterFlush().then(() => afterFlush()).then(() => focusTargetOf(opener)?.focus())
@@ -52,10 +68,14 @@ export function installStudioBack(): void {
     registerStudioBackLayer({ isOpen: () => studioScreen.drawerOpen, close: closeStudioDrawer })
     registerStudioBackLayer({ isOpen: () => studioScreen.searchOpen, close: closeStudioSearch })
     registerStudioBackLayer({ isOpen: () => studioScreen.historyOpen, close: closeStudioHistory })
-    // Detail to list sits below search, the drawer and the History panel, whichever of them opened last: it
-    // registers only while none is open, so it is always the newest handler once they are closed.
+    // The toggle preview sheet is newest once it opens; a layer opened after it registers above it and leaves on close.
+    registerStudioBackLayer({ isOpen: () => studioScreen.togglePreviewOpen, close: closeStudioTogglePreview })
+    // Detail to list sits below search, the drawer, the History panel and the preview sheet, whichever of them opened
+    // last: it registers only while none is open, so it is always the newest handler once they are closed. It also
+    // yields to the toggle builder's editor page, whose own layer closes first: both re-register in one flush when a
+    // layer above them closes, and their effect order must not decide which press is handled first.
     registerStudioBackLayer({
-        isOpen: () => studioViaList() && !studioScreen.searchOpen && !studioScreen.drawerOpen && !studioScreen.historyOpen,
+        isOpen: () => studioViaList() && !studioScreen.searchOpen && !studioScreen.drawerOpen && !studioScreen.historyOpen && !studioScreen.togglePreviewOpen && !studioScreen.toggleEditorPageOpen,
         close: showStudioList,
     })
 }

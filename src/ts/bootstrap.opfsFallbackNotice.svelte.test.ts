@@ -53,12 +53,10 @@ const cleanUpMock = vi.hoisted(() => vi.fn(async () => { }))
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
-const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async () => ({ status: 'ok' as const })))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async () => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
 const moduleUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
 const markAppInitiatedReloadMock = vi.hoisted(() => vi.fn())
-const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 
@@ -163,25 +161,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: moduleUpdateMock,
 }) as unknown as typeof import('src/ts/process/modules'))
 
-vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
-    openBootArchiveSession: vi.fn(async () => ({
-        canArchive: false,
-        run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
-        release: vi.fn(async () => { }),
-    })),
-    // The read-only page's session: it archives nothing and installs what was decoded.
-    disabledBootArchiveSession: vi.fn(() => ({
-        canArchive: false,
-        run: async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] }),
-        release: vi.fn(async () => { }),
-    })),
-    checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-}) as unknown as typeof import('src/ts/storage/bootArchivePass'))
-
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: verifyAssetCacheEntryMock,
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -253,7 +232,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: getDbBackupsMock,
     buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: setUsingSwMock,
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
     AppendableBuffer: class {
@@ -341,12 +319,10 @@ beforeEach(() => {
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
-    verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
     saveDbMock.mockReset().mockResolvedValue(undefined)
     moduleUpdateMock.mockReset().mockResolvedValue(undefined)
     markAppInitiatedReloadMock.mockReset()
-    setUsingSwMock.mockReset()
     setDatabaseMock.mockClear()
     setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
     getDatabaseMock.mockClear()
@@ -373,7 +349,6 @@ describe('loadData(): no storage fallback notice recorded (compatibility guard)'
         unsubscribe()
 
         expect(get(loadedStore)).toBe(true)
-        expect(setUsingSwMock).toHaveBeenCalled()
         expect(seenTypes.filter((t) => t !== 'none')).toEqual([])
     })
 })
@@ -406,7 +381,6 @@ describe('loadData(): a storage fallback notice pauses boot until acknowledged (
 
                 await loadPromise
                 expect(get(loadedStore)).toBe(true)
-                expect(setUsingSwMock).toHaveBeenCalled()
             } finally {
                 alertStore.set({ type: 'none', msg: '' })
                 await loadPromise.catch(() => { })

@@ -130,6 +130,8 @@ vi.mock(import('src/ts/rpack/rpack_js'), () => ({
 
 import { importCharacterFile } from 'src/ts/characterCards'
 import { importModule } from 'src/ts/process/modules'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 import { assembleDatabase, unitMapSource } from 'src/ts/storage/store2/codec'
 import { asDatabase, buildSmall, encodeWith, seededEnv, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 import { ASSET_FOLDER_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
@@ -161,7 +163,8 @@ async function committedModule(value: FolderValue | null): Promise<Obj> {
         payload[ASSET_FOLDER_KEY] = structuredClone(value)
     }
     h.file = new File([JSON.stringify(payload)], 'folders.json')
-    await importModule()
+    const card = await answerImportCard(importModule)
+    expect(card?.failure).toBeUndefined()
     expect(h.log).toEqual([])
     expect(h.db.modules).toHaveLength(1)
     return h.db.modules[0]
@@ -187,6 +190,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 

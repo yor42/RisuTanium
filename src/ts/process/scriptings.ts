@@ -151,6 +151,9 @@ function defaultSetVarFor(state: ScriptingEngineState, key: string, value: strin
 }
 
 interface LuaScriptingEngineState extends BasicScriptingEngineState {
+    // Edit events the loaded code subscribed to through listenEdit. It belongs to
+    // the engine created for that code, so new code starts with an empty set.
+    editListeners?: Set<string>;
     engine?: LuaEngine;
     type: 'lua';
 }
@@ -240,6 +243,11 @@ export async function runScripted(code:string, arg:{
                 ScriptingEngineState.code = code
                 ScriptingEngineState.engine = await luaFactory.createEngine({injectObjects: true, enableProxy: false})
                 const luaEngine = ScriptingEngineState.engine
+                const editListeners = new Set<string>()
+                ScriptingEngineState.editListeners = editListeners
+                luaEngine.global.set('__registerEditListener', (eventType: string) => {
+                    editListeners.add(eventType)
+                })
                 declareAPI = (name:string, func:Function) => {
                     luaEngine.global.set(name, func)
                 }
@@ -290,11 +298,11 @@ export async function runScripted(code:string, arg:{
                 }
                 alertNormal(value)
             })
-            declareAPI('alertInput', (id:string, value:string) => {
+            declareAPI('alertInput', (id:string, value:string, defaultValue?:string) => {
                 if(!ScriptingSafeIds.has(id)){
                     return
                 }
-                return alertInput(value)
+                return alertInput(value, undefined, defaultValue)
             })
             declareAPI('alertSelect', (id:string, value:string[]) => {
                 if(!ScriptingSafeIds.has(id)){
@@ -1334,6 +1342,12 @@ export async function runScripted(code:string, arg:{
                         case 'editDisplay':
                         case 'editInput':
                         case 'editOutput':{
+                            // Code that never subscribed to this edit event returns the
+                            // input unchanged, without a Lua call or a JSON round trip.
+                            if (!ScriptingEngineState.editListeners?.has(mode)) {
+                                res = data
+                                break
+                            }
                             const func = luaEngine.global.get('callListenMain')
                             if(func){
                                 // editDisplay takes a raw string, and must output a raw string
@@ -1575,21 +1589,25 @@ local editOutputFuncs = {}
 function listenEdit(type, func)
     if type == 'editRequest' then
         editRequestFuncs[#editRequestFuncs + 1] = func
+        __registerEditListener(type)
         return
     end
 
     if type == 'editDisplay' then
         editDisplayFuncs[#editDisplayFuncs + 1] = func
+        __registerEditListener(type)
         return
     end
 
     if type == 'editInput' then
         editInputFuncs[#editInputFuncs + 1] = func
+        __registerEditListener(type)
         return
     end
 
     if type == 'editOutput' then
         editOutputFuncs[#editOutputFuncs + 1] = func
+        __registerEditListener(type)
         return
     end
 

@@ -108,11 +108,13 @@ foreach ($m in $types) {
     Test-Sent ('29f3cde9193f7ece IN3 send file item ' + $m) '29f3cde9193f7ece' (Get-Send $m $U3)
 }
 
-# IN4: the r11 am start rule is unchanged (compatibility guard).
+# IN4: the r11 am start rule is unchanged on emulator-5580 (compatibility guard). The Note 9 profile (r3) lifted the -d pin on the playground
+# serials, so a plain https VIEW passes there (FC-5; DZ-9 refuses only the real-service words).
 foreach ($s in ($pg + $emu)) {
     Test-Verbatim ($s + ' IN4 am start -n own component') $s ('am start -n ' + $pkg + '/.Main') '0'
-    Test-Verbatim ($s + ' IN4 am start -d https stays refused') $s ('am start -a ' + $actView + ' -d https://example.com') '97'
 }
+Test-Verbatim ($emu + ' IN4 am start -d https stays refused') $emu ('am start -a ' + $actView + ' -d https://example.com') '97'
+foreach ($s in $pg) { Test-Verbatim ($s + ' IN4 am start -d https passes on the Note 9 profile') $s ('am start -a ' + $actView + ' -d https://example.com') '0' }
 
 # IN5: the emulator refuses the intent forms.
 foreach ($cmd in @((Get-View $U1 'image/png'), (Get-View $U2 'image/png'), (Get-Send 'image/png' $U1), (Get-Send 'application/json' $U2))) {
@@ -129,7 +131,11 @@ Set-Content -LiteralPath $scope $scopeJson
 Test-Refused 'R58M12345AB IN6 view with a full scope file' 'R58M12345AB' @('shell', (Get-View $U1 'image/png')) '95' @('--scope-file', $scope)
 Test-Refused 'R58M12345AB IN6 send with a full scope file' 'R58M12345AB' @('shell', (Get-Send 'image/png' $U1)) '95' @('--scope-file', $scope)
 
-# IN7: hostile URIs on 29f3 get 97 with no call and arrive intact in the refusal line. The last two are VIEW only.
+# IN7 to IN12: the template and URI class refusals (hostile URIs, other types, actions, components, flags, extra tokens, collections, odd ids).
+# The Note 9 profile (r3) answers these on the playground serials with its denylist (allowed, or 89 for a DZ-1 provider), so the rows are
+# retargeted to emulator-5580, where the same strings keep exit 97 and still arrive intact in the refusal line. Hostile data URIs and the
+# providers DZ-1 names are pinned on the Note 9s right after IN7.
+# IN7: hostile URIs get 97 with no call and arrive intact in the refusal line. The last two are VIEW only.
 $hostile = @(
     'file:///sdcard/Download/c471-card.png', 'https://media/external/file/1', 'http://example.com/x', 'intent://media/external/file/1',
     'CONTENT://media/external/file/1', 'content://MEDIA/external/file/1', 'content://com.android.contacts/contacts/1', 'content://sms/inbox',
@@ -143,35 +149,41 @@ $hostile = @(
     ($me + '/file/a\b'), ($me + '/file/a' + $tab + 'b'), ($me + '/file/a' + $lf + 'reboot'), ($me + '/file/a' + $nbsp + 'b'), ($me + '/file/a*'))
 $hostileViewOnly = @('content:media/external/file/1', 'content:/media/external/file/1')
 foreach ($u in ($hostile + $hostileViewOnly)) {
-    Test-Refused ('29f3cde9193f7ece IN7 view ' + $u) '29f3cde9193f7ece' @('shell', (Get-View $u 'image/png')) '97' @() $true
+    Test-Refused ('emulator-5580 IN7 view ' + $u) $emu @('shell', (Get-View $u 'image/png')) '97' @() $true
 }
 foreach ($u in $hostile) {
-    Test-Refused ('29f3cde9193f7ece IN7 send ' + $u) '29f3cde9193f7ece' @('shell', (Get-Send 'image/png' $u)) '97' @() $true
+    Test-Refused ('emulator-5580 IN7 send ' + $u) $emu @('shell', (Get-Send 'image/png' $u)) '97' @() $true
+}
+foreach ($s in $pg) {
+    foreach ($u in @('content://com.android.contacts/contacts/1', 'content://sms/inbox', 'content://call_log/calls')) {
+        Test-Refused ($s + ' IN7 view ' + $u + ' is DZ-1 on the Note 9 profile') $s @('shell', (Get-View $u 'image/png')) '89'
+        Test-Refused ($s + ' IN7 send ' + $u + ' is DZ-1 on the Note 9 profile') $s @('shell', (Get-Send 'image/png' $u)) '89'
+    }
 }
 
 # IN8: types, actions, components, flags and keys outside the templates.
 $badTypes = @('text/html', 'text/plain', 'image/gif', 'image/webp', 'application/vnd.android.package-archive', 'IMAGE/PNG', 'image/png2', 'image/*', '*/*', 'image/png;x')
 foreach ($m in $badTypes) {
-    Test-Refused ('IN8 view type ' + $m) $pg[0] @('shell', (Get-View $U1 $m)) '97'
-    Test-Refused ('IN8 send type ' + $m) $pg[0] @('shell', (Get-Send $m $U1)) '97'
+    Test-Refused ('IN8 view type ' + $m) $emu @('shell', (Get-View $U1 $m)) '97'
+    Test-Refused ('IN8 send type ' + $m) $emu @('shell', (Get-Send $m $U1)) '97'
 }
 foreach ($a in @('CALL', 'DIAL', 'EDIT', 'SEND_MULTIPLE', 'SENDTO', 'android.intent.action.view', 'SEND')) {
     $act = if ($a -like 'android.intent.action.*') { $a } else { 'android.intent.action.' + $a }
-    Test-Refused ('IN8 view action ' + $act) $pg[0] @('shell', ((Get-View $U1 'image/png').Replace($actView, $act))) '97'
+    Test-Refused ('IN8 view action ' + $act) $emu @('shell', ((Get-View $U1 'image/png').Replace($actView, $act))) '97'
 }
 foreach ($a in @('SEND_MULTIPLE', 'VIEW', 'EDIT')) {
-    Test-Refused ('IN8 send action ' + $a) $pg[0] @('shell', ((Get-Send 'image/png' $U1).Replace($actSend, 'android.intent.action.' + $a))) '97'
+    Test-Refused ('IN8 send action ' + $a) $emu @('shell', ((Get-Send 'image/png' $U1).Replace($actSend, 'android.intent.action.' + $a))) '97'
 }
 foreach ($c in @('com.android.chrome/.Main', ($pkg + '/.Other'), ($pkg + '/' + $pkg + '.MainActivity'), ($pkg + '.evil/.MainActivity'), ('com.evil/' + $pkg + '.MainActivity'))) {
-    Test-Refused ('IN8 view component ' + $c) $pg[0] @('shell', ((Get-View $U1 'image/png').Replace($comp, $c))) '97'
-    Test-Refused ('IN8 send component ' + $c) $pg[0] @('shell', ((Get-Send 'image/png' $U1).Replace($comp, $c))) '97'
+    Test-Refused ('IN8 view component ' + $c) $emu @('shell', ((Get-View $U1 'image/png').Replace($comp, $c))) '97'
+    Test-Refused ('IN8 send component ' + $c) $emu @('shell', ((Get-Send 'image/png' $U1).Replace($comp, $c))) '97'
 }
 foreach ($f in @('--grant-write-uri-permission', '--grant-persistable-uri-permission', '--grant-prefix-uri-permission')) {
-    Test-Refused ('IN8 view flag ' + $f) $pg[0] @('shell', ((Get-View $U1 'image/png').Replace($grant, $f))) '97'
-    Test-Refused ('IN8 send flag ' + $f) $pg[0] @('shell', ((Get-Send 'image/png' $U1).Replace($grant, $f))) '97'
+    Test-Refused ('IN8 view flag ' + $f) $emu @('shell', ((Get-View $U1 'image/png').Replace($grant, $f))) '97'
+    Test-Refused ('IN8 send flag ' + $f) $emu @('shell', ((Get-Send 'image/png' $U1).Replace($grant, $f))) '97'
 }
 foreach ($k in @('android.intent.extra.TEXT', 'android.intent.extra.STREAMS', 'android.intent.extra.HTML_TEXT')) {
-    Test-Refused ('IN8 send key ' + $k) $pg[0] @('shell', ((Get-Send 'image/png' $U1).Replace($keyStream, $k))) '97'
+    Test-Refused ('IN8 send key ' + $k) $emu @('shell', ((Get-Send 'image/png' $U1).Replace($keyStream, $k))) '97'
 }
 
 # IN9: extra, missing, reordered or repeated tokens; other verbs; the template split into adb arguments.
@@ -185,16 +197,16 @@ $nine = @(
     $V.Replace(' -t image/png', ''), $D.Replace(' ' + $grant, ''), ($V + ' -c android.intent.category.BROWSABLE'),
     $V.Replace('am start ', 'am startservice '), $V.Replace('am start ', 'am start-activity '), $V.Replace('am start ', 'am broadcast '),
     ('shell ' + $V), ('shell ' + $D))
-foreach ($cmd in $nine) { Test-Refused ('IN9 ' + $cmd) $pg[0] @('shell', $cmd) '97' }
-Test-Refused 'IN9 view split into separate adb arguments' $pg[0] (@('shell') + $V.Split(' ')) '97'
-Test-Refused 'IN9 send split into separate adb arguments' $pg[0] (@('shell') + $D.Split(' ')) '97'
+foreach ($cmd in $nine) { Test-Refused ('IN9 ' + $cmd) $emu @('shell', $cmd) '97' }
+Test-Refused 'IN9 view split into separate adb arguments' $emu (@('shell') + $V.Split(' ')) '97'
+Test-Refused 'IN9 send split into separate adb arguments' $emu (@('shell') + $D.Split(' ')) '97'
 
 # IN11: collection, tree, root and empty-path URIs, both forms, both serials.
 $collections = @(
     $me, ($me + '/file'), ($me + '/images/media'), ($me + '/video/media'), ($me + '/audio/media'), ($me + '/file/'), ($me + '/images/media/'),
     ($dd + '/tree/primary%3A'), ($dd + '/tree/primary%3ADownload'), ($dd + '/tree/primary%3ADownload/document/primary%3ADownload%2Fa.png'),
     ($dd + '/root/primary'), ($dd + '/document/primary%3A'))
-foreach ($s in $pg) {
+foreach ($s in @($emu)) {
     foreach ($u in $collections) {
         Test-Refused ($s + ' IN11 view ' + $u) $s @('shell', (Get-View $u 'image/png')) '97'
         Test-Refused ($s + ' IN11 send ' + $u) $s @('shell', (Get-Send 'image/png' $u)) '97'
@@ -207,7 +219,7 @@ $odd = @(
     ($me + '/file/-1'), ($me + '/file/0x1f'), ($me + '/file/1/2'), ($me + '/downloads/1'))
 foreach ($suffix in @('a#b', '~', '{a,b}', 'a=b', 'a+b', 'a,b', 'a!b', '%20x', '%0A', '%27', 'a%3Ab', 'Download%2F..%2Fx', '..', 'a%2fb', 'a/b')) { $odd += ($dd + '/document/primary%3A' + $suffix) }
 $odd += ($dd + '/document/primary%3a'), ($dd + '/document/home%3Aa.png'), ($dd + '/document/1234-ABCD%3Aa.png')
-foreach ($s in $pg) {
+foreach ($s in @($emu)) {
     foreach ($u in $odd) {
         Test-Refused ($s + ' IN12 view ' + $u) $s @('shell', (Get-View $u 'image/png')) '97'
         Test-Refused ($s + ' IN12 send ' + $u) $s @('shell', (Get-Send 'image/png' $u)) '97'

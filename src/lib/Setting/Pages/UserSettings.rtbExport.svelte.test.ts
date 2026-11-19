@@ -10,31 +10,22 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const entry = vi.hoisted(() => ({ startRtbExport: vi.fn(async () => null) }))
 const bin = vi.hoisted(() => ({ SaveLocalBackup: vi.fn(), SavePartialLocalBackup: vi.fn() }))
-const modeOf = vi.hoisted(() => ({ kind: 'store2' as 'store2' | 'legacy' | 'read-only' }))
 
 vi.mock('src/ts/drive/rtbExportEntry', () => entry)
 vi.mock('src/ts/drive/settingsRestore', () => ({ restoreFromBinFile: vi.fn(), restoreFromInternalBackup: vi.fn() }))
 vi.mock('src/ts/drive/backuplocal', () => bin)
 vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
 vi.mock('src/ts/storage/exportAsDataset', () => ({ exportAsDataset: vi.fn() }))
-vi.mock('src/ts/process/coldstorage.svelte', () => ({ cleanColdStorage: vi.fn() }))
-vi.mock('./StorageMaintenanceSettings.svelte', () => ({ default: () => { } }))
-vi.mock('src/ts/storage/pageStorageMode', async () => {
-    const { writable } = await import('svelte/store')
-    return {
-        modeRunsLegacyDeleters: () => false,
-        pageStorageModeStore: writable({ kind: modeOf.kind }),
-    }
-})
 
 import { language } from 'src/lang'
+import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import UserSettings from './UserSettings.svelte'
 
 let component: ReturnType<typeof mount> | null = null
 let host: HTMLElement
 
-function mountWith(kind: 'store2' | 'legacy'): void {
-    modeOf.kind = kind
+function mountWith(kind: 'store2' | 'unset'): void {
+    setPageStorageMode({ kind })
     host = document.createElement('div')
     document.body.appendChild(host)
     component = mount(UserSettings, { target: host })
@@ -51,6 +42,7 @@ afterEach(() => {
     if (component) { unmount(component) }
     component = null
     host.remove()
+    resetPageStorageModeForTests()
 })
 
 function buttons(): string[] {
@@ -58,7 +50,7 @@ function buttons(): string[] {
 }
 
 describe('the .rtb button', () => {
-    test.each(['store2', 'legacy'] as const)('on a %s page it sits directly below the .bin save button and one click starts the entry once', async (kind) => {
+    test.each(['store2', 'unset'] as const)('on a %s page it sits directly below the .bin save button and one click starts the entry once', async (kind) => {
         mountWith(kind)
         const labels = buttons()
         expect(labels.indexOf(language.rtbExportButton)).toBe(labels.indexOf(language.saveBackupLocal) + 1)

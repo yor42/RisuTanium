@@ -224,6 +224,9 @@ vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
 import { downloadRisuHub, importCharacter, importCharacterProcess } from 'src/ts/characterCards'
 import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { archiveCharacterNow } from 'src/ts/process/coldCharacterArchive'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
+import { language } from 'src/lang'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic files (no real images, no user data)
@@ -318,13 +321,18 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
+//The picker import resolves only after its result card is answered.
 async function pick(files: File[]) {
     h.picked = files
-    await importCharacter()
+    return await answerImportCard(() => importCharacter())
 }
+
+//A Realm download ends on the result card too.
+const download = (arg: { forceRedirect?: boolean, creator?: string } = {}) => answerImportCard(() => downloadRisuHub('id', { creator: 'someone', ...arg }))
 
 // ---------------------------------------------------------------------------------------------
 // The three push sites
@@ -397,10 +405,11 @@ describe('when archiving cannot run', () => {
         expect(spec).toBe(0)
 
         setup()
-        h.picked = [charx('First')]
-        await importCharacter()
+        const card = await pick([charx('First')])
         expect(names()).toEqual(['First'])
-        expect(h.normals.length).toBeGreaterThan(0)
+        //index 0 is an import, not a refusal: the result card reports it
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.failure).toBeUndefined()
         expect(h.errors).toEqual([])
     })
 })
@@ -526,7 +535,7 @@ describe('downloadRisuHub', () => {
     test('new behaviour: a realm png that does not open at once is archived and nothing is opened', async () => {
         stubFetch(realmPng('Realm'))
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await download()
 
         expect(stubs()).toEqual([true])
         expect(h.changed).toEqual([])
@@ -540,7 +549,7 @@ describe('downloadRisuHub', () => {
         apply()
         stubFetch(realmPng('Realm'))
 
-        await downloadRisuHub('id', { creator: 'someone', ...arg })
+        await download(arg)
 
         expect(h.engineCalls).toEqual([])
         expect(names()).toEqual(['Existing', 'Realm'])
@@ -557,7 +566,7 @@ describe('downloadRisuHub', () => {
             return response
         }))
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await download()
 
         expect(calls).toBe(1)
         expect(h.engineCalls).toEqual([])
@@ -567,7 +576,7 @@ describe('downloadRisuHub', () => {
     test('new behaviour: a hub spec card that does not open at once is archived', async () => {
         stubFetch(hubJson())
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await download()
 
         expect(stubs()).toEqual([true])
         expect(h.changed).toEqual([])
@@ -578,7 +587,7 @@ describe('downloadRisuHub', () => {
         h.db.goCharacterOnImport = true
         stubFetch(hubJson())
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await download()
 
         expect(h.engineCalls).toEqual([])
         expect(names()).toEqual(['Existing', 'Other', 'Hub'])
@@ -589,7 +598,7 @@ describe('downloadRisuHub', () => {
         h.db.goCharacterOnImport = true
         stubFetch(hubJson())
 
-        await downloadRisuHub('id', { creator: 'someone' })
+        await download()
 
         expect(names()).toEqual(['Hub'])
         expect(h.changed).toEqual([0])

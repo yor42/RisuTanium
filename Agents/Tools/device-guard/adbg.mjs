@@ -1,5 +1,5 @@
 // adbg.mjs - adb accident guard for agent-driven device runs. Every adb call in a run goes through it.
-// It is an ALLOWLIST: anything not listed below is refused. It stops accidental breaches of the device
+// It is an ALLOWLIST, except the Note 9 profile (r3), a denylist of danger zones (see below): anything not listed is refused. It stops accidental breaches of the device
 // rules; it is not a sandbox against an agent that edits its own state or log files (the independent
 // check compares the log with the report).
 //
@@ -45,37 +45,56 @@
 //   mandatory as the audit log: every call is logged, a playground-allowed call also gets a `PLAYGROUND serial=...`
 //   line, the serial lock stays (an adb call is always sent `-s <--serial>`; `-s`/`-P` inside the adb args is refused),
 //   and everything r11 allows still applies. On a playground serial only, in addition:
-//     input tap X Y | input swipe X1 Y1 X2 Y2 [ms] | input keyevent [--longpress] <KEYCODE_* or number>... | input text ...
-//       with no locate, no typing grant and no failed-locate input lock (exit 92 never applies; no lock is recorded);
-//     dumpsys in thirteen allowed forms: dumpsys <service> [args], where <service> is exactly one of activity, meminfo,
-//       gfxinfo, battery, power, package, webviewupdate, window, SurfaceFlinger (case-sensitive; MC-2281) and activity is
-//       allowed only as "dumpsys activity activities" or "dumpsys activity processes"; and exactly "dumpsys thermalservice",
-//       "dumpsys diskstats", "dumpsys input_method" or "dumpsys notification --noredact" with no other argument (MC-2287).
-//       Bare dumpsys, a first argument starting with '-', every other service and every other shape of those four are
-//       refused (97; use net-status for Wi-Fi state). After a listed service the arguments are read-only: set, reset,
-//       unplug, enable, disable, force-*, unforce, whitelist, step, write, suppress, the SurfaceFlinger stats toggles
-//       (--latency-clear, --enable-layer-stats, --disable-layer-stats, --clear-layer-stats, -enable, -disable, -clear)
-//       and similar state-changing words are refused, except the exact form
-//       `dumpsys gfxinfo io.github.yor42.risutanium reset` when --own-package is that same id (frame counters, CHORE-743);
-//     logcat with any filter/format/buffer arguments (no --pid needed) but it must carry -d, -t or -T (also for the
-//       r11 `--pid` form); clearing or resizing the buffer (-c, -G, -P) and writing it to a device file (-f, -r, -n)
-//       are refused;
-//     uiautomator dump [--compressed] [/dev/tty | /sdcard/<name> | /sdcard/Download/<name> | /data/local/tmp/<name>];
-//     ls [-alhRdF1] <path under /sdcard> and cat <one file under /sdcard>  (plain path segments, no `..`);
-//     pm clear io.github.yor42.risutanium only, and only when --own-package is that same id (else refused, exit 97);
-//       screencap as in r11 (full frame, no crop is ever required).
-//     r14 (MC-2256), Chrome-saved .bin exports: shell sha256sum <path> | shell rm -f <path> | pull <path> <local> (r11 local rule),
-//       where <path> is its own argument, exactly /sdcard/Download/local-<rest>.bin with <rest> 1-200 chars of [A-Za-z0-9._ -] and no '..'
-//       (Chrome names a repeat save "local-YYYYMMDD - <time>.bin"). The guard sends the shell forms as one command string with the
-//       path in single quotes; pull passes it to adb as one argument. Globs, quotes, other folders or extensions and several paths are refused.
-//     r15 (MC-2271, MC-2275), open-with/share intents: shell "am start -a android.intent.action.VIEW -d <uri> -t <type> --grant-read-uri-permission -n io.github.yor42.risutanium/.MainActivity" | shell "am start -a android.intent.action.SEND -t <type> --eu android.intent.extra.STREAM <uri> --grant-read-uri-permission -n io.github.yor42.risutanium/.MainActivity", exactly these tokens in this order; <uri> names one item: content://media/external/(images/media|video/media|audio/media|file)/<digits> or content://com.android.externalstorage.documents/document/primary%3A<path> with path characters [A-Za-z0-9._-] and %2F and no '..' (never a collection, tree or root URI string; a document id may name a directory, which grants that one row only); <type> is one of image/png, image/jpeg, application/json, application/octet-stream, application/zip, application/x-zip-compressed. Sent as given (no blank or shell-special character can occur). r15 (MC-2273): swipe and hold also accept com.android.documentsui or com.google.android.documentsui as the foreground package (the system file picker); a PLAYGROUND ... front=<pkg> line records it.
-//   Known limits (kept as is): the state-changing word list for arguments after an allowed dumpsys service is best-effort; uiautomator dump may write a file on /sdcard or
-//   /data/local/tmp; install follows r11 (any local .apk); verbs not listed here stay refused. r11 still allows
-//   `svc wifi|data enable|disable` and `settings get|put|delete` on these serials (parity; the briefs enforce the Wi-Fi rule).
-//   Still refused on playground serials exactly as in r11 (the tests keep them refused): `pm clear` of any other package,
-//   uninstall, install of anything but a local .apk (r11 rule), reboot, root, remount, disable-verity, su, rm of anything
-//   but one file in /sdcard/Download or /data/local/tmp (r11 rule) or one r14 export, cmd wifi, forward/reverse to ports outside
-//   --own-ports, and push outside /sdcard/Download/<name> or to a name starting with a dot.
+//     the Note 9 profile (r3, 2026-11-19) below judges plain adb calls by a denylist of danger zones instead of the r11 allowlist.
+//
+//   Note 9 profile (r3, 2026-11-19, lane B): the two Note 9 serials only (the exact-serial rule above; no flag, env var, scope
+//   file, state file, log line or adb argument selects or widens it). Plain adb calls pass unless they name a danger zone or
+//   break a shape rule; the device's own permissions are the only other limit. The Tab, every unknown serial and emulator-5580
+//   keep their own rules unchanged.
+//     Verbs: shell, exec-out, push, pull, install, install-multiple, uninstall, logcat, forward, reverse, get-state,
+//       start-server, wait-for-device and `reboot` without an argument. Another verb, a leading global option (-s -t -d -e -H -P
+//       -L --one-device) and a non-printable-ASCII argument exit 97, so a call cannot be steered at another device.
+//     shell/exec-out: any command string (pipes, ;, &&, redirects, $(...), quotes, globs in arguments), never a bare shell or a
+//       shell option. `exec-out screencap -p --out <png>` keeps its PNG path. input needs no locate, typing grant or input lock.
+//       pm clear/uninstall of the test app need no --own-package. am (the r17 My Files pin and character rule do not apply),
+//       settings, dumpsys and cmd pass outside the danger zones. A command NAME built by a glob or brace exits 97 (spell it out).
+//     push: any local source to any absolute device path (--sync allowed); pull: [-a] <absolute device path> <a new path
+//       directly in the run folder, never the log or state file>; install [-r -d -t -g] <.apk>; install-multiple <.apk>...;
+//       uninstall [-k] <package>; logcat with any arguments; forward of an own port (--own-ports).
+//     reverse: `tcp:<own> tcp:<own>`, `--remove tcp:<own>` or exactly `--list`. The host end is refused (89, DZ-10) when it is
+//       the host adb server (5037, ANDROID_ADB_SERVER_PORT or the port of ADB_SERVER_SOCKET) or an emulator port (5554-5585):
+//       a program on the phone could drive every other attached device through it. Those env vars only narrow; they never
+//       select a profile. Reverse bounds routes to host processes on reversed own ports; what such a process serves or
+//       forwards (the RisuAI node server /proxy, /proxy2, /proxy-stream-jobs and /hub-proxy, a Vite dev proxy, Fiddler,
+//       Charles, host browser DevTools ports, other agents' servers) is NOT enforced here; the run brief and the log check do that.
+//   Danger zones, exit 89, the call is not sent (stop that line of work, never retry a variant). The scan is on lower-cased
+//   text with ${IFS} and $IFS read as a blank, then quotes and backslashes removed:
+//     DZ-1 contacts, call log, SMS/MMS, calendar, voicemail, blocked numbers, SIM phonebook; DZ-2 outbound calls and messages
+//     (call, endcall, dial, phone, tel:, smsto, mailto, sendto, emergency, and the decimal key codes 5, 6, 207, 208 of
+//     `input keyevent`); DZ-3 accounts and sync (also adb backup/restore); DZ-4 device
+//     admin, lock credentials, anything that cuts adb off (adb_enabled, svc usb, user restrictions, switch-user); DZ-5 wipe,
+//     recovery, reboot with a target, shutdown; DZ-6 pm/cmd package removal, disable, hide, suspend or clear of anything but
+//     the test app (io.github.yor42.risutanium, whole command only, so send pm clear and pm uninstall as their own call);
+//     DZ-7 root, remount, verity, su, block devices; DZ-8 network on: svc wifi|data|bluetooth|nfc enable, cmd wifi, airplane
+//     off, the radio keys (wifi_on, mobile_data, airplane_mode_on, bluetooth_on ...) anywhere in the text, proxy, Private DNS,
+//     VPN and tether settings, ifconfig, ip, iptables, tcpip, usb, adb.tcp.port, android.bluetooth.adapter.action, and a
+//     com.android.settings/ component naming wifi, network, account, security or reset (the exact reads
+//     `settings get <ns> <radio or proxy key>` and `settings put global http_proxy :0` pass); DZ-9 risuai, realm, discord; DZ-10 other devices and host-wide adb verbs
+//     (connect, disconnect, pair, reconnect, kill-server, emu) and the reserved reverse host ports above; DZ-11 network,
+//     location and identity dumps: dumpsys and cmd must name a service first ([a-z][a-z0-9_.]*) or be exactly `-l`; bare,
+//     option-first and built forms are refused, and so is any service or argument word (split on . / :) that starts with the
+//     deny family (wifi, net, conn, location, telephony, phone, sim, account, content, bluetooth, dns, vpn ...), plus the dump
+//     words bugreport*, dumpstate*, incident*, /misc/wifi and wpa_supplicant; DZ-12 a push source (or a file anywhere inside a
+//     directory source, walked up to 10000 entries) named key.txt, keystore.properties, adbkey or ending .jks, .keystore, .p12
+//     (a push source name holding `:` or `~<digit>` is 97); DZ-13 monkey, which can reach any screen.
+//   Not enforced (named residuals): UI taps (the Wi-Fi tile, Settings, including Developer options, Connections and the lock
+//     screen, and Settings screens under names other than the five Settings words); strings the device shell builds at run
+//     time (variables, eval, base64, sh -c); what a pushed script or binary does; a tool started by its Java class through
+//     app_process (monkey, input); Samsung services beyond the deny prefixes; output of allowed services that can carry names
+//     (notification --noredact, activity broadcasts, batterystats, logcat, UI dumps, screencaps); a renamed key file, an 8.3
+//     short name or a `:` stream suffix as a file inside a directory source, a link inside a pushed directory; Samsung
+//     auto-join of a saved network if the radio comes on. The r14, r15 and r17 forms still work and are no longer the limit.
+//     Tests: test/note9-profile.test.ps1.
 //
 //   r17 (2026-11-18, CHORE-128 S13): Samsung My Files on phone 1 (29f3cde9193f7ece) only, to share synthetic Download/c128-*
 //     files into the app. `adb -- shell am start -n com.sec.android.app.myfiles/.external.ui.MainActivity` (exactly this string),
@@ -98,7 +117,7 @@
 //         so does `am start` of a bare package or component, or -n of whatever package --own-package names;
 //       - raw `input swipe X1 Y1 X2 Y2 [ms]` (a long press or a drag) stays allowed on both playground phones.
 //       `swipe` with --own-package com.sec.android.app.myfiles and raw `input swipe` are handled by the run's STOP rules until r18.
-//     r17 also refuses (exit 97), on every serial, any `am` shell line holding a character outside letters, digits, space and
+//     r17 also refuses (exit 97), on every serial except the Note 9 profile (r3), any `am` shell line holding a character outside letters, digits, space and
 //     . _ : / % + = @ - (so no brace expansion, glob, quote, backslash, $ or backtick can rebuild a refused My Files name after the check).
 //     Also not enforced: the folder a c128-* name sits in, and which row Share acts on. Tightening these is a separate decision.
 //
@@ -117,6 +136,16 @@
 //     PICK-LOCK and the two-error cap with --name, and matches ` resource-id="<id>"` exactly. Before the dump a
 //     system file picker (com.android.documentsui or com.google.android.documentsui, oom_score_adj 0) must be in
 //     front, else exit 93 with no dump and no PICK-LOCK; that refusal counts toward the two-error cap of both forms.
+//     r18 (2026-11-18, CHORE-227 D1 save rows): --id also accepts exactly one other id, android:id/button1 (the Save button of the
+//     Samsung save picker, CREATE_DOCUMENT; KEYCODE_ENTER does not press it while the filename field is unfocused). Exact match only:
+//     android:id/button10, android:id/button2, android:id/title and every other android:id/* are refused (exit 2, no adb call). All
+//     other checks are unchanged (playground serials only, 95 and 97, the front system picker exit 93, PICK-LOCK, two-error cap).
+//     Save-screen proof, fail-closed: the same single dump must also hold a node whose resource-id is android:id/title and whose
+//     class is android.widget.EditText (the filename field). On a replace or overwrite confirmation dialog button1 means "replace",
+//     and that dialog has no such field. Without the node the device command prints ADBG-NO-SAVE-FIELD instead of bounds (the dump
+//     is still removed), nothing is located or tapped, and the guard exits 4 with `button1 refused: no save-screen filename field in
+//     the dump`: a pick error (counts toward the two-error cap, sets no lock), not a no-match. The log names `pick --id
+//     android:id/button1 (save confirm, r18)`.
 //
 //   node adbg.mjs offset --state <state> --log <log> --x <px> --y <px>
 //     Records the WebView's top-left on screen in device pixels.
@@ -173,6 +202,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
+import { lstatSync, readdirSync } from 'node:fs'
 
 const argv = process.argv.slice(2)
 const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks', 'net-status'].includes(argv[0]) ? argv.shift() : 'adb'
@@ -367,6 +397,8 @@ function allowedPlain(a) {
 }
 
 // ---- playground additions (MC-1666): consulted only when `playground` is true, after allowedPlain refused ----
+// The Note 9 profile (r3) answers every plain adb call on a playground serial before this code is reached, so allowedPlayground and
+// playgroundPinned below no longer run for plain calls; they stay in place until a later cleanup.
 const PG_INT = /^\d{1,5}$/
 const PG_KEY = /^(KEYCODE_[A-Z0-9_]+|\d{1,3})$/
 // Plain path segments only: no `..`, no `.` segment, no hidden-name tricks, no globbing or metacharacters.
@@ -513,6 +545,226 @@ function playgroundPinned(a) {
   return true
 }
 const logPlayground =(cls, args) => logLine(`PLAYGROUND serial=${serial} allow=${cls} adb ${JSON.stringify(args)}`)
+
+// ---- Note 9 profile (r3): a denylist of danger zones, reached only when `playground` is true ----
+// Exit 89 is a danger-zone refusal (stop, never retry a variant); exit 97 is a shape refusal (a retry in a valid shape is fine).
+// The scan reads text only: UI taps, strings the device shell builds at run time and the content of pushed scripts are outside it.
+const NOTE9_VERBS = new Set(['shell', 'exec-out', 'push', 'pull', 'install', 'install-multiple', 'uninstall', 'logcat', 'forward', 'reverse', 'get-state', 'start-server', 'wait-for-device', 'reboot'])
+// adb verbs that are danger zones by themselves; checked before the verb set so they answer 89, not 97.
+const NOTE9_DANGER_VERBS = new Map([
+  ['root', ['DZ-7', 'adb root']], ['unroot', ['DZ-7', 'adb unroot']], ['remount', ['DZ-7', 'adb remount']], ['disable-verity', ['DZ-7', 'verity']], ['enable-verity', ['DZ-7', 'verity']], ['sync', ['DZ-7', 'adb sync']],
+  ['sideload', ['DZ-5', 'sideload']],
+  ['tcpip', ['DZ-8', 'adb over TCP']], ['usb', ['DZ-8', 'adb usb mode']],
+  ['connect', ['DZ-10', 'other devices']], ['disconnect', ['DZ-10', 'other devices']], ['pair', ['DZ-10', 'other devices']], ['reconnect', ['DZ-10', 'other devices']], ['kill-server', ['DZ-10', 'host-wide adb verb']], ['emu', ['DZ-10', 'emulator console']],
+  ['backup', ['DZ-3', 'account and app data backup']], ['restore', ['DZ-3', 'account and app data restore']],
+  ['bugreport', ['DZ-11', 'whole-device dump']],
+])
+const NOTE9_TEST_APPS = new Set([PG_PACKAGE])
+// Words are matched with [^a-z0-9] boundaries (dzWord) or as word prefixes (dzPrefix), so `swipe` never matches `wipe`.
+const dzWord = (x) => `(?<![a-z0-9])(?:${x})(?![a-z0-9])`
+const dzPrefix = (x) => `(?<![a-z0-9])(?:${x})`
+// Lower case, ${IFS} and $IFS read as a blank (before the quotes go, so svc$IFS'wifi'$IFS'enable' splits), quotes and backslashes removed, blanks collapsed:
+// so c'o'ntent and svc${IFS}wifi${IFS}enable are scanned as written words.
+const note9Norm = (s) => s.toLowerCase().replace(/\$\{ifs\}|\$ifs(?![a-z0-9_])/g, ' ').replace(/['"\\]/g, '').replace(/\s+/g, ' ').trim()
+const NOTE9_RADIO_KEYS = 'wifi_on|wifi_saved_state|mobile_data[0-9]*|airplane_mode_on|bluetooth_on|wifi_scan_always_enabled|ble_scan_always_enabled|data_roaming[0-9]*'
+const NOTE9_PROXY_KEYS = 'http_proxy|global_http_proxy_host|global_http_proxy_port|global_proxy_pac_url|private_dns_mode|private_dns_specifier|always_on_vpn_app|always_on_vpn_lockdown'
+// Whole-command exceptions only (anchored at both ends): reads of the network keys and the proxy clear. A chained or combined command is still refused.
+const NOTE9_NET_OK = new RegExp(`^(settings get (global|secure|system) (${NOTE9_PROXY_KEYS}|${NOTE9_RADIO_KEYS})|settings put global http_proxy :0)$`)
+// DZ-1 .. DZ-9 and DZ-13 as text patterns (DZ-8 has a second entry for Settings components). The radio keys sit in DZ-8 and match anywhere, so `content insert ... wifi_on` is refused as well as `settings put`.
+const NOTE9_DZ = [
+  ['DZ-1', 'personal-data providers and apps', new RegExp([dzPrefix('contact|call_?log|voicemail|blockednumber|calendar|telephony|phonebook'), dzWord('sms|mms|mmssms|icc|dialer|messaging')].join('|'))],
+  ['DZ-2', 'outbound calls and messages', new RegExp([dzWord('call|endcall|dial|phone|smsto|mailto|sendto|emergency|isms'), '(?<![a-z0-9])tel:'].join('|'))],
+  ['DZ-3', 'accounts and sync', new RegExp([dzPrefix('account'), dzWord('signin'), dzPrefix('auto_?sync|master_?sync|sync_?settings|sync_?adapter|requestsync')].join('|'))],
+  ['DZ-4', 'device security and adb loss', new RegExp([dzWord('dpm|locksettings|lock_settings'), dzPrefix('device_?policy|device_?admin'), 'adb_enabled|adb_wifi|development_settings_enabled|svc usb|sys\\.usb\\.|service\\.adb\\.', dzWord('set-user-restriction|no_debugging_features|switch-user|stop-user')].join('|'))],
+  ['DZ-5', 'reset, wipe, recovery and power', new RegExp([dzWord('recovery|wipe|uncrypt|fastboot|bootloader|sideload|reboot|powerctl|shutdown|vdc'), dzPrefix('factory|master_?clear'), '(?<![a-z0-9])sm (format|partition|forget)'].join('|'))],
+  ['DZ-7', 'root, remount and block devices', new RegExp([dzWord('su|magisk|setenforce|remount|mkfs'), '/dev/block'].join('|'))],
+  ['DZ-8', 'network on', new RegExp(['svc (wifi|data|bluetooth|nfc) enable', '(?<![a-z0-9])cmd (wifi|bluetooth_manager)', 'airplane-mode disable', dzWord(NOTE9_RADIO_KEYS), 'action\\.airplane_mode', dzWord('ifconfig|wpa_cli|ndc|iptables|tcpip'), '(?<![a-z0-9])ip (link|addr|address|route|rule)', 'android\\.settings\\.(panel\\.action\\.)?(wifi|wireless|airplane|data_roaming|network|internet|bluetooth|nfc|mobile_data)', 'android\\.net\\.wifi', dzPrefix('http_proxy|global_http_proxy|global_proxy_pac|private_dns|always_on_vpn|tether'), dzWord('rndis'), 'android\\.settings\\.vpn', 'android\\.net\\.vpn', 'adb\\.tcp\\.port', 'android\\.bluetooth\\.adapter\\.action'].join('|'))],
+  ['DZ-8', 'Settings screens for Wi-Fi, network, accounts, security and reset', new RegExp('(?<![a-z0-9])com\\.android\\.settings/[^ ;&|<>()`]*(wifi|network|account|security|reset)')],
+  ['DZ-9', 'real services', new RegExp(dzWord('risuai|risurealm|realm|discord|discordapp'))],
+  ['DZ-13', 'monkey (random UI events reach calls, Settings and accounts)', new RegExp('(?<![a-z0-9_.-])monkey(?![a-z0-9_.\\/-])')],
+]
+// DZ-2 by number: `input keyevent` takes decimal key codes, so 5 (CALL), 6 (ENDCALL), 207 (CONTACTS) and 208 (CALENDAR) are the same keys the
+// name scan refuses. A leading plus or zeros parse to the same code. Every `input` command in the text is read, up to the next shell separator.
+const NOTE9_INPUT = /(?<![a-z0-9_.-])input(?![a-z0-9_.\/-])([^;&|<>()`]*)/g
+const NOTE9_KEYCODE_DZ2 = /^\+?0*(5|6|207|208)$/
+function note9NumericKeyevent(n) {
+  for (const m of n.matchAll(NOTE9_INPUT)) {
+    const t = m[1].trim().split(' ')
+    const i = t.indexOf('keyevent')
+    if (i >= 0 && t.slice(i + 1).some((k) => NOTE9_KEYCODE_DZ2.test(k))) return ['DZ-2', 'numeric key code for CALL, ENDCALL, CONTACTS or CALENDAR']
+  }
+  return null
+}
+// DZ-11: dumpsys and cmd are an allowlist by shape. After the tool name comes a service name ([a-z][a-z0-9_.]*) or exactly `-l`;
+// bare, option-first and built forms are refused. The deny family (prefix match) is applied to the service and to every argument word
+// up to the next shell separator, on each segment of a word split at . / and :, so `activity service com.android.networkstack` is caught.
+const NOTE9_DZ11_WORDS = new RegExp([dzPrefix('bug-?report|dumpstate|incident'), '/misc/wifi', 'wpa_supplicant'].join('|'))
+const NOTE9_SVC_DENY = ['wifi', 'semwifi', 'net', 'conn', 'ethernet', 'location', 'country_detector', 'telephony', 'phone', 'isub', 'iphonesubinfo', 'isms', 'imms', 'ims', 'sip', 'sim', 'carrier', 'euicc', 'telecom', 'account', 'content', 'bluetooth', 'ipsec', 'ip_memory_store', 'dns', 'vpn', 'lowpan']
+const NOTE9_TOOL = /(?<![a-z0-9_.-])(dumpsys|cmd)(?![a-z0-9_.\/-])/g
+const NOTE9_END = '(?=$|[ ;&|<>()`])'
+const NOTE9_TOOL_LIST = /^ -l ?(?=$|[;&|<>()`])/
+const NOTE9_TOOL_SVC = new RegExp(`^ ([a-z][a-z0-9_.]*)${NOTE9_END}`)
+function note9Dz11(n) {
+  if (NOTE9_DZ11_WORDS.test(n)) return ['DZ-11', 'whole-device dump tool or Wi-Fi config']
+  for (const m of n.matchAll(NOTE9_TOOL)) {
+    const after = n.slice(m.index + m[0].length)
+    if (NOTE9_TOOL_LIST.test(after)) continue
+    if (!NOTE9_TOOL_SVC.test(after)) return ['DZ-11', `${m[1]} without a service name first (bare, option-first or built)`]
+    for (const w of after.split(/[;&|<>()`]/)[0].trim().split(' ')) {
+      const segs = w.split(/[./:]+/).map((y) => y.replace(/^-+/, ''))
+      const hit = NOTE9_SVC_DENY.find((d) => segs.some((x) => x.startsWith(d)))
+      if (hit) return ['DZ-11', `${m[1]} of a network, location or identity service (${hit}*)`]
+    }
+  }
+  return null
+}
+// DZ-6: a package operation passes only as the whole command, on a test app, in either option order.
+const NOTE9_PKG_OP = /(?<![a-z0-9])(pm|cmd package)\s+(uninstall|disable|disable-user|disable-until-used|hide|unhide|suspend|unsuspend|clear|default-state|uninstall-system-updates|remove-user|create-user|set-home-activity|reset-permissions)(?![a-z0-9-])/
+const NOTE9_PKG_OK = /^(pm|cmd package) (clear( --user 0)?|uninstall( --user 0| -k){0,2}) (?<pkg>[a-z0-9._]+)$/
+// Returns [id, what] for the first danger zone the text names, else null. First hit wins.
+function note9Danger(text) {
+  const n = note9Norm(text)
+  if (NOTE9_NET_OK.test(n)) return null
+  for (const [id, what, re] of NOTE9_DZ) if (re.test(n)) return [id, what]
+  const kv = note9NumericKeyevent(n)
+  if (kv) return kv
+  const d11 = note9Dz11(n)
+  if (d11) return d11
+  if (NOTE9_PKG_OP.test(n)) {
+    const m = n.match(NOTE9_PKG_OK)
+    if (!(m && NOTE9_TEST_APPS.has(m.groups.pkg))) return ['DZ-6', 'package removal, disable or data clear outside the test app']
+  }
+  return null
+}
+// A command NAME built by a glob or brace cannot be scanned (the device shell expands it after the check): shape refusal, spell it out.
+// Quoted spans are replaced first because the device shell neither globs nor brace-expands inside quotes, so a quoted regex is not a command name.
+const NOTE9_SEGMENT = /;|&&|\|\||\||&|\(|\)|`/
+const NOTE9_SKIP_WORDS = new Set(['!', 'then', 'do', 'else', 'if', 'while', 'until', '{', 'exec', 'time'])
+function note9GlobCommandWord(text) {
+  const n = note9Norm(text.replace(/'[^']*'|"[^"]*"/g, 'q'))
+  for (const seg of n.split(NOTE9_SEGMENT)) {
+    const t = seg.trim().split(' ').filter(Boolean)
+    let i = 0
+    while (i < t.length && (/^[a-z_][a-z0-9_]*=/.test(t[i]) || NOTE9_SKIP_WORDS.has(t[i]))) i++
+    if (i < t.length && !['[', '[[', '}'].includes(t[i]) && /[*?[\]{}]/.test(t[i])) return true
+  }
+  return false
+}
+// DZ-12: host signing secrets must not be pushed. Names compare case-insensitively without trailing dots or blanks (Win32 opens `key.txt.` as `key.txt`).
+const NOTE9_DZ12_WALK_MAX = 10000
+const note9KeyName = (name) => { const b = name.toLowerCase().replace(/[. ]+$/, ''); return ['key.txt', 'keystore.properties', 'adbkey'].includes(b) || /\.(jks|keystore|p12)$/.test(b) }
+// null when the source is fine, else {danger: [id, what]} (89) or {shape: why} (97). A source that is a link is never followed; inside a
+// walked directory links are not descended into (named residual). The walk is bounded so a huge tree cannot stall the host.
+function note9PushSource(src) {
+  if (note9KeyName(basename(src))) return { danger: ['DZ-12', `host signing secret (${basename(src)}) as a push source`] }
+  // A stream suffix (`key.txt::$DATA`) or an 8.3 short name (`KEYSTO~1.PRO`) can open a key file under a name the check does not know.
+  if (/:|~\d/.test(basename(src))) return { shape: `push source name ${JSON.stringify(basename(src))} holds a colon or a ~digit (stream suffix or 8.3 short name); spell the long name` }
+  let st
+  try { st = lstatSync(src) } catch { return { shape: `push source ${JSON.stringify(src)} is unreadable` } }
+  if (st.isSymbolicLink()) return { shape: `push source ${JSON.stringify(src)} is a link; push the link's target path` }
+  if (!st.isDirectory()) return null
+  const stack = [src]
+  let count = 0
+  while (stack.length) {
+    const dir = stack.pop()
+    let entries
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return { shape: `push source directory ${JSON.stringify(dir)} is unreadable` } }
+    for (const e of entries) {
+      if (++count > NOTE9_DZ12_WALK_MAX) return { shape: 'directory source too large to check for key files; push it in parts' }
+      if (note9KeyName(e.name)) return { danger: ['DZ-12', `host signing secret (${e.name}) inside the push source ${JSON.stringify(src)}`] }
+      if (e.isDirectory()) stack.push(resolve(dir, e.name))
+    }
+  }
+  return null
+}
+// insideRunDir without the extension clause, so a directory can be pulled: a NEW name directly in the run folder, never the log or state file.
+const insideRunDirAny = (p) => {
+  if (!p || /^-/.test(p) || !isAbsolute(p)) return false
+  const runDir = resolve(dirname(log))
+  const target = resolve(p)
+  const name = basename(target)
+  if (dirname(target).toLowerCase() !== runDir.toLowerCase()) return false
+  if (!/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(name) || name.endsWith('.')) return false
+  if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(name)) return false
+  const reserved = [log, statePath].filter(Boolean).map((f) => basename(resolve(f)).toLowerCase())
+  if (reserved.includes(name.toLowerCase())) return false
+  return !existsSync(target)
+}
+// A reverse host end that names the host adb server or an emulator port lets a program on the phone drive every attached device (DZ-10).
+// The two env vars are read only to NARROW what a reverse may reach; they never select or widen a profile.
+function note9ReservedHostPort(portText) {
+  const ports = new Set([5037])
+  const fromEnv = process.env.ANDROID_ADB_SERVER_PORT?.trim()
+  if (fromEnv && /^\d+$/.test(fromEnv)) ports.add(Number(fromEnv))
+  const sock = process.env.ADB_SERVER_SOCKET?.match(/^tcp:(?:.*:)?(\d+)$/)
+  if (sock) ports.add(Number(sock[1]))
+  const p = Number(portText)
+  return ports.has(p) || (p >= 5554 && p <= 5585)
+}
+// Returns null (allowed) or {code, msg}: 89 for a danger zone, 97 for a shape the profile does not accept.
+function note9Refusal(a) {
+  const shape = (why) => ({ code: 97, msg: `not accepted on the Note 9 profile (${why}): adb ${JSON.stringify(a)}` })
+  const zone = (id, what) => ({ code: 89, msg: `danger zone ${id} (${what}) on ${serial}: refused, not sent; stop and tell the parent (never retry a variant) adb ${JSON.stringify(a)}` })
+  const hit = (d) => d && zone(d[0], d[1])
+  const v = a[0]
+  if (v === 'reboot' && a.length > 1) return zone('DZ-5', 'reboot with a target')
+  if (NOTE9_DANGER_VERBS.has(v)) return zone(...NOTE9_DANGER_VERBS.get(v))
+  if (!NOTE9_VERBS.has(v)) return shape('verb is not in the Note 9 verb set')
+  if (a.some((x) => !/^[\x20-\x7e]*$/.test(x))) return shape('only printable ASCII is accepted')
+  const args = a.slice(1)
+  switch (v) {
+    case 'shell':
+    case 'exec-out': {
+      if (args.length === 0 || args[0].startsWith('-') || args.join(' ').trim() === '') return shape('needs a command string and no shell option')
+      const text = args.join(' ')
+      if (note9GlobCommandWord(text)) return shape('command name built by a glob or brace; spell it out')
+      return hit(note9Danger(text))
+    }
+    case 'push': {
+      if (args.some((x) => x.startsWith('-') && x !== '--sync')) return shape('only the --sync flag is accepted')
+      const pos = args.filter((x) => x !== '--sync')
+      if (pos.length < 2 || !pos[pos.length - 1].startsWith('/')) return shape('needs a local source and an absolute device destination')
+      for (const src of pos.slice(0, -1)) {
+        const r = note9PushSource(src)
+        if (r) return r.danger ? zone(...r.danger) : shape(r.shape)
+      }
+      return hit(note9Danger(pos[pos.length - 1]))
+    }
+    case 'pull': {
+      const pos = args[0] === '-a' ? args.slice(1) : args
+      if (pos.length !== 2 || !pos[0].startsWith('/')) return shape('needs an absolute device path and a local path')
+      const d = hit(note9Danger(pos[0]))
+      if (d) return d
+      return insideRunDirAny(pos[1]) ? null : shape('the local path must be a new name directly in the run folder')
+    }
+    case 'install':
+    case 'install-multiple': {
+      if (args.some((x) => x.startsWith('-') && !['-r', '-d', '-t', '-g'].includes(x))) return shape('only the flags -r -d -t -g are accepted')
+      const files = args.filter((x) => !x.startsWith('-'))
+      if (!files.every((f) => /\.apk$/i.test(f)) || (v === 'install' ? files.length !== 1 : files.length < 1)) return shape('needs local .apk files (one for install)')
+      return null
+    }
+    case 'uninstall': {
+      const pos = args[0] === '-k' ? args.slice(1) : args
+      if (pos.length !== 1 || !/^[A-Za-z0-9._]+$/.test(pos[0])) return shape('needs one package name')
+      return NOTE9_TEST_APPS.has(pos[0]) ? null : zone('DZ-6', 'uninstall of a package that is not the test app')
+    }
+    case 'logcat': return null
+    case 'reverse': {
+      if (a.length === 2 && a[1] === '--list') return null
+      if (a.length === 3 && a[1] === '--remove') return /^tcp:\d+$/.test(a[2]) && ownPort(a[2].slice(4)) ? null : shape('--remove needs an own port')
+      if (a.length === 3 && /^tcp:\d+$/.test(a[1]) && /^tcp:\d+$/.test(a[2])) {
+        if (note9ReservedHostPort(a[2].slice(4))) return zone('DZ-10', 'host adb server or emulator port as the reverse host end')
+        return ownPort(a[1].slice(4)) && ownPort(a[2].slice(4)) ? null : shape('both reverse ends must be own ports')
+      }
+      return shape('reverse takes tcp:<own> tcp:<own>, --remove tcp:<own> or --list')
+    }
+    case 'forward':
+    case 'get-state':
+    case 'start-server': return allowedPlain(a) ? null : shape('not an own-port forward, and get-state/start-server take no argument')
+    default: return a.length === 1 ? null : shape('takes no argument') // wait-for-device, reboot
+  }
+}
 // Read-only foreground check through allowlisted commands: a package is in front when one of its processes has the top
 // oom_score_adj (0). Declared before the pick block, which runs at module top level.
 const frontOf = (pkg) => {
@@ -531,11 +783,22 @@ const myFilesForeground = (target) => target === MYFILES_SHARE_TARGET ? visibleO
 // pick --id (MC-2303, MC-2306): exactly this grammar, matched on the raw argument; no flags. The class holds no quote,
 // blank, glob, shell or BRE metacharacter, so after the escaped prefix nothing in an id is special to grep or to sh.
 const RID = /^com\.android\.documentsui:id\/[a-z][a-z0-9_]{0,79}$/
+// r18: the one non-documentsui id pick --id accepts, the Save button of the system save picker (CREATE_DOCUMENT). It is exact
+// (no other android:id/* id) and is tapped only when the same dump also holds the save screen's filename field, because on an
+// overwrite or replace confirmation dialog the same id means "replace".
+const SAVE_BUTTON_ID = 'android:id/button1'
+const SAVE_PROOF_PATTERN = ' resource-id="android:id/title"[^>]*class="android\\.widget\\.EditText"'
+const SAVE_PROOF_MISSING = 'ADBG-NO-SAVE-FIELD'
 const PICK_ID_KEYS = ['--serial', '--log', '--state', '--id', '--own-package', '--own-ports']
 // Shared device command of both pick forms: dump, grep for the needle, print only bounds, delete the dump by name.
-const pickScript = (dump, needle) => `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
-  + `if [ $d -eq 0 ]; then grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'; fi; `
-  + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
+// With saveProof the bounds are printed only if the same dump file also holds the proof node; else it prints a marker instead.
+const pickScript = (dump, needle, saveProof = false) => {
+  const boundsGrep = `grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'`
+  const body = saveProof ? `if grep -q '${SAVE_PROOF_PATTERN}' ${dump} 2>/dev/null; then ${boundsGrep}; else echo ${SAVE_PROOF_MISSING}; fi` : boundsGrep
+  return `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
+    + `if [ $d -eq 0 ]; then ${body}; fi; `
+    + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
+}
 
 // ---- restricted serials ----
 // Every serial not listed here is a personal device and runs in restricted mode (fail-closed).
@@ -616,6 +879,15 @@ if (sub === 'adb') {
   needSerial()
   if (rest.length === 0) die(2, 'missing -- <adb args>')
   if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
+  // Note 9 profile (r3): reached only when `playground` is true, which only the exact --serial against PLAYGROUND_SERIALS decides. Every plain call
+  // is judged by the danger-zone denylist; the exact screencap form falls through to the PNG path below. The r17 am pin and the allowlist
+  // below are not consulted on this profile.
+  if (playground && !(rest.length === 3 && rest[0] === 'exec-out' && rest[1] === 'screencap' && rest[2] === '-p')) {
+    const f = note9Refusal(rest)
+    if (f) die(f.code, f.msg)
+    logPlayground(allowedPlain(rest) ? 'r11' : 'extended', rest)
+    process.exit(runAdb(dlBinShell(rest) || rest, false).code)
+  }
   // r17: an `am` command that names My Files passes only as the one start string, on phone 1 (checked on every plain or playground path).
   const amLine = rest[0] === 'shell' ? rest.slice(1).join(' ') : ''
   // The device shell expands braces, globs, quotes and escapes after this check, so an `am` line may hold only AM_LINE_SAFE characters:
@@ -685,6 +957,7 @@ if (sub === 'pick') {
   needSerial(); needState()
   const idForm = opts.includes('--id')
   let name = null, rid = null
+  let saveForm = false
   if (myFiles && idForm) die(2, 'pick --myfiles takes --name only')
   if (idForm) {
     // Playground serials only; the strict option walk leaves no stray token, duplicate key or second form.
@@ -697,7 +970,8 @@ if (sub === 'pick') {
       seenKeys.add(k)
     }
     rid = opt('--id')
-    if (!RID.test(rid)) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars)')
+    if (!RID.test(rid) && rid !== SAVE_BUTTON_ID) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars) or, r18, exactly android:id/button1')
+    saveForm = rid === SAVE_BUTTON_ID
   } else if (myFiles) {
     // Strict walk without the one bare flag: known keys, each once with a value, no `--` section.
     const kv = opts.filter((x) => x !== '--myfiles')
@@ -729,6 +1003,7 @@ if (sub === 'pick') {
       die(93, 'pick --id refused: no system file picker is the foreground package')
     }
     logLine(`PLAYGROUND serial=${serial} front=${pickerPkg} (system file picker, pick --id, MC-2303)`)
+    if (saveForm) logLine(`pick --id ${SAVE_BUTTON_ID} (save confirm, r18)`)
   }
   if (myFiles) {
     // A refusal here ran no dump: no lock, but it counts toward the two-error cap.
@@ -740,7 +1015,7 @@ if (sub === 'pick') {
   }
   const dump = `/sdcard/adbg-pick-${process.pid}-${Date.now()}.xml`
   const esc = (idForm ? rid : name).replace(/\./g, '\\.')
-  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : myFiles ? ` text="${esc}"` : `text="${esc}"`)
+  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : myFiles ? ` text="${esc}"` : `text="${esc}"`, saveForm)
   logLine(`intent: pick ${what} via one device command (dump, grep, rm ${dump})`)
   const r = spawnAdb(['-s', serial, 'shell', script], { encoding: 'utf8', windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] })
   const out = r.stdout ?? ''
@@ -754,6 +1029,12 @@ if (sub === 'pick') {
   if (r.status !== 0 || !dumpOk || rmFailed) {
     s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
     die(4, `pick error (adb exit ${exitText}, dump ${dumpOk ? 'ok' : 'failed'}, rm ${rmText}); not a no-match`)
+  }
+  if (saveForm && out.includes(SAVE_PROOF_MISSING)) {
+    // The dump ran and was removed, but it held no save-screen filename field: a replace dialog or another screen. No tap target
+    // is reported; it is a pick error (no lock, counts toward the two-error cap), not a no-match.
+    s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
+    die(4, 'pick --id android:id/button1 refused: no save-screen filename field in the dump')
   }
   const hits = out.split(/\r?\n/).filter((l) => /^bounds="\[\d+,\d+\]\[\d+,\d+\]"$/.test(l.trim()))
   if (hits.length !== 1) {

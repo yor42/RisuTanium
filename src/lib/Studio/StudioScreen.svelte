@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, onMount, untrack, type Snippet } from 'svelte'
+    import { onDestroy, onMount, setContext, untrack, type Snippet } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/studio-tokens.css'
     import { language } from '../../lang'
@@ -12,6 +12,7 @@
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
     import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
+    import { STUDIO_HISTORY_STEP, type StudioHistoryStep } from '../../ts/studio/historyStepContext'
     import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
     import { trackStudioFocus } from '../../ts/studio/layerFocus'
     import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
@@ -102,14 +103,33 @@
         const entry = textEntryOf(event.target)
         if (entry === 'editable') return
         if (entry !== null && (entry.dataset.studioFocusValue === undefined || entry.value !== entry.dataset.studioFocusValue)) return
+        historyStep(direction, entry, () => event.preventDefault())
+    }
+
+    // The service and owner a step of `direction` would replay on, or null when there is nothing to replay.
+    function stepTargetOf(direction: 'undo' | 'redo'): { service: OwnerHistoryService, owner: OwnerKey } | null {
         const service = getStudioHistoryService()
         const owner = selectedHistoryOwner()
-        if (!service || owner === null) return
+        if (!service || owner === null) return null
         const view = service.view(owner)
-        if (!view.editable || (direction === 'undo' ? view.done : view.undone).length === 0) return
-        event.preventDefault()
-        void replayAndNotify(service, owner, direction, entry)
+        if (!view.editable || (direction === 'undo' ? view.done : view.undone).length === 0) return null
+        return { service, owner }
     }
+
+    // Every undo and redo, from a key or from a layer's button, starts here: `accept` runs synchronously before the
+    // replay starts (a key's preventDefault), and the outcome is told by `replayAndNotify` alone.
+    function historyStep(direction: 'undo' | 'redo', entry: HTMLInputElement | HTMLTextAreaElement | null, accept?: () => void): boolean {
+        const target = stepTargetOf(direction)
+        if (target === null) return false
+        accept?.()
+        void replayAndNotify(target.service, target.owner, direction, entry)
+        return true
+    }
+
+    setContext<StudioHistoryStep>(STUDIO_HISTORY_STEP, {
+        step: (direction, entry) => historyStep(direction, entry),
+        can: (direction) => stepTargetOf(direction) !== null,
+    })
 
     // The replay runs in the service's queue and may ask whether asset files are still there, so its outcome arrives
     // later. The fields are read inside the replay's own synchronous segment, so `before` is what the apply changed.

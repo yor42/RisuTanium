@@ -304,7 +304,9 @@ export interface NameChoice {
  */
 export function preselectKeptName(names: readonly NameChoice[], kind: 'asset' | 'emotion'): number {
     if (kind === 'emotion') {
-        const neutral = names.findIndex((choice) => choice.name.toLocaleLowerCase() === 'neutral')
+        // The default emotion is read by its exact name, so the exact `neutral` outranks a spelling that differs by case.
+        const exact = names.findIndex((choice) => choice.name === 'neutral')
+        const neutral = exact >= 0 ? exact : names.findIndex((choice) => choice.name.toLocaleLowerCase() === 'neutral')
         if (neutral >= 0) {
             return neutral
         }

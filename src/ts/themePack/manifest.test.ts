@@ -13,6 +13,7 @@ function refusalOf(result: ManifestResult): unknown {
 }
 
 const FIELD = (field: string) => ({ code: 'manifestField', field })
+const ABSENT_TILE = { main: { kind: 'absent' }, secondary: { kind: 'absent' }, icon: { kind: 'absent' } } as const
 
 // A required key is one an object literal may not omit: `{}` is not assignable to the type picked from it.
 type RequiredKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T]
@@ -33,6 +34,7 @@ describe('T1-25 manifest fields', () => {
             attribution: 'Test author',
             modes: ['dark'],
             fonts: [{ file: 'fonts/a.woff2', license: 'OFL-1.1', attribution: 'A. Author' }, { file: 'fonts/b.woff2', license: 'OFL-1.1' }],
+            tile: ABSENT_TILE,
         })
     })
 
@@ -41,7 +43,7 @@ describe('T1-25 manifest fields', () => {
         expect(result.ok).toBe(true)
         if (!result.ok) return
         expect(Object.hasOwn(result.manifest, 'packId')).toBe(true)
-        expect(result.manifest).toStrictEqual({ format: 1, packId: undefined, name: 'Test Pack', version: '1.0.0', license: 'MIT', attribution: 'Test author', modes: ['dark'], fonts: [] })
+        expect(result.manifest).toStrictEqual({ format: 1, packId: undefined, name: 'Test Pack', version: '1.0.0', license: 'MIT', attribution: 'Test author', modes: ['dark'], fonts: [], tile: ABSENT_TILE })
     })
 
     it('the type-level guard holds: packId is a required key', () => {
@@ -82,7 +84,48 @@ describe('T1-25 manifest fields', () => {
     it('unknown keys are ignored', () => {
         const result = parse({ colour: 'red', extra: { deep: true } })
         expect(result.ok).toBe(true)
-        if (result.ok) expect(Object.keys(result.manifest).sort()).toEqual(['attribution', 'fonts', 'format', 'license', 'modes', 'name', 'packId', 'version'])
+        if (result.ok) expect(Object.keys(result.manifest).sort()).toEqual(['attribution', 'fonts', 'format', 'license', 'modes', 'name', 'packId', 'tile', 'version'])
+    })
+
+    describe('the optional tile fields (colors, icon)', () => {
+        const tileOf = (overrides: Readonly<Record<string, unknown>>) => {
+            const result = parse(overrides)
+            expect(result.ok).toBe(true)
+            return result.ok ? result.manifest.tile : ABSENT_TILE
+        }
+
+        it('colours are stored lower-case #rrggbb whatever their case or length', () => {
+            expect(tileOf({ colors: { main: '#3366FF', secondary: '#36f' } })).toEqual({ main: { kind: 'ok', value: '#3366ff' }, secondary: { kind: 'ok', value: '#3366ff' }, icon: { kind: 'absent' } })
+            expect(tileOf({ colors: { secondary: '#ABCDEF' } })).toEqual({ main: { kind: 'absent' }, secondary: { kind: 'ok', value: '#abcdef' }, icon: { kind: 'absent' } })
+            expect(tileOf({ colors: {} })).toEqual(ABSENT_TILE)
+            expect(tileOf({})).toEqual(ABSENT_TILE)
+        })
+
+        it('a colour written any other way is invalid and names its field, and parsing still succeeds', () => {
+            for (const value of ['rgb(1,2,3)', '#3366ff80', '#3366f', 'red', 7, null, '', '3366ff']) {
+                expect(tileOf({ colors: { main: value } }).main, JSON.stringify(value)).toEqual({ kind: 'invalid', field: 'colors.main' })
+                expect(tileOf({ colors: { secondary: value } }).secondary, JSON.stringify(value)).toEqual({ kind: 'invalid', field: 'colors.secondary' })
+            }
+            for (const colors of ['#fff', 5, null, ['#fff'], true]) {
+                const tile = tileOf({ colors })
+                expect(tile.main, JSON.stringify(colors)).toEqual({ kind: 'invalid', field: 'colors' })
+                expect(tile.secondary).toEqual({ kind: 'invalid', field: 'colors' })
+            }
+        })
+
+        it('an icon is a string of 1 to 255 characters; anything else is invalid', () => {
+            expect(tileOf({ icon: 'images/a.png' }).icon).toEqual({ kind: 'ok', value: 'images/a.png' })
+            expect(tileOf({ icon: 'x'.repeat(255) }).icon.kind).toBe('ok')
+            for (const icon of ['', 'x'.repeat(256), 7, null, ['a'], {}]) {
+                expect(tileOf({ icon }).icon, JSON.stringify(icon)).toEqual({ kind: 'invalid', field: 'icon' })
+            }
+        })
+
+        it('an inherited colors key does not count', () => {
+            const text = '{"kind":"risutheme","format":1,"name":"n","version":"1","license":"l","attribution":"a","modes":["dark"],"__proto__":{"colors":{"main":"#fff"}}}'
+            const result = parseManifest(text)
+            expect(result.ok && result.manifest.tile).toEqual(ABSENT_TILE)
+        })
     })
 
     it('a valid id becomes packId and an invalid one is named', () => {

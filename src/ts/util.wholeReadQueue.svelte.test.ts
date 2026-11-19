@@ -29,7 +29,7 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { getCharImageSpy } = vi.hoisted(() => ({ getCharImageSpy: vi.fn() }))
+const { getCharImageSpy, withheld } = vi.hoisted(() => ({ getCharImageSpy: vi.fn(), withheld: new Set<string>() }))
 
 vi.mock('src/ts/storage/tauriByteTransport', async (importOriginal) => ({
     ...(await importOriginal<typeof import('src/ts/storage/tauriByteTransport')>()),
@@ -44,7 +44,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () =>
             getItem: vi.fn(async () => null),
             setItem: vi.fn(async () => {}),
         },
-        getFileSrc: async (loc: string) => androidFileSrc(loc),
+        getFileSrc: async (loc: string) => withheld.has(loc) ? '' : androidFileSrc(loc),
         checkCharOrder: vi.fn(),
         requiresFullEncoderReload: { state: false },
         AppendableBuffer: class {},
@@ -203,6 +203,7 @@ function setCharacter(character: Record<string, unknown>): void {
 
 beforeEach(() => {
     resetAndroidTransport(true)
+    withheld.clear()
     getCharImageSpy.mockClear()
     FakeImage.all = []
     vi.stubGlobal('Image', FakeImage)
@@ -370,6 +371,35 @@ describe('off Android and without lookups', () => {
         expect(await getCustomBackground(BACKGROUND_A)).toBe(styleOf(BACKGROUND_A))
         expect((getCharImageSpy.mock.calls as unknown[][]).every((call) => call.length === 2)).toBe(true)
         expect(FakeImage.all).toHaveLength(0)
+    })
+})
+
+describe('a withheld background renders as no background', () => {
+    test('(R) T3a off Android without lookups a withheld background gives an empty style', async () => {
+        resetAndroidTransport(false)
+        withheld.add(BACKGROUND_A)
+        expect(await getCustomBackground(BACKGROUND_A)).toBe('')
+    })
+
+    test('(R) T3b off Android with lookups a withheld background gives an empty style', async () => {
+        resetAndroidTransport(false)
+        withheld.add(BACKGROUND_A)
+        expect(await getCustomBackground(BACKGROUND_A, lookups!)).toBe('')
+    })
+
+    test('(R) T3c on Android with lookups a withheld background gives an empty style and holds no read', async () => {
+        withheld.add(BACKGROUND_A)
+        expect(await getCustomBackground(BACKGROUND_A, lookups!)).toBe('')
+        expect(FakeImage.all).toHaveLength(0)
+        lookups!.dispose()
+        expect(heldQueuedWholeReadsForTest()).toBe(0)
+    })
+
+    test('(G) T3d a background that is not withheld keeps its style, with and without lookups', async () => {
+        resetAndroidTransport(false)
+        withheld.add(BACKGROUND_B)
+        expect(await getCustomBackground(BACKGROUND_A)).toBe(styleOf(BACKGROUND_A))
+        expect(await getCustomBackground(BACKGROUND_A, lookups!)).toBe(styleOf(BACKGROUND_A))
     })
 })
 

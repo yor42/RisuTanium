@@ -185,3 +185,124 @@ test('CHORE-157 an editDisplay access id stops working once its run ends', async
   expect(second.res).toBe('shown')
   expect(writes).toEqual(['current', 'current'])
 })
+
+// Edit events run the Lua dispatcher only for code that subscribed to that event
+// through listenEdit. Engines are cached per mode and per code, so every test
+// below uses code no other test in this file runs.
+const EDIT_MODES = ['editDisplay', 'editInput', 'editOutput', 'editRequest']
+
+test.each(EDIT_MODES)('%s without a listener returns the input untouched and loads the code once', async (mode) => {
+  const getVar = vi.fn(() => 'initialized')
+  // Any dispatch through callListenMain would hit the replaced json codec and throw.
+  const code = `
+    getChatVar('', 'initialization')
+    json.decode = function() error('Unexpected listener dispatch') end
+    json.encode = function() error('Unexpected listener dispatch') end
+    -- no listener: ${mode}
+  `
+  const data = mode === 'editRequest' ? [{ content: 'hello', role: 'user' as const }] : 'hello'
+
+  for (let index = 0; index < 2; index++) {
+    const result = await runScripted(code, {
+      char: {} as never,
+      chat: { message: [] } as never,
+      data,
+      getVar,
+      meta: {},
+      mode,
+    })
+
+    expect(result.res).toBe(data)
+    expect(result.stopSending).toBe(false)
+  }
+  expect(getVar).toHaveBeenCalledExactlyOnceWith('initialization')
+})
+
+// Compatibility guard: passes with and without the listener gate.
+test.each(EDIT_MODES)('a registered %s listener still runs', async (mode) => {
+  const data = mode === 'editRequest' ? [{ content: 'hello', role: 'user' as const }] : 'hello'
+  const result = await runScripted(`
+    local event = '${mode}'
+    listenEdit(event, function(id, value, meta)
+      if event == 'editRequest' then
+        value[1].content = value[1].content .. meta.suffix
+        return value
+      end
+      return value .. meta.suffix
+    end)
+  `, {
+    char: {} as never,
+    chat: { message: [] } as never,
+    data,
+    meta: { suffix: ' world' },
+    mode,
+  })
+
+  const expected = mode === 'editRequest' ? [{ content: 'hello world', role: 'user' }] : 'hello world'
+  expect(result.res).toEqual(expected)
+})
+
+test('a listener for one edit event does not open the others', async () => {
+  const code = `
+    listenEdit('editOutput', function(id, value) return value .. ' edited' end)
+    json.decode = function() error('Unexpected listener dispatch') end
+  `
+  const run = (mode: string) => runScripted(code, {
+    char: {} as never,
+    chat: { message: [] } as never,
+    data: 'original',
+    mode,
+  })
+
+  expect((await run('editInput')).res).toBe('original')
+  expect((await run('editDisplay')).res).toBe('original')
+})
+
+test('new code in a mode starts with no listeners while the cached code keeps its own', async () => {
+  const options = {
+    char: {} as never,
+    chat: { message: [] } as never,
+    data: 'original',
+    mode: 'editDisplay',
+  }
+  const registeredCode = `
+    listenEdit('editDisplay', function() return 'edited' end)
+  `
+  const registered = await runScripted(registeredCode, options)
+  expect(registered.res).toBe('edited')
+
+  const unregistered = await runScripted(`
+    json.decode = function() error('Stale listener registration') end
+  `, options)
+  expect(unregistered.res).toBe('original')
+
+  // guard: the first code's cached engine still has its listener
+  const again = await runScripted(registeredCode, options)
+  expect(again.res).toBe('edited')
+})
+
+// Compatibility guard: passes with and without the listener gate.
+test('a listener registered after the code loaded is seen by the next run', async () => {
+  let register: () => void = () => { throw new Error('Missing registration callback') }
+  const code = `
+    getChatVar('', function()
+      listenEdit('editDisplay', function(id, value) return value .. ' edited' end)
+    end)
+  `
+  const options = {
+    char: {} as never,
+    chat: { message: [] } as never,
+    data: 'original',
+    getVar: vi.fn((callback: unknown) => {
+      register = callback as () => void
+      return ''
+    }),
+    mode: 'editDisplay',
+  }
+
+  const before = await runScripted(code, options)
+  expect(before.res).toBe('original')
+  register()
+  const after = await runScripted(code, options)
+  expect(after.res).toBe('original edited')
+})

@@ -1,8 +1,7 @@
 /**
  * The put-back on a store2 page (`../memory/characterPutBack`, the branch that runs while a residency is registered):
  * a character the residency loaded and nothing changed goes back into its slot as the stub of its acknowledged entry,
- * once the user has moved on and a save iteration has committed. The cases of `characterPutBack.svelte.test.ts` are
- * ported to it, with the residency's verdict where that suite fingerprints.
+ * once the user has moved on and a save iteration has committed. A page with no residency puts nothing back.
  *
  * What is real: the engine, `coldRetained` (the load records), the keep-set, the busy registry, the restored-bytes
  * counter, `characterSaveMarks` (an installed tracker records the marks), the quiet trigger and a reactive `DBState`
@@ -52,7 +51,7 @@ vi.mock(import('src/ts/process/chatOrigin'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { findChaIdHolders, loadedRecordOf, resetRetainedForTest, retainOnLoad } from 'src/ts/process/coldRetained'
+import { findChaIdHolders, loadedRecordOf, resetRetainedForTest, retainedRecordOf, retainOnLoad, retainOnRestore } from 'src/ts/process/coldRetained'
 import { getPutBackCounters, resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
 import { beginBusy, beginChokePoint, beginDialogWait, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { noteRestoredBytes, resetRestoredBytesForTest, restoredBytesOf, restoredBytesOutside } from 'src/ts/process/memory/restoredBytes'
@@ -976,5 +975,57 @@ describe('the real verdict over a character whose data cannot be read', () => {
         expect(isStub('C')).toBe(false)
         // The put-back waits for the next commit, so the third candidate is judged then.
         expect(h.commits.length).toBe(1)
+    })
+})
+
+describe('a page with no residency', () => {
+    test('guard (compatibility): loaded characters are never judged, swapped or marked, and no commit is asked for', () => {
+        resetResidencyForTest()
+        archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C')])
+        begin()
+        open('A')
+        open('B')
+        open('C')
+        expect(h.commits.length).toBe(0)
+
+        commit()
+        commit()
+
+        expect(h.commits.length).toBe(0)
+        expect(h.verdictCalls).toEqual([])
+        expect(h.stubCalls).toEqual([])
+        expect(isStub('A')).toBe(false)
+        expect(isStub('B')).toBe(false)
+        expect(isStub('C')).toBe(false)
+        expect(tracker.character).toEqual([])
+        expect(getPutBackCounters().clean).toBe(0)
+    })
+
+    test('acceptance: a record the restore path retained is not put back: the character stays loaded and nothing is marked', () => {
+        resetResidencyForTest()
+        archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C')])
+        for (const chaId of ['A', 'B', 'C']) {
+            const index = findChaIdHolders(chaId)[0]
+            const stub = DBState.db.characters[index]
+            const restored = JSON.parse(JSON.stringify(sourcesById.get(chaId))) as Slot
+            DBState.db.characters[index] = restored
+            retainOnRestore(DBState.db.characters[index], stub, restored)
+            expect(retainedRecordOf(DBState.db.characters[index])).toBeDefined()
+        }
+        begin()
+        selectedCharID.set(findChaIdHolders('A')[0])
+        selectedCharID.set(findChaIdHolders('B')[0])
+        selectedCharID.set(findChaIdHolders('C')[0])
+
+        commit()
+        commit()
+
+        expect(h.commits.length).toBe(0)
+        expect(isStub('A')).toBe(false)
+        expect(isStub('B')).toBe(false)
+        expect(isStub('C')).toBe(false)
+        expect(retainedRecordOf(slot('A'))).toBeDefined()
+        expect(tracker.character).toEqual([])
+        expect(getPutBackCounters().clean).toBe(0)
     })
 })

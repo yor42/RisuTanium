@@ -46,7 +46,8 @@ const reloadMark = vi.hoisted(() => ({ marked: false, onMark: null as null | (()
 const importedMock = vi.hoisted(() => vi.fn(async (_batch: unknown): Promise<void> => { }))
 const noticeMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<void> => { }))
 const pageStoreBox = vi.hoisted(() => ({ store: null as null | { set: (value: unknown) => void, subscribe: (run: (value: unknown) => void) => () => void } }))
-const replaceBox = vi.hoisted(() => ({ unconfirmed: false }))
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+const cleanBox = vi.hoisted(() => ({ clean: true }))
 
 vi.mock(import('src/ts/reloadGuard'), () => ({
     markAppInitiatedReload: () => { reloadMark.marked = true; reloadMark.onMark?.() },
@@ -131,15 +132,22 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     getCurrentCharacter: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
-/** The write the restore ends with, replaced by an unconfirmed one when a test asks for it. */
-vi.mock(import('src/ts/drive/restoreReplace'), async (importOriginal) => {
-    const original = await importOriginal()
-    return {
-        ...original,
-        replaceWithRestoredSet: async (...args: Parameters<typeof original.replaceWithRestoredSet>) =>
-            replaceBox.unconfirmed ? { kind: 'unconfirmed' as const } : await original.replaceWithRestoredSet(...args),
-    }
-})
+/** The commit the restore ends with: a landed one, or an unconfirmed one (`shell.end`) when a test asks for it. */
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real module with one answer fixed: the page is clean unless a row marks it dirty, so the unsaved-edits question
+// does not take one of the planned confirmations. A row that marks the page dirty uses that question as the restore's
+// inner question.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveClean: () => cleanBox.clean,
+}))
+
+// A parked save loop is left alone by the restore's save-first step, so a dirty page does not wait out its bound.
+vi.mock(import('src/ts/storage/store2/saveLoop'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveLoopParked: () => true,
+}))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: {} as unknown as Database },
@@ -280,18 +288,16 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
         getColdStorageBackupKey,
         getColdStorageItem: vi.fn(async () => null),
         isColdStorageBackupData: vi.fn(() => true),
-        listColdDataKeys: vi.fn(async () => []),
         setColdStorageItem: vi.fn(async () => true),
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from 'src/ts/drive/tests/store2ShellStub'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
-import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
-import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
 import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
@@ -423,7 +429,10 @@ function heldClose(): { release: () => void, closeCalled: () => boolean } {
     return { release, closeCalled: () => called }
 }
 
+/** The page module instance, on a store2 page: each fresh module graph starts with the mode set. */
 async function loadOpenedFiles(): Promise<typeof import('src/ts/android/openedFiles')> {
+    const pageMode = await import('src/ts/storage/pageStorageMode')
+    pageMode.setPageStorageMode({ kind: 'store2' })
     return await import('src/ts/android/openedFiles')
 }
 
@@ -451,7 +460,8 @@ beforeEach(async () => {
     readOnlyBox.readOnly = false
     reloadMark.marked = false
     reloadMark.onMark = null
-    replaceBox.unconfirmed = false
+    resetStore2ShellBox(shell)
+    cleanBox.clean = true
     native = []
     takes.length = 0
     confirmsAsked.length = 0
@@ -460,7 +470,6 @@ beforeEach(async () => {
     ;(await loadOpenedFiles()).resetOpenedFilesForTests()
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
-    injectRestoreStore(createTauriFilesStore({ platform: 'posix' }))
     getDatabaseMock.mockImplementation(() => ({ didFirstSetup: true, characters: [], personas: [], characterOrder: [], botPresets: [] }) as unknown as Database)
     dbWriteLockSpy = vi.spyOn(dbWriteLock, 'acquire').mockResolvedValue(() => { })
     window.__risuTaniumOpenedFilesHost = fakeHost
@@ -473,6 +482,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+    // The restore's save-first step returned at its clean check; it never waited out its bound.
+    expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
     stopRefusalWatch()
     resetStartupCleanupForTests()
     dbWriteLockSpy.mockRestore()
@@ -629,7 +640,7 @@ describe('a file opened during an opened-file restore', () => {
     test('S1: an unconfirmed write ends the page: a card that arrived after YES is not taken or imported, and the closeless message stays', async () => {
         const source = heldSource()
         planConfirms([{ screen: 'ask', answer: true }])
-        replaceBox.unconfirmed = true
+        shell.end = { kind: 'unconfirmed' }
         native = [openedFile('bin2.bin')]
         const { androidOpenedFilesImport } = await loadOpenedFiles()
         androidOpenedFilesImport()
@@ -638,11 +649,11 @@ describe('a file opened during an opened-file restore', () => {
         window.__risuTaniumOpenedFiles?.()
         await settleFew()
         source.release()
-        await waitForCondition(() => shown().msg === language.saveDamagedUnconfirmed)
+        await waitForCondition(() => shown().msg === language.store2ImportUnconfirmed)
         await settleLong()
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
         expect(reloadMark.marked).toBe(false)
-        expect(shown().type + ':' + shown().msg, 'the dead page keeps its closeless message').toBe('wait:' + language.saveDamagedUnconfirmed)
+        expect(shown().type + ':' + shown().msg, 'the dead page keeps its closeless message').toBe('wait:' + language.store2ImportUnconfirmed)
         expect(importedMock, 'the card is not imported into the dead page').not.toHaveBeenCalled()
         expect(native.length, 'the card stays in the native queue').toBe(1)
     })
@@ -652,7 +663,7 @@ describe('a file opened during an opened-file restore', () => {
         // second drain behind it before the restore state is set.
         const source = heldSource()
         planConfirms([{ screen: 'ask', answer: true }])
-        replaceBox.unconfirmed = true
+        shell.end = { kind: 'unconfirmed' }
         native = [openedFile('bin2.bin')]
         const { androidOpenedFilesImport } = await loadOpenedFiles()
         androidOpenedFilesImport()
@@ -663,9 +674,9 @@ describe('a file opened during an opened-file restore', () => {
         window.__risuTaniumOpenedFiles?.()
         await waitForCondition(() => openSourceMock.mock.calls.length >= 1)
         source.release()
-        await waitForCondition(() => shown().msg === language.saveDamagedUnconfirmed)
+        await waitForCondition(() => shown().msg === language.store2ImportUnconfirmed)
         await settleLong()
-        expect(shown().type + ':' + shown().msg).toBe('wait:' + language.saveDamagedUnconfirmed)
+        expect(shown().type + ':' + shown().msg).toBe('wait:' + language.store2ImportUnconfirmed)
         expect(importedMock, 'the card is not imported into the dead page').not.toHaveBeenCalled()
         expect(native.length, 'the card stays in the native queue').toBe(1)
     })
@@ -683,9 +694,9 @@ describe('a file opened during an opened-file restore', () => {
         window.__risuTaniumOpenedFiles?.()
         await settleFew()
         source.release()
-        await waitForCondition(() => setDatabaseMock.mock.calls.length >= 1)
+        await waitForCondition(() => shell.commits.length >= 1)
         await settleLong()
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
         expect(shown().type + ':' + shown().msg).toBe('wait:' + language.restoreSavedReloadOrRestart)
         expect(importedMock, 'the card is not imported into the stale page').not.toHaveBeenCalled()
         expect(native.length, 'the card stays in the native queue').toBe(1)
@@ -698,7 +709,7 @@ describe('a file opened during an opened-file restore', () => {
         native = [openedFile('bin2.bin')]
         const { androidOpenedFilesImport } = await loadOpenedFiles()
         androidOpenedFilesImport()
-        await waitForCondition(() => setDatabaseMock.mock.calls.length >= 1)
+        await waitForCondition(() => shell.commits.length >= 1)
         await settleLong()
         native.push(openedFile('card1.charx'))
         window.__risuTaniumOpenedFiles?.()
@@ -708,24 +719,18 @@ describe('a file opened during an opened-file restore', () => {
     })
 
     test('R7: an inner question after YES: a card is refused at once, the refusal line is set while busy, and nothing is taken after the reload request', async () => {
-        const cold = await import('src/ts/process/coldstorage.svelte')
         // The restore's busy entries live in the fresh module instance this page loads.
         const { busyRefusalLine, isBusy } = await import('src/ts/process/memory/busyActions')
         const inner = gateOf()
-        let innerAsked = false
-        vi.mocked(cold.confirmIncompleteColdStorageOperation).mockImplementation(async () => {
-            innerAsked = true
-            setShown('ask')
-            await inner.gate
-            setShown('wait')
-            return true
-        })
+        // A dirty page: after YES the restore asks the unsaved-edits question, which is the inner question here.
+        cleanBox.clean = false
         openSourceMock.mockImplementation(async () => binSource())
-        planConfirms([{ screen: 'ask', answer: true }])
+        planConfirms([{ screen: 'ask', answer: true }, { screen: 'ask', gate: inner.gate, answer: true }])
         native = [openedFile('bin2.bin')]
         const { androidOpenedFilesImport } = await loadOpenedFiles()
         androidOpenedFilesImport()
-        await waitForCondition(() => innerAsked)
+        await waitForCondition(() => confirmsAsked.length >= 2)
+        expect(confirmsAsked[1], 'the inner question is the unsaved-edits question').toBe(language.store2RestoreUnsavedConfirm)
         native.push(openedFile('card1.charx'))
         window.__risuTaniumOpenedFiles?.()
         await settleFew()
@@ -740,10 +745,10 @@ describe('a file opened during an opened-file restore', () => {
     })
 
     test('guard: a card deferred after YES, then the inner question is declined: the same page imports it', async () => {
-        const cold = await import('src/ts/process/coldstorage.svelte')
         const source = heldSource()
-        vi.mocked(cold.confirmIncompleteColdStorageOperation).mockImplementation(async () => false)
-        planConfirms([{ screen: 'ask', answer: true }])
+        // A dirty page: after YES the restore asks the unsaved-edits question, which is the inner question here.
+        cleanBox.clean = false
+        planConfirms([{ screen: 'ask', answer: true }, { screen: 'ask', answer: false }])
         native = [openedFile('bin2.bin')]
         const { androidOpenedFilesImport } = await loadOpenedFiles()
         androidOpenedFilesImport()

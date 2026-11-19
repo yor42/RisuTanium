@@ -15,7 +15,7 @@ use crate::net_policy::{
 };
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -40,9 +40,10 @@ pub struct ChatTarget {
 
 /// The page's marks on a request. `chat_stop` means the chat's Stop aborts the
 /// request, so a native cancel may end it while the page is frozen (MC-1435).
-/// The struct grows with further marks, such as native reply ownership
-/// (MC-1451); those can overlap `chat_stop`, which is why it is not an enum.
-/// `chat_target` never decides a cancel.
+/// The struct grows with further marks; they can overlap `chat_stop`, which is
+/// why it is not an enum. Native reply ownership (MC-1451) is not a tag: it
+/// rides on `FetchRequest::owner`, and no cancel path reads it. `chat_target`
+/// never decides a cancel.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StreamTags {
     pub chat_stop: bool,
@@ -244,6 +245,222 @@ pub struct FetchRequest {
     /// `None` keeps the unrestricted client; only untrusted callers set it.
     pub policy: Option<NetPolicy>,
     pub tags: StreamTags,
+    /// `Some` when the page asked the request to be owned by the native reply
+    /// store. `None` keeps the request byte-identical to a page-owned one.
+    pub owner: Option<OwnedReply>,
+}
+
+/// The most response body an owned request keeps for its record.
+pub const MAX_REPLY_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReplyOutcome {
+    Done,
+    Failed,
+    Stopped,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReplyDetail {
+    Transport,
+    BodyNotStored,
+    BodyTooLarge,
+}
+
+/// The terminal data of an owned request, as its end record stores it.
+#[derive(Clone, Debug)]
+pub struct ReplyEnd {
+    pub outcome: ReplyOutcome,
+    pub status: Option<u16>,
+    pub body_bytes: Option<u64>,
+    pub detail: Option<ReplyDetail>,
+    pub error: Option<String>,
+}
+
+/// The open record of an owned request. Dropping it ends the record's live
+/// membership, so the request's slot drops it only after the last write.
+pub trait OpenRecord: Send {
+    fn write_body(&mut self, bytes: &[u8]) -> Result<(), String>;
+    fn write_end(&mut self, end: &ReplyEnd) -> Result<(), String>;
+}
+
+/// Opens the record of a request that has not been sent. `Err` is the reason
+/// ownership is refused (`invalid-key`, `exists`, `blob-too-large`, `store`).
+pub trait ReplyJournal: Send + Sync {
+    fn open(&self, key: &str, page_version: u32, blob: &str) -> Result<Box<dyn OpenRecord>, &'static str>;
+}
+
+/// What the page asked this request to own. This module never touches the disk:
+/// the journal does. A missing journal means the store could not be resolved.
+pub struct OwnedReply {
+    pub key: String,
+    pub page_version: u32,
+    pub blob: String,
+    pub journal: Option<Arc<dyn ReplyJournal>>,
+}
+
+/// The record of one owned request. `run_registered` creates the slot before the
+/// abortable future, so the record (and its live membership) outlives that
+/// future when an abort drops it, and the abort arm can still write the end.
+struct RecordSlot {
+    record: Option<Box<dyn OpenRecord>>,
+    ended: bool,
+}
+
+type SharedSlot = Arc<Mutex<RecordSlot>>;
+
+fn lock_slot(slot: &SharedSlot) -> MutexGuard<'_, RecordSlot> {
+    slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+impl RecordSlot {
+    fn write_body(&mut self, bytes: &[u8]) -> Result<(), String> {
+        match self.record.as_mut() {
+            Some(record) => record.write_body(bytes),
+            None => Err("no open record".to_string()),
+        }
+    }
+
+    /// The first end wins: `None` when the slot has no record or already ended.
+    fn write_end(&mut self, end: &ReplyEnd) -> Option<Result<(), String>> {
+        if self.ended {
+            return None;
+        }
+        let record = self.record.as_mut()?;
+        self.ended = true;
+        Some(record.write_end(end))
+    }
+}
+
+/// Appends `chunk` unless the body already overflowed `cap`; an overflow drops
+/// what was kept, so an oversize body is never stored.
+fn accumulate(body: &mut Vec<u8>, overflow: &mut bool, chunk: &[u8], cap: usize) {
+    if *overflow {
+        return;
+    }
+    if body.len() + chunk.len() > cap {
+        *overflow = true;
+        *body = Vec::new();
+    } else {
+        body.extend_from_slice(chunk);
+    }
+}
+
+/// `{key, outcome, stored}`: `stored` is true only when the reply's body can be
+/// read back from the record (an end record of `done` that was written).
+fn reply_stamp(key: &str, outcome: ReplyOutcome, stored: bool) -> Value {
+    json!({ "key": key, "outcome": outcome, "stored": stored })
+}
+
+fn log_unwritten(what: &str, result: &Option<Result<(), String>>) {
+    if let Some(Err(message)) = result {
+        eprintln!("native reply {} was not stored: {}", what, message);
+    }
+}
+
+/// The owned request's side of the tee: it keeps the body and writes the end.
+struct ReplyTee<'a> {
+    slot: &'a SharedSlot,
+    key: &'a str,
+    body: Vec<u8>,
+    overflow: bool,
+    status: Option<u16>,
+}
+
+impl ReplyTee<'_> {
+    fn end_failed(&self, detail: ReplyDetail, error: Option<String>) -> Value {
+        let end = ReplyEnd {
+            outcome: ReplyOutcome::Failed,
+            status: self.status,
+            body_bytes: None,
+            detail: Some(detail),
+            error,
+        };
+        let written = lock_slot(self.slot).write_end(&end);
+        log_unwritten("end", &written);
+        reply_stamp(self.key, ReplyOutcome::Failed, false)
+    }
+
+    /// The body, then the end. A body that overflowed or did not reach the disk
+    /// ends the record `failed`, never `done`.
+    fn end_done(&self) -> Value {
+        if self.overflow {
+            return self.end_failed(ReplyDetail::BodyTooLarge, None);
+        }
+        let body = Some(lock_slot(self.slot).write_body(&self.body));
+        log_unwritten("body", &body);
+        if matches!(body, Some(Err(_))) {
+            return self.end_failed(ReplyDetail::BodyNotStored, None);
+        }
+        let end = ReplyEnd {
+            outcome: ReplyOutcome::Done,
+            status: self.status,
+            body_bytes: Some(self.body.len() as u64),
+            detail: None,
+            error: None,
+        };
+        let written = lock_slot(self.slot).write_end(&end);
+        log_unwritten("end", &written);
+        reply_stamp(self.key, ReplyOutcome::Done, matches!(written, Some(Ok(()))))
+    }
+}
+
+/// The ownership decision, made after the request is built and before it is
+/// sent: refuse for a policy-carrying call (the page owns plugin and untrusted
+/// requests), an unresolved store or an open failure; otherwise the record is
+/// opened and placed in the slot. The page is told either way with an `owner`
+/// event; a refused request then runs exactly as an unowned one.
+fn open_owned<'a, F>(
+    request: &'a FetchRequest,
+    owner: &'a OwnedReply,
+    slot: &'a SharedSlot,
+    emit: &F,
+) -> Option<ReplyTee<'a>>
+where
+    F: Fn(String) -> Result<(), String>,
+{
+    let refusal: Option<&'static str> = if request.policy.is_some() {
+        Some("policy")
+    } else {
+        match owner.journal.as_ref() {
+            None => Some("store"),
+            Some(journal) => match journal.open(&owner.key, owner.page_version, &owner.blob) {
+                Ok(record) => {
+                    lock_slot(slot).record = Some(record);
+                    None
+                }
+                Err(reason) => Some(reason),
+            },
+        }
+    };
+    let event = match refusal {
+        None => json!({ "type": "owner", "id": request.id, "key": owner.key, "owned": true }),
+        Some(reason) => json!({ "type": "owner", "id": request.id, "key": owner.key, "owned": false, "reason": reason }),
+    };
+    // The answer is advisory; a dead sink fails the next emit as it would today.
+    let _ = emit(event.to_string());
+    if refusal.is_some() {
+        return None;
+    }
+    Some(ReplyTee { slot, key: &owner.key, body: Vec::new(), overflow: false, status: None })
+}
+
+/// The abort arm's end for an owned request: `stopped`, only when the slot holds
+/// a record that has no end yet, followed by the keyed `stopped` event.
+fn stop_owned<F>(slot: &SharedSlot, owner: &OwnedReply, id: &str, emit: &F)
+where
+    F: Fn(String) -> Result<(), String>,
+{
+    let end = ReplyEnd { outcome: ReplyOutcome::Stopped, status: None, body_bytes: None, detail: None, error: None };
+    let written = lock_slot(slot).write_end(&end);
+    if written.is_none() {
+        return;
+    }
+    log_unwritten("end", &written);
+    let event = json!({ "type": "stopped", "id": id, "reply": reply_stamp(&owner.key, ReplyOutcome::Stopped, false) });
+    let _ = emit(event.to_string());
 }
 
 fn failure(message: &str) -> String {
@@ -352,14 +569,33 @@ fn build_client(policy: Option<&NetPolicy>, lookup: Lookup, idle: Option<Duratio
         .build()
 }
 
-async fn run_fetch<F>(request: &FetchRequest, emit: &F) -> String
+async fn run_fetch<F>(request: &FetchRequest, emit: &F, slot: Option<&SharedSlot>) -> String
 where
     F: Fn(String) -> Result<(), String>,
 {
-    run_fetch_with(request, emit, system_lookup(), IDLE_TIMEOUT).await
+    run_fetch_slotted(request, emit, system_lookup(), IDLE_TIMEOUT, slot).await
 }
 
+#[cfg(test)]
 async fn run_fetch_with<F>(request: &FetchRequest, emit: &F, lookup: Lookup, idle: Duration) -> String
+where
+    F: Fn(String) -> Result<(), String>,
+{
+    run_fetch_slotted(request, emit, lookup, idle, None).await
+}
+
+/// Without an owner (or without a slot) nothing below touches the record and
+/// every event and result is today's. With one, the ticket is durable before
+/// the first request byte, emit errors are ignored (the reply no longer depends
+/// on the page), the body is kept, and the end record is written before the
+/// terminal event.
+async fn run_fetch_slotted<F>(
+    request: &FetchRequest,
+    emit: &F,
+    lookup: Lookup,
+    idle: Duration,
+    slot: Option<&SharedSlot>,
+) -> String
 where
     F: Fn(String) -> Result<(), String>,
 {
@@ -380,45 +616,66 @@ where
         Ok(builder) => builder,
         Err(message) => return failure(&message),
     };
+    let mut tee = match (request.owner.as_ref(), slot) {
+        (Some(owner), Some(slot)) => open_owned(request, owner, slot, emit),
+        _ => None,
+    };
     let mut last_activity = Instant::now();
     let mut response = match builder.send().await {
         Ok(response) => response,
         Err(e) => {
             let message = idle_message(e.is_timeout(), last_activity.elapsed(), idle)
                 .unwrap_or_else(|| error_text(e));
+            if let Some(tee) = tee.as_ref() {
+                tee.end_failed(ReplyDetail::Transport, Some(message.clone()));
+            }
             return failure(&message);
         }
     };
     last_activity = Instant::now();
 
+    let status = response.status().as_u16();
+    if let Some(tee) = tee.as_mut() {
+        tee.status = Some(status);
+    }
     let head = json!({
         "type": "headers",
         "body": header_map_to_json(response.headers()),
         "id": request.id,
-        "status": response.status().as_u16(),
+        "status": status,
     });
     if let Err(message) = emit(head.to_string()) {
-        return failure(&message);
+        if tee.is_none() {
+            return failure(&message);
+        }
     }
 
     loop {
         match response.chunk().await {
             Ok(Some(chunk)) => {
                 last_activity = Instant::now();
+                if let Some(tee) = tee.as_mut() {
+                    accumulate(&mut tee.body, &mut tee.overflow, &chunk, MAX_REPLY_BODY_BYTES);
+                }
                 let event = json!({
                     "type": "chunk",
                     "body": general_purpose::STANDARD.encode(chunk),
                     "id": request.id,
                 });
                 if let Err(message) = emit(event.to_string()) {
-                    return failure(&message);
+                    if tee.is_none() {
+                        return failure(&message);
+                    }
                 }
             }
             Ok(None) => break,
             Err(e) => {
                 let message = idle_message(e.is_timeout(), last_activity.elapsed(), idle)
                     .unwrap_or_else(|| error_text(e));
-                let event = json!({ "type": "error", "body": message, "id": request.id });
+                let mut event = json!({ "type": "error", "body": message, "id": request.id });
+                if let Some(tee) = tee.as_ref() {
+                    event["reply"] = tee.end_failed(ReplyDetail::Transport, Some(message.clone()));
+                }
                 // The failure result below carries the same text if this emit fails.
                 let _ = emit(event.to_string());
                 return failure(&message);
@@ -426,9 +683,14 @@ where
         }
     }
 
-    let end = json!({ "type": "end", "id": request.id });
+    let mut end = json!({ "type": "end", "id": request.id });
+    if let Some(tee) = tee.as_ref() {
+        end["reply"] = tee.end_done();
+    }
     if let Err(message) = emit(end.to_string()) {
-        return failure(&message);
+        if tee.is_none() {
+            return failure(&message);
+        }
     }
     json!({ "success": true }).to_string()
 }
@@ -446,14 +708,28 @@ where
             Registration::Duplicate => return cancelled(),
             Registration::Live(guard, abort_registration) => (guard, abort_registration),
         };
-    match Abortable::new(run_fetch(&request, &emit), abort_registration).await {
+    // The slot is created here, outside the abortable future: an abort drops
+    // that future, and the record with its live membership must survive until
+    // the abort arm has written its end.
+    let slot: Option<SharedSlot> = request
+        .owner
+        .as_ref()
+        .map(|_| Arc::new(Mutex::new(RecordSlot { record: None, ended: false })));
+    match Abortable::new(run_fetch(&request, &emit, slot.as_ref()), abort_registration).await {
         Ok(result) => result,
         // The one place every abort of a LIVE registration ends (`cancel_chat`,
         // `cancel_all`, and `cancel` of a registered id): a later terminal
         // record for a cancelled request belongs here, where the request and
         // its tags are still owned. A cancel that arrives before registration
-        // ends in the `AlreadyCancelled` arm instead.
-        Err(_) => cancelled(),
+        // ends in the `AlreadyCancelled` arm instead. An owned request that had
+        // opened its record gets its `stopped` end here; one that had not
+        // gives only the `cancelled` result.
+        Err(_) => {
+            if let (Some(owner), Some(slot)) = (request.owner.as_ref(), slot.as_ref()) {
+                stop_owned(slot, owner, &request.id, &emit);
+            }
+            cancelled()
+        }
     }
 }
 
@@ -541,6 +817,7 @@ mod tests {
             timeout_secs: Some(20),
             policy: None,
             tags: StreamTags::default(),
+            owner: None,
         }
     }
 
@@ -1573,5 +1850,470 @@ mod tests {
             stream_tags(Some(false), Some(target_of("a", "1"))),
             StreamTags { chat_stop: false, chat_target: Some(target_of("a", "1")) }
         );
+    }
+
+    // Native reply ownership (stage 1): the tee, the ownership decision and the abort arm.
+    use crate::reply_store::test_support::*;
+    use crate::reply_store::{owned_reply_for, ReplyOwnerArg, ReplyState, ReplyStore};
+    use std::fs;
+    use std::path::Path;
+
+    struct PanicJournal;
+
+    impl ReplyJournal for PanicJournal {
+        fn open(&self, _: &str, _: u32, _: &str) -> Result<Box<dyn OpenRecord>, &'static str> {
+            panic!("the journal must not be opened");
+        }
+    }
+
+    fn owner_for(store: &ReplyStore<FaultOps>, base: &Path, key: &str) -> OwnedReply {
+        let arg = ReplyOwnerArg { key: key.to_string(), page_version: 1, blob: "{}".to_string() };
+        owned_reply_for(store, Some(arg), || Ok(base.to_path_buf())).unwrap()
+    }
+
+    fn serve_hello() -> (u16, thread::JoinHandle<()>) {
+        serve_bounded(|mut stream| {
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"hello ");
+            write_chunk(&mut stream, b"world");
+            let _ = stream.write_all(b"0\r\n\r\n");
+        })
+    }
+
+    fn run_owned(store: &ReplyStore<FaultOps>, base: &Path, key: &str) -> (String, Events) {
+        let (port, join) = serve_hello();
+        let mut req = request("o1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(owner_for(store, base, key));
+        let (result, events) = run(&FetchRegistry::new(), req);
+        join.join().unwrap();
+        (result, events)
+    }
+
+    fn event_of(events: &Events, kind: &str) -> Value {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|event| event["type"] == json!(kind))
+            .cloned()
+            .unwrap_or(Value::Null)
+    }
+
+    fn assert_unowned_run(result: &str, events: &Events, reason: &str) {
+        assert_eq!(parse(result), json!({ "success": true }));
+        let kinds = types(events);
+        assert_eq!(kinds.first().map(String::as_str), Some("owner"));
+        assert_eq!(kinds.last().map(String::as_str), Some("end"));
+        let owner = event_of(events, "owner");
+        assert_eq!(owner["owned"], json!(false));
+        assert_eq!(owner["reason"], json!(reason));
+        assert!(event_of(events, "end").get("reply").is_none());
+    }
+
+    fn only_listing(store: &ReplyStore<FaultOps>, base: &Path) -> crate::reply_store::ReplyListing {
+        let mut listings = store.list(base).unwrap();
+        assert_eq!(listings.len(), 1, "{:?}", listings);
+        listings.remove(0)
+    }
+
+    // T1, guard: the stub sees no request byte before the ticket is durable.
+    #[test]
+    fn ticket_durable_before_stub_sees_a_byte() {
+        let base = scratch("t1");
+        let ops = FaultOps::new();
+        let log = ops.log.clone();
+        let store = store_with(ops);
+        let (listener, port) = bind_stub();
+        let ticket_path = record_dir(&base, KEY).join("ticket.json");
+        let stub_log = log.clone();
+        let join = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stub_log.lock().unwrap().push("accept".to_string());
+            let ticket: Value = serde_json::from_slice(&fs::read(&ticket_path).unwrap()).unwrap();
+            assert_eq!(ticket["key"], json!(KEY));
+            read_request(&mut stream);
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"x");
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        let mut req = request("t1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(owner_for(&store, &base, KEY));
+
+        let (result, _) = run(&FetchRegistry::new(), req);
+
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        let log = log.lock().unwrap().clone();
+        let accepted = log.iter().position(|entry| entry == "accept").unwrap();
+        assert!(log[..accepted].ends_with(&[
+            "create_synced".to_string(),
+            "rename:ticket.json".to_string(),
+            "sync_dir".to_string(),
+            "sync_dir".to_string(),
+        ]));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T2, guard: the body and the end record are on disk before the end event.
+    #[test]
+    fn owned_success_stores_body_and_end_before_end_event() {
+        let base = scratch("t2");
+        let store = plain_store();
+        let dir = record_dir(&base, KEY);
+        let (port, join) = serve_hello();
+        let mut req = request("o1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(owner_for(&store, &base, KEY));
+        let (events, collect) = collector();
+        let on_disk_at_end = Arc::new(Mutex::new(Vec::<bool>::new()));
+        let probe = on_disk_at_end.clone();
+        let emit = move |payload: String| {
+            let parsed: Value = serde_json::from_str(&payload).unwrap();
+            if parsed["type"] == json!("end") {
+                probe.lock().unwrap().push(dir.join("end.json").exists() && dir.join("body.bin").exists());
+            }
+            collect(payload)
+        };
+
+        let result = tauri::async_runtime::block_on(run_registered(&FetchRegistry::new(), req, emit));
+
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        let kinds = types(&events);
+        assert_eq!(kinds.first().map(String::as_str), Some("owner"));
+        assert_eq!(kinds.get(1).map(String::as_str), Some("headers"));
+        assert_eq!(kinds.last().map(String::as_str), Some("end"));
+        let owner = event_of(&events, "owner");
+        assert_eq!((owner["owned"].clone(), owner["key"].clone()), (json!(true), json!(KEY)));
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": true })
+        );
+        assert_eq!(*on_disk_at_end.lock().unwrap(), vec![true]);
+        assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"hello world");
+        let listing = only_listing(&store, &base);
+        assert_eq!(listing.state, ReplyState::Terminal);
+        assert_eq!(listing.outcome, Some(ReplyOutcome::Done));
+        assert_eq!(listing.status, Some(200));
+        assert_eq!(listing.body_bytes, Some(11));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T3, guard: every refusal runs the request exactly as an unowned one.
+    #[test]
+    fn refusals_run_unowned() {
+        let base = scratch("t3");
+        let store = plain_store();
+        let long = format!("{}0", KEY);
+        let upper = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".to_string();
+        for key in ["../x", "a/b", "", long.as_str(), upper.as_str()] {
+            let (result, events) = run_owned(&store, &base, key);
+            assert_unowned_run(&result, &events, "invalid-key");
+        }
+        assert!(names_in(&base).is_empty());
+
+        // A policy-carrying call is refused before the journal is touched.
+        let (port, join) = serve_hello();
+        let mut req = with_policy(true, request("o1", format!("http://127.0.0.1:{}/", port)));
+        req.owner = Some(OwnedReply {
+            key: KEY.to_string(),
+            page_version: 1,
+            blob: "{}".to_string(),
+            journal: Some(Arc::new(PanicJournal)),
+        });
+        let (result, events) = run(&FetchRegistry::new(), req);
+        join.join().unwrap();
+        assert_unowned_run(&result, &events, "policy");
+
+        // An unresolved store is refused as `store`.
+        let (port, join) = serve_hello();
+        let mut req = request("o1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None });
+        let (result, events) = run(&FetchRegistry::new(), req);
+        join.join().unwrap();
+        assert_unowned_run(&result, &events, "store");
+        assert!(names_in(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T4, guard: an existing record is refused and left byte for byte as it was.
+    #[test]
+    fn existing_key_refused_and_untouched() {
+        let base = scratch("t4");
+        let store = plain_store();
+        produce_done(&store, &base, KEY, b"old body");
+        let before = snapshot(&record_dir(&base, KEY));
+
+        let (result, events) = run_owned(&store, &base, KEY);
+
+        assert_unowned_run(&result, &events, "exists");
+        assert_eq!(snapshot(&record_dir(&base, KEY)), before);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T4b, guard: a key live in this process is refused and stays live.
+    #[test]
+    fn a_live_key_is_refused_and_stays_live() {
+        let base = scratch("t4b");
+        let store = plain_store();
+        let held = store.open_record(&base, KEY, 1, "{}").unwrap();
+
+        let (result, events) = run_owned(&store, &base, KEY);
+
+        assert_unowned_run(&result, &events, "exists");
+        assert_eq!(only_listing(&store, &base).state, ReplyState::Live);
+        drop(held);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T5, guard: a fault at any open step runs the request unowned and leaves nothing.
+    #[test]
+    fn open_fault_runs_unowned() {
+        let clean_base = scratch("t5-clean");
+        let clean = FaultOps::new();
+        let log = clean.log.clone();
+        let clean_store = store_with(clean);
+        let (result, events) = run_owned(&clean_store, &clean_base, KEY);
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(types(&events).first().map(String::as_str), Some("owner"));
+        let log = log.lock().unwrap().clone();
+        let body_create = log.iter().enumerate().filter(|(_, e)| *e == "create_synced").nth(1).unwrap().0;
+        let open_syncs = log[..body_create].iter().filter(|entry| *entry == "sync_dir").count();
+        assert!(open_syncs >= 2);
+        fs::remove_dir_all(&clean_base).unwrap();
+
+        let mut faults: Vec<(&str, usize)> = vec![("create_synced", 1), ("rename", 1)];
+        faults.extend((1..=open_syncs).map(|n| ("sync_dir", n)));
+        for (kind, nth) in faults {
+            let base = scratch("t5");
+            let store = store_with(FaultOps::new().failing(kind, nth));
+            let (result, events) = run_owned(&store, &base, KEY);
+            assert_unowned_run(&result, &events, "store");
+            assert!(store.list(&base).unwrap().is_empty(), "{} {} left a record", kind, nth);
+            assert!(!record_dir(&base, KEY).exists(), "{} {}", kind, nth);
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    fn clean_log() -> Vec<String> {
+        let base = scratch("clean-log");
+        let ops = FaultOps::new();
+        let log = ops.log.clone();
+        let store = store_with(ops);
+        run_owned(&store, &base, KEY);
+        fs::remove_dir_all(&base).unwrap();
+        let log = log.lock().unwrap().clone();
+        log
+    }
+
+    // T6, guard: a body that did not reach the disk never ends `done`.
+    #[test]
+    fn body_fault_never_done() {
+        for (kind, nth) in [("create_synced", 2), ("rename", 2)] {
+            let base = scratch("t6");
+            let store = store_with(FaultOps::new().failing(kind, nth));
+            let (result, events) = run_owned(&store, &base, KEY);
+            assert_eq!(parse(&result), json!({ "success": true }));
+            assert_eq!(
+                event_of(&events, "end")["reply"],
+                json!({ "key": KEY, "outcome": "failed", "stored": false }),
+                "{} {}",
+                kind,
+                nth
+            );
+            let listing = only_listing(&store, &base);
+            assert_eq!(listing.state, ReplyState::Terminal);
+            assert_eq!(listing.outcome, Some(ReplyOutcome::Failed));
+            assert_eq!(listing.detail, Some(ReplyDetail::BodyNotStored));
+            fs::remove_dir_all(&base).unwrap();
+        }
+
+        // The body's directory flush fails after its rename: the body counts as written.
+        let nth = sync_dir_after(&clean_log(), "rename:body.bin");
+        let base = scratch("t6-flush");
+        let store = store_with(FaultOps::new().failing("sync_dir", nth));
+        let (_, events) = run_owned(&store, &base, KEY);
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": true })
+        );
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Done)));
+        assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"hello world");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T7, guard: a failed end write still emits the terminal event.
+    #[test]
+    fn end_fault_still_emits() {
+        let base = scratch("t7");
+        let store = store_with(FaultOps::new().failing("create_synced", 3));
+        let (result, events) = run_owned(&store, &base, KEY);
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(types(&events).last().map(String::as_str), Some("end"));
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": false })
+        );
+        assert_eq!(only_listing(&store, &base).state, ReplyState::Incomplete);
+        fs::remove_dir_all(&base).unwrap();
+
+        // The end's directory flush fails after its rename: the end counts as written.
+        let nth = sync_dir_after(&clean_log(), "rename:end.json");
+        let base = scratch("t7-flush");
+        let store = store_with(FaultOps::new().failing("sync_dir", nth));
+        let (_, events) = run_owned(&store, &base, KEY);
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": true })
+        );
+        assert_eq!(only_listing(&store, &base).state, ReplyState::Terminal);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T8, guard: an owned request does not depend on its sink.
+    #[test]
+    fn owned_emit_failure_is_ignored() {
+        let base = scratch("t8");
+        let store = plain_store();
+        let (port, join) = serve_hello();
+        let mut req = request("o1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(owner_for(&store, &base, KEY));
+
+        let result = tauri::async_runtime::block_on(run_registered(&FetchRegistry::new(), req, |_| {
+            Err("sink closed".to_string())
+        }));
+
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Done)));
+        assert_eq!(fs::read(record_dir(&base, KEY).join("body.bin")).unwrap(), b"hello world");
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    fn spawn_owned_abortable(
+        registry: &FetchRegistry,
+        store: &ReplyStore<FaultOps>,
+        base: &Path,
+        port: u16,
+    ) -> (Events, mpsc::Receiver<()>, mpsc::Receiver<String>) {
+        let mut req = request("ab", format!("http://127.0.0.1:{}/", port));
+        req.tags = chat_stop_tags(None);
+        req.owner = Some(owner_for(store, base, KEY));
+        let (events, collect) = collector();
+        let (chunk_tx, chunk_rx) = mpsc::channel::<()>();
+        let (result_tx, result_rx) = mpsc::channel::<String>();
+        let task_registry = registry.clone();
+        tauri::async_runtime::spawn(async move {
+            let emit = move |payload: String| {
+                let sent = collect(payload.clone());
+                if payload.contains("\"chunk\"") {
+                    let _ = chunk_tx.send(());
+                }
+                sent
+            };
+            let _ = result_tx.send(run_registered(&task_registry, req, emit).await);
+        });
+        (events, chunk_rx, result_rx)
+    }
+
+    fn owned_abort_case(cancel: impl Fn(&FetchRegistry)) {
+        let base = scratch("t10");
+        let store = plain_store();
+        let registry = FetchRegistry::new();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let (events, chunk_rx, result_rx) = spawn_owned_abortable(&registry, &store, &base, port);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+
+        cancel(&registry);
+
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        assert_eq!(
+            event_of(&events, "stopped")["reply"],
+            json!({ "key": KEY, "outcome": "stopped", "stored": false })
+        );
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Stopped)));
+        server.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T10, guard: every abort of an owned request ends its record `stopped`.
+    #[test]
+    fn aborts_write_stopped() {
+        owned_abort_case(|registry| registry.cancel("ab"));
+        owned_abort_case(|registry| registry.cancel_all());
+        owned_abort_case(|registry| assert_eq!(registry.cancel_chat(), 1));
+    }
+
+    // T18, guard: the record stays live until the abort arm has written `stopped`.
+    #[test]
+    fn record_stays_live_until_stopped_is_written() {
+        let base = scratch("t18");
+        let gate = Gate::new();
+        let store = store_with(FaultOps::new().blocking("create_synced", 2, gate.clone()));
+        let registry = FetchRegistry::new();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let (_events, chunk_rx, result_rx) = spawn_owned_abortable(&registry, &store, &base, port);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+
+        registry.cancel("ab");
+        let reached = gate.wait_reached(Duration::from_secs(5));
+        // Listing and consuming run on this OS thread while the abort arm is blocked.
+        let during = store.list(&base);
+        let consume = store.consume(&base, KEY);
+        gate.release();
+
+        assert!(reached, "the abort arm never wrote");
+        assert_eq!(during.unwrap().iter().map(|l| l.state).collect::<Vec<_>>(), vec![ReplyState::Live]);
+        assert!(consume.unwrap_err().starts_with("live:"));
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.state, listing.outcome), (ReplyState::Terminal, Some(ReplyOutcome::Stopped)));
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        server.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // T17, guard: without an owner nothing touches the store or the data directory.
+    // The panicking resolver and the exact event list are the protection.
+    #[test]
+    fn no_owner_touches_no_store() {
+        let store = plain_store();
+        assert!(owned_reply_for(&store, None, || -> Result<std::path::PathBuf, String> { panic!("resolved") }).is_none());
+        let (port, join) = serve_hello();
+        let req = request("u17", format!("http://127.0.0.1:{}/", port));
+
+        let (result, events) = run(&FetchRegistry::new(), req);
+
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        let kinds = types(&events);
+        assert_eq!(kinds.first().map(String::as_str), Some("headers"));
+        assert!(kinds.iter().all(|kind| kind == "headers" || kind == "chunk" || kind == "end"));
+        assert_eq!(event_of(&events, "end"), json!({ "type": "end", "id": "u17" }));
+    }
+
+    #[test]
+    fn stop_without_a_record_emits_nothing() {
+        let slot: SharedSlot = Arc::new(Mutex::new(RecordSlot { record: None, ended: false }));
+        let owner = OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None };
+        stop_owned(&slot, &owner, "x", &|_| panic!("a stopped event for a request without a record"));
+    }
+
+    #[test]
+    fn a_body_over_the_cap_is_dropped_not_kept() {
+        let mut body = Vec::new();
+        let mut overflow = false;
+        accumulate(&mut body, &mut overflow, b"ab", 4);
+        accumulate(&mut body, &mut overflow, b"cd", 4);
+        assert_eq!((body.as_slice(), overflow), (&b"abcd"[..], false));
+        accumulate(&mut body, &mut overflow, b"e", 4);
+        assert!(overflow && body.is_empty());
+        accumulate(&mut body, &mut overflow, b"f", 4);
+        assert!(overflow && body.is_empty());
     }
 }

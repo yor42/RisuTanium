@@ -148,7 +148,7 @@ describe('runAutoGc pre-checks', () => {
         const readOnly = Object.create(page.session, { backend: { value: null } }) as Store2Session
 
         expect(await runAutoGc(readOnly, CLEAN)).toBeNull()
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
         expect(await runAutoGc(page.session, CLEAN)).toBeNull()
         expect(page.over.calls).toEqual([])
     })

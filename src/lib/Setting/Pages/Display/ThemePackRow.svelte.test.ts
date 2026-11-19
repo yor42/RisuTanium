@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * The Theme pack row: the list (None, built-ins, installed packs with their details, fonts in a disclosure, unreadable
- * entries with Remove only), the checked state, the broken notice, the install progress, the help text, the focus after every
+ * The Theme pack row: the list (None, built-ins, installed packs as cards with their details, fonts and Remove in a disclosure,
+ * unreadable entries with Remove only), the checked state, the broken notice, the install progress, the help text, the focus after every
  * dialog, and that mounting writes nothing. All are guards for new behaviour: the row does not exist on the base, so each
  * fails only when a scratch mutant breaks the rule it names.
  *
@@ -18,6 +18,7 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import type { ThemePackApplyState } from 'src/ts/themePack/activePack.svelte'
 import type { ThemePackRecordV1 } from 'src/ts/themePack/packRecord'
 import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
+import { pngBytes } from 'src/ts/themePack/fixtures/imageBuilder'
 import { manifestText, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
 import { PACK_SIZE_WARN_BYTES } from 'src/ts/themePack/packSize'
 import { focusFirstControl } from 'src/ts/settingsShell/settingsArrival'
@@ -32,6 +33,9 @@ const world = vi.hoisted(() => ({
     existing: null as ThemePackRecordV1 | null,
     intakeOverride: null as null | (() => Promise<unknown>),
     installed: 0,
+    busy: false,
+    /** Stored asset bytes by key, read by the tile's icon loader. */
+    assets: new Map<string, Uint8Array>(),
     requestSaveNow: vi.fn(),
     alertNormal: vi.fn(),
     alertToast: vi.fn(),
@@ -45,6 +49,10 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormal: world.alertNormal,
     alertToast: world.alertToast,
 }) as unknown as typeof import('src/ts/alert'))
+vi.mock(import('src/ts/process/memory/busyActions'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isBusy: () => world.busy,
+}))
 vi.mock(import('src/ts/util'), () => ({
     selectSingleFileObject: () => world.pickFile!(),
     readPickedFileBytes: () => world.readFile!(),
@@ -54,7 +62,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     saveAsset: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
-    getAppStore: async () => ({ read: async () => ({ bytes: null }) }),
+    getAppStore: async () => ({ read: async (key: string) => ({ bytes: world.assets.get(key) ?? null }) }),
     pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
@@ -211,6 +219,8 @@ beforeEach(() => {
     world.existing = null
     world.intakeOverride = null
     world.installed = 0
+    world.busy = false
+    world.assets.clear()
     world.requestSaveNow.mockClear()
     world.alertNormal.mockClear()
     world.alertToast.mockClear()
@@ -264,19 +274,140 @@ describe('T4-3 the list', () => {
         expect(builtin.textContent).not.toContain(language.themePackSize('0.0 KiB'))
     })
 
-    test('the font licenses sit inside a disclosure', () => {
-        setPacks([recordOf('dark', { fonts: [{ file: 'fonts/a.woff2', license: 'OFL', attribution: 'A foundry' }] })])
+    test('T1-2 the details, the font licenses and Remove sit inside one disclosure per installed pack; a built-in has no Remove', () => {
+        setPacks([
+            recordOf('dark', { fonts: [{ file: 'fonts/a.woff2', license: 'OFL', attribution: 'A foundry' }, { file: 'fonts/b.woff2', license: 'MIT' }] }),
+            recordOf('plain'),
+        ])
         const target = show()
-        const details = entryOf(target, 'dark').querySelector('details')!
-        expect(details.querySelector('summary')!.textContent).toBe(language.themePackFonts)
-        expect(details.textContent).toContain(language.themePackFontLicense('fonts/a.woff2', 'OFL'))
-        expect(details.textContent).toContain(language.themePackAttribution('A foundry'))
-        expect(entryOf(target, 'dark').querySelectorAll('details')).toHaveLength(1)
+        for (const id of ['dark', 'plain']) {
+            const entry = entryOf(target, id)
+            const all = entry.querySelectorAll('details')
+            expect(all).toHaveLength(1)
+            const details = entry.querySelector('[data-part="theme-pack-details"]')!
+            expect(details).toBe(all[0])
+            expect(details.querySelector('summary')!.textContent).toBe(language.themePackDetails)
+            expect(details.textContent).toContain(language.themePackVersion('1.2.3'))
+            expect(details.textContent).toContain(language.themePackLicense('MIT'))
+            expect(details.querySelector('[data-part="theme-pack-remove"]')).not.toBeNull()
+            expect(entry.querySelectorAll('[data-part="theme-pack-remove"]')).toHaveLength(1)
+        }
+        const fonts = entryOf(target, 'dark').querySelector('[data-part="theme-pack-details"]')!
+        expect(fonts.textContent).toContain(language.themePackFonts)
+        expect(fonts.textContent).toContain(language.themePackFontLicense('fonts/a.woff2', 'OFL'))
+        expect(fonts.textContent).toContain(language.themePackFontLicense('fonts/b.woff2', 'MIT'))
+        expect(fonts.textContent).toContain(language.themePackAttribution('A foundry'))
+        expect(fonts.querySelectorAll('li')).toHaveLength(2)
+        expect(entryOf(target, 'plain').textContent).not.toContain(language.themePackFonts)
+
+        const builtin = entryOf(target, BUILTIN_PACKS[0].id)
+        expect(builtin.querySelectorAll('[data-part="theme-pack-details"]')).toHaveLength(1)
+        expect(builtin.querySelector('[data-part="theme-pack-remove"]')).toBeNull()
+        expect(target.querySelector('[data-part="theme-pack-none"] details')).toBeNull()
     })
 
-    test('a pack with no fonts has no disclosure', () => {
-        setPacks([recordOf('plain')])
-        expect(entryOf(show(), 'plain').querySelector('details')).toBeNull()
+    test('T1-1 every card has a tile; the unreadable card has a tile and Remove but no radio', () => {
+        setPacks([recordOf('a'), { v: 99, id: 'future' }])
+        const target = show()
+        const cards = [
+            target.querySelector<HTMLElement>('[data-part="theme-pack-none"]')!,
+            ...BUILTIN_PACKS.map((pack) => entryOf(target, pack.id)),
+            entryOf(target, 'a'),
+            target.querySelector<HTMLElement>('[data-part="theme-pack-unreadable"]')!,
+        ]
+        for (const card of cards) {
+            expect(card.querySelectorAll('svg[data-part="theme-pack-tile"]')).toHaveLength(1)
+        }
+        const unreadable = cards[cards.length - 1]
+        expect(unreadable.querySelector('input')).toBeNull()
+        expect(unreadable.querySelector('[data-part="theme-pack-remove"]')).not.toBeNull()
+    })
+
+    test('T2b-10 an installed pack draws its record colours on the tile, a pack without colours a neutral one, and no pack colour leaves the svg', () => {
+        setPacks([recordOf('a', { mainColor: '#3366ff', secondaryColor: '#101820' }), recordOf('b')])
+        const target = show()
+        const ground = (id: string): Element => entryOf(target, id).querySelector('[data-part="tile-ground"]')!
+        expect(ground('a').getAttribute('fill')).toBe('#101820')
+        expect(ground('b').getAttribute('fill')).toBeNull()
+        expect(ground('b').getAttribute('class')).toBe('fill-darkbg')
+        // The built-ins draw the colours their literals carry.
+        for (const pack of BUILTIN_PACKS) {
+            expect(ground(pack.id).getAttribute('fill')).toBe(pack.secondaryColor)
+        }
+        for (const element of target.querySelectorAll<HTMLElement>('*')) {
+            if (element.closest('svg') === null) {
+                expect(element.getAttribute('style') ?? '', element.outerHTML.slice(0, 80)).not.toMatch(/#[0-9a-f]{3,6}/i)
+                expect(element.className.toString()).not.toMatch(/#[0-9a-f]{6}/i)
+            }
+        }
+        const name = entryOf(target, 'a').querySelector('label span[id]')!
+        expect(name.getAttribute('style')).toBeNull()
+    })
+
+    test('T3-6 an installed pack with a stored icon shows it with the pack name as alt text, the radio keeps its one accessible name, and the other cards keep their pattern', async () => {
+        const key = `assets/tp-${'ab'.repeat(32)}.png`
+        world.assets.set(key, pngBytes(24, 16))
+        const urls: string[] = []
+        URL.createObjectURL = vi.fn(() => { urls.push(`blob:row-${urls.length + 1}`); return urls[urls.length - 1] })
+        URL.revokeObjectURL = vi.fn()
+        setPacks([recordOf('a', { icon: key }), recordOf('b')])
+        const target = show()
+
+        await settle()
+
+        const card = entryOf(target, 'a')
+        const img = card.querySelector('img')!
+        expect(img.getAttribute('alt')).toBe('Pack a')
+        expect(img.getAttribute('src')).toBe(urls[0])
+        const radio = card.querySelector<HTMLInputElement>('input[type="radio"]')!
+        const labelled = radio.getAttribute('aria-labelledby')!
+        expect(card.querySelector(`#${labelled}`)!.textContent).toBe('Pack a')
+        expect(entryOf(target, 'b').querySelector('img')).toBeNull()
+        expect(urls).toHaveLength(1)
+    })
+
+    test('T1-3 all radios share one name, and a busy select puts the radio back', async () => {
+        setPacks([recordOf('a'), recordOf('b')], 'a')
+        const target = show()
+        expect(new Set(radios(target).map((radio) => radio.name)).size).toBe(1)
+        expect(radios(target)[0].name).not.toBe('')
+        world.busy = true
+        radios(target).find((radio) => radio.value === 'b')!.click()
+        await settle()
+        expect(DBState.db.activeThemePack).toBe('a')
+        expect(radios(target).filter((radio) => radio.checked).map((radio) => radio.value)).toEqual(['a'])
+    })
+
+    test('T1-12 each radio is named through aria-labelledby by the visible name, and the summary label starts with its text', () => {
+        setPacks([recordOf('a')])
+        const target = show()
+        const names = new Map<string, string>([['', language.themePackNone], ['a', 'Pack a'], [BUILTIN_PACKS[0].id, BUILTIN_PACKS[0].name]])
+        for (const [value, name] of names) {
+            const radio = radios(target).find((candidate) => candidate.value === value)!
+            const labelled = radio.getAttribute('aria-labelledby')!
+            expect(document.getElementById(labelled)!.textContent).toBe(name)
+        }
+        const summary = entryOf(target, 'a').querySelector('summary')!
+        expect(summary.getAttribute('aria-label')).toBe(language.themePackDetailsFor('Pack a'))
+        expect(summary.getAttribute('aria-label')!.startsWith(summary.textContent!)).toBe(true)
+    })
+
+    test('the card state classes sit on siblings of the radio inside one label', () => {
+        setPacks([recordOf('a')])
+        const target = show()
+        const radio = radios(target).find((candidate) => candidate.value === 'a')!
+        expect(radio.className).toContain('peer')
+        const label = radio.closest('label')!
+        const siblings = [...label.children].filter((child) => child !== radio)
+        const frame = siblings.find((child) => child.querySelector('svg'))!
+        expect(frame.className).toContain('peer-checked:outline-2')
+        expect(frame.className).toContain('peer-checked:outline-textcolor')
+        expect(frame.className).toContain('peer-focus-visible:ring-2')
+        expect(frame.className).toContain('peer-focus-visible:forced-colors:outline-2')
+        const badge = siblings.find((child) => child.className.includes('peer-checked:flex'))!
+        expect(badge.className).toContain('hidden')
+        expect(badge.querySelector('svg')).not.toBeNull()
+        expect(label.querySelector(`#${radio.getAttribute('aria-labelledby')}`)!.className).toContain('peer-checked:font-semibold')
     })
 
     test('the checked radio follows the stored id: None when no id is stored, the pack otherwise, whatever the apply status says', async () => {

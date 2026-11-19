@@ -70,9 +70,17 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     acquireExclusiveStorageMigrationLock: acquireExclusiveStorageMigrationLockMock,
     locksSupported: true,
     tabPresenceLockAcquired: Promise.resolve(),
+    isSaveClean: () => true,
+    afterNextSaveCommit: vi.fn(),
+    requestSaveNow: vi.fn(),
 }) as unknown as typeof import('../../globalApi.svelte'))
 
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 const alertErrorMock = vi.hoisted(() => vi.fn())
+const alertWaitMock = vi.hoisted(() => vi.fn())
 
 vi.mock(import('../../alert'), () => ({
     alertStore: { set: vi.fn() },
@@ -80,7 +88,7 @@ vi.mock(import('../../alert'), () => ({
     alertNormal: vi.fn(),
     alertNormalWait: vi.fn(async () => {}),
     alertMd: vi.fn(),
-    alertWait: vi.fn(),
+    alertWait: alertWaitMock,
     alertClear: vi.fn(),
     alertConfirm: vi.fn(async () => true),
 }) as unknown as typeof import('../../alert'))
@@ -98,7 +106,6 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: () => null,
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: () => false,
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: setColdStorageItemMock,
 }) as unknown as typeof import('../../process/coldstorage.svelte'))
 
@@ -106,6 +113,7 @@ vi.mock(import('../../stores.svelte'), () => ({
     DBState: { db: {} as unknown as Database },
 }) as unknown as typeof import('../../stores.svelte'))
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup } from '../backuplocal'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
@@ -152,6 +160,8 @@ beforeEach(() => {
     setColdStorageItemMock.mockClear()
     acquireExclusiveStorageMigrationLockMock.mockClear()
     alertErrorMock.mockClear()
+    alertWaitMock.mockClear()
+    resetStore2ShellBox(shell)
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)
     createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
@@ -193,11 +203,13 @@ describe('the .bin restore on a page that runs from OPFS this time', () => {
     })
 
     test('guard: the same restore on any other page goes on to write the asset', async () => {
-        injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'indexeddb')
+        useStore2RestorePage(createForageBackedStore(forageStorage as unknown as ForageLike), 'indexeddb')
 
         await restore(backupBytes())
 
         expect(alertErrorMock).not.toHaveBeenCalledWith(language.opfsReadOnlyNotice)
         expect(forageSetItemMock.mock.calls.map((call) => call[0])).toContain('assets/asset1.png')
+        expect(shell.commits).toHaveLength(1)
+        expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
     })
 })

@@ -8,10 +8,13 @@ import { restoreInProgress } from 'src/ts/drive/restoreInProgress'
 import { requestSaveNow } from 'src/ts/globalApi.svelte'
 import { isBusy } from 'src/ts/process/memory/busyActions'
 import { DBState } from 'src/ts/stores.svelte'
-import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome } from 'src/ts/themePack/install'
+import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type PackTileColours, type PackVerifyIcon } from 'src/ts/themePack/install'
 import { intakePackBytes, type IntakeRefusal, type IntakeResult } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
+import type { PackTile } from 'src/ts/themePack/manifest'
+import { checkPackIcon } from 'src/ts/themePack/packIcon'
 import { listThemePacks } from 'src/ts/themePack/packRecord'
+import { deriveTileColours } from 'src/ts/themePack/tileColours'
 import { PACK_FILE_MAX_BYTES, PACK_MAX_UNPACKED_BYTES } from 'src/ts/themePack/zipTail'
 import { readPickedFileBytes, selectSingleFileObject } from 'src/ts/util'
 
@@ -118,6 +121,12 @@ const REFUSAL_TEXTS: RefusalTexts = {
     fontLicense: (refusal) => language.themePackRefuseFontLicense(refusal.file),
     licenseWithoutFont: (refusal) => language.themePackRefuseLicenseWithoutFont(refusal.file),
     noArea: () => language.themePackRefuseNoArea,
+    iconMissing: () => language.themePackRefuseIconMissing,
+    iconType: () => language.themePackRefuseIconType,
+    iconTooLarge: (refusal) => language.themePackRefuseIconTooLarge(formatPackSize(refusal.limitBytes)),
+    iconDimensions: (refusal) => language.themePackRefuseIconDimensions(refusal.limitPx),
+    iconAnimated: () => language.themePackRefuseIconAnimated,
+    iconUnreadable: () => language.themePackRefuseIconUnreadable,
     couldNotCheck: () => language.themePackCouldNotCheck,
     sheetRefused: (refusal) => [
         language.themePackSheetRefused(refusal.sheet),
@@ -181,6 +190,33 @@ function publish(message: RowMessage | null, notify: (text: string) => void): vo
     installFlowState.outcome = message
 }
 
+/** One manifest refusal per tile field written wrongly, each field named once, in the order colors, icon. */
+function tileFieldRefusals(tile: PackTile): IntakeRefusal[] {
+    const fields: string[] = []
+    for (const item of [tile.main, tile.secondary, tile.icon]) {
+        if (item.kind === 'invalid' && !fields.includes(item.field)) {
+            fields.push(item.field)
+        }
+    }
+    return fields.map((field): IntakeRefusal => ({ code: 'manifestField', field }))
+}
+
+/** The colours to store: a colour the manifest gives wins over one the sheet declares; a field with neither is left out. */
+function tileColoursOf(tile: PackTile, chatCanonical: string): PackTileColours {
+    const given = { main: tile.main.kind === 'ok' ? tile.main.value : undefined, secondary: tile.secondary.kind === 'ok' ? tile.secondary.value : undefined }
+    const derived = given.main !== undefined && given.secondary !== undefined ? {} : deriveTileColours(chatCanonical)
+    const out: PackTileColours = {}
+    const main = given.main ?? derived.main
+    const secondary = given.secondary ?? derived.secondary
+    if (main !== undefined) {
+        out.main = main
+    }
+    if (secondary !== undefined) {
+        out.secondary = secondary
+    }
+    return out
+}
+
 /**
  * Picks a file, checks it and installs it. At most one run holds the latch; the latch is taken only after a file exists, so
  * a chooser that never answers cannot wedge it. Every question to the person comes before the first write.
@@ -217,11 +253,26 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
                     return { ok: false, refusal: { kind: 'intake', refusals: result.refusals } }
                 }
                 const pack = result.pack
+                // Before the large-pack question, so a pack that will be refused is never asked about.
+                const tileRefusals = tileFieldRefusals(pack.manifest.tile)
+                if (tileRefusals.length > 0) {
+                    return { ok: false, refusal: { kind: 'intake', refusals: tileRefusals } }
+                }
+                // The icon is judged before the derivation and before the question, and the bytes judged are the bytes stored.
+                let icon: PackVerifyIcon | undefined
+                if (pack.manifest.tile.icon.kind === 'ok') {
+                    const checked = await checkPackIcon(verifiedBytes, pack, pack.manifest.tile.icon.value)
+                    if (checked.ok === false) {
+                        return { ok: false, refusal: { kind: 'intake', refusals: [checked.refusal] } }
+                    }
+                    icon = { bytes: checked.bytes, ext: checked.ext }
+                }
+                const tile = tileColoursOf(pack.manifest.tile, pack.sheets.chat?.canonical ?? '')
                 if (pack.size.warn && !await d.confirm(language.themePackLargeConfirm(formatPackSize(pack.totalBytes)))) {
                     return { ok: false, refusal: { kind: 'declinedLarge' } }
                 }
                 skippedAreas = pack.skippedAreas
-                return { ok: true, manifest: pack.manifest }
+                return icon === undefined ? { ok: true, manifest: pack.manifest, tile } : { ok: true, manifest: pack.manifest, tile, icon }
             },
             confirmReplace: (existing) => d.confirm(language.themePackReplaceConfirm(existing.name)),
         })

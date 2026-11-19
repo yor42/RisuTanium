@@ -53,7 +53,8 @@ export const SHARED_PAIRS = [['--nexus-text', '--color-surface-sheet', 4.5, 'the
   ['--nexus-danger', '--color-surface-sheet', 4.5, 'the sheet'], ['--nexus-ring', '--color-surface-sheet', 3, 'the sheet'], ['--nexus-text', '--color-surface-toast', 4.5, 'the toast'], ['--nexus-text-muted', '--color-surface-toast', 4.5, 'the toast'], ['--nexus-ring', '--color-surface-toast', 3, 'the toast']];
 // shared floors and ceilings for the DD-235 tokens and the motion basics (a pack may tune them inside these limits; they also make the names pack-settable)
 //   --opacity-dim / --opacity-soft: chat's two dimming steps, which Banana Cocoa tunes (0.78, 0.82). Listed deliberately with a floor of 0.5 (just under Deep Nexus' 0.55) and a ceiling of 1; the other --opacity-* steps stay internal.
-export const SHARED_MINIMUMS = { '--nexus-focus-ring-width': '1px', '--nexus-focus-ring-offset': '-4px', '--nexus-touch': '32px', '--opacity-dim': 0.5, '--opacity-soft': 0.5 };
+//   chat's ring tokens (MC-2320, MC-2321, MC-2323): --focus-ring-w and --focus-ring-w-forced at most 4 px; --focus-ring-offset-inset and --focus-ring-offset-wide from -6 to 6 px, the range of --focus-ring-offset. Per-token limits only: nothing bounds a width and an offset together.
+export const SHARED_MINIMUMS = { '--nexus-focus-ring-width': '1px', '--nexus-focus-ring-offset': '-4px', '--focus-ring-offset-inset': '-6px', '--focus-ring-offset-wide': '-6px', '--nexus-touch': '32px', '--opacity-dim': 0.5, '--opacity-soft': 0.5 };
 // DD-260: ceilings for the size role tokens that had none (px; the defaults are far below). A header or a gap beyond these pushes the content off a phone; the sheet-height rule (DD-256) judges the sum.
 export const SIZE_CEILINGS = (() => { const px = (names, v) => Object.fromEntries(names.split(/\s+/).filter(Boolean).map((n) => ['--' + n, v]));
   return { ...px('header-height', '96px'), ...px('transcript-padding-top', '160px'), ...px('transcript-padding-top-strip', '220px'), ...px('transcript-padding-x transcript-padding-bottom', '64px'), ...px('message-gap message-meta-gap message-inset-start composer-gap', '64px'),
@@ -62,7 +63,7 @@ export const SIZE_CEILINGS = (() => { const px = (names, v) => Object.fromEntrie
   ...px('size-avatar size-avatar-sm size-avatar-md size-avatar-lg size-avatar-xl', '96px'), ...px('size-touch size-touch-sm size-touch-lg', '72px'),
   ...px('font-size-2xs font-size-xs font-size-sm font-size-md font-size-base font-size-lg', '24px'), ...px('font-size-xl', '28px'), ...px('font-size-2xl', '40px'),
   ...px('bubble-pad-y bubble-pad-start bubble-pad-end', '48px'), ...px('radius-bubble radius-bubble-tail', '32px'), ...px('stroke-medium stroke-bold stroke-heavy stroke-xheavy', '8px') }; })();
-export const SHARED_MAXIMUMS = { ...SIZE_CEILINGS, '--opacity-dim': 1, '--opacity-soft': 1, '--nexus-focus-ring-width': '8px', '--nexus-focus-ring-offset': '8px', '--nexus-touch': '72px', '--nexus-blur': '40px', '--nexus-duration-press': '600ms', '--nexus-duration-enter': '600ms', '--nexus-duration-exit': '600ms',
+export const SHARED_MAXIMUMS = { ...SIZE_CEILINGS, '--opacity-dim': 1, '--opacity-soft': 1, '--nexus-focus-ring-width': '8px', '--nexus-focus-ring-offset': '8px', '--focus-ring-w': '4px', '--focus-ring-w-forced': '4px', '--focus-ring-offset-inset': '6px', '--focus-ring-offset-wide': '6px', '--nexus-touch': '72px', '--nexus-blur': '40px', '--nexus-duration-press': '600ms', '--nexus-duration-enter': '600ms', '--nexus-duration-exit': '600ms',
   '--nexus-duration-lowpower-cap': '600ms', '--nexus-scrim-duration': '600ms', '--nexus-dialog-enter-distance': '48px', '--nexus-sheet-enter-distance': '48px' };
 // chat's own role tokens (DD-148 role block, DD-153 decoration hooks, the bubble hooks of DD-018/Banana Cocoa, the named sizes) and its non-ladder scales. The numbered ladder (--space-N, --size-N, --offset-N, --size-rel-N, --radius-N, --leading-N) is NOT listed.
 export const CHAT_SETTABLE = [/^--(control-gap|control-padding-x|header-height|transcript-padding-(top|top-strip|x|bottom)|message-(gap|meta-gap|name-row-height|inset-start)|composer-(gap|padding-x|padding-y|field-padding-x|field-padding-y|field-height)|sheet-padding-(x|bottom)|item-gap|item-padding-x|row-padding-(start|end)|status-row-padding-start)$/,
@@ -101,16 +102,10 @@ CHAT_REGISTRY.app = APP; CHAT_REGISTRY.reach = new Set(REACH_CHAT); CHAT_REGISTR
 const px = (n, u) => { n = parseFloat(n); const f = { px: 1, rem: 16, em: 16, vw: 10, vh: 8, vmin: 8, vmax: 10, pt: 1.33, cm: 37.8, mm: 3.78, in: 96, ch: 8, ex: 8, '%': 0 }[u]; return f === undefined ? 0 : n * f; };
 const maxLen = (v, T) => { const r = resolve(v, T); let m = 0; for (const x of r.matchAll(/(-?\d*\.?\d+)(px|rem|em|vw|vh|vmin|vmax|pt|cm|mm|in|ch|ex)\b/g)) m = Math.max(m, Math.abs(px(x[1], x[2]))); return m; };
 const maxPct = (v, T) => { let m = 0; for (const x of resolve(v, T).matchAll(/(-?\d*\.?\d+)%/g)) m = Math.max(m, Math.abs(parseFloat(x[1]))); return m; };
-function parseColor(s) {
-  s = s.trim().toLowerCase(); if (s === 'transparent') return [0, 0, 0, 0];
-  let m = /^#([0-9a-f]{3,8})$/.exec(s); if (m) { let h = m[1]; if (h.length <= 4) h = [...h].map((c) => c + c).join(''); const n = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); return [...n, h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]; }
-  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s); if (m) { let a = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]); return [+m[1], +m[2], +m[3], a]; }
-  m = /^hsla?\(/.test(s) ? null : null; return null;
-}
 const lum = (c) => { const f = c.slice(0, 3).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]; };
 const over = (f, b) => [0, 1, 2].map((i) => f[i] * f[3] + b[i] * (1 - f[3])).concat([1]);
 const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-const col = (T, name, onto) => { const c = parseColor(resolve(T.get(name) || '', T)); if (!c) return null; return c[3] < 1 ? over(c, onto || [0, 0, 0, 1]) : c; };
+const col = (T, name, onto) => { const c = parseConcrete(resolve(T.get(name) || '', T)); if (!c) return null; return c[3] < 1 ? over(c, onto || [0, 0, 0, 1]) : c; };
 
 // ---- what a pack's tokens do to protected text and controls (DD-155 N8; thresholds are a stand-in, DD-151 keeps the app floor off)
 export function tokenCheck(css, T0 = APP) {
@@ -174,7 +169,7 @@ export function lintSelector(sel, reg) { const a = analyse(sel, effective(reg));
 const GLOBAL_PROPS = /^(z-index|animation(-[\w-]+)?|transition(-[\w-]+)?|will-change|filter|backdrop-filter|mix-blend-mode|transform(-[\w-]+)?|translate|scale|rotate|perspective|zoom|content|contain(-[\w-]+)?|container(-[\w-]+)?|direction|unicode-bidi|writing-mode|isolation|all|offset(-[\w-]+)?|clip-path|mask(-[\w-]+)?|-webkit-mask(-[\w-]+)?)$/;
 function colourUnsafe(value, T) {
   const v = value.replace(/\s*!important\s*$/, '').trim(); if (/^(inherit|initial|unset|currentcolor)$/.test(v)) return '';
-  const r = resolve(v, T); const c = parseColor(r); if (!c) return /^[a-z]+$/.test(r) && r !== 'transparent' ? '' : `a colour that cannot be checked (${r.slice(0, 30)})`;
+  const r = resolve(v, T); const c = parseConcrete(r); if (!c) return /^[a-z]+$/.test(r) && r !== 'transparent' ? '' : `a colour that cannot be checked (${r.slice(0, 30)})`;
   if (c[3] < 0.9) return 'a transparent or translucent text colour';
   const sheet = col(T, '--color-surface-sheet'), canvas = col(T, '--nexus-canvas'), bubble = col(T, '--color-bubble-char', canvas || [0, 0, 0, 1]) || canvas;
   for (const [bg, n] of [[sheet, 'the sheet'], [bubble, 'the bubble']]) if (bg && cr(c, bg) < 3) return `a text colour that is ${cr(c, bg).toFixed(2)}:1 on ${n}`;
@@ -184,7 +179,7 @@ function reachAllowed(prop, value, T, ctl, block) {
   const v = value.replace(/\s*!important\s*$/, '').trim();
   if (prop === 'color') {
     // a control that paints its own fill (a yellow Send with dark text) is judged as that pair: opaque fill, 4.5:1
-    if (ctl && block) { const bgv = block.get('background-color') || block.get('background'); const f = bgv && parseColor(resolve(bgv.replace(/\s*!important\s*$/, '').trim(), T)); const c = parseColor(resolve(v, T)); if (f && c && f[3] >= 0.9 && c[3] >= 0.9 && cr(c, f) >= 4.5) return ''; }
+    if (ctl && block) { const bgv = block.get('background-color') || block.get('background'); const f = bgv && parseConcrete(resolve(bgv.replace(/\s*!important\s*$/, '').trim(), T)); const c = parseConcrete(resolve(v, T)); if (f && c && f[3] >= 0.9 && c[3] >= 0.9 && cr(c, f) >= 4.5) return ''; }
     return colourUnsafe(v, T);
   }
   if (/^(background|background-color|border(-(top|right|bottom|left))?(-color|-style)?|border-image|outline|outline-color|outline-style|box-shadow|text-shadow)$/.test(prop)) return /url\(/.test(v) ? 'an image' : '';
@@ -213,7 +208,7 @@ function globalBan(prop, value, T) {
 }
 
 // ---- the value space (DS-075, lifted from settings/checks/th/packlint-settings.mjs): bounds on role tokens, contrast on the surfaces text sits on, a short declaration list for the safe tier,
-// named colours and gradients resolved. It adds to the rules above and replaces none of them; its own helpers (resolve, lum, cr, parseColour...) stay inside this factory.
+// named colours and gradients resolved. It adds to the rules above and replaces none of them; its own helpers (resolve, lum, cr...) stay inside this factory; its colour reader is the shared parseConcrete.
 const VALUES = (() => {
 function resolve(v, T, depth = 0) { if (depth > 14) return v; return v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g, (m, n, fb) => (T.has(n) ? resolve(T.get(n), T, depth + 1) : fb !== undefined ? resolve(fb, T, depth + 1) : m)); }
 const splitTop = (s) => { const out = []; let cur = '', d = 0; for (const ch of s.trim()) { if (ch === '(') d++; if (ch === ')') d--; if (d === 0 && /\s/.test(ch)) { if (cur) out.push(cur); cur = ''; } else cur += ch; } if (cur) out.push(cur); return out; };
@@ -226,23 +221,13 @@ function num1(s) {   // one value: a length in px, a duration in ms or a plain n
 const nums = (v, T) => splitTop(resolve(v, T)).map(num1);
 
 // ---- colours
-const NAMED = Object.fromEntries('aliceblue:f0f8ff antiquewhite:faebd7 aqua:00ffff aquamarine:7fffd4 azure:f0ffff beige:f5f5dc bisque:ffe4c4 black:000000 blanchedalmond:ffebcd blue:0000ff blueviolet:8a2be2 brown:a52a2a burlywood:deb887 cadetblue:5f9ea0 chartreuse:7fff00 chocolate:d2691e coral:ff7f50 cornflowerblue:6495ed cornsilk:fff8dc crimson:dc143c cyan:00ffff darkblue:00008b darkcyan:008b8b darkgoldenrod:b8860b darkgray:a9a9a9 darkgreen:006400 darkgrey:a9a9a9 darkkhaki:bdb76b darkmagenta:8b008b darkolivegreen:556b2f darkorange:ff8c00 darkorchid:9932cc darkred:8b0000 darksalmon:e9967a darkseagreen:8fbc8f darkslateblue:483d8b darkslategray:2f4f4f darkslategrey:2f4f4f darkturquoise:00ced1 darkviolet:9400d3 deeppink:ff1493 deepskyblue:00bfff dimgray:696969 dimgrey:696969 dodgerblue:1e90ff firebrick:b22222 floralwhite:fffaf0 forestgreen:228b22 fuchsia:ff00ff gainsboro:dcdcdc ghostwhite:f8f8ff gold:ffd700 goldenrod:daa520 gray:808080 green:008000 greenyellow:adff2f grey:808080 honeydew:f0fff0 hotpink:ff69b4 indianred:cd5c5c indigo:4b0082 ivory:fffff0 khaki:f0e68c lavender:e6e6fa lavenderblush:fff0f5 lawngreen:7cfc00 lemonchiffon:fffacd lightblue:add8e6 lightcoral:f08080 lightcyan:e0ffff lightgoldenrodyellow:fafad2 lightgray:d3d3d3 lightgreen:90ee90 lightgrey:d3d3d3 lightpink:ffb6c1 lightsalmon:ffa07a lightseagreen:20b2aa lightskyblue:87cefa lightslategray:778899 lightslategrey:778899 lightsteelblue:b0c4de lightyellow:ffffe0 lime:00ff00 limegreen:32cd32 linen:faf0e6 magenta:ff00ff maroon:800000 mediumaquamarine:66cdaa mediumblue:0000cd mediumorchid:ba55d3 mediumpurple:9370db mediumseagreen:3cb371 mediumslateblue:7b68ee mediumspringgreen:00fa9a mediumturquoise:48d1cc mediumvioletred:c71585 midnightblue:191970 mintcream:f5fffa mistyrose:ffe4e1 moccasin:ffe4b5 navajowhite:ffdead navy:000080 oldlace:fdf5e6 olive:808000 olivedrab:6b8e23 orange:ffa500 orangered:ff4500 orchid:da70d6 palegoldenrod:eee8aa palegreen:98fb98 paleturquoise:afeeee palevioletred:db7093 papayawhip:ffefd5 peachpuff:ffdab9 peru:cd853f pink:ffc0cb plum:dda0dd powderblue:b0e0e6 purple:800080 rebeccapurple:663399 red:ff0000 rosybrown:bc8f8f royalblue:4169e1 saddlebrown:8b4513 salmon:fa8072 sandybrown:f4a460 seagreen:2e8b57 seashell:fff5ee sienna:a0522d silver:c0c0c0 skyblue:87ceeb slateblue:6a5acd slategray:708090 slategrey:708090 snow:fffafa springgreen:00ff7f steelblue:4682b4 tan:d2b48c teal:008080 thistle:d8bfd8 tomato:ff6347 turquoise:40e0d0 violet:ee82ee wheat:f5deb3 white:ffffff whitesmoke:f5f5f5 yellow:ffff00 yellowgreen:9acd32'.split(' ').map((x) => x.split(':')));
-function hsl2rgb(h, s, l) { h = ((h % 360) + 360) % 360; s /= 100; l /= 100; const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return [f(0) * 255, f(8) * 255, f(4) * 255]; }
-function parseColour(s) {   // -> [r, g, b, a] or null
-  s = s.trim().toLowerCase(); if (s === 'transparent') return [0, 0, 0, 0];
-  let m = /^#([0-9a-f]{3,8})$/.exec(s); if (m) { let h = m[1]; if (h.length <= 4) h = [...h].map((c) => c + c).join(''); if (h.length !== 6 && h.length !== 8) return null; return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat([h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]); }
-  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s); if (m) { const a = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]); return [+m[1], +m[2], +m[3], a]; }
-  m = /^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s); if (m) { const a = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]); return [...hsl2rgb(+m[1], +m[2], +m[3]), a]; }
-  if (NAMED[s]) return parseColour('#' + NAMED[s]);
-  return null;
-}
 const lum = (c) => { const f = c.slice(0, 3).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]; };
 const flat = (f, b) => [0, 1, 2].map((i) => f[i] * f[3] + b[i] * (1 - f[3])).concat([1]);
 const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-const colOf = (T, name, onto) => { const c = parseColour(resolve(T.get(name) || '', T)); if (!c) return null; return c[3] < 1 ? flat(c, onto || [0, 0, 0, 1]) : c; };
+const colOf = (T, name, onto) => { const c = parseConcrete(resolve(T.get(name) || '', T)); if (!c) return null; return c[3] < 1 ? flat(c, onto || [0, 0, 0, 1]) : c; };
 const COLOUR_RE = /#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g;
-function coloursIn(v, T) {   // every colour a value mentions (gradient stops included); null entries are words that are not colours (to, linear-gradient, 50%) and are skipped
-  const r = resolve(v, T).replace(/!important/, ''); const out = []; for (const m of r.matchAll(COLOUR_RE)) { const w = m[0]; if (/^(to|top|left|right|bottom|center|none|auto|solid|dashed|dotted|double|inherit|initial|unset|currentcolor|repeat|no|space|round|fixed|scroll|border|padding|content|box|at|in|circle|ellipse|closest|farthest|side|corner|linear|radial|conic|gradient|deg|turn|rad|px|em|rem|hairline|medium|thin|thick|inset|outline|groove|ridge|hidden|var|calc|min|max|clamp|url)$/.test(w) || /gradient$/.test(w)) continue; const c = parseColour(w); if (c) out.push(c); else if (/^[a-z]+$/.test(w)) out.push(undefined); } return out; }
+function coloursIn(v, T) {   // every colour a value mentions (gradient stops included); null entries are words that are not colours (to, linear-gradient, 50%) and are skipped. The scan splits a value into words, so a color-mix() in a declaration is never read as one colour: its words (color, mix, srgb) are unknown and the value is refused (mirrors engine.ts coloursIn)
+  const r = resolve(v, T).replace(/!important/, ''); const out = []; for (const m of r.matchAll(COLOUR_RE)) { const w = m[0]; if (/^(to|top|left|right|bottom|center|none|auto|solid|dashed|dotted|double|inherit|initial|unset|currentcolor|repeat|no|space|round|fixed|scroll|border|padding|content|box|at|in|circle|ellipse|closest|farthest|side|corner|linear|radial|conic|gradient|deg|turn|rad|px|em|rem|hairline|medium|thin|thick|inset|outline|groove|ridge|hidden|var|calc|min|max|clamp|url)$/.test(w) || /gradient$/.test(w)) continue; const c = parseConcrete(w); if (c) out.push(c); else if (/^[a-z]+$/.test(w)) out.push(undefined); } return out; }
 
 // ---- 2. role-token bounds (px / ms / plain number); chat's 48 px limits are reused for padding and gaps
 const BOUNDS = [
@@ -287,13 +272,13 @@ function tokenBounds(T, label, reg) {
   const tw = T.get('--settings-section-title-width'); if (tw !== undefined && tw !== reg.app.get('--settings-section-title-width') && !/^(auto|fit-content|max-content|100%)$/.test(resolve(tw, T).trim()) && !((num1(resolve(tw, T)) ?? 0) >= 120)) bad('--settings-section-title-width', 'a section title narrower than 120 px');
   // contrast on the surfaces Settings text sits on (chat checks the sheet and the bubble)
   const canvas = colOf(T, '--nexus-canvas'), sheet = colOf(T, '--color-surface-sheet', canvas); if (!canvas) return errs;
-  const glass = (n) => { const c = parseColour(resolve(T.get(n) || '', T)); return c ? flat(c, canvas) : null; }; const surf = glass('--nexus-surface'), raised = glass('--nexus-surface-raised'), toast = colOf(T, '--color-surface-toast', canvas);
+  const glass = (n) => { const c = parseConcrete(resolve(T.get(n) || '', T)); return c ? flat(c, canvas) : null; }; const surf = glass('--nexus-surface'), raised = glass('--nexus-surface-raised'), toast = colOf(T, '--color-surface-toast', canvas);
   const SURF = { canvas, sheet, glass: surf, raised, toast };
   for (const [n, key, on, need] of reg.surfaces) {
     const bg = SURF[key];
     if (!bg) continue; const c = colOf(T, n, bg); if (!c) { if (T.has(n) && /^(--nexus-ring)$/.test(n)) bad(n, 'a focus ring colour that cannot be checked'); continue; } if (cr(c, bg) < need) bad(n, `${n.replace('--nexus-', '')} would be ${cr(c, bg).toFixed(2)}:1 on ${on} (needs ${need}:1)`);
   }
-  const st = parseColour(resolve(T.get('--selection-text') || 'currentcolor', T)); if (st && st[3] < 0.9) bad('--selection-text', 'selected text would be transparent');
+  const st = parseConcrete(resolve(T.get('--selection-text') || 'currentcolor', T)); if (st && st[3] < 0.9) bad('--selection-text', 'selected text would be transparent');
   return errs;
 }
 
@@ -324,7 +309,7 @@ function reachExtra(prop, value, T, block, ctl) {
   if (cs.some((c) => c === undefined)) return `a colour word that is not a colour (${v.slice(0, 24)}) cannot be checked`;
   const own = block.get(prop === 'color' ? 'background' : 'color') || (prop === 'color' ? block.get('background-color') : undefined);
   const canvas = colOf(T, '--nexus-canvas'); if (!canvas) return '';
-  const sheet = colOf(T, '--color-surface-sheet', canvas); const g = (n) => { const c = parseColour(resolve(T.get('--nexus-surface') || '', T)); return c ? flat(c, canvas) : canvas; };
+  const sheet = colOf(T, '--color-surface-sheet', canvas); const g = (n) => { const c = parseConcrete(resolve(T.get('--nexus-surface') || '', T)); return c ? flat(c, canvas) : canvas; };
   const surfaces = [canvas, sheet, g()].filter(Boolean); const text = colOf(T, '--nexus-text', canvas);
   for (let c of cs) {
     if (prop === 'color') {

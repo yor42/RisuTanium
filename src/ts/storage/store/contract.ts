@@ -194,8 +194,12 @@ export interface ByteStore {
      * `list`, `has` and `delete` treat the key like any other. A File is stored as
      * a Blob over the same bytes. An error thrown while a slice of the Blob is
      * read reaches the caller as it is, and the write is abandoned and not re-sent.
+     * `onProgress`, when given, may be called with `doneBytes`, the bytes handed to the
+     * store so far, and `totalBytes`, the Blob's size, in increasing order and only
+     * before the write settles; a store may never call it. An error the callback
+     * throws is ignored and never ends the write.
      */
-    writeBlob?(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult>
+    writeBlob?(key: string, blob: Blob, condition: StoreCondition, onProgress?: (doneBytes: number, totalBytes: number) => void): Promise<WriteResult>
 
     /**
      * The Blob a `writeBlob` stored under `key`, still backed by the store and
@@ -283,6 +287,14 @@ export interface ByteStore {
      * Tauri only: every other adapter leaves it out.
      */
     pageGate?: PageGateOperations
+
+    /**
+     * Reads several store2 unit files in one call. Optional and Tauri only, like `pageGate`. It answers only the keys whose
+     * whole, current bytes it read, each with a buffer of its own; every key it leaves out (absent, unreadable, too large,
+     * refused, or never asked) is for the caller to read with `read`, which alone decides `null` or a failure. It never
+     * rejects. `null` means the batch was not taken (a transport, a hidden page or a setting that does not batch).
+     */
+    readUnitBatch?(keys: readonly string[]): Promise<Map<string, Uint8Array> | null>
 }
 
 /**

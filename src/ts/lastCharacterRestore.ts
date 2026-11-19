@@ -10,6 +10,8 @@ import { busyKinds } from './process/memory/busyActions'
 import { changeCharGeneration, supersedeChangeChar, type ChangeCharOutcome } from './characters'
 import { changeCharOrAlert } from './characterPick'
 import { readLastChaId, recordDecision, resolveRestoreIndex, writeLastChaId } from './lastCharacterMemory'
+import { noticeShowing } from './alertPrompts'
+import { taskShown } from './alertTask.svelte'
 
 /**
  * Opens the character this device was last left in, once, at the end of boot, and keeps the memory of
@@ -51,6 +53,13 @@ export interface RestoreDeps {
     restoreInProgress(): boolean
     busyKinds(): readonly string[]
     alertType(): string
+    /**
+     * True while a task card is in the slot, running or waiting for its answer. A task is not an alert, so `alertType`
+     * reads `none` under it, and an import result waiting for OK holds no busy entry.
+     */
+    taskShown(): boolean
+    /** True while the alert on screen is a boot notice from the notice queue, which never takes the app off Home. */
+    bootNoticeShowing(): boolean
     realmLinkInUrl(): boolean
     pick(index: number, options: RestorePickOptions): Promise<ChangeCharOutcome | 'error'>
     generation(): number
@@ -58,7 +67,11 @@ export interface RestoreDeps {
     write(chaId: string | null): void
 }
 
-/** The alert types a restore may start under: none, or a toast that sits beside the screen. */
+/**
+ * The alert types a restore may start under: none, or a toast that sits beside the screen. A boot notice from the
+ * notice queue is quiet too (`bootNoticeShowing`): it is informational and stays until its own OK, so waiting for
+ * it would hold the restore behind a notice that does not block the boot.
+ */
 const QUIET_ALERT_TYPES: ReadonlySet<string> = new Set(['none', 'toast'])
 
 /** The sources are read when used, so a harness that mocks only part of a module is untouched until a restore is due. */
@@ -86,6 +99,8 @@ function productionDeps(): RestoreDeps {
         restoreInProgress: () => restoreInProgress(),
         busyKinds: () => busyKinds(),
         alertType: () => get(alertStore).type,
+        taskShown: () => taskShown(),
+        bootNoticeShowing: () => noticeShowing(),
         realmLinkInUrl: () => new URLSearchParams(location.search).has('realm'),
         pick: (index, options) => changeCharOrAlert('boot.restoreLast', index, options),
         generation: () => changeCharGeneration(),
@@ -120,7 +135,8 @@ function guardHolds(deps: RestoreDeps, launch?: RestoreLaunch): boolean {
         && get(deps.playground) === 0
         && !deps.restoreInProgress()
         && !deps.busyKinds().some((kind) => kind === 'import' || kind === 'backupLoad')
-        && QUIET_ALERT_TYPES.has(deps.alertType())
+        && !deps.taskShown()
+        && (QUIET_ALERT_TYPES.has(deps.alertType()) || deps.bootNoticeShowing())
         && !deps.realmLinkInUrl()
         && !get(deps.utilityOpen)
         && !get(deps.realmStore)

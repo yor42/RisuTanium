@@ -50,9 +50,14 @@ foreach ($s in @($emu) + $pg) {
     Test-Allowed ($s + ' start-server') $s @('start-server')
     Test-Refused ($s + ' get-state with an argument') $s @('get-state', 'x') '97'
     Test-Refused ($s + ' start-server with an argument') $s @('start-server', 'x') '97'
-    Test-Refused ($s + ' kill-server') $s @('kill-server') '97'
-    Test-Refused ($s + ' wait-for-device') $s @('wait-for-device') '97'
     Test-Refused ($s + ' get-serialno') $s @('get-serialno') '97'
+}
+# The Note 9 profile (r3) refuses kill-server as danger zone DZ-10 (89) and allows wait-for-device; emulator-5580 keeps both refused (97).
+Test-Refused 'emulator-5580 kill-server' $emu @('kill-server') '97'
+Test-Refused 'emulator-5580 wait-for-device' $emu @('wait-for-device') '97'
+foreach ($s in $pg) {
+    Test-Refused ($s + ' kill-server is DZ-10') $s @('kill-server') '89'
+    Test-Allowed ($s + ' wait-for-device is allowed on the Note 9 profile') $s @('wait-for-device')
 }
 # A restricted serial keeps both verbs refused.
 foreach ($s in @('R5CT1234ABC', 'R58M12345AB')) {

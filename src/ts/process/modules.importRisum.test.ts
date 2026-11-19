@@ -93,9 +93,19 @@ vi.mock(import('src/ts/characterCards'), () => ({
     importCharacterProcess: vi.fn(),
 }) as unknown as typeof import('src/ts/characterCards'))
 
-import { importModule } from 'src/ts/process/modules'
+import { importModule as importModuleOnCard } from 'src/ts/process/modules'
 import { language } from 'src/lang'
 import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
+
+/** The card the last `importModule` ended on, or null when the import closed without one. */
+let lastCard: ImportCard = null
+
+/** Runs the import, answers its result card with OK and keeps the card in `lastCard`. */
+async function importModule() {
+    lastCard = await answerImportCard(importModuleOnCard)
+}
 
 /** magic, version, length-prefixed main block, then the given tail (asset marks, then 0 for the end) */
 function risum(opts: { magic?: number, version?: number, type?: string, assets?: number, tail?: number[] } = {}): Uint8Array {
@@ -125,6 +135,7 @@ function risum(opts: { magic?: number, version?: number, type?: string, assets?:
 beforeEach(() => {
     h.log = []
     h.last = 'none'
+    lastCard = null
     h.modules = []
     h.saveFails = false
     h.busyAtSave = []
@@ -134,6 +145,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
@@ -162,8 +174,8 @@ describe('importModule with a .risum file', () => {
         h.file = { name: 'm.risum', data: risum(opts) }
         await importModule()
         expect(h.modules).toEqual([])
-        expect(h.log).toEqual(['error:' + language.errors.noData])
-        expect(h.last).toBe('error:' + language.errors.noData)
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe(language.errors.noData)
     })
 
     test('assets that cannot be saved show the real reason as the last message and add nothing', async () => {
@@ -171,8 +183,8 @@ describe('importModule with a .risum file', () => {
         h.saveFails = true
         await importModule()
         expect(h.modules).toEqual([])
-        expect(h.last).toBe('error:Failed to save 2 assets')
-        expect(h.log).toEqual(['error:Failed to save 2 assets'])
+        expect(lastCard?.failure?.detail).toBe('Failed to save 2 assets')
+        expect(h.log).toEqual([])
     })
 
     test('the import is registered as busy during the asset saves and its entry ends after, also when the module is refused', async () => {
@@ -198,7 +210,7 @@ describe('importModule with a .risum file', () => {
         h.file = { name: 'm.risum', data: new Uint8Array([111]) }
         await importModule()
         expect(h.modules).toEqual([])
-        expect(h.log).toHaveLength(1)
-        expect(h.last.startsWith('error:')).toBe(true)
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBeTruthy()
     })
 })

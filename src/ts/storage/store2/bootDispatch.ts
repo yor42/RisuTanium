@@ -1,5 +1,4 @@
 import type { Database } from '../database.svelte'
-import { disablePageBlockOwner } from '../pageBlockOwner'
 import { setPageStorageMode } from '../pageStorageMode'
 import type { AppStoreKind } from '../store/appStore'
 import type { CompareToken, Store2Backend, UnitWrite } from './backend/types'
@@ -38,7 +37,7 @@ import { CommitKeyRecheckError, readTreeBytes } from './treeBytes'
  * the port's business, not the dispatch's.
  *
  * Invariants:
- *  - The dispatch never writes the legacy store, never prunes a backup and never opens a legacy block owner or archive
+ *  - The dispatch never writes the legacy store, never prunes a backup and never opens an archive
  *    pass; a page it cannot open as store2 either stops or hands the legacy profile back read-only.
  *  - It holds exactly one current session. Opening the next (a re-classification) drops the earlier one first, because
  *    the native gate makes an earlier backend stale the moment a later one registers. Activation, the recovery request
@@ -234,8 +233,6 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
     }
 
     function legacyReadOnly(reason: Store2LegacyReadOnlyReason): Store2BootResult {
-        // No later caller may build a block owner: the legacy profile is only read.
-        disablePageBlockOwner()
         return { kind: 'legacy-readonly', reason, notices: [...notices] }
     }
 
@@ -345,12 +342,11 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         }
         if (fallback === null && database.archiveCharacters === undefined) {
             // The first boot where the setting is absent turns archiving on and says so once, whether or not any character became a stub (MC-149 3);
-            // an explicit false stays false and is not told. A boot that opened over damaged leaves is not a complete reading, as the block store's
-            // pass does not run on a decode that was not strict, so it neither writes the setting nor tells. The next pass saves the setting.
+            // an explicit false stays false and is not told. A boot that opened over damaged leaves is not a complete reading,
+            // so it neither writes the setting nor tells. The next pass saves the setting.
             database.archiveCharacters = true
             raise({ name: 'archive-enabled' })
         }
-        disablePageBlockOwner()
         // One context object serves the residency and the save loop, so the encoding a verdict is judged by is the one the
         // next pass compares with. The residency is registered before the loop is activated and before the database is
         // handed back, and neither the encoder, the lists nor the environment are replaced afterwards.

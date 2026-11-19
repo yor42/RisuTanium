@@ -7,6 +7,7 @@
     import { createCompositionGate, fieldErrorKeyOf, type NewKind } from '../../ts/studio/toggleBuilderModel'
     import { lineById, type DefLine, type LineId } from '../../ts/studio/toggleDef'
     import { canonicalLine, draftOf, rewriteLoss, type RowDraft } from '../../ts/studio/toggleDefEdit'
+    import StudioToggleCarryBanner from './StudioToggleCarryBanner.svelte'
 
     // The editor of one row, or of the new row that is not written yet. Text fields write through as the author
     // types, except while an IME composes: the composed value is then written once at the end of the composition. A
@@ -21,9 +22,16 @@
             remove(id: LineId): void
             closeStep(): void
         }
+        // Given when the editor is a page of its own: the saved-values banner then sits inside it.
+        carry?: {
+            error: string
+            actions: { carry(): void, answer(): void, undo(): void }
+        }
+        // False while the row was opened from the preview sheet: focus then stays where the author is. Read once at mount.
+        focusOnOpen?: boolean
     }
 
-    let { builder, editable, id, actions }: Props = $props()
+    let { builder, editable, id, actions, carry, focusOnOpen = true }: Props = $props()
 
     const FIELD_CLASS = 'min-h-11 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor'
     const leafKinds = ['check', 'select', 'text', 'textarea', 'divider', 'caption'] as const
@@ -79,7 +87,7 @@
     onMount(() => {
         const stop = registerStudioField(() => flushAll())
         // Opening a row, or naming a new one, puts the caret at the end of its first text field.
-        const first = root?.querySelector<HTMLInputElement>('[data-part="studio-toggle-pending-name"], [data-part="studio-toggle-label"], [data-part="studio-toggle-text"], [data-part="studio-toggle-raw"]')
+        const first = focusOnOpen ? root?.querySelector<HTMLInputElement>('[data-part="studio-toggle-pending-name"], [data-part="studio-toggle-label"], [data-part="studio-toggle-text"], [data-part="studio-toggle-raw"]') : null
         if (first && !first.disabled) {
             first.focus()
             first.setSelectionRange(first.value.length, first.value.length)
@@ -156,6 +164,9 @@
 
 <section bind:this={root} data-part="studio-toggle-editor" class="flex flex-col gap-3 rounded-md border border-darkborderc p-3">
     <h3 class="font-bold">{language.studioTgEditorTitle}</h3>
+    {#if carry}
+        <StudioToggleCarryBanner {builder} {editable} error={carry.error} actions={carry.actions} />
+    {/if}
     {#if pendingKind !== null}
         <label class="flex flex-col gap-1">
             <span class="text-sm text-textcolor2">{pendingKind === 'caption' ? language.studioTgNoteText : language.studioTgName}</span>

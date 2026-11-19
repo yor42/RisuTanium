@@ -110,7 +110,6 @@ beforeEach(() => {
         collectColdStorageBackupPayloads: vi.fn(async () => ({ payloads: [], missingKeys: [], invalidKeys: [] })),
         confirmIncompleteColdStorageOperation: vi.fn(async () => true),
         isColdStorageBackupData: vi.fn(() => false),
-        listColdDataKeys: vi.fn(async () => []),
     }))
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })

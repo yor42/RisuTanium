@@ -351,21 +351,21 @@ describe('the attachment size limit', () => {
         expect(inlayAttachmentLimit()).toBe(NODE_BODY_LIMIT_BYTES)
     })
 
-    test('on Android a video stays at 200 MiB while audio and other platforms follow the store (MC-536)', async () => {
+    test('on Android a video follows the 1 GiB bound like audio and image (reproducer: 200 MiB before)', async () => {
         useStoreKind('tauri')
         h.os = 'android'
-        expect(inlayAttachmentLimit('video')).toBe(200 * MIB)
+        expect(inlayAttachmentLimit('video')).toBe(GIB)
         expect(inlayAttachmentLimit('audio')).toBe(GIB)
         expect(inlayAttachmentLimit('image')).toBe(GIB)
         expect(inlayAttachmentLimit()).toBe(GIB)
-        const over = await postInlayAsset({ name: 'clip.mp4', data: { byteLength: 200 * MIB + 1 } as unknown as Uint8Array })
-        expect(over).toEqual({ refused: 'too-large', name: 'clip.mp4', limit: 200 * MIB })
+        const over = await postInlayAsset({ name: 'clip.mp4', data: { byteLength: GIB + 1 } as unknown as Uint8Array })
+        expect(over).toEqual({ refused: 'too-large', name: 'clip.mp4', limit: GIB })
         expect(appStore.writes).toEqual([])
         h.os = 'windows'
         expect(inlayAttachmentLimit('video')).toBe(GIB)
     })
 
-    test('a store smaller than 200 MiB keeps a video under it on Android', () => {
+    test('a store smaller than 1 GiB still bounds a video on Android (guard)', () => {
         useStoreKind('node', false)
         h.os = 'android'
         expect(inlayAttachmentLimit('video')).toBe(NODE_BODY_LIMIT_BYTES)
@@ -437,10 +437,13 @@ describe('the attachment size limit', () => {
         const createObjectURL = URL.createObjectURL
         URL.createObjectURL = () => 'blob:image'
         try {
-            const result = await postInlayAsset({ name: 'a.png', data: new Uint8Array(1000) })
+            const reports: unknown[] = []
+            const result = await postInlayAsset({ name: 'a.png', data: new Uint8Array(1000) }, (progress) => { reports.push(progress) })
             expect(result).toBe('fixed-uuid')
             expect(isInlayRefusal(result)).toBe(false)
             expect(await getInlayAsset('fixed-uuid')).toMatchObject({ type: 'image' })
+            // The image branch makes no progress report: the re-encoded PNG is written in one short step.
+            expect(reports).toEqual([])
         } finally {
             inlayLimits.attachmentBytes = saved
             URL.createObjectURL = createObjectURL

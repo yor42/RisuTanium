@@ -105,7 +105,7 @@ vi.mock('../../lang', async () => {
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
 import { classicLinks } from '../../ts/studio/classicLinks.svelte'
 import { resetStudioHistoryAccessorForTests } from '../../ts/studio/history/studioHistoryService.svelte'
-import { openStudio, resetStudioScreenForTests, selectStudioNode, setStudioRestoreSheetOpen } from '../../ts/studio/studioScreen.svelte'
+import { openStudio, resetStudioScreenForTests, selectStudioNode, setStudioRestoreSheetOpen, setStudioSelection } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import StudioScreen from './StudioScreen.svelte'
@@ -410,5 +410,102 @@ describe('3l a whole visit writes nothing', () => {
         expect(chat).toBeDefined()
         if (chat) Object.assign(chat, { localLore: [] })
         expect(snapshotOf(db.db)).not.toEqual(before)
+    })
+})
+
+// The sheet reads the chat panel's sources. The panel's own import chain reaches the avatar thumbnail queue, which reads
+// an image reader from the app's file module at load, and the parser, whose asset-cache effect reads the run's module
+// ids at load; this file's doubles provide neither and the visit runs no chat. The panel's source list is reproduced
+// here from the same two fields it reads (the active prompt and the bound character).
+vi.mock('../../ts/media/avatarThumb', () => ({}))
+vi.mock('../ChatShell/TogglesPanel.svelte', () => ({
+    toggleSourcesOf: (owner: { chaId: string, name: string, customModuleToggle?: string }) => [
+        { id: 'prompt', kind: 'prompt', name: 'prompt', detail: '', text: db.db.customPromptTemplateToggle },
+        { id: `character:${owner.chaId}`, kind: 'character', name: 'character', detail: owner.name, text: owner.customModuleToggle },
+    ],
+}))
+vi.mock('../../ts/process/modules', () => ({ getModules: () => [], getModuleAssets: () => [] }))
+
+describe('PU-3 the toggle preview and the combined toggles write nothing', () => {
+    // Every kind sits in the active preset, whose toggles the builder does not draw as a list; the character's own text stays one check row.
+    const ALL_KINDS = 'pcheck=Check=check\nmood=Mood=select=calm,tense\nname=Name=text\nnotes=Notes=textarea\ng=Group=group\ninner=Inner=check\ng_end=x=groupEnd'
+    const SHEET_KEYS = {
+        studioTgPreviewKeyTip: (key: string) => `Key: ${key}`,
+        studioTgPreviewGroupCount: (n: number) => `${n} toggles`,
+        studioTgPreviewHidden: (n: number) => `${n} hidden`,
+        studioTgPreviewSelected: (name: string) => `Selected ${name}`,
+        studioTgCombinedShared: (owners: string) => `Shared with ${owners}`,
+        studioTgUnreadableCount: (n: number) => `${n} unreadable`,
+    }
+
+    function expectNoWrites(): void {
+        expect(writes.setDatabase).not.toHaveBeenCalled()
+        expect(writes.markCharacterForSave).not.toHaveBeenCalled()
+        expect(writes.writeLiveCharacter).not.toHaveBeenCalled()
+        expect(writes.writeLiveChat).not.toHaveBeenCalled()
+        expect(writes.acquireModule).not.toHaveBeenCalled()
+    }
+
+    function useEveryControl(): void {
+        for (const row of Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-tg-preview-row"]'))) {
+            const control = row.querySelector<HTMLElement>('input[role="switch"], [role="radio"]:last-child, select, input[type="text"], textarea')
+            if (control instanceof HTMLInputElement && control.type === 'checkbox') control.click()
+            else if (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) {
+                control.value = 'sandbox'
+                control.dispatchEvent(new Event('input', { bubbles: true }))
+            } else if (control instanceof HTMLSelectElement) {
+                control.value = '1'
+                control.dispatchEvent(new Event('change', { bubbles: true }))
+            } else control?.click()
+            flushSync()
+        }
+    }
+
+    test('the sheet of the character builder, every control kind in both scopes, and the sheet of the combined view', async () => {
+        // The shared locale double has no entry for the sheet's message functions: they are added for this case only.
+        const { language } = await import('../../lang')
+        Object.assign(language, SHEET_KEYS)
+        db.db.customPromptTemplateToggle = ALL_KINDS
+        const before = snapshotOf(db.db)
+        openStudio({ owner: { type: 'character', id: 'cha-1' }, kind: 'toggles', from: 'chat' }, null)
+        show()
+        await settled(() => expect(part('studio-toggle-builder')).not.toBeNull())
+        part('studio-toggle-preview-eye')?.click()
+        flushSync()
+        await vi.waitFor(() => expect(part('studio-toggle-preview')).not.toBeNull(), { timeout: 30000 })
+        await settled(() => expect(document.querySelectorAll('[data-part="studio-tg-preview-row"]').length).toBeGreaterThan(0))
+        // Own scope: the character's check row.
+        useEveryControl()
+        // Joined scope: every kind is on show once the group is open.
+        part('studio-tg-preview-scope-all')?.click()
+        flushSync()
+        await settled(() => expect(document.querySelectorAll('[data-part="studio-tg-preview-source"]').length).toBeGreaterThan(1))
+        part('studio-tg-preview-group')?.click()
+        flushSync()
+        expect(new Set(Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-tg-preview-row"]')).map((row) => row.dataset.kind))).toEqual(new Set(['check', 'select', 'text', 'textarea']))
+        useEveryControl()
+        part('studio-toggle-preview-close')?.click()
+        flushSync()
+        expect(part('studio-toggle-preview')).toBeNull()
+
+        // The combined view of the chat and its preview of everything.
+        setStudioSelection('combined:toggles', null, null)
+        flushSync()
+        await settled(() => expect(part('studio-tg-combined')).not.toBeNull())
+        part('studio-tg-combined-all')?.click()
+        flushSync()
+        await settled(() => expect(part('studio-toggle-preview')).not.toBeNull())
+        await settled(() => expect(document.querySelectorAll('[data-part="studio-tg-preview-row"]').length).toBeGreaterThan(0))
+        useEveryControl()
+        part('studio-toggle-preview-close')?.click()
+        flushSync()
+        part('studio-tg-combined-entry')?.click()
+        flushSync()
+
+        await unmount(app as ReturnType<typeof mount>)
+        app = undefined
+        for (const key of Object.keys(SHEET_KEYS)) delete (language as Record<string, unknown>)[key]
+        expect(snapshotOf(db.db)).toEqual(before)
+        expectNoWrites()
     })
 })

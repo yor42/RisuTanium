@@ -135,10 +135,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: vi.fn(async () => ({ status: 'missing' as const })),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -236,8 +232,10 @@ type Fault = 'none' | 'no-active-save' | 'mode-unset'
 interface Run {
     loadData: () => Promise<void>
     loadedStore: ReturnType<typeof writable<boolean>>
+    /** Every non-`none` value written to the alert store, recorded at write time, so an alert a later alert covered is still in it. */
     alerts: AlertValue[]
-    /** The `normal` notices the boot posted. */
+    alertStore: ReturnType<typeof writable<AlertValue>>
+    /** The `normal` notices the boot posted and the dispatch acknowledged while on screen; a notice a cover replaced first is not in it, so an absence check reads `alerts`. */
     notices: string[]
 }
 
@@ -280,7 +278,7 @@ async function boot(tauri: boolean, fault: Fault): Promise<Run> {
             alerts.push({ type: value.type, msg: value.msg })
         }
     })
-    return { loadData, loadedStore, alerts, notices: dispatch.shownAlerts }
+    return { loadData, loadedStore, alerts, alertStore, notices: dispatch.shownAlerts }
 }
 
 async function settle(): Promise<void> {
@@ -307,8 +305,12 @@ beforeEach(() => {
     vi.resetModules()
 })
 
-afterEach(() => {
+afterEach(async () => {
     stopAcknowledgingAlerts()
+    // A notice queued and then covered stays current in its graph's queue; on the shared alert store it would be
+    // re-shown, and acknowledged, during a later test.
+    const { resetAlertPromptsForTests } = await import('src/ts/alertPrompts')
+    resetAlertPromptsForTests()
     vi.unstubAllGlobals()
 })
 
@@ -322,7 +324,26 @@ describe('loadData(): the live gate (T2-LIVE)', () => {
         expect(get(run.loadedStore)).toBe(true)
         expect(run.alerts.filter(alert => alert.type === 'error')).toEqual([])
         expect(run.notices.length, 'a notice is posted on a page that goes live, so "no notice" below is not vacuous').toBeGreaterThan(0)
+        expect(run.alerts.filter(alert => alert.type === 'normal').length, 'LG0: a notice is written on a page that goes live, so the write-time "no notice" below is not vacuous').toBeGreaterThan(0)
         expect(saveDbMock).toHaveBeenCalled()
+    })
+
+    test('LG2: the test acknowledger leaves a notice a cover replaced before its microtask, so `notices` lists only what it dismissed on screen', async () => {
+        const run = await boot(false, 'none')
+
+        run.alertStore.set({ type: 'normal', msg: 'covered notice' })
+        run.alertStore.set({ type: 'error', msg: 'cover' })
+        await settle()
+
+        expect(get(run.alertStore).type).toBe('error')
+        expect(run.notices).toEqual([])
+        expect(run.alerts.filter(alert => alert.type === 'normal').map(alert => alert.msg)).toEqual(['covered notice'])
+
+        run.alertStore.set({ type: 'normal', msg: 'shown notice' })
+        await settle()
+
+        expect(get(run.alertStore).type).toBe('none')
+        expect(run.notices).toEqual(['shown notice'])
     })
 
     const faults = [
@@ -343,6 +364,9 @@ describe('loadData(): the live gate (T2-LIVE)', () => {
             expect(errors[0].msg).toMatch(message)
             expect(get(run.loadedStore)).toBe(false)
             expect(run.notices).toEqual([])
+            // LG1: a notice written before the gate and then covered by the error alert is in no acknowledged list, so
+            // the write-time record is what shows that no notice was posted.
+            expect(run.alerts.filter(alert => alert.type === 'normal')).toEqual([])
             expect(saveDbMock).not.toHaveBeenCalled()
             expect(putBackMock).not.toHaveBeenCalled()
         },

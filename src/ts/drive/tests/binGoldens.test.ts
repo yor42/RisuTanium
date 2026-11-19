@@ -1,344 +1,345 @@
 /**
- * Compatibility guard: the `.bin` golden fixtures under `binGoldens/` restore
- * through `LoadLocalBackup` (`src/ts/drive/backuplocal.ts`) to the logical
- * content they were built from. It holds before and after any change to how a
- * backup is imported or exported, so a later rewrite can show that the same
- * files still import to the same characters, units, plugin value, module,
- * preset and asset.
+ * Compatibility guard: the `.bin` golden fixtures under `binGoldens/` restore through the real `LoadLocalBackup`
+ * (`src/ts/drive/backuplocal.ts`) into the real store2 commit of a store2 page, to the logical content they were built
+ * from. It holds before and after any change to how a backup is imported or exported, so a later rewrite can show that
+ * the same files still import to the same characters, plugin values, upstream key-value blocks, module, preset and asset.
  *
- * `fork-*.bin` were written by the real `SaveLocalBackup` and `upstream-*.bin`
- * were assembled from the shapes upstream's `makeColdDataForCharacter` and
- * `makeColdDataForChat` leave behind (`Agents/Tools/save-gen/binGoldens.harness.ts`,
- * `binGoldens/README.md`). The real `LoadLocalBackup`, collector, cold-storage
- * reader and writer, decoder and restore replace run; the page's byte store is
- * an in-memory map, `setDatabase` records the database the restore installs,
- * and dialogs are mocks. A pass says nothing about the Tauri or Node backends
- * or a real browser's storage.
+ * `fork-*.bin` were written by the real `SaveLocalBackup` and `upstream-*.bin` were assembled from the shapes upstream's
+ * `makeColdDataForCharacter` and `makeColdDataForChat` leave behind (`Agents/Tools/save-gen/binGoldens.harness.ts`,
+ * `binGoldens/README.md`). Every one of the files has a row in `GOLDEN_TABLE` (T4-P3), and `T4-P3d` fails when a file
+ * exists that the table does not name. The three upstream shapes the store2 route adapts (a plugin storage index, an
+ * index unit that is in no entry, an unreadable key-value block) have their own rows in both arms (T4-P3a to T4-P3c).
  *
- * The missing-unit goldens hold a chat pointer whose unit is in no entry: the
- * restore today keeps the pointer text in the chat's first message, leaves the
- * unit absent and asks the incomplete-restore question naming the character.
+ * Harness: the save-loop world of `storeImport.svelte.test.ts` (`saveLoopWorld.ts`, `store2SaveKit.ts`) over an in-memory
+ * store2 backend and a fake Web Locks manager; the legacy unit store is a double that answers `missing`. A pass says
+ * nothing about the Tauri or Node backends or a real browser's storage.
+ *
+ * The missing-unit goldens hold a chat pointer whose unit is in no entry: the import asks the incomplete-restore
+ * question naming the character, and the chat keeps the load-error text the resolve leaves for that unit.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { writable } from 'svelte/store'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { gzipSync } from 'fflate'
+import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
+import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
+import { createWorldKit, settled, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
+import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
+import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
+import { ID, loadGolden, readerOver, unitValueOf } from 'src/ts/storage/tests/store2/legacyFixtures'
+import { language } from 'src/lang'
+import { assembleDatabase } from 'src/ts/storage/store2/codec'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
+import * as kitCommit from 'src/ts/storage/store2/commit'
+import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
+import type { LocalBackupEnd } from 'src/ts/drive/backuplocal'
+import { formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
+import { createHypaV3Preset, normalizeHypaV3Presets } from 'src/ts/process/memory/hypaV3Presets'
 
-//#region module mocks
+vi.setConfig({ testTimeout: 60_000 })
 
-const platformBox = vi.hoisted(() => {
-    // globalApi.svelte.ts reads navigator.locks once, at module evaluation.
-    Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
-    return { isTauri: false }
-})
+//#region harness
 
-const setDatabaseMock = vi.hoisted(() => vi.fn())
-const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
-const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
-const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string) => true))
-const alertErrorMock = vi.hoisted(() => vi.fn())
+const platformBox = vi.hoisted(() => ({ isNodeServer: false }))
 
-vi.mock('localforage', () => ({
-    default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
-            setItem: vi.fn(async () => { }),
-            removeItem: vi.fn(async () => { }),
-            keys: vi.fn(async () => []),
-        }),
-    },
-}))
+type ImportStreamModule = typeof import('src/ts/storage/store2/legacy/importStream')
+
+/** The arm the running test is in: the streamed prepare is held off (whole) or always taken when the file allows (stream). */
+const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream' }))
 
 vi.mock(import('src/ts/platform'), () => ({
-    get isTauri() { return platformBox.isTauri },
-    isNodeServer: false,
+    isTauri: false,
+    get isNodeServer() { return platformBox.isNodeServer },
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-vi.mock('@tauri-apps/plugin-fs', () => ({
-    BaseDirectory: { AppData: 0, Download: 1 },
-    writeFile: vi.fn(async () => { }),
-    readFile: vi.fn(async () => {
-        throw new Error('the Tauri backend is not under test')
-    }),
-    readDir: vi.fn(async () => []),
-    exists: vi.fn(async () => false),
-    mkdir: vi.fn(async () => { }),
-    remove: vi.fn(async () => { }),
-}))
+vi.mock(import('src/ts/storage/nodeBodyLimit'), () => ({
+    NODE_BODY_LIMIT_BYTES: 1024 * 1024,
+}) as unknown as typeof import('src/ts/storage/nodeBodyLimit'))
 
-vi.mock('@tauri-apps/plugin-process', () => ({
-    relaunch: vi.fn(async () => { }),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-    save: vi.fn(async () => 'backup-output.bin'),
-}))
-
-vi.mock('src/ts/vendor/streamSaver', () => ({
-    default: {
-        useBlobFallback: false,
-        createWriteStream: () => ({
-            ready: Promise.resolve(),
-            writable: {
-                getWriter: () => ({
-                    write: async (chunk: Uint8Array) => { backupSink.writes.push(chunk.slice()) },
-                    close: async () => { },
-                }),
-            },
-        }),
-    },
-}))
-
-vi.mock(import('src/ts/storage/database.svelte'), () => ({
-    getDatabase: getDatabaseMock,
-    setDatabase: setDatabaseMock,
-    presetTemplate: { name: 'test-preset' },
-    defaultSdDataFunc: vi.fn(() => ({})),
-    appVer: 'test',
-    appSubVer: 'test',
-    getCurrentCharacter: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/database.svelte'))
-
-vi.mock(import('src/ts/stores.svelte'), () => ({
-    DBState: { db: {} as unknown as Database },
-    selectedCharID: writable(-1),
-    selIdState: { selId: -1 },
-    alertStore: writable({ type: 'none', msg: '' }),
-    MobileGUI: writable(false),
-    botMakerMode: writable(false),
-    loadedStore: writable(false),
-    LoadingStatusState: { text: '' },
-    ReloadGUIPointer: writable(0),
-    bodyIntercepterStore: writable(null),
-    savingStoppedReason: writable(null),
-}) as unknown as typeof import('src/ts/stores.svelte'))
-
-vi.mock(import('src/ts/process/index.svelte'), () => ({
-    doingChat: writable(false),
-}) as unknown as typeof import('src/ts/process/index.svelte'))
-
-vi.mock(import('src/ts/alert'), () => ({
-    alertClear: vi.fn(),
-    alertConfirm: alertConfirmMock,
-    alertError: alertErrorMock,
-    alertWait: vi.fn(),
-    alertMd: vi.fn(),
-    alertNormal: vi.fn(),
-    alertSelect: vi.fn(),
-    alertToast: vi.fn(),
-    alertInput: vi.fn(),
-    alertNormalWait: vi.fn(),
-    alertAddCharacter: vi.fn(),
-    alertStore: writable({ type: 'none', msg: '' }),
-    waitAlert: vi.fn(async () => { }),
-}))
-
-vi.mock(import('src/ts/util'), () => ({
-    changeFullscreen: vi.fn(),
-    checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
-    sleep: vi.fn(async () => { }),
-    sleepForever: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/util'))
-
-vi.mock('@tauri-apps/api/core', () => ({
-    convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
-}))
-
-vi.mock('@tauri-apps/api/path', () => ({
-    appDataDir: vi.fn(async () => '/appdata'),
-    join: vi.fn(async (...p: string[]) => p.join('/')),
-    basename: vi.fn(async (p: string) => p.split('/').pop()),
-}))
-
-vi.mock('@tauri-apps/plugin-shell', () => ({
-    open: vi.fn(async () => { }),
-}))
-
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-    getCurrentWebviewWindow: vi.fn(() => ({
-        listen: vi.fn(),
-        setTitle: vi.fn(),
-    })),
-}))
-
-vi.mock('@tauri-apps/plugin-http', () => ({
-    fetch: vi.fn(async () => new Response(null, { status: 404 })),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-    listen: vi.fn(async () => vi.fn()),
-}))
-
-vi.mock(import('src/ts/update'), () => ({
-    checkRisuUpdate: vi.fn(async () => { }),
-}))
-
-vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
-    loadPlugins: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
-
-vi.mock(import('src/ts/parser/parser.svelte'), () => ({
-    hasher: vi.fn((s: string) => s),
-}) as unknown as typeof import('src/ts/parser/parser.svelte'))
-
-vi.mock(import('src/ts/characterCards'), () => ({
-    characterURLImport: vi.fn(),
-    hubURL: 'https://example.invalid',
-}) as unknown as typeof import('src/ts/characterCards'))
-
-vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
-    registerDbChangeEffects: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
-
-vi.mock(import('src/ts/storage/autoStorage'), () => ({
-    AutoStorage: class {
-        realStorage: unknown = undefined
-        getItem = vi.fn(async () => null)
-        setItem = vi.fn(async () => { })
-        keys = vi.fn(async () => [])
-        removeItem = vi.fn(async () => { })
-    },
-}) as unknown as typeof import('src/ts/storage/autoStorage'))
-
-vi.mock(import('src/ts/gui/animation'), () => ({
-    updateAnimationSpeed: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/animation'))
-
-vi.mock(import('src/ts/gui/colorscheme'), () => ({
-    updateColorScheme: vi.fn(),
-    updateTextThemeAndCSS: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/colorscheme'))
-
-vi.mock(import('src/ts/observer.svelte'), () => ({
-    startObserveDom: vi.fn(),
-}) as unknown as typeof import('src/ts/observer.svelte'))
-
-vi.mock(import('src/ts/gui/guisize'), () => ({
-    updateGuisize: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/guisize'))
-
-vi.mock(import('src/ts/characters'), () => ({
-    updateLorebooks: vi.fn((v: unknown) => v),
-}) as unknown as typeof import('src/ts/characters'))
-
-vi.mock(import('src/ts/hotkey'), () => ({
-    initMobileGesture: vi.fn(),
-}) as unknown as typeof import('src/ts/hotkey'))
-
-vi.mock(import('src/ts/process/modules'), () => ({
-    moduleUpdate: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/process/modules'))
-
-class MockNotFoundError extends Error {
-    name = 'NotFoundError'
-}
-
-// No legacy OPFS unit file exists: every read falls through to "not found".
-Object.defineProperty(globalThis.navigator, 'storage', {
-    configurable: true,
-    value: {
-        getDirectory: async () => ({
-            async getFileHandle(name: string) {
-                throw new MockNotFoundError('not found: ' + name)
-            },
-            async removeEntry() { },
-            entries() {
-                return {
-                    [Symbol.asyncIterator]() {
-                        return { async next() { return { done: true as const, value: undefined } } }
-                    },
-                }
-            },
-        }),
-    },
+const worlds = createWorldKit({
+    parked: h.parked,
+    getDb: () => h.db,
+    setDb: (db) => { h.db = db },
+    nextId: () => ++h.worldCount,
 })
 
-//#endregion
+type Entry = Record<string, unknown>
+type Row = Record<string, unknown>
 
-import { LoadLocalBackup, SaveLocalBackup } from 'src/ts/drive/backuplocal'
-import { decodeRisuSave, isBlockFormatSave } from 'src/ts/storage/risuSave'
-import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
-import { dbWriteLock } from 'src/ts/globalApi.svelte'
-import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
-import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
-import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
-import { injectRestoreStore } from './restoreSupport'
-import { createHypaV3Preset, normalizeHypaV3Presets } from 'src/ts/process/memory/hypaV3Presets'
+const originalLocks = Object.getOwnPropertyDescriptor(window.navigator, 'locks')
 
-//#region helpers
+// msgpackr 1.10.1 passes a length past the buffer's end to `Buffer.prototype.utf8Write` for a string of 64 or more
+// characters, which the Node running the tests rejects; the browser build has no `Buffer`, so production is unaffected.
+// Clamping the length to the room left changes no byte written: it lets the real encoder run on a long placeholder text.
+interface Utf8Writer {
+    utf8Write(this: Uint8Array, text: string, position: number, length: number): number
+}
+const utf8WriterProto = Buffer.prototype as unknown as Utf8Writer
+const nativeUtf8Write = utf8WriterProto.utf8Write
 
-const ID = {
-    stubBlob: '00000000-0000-4000-8000-0000000000a1',
-    inlineChatUnit: '00000000-0000-4000-8000-0000000000a2',
-    blobChatUnit: '00000000-0000-4000-8000-0000000000a3',
-    pluginUnit: '00000000-0000-4000-8000-0000000000a4',
-    missingChatUnit: '00000000-0000-4000-8000-0000000000a5',
-    errorTextUnit: '00000000-0000-4000-8000-0000000000a6',
-} as const
+afterAll(() => {
+    utf8WriterProto.utf8Write = nativeUtf8Write
+})
 
-const ASSET_KEY = 'assets/golden-avatar.png'
-const ASSET_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x47, 0x4f, 0x4c, 0x44])
+beforeAll(() => {
+    utf8WriterProto.utf8Write = function (text, position, length) {
+        return nativeUtf8Write.call(this, text, position, Math.min(length, this.length - position))
+    }
+    class FakeChannel {
+        onmessage: ((event: { data: unknown }) => void) | null = null
+        constructor(public name: string) { h.channels.push(this) }
+        postMessage(data: unknown) { h.broadcasts.push(data) }
+        close() {}
+    }
+    Object.defineProperty(window, 'BroadcastChannel', { value: FakeChannel, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'BroadcastChannel', { value: FakeChannel, configurable: true, writable: true })
+})
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    platformBox.isNodeServer = false
+    armBox.arm = 'whole'
+    h.broadcasts.length = 0
+    h.channels.length = 0
+    vi.doUnmock('src/ts/storage/dbChangeEffects.svelte')
+    vi.doMock('src/ts/stores.svelte', async () => {
+        const { proxy } = await import('svelte/internal/client')
+        const { writable } = await import('svelte/store')
+        return {
+            DBState: proxy({ db: {} as Entry }),
+            selectedCharID: writable(-1),
+            selIdState: { selId: -1 },
+            alertStore: writable({ type: 'none', msg: '' }),
+            MobileGUI: writable(false),
+            botMakerMode: writable(false),
+            loadedStore: writable(false),
+            LoadingStatusState: { text: '' },
+            ReloadGUIPointer: writable(0),
+            bodyIntercepterStore: writable(null),
+            savingStoppedReason: writable(''),
+            frozenSaveKeysStore: writable([]),
+        } as unknown as typeof import('src/ts/stores.svelte')
+    })
+    // The page's unit store is a double. An entity key reads the store2 character through the residency, as the real reader
+    // does (the export of a page that holds stubs needs it); any other key is a legacy unit, and there is none. The export's
+    // own collection of legacy units is empty because a store2 page keeps none.
+    vi.doMock('src/ts/process/coldstorage.svelte', async () => ({
+        getColdStorageItem: vi.fn(),
+        getColdStorageBackupKey: (await import('src/ts/process/coldstorageData')).getColdStorageBackupKey,
+        readColdStorageItem: async (key: string) => {
+            const { getResidency, isEntityUnitKey } = await import('src/ts/storage/store2/residencyActive')
+            const residency = getResidency()
+            if (isEntityUnitKey(key) && residency !== null) {
+                const read = await residency.readCharacter(key)
+                return read.status === 'error' ? { status: 'error', error: read.error, kind: read.kind } : { status: 'ok', value: read.value }
+            }
+            return { status: 'missing' }
+        },
+        setColdStorageItem: vi.fn(async () => false),
+        collectColdStorageBackupPayloads: vi.fn(async () => ({ payloads: [], missingKeys: [], invalidKeys: [] })),
+        confirmIncompleteColdStorageOperation: vi.fn(async () => true),
+        isColdStorageBackupData: vi.fn(() => false),
+    }))
+    // The shared world mock of the database module has no `presetFromWorkingSettings`, which the botPresetsId repair of an
+    // import calls; the stand-in keeps the working prompt so the appended preset is recognisable.
+    vi.doMock('src/ts/storage/database.svelte', () => ({
+        getDatabase: vi.fn(() => h.db),
+        setDatabase: vi.fn(),
+        presetTemplate: { name: 'test-preset' },
+        defaultSdDataFunc: vi.fn(() => ({})),
+        appVer: 'test',
+        appSubVer: 'test',
+        getCurrentCharacter: vi.fn(),
+        presetFromWorkingSettings: (db: Entry, name: string) => ({ name, mainPrompt: db.mainPrompt }),
+    }))
+    // The arm seam: production never passes `minUnits`, so the streamed prepare is steered here, through the module the
+    // page's import loads. The whole arm never reaches the threshold; the stream arm always does.
+    vi.doMock('src/ts/storage/store2/legacy/importStream', async () => {
+        const actual = await vi.importActual<ImportStreamModule>('src/ts/storage/store2/legacy/importStream')
+        return {
+            ...actual,
+            prepareImportStream: (request: Parameters<ImportStreamModule['prepareImportStream']>[0], hooks: Parameters<ImportStreamModule['prepareImportStream']>[1]) => actual.prepareImportStream({
+                ...request,
+                stream: { ...request.stream, minUnits: armBox.arm === 'stream' ? 0 : Number.POSITIVE_INFINITY },
+            }, hooks),
+        }
+    })
+    // The committer of the page is built by the kit in this file's module graph, the import code runs in the world's: a
+    // streamed commit always runs under a bulk marker and fails with the kit's `Store2BulkAbortError`, which the import
+    // must recognise by class as it does in the one graph of the app.
+    vi.doMock('src/ts/storage/store2/commit', async () => ({
+        ...await vi.importActual<typeof import('src/ts/storage/store2/commit')>('src/ts/storage/store2/commit'),
+        Store2BulkAbortError: kitCommit.Store2BulkAbortError,
+    }))
+    vi.spyOn(console, 'log').mockImplementation(() => { })
+    vi.spyOn(console, 'warn').mockImplementation(() => { })
+    vi.spyOn(console, 'error').mockImplementation(() => { })
+    vi.spyOn(console, 'debug').mockImplementation(() => { })
+})
+
+afterEach(async () => {
+    const { overrideBackupWindowBytes } = await import('src/ts/drive/backupContainer')
+    overrideBackupWindowBytes(null)
+    worlds.parkAll()
+    vi.doMock('src/ts/platform', () => ({ isTauri: false, get isNodeServer() { return platformBox.isNodeServer }, isIOS: () => false }))
+    vi.restoreAllMocks()
+    if (originalLocks) {
+        Object.defineProperty(window.navigator, 'locks', originalLocks)
+    } else {
+        Object.defineProperty(window.navigator, 'locks', { value: undefined, configurable: true })
+    }
+})
+
+interface Page {
+    w: World
+    k: Store2Kit
+    flush(): void
+    alert: typeof import('src/ts/alert')
+    /** What the page's reload did: how many times. */
+    reloads: { count: number }
+}
+
+async function openPage(): Promise<Page> {
+    const locks = new FakeLockManagerCore()
+    Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
+    h.db = makeDb('base', ['alpha', 'beta'])
+    const k = await startStore2({ db: h.db as unknown as Database })
+    const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
+    const stores = await import('src/ts/stores.svelte')
+    const { flushSync } = await import('svelte')
+    ;(stores.DBState as { db: unknown }).db = h.db
+    h.db = (stores.DBState as { db: unknown }).db as Entry
+    const bootActive = await import('src/ts/storage/store2/bootActive')
+    const reloads = { count: 0 }
+    const page: Page = { w, k, flush: flushSync, alert: await import('src/ts/alert'), reloads }
+    bootActive.setStore2BootSession({ kind: 'tauri', backend: k.counted.backend, committer: k.committer } as unknown as Store2Session)
+    w.pageMode.setPageStorageMode({ kind: 'store2' })
+    vi.mocked(page.alert.alertConfirm).mockImplementation(async () => true)
+    vi.spyOn(page.alert.alertStore, 'set').mockImplementation(() => { })
+    vi.spyOn(window.location, 'reload').mockImplementation(() => { reloads.count++ })
+    vi.spyOn(window.history, 'replaceState').mockImplementation(() => { })
+    w.start()
+    await sleepReal(150)
+    await settled(w)
+    return page
+}
+
+async function currentKey(page: Page): Promise<string | undefined> {
+    return (await page.k.commitKey()).current?.key
+}
+
+/** Whether `dbWriteLock` can be taken within a moment: false while an import keeps it closed. */
+async function writeLockIsFree(page: Page): Promise<boolean> {
+    const taken = page.w.api.dbWriteLock.acquire().then((release) => { release(); return true })
+    return await Promise.race([taken, sleepReal(250).then(() => false)])
+}
+
+const alertErrorTexts = (page: Page): unknown[] => vi.mocked(page.alert.alertError).mock.calls.map((call) => call[0])
+const confirmTexts = (page: Page): string[] => vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))
+
+/** The app byte store operations that wrote or deleted anything. */
+const mutations = (page: Page) => page.w.store.mutating()
+
+/** The keys the store2 backend holds: the commit and every unit, as a write there would change them. */
+const store2Keys = (page: Page): string[] => [...page.k.memory.snapshot().keys()].sort()
 
 // The run command's working directory is the repo root; BIN_GOLDENS_DIR points the guard at another directory of the same file names.
 const GOLDEN_DIR = path.resolve(process.env.BIN_GOLDENS_DIR ?? path.join(process.cwd(), 'src/ts/drive/tests/binGoldens'))
 
-interface RestoredChat {
-    message: { data: string }[]
-}
-
-interface RestoredCharacter {
-    chaId: string
-    name: string
-    chats: RestoredChat[]
-    coldstorage?: string
-    coldStoragedChats?: string[]
-    image?: string
-}
-
-interface RestoredDatabase {
-    characters: RestoredCharacter[]
-    modules: Record<string, unknown>[]
-    botPresets: Record<string, unknown>[]
-    pluginCustomStorage?: { _coldplugin?: Record<string, string>, _coldpluginIndex?: unknown }
-    upstreamKvBlocks?: Record<string, unknown>
-}
-
-/** The unit ids of the plugin-index goldens (`Agents/Tools/save-gen/binGoldens.harness.ts`). */
-const INDEX_ID = {
-    index: '00000000-0000-4000-8000-0000000000b1',
-    large: '00000000-0000-4000-8000-0000000000b2',
-    shadowed: '00000000-0000-4000-8000-0000000000b3',
-    kept: '00000000-0000-4000-8000-0000000000b4',
-} as const
-
-function readGolden(name: string): Uint8Array {
+function golden(name: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, name)))
 }
 
-const assetMem = new Map<string, Uint8Array>()
-const unitMem = new Map<string, Uint8Array>()
+const GOLDEN_FILES = (): string[] => fs.readdirSync(GOLDEN_DIR).filter((name) => name.endsWith('.bin')).sort()
 
-let capturedInput: HTMLInputElement | null = null
-let createElementSpy: ReturnType<typeof vi.spyOn>
-let dbWriteLockSpy: ReturnType<typeof vi.spyOn>
+/** The goldens run at the default windows and again at windows so small that every golden crosses window edges in both passes. */
+const GOLDEN_WINDOWS: readonly (number | undefined)[] = [undefined, 4, 64]
 
-/** Restores `bytes` through the real `LoadLocalBackup` and returns the database it installed. */
-async function restoreBytes(bytes: Uint8Array): Promise<RestoredDatabase> {
-    LoadLocalBackup()
-    const input = capturedInput
-    if (!input) {
-        throw new Error('LoadLocalBackup did not create a file input')
+/** Set after `openPage()`: the world re-imports the app's modules, and the seam must be the one the world's `backuplocal` reads. */
+async function useGoldenWindows(windowBytes: number | undefined): Promise<void> {
+    const { overrideBackupWindowBytes } = await import('src/ts/drive/backupContainer')
+    overrideBackupWindowBytes(windowBytes === undefined ? null : { walk: windowBytes, copy: windowBytes })
+}
+
+/** Drives the real `LoadLocalBackup()` with `bytes` as the chosen file and awaits its change handler and its end. */
+async function loadBin(bytes: Uint8Array): Promise<LocalBackupEnd> {
+    const { LoadLocalBackup } = await import('src/ts/drive/backuplocal')
+    const realCreateElement = document.createElement.bind(document)
+    let input: HTMLInputElement | null = null
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        const element = realCreateElement(tag)
+        if (tag === 'input') {
+            input = element as HTMLInputElement
+        }
+        return element
+    })
+    try {
+        const pending = LoadLocalBackup()
+        const chosen = input as HTMLInputElement | null
+        if (chosen === null) {
+            throw new Error('LoadLocalBackup did not create a file input')
+        }
+        Object.defineProperty(chosen, 'files', { value: [new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
+        await (chosen.onchange as unknown as (event: Event) => Promise<void>).call(chosen, new Event('change'))
+        return await pending
+    } finally {
+        spy.mockRestore()
     }
-    const file = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
-    Object.defineProperty(input, 'files', { value: [file], configurable: true })
-    await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
-    expect(alertErrorMock).not.toHaveBeenCalled()
-    expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-    return setDatabaseMock.mock.calls[0][0] as RestoredDatabase
+}
+
+async function databaseOf(page: Page, manifestKey: string): Promise<Database> {
+    const read = await readTreeBytes(page.k.memory, manifestKey)
+    if (read.status !== 'ok') {
+        throw new Error(`The stored tree reads ${read.status}.`)
+    }
+    return assembleDatabase(read.tree.manifest, read.tree.source)
+}
+
+/** The committed current tree. */
+async function committed(page: Page): Promise<Database> {
+    return await databaseOf(page, await currentKey(page) as string)
+}
+
+/** The whole and the stream arm: the same rows run once with the streamed prepare held off and once with it always taken. */
+function armed(name: string, body: () => void): void {
+    for (const arm of ['whole', 'stream'] as const) {
+        describe(`${name} (${arm} arm)`, () => {
+            beforeEach(() => { armBox.arm = arm })
+            body()
+        })
+    }
+}
+
+/** One restore on a fresh page: the page after the import, and the committed tree. */
+async function restoredOnFreshPage(bytes: Uint8Array): Promise<{ page: Page, db: Database, end: LocalBackupEnd }> {
+    worlds.parkAll()
+    const page = await openPage()
+    const end = await loadBin(bytes)
+    return { page, db: await committed(page), end }
+}
+
+/**
+ * The real `SaveLocalBackup` over `db`, as the page the import landed on exports it, and the file it wrote. The page's
+ * reload is a fresh boot over what it committed, which registers the residency the export reads in the world's graph.
+ */
+async function exportOf(page: Page, db: Database): Promise<Uint8Array> {
+    const { SaveLocalBackup } = await import('src/ts/drive/backuplocal')
+    const { bootThroughDispatch } = await import('src/ts/storage/tests/store2SaveKit')
+    const boot = await bootThroughDispatch(page.k.counted.backend)
+    if (boot.result.kind !== 'store2') {
+        throw new Error(`the boot after the import came to ${boot.result.kind}`)
+    }
+    h.db = db as unknown as Entry
+    const streamSaver = (await import('src/ts/vendor/streamSaver')).default
+    const written: Uint8Array[] = []
+    vi.spyOn(streamSaver, 'createWriteStream').mockImplementation((() => ({
+        ready: Promise.resolve(),
+        writable: { getWriter: () => ({ write: async (chunk: Uint8Array) => { written.push(chunk.slice()) }, close: async () => { } }) },
+    })) as never)
+    await SaveLocalBackup()
+    return concatBytes(written)
 }
 
 function concatBytes(parts: Uint8Array[]): Uint8Array {
@@ -368,290 +369,281 @@ function databaseEntryOf(container: Uint8Array): Uint8Array {
     throw new Error('the backup has no database entry')
 }
 
-function character(db: RestoredDatabase, chaId: string): RestoredCharacter {
-    const found = db.characters.find((c) => c.chaId === chaId)
-    if (!found) {
-        throw new Error(`restored database has no character ${chaId}`)
+const charactersOf = (db: Database): Row[] => db.characters as unknown as Row[]
+const idsOf = (db: Database): unknown[] => charactersOf(db).map((entry) => entry.chaId)
+const namesOf = (db: Database): string[] => charactersOf(db).map((entry) => String(entry.name))
+const firstMessages = (entry: Row): string[] => (entry.chats as Array<{ message: Array<{ data: string }> }>).map((chat) => chat.message[0].data)
+const storageOf = (db: Database): Row => (db.pluginCustomStorage ?? {}) as unknown as Row
+const slotsOf = (db: Database): Record<string, string> => (storageOf(db)._coldplugin ?? {}) as Record<string, string>
+
+function characterNamed(db: Database, chaId: string): Row {
+    const found = charactersOf(db).find((entry) => entry.chaId === chaId)
+    if (found === undefined) {
+        throw new Error(`the committed database has no character ${chaId}`)
     }
     return found
 }
 
-function firstMessages(c: RestoredCharacter): string[] {
-    return c.chats.map((chat) => chat.message[0].data)
+//#endregion
+
+//#region the logical view
+
+const UNIT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+interface LogicalView {
+    characters: Array<{ chaId: unknown, name: unknown, firstMessages: string[] }>
+    /** Plugin values by slot key, and every plain plugin storage key that is not a unit id. */
+    plugins: Record<string, unknown>
+    plain: Record<string, unknown>
+    upstreamKvBlocks: unknown
+    presets: unknown[]
 }
 
-async function unitJson(key: string): Promise<unknown> {
-    const read = await readColdStorageItem(key)
-    return read.status === 'ok' ? read.value : `unit is ${read.status}`
-}
+/** The appended working-settings preset a dangling `botPresetsId` gets on an import (`storeImport.svelte.test.ts`). */
+const WORKING_PRESET = 'New Preset'
 
-function incompleteRestorePrompts(): string[] {
-    return alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((t) => t.startsWith('Cold storage data') && t.includes('incomplete restore'))
-}
-
-/** The questions that name left-out (unreadable) blocks of the file being restored. */
-function leftOutPrompts(): string[] {
-    return alertConfirmMock.mock.calls.map((c) => String(c[0])).filter((t) => t.includes('part(s) of the backup this version cannot read'))
+/**
+ * What a restore must keep of a tree, compared between the import's commit and a plain `resolveLegacyTree` of the same
+ * golden: characters as id, name and the first message of each chat, plugin values by slot (so minted unit ids are not
+ * compared), upstream key-value blocks, and presets by name. Modules are compared by `toMatchObject` beside this view.
+ */
+function logicalView(db: Database): LogicalView {
+    const storage = storageOf(db)
+    const slots = slotsOf(db)
+    const unitIds = new Set(Object.values(slots))
+    const plugins: Record<string, unknown> = {}
+    for (const [key, id] of Object.entries(slots)) {
+        plugins[key] = storage[id]
+    }
+    const plain: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(storage)) {
+        if (key !== '_coldplugin' && key !== '_coldpluginIndex' && !unitIds.has(key)) {
+            plain[key] = value
+        }
+    }
+    return {
+        characters: charactersOf(db).map((entry) => ({ chaId: entry.chaId, name: entry.name, firstMessages: firstMessages(entry) })),
+        plugins,
+        plain,
+        upstreamKvBlocks: (db as unknown as Row).upstreamKvBlocks,
+        presets: (db.botPresets as unknown as Array<{ name: string }>).filter((preset) => preset.name !== WORKING_PRESET).map((preset) => preset.name),
+    }
 }
 
 //#endregion
 
-beforeEach(() => {
-    platformBox.isTauri = false
-    assetMem.clear()
-    unitMem.clear()
-    setDatabaseMock.mockReset()
-    getDatabaseMock.mockImplementation(() => ({}) as unknown as Database)
-    backupSink.writes.length = 0
-    alertConfirmMock.mockClear()
-    alertErrorMock.mockClear()
-    injectRestoreStore(createForageBackedStore({
-        getItem: async (key) => key.startsWith('coldstorage/') ? (unitMem.get(key) ?? null) : (assetMem.get(key) ?? null),
-        setItem: async (key, value) => {
-            if (key.startsWith('coldstorage/')) {
-                unitMem.set(key, value)
-            } else {
-                assetMem.set(key, value)
-            }
-        },
-        keys: async () => [...assetMem.keys(), ...unitMem.keys()].sort(),
-        removeItem: async (key) => { unitMem.delete(key); assetMem.delete(key) },
-    }))
-    vi.spyOn(console, 'log').mockImplementation(() => { })
-    dbWriteLockSpy = vi.spyOn(dbWriteLock, 'acquire').mockResolvedValue(() => { })
-    capturedInput = null
-    const realCreateElement = document.createElement.bind(document)
-    createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        const el = realCreateElement(tag)
-        if (tag === 'input') {
-            capturedInput = el as HTMLInputElement
-        }
-        return el
-    })
-})
+//#region the T4-P3 table
 
-afterEach(() => {
-    createElementSpy.mockRestore()
-    dbWriteLockSpy.mockRestore()
-    vi.restoreAllMocks()
-})
+const ASSET_KEY = 'assets/golden-avatar.png'
+const ASSET_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x47, 0x4f, 0x4c, 0x44])
 
-// The goldens restore at the default windows and again at windows so small that every golden crosses window edges in both
-// passes of the import.
-const GOLDEN_WINDOWS = [{ label: 'default windows', bytes: null }, { label: '4-byte windows', bytes: 4 }, { label: '64-byte windows', bytes: 64 }] as const
+/** The full module and preset records every full golden carries. */
+const GOLDEN_MODULE = {
+    id: 'module-golden',
+    name: 'Golden Module',
+    description: 'golden module',
+    lorebook: [{ key: 'golden-key', comment: 'golden entry', content: 'golden lore', mode: 'normal', insertorder: 100, alwaysActive: false, secondkey: '', selective: false }],
+    regex: [{ comment: 'golden regex', in: 'gold', out: 'GOLD', type: 'editdisplay' }],
+    trigger: [],
+}
+const GOLDEN_PRESET = { name: 'Golden Preset', id: 'preset-golden', temperature: 80, maxContext: 4000, maxResponse: 300 }
 
-describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
-    beforeEach(() => {
-        overrideBackupWindowBytes(bytes === null ? null : { walk: bytes, copy: bytes })
-    })
-    afterEach(() => {
-        overrideBackupWindowBytes(null)
-    })
+/** The unit ids of the plugin-index goldens (`Agents/Tools/save-gen/binGoldens.harness.ts`). */
+const INDEX_ID = {
+    index: '00000000-0000-4000-8000-0000000000b1',
+    large: '00000000-0000-4000-8000-0000000000b2',
+    shadowed: '00000000-0000-4000-8000-0000000000b3',
+    kept: '00000000-0000-4000-8000-0000000000b4',
+} as const
 
-    /** The full module and preset records every full golden carries. */
-    const GOLDEN_MODULE = {
-        id: 'module-golden',
-        name: 'Golden Module',
-        description: 'golden module',
-        lorebook: [{ key: 'golden-key', comment: 'golden entry', content: 'golden lore', mode: 'normal', insertorder: 100, alwaysActive: false, secondkey: '', selective: false }],
-        regex: [{ comment: 'golden regex', in: 'gold', out: 'GOLD', type: 'editdisplay' }],
-        trigger: [],
-    }
-    const GOLDEN_PRESET = { name: 'Golden Preset', id: 'preset-golden', temperature: 80, maxContext: 4000, maxResponse: 300 }
+/** Upstream's SaveKV namespaces of `upstream-kv.bin` (type 12 `kv:<namespace>` blocks of the database entry). */
+const KV_A_CONTENT = {
+    version: 1,
+    entries: [
+        { k: 'zeta', v: 1 },
+        { k: '0', v: 'zero' },
+        { k: 'alpha', v: { list: [1, { deep: true }, null], text: 'x' } },
+        { k: '한글🙂', v: 'unicode value' },
+        { k: 'nothing', v: null },
+    ],
+}
+const KV_B_CONTENT = { version: 1, entries: [{ k: 'second', v: [false, 'b'] }, { k: 'first', v: 0 }] }
 
-    interface FullCase {
-        file: string
-        pluginUnit: unknown
-        /** The inline character's first messages, in chat order. */
-        inlineFirstMessages: string[]
-    }
+interface GoldenCase {
+    file: string
+    /** How many `alertConfirm` calls the import makes when every answer is yes. */
+    questions: number
+    /** What this golden's store2 commit must hold, beyond the logical view every golden is compared on. */
+    check(db: Database, page: Page, confirms: string[]): void | Promise<void>
+}
 
-    const FULL_CASES: FullCase[] = [
-        {
-            file: 'fork-full.bin',
-            pluginUnit: { theme: 'dark', count: 3 },
-            inlineFirstMessages: ['inline hello', coldStorageHeader + ID.inlineChatUnit],
-        },
-        {
-            // An array is the plugin value shape upstream's collector writes; the third chat holds the text upstream's `preLoadChat` writes for an unreadable unit.
-            file: 'upstream-full.bin',
-            pluginUnit: ['dark', 3],
-            inlineFirstMessages: ['inline hello', coldStorageHeader + ID.inlineChatUnit, formatColdStorageLoadError(ID.errorTextUnit)],
-        },
-    ]
+const FULL_CASES = [
+    { file: 'fork-full.bin', pluginUnit: { theme: 'dark', count: 3 } },
+    { file: 'upstream-full.bin', pluginUnit: ['dark', 3] },
+] as const
 
-    describe.each(FULL_CASES)('guard: $file restores to the logical content it was built from', ({ file, pluginUnit, inlineFirstMessages }) => {
-        test('characters, archived stub, pointer chats, plugin value, module, preset and asset', async () => {
-            const db = await restoreBytes(readGolden(file))
-
-            const inline = character(db, 'cha-inline')
-            expect(inline.name).toBe('Inline Alice')
+function fullCase(file: string, pluginUnit: unknown): GoldenCase {
+    return {
+        file,
+        questions: 0,
+        check(db, page) {
+            expect(namesOf(db)).toEqual(['Inline Alice', 'Stub Bob'])
+            const inline = characterNamed(db, 'cha-inline')
             expect(inline.image).toBe(ASSET_KEY)
-            expect(firstMessages(inline)).toEqual(inlineFirstMessages)
-
-            const stub = character(db, 'cha-stub')
-            expect(stub.name).toBe('Stub Bob')
-            expect(stub.coldstorage).toBe(ID.stubBlob)
-            expect(stub.coldStoragedChats).toEqual([ID.blobChatUnit])
-
+            // The pointer chat takes the archived chat's messages; the chat the file left unreadable keeps the load-error text.
+            expect(firstMessages(inline).slice(0, 2)).toEqual(['inline hello', 'archived inline chat'])
+            const stub = characterNamed(db, 'cha-stub')
+            expect(stub.coldstorage).toBeFalsy()
+            expect(firstMessages(stub)[0]).toBe('blob hello')
             expect(db.modules).toHaveLength(1)
             expect(db.modules[0]).toMatchObject(GOLDEN_MODULE)
-            expect(db.botPresets.find((p) => p.name === 'Golden Preset')).toMatchObject(GOLDEN_PRESET)
-            expect(db.pluginCustomStorage?._coldplugin).toEqual({ prefs: ID.pluginUnit })
+            expect((db.botPresets as unknown as Row[]).find((preset) => preset.name === 'Golden Preset')).toMatchObject(GOLDEN_PRESET)
+            expect(Object.keys(slotsOf(db))).toEqual(['prefs'])
+            expect(storageOf(db)[slotsOf(db).prefs]).toEqual(pluginUnit)
+            expect(Array.from(page.w.store.peek(ASSET_KEY) as Uint8Array)).toEqual(Array.from(ASSET_BYTES))
+        },
+    }
+}
 
-            expect(assetMem.get(ASSET_KEY)).toEqual(ASSET_BYTES)
-
-            const blob = await unitJson(ID.stubBlob) as { character: RestoredCharacter }
-            expect(blob.character.chaId).toBe('cha-stub')
-            expect(firstMessages(blob.character)).toEqual(['blob hello', coldStorageHeader + ID.blobChatUnit])
-            expect(await unitJson(ID.inlineChatUnit)).toMatchObject({ message: [{ data: 'archived inline chat', role: 'user' }] })
-            expect(await unitJson(ID.blobChatUnit)).toMatchObject({ message: [{ data: 'archived blob chat', role: 'user' }] })
-            expect(await unitJson(ID.pluginUnit)).toEqual(pluginUnit)
-
-            expect(incompleteRestorePrompts()).toEqual([])
-        })
-    })
-
-    describe.each(['fork-missing-unit.bin', 'upstream-missing-unit.bin'])('guard: %s keeps a pointer chat whose unit is in no entry', (fileName) => {
-        test('the pointer text stays in the first message, the unit stays absent and the character is named in the question', async () => {
-            const db = await restoreBytes(readGolden(fileName))
-
-            const inline = character(db, 'cha-inline')
-            expect(firstMessages(inline)).toEqual(['inline hello', coldStorageHeader + ID.missingChatUnit])
-            expect((await readColdStorageItem(ID.missingChatUnit)).status).toBe('missing')
+function missingUnitCase(file: string): GoldenCase {
+    return {
+        file,
+        questions: 1,
+        check(db, _page, confirms) {
             expect(db.characters).toHaveLength(1)
+            expect(confirms[0]).toContain('Inline Alice')
+            expect(firstMessages(characterNamed(db, 'cha-inline'))).toEqual(['inline hello', formatColdStorageLoadError(ID.missingChatUnit)])
+        },
+    }
+}
 
-            const prompts = incompleteRestorePrompts()
-            expect(prompts).toHaveLength(1)
-            expect(prompts[0]).toContain('Inline Alice')
-        })
+function stubCase(file: string): GoldenCase {
+    return {
+        file,
+        questions: 1,
+        check(db, _page, confirms) {
+            // The unit the stub names is unusable, so the character stays a placeholder and the question names it.
+            expect(db.characters).toHaveLength(1)
+            const stub = characterNamed(db, 'cha-stub')
+            expect(stub.name).toBe('Stub Bob')
+            expect(stub.coldstorage).toBeFalsy()
+            expect(confirms[0]).toContain('Stub Bob')
+        },
+    }
+}
+
+const GOLDEN_TABLE: readonly GoldenCase[] = [
+    ...FULL_CASES.map(({ file, pluginUnit }) => fullCase(file, pluginUnit)),
+    missingUnitCase('fork-missing-unit.bin'),
+    missingUnitCase('upstream-missing-unit.bin'),
+    {
+        file: 'upstream-plugin-object-no-entry.bin',
+        questions: 1,
+        check(db, _page, confirms) {
+            expect(slotsOf(db)).toEqual({ prefs: ID.pluginUnit })
+            expect(storageOf(db)[ID.pluginUnit]).toBeUndefined()
+            expect(idsOf(db)).toEqual(['cha-inline'])
+            expect(confirms[0]).toContain(language.store2Boot.incompletePluginLine('prefs', language.store2Boot.reasonMissing))
+        },
+    },
+    stubCase('fork-stub-missing-entry.bin'),
+    stubCase('fork-stub-bad-json.bin'),
+    stubCase('fork-stub-wrong-shape.bin'),
+    stubCase('upstream-stub-missing-entry.bin'),
+    stubCase('upstream-stub-bad-json.bin'),
+    stubCase('upstream-stub-wrong-shape.bin'),
+    {
+        file: 'upstream-kv.bin',
+        questions: 0,
+        check(db) {
+            const kv = (db as unknown as Row).upstreamKvBlocks
+            expect(kv).toEqual({ 'ns-a': KV_A_CONTENT, 'ns-b': KV_B_CONTENT })
+            expect(Object.keys(kv as Row)).toEqual(['ns-a', 'ns-b'])
+            expect(idsOf(db)).toEqual(['cha-inline'])
+        },
+    },
+    {
+        file: 'upstream-kv-unreadable.bin',
+        questions: 1,
+        check(db, _page, confirms) {
+            expect((db as unknown as Row).upstreamKvBlocks).toEqual({ 'ns-b': KV_B_CONTENT })
+            expect(confirms[0]).toContain('- 1 part(s) of the backup this version cannot read')
+        },
+    },
+    {
+        file: 'upstream-plugin-index.bin',
+        questions: 0,
+        check(db) {
+            expect(Object.hasOwn(storageOf(db), '_coldpluginIndex')).toBe(false)
+            expect(Object.keys(slotsOf(db)).length).toBeGreaterThan(0)
+        },
+    },
+    {
+        file: 'upstream-plugin-index-missing.bin',
+        questions: 1,
+        check(db, _page, confirms) {
+            expect(slotsOf(db)).toEqual({ kept: INDEX_ID.kept })
+            expect(confirms[0]).toContain(language.store2Boot.incompletePluginLine('_coldpluginIndex', language.store2Boot.reasonMissing))
+        },
+    },
+]
+
+//#endregion
+
+describe.each(GOLDEN_WINDOWS)('T4-P3: every golden restores on a store2 page through the real commit (windows: %s)', (windowBytes) => {
+    test.each(GOLDEN_TABLE.map((entry) => [entry.file, entry] as const))('guard: %s lands, asks the table\'s questions, holds the table\'s content and the logical view of its own resolve', async (_file, entry) => {
+        const page = await openPage()
+        await useGoldenWindows(windowBytes)
+        const before = await currentKey(page)
+
+        const end = await loadBin(golden(entry.file))
+
+        expect(end.outcome).toBe('committed')
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(await currentKey(page)).not.toBe(before)
+        expect(page.reloads.count).toBe(1)
+        expect(confirmTexts(page)).toHaveLength(entry.questions)
+        const db = await committed(page)
+        await entry.check(db, page, confirmTexts(page))
+
+        // The projection row: the logical view of the commit equals the one of a plain resolve of the same file, for all 15.
+        const fixture = await loadGolden(entry.file)
+        const { resolveLegacyTree } = await import('src/ts/storage/store2/legacy/resolve')
+        const resolved = (await resolveLegacyTree(fixture.tree, readerOver(fixture.units))).database
+        expect(logicalView(db)).toEqual(logicalView(resolved))
+        const expectedModules = (resolved.modules ?? []) as unknown as Row[]
+        expect(db.modules).toHaveLength(expectedModules.length)
+        expectedModules.forEach((expected, index) => expect(db.modules[index]).toMatchObject(expected))
     })
+})
 
-    /**
-     * Upstream's SaveKV: `kv:<namespace>` blocks (type 12) of a block-format database entry. The restore carries each
-     * block's content verbatim in `upstreamKvBlocks`, and an export writes the namespaces back as `kv:` blocks in
-     * upstream's block format, so upstream reads them again.
-     */
-    describe('upstream-kv.bin carries upstream SaveKV namespaces', () => {
-        const KV_A_CONTENT = {
-            version: 1,
-            entries: [
-                { k: 'zeta', v: 1 },
-                { k: '0', v: 'zero' },
-                { k: 'alpha', v: { list: [1, { deep: true }, null], text: 'x' } },
-                { k: '한글🙂', v: 'unicode value' },
-                { k: 'nothing', v: null },
-            ],
-        }
-        const KV_B_CONTENT = { version: 1, entries: [{ k: 'second', v: [false, 'b'] }, { k: 'first', v: 0 }] }
-
-        test('guard: the restore keeps both namespaces with their entry order and asks nothing', async () => {
-            const db = await restoreBytes(readGolden('upstream-kv.bin'))
-
-            expect(db.upstreamKvBlocks).toEqual({ 'ns-a': KV_A_CONTENT, 'ns-b': KV_B_CONTENT })
-            expect(Object.keys(db.upstreamKvBlocks ?? {})).toEqual(['ns-a', 'ns-b'])
-            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
-            expect(incompleteRestorePrompts()).toEqual([])
-            expect(leftOutPrompts()).toEqual([])
-        })
-
-        test('guard: a kv block that is not JSON is the one thing left out, after one question, and the valid namespace is kept', async () => {
-            const db = await restoreBytes(readGolden('upstream-kv-unreadable.bin'))
-
-            expect(db.upstreamKvBlocks).toEqual({ 'ns-b': KV_B_CONTENT })
-            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
-            const questions = leftOutPrompts()
-            expect(questions).toHaveLength(1)
-            expect(questions[0]).toContain('- 1 part(s) of the backup this version cannot read')
-        })
-
-        test('reproducer: an export of the restored tree is upstream block format that decodes to the same namespaces', async () => {
-            const db = await restoreBytes(readGolden('upstream-kv.bin'))
-            const restoredKv = structuredClone(db.upstreamKvBlocks)
-            getDatabaseMock.mockImplementation(() => db as unknown as Database)
-            backupSink.writes.length = 0
-            await SaveLocalBackup()
-
-            const entry = databaseEntryOf(concatBytes(backupSink.writes))
-            expect(isBlockFormatSave(entry)).toBe(true)
-            const decoded = await decodeRisuSave(entry, { strict: true })
-            expect(decoded.upstreamKvBlocks).toEqual(restoredKv)
-            expect(Object.keys(decoded.upstreamKvBlocks ?? {})).toEqual(['ns-a', 'ns-b'])
-            expect(decoded.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
-            // The root block is the only uncompressed one: it names the directory and does not hold the field.
-            const text = new TextDecoder().decode(entry)
-            expect(text).toContain('"__directory"')
-            expect(text).not.toContain('upstreamKvBlocks')
-            // The live tree the page holds is not changed by the export.
-            expect(db.upstreamKvBlocks).toEqual(restoredKv)
-        })
-
-        test('reproducer: a character with a numeric id and kv namespaces exports, and the number survives', async () => {
-            const db = await restoreBytes(readGolden('upstream-kv.bin'))
-            const restoredKv = structuredClone(db.upstreamKvBlocks)
-            ;(db.characters[0] as unknown as { chaId: number }).chaId = 5
-            getDatabaseMock.mockImplementation(() => db as unknown as Database)
-            backupSink.writes.length = 0
-            await SaveLocalBackup()
-
-            expect(alertErrorMock).not.toHaveBeenCalled()
-            const entry = databaseEntryOf(concatBytes(backupSink.writes))
-            expect(isBlockFormatSave(entry)).toBe(true)
-            const decoded = await decodeRisuSave(entry, { strict: true })
-            expect(decoded.characters.map((c) => c.chaId)).toEqual([5])
-            expect(decoded.upstreamKvBlocks).toEqual(restoredKv)
-        })
-
-        test('reproducer: a tree whose field is empty or undefined exports the same msgpack entry as a tree without the field', async () => {
-            const restored = await restoreBytes(readGolden('upstream-kv.bin'))
-            const { upstreamKvBlocks: _field, ...withoutField } = restored
-
-            async function exportedEntry(db: RestoredDatabase): Promise<Uint8Array> {
-                getDatabaseMock.mockImplementation(() => db as unknown as Database)
-                backupSink.writes.length = 0
-                await SaveLocalBackup()
-                return databaseEntryOf(concatBytes(backupSink.writes))
-            }
-            const plain = await exportedEntry(withoutField)
-            const emptyField = await exportedEntry({ ...withoutField, upstreamKvBlocks: {} })
-            const undefinedField = await exportedEntry({ ...withoutField, upstreamKvBlocks: undefined })
-
-            expect(isBlockFormatSave(plain)).toBe(false)
-            expect(Array.from(emptyField)).toEqual(Array.from(plain))
-            expect(Array.from(undefinedField)).toEqual(Array.from(plain))
-            expect('upstreamKvBlocks' in await decodeRisuSave(plain)).toBe(false)
-        })
+// T4-P3d: a golden added later fails here until the table gives it a real-commit row.
+describe('T4-P3d: the table names every golden file', () => {
+    test('guard: the .bin files of binGoldens/ are exactly the files of GOLDEN_TABLE', () => {
+        expect(GOLDEN_TABLE.map((entry) => entry.file).sort()).toEqual(GOLDEN_FILES())
+        expect(new Set(GOLDEN_TABLE.map((entry) => entry.file)).size).toBe(GOLDEN_TABLE.length)
     })
+})
 
-    describe('guard: upstream-plugin-object-no-entry.bin keeps an object-valued plugin mapping whose unit upstream did not export', () => {
-        test('the mapping stays, the unit stays absent and one question is asked about an item that cannot be linked to a character', async () => {
-            const db = await restoreBytes(readGolden('upstream-plugin-object-no-entry.bin'))
+// T4-P3a: upstream's plugin storage index becomes `_coldplugin` slots, never a pointer.
+describe.each(GOLDEN_WINDOWS)('T4-P3a: upstream-plugin-index.bin (windows: %s)', (windowBytes) => {
+    armed('upstream-plugin-index.bin converts the plugin storage index on a store2 page', () => {
+        test('guard: the committed tree holds slots equal to the index values, the index wins over the fork map, and there is no pointer', async () => {
+            const page = await openPage()
+            await useGoldenWindows(windowBytes)
+            const before = await currentKey(page)
+            page.w.store.ops.length = 0
 
-            expect(db.pluginCustomStorage?._coldplugin).toEqual({ prefs: ID.pluginUnit })
-            expect((await readColdStorageItem(ID.pluginUnit)).status).toBe('missing')
-            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
+            const end = await loadBin(golden('upstream-plugin-index.bin'))
 
-            const prompts = incompleteRestorePrompts()
-            expect(prompts).toHaveLength(1)
-            expect(prompts[0]).toContain('1 item(s) could not be linked to a character')
-            expect(prompts[0]).toContain('1 cold storage item(s) will remain unavailable')
-        })
-    })
-
-    /**
-     * Upstream's plugin storage index. The fork stores plugin values as `_coldplugin` slots only, so a legacy-page restore
-     * converts the pointer: the installed tree holds slots whose units equal the index's values, and never the pointer.
-     * The database entry of these two files is upstream's block format.
-     */
-    describe('upstream-plugin-index.bin converts the plugin storage index on a legacy page', () => {
-        test('the installed tree holds slots equal to the index values, the index wins over the fork map, and there is no pointer', async () => {
-            const db = await restoreBytes(readGolden('upstream-plugin-index.bin'))
-
-            expect(Object.keys(db.pluginCustomStorage ?? {})).toEqual(['_coldplugin'])
-            const slots = db.pluginCustomStorage?._coldplugin ?? {}
+            expect(end.outcome).toBe('committed')
+            expect(await currentKey(page)).not.toBe(before)
+            const db = await committed(page)
+            const storage = storageOf(db)
+            const slots = slotsOf(db)
             const values: Record<string, unknown> = {}
             for (const [key, id] of Object.entries(slots)) {
-                values[key] = await unitJson(id)
+                values[key] = storage[id]
             }
             expect(values).toEqual({
                 objKey: { theme: 'dark', nested: { list: [1, 2, null], flag: false } },
@@ -668,82 +660,152 @@ describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
             expect(slots.kept).toBe(INDEX_ID.kept)
             expect(slots.shared).not.toBe(INDEX_ID.shadowed)
             for (const id of Object.values(slots)) {
-                expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+                expect(id).toMatch(UNIT_ID)
             }
-            expect(db.characters.map((c) => c.chaId)).toEqual(['cha-inline'])
-            expect(incompleteRestorePrompts()).toEqual([])
-        })
-
-        test('an index unit that is in no entry asks the incomplete-restore question and leaves no pointer', async () => {
-            const db = await restoreBytes(readGolden('upstream-plugin-index-missing.bin'))
-
-            expect(db.pluginCustomStorage).toEqual({ _coldplugin: { kept: INDEX_ID.kept } })
-            expect((await readColdStorageItem(INDEX_ID.index)).status).toBe('missing')
-            const prompts = incompleteRestorePrompts()
-            expect(prompts).toHaveLength(1)
-            expect(prompts[0]).toContain('1 item(s) could not be linked to a character')
-            expect(prompts[0]).toContain('1 cold storage item(s) will remain unavailable')
-        })
-    })
-
-    /**
-     * The restore today installs a stub character exactly as the database holds it
-     * (its `coldstorage` key, its `coldStoragedChats` and its one empty placeholder
-     * chat) whatever the blob entry is, and asks the incomplete-restore question
-     * naming the character. These record that behaviour only; they are not a rule
-     * for any later importer.
-     *
-     *  - no entry, or an entry that is not JSON: the blob unit is not stored, so the
-     *    blob and the chat unit its `coldStoragedChats` names are both unavailable.
-     *  - an entry that is JSON of another shape, under the name the exporter writes:
-     *    stored as a unit (any JSON is a unit under that name), so only the chat
-     *    unit is unavailable.
-     */
-    describe.each([
-        ['fork-stub-missing-entry.bin', 'missing', 2],
-        ['fork-stub-bad-json.bin', 'missing', 2],
-        ['fork-stub-wrong-shape.bin', 'ok', 1],
-        ['upstream-stub-missing-entry.bin', 'missing', 2],
-        ['upstream-stub-bad-json.bin', 'missing', 2],
-        ['upstream-stub-wrong-shape.bin', 'ok', 1],
-    ] as const)('guard: %s restores a stub whose blob entry cannot be used', (fileName, blobStatus, unavailable) => {
-        test('the stub is installed as stored, the blob unit is as noted and one question names the character', async () => {
-            const db = await restoreBytes(readGolden(fileName))
-
-            expect(db.characters).toHaveLength(1)
-            const stub = character(db, 'cha-stub')
-            expect(stub.name).toBe('Stub Bob')
-            expect(stub.coldstorage).toBe(ID.stubBlob)
-            expect(stub.coldStoragedChats).toEqual([ID.blobChatUnit])
-            expect(firstMessages(stub)).toEqual([''])
-
-            expect((await readColdStorageItem(ID.stubBlob)).status).toBe(blobStatus)
-            expect((await readColdStorageItem(ID.blobChatUnit)).status).toBe('missing')
-
-            const prompts = incompleteRestorePrompts()
-            expect(prompts).toHaveLength(1)
-            expect(prompts[0]).toContain('Stub Bob')
-            expect(prompts[0]).toContain(`${unavailable} cold storage item(s) will remain unavailable`)
+            expect(Object.hasOwn(storage, '_coldpluginIndex')).toBe(false)
+            expect(Object.keys(storage).sort()).toEqual(['_coldplugin', ...new Set(Object.values(slots))].sort())
+            expect(idsOf(db)).toEqual(['cha-inline'])
+            expect(confirmTexts(page)).toEqual([])
+            expect(mutations(page).filter((op) => op.key.startsWith('coldstorage/'))).toEqual([])
+            expect(page.reloads.count).toBe(1)
         })
     })
 })
 
+// T4-P3b: an index unit that is in no entry asks the incomplete-restore question and leaves no pointer.
+describe.each(GOLDEN_WINDOWS)('T4-P3b: upstream-plugin-index-missing.bin (windows: %s)', (windowBytes) => {
+    armed('upstream-plugin-index-missing.bin lists the missing index unit', () => {
+        test('guard: one question names the index, and the default yes lands the kept unit with no pointer', async () => {
+            const page = await openPage()
+            await useGoldenWindows(windowBytes)
+            const before = await currentKey(page)
+
+            const end = await loadBin(golden('upstream-plugin-index-missing.bin'))
+
+            expect(end.outcome).toBe('committed')
+            expect(await currentKey(page)).not.toBe(before)
+            expect(page.reloads.count).toBe(1)
+            expect(confirmTexts(page)).toHaveLength(1)
+            expect(confirmTexts(page)[0]).toContain(language.store2Boot.incompletePluginLine('_coldpluginIndex', language.store2Boot.reasonMissing))
+            const db = await committed(page)
+            const fixture = await loadGolden('upstream-plugin-index-missing.bin')
+            expect(slotsOf(db)).toEqual({ kept: INDEX_ID.kept })
+            expect(storageOf(db)[INDEX_ID.kept]).toEqual(unitValueOf(fixture, INDEX_ID.kept))
+            expect(Object.hasOwn(storageOf(db), '_coldpluginIndex')).toBe(false)
+        })
+
+        test('guard: answering no leaves the commit key and the store2 keys unchanged, with no reload and the write lock free', async () => {
+            const page = await openPage()
+            await useGoldenWindows(windowBytes)
+            vi.mocked(page.alert.alertConfirm).mockImplementation(async () => false)
+            const before = await currentKey(page)
+            const keysBefore = store2Keys(page)
+
+            const end = await loadBin(golden('upstream-plugin-index-missing.bin'))
+
+            expect(end.outcome).toBe('nothing-replaced')
+            expect(confirmTexts(page)).toHaveLength(1)
+            expect(await currentKey(page)).toBe(before)
+            expect(store2Keys(page)).toEqual(keysBefore)
+            expect(page.reloads.count).toBe(0)
+            expect(await writeLockIsFree(page)).toBe(true)
+        })
+    })
+})
+
+// T4-P3c: a key-value block that is not JSON is the one thing left out, after one question.
+describe.each(GOLDEN_WINDOWS)('T4-P3c: upstream-kv-unreadable.bin (windows: %s)', (windowBytes) => {
+    armed('upstream-kv-unreadable.bin leaves out the unreadable block', () => {
+        test('guard: one question names the part left out, and the valid namespace lands', async () => {
+            const page = await openPage()
+            await useGoldenWindows(windowBytes)
+            const before = await currentKey(page)
+
+            const end = await loadBin(golden('upstream-kv-unreadable.bin'))
+
+            expect(end.outcome).toBe('committed')
+            expect(await currentKey(page)).not.toBe(before)
+            const db = await committed(page)
+            expect((db as unknown as Row).upstreamKvBlocks).toEqual({ 'ns-b': KV_B_CONTENT })
+            expect(idsOf(db)).toEqual(['cha-inline'])
+            expect(confirmTexts(page)).toHaveLength(1)
+            expect(confirmTexts(page)[0]).toContain('- 1 part(s) of the backup this version cannot read')
+            expect(page.reloads.count).toBe(1)
+        })
+    })
+})
+
+// Upstream's SaveKV export: the committed namespaces come back out as `kv:` blocks in upstream's block format.
+describe('upstream-kv.bin carries upstream SaveKV namespaces through an export', () => {
+    async function decodeEntry(entry: Uint8Array, strict: boolean): Promise<Row> {
+        const { decodeRisuSave } = await import('src/ts/storage/risuSave')
+        return await decodeRisuSave(entry, strict ? { strict: true } : undefined) as unknown as Row
+    }
+
+    test('reproducer: an export of the committed tree is upstream block format that decodes to the same namespaces', async () => {
+        const { page, db } = await restoredOnFreshPage(golden('upstream-kv.bin'))
+        const restoredKv = structuredClone((db as unknown as Row).upstreamKvBlocks)
+
+        const entry = databaseEntryOf(await exportOf(page, db))
+
+        const { isBlockFormatSave } = await import('src/ts/storage/risuSave')
+        expect(isBlockFormatSave(entry)).toBe(true)
+        const decoded = await decodeEntry(entry, true)
+        expect(decoded.upstreamKvBlocks).toEqual(restoredKv)
+        expect(Object.keys(decoded.upstreamKvBlocks as Row)).toEqual(['ns-a', 'ns-b'])
+        expect((decoded.characters as Row[]).map((entry) => entry.chaId)).toEqual(['cha-inline'])
+        // The root block is the only uncompressed one: it names the directory and does not hold the field.
+        const text = new TextDecoder().decode(entry)
+        expect(text).toContain('"__directory"')
+        expect(text).not.toContain('upstreamKvBlocks')
+        // The live tree the page holds is not changed by the export.
+        expect((db as unknown as Row).upstreamKvBlocks).toEqual(restoredKv)
+    })
+
+    test('reproducer: a character with a numeric id and kv namespaces exports, and the number survives', async () => {
+        const { page, db } = await restoredOnFreshPage(golden('upstream-kv.bin'))
+        const restoredKv = structuredClone((db as unknown as Row).upstreamKvBlocks)
+        ;(charactersOf(db)[0] as unknown as { chaId: number }).chaId = 5
+
+        const entry = databaseEntryOf(await exportOf(page, db))
+
+        expect(alertErrorTexts(page)).toEqual([])
+        const { isBlockFormatSave } = await import('src/ts/storage/risuSave')
+        expect(isBlockFormatSave(entry)).toBe(true)
+        const decoded = await decodeEntry(entry, true)
+        expect((decoded.characters as Row[]).map((character) => character.chaId)).toEqual([5])
+        expect(decoded.upstreamKvBlocks).toEqual(restoredKv)
+    })
+
+    test('reproducer: a tree whose field is empty or undefined exports the same msgpack entry as a tree without the field', async () => {
+        const { page, db: restored } = await restoredOnFreshPage(golden('upstream-kv.bin'))
+        const { upstreamKvBlocks: _field, ...withoutField } = restored as unknown as Row
+
+        async function exportedEntry(variant: Row): Promise<Uint8Array> {
+            return databaseEntryOf(await exportOf(page, variant as unknown as Database))
+        }
+        const plain = await exportedEntry(withoutField)
+        const emptyField = await exportedEntry({ ...withoutField, upstreamKvBlocks: {} })
+        const undefinedField = await exportedEntry({ ...withoutField, upstreamKvBlocks: undefined })
+
+        const { isBlockFormatSave } = await import('src/ts/storage/risuSave')
+        expect(isBlockFormatSave(plain)).toBe(false)
+        expect(Array.from(emptyField)).toEqual(Array.from(plain))
+        expect(Array.from(undefinedField)).toEqual(Array.from(plain))
+        expect('upstreamKvBlocks' in await decodeEntry(plain, false)).toBe(false)
+    })
+})
+
 /**
- * HypaV3 presets across the `.bin` round trip. The container is hand-built in
- * the test, upstream-shaped and synthetic (not upstream writer output): the
- * block framing is written out below and shares no code with a production
- * writer, and no golden file is read or changed. Upstream's block writer keeps
- * every database key except `characters`, `botPresets` and `modules` in the
- * root block, so the preset list, the active index and the five engine fields
- * sit there, and its `setDatabase` writes presets back as `{name, settings}`
- * without an id.
+ * HypaV3 presets across the `.bin` round trip. The container is hand-built in the test, upstream-shaped and synthetic
+ * (not upstream writer output): the block framing is written out below and shares no code with a production writer, and
+ * no golden file is read or changed. Upstream's block writer keeps every database key except `characters`,
+ * `botPresets` and `modules` in the root block, so the preset list, the active index and the five engine fields sit
+ * there, and its `setDatabase` writes presets back as `{name, settings}` without an id.
  *
- * Leg 1 (restore keeps the fields) is a compatibility guard. The block as a
- * whole imports `normalizeHypaV3Presets`, so no pre-change run of it is
- * claimed. `setDatabase` is mocked in this file, so the normalize legs call the
- * function `setDatabase` calls; the load itself is proven by
- * `databaseHypaV3Presets.test.ts`. The last leg models upstream's load: no
- * upstream code runs.
+ * Leg 1 (the commit keeps the fields) is a compatibility guard. `normalizeHypaV3Presets` is the function `setDatabase`
+ * calls on every load, called here on the committed tree; the load itself is proven by
+ * `databaseHypaV3Presets.test.ts`. The last leg models upstream's load: no upstream code runs.
  */
 describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
     const framing = new TextEncoder()
@@ -754,16 +816,12 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
         return buf
     }
 
-    function join(parts: Uint8Array[]): Uint8Array {
-        return concatBytes(parts)
-    }
-
     /** One block as upstream frames it: `[type u8][compression u8][nameLength u8][name][dataLength u32 LE][data]`; gzip has a zero header time. */
     function block(type: number, name: string, value: unknown, gzip: boolean): Uint8Array {
         const nameBuf = framing.encode(name)
         const raw = framing.encode(JSON.stringify(value))
         const data = gzip ? gzipSync(raw, { mtime: 0 }) : raw
-        return join([Uint8Array.of(type, gzip ? 1 : 0, nameBuf.length), nameBuf, u32(data.length), data])
+        return concatBytes([Uint8Array.of(type, gzip ? 1 : 0, nameBuf.length), nameBuf, u32(data.length), data])
     }
 
     const TYPE = { config: 0, root: 1, preset: 4, modules: 5, character: 7, plugins: 9, loadouts: 10, pluginStorage: 11 } as const
@@ -856,16 +914,16 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
             { type: TYPE.pluginStorage, name: 'pluginStorage', value: {} },
             { type: TYPE.config, name: 'config', value: { version: 1 } },
         ]
-        const database = join([
+        const database = concatBytes([
             framing.encode('RISUSAVE\0'),
             ...blocks.map((b) => block(b.type, b.name, b.value, true)),
             block(TYPE.root, 'root', { ...BUILT_ROOT, __directory: blocks.map((b) => b.name) }, false),
         ])
         const nameBuf = framing.encode('database.risudat')
-        return join([u32(nameBuf.length), nameBuf, u32(database.length), database])
+        return concatBytes([u32(nameBuf.length), nameBuf, u32(database.length), database])
     }
 
-    type PresetRoot = RestoredDatabase & {
+    type PresetRoot = Database & {
         hypav2: boolean, hanuraiEnable: boolean, hypaV3: boolean, supaModelType: string, memoryAlgorithmType: string,
         hypaV3Presets: { id?: string, name: string, settings: object }[], hypaV3PresetId: number,
     }
@@ -881,9 +939,15 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
         return root.hypaV3Presets.map((p) => ({ name: p.name, settings: p.settings }))
     }
 
-    test('the restore keeps the five fields, the preset order, {name, settings} and the index; normalize, export and decode keep them and the ids', async () => {
-        // Leg 1: restore (real LoadLocalBackup).
-        const root = await restoreBytes(upstreamContainer()) as PresetRoot
+    async function decodeStrict(entry: Uint8Array): Promise<PresetRoot> {
+        const { decodeRisuSave } = await import('src/ts/storage/risuSave')
+        return await decodeRisuSave(entry, { strict: true }) as unknown as PresetRoot
+    }
+
+    test('the commit keeps the five fields, the preset order, {name, settings} and the index; normalize, export and decode keep them and the ids', async () => {
+        // Leg 1: the commit of the real LoadLocalBackup.
+        const { page, db } = await restoredOnFreshPage(upstreamContainer())
+        const root = db as PresetRoot
         expect(fieldsOf(root)).toEqual(BUILT_FIELDS)
         expect(root.hypaV3Presets).toEqual(BUILT_PRESETS)
         expect(root.hypaV3PresetId).toBe(2)
@@ -900,11 +964,8 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
         }
 
         // Leg 3: export through the real SaveLocalBackup, then decode.
-        getDatabaseMock.mockImplementation(() => root as unknown as Database)
-        backupSink.writes.length = 0
-        await SaveLocalBackup()
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true }) as unknown as PresetRoot
+        const decoded = await decodeStrict(databaseEntryOf(await exportOf(page, root)))
+        expect(alertErrorTexts(page)).toEqual([])
         expect(fieldsOf(decoded)).toEqual(BUILT_FIELDS)
         expect(decoded.hypaV3Presets.map((p) => Object.keys(p).sort())).toEqual([['id', 'name', 'settings'], ['id', 'name', 'settings'], ['id', 'name', 'settings']])
         expect(nameAndSettings(decoded)).toEqual(BUILT_PRESETS_FORK)
@@ -940,24 +1001,23 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
     })
 
     // compatibility guard: the summary time is opaque chat data, so it passes before and after
-    test('B2: a summary time on a chat survives restore, export and decode', async () => {
+    test('B2: a summary time on a chat survives the commit, export and decode', async () => {
         const T = 1_763_424_000_000
         const summaries = [
             { text: 'legacy', chatMemos: ['m0'], isImportant: false, tags: [] },
             { text: 'dated', chatMemos: ['m1'], isImportant: false, tags: [], createdAt: T },
         ]
-        const root = await restoreBytes(upstreamContainer({ hypaV3Data: { summaries } }))
-        getDatabaseMock.mockImplementation(() => root as unknown as Database)
-        backupSink.writes.length = 0
-        await SaveLocalBackup()
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true })
-        const chat = decoded.characters[0].chats[0] as unknown as { hypaV3Data: { summaries: object[] } }
+        const { page, db } = await restoredOnFreshPage(upstreamContainer({ hypaV3Data: { summaries } }))
+
+        const decoded = await decodeStrict(databaseEntryOf(await exportOf(page, db)))
+
+        expect(alertErrorTexts(page)).toEqual([])
+        const chat = (decoded.characters[0] as unknown as { chats: Array<{ hypaV3Data: { summaries: object[] } }> }).chats[0]
         expect(chat.hypaV3Data.summaries).toEqual(summaries)
     })
 
     // regression reproducer: base normalize drops the two recency keys, so the option resets to off on load
-    test('B3: a fork .bin keeps the recency settings through restore, normalize, export and decode; upstream drops them', async () => {
+    test('B3: a fork .bin keeps the recency settings through the commit, normalize, export and decode; upstream drops them', async () => {
         const forkPreset = {
             id: 'preset-fork',
             name: 'Fork',
@@ -965,31 +1025,26 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
         }
 
         // B3-0: the fork .bin is written by the real exporter.
-        const first = await restoreBytes(upstreamContainer()) as PresetRoot
-        first.hypaV3Presets = [forkPreset]
-        first.hypaV3PresetId = 0
-        getDatabaseMock.mockImplementation(() => first as unknown as Database)
-        backupSink.writes.length = 0
-        await SaveLocalBackup()
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        const forkBin = concatBytes(backupSink.writes)
+        const { page: first, db: firstDb } = await restoredOnFreshPage(upstreamContainer())
+        const firstRoot = firstDb as PresetRoot
+        firstRoot.hypaV3Presets = [forkPreset]
+        firstRoot.hypaV3PresetId = 0
+        const forkBin = await exportOf(first, firstRoot)
+        expect(alertErrorTexts(first)).toEqual([])
 
-        // B3-1: raw restore of the fork .bin.
-        setDatabaseMock.mockClear()
-        const root = await restoreBytes(forkBin) as PresetRoot
+        // B3-1: the commit of the fork .bin.
+        const { page, db } = await restoredOnFreshPage(forkBin)
+        const root = db as PresetRoot
         expect(root.hypaV3Presets).toEqual([forkPreset])
 
         // B3-2: the function setDatabase calls on every load.
         normalizeHypaV3Presets(root as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
-        const settingsOf = (db: PresetRoot) => db.hypaV3Presets[0].settings as { enableRecencyWeighting?: boolean, recencyHalfLifeDays?: number }
+        const settingsOf = (value: PresetRoot) => value.hypaV3Presets[0].settings as { enableRecencyWeighting?: boolean, recencyHalfLifeDays?: number }
         expect(settingsOf(root).enableRecencyWeighting).toBe(true)
         expect(settingsOf(root).recencyHalfLifeDays).toBe(14)
 
         // B3-3: export and decode keep both keys.
-        getDatabaseMock.mockImplementation(() => root as unknown as Database)
-        backupSink.writes.length = 0
-        await SaveLocalBackup()
-        const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true }) as unknown as PresetRoot
+        const decoded = await decodeStrict(databaseEntryOf(await exportOf(page, root)))
         expect(decoded.hypaV3Presets.map((p) => Object.keys(p).sort())).toEqual([['id', 'name', 'settings']])
         expect(settingsOf(decoded)).toEqual(forkPreset.settings)
 

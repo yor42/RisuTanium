@@ -182,11 +182,9 @@ describe('the Home card follows the desktop transport and the page mode', () => 
     })
 
     test('(R) a non-store2 page shows no card', () => {
-        for (const kind of ['legacy', 'block'] as const) {
-            setPageStorageMode(kind === 'legacy' ? { kind: 'legacy', convertedFrom: null } : { kind: 'block' })
-            const root = open(MainMenu)
-            expect(root.querySelector('[data-testid="utility-card"]'), kind).toBeNull()
-        }
+        setPageStorageMode({ kind: 'unset' })
+        const root = open(MainMenu)
+        expect(root.querySelector('[data-testid="utility-card"]')).toBeNull()
     })
 
     test('(R) M14: Android, hosted web and Node show no card even on store2', () => {

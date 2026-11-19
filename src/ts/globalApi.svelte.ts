@@ -30,7 +30,11 @@ import { ASSET_RETAINED_KEY } from "./studio/assets/assetOwnerKeys";
 import { appendIfAbsent, installCharacterSaveMarks, type SaveMarkKind } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
-import type { ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
+import type { CharacterCommit, ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
+import { takeReplyOwner, type NativeReplyOwner } from "./nativeReply/grant";
+import { createPumpProbe, isOrphanReplyEvent, parseReplyStamp, resolveOwnedFetch, type PumpProbe } from "./nativeReply/ownedBody";
+import { noteInvoked, noteUnowned, requestReconcile } from "./nativeReply/pageState";
+import { createReplyStore } from "./nativeReply/store";
 import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
@@ -75,7 +79,7 @@ import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
 import { decidePlainFetch } from "./network/androidHttp";
-import { androidWithholdsUrl, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
+import { wholeUseUrlWithheld, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
@@ -102,7 +106,7 @@ let fetchLog: fetchLog[] = []
 export { downloadFile } from "./downloadFile"
 
 type FileCacheEntry = {
-    status: 'loading' | 'done' | 'missing'
+    status: 'loading' | 'done'
     // AV-3: plain-HTTP 'done' entries store the finished,
     // full `data:image/png;base64,...` string here, built once inside the
     // loading producer in getFileSrc, instead of raw bytes that got
@@ -115,7 +119,7 @@ type FileCacheEntry = {
     // rope/ConsString per holder is plausible but not verified against Blink.
     // A caller that arrives after an eviction, re-read, or an orphaned
     // attempt still gets a different string object than an earlier caller
-    // did. Service-worker 'done'/'missing' entries never set this and cost 0
+    // did. Entries without a `src` (a Blob shown through an object URL) cost 0
     // bytes in the accounting below.
     src?: string
     // Set only while status === 'loading'. All callers that find an in-flight entry
@@ -137,9 +141,9 @@ type FileCacheEntry = {
 // prefix back out of the cost.
 const FILE_CACHE_SRC_PREFIX = 'data:image/png;base64,'
 
-// Bounded LRU cache, keyed by asset location. On the non-Tauri/non-service-worker
-// path this holds the already-encoded `data:` string of every asset resolved via
-// getFileSrc, bounded by both an entry-count cap and a byte budget below, so long
+// Bounded LRU cache, keyed by asset location. On the non-Tauri path this holds
+// the already-encoded `data:` string of every asset resolved via getFileSrc,
+// bounded by both an entry-count cap and a byte budget below, so long
 // sessions can't hold an unbounded amount of encoded asset data in memory. An
 // asset a Node-hosted page gets a URL for never reaches it.
 const FILE_CACHE_DEFAULT_MAX_ENTRIES = 200
@@ -148,7 +152,7 @@ const FILE_CACHE_DEFAULT_MAX_ENTRIES = 200
 let FILE_CACHE_MAX_ENTRIES = FILE_CACHE_DEFAULT_MAX_ENTRIES
 // AV-3 budget: total bytes of encoded payload the cache may
 // hold across all entries (see fileCacheEntryCost — the shared prefix on each
-// `src` is excluded). Service-worker, loading and missing entries cost 0.
+// `src` is excluded). Loading entries and Blob entries (no `src`) cost 0.
 const FILE_CACHE_DEFAULT_MAX_BYTES = 64 * 1024 * 1024
 let fileCacheMaxBytes = FILE_CACHE_DEFAULT_MAX_BYTES
 // Running total of every cached entry's cost (see fileCacheEntryCost), kept in
@@ -210,7 +214,7 @@ export function releaseAssetObjectUrl(keys: Iterable<string>): void {
 // The byte cost of one cache entry for budget purposes: `src.length` MINUS
 // the constant-length `FILE_CACHE_SRC_PREFIX` every `src` carries, so the
 // budget tracks only the encoded payload, not the prefix shared by every
-// entry. Entries with no `src` (service-worker, loading, missing) cost 0.
+// entry. Entries with no `src` (loading, or a Blob shown through an object URL) cost 0.
 function fileCacheEntryCost(entry: FileCacheEntry): number {
     return entry.src ? entry.src.length - FILE_CACHE_SRC_PREFIX.length : 0
 }
@@ -425,14 +429,16 @@ function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
  *
  * On Tauri an asset URL comes from the store's `urlFor`, from the key alone, so
  * no byte is read. On a Node-hosted page the same holds for an `assets/` key the
- * server's asset route serves, with the service worker on or off; when the store
- * cannot make that URL the call takes the path below. Elsewhere the bytes come
- * from the store and are handed to the service worker or encoded into a data
- * URL.
+ * server's asset route serves; when the store cannot make that URL the call
+ * takes the path below. Elsewhere the bytes come from the store and are encoded
+ * into a data URL, or shown through an object URL for a Blob.
  *
- * On Android a URL for a `'whole'` use is withheld (`''`) when the stored size
- * is above the whole-read limit or cannot be read, because the asset protocol
- * would read the file whole into the WebView's heap. A caller that does not say
+ * On Android and on the desktop a URL for a `'whole'` use is withheld (`''`)
+ * when the stored size is above the platform's whole-read limit
+ * (`ANDROID_WHOLE_READ_URL_LIMIT_BYTES`, `DESKTOP_WHOLE_READ_URL_LIMIT_BYTES`)
+ * or cannot be read, because the asset protocol would read the file whole into
+ * memory (the WebView's heap on Android, the host process on the desktop). A
+ * caller that does not say
  * what the URL is for gets `'whole'`; only a media element passes `'media'`.
  *
  * A list passes the `budget` of its run for every `'whole'` row: the call joins
@@ -453,7 +459,7 @@ export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: 
         if (loc.startsWith('assets')) {
             const admission = use === 'whole' && budget !== undefined ? budget.admit(loc) : undefined
             try {
-                if (await androidWithholdsUrl(loc, use)) {
+                if (await wholeUseUrlWithheld(loc, use)) {
                     return ''
                 }
                 if (admission !== undefined && !(await admission)) {
@@ -490,155 +496,91 @@ export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: 
         if (knownObjectUrl !== undefined) {
             return knownObjectUrl
         }
-        if (usingSw) {
-            const encoded = Buffer.from(loc, 'utf-8').toString('hex')
-            const existing = fileCache.get(loc)
+        const existing = fileCache.get(loc)
+        let resolved: FileCacheEntry
 
-            // Retry (start a fresh resolution) for: no entry yet, or an earlier attempt
-            // that settled 'missing' (a transient local-storage miss that may now have
-            // resolved). An in-flight 'loading' entry is awaited directly below instead
-            // of retried. A settled 'done' entry needs nothing further.
-            const shouldStart = !existing || existing.status === 'missing'
-
-            if (shouldStart) {
-                const loadingEntry: FileCacheEntry = { status: 'loading' }
-                const promise = (async (): Promise<FileCacheEntry> => {
-                    try {
-                        const hasCache: boolean = (await (await fetch("/sw/check/" + encoded)).json()).able
-                        if (hasCache) {
-                            return { status: 'done' }
-                        }
-                        const value = await readValueForUrl(loc)
-                        if (value instanceof Blob) {
-                            // A Blob asset is shown through an object URL kept in
-                            // assetObjectUrls; the service worker never holds a copy.
-                            if (value.size > 0) {
-                                objectUrlOfAssetBlob(loc, value)
-                                return { status: 'done' }
-                            }
-                            return { status: 'missing' }
-                        }
-                        const f = value
-                        if (f && f.byteLength > 0) {
-                            await fetch("/sw/register/" + encoded, {
-                                method: "POST",
-                                body: f as any
-                            })
-                            await sleep(10)
-                            return { status: 'done' }
-                        }
-                        // No local copy to register yet — don't memoize this as resolved,
-                        // so a later call for the same asset (once it exists locally) can
-                        // retry instead of being stuck with a permanently-blank image.
-                        return { status: 'missing' }
-                    } catch (error) {
-                        return { status: 'missing' }
-                    }
-                })()
-                loadingEntry.promise = promise
-                touchFileCache(loc, loadingEntry)
-                const resolved = await promise
-                // Only commit if this attempt's entry is still the one in the cache —
-                // it may have been evicted (see touchFileCache) and superseded by a
-                // newer retry for the same key while this was in flight.
-                if (fileCache.get(loc) === loadingEntry) {
-                    touchFileCache(loc, resolved)
+        if (!existing) {
+            // AV-3: an oversized result from a
+            // previous call for this exact loc is never committed to the
+            // budgeted cache below, so check the one-slot memo before
+            // starting a fresh read — otherwise a caller that repeatedly
+            // re-requests the same oversized asset (e.g. a streaming
+            // re-parse) would re-read and re-encode it every time.
+            if (oversizedMemo && oversizedMemo.loc === loc) {
+                return oversizedMemo.src
+            }
+            const loadingEntry: FileCacheEntry = { status: 'loading' }
+            const promise = (async (): Promise<FileCacheEntry> => {
+                // Built once here, inside the shared producer, so every
+                // concurrent or later caller for this loc reuses this same
+                // read and this same encode, and every caller served from
+                // the same cache entry or memo slot gets the same string
+                // object instead of each re-encoding or re-concatenating
+                // its own copy on every call. `src` is
+                // the FULL `data:image/png;base64,...` string, prefix
+                // included — every return path below hands it out as-is,
+                // never rebuilding it per call. A caller that arrives
+                // after this entry is evicted or superseded by a retry
+                // still gets a different string than an earlier caller.
+                const value = await readValueForUrl(loc)
+                if (value instanceof Blob) {
+                    // The object URL lives in assetObjectUrls, outside the
+                    // budget; this entry holds no payload and costs 0.
+                    objectUrlOfAssetBlob(loc, value)
+                    return { status: 'done' }
                 }
+                const src = FILE_CACHE_SRC_PREFIX + Buffer.from(value ?? new Uint8Array()).toString('base64')
+                return { status: 'done', src }
+            })()
+            loadingEntry.promise = promise
+            touchFileCache(loc, loadingEntry)
+            try {
+                resolved = await promise
+                // Only commit if this attempt's entry is still the one in the
+                // cache — it may have been evicted and superseded by a newer
+                // retry for the same key while this was in flight.
+                if (fileCache.get(loc) === loadingEntry) {
+                    if (resolved.src !== undefined && fileCacheEntryCost(resolved) > fileCacheMaxBytes) {
+                        // Oversized: don't let one asset evict the entire
+                        // budgeted cache. Remove the loading placeholder and
+                        // memoize the result on the side instead.
+                        fileCacheDelete(loc)
+                        oversizedMemo = { loc, src: resolved.src }
+                    } else {
+                        touchFileCache(loc, resolved)
+                    }
+                }
+            } catch (error) {
+                // Don't leave this entry stuck at 'loading' forever for other
+                // callers — remove it (if it's still the current one) so a future
+                // call can retry — then let the failure propagate to this caller
+                // exactly as it would have without any caching (caught by the
+                // function-level catch below).
+                if (fileCache.get(loc) === loadingEntry) {
+                    fileCacheDelete(loc)
+                }
+                throw error
             }
-            else if (existing.status === 'loading' && existing.promise) {
-                await existing.promise
-            }
-            // A caller that waited on a producer which made an object URL gets
-            // that URL, not the service-worker path nothing was registered under.
-            return assetObjectUrls.get(loc) ?? "/sw/img/" + encoded
+        }
+        else if (existing.status === 'loading' && existing.promise) {
+            // Await the SAME promise the original caller is waiting on, rather
+            // than re-reading the Map — the entry could otherwise be evicted (or
+            // its promise could reject) between this check and a later read.
+            resolved = await existing.promise
         }
         else {
-            const existing = fileCache.get(loc)
-            let resolved: FileCacheEntry
-
-            if (!existing) {
-                // AV-3: an oversized result from a
-                // previous call for this exact loc is never committed to the
-                // budgeted cache below, so check the one-slot memo before
-                // starting a fresh read — otherwise a caller that repeatedly
-                // re-requests the same oversized asset (e.g. a streaming
-                // re-parse) would re-read and re-encode it every time.
-                if (oversizedMemo && oversizedMemo.loc === loc) {
-                    return oversizedMemo.src
-                }
-                const loadingEntry: FileCacheEntry = { status: 'loading' }
-                const promise = (async (): Promise<FileCacheEntry> => {
-                    // Built once here, inside the shared producer, so every
-                    // concurrent or later caller for this loc reuses this same
-                    // read and this same encode, and every caller served from
-                    // the same cache entry or memo slot gets the same string
-                    // object instead of each re-encoding or re-concatenating
-                    // its own copy on every call. `src` is
-                    // the FULL `data:image/png;base64,...` string, prefix
-                    // included — every return path below hands it out as-is,
-                    // never rebuilding it per call. A caller that arrives
-                    // after this entry is evicted or superseded by a retry
-                    // still gets a different string than an earlier caller.
-                    const value = await readValueForUrl(loc)
-                    if (value instanceof Blob) {
-                        // The object URL lives in assetObjectUrls, outside the
-                        // budget; this entry holds no payload and costs 0.
-                        objectUrlOfAssetBlob(loc, value)
-                        return { status: 'done' }
-                    }
-                    const src = FILE_CACHE_SRC_PREFIX + Buffer.from(value ?? new Uint8Array()).toString('base64')
-                    return { status: 'done', src }
-                })()
-                loadingEntry.promise = promise
-                touchFileCache(loc, loadingEntry)
-                try {
-                    resolved = await promise
-                    // Only commit if this attempt's entry is still the one in the
-                    // cache — it may have been evicted and superseded by a newer
-                    // retry for the same key while this was in flight.
-                    if (fileCache.get(loc) === loadingEntry) {
-                        if (resolved.src !== undefined && fileCacheEntryCost(resolved) > fileCacheMaxBytes) {
-                            // Oversized: don't let one asset evict the entire
-                            // budgeted cache. Remove the loading placeholder and
-                            // memoize the result on the side instead.
-                            fileCacheDelete(loc)
-                            oversizedMemo = { loc, src: resolved.src }
-                        } else {
-                            touchFileCache(loc, resolved)
-                        }
-                    }
-                } catch (error) {
-                    // Don't leave this entry stuck at 'loading' forever for other
-                    // callers — remove it (if it's still the current one) so a future
-                    // call can retry — then let the failure propagate to this caller
-                    // exactly as it would have without any caching (caught by the
-                    // function-level catch below).
-                    if (fileCache.get(loc) === loadingEntry) {
-                        fileCacheDelete(loc)
-                    }
-                    throw error
-                }
-            }
-            else if (existing.status === 'loading' && existing.promise) {
-                // Await the SAME promise the original caller is waiting on, rather
-                // than re-reading the Map — the entry could otherwise be evicted (or
-                // its promise could reject) between this check and a later read.
-                resolved = await existing.promise
-            }
-            else {
-                // Bump recency on a cache hit without changing its contents.
-                touchFileCache(loc, existing)
-                resolved = existing
-            }
-            // `src` was already built once, inside the producer above (or by
-            // whichever call originally populated this entry) — every caller
-            // just returns this exact string, matching the pre-AV-3 code's
-            // output exactly (a missing file's empty buffer encodes to the
-            // empty string, same as the pre-AV-3 code's
-            // `resolved?.data ?? new Uint8Array()`) without rebuilding it per
-            // call.
-            return assetObjectUrls.get(loc) ?? resolved?.src ?? FILE_CACHE_SRC_PREFIX
+            // Bump recency on a cache hit without changing its contents.
+            touchFileCache(loc, existing)
+            resolved = existing
         }
+        // `src` was already built once, inside the producer above (or by
+        // whichever call originally populated this entry) — every caller
+        // just returns this exact string, matching the pre-AV-3 code's
+        // output exactly (a missing file's empty buffer encodes to the
+        // empty string, same as the pre-AV-3 code's
+        // `resolved?.data ?? new Uint8Array()`) without rebuilding it per
+        // call.
+        return assetObjectUrls.get(loc) ?? resolved?.src ?? FILE_CACHE_SRC_PREFIX
     } catch (error) {
         console.error(error)
         return ''
@@ -1329,6 +1271,30 @@ export function moduleCommitVerdict(moduleId: string): 'saved' | 'unsavable' | '
     return lastModuleHold.carriedWhole ? 'blocked' : 'saved'
 }
 
+/** The character statement of the latest reported commit; the clean one before any: nothing listed means nothing is known to be gone. */
+let lastCommitCharacters: CharacterCommit = { listed: null, encoded: new Set(), skipped: new Set() }
+
+/**
+ * What the latest reported commit did with character `chaId` (compared as `String(chaId)`): `saved` when the pass wrote
+ * it; `skipped` when the pass could not read it and kept its saved copy, or never had one; `gone` when the pass's copy
+ * of the list did not hold it; `absent` otherwise (a stub or a character the pass did not name). The order is
+ * load-bearing: a never-saved skipped slot is listed but in no tree, so `skipped` must be judged before `gone` can
+ * matter. Like `moduleCommitVerdict`, inside a next-commit callback it speaks for the commit that fired it.
+ */
+export function characterCommitVerdict(chaId: string | number): 'saved' | 'skipped' | 'gone' | 'absent' {
+    const id = String(chaId)
+    if (lastCommitCharacters.encoded.has(id)) {
+        return 'saved'
+    }
+    if (lastCommitCharacters.skipped.has(id)) {
+        return 'skipped'
+    }
+    if (lastCommitCharacters.listed !== null && !lastCommitCharacters.listed.has(id)) {
+        return 'gone'
+    }
+    return 'absent'
+}
+
 /** True when saving has stopped. The store's running value is the empty string, so test truthiness, never `!== null`. */
 export function isSavingStopped(): boolean {
     return Boolean(get(savingStoppedReason))
@@ -1626,12 +1592,6 @@ export function sweepDraftRegistrations(now: number = Date.now()): void {
     draftContentOrphanGate.sweepExpiredRegistrations(now)
 }
 
-/** What a block is called to a person: its character's name when it is a character's block, otherwise plain words for the kind of data. An internal block name is never shown. */
-export function describeBlockForPerson(blockName: string): string {
-    const character = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId) === blockName)
-    return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
-}
-
 /**
  * What an unsavable character is called in its notice: its quoted name, else its quoted id. Total: a hostile name or id
  * getter must not reach the save loop.
@@ -1879,9 +1839,10 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
                 alertToast(unsavableItemNotice(item))
             }
         },
-        saved(hold) {
+        saved(hold, characters) {
             // First, before anything that can throw and before the callbacks: a callback reads the hold of its own commit.
             lastModuleHold = hold
+            lastCommitCharacters = characters
             saveFailureStore.set(null)
             lastIterationCommitted = true
             fireNextCommitCallbacks()
@@ -1985,12 +1946,6 @@ export async function saveDb() {
     throw new Error(`saveDb: no store2 save is active on a page in the "${getPageStorageMode().kind}" storage mode.`)
 }
 
-let usingSw = false
-
-export function setUsingSw(value: boolean) {
-    usingSw = value
-}
-
 /**
  * Retrieves fetch data for a given chat ID.
  * 
@@ -2086,21 +2041,29 @@ export interface GlobalFetchArgs {
      * that route. A caller's `requestTimeoutMs` still bounds the request through `globalFetch`.
      */
     deliverWhileFrozen?: boolean;
+    /**
+     * Fork-specific: the bound owner of this request's reply record (`bindGrant`). Only the native event route of
+     * `fetchWithTauri` reads it; only an owner issued and bound by the page's own send is taken, so a caller's lookalike
+     * object owns nothing.
+     */
+    nativeReply?: NativeReplyOwner | null;
 }
 
 /**
  * Interface representing the result of the global fetch function.
- * 
+ *
  * @interface GlobalFetchResult
  * @property {boolean} ok - Whether the request was successful.
  * @property {any} data - The data returned from the request.
  * @property {{ [key: string]: string }} headers - The headers returned from the request.
+ * @property {boolean} [nativeFinal] - The failure was announced to the person by the native side: the turn is over and no retry follows.
  */
 interface GlobalFetchResult {
     ok: boolean;
     data: any;
     headers: { [key: string]: string };
     status: number;
+    nativeFinal?: boolean;
 }
 
 /**
@@ -2352,6 +2315,40 @@ const pluginDefaultUserAgent = 'tauri-plugin-http/2.8.0';
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
 async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs, internal?: NativeInternal): Promise<GlobalFetchResult> {
+    // An untrusted request and a raw read never own a reply; neither does a request without a bound owner.
+    const owner = internal || arg.rawResponse ? null : (arg.nativeReply ?? null);
+    if (owner === null) {
+        return await fetchWithNativeEventsLive(url, arg, internal);
+    }
+    const probe = createPumpProbe();
+    // The live branch never rejects: its failures are results, as for an unowned request.
+    const live = fetchWithNativeEventsLive(url, arg, internal, owner, probe);
+    return await resolveOwnedFetch(owner.key, live, {
+        probe,
+        signal: arg.abortSignal,
+        isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+        onVisible: (callback) => {
+            const listener = () => {
+                if (document.visibilityState === 'visible') {
+                    callback();
+                }
+            };
+            document.addEventListener('visibilitychange', listener);
+            return () => document.removeEventListener('visibilitychange', listener);
+        },
+        store: nativeReplyStore(),
+    });
+}
+
+let nativeReplyStoreInstance: ReturnType<typeof createReplyStore> | null = null;
+
+function nativeReplyStore(): ReturnType<typeof createReplyStore> {
+    nativeReplyStoreInstance ??= createReplyStore();
+    return nativeReplyStoreInstance;
+}
+
+/** The live branch of `fetchWithNativeEvents`: one native request, its body read from the events. */
+async function fetchWithNativeEventsLive(url: string, arg: GlobalFetchArgs, internal?: NativeInternal, owner?: NativeReplyOwner, probe?: PumpProbe): Promise<GlobalFetchResult> {
     try {
         const headers: { [key: string]: string } = { 'Content-Type': 'application/json', ...arg.headers };
         if (!Object.keys(headers).some((key) => key.toLowerCase() === 'user-agent')) {
@@ -2366,6 +2363,8 @@ async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs, internal
             chatId: arg.chatId,
             logFetch: false,
             noNativeTimeout: true,
+            nativeReply: owner,
+            pumpProbe: probe,
         }, internal);
         const data = arg.rawResponse ? new Uint8Array(await response.arrayBuffer()) : await parseJsonBody(response);
         // A stop after the head closes the stream cleanly, so a cut-off body must not pass as a reply.
@@ -2964,7 +2963,9 @@ interface StreamedFetchHeaderData {
  */
 interface StreamedFetchEndData {
     type: 'end',
-    id: string
+    id: string,
+    /** Present on the end of an owned request: what its record says. */
+    reply?: unknown
 }
 
 /**
@@ -2975,14 +2976,27 @@ interface StreamedFetchEndData {
 interface StreamedFetchErrorData {
     type: 'error',
     body: string,
-    id: string
+    id: string,
+    reply?: unknown
+}
+
+/**
+ * The first event of an owned request: whether the native side opened the reply's record.
+ * @interface
+ */
+interface StreamedFetchOwnerData {
+    type: 'owner',
+    id: string,
+    key: string,
+    owned: boolean,
+    reason?: string
 }
 
 /**
  * Type representing a streamed fetch chunk.
- * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData} StreamedFetchChunk
+ * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData} StreamedFetchChunk
  */
-type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData
+type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData
 
 /**
  * Interface representing a streamed fetch plugin.
@@ -3025,7 +3039,15 @@ if (isTauri) {
         try {
             const parsed = JSON.parse(event.payload as string)
             const id = parsed.id
-            nativeFetchData[id]?.push(parsed)
+            if (nativeFetchData[id] === undefined) {
+                // An owned request whose pump is gone (Stop, a reload) still ends in its record: the event tells the
+                // reconcile that the record may be ready.
+                if (isOrphanReplyEvent(parsed)) {
+                    requestReconcile()
+                }
+            } else {
+                nativeFetchData[id].push(parsed)
+            }
             wakeNativeFetch(id)
         } catch (error) {
             console.error(error)
@@ -3276,6 +3298,10 @@ export async function fetchNative(url: string, arg: {
     networkRoute?: 'auto' | 'local_network'
     /** Sends the native no-limit sentinel instead of the idle limit (no data for 600 s); a given `requestTimeoutMs` still wins. */
     noNativeTimeout?: boolean
+    /** A bound reply owner (`bindGrant`): taken once, and never by an untrusted request. */
+    nativeReply?: NativeReplyOwner | null
+    /** Receives what the event pump learns of an owned request; a caller-supplied probe changes nothing else. */
+    pumpProbe?: PumpProbe
 }, internal?: NativeInternal): Promise<Response> {
 
     assertNoSecretRef(arg.headers, url)
@@ -3371,6 +3397,13 @@ export async function fetchNative(url: string, arg: {
         }
         let fetchId = fetchIdPrefix + '-' + fetchIndex.toString().padStart(5, '0')
         nativeFetchData[fetchId] = []
+        // The owner is taken here, with the listeners set up and the abort check passed: a Stop during listener setup
+        // threw above and took nothing, and an untrusted request never owns. A forged or already taken owner gives null.
+        const replyOwner = isTauri && !internal ? takeReplyOwner(arg.nativeReply) : null
+        const probe = replyOwner !== null ? arg.pumpProbe : undefined
+        if (replyOwner !== null) {
+            noteInvoked(replyOwner.key)
+        }
         // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
         let resolved = false
         // The native request was stopped or abandoned; the pump discards what is left.
@@ -3410,6 +3443,9 @@ export async function fetchNative(url: string, arg: {
             sendCancel()
             wakeNativeFetch(fetchId)
         }
+        if (probe) {
+            probe.abandon = abandonNative
+        }
 
         // Stop is the caller's own signal, so the listener outlives the timeout relay that
         // fetchNative drops when it returns. Removed by finish().
@@ -3435,7 +3471,9 @@ export async function fetchNative(url: string, arg: {
                 // whole request, body included; 0 is no limit and an absent value uses the idle limit (no data for 600 s).
                 timeoutSecs: arg.requestTimeoutMs
                     ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000))
-                    : (arg.noNativeTimeout ? 0 : undefined)
+                    : (arg.noNativeTimeout ? 0 : undefined),
+                // The key, the blob's page version and the blob: Rust opens the reply's record before it sends.
+                ...(replyOwner !== null ? { replyOwner } : {}),
             }).then((res) => {
                 try {
                     const parsedRes = JSON.parse(res as string)
@@ -3538,16 +3576,33 @@ export async function fetchNative(url: string, arg: {
                                         cancelled = true
                                     }
                                 }
+                                if (data.type === 'owner' && replyOwner !== null) {
+                                    if (probe) {
+                                        probe.owned = data.owned === true
+                                    }
+                                    if (data.owned !== true) {
+                                        noteUnowned(replyOwner.key)
+                                    }
+                                }
                                 if (data.type === 'headers') {
                                     resHeaders = data.body
                                     status = data.status
+                                    if (probe) {
+                                        probe.head = { status: data.status, headers: data.body }
+                                    }
                                     settleHeaders()
                                 }
                                 if (data.type === 'end') {
+                                    if (probe) {
+                                        probe.stamp = parseReplyStamp(data.reply)
+                                    }
                                     resolved = true
                                     settleHeaders()
                                 }
                                 if (data.type === 'error') {
+                                    if (probe) {
+                                        probe.stamp = parseReplyStamp(data.reply)
+                                    }
                                     failNative(data.body)
                                 }
                                 await Promise.resolve()

@@ -226,7 +226,7 @@
     <button data-part="chat-sheet-item" data-kind="button" data-item="toggles" role="menuitem" data-sheet-initial={initial ? '' : undefined} onclick={() => { if (ontoggles) activate(() => ontoggles()) }}><span>{language.chatShellTogglesTitle}</span><span data-part="chat-sheet-item-value">{open ? togglesSummary?.() ?? '' : ''}</span></button>
 {/snippet}
 
-<ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : chipsLead ? 'tall' : 'bottom'} label={language.chatShellMoreActions} {opener} {background} {onclose} innerescape={innerEscape}>
+<ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : chipsLead ? 'tall' : 'bottom'} label={language.tools} {opener} {background} {onclose} innerescape={innerEscape}>
     <div data-part="chat-sheet-body" role="none" onkeydown={menuKey} bind:this={body}>
         {#if picker}
             <div data-part="plus-chip-options" role="group" aria-label={language.chatShellTogglesPickTitle(picker.row.label)}>

@@ -359,6 +359,7 @@ export async function changeFullscreen(){
  * With `lookups` the image is read through the 'background' slot, which a later call replaces. The short branch
  * releases the slot as well, so a background that is cleared while its read waits is given back and stays empty:
  * the awaiting call then sees `null`, which a real read of a non-empty location never returns.
+ * An empty image result (withheld, or no URL could be made) renders as no background, the same as `null`.
  */
 export async function getCustomBackground(db:string, lookups?:CharImageLookups){
     if(db.length < 2){
@@ -367,7 +368,7 @@ export async function getCustomBackground(db:string, lookups?:CharImageLookups){
     }
     else{
         const filesrc = lookups ? await lookups.get('background', db, 'plain') : await getCharImage(db, 'plain')
-        if(filesrc === null){
+        if(!filesrc){
             return ''
         }
         return `background: url("${filesrc}"); background-size: cover;`

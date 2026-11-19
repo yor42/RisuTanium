@@ -61,6 +61,8 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+// The toggles view is stubbed: its unawaited lazy import would evaluate the parser/moduleRefList graph during later rows (vite-node TDZ race).
+vi.mock('./StudioToggleCombined.svelte', () => ({ default: () => {} }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
     return { language: helpers.studioLanguageMock() }

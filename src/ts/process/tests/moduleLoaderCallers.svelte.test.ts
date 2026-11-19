@@ -68,7 +68,6 @@ import { ModuleHandler } from 'src/ts/process/mcp/risuaccess/modules'
 import type { RPCToolCallTextContent } from 'src/ts/process/mcp/mcplib'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
@@ -190,7 +189,6 @@ afterEach(() => {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     h.state.db = { characters: [], modules: [], enabledModules: [] }
 })
