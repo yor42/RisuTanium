@@ -889,7 +889,7 @@ describe.each([
         expect(endOfExport(_name === 'SaveLocalBackup' ? 'export' : 'export-partial', outcome).outcome).toBe('permitted-partial')
     })
 
-    test('reproducer: a cancelled Tauri save dialog resolves declined, keeps the alert, and writes nothing', async () => {
+    test('a cancelled Tauri save dialog resolves declined, reports no error, and writes nothing', async () => {
         await pageOf()
         platformBox.isTauri = true
         saveDialogMock.mockImplementation(async () => null)
@@ -897,7 +897,7 @@ describe.each([
         const outcome = await run()
 
         expect(outcome).toEqual({ status: 'declined', cause: 'save-dialog-cancelled' })
-        expect(alertErrorMock).toHaveBeenCalledWith('Failed')
+        expect(alertErrorMock).not.toHaveBeenCalled()
         expect(backupSink.writes).toEqual([])
     })
 
