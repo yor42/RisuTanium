@@ -21,7 +21,7 @@ vi.mock('@tauri-apps/api/path', () => h.paths.pathModule)
 vi.mock('@tauri-apps/api/core', () => ({ ...h.paths.coreModule, invoke: h.chunk.invoke }))
 vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'android' }))
 
-import { READ_PIECE_BYTES, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
+import { CHUNK_MAX, READ_PIECE_BYTES, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 
 const WRITE_ONLY_INVALID = ['a<b', 'a|b', 'a?b', 'a*b', 'a"b', 'a>b', 'a/b.', 'a/b ', `a/${'x'.repeat(256)}`, 'x/a:b']
@@ -193,5 +193,89 @@ describe('Tauri files store on Android', () => {
         const result = await store.read('database/database.bin')
 
         expect(result.bytes?.every((byte) => byte === 5)).toBe(true)
+    })
+})
+
+describe('Tauri files store writeBlob progress on Android', () => {
+    const KEY = 'assets/p.mp4'
+
+    beforeEach(() => {
+        h.fs.reset()
+        h.chunk.reset()
+        h.paths.reset()
+    })
+
+    function patterned(length: number): Uint8Array {
+        return Uint8Array.from({ length }, (_, i) => (i * 7 + 3) % 251)
+    }
+
+    // Regression reproducer: before the progress parameter existed, no report was made.
+    test('reports the bytes handed over per slice, increasing, each before the write settles, and nothing after', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        const bytes = patterned(2 * CHUNK_MAX + 5)
+        const total = bytes.length
+        const reports: Array<[number, number, boolean]> = []
+        let settled = false
+
+        const write = store.writeBlob?.(KEY, new Blob([bytes as BlobPart]), 'unconditional', (written, size) => {
+            reports.push([written, size, settled])
+        })
+        void write?.finally(() => { settled = true })
+        await write
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(reports.map(([written, size]) => [written, size])).toEqual([[CHUNK_MAX, total], [2 * CHUNK_MAX, total], [total, total]])
+        expect(reports.every(([, , wasSettled]) => !wasSettled)).toBe(true)
+        expect(Buffer.compare(Buffer.from(h.fs.files.get(KEY) ?? []), Buffer.from(bytes))).toBe(0)
+    })
+
+    // Compatibility guard: passes before the change too, because the callback was never called then.
+    test('a callback that throws on every call neither aborts nor changes the write', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        const bytes = patterned(2 * CHUNK_MAX + 5)
+
+        await store.writeBlob?.(KEY, new Blob([bytes as BlobPart]), 'unconditional', () => {
+            throw new Error('progress callback failure')
+        })
+
+        expect(Buffer.compare(Buffer.from(h.fs.files.get(KEY) ?? []), Buffer.from(bytes))).toBe(0)
+        expect(h.chunk.callsOf('abort_chunked')).toEqual([])
+    })
+
+    // Regression reproducer: the report before the failing slice is the only one, and none follows the rejection.
+    test('a slice read that fails rejects with that error, after the earlier report only', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        const failure = new Error('slice read failed')
+        class FailingBlob extends Blob {
+            slice(start?: number, end?: number, type?: string): Blob {
+                const part = super.slice(start, end, type)
+                if ((start ?? 0) >= CHUNK_MAX) {
+                    Object.defineProperty(part, 'arrayBuffer', { value: () => Promise.reject(failure) })
+                }
+                return part
+            }
+        }
+        const blob = new FailingBlob([patterned(3 * CHUNK_MAX) as BlobPart])
+        const reports: Array<[number, number]> = []
+
+        await expect(store.writeBlob?.(KEY, blob, 'unconditional', (written, size) => { reports.push([written, size]) })).rejects.toBe(failure)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(reports).toEqual([[CHUNK_MAX, 3 * CHUNK_MAX]])
+        expect(h.fs.files.has(KEY)).toBe(false)
+    })
+
+    // Regression reproducer: a report made before the writer accepts a slice would add one for the slice whose write rejects.
+    test('a chunk write that rejects on a later slice reports only the slices the writer accepted, and nothing after', async () => {
+        const store = createTauriFilesStore({ platform: 'posix' })
+        const total = 3 * CHUNK_MAX
+        h.chunk.failWrites(({ offset }) => (offset >= 2 * CHUNK_MAX ? 'No space left on device (os error 28)' : undefined))
+        const reports: Array<[number, number]> = []
+
+        await expect(store.writeBlob?.(KEY, new Blob([patterned(total) as BlobPart]), 'unconditional', (written, size) => { reports.push([written, size]) })).rejects.toThrow()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(reports).toEqual([[CHUNK_MAX, total], [2 * CHUNK_MAX, total]])
+        expect(h.fs.files.has(KEY)).toBe(false)
     })
 })

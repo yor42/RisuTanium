@@ -44,7 +44,7 @@ vi.mock('../../lang', () => ({ language: {
 vi.mock('../../ts/process/composerSurface.svelte', () => ({ createComposerSurface: () => {
     const shownDraft = $state({ messageInput: '', messageInputTranslate: '', fileInput: [] })
     return { shownDraft, resolveDraftKeyForWrite: () => null, writeDraft: vi.fn(), writeDraftAt: vi.fn() }
-}, beginChatFileUpload: () => () => {}, trackChatFileUpload: vi.fn() }))
+}, beginChatFileUpload: () => () => {}, trackChatFileUpload: vi.fn(), attachmentsForDraft: () => [], trackChatFileAttachment: vi.fn() }))
 vi.mock('../../ts/process/composerDrafts.svelte', () => ({ peek: () => ({ messageInput: '' }), EMPTY_DRAFT_VIEW: { messageInput: '', messageInputTranslate: '', fileInput: [] } }))
 vi.mock('../../ts/localDrafts', () => ({ COMPOSER_DRAFT_KIND: 'composer', registerDraft: vi.fn(), unregisterDraft: vi.fn() }))
 vi.mock('../../ts/process/files/multisend', () => ({ postChatFile: vi.fn() }))

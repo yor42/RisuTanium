@@ -16,7 +16,6 @@ vi.mock('src/ts/drive/settingsRestore', () => ({ restoreFromBinFile: vi.fn(), re
 vi.mock('src/ts/drive/backuplocal', () => bin)
 vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
 vi.mock('src/ts/storage/exportAsDataset', () => ({ exportAsDataset: vi.fn() }))
-vi.mock('./StorageMaintenanceSettings.svelte', () => ({ default: () => { } }))
 
 import { language } from 'src/lang'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'

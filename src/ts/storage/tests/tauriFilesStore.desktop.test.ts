@@ -166,6 +166,25 @@ describe('Tauri files store on desktop', () => {
     })
 
     describe('writes', () => {
+        // Regression reproducer: before the progress parameter existed, no report was made.
+        test('writeBlob reports the bytes handed over per slice, increasing, before the write settles and never after', async () => {
+            const bytes = patterned(CAP * 2 + 5)
+            const total = bytes.length
+            const reports: Array<[number, number, boolean]> = []
+            let settled = false
+
+            const write = store().writeBlob?.('assets/p.mp4', new Blob([bytes as BlobPart]), 'unconditional', (written, size) => {
+                reports.push([written, size, settled])
+            })
+            void write?.finally(() => { settled = true })
+            await write
+            await new Promise((resolve) => setTimeout(resolve, 0))
+
+            expect(reports.map(([written, size]) => [written, size])).toEqual([[CAP, total], [2 * CAP, total], [total, total]])
+            expect(reports.every(([, , wasSettled]) => !wasSettled)).toBe(true)
+            expect(same(h.fs.files.get('assets/p.mp4'), bytes)).toBe(true)
+        })
+
         test('a durable key of at most CHUNK_MAX bytes is one write_durable call, and nothing is chunked', async () => {
             await store().write('blocks/gen/c/6162', patterned(CAP), 'unconditional')
 

@@ -122,7 +122,12 @@ export interface CarryQuestion {
     readonly planned: CarryPlanned
     /** The current keys the question is about: their rows carry the flag. */
     readonly flagged: ReadonlySet<string>
+    /** Every key rename of the question, late lines included: the uses list reads where the old keys are still read. */
+    readonly renames: readonly UsesRename[]
 }
+
+/** One key rename the uses list is about. */
+export type UsesRename = { readonly from: string, readonly to: string }
 
 export type CarryEventKind = 'shown' | 'cancelled' | 'recheck' | 'undone'
 export type CarryEvent = { readonly kind: CarryEventKind, readonly n: number }
@@ -216,8 +221,17 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
     let carried = $state.raw(false)
     let notKept = $state.raw(false)
     let lastEvent = $state.raw<CarryEvent | null>(null)
+    // The renames the uses list keeps showing after Carry or Leave answered the question, until Update all, Close, a
+    // new question or the end of the visit of this item.
+    let keptRenames = $state.raw<readonly UsesRename[]>([])
     let journal: CarryJournalSlot | null = null
     let tokens = 0
+
+    /** A kept rename stays offered only while the live definition defines its `to` and no longer defines its `from`. */
+    function stillHeld(kept: readonly UsesRename[]): readonly UsesRename[] {
+        const keys = valueKeysOf(def)
+        return kept.filter((rename) => keys.has(rename.to) && !keys.has(rename.from))
+    }
 
     function say(kind: CarryEventKind): void {
         lastEvent = { kind, n: (lastEvent?.n ?? 0) + 1 }
@@ -251,9 +265,11 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
             }
             const late = lateOldKeys(baselineDef, t0, def, added)
             const renamed = new Map<string, string>()
+            const renames: UsesRename[] = []
             for (const item of items) {
                 if (item.kind === 'rename') {
                     renamed.set(item.from, item.to)
+                    renames.push({ from: item.from, to: item.to })
                 }
             }
             const lines: CarryLine[] = []
@@ -299,6 +315,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
                 numbers: live.some((item) => item.kind === 'optionRemap'),
                 planned: planCarryWrites(live, deps.reach()),
                 flagged,
+                renames,
             }
         })
     }
@@ -342,6 +359,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
         const first = question === null
         question = next
         if (first) {
+            keptRenames = []
             say('shown')
         }
     }
@@ -396,6 +414,9 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
             editor = null
         } else if (editor) {
             editor = { id: editor.id, origin: originOf(editor.id) }
+        }
+        if (keptRenames.length > 0) {
+            keptRenames = stillHeld(keptRenames)
         }
         if (question !== null) {
             refreshQuestion()
@@ -553,6 +574,17 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
         /** Decides whether the question shows now; callers run it where a field is left or an option or kind changed. */
         checkpoint,
 
+        /** The renames the uses list is about: the open question's, else those kept after Carry or Leave. */
+        get usesRenames(): readonly UsesRename[] {
+            return question !== null && question.renames.length > 0 ? question.renames : stillHeld(keptRenames)
+        },
+        /** Whether the list shows renames the question no longer holds, so it offers Close. */
+        get usesKept(): boolean { return !(question !== null && question.renames.length > 0) && stillHeld(keptRenames).length > 0 },
+        /** Close of the uses list: the kept renames end. An open question keeps its own. */
+        dismissUses(): void { keptRenames = [] },
+        /** An update all landed: the kept renames end, as their uses were just rewritten. */
+        noteUpdated(): void { keptRenames = [] },
+
         /** Writes the carryable items' values in one task, then answers the question. */
         carryValues(): CarryOutcome {
             const shown = question
@@ -583,6 +615,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
             }
             tokens += 1
             journal = { token: tokens, journal: result.journal, replaced, baseline: baselineDef, t0 }
+            keptRenames = fresh.renames
             carried = true
             startWindow()
             question = null
@@ -596,6 +629,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
             if (question === null) {
                 return
             }
+            keptRenames = question.renames
             journal = null
             carried = false
             question = null
@@ -612,6 +646,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
             }
             journal = null
             carried = false
+            keptRenames = []
             const result = undoCarryWrites(slot.journal, deps.values)
             if (result.ok === false) {
                 return { ok: false, reason: 'changed' }
@@ -643,6 +678,7 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
         dispose(): void {
             journal = null
             carried = false
+            keptRenames = []
             if (deps && question === null && planCarry(baselineDef, def, addedNow()).length === 0) {
                 clearPending(port.owner)
             }

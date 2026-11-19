@@ -4,7 +4,8 @@ import { get, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import * as drafts from '../../ts/process/composerDrafts.svelte'
 import { hasLocalDrafts, resetLocalDraftsForTest } from '../../ts/localDrafts'
-import { pendingChatFileUploads } from '../../ts/process/composerSurface.svelte'
+import { pendingChatFileUploads, trackChatFileAttachment } from '../../ts/process/composerSurface.svelte'
+import type { InlayWriteProgress } from '../../ts/process/files/inlays'
 import { addActiveStream, noteStreamText, resetActiveStreamsForTest } from '../../ts/process/activeStreams'
 
 const state = $state({ db: {
@@ -20,7 +21,7 @@ const abortChat = vi.fn()
 const stopComposerWorkIn = vi.fn()
 // Whether work is registered in the shown chat, and whether the global send flag is held by another chat.
 const work = $state({ shown: false, window: false })
-const postChatFile = vi.fn(async () => [{ type: 'asset' as const, data: 'asset-id' }])
+const postChatFile = vi.fn(async (..._args: unknown[]) => [{ type: 'asset' as const, data: 'asset-id' }])
 
 vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection, popUpEditorStore: popup }))
 vi.mock('../../ts/process/index.svelte', () => ({ doingChat: busy, chatProcessStage: stage }))
@@ -41,6 +42,7 @@ vi.mock('../../lang', () => ({ language: {
     chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
     chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device',
+    chatShellAttachingFile: (name: string, written: string, total: string) => `Attaching ${name}: ${written} / ${total} MiB`,
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line', postFile: 'Post File',
 } }))
 
@@ -351,5 +353,56 @@ describe('ShellComposer draft and actions', () => {
         readers[1].onerror?.(); expect(pendingChatFileUploads()).toBe(0)
         paste(); expect(pendingChatFileUploads()).toBe(1)
         readers[2].onabort?.(); expect(pendingChatFileUploads()).toBe(0)
+        expect(typeof postChatFile.mock.calls[0][3]).toBe('function')
+    })
+
+    describe('the attach chip', () => {
+        const pending: Array<() => void> = []
+        afterEach(() => { for (const release of pending.splice(0)) release() })
+
+        test('a file button pick shows the chip with its progress while the write runs and removes it when it resolves', async () => {
+            let report: ((progress: InlayWriteProgress | null) => void) | null = null
+            let release!: () => void
+            const released = new Promise<void>((resolve) => { release = resolve })
+            pending.push(release)
+            postChatFile.mockImplementationOnce(async (...args: unknown[]) => {
+                report = args[3] as (progress: InlayWriteProgress | null) => void
+                report({ name: 'clip.mp4', written: 0, total: 195 * 1024 * 1024 })
+                await released
+                return [{ type: 'asset' as const, data: 'asset-id' }]
+            })
+            const node = await show()
+            const chip = () => node.querySelector<HTMLElement>('[data-part="chat-attaching-chip"]')
+            expect(chip()).toBeNull()
+            const post = node.querySelector<HTMLButtonElement>('[data-part="chat-composer-tools"] button')!
+            post.click()
+            await Promise.resolve()
+            flushSync()
+            expect(chip()?.textContent).toBe('Attaching clip.mp4: 0.0 / 195.0 MiB')
+            expect(chip()?.getAttribute('role')).toBe('progressbar')
+            expect(chip()?.getAttribute('aria-valuenow')).toBe('0')
+            report!({ name: 'clip.mp4', written: 8 * 1024 * 1024, total: 195 * 1024 * 1024 })
+            flushSync()
+            expect(chip()?.textContent).toBe('Attaching clip.mp4: 8.0 / 195.0 MiB')
+            release()
+            await released
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            flushSync()
+            expect(chip()).toBeNull()
+            expect(drafts.peek({ chaId: 'c', chatId: 'chat' }).fileInput).toContain('asset-id')
+        })
+
+        test('an attachment bound for another chat shows no chip in the shown chat', async () => {
+            let release!: () => void
+            const call = trackChatFileAttachment({ chaId: 'c', chatId: 'other-chat' }, async (report) => {
+                report({ name: 'other.mp4', written: 1, total: 2 })
+                await new Promise<void>((resolve) => { release = resolve })
+            })
+            pending.push(() => release())
+            const node = await show()
+            expect(node.querySelector('[data-part="chat-attaching-chip"]')).toBeNull()
+            release()
+            await call
+        })
     })
 })

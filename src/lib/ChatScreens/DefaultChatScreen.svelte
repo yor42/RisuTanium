@@ -58,7 +58,7 @@
     } from 'src/ts/process/composerActions.svelte';
     import type { OriginHint } from 'src/ts/process/chatOrigin';
     import * as composerDrafts from 'src/ts/process/composerDrafts.svelte';
-    import { beginChatFileUpload, createComposerSurface, trackChatFileUpload } from 'src/ts/process/composerSurface.svelte';
+    import { attachmentsForDraft, beginChatFileUpload, createComposerSurface, trackChatFileAttachment, trackChatFileUpload } from 'src/ts/process/composerSurface.svelte';
     import { chatSurface } from './chatSurface.svelte';
     import { streamTextHold } from 'src/ts/chatShell/streamTextHold';
     import { holdRowLayout, releaseRowHoldAfterFrames } from 'src/ts/gui/legacyRowVisibility';
@@ -108,6 +108,10 @@
 
     const composerSurface = createComposerSurface({ character: () => currentCharacter, chat: () => currentChatObj })
     let shownDraft = $derived(composerSurface.shownDraft)
+    let shownAttachments = $derived(attachmentsForDraft(composerSurface.currentDraftKey))
+    function attachmentMiB(bytes: number): string {
+        return (bytes / (1024 * 1024)).toFixed(1)
+    }
 
     /**
      * The objects the on-screen chat is read through, for a job that goes on
@@ -680,10 +684,10 @@
                                         try {
                                             const buf = e.target?.result as ArrayBuffer
                                             const uint8 = new Uint8Array(buf)
-                                            const results = await postChatFile({
+                                            const results = await trackChatFileAttachment(key, (report) => postChatFile({
                                                 name: file.name,
                                                 data: uint8
-                                            }, key, hint)
+                                            }, key, hint, report))
                                             if(!results) return
                                             writeDraftAt(key, (record) => {
                                                 for(const res of results){
@@ -795,6 +799,15 @@
                               placeholder={language.enterMessageForTranslateToEnglish}
                               style:height={inputTranslateHeight}
                     ></textarea>
+                </div>
+            {/if}
+
+            {#if shownAttachments.length > 0}
+                <div data-part="chat-composer-attaching" class="flex items-center ml-4 flex-wrap gap-2 p-2 m-2">
+                    {#each shownAttachments as attachment (attachment.token)}
+                        {@const text = language.chatShellAttachingFile(attachment.name, attachmentMiB(attachment.written), attachmentMiB(attachment.total))}
+                        <span data-part="chat-attaching-chip" role="progressbar" aria-valuemin={0} aria-valuemax={attachment.total} aria-valuenow={attachment.written} aria-valuetext={text} class="inline-block max-w-full truncate p-2 border border-darkborderc rounded-md text-textcolor2 bg-darkbg">{text}</span>
+                    {/each}
                 </div>
             {/if}
 
@@ -1140,7 +1153,7 @@
                         // screen before it resolves.
                         const key = resolveDraftKeyForWrite()
                         const hint = resolveOriginHintForWrite()
-                        const results = await trackChatFileUpload(() => postChatFile(composerDrafts.peek(key).messageInput, key, hint))
+                        const results = await trackChatFileUpload(() => trackChatFileAttachment(key, (report) => postChatFile(composerDrafts.peek(key).messageInput, key, hint, report)))
                         if(!results) return
                         writeDraftAt(key, (record) => {
                             for(const res of results){

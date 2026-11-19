@@ -271,15 +271,21 @@ function Invoke-Adb([string]$ser, [string[]]$adbArgs) {
 }
 $rmRefused = @('rm /sdcard/Download/a.txt', 'rm -r /sdcard/Download/a.txt', 'rm -rf /sdcard/Download/a.txt', 'rm -f /sdcard/Download/a.txt /sdcard/Download/b.txt', 'rm -f /sdcard/Download/*', 'rm -f /sdcard/a.txt', 'rm -f /sdcard/Download/sub/a.txt', 'rm -f /sdcard/Download/.x')
 $rmAllowed = @('rm -f /sdcard/Download/a.txt', 'rm -f /data/local/tmp/a.txt')
+# The Note 9 profile (r3) lifted the rm shape rule on the playground serials (full shell, FC-1): every rm form passes there. The refusals
+# are pinned on emulator-5580, which keeps the r11 allowlist.
+foreach ($c in $rmRefused) {
+    $rc = Invoke-Adb 'emulator-5580' @('shell', $c)
+    Test-Result ('RM emulator-5580 refuses ' + $c) ($rc -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rc)
+}
 foreach ($s in @('emulator-5580', $pg[1])) {
-    foreach ($c in $rmRefused) {
-        $rc = Invoke-Adb $s @('shell', $c)
-        Test-Result ('RM ' + $s + ' refuses ' + $c) ($rc -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rc)
-    }
     foreach ($c in $rmAllowed) {
         $rc = Invoke-Adb $s @('shell', $c)
         Test-Result ('RM ' + $s + ' allows ' + $c) ($rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rc)
     }
+}
+foreach ($c in $rmRefused) {
+    $rc = Invoke-Adb $pg[1] @('shell', $c)
+    Test-Result ('RM ' + $pg[1] + ' passes ' + $c + ' on the Note 9 profile') ($rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rc)
 }
 foreach ($c in @($rmRefused + $rmAllowed)) {
     $rc = Invoke-Adb 'R58M12345AB' @('shell', $c)
@@ -290,8 +296,10 @@ $rc = Invoke-Adb $pg[1] @('shell', 'rm', '-f', '/sdcard/Download/local-abc.bin')
 Test-Result 'RM playground r14 split form' ($rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rc)
 $rc = Invoke-Adb 'emulator-5580' @('shell', 'rm', '-f', '/sdcard/Download/local-abc.bin')
 Test-Result 'RM emulator r14 split form refused' ($rc -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rc)
+$rc = Invoke-Adb 'emulator-5580' @('shell', 'rm', '-f', '/sdcard/Download/a.txt')
+Test-Result 'RM emulator split form of a plain name refused' ($rc -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rc)
 $rc = Invoke-Adb $pg[1] @('shell', 'rm', '-f', '/sdcard/Download/a.txt')
-Test-Result 'RM playground split form of a plain name refused' ($rc -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rc)
+Test-Result 'RM playground split form of a plain name passes on the Note 9 profile' ($rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rc)
 
 foreach ($v in @('ADBG_FAKE_ADB_SCRIPT', 'FAKE_CALLS', 'FAKE_PIDS', 'FAKE_ADJ', 'FAKE_DUMP', 'FAKE_DUMP_EXIT')) { Remove-Item Env:$v -ErrorAction SilentlyContinue }
 Remove-Item -LiteralPath $testDir -Recurse -Force -ErrorAction SilentlyContinue

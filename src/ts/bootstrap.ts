@@ -1,5 +1,5 @@
 import { appFsMkdirAll } from "./storage/appFs"
-import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
+import { changeFullscreen, checkNullish, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import localforage from "localforage"
 import { v4 as uuidv4 } from 'uuid';
@@ -19,7 +19,8 @@ import { desktopLaunchImport } from "./desktopLaunch";
 import { androidOpenedFilesImport } from "./android/openedFiles";
 import { startLaunchNavigation } from "./android/launchTarget";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
-import { decodeRisuSave, encodeRisuSaveLegacy } from "./storage/risuSave";
+import { decodeRisuSave, decodeRisuSaveReporting, encodeRisuSaveLegacy, type SalvageOmittedBlock } from "./storage/risuSave";
+import { legacyPartialFact, legacyPartialNoticeText, setLegacyPartialSave, type LegacyPartialSave } from "./storage/legacyPartialSave";
 import { getPageStorageMode, pageMayGoLive, setPageStorageMode } from "./storage/pageStorageMode";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
@@ -34,7 +35,6 @@ import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
-import { cleanRouteServedCacheOnce } from "./storage/routeCacheCleanup";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { startInlayCopy } from "./process/files/inlayCopy";
 import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
@@ -59,7 +59,6 @@ import {
     getSaveMarkCount,
     requestSaveNow,
     saveDb,
-    setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
 import { fillLang } from "./../lang/fill";
@@ -101,6 +100,9 @@ export async function loadData() {
     if (!loaded) {
         // Whether a page that only reads its legacy profile from OPFS must say so, posted once after the dispatch's own notices.
         let opfsReadOnlyNotice = false
+        // What a read-only legacy page installed that is not the whole current save (a partly decoded main file, or a
+        // numbered backup), kept for the export and told once after the page may go live. Null for everything else.
+        let legacyPartial: LegacyPartialSave | null = null
         // The notices the store2 boot dispatch raised, posted after the database is installed so they are in its language.
         let store2Notices: readonly Store2BootNotice[] = []
         // What the character list of the installed tree needed before it was
@@ -154,6 +156,7 @@ export async function loadData() {
                     let installed = false
                     if (readed !== null) {
                         let decodedTree: Database | null = null
+                        let decodedOmitted: ReadonlyMap<string, SalvageOmittedBlock> = new Map()
                         try {
                             LoadingStatusState.text = "Decoding Save File..."
                             const decoded = await decodeMainFile(readed)
@@ -163,6 +166,7 @@ export async function loadData() {
                                 clearArchiveMemo()
                             }
                             decodedTree = decoded.tree
+                            decodedOmitted = decoded.omitted
                         } catch (error) {
                             decodedTree = null
                         }
@@ -171,6 +175,7 @@ export async function loadData() {
                                 await repairBootTree(decodedTree, bootRepairs)
                                 setDatabase(decodedTree)
                                 installed = true
+                                legacyPartial = legacyPartialFact(null, decodedOmitted)
                             } catch (error) {
                                 console.error(error)
                             }
@@ -186,10 +191,11 @@ export async function loadData() {
                                 try {
                                     LoadingStatusState.text = `Reading Backup File ${backup}...`
                                     const backupData = await readBackupBytes(backup)
-                                    const backupTree = await decodeRisuSave(backupData)
-                                    await repairBootTree(backupTree, bootRepairs)
-                                    setDatabase(backupTree)
+                                    const backupDecoded = await decodeRisuSaveReporting(backupData)
+                                    await repairBootTree(backupDecoded.db, bootRepairs)
+                                    setDatabase(backupDecoded.db)
                                     backupLoaded = true
+                                    legacyPartial = legacyPartialFact(backup, backupDecoded.omitted)
                                 } catch (error) {
                                     console.error(error)
                                 }
@@ -205,6 +211,7 @@ export async function loadData() {
                 // notice queue shows them one at a time. An update question asked below takes the screen over a notice.
                 postStore2Notices(store2Notices)
                 postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                postLegacyPartialNotice(legacyPartial)
                 LoadingStatusState.text = "Checking Update..."
                 await checkRisuUpdate()
                 await changeFullscreen()
@@ -219,24 +226,6 @@ export async function loadData() {
                         throw language.browserStorageUnavailable
                     }
                     throw error
-                }
-                // A page the service worker does not control yet reloads once to be controlled. That is decided after the
-                // store is selected (which may itself run the OPFS copy-back and its progress alert; a failed copy-back is
-                // attempted again by the next life) and before the profile is read or any boot prompt or notice is posted,
-                // so the life that reloads shows and consumes none of them and the next life does. A stale account profile
-                // never reaches the service worker: it ends at its own notice below.
-                if (!forageStorage.staleAccountProfile) {
-                    LoadingStatusState.text = "Checking Service Worker..."
-                    if (navigator.serviceWorker) {
-                        setUsingSw(true)
-                        if (await registerSw()) {
-                            await sleepForever()
-                            return
-                        }
-                    }
-                    else {
-                        setUsingSw(false)
-                    }
                 }
                 const store2Boot = await runStore2Boot()
                 if (store2Boot.kind === 'stopped') {
@@ -279,6 +268,7 @@ export async function loadData() {
                     let installed = false
                     if (mainReadable) {
                         let decodedTree: Database | null = null
+                        let decodedOmitted: ReadonlyMap<string, SalvageOmittedBlock> = new Map()
                         try {
                             const decoded = await decodeMainFile(gotStorage as Uint8Array)
                             // The file's bytes are not kept past the decode.
@@ -290,6 +280,7 @@ export async function loadData() {
                                 clearArchiveMemo()
                             }
                             decodedTree = decoded.tree
+                            decodedOmitted = decoded.omitted
                         } catch (error) {
                             console.error(error)
                             decodedTree = null
@@ -299,6 +290,7 @@ export async function loadData() {
                                 await repairBootTree(decodedTree, bootRepairs)
                                 setDatabase(decodedTree)
                                 installed = true
+                                legacyPartial = legacyPartialFact(null, decodedOmitted)
                             } catch (error) {
                                 console.error(error)
                             }
@@ -323,10 +315,11 @@ export async function loadData() {
                             try {
                                 LoadingStatusState.text = `Reading Backup File ${backup}...`
                                 const backupData = await readBackupBytes(backup)
-                                const backupTree = await decodeRisuSave(backupData)
-                                await repairBootTree(backupTree, bootRepairs)
-                                setDatabase(backupTree)
+                                const backupDecoded = await decodeRisuSaveReporting(backupData)
+                                await repairBootTree(backupDecoded.db, bootRepairs)
+                                setDatabase(backupDecoded.db)
                                 backupLoaded = true
+                                legacyPartial = legacyPartialFact(backup, backupDecoded.omitted)
                             } catch (error) { }
                         }
                         if (!backupLoaded) {
@@ -360,6 +353,7 @@ export async function loadData() {
                 // They are not awaited here: the boot goes on behind them.
                 postStore2Notices(store2Notices)
                 postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                postLegacyPartialNotice(legacyPartial)
 
                 // I6: a returning RisuAccount-sync profile (AutoStorage.Init()
                 // detected `accountst === 'able'`) never boots past this point
@@ -368,8 +362,7 @@ export async function loadData() {
                 // itself against any other alertStore write, and only its own OK
                 // acknowledges it. Acknowledging removes the three account-sync
                 // keys and reloads -- this page life never reaches
-                // characterURLImport, plugins, loadedStore or saveDb below, and
-                // it never registered the service worker above.
+                // characterURLImport, plugins, loadedStore or saveDb below.
                 if (forageStorage.staleAccountProfile) {
                     await noticesSettled()
                     void alertStaleAccountNotice().then(() => {
@@ -389,8 +382,6 @@ export async function loadData() {
                 localStorage.removeItem('dosync')
                 localStorage.removeItem('fallbackRisuToken')
 
-                // Never awaited: the clean-up must not delay the app.
-                void cleanRouteServedCacheOnce(typeof localStorage === 'undefined' ? null : localStorage)
                 if (getDatabase().didFirstSetup) {
                     characterURLImport()
                 }
@@ -401,9 +392,8 @@ export async function loadData() {
             }
             // Both boot branches reach here on the non-stale path of a life
             // that stays (the stale-profile notice above returns before this
-            // point, and so does a life that reloads for the service worker;
-            // the next boot's ordinary path runs it instead). Drops the leftovers
-            // of two upstream services this app does not offer: the
+            // point). Drops the leftovers of two upstream services this app does
+            // not offer: the
             // account-sync LocalForage instance named "risuaiAccountCached",
             // and the Google Drive backup's last-saved timestamp
             // (`risu_lastsaved`) and save/load flag (`localStorage['backup']`,
@@ -604,6 +594,17 @@ function postOpfsReadOnlyNotice(shown: boolean): void {
 }
 
 /**
+ * Keeps the legacy-partial fact for the export and queues its notice once. Runs only after `assertPageMayGoLive`, so a page
+ * that does not go live neither tells nor keeps it; the notice follows the notices that say why the page is read-only.
+ */
+function postLegacyPartialNotice(fact: LegacyPartialSave | null): void {
+    setLegacyPartialSave(fact)
+    if (fact !== null) {
+        queueNotice(legacyPartialNoticeText(fact))
+    }
+}
+
+/**
  * Throws unless the page may become interactive in the mode the dispatch left it in: a read-only page, or a store2 page
  * that holds its active save. Runs after the install and before any boot notice and before `loadedStore` is set, so a page
  * that could neither save nor refuse a write never goes live.
@@ -636,31 +637,15 @@ function postStore2Notices(notices: readonly Store2BootNotice[]): void {
 /**
  * The main file decoded for boot: strictly first. A strict decode that fails
  * falls back to the lenient decode, whose tree may be missing blocks; either
- * tree is installed as it is.
+ * tree is installed as it is. The caller is told what the lenient tree lacks: a strict tree lacks nothing.
  */
-async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, strict: boolean }> {
+async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, strict: boolean, omitted: ReadonlyMap<string, SalvageOmittedBlock> }> {
     try {
-        return { tree: await decodeRisuSave(bytes, { strict: true }), strict: true }
+        return { tree: await decodeRisuSave(bytes, { strict: true }), strict: true, omitted: new Map() }
     } catch (error) {
-        return { tree: await decodeRisuSave(bytes), strict: false }
+        const lenient = await decodeRisuSaveReporting(bytes)
+        return { tree: lenient.db, strict: false, omitted: lenient.omitted }
     }
-}
-
-/**
- * Registers the service worker and initializes it. Answers whether it started a reload, which ends this page life.
- */
-async function registerSw(): Promise<boolean> {
-    await navigator.serviceWorker.register("/sw.js", {
-        scope: "/"
-    });
-    await sleep(100);
-    const da = await fetch('/sw/init');
-    if (!(da.status >= 200 && da.status < 300)) {
-        markAppInitiatedReload();
-        location.reload();
-        return true;
-    }
-    return false;
 }
 
 /**

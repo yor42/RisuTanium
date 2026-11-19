@@ -9,6 +9,7 @@ import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { HypaProcesser } from '../memory/hypamemory';
 import { BufferToText as BufferToText, selectMultipleFileObjects } from 'src/ts/util';
 import { isInlayRefusal, postInlayAsset } from './inlays';
+import type { InlayWriteProgress } from './inlays';
 import { alertError } from '../../alert';
 import { language } from 'src/lang';
 
@@ -244,11 +245,13 @@ type postFileResultText = {
  * `hint` the objects the caller read that chat through: a `.po` job sends into
  * that chat, whichever chat is on screen by the time each entry runs, and does
  * nothing without a key. The other file types do not touch a chat.
+ * `onProgress` hears the write of each image, audio or video file and then `null` when that
+ * file's write is over, whether it succeeded, was refused or failed.
  */
 export async function postChatFile(query:string|{
     name:string,
     data:Uint8Array
-}, key?:ComposerDraftKey|null, hint?:OriginHint|null):Promise<postFileResult[]>{
+}, key?:ComposerDraftKey|null, hint?:OriginHint|null, onProgress?:((progress:InlayWriteProgress|null) => void)|null):Promise<postFileResult[]>{
     // A picked file stays a File, unread: an audio or video attachment goes to the store in slices, and a text
     // branch reads the file to text itself.
     const files:{name:string, data:Uint8Array|Blob}[]|null = typeof(query) === 'string' ? (await selectMultipleFileObjects([
@@ -346,7 +349,19 @@ export async function postChatFile(query:string|{
             case 'webm':
             case 'mpeg':
             case 'avi':{
-                const postData = await postInlayAsset(file)
+                let postData: Awaited<ReturnType<typeof postInlayAsset>>
+                try{
+                    postData = await postInlayAsset(file, onProgress ?? undefined)
+                }
+                finally{
+                    // The file's write is over, however it ended; a throwing callback must not replace its outcome or end the loop.
+                    try{
+                        onProgress?.(null)
+                    }
+                    catch{
+                        // Ignored by design.
+                    }
+                }
                 if(isInlayRefusal(postData)){
                     alertError(language.inlayFileTooLarge
                         .replace('{name}', postData.name)

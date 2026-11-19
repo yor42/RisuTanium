@@ -159,7 +159,7 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
     writeInlayImage: vi.fn(async () => 'inlay-id'),
 }) as unknown as typeof import('src/ts/process/files/inlays'))
 
-const postChatFileMock = vi.hoisted(() => vi.fn(async (_query: unknown): Promise<Array<{ type: string, data: string, name?: string }> | null> => []))
+const postChatFileMock = vi.hoisted(() => vi.fn(async (_query: unknown, ..._rest: unknown[]): Promise<Array<{ type: string, data: string, name?: string }> | null> => []))
 vi.mock(import('src/ts/process/files/multisend'), () => ({
     postChatFile: postChatFileMock,
 }) as unknown as typeof import('src/ts/process/files/multisend'))
@@ -976,6 +976,7 @@ describe('a late file result after a switch', () => {
         }
         mainTextarea(target).dispatchEvent(pasteEvent)
         await waitFor(() => postChatFileMock.mock.calls.length > 0)
+        expect(typeof postChatFileMock.mock.calls[0][3]).toBe('function')
 
         selectedCharID.set(1)
         await settle()
@@ -991,6 +992,36 @@ describe('a late file result after a switch', () => {
         selectedCharID.set(0)
         await settle()
         expect(mainTextarea(target).value).toBe('{{file::late.png::pasted-content}}')
+    })
+})
+
+describe('the attach chip', () => {
+    test('a Post File pick shows the chip while the mocked write reports and removes it when it resolves', async () => {
+        const chatA = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA])
+        installDb([charA])
+
+        let release: (v: Array<{ type: string, data: string }>) => void = () => {}
+        const gate = new Promise<Array<{ type: string, data: string }>>((res) => { release = res })
+        postChatFileMock.mockImplementationOnce(async (_query, ...rest) => {
+            const report = rest[2] as (progress: { name: string, written: number, total: number } | null) => void
+            report({ name: 'clip.mp4', written: 8 * 1024 * 1024, total: 195 * 1024 * 1024 })
+            return gate
+        })
+
+        const { target } = mountScreen()
+        const chip = () => target.querySelector<HTMLElement>('[data-part="chat-attaching-chip"]')
+        expect(chip()).toBeNull()
+        openComposerMenu(target)
+        clickMenuItemByLabel(target, language.postFile)
+        await waitFor(() => chip() !== null)
+        expect(chip()?.textContent).toBe('Attaching clip.mp4: 8.0 / 195.0 MiB')
+        expect(chip()?.getAttribute('role')).toBe('progressbar')
+
+        release([{ type: 'asset', data: 'done-asset.png' }])
+        await waitFor(() => chip() === null)
+        await settle()
+        expect(composerDrafts.peek({ chaId: liveChar(0).chaId, chatId: liveChar(0).chats[0].id }).fileInput).toEqual(['done-asset.png'])
     })
 })
 

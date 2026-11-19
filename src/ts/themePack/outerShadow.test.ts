@@ -1,7 +1,9 @@
 // @vitest-environment node
 // Rule E-2 (CHORE-738 stage 2, MC-2309) at its two seams: shadowReach, the per-layer reach reader of paintOver.ts, and outerShadowPass, the
-// pass that judges every shadow declaration of a chat or Studio sheet. Every row is a SEAM GUARD on a new seam: the file fails at import on a
+// pass that judges every shadow declaration of a chat or Studio sheet. Every stage-2 row is a SEAM GUARD on a new seam: the file fails at import on a
 // base without outerShadow.ts, so it is not a reproducer; the reproducers are the pipeline rows in cascadeRules.test.ts.
+// Inset layers (CHORE-738 stage 4, MC-2317, MC-2318): rows marked SEAM REPRO fail by assertion on a base whose E-2 skips inset layers; the
+// rest are SEAM GUARDs. RULE is written out below as a literal and not imported, so a change of wording fails here.
 import { describe, expect, it } from 'vitest'
 import { outerShadowPass } from './outerShadow'
 import { shadowReach } from './paintOver'
@@ -9,7 +11,7 @@ import { shadowReach } from './paintOver'
 const E2_WHY = /may reach at most 2 px past its element/
 const NOTICE = '[data-part="chat-ai-law-notice"]'
 // The rule sentence every E-2 reason ends with, written out so a change of wording fails here.
-const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309)'
+const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element and an inset box-shadow at most 2 px into it, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309, MC-2317, MC-2318)'
 const INHERIT_WHY = `box-shadow: inherit copies the parent's shadow, which the check cannot measure; ${RULE}`
 const RT1 = `:root{--focus-ring-w:60px}${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`
 const whysOf = (area: 'chat' | 'studio' | 'settings' | 'home', css: string): string[] => outerShadowPass(area, css).map((e) => e.why)
@@ -136,5 +138,52 @@ describe('S13: a pack :root override of an app token is resolved at the seam (SE
         expect(found).toHaveLength(1)
         expect(found[0]).toMatch(/reaches 60 px/)
         expect(found[0]).toMatch(E2_WHY)
+    })
+})
+
+describe('SI: inset layers are judged by the same 2 px limit, measured into the element (CHORE-738 stage 4, MC-2317, MC-2318)', () => {
+    describe('SEAM REPRO: an over-limit or unmeasurable inset layer gives a reason; no reason on a base that skips inset layers', () => {
+        it('SI1 an inset over 2 px gives the full "into" reason', () => {
+            expect(whysOf('chat', `${NOTICE}{box-shadow:inset 0 0 0 3px #000000}`)).toEqual([`box-shadow layer "inset 0 0 0 3px #000000" reaches 3 px into its element; ${RULE}`])
+        })
+        it('SI2 inset written last', () => {
+            expect(whysOf('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000 inset}`)).toEqual([`box-shadow layer "0 0 0 3px #000000 inset" reaches 3 px into its element; ${RULE}`])
+        })
+        it('SI3 an unmeasurable inset layer gives the unmeasured reason', () => {
+            expect(whysOf('chat', `${NOTICE}{box-shadow:inset 0 0 0 4em #000000}`)).toEqual([`box-shadow layer "inset 0 0 0 4em #000000" cannot be measured, so its reach cannot be judged; write px or rem lengths with a space between values; ${RULE}`])
+        })
+        it('SI4 a Studio inset blur', () => {
+            expect(whysOf('studio', '[data-part="studio"]{box-shadow:inset 0 0 64px #000000}')).toEqual([`box-shadow layer "inset 0 0 64px #000000" reaches 64 px into its element; ${RULE}`])
+        })
+        it('SI9 an inset after an outer layer gives exactly one error', () => {
+            const found = whysOf('chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,inset 0 0 0 3px #000000}`)
+            expect(found).toHaveLength(1)
+            expect(found[0]).toMatch(/"inset 0 0 0 3px #000000" reaches 3 px into its element/)
+        })
+    })
+
+    describe('SEAM GUARD: accepted before and after', () => {
+        it.each(['settings', 'home'] as const)('SI7 %s gives no error for a 64 px inset', (area) => {
+            expect(outerShadowPass(area, `${NOTICE}{box-shadow:inset 0 0 0 64px #000000}`)).toEqual([])
+        })
+        it('SI8 insets at 2 px give nothing', () => {
+            expect(whysOf('chat', `${NOTICE}{box-shadow:inset 0 0 0 2px #000000,inset 1px 1px 0 1px #000000}`)).toEqual([])
+        })
+    })
+
+    describe('U1+: shadowReach reads an inset layer as the per-axis bound from the padding edge (SEAM GUARD, unchanged reader)', () => {
+        it.each([
+            ['inset 0 0 0 2px', 2],
+            ['0 0 0 3px inset', 3],
+            ['inset 3px 0 0', 3],
+            ['inset 0 -3px 0', 3],
+            ['inset 0 0 64px -62px', 64],
+            ['inset -4px 0 0 -2px', 2],
+            ['inset 0 0 0 -9px', 0],
+            ['inset 1px 1px 0 1px', 2],
+            ['#ffffff inset 0 0 0 64px', 64],
+        ] as const)('%s reads %s', (layer, reach) => {
+            expect(shadowReach(layer, 'box')).toBe(reach)
+        })
     })
 })
