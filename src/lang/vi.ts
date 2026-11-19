@@ -613,6 +613,13 @@ export const languageVietnamese = {
     importTaskFailedOne: (name: string) => `Không thể nhập ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} mục bị bỏ qua do trùng lặp`,
     importTaskRetryFailed: (count: number) => `Thử lại ${count} mục bị lỗi`,
+    importTaskCharactersTitle: "Đang nhập nhân vật",
+    importTaskFilesTitle: "Đang nhập tệp",
+    importTaskRealmTitle: "Đang nhập từ Realm",
+    importTaskLinkTitle: "Đang nhập từ liên kết",
+    importStepDownload: "Tải xuống",
+    importNounAssets: "Tài nguyên",
+    patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} đã lưu ${done}, đã tìm thấy ${found} cho đến nay` : `Đã lưu ${done}, đã tìm thấy ${found} cho đến nay`,
     chatShellTranslationClose: "Đóng trình chỉnh sửa bản dịch",
     "formating": {
         "main": "Lời nhắc chính",

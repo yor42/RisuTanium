@@ -613,6 +613,13 @@ export const languageEnglish = {
     importTaskFailedOne: (name: string) => `Couldn't import ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} left out as duplicates`,
     importTaskRetryFailed: (count: number) => count === 1 ? 'Retry the 1 that failed' : `Retry the ${count} that failed`,
+    importTaskCharactersTitle: 'Importing characters',
+    importTaskFilesTitle: 'Importing files',
+    importTaskRealmTitle: 'Importing from Realm',
+    importTaskLinkTitle: 'Importing from a link',
+    importStepDownload: 'Download',
+    importNounAssets: 'Assets',
+    patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done} saved, ${found} found so far` : `${done} saved, ${found} found so far`,
     formating: {
         main: "Main Prompt",
         jailbreak: "Jailbreak Prompt",

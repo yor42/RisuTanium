@@ -613,6 +613,13 @@ export const languageSpanish = {
     importTaskFailedOne: (name: string) => `No se pudo importar ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} omitidos por estar duplicados`,
     importTaskRetryFailed: (count: number) => count === 1 ? "Reintentar el 1 que falló" : `Reintentar los ${count} que fallaron`,
+    importTaskCharactersTitle: "Importando personajes",
+    importTaskFilesTitle: "Importando archivos",
+    importTaskRealmTitle: "Importando desde Realm",
+    importTaskLinkTitle: "Importando desde un enlace",
+    importStepDownload: "Descargar",
+    importNounAssets: "Recursos",
+    patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done} guardados, ${found} encontrados hasta ahora` : `${done} guardados, ${found} encontrados hasta ahora`,
     chatShellTranslationClose: "Cerrar el editor de traducción",
     "formating": {
         "main": "Prompt Principal",

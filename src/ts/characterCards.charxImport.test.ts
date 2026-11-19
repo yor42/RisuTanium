@@ -225,6 +225,7 @@ vi.mock('fflate', async (importOriginal) => {
 //#endregion
 
 import { downloadRisuHub, importCharacterFile, importCharacterProcess } from 'src/ts/characterCards'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 import { CharXImporter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
 import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixtures'
 import { checkCharOrder } from 'src/ts/globalApi.svelte'
@@ -538,11 +539,8 @@ describe('import of complete charx and jpg-charx archives (compatibility guard)'
         expect(reference.savedIds).toEqual(assetIds)
         expect(reference.characters[0].globalLore).toEqual(withModule ? [{ key: 'k', comment: 'lore' }] : [])
         expect(h.moduleReads).toEqual(withModule ? [MODULE_BYTES.length] : [])
-        expect(reference.log.filter((l) => l.includes('Saving Assets'))).toEqual([
-            'alert:wait:Loading... (Saving Assets 1/3)',
-            'alert:wait:Loading... (Saving Assets 2/3)',
-            'alert:wait:Loading... (Saving Assets 3/3)',
-        ])
+        //The save count is the task card's now; no legacy wait carries it.
+        expect(reference.log.filter((l) => l.includes('Saving Assets'))).toEqual([])
         for (const input of ['file', 'chunked-file', 'buffer', 'stream'] as const) {
             reset()
             h.module = { lorebook: [{ key: 'k', comment: 'lore' }], trigger: [], regex: [] }
@@ -551,7 +549,7 @@ describe('import of complete charx and jpg-charx archives (compatibility guard)'
             expect(out.errors, input).toEqual([])
             expect(out.characters, input).toEqual(reference.characters)
             expect(out.savedIds, input).toEqual(reference.savedIds)
-            expect(out.log.filter((l) => l.includes('Saving Assets')).pop(), input).toBe('alert:wait:Loading... (Saving Assets 3/3)')
+            expect(out.log.filter((l) => l.includes('Saving Assets')), input).toEqual([])
         }
     })
 
@@ -761,7 +759,11 @@ describe('downloadRisuHub charx download', () => {
      * With `failBody`, every way of reading the body rejects.
      */
     function realmResponse(bytes: Uint8Array, contentType = 'application/zip', failBody = false) {
-        const res = new Response(new U8(bytes), { status: 200, headers: { 'content-type': contentType } })
+        //A failing body is a stream that errors when read, as a dropped connection does; the byte readers below reject as well.
+        const body = failBody
+            ? new ReadableStream<Uint8Array>({ start(controller) { controller.error(new TypeError('network error')) } })
+            : new U8(bytes)
+        const res = new Response(body, { status: 200, headers: { 'content-type': contentType } })
         const failing = async (): Promise<never> => { throw new TypeError('network error') }
         const realArrayBuffer = failBody ? failing : res.arrayBuffer.bind(res)
         const realBlob = failBody ? failing : res.blob.bind(res)
@@ -788,7 +790,7 @@ describe('downloadRisuHub charx download', () => {
         const z = await writerArchive(cardEntries(), 6)
         const { res, direct } = realmResponse(z, type)
         vi.stubGlobal('fetch', vi.fn(async () => res))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         expect(direct.arrayBufferCalls).toBe(0)
         expect(h.errors).toEqual([])
         expect(h.characters).toHaveLength(1)
@@ -800,7 +802,7 @@ describe('downloadRisuHub charx download', () => {
         const fromFile = await runImport(z, 'card.charx', 'file')
         reset()
         vi.stubGlobal('fetch', vi.fn(async () => realmResponse(z).res))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         const fromRealm = describeOutcome(undefined, null)
         expect(fromRealm.errors).toEqual([])
         expect(fromRealm.characters).toEqual(fromFile.characters)
@@ -811,10 +813,10 @@ describe('downloadRisuHub charx download', () => {
         const z = await writerArchive(cardEntries(), 6)
         const e = entryOf(geometry(z), 'assets/b.bin')
         vi.stubGlobal('fetch', vi.fn(async () => realmResponse(z.subarray(0, e.dataStart + 100)).res))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        const card = await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         expect(h.saveCalls).toBe(0)
         expect(h.characters).toEqual([])
-        expect(h.errors).toEqual([language.cardFileIncomplete])
+        expect(card?.failure?.detail).toBe(language.cardFileIncomplete)
     })
 
     test.each([
@@ -824,17 +826,17 @@ describe('downloadRisuHub charx download', () => {
         const bytes = await make()
         h.characters = [{ name: 'Existing' }]
         vi.stubGlobal('fetch', vi.fn(async () => realmResponse(bytes).res))
-        await downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' })
+        const card = await answerImportCard(() => downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' }))
         expect(h.characters).toEqual([{ name: 'Existing' }])
         expect(changeChar).not.toHaveBeenCalled()
         expect(checkCharOrder).not.toHaveBeenCalled()
-        expect(h.log[h.log.length - 1].startsWith('error:')).toBe(true)
+        expect(card?.failure).toBeDefined()
     })
 
     test('a download that imports orders the characters and opens the new one (compatibility guard)', async () => {
         const z = await writerArchive(cardEntries(), 6)
         vi.stubGlobal('fetch', vi.fn(async () => realmResponse(z).res))
-        await downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' }))
         expect(h.characters).toHaveLength(1)
         expect(checkCharOrder).toHaveBeenCalledTimes(1)
         expect(changeChar).toHaveBeenCalledWith(0)
@@ -844,8 +846,10 @@ describe('downloadRisuHub charx download', () => {
         const z = await writerArchive(cardEntries(), 6)
         const { res } = realmResponse(z, 'application/zip', true)
         vi.stubGlobal('fetch', vi.fn(async () => res))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
-        expect(h.errors).toEqual(['Error while importing'])
+        const card = await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
+        //The failure is on the card now, not an alert.
+        expect(card?.failure?.headline).toBeDefined()
+        expect(h.errors).toEqual([])
         expect(h.saveCalls).toBe(0)
         expect(h.characters).toEqual([])
     })
@@ -857,7 +861,6 @@ describe('downloadRisuHub charx download', () => {
 
 async function parseOf(data: Uint8Array | File | ReadableStream<Uint8Array>) {
     const importer = new CharXImporter()
-    importer.alertInfo = true
     h.appendTags = []
     let error: unknown
     try { await importer.parse(data) } catch (e) { error = e }

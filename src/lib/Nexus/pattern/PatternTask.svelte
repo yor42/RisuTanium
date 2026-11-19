@@ -36,6 +36,7 @@
         stepOf: language.patternTaskStepOf,
         fileOf: language.patternTaskFileOf,
         count: language.patternTaskCount,
+        countFound: language.patternTaskCountFound,
         bytes: language.patternTaskBytes,
         cancelling: language.patternTaskCancelling,
         cancelledHeadline: language.patternTaskCancelled,

@@ -613,6 +613,13 @@ export const languageGerman = {
     "importTaskFailedOne": (name: string) => `${name} konnte nicht importiert werden`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} als Duplikate ausgelassen`,
     "importTaskRetryFailed": (count: number) => count === 1 ? "Das 1 fehlgeschlagene Element wiederholen" : `Die ${count} fehlgeschlagenen Elemente wiederholen`,
+    "importTaskCharactersTitle": "Charaktere werden importiert",
+    "importTaskFilesTitle": "Dateien werden importiert",
+    "importTaskRealmTitle": "Import aus Realm läuft",
+    "importTaskLinkTitle": "Import über einen Link läuft",
+    "importStepDownload": "Herunterladen",
+    "importNounAssets": "Assets",
+    "patternTaskCountFound": (noun: string, done: number, found: number) => noun ? `${noun} ${done} gespeichert, bisher ${found} gefunden` : `${done} gespeichert, bisher ${found} gefunden`,
     "chatShellTranslationClose": "Übersetzungseditor schließen",
     "formating": {
         "main": "Haupt-Anweisung",

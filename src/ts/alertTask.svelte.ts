@@ -26,6 +26,8 @@ export interface TaskHandle {
     setStep(index: number): void
     setFile(index: number, total: number, name?: string): void
     readonly setCount: ProgressSink
+    /** An open count: `done` saved of `found` so far. */
+    readonly setFound: ProgressSink
     readonly setBytes: ProgressSink
     /**
      * True when Cancel is now locked and no cancel was requested: only then may the caller write.
@@ -135,6 +137,7 @@ export function alertTask(def: TaskDef): TaskHandle {
         setStep: (index) => { if (!self.detached) controller.setStep(index) },
         setFile: (index, total, name) => { if (!self.detached) controller.setFile(index, total, name) },
         setCount: (done, total) => { if (!self.detached) controller.setCount(done, total) },
+        setFound: (done, found) => { if (!self.detached) controller.setFound(done, found) },
         setBytes: (done, total) => { if (!self.detached) controller.setBytes(done, total) },
         lockCancel: (reason) => (self.detached ? !self.cancelRequested : controller.lockCancel(reason)),
         get cancelRequested() {
@@ -207,6 +210,26 @@ export function taskBackPress(): boolean {
     return true
 }
 
+const pendingActions = new Set<Promise<unknown>>()
+
+/**
+ * Registers a whole task action (every round of an import, Retry rounds included) until it settles, so a reader can wait
+ * for the action's final answer and not only for the answer to one round's card.
+ */
+export function trackTaskAction<T>(action: Promise<T>): Promise<T> {
+    pendingActions.add(action)
+    const forget = () => { pendingActions.delete(action) }
+    action.then(forget, forget)
+    return action
+}
+
+/** Resolves once no tracked task action is pending, however each ends; a newer action that starts meanwhile is awaited too. */
+export async function taskActionSettled(): Promise<void> {
+    while (pendingActions.size > 0) {
+        await Promise.allSettled([...pendingActions])
+    }
+}
+
 /** Replaces the clock tasks opened afterwards use; null restores the real one. */
 export function setTaskClockForTests(clock: TaskClock | null): void {
     clockOverride = clock
@@ -217,4 +240,5 @@ export function resetTaskHostForTests(): void {
     entry = null
     shownView = null
     clockOverride = null
+    pendingActions.clear()
 }

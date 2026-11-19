@@ -5,9 +5,9 @@ import type { character } from "./storage/database.svelte"
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { ModuleImportStopped } from "./process/moduleImportStop"
 import { withBusy, type BusyHandle } from "./process/memory/busyActions"
-import { alertTask, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
+import { alertTask, trackTaskAction, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
 import type { TaskFailure, TaskResult, TaskSkip, TaskStepDef } from "../lib/Nexus/pattern/taskProgress"
-import { ImportCancelled, NO_IMPORT_PROGRESS, makeImportProgress, type ImportProgress, type ImportStep } from "./importProgress"
+import { ImportCancelled, makeImportProgress, type ImportProgress, type ImportStep } from "./importProgress"
 import { restoreInProgress } from "./drive/restoreInProgress"
 
 /**
@@ -141,7 +141,7 @@ export function composeImportResult(items:ImportItem[], outcomes:ImportOutcome[]
     const retryable = outcomes.filter((outcome, i) => outcome.kind === 'failed' && !markers[i]).length
     const actions = retryable > 0 ? [{id: 'retry', label: language.importTaskRetryFailed(retryable)}] : undefined
     const unknown = outcomes.some((outcome, i) => outcome.kind === 'failed' && markers[i])
-    const notes:string[] = []
+    const noteSet = new Set<string>()
     const listed:TaskSkip[] = []
     let imported = 0
     let skipped = 0
@@ -149,7 +149,9 @@ export function composeImportResult(items:ImportItem[], outcomes:ImportOutcome[]
         const outcome = outcomes[i]
         if(outcome.kind === 'imported'){
             imported++
-            notes.push(...(outcome.notes ?? []))
+            for(const note of outcome.notes ?? []){
+                noteSet.add(note)
+            }
         }
         else if(outcome.kind === 'skipped'){
             skipped++
@@ -163,6 +165,8 @@ export function composeImportResult(items:ImportItem[], outcomes:ImportOutcome[]
             listed.push({name: item.name, reason: outcomeReason(outcome)})
         }
     })
+    //A note shared by several items, such as the generic success line, is shown once; distinct notes keep their order.
+    const notes = [...noteSet]
     if(items.length === 1){
         const outcome = outcomes[0]
         if(outcome.kind === 'imported'){
@@ -199,10 +203,11 @@ export function composeImportResult(items:ImportItem[], outcomes:ImportOutcome[]
     }}
 }
 
-const STEP_MARK = {read: 'scanning', check: 'scanning', assets: 'transfer_in', add: 'transfer_in'} as const
+const STEP_MARK = {download: 'transfer_in', read: 'scanning', check: 'scanning', assets: 'transfer_in', add: 'transfer_in'} as const
 
 function stepLabel(step:ImportStep):string {
     switch(step){
+        case 'download': return language.importStepDownload
         case 'read': return language.importStepRead
         case 'check': return language.importStepCheck
         case 'assets': return language.importStepAssets
@@ -211,7 +216,7 @@ function stepLabel(step:ImportStep):string {
 }
 
 function stepDefs(steps:readonly ImportStep[]):TaskStepDef[] {
-    return steps.map((step) => ({label: stepLabel(step), mark: STEP_MARK[step]}))
+    return steps.map((step) => ({label: stepLabel(step), mark: STEP_MARK[step], ...(step === 'assets' || step === 'read' ? {noun: language.importNounAssets} : {})}))
 }
 
 /**
@@ -279,7 +284,7 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
             setStep: (index) => handle.setStep(index),
             bytes: handle.setBytes,
             count: handle.setCount,
-            found: () => { },
+            found: handle.setFound,
             onCommitted: () => {
                 marker = true
                 anyCommitted = true
@@ -339,7 +344,7 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
     return {summary, closed, retry}
 }
 
-type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, declinedReason?:string, task?:ImportTaskSpec, outerBusy?:BusyHandle}
+type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle}
 
 /**
  * The batch on a task card: each round runs inside its own busy scope and ends with its result posted; the answer is
@@ -371,44 +376,11 @@ async function runTaskBatch(items:ImportItem[], opts:ImportBatchOptions, task:Im
 }
 
 /**
- * Attempts every item in order, whatever an earlier item's outcome, inside one busy scope, then shows what did not
- * import. It never rejects. When something is to be reported, the last message of the action is one error: the file's
- * own message or the summary. Nothing is shown after it. When nothing is, the alerts of the last file stay as they are.
- * `afterImported` runs after each imported item; its throw is logged and does not stop the batch.
- *
- * With `task`, the action runs on a task card instead (see `runTaskBatch`): Cancel before the round's first write,
- * Retry for the failed files, and one result card; the legacy end message is not shown.
+ * Attempts every item in order, whatever an earlier item's outcome, on one task card (see `runTaskBatch`): Cancel before
+ * the round's first write, Retry for the failed files, and one result card. `afterImported` runs after each imported
+ * item; its throw is logged and does not stop the batch. The whole action, every Retry round included, is tracked until
+ * it settles, so a reader of the unread-notice wait does not take a Retry for the final answer.
  */
-export function runImportBatch(items:ImportItem[], opts:ImportBatchOptions = {}):Promise<ImportSummary> {
-    if(opts.task){
-        return runTaskBatch(items, opts, opts.task)
-    }
-    return withBusy('import', async () => {
-        const outcomes:ImportOutcome[] = []
-        for(const item of items){
-            let outcome:ImportOutcome
-            try {
-                outcome = await item.run(NO_IMPORT_PROGRESS)
-            } catch (error) {
-                console.error(error)
-                outcome = outcomeOfError(error)
-            }
-            if(outcome.kind === 'imported' && opts.afterImported){
-                try {
-                    opts.afterImported(outcome)
-                } catch (error) {
-                    console.error(error)
-                }
-            }
-            outcomes.push(outcome)
-        }
-        const summary = summariseImport(items, outcomes, {declinedReason: opts.declinedReason})
-        if(summary.own){
-            showOutcome(summary.own)
-        }
-        else if(summary.message){
-            alertError(summary.message)
-        }
-        return summary
-    })
+export function runImportBatch(items:ImportItem[], opts:ImportBatchOptions):Promise<ImportSummary> {
+    return trackTaskAction(runTaskBatch(items, opts, opts.task))
 }

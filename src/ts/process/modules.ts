@@ -729,15 +729,14 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
     const batchFile = batch ? file.name : undefined
     try {
         if(route.kind === 'charx'){
-            //The card importer is not on the progress yet, so its saves are not individually gated: the round's lock is taken before it reads a byte.
-            progress.beforeWrite()
+            //The card importer takes the progress: its own asset saves, the embedded module's and the card-spec saves pass the round's write gate, so Cancel stays offered while the archive is read.
             //The archive is handed over as the picked File, which is read in pieces, never as one buffer. The importer tests the suffix in lower case.
             const outcome = await importCharacterFile({
                 name: file.name.slice(0, -route.suffix.length) + route.suffix,
                 data: file,
                 returnCharacter: true,
                 lowLevelLabel: (cardName) => language.moduleLowLevelNamed(cardName, batchFile)
-            })
+            }, null, progress)
             if(outcome.kind !== 'imported'){
                 return outcome
             }
