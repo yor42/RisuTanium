@@ -39,8 +39,6 @@ import { isRestorableColdStorageKey, listColdBackupRoots, listInnerColdStorageKe
 import { isBusy } from "../memory/busyActions";
 import { inlayTokenRegex } from "../../util/inlayTokens";
 import { tabLockSnapshotShowsOthers } from "../../storage/storageTabLocks";
-import { pageRunsLegacyDeleters } from "../../storage/pageStorageMode";
-import { getResidency } from "../../storage/store2/residencyActive";
 
 /** Longest stretch of walking, measured by the clock, before the walk gives the event loop a turn. */
 const SLICE_MS = 40
@@ -690,16 +688,12 @@ async function findUnreferenced(
 let inlayRefusalWarned = false
 
 /**
- * Whether this page may delete inlays. A page with a registered store2
- * residency never does, and neither does a page that is not a legacy or block
- * page (`read-only`, `unset`): the keep set here knows only the legacy data, so
- * an inlay a store2 profile still shows could be removed. The refusal is
- * announced once per page.
+ * Whether this page may delete inlays: never, on any page. No page mode deletes
+ * inlays through this path, because the keep set here knows only the legacy
+ * data, so an inlay a store2 profile still shows could be removed. The refusal
+ * is announced once per page.
  */
 function inlayDeletionAllowed(): boolean {
-    if (getResidency() === null && pageRunsLegacyDeleters()) {
-        return true
-    }
     if (!inlayRefusalWarned) {
         inlayRefusalWarned = true
         console.warn('Inlay clean-up deletes nothing on this page.')

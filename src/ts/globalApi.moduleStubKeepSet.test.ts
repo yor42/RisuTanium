@@ -1,7 +1,6 @@
 /**
  * The legacy asset keep-set over module stubs: `getUncleanablesSync` yields only the icon a stub holds and reads no
- * other key of it, and `buildAssetKeepSet` reports the set incomplete while a stub is present so the legacy sweeps
- * delete nothing. The other legacy deleters stay behind the page-mode gate on a store2 page, the only page that holds
+ * other key of it. The other legacy deleters stay behind the page-mode gate on a store2 page, the only page that holds
  * stubs. Titles beginning "guard:" pin behaviour that must be preserved; every other test is a regression reproducer.
  */
 import { describe, test, expect, vi, afterEach } from 'vitest'
@@ -51,10 +50,9 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
     registerDbChangeEffects: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
 
-import { buildAssetKeepSet, getUncleanablesSync } from 'src/ts/globalApi.svelte'
+import { getUncleanablesSync } from 'src/ts/globalApi.svelte'
 import {
-    pageRunsLegacyDeleters, recordsLoadTimeListing, resetPageStorageModeForTests, setPageStorageMode,
-    startsLegacyStartupCleanup,
+    pageRunsLegacyDeleters, resetPageStorageModeForTests, setPageStorageMode,
 } from 'src/ts/storage/pageStorageMode'
 
 afterEach(() => {
@@ -108,27 +106,11 @@ describe('getUncleanablesSync over a module stub', () => {
     })
 })
 
-describe('buildAssetKeepSet over module stubs', () => {
-    test('keep-set-incomplete-with-module-stub: a stub makes the set incomplete and keeps its icon', async () => {
-        const result = await buildAssetKeepSet(dbOf([fullModule('B'), stubModule('A', 'assets/a-icon')]))
-        expect(result.complete).toBe(false)
-        expect(Array.from(result.uncleanable)).toEqual(['a-icon'])
-    })
-
-    test('guard: keep-set-complete-without-stub: full modules leave the set complete', async () => {
-        const result = await buildAssetKeepSet(dbOf([fullModule('B', [['x', 'assets/b-asset']])]))
-        expect(result.complete).toBe(true)
-        expect(Array.from(result.uncleanable)).toEqual(['b-asset'])
-    })
-})
-
 describe('legacy deleters on the page that holds stubs', () => {
     test('guard: legacy-deleters-gated-on-store2-with-stub: a store2 page runs none of the legacy deleters', () => {
         setPageStorageMode({ kind: 'legacy' } as Parameters<typeof setPageStorageMode>[0])
         expect(pageRunsLegacyDeleters()).toBe(true)
         setPageStorageMode({ kind: 'store2' } as Parameters<typeof setPageStorageMode>[0])
         expect(pageRunsLegacyDeleters()).toBe(false)
-        expect(startsLegacyStartupCleanup()).toBe(false)
-        expect(recordsLoadTimeListing()).toBe(false)
     })
 })

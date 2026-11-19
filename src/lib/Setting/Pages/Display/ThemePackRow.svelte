@@ -1,17 +1,27 @@
 <script lang="ts">
     import { tick } from 'svelte'
+    import { CheckIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import { DBState } from 'src/ts/stores.svelte'
     import { themePackApplyState } from 'src/ts/themePack/activePack.svelte'
     import { BUILTIN_PACKS, builtinPackById } from 'src/ts/themePack/builtins'
     import { listThemePacks, type PackMode } from 'src/ts/themePack/packRecord'
+    import { tileSpec } from 'src/ts/themePack/tileDesign'
     import {
         attachRow, formatPackSize, installFlowState, refusalText, removeThemePack, runThemePackInstall, selectThemePack,
     } from './themePackInstallFlow.svelte'
+    import ThemePackTile from './ThemePackTile.svelte'
 
     const uid = $props.id()
     const groupName = `theme-pack-${uid}`
     const BUTTON_CLASS = 'px-3 py-1 text-sm rounded-md border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected transition-colors disabled:opacity-50'
+    // The frame, badge and name are siblings of the radio inside one label, so the peer variants follow its state. The
+    // focus ring is a box shadow, which forced colours remove, so an outline stands in for it there.
+    const FRAME_CLASS = 'block aspect-square w-full overflow-hidden rounded-md border border-darkborderc transition-colors duration-150 motion-reduce:transition-none group-hover:border-borderc peer-checked:outline-2 peer-checked:outline-textcolor peer-checked:outline-offset-2 peer-focus-visible:ring-2 peer-focus-visible:ring-borderc peer-focus-visible:ring-offset-4 peer-focus-visible:ring-offset-bgcolor peer-focus-visible:forced-colors:outline-2 peer-focus-visible:forced-colors:outline-offset-4'
+    const BADGE_CLASS = 'absolute top-1 right-1 hidden peer-checked:flex items-center justify-center w-4 h-4 rounded-full bg-textcolor text-bgcolor pointer-events-none'
+    const NAME_CLASS = 'text-sm text-textcolor line-clamp-2 break-words peer-checked:font-semibold'
+    const CARD_CLASS = 'group relative flex flex-col gap-1 min-w-0 cursor-pointer'
+    const DETAILS_CLASS = 'min-w-0 break-words [overflow-wrap:anywhere] text-sm text-textcolor2 mt-1'
 
     let root: HTMLElement | null = null
     let installButton: HTMLButtonElement | null = null
@@ -111,42 +121,55 @@
     <span class="text-textcolor mt-4">{language.themePackRowTitle}</span>
     <p class="text-sm text-textcolor2 mt-1" data-part="theme-pack-help">{help}</p>
 
-    <fieldset class="flex flex-col gap-2 mt-2 border-0 p-0 m-0 min-w-0">
+    <fieldset class="grid grid-cols-[repeat(auto-fill,minmax(7.25rem,1fr))] gap-3 mt-2 border-0 p-0 m-0 min-w-0">
         <legend class="text-sm text-textcolor2 mb-1">{language.themePackActiveLegend}</legend>
-        <label class="flex items-center gap-2 text-textcolor">
-            <input type="radio" name={groupName} value="" checked={activeId === ''} onchange={() => select(undefined)} />
-            <span>{language.themePackNone}</span>
-        </label>
-        {#each BUILTIN_PACKS as pack (pack.id)}
-            <div class="flex flex-col" data-part="theme-pack-entry" data-pack-id={pack.id}>
-                <label class="flex items-center gap-2 text-textcolor">
-                    <input type="radio" name={groupName} value={pack.id} checked={activeId === pack.id} onchange={() => select(pack.id)} />
-                    <span>{pack.name}</span>
+        <div class="min-w-0" data-part="theme-pack-none">
+            <label class={CARD_CLASS}>
+                <input class="sr-only peer" type="radio" name={groupName} value="" checked={activeId === ''} aria-labelledby="{groupName}-none" onchange={() => select(undefined)} />
+                <span class={FRAME_CLASS}><ThemePackTile spec={null} /></span>
+                <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
+                <span id="{groupName}-none" class={NAME_CLASS}>{language.themePackNone}</span>
+            </label>
+        </div>
+        {#each BUILTIN_PACKS as pack, index (pack.id)}
+            <div class="min-w-0" data-part="theme-pack-entry" data-pack-id={pack.id}>
+                <label class={CARD_CLASS}>
+                    <input class="sr-only peer" type="radio" name={groupName} value={pack.id} checked={activeId === pack.id} aria-labelledby="{groupName}-b{index}" onchange={() => select(pack.id)} />
+                    <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: pack.id, name: pack.name, main: pack.mainColor, secondary: pack.secondaryColor })} /></span>
+                    <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
+                    <span id="{groupName}-b{index}" class={NAME_CLASS}>{pack.name}</span>
                     <span class="text-xs text-textcolor2">{language.themePackBuiltIn}</span>
                 </label>
-                <div class="ml-6 text-sm text-textcolor2 flex flex-col">
-                    <span>{language.themePackVersion(pack.version)}</span>
-                    {#if modesLabel(pack.modes)}<span>{modesLabel(pack.modes)}</span>{/if}
-                    <span>{language.themePackLicense(pack.license)}</span>
-                    <span>{language.themePackAttribution(pack.attribution)}</span>
-                </div>
+                <details class={DETAILS_CLASS} data-part="theme-pack-details">
+                    <summary class="cursor-pointer" aria-label={language.themePackDetailsFor(pack.name)}>{language.themePackDetails}</summary>
+                    <div class="flex flex-col">
+                        <span>{language.themePackVersion(pack.version)}</span>
+                        {#if modesLabel(pack.modes)}<span>{modesLabel(pack.modes)}</span>{/if}
+                        <span>{language.themePackLicense(pack.license)}</span>
+                        <span>{language.themePackAttribution(pack.attribution)}</span>
+                    </div>
+                </details>
             </div>
         {/each}
-        {#each readable as item (item.record.id)}
-            <div class="flex flex-col" data-part="theme-pack-entry" data-pack-id={item.record.id}>
-                <label class="flex items-center gap-2 text-textcolor">
-                    <input type="radio" name={groupName} value={item.record.id} checked={activeId === item.record.id} onchange={() => select(item.record.id)} />
-                    <span>{item.record.name}</span>
+        {#each readable as item, index (item.record.id)}
+            <div class="min-w-0" data-part="theme-pack-entry" data-pack-id={item.record.id}>
+                <label class={CARD_CLASS}>
+                    <input class="sr-only peer" type="radio" name={groupName} value={item.record.id} checked={activeId === item.record.id} aria-labelledby="{groupName}-p{index}" onchange={() => select(item.record.id)} />
+                    <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: item.record.packId ?? item.record.name, name: item.record.name, main: item.record.mainColor, secondary: item.record.secondaryColor })} icon={item.record.icon} name={item.record.name} /></span>
+                    <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
+                    <span id="{groupName}-p{index}" class={NAME_CLASS}>{item.record.name}</span>
+                    {#if modesLabel(item.record.modes)}<span class="text-xs text-textcolor2">{modesLabel(item.record.modes)}</span>{/if}
                 </label>
-                <div class="ml-6 text-sm text-textcolor2 flex flex-col">
-                    <span>{language.themePackVersion(item.record.version)}</span>
-                    {#if modesLabel(item.record.modes)}<span>{modesLabel(item.record.modes)}</span>{/if}
-                    <span>{language.themePackSize(formatPackSize(item.record.bytes))}</span>
-                    <span>{language.themePackLicense(item.record.license)}</span>
-                    {#if item.record.attribution}<span>{language.themePackAttribution(item.record.attribution)}</span>{/if}
-                    {#if item.record.fonts.length > 0}
-                        <details>
-                            <summary class="cursor-pointer">{language.themePackFonts}</summary>
+                <details class={DETAILS_CLASS} data-part="theme-pack-details">
+                    <summary class="cursor-pointer" aria-label={language.themePackDetailsFor(item.record.name)}>{language.themePackDetails}</summary>
+                    <div class="flex flex-col">
+                        <span>{language.themePackVersion(item.record.version)}</span>
+                        {#if modesLabel(item.record.modes)}<span>{modesLabel(item.record.modes)}</span>{/if}
+                        <span>{language.themePackSize(formatPackSize(item.record.bytes))}</span>
+                        <span>{language.themePackLicense(item.record.license)}</span>
+                        {#if item.record.attribution}<span>{language.themePackAttribution(item.record.attribution)}</span>{/if}
+                        {#if item.record.fonts.length > 0}
+                            <span class="mt-1">{language.themePackFonts}</span>
                             <ul class="ml-4 list-disc">
                                 {#each item.record.fonts as font (font.file)}
                                     <li>
@@ -155,24 +178,26 @@
                                     </li>
                                 {/each}
                             </ul>
-                        </details>
-                    {/if}
-                    <button
-                        type="button"
-                        class="{BUTTON_CLASS} self-start mt-1"
-                        data-part="theme-pack-remove"
-                        onclick={(event) => remove(item.entry, item.record.name, event.currentTarget)}
-                    >{language.themePackRemove}</button>
-                </div>
+                        {/if}
+                        <button
+                            type="button"
+                            class="{BUTTON_CLASS} self-start mt-2"
+                            data-part="theme-pack-remove"
+                            onclick={(event) => remove(item.entry, item.record.name, event.currentTarget)}
+                        >{language.themePackRemove}</button>
+                    </div>
+                </details>
             </div>
         {/each}
         {#each unreadable as item (item.index)}
-            <div class="flex flex-col" data-part="theme-pack-unreadable">
-                <span class="text-textcolor">{language.themePackUnreadableName}</span>
-                <span class="text-sm text-textcolor2">{language.themePackUnreadableDetail}</span>
+            <div class="min-w-0 flex flex-col gap-1" data-part="theme-pack-unreadable">
+                <!-- The seed is the entry's index, so this tile's pattern can change after an earlier entry is removed. -->
+                <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: `unreadable:${item.index}`, name: language.themePackUnreadableName })} /></span>
+                <span class="text-sm text-textcolor line-clamp-2 break-words">{language.themePackUnreadableName}</span>
+                <span class="text-xs text-textcolor2 break-words">{language.themePackUnreadableDetail}</span>
                 <button
                     type="button"
-                    class="{BUTTON_CLASS} self-start mt-1"
+                    class="{BUTTON_CLASS} self-start"
                     data-part="theme-pack-remove"
                     onclick={(event) => remove(item.entry, language.themePackUnreadableName, event.currentTarget)}
                 >{language.themePackRemove}</button>

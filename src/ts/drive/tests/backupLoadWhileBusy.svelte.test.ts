@@ -55,6 +55,7 @@ type TriggerHandler = (arg: TriggerRunArg) => unknown
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
+const alertWaitMock = vi.hoisted(() => vi.fn())
 const runTriggerMock = vi.hoisted(() => vi.fn())
 const triggerHandlers = vi.hoisted(() => ({} as Record<string, TriggerHandler | undefined>))
 const downloadFileMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -213,13 +214,24 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormal: alertNormalMock,
     alertSelect: alertSelectMock,
     alertConfirm: alertConfirmMock,
-    alertWait: vi.fn(),
+    alertWait: alertWaitMock,
     alertClear: vi.fn(),
     alertNormalWait: vi.fn(),
     alertAddCharacter: vi.fn(),
     alertStore: writable({ type: 'none', msg: '' }),
     waitAlert: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/alert'))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real save loop with one answer fixed: a parked loop is left alone by the restore's save-first step, which then
+// returns at once; the real `globalApi.svelte` stays in place for the busy and write-lock state.
+vi.mock(import('src/ts/storage/store2/saveLoop'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveLoopParked: () => true,
+}))
 
 vi.mock(import('src/ts/parser/chatML'), () => ({
     parseChatML: vi.fn(() => []),
@@ -563,6 +575,8 @@ vi.mock(import('src/ts/hotkey'), () => ({
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from './store2ShellStub'
+import { setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
@@ -933,7 +947,7 @@ import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/test
  * file's graph: a later load in that graph would wait on the closed lock and
  * never settle.
  */
-async function importIsolatedLoad() {
+async function importIsolatedLoad(mode: 'store2' | 'unset' = 'unset') {
     vi.resetModules()
     const originalLocks = Object.getOwnPropertyDescriptor(window.navigator, 'locks')
     Object.defineProperty(window.navigator, 'locks', {
@@ -945,6 +959,10 @@ async function importIsolatedLoad() {
         const api = await import('src/ts/globalApi.svelte')
         const isolatedAppStore = await import('src/ts/storage/store/appStore')
         isolatedAppStore.injectAppStore(createForageBackedStore(api.forageStorage as unknown as ForageLike), 'tauri')
+        if (mode === 'store2') {
+            const isolatedMode = await import('src/ts/storage/pageStorageMode')
+            isolatedMode.setPageStorageMode({ kind: 'store2' })
+        }
         const pageOwner = await import('src/ts/storage/pageBlockOwner')
         const profileValidate = await import('src/ts/storage/blockProfileValidate')
         const stores = await import('src/ts/stores.svelte')
@@ -1082,6 +1100,8 @@ beforeEach(() => {
     alertSelectMock.mockReset()
     alertSelectMock.mockImplementation(async () => '1')
     alertNormalMock.mockReset()
+    alertWaitMock.mockClear()
+    resetStore2ShellBox(shell)
     vi.mocked(setDatabase).mockClear()
     // happy-dom's reload and replaceState are not stubs: a load that reloads must not navigate the test page.
     reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
@@ -1102,97 +1122,6 @@ async function startHeldSendBk(): Promise<{ running: Promise<boolean> }> {
 }
 
 //#endregion
-
-describe('loadInternalBackup waits for work', () => {
-    test('a send streaming: loadInternalBackup is refused, DBState.db is the same object and no picker or confirm is asked', async () => {
-        installWorld()
-        await seedInternalBackup()
-        const { running } = await startHeldSendBk()
-        const dbBefore = DBState.db
-
-        await loadInternalBackup()
-        const dbAfter = DBState.db
-        const installed = vi.mocked(setDatabase).mock.calls.length
-        const reloadFlag = requiresFullEncoderReload.state
-        await drain(running)
-
-        expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
-        expect.soft(installed, 'setDatabase calls').toBe(0)
-        expect.soft(alertSelectMock, 'the backup picker was asked').not.toHaveBeenCalled()
-        expect.soft(alertConfirmMock, 'a confirm was asked').not.toHaveBeenCalled()
-        expect.soft(reloadFlag, 'requiresFullEncoderReload').toBe(false)
-        expectNoWriteAndNoReload()
-    })
-
-    test('no work when the load starts, a send starts during the decode: the write is refused, nothing is written or reloaded and DBState.db is unchanged', async () => {
-        installWorld()
-        await seedInternalBackup()
-        let running: Promise<boolean> | undefined
-        decodeHooks.onDecode = async () => {
-            decodeHooks.onDecode = undefined
-            holdEveryRequest()
-            running = sendChat()
-            await requestHeld(1)
-        }
-        const dbBefore = DBState.db
-
-        await loadInternalBackup()
-        const dbAfter = DBState.db
-        const installed = vi.mocked(setDatabase).mock.calls.length
-        const reloadFlag = requiresFullEncoderReload.state
-        const sendStarted = running !== undefined
-        await drain(running as Promise<boolean>)
-
-        expect(sendStarted, 'the send started during the decode').toBe(true)
-        expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
-        expect.soft(installed, 'setDatabase calls').toBe(0)
-        expect.soft(reloadFlag, 'requiresFullEncoderReload').toBe(false)
-        expectNoWriteAndNoReload()
-    })
-
-    test('no work: loadInternalBackup commits the chosen backup as a block generation and reloads, without installing it', async () => {
-        installWorld()
-        const bytes = await seedInternalBackup()
-        const isolated = await importIsolatedLoad()
-        isolated.stores.DBState.db = DBState.db
-        const dbBefore = isolated.stores.DBState.db
-
-        await isolated.load()
-
-        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual(['char-A'])
-        expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(false)
-        expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
-        expect.soft(vi.mocked(isolated.database.setDatabase), 'setDatabase calls').not.toHaveBeenCalled()
-        expect.soft(isolated.stores.DBState.db === dbBefore, 'DBState.db is the same object').toBe(true)
-        expect.soft(isolated.requiresFullEncoderReload.state, 'requiresFullEncoderReload').toBe(false)
-    })
-
-    test('the composer window open without a send (a take held on the input trigger): loadInternalBackup is refused', async () => {
-        installWorld()
-        await seedInternalBackup()
-        holdEveryRequest()
-        const input = gateInputTrigger()
-        seedDraft('hello')
-        const sending = send(makeSource())
-        await input.reached
-        const windowOpen = isComposerBusy()
-        const flag = get(doingChat)
-        const dbBefore = DBState.db
-
-        await loadInternalBackup()
-        const dbAfter = DBState.db
-        const installed = vi.mocked(setDatabase).mock.calls.length
-        input.release()
-        await settledOutcome(drain(sending))
-
-        expect(windowOpen, 'the composer window is open').toBe(true)
-        expect(flag, 'no send holds doingChat').toBe(false)
-        expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
-        expect.soft(installed, 'setDatabase calls').toBe(0)
-        expect.soft(alertSelectMock, 'the backup picker was asked').not.toHaveBeenCalled()
-        expectNoWriteAndNoReload()
-    })
-})
 
 //#region UserSettings buttons
 
@@ -1235,6 +1164,7 @@ afterEach(async () => {
 describe('the backup buttons in UserSettings', () => {
     test('a send streaming: the internal-backup button is refused before either of its confirmations is asked', async () => {
         installWorld()
+        setPageStorageMode({ kind: 'store2' })
         await seedInternalBackup()
         const { running } = await startHeldSendBk()
         const target = mountUserSettings()
@@ -1249,6 +1179,7 @@ describe('the backup buttons in UserSettings', () => {
 
     test('a send streaming: the local-backup button is refused before either of its confirmations is asked', async () => {
         installWorld()
+        setPageStorageMode({ kind: 'store2' })
         const { running } = await startHeldSendBk()
         const target = mountUserSettings()
 
@@ -1260,17 +1191,6 @@ describe('the backup buttons in UserSettings', () => {
         expect(confirms, 'confirmations asked').toBe(0)
     })
 
-    test('no work: the internal-backup button asks both confirmations and then loads the chosen backup', async () => {
-        installWorld()
-        await seedInternalBackup()
-        const target = mountUserSettings()
-
-        buttonLabelled(target, language.loadInternalBackup).click()
-        await settleMany()
-
-        expect(alertConfirmMock).toHaveBeenCalledTimes(2)
-        await vi.waitFor(() => expect(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1), { timeout: 3000 })
-    })
 })
 
 //#region registered work and in-flight writes
@@ -1318,10 +1238,10 @@ async function pickBackupBytes(loadLocal: () => void, bytes: Uint8Array, act: ()
 }
 
 /** Every load below runs in a module graph of its own, so a load that goes ahead cannot close the write lock for the next test. */
-async function isolatedWorld() {
+async function isolatedWorld(mode: 'store2' | 'unset' = 'unset') {
     installWorld()
     const bytes = await seedInternalBackup()
-    const isolated = await importIsolatedLoad()
+    const isolated = await importIsolatedLoad(mode)
     isolated.stores.DBState.db = DBState.db
     return { isolated, bytes, dbBefore: isolated.stores.DBState.db }
 }
@@ -1334,33 +1254,8 @@ function expectRefusedWithNothingChanged(isolated: Awaited<ReturnType<typeof imp
 
 describe('a backup load is refused while other work is registered or writing', () => {
     describe.each(otherWork)('$name', ({ start }) => {
-        test('loadInternalBackup is refused, asks no picker and leaves no entry of its own', async () => {
-            const { isolated, dbBefore } = await isolatedWorld()
-            const end = start(isolated.busy)
-            const kindsBefore = isolated.busy.busyKinds()
-
-            await isolated.load()
-
-            expectRefusedWithNothingChanged(isolated, dbBefore)
-            expect.soft(alertSelectMock, 'the backup picker was asked').not.toHaveBeenCalled()
-            expect.soft(isolated.busy.busyKinds(), 'registered entries').toEqual(kindsBefore)
-            end()
-        })
-
-        test('loadInternalBackup is refused when the work starts while the picker is open', async () => {
-            const { isolated, dbBefore } = await isolatedWorld()
-            let end = () => {}
-            alertSelectMock.mockImplementation(async () => { end = start(isolated.busy); return '1' })
-
-            await isolated.load()
-
-            expectRefusedWithNothingChanged(isolated, dbBefore)
-            expect.soft(isolated.busy.busyKinds().includes('backupLoad'), 'an entry of the load is left behind').toBe(false)
-            end()
-        })
-
         test('LoadLocalBackup is refused when the work starts while the file picker is open', async () => {
-            const { isolated, dbBefore } = await isolatedWorld()
+            const { isolated, dbBefore } = await isolatedWorld('store2')
             const { fixture } = localBackupBytes('refused-marker')
             let end = () => {}
 
@@ -1368,60 +1263,34 @@ describe('a backup load is refused while other work is registered or writing', (
 
             expectRefusedWithNothingChanged(isolated, dbBefore)
             expect.soft(isolated.busy.busyKinds().includes('backupLoad'), 'an entry of the load is left behind').toBe(false)
+            expect.soft(shell.commits, 'the commit was called').toEqual([])
+            expect.soft(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
             end()
         })
 
         test('LoadLocalBackup is refused before the picker opens', async () => {
-            const { isolated, dbBefore } = await isolatedWorld()
+            const { isolated, dbBefore } = await isolatedWorld('store2')
             const { fixture } = localBackupBytes('refused-marker')
             const end = start(isolated.busy)
 
             await pickBackupBytes(isolated.loadLocal, fixture, () => {})
 
             expectRefusedWithNothingChanged(isolated, dbBefore)
+            expect.soft(shell.commits, 'the commit was called').toEqual([])
+            expect.soft(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
             end()
         })
     })
 
-    test('a retry of loadInternalBackup proceeds once the other work has ended', async () => {
-        const { isolated, bytes } = await isolatedWorld()
-        const other = isolated.busy.beginBusy('import')
-        const point = isolated.busy.beginChokePoint('asset')
-
-        await isolated.load()
-        const refusedWrite = profileWritten()
-        expect(refusedWrite, 'the first load was refused: nothing was written').toBe(false)
-        other.end()
-        point()
-        alertErrorMock.mockClear()
-        await isolated.load()
-
-        expect.soft(refusedWrite, 'something was written while work was registered').toBe(false)
-        expect.soft(alertErrorMock, 'an error shown on the retry').not.toHaveBeenCalled()
-        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual(['char-A'])
-        expect.soft(reloadSpy, 'location.reload calls').toHaveBeenCalledTimes(1)
-    })
-
-    test('guard: loadInternalBackup with nothing else registered holds only its own entry until it reloads', async () => {
-        const { isolated, bytes } = await isolatedWorld()
-        let during: string[] = []
-        reloadSpy.mockImplementation(() => { during = isolated.busy.busyKinds() })
-
-        await isolated.load()
-
-        expect.soft(during, 'registered entries at the reload').toEqual(['backupLoad'])
-        expect.soft(isolated.busy.isBusy(), 'an entry left behind').toBe(false)
-        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual(['char-A'])
-    })
-
     test('guard: LoadLocalBackup with nothing else registered is not refused by its own entry', async () => {
-        const { isolated } = await isolatedWorld()
+        const { isolated } = await isolatedWorld('store2')
         const { fixture } = localBackupBytes('accepted-marker')
 
         await pickBackupBytes(isolated.loadLocal, fixture, () => {})
 
         expect.soft(alertErrorMock, 'the work-in-progress message').not.toHaveBeenCalledWith(language.backupLoadWorkInProgress)
-        expect.soft(await isolated.committedCharacterIds(), 'the head names a generation holding the backup').toEqual([])
+        expect.soft(shell.commits, 'the commit was called once').toHaveLength(1)
+        expect.soft(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
         expect.soft(forageMemStore.has('database/database.bin'), 'the main file was written').toBe(false)
         expect.soft(isolated.busy.isBusy(), 'an entry left behind').toBe(false)
     })

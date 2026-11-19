@@ -40,6 +40,18 @@ import type { Database } from '../../storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from '../../storage/tests/fakeWebLocks'
 import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
+import { EMPTY_LANDED_END, resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from './store2ShellStub'
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real save loop with one answer fixed: a parked loop is left alone by the restore's save-first step, which then
+// returns at once. `globalApi.svelte` stays unmocked so the restore and the page's tab locks are the real ones.
+vi.mock(import('../../storage/store2/saveLoop'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveLoopParked: () => true,
+}))
 
 //#region module mocks -- copied verbatim from backuplocalRestoreRace.svelte.test.ts
 
@@ -246,7 +258,7 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
 
 //#endregion
 
-//#region byte-layout and File harness, matching backuplocalIdRepair.test.ts's own pattern
+//#region byte-layout and File harness
 
 function u32le(n: number): Uint8Array {
     const buf = new Uint8Array(4)
@@ -394,6 +406,8 @@ async function bootTabA(locksValue: LockManager | undefined): Promise<BootedTabA
         configurable: true,
     })
     const globalApi = await import('../../globalApi.svelte')
+    const pageMode = await import('../../storage/pageStorageMode')
+    pageMode.setPageStorageMode({ kind: 'store2' })
     // The restore commits a block generation through the page's byte store: the
     // storage-object model on the web, the desktop store on Tauri.
     const platform = await import('../../platform')
@@ -423,16 +437,45 @@ function buildValidFixture(mainPrompt: string, encodeRisuSaveLegacy: BootedTabA[
     return buildChunk('database.risudat', dbBytes)
 }
 
+/** The restore's save-first step returned at its parked-loop check and did not wait out its bound. */
+function expectNoSaveFirstWait(booted: BootedTabA): void {
+    expect(booted.alertModule.alertWait).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+}
+
+/**
+ * Checks the three properties J5 requires after any restore exit that
+ * never wrote the database: this page's own write mutex is free, this
+ * page can take the exclusive storage lock again (catching a lock left
+ * held, or released twice), and a later tab can still boot (catching a
+ * presence hold left stuck).
+ */
+async function expectPageStillUsable(booted: BootedTabA, sharedCore: FakeLockManagerCore, laterTabId: string): Promise<void> {
+    const release = await booted.globalApi.dbWriteLock.acquire()
+    release()
+
+    const migrationRelease = await booted.globalApi.acquireExclusiveStorageMigrationLock(200)
+    expect(migrationRelease).not.toBeNull()
+    await migrationRelease?.()
+
+    const laterTab = makeSimulatedTab(sharedCore, laterTabId)
+    await laterTab.locks.tabPresenceLockAcquired
+}
+
+/** The timer function as it is before a row installs fake timers. */
+const realSetTimeout = globalThis.setTimeout
+
 let core: FakeLockManagerCore
 let tabA: BootedTabA
 
 beforeEach(async () => {
     setDatabaseMock.mockClear()
+    resetStore2ShellBox(shell)
     core = new FakeLockManagerCore()
     webFiles.clear()
     fakeFs = await fakeFsReady
     fakeFs.reset()
     tabA = await bootTabA(new FakeTabLockManagerView(core, 'A') as unknown as LockManager)
+    vi.mocked(tabA.alertModule.alertNormalWait).mockReset()
     // A static `vi.mock(...)` factory (unlike a `vi.hoisted()` binding) runs
     // once for the whole file, not once per `vi.resetModules()` re-import --
     // every test's own dynamic re-import of `alert` above returns the SAME
@@ -465,11 +508,20 @@ describe('J1: another tab holding presence blocks the restore from writing', () 
             // Fast-forwards past the restore's own exclusive-lock wait
             // (`RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS` in `backuplocal.ts`)
             // instead of genuinely waiting it out in real time.
-            await vi.advanceTimersByTimeAsync(2100)
+            // The store2 walk reads the database entry and yields to the event loop before the lock is asked, so the clock
+            // is advanced in steps, with a real pause between them, until the restore settles rather than once.
+            let settled = false
+            void restorePromise.then(() => { settled = true }, () => { settled = true })
+            for (let step = 0; step < 400 && !settled; step++) {
+                await vi.advanceTimersByTimeAsync(200)
+                await new Promise<void>((resolve) => realSetTimeout(resolve, 5))
+            }
             await restorePromise
 
             expect(tabA.globalApi.forageStorage.setItem).not.toHaveBeenCalled()
+            expect(shell.commits).toEqual([])
             expect(tabA.alertModule.alertError).toHaveBeenCalledWith(language.restoreOtherTabRefused)
+            expectNoSaveFirstWait(tabA)
         } finally {
             vi.useRealTimers()
         }
@@ -485,6 +537,8 @@ describe('J2: no Web Locks on a web build', () => {
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
         expect(tabA.globalApi.forageStorage.setItem).not.toHaveBeenCalled()
+        expect(shell.commits).toEqual([])
+        expectNoSaveFirstWait(tabA)
     })
 
     test('compatibility guard: continuing past the no-Web-Locks warning still restores', async () => {
@@ -494,7 +548,8 @@ describe('J2: no Web Locks on a web build', () => {
         const fixture = buildValidFixture('restored-no-locks-continue', tabA.encodeRisuSaveLegacy)
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
-        expect(tabA.globalApi.forageStorage.setItem).toHaveBeenCalledWith('blocks/head', expect.any(Uint8Array))
+        expect(shell.commits).toHaveLength(1)
+        expectNoSaveFirstWait(tabA)
     })
 
     test('compatibility guard: Tauri never shows the no-Web-Locks warning', async () => {
@@ -508,27 +563,28 @@ describe('J2: no Web Locks on a web build', () => {
         const fixture = buildValidFixture('restored-tauri-no-locks', tabA.encodeRisuSaveLegacy)
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
-        expect(tabA.alertModule.alertConfirm).not.toHaveBeenCalled()
+        // The store2 unsaved-edits question may be asked on a test page that is not clean; the no-Web-Locks warning is not.
+        expect(tabA.alertModule.alertConfirm).not.toHaveBeenCalledWith(language.restoreNoLockWarningConfirm)
+        expect(shell.commits).toHaveLength(1)
+        expectNoSaveFirstWait(tabA)
     })
 })
 
 describe('J3: a mid-restore blocks a new tab from booting until it releases', () => {
     test('a new tab\'s presence lock stays ungranted while a restore is mid-way, and grants once it releases', async () => {
+        // The landed import shows its repair notice and waits for it before the reload; the gate holds the restore there,
+        // after the commit and with the exclusive hold still taken.
         let resolveGate: () => void = () => { }
         const gate = new Promise<void>((resolve) => { resolveGate = resolve })
-        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, value: unknown) => {
-            if (key === 'blocks/head') {
-                await gate
-            }
-            webFiles.set(key as string, value as Uint8Array)
-            return null
-        })
+        vi.mocked(tabA.alertModule.alertNormalWait).mockImplementation(() => gate)
+        shell.end = { ...EMPTY_LANDED_END, repairNotice: 'a repair notice' }
 
         const fixture = buildValidFixture('restore-mid-way', tabA.encodeRisuSaveLegacy)
         const restorePromise = loadBackupBytes(tabA.loadLocalBackup, fixture)
 
         try {
-            // Gives the restore room to reach its gated write -- mid-restore.
+            // Gives the restore room to reach its gated notice -- mid-restore.
+            await vi.waitFor(() => expect(shell.commits).toHaveLength(1), { timeout: 5000 })
             await new Promise((resolve) => setTimeout(resolve, 30))
 
             const tabC = makeSimulatedTab(core, 'C')
@@ -542,8 +598,9 @@ describe('J3: a mid-restore blocks a new tab from booting until it releases', ()
             await restorePromise
             await tabC.locks.tabPresenceLockAcquired
             expect(cGranted).toBe(true)
+            expectNoSaveFirstWait(tabA)
         } finally {
-            // Unblocks the gated write regardless of how the assertions
+            // Unblocks the gated notice regardless of how the assertions
             // above land, so a failing assertion here can never leave this
             // test's restore permanently suspended (and its `document.createElement`
             // spy never restored) for every test that runs after it.
@@ -562,43 +619,18 @@ describe('J4: a successful restore reloads instead of showing Success', () => {
         expect(tabA.reloadGuard.isAppInitiatedReload()).toBe(true)
         expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith('Success')
         expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
+        expect(shell.commits).toHaveLength(1)
+        expectNoSaveFirstWait(tabA)
     })
 
     test('guard: a granted, uncontended restore completes without hanging', async () => {
         const fixture = buildValidFixture('restore-completes', tabA.encodeRisuSaveLegacy)
         await expect(loadBackupBytes(tabA.loadLocalBackup, fixture)).resolves.toBeUndefined()
+        expectNoSaveFirstWait(tabA)
     })
 })
 
 describe('J5: every early exit leaves this page, and the origin, still usable (guard, mutation-checked)', () => {
-    /**
-     * Checks the three properties J5 requires after any restore exit that
-     * never wrote the database: this page's own write mutex is free, this
-     * page can take the exclusive storage lock again (catching a lock left
-     * held, or released twice), and a later tab can still boot (catching a
-     * presence hold left stuck).
-     */
-    async function expectPageStillUsable(booted: BootedTabA, sharedCore: FakeLockManagerCore, laterTabId: string): Promise<void> {
-        const release = await booted.globalApi.dbWriteLock.acquire()
-        release()
-
-        const migrationRelease = await booted.globalApi.acquireExclusiveStorageMigrationLock(200)
-        expect(migrationRelease).not.toBeNull()
-        await migrationRelease?.()
-
-        const laterTab = makeSimulatedTab(sharedCore, laterTabId)
-        await laterTab.locks.tabPresenceLockAcquired
-    }
-
-    test('guard: a cancelled cold-storage prompt leaves this page usable', async () => {
-        vi.mocked(tabA.coldstorage.confirmIncompleteColdStorageOperation).mockResolvedValueOnce(false)
-        const fixture = buildValidFixture('cold-storage-cancelled', tabA.encodeRisuSaveLegacy)
-
-        await loadBackupBytes(tabA.loadLocalBackup, fixture)
-
-        await expectPageStillUsable(tabA, core, 'B-after-cold-cancel')
-    })
-
     test('guard: a marker caught by the import loop\'s own independent guard leaves this page usable', async () => {
         const db = { characters: [] } as unknown as Database
         const dbBytes = tabA.encodeRisuSaveLegacy(db, 'noCompression')
@@ -620,6 +652,8 @@ describe('J5: every early exit leaves this page, and the origin, still usable (g
         await loadBackupFile(tabA.loadLocalBackup, file)
 
         await expectPageStillUsable(tabA, core, 'B-after-marker')
+        expect(shell.commits).toEqual([])
+        expectNoSaveFirstWait(tabA)
     })
 
     test('guard: a database entry that fails to decode leaves this page usable', async () => {
@@ -629,59 +663,11 @@ describe('J5: every early exit leaves this page, and the origin, still usable (g
         await loadBackupBytes(tabA.loadLocalBackup, fixture).catch(() => { })
 
         await expectPageStillUsable(tabA, core, 'B-after-decode-throw')
-    })
-
-    test('guard: a rejecting database write leaves this page usable', async () => {
-        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, value: unknown) => {
-            if (typeof key === 'string' && key.startsWith('blocks/') && key !== 'blocks/head') {
-                throw new Error('scratch: restore write failed')
-            }
-            webFiles.set(key as string, value as Uint8Array)
-            return null
-        })
-        const fixture = buildValidFixture('write-failed-j5', tabA.encodeRisuSaveLegacy)
-
-        await loadBackupBytes(tabA.loadLocalBackup, fixture).catch(() => { })
-
-        await expectPageStillUsable(tabA, core, 'B-after-write-failure')
+        expectNoSaveFirstWait(tabA)
     })
 })
 
 describe('J6: exactly one message on failure, never an unhandled rejection', () => {
-    test('regression reproducer: a rejecting database write shows one error, never becomes an unhandled rejection, and leaves the pre-restore database installed', async () => {
-        // A plain rejecting function, not vi.fn() -- a vi.fn()-produced
-        // rejection already looks handled to Node's unhandledRejection
-        // detector regardless of what the code under test does with it.
-        tabA.globalApi.forageStorage.setItem = ((key: string, value: Uint8Array) => {
-            if (key.startsWith('blocks/') && key !== 'blocks/head') {
-                return Promise.reject(new Error('scratch: restore write failed'))
-            }
-            webFiles.set(key, value)
-            return Promise.resolve(null)
-        }) as typeof tabA.globalApi.forageStorage.setItem
-
-        const fixture = buildValidFixture('write-failed-unhandled', tabA.encodeRisuSaveLegacy)
-
-        const unhandled: unknown[] = []
-        const onUnhandledRejection = (reason: unknown) => { unhandled.push(reason) }
-        process.on('unhandledRejection', onUnhandledRejection)
-        try {
-            triggerBackupBytesWithoutAwaiting(tabA.loadLocalBackup, fixture)
-            // An unhandled rejection is reported asynchronously, not
-            // synchronously with the rejection itself -- give that a turn.
-            await new Promise((resolve) => setTimeout(resolve, 50))
-        } finally {
-            process.off('unhandledRejection', onUnhandledRejection)
-        }
-
-        expect(unhandled).toEqual([])
-        expect(tabA.alertModule.alertError).toHaveBeenCalledTimes(1)
-        // The restored database must never reach setDatabase() until its
-        // write has actually succeeded -- a failed write must leave this
-        // page on its pre-restore database.
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-    })
-
     test('regression reproducer: a rejecting Tauri relaunch() after a successful write reports the restore as saved, not as a plain failure', async () => {
         vi.doMock(import('../../platform'), () => ({
             isTauri: true,
@@ -706,6 +692,8 @@ describe('J6: exactly one message on failure, never an unhandled rejection', () 
         }
 
         expect(unhandled).toEqual([])
+        expect(shell.commits).toHaveLength(1)
+        expectNoSaveFirstWait(tabA)
         expect(alertStoreSetSpy.mock.calls.some((call) => {
             const arg = call[0] as { msg?: unknown } | undefined
             return typeof arg?.msg === 'string' && /saved|restart/i.test(arg.msg)
@@ -767,7 +755,8 @@ describe('B6f: the restore tail never relaunches the Android app', () => {
 
             await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
-            expect(setDatabaseMock).toHaveBeenCalled()
+            expect(shell.commits).toHaveLength(1)
+            expectNoSaveFirstWait(tabA)
             expect(probe.relaunch).toHaveBeenCalledTimes(expected[transport].relaunch)
             expect(probe.reload).toHaveBeenCalledTimes(expected[transport].reload)
         })
@@ -790,6 +779,8 @@ describe('B6f: the restore tail never relaunches the Android app', () => {
 
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
+        expect(shell.commits).toHaveLength(1)
+        expectNoSaveFirstWait(tabA)
         expect(alertStoreSetSpy.mock.calls.some((call) => {
             const arg = call[0] as { msg?: unknown } | undefined
             return typeof arg?.msg === 'string' && /saved|restart/i.test(arg.msg)

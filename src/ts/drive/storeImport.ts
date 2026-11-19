@@ -2,7 +2,7 @@ import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait, waitA
 import { getSaveMarkCount, isSaveClean } from '../globalApi.svelte'
 import { language } from 'src/lang'
 import { getDatabase, type Database } from '../storage/database.svelte'
-import { describeOmitted } from '../storage/bootBlockLoad'
+import { describeOmitted } from './describeOmitted'
 import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from '../storage/risuSave'
 import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
@@ -22,7 +22,8 @@ import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { importableTaskPresets } from '../process/utility/taskPreset'
 import { toPlainJson } from '../storage/store2/codec/normalize'
-import type { JsonValue } from '../storage/blockFrame'
+import type { JsonObject, JsonValue } from '../storage/blockFrame'
+import { usageCarryOf } from '../usage/usageLedger'
 import { noteMeasurePhase } from './importPhaseRing'
 import { yieldToEventLoop } from '../storage/saveYield'
 import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, roundImportMinutes } from './importEstimate'
@@ -593,6 +594,14 @@ function pageThemePacks(db: Database): { themePacks: readonly JsonValue[] | unde
 }
 
 /**
+ * The page's usage ledger keys and price overrides as the import keeps them: plain values read through the reactive proxy
+ * (a copy that does not follow later edits). Each is present only when the page holds some.
+ */
+function pageUsage(db: Database): { usageStatics?: JsonObject, usagePriceOverrides?: JsonObject } {
+    return usageCarryOf(toPlainJson(db.statics), toPlainJson(db.usagePriceOverrides))
+}
+
+/**
  * Imports the file `request` describes, over one of two paths. A file under the unit threshold takes the whole decode:
  * the tree `request.decode()` yields is resolved, planned and committed once, forced, over a fresh read of the commit
  * key (`importLegacyTree`). A file over the threshold takes the streamed prepare and commit (`prepareImportStream`,
@@ -615,6 +624,8 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // The same for the installed theme packs and the active pack id: neither is in a `.bin`, so the profile keeps the
     // page's own, by value (a copy that is structured-cloneable and does not follow later edits).
     const { themePacks, activeThemePack } = pageThemePacks(getDatabase())
+    // And the usage statistics and price overrides: a `.bin` carries neither, so the profile keeps the page's own, by value.
+    const { usageStatics, usagePriceOverrides } = pageUsage(getDatabase())
     // A committer without `commitStreamed` takes every file the whole way.
     const stream = committer.commitStreamed === undefined ? undefined : request.stream
     for (let attempt = 1; ; attempt++) {
@@ -636,7 +647,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         }
         const streamRequest = stream === undefined
             ? null
-            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, yieldToMain: request.yieldToMain ?? yieldToEventLoop }
+            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, yieldToMain: request.yieldToMain ?? yieldToEventLoop }
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource | null = null
         // What the streamed prepare decided when it did not hand the file back to the whole path.
@@ -675,7 +686,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                     throw new TypeError('The decoded tree is missing.')
                 }
                 outcome = await importLegacyTree(
-                    { source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack },
+                    { source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides },
                     hooks,
                 )
             }

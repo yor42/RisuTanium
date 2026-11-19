@@ -7,9 +7,11 @@
  * `bootstrap.ts` reads `isTauri` at its module top level, so this file keeps a fixed `isTauri: true` and
  * gives every test a fresh module graph. The mocked/real split mirrors `bootstrap.desktopLaunch.test.ts`.
  */
-import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { get } from 'svelte/store'
 import type { ChangeCharOutcome } from 'src/ts/characters'
+import { noticeText } from 'src/ts/storage/store2/ui/bootText'
+import { commitActivePass, savedDatabase } from 'src/ts/storage/tests/store2SaveKit'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
@@ -18,6 +20,8 @@ const world = vi.hoisted(() => ({
     events: [] as string[],
     readOnly: false,
     realmDrain: (): void => { },
+    /** Runs when the boot's `saveDb` is called, so a test can commit the first save pass. */
+    onSaveDb: (): void => { },
 }))
 
 // The mocked stores module is evaluated once per file, so it reads the current set through getters; every
@@ -41,6 +45,8 @@ const stores = new Proxy({} as ReturnType<typeof holder.make>, {
 })
 
 const pickMock = vi.hoisted(() => vi.fn())
+const maintenanceMock = vi.hoisted(() => vi.fn())
+const putBackSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
@@ -175,25 +181,31 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
     checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
 }) as unknown as typeof import('src/ts/storage/bootArchivePass'))
 
+vi.mock(import('src/ts/storage/store2/maintenance'), async (importOriginal) => ({
+    ...await importOriginal(),
+    startStore2Maintenance: maintenanceMock,
+}))
+
+// The put-back runs for real; the spy only records that the boot started it.
+vi.mock(import('src/ts/process/memory/characterPutBack'), async (importOriginal) => {
+    const original = await importOriginal()
+    return {
+        ...original,
+        startCharacterPutBack: (...args: Parameters<typeof original.startCharacterPutBack>) => {
+            putBackSpy()
+            return original.startCharacterPutBack(...args)
+        },
+    }
+})
+
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const, expectedHash: '', actualHash: '' })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
 
 vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
     recordLoadTimeListing: vi.fn(async () => { }),
     resetLoadTimeListingForTests: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-    ASSET_SWEEP_BATCH_SIZE: 100,
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -261,7 +273,10 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         keys: vi.fn(async (): Promise<string[]> => []),
         removeItem: vi.fn(async () => { }),
     },
-    saveDb: vi.fn(async () => { world.events.push('saveDb') }),
+    saveDb: vi.fn(async () => {
+        world.events.push('saveDb')
+        world.onSaveDb()
+    }),
     getDbBackups: vi.fn(async (): Promise<number[]> => []),
     buildAssetKeepSet: vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })),
     getBasename: (p: string) => p.split('/').pop(),
@@ -315,6 +330,36 @@ async function bootOnce(extra: Record<string, unknown> = {}): Promise<void> {
     await loadData()
 }
 
+/** The texts of every `normal` alert written to the current graph's alert store from now on, at write time. */
+function recordNormals(): string[] {
+    const written: string[] = []
+    const stop = stores.alertStore.subscribe((value) => {
+        if (value.type === 'normal') {
+            written.push(value.msg)
+        }
+    })
+    onTestFinished(stop)
+    return written
+}
+
+/**
+ * Arms a boot over a key-less legacy profile whose dispatch raises the archive-enabled notice, with no one to press OK.
+ * The notice queue is reset when the test ends, so a notice left current does not re-show on a later test's alert.
+ */
+async function armUnacknowledgedBoot() {
+    armTauriBoot()
+    const dispatch = await registerRealDispatch({ kind: 'tauri', injectBackend: true, acknowledgeAlerts: false })
+    const queue = await import('src/ts/alertPrompts')
+    onTestFinished(() => queue.resetAlertPromptsForTests())
+    return { dispatch, queue }
+}
+
+async function bootWithUnacknowledgedNotice(): Promise<void> {
+    await armUnacknowledgedBoot()
+    const { loadData } = await import('src/ts/bootstrap')
+    await loadData()
+}
+
 /** A pick that selects at once, like a warm `changeChar`. */
 function selectingPick(): void {
     pickMock.mockImplementation(async (_site: string, index: number): Promise<ChangeCharOutcome> => {
@@ -334,7 +379,10 @@ beforeEach(() => {
     world.events.length = 0
     world.readOnly = false
     world.realmDrain = () => { }
+    world.onSaveDb = () => { }
     pickMock.mockReset()
+    maintenanceMock.mockReset()
+    putBackSpy.mockReset()
     selectingPick()
     vi.stubGlobal('open', vi.fn())
     vi.resetModules()
@@ -438,6 +486,69 @@ describe('loadData(): restoring the last character', () => {
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
         expect(pickMock).not.toHaveBeenCalled()
         expect(localStorage.getItem(LAST_CHARACTER_KEY)).toBe(REMEMBERED_C2)
+    })
+
+    test.each([
+        ['store2', false, { kind: 'store2' }],
+        ['legacy-readonly', true, { kind: 'read-only', reason: 'backend-unavailable' }],
+    ] as const)('T1-N1 guard: store2 maintenance is started exactly once after a %s boot', async (_name, readOnly, mode) => {
+        world.readOnly = readOnly
+
+        await bootOnce()
+
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual(mode)
+        expect(maintenanceMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('T1-N1 variant: store2 maintenance is started exactly once while the boot notice is still unacknowledged', async () => {
+        await bootWithUnacknowledgedNotice()
+
+        expect(maintenanceMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('R1: a boot over a key-less profile goes live, saves, runs maintenance and puts back while the archive-enabled notice is unacknowledged, and the setting is saved without it', async () => {
+        const written = recordNormals()
+        const { dispatch, queue } = await armUnacknowledgedBoot()
+        const { getDatabase } = await import('src/ts/storage/database.svelte')
+        let committed: Promise<void> | null = null
+        world.onSaveDb = () => { committed = commitActivePass(getDatabase(), []) }
+        const { loadData } = await import('src/ts/bootstrap')
+
+        const loading = loadData()
+        await vi.waitFor(() => {
+            expect(get(stores.loadedStore)).toBe(true)
+            expect(world.events).toContain('saveDb')
+            expect(maintenanceMock).toHaveBeenCalledTimes(1)
+            expect(putBackSpy).toHaveBeenCalledTimes(1)
+        })
+        await loading
+
+        // Nothing has pressed OK: the queue still holds the notice and the last normal alert written is its text.
+        let settled = false
+        void queue.noticesSettled().then(() => { settled = true })
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(settled).toBe(false)
+        expect(dispatch.ui.notices.map((notice) => notice.name)).toContain('archive-enabled')
+        expect(written.at(-1)).toBe(noticeText({ name: 'archive-enabled' }))
+        if (get(stores.alertStore).type !== 'toast') {
+            expect(queue.noticeShowing()).toBe(true)
+        }
+
+        // The first save pass commits the setting without waiting for the notice.
+        expect(committed).not.toBeNull()
+        await committed
+        expect((await savedDatabase(dispatch.backend)).archiveCharacters).toBe(true)
+
+        // A reboot over the same store, with a fresh module graph, tells nothing.
+        vi.resetModules()
+        holder.current = holder.make()
+        const second = await registerRealDispatch({ kind: 'tauri', injectBackend: true, acknowledgeAlerts: false, backend: dispatch.backend })
+        const writtenAgain = recordNormals()
+        const { loadData: loadAgain } = await import('src/ts/bootstrap')
+        await loadAgain()
+        expect(second.ui.notices.map((notice) => notice.name)).not.toContain('archive-enabled')
+        expect(writtenAgain).toEqual([])
     })
 
     const startingConditions: Array<[string, () => Promise<void>]> = [

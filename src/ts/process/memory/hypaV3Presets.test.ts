@@ -284,3 +284,63 @@ describe('preset file', () => {
         expect(JSON.stringify(file)).not.toContain(preset.id)
     })
 })
+
+describe('recency weighting settings', () => {
+    /** What an upstream preset holds: the 20 pre-existing keys and no recency keys. */
+    function upstreamShaped() {
+        const { enableRecencyWeighting: _flag, recencyHalfLifeDays: _days, ...rest } = createHypaV3Preset().settings
+        return rest
+    }
+
+    // regression reproducer: base has no recency defaults
+    test('P1: a new preset has recency weighting off with a 30-day half-life', () => {
+        const { settings } = createHypaV3Preset()
+        expect(settings.enableRecencyWeighting).toBe(false)
+        expect(settings.recencyHalfLifeDays).toBe(30)
+    })
+
+    // regression reproducer
+    test('P2: normalize gives an upstream-shaped preset off/30', () => {
+        const data = normalizeInput([{ name: 'Up', settings: upstreamShaped() }], 0)
+        normalizeHypaV3Presets(data)
+        expect(data.hypaV3Presets[0].settings.enableRecencyWeighting).toBe(false)
+        expect(data.hypaV3Presets[0].settings.recencyHalfLifeDays).toBe(30)
+    })
+
+    // regression reproducer
+    test('P3: saved true/14 survive normalize and duplicate', () => {
+        const preset = createHypaV3Preset('Saved', { enableRecencyWeighting: true, recencyHalfLifeDays: 14 })
+        const data = normalizeInput([JSON.parse(JSON.stringify(preset))], 0)
+        normalizeHypaV3Presets(data)
+        expect(data.hypaV3Presets[0].settings.enableRecencyWeighting).toBe(true)
+        expect(data.hypaV3Presets[0].settings.recencyHalfLifeDays).toBe(14)
+        const db = { hypaV3Presets: data.hypaV3Presets, hypaV3PresetId: 0 } as unknown as ListDb
+        const copy = duplicateHypaV3Preset(db, data.hypaV3Presets[0].id, 'Copy')
+        expect(copy?.settings.enableRecencyWeighting).toBe(true)
+        expect(copy?.settings.recencyHalfLifeDays).toBe(14)
+    })
+
+    // regression reproducer: base reads undefined where the default must be false/30
+    test('P4: wrong-typed values fall back to off/30', () => {
+        const data = normalizeInput([{ name: 'Bad', settings: { enableRecencyWeighting: 'yes', recencyHalfLifeDays: '14' } }], 0)
+        normalizeHypaV3Presets(data)
+        expect(data.hypaV3Presets[0].settings.enableRecencyWeighting).toBe(false)
+        expect(data.hypaV3Presets[0].settings.recencyHalfLifeDays).toBe(30)
+    })
+
+    // regression reproducer
+    test('P5: the preset file carries both keys and a file without them reads off/30', () => {
+        const preset = createHypaV3Preset('Out', { enableRecencyWeighting: true, recencyHalfLifeDays: 14 })
+        const file = hypaV3PresetFileOf(preset)
+        expect(file.data.settings.enableRecencyWeighting).toBe(true)
+        expect(file.data.settings.recencyHalfLifeDays).toBe(14)
+        const parsed = parseHypaV3PresetFile(bytesOf(file))
+        expect(parsed.ok && parsed.preset.settings.enableRecencyWeighting).toBe(true)
+        expect(parsed.ok && parsed.preset.settings.recencyHalfLifeDays).toBe(14)
+
+        const upstreamFile = { type: 'risu', ver: 1, data: { name: 'Up', settings: upstreamShaped() } }
+        const upstreamParsed = parseHypaV3PresetFile(bytesOf(upstreamFile))
+        expect(upstreamParsed.ok && upstreamParsed.preset.settings.enableRecencyWeighting).toBe(false)
+        expect(upstreamParsed.ok && upstreamParsed.preset.settings.recencyHalfLifeDays).toBe(30)
+    })
+})

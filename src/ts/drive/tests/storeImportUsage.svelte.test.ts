@@ -1,0 +1,433 @@
+/**
+ * Usage statistics over the `.bin` import of a store2 page: a `.bin` carries no usage keys and no `usagePriceOverrides`
+ * (the export leaves both out), so the profile keeps the page's own usage keys and overrides, by value, beside the file's
+ * own non-usage `statics` keys, and drops whatever usage the file's database entry carries. A boot import has no page and
+ * installs none.
+ *
+ * Runs over the real, unmocked `saveDb()` store2 loop in a world of its own, as `storeImportThemePacks.svelte.test.ts`
+ * does, in the whole and the stream arm. A mocked success here is not evidence of native backend behaviour.
+ *
+ * Titles: `reproducer` fails when the keep or the drop is absent; `guard` passes before and after. The file's keys stay
+ * under 64 characters: msgpackr under Node refuses a longer string.
+ */
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
+import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
+import { createWorldKit, nextCommit, settled, sleepReal, type World } from 'src/ts/storage/tests/saveLoopWorld'
+import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
+import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
+import { assembleDatabase } from 'src/ts/storage/store2/codec'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
+import { readUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { fakeLists, seededEnv } from 'src/ts/storage/tests/store2/codecFixtures'
+import { readerOver } from 'src/ts/storage/tests/store2/legacyFixtures'
+import type { Store2Session } from 'src/ts/storage/store2/session'
+import type { Committer } from 'src/ts/storage/store2/commit'
+import type { Database } from 'src/ts/storage/database.svelte'
+import * as kitCommit from 'src/ts/storage/store2/commit'
+
+vi.setConfig({ testTimeout: 60_000 })
+
+type ImportStreamModule = typeof import('src/ts/storage/store2/legacy/importStream')
+type Arm = 'whole' | 'stream'
+
+/** The arm the running test is in, and what the streamed prepare decided in it (`onPrepared`, once per attempt that reached it). */
+const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream', verdicts: [] as string[] }))
+
+vi.mock(import('src/ts/platform'), () => ({
+    isTauri: false,
+    isNodeServer: false,
+    isIOS: () => false,
+}) as unknown as typeof import('src/ts/platform'))
+
+const worlds = createWorldKit({
+    parked: h.parked,
+    getDb: () => h.db,
+    setDb: (db) => { h.db = db },
+    nextId: () => ++h.worldCount,
+})
+
+type Entry = Record<string, unknown>
+
+const originalLocks = Object.getOwnPropertyDescriptor(window.navigator, 'locks')
+
+beforeAll(() => {
+    class FakeChannel {
+        onmessage: ((event: { data: unknown }) => void) | null = null
+        constructor(public name: string) { h.channels.push(this) }
+        postMessage(data: unknown) { h.broadcasts.push(data) }
+        close() {}
+    }
+    Object.defineProperty(window, 'BroadcastChannel', { value: FakeChannel, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'BroadcastChannel', { value: FakeChannel, configurable: true, writable: true })
+})
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    armBox.verdicts = []
+    h.broadcasts.length = 0
+    h.channels.length = 0
+    vi.doUnmock('src/ts/storage/dbChangeEffects.svelte')
+    vi.doMock('src/ts/stores.svelte', async () => {
+        const { proxy } = await import('svelte/internal/client')
+        const { writable } = await import('svelte/store')
+        return {
+            DBState: proxy({ db: {} as Entry }),
+            selectedCharID: writable(-1),
+            selIdState: { selId: -1 },
+            alertStore: writable({ type: 'none', msg: '' }),
+            MobileGUI: writable(false),
+            botMakerMode: writable(false),
+            loadedStore: writable(false),
+            LoadingStatusState: { text: '' },
+            ReloadGUIPointer: writable(0),
+            bodyIntercepterStore: writable(null),
+            savingStoppedReason: writable(''),
+            frozenSaveKeysStore: writable([]),
+        } as unknown as typeof import('src/ts/stores.svelte')
+    })
+    vi.doMock('src/ts/process/coldstorage.svelte', async () => ({
+        getColdStorageItem: vi.fn(),
+        getColdStorageBackupKey: (await import('src/ts/process/coldstorageData')).getColdStorageBackupKey,
+        readColdStorageItem: async () => ({ status: 'missing' }),
+        setColdStorageItem: vi.fn(async () => false),
+    }))
+    // The arm seam: production never passes `minUnits`, so the streamed prepare is steered here, through the module the
+    // page's import loads. The whole arm never reaches the threshold; the stream arm always does.
+    vi.doMock('src/ts/storage/store2/legacy/importStream', async () => {
+        const actual = await vi.importActual<ImportStreamModule>('src/ts/storage/store2/legacy/importStream')
+        return {
+            ...actual,
+            prepareImportStream: (request: Parameters<ImportStreamModule['prepareImportStream']>[0], hooks: Parameters<ImportStreamModule['prepareImportStream']>[1]) => actual.prepareImportStream({
+                ...request,
+                stream: {
+                    ...request.stream,
+                    minUnits: armBox.arm === 'stream' ? 0 : Number.POSITIVE_INFINITY,
+                    onPrepared: (verdict) => {
+                        armBox.verdicts.push(verdict)
+                        request.stream.onPrepared?.(verdict)
+                    },
+                },
+            }, hooks),
+        }
+    })
+    // The committer of the page is built by the kit in this file's module graph, the import code runs in the world's: a
+    // streamed commit always runs under a bulk marker and fails with the kit's `Store2BulkAbortError`, which the import
+    // must recognise by class as it does in the one graph of the app.
+    vi.doMock('src/ts/storage/store2/commit', async () => ({
+        ...await vi.importActual<typeof import('src/ts/storage/store2/commit')>('src/ts/storage/store2/commit'),
+        Store2BulkAbortError: kitCommit.Store2BulkAbortError,
+    }))
+    vi.spyOn(console, 'log').mockImplementation(() => { })
+    vi.spyOn(console, 'warn').mockImplementation(() => { })
+    vi.spyOn(console, 'error').mockImplementation(() => { })
+    vi.spyOn(console, 'debug').mockImplementation(() => { })
+})
+
+afterEach(async () => {
+    worlds.parkAll()
+    vi.doMock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }))
+    vi.restoreAllMocks()
+    if (originalLocks) {
+        Object.defineProperty(window.navigator, 'locks', originalLocks)
+    } else {
+        Object.defineProperty(window.navigator, 'locks', { value: undefined, configurable: true })
+    }
+})
+
+interface Page {
+    w: World
+    k: Store2Kit
+    db: Entry
+    flush(): void
+    alert: typeof import('src/ts/alert')
+}
+
+async function openPage(): Promise<Page> {
+    const locks = new FakeLockManagerCore()
+    Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
+    h.db = makeDb('base', ['alpha', 'beta'])
+    const k = await startStore2({ db: h.db as unknown as Database })
+    const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
+    const stores = await import('src/ts/stores.svelte')
+    const { flushSync } = await import('svelte')
+    ;(stores.DBState as { db: unknown }).db = h.db
+    h.db = (stores.DBState as { db: unknown }).db as Entry
+    const bootActive = await import('src/ts/storage/store2/bootActive')
+    const page: Page = { w, k, db: h.db, flush: flushSync, alert: await import('src/ts/alert') }
+    bootActive.setStore2BootSession({ kind: 'tauri', backend: k.counted.backend, committer: k.committer as Committer } as unknown as Store2Session)
+    w.pageMode.setPageStorageMode({ kind: 'store2' })
+    vi.mocked(page.alert.alertConfirm).mockImplementation(async () => true)
+    vi.spyOn(page.alert.alertStore, 'set').mockImplementation(() => { })
+    vi.spyOn(window.location, 'reload').mockImplementation(() => { })
+    vi.spyOn(window.history, 'replaceState').mockImplementation(() => { })
+    w.start()
+    await sleepReal(150)
+    await settled(w)
+    return page
+}
+
+async function currentKey(page: Page): Promise<string | undefined> {
+    return (await page.k.commitKey()).current?.key
+}
+
+async function storedDatabase(page: Page): Promise<Entry> {
+    const read = await readTreeBytes(page.k.memory, (await currentKey(page)) as string)
+    if (read.status !== 'ok') {
+        throw new Error(`The stored tree reads ${read.status}.`)
+    }
+    return assembleDatabase(read.tree.manifest, read.tree.source) as unknown as Entry
+}
+
+// ---- .bin construction ----
+
+function binEntry(name: string, data: Uint8Array): Uint8Array {
+    const nameBytes = new TextEncoder().encode(name)
+    const out = new Uint8Array(4 + nameBytes.length + 4 + data.length)
+    const view = new DataView(out.buffer)
+    view.setUint32(0, nameBytes.length, true)
+    out.set(nameBytes, 4)
+    view.setUint32(4 + nameBytes.length, data.length, true)
+    out.set(data, 8 + nameBytes.length)
+    return out
+}
+
+function binOf(...entries: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(entries.reduce((total, entry) => total + entry.length, 0))
+    let offset = 0
+    for (const entry of entries) {
+        out.set(entry, offset)
+        offset += entry.length
+    }
+    return out
+}
+
+async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
+    const encoder = new page.w.risuSave.RisuSaveEncoder()
+    await encoder.init(db as unknown as Database, { compression: false })
+    await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
+    return new Uint8Array(encoder.encode()!)
+}
+
+const AVATAR = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+/** Drives the real `LoadLocalBackup()` with `bytes` as the chosen file and awaits its change handler. */
+async function loadBin(page: Page, bytes: Uint8Array): Promise<void> {
+    const { LoadLocalBackup } = await import('src/ts/drive/backuplocal')
+    const realCreateElement = document.createElement.bind(document)
+    let input: HTMLInputElement | null = null
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        const element = realCreateElement(tag)
+        if (tag === 'input') {
+            input = element as HTMLInputElement
+        }
+        return element
+    })
+    try {
+        LoadLocalBackup()
+        const chosen = input as HTMLInputElement | null
+        if (chosen === null) {
+            throw new Error('LoadLocalBackup did not create a file input')
+        }
+        Object.defineProperty(chosen, 'files', { value: [new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
+        await (chosen.onchange as unknown as (event: Event) => Promise<void>).call(chosen, new Event('change'))
+    } finally {
+        spy.mockRestore()
+    }
+    await observeArm(page)
+}
+
+// ---- fixtures ----
+
+/** The ledger keys of a page that used the app (literal, as `recordUsage` writes them; one value is a non-number kept as it is). */
+const PAGE_USAGE: Entry = {
+    'u1|2026-06|chat|n|gpt-test': 4,
+    'u1|2026-06|chat|i|gpt-test': 120,
+    'u1|ovf|n': 2,
+    'u2|future|shape': 7,
+}
+const PAGE_OVERRIDES: Entry = { 'gpt-test': { input: '2.5', output: '10' } }
+const FILE_USAGE: Entry = { 'u1|2026-01|chat|n|f': 9 }
+const FILE_OVERRIDES: Entry = { 'file-model': { input: '1' } }
+
+/** A `.bin` whose database entry is a block-format save of a profile holding `fileFields`. */
+async function binWith(page: Page, fileFields: Entry): Promise<Uint8Array> {
+    const source = { ...makeDb('backup', ['alpha']), ...fileFields } as Entry
+    return binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await blockFileBytes(page, source)))
+}
+
+async function pageHolds(page: Page, fields: Entry): Promise<void> {
+    await nextCommit(page.w, () => {
+        Object.assign(page.db, fields)
+        page.flush()
+    })
+}
+
+// ---- the whole and the stream arm ----
+
+/** What one import showed: the fields the two arms must give alike. */
+interface ArmView {
+    errors: string[]
+    reloads: number
+    /** The committed current tree as JSON with the minted ids replaced; null when it cannot be read. */
+    stored: string | null
+}
+
+interface ArmRecord {
+    view: ArmView
+    verdicts: string[]
+}
+
+/** By test name without the arm: the last import of the test in each arm. */
+const observed = new Map<string, Partial<Record<Arm, ArmRecord>>>()
+
+/** Records what the import that just ended showed, under the running test's name, for the arm agreement test at the end of the file. */
+async function observeArm(page: Page): Promise<void> {
+    let stored: string | null = null
+    try {
+        stored = JSON.stringify(await storedDatabase(page)).replace(/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/g, '<id>')
+    } catch {
+        stored = null
+    }
+    const view: ArmView = {
+        errors: vi.mocked(page.alert.alertError).mock.calls.map((call) => String(call[0])),
+        reloads: vi.mocked(window.location.reload).mock.calls.length,
+        stored,
+    }
+    const name = (expect.getState().currentTestName ?? '').replace(/ \((whole|stream) arm\)/, '')
+    observed.set(name, { ...observed.get(name), [armBox.arm]: { view, verdicts: [...armBox.verdicts] } })
+}
+
+for (const arm of ['whole', 'stream'] as const) describe(`usage statistics over the .bin import of a store2 page (${arm} arm)`, () => {
+    beforeEach(() => { armBox.arm = arm })
+
+    test('T28 (i) reproducer: the stored statics are the file\'s keys plus the page\'s usage keys, and the overrides are the page\'s', async () => {
+        const page = await openPage()
+        await pageHolds(page, { statics: { messages: 90, imports: 91, ...PAGE_USAGE }, usagePriceOverrides: PAGE_OVERRIDES })
+
+        await loadBin(page, await binWith(page, { statics: { messages: 3, imports: 2 } }))
+
+        const stored = await storedDatabase(page)
+        expect(stored.mainPrompt).toBe('backup')
+        expect(stored.statics).toEqual({ messages: 3, imports: 2, ...PAGE_USAGE })
+        expect(stored.usagePriceOverrides).toEqual(PAGE_OVERRIDES)
+    })
+
+    test('T28 (ii) reproducer: the file\'s own usage keys and overrides do not survive; the page\'s do', async () => {
+        const page = await openPage()
+        await pageHolds(page, { statics: { messages: 90, imports: 91, ...PAGE_USAGE }, usagePriceOverrides: PAGE_OVERRIDES })
+
+        await loadBin(page, await binWith(page, { statics: { messages: 3, imports: 2, ...FILE_USAGE }, usagePriceOverrides: FILE_OVERRIDES }))
+
+        const stored = await storedDatabase(page)
+        expect(stored.statics).toEqual({ messages: 3, imports: 2, ...PAGE_USAGE })
+        expect(stored.usagePriceOverrides).toEqual(PAGE_OVERRIDES)
+        expect(JSON.stringify(stored)).not.toContain('2026-01')
+        expect(JSON.stringify(stored)).not.toContain('file-model')
+    })
+
+    test('T28 (iii) reproducer: a page without usage drops the file\'s own usage keys and overrides', async () => {
+        const page = await openPage()
+
+        await loadBin(page, await binWith(page, { statics: { messages: 3, imports: 2, ...FILE_USAGE }, usagePriceOverrides: FILE_OVERRIDES }))
+
+        const stored = await storedDatabase(page)
+        expect(stored.statics).toEqual({ messages: 3, imports: 2 })
+        expect(Object.hasOwn(stored, 'usagePriceOverrides')).toBe(false)
+    })
+
+    test('T28 (iv) reproducer: a file without statics takes the page\'s usage over the default counters', async () => {
+        const page = await openPage()
+        await pageHolds(page, { statics: { messages: 90, imports: 91, ...PAGE_USAGE } })
+
+        await loadBin(page, await binWith(page, {}))
+
+        const stored = await storedDatabase(page)
+        expect(stored.statics).toEqual({ messages: 0, imports: 0, ...PAGE_USAGE })
+    })
+
+    test('T28b guard: no usage on either side gives the file\'s statics and no overrides key', async () => {
+        const page = await openPage()
+
+        await loadBin(page, await binWith(page, { statics: { messages: 3, imports: 2 } }))
+
+        const stored = await storedDatabase(page)
+        expect(stored.statics).toEqual({ messages: 3, imports: 2 })
+        expect(Object.hasOwn(stored, 'usagePriceOverrides')).toBe(false)
+    })
+})
+
+// The arm tests above ran first (one file, tests in order): what each import showed in the two arms must be equal.
+describe('the whole arm and the stream arm agree', () => {
+    test('every import showed the same error texts, reload count and stored database in both arms', () => {
+        const compared: string[] = []
+        for (const [name, arms] of observed) {
+            if (arms.whole === undefined || arms.stream === undefined) {
+                continue
+            }
+            compared.push(name)
+            expect(arms.whole.verdicts.filter((verdict) => verdict === 'stream'), `${name}: the whole arm streamed`).toEqual([])
+            expect(arms.stream.verdicts.filter((verdict) => verdict === 'whole'), `${name}: the stream arm fell back to the whole path`).toEqual([])
+            expect(arms.stream.view, name).toEqual(arms.whole.view)
+        }
+        expect(compared.length).toBeGreaterThan(0)
+        expect([...observed.values()].some((arms) => arms.stream?.verdicts.includes('stream')), 'no import took the streamed path').toBe(true)
+    })
+})
+
+describe('usage statistics over the imports that have no page', () => {
+    /** The decoded body of the first unit of `type` of a built commit. */
+    function bodyOf(built: { units: { bytes: Uint8Array }[] }, type: number): Entry | null {
+        for (const unit of built.units) {
+            if (unit.bytes[5] === type) {
+                const read = readUnit(unit.bytes, type as never)
+                if (read.status === 'ok' || read.status === 'stale') {
+                    return read.value.body as unknown as Entry
+                }
+            }
+        }
+        return null
+    }
+
+    async function build(tree: Entry, request: Entry): Promise<{ statics: Entry | undefined, config: Entry }> {
+        const { prepareImport, buildImport } = await import('src/ts/storage/store2/legacy/importTree')
+        const { createKeyMint } = await import('src/ts/storage/store2/commit')
+        const source = { tree: tree as unknown as Database }
+        const prepared = await prepareImport({ source, reader: readerOver(new Map()), lists: fakeLists, env: seededEnv(5), ...request }, {
+            async confirmIncomplete() { return true },
+        })
+        if ('status' in prepared) {
+            throw new Error(`The import stopped: ${prepared.status}`)
+        }
+        const built = await buildImport(prepared.plan).build({ mint: createKeyMint(seededEnv(6), null).mint, seq: 1, now: 1 })
+        const units = built as unknown as { units: { bytes: Uint8Array }[] }
+        const config = bodyOf(units, UNIT_TYPE.configRoot)
+        const statics = bodyOf(units, UNIT_TYPE.statics)
+        if (config === null) {
+            throw new Error('The build holds no config unit.')
+        }
+        return { statics: statics?.value as Entry | undefined, config: config.f as Entry }
+    }
+
+    test('T28c reproducer: prepareImport drops the tree\'s own usage keys and overrides when no carry is passed (the boot import passes none)', async () => {
+        await openPage()
+        const { makeDb: freshDb } = await import('src/ts/storage/tests/saveLoopSupport')
+        const tree = { ...freshDb('file', ['alpha']), statics: { messages: 3, imports: 2, ...FILE_USAGE }, usagePriceOverrides: FILE_OVERRIDES } as Entry
+
+        const built = await build(tree, {})
+
+        expect(built.statics).toEqual({ messages: 3, imports: 2 })
+        expect(Object.hasOwn(built.config, 'usagePriceOverrides')).toBe(false)
+    })
+
+    test('T28c reproducer: with a carry the request names, the build holds the page\'s usage and overrides and none of the tree\'s', async () => {
+        await openPage()
+        const { makeDb: freshDb } = await import('src/ts/storage/tests/saveLoopSupport')
+        const tree = { ...freshDb('file', ['alpha']), statics: { messages: 3, imports: 2, ...FILE_USAGE }, usagePriceOverrides: FILE_OVERRIDES } as Entry
+
+        const built = await build(tree, { usageStatics: PAGE_USAGE, usagePriceOverrides: PAGE_OVERRIDES })
+
+        expect(built.statics).toEqual({ messages: 3, imports: 2, ...PAGE_USAGE })
+        expect(built.config.usagePriceOverrides).toEqual(PAGE_OVERRIDES)
+    })
+})

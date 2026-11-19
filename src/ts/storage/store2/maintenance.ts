@@ -2,6 +2,7 @@ import { MEASURE } from '../../process/memory/measureFlag'
 import { startQuietTrigger, type QuietTrigger } from '../../process/memory/putBackQuiet'
 import type { ByteStore } from '../store/contract'
 import { getPageStorageMode } from '../pageStorageMode'
+import { liveLockQuery, soleTabAnswer } from '../soleTab'
 import { recordStartupCleanup } from '../startupCleanupState'
 import { getStore2BootSession } from './bootActive'
 import { batchPaceOf, runOldDataDeletion } from './oldData/delete'
@@ -14,10 +15,11 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
- * deletion of old-format files (`oldData/delete.ts`), followed on the app by one collector pass over the store2 leftovers
- * (`gc/autoGc.ts`), followed on the app and on the web (`tauri` and `indexeddb` sessions; a Node server and the transitional
- * OPFS page never list `assets/`) by one asset sweep (`sweep/run.ts`) that deletes stored assets nothing refers to once
- * a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
+ * deletion of old-format files (`oldData/delete.ts`), followed on the app and on the web (`tauri` and `indexeddb` sessions) by
+ * one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only when the sole-tab proof and the
+ * own-base rule hold, and otherwise logs one refusal line and deletes nothing), followed on the app and on the web
+ * (`tauri` and `indexeddb` sessions; a Node server and the transitional OPFS page never list `assets/`) by one asset
+ * sweep (`sweep/run.ts`; on the web its tab check is the same sole-tab proof as the collector's) that deletes stored assets nothing refers to once a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
  * own failure, so a failed deleter never keeps the next one from running.
  *
  * - It runs only on a page whose own boot found a normal store2 profile (the "commit key parses with a readable tree" row),
@@ -57,20 +59,19 @@ export type SweepPageFacts = Pick<AssetSweepEnv, 'residentRefs' | 'writtenCount'
 
 /** The page's own modules, loaded when the sweep first needs them so that installing the step costs nothing. */
 async function loadSweepFacts(): Promise<SweepPageFacts> {
-    const [api, database, busy, loop, restore, hold, inlay] = await Promise.all([
+    const [api, database, busy, loop, restore, hold] = await Promise.all([
         import('../../globalApi.svelte'),
         import('../database.svelte'),
         import('../../process/memory/busyActions'),
         import('./saveLoop'),
         import('../../drive/restoreInProgress'),
         import('../assetDeleteHold'),
-        import('../../process/files/inlayCleanup'),
     ])
     return {
         residentRefs: () => api.getUncleanablesSync(database.getDatabase()),
         writtenCount: () => api.assetsWrittenThisPageCount(),
         writtenThisPage: () => api.listAssetsWrittenThisPage(),
-        peers: () => inlay.queryOtherTabs(),
+        peers: () => soleTabAnswer({ query: liveLockQuery(), holdsOwnPresence: api.holdsOwnTabPresence }),
         shouldStop: () => busy.isBusy() || loop.isSaveLoopParked() || !api.isSaveClean() || restore.restoreInProgress(),
         release: keys => api.releaseAssetObjectUrl(keys),
         hold: remove => hold.holdAssetDeletion(remove),

@@ -1,7 +1,7 @@
 // The reserved pack file name and the walk that names every asset an installed pack keeps (`packRefs.ts`). Titles beginning
 // "guard:" pass with or without the walk's depth and cycle rules; every other test names a rule a mutant breaks.
 import { describe, expect, test } from 'vitest'
-import { collectPackAssetRefs, isPackAssetName, PACK_ARCHIVE_KEY, PACK_ASSET_NAME } from './packRefs'
+import { collectPackAssetRefs, isPackAssetName, PACK_ARCHIVE_KEY, PACK_ASSET_NAME, PACK_ICON_KEY } from './packRefs'
 
 const HEX = 'ab'.repeat(32)
 
@@ -33,6 +33,22 @@ describe('the reserved pack file name', () => {
         expect(PACK_ARCHIVE_KEY.test(`assets/sub/tp-${HEX}.risutheme`)).toBe(false)
         expect(PACK_ARCHIVE_KEY.test(`assets/tp-${HEX.toUpperCase()}.risutheme`)).toBe(false)
         expect(PACK_ARCHIVE_KEY.test(`assets/tp-${HEX}.risutheme.bak`)).toBe(false)
+    })
+
+    test('the icon key is assets/ and the pack name with one lower-case png or webp extension, and nothing else', () => {
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.png`)).toBe(true)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.webp`)).toBe(true)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.risutheme`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.svg`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.jpg`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.PNG`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX.toUpperCase()}.png`)).toBe(false)
+        expect(PACK_ICON_KEY.test('assets/tp-x.png')).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/6f2f1c0e9e5d4c8a.png`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`tp-${HEX}.png`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/../assets/tp-${HEX}.png`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/sub/tp-${HEX}.png`)).toBe(false)
+        expect(PACK_ICON_KEY.test(`assets/tp-${HEX}.png.bak`)).toBe(false)
     })
 
     test('the basename after the last / or \\ is judged, whatever its case', () => {

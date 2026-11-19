@@ -1252,6 +1252,14 @@
                 <span class="text-textcolor">{language.hypaV3Settings.randomMemoryRatioLabel} <Help key="hypaV3RandomMemoryRatio"/></span>
                 <NumberInput marginBottom disabled size="sm" value={parseFloat((1 - settings.recentMemoryRatio - settings.similarMemoryRatio).toFixed(2))} />
                 <div class="mb-2 flex items-center">
+                    <Check name={language.hypaV3Settings.recencyWeightingLabel} bind:check={settings.enableRecencyWeighting} />
+                    <Help key="hypaV3RecencyWeighting"/>
+                </div>
+                {#if settings.enableRecencyWeighting}
+                    <span class="text-textcolor">{language.hypaV3Settings.recencyHalfLifeDaysLabel} <Help key="hypaV3RecencyHalfLifeDays"/></span>
+                    <NumberInput marginBottom size="sm" min={1} bind:value={settings.recencyHalfLifeDays} />
+                {/if}
+                <div class="mb-2 flex items-center">
                     <Check name={language.hypaV3Settings.preserveOrphanedMemoryLabel} bind:check={settings.preserveOrphanedMemory} />
                     <Help key="hypaV3PreserveOrphanedMemory"/>
                 </div>

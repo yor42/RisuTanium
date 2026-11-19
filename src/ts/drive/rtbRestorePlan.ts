@@ -36,7 +36,8 @@ import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
  *
  * Order (A7): read-only page, busy, store2 mode, `checkStore2Import`, `saveFirst`, the lock, the unsaved-edits guard, the
  * classifying read of the commit key, the file's verification, then the prompts (newer data, scale, Node oversize,
- * uncreatable names). Every exit that is not `ready` releases the hold in one `finally`, a throw included.
+ * uncreatable names; the newer-data question is skipped for the Welcome restore).
+ * Every exit that is not `ready` releases the hold in one `finally`, a throw included.
  *
  * File-supplied text (the device label, asset and inlay names, row ids, `req` tokens, `refs` rows) only ever goes to
  * `alertConfirm` and `alertError`, which render it as text; it never goes to a markdown alert.
@@ -118,6 +119,12 @@ export interface RtbPrepareOptions {
     sideCheckCapBytes?: number
     /** Called once when the lock is granted. */
     onHoldGranted?: () => void
+    /**
+     * The Welcome restore: the newer-data question is not asked (maintainer decision); every other refusal and prompt is
+     * unchanged. A stale Welcome tab whose sibling tab already saved newer data is not told either, the same as the
+     * Welcome `.bin` restore.
+     */
+    firstRun?: boolean
     deps?: Partial<RtbPrepareDeps>
 }
 
@@ -207,7 +214,9 @@ function realDeps(): RtbPrepareDeps {
 
 // ---- the preparation ----
 
-const ended = (outcome: 'canceled' | 'nothing-replaced' | 'failed', cause: RtbPrepareCause | null): RtbPrepareEnd => ({ kind: 'ended', outcome, cause })
+type RtbEnded = Extract<RtbPrepareEnd, { kind: 'ended' }>
+
+const ended = (outcome: 'canceled' | 'nothing-replaced' | 'failed', cause: RtbPrepareCause | null): RtbEnded => ({ kind: 'ended', outcome, cause })
 
 function noticeOf(verified: { notice: RtbNotice, manifest: RtbManifest, store2: Store2Plan }): RestoreNoticeItems {
     return {
@@ -216,6 +225,152 @@ function noticeOf(verified: { notice: RtbNotice, manifest: RtbManifest, store2: 
         omittedUnits: verified.store2.omitted.map((unit) => unit.tail),
         omittedEntries: verified.manifest.omitted.filter((entry) => entry.kind !== 'unit'),
         unreadableLists: verified.store2.unreadableLists.length,
+    }
+}
+
+/** What the verification and the prompts produced; the page plan adds its target and base, the boot plan adds nothing. */
+export interface VerifiedRtb {
+    file: { name: string | null, size: number, lastModified: number | null }
+    source: RangeSource
+    index: ZipIndex
+    manifest: RtbManifest
+    rows: readonly SectionRow[]
+    store2: Store2Plan
+    assets: AssetsPlan
+    inlays: InlaysPlan
+    side: readonly SidePlanItem[]
+    newer: NewerCheck | null
+    notice: RestoreNoticeItems
+}
+
+export type RtbVerifyDeps = Pick<RtbPrepareDeps, 'verify' | 'assetDeps' | 'confirmScale' | 'confirm' | 'error' | 'wait'>
+export type RtbVerifyEnd = { kind: 'ok', verified: VerifiedRtb } | RtbEnded
+
+/** The verification and prompt calls of the real page; the start-up restore uses the same ones. */
+export function realVerifyDeps(): RtbVerifyDeps {
+    return {
+        verify: verifyRtb,
+        assetDeps: realAssetDeps,
+        confirmScale: confirmImportScale,
+        confirm: alertConfirm,
+        error: alertError,
+        wait: alertWait,
+    }
+}
+
+/**
+ * V and P.1-P.5: the file's verification, then the prompts. Writes nothing. Every caller runs it under its restore hold:
+ * P.2 lists the store's assets, and the copy that relies on that listing runs under the same hold. The newer-data
+ * question (P.1) is asked only when `newerBase` is given: the page passes its base (null for the Welcome restore), a boot
+ * has none. A throw propagates to the caller.
+ *
+ * Any decryption of the file belongs inside this function (in `verifyRtb` or here, carried by `VerifiedRtb.source`), never
+ * in `prepareRtbRestore` or in the restore run: the start-up restore shares this middle and would otherwise need a second copy.
+ */
+export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, options: { newerBase: BaseRead | null, sideCheckCapBytes?: number }): Promise<RtbVerifyEnd> {
+    // V: the file.
+    let lastPercent = -1
+    const source = rangeSourceFrom(picked.source)
+    const verdict = await deps.verify(source, {
+        sideCheckCapBytes: options.sideCheckCapBytes,
+        onProgress: (percent) => {
+            if (percent !== lastPercent) {
+                lastPercent = percent
+                deps.wait(language.rtbRestoreChecking(percent))
+            }
+        },
+    })
+    switch (verdict.kind) {
+        case 'could-not-read':
+            console.error(verdict.message)
+            deps.error(language.backupFileUnreadable)
+            return ended('nothing-replaced', 'could-not-read')
+        case 'not-an-rtb':
+            deps.error(language.rtbRestoreNotRtb)
+            return ended('nothing-replaced', 'not-an-rtb')
+        case 'encrypted':
+            deps.error(language.rtbRestoreEncrypted)
+            return ended('nothing-replaced', 'encrypted')
+        case 'damaged':
+            console.error(verdict.reason)
+            deps.error(language.rtbRestoreDamaged)
+            return ended('nothing-replaced', 'damaged')
+        case 'newer':
+            console.warn(verdict.item)
+            deps.error(language.rtbRestoreNewer(cut(describeNewer(verdict.item), NEWER_TEXT_CHARS)))
+            return ended('nothing-replaced', 'newer')
+        case 'ok':
+            break
+    }
+    const verified = verdict.verified
+
+    // P.1: the target was saved after the backup was made.
+    const origin = verified.manifest.source
+    const backupAt = origin.unsavedExcluded ? origin.committedAt : verified.manifest.createdAt
+    let newer: NewerCheck | null = null
+    if (options.newerBase !== null && options.newerBase.at > backupAt) {
+        const targetAt = options.newerBase.at
+        const exportedAt = origin.unsavedExcluded && verified.manifest.createdAt !== backupAt ? verified.manifest.createdAt : null
+        const deviceLabel = cut(origin.device.label, DEVICE_LABEL_CHARS)
+        const question = language.rtbRestoreTargetNewerConfirm(
+            new Date(targetAt).toLocaleString(),
+            new Date(backupAt).toLocaleString(),
+            exportedAt === null ? null : new Date(exportedAt).toLocaleString(),
+            deviceLabel,
+        )
+        if (!await deps.confirm(question)) {
+            return ended('canceled', 'declined')
+        }
+        newer = { targetAt, backupAt, exportedAt, deviceLabel }
+    }
+
+    // P.2: what is copied, skipped, oversize and uncreatable. Read-only.
+    const { assets, inlays } = await planAssets(verified.index, verified.inlays, deps.assetDeps())
+
+    // P.3: the scale of the copy.
+    const copyBytes = assets.copyBytes + inlays.copyBytes
+    const copyEntries = assets.copy.length + 2 * inlays.copy.length
+    if (!await deps.confirmScale(copyBytes + verified.store2.bytes, copyEntries, verified.store2.bytes, 0)) {
+        return ended('canceled', 'declined')
+    }
+
+    // P.4: what a Node server cannot take.
+    if (assets.limit !== null && inlays.limit !== null && (assets.oversize.length > 0 || inlays.oversize.length > 0)) {
+        const names = shownNames(assets.oversize.map((item) => item.key))
+        const inlayNames = shownNames(inlays.oversize.map((pair) => pair.id))
+        const inlayLimit = inlays.limit
+        const question = inlays.oversize.length === 0
+            ? language.restoreOversizedAssetsConfirm(assets.oversize.length, names, assets.limit)
+            : assets.oversize.length === 0
+                ? language.restoreOversizedInlaysConfirm(inlays.oversize.length, inlayNames, inlayLimit)
+                : language.restoreOversizedWithInlaysConfirm(assets.oversize.length, names, inlays.oversize.length, inlayNames, inlayLimit)
+        if (!await deps.confirm(question)) {
+            return ended('canceled', 'declined')
+        }
+    }
+
+    // P.5: names the page's store cannot create.
+    if (assets.uncreatable.length > 0) {
+        if (!await deps.confirm(language.rtbRestoreUncreatableConfirm(assets.uncreatable.length, shownNames(assets.uncreatable.map((item) => item.key))))) {
+            return ended('canceled', 'declined')
+        }
+    }
+
+    return {
+        kind: 'ok',
+        verified: {
+            file: { name: picked.name, size: picked.size, lastModified: picked.lastModified },
+            source,
+            index: verified.index,
+            manifest: verified.manifest,
+            rows: verified.rows,
+            store2: verified.store2,
+            assets,
+            inlays,
+            side: verified.side,
+            newer,
+            notice: noticeOf(verified),
+        },
     }
 }
 
@@ -275,109 +430,15 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
         }
         const base = based.base
 
-        // V: the file.
-        let lastPercent = -1
-        const source = rangeSourceFrom(picked.source)
-        const verdict = await deps.verify(source, {
+        // V and P.1-P.5: the file and the prompts, shared with the start-up restore.
+        const verifiedEnd = await verifyAndConfirm(picked, deps, {
+            newerBase: options.firstRun === true ? null : base,
             sideCheckCapBytes: options.sideCheckCapBytes,
-            onProgress: (percent) => {
-                if (percent !== lastPercent) {
-                    lastPercent = percent
-                    deps.wait(language.rtbRestoreChecking(percent))
-                }
-            },
         })
-        switch (verdict.kind) {
-            case 'could-not-read':
-                console.error(verdict.message)
-                deps.error(language.backupFileUnreadable)
-                return ended('nothing-replaced', 'could-not-read')
-            case 'not-an-rtb':
-                deps.error(language.rtbRestoreNotRtb)
-                return ended('nothing-replaced', 'not-an-rtb')
-            case 'encrypted':
-                deps.error(language.rtbRestoreEncrypted)
-                return ended('nothing-replaced', 'encrypted')
-            case 'damaged':
-                console.error(verdict.reason)
-                deps.error(language.rtbRestoreDamaged)
-                return ended('nothing-replaced', 'damaged')
-            case 'newer':
-                console.warn(verdict.item)
-                deps.error(language.rtbRestoreNewer(cut(describeNewer(verdict.item), NEWER_TEXT_CHARS)))
-                return ended('nothing-replaced', 'newer')
-            case 'ok':
-                break
+        if (verifiedEnd.kind === 'ended') {
+            return verifiedEnd
         }
-        const verified = verdict.verified
-
-        // P.1: the target was saved after the backup was made.
-        const origin = verified.manifest.source
-        const backupAt = origin.unsavedExcluded ? origin.committedAt : verified.manifest.createdAt
-        let newer: NewerCheck | null = null
-        if (base.at > backupAt) {
-            const exportedAt = origin.unsavedExcluded && verified.manifest.createdAt !== backupAt ? verified.manifest.createdAt : null
-            const deviceLabel = cut(origin.device.label, DEVICE_LABEL_CHARS)
-            const question = language.rtbRestoreTargetNewerConfirm(
-                new Date(base.at).toLocaleString(),
-                new Date(backupAt).toLocaleString(),
-                exportedAt === null ? null : new Date(exportedAt).toLocaleString(),
-                deviceLabel,
-            )
-            if (!await deps.confirm(question)) {
-                return ended('canceled', 'declined')
-            }
-            newer = { targetAt: base.at, backupAt, exportedAt, deviceLabel }
-        }
-
-        // P.2: what is copied, skipped, oversize and uncreatable. Read-only.
-        const { assets, inlays } = await planAssets(verified.index, verified.inlays, deps.assetDeps())
-
-        // P.3: the scale of the copy.
-        const copyBytes = assets.copyBytes + inlays.copyBytes
-        const copyEntries = assets.copy.length + 2 * inlays.copy.length
-        if (!await deps.confirmScale(copyBytes + verified.store2.bytes, copyEntries, verified.store2.bytes, 0)) {
-            return ended('canceled', 'declined')
-        }
-
-        // P.4: what a Node server cannot take.
-        if (assets.limit !== null && inlays.limit !== null && (assets.oversize.length > 0 || inlays.oversize.length > 0)) {
-            const names = shownNames(assets.oversize.map((item) => item.key))
-            const inlayNames = shownNames(inlays.oversize.map((pair) => pair.id))
-            const inlayLimit = inlays.limit
-            const question = inlays.oversize.length === 0
-                ? language.restoreOversizedAssetsConfirm(assets.oversize.length, names, assets.limit)
-                : assets.oversize.length === 0
-                    ? language.restoreOversizedInlaysConfirm(inlays.oversize.length, inlayNames, inlayLimit)
-                    : language.restoreOversizedWithInlaysConfirm(assets.oversize.length, names, inlays.oversize.length, inlayNames, inlayLimit)
-            if (!await deps.confirm(question)) {
-                return ended('canceled', 'declined')
-            }
-        }
-
-        // P.5: names the page's store cannot create.
-        if (assets.uncreatable.length > 0) {
-            if (!await deps.confirm(language.rtbRestoreUncreatableConfirm(assets.uncreatable.length, shownNames(assets.uncreatable.map((item) => item.key))))) {
-                return ended('canceled', 'declined')
-            }
-        }
-
-        const plan: RestorePlan = {
-            kind: 'rtb-page',
-            file: { name: picked.name, size: picked.size, lastModified: picked.lastModified },
-            source,
-            index: verified.index,
-            manifest: verified.manifest,
-            rows: verified.rows,
-            target,
-            base,
-            store2: verified.store2,
-            assets,
-            inlays,
-            side: verified.side,
-            newer,
-            notice: noticeOf(verified),
-        }
+        const plan: RestorePlan = { kind: 'rtb-page', ...verifiedEnd.verified, target, base }
         ready = true
         return { kind: 'ready', plan, hold }
     } catch (error) {

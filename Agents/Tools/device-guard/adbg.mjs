@@ -9,7 +9,7 @@
 //   node adbg.mjs <common> -- <adb args...>          plain call, allowed only if it matches the allowlist:
 //     shell <one command string>, where the command is one of
 //       getprop [key] | date [+fmt] | pidof <pkg> | wm size|density [<n>] | settings get|put|delete <ns> <key> [v]
-//       am start ... (no -d/--data or scheme://; -n only for --own-package) | am force-stop|kill <own package>
+//       am start ... (no -d/--data or scheme://; -n only for --own-package; r17 also narrows every am line to a closed character set) | am force-stop|kill <own package>
 //       pm clear <own package> | pm path <pkg> | input keyevent <navigation keys> | input text ... (typing chain, below) | svc wifi|data enable|disable expand-notifications|collapse | cat /proc/<pid>/oom_score_adj|cgroup|stat
 //       ps -A [-o cols] | grep <literal>   (a device-side filter is required; never a full list)
 //       screenrecord [--time-limit 1-30] [--size WxH] [--bit-rate n] <exact .mp4 path below>
@@ -77,6 +77,31 @@
 //   but one file in /sdcard/Download or /data/local/tmp (r11 rule) or one r14 export, cmd wifi, forward/reverse to ports outside
 //   --own-ports, and push outside /sdcard/Download/<name> or to a name starting with a dot.
 //
+//   r17 (2026-11-18, CHORE-128 S13): Samsung My Files on phone 1 (29f3cde9193f7ece) only, to share synthetic Download/c128-*
+//     files into the app. `adb -- shell am start -n com.sec.android.app.myfiles/.external.ui.MainActivity` (exactly this string),
+//     and `pick --myfiles --name <text>`, `tap --myfiles`, `hold --myfiles --duration-ms <n>`. --myfiles on any other serial
+//     exits 97 (restricted serials 95 as before), on any other verb exits 2, and any `am` command naming the My Files package
+//     other than the one start string exits 97. pick --myfiles accepts only a name of the form c128-<1-72 of [A-Za-z0-9._-]>
+//     or one of the fixed texts Download, Internal storage, Share and the Korean forms of those, or the share-sheet target
+//     RisuTanium; the destructive menu texts (Rename, Delete, Move, Copy, Compress, Extract, Trash, Details, Empty, Create
+//     and their Korean forms) are named in the refusal. My Files must be the front package (oom_score_adj 0), else exit 93;
+//     for the share-sheet target it may also be merely visible (adj 100) behind the sheet. A locate read with --myfiles can only
+//     be used by tap/hold --myfiles, which repeat the foreground check; a locate read without it cannot be used with --myfiles.
+//     Enforced only for the --myfiles forms and for any `am` line that names the My Files package. Nothing else about My Files is
+//     enforced, and phone 2 is NOT protected on these paths (all pre-existing, unchanged by r17; the run brief needs a STOP rule):
+//       - raw `input tap X Y` and `input keyevent` (any KEYCODE_*) stay allowed on both playground phones as in r11;
+//       - a plain `pick --name <text>` (any [A-Za-z0-9._-]{3,80} text, so Delete, Rename, Move, Copy, Details too) and a plain
+//         `tap` on it work in My Files on both playground phones, with no foreground check against My Files;
+//       - `hold` and `swipe` accept an agent-chosen --own-package, including com.sec.android.app.myfiles, on both phones;
+//       - an implicit `am start` without -n (for example -a android.intent.action.MAIN -c android.intent.category.APP_FILES, or
+//         GET_CONTENT) passes on both playground phones and, for am, on the emulator, so a file app can be opened on phone 2;
+//         so does `am start` of a bare package or component, or -n of whatever package --own-package names;
+//       - raw `input swipe X1 Y1 X2 Y2 [ms]` (a long press or a drag) stays allowed on both playground phones.
+//       `swipe` with --own-package com.sec.android.app.myfiles and raw `input swipe` are handled by the run's STOP rules until r18.
+//     r17 also refuses (exit 97), on every serial, any `am` shell line holding a character outside letters, digits, space and
+//     . _ : / % + = @ - (so no brace expansion, glob, quote, backslash, $ or backtick can rebuild a refused My Files name after the check).
+//     Also not enforced: the folder a c128-* name sits in, and which row Share acts on. Tightening these is a separate decision.
+//
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
 //     text, prints only the bounds, and deletes the dump by its exact name. Output: `match bounds=[l,t][r,b]`
@@ -92,6 +117,16 @@
 //     PICK-LOCK and the two-error cap with --name, and matches ` resource-id="<id>"` exactly. Before the dump a
 //     system file picker (com.android.documentsui or com.google.android.documentsui, oom_score_adj 0) must be in
 //     front, else exit 93 with no dump and no PICK-LOCK; that refusal counts toward the two-error cap of both forms.
+//     r18 (2026-11-18, CHORE-227 D1 save rows): --id also accepts exactly one other id, android:id/button1 (the Save button of the
+//     Samsung save picker, CREATE_DOCUMENT; KEYCODE_ENTER does not press it while the filename field is unfocused). Exact match only:
+//     android:id/button10, android:id/button2, android:id/title and every other android:id/* are refused (exit 2, no adb call). All
+//     other checks are unchanged (playground serials only, 95 and 97, the front system picker exit 93, PICK-LOCK, two-error cap).
+//     Save-screen proof, fail-closed: the same single dump must also hold a node whose resource-id is android:id/title and whose
+//     class is android.widget.EditText (the filename field). On a replace or overwrite confirmation dialog button1 means "replace",
+//     and that dialog has no such field. Without the node the device command prints ADBG-NO-SAVE-FIELD instead of bounds (the dump
+//     is still removed), nothing is located or tapped, and the guard exits 4 with `button1 refused: no save-screen filename field in
+//     the dump`: a pick error (counts toward the two-error cap, sets no lock), not a no-match. The log names `pick --id
+//     android:id/button1 (save confirm, r18)`.
 //
 //   node adbg.mjs offset --state <state> --log <log> --x <px> --y <px>
 //     Records the WebView's top-left on screen in device pixels.
@@ -406,7 +441,7 @@ function playgroundShell(cmd) {
       if (t[1] === 'swipe') return (t.length === 6 || t.length === 7) && t.slice(2).every((x) => PG_INT.test(x))
       if (t[1] === 'keyevent') { const keys = t[2] === '--longpress' ? t.slice(3) : t.slice(2); return keys.length >= 1 && keys.every((k) => PG_KEY.test(k)) }
       return false
-    case 'am': return t[1] === 'start' && playgroundIntent(t)
+    case 'am': return t[1] === 'start' && (playgroundIntent(t) || (c === MYFILES_START && serial === MYFILES_SERIAL))
     case 'dumpsys':
       // An exact MC-2287 form; t is already trimmed and space-collapsed, so the joined string is the normalised
       // argument list. It must come before the service refusal, because these names are not in that set.
@@ -456,6 +491,29 @@ function allowedPlayground(a) {
 const PG_PACKAGE = 'io.github.yor42.risutanium'
 // The system file picker may hold the foreground while a gesture runs (MC-2273): only these two exact packages count.
 const PG_FRONT_PICKERS = ['com.android.documentsui', 'com.google.android.documentsui']
+// r17 (CHORE-128 S13): Samsung My Files on phone 1 only, for sharing synthetic Download/c128-* files into the app. The start
+// component is pinned to one string; the texts below are the only ones pick --myfiles can locate.
+const MYFILES_SERIAL = '29f3cde9193f7ece'
+const MYFILES_PACKAGE = 'com.sec.android.app.myfiles'
+// The only characters an `am` shell line may hold (letters, digits, space and . _ : / % + = @ -): no brace, glob, bracket, quote,
+// backslash, dollar or backtick, so the device shell cannot build a different word than the one the guard read.
+const AM_LINE_SAFE = /^[A-Za-z0-9 ._:\/%+=@-]*$/
+const MYFILES_START = `am start -n ${MYFILES_PACKAGE}/.external.ui.MainActivity`
+const MYFILES_FILE = /^c128-[A-Za-z0-9._-]{1,72}$/
+const MYFILES_SHARE_TARGET = 'RisuTanium'
+// Download, Internal storage, Share and their Korean forms (literal UTF-8 in this file; Node reads .mjs as UTF-8).
+const MYFILES_TEXTS = new Set(['Download', '다운로드', 'Internal storage', '내장 메모리', 'Share', '공유', MYFILES_SHARE_TARGET])
+const MYFILES_DESTRUCTIVE_EN = /\b(rename|delete|move|copy|compress|extract|trash|details|empty|create)\b/i
+// Rename, Delete, Move, Copy, Compress, Details in Korean.
+const MYFILES_DESTRUCTIVE_KO = ['이름 변경', '삭제', '이동', '복사', '압축', '상세 정보']
+// null when the text may be located in My Files, else the reason. The allowlist is the rule; the destructive list only names the reason.
+function myFilesTextRefusal(text) {
+  if (typeof text !== 'string' || text.length === 0 || text.length > 80) return 'the text is empty or longer than 80 characters'
+  if (MYFILES_FILE.test(text) && !text.includes('..')) return null
+  if (MYFILES_DESTRUCTIVE_EN.test(text) || MYFILES_DESTRUCTIVE_KO.some((w) => text.includes(w))) return 'a destructive My Files menu text (rename, delete, move, copy, compress, details ...)'
+  if (MYFILES_TEXTS.has(text)) return null
+  return 'not a c128-* file name, Download, Internal storage, Share or the RisuTanium share target'
+}
 function playgroundPinned(a) {
   if (a[0] === 'logcat') return a.some((x) => ['-d', '-t', '-T'].includes(x))
   if (a[0] === 'shell' && typeof a[1] === 'string') {
@@ -472,14 +530,33 @@ const frontOf = (pkg) => {
   const pids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
   return pids.some((p) => { const adj = runAdb(['shell', `cat /proc/${p}/oom_score_adj`], true); return adj.code === 0 && adj.out.trim() === '0' })
 }
+// A package that is on screen but not on top (a bottom sheet over it) has oom_score_adj 100.
+const visibleOf = (pkg) => {
+  const ps = runAdb(['shell', `pidof ${pkg}`], true)
+  const pids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
+  return pids.some((p) => { const adj = runAdb(['shell', `cat /proc/${p}/oom_score_adj`], true); return adj.code === 0 && ['0', '100'].includes(adj.out.trim()) })
+}
+// My Files must be in front; for the RisuTanium share-sheet target the sheet is in front and My Files may sit behind it.
+const myFilesForeground = (target) => target === MYFILES_SHARE_TARGET ? visibleOf(MYFILES_PACKAGE) : frontOf(MYFILES_PACKAGE)
 // pick --id (MC-2303, MC-2306): exactly this grammar, matched on the raw argument; no flags. The class holds no quote,
 // blank, glob, shell or BRE metacharacter, so after the escaped prefix nothing in an id is special to grep or to sh.
 const RID = /^com\.android\.documentsui:id\/[a-z][a-z0-9_]{0,79}$/
+// r18: the one non-documentsui id pick --id accepts, the Save button of the system save picker (CREATE_DOCUMENT). It is exact
+// (no other android:id/* id) and is tapped only when the same dump also holds the save screen's filename field, because on an
+// overwrite or replace confirmation dialog the same id means "replace".
+const SAVE_BUTTON_ID = 'android:id/button1'
+const SAVE_PROOF_PATTERN = ' resource-id="android:id/title"[^>]*class="android\\.widget\\.EditText"'
+const SAVE_PROOF_MISSING = 'ADBG-NO-SAVE-FIELD'
 const PICK_ID_KEYS = ['--serial', '--log', '--state', '--id', '--own-package', '--own-ports']
 // Shared device command of both pick forms: dump, grep for the needle, print only bounds, delete the dump by name.
-const pickScript = (dump, needle) => `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
-  + `if [ $d -eq 0 ]; then grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'; fi; `
-  + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
+// With saveProof the bounds are printed only if the same dump file also holds the proof node; else it prints a marker instead.
+const pickScript = (dump, needle, saveProof = false) => {
+  const boundsGrep = `grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'`
+  const body = saveProof ? `if grep -q '${SAVE_PROOF_PATTERN}' ${dump} 2>/dev/null; then ${boundsGrep}; else echo ${SAVE_PROOF_MISSING}; fi` : boundsGrep
+  return `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
+    + `if [ $d -eq 0 ]; then ${body}; fi; `
+    + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
+}
 
 // ---- restricted serials ----
 // Every serial not listed here is a personal device and runs in restricted mode (fail-closed).
@@ -548,10 +625,26 @@ if (restricted) {
   if (sub === 'swipe' || sub === 'hold') { needSerial(); refuseRestricted(sub) }
 }
 
+// r17: --myfiles is the My Files mode of pick, tap and hold, on phone 1 only (restricted serials were refused above, exit 95).
+const myFiles = opts.includes('--myfiles')
+if (myFiles) {
+  needSerial()
+  if (!['pick', 'tap', 'hold'].includes(sub)) die(2, '--myfiles belongs to pick, tap and hold only')
+  if (serial !== MYFILES_SERIAL) die(97, `${sub} --myfiles is allowed only on ${MYFILES_SERIAL} (Samsung My Files)`)
+}
+
 if (sub === 'adb') {
   needSerial()
   if (rest.length === 0) die(2, 'missing -- <adb args>')
   if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
+  // r17: an `am` command that names My Files passes only as the one start string, on phone 1 (checked on every plain or playground path).
+  const amLine = rest[0] === 'shell' ? rest.slice(1).join(' ') : ''
+  // The device shell expands braces, globs, quotes and escapes after this check, so an `am` line may hold only AM_LINE_SAFE characters:
+  // no text that could rebuild a refused package or component name later can get past the textual tests below.
+  if (/^\s*am(\s|$)/.test(amLine) && !AM_LINE_SAFE.test(amLine)) die(97, `am line holds characters outside the safe set (shell expansion could rebuild a refused name): adb ${JSON.stringify(rest)}`)
+  if (/^\s*am(\s|$)/.test(amLine) && /myfiles/i.test(amLine) && !(rest.length === 2 && serial === MYFILES_SERIAL && amLine.trim().replace(/ +/g, ' ') === MYFILES_START)) {
+    die(97, `am naming My Files is allowed only as exactly "${MYFILES_START}" on ${MYFILES_SERIAL}: adb ${JSON.stringify(rest)}`)
+  }
   const plainOk = allowedPlain(rest)
   if (!plainOk && !(playground && allowedPlayground(rest))) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
   if (playground && !playgroundPinned(rest)) die(97, `playground: refused (pm clear only of ${PG_PACKAGE} with --own-package ${PG_PACKAGE}; logcat needs -d, -t or -T): adb ${JSON.stringify(rest)}`)
@@ -613,6 +706,8 @@ if (sub === 'pick') {
   needSerial(); needState()
   const idForm = opts.includes('--id')
   let name = null, rid = null
+  let saveForm = false
+  if (myFiles && idForm) die(2, 'pick --myfiles takes --name only')
   if (idForm) {
     // Playground serials only; the strict option walk leaves no stray token, duplicate key or second form.
     if (!playground) die(97, 'pick --id is allowed only on the playground serials')
@@ -624,7 +719,22 @@ if (sub === 'pick') {
       seenKeys.add(k)
     }
     rid = opt('--id')
-    if (!RID.test(rid)) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars)')
+    if (!RID.test(rid) && rid !== SAVE_BUTTON_ID) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars) or, r18, exactly android:id/button1')
+    saveForm = rid === SAVE_BUTTON_ID
+  } else if (myFiles) {
+    // Strict walk without the one bare flag: known keys, each once with a value, no `--` section.
+    const kv = opts.filter((x) => x !== '--myfiles')
+    if (opts.length - kv.length !== 1) die(2, 'pick --myfiles: the flag must appear exactly once')
+    if (sep >= 0) die(2, 'pick --myfiles takes no adb arguments after --')
+    const seenKeys = new Set()
+    for (let i = 0; i < kv.length; i += 2) {
+      const k = kv[i], v = kv[i + 1]
+      if (!['--serial', '--log', '--state', '--name', '--own-package', '--own-ports'].includes(k) || seenKeys.has(k) || v === undefined || v.startsWith('--')) die(2, 'pick --myfiles: unexpected, duplicate or valueless option')
+      seenKeys.add(k)
+    }
+    name = opt('--name')
+    const why = myFilesTextRefusal(name)
+    if (why !== null) die(97, `pick --myfiles refused ${JSON.stringify(name)}: ${why}`)
   } else {
     name = opt('--name')
     if (!name || !/^[A-Za-z0-9._-]{3,80}$/.test(name)) die(2, 'pick --name must be an exact unique name of 3-80 chars [A-Za-z0-9._-]')
@@ -642,10 +752,19 @@ if (sub === 'pick') {
       die(93, 'pick --id refused: no system file picker is the foreground package')
     }
     logLine(`PLAYGROUND serial=${serial} front=${pickerPkg} (system file picker, pick --id, MC-2303)`)
+    if (saveForm) logLine(`pick --id ${SAVE_BUTTON_ID} (save confirm, r18)`)
+  }
+  if (myFiles) {
+    // A refusal here ran no dump: no lock, but it counts toward the two-error cap.
+    if (!myFilesForeground(name)) {
+      s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
+      die(93, `pick --myfiles refused: ${MYFILES_PACKAGE} is not the foreground package${name === MYFILES_SHARE_TARGET ? ' or visible behind the share sheet' : ''}`)
+    }
+    logLine(`PLAYGROUND serial=${serial} front=${MYFILES_PACKAGE} (Samsung My Files, pick --myfiles, r17)`)
   }
   const dump = `/sdcard/adbg-pick-${process.pid}-${Date.now()}.xml`
   const esc = (idForm ? rid : name).replace(/\./g, '\\.')
-  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : `text="${esc}"`)
+  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : myFiles ? ` text="${esc}"` : `text="${esc}"`, saveForm)
   logLine(`intent: pick ${what} via one device command (dump, grep, rm ${dump})`)
   const r = spawnAdb(['-s', serial, 'shell', script], { encoding: 'utf8', windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] })
   const out = r.stdout ?? ''
@@ -659,6 +778,12 @@ if (sub === 'pick') {
   if (r.status !== 0 || !dumpOk || rmFailed) {
     s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
     die(4, `pick error (adb exit ${exitText}, dump ${dumpOk ? 'ok' : 'failed'}, rm ${rmText}); not a no-match`)
+  }
+  if (saveForm && out.includes(SAVE_PROOF_MISSING)) {
+    // The dump ran and was removed, but it held no save-screen filename field: a replace dialog or another screen. No tap target
+    // is reported; it is a pick error (no lock, counts toward the two-error cap), not a no-match.
+    s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
+    die(4, 'pick --id android:id/button1 refused: no save-screen filename field in the dump')
   }
   const hits = out.split(/\r?\n/).filter((l) => /^bounds="\[\d+,\d+\]\[\d+,\d+\]"$/.test(l.trim()))
   if (hits.length !== 1) {
@@ -675,7 +800,7 @@ if (sub === 'pick') {
   }
   const id = s.locates.length + 1
   s.picks.push(idForm ? { time: now(), resourceId: rid, result: 'match', bounds } : { time: now(), name, result: 'match', bounds })
-  s.locates.push({ id, time: Date.now(), label: idForm ? `pick-id:${rid}` : `pick:${name}`, bounds, used: false, serial })
+  s.locates.push({ id, time: Date.now(), label: idForm ? `pick-id:${rid}` : myFiles ? `pick-myfiles:${name}` : `pick:${name}`, bounds, used: false, serial, ...(myFiles ? { myFiles: true } : {}) })
   saveState(s)
   logLine(`locate ${id} pick ${what}: match bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
   console.log(`match bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
@@ -843,7 +968,7 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
     if (!names.every((n) => INT.test(opt(n) ?? ''))) die(2, `swipe ${names.join(' and ')} must be integers in pixels`)
   } else if (gesture && (offsetForm || toForm || opt('--x') !== null || opt('--y') !== null)) die(2, 'hold takes no end point or point option; it presses the centre of the locate')
   if (gesture && sub === 'swipe' && (opt('--x') !== null || opt('--y') !== null)) die(2, 'swipe starts at the centre of the locate; --x and --y are not accepted')
-  if (gesture && (!ownPackage || !/^[A-Za-z0-9._]+$/.test(ownPackage))) die(2, `${sub} needs --own-package for the foreground check`)
+  if (gesture && !myFiles && (!ownPackage || !/^[A-Za-z0-9._]+$/.test(ownPackage))) die(2,`${sub} needs --own-package for the foreground check`)
   const maxAgeRaw = opt('--max-age')
   const maxAge = maxAgeRaw === null ? 5 : Number(maxAgeRaw)
   if (!Number.isFinite(maxAge) || maxAge < 1 || maxAge > 10) die(2, '--max-age must be a number from 1 to 10 seconds')
@@ -855,6 +980,13 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
   if (!(age >= 0 && age <= maxAge)) die(99, `locate record ${loc.id} is ${age.toFixed(1)} s old (max ${maxAge} s); locate again`)
   const b = loc.bounds
   if (b.r <= b.l || b.b <= b.t) die(99, `locate record ${loc.id} has zero-area bounds`)
+  // r17: a locate read by pick --myfiles is used only with --myfiles, which repeats the foreground check before the locate is consumed.
+  if (loc.myFiles === true && !myFiles) die(99, `locate record ${loc.id} was read by pick --myfiles; use ${sub} --myfiles`)
+  if (myFiles) {
+    if (loc.myFiles !== true) die(99, `locate record ${loc.id} was not read by pick --myfiles`)
+    if (!myFilesForeground(loc.label.slice('pick-myfiles:'.length))) die(93, `${sub} --myfiles refused: ${MYFILES_PACKAGE} is not the foreground package`)
+    logLine(`PLAYGROUND serial=${serial} front=${MYFILES_PACKAGE} (Samsung My Files, ${sub} --myfiles, r17)`)
+  }
   let x = Math.floor((b.l + b.r) / 2), y = Math.floor((b.t + b.b) / 2)
   if (opt('--x') !== null || opt('--y') !== null) {
     x = Number(opt('--x')); y = Number(opt('--y'))
@@ -876,9 +1008,10 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
     // Foreground check (frontOf): our package must hold the top oom_score_adj (0).
     // It runs before the locate is consumed, so a refusal leaves the locate usable until it ages out.
     // The own package is checked first with today's calls; a system file picker counts only on playground serials.
-    const frontPkg = frontOf(ownPackage) ? ownPackage : ((playground && PG_FRONT_PICKERS.find(frontOf)) || null)
+    // With --myfiles the My Files check above replaced this one.
+    const frontPkg = myFiles ? MYFILES_PACKAGE : frontOf(ownPackage) ? ownPackage : ((playground && PG_FRONT_PICKERS.find(frontOf)) || null)
     if (!frontPkg) die(93, `${sub} refused: ${ownPackage} is not the foreground package`)
-    if (frontPkg !== ownPackage) logLine(`PLAYGROUND serial=${serial} front=${frontPkg} (system file picker, MC-2273)`)
+    if (frontPkg !== ownPackage && !myFiles) logLine(`PLAYGROUND serial=${serial} front=${frontPkg} (system file picker, MC-2273)`)
     loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
     logLine(sub === 'swipe'
       ? `swipe uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) from ${x},${y} to ${x2},${y2} over ${durationMs} ms`

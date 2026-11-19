@@ -11,6 +11,7 @@
     import Check from "../UI/GUI/CheckInput.svelte";
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
+    import { postTrashUndo } from "../../ts/libraryUndo";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
     import { alertConfirm, alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
     import { SecretRefError } from "src/ts/secretRef";
@@ -43,6 +44,7 @@
     import { convertCharacterToModule } from "src/ts/interchangeability";
     import { writeLiveCharacter } from "src/ts/liveCharacterWrite";
     import StudioEntryRow from "../Studio/StudioEntryRow.svelte";
+    import StudioToggleLink from "../Studio/StudioToggleLink.svelte";
 
     interface Props {
         // The Studio row sits at the top; a host that already offers Studio itself passes false.
@@ -863,7 +865,7 @@
 
     <Button onclick={async () => {
         const selected = DBState.db.characters[$selectedCharID]
-        removeChar(selected, selected.name)
+        removeChar(selected, selected.name, 'normal', { onTrashed: postTrashUndo })
     }} className="mt-2" size="sm">{ DBState.db.characters[$selectedCharID].type === 'group' ? language.removeGroup : language.removeCharacter}</Button>
     
 {:else if $CharConfigSubMenu === 5}
@@ -1266,6 +1268,7 @@
         <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].translatorNote}></TextAreaInput>
 
         <span class="text-textcolor mt-2">{language.customPromptTemplateToggle} <Help key="customPromptTemplateToggle" /></span>
+        <StudioToggleLink owner={{ type: 'character' }} />
         <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].customModuleToggle}></TextAreaInput>
 
         <span class="text-textcolor">{language.creator}</span>

@@ -38,7 +38,7 @@ export function regexBody(comment: string, pattern: string, replacement: string)
 }
 
 /** The character fields the detail reads that the owner model does not list. */
-export type CharacterTextFixture = Partial<CharacterSource> & { desc?: string, firstMessage?: string, systemPrompt?: string }
+export type CharacterTextFixture = Partial<CharacterSource> & { desc?: string, firstMessage?: string, exampleMessage?: string, systemPrompt?: string }
 
 export function makeTextCharacter(overrides: CharacterTextFixture): CharacterSource {
     return makeCharacter(overrides)
@@ -198,6 +198,15 @@ export function studioLanguageMock(): Record<string, unknown> {
     for (const key of [
         'studioOwnerOtherModules', 'studioOwnerOtherPresets', 'studioMergedPartial', 'studioPluginRetired', 'studioItemCount',
         'studioShowMore', 'studioTruncated', 'studioDeepKindFallback', 'studioDeepItemMissing', 'studioSearchMore', 'studioSearchUnloaded',
+        'studioLoreTestScope', 'studioLoreTestScopeNoMessage', 'studioLoreTestModulesSkipped', 'studioLoreTestBudget',
+        'studioLoreTestInactiveGroup', 'studioLoreTestOrder', 'studioLoreTestTokens', 'studioLoreTestChance',
+        'studioLoreTestMatchedMessage', 'studioLoreTestMatchedTyped', 'studioLoreTestMatchedEntry', 'studioLoreTestForced',
+        'studioLoreTestExcluded', 'studioLoreTestExcludedNoHit', 'studioLoreTestDecorator', 'studioLoreTestInvalidRegex',
+        'studioLoreTestMerged',
+        'ltFindCount', 'ltFindCapped', 'ltReplacedCount', 'sbWrites', 'sbMediaHidden', 'ltTokensVaries',
+        'ltCardHandle', 'ltCardMenu', 'ltCardMoved',
+        'ltPasteCount', 'ltPasteMore', 'ltPasteAdded',
+        'ltExCard', 'ltExCardHandle', 'ltExCardMenu', 'ltExTurns', 'ltExNotUsed',
     ]) table[key] = withArgument(key)
     return new Proxy(table, {
         get: (target, key) => typeof key === 'symbol' ? undefined : key in target ? target[key] : key,

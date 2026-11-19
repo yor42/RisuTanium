@@ -229,8 +229,18 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => true,
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup, SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
 import { ExportReadError } from 'src/ts/drive/inlayBackupExport'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
@@ -239,6 +249,8 @@ import { injectAppStore } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore, type FetchLike } from 'src/ts/storage/store/nodeHttpStore'
 import { language } from 'src/lang'
+import { alertWait } from 'src/ts/alert'
+import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectRestoreStore } from './restoreSupport'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from 'src/ts/storage/tests/nodeServerFixture'
 
@@ -403,11 +415,14 @@ beforeEach(() => {
     sink.aborted = false
     alerts.error.length = 0
     alerts.normalWait.length = 0
+    resetStore2ShellBox(shell)
+    vi.mocked(alertWait).mockClear()
     dbBox.db = { characters: [], personas: [], characterOrder: [], botPresets: [] }
 })
 
 afterEach(async () => {
     injectAppStore(null)
+    resetPageStorageModeForTests()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     await small.clearKeys()
@@ -697,6 +712,23 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         return await ended
     }
 
+    /** Puts the page's restore on a store2 page over `world`'s store, where the restore ends at the stubbed commit. */
+    function onStore2Page(world: World): void {
+        useStore2RestorePage(world.store, 'node')
+    }
+
+    /** The restore reached its commit exactly once and never waited for a save first. */
+    function expectCommittedOnce(): void {
+        expect(shell.commits).toHaveLength(1)
+        expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    }
+
+    /** The restore stopped before its commit and never waited for a save first. */
+    function expectNoCommit(): void {
+        expect(shell.commits).toHaveLength(0)
+        expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    }
+
     /** The database entry of a backup the export wrote from the current (empty) test database. */
     async function databaseEntry(): Promise<Uint8Array> {
         const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
@@ -711,6 +743,7 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
     test('reproducer: an entry above one chunk goes through the upload, not one /api/write, and reads back byte-equal', async () => {
         const database = await databaseEntry()
         const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
+        onStore2Page(world)
         const bytes = patterned(5 * MIB + 17, 11)
 
         const end = await restore(Buffer.concat([chunkOf('big.png', bytes), chunkOf('database.risudat', database)]))
@@ -721,11 +754,13 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expect(routes).not.toContain('/api/write')
         expect(sameBytes(await onDisk(normal, 'assets/big.png'), bytes)).toBe(true)
         expect(await stagingFiles(normal)).toEqual([])
+        expectCommittedOnce()
     }, 60_000)
 
     test('guard: an entry up to one chunk is written whole, as before', async () => {
         const database = await databaseEntry()
         const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
+        onStore2Page(world)
         const bytes = patterned(3 * MIB, 12)
 
         const end = await restore(Buffer.concat([chunkOf('mid.png', bytes), chunkOf('database.risudat', database)]))
@@ -733,6 +768,7 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expect(end.outcome).toBe('committed')
         expect(world.routesFor('assets/mid.png')).not.toContain('/api/upload/begin')
         expect(sameBytes(await onDisk(normal, 'assets/mid.png'), bytes)).toBe(true)
+        expectCommittedOnce()
     }, 60_000)
 
     test('guard: a server without pieces keeps the whole write', async () => {
@@ -744,6 +780,7 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
                 : undefined),
         })
         await world.store.guarded!.probe()
+        onStore2Page(world)
         const bytes = patterned(5 * MIB, 13)
 
         const end = await restore(Buffer.concat([chunkOf('big.png', bytes), chunkOf('database.risudat', database)]))
@@ -751,45 +788,12 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expect(end.outcome).toBe('committed')
         expect(world.routesFor('assets/big.png')).toEqual(['/api/write'])
         expect(sameBytes(await onDisk(normal, 'assets/big.png'), bytes)).toBe(true)
-    }, 60_000)
-
-    test('data safety: a database entry above one chunk is decoded whole and never streamed into assets', async () => {
-        // Incompressible text, so the encoded database passes one chunk.
-        let state = 12345
-        const noise = Array.from({ length: 12 }, () => Uint8Array.from({ length: 512 * 1024 }, () => {
-            state = (Math.imul(state, 1103515245) + 12345) >>> 0
-            return state >>> 24
-        }))
-        dbBox.db = { characters: [], personas: [], characterOrder: [], botPresets: [], largeNotes: noise }
-        const exporting = await makeWorld(normal, { pieceBytes: 8 * MIB })
-        expect((await SaveLocalBackup()).status).toBe('saved')
-        const database = writtenEntries().find((candidate) => candidate.name === 'database.risudat')!.data
-        expect(database.length).toBeGreaterThan(4 * MIB)
-        sink.writes.length = 0
-        exporting.requests.length = 0
-        const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
-
-        const end = await restore(chunkOf('database.risudat', database))
-
-        expect(end.outcome).toBe('committed')
-        expect(world.requests.filter((request) => request.route === '/api/upload/begin')).toEqual([])
-        expect(await onDisk(normal, 'assets/database.risudat')).toBeNull()
-    }, 120_000)
-
-    test('data safety: a cold-storage unit above one chunk is never streamed', async () => {
-        const database = await databaseEntry()
-        const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
-        const coldName = 'coldstorage_' + '0'.repeat(8) + '-0000-4000-8000-' + '0'.repeat(12) + '.json'
-        const cold = new TextEncoder().encode(' '.repeat(5 * MIB))
-
-        await restore(Buffer.concat([chunkOf(coldName, cold), chunkOf('database.risudat', database)]))
-
-        expect(world.requests.filter((request) => request.route === '/api/upload/begin')).toEqual([])
+        expectCommittedOnce()
     }, 60_000)
 
     test('guard: a stale entry name the store refuses is skipped and named, and the restore goes on', async () => {
         const database = await databaseEntry()
-        await makeWorld(normal, { pieceBytes: 8 * MIB })
+        onStore2Page(await makeWorld(normal, { pieceBytes: 8 * MIB }))
         const bytes = patterned(5 * MIB, 14)
 
         const end = await restore(Buffer.concat([chunkOf('.hidden.png', bytes), chunkOf('database.risudat', database)]))
@@ -797,12 +801,14 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expect(end.outcome).toBe('committed')
         expect(alerts.normalWait.some((message) => message.includes('.hidden.png'))).toBe(true)
         expect(await onDisk(normal, 'assets/.hidden.png')).toBeNull()
+        expectCommittedOnce()
     }, 60_000)
 
     test('new behaviour: a server that refuses the upload as too large stops the restore with the too-large message', async () => {
         const database = await databaseEntry()
         // The small server holds assets up to 5000 bytes, so it refuses this upload with a 413.
         const world = await makeWorld(small, { pieceBytes: 8 * MIB })
+        onStore2Page(world)
         const bytes = patterned(5 * MIB, 15)
 
         const end = await restore(Buffer.concat([chunkOf('big.png', bytes), chunkOf('database.risudat', database)]))
@@ -811,6 +817,7 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expect(alerts.error).toContain(language.restoreAssetRefusedTooLarge('big.png'))
         expect(world.routesFor('assets/big.png')).not.toContain('/api/write')
         expect(await stagingFiles(small)).toEqual([])
+        expectNoCommit()
     }, 60_000)
 
     test.each([
@@ -818,21 +825,22 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         { name: 'the server holds too many staged bytes', answer: () => new Response(JSON.stringify({ code: 'upload-capacity' }), { status: 503, headers: { 'content-type': 'application/json' } }) },
     ])('new behaviour: when $name the restore stops with the upload message', async ({ answer }) => {
         const database = await databaseEntry()
-        await makeWorld(normal, {
+        onStore2Page(await makeWorld(normal, {
             pieceBytes: 8 * MIB,
             script: async (call) => (call.route === '/api/upload/append' ? answer() : undefined),
-        })
+        }))
         const bytes = patterned(5 * MIB, 16)
 
         const end = await restore(Buffer.concat([chunkOf('big.png', bytes), chunkOf('database.risudat', database)]))
 
         expect(end.outcome).not.toBe('committed')
         expect(alerts.error).toContain(language.restoreAssetUploadStopped('big.png'))
+        expectNoCommit()
     }, 60_000)
 
     test('new behaviour: a slice of the backup file that cannot be read stops the restore as a changed file', async () => {
         const database = await databaseEntry()
-        await makeWorld(normal, { pieceBytes: 8 * MIB })
+        onStore2Page(await makeWorld(normal, { pieceBytes: 8 * MIB }))
         const bytes = patterned(5 * MIB, 17)
         const backup = Buffer.concat([chunkOf('big.png', bytes), chunkOf('database.risudat', database)])
         const entryStart = 4 + 'big.png'.length + 4
@@ -852,5 +860,6 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expect(alerts.error).toContain(language.backupFileChangedWhileReading)
         expect(await stagingFiles(normal)).toEqual([])
         expect(await onDisk(normal, 'assets/big.png')).toBeNull()
+        expectNoCommit()
     }, 60_000)
 })

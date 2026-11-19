@@ -7,15 +7,10 @@
  * the page's sites exist and is not one of them), and the sites share the page's one block-store owner without writing twice or into a
  * generation other than the one the head names.
  *
- * One page (one store spy, one owner) is driven through every site that can
- * reach the key: the boot archive pass's conversion and its later commits (the
- * production commit seam), the save loop's step, a character import (which
- * reaches the save only through the save loop's step and also writes `assets/`
- * keys directly), the manual clean-up,
- * the internal-backup load and the `.bin` restore. The `.bin` restore and the
- * internal-backup load each end the page they run on (they relaunch it); the
- * store and its record carry over to the second one, with the write lock
- * reopened as the relaunched page would have it.
+ * One page (one store spy, one owner) is driven through the boot archive
+ * pass's conversion and its later commits (the production commit seam) and the
+ * save loop's step. The `.bin` restore and the internal-backup load run only on
+ * a store2 page and are covered by the store2 restore suites.
  *
  * Production writers of `database/database.bin` the census was built from:
  * `grep` for the key, `MAIN_FILE_KEY`, `LEGACY_MAIN_FILE_KEY` and
@@ -45,7 +40,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createFakeStore, type FakeStore } from './blockStoreHarness'
-import { injectRestoreStore, committedTree } from 'src/ts/drive/tests/restoreSupport'
+import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
 
 //#region shared observation state
 
@@ -176,17 +171,11 @@ vi.mock(import('src/ts/stores.svelte'), async () => {
 
 //#endregion
 
-import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
-import { loadInternalBackup } from 'src/ts/drive/internalBackup'
-import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { getPageBlockOwner } from 'src/ts/storage/pageBlockOwner'
-import { getPageStorageMode, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
-import { fingerprintMainFile } from 'src/ts/storage/mainFileFingerprint'
-import { performSaveStep } from 'src/ts/storage/saveStep'
+import { setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { treeToBlockSet } from 'src/ts/storage/treeToBlockSet'
 import { createBootPassSeams } from 'src/ts/storage/bootPassSeams'
-import { runManualCleanup } from 'src/ts/storage/manualCleanup'
-import { recordLoadTimeListing, resetLoadTimeListingForTests } from 'src/ts/storage/loadTimeListing'
+import { resetLoadTimeListingForTests } from 'src/ts/storage/loadTimeListing'
 import { layoutFileBytes, loadBlockProfile, type BootLoadContext } from 'src/ts/storage/bootBlockLoad'
 import type { BootArchiveSession } from 'src/ts/storage/bootArchivePass'
 
@@ -194,7 +183,6 @@ import type { BootArchiveSession } from 'src/ts/storage/bootArchivePass'
 
 const MAIN = 'database/database.bin'
 const HEAD = 'blocks/head'
-const SNAPSHOT_KEY = 'database/dbbackup-17000000000.bin'
 
 function character(chaId: string, name: string, extra: Record<string, unknown> = {}): Database['characters'][number] {
     return { chaId, name, type: 'character', chatPage: 0, chats: [{ id: `${chaId}-chat-0`, message: [], note: '', name: '', localLore: [] }], ...extra } as unknown as Database['characters'][number]
@@ -215,47 +203,7 @@ function tree(characters: Database['characters'], extra: Record<string, unknown>
     } as unknown as Database
 }
 
-function u32le(n: number): Uint8Array {
-    const buf = new Uint8Array(4)
-    new DataView(buf.buffer).setUint32(0, n, true)
-    return buf
-}
-
-function chunk(name: string, data: Uint8Array): Uint8Array {
-    const nameBuf = new TextEncoder().encode(name)
-    const out = new Uint8Array(4 + nameBuf.length + 4 + data.length)
-    out.set(u32le(nameBuf.length), 0)
-    out.set(nameBuf, 4)
-    out.set(u32le(data.length), 4 + nameBuf.length)
-    out.set(data, 8 + nameBuf.length)
-    return out
-}
-
-async function blockFile(db: Database): Promise<Uint8Array> {
-    const encoder = new RisuSaveEncoder()
-    await encoder.init(db, { compression: false })
-    await encoder.set(db, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
-    return new Uint8Array(encoder.encode()!)
-}
-
 let store: FakeStore
-let capturedInput: HTMLInputElement | null = null
-
-function useStore(): FakeStore {
-    store = createFakeStore({ versioned: false })
-    injectRestoreStore(store, 'tauri')
-    return store
-}
-
-async function runBinRestore(file: Uint8Array): Promise<void> {
-    LoadLocalBackup()
-    const input = capturedInput
-    if (!input) {
-        throw new Error('LoadLocalBackup did not create a file input')
-    }
-    Object.defineProperty(input, 'files', { value: [new File([file as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
-    await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
-}
 
 /** Every key a write, delete or deleteMany of the store touched, with the kind of call. */
 function touches(key: string): Array<'write' | 'delete' | 'deleteMany'> {
@@ -264,8 +212,10 @@ function touches(key: string): Array<'write' | 'delete' | 'deleteMany'> {
         .map((op) => op.kind as 'write' | 'delete' | 'deleteMany')
 }
 
-function committedPrompt(): Promise<unknown> {
-    return committedTree().then((value) => value?.mainPrompt)
+function useStore(): FakeStore {
+    store = createFakeStore({ versioned: false })
+    injectRestoreStore(store, 'tauri')
+    return store
 }
 
 //#endregion
@@ -280,91 +230,12 @@ beforeEach(() => {
     writeLock.reset()
     resetLoadTimeListingForTests()
     useStore()
-    capturedInput = null
-    const realCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        const el = realCreateElement(tag)
-        if (tag === 'input') {
-            capturedInput = el as HTMLInputElement
-        }
-        return el
-    })
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'log').mockImplementation(() => { })
 })
 
 afterEach(() => {
     vi.restoreAllMocks()
-})
-
-describe('R57 invariant 1: a block-store page never writes database/database.bin', () => {
-    test('one page through the pass conversion, saves, an import, the clean-up and both restores: the key is never written, and the only touch is the rename finish\'s delete', async () => {
-        // The page boots on a legacy profile: the main file is the save.
-        const main = encodeRisuSaveLegacy(tree([character('old-a', 'Old A')], { mainPrompt: 'old prompt' }), 'noCompression')
-        store.plant(MAIN, main)
-        setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(main) })
-        const owner = (await getPageBlockOwner())!
-        const seams = createBootPassSeams({ owner, store, readMainFile: async () => (await store.read(MAIN)).bytes })
-        store.ops.length = 0
-
-        // The boot archive pass's commit seam converts the profile (the pass's production commit path).
-        await seams.commit(await treeToBlockSet(tree([character('old-a', 'Old A')], { mainPrompt: 'converted' })))
-        expect(getPageStorageMode().kind).toBe('block')
-        expect(store.peek(MAIN), 'the rename finish moved the main file aside').toBeNull()
-        expect(store.keys('database/database.pre-blocks').length).toBe(1)
-
-        // The save loop's step.
-        const edited = tree([character('old-a', 'Old A')], { mainPrompt: 'edited' })
-        expect(await performSaveStep({ owner, store }, { input: await treeToBlockSet(edited) })).toMatchObject({ kind: 'saved', wrote: true })
-
-        // The pass commits again on a block page (a later archive run).
-        await seams.commit(await treeToBlockSet(tree([character('old-a', 'Old A')], { mainPrompt: 'after the pass' })))
-
-        // A character import changes the tree and reaches storage only through the save loop's step.
-        const imported = tree([character('old-a', 'Old A'), character('imported-b', 'Imported B')], { mainPrompt: 'after the pass' })
-        expect(await performSaveStep({ owner, store }, { input: await treeToBlockSet(imported) })).toMatchObject({ kind: 'saved', wrote: true })
-
-        // The manual clean-up: the pre-conversion copy is offered and kept.
-        await recordLoadTimeListing()
-        box.confirmAnswers.push(false)
-        await runManualCleanup()
-        expect(box.errors).toEqual([])
-
-        // The internal-backup load.
-        store.plant(SNAPSHOT_KEY, await blockFile(tree([character('snap-a', 'Snap A')], { mainPrompt: 'from the snapshot' })))
-        await loadInternalBackup()
-        expect(await committedPrompt()).toBe('from the snapshot')
-
-        // The `.bin` restore on the relaunched page.
-        writeLock.reset()
-        await runBinRestore(new Uint8Array([...chunk('database.risudat', await blockFile(tree([character('bin-a', 'Bin A')], { mainPrompt: 'from the .bin' })))]))
-        expect(await committedPrompt()).toBe('from the .bin')
-
-        expect(box.errors).toEqual([])
-        expect(touches(MAIN).filter((kind) => kind === 'write'), 'writes of the main file').toEqual([])
-        expect(touches(MAIN), 'every touch of the main file').toEqual(['delete'])
-        expect(store.keys('database/').filter((key) => key === MAIN)).toEqual([])
-    })
-
-    test('guard: a block page that finds a stale database.bin next to its blocks leaves it untouched through a save, a restore and a clean-up that declines to delete it', async () => {
-        const owner = (await getPageBlockOwner())!
-        expect((await owner.replaceWholeState(await treeToBlockSet(tree([character('a', 'A')])), { requireAbsentHead: true })).kind).toBe('won')
-        setPageStorageMode({ kind: 'block' })
-        const stale = new TextEncoder().encode('a main file another program wrote')
-        store.plant(MAIN, stale)
-        store.ops.length = 0
-
-        expect(await performSaveStep({ owner, store }, { input: await treeToBlockSet(tree([character('a', 'A')], { mainPrompt: 'edited' })) })).toMatchObject({ kind: 'saved', wrote: true })
-        await recordLoadTimeListing()
-        box.confirmAnswers.push(false)
-        await runManualCleanup()
-        store.plant(SNAPSHOT_KEY, await blockFile(tree([character('snap-a', 'Snap A')])))
-        store.ops.length = 0
-        await loadInternalBackup()
-
-        expect(touches(MAIN)).toEqual([])
-        expect(store.peek(MAIN)).toEqual(stale)
-    })
 })
 
 describe('1c-1: one owner per page across sites', () => {
@@ -377,9 +248,9 @@ describe('1c-1: one owner per page across sites', () => {
 
         await seams.commit(await treeToBlockSet(next))
         store.ops.length = 0
-        const step = await performSaveStep({ owner, store }, { input: await treeToBlockSet(next) })
+        const step = await owner.commitSave(await treeToBlockSet(next))
 
-        expect(step).toMatchObject({ kind: 'saved', wrote: false })
+        expect(step).toMatchObject({ kind: 'committed', wrote: false })
         expect(store.mutating(), 'writes of the first save iteration').toEqual([])
     })
 
@@ -419,9 +290,9 @@ describe('1c-1: one owner per page across sites', () => {
         store.ops.length = 0
 
         const edited = tree([character('from-backup', 'From backup edited')])
-        const step = await performSaveStep({ owner: loader, store }, { input: await treeToBlockSet(edited) })
+        const step = await loader.commitSave(await treeToBlockSet(edited))
 
-        expect(step).toMatchObject({ kind: 'saved', wrote: true })
+        expect(step).toMatchObject({ kind: 'committed', wrote: true })
         expect(loader.committedState()?.generation, 'the edit committed into the backup\'s generation').toBe(live.generation)
         expect(store.mutating().filter((op) => op.kind === 'write').every((op) => op.key.startsWith(`blocks/${live.generation}/`)), 'every write of the edit is inside that generation').toBe(true)
         expect(store.peek(HEAD), 'a commit never writes the head').not.toBeNull()

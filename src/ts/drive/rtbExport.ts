@@ -30,7 +30,7 @@ import { assetBatchWriteMode, isAssetBatchReadAvailable, listAssetsSized, readAs
 import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, exportAssetPieceSource, exportTauriPieceSource, nodeAssetPieceSource } from './assetPieces'
 import { moduleCommitVerdict, isSaveClean, type LocalWriter } from '../globalApi.svelte'
 import { legacyInlayStore, listAppInlayKeys, withInlayLock } from '../process/files/inlayStore'
-import { ensureGestureForWriter, runExport, type ExportSession } from './exportShell'
+import { ensureGestureForWriter, openOutsideBusy, runExport, type ExportSession } from './exportShell'
 import { openInlay } from './inlayBackupExport'
 import type { ExportOmitted, ExportOutcome } from './operationEnd'
 import { CoalescingSink } from './rtb/coalescingSink'
@@ -162,7 +162,7 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
     emit({ phase: 'opening' })
     session.cancel.throwIfCancelled()
     await ensureGestureForWriter(session)
-    const writer = await deps.openWriter(session, fileName)
+    const writer = await openOutsideBusy(session.busy, () => deps.openWriter(session, fileName))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if (writer === null) {
@@ -308,7 +308,7 @@ export async function runRtbExportGuarded(deps: RtbExportDeps, options: RtbExpor
         return { status: 'refused', reason: 'no-session' }
     }
     const holder: { report: RtbExportReport | null } = { report: null }
-    const outcome = await withBusy('backupSave', () => runExport((session) => writeExport(deps, options, session, backend, holder)))
+    const outcome = await withBusy('backupSave', (busy) => runExport((session) => writeExport(deps, options, session, backend, holder), busy))
     return { status: 'ended', outcome, report: outcome.status === 'saved' ? holder.report : null }
 }
 

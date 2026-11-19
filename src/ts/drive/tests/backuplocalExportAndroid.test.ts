@@ -30,7 +30,11 @@ const platformBox = vi.hoisted(() => {
     return { isTauri: true }
 })
 const BACKUP_PATH = vi.hoisted(() => 'backup-output.bin')
-const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
+const backupSink = vi.hoisted(() => ({
+    writes: [] as Uint8Array[],
+    /** Runs once per export, at the first write that reaches the sink. */
+    onFirstWrite: null as (() => void) | null,
+}))
 const osBox = vi.hoisted(() => ({ os: 'android' }))
 const fakeFs = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true }))
 const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fakeFs, { cap: 8 * 1024 * 1024 }))
@@ -93,6 +97,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     ...fakeFs.module,
     writeFile: async (path: string, data: Uint8Array, options?: { createNew?: boolean, baseDir?: number }) => {
         if (path === BACKUP_PATH) {
+            if (backupSink.writes.length === 0) {
+                backupSink.onFirstWrite?.()
+            }
             backupSink.writes.push(data.slice())
             return
         }
@@ -343,7 +350,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 
 //#endregion
 
-import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
+import { SaveLocalBackup, SavePartialLocalBackup, exportThisTabBackup } from 'src/ts/drive/backuplocal'
 import { getDatabase } from 'src/ts/storage/database.svelte'
 import { readAppInlayRecord, writeAppInlay, type InlayAsset } from 'src/ts/process/files/inlayStore'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
@@ -351,7 +358,13 @@ import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { CHUNK_MAX, resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
-import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { beginBusy, busyKinds, isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { inFlightKinds } from 'src/ts/process/inFlightWork'
+import { refuseBackupLoadWhileBusy } from 'src/ts/drive/backupWorkGuard'
+import { save } from '@tauri-apps/plugin-dialog'
+import { alertClear, alertWait } from 'src/ts/alert'
+import { alertStore } from 'src/ts/stores.svelte'
+import { get } from 'svelte/store'
 import type { ImportPhaseRingHandle } from 'src/ts/drive/importPhaseRing'
 import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
 import { createTauriBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -1007,5 +1020,130 @@ describe('store2 batch stats cover the export only', () => {
         const note = collectedNote()
         expect(numberIn(note, 'store2BatchCalls')).toBe(0)
         expect(numberIn(note, 'store2BatchOffCalls')).toBeGreaterThanOrEqual(1)
+    })
+})
+
+describe('a .bin export waiting on the save dialog', () => {
+    type Entry = { name: string, run: () => Promise<{ status: string }> }
+    const entries: Entry[] = [
+        { name: 'SaveLocalBackup', run: () => SaveLocalBackup() },
+        { name: 'SavePartialLocalBackup', run: () => SavePartialLocalBackup() },
+        { name: 'exportThisTabBackup', run: () => exportThisTabBackup() },
+    ]
+
+    /** Makes the next save dialog answer only when `deliver` is called. */
+    function holdSaveDialog(): { deliver: (path: string | null) => void } {
+        let deliver: (path: string | null) => void = () => { }
+        vi.mocked(save).mockImplementationOnce(() => new Promise<string | null>((resolve) => { deliver = resolve }))
+        return { deliver: (path) => deliver(path) }
+    }
+
+    beforeEach(() => {
+        vi.mocked(save).mockClear()
+        vi.mocked(alertWait).mockClear()
+        vi.mocked(alertClear).mockClear()
+    })
+
+    afterEach(() => {
+        backupSink.onFirstWrite = null
+    })
+
+    // Regression reproducer (R1 to R3): the dialog's entry refused a backup Load for as long as the dialog stayed open.
+    test.each(entries)('$name: a pending Android save dialog does not refuse a backup Load; the first write does', async ({ run }) => {
+        const dialog = holdSaveDialog()
+        const atFirstWrite: { refused: boolean, kinds: string[] }[] = []
+        backupSink.onFirstWrite = () => { atFirstWrite.push({ refused: refuseBackupLoadWhileBusy(), kinds: busyKinds() }) }
+
+        const exporting = run()
+        await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+
+        expect(refuseBackupLoadWhileBusy()).toBe(false)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        // Compatibility legs: every other reader still counts the entry.
+        expect(isBusy()).toBe(true)
+        expect(busyKinds()).toContain('backupSave')
+        expect(inFlightKinds()).toContain('busy')
+
+        dialog.deliver(BACKUP_PATH)
+        const outcome = await exporting
+
+        expect(outcome.status).toBe('saved')
+        expect(atFirstWrite).toEqual([{ refused: true, kinds: ['backupSave'] }])
+        expect(isBusy()).toBe(false)
+        expect(inFlightKinds()).not.toContain('busy')
+    })
+
+    // Compatibility guard (G1): a dismissed dialog gives today's outcome and leaves nothing registered.
+    test('a dismissed Android save dialog ends the export as declined and leaves no entry or token', async () => {
+        const dialog = holdSaveDialog()
+        const exporting = SaveLocalBackup()
+        await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+
+        dialog.deliver(null)
+        const outcome = await exporting
+
+        expect(outcome).toMatchObject({ status: 'declined', cause: 'save-dialog-cancelled' })
+        expect(isBusy()).toBe(false)
+        expect(inFlightKinds()).not.toContain('busy')
+        expect(backupSink.writes).toHaveLength(0)
+    })
+
+    // Compatibility guard (G2): work registered during the dialog never stops the export.
+    test('registered work begun during the dialog does not stop the export', async () => {
+        const dialog = holdSaveDialog()
+        const exporting = SaveLocalBackup()
+        await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+        const other = beginBusy('mcpWrite')
+
+        dialog.deliver(BACKUP_PATH)
+        const outcome = await exporting
+        other.end()
+
+        expect(outcome.status).toBe('saved')
+        expect(backupSink.writes.length).toBeGreaterThan(0)
+    })
+
+    // Compatibility guard (G5): a desktop dialog is modal and keeps refusing a Load.
+    test('a desktop save dialog keeps refusing a backup Load while it is pending', async () => {
+        osBox.os = 'windows'
+        resetByteTransportForTests()
+        const dialog = holdSaveDialog()
+        const exporting = SaveLocalBackup()
+        await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+
+        expect(refuseBackupLoadWhileBusy()).toBe(true)
+
+        dialog.deliver(BACKUP_PATH)
+        expect((await exporting).status).toBe('saved')
+    })
+
+    // Compatibility guard (G16 a): the export's own wait stays on screen at the dialog, with no cancel callback, and
+    // nothing replaced or cleared it. Pins what the user can reach, so a later change of that is noticed.
+    test('the alert store still holds the export\'s own wait, without a cancel, while the dialog is pending', async () => {
+        vi.mocked(alertWait).mockImplementation((msg: string, onCancel?: () => void) => {
+            const posted = { type: 'wait' as const, msg, ...(onCancel ? { onCancel } : {}) }
+            alertStore.set(posted as never)
+            return posted as never
+        })
+        vi.mocked(alertClear).mockImplementation(() => { alertStore.set({ type: 'none', msg: '' } as never) })
+        try {
+            const dialog = holdSaveDialog()
+            const exporting = SaveLocalBackup()
+            await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+
+            const calls = vi.mocked(alertWait).mock.calls
+            const last = vi.mocked(alertWait).mock.results.at(-1)?.value
+            expect(calls.at(-1)).toHaveLength(1)
+            expect(get(alertStore)).toBe(last)
+            expect(get(alertStore)).not.toHaveProperty('onCancel')
+            expect(alertClear).not.toHaveBeenCalled()
+
+            dialog.deliver(BACKUP_PATH)
+            await exporting
+        } finally {
+            vi.mocked(alertWait).mockReset()
+            vi.mocked(alertClear).mockReset()
+            alertStore.set({ type: 'none', msg: '' } as never)
+        }
     })
 })

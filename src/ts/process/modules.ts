@@ -32,7 +32,8 @@ import { markBootWrite } from "../bootWindow"
 import { useModuleById } from "./moduleUse"
 import { hasModuleStubKey, isModuleStub } from "../storage/moduleStub"
 import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
-import { withBusy } from "./memory/busyActions"
+import { withBusy, type BusyHandle } from "./memory/busyActions"
+import { openOutsideBusy } from "../drive/exportDialogBusy"
 import { StoreBlobUnsupportedError } from "../storage/store/errors"
 import { assetByteLimit, charxLimits } from "./processzip"
 import { IMPORT_PIECE_BYTES, WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
@@ -69,12 +70,12 @@ export interface RisuModule{
 export function exportModule(module:RisuModule, arg:{
     alertEnd?:boolean
 } = {}){
-    return withBusy('export', () => writeModuleCard(module, arg))
+    return withBusy('export', (busy) => writeModuleCard(module, arg, busy))
 }
 
 async function writeModuleCard(module:RisuModule, arg:{
     alertEnd?:boolean
-}){
+}, busy:BusyHandle){
     const alertEnd = arg.alertEnd ?? true
 
     const char = convertModuleToCharacter(module)
@@ -92,7 +93,7 @@ async function writeModuleCard(module:RisuModule, arg:{
         char.extentions['moduleNoneImage'] = true
     }
     const writer = new LocalWriter()
-    if(!(await writer.init(module.name + '.module', ['charx']))){
+    if(!(await openOutsideBusy(busy, () => writer.init(module.name + '.module', ['charx'])))){
         //the person cancelled the save dialog
         return
     }
@@ -140,7 +141,7 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
         return apb.buffer
     }
     // The value is never the file: it is not kept alive, and the caller (`ModuleSettings`) ignores it.
-    return withBusy('export', () => writeRisumFile(snapshot, entries, alertEnd))
+    return withBusy('export', (busy) => writeRisumFile(snapshot, entries, alertEnd, busy))
 }
 
 /**
@@ -195,7 +196,7 @@ async function encodeRisumRecordBody(key:string, showWait:() => void):Promise<Ui
  * awaited between the end of the size check and the writer's `init`, to keep the gesture alive; if it has lapsed the
  * writer falls back to a whole-file in-memory Blob, so that route does not bound memory.
  */
-async function writeRisumFile(snapshot:RisuModule, entries:ExportAssetEntry[], alertEnd:boolean):Promise<null>{
+async function writeRisumFile(snapshot:RisuModule, entries:ExportAssetEntry[], alertEnd:boolean, busy:BusyHandle):Promise<null>{
     let cancel: ExportCancelToken | undefined
     let gate: ExportWaitGate | undefined
     let localWriter: LocalWriter | undefined
@@ -208,7 +209,7 @@ async function writeRisumFile(snapshot:RisuModule, entries:ExportAssetEntry[], a
         }
         const writer = new LocalWriter()
         localWriter = writer
-        if(!(await writer.init('RisuM File', ['risum'], risumFileName(snapshot.name), cancel))){
+        if(!(await openOutsideBusy(busy, () => writer.init('RisuM File', ['risum'], risumFileName(snapshot.name), cancel)))){
             //the person dismissed the save dialog: nothing was exported, so nothing is said
             gate?.clear()
             return null

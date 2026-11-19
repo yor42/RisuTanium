@@ -7,7 +7,8 @@ import { getResidency, isEntityUnitKey } from '../storage/store2/residencyActive
 import { coldUnitCharacter } from '../process/coldCharacter'
 import { isCharacterEntry, isUsableCharacterId } from '../storage/characterIds'
 import { kvBlockNameOf } from '../storage/risuSaveV0'
-import { forkOnlyChatLabels, withoutForkOnlyChatData, type ForkOnlyChatLabel } from './exportAlternatives'
+import { withoutForkOnlyChatData, type ForkOnlyChatLabel } from './exportAlternatives'
+import { branchChatLabels, expandBranchChats } from './exportBranches'
 import { v4 as uuidv4 } from 'uuid'
 import { MEASURE } from '../process/memory/measureFlag'
 import { deflateSync, inflateSync } from 'fflate'
@@ -310,12 +311,14 @@ function stubElapsed(startedAt: number): number {
 
 /**
  * The body of the unit entry of `character`: `{ character }` without the trash time, which only the stub carries, encoded.
- * A `.bin` carries no fork-only chat data; the body is encoded from a copy without it. A character whose text cannot be
- * encoded gives `null` and is exported whole.
+ * A `.bin` carries no fork-only chat data; the body is encoded from a copy without it, after the alternatives a chat
+ * continued from became extra chats. A body is minted only before the prompts, and its labels name those chats, so
+ * every alternative that is expanded here was named. A character whose text cannot be encoded gives `null` and is
+ * exported whole.
  */
 function stubUnitBody(character: Slot): Uint8Array | null {
     try {
-        return new TextEncoder().encode(JSON.stringify({ character: withoutForkOnlyChatData(coldUnitCharacter(character)) }))
+        return new TextEncoder().encode(JSON.stringify({ character: withoutForkOnlyChatData(expandBranchChats(coldUnitCharacter(character), () => true, uuidv4).character) }))
     } catch {
         return null
     }
@@ -633,7 +636,7 @@ export async function readStubsForExport(db: Pick<Database, 'characters' | 'upst
                     stubStats.encodeMsMax = Math.max(stubStats.encodeMsMax, encodeElapsed)
                 }
             }
-            const omitted = forkOnlyChatLabels(copy.character)
+            const omitted = branchChatLabels(copy.character, () => true)
             const body = stubUnitBody(copy.character)
             if (body === null) {
                 noteEncode()
@@ -905,8 +908,8 @@ export function mergePluginStorage(collected: ColdStorageBackupCollection, plugi
 /**
  * The chats whose fork-only data this export leaves out, known before the writer opens: those of the page's resident
  * characters, of the characters read for stubs (inlined or minted as unit entries) and of the units already collected.
- * Each chat appears once; the same chat read through two sources holds the kinds of both. The prompts before the export
- * name them; a kind found only later is reported afterwards.
+ * Each chat appears once; the same chat read through two sources holds the kinds of both, and the first account of what
+ * its alternatives become. The prompts before the export name them; a kind found only later is reported afterwards.
  */
 export function exportForkOnlyLabels(db: Pick<Database, 'characters'>, cold: BackupColdStorage): ForkOnlyChatLabel[] {
     const labels = new Map<string, ForkOnlyChatLabel>()
@@ -916,13 +919,16 @@ export function exportForkOnlyLabels(db: Pick<Database, 'characters'>, cold: Bac
             labels.set(label.key, { ...label, kinds: [...label.kinds] })
         } else {
             known.kinds.push(...label.kinds.filter((kind) => !known.kinds.includes(kind)))
+            if (known.branches === undefined && label.branches !== undefined) {
+                known.branches = label.branches
+            }
         }
     }
     for (const slot of Array.isArray(db.characters) ? db.characters : []) {
-        forkOnlyChatLabels(slot).forEach(add)
+        branchChatLabels(slot, () => true).forEach(add)
     }
     for (const character of cold.inlined.values()) {
-        forkOnlyChatLabels(character).forEach(add)
+        branchChatLabels(character, () => true).forEach(add)
     }
     for (const entry of cold.stubEntries.values()) {
         entry.omittedChatData?.forEach(add)

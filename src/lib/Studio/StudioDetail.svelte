@@ -3,7 +3,7 @@
     import { language } from '../../lang'
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
-    import { currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { currentModuleAck, currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
@@ -16,6 +16,7 @@
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioExampleForm from './StudioExampleForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
@@ -104,9 +105,16 @@
     const characterFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'basic')
     const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
-    const formLive = $derived(characterFormLive || assetFormLive || chatFormLive)
-    // The character's toggle list builder; module and preset toggles keep the read-only text until their write exists.
-    const toggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
+    // The advanced kind of a loaded character: its example dialogue is the one live part of it.
+    const exampleFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'advanced')
+    const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive)
+    // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not
+    // shared). A preset's toggles keep the read-only text until their write exists.
+    const characterToggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
+    const moduleToggleBuilderLive = $derived(openableModuleId !== null && !moduleIdShared && kindNode?.kind === 'toggles')
+    const toggleBuilderLive = $derived(characterToggleBuilderLive || moduleToggleBuilderLive)
+    // A module whose id several rows share: its toggles stay read-only text, as its assets do.
+    const moduleToggleShared = $derived(openableModuleId !== null && moduleIdShared && kindNode?.kind === 'toggles')
     // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
 
@@ -166,7 +174,7 @@
         {#if model}
             <StudioCombined {model} kind={combinedKind} />
         {/if}
-        <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
+        <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{combinedKind === 'toggles' ? language.studioTgCombinedHint : language.studioReadOnlyNote}</p>
     {:else if owner}
         <div class="flex flex-wrap items-center gap-2">
             <h2 id="studio-detail-title" data-part="studio-detail-title" class="min-w-0 break-words text-lg font-bold">{owner.name !== '' ? owner.name : (roleLabel ?? owner.name)}</h2>
@@ -207,9 +215,20 @@
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
                 {/if}
             {/if}
-            {#if toggleBuilderLive}
+            {#if characterToggleBuilderLive}
                 <StudioStatusChip ack={currentVisitAck()} />
-                <StudioToggleBuilder chaId={studioScreen.chaId} />
+                <!-- Keyed by the owner: a new owner builds the port, stem and keys again, and the old builder closes its step. -->
+                {#key ownerKey}
+                    <StudioToggleBuilder target={{ kind: 'character', chaId: studioScreen.chaId }} />
+                {/key}
+            {:else if moduleToggleBuilderLive && moduleRawId !== null}
+                <StudioStatusChip ack={currentModuleAck()} />
+                {#key ownerKey}
+                    <StudioToggleBuilder target={{ kind: 'module', moduleId: moduleRawId }} />
+                {/key}
+            {/if}
+            {#if moduleToggleShared}
+                <p role="status" data-part="studio-toggle-module-shared" class="text-sm text-textcolor2">{language.studioRefusalModuleSharedId}</p>
             {/if}
             {#if formLive}
                 <StudioStatusChip ack={currentVisitAck()} />
@@ -221,6 +240,8 @@
                     {#key ownerKey}
                         <StudioAssetList chaId={characterId} enabledModules={enabledModuleAssets} />
                     {/key}
+                {:else if exampleFormLive}
+                    <StudioExampleForm chaId={studioScreen.chaId} />
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}

@@ -171,14 +171,13 @@ vi.mock(import('src/ts/storage/manualCleanup'), async (importOriginal) => {
     return { ...original, runManualCleanup: vi.fn(original.runManualCleanup) }
 })
 
-import { forageStorage, getDbBackups } from 'src/ts/globalApi.svelte'
+import { forageStorage } from 'src/ts/globalApi.svelte'
 import { cleanColdStorage, deleteColdStorageUnits } from 'src/ts/process/coldstorage.svelte'
 import { runManualCleanup } from 'src/ts/storage/manualCleanup'
 import { queueInlayCleanupForCharacters, getInlayCleanupState, resetInlayCleanupRefusalForTests } from 'src/ts/process/files/inlayCleanup'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { disablePageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
-import { replaceWithRestoredSet } from 'src/ts/drive/restoreReplace'
-import { recordsLoadTimeListing, resetPageStorageModeForTests, setPageStorageMode, startsLegacyStartupCleanup, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
+import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { getLoadTimeListing, recordLoadTimeListing, resetLoadTimeListingForTests } from 'src/ts/storage/loadTimeListing'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
@@ -256,25 +255,6 @@ afterEach(() => {
 })
 
 describe('on a store2 page no legacy deleter deletes', () => {
-    test('reproducer: getDbBackups lists all 22 numbered backups and prunes none', async () => {
-        enterStore2Page()
-
-        const times = await getDbBackups()
-
-        expect(times).toHaveLength(22)
-        expect(store.deletes).toEqual([])
-    })
-
-    test.each<[string, PageStorageMode]>([
-        ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
-        ['unset', { kind: 'unset' }],
-    ])('reproducer: getDbBackups on a %s page lists the backups and prunes none', async (_label, mode) => {
-        enterPage(mode)
-
-        expect(await getDbBackups()).toHaveLength(22)
-        expect(store.deletes).toEqual([])
-    })
-
     test('reproducer (alert path only): the manual clean-up returns before any store read, with no refusal alert and no delete', async () => {
         enterStore2Page()
 
@@ -328,25 +308,9 @@ describe('on a store2 page no legacy deleter deletes', () => {
         expect(store.deletes).toEqual([])
     })
 
-    test('guard: the main-file rename finish is unreachable: the restore replace has no block owner and touches no key', async () => {
-        // The store2 boot disables the block owner before it registers the residency.
-        disablePageBlockOwner()
-        enterStore2Page()
-        store.files.set('database/database.bin', Uint8Array.from([9]))
-        const writesBefore = store.writes.length
-
-        await expect(replaceWithRestoredSet({} as unknown as Parameters<typeof replaceWithRestoredSet>[0], () => false)).rejects.toThrow('no block store')
-
-        expect(store.deletes).toEqual([])
-        expect(store.writes).toHaveLength(writesBefore)
-        expect(store.files.has('database/database.bin')).toBe(true)
-    })
-
-    test('guard: the startup clean-up does not start and the load-time listing is not recorded', async () => {
+    test('guard: no load-time listing is recorded', async () => {
         enterStore2Page()
 
-        expect(startsLegacyStartupCleanup()).toBe(false)
-        expect(recordsLoadTimeListing()).toBe(false)
         expect(getLoadTimeListing()).toBeNull()
         expect(store.lists).toEqual([])
     })
@@ -362,7 +326,6 @@ describe('on a store2 page no legacy deleter deletes', () => {
     test('reproducer: the whole sweep of entries leaves no delete, no removeItem and no inlay removal', async () => {
         enterStore2Page()
 
-        await getDbBackups()
         await runManualCleanup()
         await cleanColdStorage()
         await deleteColdStorageUnits([UNIT])
@@ -376,13 +339,6 @@ describe('on a store2 page no legacy deleter deletes', () => {
 })
 
 describe('control: on a block page the same entries delete or reach past the refusal', () => {
-    test('guard: getDbBackups prunes the two oldest backups', async () => {
-        enterPage({ kind: 'block' })
-
-        expect(await getDbBackups()).toHaveLength(20)
-        expect(store.deletes).toEqual([`${BACKUP_PREFIX}1001.bin`, `${BACKUP_PREFIX}1002.bin`])
-    })
-
     test('guard: deleteColdStorageUnits removes the unit', async () => {
         enterPage({ kind: 'block' })
 
@@ -390,11 +346,9 @@ describe('control: on a block page the same entries delete or reach past the ref
         expect(store.deletes).toEqual([`coldstorage/${UNIT}`])
     })
 
-    test('guard: the startup clean-up starts and the load-time listing reads the store', async () => {
+    test('guard: the load-time listing reads the store', async () => {
         enterPage({ kind: 'block' })
 
-        expect(startsLegacyStartupCleanup()).toBe(true)
-        expect(recordsLoadTimeListing()).toBe(true)
         await recordLoadTimeListing()
         expect(getLoadTimeListing()?.assets.has('assets/a.png')).toBe(true)
     })
@@ -415,11 +369,11 @@ describe('control: on a block page the same entries delete or reach past the ref
         expect(runManualCleanup).toHaveBeenCalledTimes(1)
     })
 
-    test('guard: the inlay clean-up removes the unreferenced inlay', async () => {
+    test('guard: the inlay clean-up removes no inlay on any page, a block page included', async () => {
         enterPage({ kind: 'block' })
 
         await inlayCleanup()
 
-        expect(h.removeInlay).toHaveBeenCalledWith(INLAY)
+        expect(h.removeInlay).not.toHaveBeenCalled()
     })
 })

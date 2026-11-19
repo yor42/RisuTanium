@@ -25,7 +25,7 @@ import { alertConfirm, alertError, alertNormal } from "src/ts/alert";
 import { language } from "src/lang";
 import { checkCharOrder, getFetchLogs } from "src/ts/globalApi.svelte";
 import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untrustedFetch";
-import { changeColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
+import { changeColorScheme, effectiveColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
 import { isNodeServer, isTauri } from "src/ts/platform";
 import { get } from "svelte/store";
 import { registerMCPModule, registeredCustomPluginMCPs, unregisterMCPModule } from "src/ts/process/mcp/pluginmcp";
@@ -1247,7 +1247,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             const db = DBState.db
             return {
                 name: db.colorSchemeName,
-                scheme: $state.snapshot(db.colorScheme)
+                scheme: safeStructuredClone(effectiveColorScheme(db))
             }
         },
 
@@ -1913,6 +1913,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 // explicitly with `allowPlugins: true`, accepting responsibility
                 // for avoiding provider-to-provider call loops.
                 blockPlugins: !options.allowPlugins,
+                usagePurpose: 'plugin',
             }, options.mode)
         },
         sendChat: async (message: string) => {

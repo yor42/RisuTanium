@@ -188,6 +188,35 @@ describe('the validator reads the stylesheet as a browser does (Gate 2 round 1)'
         expect(canonicalStylesheet(css).errors.map((e) => e.why)).toContainEqual(expect.stringMatching(why))
     })
 
+    // The media and at-rule decision reads the prelude as the canonical text spells it: comments as spaces, every other
+    // character as written, trimmed as by String.prototype.trim, and ended by `{`, `}` and `;` outside declarations.
+    const PRELUDE_RULE = '[data-part="chat-header"]{color:red}'
+    const JOIN = /a comment between two parts of a word or value is not allowed/
+    const NESTED_BLOCK = /a block inside a rule \(CSS nesting, or a \{\} value\) is not allowed/
+    const NON_ASCII = /a character outside ASCII is only allowed inside a string or a comment/
+    const ESCAPE = /a backslash escape is not allowed in a pack stylesheet/
+    const CONTROL = /a control character other than tab and line feed/
+    const NESTED_AT = /an at-rule inside a rule is not allowed/
+    test.each([
+        ['a comment before @media', `/* note */@media (min-width:1px){${PRELUDE_RULE}}`, []],
+        ['a comment splitting @media', `@med/**/ia (min-width:1px){${PRELUDE_RULE}}`, [JOIN, NESTED_BLOCK]],
+        ['a string before @media', `"x"@media all{${PRELUDE_RULE}}`, [NESTED_BLOCK]],
+        ['a non-ASCII character before @media', `\u00e9@media all{${PRELUDE_RULE}}`, [NON_ASCII, NESTED_BLOCK]],
+        ['an escape before @media', `\\@media all{${PRELUDE_RULE}}`, [ESCAPE, NESTED_BLOCK]],
+        ['a control character before @media', `\u0001@media all{${PRELUDE_RULE}}`, [CONTROL, NESTED_BLOCK]],
+        ['DEL before @media', `\u007f@media all{${PRELUDE_RULE}}`, [CONTROL, NESTED_BLOCK]],
+        ['a vertical tab before @media (trimmed)', `\u000b@media all{${PRELUDE_RULE}}`, [CONTROL]],
+        ['a no-break space before @media (trimmed)', `\u00a0@media all{${PRELUDE_RULE}}`, [NON_ASCII]],
+        ['a semicolon before @media', `;@media all{${PRELUDE_RULE}}`, []],
+        ['an upper-case @MEDIA', `@MEDIA all{${PRELUDE_RULE}}`, []],
+        ['a rule before @media', `${PRELUDE_RULE}@media all{${PRELUDE_RULE}}`, []],
+        ['a @font-face before @media', `@font-face{font-family:f;src:url(f.woff2)}@media all{${PRELUDE_RULE}}`, []],
+        ['two rules in an @media block', `@media all{${PRELUDE_RULE}${PRELUDE_RULE}}`, []],
+        ['an @font-face in an @media block', '@media all{@font-face{font-family:f}}', [NESTED_AT]],
+    ])('the @media decision reads the canonical prelude: %s', (_name, css, reasons) => {
+        expect(canonicalStylesheet(css).errors.map((e) => e.why)).toEqual(reasons.map((why) => expect.stringMatching(why)))
+    })
+
     test('ordinary numbers, colours, unicode ranges and an+b pass the number rule', () => {
         const css = [
             `${SAFE_LEAF}{border:1px solid #1e3;color:#1E3E3E;padding:0.5rem 2em;transition:opacity 120ms,transform .2s;transform:rotate(90deg) translateY(-2px);margin:-4px}`,
@@ -925,14 +954,32 @@ describe('time on a large hostile stylesheet', () => {
         expect(performance.now() - started).toBeLessThan(5000)
     }, 60000)
 
-    test('a 2 MB stylesheet of rules is judged in bounded time', () => {
+    test('a 2 MB stylesheet of rules is judged in time that grows about linearly with its size', () => {
+        // Eight times the rules may cost about eight times as long; a stage whose cost is quadratic in the stylesheet costs
+        // about sixty-four times. The bound is a ratio of two sizes judged in one process, so a slow or loaded runner, which
+        // slows both alike, does not move it; the best of several runs drops one-off GC and JIT stalls.
+        // The timeout covers five rounds of linear code on a runner about three times slower than a development host. A
+        // quadratic stage either fails the ratio assertion or, on a slow runner, hits the timeout; both are failures.
         const rule = `${SAFE_LEAF}{color:#f8f8f2;background-image:url(images/x.png)}[data-part="chat-header"]{padding:4px}\n`
-        const css = rule.repeat(Math.ceil((2 * 1024 * 1024) / rule.length))
-        const started = performance.now()
-        const result = lintAreaPack('chat', css)
-        const elapsed = performance.now() - started
-        expect(result.name).toBe('')
-        // Generous: the point is that cost stays roughly linear (no blow-up), not a speed target; the install stage runs it off the main thread.
-        expect(elapsed).toBeLessThan(30000)
-    }, 60000)
+        const sheet = (bytes: number) => rule.repeat(Math.ceil(bytes / rule.length))
+        const small = sheet(256 * 1024)
+        const large = sheet(2 * 1024 * 1024)
+        const judge = (css: string): number => {
+            const started = performance.now()
+            const result = lintAreaPack('chat', css)
+            const elapsed = performance.now() - started
+            // No errors, so every pass runs (the later passes run only on a sheet without errors).
+            expect(result.errors).toEqual([])
+            return elapsed
+        }
+        const GROWTH_LIMIT = 20
+        judge(small)
+        let smallBest = Infinity
+        let largeBest = Infinity
+        for (let round = 0; round < 5 && !(largeBest < GROWTH_LIMIT * smallBest); round++) {
+            smallBest = Math.min(smallBest, judge(small))
+            largeBest = Math.min(largeBest, judge(large))
+        }
+        expect(largeBest / smallBest).toBeLessThan(GROWTH_LIMIT)
+    }, 120000)
 })

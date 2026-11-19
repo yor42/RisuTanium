@@ -345,6 +345,11 @@ export interface RunSubject {
     status(): OriginStatus
     memberStatus(): OriginStatus | null
     mark(): void
+    /**
+     * When set, shared (non-chat) variable reads of this run come from this map and never from the database.
+     * Only a sandboxed preview run sets it; real subjects never do.
+     */
+    readonly sharedGlobals?: Readonly<Record<string, string>>
 }
 
 export function createRunSubject(origin: Origin): RunSubject {

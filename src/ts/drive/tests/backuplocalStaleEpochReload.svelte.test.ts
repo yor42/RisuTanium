@@ -48,6 +48,19 @@ import {
 } from '../../storage/tests/fakeWebLocks'
 import { createStorageTabLocks } from '../../storage/storageTabLocks'
 import type { Database } from '../../storage/database.svelte'
+import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
+import { EMPTY_LANDED_END, resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from './store2ShellStub'
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real save loop with one answer fixed: a parked loop is left alone by the restore's save-first step, which then
+// returns at once. `globalApi.svelte` stays unmocked so the page's own tab locks decide the restore.
+vi.mock(import('../../storage/store2/saveLoop'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveLoopParked: () => true,
+}))
 
 //#region module mocks -- copied verbatim from backuplocalRestoreRace.svelte.test.ts
 
@@ -256,7 +269,7 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
 
 //#endregion
 
-//#region byte-layout and File harness, matching backuplocalIdRepair.test.ts's own pattern
+//#region byte-layout and File harness
 
 function u32le(n: number): Uint8Array {
     const buf = new Uint8Array(4)
@@ -327,7 +340,12 @@ async function bootTabA(locksValue: LockManager | undefined): Promise<BootedTabA
         value: locksValue,
         configurable: true,
     })
+    resetStore2ShellBox(shell)
     const globalApi = await import('../../globalApi.svelte')
+    const pageMode = await import('../../storage/pageStorageMode')
+    pageMode.setPageStorageMode({ kind: 'store2' })
+    const { injectAppStore } = await import('../../storage/store/appStore')
+    injectAppStore(createForageBackedStore(globalApi.forageStorage as unknown as ForageLike), 'tauri')
     const backuplocal = await import('../backuplocal')
     const risuSave = await import('../../storage/risuSave')
     const alertModule = await import('../../alert')
@@ -453,6 +471,7 @@ describe('J8: a page reloads instead of proceeding, or resuming its own pending 
         await restorePromise
 
         expect(tabA.globalApi.forageStorage.setItem).not.toHaveBeenCalledWith('database/database.bin', expect.anything())
+        expect(shell.commits, 'the commit never ran on a stale epoch').toEqual([])
         expect(tabA.reloadGuard.isAppInitiatedReload()).toBe(true)
     })
 
@@ -533,21 +552,20 @@ describe('J8: a page reloads instead of proceeding, or resuming its own pending 
         const tabA = await bootTabA(new FakeTabLockManagerView(core, 'A') as unknown as LockManager)
         tabA.globalApi.recordStorageEpoch()
 
+        // The landed import shows its repair notice and waits for it before the reload; the gate holds the restore there,
+        // after the commit and before the hold is released.
         let resolveGate: () => void = () => { }
         const gate = new Promise<void>((resolve) => { resolveGate = resolve })
-        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown) => {
-            if (key === 'database/database.bin') {
-                await gate
-            }
-            return null
-        })
+        vi.mocked(tabA.alertModule.alertNormalWait).mockImplementation(() => gate)
+        shell.end = { ...EMPTY_LANDED_END, repairNotice: 'a repair notice' }
 
         const fixture = buildValidFixture('restore-mark-after-release', tabA.encodeRisuSaveLegacy)
         const restorePromise = loadBackupBytes(tabA.loadLocalBackup, fixture)
         restorePromise.catch(() => { })
 
         // Gives the restore room to be granted the exclusive lock and reach
-        // its gated write.
+        // its gated notice.
+        await vi.waitFor(() => expect(shell.commits).toHaveLength(1), { timeout: 5000 })
         await tick(30)
 
         // B asks for the exclusive lock now, while A still holds it. Once A
@@ -559,7 +577,7 @@ describe('J8: a page reloads instead of proceeding, or resuming its own pending 
         void tabB.locks.acquireExclusiveStorageMigrationLock(5000)
         await tick(30)
 
-        // Lets the write succeed.
+        // Lets the notice end, so the reload path runs.
         resolveGate()
         await tick(30)
 

@@ -11,13 +11,15 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { beginBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { beginBusy, beginDialogWait, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { beginRestoreRun, resetRestoreInProgressForTests } from 'src/ts/drive/restoreInProgress'
 import { judgePackSheets } from 'src/ts/themePack'
 import { installThemePack } from 'src/ts/themePack/install'
 import { intakePackBytes, type IntakeRefusal, type IntakeResult, type PackJudge } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
-import { manifestText, PLAIN_CHAT_SHEET, utf8, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
+import { createHash } from 'node:crypto'
+import { apngBytes, padPngTo, pngBytes, riffWebp, vp8Chunk, vp8lChunk, vp8xChunk, WEBP_ALPHA, WEBP_ANIMATED, WEBP_LOSSY } from 'src/ts/themePack/fixtures/imageBuilder'
+import { fakeFont, manifestText, PLAIN_CHAT_SHEET, utf8, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
 import { PACK_SIZE_WARN_BYTES } from 'src/ts/themePack/packSize'
 import { PACK_FILE_MAX_BYTES, PACK_MAX_UNPACKED_BYTES } from 'src/ts/themePack/zipTail'
 
@@ -250,6 +252,12 @@ describe('T4-2b refusals show their text and write nothing', () => {
             fontLicense: { code: 'fontLicense', file: 'fonts/a.woff2' },
             licenseWithoutFont: { code: 'licenseWithoutFont', file: 'fonts/a.woff2' },
             sheetRefused: { code: 'sheetRefused', sheet: 'chat.css', errors: [{ selector: '.a', prop: 'color', why: 'not allowed' }] },
+            iconMissing: { code: 'iconMissing' },
+            iconType: { code: 'iconType' },
+            iconAnimated: { code: 'iconAnimated' },
+            iconUnreadable: { code: 'iconUnreadable' },
+            iconTooLarge: { code: 'iconTooLarge', limitBytes: 262144 },
+            iconDimensions: { code: 'iconDimensions', limitPx: 512 },
         }
         const texts = Object.values(sample).map((refusal) => refusalText(refusal))
         for (const text of texts) {
@@ -257,7 +265,7 @@ describe('T4-2b refusals show their text and write nothing', () => {
             expect(text).not.toContain('Nothing was installed')
         }
         expect(new Set(texts).size).toBe(texts.length)
-        expect(Object.keys(sample)).toHaveLength(26)
+        expect(Object.keys(sample)).toHaveLength(32)
         expect(refusalText(sample.sheetRefused)).toBe(`${language.themePackSheetRefused('chat.css')}\n${language.themePackLintLine('.a', 'color', 'not allowed')}`)
         expect(refusalText(sample.packTooLarge)).toContain('256.0 MiB')
     })
@@ -471,6 +479,38 @@ describe('T4-6 another task running', () => {
         expect(world.log).toEqual([])
     })
 
+    test('an export waiting on an Android save dialog does not make the page busy', async () => {
+        attach()
+        beginDialogWait(beginBusy('export'))
+        await runThemePackInstall(runOf(validPack()).deps)
+        expect(outcomeLines()).not.toContain(language.themePackBusy)
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('remove and select with the default busy check are allowed while an export waits on its save dialog', async () => {
+        attach()
+        const [first] = await (async () => {
+            await runThemePackInstall(runOf(validPack({ name: 'First Pack' })).deps)
+            return storedPacks()
+        })()
+        beginDialogWait(beginBusy('export'))
+        expect(selectThemePack('builtin:origin-navy')).toBe('selected')
+        expect(await removeThemePack(first, 'First Pack', { confirm: async () => true })).toBe('removed')
+        expect(storedPacks()).toEqual([])
+    })
+
+    test('remove and select with the default busy check are refused while an export is not waiting on a dialog', async () => {
+        attach()
+        await runThemePackInstall(runOf(validPack({ name: 'First Pack' })).deps)
+        const [first] = storedPacks()
+        beginBusy('export')
+        const confirm = vi.fn(async () => true)
+        expect(selectThemePack('builtin:origin-navy')).toBe('busy')
+        expect(await removeThemePack(first, 'First Pack', { confirm })).toBe('busy')
+        expect(confirm).not.toHaveBeenCalled()
+        expect(storedPacks()).toHaveLength(1)
+    })
+
     test('a restore running shows the busy text and writes nothing', async () => {
         attach()
         beginRestoreRun()
@@ -567,6 +607,145 @@ describe('T4-2h select', () => {
         expect(DBState.db.activeThemePack).toBe('builtin:banana-cocoa')
         expect(world.requestSaveNow).not.toHaveBeenCalled()
         expect(outcomeLines()).toEqual([language.themePackBusy])
+    })
+})
+
+describe('T2b the tile colours of an installed pack', () => {
+    const DECLARED = ':root{--nexus-canvas:#21222c;--nexus-accent:#8be9fd}'
+    const packWith = (overrides: Readonly<Record<string, unknown>>, sheet: string): Uint8Array => zipPack(validPackFiles({ 'chat.css': sheet, 'manifest.json': manifestText(overrides) }))
+    const storedRecord = (): Record<string, unknown> => $state.snapshot(storedPacks()[0]) as Record<string, unknown>
+
+    test('T2b-3: colours the sheet declares are derived at install and stored on the record', async () => {
+        attach()
+        await runThemePackInstall(runOf(packWith({}, DECLARED)).deps)
+        expect(storedRecord()).toMatchObject({ mainColor: '#8be9fd', secondaryColor: '#21222c' })
+    })
+
+    test('T2b-3: a manifest colour wins over the sheet and is stored lower-case; the other field is still derived', async () => {
+        attach()
+        await runThemePackInstall(runOf(packWith({ colors: { main: '#FFAA00' } }, DECLARED)).deps)
+        expect(storedRecord()).toMatchObject({ mainColor: '#ffaa00', secondaryColor: '#21222c' })
+    })
+
+    test('T2b-3: a sheet that declares neither token stores no colour keys at all', async () => {
+        attach()
+        await runThemePackInstall(runOf(packWith({}, PLAIN_CHAT_SHEET)).deps)
+        const record = storedRecord()
+        expect(Object.hasOwn(record, 'mainColor')).toBe(false)
+        expect(Object.hasOwn(record, 'secondaryColor')).toBe(false)
+    })
+
+    test.each([
+        ['an invalid main colour', { colors: { main: 'rgb(1,2,3)' } }, 'colors.main'],
+        ['an invalid secondary colour', { colors: { secondary: '#12' } }, 'colors.secondary'],
+        ['a colors value that is not an object', { colors: '#fff' }, 'colors'],
+        ['an invalid icon', { icon: '' }, 'icon'],
+    ])('T2b-4: %s is refused naming its field, before the large-pack question, and nothing is written', async (_label, overrides, field) => {
+        attach()
+        const large: InstallFlowDeps['intake'] = async (verified) => {
+            const real = await intakePackBytes(verified, realJudge)
+            return real.ok ? { ok: true, pack: { ...real.pack, totalBytes: 21 * MIB, size: { warn: true, limitBytes: PACK_SIZE_WARN_BYTES } } } : real
+        }
+        const { deps, confirm } = runOf(packWith(overrides, DECLARED), [true, true], { intake: large })
+
+        await runThemePackInstall(deps)
+
+        expect(confirm).not.toHaveBeenCalled()
+        expect(outcomeLines()).toEqual([language.themePackRefusedHeader, language.themePackRefuseManifestField(field)])
+        expect(world.log).toEqual([])
+        expect(storedPacks()).toEqual([])
+    })
+})
+
+describe('T3 the optional pack icon', () => {
+    const iconPack = (path: string, bytes: Uint8Array | null, extraManifest: Readonly<Record<string, unknown>> = {}, extraFiles: Record<string, Uint8Array> = {}): Uint8Array =>
+        zipPack(validPackFiles({ ...(bytes === null ? {} : { [path]: bytes }), ...extraFiles, 'manifest.json': manifestText({ icon: path, ...extraManifest }) }))
+    const sha = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
+    const storedRecord = (): Record<string, unknown> => $state.snapshot(storedPacks()[0]) as Record<string, unknown>
+
+    test.each([
+        ['a PNG', 'images/icon.png', pngBytes(24, 16), 'png'],
+        ['a lossy WebP', 'images/icon.webp', WEBP_LOSSY, 'webp'],
+        ['a WebP with alpha', 'images/icon.webp', WEBP_ALPHA, 'webp'],
+    ])('T3-2: %s installs; the bytes saved are the file in the archive and the record names them', async (_label, path, bytes, ext) => {
+        attach()
+
+        await runThemePackInstall(runOf(iconPack(path, bytes)).deps)
+
+        const key = `assets/tp-${sha(bytes)}.${ext}`
+        expect(world.files.get(key)).toEqual(bytes)
+        expect(world.log.filter((entry) => entry.endsWith(`.${ext}`))).toEqual([`write:${key}`])
+        expect(storedRecord().icon).toBe(key)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+    })
+
+    test('T3-1g: a .webp path holding PNG bytes is refused by the intake as wrongContent and nothing is saved', async () => {
+        attach()
+        await runThemePackInstall(runOf(iconPack('images/icon.webp', pngBytes(8, 8))).deps)
+
+        expect(outcomeLines()).toEqual([language.themePackRefusedHeader, language.themePackRefuseWrongContent('images/icon.webp')])
+        expect(world.log).toEqual([])
+    })
+
+    test.each([
+        ['an icon the pack does not hold', iconPack('images/a.png', null), language.themePackRefuseIconMissing],
+        ['a font named as the icon', iconPack('fonts/x.woff2', fakeFont(), { fonts: [{ file: 'fonts/x.woff2', license: 'OFL-1.1' }] }), language.themePackRefuseIconType],
+        ['an SVG path', iconPack('images/a.svg', null), language.themePackRefuseIconType],
+        ['a PNG of 262145 bytes', iconPack('images/a.png', padPngTo(pngBytes(8, 8), 262145)), language.themePackRefuseIconTooLarge('256.0 KiB')],
+        ['a PNG 513 wide', iconPack('images/a.png', pngBytes(513, 1)), language.themePackRefuseIconDimensions(512)],
+        ['a PNG 513 tall', iconPack('images/a.png', pngBytes(1, 513)), language.themePackRefuseIconDimensions(512)],
+        ['a PNG of width 0', iconPack('images/a.png', pngBytes(1, 1, { declaredWidth: 0 })), language.themePackRefuseIconUnreadable],
+        ['a PNG with a truncated IHDR', iconPack('images/a.png', pngBytes(8, 8).subarray(0, 20)), language.themePackRefuseIconUnreadable],
+        ['a 600 x 600 WebP', iconPack('images/a.webp', riffWebp([vp8xChunk(600, 600), vp8Chunk(600, 600)])), language.themePackRefuseIconDimensions(512)],
+        ['a 513-wide lossless WebP', iconPack('images/a.webp', riffWebp([vp8lChunk(513, 8)])), language.themePackRefuseIconDimensions(512)],
+        ['an APNG', iconPack('images/a.png', apngBytes(8, 8)), language.themePackRefuseIconAnimated],
+        ['an APNG with acTL after the image data', iconPack('images/a.png', apngBytes(8, 8, 'after')), language.themePackRefuseIconAnimated],
+        ['a WebP with the animation flag over a still image', iconPack('images/a.webp', (() => { const b = WEBP_ALPHA.slice(); b[20] = 0x12; return b })()), language.themePackRefuseIconAnimated],
+        ['an animated WebP', iconPack('images/a.webp', WEBP_ANIMATED), language.themePackRefuseIconAnimated],
+        ['ANMF chunks without the flag', iconPack('images/a.webp', (() => { const b = WEBP_ANIMATED.slice(); b[20] = 0; return b })()), language.themePackRefuseIconAnimated],
+        ['a WebP whose RIFF size is wrong', iconPack('images/a.webp', riffWebp([vp8Chunk(8, 8)], 2)), language.themePackRefuseIconUnreadable],
+    ])('T3-1: %s is refused with its reason, before the large-pack question, and nothing is written', async (_label, pack, text) => {
+        attach()
+        const large: InstallFlowDeps['intake'] = async (verified) => {
+            const real = await intakePackBytes(verified, realJudge)
+            return real.ok ? { ok: true, pack: { ...real.pack, totalBytes: 21 * MIB, size: { warn: true, limitBytes: PACK_SIZE_WARN_BYTES } } } : real
+        }
+        const { deps, confirm } = runOf(pack, [true, true], { intake: large })
+
+        await runThemePackInstall(deps)
+
+        expect(confirm).not.toHaveBeenCalled()
+        expect(outcomeLines()).toEqual([language.themePackRefusedHeader, text])
+        expect(world.log).toEqual([])
+        expect(storedPacks()).toEqual([])
+    })
+
+    test('T3-1g: an SVG in the pack and a PNG that holds WebP bytes keep their intake refusals, which come before the icon check', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'images/x.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>', 'manifest.json': manifestText({ icon: 'images/x.svg' }) }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackRefusedHeader, language.themePackRefuseSvg('images/x.svg')])
+
+        await runThemePackInstall(runOf(iconPack('images/x.png', WEBP_LOSSY)).deps)
+        expect(outcomeLines()).toEqual([language.themePackRefusedHeader, language.themePackRefuseWrongContent('images/x.png')])
+        expect(world.log).toEqual([])
+    })
+
+    test('T3-1: a PNG of exactly 262144 bytes installs', async () => {
+        attach()
+        const icon = padPngTo(pngBytes(8, 8), 262144)
+
+        await runThemePackInstall(runOf(iconPack('images/a.png', icon)).deps)
+
+        expect(storedRecord().icon).toBe(`assets/tp-${sha(icon)}.png`)
+    })
+
+    test('T3-2: a pack that names no icon writes no icon asset and its record has no icon key', async () => {
+        attach()
+
+        await runThemePackInstall(runOf(validPack()).deps)
+
+        expect(Object.hasOwn(storedRecord(), 'icon')).toBe(false)
+        expect(world.log.filter((entry) => /\.(png|webp)$/.test(entry))).toEqual([])
     })
 })
 

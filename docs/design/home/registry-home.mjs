@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as chat from '../chat/checks/th/packlint.mjs';
 import { decls } from '../chat/checks/th/csslit.mjs';
+import { parseConcrete } from '../chat/checks/th/failclosed.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // ---- token defaults: the first :root block of home-tokens.css (the ladder and the role tokens). The later blocks (html[data-input], html[data-layout], body[data-mode]) are the same names or Home-only
@@ -54,7 +55,9 @@ export const HOME_REACH_DD243 = ['home-menu-button', 'home-rail', 'home-rail-ite
   // DD-240 (Home fix round): the text of these two is the accessible name of a nav item and of Send, so they cannot be hidden
   'home-rail-label', 'home-send-label',
   // DD-262: the only on-screen signal that a reply or a run is going (the reply badge, the run state line) and the Tasks count: restyle, never hide
-  'home-bg-badge', 'home-run-status', 'home-badge'];
+  'home-bg-badge', 'home-run-status', 'home-badge',
+  // 2026-11-18 visual overhaul (MAIN_MENU.md "Visual overhaul"): the phone jump row under the greeting is the one-tap way to the library and RisuRealm on a phone (UI-S7 audit S7-08): navigation, so restyle, never hide
+  'home-jump', 'home-jump-link'];
 export const HOME_REACH = ['home-shell', 'home-main', 'home-library', 'home-library-tools', 'home-empty-hero', 'home-realm', 'home-trash-row', 'home-tasks-panel', 'home-run-card', 'home-run-actions',
   'home-dialog', 'home-dialog-actions', 'home-dialog-action', ...HOME_REACH_DD243];
 
@@ -168,8 +171,6 @@ const rdAbs = (f) => { try { return fs.readFileSync(path.join(here, f), 'utf8').
 const APP_TOKENS = readTokens(rootOf('home-tokens.css'), readTokens((() => { const m = /:root\s*\{([^}]*)\}/.exec(rdAbs('../theme/nexus-tokens.css')); return m ? m[1] : ''; })(), new Map()));
 const LOCKED = ['--home-dialog-bg', '--home-danger-edge', '--home-danger-edge-strong', '--home-warning-edge', '--home-danger-text'];
 const solve = (v, T, d = 0) => (d > 12 ? v : v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g, (m, n, fb) => (T.has(n) ? solve(T.get(n), T, d + 1) : fb !== undefined ? solve(fb, T, d + 1) : m)));
-const rgbOf = (s) => { s = s.trim().toLowerCase(); let m = /^#([0-9a-f]{3,8})$/.exec(s); if (m) { let h = m[1]; if (h.length <= 4) h = [...h].map((c) => c + c).join(''); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat([h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]); }
-  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s); if (m) return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4])]; return null; };
 const lum1 = (c) => { const f = c.slice(0, 3).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]; };
 const ratio = (a, b) => { const x = lum1(a), y = lum1(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 export function homeSupplement(css) {
@@ -178,7 +179,7 @@ export function homeSupplement(css) {
   for (const m of text.matchAll(/(?<![\w-])(url|image-set|image|src|element)\s*\(/g)) fail('(stylesheet)', m[1] + '()', `${m[1]}() loads or draws a resource: a pack carries none (images and fonts are out of scope, THEMING.md)`);
   const T = new Map(APP_TOKENS); const own = []; for (const d of decls(text)) { if (!d.prop.startsWith('--')) continue; own.push(d); if (d.ctx.selector.trim() === ':root') T.set(d.prop, d.value.replace(/\s*!important\s*$/, '').trim()); }
   for (const d of own) if (LOCKED.includes(d.prop)) fail(d.ctx.selector.trim(), d.prop, `${d.prop} is locked: a critical surface reads it in place of the shared token that the surfaces check judges (set its source instead)`);
-  const on = rgbOf(solve(T.get('--home-on-accent') || '', T)), acc = rgbOf(solve(T.get('--nexus-accent') || '', T));
+  const on = parseConcrete(solve(T.get('--home-on-accent') || '', T)), acc = parseConcrete(solve(T.get('--nexus-accent') || '', T));
   if (!on || !acc) fail(':root', '--home-on-accent', 'the primary button label and fill cannot be checked (a colour that does not resolve)');
   else { const k = ratio(on[3] < 1 ? [0, 1, 2].map((i) => on[i] * on[3] + acc[i] * (1 - on[3])).concat([1]) : on, acc); if (k < 4.5) fail(':root', '--home-on-accent', `the primary button label would be ${k.toFixed(2)}:1 on --nexus-accent (needs 4.5:1)`); }
   return errs;

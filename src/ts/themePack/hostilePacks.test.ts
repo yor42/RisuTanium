@@ -91,13 +91,16 @@ const HOME_RIGHT = (id: string): RegExp => {
     if (/^[ARS]\d+$/.test(id)) return /protected part|data-part-critical|not allowed|allowlist|url|@|transform|position|animation|transition|content|z-index|background|opaque/
     return /./
 }
+// K19 (--nexus-field-border written as color-mix(in srgb, #000 5%, #fff), which is #f2f2f2) is accepted by decision: color-mix in srgb resolves (OQ4), and the hex it makes is accepted in every area.
+const HOME_DECIDED_ACCEPT = new Set(['K19'])
 const HOME_FONT_REFUSED = new Set(['H52']);   // a font family outside the pack's own @font-face families and the generic ones is refused (MC-1550)
 
 // Private variables (--pack-*) cannot launder a value: [name, css, accepted?, reason].
 const PRIV: [string, string, boolean, RegExp?][] = [
     ['a private colour used by a control', ':root{--pack-y:#fee500}[data-part="chat-send"]{background:var(--pack-y);color:#191919}', true],
     ['text colour through a private variable', ':root{--pack-t:#0e0f2b;--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
-    ['colour-mix through a private variable', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
+    ['colour-mix through a private variable', ':root{--pack-t:color-mix(in oklch,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
+    ['colour-mix in srgb through a private variable is judged as the colour it makes', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
     ['oklch through a chain of two', ':root{--pack-a:var(--pack-b);--pack-b:oklch(0.1 0 0);--nexus-danger:var(--pack-a)}', false, /cannot be resolved to a concrete sRGB/],
     ['transparent sheet through a private variable', ':root{--pack-s:transparent;--color-surface-sheet:var(--pack-s)}', false, /fully transparent|opaque/],
     ['translucent sheet through a private variable', ':root{--pack-s:rgb(14 15 42 / 0.4);--color-surface-sheet:var(--pack-s)}', false, /opaque colour/],
@@ -205,6 +208,10 @@ describe('3 home review packs', () => {
             it(`${key} is refused by decision (a system font family, MC-1550): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
             continue
         }
+        if (HOME_DECIDED_ACCEPT.has(key)) {
+            it(`${key} is accepted by decision (a colour the validator accepts as hex): ${f.name.slice(0, 60)}`, () => { expectAccepted(lint('home', f.css, key)) })
+            continue
+        }
         const re = HOME_RIGHT(key)
         it(`${key} is rejected for the right reason: ${f.name.slice(0, 60)}`, () => {
             const r = lint('home', f.css, key)
@@ -220,7 +227,7 @@ describe('3 home review packs', () => {
     }
     it('every font-refused id is a pack of the home review list', () => {
         const ids = new Set(readReviewPacks('home-hostile.json').map((f) => f.id))
-        for (const id of HOME_FONT_REFUSED) expect(ids.has(id), id).toBe(true)
+        for (const id of [...HOME_FONT_REFUSED, ...HOME_DECIDED_ACCEPT]) expect(ids.has(id), id).toBe(true)
     })
 })
 

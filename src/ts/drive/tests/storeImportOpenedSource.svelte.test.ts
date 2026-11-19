@@ -23,6 +23,9 @@ import { importSourceOfBytes, type ImportSource, type ImportSourceStat } from 's
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { LocalBackupEnd } from 'src/ts/drive/backuplocal'
+import { BACKUP_ENCRYPTION_MARKER_NAME } from 'src/ts/drive/backupContainer'
+import { assembleDatabase } from 'src/ts/storage/store2/codec'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import * as kitCommit from 'src/ts/storage/store2/commit'
 
 vi.setConfig({ testTimeout: 60_000 })
@@ -438,6 +441,101 @@ for (const arm of ['whole', 'stream'] as const) describe.each(SOURCES)(`a page i
             expect(alertErrorTexts(page)).toEqual([])
             expect(await page.k.commitKey()).not.toEqual(before)
         })
+    })
+})
+
+// ---- the encrypted refusal and the first-run option on the opened-file route ----
+
+/** One `[u32 nameLength][name][u32 dataLength][data]` entry, as the container frames it. */
+function binEntry(name: string, data: Uint8Array): Uint8Array {
+    const nameBytes = new TextEncoder().encode(name)
+    const out = new Uint8Array(4 + nameBytes.length + 4 + data.length)
+    const view = new DataView(out.buffer)
+    view.setUint32(0, nameBytes.length, true)
+    out.set(nameBytes, 4)
+    view.setUint32(4 + nameBytes.length, data.length, true)
+    out.set(data, 8 + nameBytes.length)
+    return out
+}
+
+function binOf(...entries: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(entries.reduce((total, entry) => total + entry.length, 0))
+    let offset = 0
+    for (const entry of entries) {
+        out.set(entry, offset)
+        offset += entry.length
+    }
+    return out
+}
+
+const AVATAR = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+/** Whether `dbWriteLock` can be taken within a moment: false while an import keeps it closed. */
+async function writeLockIsFree(page: Page): Promise<boolean> {
+    const taken = page.w.api.dbWriteLock.acquire().then((release) => { release(); return true })
+    return await Promise.race([taken, sleepReal(250).then(() => false)])
+}
+
+/** The app byte store operations that wrote or deleted anything. */
+const mutations = (page: Page) => page.w.store.mutating()
+
+/** A block-format save of `db`, as the world's encoder writes the main file. */
+async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
+    const encoder = new page.w.risuSave.RisuSaveEncoder()
+    await encoder.init(db as unknown as Database, { compression: false })
+    await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
+    return new Uint8Array(encoder.encode()!)
+}
+
+async function committedOf(page: Page): Promise<Database> {
+    const key = (await page.k.commitKey()).current?.key as string
+    const read = await readTreeBytes(page.k.memory, key)
+    if (read.status !== 'ok') {
+        throw new Error(`The stored tree reads ${read.status}.`)
+    }
+    return assembleDatabase(read.tree.manifest, read.tree.source)
+}
+
+for (const arm of ['whole', 'stream'] as const) describe(`T4-P4c: an encrypted .bin opened from another app is refused before any write (${arm} arm)`, () => {
+    beforeEach(() => { armBox.arm = arm })
+
+    // MC-477 on the opened-file route. The walk stops at the marker and keeps no entry, so a restore that skipped the
+    // encrypted refusal would end at the no-database refusal with another message: only the exact list tells them apart.
+    test.each([
+        ['a marker between an asset and the database', () => binOf(binEntry('enc-asset.png', AVATAR), binEntry(BACKUP_ENCRYPTION_MARKER_NAME, new Uint8Array([1])), golden('upstream-full.bin'))],
+        ['a marker first', () => binOf(binEntry(BACKUP_ENCRYPTION_MARKER_NAME, new Uint8Array([1])), golden('upstream-full.bin'))],
+    ])('guard: %s ends nothing-replaced with exactly the encrypted-backup message', async (_label, make) => {
+        const page = await openPage()
+        const before = await page.k.commitKey()
+        page.w.store.ops.length = 0
+
+        const end = await restoreOpened(probeSource(make()).source)
+
+        expect(end.outcome).toBe('nothing-replaced')
+        expect(alertErrorTexts(page)).toEqual([language.encryptedBackupRefused])
+        expect(mutations(page)).toEqual([])
+        expect(await page.k.commitKey()).toEqual(before)
+        expect(vi.mocked(window.location.reload)).not.toHaveBeenCalled()
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+})
+
+describe('T4-P11: an opened-file restore never takes the first-run option', () => {
+    beforeEach(() => { armBox.arm = 'whole' })
+
+    test('guard: the option is ignored on the opened route and the committed database keeps the file\'s own flag', async () => {
+        const page = await openPage()
+        const source = makeDb('backup', ['alpha'])
+        source.didFirstSetup = false
+        const bytes = binOf(binEntry('database.risudat', await blockFileBytes(page, source)))
+        const { LoadLocalBackup } = await import('src/ts/drive/backuplocal')
+        // The overload forbids the combination; a caller that forces it past the types is still ignored.
+        const forced = LoadLocalBackup as unknown as (boot: undefined, opened: unknown, restore: unknown) => ReturnType<typeof LoadLocalBackup>
+
+        const end = await forced(undefined, { source: probeSource(bytes).source, name: 'backup.bin', lastModified: 0 }, { completeFirstSetup: true })
+
+        expect(end.outcome).toBe('committed')
+        expect((await committedOf(page)).didFirstSetup).toBe(false)
     })
 })
 

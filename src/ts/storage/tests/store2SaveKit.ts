@@ -563,3 +563,22 @@ export async function bootThroughDispatch(backend: Store2Backend, options: { lis
     }, { ui, kind: options.kind ?? 'indexeddb', backend: async () => backend, keyEnv: options.env, lists: options.lists ?? fakeLists, markerOwnerProbe: options.markerOwnerProbe, maxRounds: options.maxRounds })
     return { result, notices, peer, foreignMarkerAsked }
 }
+
+/**
+ * One pass over `db` through the active save context, committed and acknowledged: what a save of `marked` writes. The
+ * save context is read from the module graph current at the call, the one `bootThroughDispatch` activated it in.
+ */
+export async function commitActivePass(db: Database, marked: string[]): Promise<void> {
+    const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
+    const context = getActiveStore2Save()
+    const committer = context?.session.committer
+    if (context === null || context.encoder === undefined || committer === null || committer === undefined) {
+        throw new Error('No save context.')
+    }
+    const plan = await context.encoder.plan(db, { marked: new Set(marked), modules: false, whole: false })
+    const result = await committer.commit(await committer.readCommit(), plan.commitRequest())
+    if (result.status !== 'committed') {
+        throw new Error(`The pass came to ${result.status}.`)
+    }
+    plan.acknowledge()
+}

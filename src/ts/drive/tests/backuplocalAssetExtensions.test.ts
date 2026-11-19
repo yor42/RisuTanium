@@ -304,11 +304,21 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => true,
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
-import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
-import { alertStore } from 'src/ts/alert'
+import { LocalWriter, dbWriteLock, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { alertWait } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
@@ -504,6 +514,24 @@ function restoredAssets(): Record<string, string> {
     return out
 }
 
+/**
+ * Makes the page a store2 page over the store the test body set up, where the restore ends at the stubbed commit, and
+ * has each row of the describe assert the restore waited for no save first: `saveFirst` returned at its clean check.
+ */
+function onStore2Page(): void {
+    beforeEach(async () => {
+        useStore2RestorePage(await getAppStore())
+    })
+    afterEach(() => {
+        expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    })
+}
+
+/** Whether the restore reached its commit. */
+function commitCalled(): boolean {
+    return shell.commits.length > 0
+}
+
 function withPrefix(record: Record<string, string>): Record<string, string> {
     return Object.fromEntries(Object.entries(record).map(([name, value]) => [`assets/${name}`, value]))
 }
@@ -526,6 +554,8 @@ beforeEach(() => {
     alertErrorMock.mockClear()
     alertMdMock.mockClear()
     alertNormalMock.mockClear()
+    vi.mocked(alertWait).mockClear()
+    resetStore2ShellBox(shell)
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
     reloadMark.marked = false
     legacyInlays.clear()
@@ -834,6 +864,7 @@ describe('hardening: a partial backup includes every referenced asset whatever i
 })
 
 describe('a backup written by SaveLocalBackup restores every asset with identical bytes', () => {
+    onStore2Page()
     const ROUND_TRIP = ['a.png', 'b.mp3', 'c.webp']
 
     test('web: assets/b.mp3 and assets/c.webp return to storage', async () => {
@@ -869,6 +900,7 @@ describe('a backup written by SaveLocalBackup restores every asset with identica
 })
 
 describe('restoring a backup keeps every asset entry under assets/ whatever its extension', () => {
+    onStore2Page()
     const RESTORED = ['x.mp3', 'y.mp4', 'z.webp', 'w.jpg']
 
     async function restoreHandBuiltBackup() {
@@ -883,8 +915,8 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        // The database is committed as a block generation whose head is written once; no main file is written.
-        expect(forageSetItemMock.mock.calls.filter((c) => c[0] === 'blocks/head')).toHaveLength(1)
+        // The database goes to the commit once; no main file is written.
+        expect(shell.commits).toHaveLength(1)
         expect(forageSetItemMock.mock.calls.filter((c) => c[0] === 'database/database.bin')).toHaveLength(0)
     })
 
@@ -897,15 +929,15 @@ describe('restoring a backup keeps every asset entry under assets/ whatever its 
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(RESTORED))))
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        // The database is committed as a block generation whose head is replaced durably, once; no main file is written.
-        expect(fakeFs.durableLog.filter((key) => key === 'blocks/head')).toHaveLength(1)
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        // The database goes to the commit once; no main file is written.
+        expect(shell.commits).toHaveLength(1)
         expect(fakeFs.files.has('database/database.bin')).toBe(false)
         expect(fakeFs.renameLog.filter((entry) => bare(entry.to) === 'database/database.bin')).toHaveLength(0)
     })
 })
 
 describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto the desktop store', ({ batched }) => {
+    onStore2Page()
     const TEMP_NAME = 'risu-write-0123456789abcdef.tmp'
     const KEPT = ['good1.png', 'good2.mp3']
 
@@ -917,20 +949,6 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
 
     function entriesOf(names: string[]): [string, Uint8Array][] {
         return names.map((name) => [name, bytesFor(name)])
-    }
-
-    /** The messages of the `Success` wait alert and every other alert the restore set in the shared store, in order. */
-    function recordAlertStore(): { messages: string[], stop: () => void } {
-        const messages: string[] = []
-        const shared = alertStore as unknown as { set(value: { type: string, msg: string }): void, subscribe(run: (value: { msg: string }) => void): () => void }
-        // The store keeps the last notice of an earlier test; a subscriber is told it first.
-        shared.set({ type: 'none', msg: '' })
-        const stop = shared.subscribe((value) => {
-            if (value.msg) {
-                messages.push(value.msg)
-            }
-        })
-        return { messages, stop }
     }
 
     beforeEach(() => {
@@ -951,7 +969,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
         expect(fakeFs.listing('assets')).toEqual(['x.mp3'])
         expect(alertErrorMock).toHaveBeenCalled()
         expect(fakeFs.files.has('database/database.bin')).toBe(false)
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expect(commitCalled()).toBe(false)
     })
 
     test('guard: a write error other than a refused name aborts the restore before the database is written', async () => {
@@ -961,7 +979,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
 
         expect(alertErrorMock).toHaveBeenCalled()
         expect(fakeFs.files.has('database/database.bin')).toBe(false)
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expect(commitCalled()).toBe(false)
         if (!batched) {
             // The batch path may already have written entries that shared the failed entry's batch; only the per-entry path stops before the next entry.
             expect(fakeFs.files.has('assets/later.png')).toBe(false)
@@ -975,7 +993,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
         await loadBackupBytes(backupOf(entriesOf([KEPT[0], ...REFUSED, KEPT[1]])))
 
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(KEPT))))
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expect(commitCalled()).toBe(true)
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
         const notice = alertNormalWaitMock.mock.calls[0][0]
@@ -1012,31 +1030,30 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
         expect(notice).toContain('.' + 'n'.repeat(50))
     })
 
-    test('new behaviour: the notice is shown after the database is written, awaited before the success notice, and before the reload is marked', async () => {
+    test('new behaviour: the notice is shown after the commit, awaited before the success notice, and before the reload is marked', async () => {
         let releaseNotice: () => void = () => { }
         let markedWhenShown: boolean | null = null
-        let databaseWrittenWhenShown: boolean | null = null
+        let committedWhenShown: boolean | null = null
         alertNormalWaitMock.mockImplementation(() => {
             markedWhenShown = reloadMark.marked
-            databaseWrittenWhenShown = fakeFs.files.has('blocks/head')
+            committedWhenShown = commitCalled()
             return new Promise<void>((resolve) => { releaseNotice = resolve })
         })
-        const seen = recordAlertStore()
+        const successShown = () => vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2ImportDone)
 
         const restoring = loadBackupBytes(backupOf(entriesOf(['.DS_Store', KEPT[0]])))
         await vi.waitFor(() => { expect(alertNormalWaitMock).toHaveBeenCalledTimes(1) })
         await new Promise((resolve) => setTimeout(resolve, 20))
 
-        expect(seen.messages.some((message) => message.includes('Success, Refreshing your app.'))).toBe(false)
+        expect(successShown()).toBe(false)
 
         releaseNotice()
         await restoring
-        seen.stop()
 
-        expect(seen.messages.some((message) => message.includes('Success, Refreshing your app.'))).toBe(true)
+        expect(successShown()).toBe(true)
         expect(markedWhenShown).toBe(false)
         expect(reloadMark.marked).toBe(true)
-        expect(databaseWrittenWhenShown).toBe(true)
+        expect(committedWhenShown).toBe(true)
     })
 
     test('guard: a restore with no refused name shows no notice', async () => {
@@ -1049,9 +1066,9 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
     test('new behaviour: every key the restore wrote or tried to write is recorded for the startup sweep, before the database is written', async () => {
         await loadBackupBytes(backupOf(entriesOf([KEPT[0], '.DS_Store'])))
 
-        expect(wasAssetWrittenThisPage(`assets/${KEPT[0]}`)).toBe(true)
-        expect(wasAssetWrittenThisPage('assets/.DS_Store')).toBe(true)
-        expect(wasAssetWrittenThisPage('assets/never-seen.png')).toBe(false)
+        expect(listAssetsWrittenThisPage()).toContain(`assets/${KEPT[0]}`)
+        expect(listAssetsWrittenThisPage()).toContain('assets/.DS_Store')
+        expect(listAssetsWrittenThisPage()).not.toContain('assets/never-seen.png')
     })
 })
 
@@ -1216,15 +1233,12 @@ function builtBackup(parts: BuiltPart[], between: Uint8Array[] = []): Uint8Array
     ])
 }
 
-function installedHead(): boolean {
-    return forageSetItemMock.mock.calls.some((call) => call[0] === 'blocks/head')
-}
-
 function noticesShown(): string[] {
     return alertNormalWaitMock.mock.calls.map((call) => String(call[0]))
 }
 
 describe('a full backup carries the inlays of both stores and restores them', () => {
+    onStore2Page()
     const IDS = ['img', 'aud', 'sig', 'old-only']
 
     async function setUpInlays(): Promise<void> {
@@ -1361,7 +1375,7 @@ describe('a full backup carries the inlays of both stores and restores them', ()
         expect(before[lone]).not.toBeNull()
         expect(await getInlayAsset(lone)).toBeNull()
         expect(noticesShown()).toContain(language.restoreInlaysNotStored(1, [lone]))
-        expect(installedHead()).toBe(true)
+        expect(commitCalled()).toBe(true)
     })
 
     test('acceptance: inlay entry names are flat and valid, never a cold, database or temp name, no entry is over the 100 MiB body limit of upstream Node, and the database is last', async () => {
@@ -1385,6 +1399,7 @@ describe('a full backup carries the inlays of both stores and restores them', ()
 })
 
 describe('restoring the inlay entries of a backup', () => {
+    onStore2Page()
     const BODY = patterned(900, 5)
 
     test('write reproducer: a backup cut inside an inlay is refused before any inlay or database is written', async () => {
@@ -1403,7 +1418,7 @@ describe('restoring the inlay entries of a backup', () => {
         const restored = await snapshotOf(['first', 'second'])
         expect(Object.values(restored).filter((value) => value !== null)).toHaveLength(0)
         expect(Object.values(before).every((value) => value !== null)).toBe(true)
-        expect(installedHead()).toBe(false)
+        expect(commitCalled()).toBe(false)
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileEndsEarly)
     })
 
@@ -1458,7 +1473,7 @@ describe('restoring the inlay entries of a backup', () => {
         const notices = noticesShown()
         expect(notices).toHaveLength(1)
         expect(notices[0]).toContain('incomplete or damaged')
-        expect(installedHead()).toBe(true)
+        expect(commitCalled()).toBe(true)
         expect(Object.keys(restoredAssets()).filter((key) => key.includes('inlay'))).toEqual([])
     })
 
@@ -1531,7 +1546,7 @@ describe('restoring the inlay entries of a backup', () => {
         expect(notices).toContain(language.restoreInlaysNotStored(1, ['refused']))
         expect(await getInlayAsset('refused')).toBeNull()
         expect(await bytesOfInlay('fine')).not.toBeNull()
-        expect(installedHead()).toBe(true)
+        expect(commitCalled()).toBe(true)
     })
 
     test('acceptance: a file that cannot be read while an inlay is assembled stops the restore with the changed-file message', async () => {
@@ -1550,11 +1565,11 @@ describe('restoring the inlay entries of a backup', () => {
         }
 
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
-        expect(installedHead()).toBe(false)
+        expect(commitCalled()).toBe(false)
         expect(await getInlayAsset('changing')).toBeNull()
     })
 
-    test('acceptance: a file whose inlay entry cannot be read stops the restore with the changed-file message and installs nothing', async () => {
+    test('acceptance: a file whose inlay entry cannot be read stops the restore with the changed-file message and commits nothing', async () => {
         const bytes = builtBackup(await buildInlayParts('unreadable', BODY))
         const inlayEntry = entryPositions(bytes).find((entry) => entry.name.startsWith('risu-inlay-'))!
         const dataStart = inlayEntry.start + 4 + inlayEntry.name.length + 4
@@ -1588,7 +1603,7 @@ describe('restoring the inlay entries of a backup', () => {
         await (capturedInput!.onchange as unknown as (ev: Event) => Promise<void>).call(capturedInput, new Event('change'))
 
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
-        expect(installedHead()).toBe(false)
+        expect(commitCalled()).toBe(false)
         expect(await getInlayAsset('unreadable')).toBeNull()
     })
 
@@ -1604,7 +1619,7 @@ describe('restoring the inlay entries of a backup', () => {
         expect(sortedRecord(restoredAssets())).toEqual(sortedRecord(withPrefix(expectedAssets(['a.png', 'risu-inlay-short-0.part']))))
         expect(appInlayKeys()).toEqual([])
         expect(noticesShown()).toEqual([])
-        expect(installedHead()).toBe(true)
+        expect(commitCalled()).toBe(true)
     })
 })
 

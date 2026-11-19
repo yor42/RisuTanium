@@ -3,15 +3,15 @@ import { takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, typ
 import type { ExportCancelToken } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
 import { assetDeletionSettled } from "../storage/assetDeleteHold";
-import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
-import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
+import { LocalWriter, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage } from "../globalApi.svelte";
+import { isAppInitiatedReload } from "../reloadGuard";
 import { isNodeServer, isTauri } from "src/ts/platform"
 import { backupNoticeHeader, downloadNotice } from "../exportNotice";
-import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
+import { encodeRisuSaveStreamed, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
 import { assertNoForeignModuleStubs, snapshotModuleList } from "./exportModules";
-import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, runExport, type ExportSession } from "./exportShell";
+import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openOutsideBusy, runExport, type ExportSession } from "./exportShell";
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -30,18 +30,13 @@ import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { WEB_ASSET_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { selectedStoreIsNode, storeAssetLimitBytes } from "../storage/assetLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
-import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
-import { repairBotPresetsId } from "../storage/botPresetRepair";
-import { describeOmitted } from "../storage/bootBlockLoad";
-import { buildRestoreSet, completeRestoredTree, currentCharacterNames, leftOutQuestion, readArchivedUnitCharacter, repairRestoredCharacters, replaceWithRestoredSet } from "./restoreReplace";
+import { getDatabase, type Database } from "../storage/database.svelte";
+import { readArchivedUnitCharacter } from "./restoreReplace";
 import { repairCharacterTree } from "../storage/characterTreeRepair";
-import { repairDatabaseIds } from "../process/chatIds";
-import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
-import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
+import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, beginModuleSnapshotMark, endModuleSnapshotMark, clearModuleSnapshotMarks, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
-import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
-import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
+import { listColdBackupRoots } from "../process/coldstorageData";
 import { v4 } from "uuid";
 import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry, type BinFile } from "./backupContainer";
 import { binFileOfSource, type SourceBinFile } from "./binFileSource";
@@ -55,7 +50,7 @@ import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
 import { ExportReadError, openFirstPiece, writeInlaysToBackup, type ReadPiece } from "./inlayBackupExport";
 import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, DESKTOP_PIECE_SOURCE, desktopStreamingUsable, exportTauriPieceSource, nodeAssetPieceSource, nodePieceStore, webBlobPieceSource, type AssetPieceSource } from "./assetPieces";
-import { findOversizeAssets, formatMiB, shownPromptNames } from "./backupUpstreamSizes";
+import { findOversizeAssets, formatMiB, shownPromptNames, UPSTREAM_PROMPT_NAMES_SHOWN } from "./backupUpstreamSizes";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
 import { reloadOntoRestoredState } from "./internalBackup";
@@ -66,9 +61,11 @@ import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/b
 import { emptyImportFacts, outcomeOfBootFinish, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
 import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, hasDatabaseEntry, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
-import { forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
+import { chatLabelKey, forkOnlyChatLabels, forkOnlyConfirmKey, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
+import { expandBranchChats, lateBranchLabels } from "./exportBranches";
 import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
+import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -91,7 +88,7 @@ function getBasename(data:string){
  * exists exactly when a stub with its uuid is written, so a character loaded while the export ran leaves no orphan.
  */
 async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>){
-    const { tree: exportCopy, notice: repairNotice, omittedChatData } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules)
+    const { tree: exportCopy, notice: repairNotice, omittedChatData } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules, confirmedForkOnly)
     // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
@@ -251,7 +248,7 @@ function describeWriteMeasure(): string {
  * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[] }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[] }> {
     const plain = { ...db, account: undefined }
     // A `.bin` carries no task presets (the export confirm names them first); the key is removed, not set to undefined.
     delete plain.taskPresets
@@ -259,6 +256,12 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // Usage statistics (the `statics` ledger keys) and price overrides are fork-only and have no place in a `.bin` (the export
+    // confirm names them first). A `statics` without usage keys keeps the page's own object; the page's values are never changed.
+    if (hasUsageKeys(db.statics)) {
+        plain.statics = withoutUsageKeys(db.statics)
+    }
+    delete plain.usagePriceOverrides
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -287,13 +290,17 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
             plain.characters = db.characters.map((slot) => inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
         }
     }
-    // A `.bin` carries no fork-only chat data (alternatives, interrupted-reply notes, memory coverage pointers). Only a
-    // character with some is copied; the page's characters are never changed.
+    // A `.bin` carries no fork-only chat data (alternatives, interrupted-reply notes, memory coverage pointers). An
+    // alternative the conversation continued from first becomes an extra chat, but only in a chat whose alternatives the
+    // prompt named (`confirmedForkOnly`); every other chat is stripped. Only a character with some is copied; the page's
+    // characters are never changed. The labels keep the keys of the unexpanded chats, which are the keys of the prompt.
     const omittedChatData: ForkOnlyChatLabel[] = []
     if (Array.isArray(plain.characters)) {
-        const bare = plain.characters.map((slot) => withoutForkOnlyChatData(slot))
-        if (bare.some((slot, index) => slot !== plain.characters[index])) {
-            omittedChatData.push(...plain.characters.flatMap((slot) => forkOnlyChatLabels(slot)))
+        const original = plain.characters
+        const expanded = original.map((slot) => expandBranchChats(slot, (chat, index) => confirmedForkOnly.has(forkOnlyConfirmKey('alternatives', chatLabelKey(slot, chat, index))), v4))
+        const bare = expanded.map((entry) => withoutForkOnlyChatData(entry.character))
+        if (bare.some((slot, index) => slot !== original[index])) {
+            omittedChatData.push(...original.flatMap((slot, index) => expanded[index].parents.length > 0 ? lateBranchLabels(slot, expanded[index]) : forkOnlyChatLabels(slot)))
             plain.characters = bare
         }
     }
@@ -702,11 +709,20 @@ async function confirmUpstreamOversize(session: ExportSession, items: readonly s
 }
 
 /**
- * Asks, before the writer opens, whether to create the backup without the alternative replies of the named chats (a
- * `.bin` has no place for them). `true` when there are none or the person confirms; declining writes nothing.
+ * Asks, before the writer opens, whether to create the backup with the alternative replies of the named chats written
+ * as extra chats where a conversation continued from them, and left out otherwise (a `.bin` has no place for them). Each
+ * line says what that chat's alternatives become and the size the extra chats add. `true` when there are none or the
+ * person confirms; declining writes nothing.
  */
-async function confirmOmitAlternatives(session: ExportSession, labels: readonly string[]): Promise<boolean> {
-    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupAlternativesConfirm(labels.length, shownPromptNames(labels))))
+async function confirmOmitAlternatives(session: ExportSession, labels: readonly ForkOnlyChatLabel[]): Promise<boolean> {
+    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupBranchesConfirm(labels.length, labels.slice(0, UPSTREAM_PROMPT_NAMES_SHOWN).map(branchesPromptLine))))
+}
+
+/** One line of the alternatives prompt: the chat's text, cut like every prompt name, then what its alternatives become. */
+function branchesPromptLine(label: ForkOnlyChatLabel): string {
+    const [text] = shownPromptNames([label.text])
+    const branches = label.branches
+    return branches === undefined ? language.backupBranchesLeftOutLine(text) : language.backupBranchesLine(text, branches.chats, branches.bytes, branches.omitted)
 }
 
 /** A chat and the kinds of fork-only data it loses, as one line of the prompt and of the notice: `Character / Chat (kind, kind)`. */
@@ -714,9 +730,9 @@ function forkChatDataLine(text: string, kinds: readonly ForkOnlyKind[]): string 
     return `${text} (${kinds.map((kind) => language.backupForkChatDataKind(kind)).join(', ')})`
 }
 
-/** The chats whose alternatives the export leaves out; their prompt is the alternatives prompt. */
-function alternativeChatTexts(labels: readonly ForkOnlyChatLabel[]): string[] {
-    return labels.filter((label) => label.kinds.includes('alternatives')).map((label) => label.text)
+/** The chats whose alternatives the export does not carry as they are; their prompt is the alternatives prompt. */
+function alternativeChatLabels(labels: readonly ForkOnlyChatLabel[]): ForkOnlyChatLabel[] {
+    return labels.filter((label) => label.kinds.includes('alternatives'))
 }
 
 /** One line per chat that loses a kind other than alternatives, naming those kinds. */
@@ -767,6 +783,15 @@ async function confirmOmitThemePacks(session: ExportSession, labels: readonly st
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupThemePacksConfirm(labels.length, shownPromptNames(labels))))
 }
 
+/**
+ * Asks, before the writer opens, whether to create the backup without the usage statistics and the model prices the
+ * person entered (a `.bin` has no place for them). `true` when the profile holds none or the person confirms; declining
+ * writes nothing.
+ */
+async function confirmOmitUsageStats(session: ExportSession, present: boolean): Promise<boolean> {
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupUsageStatsConfirm))
+}
+
 /** A person's name for an asset of a backup, as the skip report gives it. */
 function describeBackupAsset(assetMap: ReadonlyMap<string, { charName: string, assetName: string }>, key: string): string {
     const assetInfo = assetMap.get(key)
@@ -786,7 +811,7 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
 }
 
 export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', () => runExport((session) => writeLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writeLocalBackup(session, options), busy))
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
@@ -904,9 +929,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         return { status: 'declined', cause: 'oversize-declined' }
     }
 
-    // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
+    // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
+    // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatTexts(forkOnlyLabels))) {
+    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     // The other fork-only chat data (interrupted-reply notes, memory coverage pointers) is named in a prompt of its own.
@@ -921,6 +947,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    // Usage statistics and entered model prices are fork-only; a `.bin` has no place for them.
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -929,7 +959,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     await ensureGestureForWriter(session, !serverExport && webWriterNeedsGesture())
     const writer = new LocalWriter()
     session.writer = writer
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined)
+    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1142,7 +1172,7 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
         return { status: 'declined', cause: 'partial-explanation-declined' }
     }
 
-    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
 }
 
 /**
@@ -1152,7 +1182,7 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
  * unit that is gone surfaces through the incomplete-data prompt, and declining it returns `declined`.
  */
 export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
@@ -1251,9 +1281,10 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         return { status: 'declined', cause: 'oversize-declined' }
     }
 
-    // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
+    // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
+    // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatTexts(forkOnlyLabels))) {
+    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     if (!await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))) {
@@ -1263,6 +1294,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1275,7 +1309,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     session.writer = writer
     // Computed once: the name reported in the outcome is the one the writer was asked for, also across midnight.
     const suggestedName = localBackupFileName(new Date(), true)
-    const r = await writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined)
+    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1565,13 +1599,64 @@ interface BootBinRun {
     done: (end: BootImportEnd) => void;
 }
 
+/** The accept rule of every backup picker: none on Android, whose picker may grey out `.rtb`; the content check makes any file safe. */
+export function backupPickerAccept(): string | null {
+    return transportKind() === 'android' ? null : '.bin,.rtb,application/vnd.risutanium.rtb';
+}
+
 /**
- * The start-up import of a `.bin`: the same file flow as the Settings restore, with the boot's installer as its target.
- * Resolves once the flow ends however it ends; `cancelled` means nothing was written and the boot may ask again.
+ * The start-up restore of a backup file (`.bin` or `.rtb`, chosen by content) over the boot's installer. Resolves once the
+ * flow ends, unless a first-life `.rtb` restore reloads the page. `cancelled` means the profile was not installed and the
+ * boot may ask again.
  */
 export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEnd> {
     return new Promise<BootImportEnd>((resolve) => {
-        void LoadLocalBackup({ target, done: resolve });
+        const cancelled = (): void => resolve({ kind: 'cancelled' });
+        if (refuseBackupLoadWhileBusy()) {
+            cancelled();
+            return;
+        }
+        try {
+            const input = document.createElement('input');
+            input.type = 'file';
+            const accept = backupPickerAccept();
+            if (accept !== null) {
+                input.accept = accept;
+            }
+            input.onchange = async () => {
+                const file = input.files?.[0];
+                input.remove();
+                if (file === undefined) {
+                    cancelled();
+                    return;
+                }
+                try {
+                    const { routeBootPickedBackup } = await import('./backupRouter');
+                    resolve(await routeBootPickedBackup(file, target));
+                } catch (error) {
+                    // Only the router's own load can throw here; nothing was read or written.
+                    console.error(error);
+                    alertError('Failed, Is file corrupted?');
+                    cancelled();
+                }
+            };
+            input.addEventListener('cancel', () => {
+                input.remove();
+                cancelled();
+            });
+            input.click();
+        } catch (error) {
+            console.error(error);
+            alertError('Failed, Is file corrupted?');
+            cancelled();
+        }
+    });
+}
+
+/** Today's boot `.bin` flow over a file the router already picked and recognised. Never rejects. */
+export function loadPickedBackupAtBoot(file: File, target: BootImportTarget): Promise<BootImportEnd> {
+    return new Promise<BootImportEnd>((resolve) => {
+        void loadLocalBackupWith({ target, done: resolve }, undefined, undefined, file);
     });
 }
 
@@ -1700,6 +1785,7 @@ function withFirstSetupDone(tree: Database, on: boolean): Database {
  *
  * With `opened` (never together with `boot`) there is no picker: the same restore runs over the file the caller opened,
  * under a busy entry of its own, and the promise settles when the restore ends. The caller owns and closes the source.
+ * `boot` takes a picked file or the picker's own, never an opened one.
  */
 export function LoadLocalBackup(boot: undefined, opened: undefined, restore: FirstRunRestore): Promise<LocalBackupEnd>;
 // Last, so `Parameters<typeof LoadLocalBackup>` stays the boot and opened pair every other caller uses.
@@ -1747,7 +1833,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
         const restoreSelectedFile = async (busy: BusyHandle): Promise<LocalBackupEnd> => {
             const facts = emptyImportFacts();
             let target: string | null = null;
-            // Set before the first asset, inlay or cold-storage write: from then on no exit is `canceled`.
+            // Set before the first asset or inlay write: from then on no exit is `canceled`.
             let writeMayHaveBegun = false;
             const ended = (outcome: OperationOutcome, cause: OperationCause | null = null): LocalBackupEnd =>
                 ({ operation, target, outcome, cause, detail: facts });
@@ -1786,15 +1872,19 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 return refused('busy');
             }
 
-            // A store2 page imports through `storeImport.ts` instead of the block
-            // tail below. Every precondition that can be known now is checked
-            // before the file is read: the session, the committer, a bulk marker
-            // of another page, and this tab's unsaved edits are saved first.
-            // The import target decides how cold-storage entries are handled, not the residency: a boot
-            // import (`boot`) has no page mode yet and must still never write a legacy unit, because the
-            // old upstream profile's units of the same ids are still the store's.
+            // A page restore imports through `storeImport.ts`. Every precondition that can be known now is
+            // checked before the file is read: the page runs on store2, the session, the committer, a bulk
+            // marker of another page, and this tab's unsaved edits are saved first. A page in any other
+            // mode is refused with nothing read, locked or written. A boot import (`boot`) has no page mode
+            // yet and takes neither check; it never writes a legacy unit, because the old upstream
+            // profile's units of the same ids are still the store's.
             let store2Target: Store2ImportTarget | null = null;
-            if (boot === undefined && getPageStorageMode().kind === 'store2') {
+            if (boot === undefined) {
+                const mode = getPageStorageMode();
+                if (mode.kind !== 'store2') {
+                    alertError(new Error(`A backup can only be restored on a store2 page; this page runs in mode ${mode.kind}.`));
+                    return refused();
+                }
                 const checked = await checkStore2Import();
                 if (checked.kind === 'refused') {
                     return refused(checked.cause);
@@ -1803,8 +1893,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 await saveFirst(SAVE_FIRST_BOUND_MS);
             }
 
-            // Every write below -- an asset, a cold-storage item, or the
-            // database itself -- must wait until the whole file is known to
+            // Every write below -- an asset or an inlay, and then the
+            // store2 commit that carries the database -- must wait until the whole file is known to
             // carry no encryption.risudat entry (MC-081). A walk exception
             // means the file could not be confirmed safe, so it is treated
             // the same as finding the marker: nothing is written. This scan
@@ -1866,18 +1956,15 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // when the imported tree names them. The database entry is located
             // now so that it is decoded, and a large one announced, before the
             // first asset is written.
-            let store2Import: Store2BinImport | null = null;
-            if (store2Target !== null || boot !== undefined) {
-                const scan = scanBinForImport(backupEntries, backupNames);
-                if (scan.database === null) {
-                    alertError('Failed, Is file corrupted?');
-                    return refused();
-                }
-                store2Import = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, guard: new UnsavedGuard() };
-                noteImportPhase('scanned');
-                if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength, scan.index.estimatedUnitBytes)) {
-                    return declined();
-                }
+            const scan = scanBinForImport(backupEntries, backupNames);
+            if (scan.database === null) {
+                alertError('Failed, Is file corrupted?');
+                return refused();
+            }
+            const store2Import: Store2BinImport = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, guard: new UnsavedGuard() };
+            noteImportPhase('scanned');
+            if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength, scan.index.estimatedUnitBytes)) {
+                return declined();
             }
 
             // On a Node server a body over the server's request limit can never
@@ -1919,21 +2006,19 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // or whose left-out blocks the person declines, changes nothing.
             // No database bytes or tree are held across the copy that follows:
             // the commit reads the entry from the file again.
-            if (store2Import !== null) {
-                alertWait('Reading the database in the backup...');
-                try {
-                    const omitted = await readBinDatabaseOmitted(file, store2Import.entry);
-                    noteImportPhase('database decoded');
-                    if (!await confirmLeftOut(omitted)) {
-                        return declined();
-                    }
-                    // The salvage map, kept after the person confirmed it; the decoded tree is never held here.
-                    facts.omitted = omitted;
-                } catch (e) {
-                    console.error(e);
-                    alertError(e instanceof BinFileChangedError ? binChangeText(e) : 'Failed, Is file corrupted?');
-                    return refused();
+            alertWait('Reading the database in the backup...');
+            try {
+                const omitted = await readBinDatabaseOmitted(file, store2Import.entry);
+                noteImportPhase('database decoded');
+                if (!await confirmLeftOut(omitted)) {
+                    return declined();
                 }
+                // The salvage map, kept after the person confirmed it; the decoded tree is never held here.
+                facts.omitted = omitted;
+            } catch (e) {
+                console.error(e);
+                alertError(e instanceof BinFileChangedError ? binChangeText(e) : 'Failed, Is file corrupted?');
+                return refused();
             }
 
             // Nothing else on this browser origin may write the database, or
@@ -1975,17 +2060,14 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // reporting instead that the restore is saved if anything after
             // the replace fails.
             let releaseDbWriteLock: (() => void) | null = null;
-            let replaceStarted = false;
             let restoreInstalled = false;
             let writeLockStaysClosed = false;
             try {
                 // With the tab lock held, the edits this tab could not save are
                 // asked about before the copy, not after hours of it.
-                if (store2Import !== null && store2Import.boot === null && releaseExclusiveHold && !await store2Import.guard.check()) {
+                if (store2Import.boot === null && releaseExclusiveHold && !await store2Import.guard.check()) {
                     return declined();
                 }
-                let pendingDatabase: Uint8Array | null = null;
-                const restoredColdStorageKeys = new Set<string>();
                 const skippedAssets: SkippedAsset[] = [];
                 const skippedInlays: InlaySkipped[] = [];
                 const yieldBudget = createYieldBudget({ budgetMs: RESTORE_YIELD_INTERVAL_MS, yieldFn: yieldToEventLoop });
@@ -2005,7 +2087,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 // in flight to settle, so no message is shown, no database is
                 // written and nothing returns while an asset is still being
                 // written. After a batch fails no further entry is read.
-                // The pass and the inlay restore below write assets, inlays and (on a block-era page) cold-storage items.
+                // The pass and the inlay restore below write assets and inlays.
                 // A sweep's delete in flight settles before the first asset of this restore is written.
                 await assetDeletionSettled();
                 writeMayHaveBegun = true;
@@ -2111,10 +2193,9 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             await yieldBudget.maybeYield();
                             continue;
                         }
-                        // A store2 page decoded the database above and reads the
-                        // cold-storage entries from the file on demand: neither is
-                        // read or stored by this pass.
-                        if (store2Import !== null && (name === 'database.risudat' || getColdStorageBackupKey(name))) {
+                        // The database was decoded above and the cold-storage entries are
+                        // read from the file on demand: neither is read or stored by this pass.
+                        if (name === 'database.risudat' || getColdStorageBackupKey(name)) {
                             await yieldBudget.maybeYield();
                             continue;
                         }
@@ -2129,8 +2210,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         // a pipeline), an asset above the pipeline's batch size
                         // (CHUNK_MAX without a pipeline) is copied to the store in
                         // slices and is never read whole, and is never handed to
-                        // `add`, which refuses it. The database and the
-                        // cold-storage entries are decoded as a whole, and read whole.
+                        // `add`, which refuses it. The database entry and the
+                        // cold-storage entries never reach this point: they are skipped above.
                         if (streamLargeAssets && entry.dataLength > (assetPipeline?.batchBytes ?? CHUNK_MAX)
                                 && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
                             const assetKey = 'assets/' + name;
@@ -2184,8 +2265,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             continue;
                         }
 
-                        // The browser's IndexedDB: a large asset entry is stored as a slice of the backup file. The database and the
-                        // cold-storage entries stay whole-decoded below. A browser that cannot keep a Blob falls through to the
+                        // The browser's IndexedDB: a large asset entry is stored as a slice of the backup file. The database entry and the
+                        // cold-storage entries never reach this point: they are skipped above. A browser that cannot keep a Blob falls through to the
                         // whole-entry path below, which restores an asset of any size and checks the file as it reads.
                         if (blobRestoreStore !== null && fileBlob !== null && entry.dataLength >= ASSET_PIECE_SAVE_MIN_BYTES
                                 && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
@@ -2231,69 +2312,37 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             break;
                         }
 
-                        if (name === 'database.risudat') {
-                            // Kept past this iteration: owned bytes, not a view that would hold a whole window alive.
-                            pendingDatabase = ownedBytes(data);
-                        }
-
-                        else {
-                            const coldStorageKey = getColdStorageBackupKey(name)
-                            let handledAsColdStorage = false
-
-                            if (coldStorageKey) {
-                                handledAsColdStorage = true
-                                try {
-                                    const text = new TextDecoder().decode(data)
-                                    const jsonData = JSON.parse(text)
-
-                                    if (isAcceptedColdStorageBackupEntry(name, jsonData)) {
-                                        if(await setColdStorageItem(coldStorageKey, jsonData)){
-                                            restoredColdStorageKeys.add(coldStorageKey)
-                                        } else {
-                                            console.error(`Failed to restore cold storage item ${coldStorageKey}`)
-                                        }
-                                    } else {
-                                        console.warn(`Skipping invalid cold storage backup item ${name}`)
-                                    }
-                                } catch (e) {
-                                    console.error(`Failed to parse cold storage item ${coldStorageKey}:`, e)
+                        // The entry name comes from the file. A name the store
+                        // cannot hold (a leading dot, a character the desktop
+                        // file system forbids, a reserved temp name) skips that
+                        // entry and is reported when the restore ends;
+                        // a 413 for a body under the Node server's own limit
+                        // means a proxy or the server refused the size, and the
+                        // restore stops saying so; any other failure aborts the
+                        // restore.
+                        const assetKey = 'assets/' + name
+                        noteAssetWrittenThisPage(assetKey)
+                        if (assetPipeline) {
+                            // The header offset orders the skip report by position in the file.
+                            // The pipeline holds the entry until its batch is sent, and counts the entry's own bytes
+                            // against its budget, so it gets an owned copy, not a view of the window.
+                            await assetPipeline.add({ key: assetKey, name, index: entry.headerOffset, data: ownedBytes(data) })
+                            assetsSubmitted++
+                        } else {
+                            try {
+                                await (await getAppStore()).write(assetKey, data, 'unconditional')
+                                assetsSubmitted++
+                            } catch (error) {
+                                if (error instanceof NodeHttpError && error.status === 413 && error.operation === 'write') {
+                                    console.error(error)
+                                    stopMessage = language.restoreAssetRefusedTooLarge(name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name)
+                                    break
                                 }
-                            }
-
-                            if (!handledAsColdStorage) {
-                                // The entry name comes from the file. A name the store
-                                // cannot hold (a leading dot, a character the desktop
-                                // file system forbids, a reserved temp name) skips that
-                                // entry and is reported after the database is written;
-                                // a 413 for a body under the Node server's own limit
-                                // means a proxy or the server refused the size, and the
-                                // restore stops saying so; any other failure aborts the
-                                // restore.
-                                const assetKey = 'assets/' + name
-                                noteAssetWrittenThisPage(assetKey)
-                                if (assetPipeline) {
-                                    // The header offset orders the skip report by position in the file.
-                                    // The pipeline holds the entry until its batch is sent, and counts the entry's own bytes
-                                    // against its budget, so it gets an owned copy, not a view of the window.
-                                    await assetPipeline.add({ key: assetKey, name, index: entry.headerOffset, data: ownedBytes(data) })
-                                    assetsSubmitted++
-                                } else {
-                                    try {
-                                        await (await getAppStore()).write(assetKey, data, 'unconditional')
-                                        assetsSubmitted++
-                                    } catch (error) {
-                                        if (error instanceof NodeHttpError && error.status === 413 && error.operation === 'write') {
-                                            console.error(error)
-                                            stopMessage = language.restoreAssetRefusedTooLarge(name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name)
-                                            break
-                                        }
-                                        if (!(error instanceof StoreInvalidKeyError)) {
-                                            throw error
-                                        }
-                                        console.error(error)
-                                        skippedAssets.push({ name, reason: 'invalidName' })
-                                    }
+                                if (!(error instanceof StoreInvalidKeyError)) {
+                                    throw error
                                 }
+                                console.error(error)
+                                skippedAssets.push({ name, reason: 'invalidName' })
                             }
                         }
                         await yieldBudget.maybeYield();
@@ -2351,297 +2400,85 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 skippedInlays.push(...inlayOutcome.skipped);
                 facts.inlays = inlayOutcome;
 
-                // A store2 page ends here: the imported tree is the page's new
-                // profile, committed under the write lock (the hold already
-                // holds it where there is one; otherwise it is taken now,
-                // before the unsaved-edits check, the commit-key read and the
-                // build). The commit keeps the state it replaces as an earlier
-                // saved version. The block-era tail below is not reached.
-                if (store2Import !== null) {
-                    noteImportPhase('assets copied');
-                    const databaseEntry = store2Import.entry;
-                    if (!releaseExclusiveHold) {
-                        releaseDbWriteLock = await dbWriteLock.acquire();
-                    }
-                    if (store2Import.boot !== null) {
-                        // A boot import has no earlier saved state and no page to reload: the dispatch opens what was installed.
-                        alertWait('Loading backup...');
-                        noteImportPhase('loading backup, boot');
-                        bootEnd = await commitBootImport({
-                            target: store2Import.boot,
-                            decode: () => readBinDatabaseTree(file, databaseEntry, facts.omitted),
-                            stream: { file, entry: databaseEntry, omitted: facts.omitted },
-                            reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
-                            onAccepted: (items) => { facts.incomplete = items; },
-                        });
-                        // Only an install that landed has anything left out to report; each notice is awaited so the dispatch
-                        // does not open the profile (or reload onto it) over an unread notice.
-                        if (bootEnd.kind === 'finished' && bootEnd.result.status === 'installed') {
-                            for (const notice of skippedNoticesOf(skippedAssets, skippedInlays, assetLimit)) {
-                                await alertNormalWait(notice);
-                            }
-                        }
-                        alertStore.set({ type: 'none', msg: '' });
-                        if (bootEnd.kind === 'cancelled') {
-                            return declined();
-                        }
-                        if (bootEnd.result.status === 'installed') {
-                            facts.flushed = bootEnd.result.flushed;
-                            facts.repair = bootEnd.result.repair;
-                        }
-                        const mapped = outcomeOfBootFinish(bootEnd.result);
-                        return ended(mapped.outcome, mapped.cause);
-                    }
-                    if (store2Import.target === null) {
-                        alertError('Failed, Is file corrupted?');
-                        return refused();
-                    }
-                    if (!await store2Import.guard.check()) {
-                        return declined();
-                    }
-                    // The commit decodes the database and reads the units from the file again: it must still be the file that was walked.
-                    if (await openedFileChanged()) {
-                        alertError(language.backupFileChangedWhileReading);
-                        return refused();
-                    }
-                    alertWait('Loading backup...');
-                    noteImportPhase('loading backup');
-                    const end = await commitStore2Import({
-                        target: store2Import.target,
-                        busy,
-                        decode: async () => withFirstSetupDone(await readBinDatabaseTree(file, databaseEntry, facts.omitted), completeFirstSetup),
-                        stream: { file, entry: databaseEntry, omitted: facts.omitted, adjustRoot: (root) => withFirstSetupDone(root, completeFirstSetup) },
-                        reader: createBinImportReader(file, store2Import.index),
-                    });
-                    switch (end.kind) {
-                        case 'refused':
-                            return refused(end.cause);
-                        case 'unconfirmed':
-                            // Which state is current is unknown: nothing may save from this page until a reload shows it.
-                            writeLockStaysClosed = true;
-                            if (releaseExclusiveHold) {
-                                await releaseExclusiveHold(true);
-                            }
-                            return ended('unknown');
-                        case 'landed':
-                            restoreInstalled = true;
-                            writeLockStaysClosed = true;
-                            facts.flushed = end.flushed;
-                            facts.repair = end.repair;
-                            facts.incomplete = end.incomplete;
-                            await announceStore2Import(end, skippedNoticesOf(skippedAssets, skippedInlays, assetLimit), () => reloadOntoRestoredState(releaseExclusiveHold));
-                            return ended('committed');
-                    }
-                }
-
-                // The block-era tail: the finishing message ends with the copies, and the decode and replace run under this one.
-                alertWait('Loading backup...');
-                if(!pendingDatabase){
-                    alertError('Failed, Is file corrupted?')
-                    return refused()
-                }
-
-                // A block-format database is read by `salvageRisuSave`, which
-                // never consults the current profile's block cache: a block the
-                // file lacks is left out and reported, never filled from
-                // another save. Older msgpack formats have no blocks and no
-                // cache.
-                const db = pendingDatabase;
-                let dbData: Database;
-                let omitted: ReadonlyMap<string, SalvageOmittedBlock> = new Map();
-                if (isBlockFormatSave(db)) {
-                    const salvaged = await salvageRisuSave(db);
-                    dbData = salvaged.db;
-                    omitted = salvaged.omitted;
-                } else {
-                    dbData = await decodeRisuSave(db);
-                }
-                const leftOut = describeOmitted(omitted, currentCharacterNames());
-                if (leftOut.length > 0 && !await alertConfirm(leftOutQuestion(leftOut))) {
-                    return declined();
-                }
-                facts.omitted = omitted;
-                const missingColdStorageKeys:string[] = []
-                // An upstream plugin storage index becomes per-key `_coldplugin` units here, after every unit entry was
-                // written and before the presence check below, so the installed tree never holds the pointer; whatever
-                // the conversion could not place joins the keys the question below reports.
-                const indexConversion = await convertPluginStorageIndex(dbData.pluginCustomStorage, {
-                    read: readColdStorageItem,
-                    write: setColdStorageItem,
-                    mint: v4,
-                })
-                for(const key of indexConversion.minted){
-                    restoredColdStorageKeys.add(key)
-                }
-                missingColdStorageKeys.push(...unavailableKeysOfMissing(indexConversion.missing))
-                // A plugin storage unit is present whatever value it holds;
-                // chat and character units must also be chat or character shaped.
-                const pluginColdStorageKeys = new Set(listColdPluginStorageKeys(dbData))
-                for(const key of await listColdDataKeys(dbData)){
-                    if(restoredColdStorageKeys.has(key)){
-                        continue
-                    }
-                    const existingColdStorage = await readColdStorageItem(key)
-                    const isPresent = existingColdStorage.status === 'ok'
-                        && (pluginColdStorageKeys.has(key) || isColdStorageBackupData(existingColdStorage.value))
-                    if(!isPresent){
-                        missingColdStorageKeys.push(key)
-                    }
-                }
-                if(!await confirmIncompleteColdStorageOperation(dbData, missingColdStorageKeys, 'restore')){
-                    return declined()
-                }
-
-                // The character list is made one the save can hold first, with
-                // the archived units in the store to read an archived
-                // character's id back from: they were all written above.
-                const characterRepair = await repairRestoredCharacters(dbData);
-                if ('refusal' in characterRepair) {
-                    alertError(characterRepair.refusal);
-                    return refused();
-                }
-                // Repairs ids on the decoded backup before installing it,
-                // matching every other backup-loading path -- never left
-                // for boot's own repair after the reload below, which
-                // would leave a duplicate or missing chat id live in this
-                // page's own in-memory database for as long as this page
-                // stays open before that reload actually happens.
-                repairDatabaseIds(dbData)
-                // The restored tree becomes a new block generation: its lists
-                // are filled in first, then a database that names no preset
-                // keeps its working settings as a new preset, over none.
-                completeRestoredTree(dbData);
-                repairBotPresetsId(dbData)
-                // Before the build: the written generation and the installed database both carry it, and nothing saves after the install.
-                withFirstSetupDone(dbData, completeFirstSetup);
-                const built = await buildRestoreSet(dbData);
-                if ('refusal' in built) {
-                    alertError(built.refusal);
-                    return refused();
-                }
-                const restoredSet = built.set;
-
-                // The exclusive hold taken above (when granted) already holds
-                // dbWriteLock internally for the rest of this restore --
-                // acquiring it again here would deadlock against that same
-                // hold. Only the Tauri and Web-Locks-unsupported paths, which
-                // never took it, still need it directly: the same write mutex
-                // saveDb()'s autosave loop takes around its commit (see
-                // globalApi.svelte.ts's AsyncMutex/dbWriteLock). It is held
-                // across the whole replace, so no save iteration that took its
-                // layout before this restore can commit into the restored
-                // generation.
+                // The imported tree is the page's new profile, committed under
+                // the write lock (the hold already holds it where there is one;
+                // otherwise it is taken now, before the unsaved-edits check, the
+                // commit-key read and the build). The commit keeps the state it
+                // replaces as an earlier saved version.
+                noteImportPhase('assets copied');
+                const databaseEntry = store2Import.entry;
                 if (!releaseExclusiveHold) {
                     releaseDbWriteLock = await dbWriteLock.acquire();
                 }
-
-                // The same busy check is asked again at the flip, inside the
-                // replace, so work that began while the generation was being
-                // written is seen: a refusal then leaves the live state as it
-                // was and removes the restore's own generation. The assets and
-                // cold-storage items already read from the file stay, as on
-                // the other early exits. The finally releases what was taken
-                // above.
-                if (refuseBackupLoadWhileBusy(busy)) {
-                    return refused('busy');
+                if (store2Import.boot !== null) {
+                    // A boot import has no earlier saved state and no page to reload: the dispatch opens what was installed.
+                    alertWait('Loading backup...');
+                    noteImportPhase('loading backup, boot');
+                    bootEnd = await commitBootImport({
+                        target: store2Import.boot,
+                        decode: () => readBinDatabaseTree(file, databaseEntry, facts.omitted),
+                        stream: { file, entry: databaseEntry, omitted: facts.omitted },
+                        reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
+                        onAccepted: (items) => { facts.incomplete = items; },
+                    });
+                    // Only an install that landed has anything left out to report; each notice is awaited so the dispatch
+                    // does not open the profile (or reload onto it) over an unread notice.
+                    if (bootEnd.kind === 'finished' && bootEnd.result.status === 'installed') {
+                        for (const notice of skippedNoticesOf(skippedAssets, skippedInlays, assetLimit)) {
+                            await alertNormalWait(notice);
+                        }
+                    }
+                    alertStore.set({ type: 'none', msg: '' });
+                    if (bootEnd.kind === 'cancelled') {
+                        return declined();
+                    }
+                    if (bootEnd.result.status === 'installed') {
+                        facts.flushed = bootEnd.result.flushed;
+                        facts.repair = bootEnd.result.repair;
+                    }
+                    const mapped = outcomeOfBootFinish(bootEnd.result);
+                    return ended(mapped.outcome, mapped.cause);
                 }
-
+                if (store2Import.target === null) {
+                    alertError('Failed, Is file corrupted?');
+                    return refused();
+                }
+                if (!await store2Import.guard.check()) {
+                    return declined();
+                }
+                // The commit decodes the database and reads the units from the file again: it must still be the file that was walked.
                 if (await openedFileChanged()) {
                     alertError(language.backupFileChangedWhileReading);
                     return refused();
                 }
-
-                replaceStarted = true;
-                const written = await replaceWithRestoredSet(restoredSet, () => !refuseBackupLoadWhileBusy(busy));
-                if (written.kind === 'not-happened') {
-                    // The busy guard has already said why when it was the one that refused.
-                    if (!written.aborted) {
-                        alertError(language.restoreNotHappenedNotice);
-                    }
-                    return refused(written.aborted ? 'busy' : null);
-                }
-                if (written.kind === 'too-large') {
-                    alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit, storeAssetLimitBytes()));
-                    return refused();
-                }
-                if (written.kind === 'unsavable') {
-                    alertError(language.restoreRefusedUnsavable(describeBlockForPerson(written.blockName)));
-                    return refused('unsavable');
-                }
-                if (written.kind === 'unconfirmed') {
-                    // Which state is current is unknown: nothing may save from
-                    // this page until a reload shows it.
-                    writeLockStaysClosed = true;
-                    alertStore.set({
-                        type: "wait",
-                        msg: language.saveDamagedUnconfirmed
-                    });
-                    if (releaseExclusiveHold) {
-                        await releaseExclusiveHold(true);
-                    }
-                    return ended('unknown');
-                }
-                restoreInstalled = true;
-                writeLockStaysClosed = true;
-
-                // Installed only now that the restored state is the page's
-                // head -- any other result above leaves this page on its
-                // pre-restore database, so the message shown for it can
-                // truthfully say the restore did not complete.
-                setDatabase(dbData);
-                requiresFullEncoderReload.state = true;
-
-                // Awaited here, before the wait notice below and the reload that
-                // would hide it. Plain text: the names come from the file.
-                const skippedInvalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
-                const skippedTooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
-                if (skippedInvalidNames.length > 0) {
-                    await alertNormalWait(language.restoreAssetsSkipped(skippedInvalidNames.length, shownSkippedNames(skippedInvalidNames)));
-                }
-                if (skippedTooLargeNames.length > 0) {
-                    await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), assetLimit ?? WEB_ASSET_LIMIT_BYTES));
-                }
-                const skippedInlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
-                const invalidInlays = skippedInlayNames('invalid');
-                const notStoredInlays = skippedInlayNames('notStored');
-                if (invalidInlays.length > 0) {
-                    await alertNormalWait(language.restoreInlaysInvalid(invalidInlays.length, shownSkippedNames(invalidInlays)));
-                }
-                if (notStoredInlays.length > 0) {
-                    await alertNormalWait(language.restoreInlaysNotStored(notStoredInlays.length, shownSkippedNames(notStoredInlays)));
-                }
-                for (const notice of tooLargeInlayNotices(skippedInlays)) {
-                    await alertNormalWait(notice);
-                }
-                // Awaited like the notices above, so it is read before the reload
-                // takes the page away; only a restore that landed gets here.
-                if (characterRepair.notice !== null) {
-                    await alertNormalWait(characterRepair.notice);
-                }
-
-                alertStore.set({
-                    type: "wait",
-                    msg: "Success, Refreshing your app."
+                alertWait('Loading backup...');
+                noteImportPhase('loading backup');
+                const end = await commitStore2Import({
+                    target: store2Import.target,
+                    busy,
+                    decode: async () => withFirstSetupDone(await readBinDatabaseTree(file, databaseEntry, facts.omitted), completeFirstSetup),
+                    stream: { file, entry: databaseEntry, omitted: facts.omitted, adjustRoot: (root) => withFirstSetupDone(root, completeFirstSetup) },
+                    reader: createBinImportReader(file, store2Import.index),
                 });
-                // The exclusive hold's Web Lock portion (if any) has nothing
-                // further to protect once this page's own write has landed --
-                // other tabs may now proceed. Its write-lock portion stays closed
-                // forever (`keepWriteLock`): a save from this now-stale page,
-                // encoded from the pre-restore database before setDatabase()
-                // above installed the restored one, would otherwise commit
-                // into the restored generation before the reload. Awaited before marking the
-                // reload as app-initiated below: this release can itself
-                // queue behind another tab's own pending exclusive request
-                // for longer than the mark's own lifetime
-                // (`APP_INITIATED_RELOAD_RESET_MS` in reloadGuard.ts), and a
-                // mark that expired before the navigation would let the
-                // "Leave site?" guard stop it.
-                if (releaseExclusiveHold) {
-                    await releaseExclusiveHold(true);
+                switch (end.kind) {
+                    case 'refused':
+                        return refused(end.cause);
+                    case 'unconfirmed':
+                        // Which state is current is unknown: nothing may save from this page until a reload shows it.
+                        writeLockStaysClosed = true;
+                        if (releaseExclusiveHold) {
+                            await releaseExclusiveHold(true);
+                        }
+                        return ended('unknown');
+                    case 'landed':
+                        restoreInstalled = true;
+                        writeLockStaysClosed = true;
+                        facts.flushed = end.flushed;
+                        facts.repair = end.repair;
+                        facts.incomplete = end.incomplete;
+                        await announceStore2Import(end, skippedNoticesOf(skippedAssets, skippedInlays, assetLimit), () => reloadOntoRestoredState(releaseExclusiveHold));
+                        return ended('committed');
                 }
-                markAppInitiatedReload();
-                await reloadAfterRestore();
-                return ended('committed');
             } catch (error) {
                 console.error(error);
                 if (restoreInstalled) {
@@ -2656,8 +2493,6 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         msg: language.restoreSavedReloadOrRestart
                     });
                     return ended('committed');
-                } else if (replaceStarted) {
-                    alertError(language.restoreWriteFailed);
                 } else {
                     alertError('Failed, Is file corrupted?');
                 }
@@ -2690,6 +2525,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     alertError('Failed, Is file corrupted?');
                 } finally {
                     busy.end();
+                    boot?.done(bootEnd);
                     settle(end);
                 }
             })();

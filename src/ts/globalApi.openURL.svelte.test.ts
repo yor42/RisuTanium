@@ -1,14 +1,15 @@
 /**
- * `openURL` on Tauri hands the URL to the shell plugin's `open()`. A rejected
+ * `openURL` on Tauri invokes the opener plugin's `plugin:opener|open_url`
+ * command with only the URL; the shell plugin's open is never used. A rejected
  * promise or a synchronous throw from it is swallowed with a fixed warning
  * that never contains the URL, because OAuth URLs carry state and PKCE values.
  *
  * This file drives the REAL `openURL`; every module `globalApi.svelte.ts`
  * imports is mocked, following `globalApi.saveDbTauriAtomic.svelte.test.ts`.
- * The shell plugin is a mock, so a passing test says nothing about the native
- * plugin.
+ * `invoke` and the shell plugin are mocks, so a passing test says nothing
+ * about the native plugin, the capability scope or the Android launch.
  */
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 
 vi.mock('localforage', () => ({
@@ -195,6 +196,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     getColdStorageItem: vi.fn(),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
+import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-shell'
 import { openURL } from 'src/ts/globalApi.svelte'
 
@@ -203,11 +205,22 @@ const SECRET_URL = 'https://auth.example.invalid/authorize?state=SECRETSTATE&cod
 const unhandled: unknown[] = []
 const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
 
+beforeEach(() => {
+    vi.mocked(invoke).mockReset()
+    vi.mocked(open).mockReset()
+})
+
 afterEach(() => {
     process.off('unhandledRejection', onUnhandled)
     unhandled.length = 0
     vi.restoreAllMocks()
 })
+
+const OPEN_URL_COMMAND = 'plugin:opener|open_url'
+
+function openUrlCalls() {
+    return vi.mocked(invoke).mock.calls.filter((call) => call[0] === OPEN_URL_COMMAND)
+}
 
 async function settle() {
     await new Promise<void>((resolve) => setTimeout(resolve, 20))
@@ -218,10 +231,39 @@ function warnedStrings(warn: ReturnType<typeof vi.spyOn>): string[] {
 }
 
 describe('openURL on Tauri', () => {
-    test('a rejected open() is caught and warned about without the URL', async () => {
+    test('calls the opener\'s open_url with only the URL and never the shell open', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        openURL(SECRET_URL)
+        await settle()
+
+        const calls = openUrlCalls()
+        expect(calls).toHaveLength(1)
+        const args = calls[0][1]
+        expect(args).toStrictEqual({ url: SECRET_URL })
+        expect(Object.keys(args as object)).toEqual(['url'])
+        expect(open).not.toHaveBeenCalled()
+        expect(warn).not.toHaveBeenCalled()
+    })
+
+    test('passes the caller\'s string unchanged with no client scheme filter', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        vi.mocked(invoke).mockRejectedValue(new Error('Not allowed to open url'))
+
+        for (const input of ['/hub-proxy/x', 'javascript:alert(1)']) {
+            openURL(input)
+        }
+        await settle()
+
+        const calls = openUrlCalls()
+        expect(calls.map((call) => call[1])).toStrictEqual([{ url: '/hub-proxy/x' }, { url: 'javascript:alert(1)' }])
+        expect(warn).toHaveBeenCalledTimes(2)
+    })
+
+    test('a rejected open_url is caught and warned about without the URL', async () => {
         process.on('unhandledRejection', onUnhandled)
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        vi.mocked(open).mockRejectedValueOnce(new Error(`cannot open ${SECRET_URL}`))
+        vi.mocked(invoke).mockRejectedValueOnce(new Error(`Not allowed to open url ${SECRET_URL}`))
 
         openURL(SECRET_URL)
         await settle()
@@ -235,9 +277,9 @@ describe('openURL on Tauri', () => {
         }
     })
 
-    test('a synchronous throw from open() does not escape and is warned about without the URL', async () => {
+    test('a synchronous throw from invoke does not escape and is warned about without the URL', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        vi.mocked(open).mockImplementationOnce(() => {
+        vi.mocked(invoke).mockImplementationOnce(() => {
             throw new Error(`boom ${SECRET_URL}`)
         })
 
@@ -251,14 +293,14 @@ describe('openURL on Tauri', () => {
         }
     })
 
-    test('a resolved open() passes the URL through and does not warn', async () => {
+    test('a resolved open_url does not warn', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        vi.mocked(open).mockResolvedValueOnce(undefined)
+        vi.mocked(invoke).mockResolvedValueOnce(undefined)
 
         openURL(SECRET_URL)
         await settle()
 
-        expect(open).toHaveBeenCalledWith(SECRET_URL)
+        expect(openUrlCalls()).toHaveLength(1)
         expect(warn).not.toHaveBeenCalled()
     })
 })

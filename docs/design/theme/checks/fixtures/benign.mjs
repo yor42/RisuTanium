@@ -37,7 +37,8 @@ export const NEW_BENIGN = {
 };
 // DD-242/243 hostile packs that the two reviews did not contain (one per rule, per area where the part names differ)
 export const NEW_HOSTILE = [
-  ['all', 'color-mix on text', ':root{--nexus-text:color-mix(in srgb,#000 90%,#fff)}', /cannot be resolved to a concrete sRGB/],
+  ['all', 'color-mix on text', ':root{--nexus-text:color-mix(in srgb,#000 90%,#fff)}', /would be [\d.]+:1/],
+  ['all', 'color-mix in an unsupported space on text', ':root{--nexus-text:color-mix(in oklch,#000 90%,#fff)}', /cannot be resolved to a concrete sRGB/],
   ['all', 'oklch on danger', ':root{--nexus-danger:oklch(0.1 0 0)}', /cannot be resolved to a concrete sRGB/],
   ['all', 'light-dark on muted', ':root{--nexus-text-muted:light-dark(#000,#010101)}', /cannot be resolved to a concrete sRGB/],
   ['all', 'relative colour on text', ':root{--nexus-text:rgb(from var(--nexus-canvas) r g b)}', /cannot be resolved to a concrete sRGB/],
@@ -53,7 +54,10 @@ export const NEW_HOSTILE = [
   ['all', 'transparent sheet', ':root{--color-surface-sheet:transparent}', /fully transparent|opaque/],
   ['all', 'translucent sheet', ':root{--color-surface-sheet:rgb(14 15 42 / 0.5)}', /opaque colour/],
   ['all', 'translucent toast', ':root{--color-surface-toast:#1c1e4580}', /opaque colour/],
-  ['all', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
+  // not Home: Home's --nexus-surface is the scheme's opaque darkbg (home-tokens.css), so there is no glass token there to derive the sheet from
+  ['chat', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
+  ['settings', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
+  ['studio', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
   ['all', 'sheet equal to the text colour', ':root{--color-surface-sheet:#ebebeb}', /would be [\d.]+:1 on the sheet/],
   ['all', 'muted text on the sheet', ':root{--nexus-text-muted:#0e0f2b}', /would be [\d.]+:1 on the sheet/],
   ['all', 'colour hidden in an @media branch (worst case)', ':root{--nexus-text-muted:#bbbbcc}@media (min-width:1px){:root{--nexus-text-muted:#0e0f2b}}', /would be [\d.]+:1/],

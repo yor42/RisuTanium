@@ -259,11 +259,16 @@ function exifPixelSize(t: Uint8Array, le: boolean, subOff: number, ifd0Off: numb
     return { w: px.value, h: py.value }
 }
 
-/**
- * Finds a usable Exif thumbnail in the first bytes of a JPEG. Does not catch:
- * any exception it throws is a defect in this function.
- */
-export function scanEmbeddedJpegThumb(prefix: Uint8Array): EmbeddedThumb | null {
+interface ExifHead {
+    tiff: Uint8Array
+    le: boolean
+    ifd0Off: number
+    ifd0: Ifd
+    main: Size | null
+}
+
+/** The Exif TIFF block of a JPEG prefix with its byte order and IFD0, or null when any of them is missing or out of bounds. */
+function readExifHead(prefix: Uint8Array): ExifHead | null {
     const data = prefix.length > EMBEDDED_THUMB_SCAN_BYTES ? prefix.subarray(0, EMBEDDED_THUMB_SCAN_BYTES) : prefix
     if (data.length < 4 || data[0] !== 0xFF || data[1] !== 0xD8) return null
     const { tiff: t, main } = walkOuter(data)
@@ -277,13 +282,43 @@ export function scanEmbeddedJpegThumb(prefix: Uint8Array): EmbeddedThumb | null 
     const ifd0Off = u32(t, 4, le)
     const ifd0 = readIfd(t, ifd0Off, le)
     if (ifd0 === null) return null
+    return { tiff: t, le, ifd0Off, ifd0, main }
+}
 
+/** IFD0's Orientation, or 1 when it is absent or not a single SHORT of 1 to 8. */
+function orientationOf(ifd0: Ifd): ExifOrientation {
     const orientationEntry = findEntry(ifd0, 0x0112)
-    let orientation: ExifOrientation = 1
     if (orientationEntry && orientationEntry.type === TYPE_SHORT && orientationEntry.count === 1
         && orientationEntry.value >= 1 && orientationEntry.value <= 8) {
-        orientation = orientationEntry.value as ExifOrientation
+        return orientationEntry.value as ExifOrientation
     }
+    return 1
+}
+
+/**
+ * The Exif Orientation of a JPEG from its first bytes, read by the same IFD0
+ * parse as the embedded-thumbnail scan. 1 when the tag is absent or the
+ * prefix is malformed; never throws. Used for a natively decoded preview,
+ * whose pixels are in stored order like the full image's.
+ */
+export function readJpegOrientation(prefix: Uint8Array): ExifOrientation {
+    try {
+        const head = readExifHead(prefix)
+        return head === null ? 1 : orientationOf(head.ifd0)
+    } catch {
+        return 1
+    }
+}
+
+/**
+ * Finds a usable Exif thumbnail in the first bytes of a JPEG. Does not catch:
+ * any exception it throws is a defect in this function.
+ */
+export function scanEmbeddedJpegThumb(prefix: Uint8Array): EmbeddedThumb | null {
+    const head = readExifHead(prefix)
+    if (head === null) return null
+    const { tiff: t, le, ifd0Off, ifd0, main } = head
+    const orientation = orientationOf(ifd0)
 
     const ifd1Off = ifd0.next
     if (ifd1Off === 0 || ifd1Off === ifd0Off) return null

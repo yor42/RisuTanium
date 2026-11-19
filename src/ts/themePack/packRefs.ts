@@ -8,6 +8,9 @@ export const PACK_ASSET_NAME = /^tp-[0-9a-f]{64}\.[a-z0-9]{1,16}$/
 /** The key form layout A stores: one archive per pack. */
 export const PACK_ARCHIVE_KEY = /^assets\/tp-[0-9a-f]{64}\.risutheme$/
 
+/** The key form of a pack's optional icon: one still PNG or WebP stored as bytes next to the archive. */
+export const PACK_ICON_KEY = /^assets\/tp-[0-9a-f]{64}\.(png|webp)$/
+
 /**
  * True when the basename of `nameOrKey` (after the last `/` or `\`), lower-cased, matches `PACK_ASSET_NAME`. Case is
  * folded because a desktop file system that ignores case would let a differently spelled name replace a pack file.

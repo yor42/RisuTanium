@@ -32,11 +32,7 @@ import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
-const recordLoadTimeListingMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
-const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
-const sweepTauriAssetsMock = vi.hoisted(() => vi.fn(async (_deps: unknown) => { }))
-const getRemoteSavePayloadNameMock = vi.hoisted(() => vi.fn((_fileName: string): string | null => null))
 const readDirMock = vi.hoisted(() => vi.fn(async (_path: string, _options?: unknown): Promise<Array<{ name: string, isFile?: boolean, isDirectory?: boolean }>> => []))
 
 /** Every instance `localforage.createInstance()` has ever handed back, by the name it was created with -- so a test can inspect which instances were cleared or dropped, and by what name. */
@@ -172,22 +168,6 @@ vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const, expectedHash: '', actualHash: '' })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
 
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: getRemoteSavePayloadNameMock,
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
-    recordLoadTimeListing: recordLoadTimeListingMock,
-    resetLoadTimeListingForTests: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: sweepTauriAssetsMock,
-    sweepForageAssetKey: vi.fn(async () => { }),
-    ASSET_SWEEP_BATCH_SIZE: 100,
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -250,7 +230,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     },
     saveDb: vi.fn(async () => { }),
     getDbBackups: vi.fn(async (): Promise<number[]> => []),
-    buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
     setUsingSw: vi.fn(),
     checkCharOrder: vi.fn(),
@@ -283,13 +262,10 @@ function baseDbBytes(mainPrompt: string) {
 
 /**
  * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
- * registered, so the legacy main file is converted to a store2 profile as on a production page. The rows whose subject
- * is the legacy startup clean-up pass `realDispatch: false`: a dispatch page never starts that clean-up.
+ * registered, so the legacy main file is converted to a store2 profile as on a production page.
  */
-async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
-    if (options.realDispatch) {
-        await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
-    }
+async function freshLoadData() {
+    await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
     const { loadData } = await import('src/ts/bootstrap')
     const { loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         loadedStore: ReturnType<typeof writable<boolean>>
@@ -306,11 +282,7 @@ beforeEach(() => {
     localforageInstances.length = 0
     localforageDropInstanceMock.mockClear()
     dbState.current = {}
-    recordLoadTimeListingMock.mockReset().mockResolvedValue(undefined)
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
-    buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set<string>(), complete: true })
-    sweepTauriAssetsMock.mockReset().mockResolvedValue(undefined)
-    getRemoteSavePayloadNameMock.mockReset().mockReturnValue(null)
     // A held file is not a directory: the store's `has` lists the path to tell the two apart, so a file must refuse the listing.
     readDirMock.mockReset().mockImplementation(async (path: string) => {
         if ((fsStore.get(bare(path))?.length ?? 0) > 0) {
@@ -418,130 +390,3 @@ describe('loadData(): Tauri boot pins (I6, I5)', () => {
     })
 })
 
-/** Arms the Tauri database read with `db` as the file's content. */
-function armTauriBoot(db: Record<string, unknown>) {
-    fsStore.set('', new Uint8Array())
-    fsStore.set('database', new Uint8Array())
-    fsStore.set('assets', new Uint8Array())
-    const dbBytes = encodeRisuSaveLegacy(db)
-    fsStore.set('database/database.bin', dbBytes)
-}
-
-function tauriBaseDb(): Record<string, unknown> {
-    return {
-        formatversion: 999,
-        characters: [],
-        modules: [],
-        personas: [],
-        characterOrder: [],
-        mainPrompt: 'tauri-fixture',
-        loreBookToken: 8000,
-        coldstorage: false,
-    }
-}
-
-describe('loadData(): the load-time listing is recorded before plugins start (Tauri)', () => {
-    test('the listing is recorded and has settled before loadPlugins is called', async () => {
-        armTauriBoot(tauriBaseDb())
-        const order: string[] = []
-        recordLoadTimeListingMock.mockImplementation(async () => {
-            order.push('listing:start')
-            await new Promise((resolve) => setTimeout(resolve, 15))
-            order.push('listing:settled')
-        })
-        loadPluginsMock.mockImplementation(async () => {
-            order.push('loadPlugins')
-        })
-
-        const { loadData } = await freshLoadData({ realDispatch: false })
-
-        await loadData()
-
-        expect(recordLoadTimeListingMock).toHaveBeenCalledTimes(1)
-        expect(loadPluginsMock).toHaveBeenCalledTimes(1)
-        expect(order).toEqual(['listing:start', 'listing:settled', 'loadPlugins'])
-    })
-})
-
-describe('cleanChunks(): the startup asset sweep does not run once a cold-storage stub exists (Tauri)', () => {
-    const REMOTE_META_PATH = 'remotes/orphan-char.local.bin.meta'
-
-    function stubCharacter() {
-        return { chaId: 'stub-char', type: 'character', name: 'Stub', chats: [], coldstorage: 'unit-of-stub-char' }
-    }
-
-    function plainCharacter() {
-        return { chaId: 'plain-char', type: 'character', name: 'Plain', chats: [] }
-    }
-
-    /** Boots the Tauri branch with one orphan asset and one orphan legacy remote file on disk, and waits for the remote-file pass when the profile is one that reaches it. */
-    async function bootProfile(profile: { coldstorage: boolean, stub: boolean }) {
-        const db = tauriBaseDb()
-        db.coldstorage = profile.coldstorage
-        db.characters = [profile.stub ? stubCharacter() : plainCharacter()]
-        armTauriBoot(db)
-        readDirMock.mockImplementation(async (path: string) => {
-            if (bare(path) === 'remotes') {
-                return [{ name: 'orphan-char.local.bin', isFile: true, isDirectory: false }]
-            }
-            return [{ name: 'orphan.png' }]
-        })
-        getRemoteSavePayloadNameMock.mockReturnValue('orphan-char')
-
-        const { loadData } = await freshLoadData({ realDispatch: false })
-        await loadData()
-
-        if (profile.coldstorage) {
-            // The early return leaves nothing to wait for.
-            await new Promise((resolve) => setTimeout(resolve, 30))
-            return
-        }
-        await vi.waitFor(() => {
-            expect(fsStore.has(REMOTE_META_PATH)).toBe(true)
-        }, { timeout: 500, interval: 5 })
-    }
-
-    test('flag off with a stub in the loaded tree: the asset keep-set is not built', async () => {
-        await bootProfile({ coldstorage: false, stub: true })
-        expect(buildAssetKeepSetMock).not.toHaveBeenCalled()
-    })
-
-    test('flag off with a stub in the loaded tree: the asset directory is not swept', async () => {
-        await bootProfile({ coldstorage: false, stub: true })
-        expect(sweepTauriAssetsMock).not.toHaveBeenCalled()
-    })
-
-    test('guard: flag off with a stub in the loaded tree: the remote-file pass still runs', async () => {
-        await bootProfile({ coldstorage: false, stub: true })
-        expect(fsStore.has(REMOTE_META_PATH)).toBe(true)
-    })
-
-    test('guard: flag off with no stub: the asset keep-set is built and the asset directory is swept', async () => {
-        await bootProfile({ coldstorage: false, stub: false })
-        expect(buildAssetKeepSetMock).toHaveBeenCalledTimes(1)
-        expect(sweepTauriAssetsMock).toHaveBeenCalledTimes(1)
-    })
-
-    for (const stub of [true, false]) {
-        test(`guard: flag on ${stub ? 'with' : 'without'} a stub: startup returns before the keep-set, the sweep and the remote-file pass`, async () => {
-            await bootProfile({ coldstorage: true, stub })
-            expect(buildAssetKeepSetMock).not.toHaveBeenCalled()
-            expect(sweepTauriAssetsMock).not.toHaveBeenCalled()
-            expect(fsStore.has(REMOTE_META_PATH)).toBe(false)
-        })
-    }
-})
-
-describe('loadData(): a load-time listing that rejects does not stop boot (Tauri)', () => {
-    test('guard: loadPlugins is still called and the app still opens', async () => {
-        armTauriBoot(tauriBaseDb())
-        recordLoadTimeListingMock.mockRejectedValue(new Error('listing failed'))
-
-        const { loadData, loadedStore } = await freshLoadData({ realDispatch: false })
-
-        await loadData()
-
-        expect(loadPluginsMock).toHaveBeenCalledTimes(1)
-        expect(get(loadedStore)).toBe(true)
-    })
-})

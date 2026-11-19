@@ -1,17 +1,31 @@
 import { MEASURE } from '../../../process/memory/measureFlag'
 import { getPageStorageMode } from '../../pageStorageMode'
+import { liveLockQuery, soleTabAnswer } from '../../soleTab'
 import { batchPaceOf } from '../oldData/delete'
 import type { Store2Session } from '../session'
 import type { GcPageFacts } from './gcMeasure'
 import { meterGcBackend, noteMeasuredGcResult, type GcMeter } from './gcMeter'
-import { gcPass, type GcDeps, type GcResult } from './pass'
+import { gcPass, type GcDeps, type GcPeers, type GcResult } from './pass'
 
 /**
  * The automatic clean-up of store2 leftovers: one collector pass per page load, from the maintenance step after the
  * old-data deletion settled (`maintenance.ts` calls it, inside the step's own try/catch).
  *
- * - It runs only on the app (`tauri` sessions). A `node` or `indexeddb` session runs nothing, not even a read: protecting a
- *   server or a browser page from a peer that still needs the units waits for the asset stage.
+ * - It runs on the app (`tauri` sessions) and on the web (`indexeddb` sessions). A `node` or transitional OPFS session runs
+ *   nothing, not even a read: a server cannot prove that no peer still needs the units.
+ * - The app has one page and needs no peer check. A web page proves, before any store2 read in each round and before every
+ *   batch, that it is the sole tab: exactly one presence holder in `navigator.locks.query()`, this tab's own presence claim
+ *   true before and after the query, and no exclusive holder or pending request. The answer is never cached. A host
+ *   without Web Locks (plain HTTP) answers `'unsupported'` and the pass refuses `no-web-locks`: it fails safe and cleans
+ *   nothing there. Any other answer refuses `other-tab`, or ends a later round or batch loop as `stopped: 'other-tab'`.
+ * - A web page also deletes only while the commit key's current is the manifest its own save loop acknowledged
+ *   (`acknowledgedManifestKey`). Its own base then predates nothing the mark misses: a peer that committed and left would
+ *   otherwise leave this page reading units that the mark no longer contains. The own-base fact answers `null` while an
+ *   attempt is pending and, for the rest of the page load, once the page's save encoder fast-forwarded to a peer's tree (a
+ *   page whose base is not its own boot read, commits or adoptions never runs the pass); the pass then refuses
+ *   `stale-base`. That costs only liveness: the next page load collects.
+ * - A page restored from the back/forward cache holds no valid presence claim (`holdsOwnTabPresence` is false), so the
+ *   sole-tab proof refuses there. A restore run (a backup load) ends the pass at the next batch on every kind.
  * - It runs only on a store2 page with a backend; the synchronous checks come first and the page facts are resolved only
  *   after them. With injected facts the pass awaits nothing but backend calls and the pace; a measurement build then
  *   awaits the ring note after the pass.
@@ -27,20 +41,37 @@ import { gcPass, type GcDeps, type GcResult } from './pass'
  *   `noteImportPhase` (`gcMeter.ts`).
  */
 
-/** What the page contributes to the stop rule; the rest of the page's state is the session's. */
-export type AutoGcFacts = Pick<GcPageFacts, 'isBusy' | 'saveLoopParked'> & { isSaveClean(): boolean }
+/**
+ * What the page contributes to the stop rule and to the web proofs; the rest of the page's state is the session's.
+ * `peers` and `ownBase` are read only for an `indexeddb` session.
+ */
+export type AutoGcFacts = Pick<GcPageFacts, 'isBusy' | 'saveLoopParked'> & {
+    isSaveClean(): boolean
+    /** A backup load or restore run is open. */
+    restoreInProgress(): boolean
+    /** The web sole-tab proof, asked fresh each time. */
+    peers: GcPeers
+    /** The manifest key this page's save loop acknowledged, or `null` when none is settled. */
+    ownBase(): string | null
+}
+
+export { soleTabAnswer, type SoleTabInput } from '../../soleTab'
 
 /** The page's own modules, loaded when the pass first needs them so that installing the step costs nothing. */
 async function loadLiveFacts(): Promise<AutoGcFacts> {
-    const [busy, loop, api] = await Promise.all([
+    const [busy, loop, api, restore] = await Promise.all([
         import('../../../process/memory/busyActions'),
         import('../saveLoop'),
         import('../../../globalApi.svelte'),
+        import('../../../drive/restoreInProgress'),
     ])
     return {
         isBusy: () => busy.isBusy(),
         saveLoopParked: () => loop.isSaveLoopParked(),
         isSaveClean: () => api.isSaveClean(),
+        restoreInProgress: () => restore.restoreInProgress(),
+        peers: () => soleTabAnswer({ query: liveLockQuery(), holdsOwnPresence: api.holdsOwnTabPresence }),
+        ownBase: () => loop.acknowledgedManifestKey(),
     }
 }
 
@@ -52,13 +83,18 @@ export function buildAutoGcDeps(session: Pick<Store2Session, 'kind' | 'backend' 
     if (backend === null) {
         return null
     }
-    return {
+    const deps: GcDeps = {
         backend,
         kind: session.kind,
         idleReason: () => session.idleReason,
         pace: batchPaceOf(session.kind),
-        shouldStop: () => facts.isBusy() || facts.saveLoopParked() || !facts.isSaveClean(),
+        shouldStop: () => facts.isBusy() || facts.saveLoopParked() || !facts.isSaveClean() || facts.restoreInProgress(),
     }
+    if (session.kind === 'indexeddb') {
+        deps.peers = () => facts.peers()
+        deps.ownBase = () => facts.ownBase()
+    }
+    return deps
 }
 
 /** The plain result line: the status, the counts and why the pass ended, never a key. */
@@ -75,7 +111,7 @@ export function formatGcResult(result: GcResult): string {
  * logs and swallows it.
  */
 export async function runAutoGc(session: Store2Session, facts?: AutoGcFacts): Promise<GcResult | null> {
-    if (session.kind !== 'tauri' || session.backend === null || getPageStorageMode().kind !== 'store2') {
+    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb') || session.backend === null || getPageStorageMode().kind !== 'store2') {
         return null
     }
     const deps = buildAutoGcDeps(session, facts ?? await loadLiveFacts())

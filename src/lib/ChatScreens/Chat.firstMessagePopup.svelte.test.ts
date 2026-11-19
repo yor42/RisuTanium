@@ -342,6 +342,23 @@ describe('the narrow popup of the first message with the card item unavailable',
     })
 })
 
+describe('the narrow popup keeps visible names', () => {
+    test('guard (passes before and after): the speaker item in the popup is named by its text, with no aria-label override', async () => {
+        window.innerWidth = NARROW
+        setupDb('webspeech')
+        DBState.db.useChatCopy = false
+        const root = await mountChat()
+        await openPopup(root)
+
+        const tts = Array.from(document.querySelectorAll<HTMLElement>('button'))
+            .filter((b) => !root.contains(b))
+            .find((b) => b.classList.contains('button-icon-tts'))
+        expect(tts, 'the speaker item').toBeDefined()
+        expect(tts!.hasAttribute('aria-label')).toBe(false)
+        expect((tts!.textContent ?? '').trim()).toBe('TTS')
+    })
+})
+
 describe('the wide popup of the first message with the card item unavailable', () => {
     test('regression reproducer: without ClipboardItem the first message has no "..." button', async () => {
         window.innerWidth = WIDE

@@ -2,10 +2,12 @@
  * The busy registry and the choke-point counters (`../memory/busyActions`).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { get } from 'svelte/store'
 import {
-    anyChokePointInFlight, beginBusy, beginChokePoint, BUSY_HISTORY_LIMIT, busyKinds, busySnapshot,
-    chokePointInFlight, isBusy, resetBusyActionsForTest, withBusy,
+    anyChokePointInFlight, beginBusy, beginChokePoint, beginDialogWait, BUSY_HISTORY_LIMIT, busyKinds, busyRefusalLine,
+    busySnapshot, chokePointInFlight, isBusy, resetBusyActionsForTest, withBusy,
 } from '../memory/busyActions'
+import { inFlightKinds } from '../inFlightWork'
 import type { BusySnapshot } from '../memory/busyActions'
 
 beforeEach(() => {
@@ -80,7 +82,7 @@ describe('the busy diagnostic accessor', () => {
         vi.advanceTimersByTime(5000)
         const snapshot = busySnapshot()
         expect(snapshot.now).toBe(1_005_000)
-        expect(snapshot.entries).toEqual([{ kind: 'import', startedAt: 1_000_000, ageMs: 5000 }])
+        expect(snapshot.entries).toEqual([{ kind: 'import', startedAt: 1_000_000, ageMs: 5000, awaitingDialogMs: null }])
     })
 
     test('lists live entries in begin order', () => {
@@ -99,7 +101,7 @@ describe('the busy diagnostic accessor', () => {
         const snapshot = busySnapshot()
         expect(snapshot.entries).toEqual([])
         expect(snapshot.recent).toEqual([
-            { kind: 'export', startedAt: 2_000_000, endedAt: 2_001_200, durationMs: 1200 },
+            { kind: 'export', startedAt: 2_000_000, endedAt: 2_001_200, durationMs: 1200, dialogMs: 0 },
         ])
     })
 
@@ -133,7 +135,7 @@ describe('the busy diagnostic accessor', () => {
         beginBusy('import')
         const first = readAccessor()
         first.entries.length = 0
-        first.recent.push({ kind: 'export', startedAt: 0, endedAt: 0, durationMs: 0 })
+        first.recent.push({ kind: 'export', startedAt: 0, endedAt: 0, durationMs: 0, dialogMs: 0 })
         const second = readAccessor()
         expect(second).not.toBe(first)
         expect(second.entries).toHaveLength(1)
@@ -193,5 +195,124 @@ describe('the choke-point counters', () => {
         endAssetAgain()
         endInlay()
         expect(anyChokePointInFlight()).toBe(false)
+    })
+})
+
+describe('an entry waiting on a save dialog', () => {
+    test('every reader still counts it, and only an ignoreDialogWaits refusal skips it', () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(5_000_000)
+        const handle = beginBusy('export')
+        beginDialogWait(handle)
+        vi.advanceTimersByTime(700)
+
+        expect(isBusy()).toBe(true)
+        expect(busyKinds()).toEqual(['export'])
+        expect(inFlightKinds()).toContain('busy')
+        expect(isBusy({ ignoreDialogWaits: true })).toBe(false)
+        expect(busySnapshot().entries[0].awaitingDialogMs).toBe(700)
+    })
+
+    test('the returned function unmarks once; a second call changes nothing, and the ring record keeps the dialog time', () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(6_000_000)
+        const handle = beginBusy('export')
+        const unmark = beginDialogWait(handle)
+        vi.advanceTimersByTime(400)
+        unmark()
+        expect(isBusy({ ignoreDialogWaits: true })).toBe(true)
+        expect(busySnapshot().entries[0].awaitingDialogMs).toBeNull()
+
+        const again = beginDialogWait(handle)
+        again()
+        unmark()
+        expect(isBusy({ ignoreDialogWaits: true })).toBe(true)
+
+        vi.advanceTimersByTime(100)
+        handle.end()
+        expect(busySnapshot().recent[0]).toMatchObject({ durationMs: 500, dialogMs: 400 })
+    })
+
+    test('ending an entry that is still marked removes the mark', () => {
+        const handle = beginBusy('export')
+        beginDialogWait(handle)
+        handle.end()
+        const next = beginBusy('import')
+        expect(isBusy({ ignoreDialogWaits: true })).toBe(true)
+        next.end()
+        expect(isBusy({ ignoreDialogWaits: true })).toBe(false)
+        expect(isBusy()).toBe(false)
+    })
+
+    test('except and ignoreDialogWaits combine', () => {
+        const own = beginBusy('cleanup')
+        const marked = beginBusy('export')
+        beginDialogWait(marked)
+        expect(isBusy({ except: own, ignoreDialogWaits: true })).toBe(false)
+        expect(isBusy({ except: own })).toBe(true)
+        beginBusy('import')
+        expect(isBusy({ except: own, ignoreDialogWaits: true })).toBe(true)
+    })
+
+    test('marking an ended handle is a no-op: nothing is registered and the line is unchanged', () => {
+        const handle = beginBusy('export')
+        const other = beginBusy('import')
+        busyRefusalLine.set('line')
+        handle.end()
+        const unmark = beginDialogWait(handle)
+        unmark()
+        expect(busyKinds()).toEqual(['import'])
+        expect(get(busyRefusalLine)).toBe('line')
+        other.end()
+    })
+
+    test('the refusal line clears once no unmarked entry remains', () => {
+        // (a) the unmarked entry ends while the other is marked
+        const marked = beginBusy('export')
+        const plain = beginBusy('import')
+        busyRefusalLine.set('line')
+        beginDialogWait(marked)
+        expect(get(busyRefusalLine)).toBe('line')
+        plain.end()
+        expect(get(busyRefusalLine)).toBeNull()
+        marked.end()
+
+        // (b) the only entry is marked
+        const only = beginBusy('export')
+        busyRefusalLine.set('line')
+        beginDialogWait(only)
+        expect(get(busyRefusalLine)).toBeNull()
+        only.end()
+    })
+
+    // Compatibility guard (passes with or without marks): with no mark the line stays until the last entry ends.
+    test('with no mark the line stays until the last entry ends', () => {
+        const first = beginBusy('export')
+        const second = beginBusy('import')
+        busyRefusalLine.set('line')
+        first.end()
+        expect(get(busyRefusalLine)).toBe('line')
+        second.end()
+        expect(get(busyRefusalLine)).toBeNull()
+    })
+
+    test('a reset clears the marks', () => {
+        const handle = beginBusy('export')
+        beginDialogWait(handle)
+        resetBusyActionsForTest()
+        const next = beginBusy('export')
+        expect(isBusy({ ignoreDialogWaits: true })).toBe(true)
+        expect(busySnapshot().entries[0].awaitingDialogMs).toBeNull()
+        next.end()
+    })
+
+    test('withBusy passes its own handle to the work', async () => {
+        let seen: string[] = []
+        await withBusy('export', async (handle) => {
+            seen = [handle.kind, ...busyKinds()]
+            beginDialogWait(handle)
+        })
+        expect(seen).toEqual(['export', 'export'])
+        expect(isBusy()).toBe(false)
     })
 })

@@ -13,6 +13,7 @@
   import { translateHTML } from "src/ts/translator/translator";
   import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
   import { beginBusy } from "src/ts/process/memory/busyActions";
+  import { mergedCreatedAt } from "src/ts/process/memory/hypaRecency";
   import { ensureCurrentModulesOrAlert } from "src/ts/process/moduleEnsure";
   import { hasModuleStubs } from "src/ts/process/moduleRefList";
   import {
@@ -312,13 +313,17 @@
     }
 
     const minIndex = sortedIndices[0];
+    // The merge keeps the earliest source time, or none when any source is untimed; an untimed
+    // result carries no createdAt key at all.
+    const createdAt = mergedCreatedAt(bulkResummaryState.heldSummaries);
 
     hypaV3Data.summaries[minIndex] = {
       text: bulkResummaryState.result,
       chatMemos: bulkResummaryState.mergedChatMemos,
       isImportant: hypaV3Data.summaries[minIndex].isImportant,
       categoryId: hypaV3Data.summaries[minIndex].categoryId,
-      tags: hypaV3Data.summaries[minIndex].tags
+      tags: hypaV3Data.summaries[minIndex].tags,
+      ...(createdAt === undefined ? {} : { createdAt })
     };
 
     for (let i = sortedIndices.length - 1; i > 0; i--) {

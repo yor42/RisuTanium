@@ -9,8 +9,8 @@
  *
  * Every record here is written inline, in the shape `installThemePack` emits, and this file imports only modules that
  * exist without the pack feature, except the one row that needs `removeThemePackAt` (loaded by a variable specifier).
- * The record-and-sweep rows drive the real `buildAssetKeepSet`, the real `sweepTauriAssets` / `sweepForageAssetKey` and
- * the real manual clean-up over a key/value page store. A mocked success here is not evidence of native backend
+ * The record-and-Remove rows drive the real `getUncleanablesSync` and the real manual clean-up over a key/value page
+ * store. A mocked success here is not evidence of native backend
  * behaviour. Titles beginning "guard:" pass with or without the change they name; every other row is a regression
  * reproducer.
  */
@@ -19,7 +19,6 @@ import { writable } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView } from './fakeWebLocks'
 import { createForageBackedStore, type ForageLike } from './forageBackedStore'
-import { sweepForageAssetKey, sweepTauriAssets } from 'src/ts/storage/assetSweep'
 import { deriveConfigAssets } from 'src/ts/storage/store2/lists'
 import { buildClosureAssetKeepSet } from 'src/ts/storage/store2/sweep'
 import { commitKeyOf, listHolds, Tree } from './store2/sweepFixtures'
@@ -194,7 +193,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { buildAssetKeepSet, getBasename, getUncleanablesSync } from 'src/ts/globalApi.svelte'
+import { getUncleanablesSync } from 'src/ts/globalApi.svelte'
 
 //#region fixtures
 
@@ -245,6 +244,14 @@ describe('getUncleanablesSync over theme packs', () => {
         const kept = getUncleanablesSync(dbOf([packRecord(PACK_ARCHIVE, 'a'), packRecord(OTHER_ARCHIVE, 'b')]))
         expect(kept).toContain(PACK_BASENAME)
         expect(kept).toContain(OTHER_BASENAME)
+    })
+
+    test.each([['png'], ['webp']])('T3-8: a record keeps the basename of its %s icon beside its archive', (ext) => {
+        const iconBasename = `tp-${HEX_OTHER}.${ext}`
+        const kept = getUncleanablesSync(dbOf([{ ...packRecord(), icon: `assets/${iconBasename}` }]))
+
+        expect(kept).toContain(PACK_BASENAME)
+        expect(kept).toContain(iconBasename)
     })
 
     test('guard: themePacks that is {}, a string, a list holding null, or absent adds nothing and does not throw', () => {
@@ -309,39 +316,14 @@ describe('the store2 config list over theme packs', () => {
     })
 })
 
-describe('the boot sweeps over theme packs', () => {
-    async function keepSetOf(db: Database): Promise<Set<string>> {
-        const { uncleanable } = await buildAssetKeepSet(db)
-        return uncleanable
-    }
-
-    test('T2-4: the Tauri boot sweep fed the real keep-set keeps the pack file and deletes an unreferenced pack-named file', async () => {
-        const removed: string[] = []
-        await sweepTauriAssets({
-            uncleanable: await keepSetOf(dbOf([packRecord()])),
-            listAssets: async () => [{ name: PACK_BASENAME }, { name: OTHER_BASENAME }, { name: 'orphan.png' }],
-            removeAsset: async (path) => { removed.push(path) },
-            getBasename,
-            log: () => { },
-            logError: () => { },
-        })
-        expect([...removed].sort()).toEqual([`assets/${OTHER_BASENAME}`, 'assets/orphan.png'].sort())
+describe('the keep-set over theme packs after a Remove', () => {
+    test('T2-4: the keep-set of a record holds the pack file by its basename and not an unreferenced pack-named file', () => {
+        const kept = new Set(getUncleanablesSync(dbOf([packRecord()])))
+        expect(kept.has(PACK_BASENAME)).toBe(true)
+        expect(kept.has(OTHER_BASENAME)).toBe(false)
     })
 
-    test('T2-4w: the web boot sweep fed the real keep-set keeps the pack file and deletes an unreferenced pack-named file', async () => {
-        const removed: string[] = []
-        const deps = {
-            uncleanable: await keepSetOf(dbOf([packRecord()])),
-            removeAsset: async (key: string) => { removed.push(key) },
-            getBasename,
-        }
-        for (const key of [PACK_ARCHIVE, OTHER_ARCHIVE]) {
-            await sweepForageAssetKey(key, deps)
-        }
-        expect(removed).toEqual([OTHER_ARCHIVE])
-    })
-
-    test('T2-13: Remove, then each sweep reclaims the archive; Remove alone leaves it in the store; a second record naming it keeps it', async () => {
+    test('T2-13: Remove leaves the archive in the store; the keep-set drops it only with the last record naming it', async () => {
         const installModule = '../../themePack/install'
         const recordModule = '../../themePack/packRecord'
         const { removeThemePackAt } = await import(/* @vite-ignore */ installModule) as typeof import('src/ts/themePack/install')
@@ -355,27 +337,14 @@ describe('the boot sweeps over theme packs', () => {
         const first = listThemePacks(DBState.db.themePacks)[0]
         expect(removeThemePackAt(first.index, first.entry)).toEqual({ ok: true })
         expect(h.forage.has(PACK_ARCHIVE)).toBe(true)
-        expect(await sweptKeys(DBState.db)).toEqual([])
+        expect(getUncleanablesSync(DBState.db)).toContain(PACK_BASENAME)
 
-        // The last Remove frees the archive: the sweep (web and Tauri) reclaims it, the Remove itself did not.
+        // The last Remove frees the archive: the keep-set no longer holds it, the Remove itself did not delete it.
         const second = listThemePacks(DBState.db.themePacks)[0]
         expect(removeThemePackAt(second.index, second.entry)).toEqual({ ok: true })
         expect(h.forage.has(PACK_ARCHIVE)).toBe(true)
-        expect(await sweptKeys(DBState.db)).toEqual([PACK_ARCHIVE])
+        expect(getUncleanablesSync(DBState.db)).not.toContain(PACK_BASENAME)
     })
-
-    async function sweptKeys(db: Database): Promise<string[]> {
-        const keep = await keepSetOf(db)
-        const web: string[] = []
-        await sweepForageAssetKey(PACK_ARCHIVE, { uncleanable: keep, removeAsset: async (key) => { web.push(key) }, getBasename })
-        const desktop: string[] = []
-        await sweepTauriAssets({
-            uncleanable: keep, listAssets: async () => [{ name: PACK_BASENAME }], removeAsset: async (path) => { desktop.push(path) },
-            getBasename, log: () => { }, logError: () => { },
-        })
-        expect(desktop).toEqual(web)
-        return web
-    }
 })
 
 describe('the integrity scan over a pack archive', () => {
