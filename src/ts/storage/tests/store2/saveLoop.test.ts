@@ -1156,6 +1156,33 @@ describe('new behaviour: result mapping', () => {
         expect(loop.state.stopped).toBe('')
         healthy(loop)
     })
+
+    test('reproducer: an unknown outcome that ended before the build ran reports its own cause, keeps nothing pending, and the retry commits', async () => {
+        const { db, kit } = await edited()
+        const cause = new Store2UnknownOutcomeError('the marker write was lost before any build')
+        let builds = 0
+        script(kit, [async () => ({ status: 'unknown', cause })])
+        const scripted = kit.context.session.committer
+        kit.context.session = {
+            ...kit.context.session,
+            committer: {
+                ...scripted,
+                async commit(read, request) {
+                    return scripted.commit(read, { ...request, build: (context) => { builds += 1; return request.build(context) } })
+                },
+            },
+        }
+        const loop = runLoop(kit, db)
+        chars(db)[0].personality = 'the edit after the lost marker'
+        loop.mark(chaIdOf(db, 0))
+        await until(() => loop.failures.length === 1, 'the report of the unknown outcome', 4000)
+        expect(loop.failures[0]).toEqual({ error: cause, attempts: 1 })
+        await savedBy(loop)
+        expect(builds).toBe(1)
+        expect((await kit.saved()).characters[0]).toMatchObject({ personality: 'the edit after the lost marker' })
+        expect(loop.state.stopped).toBe('')
+        healthy(loop)
+    })
 })
 
 describe('new behaviour: a peer\'s commit parks the page and the person decides', () => {
