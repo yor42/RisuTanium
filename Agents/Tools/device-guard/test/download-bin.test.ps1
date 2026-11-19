@@ -110,11 +110,13 @@ foreach ($s in @('R58M12345AB', 'R5CT1234ABC', '2ac80128013f7ecf', '2AC80128013F
     foreach ($f in @(@('shell', 'sha256sum', $P1), @('shell', 'rm', '-f', $P1), @('pull', $P1, (New-Local)))) { Test-Refused ($s + ' refuses ' + ($f -join ' | ')) $s $f '95' }
 }
 
-# ---- the 2-arg string forms with a spaced or quoted path stay refused ----
+# ---- the 2-arg string forms with a spaced or quoted path stay refused on emulator-5580 ----
+# On the playground serials the Note 9 profile (r3) passes them (full shell, FC-1); the rows below are retargeted to emulator-5580, which keeps
+# the r11 allowlist and the r14 refusal of the split and out-of-shape forms (97, the path arrives intact in the refusal line).
 foreach ($f in @(
         @('shell', ('sha256sum ' + $P1)), @('shell', ('sha256sum ''' + $P1 + '''')),
         @('shell', ('rm -f "' + $P1 + '"')), @('shell', ('ls -l "' + $P1 + '"')))) {
-    Test-Refused ('2-arg string form refused: ' + $f[1]) $pg[0] $f '97'
+    Test-Refused ('2-arg string form refused: ' + $f[1]) $emu $f '97'
 }
 
 # ---- hostile and out-of-shape paths: refused in both shell forms, and in the pull form where r13 pull refuses them too ----
@@ -160,9 +162,9 @@ foreach ($h in $hostile) {
     $p = $h.P
     $short = ($p -replace '[^\x20-\x7e]', '?')
     if ($short.Length -gt 60) { $short = $short.Substring(0, 60) + '...' }
-    Test-Refused ('sha256sum refused: ' + $short) $pg[0] @('shell', 'sha256sum', $p) '97' $p
-    Test-Refused ('rm -f refused: ' + $short) $pg[0] @('shell', 'rm', '-f', $p) '97' $p
-    if (-not $h.PullOk) { Test-Refused ('pull refused: ' + $short) $pg[0] @('pull', $p, (New-Local)) '97' $p }
+    Test-Refused ('sha256sum refused: ' + $short) $emu @('shell', 'sha256sum', $p) '97' $p
+    Test-Refused ('rm -f refused: ' + $short) $emu @('shell', 'rm', '-f', $p) '97' $p
+    if (-not $h.PullOk) { Test-Refused ('pull refused: ' + $short) $emu @('pull', $p, (New-Local)) '97' $p }
 }
 # The pull form of the paths r13 pull already accepts is unchanged: sent as given.
 foreach ($h in @($hostile | Where-Object { $_.PullOk })) {
@@ -185,7 +187,11 @@ $shapes = @(
     @('shell', 'rm -f', $P1), @('shell', 'sha256sum', $P1, 'extra'),
     @('pull', $P1), @('pull', $P1, $locOk, 'extra'), @('pull', $P1, $elsewhere), @('pull', $P1, $existing), @('pull', $P1, 'x.bin'),
     @('pull', $P1, (Join-Path $testDir 'a b.bin')))
-foreach ($f in $shapes) { Test-Refused ('refused shape: ' + (($f -join ' | ') -replace [regex]::Escape($testDir), '<run>')) $pg[0] $f '97' }
+foreach ($f in $shapes) { Test-Refused ('refused shape: ' + (($f -join ' | ') -replace [regex]::Escape($testDir), '<run>')) $emu $f '97' }
+# The pull shapes that break the local-side rule are refused on the Note 9 profile too (shape refusal 97).
+foreach ($f in @(@('pull', $P1), @('pull', $P1, $locOk, 'extra'), @('pull', $P1, $elsewhere), @('pull', $P1, $existing), @('pull', $P1, 'x.bin'), @('pull', $P1, (Join-Path $testDir 'a b.bin')))) {
+    Test-Refused ('Note 9 refused pull shape: ' + (($f -join ' | ') -replace [regex]::Escape($testDir), '<run>')) $pg[0] $f '97'
+}
 
 Remove-Item Env:ADBG_FAKE_ADB_SCRIPT; Remove-Item Env:FAKE_CALLS
 Remove-Item -LiteralPath $testDir -Recurse -Force -ErrorAction SilentlyContinue
