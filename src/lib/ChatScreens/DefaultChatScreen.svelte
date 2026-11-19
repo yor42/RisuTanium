@@ -542,8 +542,8 @@
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'floating-circle'}
-            <button class="absolute bottom-36 right-4 bg-blue-500 text-white w-12 h-12 rounded-full shadow-lg z-50 flex items-center justify-center hover:bg-blue-600 transition-colors" onclick={scrollToBottom} title="4. 원형 (우하단)">
-                <ArrowDown size={20} />
+            <button class="absolute bottom-36 right-4 bg-blue-500 text-white w-12 h-12 rounded-full shadow-lg z-50 flex items-center justify-center hover:bg-blue-600 transition-colors" onclick={scrollToBottom} aria-label={language.newMessage} title={language.newMessage}>
+                <ArrowDown size={20} aria-hidden="true" />
             </button>
         {/if}
 
@@ -626,7 +626,7 @@
                     </div>
                 {/if}
 
-                <textarea class="peer text-input-area focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full placeholder:text-sm"
+                <textarea aria-label={language.chatShellMessage} class="peer text-input-area focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full placeholder:text-sm"
                           bind:value={() => shownDraft.messageInput, (value) => writeDraft((record) => { record.messageInput = value })}
                           bind:this={inputEle}
                           readonly={isComposerLocked()}
@@ -720,7 +720,7 @@
 
                 {#if shownBusy || doingChatInputTranslate}
                     <button
-                            aria-labelledby="cancel"
+                            aria-label={language.chatShellStop}
                             class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-blue-500 hover:text-white transition-colors" onclick={abortChat}
                             style:height={inputHeight}
                     >
@@ -730,12 +730,13 @@
                     <button
                             onclick={send}
                             disabled={writingElsewhere}
+                            aria-label={language.chatShellSend}
                             title={writingElsewhere ? language.chatShellSendBlockedWriting : undefined}
                             aria-describedby={writingElsewhere ? 'chat-send-blocked-reason' : undefined}
                             class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-blue-500 hover:text-white transition-colors button-icon-send disabled:opacity-50"
                             style:height={inputHeight}
                     >
-                        <Send />
+                        <Send aria-hidden="true" />
                     </button>
                     {#if writingElsewhere}<span id="chat-send-blocked-reason" hidden>{language.chatShellSendBlockedWriting}</span>{/if}
                 {/if}
@@ -745,10 +746,12 @@
                             openMenu = !openMenu
                             e.stopPropagation()
                         }}
+                            aria-label={language.menu}
+                            aria-expanded={openMenu}
                             class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-blue-500 hover:text-white transition-colors"
                             style:height={inputHeight}
                     >
-                        <MenuIcon />
+                        <MenuIcon aria-hidden="true" />
                     </button>
                 {:else}
                     <div onclick={(e) => {
@@ -827,8 +830,8 @@
                                     const id = file
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
                                     warnOnReject('DefaultChatScreen: draft render release failed', forgetInlayRender(id))
-                                }}>
-                                    <XIcon size={18} />
+                                }} aria-label={language.chatShellRemoveAttachment}>
+                                    <XIcon size={18} aria-hidden="true" />
                                 </button>
                             </div>
                         {:catch}
@@ -838,8 +841,8 @@
                                     const id = file
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
                                     warnOnReject('DefaultChatScreen: draft render release failed', forgetInlayRender(id))
-                                }}>
-                                    <XIcon size={18} />
+                                }} aria-label={language.chatShellRemoveAttachment}>
+                                    <XIcon size={18} aria-hidden="true" />
                                 </button>
                             </div>
                         {/await}
