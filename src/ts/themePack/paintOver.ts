@@ -185,7 +185,7 @@ export function thicknessProblems(value: string, shorthand: boolean): ThicknessP
     return problems
 }
 
-/** The furthest an outer box-shadow layer or a text-shadow layer may reach past its element, in px (MC-2309). */
+/** The furthest a box-shadow or text-shadow layer may reach past its element, or an inset box-shadow layer into it, in px (MC-2309, MC-2318). */
 export const MAX_OUTER_REACH_PX = 2
 
 const HEX = /^#[0-9a-f]{3,8}$/
@@ -225,9 +225,10 @@ function tokenShape(token: string): 'inset' | 'length' | 'colour' | null {
 }
 
 /**
- * The per-layer geometric bound, in px, of how far one shadow layer paints past its element's border box: the larger offset plus
- * the blur plus, for a box, the spread. A blurred layer's faint tail passes this bound and stacked layers accumulate it. A negative
- * spread does not offset a blur: with blur above 0 it counts as 0, with blur 0 it shrinks the layer. rem is read at 16 px. Null
+ * The per-layer geometric bound, in px, of how far one shadow layer paints past its element's border box, or for an inset layer
+ * into its element from the padding edge: the larger offset plus the blur plus, for a box, the spread. A blurred layer's faint
+ * tail passes this bound and stacked layers accumulate it. A negative spread does not offset a blur: with blur above 0 it counts
+ * as 0, with blur 0 it shrinks the layer. rem is read at 16 px. Null
  * means the layer is unmeasurable (a leftover var(), an em or percentage length, a wrong length count or a token of no listed
  * shape) and the caller refuses it.
  */
