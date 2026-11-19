@@ -394,6 +394,58 @@ describe('guard: a server that cannot answer the guarded paths is refused and no
         }
     })
 
+    test('serverNow returns the server clock of a guarded no-store caps request, and the real server answers an integer near its own time', async () => {
+        const guarded = guardedOf()
+        const before = Date.now()
+        const now = await guarded.serverNow!()
+        expect(Number.isSafeInteger(now)).toBe(true)
+        expect(Math.abs(now - before)).toBeLessThan(5000)
+        const request = sent.find((entry) => entry.path === '/api/caps')
+        expect(request?.method).toBe('GET')
+        expect(request?.cache).toBe('no-store')
+        const answering = (body: Record<string, unknown>): FetchLike => async () => new Response(JSON.stringify(body), { status: 200, headers: { 'risu-storage-guarded': '1' } })
+        const stub = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: answering({ checkOnly: true, retire: true, pieces: true, now: 1_700_000_000_123 }) })
+        expect(await stub.guarded!.serverNow!()).toBe(1_700_000_000_123)
+        const zero = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: answering({ now: 0 }) })
+        expect(await zero.guarded!.serverNow!()).toBe(0)
+    })
+
+    test('serverNow refuses a missing, non-integer, negative, unsafe or non-number now with a ServerLacksCapabilityError that may not have applied', async () => {
+        const answering = (body: string): FetchLike => async () => new Response(body, { status: 200, headers: { 'risu-storage-guarded': '1' } })
+        const bodies = [
+            '{}',
+            '{"now":null}',
+            '{"now":"1700000000000"}',
+            '{"now":1700000000000.5}',
+            '{"now":-1}',
+            '{"now":1e300}',
+            '{"now":9007199254740993}',
+            '{"now":true}',
+            '{"now":[1]}',
+            '[]',
+            'not json',
+        ]
+        for (const body of bodies) {
+            const store = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: answering(body) })
+            const error = await caught(store.guarded!.serverNow!())
+            expect(error, body).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((error as ServerLacksCapabilityError).capability, body).toBe('caps')
+            expect((error as ServerLacksCapabilityError).mayHaveApplied, body).toBe(false)
+        }
+    })
+
+    test('serverNow refuses an answer without the guarded marker and a server that never reaches the guarded handler', async () => {
+        const unmarked = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: async () => new Response(JSON.stringify({ now: 1_700_000_000_000 }), { status: 200 }) })
+        const unmarkedError = await caught(unmarked.guarded!.serverNow!())
+        expect(unmarkedError).toBeInstanceOf(ServerLacksCapabilityError)
+        for (const mode of ['old-404', 'html-200', 'redirect-307'] as const) {
+            proxy.setMode(mode)
+            const error = await caught(guardedOf().serverNow!())
+            expect(error, mode).toBeInstanceOf(ServerLacksCapabilityError)
+            expect((error as ServerLacksCapabilityError).mayHaveApplied, mode).toBe(false)
+        }
+    })
+
     test('a 429 ends as the HTTP error after the existing retries and a marked 401 is an HTTP error, neither a missing capability', async () => {
         const limited: FetchLike = async () => new Response('{}', { status: 429, headers: { 'retry-after': '0' } })
         const store = createNodeHttpStore({ baseUrl: 'http://stub', authHeader: async () => 'a', fetch: limited, sleep: async () => undefined })

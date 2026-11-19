@@ -532,7 +532,7 @@ describe.each([
     ['SaveLocalBackup', ((options) => SaveLocalBackup({ ...options, mode: 'inline' })) as Runner],
     ['SavePartialLocalBackup', ((options) => SavePartialLocalBackup({ ...options, mode: 'inline' })) as Runner],
 ])('%s of a store2 page that holds stubs, inline form', (_name, run) => {
-    test('every character is exported whole, no entity is named as a unit, and the file imports whole into another profile', async () => {
+    test('every character is exported whole and no entity is named as a unit', async () => {
         const page = await pageOf()
 
         await run()
@@ -549,16 +549,6 @@ describe.each([
             expect((exported[index].chats as Obj[]).map((chat) => chat.message)).toEqual((whole.chats as Obj[]).map((chat) => chat.message))
         }
         expect(await upstreamReadable()).toEqual({ entityPayloads: [], danglingStubs: [] })
-
-        // Another profile imports the file: the residency of the exporting page is not there.
-        resetResidencyForTest()
-        injectRestoreStore(createForageBackedStore(forageOverMap(new Map())))
-        await loadBackupBytes(concat(backupSink.writes))
-        expect(vi.mocked(setDatabase)).toHaveBeenCalledTimes(1)
-        const installed = vi.mocked(setDatabase).mock.calls[0][0] as unknown as { characters: Array<Record<string, unknown>> }
-        expect(installed.characters.map((character) => character.name)).toEqual(exported.map((character) => character.name))
-        expect(installed.characters.every((character) => character.coldstorage === undefined)).toBe(true)
-        expect((installed.characters[1].chats as Obj[]).map((chat) => chat.message)).toEqual((exported[1].chats as Obj[]).map((chat) => chat.message))
     })
 
     test('an entity that cannot be read is named in the prompt, stays a stub that imports as a placeholder, and the rest is whole', async () => {
@@ -637,7 +627,7 @@ describe.each([
         expect(backupPrompts()[0]).toContain(page.entries[2].name)
     })
 
-    test('a group that is a stub is exported whole, with its members, chats and talk lists, and imports whole into another profile', async () => {
+    test('a group that is a stub is exported whole, with its members, chats and talk lists', async () => {
         const page = await pageOf({ group: true })
         const groupIndex = page.entries.length - 1
         expect(page.entries[groupIndex].chaId).toBe('group-one')
@@ -656,13 +646,6 @@ describe.each([
         expect(group.characterTalks).toEqual(whole.characterTalks)
         expect((group.chats as Obj[]).map((chat) => chat.message)).toEqual((whole.chats as Obj[]).map((chat) => chat.message))
         expect(await upstreamReadable()).toEqual({ entityPayloads: [], danglingStubs: [] })
-
-        resetResidencyForTest()
-        injectRestoreStore(createForageBackedStore(forageOverMap(new Map())))
-        await loadBackupBytes(concat(backupSink.writes))
-        const installed = vi.mocked(setDatabase).mock.calls[0][0] as unknown as { characters: Array<Record<string, unknown>> }
-        expect(installed.characters[groupIndex]).toMatchObject({ type: 'group', chaId: 'group-one', name: 'Group One', characters: whole.characters })
-        expect(installed.characters.every((character) => character.coldstorage === undefined)).toBe(true)
     })
 
     test('reproducer (P5): the new-reply mark of a stub is carried in no exported chat, and nothing names it', async () => {
@@ -885,39 +868,6 @@ describe.each([
             expect(unitEntryNames()).toEqual([`coldstorage_${uuids[2]}.json`])
         } else {
             expect((await exportedCharacters())[2].coldstorage).toBeUndefined()
-        }
-    })
-})
-
-// The legacy/block-page branch of `LoadLocalBackup` (the page is not a store2 page) installs a default export's stubs
-// as they are and stores each unit entry under its own uuid.
-describe.each([
-    ['SaveLocalBackup', SaveLocalBackup as Runner],
-    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
-])('%s default (stub-form) export imported by a legacy page', (_name, run) => {
-    test('guard: the stubs keep their minted uuids, each stored unit holds the whole character with all its chats, and no alert appears', async () => {
-        const page = await pageOf()
-        await run()
-        const uuids = await mintedUuids()
-        expect(uuids[1]).not.toBeNull()
-        expect(uuids[2]).not.toBeNull()
-
-        resetResidencyForTest()
-        const stored = new Map<string, Uint8Array>()
-        injectRestoreStore(createForageBackedStore(forageOverMap(stored)))
-        await loadBackupBytes(concat(backupSink.writes))
-
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        const installed = vi.mocked(setDatabase).mock.calls.at(-1)?.[0] as unknown as { characters: Array<Record<string, unknown>> }
-        expect(installed.characters.map((character) => character.coldstorage ?? null)).toEqual(uuids)
-        for (const index of [1, 2]) {
-            const unit = stored.get(`coldstorage/${uuids[index]}`)
-            expect(unit, page.entries[index].name).toBeInstanceOf(Uint8Array)
-            const payload = JSON.parse(decoder.decode(gunzipSync(unit!))) as { character: { name: string, chats: Array<{ message: unknown }> } }
-            const whole = wholeOf(page, page.entries[index])
-            expect(payload.character.name).toBe(whole.name)
-            expect(payload.character.chats).toHaveLength(page.entries[index].chats.length)
-            expect(payload.character.chats.map((chat) => chat.message)).toEqual((whole.chats as Obj[]).map((chat) => chat.message))
         }
     })
 })

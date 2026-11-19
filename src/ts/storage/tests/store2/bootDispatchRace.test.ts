@@ -10,7 +10,6 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { StoreRegistrationTimeoutError, StoreStaleGenerationError } from 'src/ts/storage/store/errors'
 import { createMemoryBackend, Store2StalePageError, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -141,14 +140,12 @@ function foreignMarker(): Uint8Array {
 beforeEach(() => {
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 
 afterEach(() => {
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 

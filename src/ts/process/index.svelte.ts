@@ -53,7 +53,10 @@ import { totalInSendOrder, trimChatsToContext } from "./contextTrim";
 import { getModuleAssets, getModuleToggles } from "./modules";
 import { ensureModulesOrAlert } from "./moduleEnsure";
 import { hasModuleStubs } from "./moduleRefList";
-import { readImage } from "../globalApi.svelte";
+import { getSaveMarkCount, readImage } from "../globalApi.svelte";
+import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
+import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight } from "../nativeReply/pageState";
+import type { ApplyOutcome, RecoveredReplyInput } from "../nativeReply/reconcile";
 import { pluginV2 } from "../plugins/plugins.svelte";
 import { isColdChat } from "./coldstorageData";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
@@ -64,7 +67,7 @@ import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginW
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
-import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
+import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, noteReplySound } from "./replyNotice";
 
 export interface OpenAIChat{
@@ -391,7 +394,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     } finally {
         try {
             // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
-            // that flush, and a put-back or re-archive that waits on the registration cannot race it. Never throws.
+            // that flush, and a put-back that waits on the registration cannot race it. Never throws.
             if(!(arg.preview || arg.previewPrompt)){
                 const facts = { completed, signal: unit.signal, threw, modulesFailed }
                 announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)
@@ -404,10 +407,13 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
                 }
             }
             flushPageReplyEndWhenHidden(entry.context.origin)
+            // Never throws: a key the send never pushed is consumed, dropped or left to the reconcile.
+            settleReplyKeys(unit.signal)
             endInFlight(replyOutcome)
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
             doingChat.set(false)
+            rerunDeferredApply()
         } finally {
             try {
                 settleSendChatCall(entry)
@@ -439,6 +445,146 @@ async function sendChatRecursion(chatProcessIndex: number, arg: SendChatArg): Pr
         return await sendChatBody(chatProcessIndex, arg, entry.context)
     } finally {
         settleSendChatCall(entry)
+    }
+}
+
+/**
+ * Expands the variables of every message of `ctx.chat` at its own chat index, hidden ones included, and writes the
+ * result back to the message itself. The array object is kept: a replaced array would rebuild the dirty tracking of
+ * every message of the chat. `firstMessageDecision` is the decision a send already took; without one the first message
+ * counts as sent when the chat has not been reset and the owner is not a group. `onView` receives the prompt view
+ * before any message is written.
+ */
+function expandChatVariables(ctx: OriginContext, subject: SendSubject, currentChar: character, firstMessageDecision: boolean | undefined, onView?: (view: PromptView) => void): void {
+    const split = splitSentMessages(ctx.chat.message)
+    const view = promptViewOf(split, firstMessageDecision ?? (ctx.owner.type !== 'group' && split.resetAt === -1))
+    onView?.(view)
+    ctx.chat.message.forEach((v, i) => {
+        v.data = risuChatParser(v.data, {chara: currentChar, runVar: true, subject, promptView: promptViewAt(view, i)})
+    })
+}
+
+/** The keys of the replies each running unit was granted, by the unit's signal; the outermost call settles them. */
+const replyKeysOfUnit = new WeakMap<AbortSignal, string[]>()
+
+/** A recovered reply was deferred because a send was running: the send's end asks the reconcile to run again. */
+let recoveredApplyDeferred = false
+
+/** Settles the grants of a finished unit: a key that was never pushed is consumed or left to the reconcile. */
+function settleReplyKeys(signal: AbortSignal): void {
+    const keys = replyKeysOfUnit.get(signal)
+    if(!keys){
+        return
+    }
+    replyKeysOfUnit.delete(signal)
+    for(const key of keys){
+        settleNativeReplyInflight(key).catch((error) => console.error(error))
+    }
+}
+
+/** After the unit released the flag: a recovered reply that waited for it is placed by a new reconcile pass. */
+function rerunDeferredApply(): void {
+    if(recoveredApplyDeferred){
+        recoveredApplyDeferred = false
+        requestReconcile()
+    }
+}
+
+/**
+ * Places a reply the native side received while this page could not (the reconcile's append). It is written like the
+ * reply of a send, once, and then waited for like one: the record is consumed after the commit that saves it. It is not
+ * a send: it plays no sound, speaks nothing, continues nothing, generates no image and rolls no candidate (MC-1459), and
+ * a `sendAIprompt` of the output trigger is ignored. An imggen tag is stored as it came (MC-2359). A reply for a chat
+ * that is not on screen sets the unseen mark (MC-2358).
+ *
+ * It runs only while no send does (`doingChat`): the flag is taken for the apply, so a send is refused meanwhile, and a
+ * busy Stop finds nothing to stop. A deleted or trashed chat stops it through its work registration.
+ */
+export async function applyRecoveredReply(input: RecoveredReplyInput): Promise<ApplyOutcome> {
+    const { key, blob, text } = input
+    if(get(doingChat)){
+        recoveredApplyDeferred = true
+        return 'deferred'
+    }
+    const origin: Origin = { chaId: blob.target.chaId, chatId: blob.target.chatId }
+    const subject = createSendSubject(origin)
+    const entryCtx = subject.resolve()
+    if(!entryCtx || entryCtx.owner.type !== 'character'){
+        return 'failed'
+    }
+    if(entryCtx.chat.message.some((message) => message.chatId === key)){
+        // Another write placed it first: it is awaited like one this page pushed.
+        markCharacterForSave(origin.chaId)
+        holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+        return 'applied'
+    }
+    const currentChar = entryCtx.owner
+    const unit = new AbortController()
+    let stopped = false
+    doingChat.set(true)
+    const handle = registerWork(origin, () => {
+        stopped = true
+        unit.abort()
+    }, 'reply')
+    let pushed = false
+    try {
+        let result = (await processScriptFull(currentChar, text.trim(), 'editoutput', entryCtx.chat.message.length, {}, undefined, subject, null)).data
+        if(DBState.db.removeIncompleteResponse){
+            result = trimUntilPunctuation(result)
+        }
+        // Only the emotion rewrite applies: an image generation tag is left as it came.
+        if(currentChar.inlayViewScreen && currentChar.viewScreen === 'emotion'){
+            result = runInlayScreen(currentChar, result).text
+        }
+        // The target may have gone or changed during the awaits: resolve and check again in the stretch that writes.
+        const pushCtx = subject.resolve()
+        if(stopped || !pushCtx){
+            return 'deferred'
+        }
+        if(pushCtx.chat.message.some((message) => message.chatId === key)){
+            pushed = true
+            return 'applied'
+        }
+        pushCtx.chat.message.push({
+            role: 'char',
+            data: result,
+            saying: blob.saying,
+            time: Date.now(),
+            generationInfo: blob.generationInfo,
+            promptInfo: blob.promptInfo,
+            chatId: key,
+        })
+        pushCtx.owner.reloadKeys += 1
+        markCharacterForSave(origin.chaId)
+        pushed = true
+
+        const parsedCtx = subject.resolve()
+        if(parsedCtx){
+            expandChatVariables(parsedCtx, subject, currentChar, undefined)
+            // The result of the output trigger is read for nothing: a recovered reply never asks for another request.
+            await runTrigger(currentChar, 'output', { chat: parsedCtx.chat, origin, signal: unit.signal })
+        }
+        const listenerCtx = subject.resolve()
+        if(listenerCtx){
+            const messageIndex = listenerCtx.chat.message.findIndex((message) => message.chatId === key)
+            await runChatOutputListeners(currentChar, listenerCtx.chat, listenerCtx.ownerIndex, listenerCtx.chatIndex, messageIndex)
+        }
+        const markCtx = subject.resolve()
+        if(markCtx && !isChatOnScreen(origin)){
+            setReplyMark(origin, markCtx.chat, 'reply')
+        }
+        return 'applied'
+    } catch(error){
+        console.error(error)
+        return pushed ? 'applied' : 'failed'
+    } finally {
+        // After the push the reply is saved like any other: its mark and the waiter come first, whatever failed above.
+        if(pushed){
+            markCharacterForSave(origin.chaId)
+            holdRecoveredReply(key, origin.chaId, getSaveMarkCount())
+        }
+        handle.end()
+        doingChat.set(false)
     }
 }
 
@@ -606,12 +752,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         if(!ctx){
             return null
         }
-        const split = splitSentMessages(ctx.chat.message)
-        const view = promptViewOf(split, firstMessageDecision ?? decideFirstMessageSent(split.resetAt))
-        promptView = view
-        ctx.chat.message.forEach((v, i) => {
-            v.data = risuChatParser(v.data, {chara: currentChar, runVar: true, subject, promptView: promptViewAt(view, i)})
-        })
+        expandChatVariables(ctx, subject, currentChar, firstMessageDecision, (view) => { promptView = view })
         return ctx.chat
     }
 
@@ -2286,6 +2427,35 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // is not seen here: the candidates keep the value the request started with.
     const candidateStartState: ChatAltMemory = branchStateOf(requestCtx.chat)
 
+    // An eligible send offers its first request the right to keep this reply's record (see `nativeReply/grant`). The
+    // unit's outermost call settles the key when the send ends.
+    let nativeReplyGrant: ReturnType<typeof issueNativeReplyGrant> | undefined = undefined
+    if(nativeReplyEligible({
+        androidTransport: isAndroidTransport(),
+        streaming: DBState.db.useStreaming,
+        singleCharacter: nowChatroom.type === 'character',
+        isContinue: arg.continue === true,
+        isPreview: arg.preview === true,
+        isPromptPreview: arg.previewPrompt === true,
+    })){
+        nativeReplyGrant = issueNativeReplyGrant(generationId, {
+            target: { chaId: origin.chaId, chatId: origin.chatId },
+            targetName: nowChatroom.name,
+            saying: currentChar.chaId,
+            generationInfo,
+            promptInfo,
+            escape: nowChatroom.type === 'character' && nowChatroom.escapeOutput === true,
+            requestedMs: Date.now(),
+        })
+        const unitKeys = replyKeysOfUnit.get(abortSignal)
+        if(unitKeys){
+            unitKeys.push(generationId)
+        }
+        else{
+            replyKeysOfUnit.set(abortSignal, [generationId])
+        }
+    }
+
     const req = await requestChatData({
         formated: formated,
         biasString: biases,
@@ -2302,6 +2472,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         subject,
         mainSend: true,
         usageInputEstimate: inputTokens,
+        nativeReplyGrant,
     }, 'model', abortSignal)
     if (MEASURE) {
         // A measurement build notes the reply's first turn after the response; nothing reads it back.
@@ -2698,6 +2869,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     chatId: generationId,
                 })
                 trackReply(pushCtx.chat, pushCtx.chat.message.length - 1)
+                // The mark comes first, so the count read for the waiter covers it. No save is requested: the hidden
+                // flush at the reply's end and the visible debounce are the page's own save requests.
+                if(nativeReplyGrant && ownsPushedReply(generationId)){
+                    markCharacterForSave(origin.chaId)
+                    noteReplyPushed(generationId, origin.chaId, getSaveMarkCount())
+                }
                 if(inlayResult.promise){
                     const p = await inlayResult.promise
                     const asyncInlayTarget = resolveReply()

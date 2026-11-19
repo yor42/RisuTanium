@@ -29,7 +29,7 @@
     /* Debugging */
     "sourceMap": true
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "public/sw.js"],
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
   "exclude": ["src/**/web/*.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

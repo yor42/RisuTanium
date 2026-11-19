@@ -25,7 +25,9 @@ vi.mock(import('src/ts/process/memory/putBackQuiet'), () => ({
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { getStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
-import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
+import type { ByteStore } from 'src/ts/storage/store/contract'
+import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
+import { createMemoryBackend, createNodeBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { unitDigest } from 'src/ts/storage/store2/codec'
 import { ADMISSION_INTERVAL_MS } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, firstCommitKey, RETAINED_MAX } from 'src/ts/storage/store2/commitKey'
@@ -44,6 +46,7 @@ import { Store2Session } from 'src/ts/storage/store2/session'
 import { readTree } from 'src/ts/storage/store2/tree'
 import type { AutoGcFacts } from 'src/ts/storage/store2/gc/autoGc'
 import { committerOf, createClock, expectInvariant, parsedCommit, peerWrite, seedStore, testEnv, treeRequest } from './commitFixtures'
+import { startNodeServer, type NodeServerFixture } from '../nodeServerFixture'
 import { flushConfirming, type FlushConfirming } from './flushConfirmBackend'
 
 const clock = createClock()
@@ -196,8 +199,6 @@ describe('only a boot that did not install starts the runner', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['legacy', { kind: 'legacy', convertedFrom: null }],
-        ['block', { kind: 'block' }],
         ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
         ['undecided', { kind: 'unset' }],
     ])('reproducer: a %s page starts nothing even with a ready session in hand', async (_name, mode) => {
@@ -290,8 +291,8 @@ describe('the step', () => {
         startStore2Maintenance({ store: async () => { throw new Error('No store.') }, listBackupTimes: async () => [] }, { session: () => session, startTrigger: trigger.start, deletion })
 
         trigger.fire()
-        // The old-data deletion and the asset sweep each open the store: each failure is logged on its own.
-        await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(2))
+        // The old-data deletion, the clean-up pass and the asset sweep each open the store: each failure is logged on its own.
+        await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(3))
         await getStartupCleanup()
 
         expect(deletion).not.toHaveBeenCalled()
@@ -561,7 +562,7 @@ describe('the clean-up pass after the old-data deletion', () => {
         const trigger = fakeTrigger()
         const deletion = vi.fn(async () => COMPLETED)
         startStore2Maintenance(noStore, { session: () => page.session, startTrigger: trigger.start, deletion, gcPageFacts: CLEAN })
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
 
         trigger.fire()
         await getStartupCleanup()
@@ -571,7 +572,7 @@ describe('the clean-up pass after the old-data deletion', () => {
         expect(await orphansLeft(page)).toBe(30)
     })
 
-    test('guard K: a node session runs nothing: no listing, no result line, the orphan stays', async () => {
+    test('guard K: a node session over a store without the guarded routes lists nothing, logs the capability refusal and the orphan stays', async () => {
         const { session, backend } = await openSession('ready')
         const orphan = newUnitKey(env)
         await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
@@ -582,8 +583,92 @@ describe('the clean-up pass after the old-data deletion', () => {
         await fireOnce({ session: asKind })
 
         expect(listing).not.toHaveBeenCalled()
-        expect(infoLines(info)).toEqual([])
+        expect(infoLines(info)).toEqual(['store2 clean-up: status=refused reason=capability-missing'])
         expect((await backend.readUnits([orphan])).get(orphan)).not.toBeNull()
+    })
+
+    describe('on a Node server (real server process)', () => {
+        const servers: NodeServerFixture[] = []
+
+        afterEach(async () => {
+            await Promise.all(servers.splice(0).map(server => server.stop()))
+        })
+
+        const DAY = 24 * 60 * 60 * 1000
+
+        interface NodePage {
+            session: Store2Session
+            store: ByteStore
+            backend: Store2Backend
+            orphans: string[]
+            base: string | null
+        }
+
+        async function openNode(orphanCount: number): Promise<NodePage> {
+            const fixture = await startNodeServer()
+            servers.push(fixture)
+            const store = createNodeHttpStore({ baseUrl: fixture.baseUrl, authHeader: () => fixture.authHeader() })
+            const backend = createNodeBackend(store)
+            await seedStore(backend, env)
+            const orphans: string[] = []
+            for (let i = 0; i < orphanCount; i++) {
+                const key = newUnitKey(env)
+                await backend.putUnit(key, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan: key }))
+                orphans.push(key)
+            }
+            const session = await Store2Session.open(store, { kind: 'node', backend, upstreamMainFile: async () => false })
+            expect(session.decision).toMatchObject({ row: 5, mode: 'normal' })
+            const parsed = classifyCommitRead(await backend.readCommit())
+            const base = parsed.status === 'parsed' && parsed.value.current !== null ? parsed.value.current.key : null
+            return { session, store, backend, orphans, base }
+        }
+
+        /** The record as the pass writes it, planted under the literal key: every orphan already seen once, a day and an hour ago. */
+        async function plantSeenRecord(page: NodePage, ageMs: number): Promise<void> {
+            const items = page.orphans.map((key): [string, null, number] => [key, null, 1])
+            await page.store.write('store2-gc-age', encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - ageMs, items }), 'unconditional')
+        }
+
+        async function orphansLeftOn(page: NodePage): Promise<number> {
+            const read = await page.backend.readUnits(page.orphans)
+            return page.orphans.filter(key => read.get(key) !== null).length
+        }
+
+        async function fireNode(page: NodePage, facts: Partial<AutoGcFacts>): Promise<void> {
+            const trigger = fakeTrigger()
+            startStore2Maintenance(
+                { store: async () => page.store, listBackupTimes: async () => [] },
+                { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: { ...CLEAN, ownBase: () => page.base, ...facts } },
+            )
+            trigger.fire()
+            await vi.waitFor(() => expect(getStartupCleanup()).not.toBeNull())
+            await getStartupCleanup()
+        }
+
+        test('reproducer RR1: a node page deletes the orphans a record from 25 hours ago named as seen before, and logs one result line', async () => {
+            const page = await openNode(6)
+            await plantSeenRecord(page, DAY + 60 * 60 * 1000)
+            const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+            await fireNode(page, { peers: async () => 'unsupported' })
+
+            expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=done deleted=6 batches=1 phase=swept candidates=6 /)])
+            expect(await orphansLeftOn(page)).toBe(0)
+            await expectInvariant(page.backend)
+        })
+
+        test('guard: a node page with another tab open (peers others) deletes nothing and writes no record', async () => {
+            const page = await openNode(6)
+            await plantSeenRecord(page, DAY + 60 * 60 * 1000)
+            const before = await page.store.read('store2-gc-age')
+            const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+            await fireNode(page, { peers: async () => 'others' })
+
+            expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=refused reason=other-tab/)])
+            expect(await orphansLeftOn(page)).toBe(6)
+            expect((await page.store.read('store2-gc-age')).version).toBe(before.version)
+        })
     })
 
     test('reproducer K-web (a): an indexeddb session alone on its own base deletes the orphan and logs one result line', async () => {
@@ -847,7 +932,7 @@ describe('the asset sweep after the clean-up pass', () => {
             { store: async () => store, listBackupTimes: async () => [] },
             { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, sweepFacts: ACTIVE_SWEEP },
         )
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
 
         trigger.fire()
         await getStartupCleanup()

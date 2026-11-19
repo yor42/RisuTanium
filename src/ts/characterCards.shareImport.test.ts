@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 
 /**
- * `characterURLImport` in `src/ts/characterCards.ts`: the PWA share hash, `#import=` links, Chub downloads and the
- * file-handler queue.
+ * `characterURLImport` in `src/ts/characterCards.ts`: `#import=` links, Chub downloads, the file-handler queue and the
+ * retired `#share` hashes, which do nothing.
  *
  * The real `characterCards.ts`, `processzip.ts` and `pngChunk.ts` run against synthetic cards. The database, asset
- * storage and alerts are replaced by recorders, and `fetch` is a fake that plays the service worker's share routes
- * (claim by DELETE of the index, GET of a stored file, DELETE of the share) and the external download URLs. Outcomes
+ * storage and alerts are replaced by recorders, and `fetch` is a fake that records every call and answers the external
+ * download URLs; its share routes only stand for a share that no code consumes any more. Outcomes
  * are asserted (characters made, presets and modules read, messages shown); `PngChunk.scanCard` and
  * `CharXImporter.prototype.parse` are observed to check that a card reaches the parser as a `File`.
  */
@@ -232,7 +232,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { characterURLImport, importCharacterFile, importOpenedFiles } from 'src/ts/characterCards'
+import { characterURLImport as runCharacterURLImport, importCharacterFile, importOpenedFiles as runImportOpenedFiles } from 'src/ts/characterCards'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import { CharXImporter } from 'src/ts/process/processzip'
 import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixtures'
 import { PngChunk } from 'src/ts/pngChunk'
@@ -298,7 +300,7 @@ function pngCard(name: string): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Fake network: the service worker's share routes plus external download URLs
+// Fake network: the retired share routes plus external download URLs
 // ---------------------------------------------------------------------------------------------
 
 type Shared = { name: string, type: string, bytes: Uint8Array }
@@ -432,6 +434,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    lastCard = null
+    resetTaskHostForTests()
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
     delete (window as unknown as { launchQueue?: unknown }).launchQueue
@@ -440,6 +444,22 @@ afterEach(() => {
 })
 
 const charName = (i: number) => (h.characters[i] as { name?: string })?.name
+
+//An import that opens a result card resolves only after the card is answered. These wrappers answer it and keep the card the entry ended on (null when it ended without one) for assertions.
+let lastCard: ImportCard = null
+async function characterURLImport(): Promise<ImportCard> {
+    lastCard = await answerImportCard(() => runCharacterURLImport())
+    return lastCard
+}
+async function importOpenedFiles(paths: string[]): Promise<ImportCard> {
+    lastCard = await answerImportCard(() => runImportOpenedFiles(paths))
+    return lastCard
+}
+//The file-handler consumer's import, answered the same way.
+async function consume<T>(run: () => Promise<T>): Promise<ImportCard> {
+    lastCard = await answerImportCard(run)
+    return lastCard
+}
 
 // ---------------------------------------------------------------------------------------------
 // #import= links
@@ -565,9 +585,11 @@ describe('?charahub= downloads', () => {
         setUrl('/?charahub=someone/card')
         await characterURLImport()
         expect(scanArgs).toHaveLength(1)
-        expect(scanArgs[0]).toBeInstanceOf(File)
-        expect((scanArgs[0] as File).name).toBe('charahub.png')
-        expect((scanArgs[0] as File).type).toBe('image/png')
+        //The scan reads the downloaded Blob-backed file through a byte-counting source named after it, never one buffer.
+        expect(scanArgs[0]).not.toBeInstanceOf(Uint8Array)
+        expect((scanArgs[0] as { name: string }).name).toBe('charahub.png')
+        expect((scanArgs[0] as { size: number }).size).toBe(pngCard('FromChub').length)
+        expect(typeof (scanArgs[0] as { read: unknown }).read).toBe('function')
         expect(reads.arrayBuffer).toBe(0)
         expect(h.errors).toEqual([])
         expect(charName(0)).toBe('FromChub')
@@ -579,8 +601,11 @@ describe('?charahub= downloads', () => {
         const reads = watched(res)
         routes.set(CHUB, () => res)
         setUrl('/?charahub=someone/card')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.errors.noData])
+        const card = await characterURLImport()
+        //the refusal is the failure card's detail now, not an alert
+        expect(card?.failure?.detail).toBe(language.errors.noData)
+        expect(card?.failure?.dataState).toBe('same')
+        expect(h.errors).toEqual([])
         expect(reads).toEqual({ arrayBuffer: 0, blob: 0, other: 0 })
         expect(scanArgs).toEqual([])
         expect(h.characters).toEqual([])
@@ -588,237 +613,30 @@ describe('?charahub= downloads', () => {
 })
 
 // ---------------------------------------------------------------------------------------------
-// The share hash
+// Retired share hashes
 // ---------------------------------------------------------------------------------------------
 
-describe('#share= hash', () => {
-    const shared = async () => ({
-        charx: { name: 'a.charx', type: 'application/octet-stream', bytes: await charxBytes('SharedCharx') },
-        png: { name: 'b.png', type: 'image/png', bytes: pngCard('SharedPng') },
-        risup: { name: 'c.risup', type: '', bytes: new U8([7, 7]) },
-        risum: { name: 'd.risum', type: 'application/octet-stream', bytes: new U8([8, 8]) },
-    })
-
-    test('each file is imported through the route of its kind in the order shared, cards as Files, the hash is cleared and the share is deleted after the imports', async () => {
-        const s = await shared()
-        const id = seedShare([s.charx, s.png, s.risup, s.risum])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.events.filter((e) => !e.startsWith('normal:') && e !== 'order')).toEqual(['parse:a.charx', 'scan:b.png', 'preset:c.risup', 'module', 'delete'])
-        expect(parseArgs[0]).toBeInstanceOf(File)
-        expect(scanArgs[0]).toBeInstanceOf(File)
-        expect(h.errors).toEqual([])
-        expect(charName(0)).toBe('SharedCharx')
-        expect(charName(1)).toBe('SharedPng')
-        expect(h.presets[0].data).toBeInstanceOf(Uint8Array)
-        expect(h.moduleReads).toHaveLength(1)
-        expect(h.ordered).toBeGreaterThanOrEqual(2)
-        expect(window.location.hash).toBe('')
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('the same hash used a second time imports nothing and says the share was not found', async () => {
-        const s = await shared()
-        const id = seedShare([s.charx])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.characters).toHaveLength(1)
-        h.events = []
-        h.errors = []
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.characters).toHaveLength(1)
-        expect(parseArgs).toHaveLength(1)
-        expect(h.errors).toEqual([language.shareNotFound])
-    })
-
-    test('a file is sorted by its name suffix whatever its type, a bare image type is accepted, and files that cannot be used are named', async () => {
-        const id = seedShare([
-            { name: 'photo', type: 'image/png', bytes: pngCard('NoSuffix') },
-            { name: 'Card.PNG', type: 'application/octet-stream', bytes: pngCard('UpperCase') },
-            { name: 'x.preset', type: 'application/zip', bytes: enc.encode('{"name":"p"}') },
-            { name: 'y.json', type: 'application/octet-stream', bytes: enc.encode(v3Card('FromJson')) },
-            { name: 'notes.bin', type: 'application/octet-stream', bytes: new U8([1]) },
-            { name: 'mystery', type: '', bytes: new U8([2]) },
-        ])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.characters.map((c) => (c as { name?: string }).name)).toEqual(['NoSuffix', 'UpperCase', 'FromJson'])
-        expect(scanArgs.map((a) => (a as File).name)).toEqual(['photo.png', 'Card.png'])
-        expect(h.presets.map((p) => p.name)).toEqual(['x.preset'])
-        expect(h.errors).toHaveLength(1)
-        expect(h.errors[0]).toContain('notes.bin')
-        expect(h.errors[0]).toContain('mystery')
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('a .YML file is sorted as a card whatever its type and imports through the YAML route', async () => {
-        const id = seedShare([{ name: 'x.YML', type: 'application/octet-stream', bytes: enc.encode('name: FromYaml\ncontext: ctx\ngreeting: hi\n') }])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.errors).toEqual([])
-        expect(charName(0)).toBe('FromYaml')
-        expect(h.characters).toHaveLength(1)
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('a shared JSON over the cap is refused as not a card file without one read of its content', async () => {
-        const id = seedShare([{ name: 'big.json', type: 'application/json', bytes: new U8(64 * 1024 * 1024 + 1) }])
-        setUrl('/#share=' + id)
-        const spies = (['arrayBuffer', 'slice', 'stream', 'text'] as const).map((method) => vi.spyOn(Blob.prototype, method))
-        await characterURLImport()
-        expect(h.last).toBe('error:' + language.importNotCardFile)
-        expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0, 0, 0])
-        expect(h.characters).toEqual([])
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('a file that fails to import reports its own failure and does not stop the files after it', async () => {
-        const id = seedShare([
-            { name: 'broken.charx', type: '', bytes: new U8(10).fill(7) },
-            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
-        ])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(charName(0)).toBe('Survivor')
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'broken.charx: ' + language.cardFileIncomplete))
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('a module that readModule refuses adds nothing and is named among the files not imported, while the files after it import', async () => {
-        h.moduleFails = language.errors.noData
-        const id = seedShare([
-            { name: 'bad.risum', type: '', bytes: new U8([8, 8]) },
-            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
-        ])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.modules).toEqual([])
-        expect(charName(0)).toBe('Survivor')
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'bad.risum: ' + language.errors.noData))
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('a refused card, a good card and an unrecognised file: the good card imports and the last message names the others with their reasons', async () => {
-        const id = seedShare([
-            { name: 'broken.charx', type: '', bytes: new U8(10).fill(7) },
-            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
-            { name: 'notes.bin', type: 'application/octet-stream', bytes: new U8([1]) },
-        ])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(charName(0)).toBe('Survivor')
-        expect(h.characters).toHaveLength(1)
-        expect(h.last).toBe('error:Files not imported (2 of 3):\n'
-            + 'broken.charx: ' + language.cardFileIncomplete + '\n'
-            + 'notes.bin: ' + language.importUnsupportedFile)
-        expect(shares.has(id)).toBe(false)
-    })
-
-    test('a file that cannot be received is named with its reason and the files after it import', async () => {
-        //The index lists a file the share does not hold, so its fetch answers 404.
-        const id = seedShare([
-            { name: 'ok.png', type: 'image/png', bytes: pngCard('Survivor') },
-        ], SHARE_ID, () => new Response(JSON.stringify({ files: [
-            { key: `/sw/share/${SHARE_ID}/7`, name: 'gone.png', type: 'image/png' },
-            { key: `/sw/share/${SHARE_ID}/0`, name: 'ok.png', type: 'image/png' },
-        ] })))
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.characters.map((c) => (c as { name?: string }).name)).toEqual(['Survivor'])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'gone.png: ' + language.importFileNotReceived))
-    })
-
-    test('a single refused card shows its own message, not a summary (guard)', async () => {
-        const id = seedShare([{ name: 'broken.charx', type: '', bytes: new U8(10).fill(7) }])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.last).toBe('error:' + language.cardFileIncomplete)
-    })
-
-    test('a single unrecognised file has no message of its own and gets the summary', async () => {
-        const id = seedShare([{ name: 'notes.bin', type: 'application/octet-stream', bytes: new U8([1]) }])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 1, 'notes.bin: ' + language.importUnsupportedFile))
-    })
-
-    test('a share of imported files shows no error and ends on the last file\'s own message (guard)', async () => {
-        const id = seedShare([
-            { name: 'a.png', type: 'image/png', bytes: pngCard('A') },
-            { name: 'b.png', type: 'image/png', bytes: pngCard('B') },
-        ])
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.errors).toEqual([])
-        expect(h.characters).toHaveLength(2)
-        expect(h.last).toBe('normal:' + language.importedCharacter)
-    })
-
-    const noImport = () => {
-        expect(h.characters).toEqual([])
-        expect(h.presets).toEqual([])
-        expect(h.moduleReads).toEqual([])
-        expect(parseArgs).toEqual([])
-        expect(scanArgs).toEqual([])
-    }
-
-    test('the empty hash shows one message and imports nothing', async () => {
-        setUrl('/#share-empty')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.shareEmpty])
-        expect(window.location.hash).toBe('')
-        noImport()
-    })
-
-    test('the failure hash shows one message and imports nothing', async () => {
-        setUrl('/#share-failed')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.shareFailed])
-        expect(window.location.hash).toBe('')
-        noImport()
-    })
-
-    test('an unknown id shows one message and imports nothing', async () => {
-        setUrl('/#share=1760000000000-ffffffff-0000-4000-8000-000000000009')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.shareNotFound])
-        noImport()
-    })
-
-    test('an already claimed id shows one message and imports nothing', async () => {
-        const id = seedShare([{ name: 'a.charx', type: '', bytes: await charxBytes('Gone') }])
-        shares.get(id)!.claimed = true
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.errors).toEqual([language.shareNotFound])
-        noImport()
-    })
-
+describe('retired share hashes', () => {
     test.each([
-        ['an HTML page', () => new Response('<!doctype html><title>app</title>', { status: 200, headers: { 'content-type': 'text/html' } })],
-        ['JSON of the wrong shape', () => new Response(JSON.stringify({ files: 'nope' }), { status: 200 })],
-        ['an index whose key climbs out of its share with ..', () => new Response(JSON.stringify({ files: [{ key: `/sw/share/${SHARE_ID}/../x`, name: 'a.charx', type: '' }] }), { status: 200 })],
-        ['an index pointing outside its own share', () => new Response(JSON.stringify({ files: [{ key: 'https://evil.test/x', name: 'a.charx', type: '' }] }), { status: 200 })],
-    ])('an index that is %s shows one message and imports nothing', async (_label, answer) => {
-        const id = seedShare([], SHARE_ID, answer)
-        setUrl('/#share=' + id)
-        await characterURLImport()
-        expect(h.errors).toEqual([language.shareInvalid])
-        expect(fetchCalls.some((c) => c.url.startsWith('https://evil.test') || c.url.includes('..'))).toBe(false)
-        noImport()
-    })
-
-    test('an older-style share hash is not treated as a share', async () => {
-        setUrl('/#share_character')
+        ['#share=<id> with a stored share', async () => '/#share=' + seedShare([{ name: 'a.charx', type: 'application/octet-stream', bytes: await charxBytes('Shared') }])],
+        ['#share-empty', async () => '/#share-empty'],
+        ['#share-failed', async () => '/#share-failed'],
+    ] as Array<[string, () => Promise<string>]>)('R3 %s fetches nothing, imports nothing, shows nothing and keeps the file-handler consumer registered', async (_label, link) => {
+        const setConsumer = vi.fn()
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
+        setUrl(await link())
         await characterURLImport()
         expect(fetchCalls).toEqual([])
         expect(h.errors).toEqual([])
+        expect(h.events).toEqual([])
+        expect(h.characters).toEqual([])
+        expect(h.asks).toEqual([])
+        expect(setConsumer).toHaveBeenCalledTimes(1)
     })
 })
 
 // ---------------------------------------------------------------------------------------------
-// The file-handler queue and share failures
+// The file-handler queue
 // ---------------------------------------------------------------------------------------------
 
 type LaunchParams = { files: Array<{ name: string, getFile: () => Promise<File> }> }
@@ -842,8 +660,8 @@ describe('launchQueue', () => {
         await characterURLImport()
         const file = new File([new U8(64 * 1024 * 1024 + 1)], 'big.json', { type: 'application/json' })
         const spies = (['arrayBuffer', 'slice', 'stream', 'text'] as const).map((method) => vi.spyOn(file, method))
-        await consumer!({ files: [{ name: 'big.json', getFile: async () => file }] })
-        expect(h.last).toBe('error:' + language.importNotCardFile)
+        const card = await consume(() => consumer!({ files: [{ name: 'big.json', getFile: async () => file }] }))
+        expect(card?.failure?.detail).toBe(language.importNotCardFile)
         expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0, 0, 0])
         expect(h.characters).toEqual([])
     })
@@ -876,14 +694,18 @@ describe('launchQueue', () => {
             ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
             await characterURLImport()
             const good = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
-            await consumer!({ files: [
+            const card = await consume(() => consumer!({ files: [
                 { name: 'broken.charx', getFile: async () => { throw new Error('read failed') } },
                 { name: 'q.charx', getFile: async () => good },
                 { name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') },
-            ] })
+            ] }))
             await vi.waitFor(() => expect(h.characters).toHaveLength(1), { timeout: 500 })
             expect(charName(0)).toBe('Queued')
-            expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read failed\nbad.risum: ' + language.errors.noData))
+            expect(card?.result?.headline).toBe(language.importTaskImported(1))
+            expect(card?.result?.skipped).toEqual([
+                { name: 'broken.charx', reason: 'read failed' },
+                { name: 'bad.risum', reason: language.errors.noData },
+            ])
             expect(h.modules).toEqual([])
             await new Promise((resolve) => setTimeout(resolve, 20))
             expect(unhandled).toEqual([])
@@ -897,19 +719,11 @@ describe('launchQueue', () => {
         let consumer: ((params: LaunchParams) => Promise<void>) | null = null
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
         await characterURLImport()
-        await consumer!({ files: [{ name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') }] })
-        await vi.waitFor(() => expect(h.last).toBe('error:' + language.errors.noData), { timeout: 500 })
-        expect(h.errorKinds).toEqual(['string'])
+        const card = await consume(() => consumer!({ files: [{ name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') }] }))
+        expect(card?.failure?.detail).toBe(language.errors.noData)
+        //the refusal is on the card, not an alert
+        expect(h.errorKinds).toEqual([])
         expect(h.modules).toEqual([])
-    })
-
-    test('a share step that fails still leaves the file-handler consumer registered (compatibility guard)', async () => {
-        const setConsumer = vi.fn()
-        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
-        vi.stubGlobal('fetch', async () => { throw new TypeError('network error') })
-        setUrl('/#share=' + SHARE_ID)
-        await characterURLImport()
-        expect(setConsumer).toHaveBeenCalledTimes(1)
     })
 })
 
@@ -926,11 +740,15 @@ describe('importOpenedFiles', () => {
             'C:\\docs\\ok.charx': good,
             'C:\\docs\\bad.risum': new U8([8]),
         }
-        await importOpenedFiles(['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum'])
+        const card = await importOpenedFiles(['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum'])
         expect(charName(0)).toBe('Opened')
         expect(h.characters).toHaveLength(1)
         expect(h.modules).toEqual([])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read denied\nbad.risum: ' + language.errors.noData))
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped).toEqual([
+            { name: 'broken.charx', reason: 'read denied' },
+            { name: 'bad.risum', reason: language.errors.noData },
+        ])
     })
 
     test('files that all import show no error (guard)', async () => {
@@ -1271,13 +1089,6 @@ describe('link confirmation', () => {
             await characterURLImport()
             expect(setConsumer).toHaveBeenCalledTimes(1)
         })
-
-        test('G5 a #share= link records no prompt (compatibility guard: passes before and after)', async () => {
-            setUrl('/#share=' + seedShare([{ name: 'a.charx', type: 'application/octet-stream', bytes: await charxBytes('Shared') }]))
-            await characterURLImport()
-            expect(h.asks).toEqual([])
-            expect(charName(0)).toBe('Shared')
-        })
     })
 })
 
@@ -1289,7 +1100,7 @@ describe('imports are registered as busy while they run', () => {
         await characterURLImport()
         const file = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
 
-        await consumer!({ files: [{ name: 'q.charx', getFile: async () => { during = busyKinds(); return file } }] })
+        await consume(() => consumer!({ files: [{ name: 'q.charx', getFile: async () => { during = busyKinds(); return file } }] }))
 
         expect(during).toEqual(['import'])
         expect(isBusy()).toBe(false)
@@ -1300,8 +1111,9 @@ describe('imports are registered as busy while they run', () => {
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
         await characterURLImport()
 
-        await consumer!({ files: [{ name: 'broken.charx', getFile: async () => { throw new Error('read failed') } }] })
+        const card = await consume(() => consumer!({ files: [{ name: 'broken.charx', getFile: async () => { throw new Error('read failed') } }] }))
 
+        expect(card?.failure?.detail).toBe('read failed')
         expect(isBusy()).toBe(false)
     })
 
@@ -1358,15 +1170,22 @@ describe('a reload that keeps the fragment of an inline link', () => {
 })
 
 describe('download links that fail', () => {
+    //A #import= link refuses before its card opens (an alert); a Chub download runs on the card and fails there.
     test.each([
-        ['a #import= link answered with a non-ok status', () => { routes.set('https://files.test/dl', () => new Response('gone', { status: 404 })); return '/#import=https://files.test/dl' }],
-        ['a ?charahub= download answered with a non-ok status', () => { routes.set('https://api.chub.ai/api/characters/download', () => new Response('gone', { status: 404 })); return '/?charahub=someone/card' }],
-    ] as Array<[string, () => string]>)('%s shows noData and the file-handler consumer is still registered', async (_label, link) => {
+        ['a #import= link answered with a non-ok status', () => { routes.set('https://files.test/dl', () => new Response('gone', { status: 404 })); return '/#import=https://files.test/dl' }, 'alert'],
+        ['a ?charahub= download answered with a non-ok status', () => { routes.set('https://api.chub.ai/api/characters/download', () => new Response('gone', { status: 404 })); return '/?charahub=someone/card' }, 'card'],
+    ] as Array<[string, () => string, 'alert' | 'card']>)('%s shows noData and the file-handler consumer is still registered', async (_label, link, where) => {
         const setConsumer = vi.fn()
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
         setUrl(link())
-        await characterURLImport()
-        expect(h.last).toBe('error:' + language.errors.noData)
+        const card = await characterURLImport()
+        if (where === 'alert') {
+            expect(h.last).toBe('error:' + language.errors.noData)
+            expect(card).toBeNull()
+        } else {
+            expect(card?.failure?.detail).toBe(language.errors.noData)
+            expect(h.errors).toEqual([])
+        }
         expect(setConsumer).toHaveBeenCalledTimes(1)
     })
 })
@@ -1376,26 +1195,24 @@ describe('download links that fail', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('a .risum module and the low-level-access prompt', () => {
-    const paths: Array<[string, () => Promise<void>]> = [
+    //Each path answers its result card and hands it back (null when the import ended without one).
+    const paths: Array<[string, () => Promise<ImportCard>]> = [
         ['open-with', async () => {
             h.tauriFiles = { '/docs/m.risum': new U8([8]) }
-            await importOpenedFiles(['/docs/m.risum'])
+            return await importOpenedFiles(['/docs/m.risum'])
         }],
         ['#import= link', async () => {
             routes.set('https://files.test/m.risum', () => new Response(new U8([4, 5]), { headers: { 'content-disposition': 'attachment; filename="m.risum"' } }))
             setUrl('/#import=https://files.test/m.risum')
-            await characterURLImport()
+            return await characterURLImport()
         }],
         ['launchQueue consumer', async () => {
             let consumer: ((params: LaunchParams) => Promise<void>) | null = null
             ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
             await characterURLImport()
-            await consumer!({ files: [{ name: 'm.risum', getFile: async () => new File([new U8([8])], 'm.risum') }] })
+            const card = await consume(() => consumer!({ files: [{ name: 'm.risum', getFile: async () => new File([new U8([8])], 'm.risum') }] }))
             await new Promise((resolve) => setTimeout(resolve, 50))
-        }],
-        ['Web Share Target', async () => {
-            setUrl('/#share=' + seedShare([{ name: 'm.risum', type: 'application/octet-stream', bytes: new U8([8, 8]) }]))
-            await characterURLImport()
+            return card
         }],
     ]
 
@@ -1412,10 +1229,12 @@ describe('a .risum module and the low-level-access prompt', () => {
     test.each(paths)('%s: a confirmed prompt imports the module and reports success (compatibility guard: passes before and after)', async (_label, run) => {
         h.moduleLowLevel = true
         h.confirm = true
-        await run()
+        const card = await run()
         expect(h.moduleSaved).toBe(1)
         expect(h.modules).toHaveLength(1)
-        expect(h.events).toContain('normal:' + language.successImport)
+        //the success line is a note on the result card, not an alert
+        expect(card?.result?.summary).toContain(language.successImport)
+        expect(h.events.filter((e) => e.startsWith('normal:') || e.startsWith('error:'))).toEqual([])
     })
 })
 
@@ -1470,7 +1289,9 @@ describe('the charx low-level-access prompt label (feature tests)', () => {
         h.confirm = true
         await importCharacterFile({ name: file.name, data: file, lowLevelLabel: 'Label line' })
         expect(vi.mocked(readModule)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(readModule).mock.calls[0][1]).toBeUndefined()
+        //Only the progress of the card is handed over (nested under the card's own); there is no beforeAssets hook.
+        expect(vi.mocked(readModule).mock.calls[0][1]?.beforeAssets).toBeUndefined()
+        expect(vi.mocked(readModule).mock.calls[0][1]?.progress).toBeDefined()
         expect(h.prompts).toEqual([`Label line\n${language.lowLevelAccessConfirm}`])
     })
 })

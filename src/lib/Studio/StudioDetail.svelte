@@ -13,9 +13,11 @@
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
     import { DBState } from '../../ts/stores.svelte'
     import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
+    import StudioEmotionList from './assets/StudioEmotionList.svelte'
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioExampleForm from './StudioExampleForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
@@ -104,7 +106,9 @@
     const characterFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'basic')
     const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
-    const formLive = $derived(characterFormLive || assetFormLive || chatFormLive)
+    // The advanced kind of a loaded character: its example dialogue is the one live part of it.
+    const exampleFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'advanced')
+    const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive)
     // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not
     // shared). A preset's toggles keep the read-only text until their write exists.
     const characterToggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
@@ -171,7 +175,7 @@
         {#if model}
             <StudioCombined {model} kind={combinedKind} />
         {/if}
-        <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
+        <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{combinedKind === 'toggles' ? language.studioTgCombinedHint : language.studioReadOnlyNote}</p>
     {:else if owner}
         <div class="flex flex-wrap items-center gap-2">
             <h2 id="studio-detail-title" data-part="studio-detail-title" class="min-w-0 break-words text-lg font-bold">{owner.name !== '' ? owner.name : (roleLabel ?? owner.name)}</h2>
@@ -236,7 +240,10 @@
                     <!-- Keyed by the owner: a new owner builds the list again, with a new filter, selection and panels. -->
                     {#key ownerKey}
                         <StudioAssetList chaId={characterId} enabledModules={enabledModuleAssets} />
+                        <StudioEmotionList chaId={characterId} />
                     {/key}
+                {:else if exampleFormLive}
+                    <StudioExampleForm chaId={studioScreen.chaId} />
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}

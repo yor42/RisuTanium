@@ -89,7 +89,14 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     acquireExclusiveStorageMigrationLock: acquireExclusiveStorageMigrationLockMock,
     locksSupported: true,
     tabPresenceLockAcquired: Promise.resolve(),
+    // A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+    isSaveClean: () => true,
+    afterNextSaveCommit: vi.fn(),
+    requestSaveNow: vi.fn(),
 }) as unknown as typeof import('../../globalApi.svelte'))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('../storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
 
 const alertMocks = vi.hoisted(() => ({
     alertGenerationInfoStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
@@ -133,7 +140,6 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: (name: string) => realGetColdStorageBackupKey(name),
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: (data: unknown) => realIsColdStorageBackupData(data),
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: setColdStorageItemMock,
 }) as unknown as typeof import('../../process/coldstorage.svelte'))
 
@@ -143,13 +149,13 @@ vi.mock(import('../../stores.svelte'), () => ({
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup } from '../backuplocal'
 import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
 import { injectAppStore } from '../../storage/store/appStore'
-import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { NodeHttpError } from '../../storage/store/nodeHttpStore'
 import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -217,6 +223,7 @@ let restoreStore: ByteStore
 
 beforeEach(async () => {
     setDatabaseMock.mockClear()
+    resetStore2ShellBox(shell)
     forageFiles.clear()
     forageSetItemMock.mockClear()
     setColdStorageItemMock.mockClear()
@@ -265,11 +272,7 @@ beforeEach(async () => {
             }
         },
     }
-    // The page's block owner is built while the kind is 'tauri' (a mutex head swap), because the model has no revision API for
-    // the Node head swap; the owner stays cached when the selected kind then becomes 'node', which the size limits follow.
-    injectRestoreStore(restoreStore, 'tauri')
-    await getPageBlockOwner()
-    injectAppStore(restoreStore, 'node')
+    injectRestoreStore(restoreStore, 'node')
 
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)
@@ -305,10 +308,23 @@ function writtenAssetKeys(): string[] {
     return writtenKeys().filter((key) => key.startsWith('assets/'))
 }
 
-/** Whether the restored database was committed as a block generation, and never as a `database.bin`. */
-function expectBlockGenerationCommitted(): void {
-    expect(writtenKeys()).toContain('blocks/head')
+/** Whether the restore reached its commit once, and never wrote a `database.bin`. */
+function expectCommitted(): void {
+    expect(shell.commits).toHaveLength(1)
     expect(writtenKeys()).not.toContain('database/database.bin')
+}
+
+/**
+ * Makes the page a store2 page over the page's store of kind `node`, where the restore ends at the stubbed commit, and
+ * has each row of the describe assert the restore waited for no save first: `saveFirst` returned at its clean check.
+ */
+function onStore2Page(): void {
+    beforeEach(() => {
+        useStore2RestorePage(restoreStore, 'node')
+    })
+    afterEach(() => {
+        expect(alertMocks.alertWait.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    })
 }
 
 function shownErrors(): string[] {
@@ -318,6 +334,8 @@ function shownErrors(): string[] {
 //#endregion
 
 describe('an asset over the Node server body limit is disclosed before anything is written', () => {
+    onStore2Page()
+
     test('asks first, with the asset named, and writes nothing, takes no lock, until the user answers', async () => {
         let writesAtPrompt = -1
         let lockCallsAtPrompt = -1
@@ -336,7 +354,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
         expect(lockCallsAtPrompt).toBe(0)
     })
 
-    test('declining writes nothing, installs nothing and takes no lock', async () => {
+    test('declining writes nothing, commits nothing and takes no lock', async () => {
         alertMocks.alertConfirm.mockImplementation(async () => false)
         const bytes = concatChunks([assetEntry('small.png', 16), assetEntry('huge.png', LIMIT + 10), databaseEntry()])
 
@@ -344,7 +362,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
 
         expect(forageSetItemMock).not.toHaveBeenCalled()
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(0)
         expect(acquireExclusiveStorageMigrationLockMock).not.toHaveBeenCalled()
     })
 
@@ -359,8 +377,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
         await loadBackupBytes(bytes)
 
         expect(writtenAssetKeys()).toEqual(['assets/first.png', 'assets/last.png'])
-        expectBlockGenerationCommitted()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommitted()
         expect(alertMocks.alertNormalWait).toHaveBeenCalledTimes(1)
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], LIMIT))
     })
@@ -384,7 +401,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
             expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedAssetsConfirm(1, ['n'.repeat(100) + '...'], LIMIT))
             expect(writesAtPrompt).toBe(0)
             expect(writtenAssetKeys()).toEqual(['assets/small.png'])
-            expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+            expectCommitted()
         } finally {
             overrideBackupWindowBytes(null)
         }
@@ -397,7 +414,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
 
         expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
         expect(writtenAssetKeys()).toEqual(['assets/exact.png'])
-        expectBlockGenerationCommitted()
+        expectCommitted()
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
     })
 
@@ -413,7 +430,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
         expect(writtenAssetKeys()).toEqual(['assets/big.png'])
         const stored = forageSetItemMock.mock.calls.find((call) => call[0] === 'assets/big.png')?.[1]
         expect(stored?.length).toBe(big)
-        expectBlockGenerationCommitted()
+        expectCommitted()
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
     })
 
@@ -430,28 +447,10 @@ describe('an asset over the Node server body limit is disclosed before anything 
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], assetLimit))
     })
 
-    // Guard (passes before and after): a non-asset entry keeps its own path and is never listed by the asset limit.
-    test('with pieces recorded a cold unit above one request still restores and is not listed', async () => {
-        nodePieces.recorded = true
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
+})
 
-        await loadBackupBytes(bytes)
-
-        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-    })
-
-    test('a cold unit whose JSON is over the limit restores and is not listed', async () => {
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(setColdStorageItemMock.mock.calls[0]).toEqual([COLD_UUID, expect.objectContaining({ message: [] })])
-        expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-    })
+describe('an asset over the Node server body limit on a page that is not Node-served', () => {
+    onStore2Page()
 
     test('an oversized asset on a page that is not Node-served is written, with no question asked', async () => {
         platformBox.isNodeServer = false
@@ -462,12 +461,14 @@ describe('an asset over the Node server body limit is disclosed before anything 
 
         expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
         expect(writtenAssetKeys()).toEqual(['assets/huge.png'])
-        expectBlockGenerationCommitted()
+        expectCommitted()
     })
 })
 
 describe('a refusal by the server for an asset under the limit', () => {
-    test('a 413 stops the restore with the too-large message and installs nothing', async () => {
+    onStore2Page()
+
+    test('a 413 stops the restore with the too-large message and commits nothing', async () => {
         failingWrites.set('assets/small.png', new NodeHttpError(413, 'write'))
         const bytes = concatChunks([assetEntry('before.png', 16), assetEntry('small.png', 16), assetEntry('after.png', 16), databaseEntry()])
 
@@ -475,7 +476,7 @@ describe('a refusal by the server for an asset under the limit', () => {
 
         expect(shownErrors()).toEqual([language.restoreAssetRefusedTooLarge('small.png')])
         expect(writtenKeys()).toEqual(['assets/before.png'])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(0)
     })
 
     test('any other store error keeps the generic failure message', async () => {
@@ -485,11 +486,13 @@ describe('a refusal by the server for an asset under the limit', () => {
         await loadBackupBytes(bytes)
 
         expect(shownErrors()).toEqual(['Failed, Is file corrupted?'])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(0)
     })
 })
 
 describe('an inlay over the Node server body limit is disclosed as an inlay before anything is written', () => {
+    onStore2Page()
+
     /** The part entry of an inlay whose header claims `claimedLength` bytes; the body it carries is `body`. */
     async function inlayEntry(id: string, body: Uint8Array, claimedLength = body.length): Promise<Uint8Array> {
         const codec = await import('../inlayBackupCodec')
@@ -516,7 +519,7 @@ describe('an inlay over the Node server body limit is disclosed as an inlay befo
         expect(writtenAssetKeys()).toEqual([])
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], LIMIT))
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysTooLarge(1, ['too-big'], LIMIT))
-        expectBlockGenerationCommitted()
+        expectCommitted()
     })
 
     test('acceptance: declining writes nothing, and an inlay alone over the limit still asks first', async () => {
@@ -527,7 +530,7 @@ describe('an inlay over the Node server body limit is disclosed as an inlay befo
 
         expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedInlaysConfirm(1, ['too-big'], LIMIT))
         expect(forageSetItemMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(0)
     })
 
     test('acceptance: an inlay part whose entry is over the limit is named only as an inlay, never as an asset, and is not written as one', async () => {
@@ -549,6 +552,6 @@ describe('an inlay over the Node server body limit is disclosed as an inlay befo
         expect(writtenKeys().some((key) => key.startsWith('inlays/m-fits'))).toBe(true)
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreInlaysNotStored(1, ['refused']))
         expect(shownErrors()).toEqual([])
-        expectBlockGenerationCommitted()
+        expectCommitted()
     })
 })

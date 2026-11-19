@@ -237,4 +237,11 @@ describe('kept-name preselection for merge', () => {
         expect(preselectKeptName(names, 'emotion')).toBe(1)
         expect(preselectKeptName(names, 'asset')).toBe(0)
     })
+
+    test('R1: for emotions the exact name neutral comes before a case-different spelling, wherever each stands',
+        () => {
+            expect(preselectKeptName([{ name: 'Neutral', references: 5 }, { name: 'neutral', references: 0 }], 'emotion')).toBe(1)
+            expect(preselectKeptName([{ name: 'NEUTRAL', references: 0 }, { name: 'Neutral', references: 0 }], 'emotion')).toBe(0)
+            expect(preselectKeptName([{ name: 'Neutral', references: 5 }, { name: 'neutral', references: 0 }], 'asset')).toBe(0)
+        })
 })

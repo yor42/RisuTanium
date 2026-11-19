@@ -265,20 +265,31 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
         getColdStorageBackupKey,
         getColdStorageItem: vi.fn(async () => null),
         isColdStorageBackupData: vi.fn(() => true),
-        listColdDataKeys: vi.fn(async () => []),
         setColdStorageItem: vi.fn(async () => true),
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => true,
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup, SaveLocalBackup, SavePartialLocalBackup, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { BackupAssetChangedError, BackupAssetTooLargeError } from 'src/ts/drive/exportShell'
 import { dbWriteLock, LocalWriter } from 'src/ts/globalApi.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
 import { language } from 'src/lang'
+import { alertWait } from 'src/ts/alert'
 import { injectRestoreStore } from './restoreSupport'
+import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from 'src/ts/storage/tests/nodeServerFixture'
 
 //#region fixtures
@@ -362,6 +373,12 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 /** The page: served by `fx`, its store reading `fx` in pieces. Every request goes through the scripted fetch. */
 async function pageOn(fx: NodeServerFixture): Promise<void> {
+    injectRestoreStore(await pageStore(fx), 'node')
+    h.log.length = 0
+}
+
+/** The page's store over `fx`, probed; the page is served by `fx` and every request goes through the scripted fetch. */
+async function pageStore(fx: NodeServerFixture) {
     h.server = fx
     h.script = null
     h.caps = 'real'
@@ -373,8 +390,7 @@ async function pageOn(fx: NodeServerFixture): Promise<void> {
         sleep: async () => { },
     })
     await store.guarded!.probe()
-    injectRestoreStore(store, 'node')
-    h.log.length = 0
+    return store
 }
 
 function installFetch(): void {
@@ -460,11 +476,13 @@ beforeEach(() => {
     alerts.notice.length = 0
     alerts.confirmAnswers.length = 0
     alerts.gestureWaitMs = 0
-    dbBox.db = { characters: [], personas: [], characterOrder: [], botPresets: [] }
+    resetStore2ShellBox(shell)
+    dbBox.db ={ characters: [], personas: [], characterOrder: [], botPresets: [] }
 })
 
 afterEach(async () => {
     injectAppStore(null)
+    resetPageStorageModeForTests()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     await Promise.all([main, identity, limited, shortTicket, fresh].map((server) => server.clearKeys()))
@@ -909,10 +927,13 @@ describe('restore of a file made through the server', () => {
         expect(served.outcome.status).toBe('saved')
         const file = new Uint8Array(served.bytes)
         await pageOn(fresh)
+        useStore2RestorePage(await pageStore(fresh), 'node')
         // The page's own `fetch` stub is not wanted while the picked file is read.
         const end = await restore(file)
 
         expect(end.outcome).toBe('committed')
+        expect(shell.commits).toHaveLength(1)
+        expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
         // A backup entry carries only the last path segment, so the restored key is `assets/<name>`.
         for (const item of TREE) {
             expect(sameBytes(await onDisk(fresh, `assets/${item.key.split('/').pop()}`), item.bytes)).toBe(true)

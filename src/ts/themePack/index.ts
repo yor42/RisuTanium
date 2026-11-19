@@ -12,6 +12,7 @@ import { lintPack as lintStudio } from './registries/studio'
 import { APP_TOKEN_FILES } from './appThemeNames'
 import { canonicalStylesheet, type ResourceSpan } from './canonical'
 import { cascadePass } from './cascade'
+import { outerShadowPass } from './outerShadow'
 import { scopePass } from './scope'
 import { structurePass } from './structure'
 import { readAppValues, valueRulesPass } from './valueRules'
@@ -57,7 +58,8 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * area's reference lint unchanged, and the value rules (valueRules.ts) then judge it with the area's app tokens. The
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
  * a font-family may name (MC-1550). A chat or Studio stylesheet that all of these accept is then judged by Rule S
- * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach).
+ * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach), and
+ * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows).
  */
 export function lintAreaPack(area: ThemeArea, source: string, name = '', packFamilies?: ReadonlySet<string>): LintResult {
     return judgeSheet(area, source, name, packFamilies).result
@@ -133,6 +135,8 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
     if (!errors.length) errors.push(...cascadePass(area, fonts.remainder), ...scopePass(area, fonts.remainder, fonts.families))
     // The live chat shell is judged only on a sheet every pass above accepted, so a Rule S or SCOPE refusal never gains a geometry error.
     if (area === 'chat' && !errors.length) errors.push(...chatLiveChainErrors(fonts.remainder))
+    // Rule E-2 (outerShadow.ts) runs last, on a sheet every pass above accepted, so a refused sheet never gains or loses a reason.
+    if ((area === 'chat' || area === 'studio') && !errors.length) errors.push(...outerShadowPass(area, fonts.remainder))
     return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks }
 }
 

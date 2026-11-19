@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desc">Test-only gesture driver for TalkBack automation on synthetic test phones.</string>
+</resources>

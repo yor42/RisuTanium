@@ -30,6 +30,7 @@ import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } f
 import { SecretRefError } from '../../secretRef';
 import { beginUsageCapture, settleUsage, settleUsageFailure } from '../../usage/usageCapture';
 import type { UsageMeterState, UsagePurpose } from '../../usage/usageTypes';
+import type { NativeReplyGrant } from '../../nativeReply/grant';
 
 export type ToolCall = {
     name: string;
@@ -85,6 +86,9 @@ interface requestDataArgument{
     // Set by `requestChatDataMain` on every attempt: the provider call sites report each response's usage to it.
     // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
     usageMeter?: UsageMeterState
+    // Set only by the main chat send. Offered to the first attempt of the first fallback model alone, and bound only by an
+    // eligible request. Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    nativeReplyGrant?: NativeReplyGrant
 }
 
 export interface RequestDataArgumentExtended extends requestDataArgument{
@@ -269,6 +273,10 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
         return m
     })
 
+    // The reply grant belongs to the first attempt of the first model: a retry, a rotation to the next key line and a
+    // fallback model are later requests and never own the reply's record.
+    let grantOffered = false
+
     for(let fallbackIndex=0;fallbackIndex<fallBackModels.length;fallbackIndex++){
         let trys = 0
         // Each fallback model gets its own pass over the key lines.
@@ -341,11 +349,14 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
     
             try{
                 clearLease(keyRotation)
+                const offeredGrant = !grantOffered && tools.length === 0 ? arg.nativeReplyGrant : undefined
+                grantOffered = true
                 da = await requestChatDataMain({
                     ...arg,
                     staticModel: fallBackModels[fallbackIndex],
                     tools: tools,
                     keyRotation,
+                    nativeReplyGrant: offeredGrant,
                 }, model, abortSignal)
             }
             catch(e){
@@ -622,6 +633,11 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
     }
 
     const format = targ.modelInfo.format
+    // Only the OpenAI-compatible chat request reads a reply from a record, and a streamed reply has none. The format is
+    // read after the reverse proxy chose its own.
+    if(format !== LLMFormat.OpenAICompatible || targ.useStreaming){
+        targ.nativeReplyGrant = undefined
+    }
 
     targ.formated = reformater(targ.formated, targ.modelInfo)
 

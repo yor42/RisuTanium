@@ -46,7 +46,6 @@ const forageState = vi.hoisted(() => ({
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
-const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async () => ({ status: 'ok' as const })))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async () => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
 const moduleUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
@@ -167,19 +166,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
     exportModuleLegacy: vi.fn(),
     readModule: vi.fn(),
 }) as unknown as typeof import('src/ts/process/modules'))
-
-vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
-    openBootArchiveSession: vi.fn(async () => ({
-        canArchive: false,
-        run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
-        release: vi.fn(async () => { }),
-    })),
-    checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-}) as unknown as typeof import('src/ts/storage/bootArchivePass'))
-
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: verifyAssetCacheEntryMock,
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -369,7 +355,6 @@ beforeEach(() => {
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
-    verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
     saveDbMock.mockReset().mockResolvedValue(undefined)
     moduleUpdateMock.mockReset().mockResolvedValue(undefined)

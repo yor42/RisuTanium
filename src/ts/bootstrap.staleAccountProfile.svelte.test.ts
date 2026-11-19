@@ -20,7 +20,7 @@
  * `platform`, `util`, `reloadGuard`, `update`, `stores.svelte`,
  * `plugins/plugins.svelte`, `characterCards`, `gui/*`,
  * `observer.svelte`, `characters`, `hotkey`, `process/modules`,
- * `storage/assetIntegrity`, `media/avatarThumb`,
+ * `media/avatarThumb`,
  * `model/modellist`, and every `@tauri-apps/*` package `bootstrap.ts`
  * touches.
  *
@@ -54,7 +54,6 @@
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
-import type { AssetVerifyResult } from './storage/assetIntegrity'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { registerRealDispatch, stopAcknowledgingAlerts } from 'src/ts/tests/realDispatchBoot.test-helpers'
@@ -80,17 +79,14 @@ const forageState = vi.hoisted(() => ({
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
-const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async (_path: string): Promise<AssetVerifyResult> => ({ status: 'ok' })))
 const characterURLImportMock = vi.hoisted(() => vi.fn())
 const handlePendingRealmLinkMock = vi.hoisted(() => vi.fn(async () => { }))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async () => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
 const moduleUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
 const markAppInitiatedReloadMock = vi.hoisted(() => vi.fn())
-const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
-const recordLoadTimeListingMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 
 //#endregion
 
@@ -211,24 +207,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: moduleUpdateMock,
 }) as unknown as typeof import('src/ts/process/modules'))
 
-vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
-    openBootArchiveSession: vi.fn(async () => ({
-        canArchive: false,
-        run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
-        release: vi.fn(async () => { }),
-    })),
-    checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-}) as unknown as typeof import('src/ts/storage/bootArchivePass'))
-
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: verifyAssetCacheEntryMock,
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
-    recordLoadTimeListing: recordLoadTimeListingMock,
-    resetLoadTimeListingForTests: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -290,7 +268,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: getDbBackupsMock,
     buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: setUsingSwMock,
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
     wasAssetWrittenThisPage: vi.fn(() => false),
@@ -416,16 +393,17 @@ async function corruptDbBytes(): Promise<Uint8Array> {
  * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
  * registered, so the legacy main file is converted to a store2 profile as on a production page, and its notices are
  * dismissed (the stale-account notice has its own type and stays). `realDispatch: false` leaves the page with no
- * registered dispatch, which the warm-up import needs.
+ * registered dispatch, which the warm-up import needs. `acknowledge: false` leaves the notices on screen for the test
+ * to close by hand, as the person would; `dispatch` is the registered dispatch's handle (null without one).
  */
-async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
+async function freshLoadData(options: { realDispatch: boolean, acknowledge?: boolean } = { realDispatch: true }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
-    if (options.realDispatch) {
-        await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
-    }
+    const dispatch = options.realDispatch
+        ? await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: options.acknowledge ?? true })
+        : null
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -440,7 +418,7 @@ async function freshLoadData(options: { realDispatch: boolean } = { realDispatch
     // failure. Explicit here rather than relying on the reset alone.
     loadedStore.set(false)
     alertStore.set({ type: 'none', msg: 'n' })
-    return { loadData, alertStore, loadedStore }
+    return { loadData, alertStore, loadedStore, dispatch }
 }
 
 // The first import of the real bootstrap graph transforms it; paying that inside a test's default timeout flakes
@@ -467,18 +445,15 @@ beforeEach(() => {
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
-    verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
     characterURLImportMock.mockReset()
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
     saveDbMock.mockReset().mockResolvedValue(undefined)
     moduleUpdateMock.mockReset().mockResolvedValue(undefined)
     markAppInitiatedReloadMock.mockReset()
-    setUsingSwMock.mockReset()
     setDatabaseMock.mockClear()
     setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
     getDatabaseMock.mockClear()
     getDatabaseMock.mockImplementation(() => dbState.current)
-    recordLoadTimeListingMock.mockReset().mockResolvedValue(undefined)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
     vi.stubGlobal('open', vi.fn())
     vi.spyOn(window.location, 'reload').mockImplementation(() => { })
@@ -540,7 +515,6 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // notice is acknowledged.
             expect(seenAlertTypes).toContain('staleAccountNotice')
             expect(get(loadedStore)).toBe(false)
-            expect(setUsingSwMock).not.toHaveBeenCalled()
 
             // The keys must survive while the notice is up: removing them
             // early would lose the notice's own record of a stale profile if
@@ -625,7 +599,6 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             expect(localStorage.getItem('fallbackRisuToken')).toBeNull()
             expect(markAppInitiatedReloadMock).toHaveBeenCalled()
             expect(window.location.reload).toHaveBeenCalled()
-            expect(setUsingSwMock).not.toHaveBeenCalled()
             expect(characterURLImportMock).not.toHaveBeenCalled()
             expect(loadPluginsMock).not.toHaveBeenCalled()
             expect(get(loadedStore)).toBe(false)
@@ -643,6 +616,49 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             assertLocalforageUntouched()
         })
     }
+})
+
+describe('loadData(): the queued boot notices are drained before the stale-account consent (R2)', () => {
+    test('the dispatch notices are shown and closed by hand first, then the consent comes up, and loadedStore stays false', async () => {
+        localStorage.setItem('accountst', 'able')
+        localStorage.setItem('dosync', 'sync')
+        forageState.staleAccountProfile = true
+        await armInstallBranch('decode', baseDb())
+        vi.mocked(window.location.reload).mockClear()
+
+        const { loadData, alertStore, loadedStore, dispatch } = await freshLoadData({ realDispatch: true, acknowledge: false })
+        const { resetAlertPromptsForTests } = await import('src/ts/alertPrompts')
+        onTestFinished(() => resetAlertPromptsForTests())
+        const seenAlertTypes: string[] = []
+        const unsubscribe = alertStore.subscribe((v) => seenAlertTypes.push(v.type))
+        onTestFinished(() => unsubscribe())
+
+        const loading = loadData()
+        await vi.waitFor(() => {
+            expect(get(alertStore).type).toBe('normal')
+        })
+        // The notice is on screen because the dispatch raised one; the consent has not been posted behind it.
+        expect(dispatch?.ui.notices.length).toBeGreaterThan(0)
+        expect(seenAlertTypes).not.toContain('staleAccountNotice')
+        expect(get(loadedStore)).toBe(false)
+
+        // The person presses OK on each notice in turn; a code close never would.
+        while (get(alertStore).type === 'normal') {
+            expect(seenAlertTypes).not.toContain('staleAccountNotice')
+            alertStore.set({ type: 'none', msg: '' })
+        }
+        await vi.waitFor(() => {
+            expect(get(alertStore).type).toBe('staleAccountNotice')
+        })
+        await loading
+        expect(get(loadedStore)).toBe(false)
+        expect(window.location.reload).not.toHaveBeenCalled()
+
+        alertStore.set({ type: 'none', msg: STALE_ACCOUNT_NOTICE_ACK })
+        await vi.waitFor(() => {
+            expect(window.location.reload).toHaveBeenCalled()
+        })
+    })
 })
 
 describe('loadData(): dosync/fallbackRisuToken without accountst are removed silently, with no notice', () => {

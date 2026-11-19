@@ -3,22 +3,19 @@
 /**
  * The keep-set side of an installed theme pack (layout A: one stored archive per pack). A record under
  * `Database.themePacks` names its archive as `assets/tp-<sha256>.risutheme`; every collector that decides which asset
- * files stay must keep it: `getUncleanablesSync` (the boot sweeps, the manual clean-up) and `collectConfigAssets` (the
+ * files stay must keep it: `getUncleanablesSync` (the boot sweeps) and `collectConfigAssets` (the
  * store2 config list and the keep-set built from retained manifests). A record is read by the walker whatever its version
  * or shape, so an entry this build cannot read still keeps its files.
  *
  * Every record here is written inline, in the shape `installThemePack` emits, and this file imports only modules that
  * exist without the pack feature, except the one row that needs `removeThemePackAt` (loaded by a variable specifier).
- * The record-and-Remove rows drive the real `getUncleanablesSync` and the real manual clean-up over a key/value page
- * store. A mocked success here is not evidence of native backend
- * behaviour. Titles beginning "guard:" pass with or without the change they name; every other row is a regression
+ * The record-and-Remove rows drive the real `getUncleanablesSync`. A mocked success here is not evidence of native
+ * backend behaviour. Titles beginning "guard:" pass with or without the change they name; every other row is a regression
  * reproducer.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { FakeLockManagerCore, FakeTabLockManagerView } from './fakeWebLocks'
-import { createForageBackedStore, type ForageLike } from './forageBackedStore'
 import { deriveConfigAssets } from 'src/ts/storage/store2/lists'
 import { buildClosureAssetKeepSet } from 'src/ts/storage/store2/sweep'
 import { commitKeyOf, listHolds, Tree } from './store2/sweepFixtures'
@@ -99,11 +96,6 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         frozenSaveKeysStore: writable([]),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
-
-vi.mock(import('src/ts/storage/pageBlockOwner'), () => ({
-    getPageBlockOwner: async () => null,
-    resetPageBlockOwnerForTests: () => { },
-}) as unknown as typeof import('src/ts/storage/pageBlockOwner'))
 
 vi.mock(import('src/ts/process/index.svelte'), () => ({
     doingChat: writable(false),
@@ -246,6 +238,14 @@ describe('getUncleanablesSync over theme packs', () => {
         expect(kept).toContain(OTHER_BASENAME)
     })
 
+    test.each([['png'], ['webp']])('T3-8: a record keeps the basename of its %s icon beside its archive', (ext) => {
+        const iconBasename = `tp-${HEX_OTHER}.${ext}`
+        const kept = getUncleanablesSync(dbOf([{ ...packRecord(), icon: `assets/${iconBasename}` }]))
+
+        expect(kept).toContain(PACK_BASENAME)
+        expect(kept).toContain(iconBasename)
+    })
+
     test('guard: themePacks that is {}, a string, a list holding null, or absent adds nothing and does not throw', () => {
         expect(getUncleanablesSync(dbOf({}))).toEqual([])
         expect(getUncleanablesSync(dbOf('x'))).toEqual([])
@@ -339,16 +339,6 @@ describe('the keep-set over theme packs after a Remove', () => {
     })
 })
 
-describe('the integrity scan over a pack archive', () => {
-    afterEach(() => { vi.unstubAllGlobals() })
-
-    test('T2-17 guard: a pack archive name is reported as not content-addressed, never as a mismatch', async () => {
-        vi.stubGlobal('caches', { open: vi.fn(async () => ({ match: vi.fn(async () => undefined) })) })
-        const { verifyAssetCacheEntry } = await import('src/ts/storage/assetIntegrity')
-        expect(await verifyAssetCacheEntry(PACK_ARCHIVE)).toEqual({ status: 'not-content-addressed' })
-    })
-})
-
 describe('the pack archive key against the store key rules', () => {
     test('T2-12 guard: the key is creatable and addressable on every backend and short enough for the Node server', () => {
         expect(utf8ByteLength(PACK_ARCHIVE)).toBeLessThan(NODE_MAX_WRITE_KEY_BYTES)
@@ -363,130 +353,3 @@ describe('the pack archive key against the store key rules', () => {
         expect(assetOrInlayBodyKeyViolation(PACK_ARCHIVE)).toBeNull()
     })
 })
-
-//#region the manual clean-up over a key/value page store
-
-type Ctx = {
-    cold: typeof import('src/ts/process/coldstorage.svelte')
-    listing: typeof import('src/ts/storage/loadTimeListing')
-    mainRec: typeof import('src/ts/storage/mainFileRecord')
-    stores: typeof import('src/ts/stores.svelte')
-    risuSave: typeof import('src/ts/storage/risuSave')
-}
-
-let ctx: Ctx
-
-/** Boots a fresh module graph on the web build with this tab owning a fake lock manager. */
-async function setupWebPage(): Promise<Ctx> {
-    h.forage.clear()
-    h.onRemove = undefined
-    h.platform.isTauri = false
-    h.platform.isNodeServer = false
-    const core = new FakeLockManagerCore()
-    vi.resetModules()
-    Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(core, 'A'), configurable: true })
-    const globalApi = await import('src/ts/globalApi.svelte')
-    ctx = {
-        cold: await import('src/ts/process/coldstorage.svelte'),
-        listing: await import('src/ts/storage/loadTimeListing'),
-        mainRec: await import('src/ts/storage/mainFileRecord'),
-        stores: await import('src/ts/stores.svelte'),
-        risuSave: await import('src/ts/storage/risuSave'),
-    }
-    vi.clearAllMocks()
-    ctx.listing.resetLoadTimeListingForTests()
-    const { setPageStorageMode } = await import('src/ts/storage/pageStorageMode')
-    setPageStorageMode({ kind: 'block' })
-    ctx.mainRec.resetMainFileRecordForTests()
-    const { injectAppStore } = await import('src/ts/storage/store/appStore')
-    injectAppStore(createForageBackedStore(globalApi.forageStorage as unknown as ForageLike))
-    return ctx
-}
-
-function makeDb(extra: Slot = {}): Database {
-    return {
-        formatversion: 5, botPresetsId: 0, botPresets: [], modules: [], loadouts: [], plugins: [], pluginCustomStorage: {},
-        characterOrder: [], characters: [], coldstorage: false, ...extra,
-    } as unknown as Database
-}
-
-function seedAsset(name: string): void {
-    h.forage.set('assets/' + name, new Uint8Array([9, 9]))
-}
-
-function assetKeys(): string[] {
-    return Array.from(h.forage.keys()).filter((key) => key.startsWith('assets/'))
-}
-
-/** The page has just booted: the committed main file is stored, this tab has read it, and the load-time listing exists. */
-async function prime(db: Database): Promise<void> {
-    const encoder = new ctx.risuSave.RisuSaveEncoder()
-    await encoder.init(db, {})
-    const bytes = new Uint8Array(encoder.encode()!)
-    h.forage.set('database/database.bin', bytes)
-    ctx.mainRec.noteMainFileBytes(bytes.slice())
-    await ctx.listing.recordLoadTimeListing()
-}
-
-describe('the manual clean-up over theme packs', () => {
-    afterEach(() => { vi.useRealTimers() })
-
-    test('T2-5: a pack file the live database names is kept and an unreferenced one is deleted', async () => {
-        await setupWebPage()
-        seedAsset(PACK_BASENAME)
-        seedAsset(OTHER_BASENAME)
-        seedAsset('orphan.png')
-        const live = makeDb({ themePacks: [packRecord()] })
-        ctx.stores.DBState.db = live
-        await prime(live)
-
-        await ctx.cold.cleanColdStorage()
-
-        expect(assetKeys()).toContain(PACK_ARCHIVE)
-        expect(assetKeys()).not.toContain(OTHER_ARCHIVE)
-        expect(assetKeys()).not.toContain('assets/orphan.png')
-    })
-
-    test('T2-13: Remove leaves the archive in the store, then the manual clean-up reclaims it', async () => {
-        await setupWebPage()
-        seedAsset(PACK_BASENAME)
-        const installModule = '../../themePack/install'
-        const recordModule = '../../themePack/packRecord'
-        const { removeThemePackAt } = await import(/* @vite-ignore */ installModule) as typeof import('src/ts/themePack/install')
-        const { listThemePacks } = await import(/* @vite-ignore */ recordModule) as typeof import('src/ts/themePack/packRecord')
-        const live = makeDb({ themePacks: [packRecord()] })
-        ctx.stores.DBState.db = live
-        const target = listThemePacks(ctx.stores.DBState.db.themePacks)[0]
-        expect(removeThemePackAt(target.index, target.entry)).toEqual({ ok: true })
-        expect(assetKeys()).toContain(PACK_ARCHIVE)
-        await prime(ctx.stores.DBState.db)
-
-        await ctx.cold.cleanColdStorage()
-
-        expect(assetKeys()).not.toContain(PACK_ARCHIVE)
-    })
-
-    test('T2-5: a pack file whose record is added after the keep-set was built is kept by the live check before each batch', async () => {
-        await setupWebPage()
-        for (let i = 0; i < 250; i++) {
-            seedAsset(`filler-${String(i).padStart(3, '0')}.png`)
-        }
-        seedAsset(PACK_BASENAME)
-        const live = makeDb()
-        ctx.stores.DBState.db = live
-        await prime(live)
-        h.onRemove = (key) => {
-            if (key.startsWith('assets/')) {
-                h.onRemove = undefined
-                ;(ctx.stores.DBState.db as unknown as Slot).themePacks = [packRecord()]
-            }
-        }
-
-        await ctx.cold.cleanColdStorage()
-
-        expect(assetKeys()).not.toContain('assets/filler-000.png')
-        expect(assetKeys()).toContain(PACK_ARCHIVE)
-    })
-})
-
-//#endregion

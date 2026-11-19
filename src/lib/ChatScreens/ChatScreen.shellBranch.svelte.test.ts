@@ -140,4 +140,24 @@ describe('S0 ChatScreen branch', () => {
         }, { timeout: 5000 })
         expect(shell.props?.customStyle).toContain('text-shadow:')
     })
+
+    test('a custom background that renders as none leaves the shell without an overlay and the waifu root on a wallpaper style', async () => {
+        state.db.theme = ''
+        state.db.textBorder = true
+        state.db.customBackground = 'withheld.png'
+        shell.background = ''
+        state.db.characters = [{ chaId: 'char', type: 'character', chatPage: 0, chats: [{ id: 'chat' }], viewScreen: 'none', inlayViewScreen: false }]
+        selectedCharID.set(0)
+        const switcher = await show()
+        switcher.setShellEnabled(true)
+        flushSync()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        flushSync()
+        expect(shell.props?.customStyle).toBe('')
+
+        state.db.theme = 'waifu'
+        flushSync()
+        const root = target.querySelector('div.grow')
+        expect(root?.getAttribute('style')).toContain('background: url(')
+    })
 })

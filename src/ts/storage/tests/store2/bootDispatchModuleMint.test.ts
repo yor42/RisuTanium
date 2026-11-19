@@ -82,7 +82,6 @@ import { readFileSync } from 'node:fs'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { getPageStorageMode, resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { dispatchStore2Boot } from 'src/ts/storage/store2/bootDispatch'
@@ -226,7 +225,6 @@ function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 }
 

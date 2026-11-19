@@ -1601,11 +1601,11 @@
                             <LayoutPanelLeftIcon />
                         </button>
                     {/if}
-                    <button class="hover:text-textcolor text-textcolor2" onclick={(event) => {
+                    <button class="hover:text-textcolor text-textcolor2" data-part="library-trash" aria-label={language.othersUi.editMoveToTrash} title={language.othersUi.editMoveToTrash} onclick={(event) => {
                         event.stopPropagation()
                         removeChar(char, char.name, 'normal', { onTrashed: postTrashUndo })
                     }}>
-                        <TrashIcon />
+                        <TrashIcon aria-hidden="true" />
                     </button>
                 </div>
             </div>

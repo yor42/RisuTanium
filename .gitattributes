@@ -20,3 +20,8 @@ src/ts/drive/tests/rtbGoldens/*.rtbseg binary
 src/ts/drive/tests/rtbGoldens/*.json text eol=lf
 src/ts/themePack/goldens/*.risutheme binary
 src/ts/themePack/fixtures/packs/*.risutheme binary
+src-tauri/tests/fixtures/native-reply-v1/** binary
+# tbdriver: LF sources like the other device harnesses; the Gradle wrapper keeps its Windows script and binary jar intact.
+Agents/Tools/tbdriver/** text eol=lf
+Agents/Tools/tbdriver/android/gradlew.bat text eol=crlf
+Agents/Tools/tbdriver/android/gradle/wrapper/gradle-wrapper.jar binary

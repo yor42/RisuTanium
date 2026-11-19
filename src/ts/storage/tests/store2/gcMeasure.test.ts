@@ -229,7 +229,7 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     }
 
     test('the page is not a store2 page', async () => {
-        const rig = await indexedDbRig(pageOf({ mode: 'legacy' }))
+        const rig = await indexedDbRig(pageOf({ mode: 'unset' }))
         const junk = await orphan(rig.backend)
         await expectRefusal(await rig.handle.run({ confirm: true }), 'not-store2', rig, junk)
     })
@@ -489,7 +489,7 @@ describe('the install point is compiled out when MEASURE is false', () => {
 
     test('guard: a page that is not a store2 page gets no action either way', async () => {
         resetPageStorageModeForTests()
-        setPageStorageMode({ kind: 'legacy', convertedFrom: null })
+        setPageStorageMode({ kind: 'unset' })
         const session = await openReadySession()
 
         startStore2Maintenance(noStore, { session: () => session, startTrigger: neverTrigger })

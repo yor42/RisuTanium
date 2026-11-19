@@ -65,18 +65,18 @@ const tauriRecovery = [
 const tauriStore2 = ['Checking Files...', 'Reading Save File...', 'Decoding Save File...', 'Checking Update...', 'Listing Stored Files...']
 // A page whose store2 backend is unavailable writes the save text before the dispatch answers, then runs the legacy boot.
 const tauriReadOnly = ['Checking Files...', 'Reading Save File...', 'Reading Save File...', 'Decoding Save File...', 'Checking Update...', 'Listing Stored Files...']
-const webReadOnly = ['Checking Service Worker...', 'Reading Save File...', 'Loading Local Save File...', 'Decoding Local Save File...', 'Listing Stored Files...']
+const webReadOnly = ['Reading Save File...', 'Loading Local Save File...', 'Decoding Local Save File...', 'Listing Stored Files...']
 const webNormal = [
-    'Checking Service Worker...', 'Loading Local Save File...', 'Archiving characters 1/3',
+    'Loading Local Save File...', 'Archiving characters 1/3',
     'Decoding Local Save File...', 'Listing Stored Files...', 'Loading Plugins...', 'Checking For Format Update...',
     'Updating States...',
 ]
 const webStore2 = [
-    'Checking Service Worker...', 'Reading Save File...', 'Decoding Save File...', 'Listing Stored Files...',
+    'Reading Save File...', 'Decoding Save File...', 'Listing Stored Files...',
     'Loading Plugins...', 'Checking For Format Update...', 'Updating States...',
 ]
 const webRecovery = [
-    'Checking Service Worker...', 'Loading Local Save File...', 'Decoding Local Save File...', backupText,
+    'Loading Local Save File...', 'Decoding Local Save File...', backupText,
     'Listing Stored Files...',
 ]
 
@@ -92,8 +92,8 @@ describe('legacy boot text order', () => {
         }
     })
 
-    // A fresh tracker starts at `storage`, so the 'Checking Files...' and 'Checking Service Worker...' rows give
-    // the same step as the default; the entries below still pin them for a tracker that has moved on.
+    // A fresh tracker starts at `storage`, so the 'Checking Files...' row gives the same step as the default; the
+    // entries below still pin it for a tracker that has moved on.
     test('Tauri orders map to exact steps, counts and recovery details', () => {
         expect(stepsOf(tauriNormal)).toEqual([
             'storage', 'save', 'library', 'library', 'library', 'app', 'files', 'plugins', 'finish', 'finish',
@@ -117,14 +117,14 @@ describe('legacy boot text order', () => {
         expect(stepsOf(tauriReadOnly)).toEqual(['storage', 'save', 'save', 'library', 'app', 'files'])
     })
 
-    test('reproducer: web orders map to exact steps, with the service worker check in the storage step', () => {
+    test('reproducer: web orders map to exact steps, starting at the save step', () => {
         expect(stepsOf(webNormal)).toEqual([
-            'storage', 'save', 'library', 'library', 'files', 'plugins', 'finish', 'finish',
+            'save', 'library', 'library', 'files', 'plugins', 'finish', 'finish',
         ])
-        expect(stepsOf(webStore2)).toEqual(['storage', 'save', 'library', 'files', 'plugins', 'finish', 'finish'])
-        expect(stepsOf(webReadOnly)).toEqual(['storage', 'save', 'save', 'library', 'files'])
-        expect(stepsOf(webRecovery)).toEqual(['storage', 'save', 'library', 'library', 'files'])
-        expect(walk(webRecovery)[3].recovering).toBe(true)
+        expect(stepsOf(webStore2)).toEqual(['save', 'library', 'files', 'plugins', 'finish', 'finish'])
+        expect(stepsOf(webReadOnly)).toEqual(['save', 'save', 'library', 'files'])
+        expect(stepsOf(webRecovery)).toEqual(['save', 'library', 'library', 'files'])
+        expect(walk(webRecovery)[2].recovering).toBe(true)
     })
 })
 

@@ -73,7 +73,10 @@ const STUDIO_EXPECT: Record<string, RegExp> = {
     T01: /fully transparent/, T02: /would be [\d.]+:1/, T03: /fully transparent/, T04: /critical minimum/, T05: /not a pack-settable/, T06: /not a pack-settable/, T07: /not a pack-settable/, T08: /not a pack-settable/, T09: /not a pack-settable/, T10: /not a pack-settable/, T11: /not a pack-settable/, T12: /not a pack-settable/,
     T13: /critical minimum/, T14: /fully transparent/, T15: /not a pack-settable/, T16: /would be [\d.]+:1/, T17: /would be [\d.]+:1/, T18: /critical maximum/, T19: /would be [\d.]+:1/, T20: /would be [\d.]+:1/, T21: /not a pack-settable/, T22: /not a pack-settable/, T23: /not a pack-settable/, T24: /would be [\d.]+:1/, T25: /would be [\d.]+:1/, T26: /would be [\d.]+:1/,
 }
-const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P17'])
+// MC-2309 supersedes that freedom for an outer shadow over 2 px: such a pack is refused by decision (rule E-2).
+const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11'])
+const STUDIO_E2_REFUSED = new Set(['P17'])
+const E2_WHY = /may reach at most 2 px past its element/
 const studioExtra: [string, string | null, RegExp | null][] = [
     ['B1-token sheet transparent', ':root{--color-surface-sheet:transparent}', /fully transparent|opaque/], ['B1-token sheet alpha .05', ':root{--color-surface-sheet:rgb(0 1 28 / 0.05)}', /opaque colour/], ['toast transparent', ':root{--color-surface-toast:transparent}', /fully transparent|opaque/],
     ['sheet = canvas colour translucent', ':root{--color-surface-sheet:rgb(0 1 28 / 0.1)}', /opaque colour/], ['edge transparent', ':root{--nexus-edge:transparent;--nexus-edge-strong:transparent}', /fully transparent/], ['studio-tint-sheet-92 holder', ':root{--studio-tint-sheet-92:transparent}', /not a pack-settable/],
@@ -91,13 +94,16 @@ const HOME_RIGHT = (id: string): RegExp => {
     if (/^[ARS]\d+$/.test(id)) return /protected part|data-part-critical|not allowed|allowlist|url|@|transform|position|animation|transition|content|z-index|background|opaque/
     return /./
 }
+// K19 (--nexus-field-border written as color-mix(in srgb, #000 5%, #fff), which is #f2f2f2) is accepted by decision: color-mix in srgb resolves (OQ4), and the hex it makes is accepted in every area.
+const HOME_DECIDED_ACCEPT = new Set(['K19'])
 const HOME_FONT_REFUSED = new Set(['H52']);   // a font family outside the pack's own @font-face families and the generic ones is refused (MC-1550)
 
 // Private variables (--pack-*) cannot launder a value: [name, css, accepted?, reason].
 const PRIV: [string, string, boolean, RegExp?][] = [
-    ['a private colour used by a control', ':root{--pack-y:#fee500}[data-part="chat-send"]{background:var(--pack-y);color:#191919}', true],
+    ['a private colour used by a control', ':root{--pack-y:#fee500}[data-part="chat-send"]{background:var(--pack-y) !important;color:#191919 !important}', true],
     ['text colour through a private variable', ':root{--pack-t:#0e0f2b;--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
-    ['colour-mix through a private variable', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
+    ['colour-mix through a private variable', ':root{--pack-t:color-mix(in oklch,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
+    ['colour-mix in srgb through a private variable is judged as the colour it makes', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
     ['oklch through a chain of two', ':root{--pack-a:var(--pack-b);--pack-b:oklch(0.1 0 0);--nexus-danger:var(--pack-a)}', false, /cannot be resolved to a concrete sRGB/],
     ['transparent sheet through a private variable', ':root{--pack-s:transparent;--color-surface-sheet:var(--pack-s)}', false, /fully transparent|opaque/],
     ['translucent sheet through a private variable', ':root{--pack-s:rgb(14 15 42 / 0.4);--color-surface-sheet:var(--pack-s)}', false, /opaque colour/],
@@ -175,6 +181,11 @@ const MUST: Record<string, RegExp> = { R1: /ancestor padding|larger than 64/, R2
 describe('2 studio review packs', () => {
     for (const f of readReviewPacks('studio-hostile.json')) {
         for (const [label, css] of [['bare', f.css], ['on Navy', NAVY_STUDIO + '\n' + f.css]] as Named[]) {
+            if (STUDIO_E2_REFUSED.has(f.id)) {
+                // REPRO: the base accepts this pack; the flat 2 px limit on outer shadows refuses it.
+                it(`${f.id} ${label} is refused by decision (an outer shadow over 2 px, MC-2309): ${f.name}`, () => { expectRejected(lint('studio', css, f.id), E2_WHY) })
+                continue
+            }
             if (STUDIO_DECIDED_ACCEPT.has(f.id)) {
                 // Accepted by decision: only the key controls are protected, other safe parts keep their freedom.
                 it(`${f.id} ${label} is accepted by decision (${f.name})`, () => { expectAccepted(lint('studio', css, f.id)) })
@@ -186,7 +197,7 @@ describe('2 studio review packs', () => {
     }
     it('every decided-accept id and every expected id is a pack of the studio review list', () => {
         const ids = new Set(readReviewPacks('studio-hostile.json').map((f) => f.id))
-        for (const id of [...STUDIO_DECIDED_ACCEPT, ...Object.keys(STUDIO_EXPECT)]) expect(ids.has(id), id).toBe(true)
+        for (const id of [...STUDIO_DECIDED_ACCEPT, ...STUDIO_E2_REFUSED, ...Object.keys(STUDIO_EXPECT)]) expect(ids.has(id), id).toBe(true)
     })
     for (const [n, css, re] of studioExtra) {
         if (css === null || re === null) {
@@ -205,6 +216,10 @@ describe('3 home review packs', () => {
             it(`${key} is refused by decision (a system font family, MC-1550): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
             continue
         }
+        if (HOME_DECIDED_ACCEPT.has(key)) {
+            it(`${key} is accepted by decision (a colour the validator accepts as hex): ${f.name.slice(0, 60)}`, () => { expectAccepted(lint('home', f.css, key)) })
+            continue
+        }
         const re = HOME_RIGHT(key)
         it(`${key} is rejected for the right reason: ${f.name.slice(0, 60)}`, () => {
             const r = lint('home', f.css, key)
@@ -220,7 +235,7 @@ describe('3 home review packs', () => {
     }
     it('every font-refused id is a pack of the home review list', () => {
         const ids = new Set(readReviewPacks('home-hostile.json').map((f) => f.id))
-        for (const id of HOME_FONT_REFUSED) expect(ids.has(id), id).toBe(true)
+        for (const id of [...HOME_FONT_REFUSED, ...HOME_DECIDED_ACCEPT]) expect(ids.has(id), id).toBe(true)
     })
 })
 

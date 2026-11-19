@@ -45,6 +45,7 @@
     import { installChatOnScreen } from './ts/process/chatOnScreen.svelte';
     import { installReplyNotifications } from './ts/android/replyNotifications.svelte';
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
+    import TaskHost from './lib/Nexus/pattern/TaskHost.svelte';
     import { coversPage } from './ts/alertEscape';
     import NexusBootScreen from './lib/Nexus/boot/NexusBootScreen.svelte';
     import { createLegacyBootTracker } from './lib/Nexus/boot/bootProgress';
@@ -298,6 +299,7 @@
     {#if $alertStore.type !== 'none'}
         <AlertComp />
     {/if}
+    <TaskHost yielded={coversPage($alertStore.type)} />
     <AlertInertScope>
     {#if $showRealmInfoStore}
         <RealmPopUp bind:openedData={$showRealmInfoStore} />

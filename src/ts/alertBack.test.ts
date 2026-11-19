@@ -43,7 +43,7 @@ import {
     alertClear,
 } from './alert'
 import { ALERT_BACK_ACTIONS, cancelHasOwnButton, offeredCancel } from './alertBack'
-import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from './alertPrompts'
+import { ANSWER_GUARD_MS, askPrompt, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
 import { dispatchBack, resetBackHandlersForTests } from './backHandlers'
 import { alertStore } from './stores.svelte'
 
@@ -121,6 +121,15 @@ describe('a prompt with a cancel button', () => {
         expect(dispatchBack()).toBe(true)
         await settle()
         expect(out).toEqual({ settled: true, value: 'cancel' })
+    })
+
+    test('a parked reply is answered later by Back, never discard', async () => {
+        const out = track(askPrompt({ type: 'parkedReply', msg: 'Title', parkedReply: { name: 'Ann', text: 'Hello' } }))
+        expect(shown().type).toBe('parkedReply')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(out).toEqual({ settled: true, value: 'later' })
+        expect(shown().type).toBe('none')
     })
 
     test('chat options resolve as the Cancel button does, which its caller reads as no choice', async () => {
@@ -290,6 +299,23 @@ describe('notices and waits', () => {
         expect(dispatchBack()).toBe(true)
         expect(error).toHaveBeenCalled()
         error.mockRestore()
+    })
+
+    test('new rule: Back on a boot notice from the queue acknowledges it, and the next notice is shown', async () => {
+        queueNotice('N1')
+        queueNotice('N2')
+        const settled = track(noticesSettled())
+        expect(shown()).toMatchObject({ type: 'normal', msg: 'N1' })
+
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(shown()).toMatchObject({ type: 'normal', msg: 'N2' })
+        expect(settled.settled).toBe(false)
+
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(shown().type).toBe('none')
+        expect(settled.settled).toBe(true)
     })
 })
 

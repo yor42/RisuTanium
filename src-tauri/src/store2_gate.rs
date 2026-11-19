@@ -32,6 +32,13 @@
 //! `ungated_remove_refusal`), so an accidental call around the gate fails loudly.
 //! Not covered: the fs plugin's AppData scope, and Windows name aliases such as a
 //! trailing dot or space or an 8.3 short name; store2 code uses none of them.
+//!
+//! The same two refusals also keep the page's generic write and remove commands
+//! out of the native reply store, `native-reply` and everything under it, temp
+//! names included (the store sweeps its own temps). Also not covered there:
+//! `app_fs_mkdir_all`, the fs plugin's writes, removes and renames, `abort_chunked` (it needs the
+//! store's random temp name), and a chunked write whose key lies under the
+//! prefix while its final key lies elsewhere (the refusal checks the final key).
 
 use crate::app_fs;
 use crate::chunked_io::{decode_chunk, resolve_addressable, temp_name_for, MAX_CHUNK_BYTES};
@@ -141,9 +148,21 @@ fn has_unit_prefix(key: &str) -> bool {
 pub fn ungated_write_refusal(key: &str) -> Option<&'static str> {
     if is_gated_key(key) {
         Some("refused key: this key is written only through the store2 gate")
+    } else if is_reply_store_key(key) {
+        Some("refused key: this key belongs to the native reply store")
     } else {
         None
     }
+}
+
+/// `native-reply` itself or anything under it, without regard to case.
+fn is_reply_store_key(key: &str) -> bool {
+    let root = crate::reply_store::ROOT_DIR;
+    key.eq_ignore_ascii_case(root)
+        || (key.len() > root.len()
+            && key.is_char_boundary(root.len())
+            && key[..root.len()].eq_ignore_ascii_case(root)
+            && key.as_bytes()[root.len()] == b'/')
 }
 
 /// Why `app_fs_remove` may not remove `key`, or `None`. A temp file under
@@ -152,6 +171,8 @@ pub fn ungated_remove_refusal(key: &str) -> Option<&'static str> {
     let last = key.rsplit('/').next().unwrap_or(key);
     if is_gated_key(key) || (has_unit_prefix(key) && !is_temp_name(last)) {
         Some("refused key: this key is removed only through the store2 gate")
+    } else if is_reply_store_key(key) {
+        Some("refused key: this key belongs to the native reply store")
     } else {
         None
     }
@@ -937,6 +958,33 @@ mod tests {
         for key in ["store2/risu-write-0123456789abcdef.tmp", "store2/sub/risu-write-0123456789abcdef.tmp", "blocks/head", "store2x/u1", "store2"] {
             assert!(ungated_remove_refusal(key).is_none(), "{}", key);
         }
+    }
+
+    #[test]
+    fn reserved_prefix_refused() {
+        let temp = "native-reply/r/risu-write-0123456789abcdef.tmp";
+        for key in [
+            "native-reply",
+            "Native-Reply",
+            "native-reply/r/00000000-0000-4000-8000-000000000722/ticket.json",
+            "NATIVE-REPLY/x/a",
+            temp,
+        ] {
+            assert!(ungated_write_refusal(key).is_some(), "{}", key);
+            assert!(ungated_remove_refusal(key).is_some(), "{}", key);
+        }
+        for key in ["native-replyx/a", "native-repl", "xnative-reply/a", "blocks/native-reply", "store2/native-reply"] {
+            assert!(ungated_write_refusal(key).is_none(), "{}", key);
+        }
+        let base = scratch("reply-prefix");
+        assert!(crate::durable_write::write_key_durable(&base, "native-reply/x", b"x").unwrap_err().starts_with("refused key:"));
+        let dir = base.join("native-reply").join("r");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("risu-write-0123456789abcdef.tmp"), b"t").unwrap();
+        assert!(app_fs::remove_key_guarded(&base, temp).unwrap_err().starts_with("refused key:"));
+        assert!(dir.join("risu-write-0123456789abcdef.tmp").exists());
+        assert_eq!(names_in(&dir), vec!["risu-write-0123456789abcdef.tmp"]);
+        fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

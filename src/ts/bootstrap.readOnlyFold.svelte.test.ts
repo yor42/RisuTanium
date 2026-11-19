@@ -4,8 +4,12 @@
  * profile is only read: the page writes nothing, deletes no backup, runs no archive pass, and keeps the Tauri and web
  * read routes' own asymmetries (which errors take the backup route, the empty-profile arm, the error texts).
  *
- * Every row here is a compatibility guard of the read-only fold: it passes on the code that preceded the fold and on
- * the fold. `T2-P4` also pins that a main file that is absent is installed as an empty profile and never written.
+ * Most rows are compatibility guards of the read-only fold: they pass on the code that preceded the fold and on the
+ * fold. The "partial notice" rows that expect one more queued notice (a partly decoded main file or a numbered backup)
+ * are the exception: they are regression reproducers of the legacy partial notice and fail on a build without it. The
+ * "partial notice" row whose damaged block the block cache answers expects no extra notice and is a compatibility guard;
+ * the rows that check only the kept fact are guards of the new contract and have no meaning on a build without it. `T2-P4` also pins that a main file that is absent is installed as an empty profile
+ * and never written.
  * The main files and backups are producer-built (the real encoder, `composeSave` block files), so the decodes are the
  * real ones.
  */
@@ -139,10 +143,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
 vi.mock(import('src/ts/process/memory/characterPutBack'), () => ({
     startCharacterPutBack: vi.fn(),
 }) as unknown as typeof import('src/ts/process/memory/characterPutBack'))
-
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -352,6 +352,15 @@ async function cleanUpCalls(): Promise<number> {
     return vi.mocked(cleanUpCopiedBackOpfs).mock.calls.length
 }
 
+/**
+ * The page-life fact the boot keeps for the export. Imported by a name Vite cannot resolve ahead of the run, so the rows
+ * that only check the notices load and fail on their own assertion on a build that has no such module.
+ */
+async function legacyPartialModule(): Promise<typeof import('src/ts/storage/legacyPartialSave')> {
+    const specifier = 'src/ts/storage/legacyPartialSave'
+    return await import(/* @vite-ignore */ specifier)
+}
+
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
 beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
@@ -388,7 +397,7 @@ describe('loadData(): the Tauri read-only boot reads the legacy profile and writ
         ['a main file that does not decode', (store) => { store.files.set(MAIN_KEY, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])) }],
     ]
 
-    test.each(variants)('T2-P1 guard: %s leads to the first decodable backup, nothing is written or deleted, and the main bytes stand', async (_label, damage) => {
+    test.each(variants)('T2-P1 partial notice: %s leads to the first decodable backup, nothing is written or deleted, the main bytes stand, and the backup date is told', async (_label, damage) => {
         const store = legacyStore({ backups: backupsOneDamaged() })
         damage(store)
         const heldMain = store.files.get(MAIN_KEY)?.slice()
@@ -404,7 +413,13 @@ describe('loadData(): the Tauri read-only boot reads the legacy profile and writ
         expect(heldMain).toBeDefined()
         expect(store.files.get(MAIN_KEY)).toEqual(heldMain)
         expect(errors(run)).toEqual([])
-        expect(run.notices).toEqual([language.store2Boot.noticeBackendUnavailable])
+        expect(run.notices).toHaveLength(2)
+        expect(run.notices[0]).toBe(language.store2Boot.noticeBackendUnavailable)
+        // The date is computed here the way the boot's date helper does, not by calling it.
+        expect(run.notices[1]).toContain(new Date(MIDDLE * 100).toLocaleString())
+        expect(run.notices[1]).toBe(language.legacyBackupNotice(new Date(MIDDLE * 100).toLocaleString(), []))
+        const { getLegacyPartialSave } = await legacyPartialModule()
+        expect(getLegacyPartialSave()).toEqual({ backupTime: MIDDLE, omitted: new Map() })
         expect(getDbBackupsMock).not.toHaveBeenCalled()
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
@@ -453,6 +468,22 @@ describe('loadData(): the web read-only boot reads the legacy profile and writes
             expect(getDbBackupsMock).not.toHaveBeenCalled()
         })
 
+        test('T2-P3 partial notice: a main file that does not decode posts the backup notice after the page-level notices', async () => {
+            const store = legacyStore({ main: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), backups: backupsOneDamaged() })
+            const run = await boot(kind, store)
+            const { language } = await import('src/lang')
+
+            await run.loadData()
+            await settle()
+
+            expect(get(run.loadedStore)).toBe(true)
+            const first = kind === 'node' ? language.store2Boot.noticeBackendUnavailable : language.opfsReadOnlyNotice
+            expect(run.notices).toHaveLength(2)
+            expect(run.notices[0]).toBe(first)
+            expect(run.notices[1]).toBe(language.legacyBackupNotice(new Date(MIDDLE * 100).toLocaleString(), []))
+            expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        })
+
         test('T2-P3 guard: another read error is rethrown and alerted, the backups are not consulted and nothing is installed', async () => {
             const store = legacyStore({ backups: backupsOneDamaged() })
             store.failRead = (key) => (key === MAIN_KEY ? new Error('disk gone') : null)
@@ -495,6 +526,9 @@ describe('loadData(): the web read-only boot reads the legacy profile and writes
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(store.files.has(MAIN_KEY)).toBe(false)
         expect(await cleanUpCalls()).toBe(0)
+        // The seeded empty profile decodes strictly: no partial notice and no fact.
+        const { language } = await import('src/lang')
+        expect(run.notices).toEqual([language.opfsReadOnlyNotice])
     })
 })
 
@@ -587,20 +621,25 @@ describe('loadData(): the read-only boot and the archive memo (T2-P6)', () => {
 })
 
 describe('loadData(): a main file that decodes only non-strictly is installed as its partial tree (T2-P7)', () => {
-    const incomplete: [string, () => Promise<Uint8Array>, (ids: string[], tree: Record<string, unknown>) => void][] = [
-        ['a missing remote file', async () => (await composeBlockFile()).bytes, (ids) => expect(ids).toEqual(['a'])],
+    /** What the page tells about the partial tree: the items of the notice, or null when it must stay silent. */
+    type Told = (language: typeof import('src/lang').language) => string[] | null
+    const incomplete: [string, () => Promise<Uint8Array>, (ids: string[], tree: Record<string, unknown>) => void, Told][] = [
+        ['a missing remote file', async () => (await composeBlockFile()).bytes, (ids) => expect(ids).toEqual(['a']), () => ['1 character']],
         ['a block with a bad checksum that the block cache answers', async () => {
             const save = await composeBlockFile({ b: 'inline' })
             blockCache.set('risuSaveBlock_b', { type: BLOCK.CHARACTER_WITH_CHAT, name: 'b', data: JSON.stringify({ chaId: 'b', name: 'Cached B', type: 'character', chats: [] }) })
             return corruptBlockPayload(save, 'b')
-        }, (ids) => expect(ids).toEqual(['a', 'b'])],
+        }, (ids, tree) => {
+            expect(ids).toEqual(['a', 'b'])
+            expect((tree.characters as { name: string }[]).map(character => character.name)).toEqual(['A', 'Cached B'])
+        }, () => null],
         ['a damaged PLUGINS block', async () => corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins'), (ids, tree) => {
             expect(ids).toEqual(['a', 'b'])
             expect(tree.plugins).toBeUndefined()
-        }],
+        }, (language) => [language.internalBackupLeftOutPlugins]],
     ]
 
-    test.each(incomplete.flatMap(([label, arm, check]) => [[label, false, arm, check] as const, [label, true, arm, check] as const]))('T2-P7 guard: %s installs the partial tree, writes nothing and shows no error (Tauri: %s)', async (_label, tauri, arm, check) => {
+    test.each(incomplete.flatMap(([label, arm, check, told]) => [[label, false, arm, check, told] as const, [label, true, arm, check, told] as const]))('T2-P7 partial notice: %s installs the partial tree, writes nothing, shows no error and tells what is missing, if anything (Tauri: %s)', async (_label, tauri, arm, check, told) => {
         const bytes = await arm()
         const store = legacyStore({ main: bytes })
         const run = await boot(tauri ? 'tauri' : 'node', store)
@@ -614,7 +653,104 @@ describe('loadData(): a main file that decodes only non-strictly is installed as
         check((tree.characters as { chaId: string }[]).map(character => character.chaId), tree)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(errors(run)).toEqual([])
+        const items = told(language)
+        expect(run.notices).toHaveLength(items === null ? 1 : 2)
+        expect(run.notices[0]).toBe(language.store2Boot.noticeBackendUnavailable)
+        if (items !== null) {
+            const { getLegacyPartialSave } = await legacyPartialModule()
+            expect(run.notices[1]).toBe(language.legacyPartialNotice(items))
+            expect(getLegacyPartialSave()?.backupTime).toBeNull()
+            expect([...(getLegacyPartialSave()?.omitted.values() ?? [])].map(block => block.kind)).toEqual([items[0] === '1 character' ? 'character' : 'plugins'])
+        }
+    })
+
+    test.each([[false], [true]])('T2-P7 partial notice: a block the block cache stands in for keeps no fact for the export (Tauri: %s)', async (tauri) => {
+        const save = await composeBlockFile({ b: 'inline' })
+        blockCache.set('risuSaveBlock_b', { type: BLOCK.CHARACTER_WITH_CHAT, name: 'b', data: JSON.stringify({ chaId: 'b', name: 'Cached B', type: 'character', chats: [] }) })
+        const run = await boot(tauri ? 'tauri' : 'node', legacyStore({ main: corruptBlockPayload(save, 'b') }))
+
+        await run.loadData()
+        await settle()
+
+        const { getLegacyPartialSave } = await legacyPartialModule()
+        expect(getLegacyPartialSave()).toBeNull()
+    })
+
+    test('T2-P7 partial notice: a strictly decoded main file keeps no fact for the export', async () => {
+        const run = await boot('node', legacyStore())
+
+        await run.loadData()
+        await settle()
+
+        const { getLegacyPartialSave } = await legacyPartialModule()
+        expect(getLegacyPartialSave()).toBeNull()
+    })
+
+    test('T2-P7 partial notice: a remote file gone and a PLUGINS block damaged are told together, characters first', async () => {
+        const bytes = corruptBlockPayload(await composeBlockFile({ plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')
+        const store = legacyStore({ main: bytes })
+        const run = await boot('node', store)
+        const { language } = await import('src/lang')
+
+        await run.loadData()
+        await settle()
+
+        expect(run.notices).toHaveLength(2)
+        expect(run.notices[1]).toBe(language.legacyPartialNotice(['1 character', language.internalBackupLeftOutPlugins]))
+    })
+
+    test('T2-P7 partial notice: a backup that is itself partial names what it lacks next to its date (Tauri: both)', async () => {
+        const damagedPlugins = corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')
+        for (const tauri of [true, false]) {
+            vi.resetModules()
+            setDatabaseMock.mockClear()
+            const store = legacyStore({ main: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), backups: [[NEWEST, new Uint8Array([1, 2, 3])], [MIDDLE, damagedPlugins]] })
+            const run = await boot(tauri ? 'tauri' : 'node', store)
+            const { language } = await import('src/lang')
+
+            await run.loadData()
+            await settle()
+
+            expect(run.notices).toHaveLength(2)
+            expect(run.notices[1]).toBe(language.legacyBackupNotice(new Date(MIDDLE * 100).toLocaleString(), [language.internalBackupLeftOutPlugins]))
+            expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        }
+    })
+
+    test.each([[false], [true]])('T2-P7 guard: a damaged config block alone leaves no notice and no fact (Tauri: %s)', async (tauri) => {
+        const bytes = corruptBlockPayload(await composeBlockFile({ b: 'inline' }), 'config')
+        const store = legacyStore({ main: bytes })
+        const run = await boot(tauri ? 'tauri' : 'node', store)
+        const { language } = await import('src/lang')
+
+        await run.loadData()
+        await settle()
+
+        expect(get(run.loadedStore)).toBe(true)
         expect(run.notices).toEqual([language.store2Boot.noticeBackendUnavailable])
+    })
+
+    test('T2-P7 guard: a page that fails the live gate after a partial install posts no notice', async () => {
+        vi.doMock('src/ts/storage/pageStorageMode', async (importOriginal) => ({
+            ...await importOriginal<typeof import('src/ts/storage/pageStorageMode')>(),
+            pageMayGoLive: () => false,
+        }))
+        try {
+            for (const tauri of [true, false]) {
+                vi.resetModules()
+                const bytes = corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')
+                const run = await boot(tauri ? 'tauri' : 'node', legacyStore({ main: bytes }))
+
+                await run.loadData()
+                await settle()
+
+                expect(get(run.loadedStore)).toBe(false)
+                expect(errors(run)).toHaveLength(1)
+                expect(run.alerts.filter(alert => alert.type === 'normal')).toEqual([])
+            }
+        } finally {
+            vi.doUnmock('src/ts/storage/pageStorageMode')
+        }
     })
 
     test('T2-P7 is not vacuous: the damaged PLUGINS block fails a strict decode, the lenient decode reads it', async () => {

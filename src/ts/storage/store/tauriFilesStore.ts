@@ -7,6 +7,7 @@ import { CHUNK_MAX, createChunkedWriter, MISSING_FILE_ERROR, readRanged, transpo
 import { COMMIT_KEY, FENCE_KEY } from '../store2/format/keys'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import { registerPageGeneration, removeTopKeys, writeTopKey } from '../tauriGateTransport'
+import { readStore2UnitBatch } from '../tauriStore2Batch'
 import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
@@ -74,6 +75,19 @@ function pluginPath(key: string): string {
 function parentDirectory(key: string): string {
     const slash = key.lastIndexOf('/')
     return slash < 0 ? '' : key.slice(0, slash)
+}
+
+// A progress callback never ends or alters a write: an error it throws is dropped
+// here, so it cannot reach the slice loop's abort. Its return value is not awaited.
+function reportProgress(onProgress: ((doneBytes: number, totalBytes: number) => void) | undefined, doneBytes: number, totalBytes: number): void {
+    if (onProgress === undefined) {
+        return
+    }
+    try {
+        onProgress(doneBytes, totalBytes)
+    } catch {
+        // Ignored by design.
+    }
 }
 
 function errorText(error: unknown): string {
@@ -241,7 +255,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             return createChunkedWriter(key, { durable: isDurableKey(key) })
         },
 
-        async writeBlob(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult> {
+        async writeBlob(key: string, blob: Blob, condition: StoreCondition, onProgress?: (doneBytes: number, totalBytes: number) => void): Promise<WriteResult> {
             checkCreatable(key)
             if (!key.startsWith('assets/') && inlayBodyKeyViolation(key) !== null) {
                 throw new StoreInvalidKeyError(key, 'a Blob is written only to an inlay body key or a key under assets/')
@@ -257,7 +271,9 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             const writer = createChunkedWriter(key, { durable: isDurableKey(key) })
             try {
                 for (let start = 0; start < blob.size; start += CHUNK_MAX) {
-                    await writer.write(new Uint8Array(await blob.slice(start, start + CHUNK_MAX).arrayBuffer()))
+                    const slice = new Uint8Array(await blob.slice(start, start + CHUNK_MAX).arrayBuffer())
+                    await writer.write(slice)
+                    reportProgress(onProgress, start + slice.length, blob.size)
                 }
                 await writer.finish()
             } catch (error) {
@@ -265,6 +281,15 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
                 throw error
             }
             return writer.flushed === undefined ? { version: null } : { version: null, flushed: writer.flushed }
+        },
+
+        async readUnitBatch(keys: readonly string[]): Promise<Map<string, Uint8Array> | null> {
+            try {
+                return await readStore2UnitBatch(keys, checkAddressable)
+            } catch {
+                // Whatever went wrong, no key is answered: every key is read per key.
+                return new Map<string, Uint8Array>()
+            }
         },
 
         pageGate: {

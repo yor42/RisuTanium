@@ -9,7 +9,7 @@
  * and after; (F) feature guard.
  */
 import { unzipSync } from 'fflate'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => {
     process.env.TZ = 'Asia/Seoul'
@@ -192,6 +192,8 @@ vi.mock(import('src/ts/rpack/rpack_js'), () => ({
 }) as unknown as typeof import('src/ts/rpack/rpack_js'))
 
 import { exportModule, exportModuleLegacy, importModule, type RisuModule } from 'src/ts/process/modules'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 import { ASSET_FOLDER_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
 import { readFolderDoc } from 'src/ts/studio/assets/folderCodec'
 
@@ -239,7 +241,8 @@ async function importBytes(bytes: Uint8Array, fileName = 'synthetic.charx'): Pro
     h.modules.length = 0
     h.errors.length = 0
     h.picked = [new File([Uint8Array.from(bytes)], fileName)]
-    await importModule()
+    const card = await answerImportCard(importModule)
+    expect(card?.failure).toBeUndefined()
     expect(h.errors).toEqual([])
     expect(h.modules).toHaveLength(1)
     return h.modules[0] as RisuModule
@@ -262,6 +265,10 @@ beforeEach(() => {
     h.assets.clear()
     h.assets.set('key-portrait', PORTRAIT)
     h.assets.set('key-webp', WEBP)
+})
+
+afterEach(() => {
+    resetTaskHostForTests()
 })
 
 describe('a module CharX export and import', () => {

@@ -30,15 +30,6 @@ vi.mock('src/ts/drive/backuplocal', () => ({
 vi.mock('src/ts/drive/internalBackup', () => ({ loadInternalBackup: loaders.loadInternalBackup }))
 vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
 vi.mock('src/ts/storage/exportAsDataset', () => ({ exportAsDataset: vi.fn() }))
-vi.mock('src/ts/process/coldstorage.svelte', () => ({ cleanColdStorage: vi.fn() }))
-vi.mock('./StorageMaintenanceSettings.svelte', () => ({ default: () => { } }))
-vi.mock('src/ts/storage/pageStorageMode', async () => {
-    const { writable } = await import('svelte/store')
-    return {
-        modeRunsLegacyDeleters: () => false,
-        pageStorageModeStore: writable({ kind: 'legacy' }),
-    }
-})
 
 import { language } from 'src/lang'
 import UserSettings from './UserSettings.svelte'

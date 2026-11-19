@@ -71,7 +71,7 @@ import {
     waitAlert,
 } from './alert'
 import { alertStore } from './stores.svelte'
-import { resetAlertPromptsForTests } from './alertPrompts'
+import { alertIdle, noticeShowing, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
 import { UPSTREAM_AGREEMENT_ACCEPT } from './upstreamAgreement'
 
 //#region helpers
@@ -644,5 +644,343 @@ describe('a notice that waits for its own close, over a waiting prompt', () => {
         await settle()
 
         expect(notice.settled, 'the notice waiter after the notice closed').toBe(true)
+    })
+})
+
+/**
+ * Boot notices (`queueNotice`): shown one at a time, each until the person closes it. The
+ * person's close is the raw `none` that the OK button writes. Tests marked `new rule` use exports
+ * that do not exist before the queue.
+ */
+describe('boot notices from the queue', () => {
+    /** What the OK button, Enter after the pause, Escape and Back write. */
+    function closeNotice(): void {
+        alertStore.set(NONE)
+    }
+
+    function shownNotice(): string | null {
+        const value = shown()
+        return value.type === 'normal' ? value.msg : null
+    }
+
+    /** Every value the store takes from now on, in order. */
+    function recordWrites(): alertData[] {
+        const writes: alertData[] = []
+        let first = true
+        alertStore.subscribe((value) => {
+            if (first) {
+                first = false
+                return
+            }
+            writes.push(value as alertData)
+        })
+        return writes
+    }
+
+    test('new rule: three notices are shown one at a time in the order queued, each until it is closed', () => {
+        queueNotice('N1')
+        queueNotice('N2')
+        queueNotice('N3')
+        expect.soft(shownNotice(), 'the first notice shows at once').toBe('N1')
+
+        closeNotice()
+        expect.soft(shownNotice(), 'after the first close').toBe('N2')
+        closeNotice()
+        expect.soft(shownNotice(), 'after the second close').toBe('N3')
+        closeNotice()
+
+        expect.soft(shown(), 'the store after the last close').toEqual(NONE)
+        expect.soft(get(alertIdle), 'idle after the last close').toBe(true)
+    })
+
+    test('new rule: a prompt asked over a shown notice takes the slot, and the notice comes back as a fresh object after the answer', async () => {
+        queueNotice('N1')
+        const first = shown()
+        const confirm = track(alertConfirm('Proceed?'))
+        expect.soft(shown().type, 'the prompt shows over the notice').toBe('ask')
+        expect.soft(noticeShowing(), 'the notice is covered').toBe(false)
+
+        await passGuard()
+        answer('yes')
+        await settle()
+
+        expect.soft(confirm, 'the prompt after its answer').toMatchObject({ settled: true, value: true })
+        expect.soft(shownNotice(), 'the notice returns').toBe('N1')
+        expect.soft(shown(), 'the notice is a new object').not.toBe(first)
+        expect.soft(noticeShowing(), 'the returned notice is the one on screen').toBe(true)
+    })
+
+    test('new rule: a notice queued while a prompt is current waits behind it, and an answer inside the guard writes no notice', async () => {
+        const confirm = track(alertConfirm('Proceed?'))
+        queueNotice('N1')
+        expect.soft(shown().type, 'the prompt stays on screen').toBe('ask')
+        const writes = recordWrites()
+
+        answer('yes')
+        await settle()
+        expect.soft(confirm.settled, 'an answer inside the guard does not answer the prompt').toBe(false)
+        expect.soft(writes.filter((value) => value.type === 'normal'), 'notices written inside the guard').toEqual([])
+
+        await passGuard()
+        answer('yes')
+        await settle()
+        expect.soft(confirm.settled, 'the prompt after its answer').toBe(true)
+        expect.soft(shownNotice(), 'the notice shows after the prompt').toBe('N1')
+    })
+
+    describe.each([
+        { name: 'a toast', put: () => { alertToast('Saved') }, close: () => { closeNotice() } },
+        { name: 'an error', put: () => { alertError('Something failed') }, close: () => { answer('yes') } },
+        { name: 'a markdown alert', put: () => { alertStoreWrapper.set({ type: 'markdown', msg: '# Notes' }) }, close: () => { closeNotice() } },
+        { name: 'a notice that is not from the queue', put: () => { alertNormal('Other') }, close: () => { closeNotice() } },
+        { name: 'a wait cleared by its owner', put: () => { alertWait('Loading...') }, close: () => { alertClear() } },
+    ])('$name over a shown notice', (cover) => {
+        test('new rule: the cover replaces the notice, and its close shows the same notice again, not the next one', () => {
+            queueNotice('N1')
+            queueNotice('N2')
+            const first = shown()
+
+            cover.put()
+            expect.soft(shown(), 'the cover replaces the notice').not.toBe(first)
+            cover.close()
+
+            expect.soft(shownNotice(), 'the notice after the cover closed').toBe('N1')
+            expect.soft(shown(), 'the notice is a new object').not.toBe(first)
+            closeNotice()
+            expect.soft(shownNotice(), 'the next notice after the person closes the first').toBe('N2')
+        })
+    })
+
+    test('new rule: of two notices with the same text, a cover closing is never taken as the first one closing', () => {
+        queueNotice('same')
+        queueNotice('same')
+
+        alertToast('Saved')
+        closeNotice()
+        expect.soft(shownNotice(), 'the first notice after the toast').toBe('same')
+        closeNotice()
+        expect.soft(shownNotice(), 'the second notice after the person closes the first').toBe('same')
+        closeNotice()
+
+        expect.soft(shown(), 'the store after both are closed').toEqual(NONE)
+    })
+
+    test('new rule: idle is false while a notice is current or queued, and across a cover closing', () => {
+        const idle: boolean[] = []
+        alertIdle.subscribe((value) => { idle.push(value) })
+        expect.soft(idle.at(-1), 'idle before any notice').toBe(true)
+
+        queueNotice('N1')
+        queueNotice('N2')
+        idle.length = 0
+        alertToast('Saved')
+        closeNotice()
+        closeNotice()
+        expect.soft(get(alertIdle), 'idle with a notice still queued').toBe(false)
+        const beforeLastClose = [...idle]
+        closeNotice()
+
+        expect.soft(beforeLastClose, 'no idle value before the last close').not.toContain(true)
+        expect.soft(get(alertIdle), 'idle after the last close').toBe(true)
+    })
+
+    test('new rule: a consent that comes up over a notice holds, the queue is not shown over it, and the notice returns after the acknowledgement', async () => {
+        queueNotice('N1')
+        queueNotice('N2')
+        const consent = track(alertStaleAccountNotice())
+        expect.soft(shown().type, 'the consent shows over the notice').toBe('staleAccountNotice')
+        const writes = recordWrites()
+
+        answer('not the acknowledgement')
+        await settle()
+
+        expect.soft(shown().type, 'the consent after a non-acknowledging close').toBe('staleAccountNotice')
+        expect.soft(writes.some((value) => value.msg === 'N2'), 'a write carried the second notice').toBe(false)
+        expect.soft(writes.length, 'writes after the close, the close included').toBeLessThanOrEqual(4)
+        const settled = track(noticesSettled())
+        await settle()
+        expect.soft(settled.settled, 'the queue is still not settled').toBe(false)
+        expect.soft(consent.settled, 'the consent is still waiting').toBe(false)
+
+        alertStore.set({ type: 'none', msg: STALE_ACCOUNT_NOTICE_ACK })
+        await settle()
+
+        expect.soft(consent.settled, 'the consent after its acknowledgement').toBe(true)
+        expect.soft(shownNotice(), 'the notice on screen after the acknowledgement').toBe('N1')
+    })
+
+    test('new rule: a notice queued while a covered prompt is current waits, even when a closeless cover is up', async () => {
+        const confirm = track(alertConfirm('Proceed?'))
+        alertWait('w')
+        expect.soft(shown().type, 'the wait covers the prompt').toBe('wait')
+
+        queueNotice('N1')
+        expect.soft(shown().type, 'the wait stays on screen over the covered prompt').toBe('wait')
+
+        alertClear()
+        await settle()
+        expect.soft(shown().type, 'the prompt returns before the notice').toBe('ask')
+        await passGuard()
+        answer('yes')
+        await settle()
+        expect.soft(confirm.settled, 'the prompt after its answer').toBe(true)
+        expect.soft(shownNotice(), 'the notice after the prompt').toBe('N1')
+    })
+
+    test('new rule: a close that reaches the queue after another alert has taken the store does not write the notice over it', async () => {
+        // A subscriber registered before the queue starts watching, as any earlier reader of the store would be.
+        const stop = alertStore.subscribe((value) => {
+            if ((value as alertData).type === 'none' && (value as alertData).msg === 'yes') {
+                alertError('Something failed')
+            }
+        })
+        track(alertConfirm('Proceed?'))
+        queueNotice('N1')
+        await passGuard()
+
+        answer('yes')
+        stop()
+
+        expect.soft(shown().type, 'the error that took the store').toBe('error')
+        answer('ok')
+        expect.soft(shownNotice(), 'the notice after the error closed').toBe('N1')
+    })
+
+    test('new rule: noticesSettled resolves at once when nothing is queued, and after the last close otherwise', async () => {
+        const empty = track(noticesSettled())
+        await settle()
+        expect.soft(empty.settled, 'with nothing queued').toBe(true)
+
+        queueNotice('N1')
+        queueNotice('N2')
+        const queued = track(noticesSettled())
+        await settle()
+        expect.soft(queued.settled, 'with two notices queued').toBe(false)
+        closeNotice()
+        await settle()
+        expect.soft(queued.settled, 'after the first close').toBe(false)
+        closeNotice()
+        await settle()
+        expect.soft(queued.settled, 'after the last close').toBe(true)
+    })
+
+    test('new rule: a wait notice over a shown notice resolves on its own close, and the notice then returns', async () => {
+        queueNotice('N1')
+        const wait = track(alertNormalWait('x'))
+        await settle()
+        expect.soft(shownNotice(), 'the waited notice shows over the queue notice').toBe('x')
+        expect.soft(wait.settled, 'the waiter while its notice is up').toBe(false)
+
+        closeNotice()
+        await settle()
+
+        expect.soft(wait.settled, 'the waiter after its notice closed').toBe(true)
+        expect.soft(shownNotice(), 'the queue notice after the waited one').toBe('N1')
+        expect.soft(noticeShowing(), 'the returned notice is on screen').toBe(true)
+    })
+
+    test('new rule: resetAlertPromptsForTests clears the notice state', async () => {
+        queueNotice('N1')
+        queueNotice('N2')
+        const pending = track(noticesSettled())
+
+        resetAlertPromptsForTests()
+        alertStore.set(NONE)
+        await settle()
+
+        expect.soft(noticeShowing(), 'a notice still current').toBe(false)
+        expect.soft(shown(), 'the store after the reset and a close').toEqual(NONE)
+        expect.soft(pending.settled, 'a waiter kept after the reset').toBe(false)
+        const fresh = track(noticesSettled())
+        await settle()
+        expect.soft(fresh.settled, 'noticesSettled after the reset').toBe(true)
+    })
+
+    describe.each([
+        { name: 'a wait without a Cancel', put: () => { alertWait('w') } },
+        { name: 'a progress bar', put: () => { alertStoreWrapper.set({ type: 'progress', msg: 'Saving', submsg: '10' }) } },
+    ])('$name', (cover) => {
+        test('new rule: a notice queued over a cover the person cannot close shows at once, and settles after its close alone', async () => {
+            cover.put()
+            const settled = track(noticesSettled())
+
+            queueNotice('N1')
+            expect.soft(shownNotice(), 'the notice over the cover').toBe('N1')
+            const pending = track(noticesSettled())
+            closeNotice()
+            await settle()
+
+            expect.soft(pending.settled, 'noticesSettled after the close with the cover never cleared').toBe(true)
+            expect.soft(settled.settled, 'the early waiter').toBe(true)
+        })
+    })
+
+    describe.each([
+        { name: 'a wait with a Cancel', put: () => { alertWait('w', () => {}) }, close: () => { closeNotice() } },
+        { name: 'an error', put: () => { alertError('Something failed') }, close: () => { answer('yes') } },
+    ])('$name', (cover) => {
+        test('new rule: a notice queued over a cover the person can close waits for that cover to close', () => {
+            cover.put()
+            const coverShown = shown()
+
+            queueNotice('N1')
+            expect.soft(shown(), 'the cover stays on screen').toBe(coverShown)
+            cover.close()
+
+            expect.soft(shownNotice(), 'the notice after the cover closed').toBe('N1')
+        })
+    })
+
+    test('new rule: a notice survives a wait and a toast over it, code closing the wait changes nothing, and only the person closes it', async () => {
+        queueNotice('N1')
+        alertWait('W')
+        alertToast('T')
+        closeNotice()
+        expect.soft(shownNotice(), 'the notice after the toast ended').toBe('N1')
+        const writes = recordWrites()
+        const settled = track(noticesSettled())
+
+        alertClear()
+        await settle()
+        expect.soft(shownNotice(), 'the notice after the wait owner cleared').toBe('N1')
+        expect.soft(writes, 'writes made by the code close').toEqual([])
+        expect.soft(settled.settled, 'the queue settled on a code close').toBe(false)
+
+        closeNotice()
+        await settle()
+        expect.soft(settled.settled, 'the queue after the person closed the notice').toBe(true)
+    })
+
+    describe.each([
+        { name: 'alertClear', close: () => { alertClear() } },
+        { name: 'the store wrapper', close: () => { alertStoreWrapper.set({ type: 'none', msg: '' }) } },
+    ])('code close through $name', (closer) => {
+        test('new rule: a notice on screen stays and nothing is written', () => {
+            queueNotice('N1')
+            const first = shown()
+            const writes = recordWrites()
+
+            closer.close()
+
+            expect.soft(shown(), 'the store after the code close').toBe(first)
+            expect.soft(writes, 'writes made by the code close').toEqual([])
+            expect.soft(noticeShowing(), 'the notice is still on screen').toBe(true)
+        })
+    })
+
+    describe.each([
+        { name: 'alertClear', put: () => { alertWait('w') }, close: () => { alertClear() } },
+        { name: 'the store wrapper', put: () => { alertStoreWrapper.set({ type: 'wait', msg: 'w' }) }, close: () => { alertStoreWrapper.set({ type: 'none', msg: '' }) } },
+    ])('an owner closing its own cover through $name', (owner) => {
+        test('new rule: the cover is cleared and the notice it covered is shown again', () => {
+            queueNotice('N1')
+            owner.put()
+            expect.soft(shown().type, 'the cover shows over the notice').toBe('wait')
+
+            owner.close()
+
+            expect.soft(shownNotice(), 'the notice after its cover was cleared').toBe('N1')
+            expect.soft(noticeShowing(), 'the notice is on screen').toBe(true)
+        })
     })
 })

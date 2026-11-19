@@ -737,6 +737,23 @@ describe('loadInternalBackup on a store2 page', () => {
     })
 })
 
+describe('loadInternalBackup on a store2 page that runs from OPFS this time', () => {
+    // Guard: passes with or without the legacy tail; the store2 branch reaches the read-only check before it lists anything.
+    test('guard: shows the read-only notice, lists nothing and writes nothing', async () => {
+        const page = await openPage()
+        page.w.store.plant('database/dbbackup-1700000000.bin', new Uint8Array([1, 2, 3, 4]))
+        page.w.appStore.injectAppStore(page.w.store, 'opfs-transitional')
+        page.w.store.ops.length = 0
+
+        await page.internal.loadInternalBackup()
+
+        expect(alertErrorTexts(page)).toEqual([language.opfsReadOnlyNotice])
+        expect(page.shown).toEqual([])
+        expect(page.w.store.ops.filter((op) => op.kind === 'list'), 'listings').toEqual([])
+        expect(page.w.store.mutating(), 'store writes and deletes').toEqual([])
+    })
+})
+
 describe('old numbered backups as rows of the picker', () => {
     const OLD_TIME = 1700000000
     const NEWER_OLD_TIME = 1700000500

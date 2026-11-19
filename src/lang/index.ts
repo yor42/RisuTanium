@@ -7,6 +7,7 @@ import { languageVietnamese } from "./vi";
 import { languageChineseTraditional } from "./zh-Hant";
 import { languageSpanish } from "./es";
 import { languageJapanese } from "./ja";
+import { setAppLanguage } from "../ts/appIntl.svelte";
 
 export let language:typeof languageEnglish = languageEnglish
 
@@ -35,5 +36,9 @@ export function changeLanguage(lang:string){
     }
     else{
         language = languageEnglish
+    }
+    const tag = setAppLanguage(lang)
+    if(typeof document !== 'undefined'){
+        document.documentElement.lang = tag
     }
 }

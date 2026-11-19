@@ -2,6 +2,7 @@ import { beginWork } from './chatOrigin'
 import type { character, groupChat, Chat } from '../storage/database.svelte'
 import * as composerDrafts from './composerDrafts.svelte'
 import type { ComposerDraftKey, ComposerDraftRecord } from './composerDrafts.svelte'
+import type { InlayWriteProgress } from './files/inlays'
 
 type ComposerCharacter = character | groupChat
 
@@ -36,6 +37,58 @@ export async function trackChatFileUpload<T>(work: () => Promise<T>): Promise<T>
     }
     finally {
         settle()
+    }
+}
+
+export type ChatFileAttachment = {
+    readonly token: number
+    readonly key: ComposerDraftKey | null
+    readonly name: string
+    readonly written: number
+    readonly total: number
+}
+
+// Module state, so a chip outlives a composer remount like the draft it belongs to.
+// The array is replaced on every change; entries keep their position.
+let attachments: ChatFileAttachment[] = $state.raw([])
+let nextAttachmentToken = 0
+
+function sameDraftKey(a: ComposerDraftKey | null, b: ComposerDraftKey | null): boolean {
+    if (a === null || b === null) return a === b
+    return a.chaId === b.chaId && a.chatId === b.chatId
+}
+
+export function attachmentsForDraft(key: ComposerDraftKey | null): readonly ChatFileAttachment[] {
+    return attachments.filter((entry) => sameDraftKey(entry.key, key))
+}
+
+// A report after the call settled is ignored, so a late store callback never brings a chip back.
+export async function trackChatFileAttachment<T>(
+    key: ComposerDraftKey | null,
+    work: (report: (progress: InlayWriteProgress | null) => void) => Promise<T>,
+): Promise<T> {
+    const token = ++nextAttachmentToken
+    let settled = false
+    const remove = () => {
+        attachments = attachments.filter((entry) => entry.token !== token)
+    }
+    const report = (progress: InlayWriteProgress | null) => {
+        if (settled) return
+        if (progress === null) {
+            remove()
+            return
+        }
+        const entry: ChatFileAttachment = { token, key, name: progress.name, written: progress.written, total: progress.total }
+        attachments = attachments.some((existing) => existing.token === token)
+            ? attachments.map((existing) => existing.token === token ? entry : existing)
+            : [...attachments, entry]
+    }
+    try {
+        return await work(report)
+    }
+    finally {
+        settled = true
+        remove()
     }
 }
 

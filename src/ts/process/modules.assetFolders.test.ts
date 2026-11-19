@@ -103,6 +103,8 @@ vi.mock(import('src/ts/characterCards'), () => ({
 
 import { exportModuleLegacy, importModule, type RisuModule } from 'src/ts/process/modules'
 import { realmModuleJson } from 'src/ts/process/moduleUse'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 import { ASSET_FOLDER_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
 
 type FolderValue = Record<string, unknown>
@@ -131,7 +133,8 @@ async function risumBytesOf(module: RisuModule): Promise<Uint8Array<ArrayBuffer>
 async function importPicked(bytes: Uint8Array<ArrayBuffer>, name: string): Promise<RisuModule[]> {
     h.modules = []
     h.file = new File([bytes], name)
-    await importModule()
+    const card = await answerImportCard(importModule)
+    expect(card?.failure).toBeUndefined()
     expect(h.log).toEqual([])
     return h.modules as RisuModule[]
 }
@@ -143,6 +146,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 

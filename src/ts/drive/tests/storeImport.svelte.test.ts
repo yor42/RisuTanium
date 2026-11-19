@@ -16,7 +16,7 @@ import * as path from 'node:path'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
-import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
+import { bootThroughDispatch, commitActivePass, startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import { language } from 'src/lang'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
@@ -701,7 +701,7 @@ armed('the database is decoded and confirmed before the copy', () => {
         const source = makeDb('backup', ['alpha', 'beta', 'gamma'])
         const damaged = breakDataChecksum(await blockFileBytes(page, source), 'alpha')
         const salvaged = await page.w.risuSave.salvageRisuSave(damaged)
-        const { describeOmitted } = await import('src/ts/storage/bootBlockLoad')
+        const { describeOmitted } = await import('src/ts/drive/describeOmitted')
         const lines = describeOmitted(salvaged.omitted)
         expect(lines.length, 'the fixture must leave something out').toBeGreaterThan(0)
         return { bytes: binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', damaged)), lines }
@@ -1378,6 +1378,43 @@ armed('a database whose botPresetsId names no preset', () => {
         expect((stored.botPresets[presetsInFile] as { name: string }).name).toBe('New Preset')
         expect(alertErrorTexts(page)).toEqual([])
         expect(page.reloads.count).toBe(1)
+    })
+})
+
+armed('a .bin whose database has no archive key, restored in the app, is told once over two boots', () => {
+    // Compatibility guard (passes with or without the boot notice queue): the import and the restore write no
+    // `archiveCharacters`, so the next boot, a reload in a fresh module graph over the same store, still finds it absent,
+    // raises `archive-enabled` once and sets the key in memory; the first pass it commits saves the key, and the boot after
+    // that raises none.
+    // Both producers' database entries: upstream's legacy msgpack, and this fork's block format.
+    test.each(['legacy', 'block'] as const)('guard: the restored tree (%s entry) has no key, the next boot raises archive-enabled once, and after its first pass the boot after raises none', async (format) => {
+        const page = await openPage()
+        const source = makeDb('backup', ['alpha'])
+        expect(Object.hasOwn(source, 'archiveCharacters'), 'the file\'s database carries no archive key').toBe(false)
+        const entry = format === 'legacy' ? await page.w.risuSave.encodeRisuSaveLegacy(source, 'compression') : await blockFileBytes(page, source)
+
+        await loadBin(page, binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', entry)))
+
+        expect(page.reloads.count).toBe(1)
+        expect(alertErrorTexts(page)).toEqual([])
+        const stored = await databaseOf(page, await currentKey(page) as string)
+        expect(namesOf(stored)).toEqual(['alpha'])
+        expect(stored.archiveCharacters, 'the import wrote no key').toBeUndefined()
+
+        // The reload: the page that imported is done, and the next one is a fresh module graph over the same store.
+        worlds.parkAll()
+        vi.resetModules()
+        const first = await bootThroughDispatch(page.k.counted.backend, { kind: 'tauri' })
+        expect(first.result.kind).toBe('store2')
+        expect(first.notices.filter((notice) => notice.name === 'archive-enabled')).toHaveLength(1)
+        await commitActivePass((first.result as Extract<typeof first.result, { kind: 'store2' }>).database, [])
+        expect((await databaseOf(page, await currentKey(page) as string)).archiveCharacters, 'the first pass saved the key').toBe(true)
+
+        vi.resetModules()
+        const second = await bootThroughDispatch(page.k.counted.backend, { kind: 'tauri' })
+        expect(second.result.kind).toBe('store2')
+        expect(second.notices.filter((notice) => notice.name === 'archive-enabled')).toEqual([])
+        expect((second.result as Extract<typeof second.result, { kind: 'store2' }>).database.archiveCharacters).toBe(true)
     })
 })
 

@@ -3,8 +3,9 @@ import { language } from "../lang"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getDatabase, type MessageGenerationInfo } from "./storage/database.svelte"
 import { alertStore as alertStoreImported } from "./stores.svelte"
-import { askPrompt, promptShowing, promptWaiting } from "./alertPrompts"
+import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
+import { taskActionSettled, taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
 
 /** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
 export interface PeerConflictRowView {
@@ -21,7 +22,7 @@ export interface alertData{
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
@@ -29,6 +30,8 @@ export interface alertData{
     choices?: string[],
     /** The rows of a `peerConflicts` prompt; its answer is the JSON of `{ [row id]: choice }`. */
     peerConflicts?: PeerConflictRowView[],
+    /** The reply of a `parkedReply` prompt: the character's name and the reply text, both shown as text. Its answer is `discard` or `later`. */
+    parkedReply?: { name: string, text: string },
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */
@@ -46,8 +49,8 @@ type AlertGenerationInfoStoreData = {
 export const alertGenerationInfoStore = writable<AlertGenerationInfoStoreData>(null)
 export const alertStore = {
     set: (d:alertData) => {
-        // Code never closes a prompt that is on screen; only the user's answer does.
-        if(d.type === 'none' && promptShowing()){
+        // Code never closes a prompt that is on screen, or a boot notice from the queue; only the user's answer does.
+        if(d.type === 'none' && (promptShowing() || noticeShowing())){
             return
         }
         alertStoreImported.set(d)
@@ -137,12 +140,20 @@ export async function waitAlert(): Promise<void> {
 /** Alerts that are not a notice to read: nothing, a toast that closes itself, and a job's own wait or progress. */
 const NOT_A_NOTICE: ReadonlySet<alertData['type']> = new Set(['none', 'toast', 'wait', 'progress'])
 
-/** When the alert on screen is a notice to read, waits until the store next takes `none`; otherwise returns at once. */
+/**
+ * When the alert on screen is a notice to read, waits until the store next takes `none`. A task result that waits for its
+ * answer is a notice too, whether it is on screen or yielded under a legacy notice, so the wait ends only once it is read.
+ * A running task is not a notice. Otherwise returns at once.
+ */
 export async function waitUnreadNotice(): Promise<void> {
-    if(NOT_A_NOTICE.has(get(alertStoreImported).type)){
-        return
+    if(!NOT_A_NOTICE.has(get(alertStoreImported).type)){
+        await alertEndMessage()
     }
-    await alertEndMessage()
+    if(taskResultShowing()){
+        await taskResultRead()
+        //A Retry on the result starts another round under the same action: the notice is read only at its final answer.
+        await taskActionSettled()
+    }
 }
 
 export function alertNormal(msg:string){
@@ -253,7 +264,7 @@ export function alertMd(msg:string){
 }
 
 export function doingAlert(){
-    return promptWaiting() || (get(alertStoreImported).type !== 'none' && get(alertStoreImported).type !== 'toast' && get(alertStoreImported).type !== 'wait')
+    return taskShown() || promptWaiting() || (get(alertStoreImported).type !== 'none' && get(alertStoreImported).type !== 'toast' && get(alertStoreImported).type !== 'wait')
 }
 
 export function alertToast(msg:string){
@@ -293,9 +304,9 @@ export function displayAlertText(value: alertData, line: string | null): string 
 }
 
 
-/** Closes the alert on screen. A prompt that is on screen is left alone: only its answer closes it. */
+/** Closes the alert on screen. A prompt or a boot notice from the queue that is on screen is left alone: only the person's answer closes it. */
 export function alertClear(){
-    if(promptShowing()){
+    if(promptShowing() || noticeShowing()){
         return
     }
     alertStoreImported.set({

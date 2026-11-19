@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Segment, SpanKind } from '../../ts/studio/longText/highlightSpans'
+    import type { Note, Segment, SpanKind } from '../../ts/studio/longText/highlightSpans'
     import { heightsDiverge, LT_TEXT_LAYOUT, metricsAgree, overlayBoxStyle, supportsScrollbarGutter } from '../../ts/studio/longText/overlayMetrics'
 
     // The coloured copy of one long-text field's text, drawn over its textarea. It never takes input and never
@@ -37,8 +37,13 @@
         info: 'underline decoration-dotted decoration-textcolor2',
     }
 
+    const NOTE_CLASS: Record<Note['note'], string> = {
+        speaker: 'underline',
+        notUsed: 'line-through',
+    }
+
     function segmentClass(segment: Segment): string {
-        return [segment.kind === null ? '' : KIND_CLASS[segment.kind], segment.severity === null ? '' : SEVERITY_CLASS[segment.severity]].filter(Boolean).join(' ')
+        return [segment.kind === null ? '' : KIND_CLASS[segment.kind], segment.severity === null ? '' : SEVERITY_CLASS[segment.severity], segment.note == null ? '' : NOTE_CLASS[segment.note]].filter(Boolean).join(' ')
     }
 
     // Applies the textarea's box (padding and border, which text zoom does not scale) straight to the element, so a
@@ -88,4 +93,4 @@
     data-overlay={phase}
     dir="auto"
     class="pointer-events-none absolute inset-0 overflow-hidden border-solid border-transparent text-textcolor {LT_TEXT_LAYOUT}"
->{#if phase === 'on'}{#each segments as segment}<span data-kind={segment.kind} data-severity={segment.severity} class={segmentClass(segment)}>{segment.text}</span>{/each}<span data-sentinel="">{'\n'}</span>{/if}</div>
+>{#if phase === 'on'}{#each segments as segment}<span data-kind={segment.kind} data-severity={segment.severity} data-note={segment.note} class={segmentClass(segment)}>{segment.text}</span>{/each}<span data-sentinel="">{'\n'}</span>{/if}</div>

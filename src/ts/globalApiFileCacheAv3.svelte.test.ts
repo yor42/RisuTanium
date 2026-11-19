@@ -248,7 +248,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 import {
     getFileSrc,
     forageStorage,
-    setUsingSw,
     __fileCacheTestHooks,
 } from 'src/ts/globalApi.svelte'
 
@@ -286,7 +285,6 @@ beforeEach(() => {
     // performs.
     toStringSpy = vi.spyOn(globalThis.Buffer.prototype, 'toString')
     __fileCacheTestHooks.reset()
-    setUsingSw(false)
     vi.mocked(forageStorage.getItem).mockReset()
     vi.mocked(forageStorage.getItem).mockResolvedValue(null as unknown as never)
 })
@@ -294,7 +292,6 @@ beforeEach(() => {
 afterEach(() => {
     toStringSpy.mockRestore()
     __fileCacheTestHooks.reset()
-    setUsingSw(false)
     vi.unstubAllGlobals()
 })
 
@@ -393,29 +390,6 @@ describe('AV-3 plain-HTTP getFileSrc cache', () => {
 
         const stats = __fileCacheTestHooks.stats()
         expect(stats.bytes).toBe(stats.recomputedBytes)
-    })
-
-    test('T5 (guard): service-worker entries cost 0 bytes and obey the count cap without throwing', async () => {
-        setUsingSw(true)
-        __fileCacheTestHooks.setLimits({ maxEntries: 2, maxBytes: 5 })
-        const fetchMock = vi.fn(async (url: string) => {
-            if (typeof url === 'string' && url.startsWith('/sw/check/')) {
-                return { json: async () => ({ able: false }) } as Response
-            }
-            return { json: async () => ({}) } as Response
-        })
-        vi.stubGlobal('fetch', fetchMock)
-        vi.mocked(forageStorage.getItem).mockResolvedValue(bytes(3) as unknown as never)
-
-        await getFileSrc('t5-a')
-        await getFileSrc('t5-b')
-        await getFileSrc('t5-c') // 3rd entry -- count cap (2) must evict the oldest
-
-        const stats = __fileCacheTestHooks.stats()
-        expect(stats.entries).toBeLessThanOrEqual(2)
-        expect(stats.bytes).toBe(0)
-        expect(stats.bytes).toBe(stats.recomputedBytes)
-        setUsingSw(false)
     })
 
     test('T6 (guard): a throwing read removes the entry and leaves the byte total correct; a retry succeeds', async () => {

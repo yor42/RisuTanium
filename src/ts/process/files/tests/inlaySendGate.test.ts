@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { ANDROID_BLOB_VIDEO_DISPLAY_LIMIT_BYTES, ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES, INLAY_SEND_LIMIT_BYTES, blobVideoWholeReadWithheld, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict, withheldStringMediaKind } from '../inlaySendGate'
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from '../../../storage/assetUrlGate'
+import { ANDROID_BLOB_VIDEO_DISPLAY_LIMIT_BYTES, ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES, INLAY_SEND_LIMIT_BYTES, blobVideoWholeReadWithheld, inlayImageRenderWithheld, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict, withheldStringMediaKind } from '../inlaySendGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, DESKTOP_WHOLE_READ_URL_LIMIT_BYTES } from '../../../storage/assetUrlGate'
 import { LLMFlags } from '../../../model/types'
 import type { InlaySummary } from '../inlayStore'
 
@@ -99,6 +99,34 @@ describe('inlayImageWithheld', () => {
         for (const type of ['video', 'audio', 'signature'] as const) {
             expect(inlayImageWithheld(type, LIMIT + 1, true)).toBe(false)
         }
+    })
+})
+
+describe('inlayImageWithheld on the send side', () => {
+    // Guard: passes before and after; the desktop render rule never reaches the send verdict.
+    test('is false for an image above 256 MiB off Android and true above 64 MiB on Android', () => {
+        expect(inlayImageWithheld('image', DESKTOP_WHOLE_READ_URL_LIMIT_BYTES + 1, false)).toBe(false)
+        expect(inlayImageWithheld('image', 64 * MIB + 1, true)).toBe(true)
+    })
+})
+
+describe('inlayImageRenderWithheld', () => {
+    const DESKTOP = DESKTOP_WHOLE_READ_URL_LIMIT_BYTES
+
+    test('withholds an image above 64 MiB on Android', () => {
+        expect(inlayImageRenderWithheld('image', 64 * MIB + 1, true, false)).toBe(true)
+    })
+
+    test('withholds an image above 256 MiB on desktop, not at exactly 256 MiB', () => {
+        expect(inlayImageRenderWithheld('image', DESKTOP + 1, false, true)).toBe(true)
+        expect(inlayImageRenderWithheld('image', DESKTOP, false, true)).toBe(false)
+    })
+
+    test('withholds nothing for a video or audio on desktop, an unknown size, or neither platform', () => {
+        expect(inlayImageRenderWithheld('video', DESKTOP + 1, false, true)).toBe(false)
+        expect(inlayImageRenderWithheld('audio', DESKTOP + 1, false, true)).toBe(false)
+        expect(inlayImageRenderWithheld('image', null, false, true)).toBe(false)
+        expect(inlayImageRenderWithheld('image', DESKTOP + 1, false, false)).toBe(false)
     })
 })
 

@@ -239,6 +239,29 @@ export interface ModuleHold {
 /** No module is held: the last module-planning pass stored the module set as it stood. */
 export const NO_MODULE_HOLD: ModuleHold = { carriedWhole: false, faultIds: [] }
 
+/**
+ * What the pass that committed says about each character, by `String(chaId)`. `encoded`: the pass wrote the character.
+ * `skipped`: the pass could not read it and kept its saved copy (a never-saved one is listed but in no tree). `listed`:
+ * every slot of the pass's one copy of the list, null when the pass planned nothing (nothing can be said to be gone).
+ */
+export interface CharacterCommit {
+    readonly listed: ReadonlySet<string> | null
+    readonly encoded: ReadonlySet<string>
+    readonly skipped: ReadonlySet<string>
+}
+
+/** The character statement of a pass's plan; a null plan names nothing and lists nothing. */
+export function characterCommitOf(plan: Pick<SavePlan, 'listed' | 'encoded' | 'skipped'> | null): CharacterCommit {
+    if (plan === null) {
+        return { listed: null, encoded: new Set(), skipped: new Set() }
+    }
+    return {
+        listed: new Set(plan.listed),
+        encoded: new Set(plan.encoded),
+        skipped: new Set(plan.skipped.map((entry) => entry.chaId)),
+    }
+}
+
 /** What the loop needs from the page: the shared marks and flags, the page's own state and effects. `saveDbStore2` builds it. */
 export interface Store2LoopPort {
     /** The live tracker the mark paths write into. */
@@ -298,9 +321,10 @@ export interface Store2LoopPort {
     /**
      * The pass's data is in the store (or the store already held it): next-commit callbacks fire. `hold` is the standing
      * module hold: it describes the module data of the last pass that planned the modules and whose data is in the store,
-     * so a pass that planned no modules reports the one before it.
+     * so a pass that planned no modules reports the one before it. `characters` is the commit's own statement about each
+     * character (`characterCommitOf` of the pass's plan).
      */
-    saved(hold: ModuleHold): void
+    saved(hold: ModuleHold, characters: CharacterCommit): void
     /** Tells the other tabs a commit landed. */
     broadcast(epoch: string): void
     /** A peer announced a save since the last call; clears the flag. */
@@ -1620,9 +1644,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 }
                 throw result.cause
             case 'unknown':
-                plan.keepAsPending()
-                if (MEASURE) {
-                    noteSignalKept(plan.encoded)
+                // An outcome lost before the build ran left no manifest of this plan to adopt; the cause is still what
+                // the person is told about.
+                if (plan.built) {
+                    plan.keepAsPending()
+                    if (MEASURE) {
+                        noteSignalKept(plan.encoded)
+                    }
                 }
                 throw result.cause
             case 'refused':
@@ -2126,7 +2154,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                         settleItems(run.plan, run.moduleSet)
                     }
                     if (!tick || outcome.wrote) {
-                        port.saved(moduleHold)
+                        port.saved(moduleHold, characterCommitOf(run.plan))
                     }
                     break
                 case 'retry':

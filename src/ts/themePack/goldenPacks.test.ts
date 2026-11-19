@@ -3,9 +3,11 @@
 // size and SHA-256 are also written in goldens/README.md; the three must agree. The goldens are never regenerated.
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { strFromU8, unzipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { judgePackSheets } from './index'
+import { judgePackSheets, lintAreaPack } from './index'
 import { intakePackBytes, type IntakeResult, type PackJudge } from './intake'
+import { checkPackIcon, inspectIcon } from './packIcon'
 
 const GOLDENS = new URL('./goldens/', import.meta.url)
 
@@ -24,6 +26,37 @@ function acceptedPack(result: IntakeResult) {
     if (result.ok === false) throw new Error(`golden refused: ${JSON.stringify(result.refusals)}`)
     return result.pack
 }
+
+describe('T3-11 golden tile-v1 pack (icon and colours)', () => {
+    const file = 'tile-v1.risutheme'
+    const size = 2770
+    const sha256 = '1c8ed6148098f26f8e58d71bcb7f21f39557f4f15d8b9300808c993f800ae3e3'
+
+    it('keeps its pinned size and SHA-256, in the test and in the README', () => {
+        const bytes = bytesOf(file)
+        const readme = readFileSync(new URL('README.md', GOLDENS), 'utf8')
+        expect(bytes.length).toBe(size)
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(sha256)
+        expect(readme).toContain(sha256)
+        expect(readme).toContain(`${size} bytes`)
+    })
+
+    it('is accepted with its colours and icon read, and the icon passes the install-time check', async () => {
+        const bytes = bytesOf(file)
+        const pack = acceptedPack(await intakePackBytes(bytes, judge))
+        expect(pack.manifest.tile).toStrictEqual({
+            main: { kind: 'ok', value: '#3366ff' },
+            secondary: { kind: 'ok', value: '#101820' },
+            icon: { kind: 'ok', value: 'images/icon.png' },
+        })
+        expect([...pack.files.keys()]).toEqual(['images/icon.png'])
+
+        const checked = await checkPackIcon(bytes, pack, 'images/icon.png')
+
+        expect(checked.ok && checked.ext).toBe('png')
+        expect(checked.ok && inspectIcon(checked.bytes, 'image/png')).toEqual({ width: 64, height: 64, animated: false })
+    })
+})
 
 describe('T1-31 golden v1 packs', () => {
     const readme = readFileSync(new URL('README.md', GOLDENS), 'utf8')
@@ -48,6 +81,7 @@ describe('T1-31 golden v1 packs', () => {
                 attribution: 'RisuTanium contributors',
                 modes: [...golden.modes],
                 fonts: [],
+                tile: { main: { kind: 'absent' }, secondary: { kind: 'absent' }, icon: { kind: 'absent' } },
             })
             expect(pack.sheets.chat.result.ok).toBe(true)
             expect(pack.skippedAreas).toEqual(['home', 'settings', 'studio'])
@@ -55,4 +89,27 @@ describe('T1-31 golden v1 packs', () => {
             expect(pack.size.warn).toBe(false)
         })
     }
+})
+
+// Intake skips studio.css today, so no installed pack changes verdict. These rows record what the Studio judge says of the frozen sheets, so a build that starts
+// applying Studio sheets settles the Banana Cocoa verdict first (MC-2313, MC-2370).
+describe('the frozen Studio sheets under the plain-paint rule', () => {
+    const PLAIN_PAINT = /\(MC-2313, MC-2370\)/
+    const studioSheet = (file: string): string => strFromU8(unzipSync(bytesOf(file))['studio.css'])
+
+    it('RG1 (REPRO): the Banana Cocoa Studio sheet is refused with exactly three plain-paint errors', () => {
+        const result = lintAreaPack('studio', studioSheet('banana-cocoa.risutheme'), 'banana-cocoa')
+        expect(result.ok).toBe(false)
+        const plain = result.errors.filter((e) => PLAIN_PAINT.test(e.why))
+        expect(plain.map((e) => `${e.selector} ${e.prop}`).sort(), JSON.stringify(result.errors)).toEqual([
+            '[data-part="studio-side-tab"] background',
+            '[data-part="studio-tree-row"] background',
+            '[data-part="studio-tree-row"] color',
+        ])
+    })
+
+    it('RG2 (GUARD, accepted before and after): the Origin Navy Studio sheet is accepted', () => {
+        const result = lintAreaPack('studio', studioSheet('origin-navy.risutheme'), 'origin-navy')
+        expect(result.ok, JSON.stringify(result.errors)).toBe(true)
+    })
 })

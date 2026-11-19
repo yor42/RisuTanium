@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import * as builtinsModule from './builtins'
 import { BUILTIN_PACKS, builtinPackById } from './builtins'
 import { judgeAreaSheet, preprocessCss } from './index'
+import { deriveTileColours } from './tileColours'
 
 const GOLDENS = new URL('./goldens/', import.meta.url)
 
@@ -40,8 +41,13 @@ describe('T3B-1 the built-in packs', () => {
     it('carry a chat sheet only: no studio, settings or home sheet is bundled or exported', () => {
         expect(Object.keys(builtinsModule).sort()).toEqual(['BUILTIN_PACKS', 'builtinPackById'])
         for (const pack of BUILTIN_PACKS) {
-            expect(Object.keys(pack).sort()).toEqual(['attribution', 'chatCss', 'id', 'license', 'modes', 'name', 'slug', 'version'])
+            expect(Object.keys(pack).sort()).toEqual(['attribution', 'chatCss', 'id', 'license', 'mainColor', 'modes', 'name', 'secondaryColor', 'slug', 'version'])
         }
+    })
+
+    it.each(BUILTIN_PACKS.map((pack) => [pack.slug, pack] as const))('%s: the tile colours equal what the install derives from the judged sheet', (_slug, pack) => {
+        const judged = judgeAreaSheet('chat', pack.chatCss)
+        expect(deriveTileColours(judged.canonical)).toEqual({ main: pack.mainColor, secondary: pack.secondaryColor })
     })
 
     it('builtinPackById matches the id exactly and nothing else', () => {

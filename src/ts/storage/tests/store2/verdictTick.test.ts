@@ -39,7 +39,6 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     })),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { resetStore2BootForTest, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
 import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
@@ -493,7 +492,6 @@ function resetBootedPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     resetRetainedForTest()
 }

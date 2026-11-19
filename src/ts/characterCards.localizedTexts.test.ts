@@ -27,10 +27,14 @@ const h = vi.hoisted(() => ({
     /** the arguments of every picker initialisation of the local writer */
     pickerInits: [] as Array<[string, string[]]>,
     uuid: 0,
+    /** called before each asset save */
+    onSave: null as null | (() => void),
+    /** called when the character is built, after every save and before the Add step clears the count */
+    onBuild: null as null | (() => void),
 }))
 
 vi.mock('uuid', () => ({
-    v4: () => `uuid-${++h.uuid}`,
+    v4: () => { h.onBuild?.(); return `uuid-${++h.uuid}` },
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -131,6 +135,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         openURL: vi.fn(),
         readImage: vi.fn(async (d: unknown) => typeof d === 'string' ? enc.encode(d) : d),
         saveAsset: vi.fn(async (data: Uint8Array) => {
+            h.onSave?.()
             if (h.saveFails !== null) throw new Error(h.saveFails)
             return `asset-${data[0]}-${data.length}`
         }),
@@ -191,10 +196,14 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { downloadRisuHub, exportCharacterCard, importCharacterProcess } from 'src/ts/characterCards'
+import { downloadRisuHub, exportCharacterCard, importCharacter, importCharacterProcess } from 'src/ts/characterCards'
 import { CharXWriter, processZip } from 'src/ts/process/processzip'
 import type { character } from 'src/ts/storage/database.svelte'
 import type { VirtualWriter } from 'src/ts/globalApi.svelte'
+import { selectFileByDom } from 'src/ts/util'
+import { resetTaskHostForTests, setTaskClockForTests, taskHostView } from 'src/ts/alertTask.svelte'
+import type { TaskClock } from 'src/lib/Nexus/pattern/taskProgress'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import { changeLanguage } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageKorean } from 'src/lang/ko'
@@ -222,8 +231,6 @@ function koError(key: ErrorKey): string {
     return value as string
 }
 
-/** Messages in the order first shown, with consecutive repeats of one message collapsed. */
-const sequence = (messages: string[]) => messages.filter((m, i) => i === 0 || m !== messages[i - 1])
 /** Messages in the order first shown, each once. */
 const distinct = (messages: string[]) => [...new Set(messages)]
 
@@ -346,6 +353,17 @@ beforeEach(() => {
     h.saveFails = null
     h.pickerInits = []
     h.uuid = 0
+    h.onSave = null
+    h.onBuild = null
+    //Every write of the card's view is published at once, so a sample sees the latest count.
+    let now = 0
+    const clock: TaskClock = {
+        now: () => (now += 1000),
+        setTimeout: () => 0 as unknown as ReturnType<typeof setTimeout>,
+        clearTimeout: () => {},
+        hidden: () => false,
+    }
+    setTaskClockForTests(clock)
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -353,6 +371,8 @@ beforeEach(() => {
 const originalFetch = globalThis.fetch
 
 afterEach(() => {
+    resetTaskHostForTests()
+    setTaskClockForTests(null)
     changeLanguage('en')
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
@@ -362,61 +382,84 @@ afterEach(() => {
 // Import progress
 // ---------------------------------------------------------------------------------------------
 
-describe('card import progress texts', () => {
-    test('guard: English PNG import shows the reading, loading assets, loading emotions and loading VITS texts', async () => {
-        await importCharacterProcess({ name: 'card.png', data: v2AssetPng() })
+//The legacy reading, saving and loading progress texts are gone: a character import runs on the task card, whose step
+//labels and asset noun are read from the active language when the card opens.
+describe('card import progress on the task card', () => {
+    const stepLabels = (card: ImportCard) => card?.steps.map((s) => s.label)
+    const en = {
+        steps: ['Read file', 'Check contents', 'Save assets', 'Add to library'],
+        noun: 'Assets',
+    }
+    const ko = {
+        steps: [languageKorean.importStepRead, languageKorean.importStepCheck, languageKorean.importStepAssets, languageKorean.importStepAdd] as string[],
+        noun: languageKorean.importNounAssets as string,
+    }
+
+    /**
+     * Imports one file through the picker and answers the result card. Returns the card, the asset counts seen before each
+     * save and the count when the character is built (every save finished, the Add step not yet reached).
+     */
+    async function importOnCard(name: string, data: Uint8Array | File): Promise<{ card: ImportCard, counts: Array<{ done: number, total: number } | undefined>, atBuild: { done: number, total: number } | undefined }> {
+        const file = data instanceof File ? data : new File([new U8(data)], name)
+        vi.mocked(selectFileByDom).mockResolvedValueOnce([file])
+        const counts: Array<{ done: number, total: number } | undefined> = []
+        h.onSave = () => { counts.push(taskHostView()?.count) }
+        let atBuild: { done: number, total: number } | undefined
+        h.onBuild = () => { atBuild ??= taskHostView()?.count }
+        const card = await answerImportCard(() => importCharacter())
+        return { card, counts, atBuild }
+    }
+
+    test('guard: English PNG import shows the read, save assets and add steps on the card and posts no legacy text', async () => {
+        const { card, counts } = await importOnCard('card.png', v2AssetPng())
         expect(h.errors).toEqual([])
-        expect(distinct(h.shown)).toEqual([
-            'Loading... (Reading)',
-            'Loading... (Loading Assets)',
-            'Loading... (Loading Emotions)',
-            'Loading... (Loading VITS)',
-        ])
+        expect(h.shown).toEqual([])
+        expect(stepLabels(card)).toEqual(en.steps)
+        expect(card?.steps[2].noun).toBe(en.noun)
+        //the emotion, the additional asset and the vits file are counted as three saved assets, then the image
+        expect(counts.map((c) => c?.done)).toEqual([0, 1, 2, 3])
+        expect(counts[0]?.total).toBe(4)
+        expect(card?.result?.headline).toBe('Imported 1 item')
     })
 
-    test('regression reproducer: Korean PNG import shows the Korean reading, loading assets, loading emotions and loading VITS texts', async () => {
-        const expected = [koAlert('readingCard'), koAlert('loadingAssets'), koAlert('loadingEmotions'), koAlert('loadingVits')]
+    test('regression reproducer: Korean PNG import shows the Korean step labels and asset noun on the card', async () => {
         changeLanguage('ko')
-        await importCharacterProcess({ name: 'card.png', data: v2AssetPng() })
+        const { card } = await importOnCard('card.png', v2AssetPng())
         expect(h.errors).toEqual([])
-        expect(distinct(h.shown)).toEqual(expected)
+        expect(h.shown).toEqual([])
+        expect(stepLabels(card)).toEqual(ko.steps)
+        expect(card?.steps[2].noun).toBe(ko.noun)
+        expect(ko.steps).not.toEqual(en.steps)
+        expect(card?.result?.headline).toBe(languageKorean.importTaskImported(1))
     })
 
-    test('regression reproducer: Korean PNG import without card data still shows the Korean reading text', async () => {
-        const expected = koAlert('readingCard')
+    test('regression reproducer: Korean PNG import without card data fails on the card with the Korean reading step and failure headline', async () => {
         changeLanguage('ko')
-        await importCharacterProcess({ name: 'card.png', data: plainPng() })
-        expect(h.shown[0]).toBe(expected)
+        const { card } = await importOnCard('card.png', plainPng())
+        expect(h.shown).toEqual([])
+        //the file is read, then refused at the check step
+        expect(stepLabels(card)).toEqual(ko.steps)
+        expect(card?.steps[card.stepIndex].label).toBe(ko.steps[1])
+        expect(card?.failure?.headline).toBe(languageKorean.importTaskFailedOne('card.png'))
     })
 
-    test('regression reproducer: English charx import builds a v3 character under the text "Loading... (Loading Assets)"', async () => {
-        await importCharacterProcess({ name: 'card.charx', data: charxArchive() })
+    test('regression reproducer: English charx import counts its three assets on the card and posts no legacy text', async () => {
+        const { card, atBuild } = await importOnCard('card.charx', charxArchive())
         expect(h.errors).toEqual([])
-        expect(sequence(h.shown)).toEqual([
-            'Loading... (Reading)',
-            'Loading... (Saving Assets 1/3)',
-            'Loading... (Saving Assets 2/3)',
-            'Loading... (Saving Assets 3/3)',
-            'Loading... (Loading Assets)',
-        ])
+        expect(h.shown).toEqual([])
+        expect(stepLabels(card)).toEqual(en.steps)
+        expect(atBuild).toEqual({ done: 3, total: 3 })
+        expect(card?.result?.headline).toBe('Imported 1 item')
     })
 
-    test('regression reproducer: Korean charx import shows the Korean reading, saving assets (with the counts) and loading assets texts', async () => {
-        const reading = koAlert('readingCard')
-        const saving = koAlert('savingAssets')
-        const loading = koAlert('loadingAssets')
-        expect(saving).toContain('{done}')
-        expect(saving).toContain('{total}')
+    test('regression reproducer: Korean charx import shows the Korean step labels and counts its three assets on the card', async () => {
         changeLanguage('ko')
-        await importCharacterProcess({ name: 'card.charx', data: charxArchive() })
+        const { card, atBuild } = await importOnCard('card.charx', charxArchive())
         expect(h.errors).toEqual([])
-        expect(sequence(h.shown)).toEqual([
-            reading,
-            fillLang(saving, { done: 1, total: 3 }),
-            fillLang(saving, { done: 2, total: 3 }),
-            fillLang(saving, { done: 3, total: 3 }),
-            loading,
-        ])
+        expect(h.shown).toEqual([])
+        expect(stepLabels(card)).toEqual(ko.steps)
+        expect(card?.steps[2].noun).toBe(ko.noun)
+        expect(atBuild).toEqual({ done: 3, total: 3 })
     })
 
     test('regression reproducer: Korean charx import whose asset saves fail reports the Korean saved-assets failure with the count', async () => {
@@ -580,27 +623,35 @@ describe('charx export', () => {
 // Realm download
 // ---------------------------------------------------------------------------------------------
 
-describe('Realm download wait text', () => {
+//The "Downloading..." wait text is gone: a Realm download runs on the task card, whose first step is the download.
+describe('Realm download on the task card', () => {
     const failingDownload = () => vi.stubGlobal('fetch', vi.fn(async () => new Response('unavailable', { status: 503 })))
 
-    test('guard: English Realm download shows "Downloading..." before the request', async () => {
+    test('guard: English Realm download opens on the Download step and its failure is on the card, with no wait text', async () => {
         failingDownload()
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
-        expect(h.shown).toEqual(['Downloading...'])
-        expect(h.errors).toEqual(['unavailable'])
+        const card = await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
+        expect(h.shown).toEqual([])
+        expect(card?.steps[card.stepIndex].label).toBe('Download')
+        expect(card?.title).toBe('Importing from Realm')
+        expect(card?.failure?.detail).toBe('unavailable')
+        expect(h.errors).toEqual([])
     })
 
-    test('regression reproducer: Korean Realm download shows the Korean downloading text before the request', async () => {
-        const expected = koAlert('downloading')
+    test('regression reproducer: Korean Realm download opens on the Korean Download step with the Korean title', async () => {
         changeLanguage('ko')
         failingDownload()
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
-        expect(h.shown).toEqual([expected])
+        const card = await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
+        expect(h.shown).toEqual([])
+        expect(card?.steps[card.stepIndex].label).toBe(languageKorean.importStepDownload)
+        expect(card?.steps[card.stepIndex].label).not.toBe('Download')
+        expect(card?.title).toBe(languageKorean.importTaskRealmTitle)
     })
 
-    test('guard: a forced-redirect Realm download shows no wait text', async () => {
+    test('guard: a forced-redirect Realm download shows the same card and no wait text', async () => {
         failingDownload()
-        await downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' })
+        const card = await answerImportCard(() => downloadRisuHub('some-id', { forceRedirect: true, creator: 'some-creator' }))
         expect(h.shown).toEqual([])
+        expect(card?.steps[card.stepIndex].label).toBe('Download')
+        expect(card?.failure?.detail).toBe('unavailable')
     })
 })

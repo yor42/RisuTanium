@@ -1,9 +1,10 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const transport = vi.hoisted(() => ({ android: true, stat: vi.fn() }))
+const transport = vi.hoisted(() => ({ android: true, desktop: false, stat: vi.fn() }))
 
 vi.mock('../tauriByteTransport', () => ({
     isAndroidTransport: () => transport.android,
+    isDesktopTransport: () => transport.desktop,
     statStoredSize: (key: string) => transport.stat(key),
 }))
 
@@ -11,6 +12,7 @@ import {
     ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES,
     ANDROID_LIST_WHOLE_READ_BUDGET_BYTES,
     ANDROID_WHOLE_READ_URL_LIMIT_BYTES,
+    DESKTOP_WHOLE_READ_URL_LIMIT_BYTES,
     androidAssetSizeVerdict,
     androidWholeReadQueue,
     androidWithholdsUrl,
@@ -18,6 +20,8 @@ import {
     assetListUse,
     createInFlightByteGate,
     createWholeReadBudget,
+    desktopAssetSizeVerdict,
+    desktopWholeUseLimitBytes,
     forgetStoredAssetSizes,
     knownStoredAssetSize,
     rememberWholeReadUrl,
@@ -26,12 +30,14 @@ import {
     rowAssetUrl,
     storeRowAssetUrl,
     wholeReadBytesOfUrl,
+    wholeUseUrlWithheld,
 } from '../assetUrlGate'
 
 const LIMIT = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
 
 beforeEach(() => {
     transport.android = true
+    transport.desktop = false
     transport.stat.mockReset()
     resetAssetUrlGateForTest()
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -67,6 +73,71 @@ describe('the size decision', () => {
         expect(await androidAssetSizeVerdict('big')).toBe('within')
         expect(await androidWithholdsUrl('big', 'whole')).toBe(false)
         expect(transport.stat).not.toHaveBeenCalled()
+    })
+})
+
+describe('the desktop size decision', () => {
+    const DESKTOP_LIMIT = DESKTOP_WHOLE_READ_URL_LIMIT_BYTES
+
+    test('the desktop limit lies between the Android limit and 1 GiB', () => {
+        expect(DESKTOP_LIMIT).toBeGreaterThanOrEqual(LIMIT)
+        expect(DESKTOP_LIMIT).toBeLessThan(1024 * 1024 * 1024)
+    })
+
+    test('only a size above the limit is over, and an unreadable size is unknown', async () => {
+        transport.android = false
+        transport.desktop = true
+        transport.stat.mockImplementation(async (key: string) => {
+            if (key === 'bad') {
+                throw new Error('failed to open (os error 2)')
+            }
+            return ({ zero: 0, one: 1, edge: DESKTOP_LIMIT, over: DESKTOP_LIMIT + 1 })[key] ?? -1
+        })
+
+        expect(await desktopAssetSizeVerdict('zero')).toBe('within')
+        expect(await desktopAssetSizeVerdict('one')).toBe('within')
+        expect(await desktopAssetSizeVerdict('edge')).toBe('within')
+        expect(await desktopAssetSizeVerdict('over')).toBe('over')
+        expect(await desktopAssetSizeVerdict('bad')).toBe('unknown')
+    })
+
+    test('guard: off the desktop transport nothing is withheld and no size is asked', async () => {
+        transport.stat.mockResolvedValue(1024 * 1024 * 1024)
+
+        transport.android = false
+        expect(await desktopAssetSizeVerdict('big')).toBe('within')
+        transport.android = true
+        expect(await desktopAssetSizeVerdict('big')).toBe('within')
+        expect(transport.stat).not.toHaveBeenCalled()
+    })
+
+    test('the display limit is the desktop limit on desktop and absent elsewhere', () => {
+        transport.android = false
+        transport.desktop = true
+        expect(desktopWholeUseLimitBytes()).toBe(DESKTOP_LIMIT)
+
+        transport.desktop = false
+        expect(desktopWholeUseLimitBytes()).toBeNull()
+
+        transport.android = true
+        expect(desktopWholeUseLimitBytes()).toBeNull()
+    })
+
+    test('the dispatcher: media is never withheld, Android keeps its limit, desktop uses its own', async () => {
+        transport.stat.mockResolvedValue(65 * 1024 * 1024)
+
+        expect(await wholeUseUrlWithheld('big', 'media')).toBe(false)
+        expect(transport.stat).not.toHaveBeenCalled()
+        expect(await wholeUseUrlWithheld('big', 'whole')).toBe(true)
+
+        transport.android = false
+        transport.desktop = true
+        forgetStoredAssetSizes(['big'])
+        expect(await wholeUseUrlWithheld('big', 'whole')).toBe(false)
+        transport.stat.mockResolvedValue(DESKTOP_LIMIT + 1)
+        forgetStoredAssetSizes(['big'])
+        expect(await wholeUseUrlWithheld('big', 'whole')).toBe(true)
+        expect(await wholeUseUrlWithheld('big', 'media')).toBe(false)
     })
 })
 

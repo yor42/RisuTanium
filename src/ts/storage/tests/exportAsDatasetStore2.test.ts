@@ -3,7 +3,7 @@
  * `coldstorage` is a store2 entity id, and `readColdCharacterCopy` reaches its units through the real
  * `readColdStorageItem` and the registered residency. `exportAsDatasetCold.test.ts` mocks that reader; nothing here does.
  *
- * Every test is a guard (B5 G1 to G6): `exportAsDataset`, the manual clean-up and the backup listing work on a store2
+ * Every test is a guard (B5 G1 to G6): `exportAsDataset` and the backup listing work on a store2
  * page without store2-specific code, so these hold regardless of the backup export. Their failure modes are shown by
  * mutating the implementation, not by being red on an earlier base. The Settings button is in
  * `userSettingsStore2.svelte.test.ts`.
@@ -243,9 +243,6 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 //#endregion
 
 import { exportAsDataset } from 'src/ts/storage/exportAsDataset'
-import { cleanColdStorage } from 'src/ts/process/coldstorage.svelte'
-import * as manualCleanupModule from 'src/ts/storage/manualCleanup'
-import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { language } from 'src/lang'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
@@ -497,44 +494,6 @@ describe('exportAsDataset over a real store2 world', () => {
             expect(page.db.characters[index]).toBe(slot)
         }
         expect([1, 2].map((index) => stubAt(page, index).coldstorage)).toEqual(entities)
-        expect(alertErrorMock).not.toHaveBeenCalled()
-    })
-})
-
-/** An app store over `items` that records every operation, so a test can assert that an operation did not touch the store. */
-function recordingStore(items: Map<string, Uint8Array>): { operations: string[] } {
-    const operations: string[] = []
-    injectAppStore(createForageBackedStore({
-        getItem: async (key) => { operations.push(`read ${key}`); return items.get(key) ?? null },
-        setItem: async (key, value) => { operations.push(`write ${key}`); items.set(key, value) },
-        keys: async () => { operations.push('list'); return [...items.keys()].sort() },
-        removeItem: async (key) => { operations.push(`delete ${key}`); items.delete(key) },
-    }))
-    return { operations }
-}
-
-describe('what stays closed on a store2 page', () => {
-    afterEach(() => {
-        resetPageStorageModeForTests()
-    })
-
-    test('guard (G5 backstops): the manual clean-up returns with a console warning before it reads or deletes anything, and shows no error', async () => {
-        setPageStorageMode({ kind: 'store2' })
-        const items = new Map<string, Uint8Array>([['coldstorage/00000000-0000-4000-8000-000000000001', new Uint8Array([1])], ['assets/a', new Uint8Array([2])]])
-        const { operations } = recordingStore(items)
-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => { })
-        const manualCleanup = vi.spyOn(manualCleanupModule, 'runManualCleanup')
-
-        // The settings entry point stops before it reaches the clean-up at all.
-        await cleanColdStorage()
-        expect(manualCleanup).not.toHaveBeenCalled()
-        expect(warn).toHaveBeenCalledTimes(1)
-        // The clean-up itself stops before any read when it is called directly.
-        await manualCleanupModule.runManualCleanup()
-
-        expect(operations).toEqual([])
-        expect(items.size).toBe(2)
-        expect(warn).toHaveBeenCalledTimes(2)
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 })

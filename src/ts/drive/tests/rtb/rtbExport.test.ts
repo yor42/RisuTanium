@@ -388,8 +388,6 @@ describe('refusals (T-S8-5)', () => {
         { name: 'the OPFS page: read-only mode, no committer', opfs: true, mode: { kind: 'read-only', reason: 'opfs-transitional' }, session: { committer: null, backend: null }, reason: 'read-only' },
         { name: 'the OPFS check is independent of the mode (branch order)', opfs: true, mode: { kind: 'store2' }, session: live, reason: 'read-only' },
         { name: 'a read-only page with a session that has no committer', opfs: false, mode: { kind: 'read-only', reason: 'backend-unavailable' }, session: { committer: null, backend: live.backend }, reason: 'read-only' },
-        { name: 'a legacy page with no session', opfs: false, mode: { kind: 'legacy', convertedFrom: null }, session: null, reason: 'not-store2' },
-        { name: 'a block page', opfs: false, mode: { kind: 'block' }, session: null, reason: 'not-store2' },
         { name: 'a page that has not booted', opfs: false, mode: { kind: 'unset' }, session: null, reason: 'not-store2' },
         { name: 'a store2 page with a null committer', opfs: false, mode: { kind: 'store2' }, session: { committer: null, backend: live.backend }, reason: 'no-session' },
         { name: 'a store2 page with a null backend', opfs: false, mode: { kind: 'store2' }, session: { committer: live.committer, backend: null }, reason: 'no-session' },
@@ -427,7 +425,7 @@ describe('the pre-check agrees with the guarded entry (refusal parity)', () => {
         { name: 'the OPFS page', opfs: true, mode: { kind: 'read-only', reason: 'opfs-transitional' }, session: { committer: null, backend: null } },
         { name: 'an OPFS page whose mode reads store2', opfs: true, mode: { kind: 'store2' }, session: live },
         { name: 'a read-only page', opfs: false, mode: { kind: 'read-only', reason: 'backend-unavailable' }, session: { committer: null, backend: live.backend } },
-        { name: 'a legacy page', opfs: false, mode: { kind: 'legacy', convertedFrom: null }, session: null },
+        { name: 'a page that has not booted', opfs: false, mode: { kind: 'unset' }, session: null },
         { name: 'a store2 page without a committer', opfs: false, mode: { kind: 'store2' }, session: { committer: null, backend: live.backend } },
     ]
 

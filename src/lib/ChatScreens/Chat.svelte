@@ -1,3 +1,15 @@
+<script module lang="ts">
+    // The mobilechat time stamp; its formatter is shared per app language, not built on each render.
+    const MESSAGE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        month: '2-digit',
+        day: '2-digit',
+        hour12: false
+    }
+</script>
+
 <script lang="ts">
     import { ArrowLeft, ArrowLeftToLine, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
     import { aiLawApplies, changeChatTo, foldChatToMessage } from "src/ts/globalApi.svelte"
@@ -21,6 +33,7 @@
     import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
     import { isTTSVoiceMode } from "src/ts/process/ttsModes"
     import { DBState, ReloadChatPointer, popupStore } from 'src/ts/stores.svelte'
+    import { appDateFormat } from 'src/ts/appIntl.svelte'
     import { type MessageIdentity, type DraftRecord, draftIdentityKey } from "src/ts/draftContents"
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
@@ -753,6 +766,7 @@
         {#if isComment}
             <button
                 class="flex items-center hover:text-blue-500 transition-colors button-icon-remove"
+                aria-label={language.remove}
                 onclick={async (e) => {
                     await rm(e, true)
                 }}
@@ -788,7 +802,7 @@
             </div>
             {#if endCount > 0}
                 <div class="w-full flex justify-end mt-1 button-end-control-row">
-                    <button class="flex items-center gap-1 enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-end-control" disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
+                    <button class="flex items-center gap-1 enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-end-control" aria-label={language.chatShellEndControl(endCount)} disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
                         <ArrowLeftToLine size={20}/>
                         {#if DBState.db.swipe}
                             <span class="text-xs text-textcolor2">{endCount}</span>
@@ -803,7 +817,7 @@
 
 {#snippet majorIconButtonsBody(showNames:boolean)}
     {#if copyButtonShown()}
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" aria-label={showNames ? undefined : language.copy} onclick={()=>{
         copyMessageText(currentCopyText(), reportCopy)
     }}>
         <CopyIcon size={20}/>
@@ -813,7 +827,7 @@
     </button>    
 {/if}
 {#if speakerButtonShown()}
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" aria-label={showNames ? undefined : language.chatShellReadAloud} onclick={()=>{
         return playMessageTTS(translated, bodyRoot, currentCopyText(), getCurrentCharacter())
     }}>
         <Volume2Icon size={20}/>
@@ -823,7 +837,7 @@
     </button>
 {/if}
 {#if idx > -1}
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove select-none [-webkit-touch-callout:none]" onclick={(e) => rm(e, false)} use:longpress={{callback: (e) => rm(e, true), touch: true}}>
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-remove select-none [-webkit-touch-callout:none]" aria-label={showNames ? undefined : language.remove} onclick={(e) => rm(e, false)} use:longpress={{callback: (e) => rm(e, true), touch: true}}>
         <TrashIcon size={20}/>
 
         {#if showNames}
@@ -838,6 +852,7 @@
         <button
             class={"flex items-center transition-colors button-icon-translate " + (editor.translationViewControlsDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:text-blue-500') + (translated ? ' text-blue-400' : '')}
             class:translating={translating}
+            aria-label={showNames ? undefined : language.translate}
             disabled={editor.translationViewControlsDisabled}
             onclick={toggleTranslation}
         >
@@ -850,6 +865,7 @@
     {#if idx > -1 && !isOptimizedStreamingMessage}
         <button
             class={"flex items-center transition-colors button-icon-edit " + (editor.editMode ? 'text-blue-400 hover:text-blue-500' : editor.originalEditControlDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-500')}
+            aria-label={showNames ? undefined : language.edit}
             disabled={editor.originalEditControlDisabled}
             onclick={editor.toggleOriginalEdit}
         >
@@ -865,28 +881,28 @@
 {#snippet treeRerolls()}
     {#if DBState.db.swipe}
         {#if isLastRow || siblingCount > 1}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-unreroll" aria-label={language.chatShellPreviousReply} disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
                 <ArrowLeft size={22}/>
             </button>
             {#if siblingCount > 1}
                 <span class="flex items-center text-xs text-textcolor2">{siblingIndex}/{siblingCount}</span>
             {/if}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} aria-label={willGenerate ? language.chatShellNewReply : language.chatShellNextReply} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <ArrowRight size={22}/>
             </button>
         {/if}
     {:else}
         {#if siblingCount > 1}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-unreroll" aria-label={language.chatShellPreviousReply} disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
                 <ArrowLeft size={22}/>
             </button>
         {/if}
         {#if isLastRow}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} aria-label={willGenerate ? language.chatShellNewReply : language.chatShellNextReply} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <RefreshCcwIcon size={20}/>
             </button>
         {:else if siblingCount > 1}
-            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" disabled={treeBusy || siblingIndex >= siblingCount} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" aria-label={language.chatShellNextReply} disabled={treeBusy || siblingIndex >= siblingCount} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <ArrowRight size={22}/>
             </button>
         {/if}
@@ -898,17 +914,17 @@
         {@render treeRerolls()}
     {:else if rerollIcon || altGreeting}
         {#if DBState.db.swipe || altGreeting}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" class:dyna-icon={rerollIcon === 'dynamic'} onclick={unReroll}>
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" class:dyna-icon={rerollIcon === 'dynamic'} aria-label={language.chatShellPreviousReply} onclick={unReroll}>
                 <ArrowLeft size={22}/>
             </button>
             {#if firstMessage && DBState.db.swipe && DBState.db.showFirstMessagePages}
                 <span class="flex items-center text-xs text-textcolor2">{currentPage}/{totalPages}</span>
             {/if}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:dyna-icon={rerollIcon === 'dynamic'} onclick={onReroll}>
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:dyna-icon={rerollIcon === 'dynamic'} aria-label={language.chatShellNextReply} onclick={onReroll}>
                 <ArrowRight size={22}/>
             </button>
         {:else}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:dyna-icon={rerollIcon === 'dynamic'} onclick={onReroll}>
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:dyna-icon={rerollIcon === 'dynamic'} aria-label={language.reroll} onclick={onReroll}>
                 <RefreshCcwIcon size={20}/>
             </button>
         {/if}
@@ -1184,14 +1200,7 @@
                     {/if}
                     {#if DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.time}
                         <span class="text-xs text-gray-600 mt-1 block">
-                            {new Intl.DateTimeFormat(undefined, {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour12: false
-                            }).format(DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].time)}
+                            {appDateFormat(MESSAGE_TIME_OPTIONS).format(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.time)}
                         </span>
                     {/if}
                 </div>
@@ -1245,7 +1254,7 @@
                     {#if DBState.db.characters[selIdState.selId]?.chaId === "§playground" && !blankMessage && DBState.db.characters[selIdState.selId]?.chats?.[DBState.db.characters[selIdState.selId]?.chatPage]?.message?.[idx]}
                         <span class="chat-width text-xl border-darkborderc flex items-center text-textcolor">
                             <span>{DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role === 'char' ? language.uiCommon.assistant : language.user}</span>
-                            <button class="ml-2 text-textcolor2 hover:text-textcolor" onclick={() => {
+                            <button class="ml-2 text-textcolor2 hover:text-textcolor" aria-label={language.chatPlaygroundSwitchRole} onclick={() => {
                                 DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].role === 'char' ? 'user' : 'char'
                                 ReloadChatPointer.update((v) => {
                                     v[idx] = (v[idx] ?? 0) + 1

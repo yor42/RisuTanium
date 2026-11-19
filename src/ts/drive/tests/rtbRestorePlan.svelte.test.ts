@@ -340,7 +340,7 @@ describe('R0: order and refusals (T1, T21)', () => {
         expect(ended(busy)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'busy' })
         expect(alertErrorTexts(page)).toContain(language.backupLoadWorkInProgress)
 
-        page.w.pageMode.setPageStorageMode({ kind: 'block' })
+        page.w.pageMode.setPageStorageMode({ kind: 'unset' })
         const before = page.k.counted.writeCalls()
         const block = await prepare(page, await fileOf())
         expect(ended(block)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'not-store2' })
@@ -477,6 +477,22 @@ describe('the newer-data warning (T8)', () => {
         expect(textOf(page)).toBeUndefined()
         expect(run.end.plan.base).toEqual({ seq: key.seq, at, currentKey: (key.current as { key: string }).key })
         await cleanup(run)
+    })
+
+    test('verifyAndConfirm with no newer base (the start-up restore) never asks the newer-data question, though the file is older than the page (guard of a new rule; T-V1)', async () => {
+        const page = await openPage()
+        const at = (await page.k.commitKey()).current?.at as number
+        vi.mocked(page.alert.alertConfirm).mockImplementation(async (text) => !(typeof text === 'string' && text.includes('Test device')))
+        const scale = vi.fn(async () => true)
+        const end = await page.plan.verifyAndConfirm(await pick(await fileOf({ createdAt: at - 5000 })), {
+            ...page.plan.realVerifyDeps(), assetDeps: assetDeps(), confirmScale: scale,
+        }, { newerBase: null })
+        if (end.kind !== 'ok') {
+            throw new Error(`expected ok, got ${JSON.stringify(end)}`)
+        }
+        expect(end.verified.newer).toBeNull()
+        expect(textOf(page)).toBeUndefined()
+        expect(scale).toHaveBeenCalledTimes(1)
     })
 
     test('a backup newer than the target is not warned about (guard)', async () => {

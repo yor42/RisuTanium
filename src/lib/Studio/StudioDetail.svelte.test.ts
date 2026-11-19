@@ -230,8 +230,8 @@ describe('4d text of each kind of the bound character', () => {
         show()
         const shown = part('studio-detail-text')?.textContent ?? ''
         for (const piece of expected) expect(shown).toContain(piece)
-        // The basic info has a live form, so the read-only note does not apply to it.
-        expect(part('studio-detail-readonly') !== null).toBe(kind !== 'basic')
+        // The basic info and the advanced kind of the character have a live form, so the read-only note does not apply to them.
+        expect(part('studio-detail-readonly') !== null).toBe(kind !== 'basic' && kind !== 'advanced')
         expect(part('studio-detail-classic')).not.toBeNull()
     })
 
@@ -515,6 +515,55 @@ describe('the live forms and the save chip in the detail', () => {
         expect(history.useOwner).toEqual([])
     })
 
+    test('X-14 the advanced kind of the character mounts the example form and the chip, no chat-note form and no read-only note', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })], exampleMessage: '<START>\nA' }) }))
+        openStudio(ownerItem('character', 'cha-1', 'advanced', 'cha-1/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).not.toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-character-form')).toBeNull()
+        expect(part('studio-chip-text')?.textContent).toBe('studioChipSaved')
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(part('studio-detail-classic')).not.toBeNull()
+        expect(history.useOwner).toEqual(['character:cha-1'])
+    })
+
+    test('X-14 a private character gets no example form', () => {
+        setDb({ license: 'private' })
+        openStudio(ownerItem('character', 'cha-1', 'advanced', 'cha-1/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('X-14 the advanced kind of a module and of a preset keeps the read-only note and mounts no example form', () => {
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('res')],
+            presets: [makePreset('P0')],
+            activePreset: 0,
+        }))
+        openStudio(ownerItem('module', 'res', 'advanced', 'res/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).toBeNull()
+        expect(part('studio-detail-readonly')).not.toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('X-14 the advanced kind of a preset keeps the read-only note and mounts no example form', () => {
+        setFull(makeInput({ presets: [makePreset('P0')], activePreset: 0 }))
+        openStudio(ownerItem('preset', '0', 'advanced', '0/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).toBeNull()
+        expect(part('studio-detail-readonly')).not.toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
     test('a module owner gets no form even on its basic-looking kinds', () => {
         setDb({}, true)
         openStudio({ owner: { type: 'module', id: 'res' }, from: 'chat' }, null)
@@ -636,5 +685,35 @@ describe('S3d1 the toggle builder in the detail', () => {
         flushSync()
         expect(part('studio-toggle-builder')).toBeNull()
         expect(document.body.textContent).not.toContain('SECRET')
+    })
+})
+
+describe('CU-4 the combined branch of the detail by kind', () => {
+    function showCombined(kind: 'toggles' | 'regex'): void {
+        setFull(makeInput({
+            character: makeCharacter({
+                chats: [makeChat({ id: 'chat-1', name: 'First chat' })],
+                customscript: [regexBody('Fix', 'COMBINED-IN', 'COMBINED-OUT')],
+            }),
+        }))
+        openStudio({ from: 'chat' }, null)
+        studioScreen.targetPending = false
+        studioScreen.selectedOwnerKey = `combined:${kind}`
+        studioScreen.selectedKind = kind
+        show()
+    }
+
+    test('the combined toggles show the hint to open a source, not the read-only note, and the combined view itself', async () => {
+        showCombined('toggles')
+        await vi.waitFor(() => expect(part('studio-tg-combined')).not.toBeNull())
+        expect(part('studio-combined')?.getAttribute('data-kind')).toBe('toggles')
+        expect(part('studio-detail-readonly')?.textContent).toBe('studioTgCombinedHint')
+        expect(document.body.textContent).not.toContain('studioReadOnlyNote')
+    })
+
+    test('the combined regex keeps the read-only note (compatibility guard; passes before and after)', () => {
+        showCombined('regex')
+        expect(part('studio-detail-readonly')?.textContent).toBe('studioReadOnlyNote')
+        expect(document.body.textContent).not.toContain('studioTgCombinedHint')
     })
 })
