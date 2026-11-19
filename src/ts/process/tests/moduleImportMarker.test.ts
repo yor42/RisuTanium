@@ -103,18 +103,33 @@ vi.mock(import('src/ts/bootWindow'), () => ({
     markBootWrite: vi.fn(),
 }) as unknown as typeof import('src/ts/bootWindow'))
 
-import { importModule } from 'src/ts/process/modules'
+import { importModule as importModuleOnCard } from 'src/ts/process/modules'
 import { MODULE_STUB_KEY, hasModuleStubKey } from 'src/ts/storage/moduleStub'
 import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
+
+/** The card the last `importModule` ended on, or null when the import closed without one. */
+let lastCard: ImportCard = null
+
+/** Runs the import, answers its result card with OK and keeps the card in `lastCard`. */
+async function importModule() {
+    lastCard = await answerImportCard(importModuleOnCard)
+}
 
 const risum = (fileName: string, over: { records?: Uint8Array[], module?: Record<string, unknown> } = {}) =>
     new File([risumBytes({ records: over.records, module: { name: 'Marked', description: 'new', ...over.module } })], fileName)
 const json = (fileName: string, value: unknown) => new File([JSON.stringify(value)], fileName)
 const list = () => h.db.modules as Stored[]
-const refusedText = ['error:' + language.errors.noData]
+/** The refusal now reaches the result card as the failure detail, not as an alert. */
+const expectRefused = () => {
+    expect(h.log).toEqual([])
+    expect(lastCard?.failure?.detail).toBe(language.errors.noData)
+}
 
 beforeEach(() => {
     h.log = []
+    lastCard = null
     h.db = { modules: [], enabledModules: [] }
     h.files = []
     h.prompts = []
@@ -125,6 +140,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
@@ -133,7 +149,7 @@ describe('a .risum file that carries the stub marker', () => {
         h.files = [risum('marked.risum', { module: { [MODULE_STUB_KEY]: 1 } })]
         await importModule()
         expect(list()).toEqual([])
-        expect(h.log).toEqual(refusedText)
+        expectRefused()
     })
 
     test('R: the refusal saves no asset, asks no question and shows no low-level prompt', async () => {
@@ -148,7 +164,7 @@ describe('a .risum file that carries the stub marker', () => {
         h.files = [risum('marked.risum', { module: { [MODULE_STUB_KEY]: value } })]
         await importModule()
         expect(list()).toEqual([])
-        expect(h.log).toEqual(refusedText)
+        expectRefused()
     })
 
     test('G: an ordinary module with assets imports unchanged', async () => {
@@ -166,14 +182,14 @@ describe('a .json module that carries the stub marker', () => {
         await importModule()
         expect(list()).toEqual([])
         expect(h.prompts).toEqual([])
-        expect(h.log).toEqual(refusedText)
+        expectRefused()
     })
 
     test.each([[0], ['yes'], [null]])('R: the marker with the value %j is refused too', async (value) => {
         h.files = [json('marked.json', { type: 'risuModule', name: 'Marked', id: 'x', [MODULE_STUB_KEY]: value })]
         await importModule()
         expect(list()).toEqual([])
-        expect(h.log).toEqual(refusedText)
+        expectRefused()
     })
 
     test('R: a module of the same name is not replaced and no duplicate question is asked', async () => {
@@ -183,7 +199,7 @@ describe('a .json module that carries the stub marker', () => {
         await importModule()
         expect(list()).toEqual([{ id: 't', name: 'Marked', description: 'old' }])
         expect(h.events).toEqual([])
-        expect(h.log).toEqual(refusedText)
+        expectRefused()
     })
 
     test('R: a .risum of the same name is not replaced either', async () => {

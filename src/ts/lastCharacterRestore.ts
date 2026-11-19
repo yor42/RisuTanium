@@ -11,6 +11,7 @@ import { changeCharGeneration, supersedeChangeChar, type ChangeCharOutcome } fro
 import { changeCharOrAlert } from './characterPick'
 import { readLastChaId, recordDecision, resolveRestoreIndex, writeLastChaId } from './lastCharacterMemory'
 import { noticeShowing } from './alertPrompts'
+import { taskShown } from './alertTask.svelte'
 
 /**
  * Opens the character this device was last left in, once, at the end of boot, and keeps the memory of
@@ -52,6 +53,11 @@ export interface RestoreDeps {
     restoreInProgress(): boolean
     busyKinds(): readonly string[]
     alertType(): string
+    /**
+     * True while a task card is in the slot, running or waiting for its answer. A task is not an alert, so `alertType`
+     * reads `none` under it, and an import result waiting for OK holds no busy entry.
+     */
+    taskShown(): boolean
     /** True while the alert on screen is a boot notice from the notice queue, which never takes the app off Home. */
     bootNoticeShowing(): boolean
     realmLinkInUrl(): boolean
@@ -93,6 +99,7 @@ function productionDeps(): RestoreDeps {
         restoreInProgress: () => restoreInProgress(),
         busyKinds: () => busyKinds(),
         alertType: () => get(alertStore).type,
+        taskShown: () => taskShown(),
         bootNoticeShowing: () => noticeShowing(),
         realmLinkInUrl: () => new URLSearchParams(location.search).has('realm'),
         pick: (index, options) => changeCharOrAlert('boot.restoreLast', index, options),
@@ -128,6 +135,7 @@ function guardHolds(deps: RestoreDeps, launch?: RestoreLaunch): boolean {
         && get(deps.playground) === 0
         && !deps.restoreInProgress()
         && !deps.busyKinds().some((kind) => kind === 'import' || kind === 'backupLoad')
+        && !deps.taskShown()
         && (QUIET_ALERT_TYPES.has(deps.alertType()) || deps.bootNoticeShowing())
         && !deps.realmLinkInUrl()
         && !get(deps.utilityOpen)

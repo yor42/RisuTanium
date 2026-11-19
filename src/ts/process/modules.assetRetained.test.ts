@@ -127,7 +127,10 @@ vi.mock(import('src/ts/process/moduleLoader'), () => ({
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { decodeRPack } from 'src/ts/rpack/rpack_js'
-import { exportModuleLegacy, importModule, type RisuModule } from 'src/ts/process/modules'
+import { exportModuleLegacy, importModule as importModuleOnCard, type RisuModule } from 'src/ts/process/modules'
+import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import { realmModuleJson } from 'src/ts/process/moduleUse'
 import { stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
@@ -161,10 +164,13 @@ async function risumBytesOf(module: RisuModule): Promise<Uint8Array<ArrayBuffer>
     return Uint8Array.from(buffer)
 }
 
-/** Runs the real import of one picked file and returns the module list it left. */
+/** The card the last picked import ended on, or null when the import closed without one. */
+let lastCard: ImportCard = null
+
+/** Runs the real import of one picked file, answers its result card and returns the module list it left. */
 async function importPicked(bytes: Uint8Array<ArrayBuffer> | string, name: string): Promise<RisuModule[]> {
     h.file = new File([bytes], name)
-    await importModule()
+    lastCard = await answerImportCard(importModuleOnCard)
     return h.modules as RisuModule[]
 }
 
@@ -173,10 +179,12 @@ beforeEach(() => {
     h.calls = []
     h.modules = []
     h.load = async () => ({ kind: 'loaded' })
+    lastCard = null
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
@@ -331,7 +339,8 @@ describe('a replace keeps what the installed module holds and never takes the fi
         expect(h.calls).toEqual(['load:installed-1'])
         expect(list).toEqual([before])
         expect(list[0]).toBe(stub)
-        expect(h.log.filter((line) => line.startsWith('error:'))).toHaveLength(1)
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe(language.moduleLoadFailed('Same'))
     })
 
     test('the .risum route loads a stub target before the write too', async () => {

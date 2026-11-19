@@ -47,6 +47,8 @@ interface World {
         alertType: string
         bootNotice: boolean
         realmUrl: boolean
+        /** A task card is in the slot, running or waiting for its answer; it is not an alert. */
+        task: boolean
     }
     selected: Writable<number>
     settings: Writable<boolean>
@@ -72,6 +74,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
         alertType: 'none',
         bootNotice: false,
         realmUrl: false,
+        task: false,
     }
     const picks: PickCall[] = []
     const writes: Array<string | null> = []
@@ -104,6 +107,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
         restoreInProgress: () => state.restoring,
         busyKinds: () => state.busy,
         alertType: () => state.alertType,
+        taskShown: () => state.task,
         bootNoticeShowing: () => state.bootNotice,
         realmLinkInUrl: () => state.realmUrl,
         pick: (index, pickOptions) => {
@@ -186,6 +190,18 @@ describe('the start of a restore', () => {
         other.state.bootNotice = false
         startLastCharacterRestore(other.deps)
         expect(other.picks).toHaveLength(0)
+    })
+
+    test('R-a26: a task card in the slot holds the restore with no busy entry and a quiet alert, and releases it when it leaves', async () => {
+        const held = makeWorld()
+        held.state.task = true
+        const heldEnd = startLastCharacterRestore(held.deps)
+        expect(held.picks).toHaveLength(0)
+        expect(await heldEnd).toBe('skipped')
+
+        const free = makeWorld()
+        startLastCharacterRestore(free.deps)
+        expect(free.picks).toHaveLength(1)
     })
 
     const refusals: Array<[string, (world: World) => void]> = [
