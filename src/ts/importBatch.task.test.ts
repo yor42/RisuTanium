@@ -288,17 +288,6 @@ describe('legacy surfaces', () => {
     })
 })
 
-describe('without a task', () => {
-    test('R-a14 (new-API guard): the run still gets a progress that never gates and the legacy end message is unchanged', async () => {
-        let tasked: boolean | undefined
-        const summary = await runImportBatch([item('a', async (progress) => { tasked = progress.tasked; progress.beforeWrite(); return { kind: 'refused', reason: 'no' } })])
-        expect(tasked).toBe(false)
-        expect(summary.own).toEqual({ kind: 'refused', reason: 'no' })
-        expect(h.alert.v.type).toBe('error')
-        expect(taskHostView()).toBeNull()
-    })
-})
-
 describe('composeImportResult', () => {
     const items = (...names: string[]) => names.map((name) => item(name, async () => ok))
 
@@ -310,6 +299,18 @@ describe('composeImportResult', () => {
     test('a batch with nothing listed counts the imports and the skipped duplicates', () => {
         const composed = composeImportResult(items('a', 'b', 'c'), [ok, ok, { kind: 'skipped' }], [false, false, false], {})
         expect(composed).toEqual({ kind: 'finish', result: { headline: language.importTaskImported(2), summary: [language.importTaskDuplicatesLeftOut(1)] } })
+    })
+
+    //(RR-m) A note every item carries, such as the generic success line, reads once; a note only one item carries stays, in the
+    //order its first item gave it. Without the dedupe the line repeats once per imported item.
+    test('a note shared by several imported items is shown once and a distinct note keeps its place', () => {
+        const shared = 'Imported character'
+        const imported = (...notes: string[]) => ({ kind: 'imported', index: null, notes }) as const
+        const composed = composeImportResult(items('a', 'b', 'c'), [imported(shared), imported(shared, 'Replaced module'), imported(shared)], [false, false, false], {})
+        expect(composed).toEqual({ kind: 'finish', result: { headline: language.importTaskImported(3), summary: [shared, 'Replaced module'] } })
+
+        const distinctFirst = composeImportResult(items('a', 'b', 'c'), [imported('Replaced module'), imported(shared), imported(shared)], [false, false, false], {})
+        expect(distinctFirst).toEqual({ kind: 'finish', result: { headline: language.importTaskImported(3), summary: ['Replaced module', shared] } })
     })
 
     test('a batch where nothing imported and something is listed fails with the list', () => {

@@ -19,7 +19,8 @@ export interface TaskStepDef {
     /** The mark while this step runs; defaults to `scanning`. */
     readonly mark?: BrandStatus
 }
-export interface TaskAmount { readonly done: number, readonly total: number }
+/** `open` marks a count whose `total` is still growing: items found so far. It never fills the bar. */
+export interface TaskAmount { readonly done: number, readonly total: number, readonly open?: boolean }
 /** `index` is 0-based. */
 export interface TaskFile { readonly index: number, readonly total: number, readonly name?: string }
 /** Both fields already translated. */
@@ -78,6 +79,8 @@ export interface TaskLabels {
     stepOf(index: number, total: number): string
     fileOf(index: number, total: number): string
     count(noun: string, done: number, total: number): string
+    /** The text of an open count ("n saved, m found so far"). A caller that never opens a count may omit it. */
+    countFound?(noun: string, done: number, found: number): string
     bytes(done: string, total: string): string
     cancelling: string
     /** The headline of a task that ended by a cancel. */
@@ -97,9 +100,14 @@ function isTerminal(state: TaskState): boolean {
     return state === 'done' || state === 'done-with-skips' || state === 'failed'
 }
 
+/** The count that fills the bar: a closed count with a real total. An open count never does. */
+function closedCount(s: TaskSnapshot): TaskAmount | undefined {
+    return s.count !== undefined && !s.count.open && validTotal(s.count) ? s.count : undefined
+}
+
 /** Share of the current step that is done, 0..1; 0 while no total is known. */
 function withinStep(s: TaskSnapshot): number {
-    const amount = validTotal(s.count) ? s.count : validTotal(s.bytes) ? s.bytes : undefined
+    const amount = closedCount(s) ?? (validTotal(s.bytes) ? s.bytes : undefined)
     if (!amount) return 0
     return Math.min(1, Math.max(0, amount.done / amount.total))
 }
@@ -115,7 +123,7 @@ export function taskFraction(s: TaskSnapshot): number {
 
 /** A real total exists, so the bar can fill; otherwise the card shows the sweep. */
 export function taskDeterminate(s: TaskSnapshot): boolean {
-    return s.state === 'running' && (validTotal(s.count) || validTotal(s.bytes))
+    return s.state === 'running' && (closedCount(s) !== undefined || validTotal(s.bytes))
 }
 
 export function taskStepStates(s: TaskSnapshot): readonly TaskStepState[] {
@@ -159,8 +167,11 @@ export function taskMiB(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 }
 
-/** The count with its noun, otherwise bytes in MiB, otherwise empty. Never a percentage. */
+/** The count with its noun, otherwise bytes in MiB, otherwise empty. Never a percentage. An open count reads "found so far". */
 export function taskAmountText(s: TaskSnapshot, labels: TaskLabels): string {
+    if (s.count?.open) {
+        return s.count.total > 0 && labels.countFound ? labels.countFound(s.steps[s.stepIndex]?.noun ?? '', s.count.done, s.count.total) : ''
+    }
     if (validTotal(s.count)) return labels.count(s.steps[s.stepIndex]?.noun ?? '', s.count.done, s.count.total)
     if (validTotal(s.bytes)) return labels.bytes(taskMiB(s.bytes.done), taskMiB(s.bytes.total))
     return ''
@@ -204,6 +215,8 @@ export interface TaskController {
     setStep(index: number): void
     setFile(index: number, total: number, name?: string): void
     readonly setCount: ProgressSink
+    /** An open count: `done` saved of `found` so far. A later `setCount` closes it; a step change clears it. */
+    readonly setFound: ProgressSink
     readonly setBytes: ProgressSink
     /** True when Cancel is now locked and no cancel was requested; only then may the caller write. */
     lockCancel(reason?: string): boolean
@@ -376,6 +389,14 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
             if (disposed || state !== 'running') return
             const next = sanitizeAmount(done, total)
             const advanced = next.done > (count?.done ?? 0)
+            count = next
+            if (advanced) restartSlowTimer()
+            request()
+        },
+        setFound(done, found) {
+            if (disposed || state !== 'running') return
+            const next = { ...sanitizeAmount(done, found), open: true }
+            const advanced = next.done > (count?.done ?? 0) || next.total > (count?.total ?? 0)
             count = next
             if (advanced) restartSlowTimer()
             request()

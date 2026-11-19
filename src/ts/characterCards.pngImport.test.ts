@@ -31,11 +31,14 @@ const h = vi.hoisted(() => {
         decryptFails: false,
         /** the largest asset, and the largest image, an import takes */
         assetLimit: 200 * 1024 * 1024,
+        /** called before each asset save and when the character is built (before the Add step clears the count) */
+        onSave: null as null | (() => void),
+        onBuild: null as null | (() => void),
     }
 })
 
 vi.mock('uuid', () => ({
-    v4: () => `uuid-${++h.uuid}`,
+    v4: () => { h.onBuild?.(); return `uuid-${++h.uuid}` },
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -51,6 +54,7 @@ vi.mock(import('src/ts/upstreamAgreement'), () => ({
 
 vi.mock(import('src/ts/alert'), () => ({
     alertCardExport: vi.fn(),
+    alertClear: vi.fn(),
     //A prompt shows itself and, like the real one, leaves the slot cleared once answered.
     alertConfirm: vi.fn(async () => { h.last = 'ask'; const answer = h.confirm; h.last = 'none'; return answer }),
     alertError: vi.fn((msg: string | Error) => { const text = msg instanceof Error ? msg.message : String(msg); h.errors.push(text); h.last = 'error:' + text }),
@@ -102,6 +106,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         openURL: vi.fn(),
         readImage: vi.fn(async (d: unknown) => d),
         saveAsset: vi.fn(async (data: Uint8Array) => {
+            h.onSave?.()
             const id = createHash('sha1').update(data).digest('hex')
             h.saved.push({ id, length: data.length })
             return id
@@ -153,9 +158,13 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
+import { downloadRisuHub, importCharacter, importCharacterProcess } from 'src/ts/characterCards'
 import { language } from 'src/lang'
 import { alertConfirm } from 'src/ts/alert'
+import { selectFileByDom } from 'src/ts/util'
+import { resetTaskHostForTests, setTaskClockForTests, taskHostView } from 'src/ts/alertTask.svelte'
+import type { TaskClock } from 'src/lib/Nexus/pattern/taskProgress'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -302,6 +311,8 @@ function reset() {
     h.password = ''
     h.decryptFails = false
     h.assetLimit = 200 * 1024 * 1024
+    h.onSave = null
+    h.onBuild = null
 }
 
 function describeOutcome(returned: number | null | undefined, thrown: string | null): Outcome {
@@ -333,11 +344,22 @@ async function runImport(bytes: Uint8Array, input: Input): Promise<Outcome> {
 
 beforeEach(() => {
     reset()
+    //Every write of the card's view is published at once, so a sample sees the latest count and byte total.
+    let now = 0
+    const clock: TaskClock = {
+        now: () => (now += 1000),
+        setTimeout: () => 0 as unknown as ReturnType<typeof setTimeout>,
+        clearTimeout: () => {},
+        hidden: () => false,
+    }
+    setTaskClockForTests(clock)
 })
 
 const originalFetch = globalThis.fetch
 
 afterEach(() => {
+    resetTaskHostForTests()
+    setTaskClockForTests(null)
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
 })
@@ -371,16 +393,27 @@ describe('PNG import of complete cards (compatibility guard)', () => {
         expect(await runImport(card.bytes, 'stream'), 'ReadableStream').toEqual(fromBytes)
     })
 
-    test('shows the exact asset percentage sequence, then the assets of the card', async () => {
+    //The legacy percentage bar ("Loading Assets" 0 / 33.33 / 66.67) is gone; the same progress is the card's asset count.
+    test('counts the assets of the card on the task card, with no legacy percentage alert', async () => {
         const card = exportOrderCard()
-        const out = await runImport(card.bytes, 'file')
-        const loading = out.progress.filter((p) => p.startsWith('progress:Loading... (Loading Assets):'))
-        // The first three belong to the PNG read (index / total), the rest to the character build.
-        expect(loading.slice(0, 3)).toEqual([
-            'progress:Loading... (Loading Assets):0.00',
-            'progress:Loading... (Loading Assets):33.33',
-            'progress:Loading... (Loading Assets):66.67',
-        ])
+        vi.mocked(selectFileByDom).mockResolvedValueOnce([fileOf(card.bytes)])
+        const counts: Array<{ done: number, total: number } | undefined> = []
+        h.onSave = () => { counts.push(taskHostView()?.count) }
+        let atAdd: { done: number, total: number } | undefined
+        h.onBuild = () => { atAdd ??= taskHostView()?.count }
+        const ended = await answerImportCard(() => importCharacter())
+        // every asset and the trimmed image saved
+        expect(h.saved).toHaveLength(card.sizes.length + 1)
+        expect(counts).toHaveLength(card.sizes.length + 1)
+        // the count starts at zero, rises with each finished save and is full before the Add step
+        expect(counts[0]?.done).toBe(0)
+        expect(counts[1]?.done).toBe(1)
+        expect(counts[0]?.total).toBe(card.sizes.length + 1)
+        expect(atAdd).toEqual({ done: card.sizes.length + 1, total: card.sizes.length + 1 })
+        // the result card ended the import, and no percentage or wait text was posted
+        expect(ended?.result?.headline).toBe(language.importTaskImported(1))
+        expect(h.alerts.filter((a) => a.type === 'progress')).toEqual([])
+        expect(h.events.filter((e) => e.startsWith('wait:'))).toEqual([])
     })
 
     test.each([
@@ -615,16 +648,35 @@ describe('downloadRisuHub PNG download', () => {
         return { res, bodyGetter }
     }
 
-    test('reads the download as a Blob and imports the card without teeing or streaming the body', async () => {
+    //The body is read once, through a byte counter into one Blob; it is never teed, and the card carries the download's bytes.
+    test('reads the download once into a Blob without teeing the body, shows its bytes on the Download step and imports the card', async () => {
         const card = exportOrderCard()
-        const { res, bodyGetter } = realmResponse(card.bytes)
+        const reader = streamOf(card.bytes, 997).getReader()
+        const seen: Array<{ label: string | undefined, bytes: { done: number, total: number } | undefined }> = []
+        const body = new ReadableStream<Uint8Array>({
+            async pull(controller) {
+                const view = taskHostView()
+                //the stream primes its first pull on creation, before the card exists
+                if (view) seen.push({ label: view.steps[view.stepIndex]?.label, bytes: view.bytes })
+                const next = await reader.read()
+                if (next.done) controller.close()
+                else controller.enqueue(next.value)
+            },
+        })
+        const { res, bodyGetter } = realmResponse(card.bytes, { body })
         const tee = vi.spyOn(ReadableStream.prototype, 'tee')
         vi.stubGlobal('fetch', vi.fn(async () => res))
 
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
 
-        expect(bodyGetter).not.toHaveBeenCalled()
+        expect(bodyGetter).toHaveBeenCalled()
         expect(tee).not.toHaveBeenCalled()
+        expect(seen.length).toBeGreaterThan(2)
+        expect(seen.every((s) => s.label === language.importStepDownload)).toBe(true)
+        //a later pull sees the bytes of the earlier pieces; no total is known without a Content-Length
+        expect(seen[seen.length - 1].bytes?.done).toBeGreaterThan(0)
+        expect(h.alerts.filter((a) => a.type === 'progress')).toEqual([])
+        expect(h.events.filter((e) => e.startsWith('wait:'))).toEqual([])
         expect(h.errors).toEqual([])
         expect(h.characters).toHaveLength(1)
         expect(h.saved).toHaveLength(card.sizes.length + 1)
@@ -635,7 +687,7 @@ describe('downloadRisuHub PNG download', () => {
         const fromFile = await runImport(card.bytes, 'file')
         reset()
         vi.stubGlobal('fetch', vi.fn(async () => realmResponse(card.bytes).res))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         const fromRealm = describeOutcome(undefined, null)
         expect(fromRealm.errors).toEqual([])
         expect(fromRealm.characters).toEqual(fromFile.characters)
@@ -646,10 +698,13 @@ describe('downloadRisuHub PNG download', () => {
         const card = exportOrderCard()
         const cut = card.bytes.subarray(0, card.starts[3] + 8 + 100)
         vi.stubGlobal('fetch', vi.fn(async () => realmResponse(cut).res))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        const ended = await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         expect(h.saved).toEqual([])
         expect(h.characters).toEqual([])
-        expect(h.errors).toEqual([language.cardFileIncomplete])
+        //the refusal is the failure card's detail now, not an alert
+        expect(ended?.failure?.detail).toBe(language.cardFileIncomplete)
+        expect(ended?.failure?.dataState).toBe('same')
+        expect(h.errors).toEqual([])
     })
 
     test('a download whose body fails still ends in an error and imports nothing (compatibility guard)', async () => {
@@ -661,8 +716,11 @@ describe('downloadRisuHub PNG download', () => {
         vi.stubGlobal('fetch', vi.fn(async () => res))
         vi.spyOn(console, 'error').mockImplementation(() => {})
         vi.spyOn(console, 'log').mockImplementation(() => {})
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
-        expect(h.errors).toEqual(['Error while importing'])
+        const ended = await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
+        //the failure is on the card now, not an alert
+        expect(ended?.failure?.headline).toBeDefined()
+        expect(ended?.failure?.detail).toBeTruthy()
+        expect(h.errors).toEqual([])
         expect(h.saved).toEqual([])
         expect(h.characters).toEqual([])
     })
@@ -813,7 +871,7 @@ describe('card shape and character book refusals', () => {
         vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => String(url).includes('/resource/')
             ? new Response(new U8([1, 2, 3]), { status: 200 })
             : new Response(JSON.stringify({ card, img: 'x' }), { status: 200, headers: { 'content-type': 'application/json' } })))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         expect(h.errors).toEqual([])
         expect(h.characters).toHaveLength(1)
     })
@@ -823,7 +881,7 @@ describe('card shape and character book refusals', () => {
         vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => String(url).includes('/resource/')
             ? new Response(new U8([1, 2, 3]), { status: 200 })
             : new Response(JSON.stringify({ card, img: 'x' }), { status: 200, headers: { 'content-type': 'application/json' } })))
-        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        await answerImportCard(() => downloadRisuHub('some-id', { creator: 'some-creator' }))
         expect(h.saved).toEqual([])
         expect(h.characters).toHaveLength(0)
     })

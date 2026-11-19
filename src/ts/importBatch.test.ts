@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
     errors: [] as unknown[],
@@ -7,7 +7,10 @@ const h = vi.hoisted(() => ({
 
 vi.mock('./alert', () => ({
     alertError: (e: unknown) => { h.errors.push(e) },
+    alertClear: () => { },
 }))
+
+vi.mock('./stores.svelte', () => ({ alertStore: { subscribe: (run: (v: { type: string }) => void) => { run({ type: 'none' }); return () => { } } } }))
 
 vi.mock('./process/memory/busyActions', () => ({
     withBusy: async <T>(kind: string, work: () => Promise<T>): Promise<T> => {
@@ -24,14 +27,43 @@ import { language } from 'src/lang'
 import { ModuleRefusal } from './process/moduleRefusal'
 import { ModuleImportStopped } from './process/moduleImportStop'
 import { outcomeOfError, outcomeReason, runImportBatch, summariseImport, type ImportItem, type ImportOutcome } from './importBatch'
+import { answerTask, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from './alertTask.svelte'
+import type { TaskClock, TaskView } from '../lib/Nexus/pattern/taskProgress'
 
 const item = (name: string, run: () => Promise<ImportOutcome>): ImportItem => ({ name, run })
 const done = (outcome: ImportOutcome) => () => Promise.resolve(outcome)
 
+const TASK = { title: 'Importing', steps: ['read', 'check', 'assets', 'add'] as const }
+
+/** Runs the batch on its card, answers OK and returns the card it ended on (null when it closed without one) and the summary. */
+async function runOnCard(items: ImportItem[], declinedReason?: string, afterImported?: (outcome: ImportOutcome) => void) {
+    const run = runImportBatch(items, { task: TASK, declinedReason, afterImported })
+    let ended = false
+    void run.then(() => { ended = true })
+    for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    const card: TaskView | null = taskResultShowing() ? taskHostView() : null
+    if (card) answerTask({ kind: 'ok' })
+    return { card, summary: await run }
+}
+
 beforeEach(() => {
     h.errors = []
     h.busy = []
+    let now = 0
+    const clock: TaskClock = {
+        now: () => (now += 1000),
+        setTimeout: () => 0 as unknown as ReturnType<typeof setTimeout>,
+        clearTimeout: () => {},
+        hidden: () => false,
+    }
+    setTaskClockForTests(clock)
     vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+    resetTaskHostForTests()
 })
 
 describe('outcomeOfError', () => {
@@ -143,7 +175,7 @@ describe('summariseImport', () => {
 })
 
 describe('runImportBatch', () => {
-    it('runs items one after another inside one busy scope', async () => {
+    it('runs items one after another inside one busy scope per round', async () => {
         const order: string[] = []
         const make = (name: string) => item(name, async () => {
             order.push('start:' + name)
@@ -151,63 +183,66 @@ describe('runImportBatch', () => {
             order.push('end:' + name)
             return { kind: 'imported', index: null }
         })
-        await runImportBatch([make('a'), make('b'), make('c')])
+        const { card } = await runOnCard([make('a'), make('b'), make('c')])
         expect(order).toEqual(['start:a', 'end:a', 'start:b', 'end:b', 'start:c', 'end:c'])
+        //Each round is one busy scope, ended with its result; the answer is awaited outside it.
         expect(h.busy).toEqual(['begin:import', 'end:import'])
+        expect(card?.result?.headline).toBe(language.importTaskImported(3))
         expect(h.errors).toEqual([])
     })
 
     it('attempts every item after a failure and never rejects', async () => {
         const ran: string[] = []
-        const summary = await runImportBatch([
+        const { card, summary } = await runOnCard([
             item('a', async () => { ran.push('a'); throw new Error('boom') }),
             item('b', async () => { ran.push('b'); throw new ModuleRefusal('refused b') }),
             item('c', async () => { ran.push('c'); return { kind: 'imported', index: null } }),
         ])
         expect(ran).toEqual(['a', 'b', 'c'])
         expect(summary.imported).toBe(1)
-        expect(h.errors).toEqual([language.importFilesNotImported(2, 3, 'a: boom\nb: refused b')])
+        expect(card?.result?.skipped).toEqual([{ name: 'a', reason: 'boom' }, { name: 'b', reason: 'refused b' }])
         expect(h.busy).toEqual(['begin:import', 'end:import'])
     })
 
-    it('shows a single file its own message', async () => {
-        await runImportBatch([item('a', done({ kind: 'refused', reason: 'own text' }))])
-        expect(h.errors).toEqual(['own text'])
+    it('shows a single file its own message on the card', async () => {
+        const { card } = await runOnCard([item('a', done({ kind: 'refused', reason: 'own text' }))])
+        expect(card?.failure?.headline).toBe(language.importTaskFailedOne('a'))
+        expect(card?.failure?.detail).toBe('own text')
     })
 
-    it('shows nothing when everything imported or was declined', async () => {
-        await runImportBatch([item('a', done({ kind: 'imported', index: 0 })), item('b', done({ kind: 'declined' }))])
-        expect(h.errors).toEqual([])
+    it('shows a result with no listed files when everything imported or was declined', async () => {
+        const { card } = await runOnCard([item('a', done({ kind: 'imported', index: 0 })), item('b', done({ kind: 'declined' }))])
+        expect(card?.result?.skipped).toBeUndefined()
+        expect(card?.failure).toBeUndefined()
     })
 
     it('lists a declined file only when the batch names a reason', async () => {
-        await runImportBatch([item('a', done({ kind: 'declined' })), item('b', done({ kind: 'imported', index: null }))], { declinedReason: 'why' })
-        expect(h.errors).toEqual([language.importFilesNotImported(1, 2, 'a: why')])
+        const { card } = await runOnCard([item('a', done({ kind: 'declined' })), item('b', done({ kind: 'imported', index: null }))], 'why')
+        expect(card?.result?.skipped).toEqual([{ name: 'a', reason: 'why' }])
     })
 
     it('calls afterImported for imported outcomes only, and survives its throw', async () => {
         const seen: ImportOutcome[] = []
-        await runImportBatch([
+        const { card } = await runOnCard([
             item('a', done({ kind: 'imported', index: 1 })),
             item('b', done({ kind: 'refused', reason: 'no' })),
             item('c', done({ kind: 'imported', index: null })),
-        ], {
-            afterImported: (outcome) => {
-                seen.push(outcome)
-                throw new Error('after failed')
-            },
+        ], undefined, (outcome) => {
+            seen.push(outcome)
+            throw new Error('after failed')
         })
         expect(seen).toEqual([{ kind: 'imported', index: 1 }, { kind: 'imported', index: null }])
-        expect(h.errors).toEqual([language.importFilesNotImported(1, 3, 'b: no')])
+        expect(card?.result?.skipped).toEqual([{ name: 'b', reason: 'no' }])
     })
 
     it('maps a thrown stop to declined or skipped without an error', async () => {
-        const summary = await runImportBatch([
+        const { summary, card } = await runOnCard([
             item('a', async () => { throw new ModuleImportStopped('skipped') }),
             item('b', async () => { throw new ModuleImportStopped('declined') }),
         ])
         expect(summary.skipped).toBe(1)
         expect(summary.declined).toBe(1)
+        expect(card?.failure).toBeUndefined()
         expect(h.errors).toEqual([])
     })
 })

@@ -5,7 +5,7 @@ import { getDatabase, type MessageGenerationInfo } from "./storage/database.svel
 import { alertStore as alertStoreImported } from "./stores.svelte"
 import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
-import { taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
+import { taskActionSettled, taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
 
 /** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
 export interface PeerConflictRowView {
@@ -149,6 +149,8 @@ export async function waitUnreadNotice(): Promise<void> {
     }
     if(taskResultShowing()){
         await taskResultRead()
+        //A Retry on the result starts another round under the same action: the notice is read only at its final answer.
+        await taskActionSettled()
     }
 }
 

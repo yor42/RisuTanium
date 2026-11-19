@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as fflate from 'fflate'
 
 const h = vi.hoisted(() => ({
@@ -121,6 +121,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({ readFile: vi.fn(async () => new Uint8A
 vi.mock('@tauri-apps/plugin-deep-link', () => ({ onOpenUrl: vi.fn(async () => vi.fn()) }))
 
 import { importDroppedFile } from 'src/ts/dropImport'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
+import { language } from 'src/lang'
 
 const enc = new TextEncoder()
 const AVATAR = (() => {
@@ -153,9 +156,14 @@ beforeEach(() => {
     globalThis.safeStructuredClone = structuredClone
 })
 
+afterEach(() => {
+    resetTaskHostForTests()
+})
+
 describe('a dropped .byaf file', () => {
     test.each(['Card.BYAF', 'card.byaf'])('R16 reproducer: %s imports one character through the real drop and card import', async (name) => {
-        await importDroppedFile(new File([new Uint8Array(archive())], name))
+        const card = await answerImportCard(() => importDroppedFile(new File([new Uint8Array(archive())], name)))
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
         expect(h.characters.length).toBe(1)
         expect(h.characters[0]).toMatchObject({ name: 'Ann', firstMessage: 'Hello' })
         expect(h.saveCalls).toBe(1)

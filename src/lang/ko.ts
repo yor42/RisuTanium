@@ -606,6 +606,13 @@ export const languageKorean = {
     importTaskFailedOne: (name: string) => `${name}을(를) 가져오지 못했습니다`,
     importTaskDuplicatesLeftOut: (count: number) => `중복으로 ${count}개 제외됨`,
     importTaskRetryFailed: (count: number) => `실패한 ${count}개 다시 시도`,
+    importTaskCharactersTitle: "캐릭터 가져오는 중",
+    importTaskFilesTitle: "파일 가져오는 중",
+    importTaskRealmTitle: "Realm에서 가져오는 중",
+    importTaskLinkTitle: "링크에서 가져오는 중",
+    importStepDownload: "다운로드",
+    importNounAssets: "에셋",
+    patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}개 저장됨, 지금까지 ${found}개 발견` : `${done}개 저장됨, 지금까지 ${found}개 발견`,
     chatShellTranslationClose: "번역 편집기 닫기",
     "formating": {
         "main": "메인 프롬프트",

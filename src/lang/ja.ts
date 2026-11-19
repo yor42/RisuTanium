@@ -606,6 +606,13 @@ export const languageJapanese = {
     importTaskFailedOne: (name: string) => `${name}をインポートできませんでした`,
     importTaskDuplicatesLeftOut: (count: number) => `重複のため${count}件を除外しました`,
     importTaskRetryFailed: (count: number) => `失敗した${count}件を再試行`,
+    importTaskCharactersTitle: "キャラクターをインポート中",
+    importTaskFilesTitle: "ファイルをインポート中",
+    importTaskRealmTitle: "Realmからインポート中",
+    importTaskLinkTitle: "リンクからインポート中",
+    importStepDownload: "ダウンロード",
+    importNounAssets: "アセット",
+    patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}件保存済み、これまでに${found}件見つかりました` : `${done}件保存済み、これまでに${found}件見つかりました`,
     chatShellTranslationClose: "翻訳エディターを閉じる",
     formating: {
         main: "メインプロンプト",

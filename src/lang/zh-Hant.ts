@@ -606,6 +606,13 @@ export const languageChineseTraditional = {
     "importTaskFailedOne": (name: string) => `無法匯入 ${name}`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} 項因重複而被排除`,
     "importTaskRetryFailed": (count: number) => `重試失敗的 ${count} 項`,
+    "importTaskCharactersTitle": "正在匯入角色",
+    "importTaskFilesTitle": "正在匯入檔案",
+    "importTaskRealmTitle": "正在從 Realm 匯入",
+    "importTaskLinkTitle": "正在從連結匯入",
+    "importStepDownload": "下載",
+    "importNounAssets": "資源",
+    "patternTaskCountFound": (noun: string, done: number, found: number) => noun ? `${noun} 已儲存 ${done} 項，目前已發現 ${found} 項` : `已儲存 ${done} 項，目前已發現 ${found} 項`,
     "chatShellTranslationClose": "關閉翻譯編輯器",
     "formating": {
         "main": "主要提示詞",

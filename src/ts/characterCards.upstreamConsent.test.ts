@@ -129,6 +129,8 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 import { downloadRisuHub, getRealmInfo, handlePendingRealmLink } from 'src/ts/characterCards'
 import { DBState, alertStore } from 'src/ts/stores.svelte'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import {
     UPSTREAM_AGREEMENT_ACCEPT,
     UPSTREAM_AGREEMENT_DECLINE,
@@ -167,6 +169,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
     vi.restoreAllMocks()
@@ -340,10 +343,12 @@ describe('downloadRisuHub, on Accept, without a creator from the caller', () => 
         DBState.db.blockedRealmCreators = []
     })
 
-    async function acceptPrompt(pending: Promise<unknown>): Promise<void> {
+    //Runs the download, accepts the agreement prompt and answers the result card the import ends on (it resolves only after that); returns the card.
+    async function acceptPrompt(run: () => Promise<unknown>): Promise<ImportCard> {
+        const pending = answerImportCard(run)
         await waitFor(() => get(alertStore).type === 'tos', 'downloadRisuHub to post the agreement prompt')
         alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT })
-        await pending
+        return await pending
     }
 
     // A creator that the info lookup resolves and that is not blocked leaves the download
@@ -354,13 +359,14 @@ describe('downloadRisuHub, on Accept, without a creator from the caller', () => 
             .mockResolvedValueOnce(jsonResponse(200, { creator: 'creator-b' }))
             .mockResolvedValueOnce(jsonResponse(500, 'download refused'))
 
-        await acceptPrompt(downloadRisuHub('some-id'))
+        const card = await acceptPrompt(() => downloadRisuHub('some-id'))
 
         expect(fetch).toHaveBeenCalledTimes(2)
         expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/hub/info/some-id')
         expect(String(vi.mocked(fetch).mock.calls[1][0])).toBe(downloadUrl)
-        // The download response is consumed: a refusal reaches the user.
-        expect(alertErrorMock).toHaveBeenCalledWith(JSON.stringify('download refused'))
+        // The download response is consumed: a refusal reaches the user, on the failure card.
+        expect(card?.failure?.detail).toBe(JSON.stringify('download refused'))
+        expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
     test('realm info without a creator field proceeds to the download request', async () => {
@@ -368,18 +374,21 @@ describe('downloadRisuHub, on Accept, without a creator from the caller', () => 
             .mockResolvedValueOnce(jsonResponse(200, {}))
             .mockResolvedValueOnce(jsonResponse(500, 'download refused'))
 
-        await acceptPrompt(downloadRisuHub('some-id'))
+        const card = await acceptPrompt(() => downloadRisuHub('some-id'))
 
         expect(fetch).toHaveBeenCalledTimes(2)
         expect(String(vi.mocked(fetch).mock.calls[1][0])).toBe(downloadUrl)
-        expect(alertErrorMock).toHaveBeenCalledWith(JSON.stringify('download refused'))
+        expect(card?.failure?.detail).toBe(JSON.stringify('download refused'))
+        expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
     test('a failed realm info request shows the error and sends no download request', async () => {
         vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(500, 'info unavailable'))
 
-        await acceptPrompt(downloadRisuHub('some-id'))
+        const card = await acceptPrompt(() => downloadRisuHub('some-id'))
 
+        //the info request failed before the card opened
+        expect(card).toBeNull()
         expect(fetch).toHaveBeenCalledTimes(1)
         expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/hub/info/some-id')
         expect(alertErrorMock).toHaveBeenCalledTimes(1)

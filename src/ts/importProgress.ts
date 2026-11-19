@@ -7,10 +7,13 @@ import { alertNormal } from './alert'
  * a flow run without a card gets `NO_IMPORT_PROGRESS`. Progress calls are synchronous and never throw. Only
  * `throwIfCancelled` and `beforeWrite` change control flow, and only before the round's first write (MC-2332).
  */
-export type ImportStep = 'read' | 'check' | 'assets' | 'add'
+export type ImportStep = 'download' | 'read' | 'check' | 'assets' | 'add'
 
 /** The fixed steps of an import card; a flow with nothing to save skips `assets`. */
 export const IMPORT_STEPS: readonly ImportStep[] = ['read', 'check', 'assets', 'add']
+
+/** The steps of an import that downloads its file first (Realm, a link). */
+export const DOWNLOAD_IMPORT_STEPS: readonly ImportStep[] = ['download', 'read', 'check', 'assets', 'add']
 
 /** Thrown when the user pressed Cancel before the round's first write; nothing of the round was written. */
 export class ImportCancelled extends Error {
@@ -171,6 +174,37 @@ export function makeImportProgress(ctx: ImportProgressContext): ImportProgress {
         tally: createAssetTally(ctx.count),
     }
     return progress
+}
+
+/**
+ * The body of a download as a Blob, its bytes reported as they arrive. The total is the `Content-Length` only when it is a
+ * positive integer and the body is not content-encoded (the header then counts the compressed bytes); otherwise it is 0,
+ * so the card shows the sweep and the bar never fills early. The fetch itself takes `signal` from the caller; an abort
+ * rejects the read.
+ */
+export async function responseBlobWithProgress(res: Response, onBytes: ProgressSink, signal: AbortSignal): Promise<Blob> {
+    if (res.body === null) {
+        return await res.blob()
+    }
+    const length = Number(res.headers.get('content-length'))
+    const encoding = (res.headers.get('content-encoding') ?? '').trim().toLowerCase()
+    const total = Number.isInteger(length) && length > 0 && (encoding === '' || encoding === 'identity') ? length : 0
+    let read = 0
+    const counted = res.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+        transform(part, controller) {
+            if (signal.aborted) {
+                controller.error(new ImportCancelled())
+                return
+            }
+            read += part.length
+            onBytes(total > 0 ? Math.min(read, total) : read, total)
+            controller.enqueue(part)
+        },
+        flush() {
+            onBytes(read, total > 0 ? read : 0)
+        },
+    }))
+    return await new Response(counted).blob()
 }
 
 /**

@@ -37,6 +37,7 @@ import { beginBusy, withBusy, type BusyHandle } from "./process/memory/busyActio
 import { openOutsideBusy } from "./drive/exportDialogBusy"
 import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
+import { DOWNLOAD_IMPORT_STEPS, IMPORT_STEPS, ImportCancelled, NO_IMPORT_PROGRESS, responseBlobWithProgress, sourceWithProgress, type ImportProgress } from "./importProgress"
 import { markBootWrite } from "./bootWindow"
 import { canBootArchive } from "./process/memory/bootArchiveState"
 import { getResidency } from "./storage/store2/residencyActive"
@@ -96,20 +97,27 @@ async function archiveImportedCharacter(char:character, run:ImportArchiveRun):Pr
 
 //Adds an imported character to the library and returns its index, which is read at the push: it is not valid later, after another await.
 //Without a run, or when archiving cannot run, the card is pushed live.
-async function addImportedCharacter(char:character, run:ImportArchiveRun|null):Promise<number> {
+//The write gate comes before the boot-window mark: a Cancel accepted first writes nothing, and the marker follows the archive or the push.
+async function addImportedCharacter(char:character, run:ImportArchiveRun|null, progress:ImportProgress = NO_IMPORT_PROGRESS):Promise<number> {
+    progress.beforeWrite()
     markBootWrite()
     if(run && getResidency() === null && run.failuresInRow < MAX_ARCHIVE_FAILURES_IN_ROW && canBootArchive() && DBState.db.archiveCharacters === true){
         const archived = await archiveImportedCharacter(char, run)
         if(archived !== null){
+            progress.committed()
             return archived
         }
     }
-    return DBState.db.characters.push(char) - 1
+    const index = DBState.db.characters.push(char) - 1
+    progress.committed()
+    return index
 }
 
-//Attempts every file through `runImportBatch`; a character that was added gets its order checked. Pushes the slots that were added onto `added`, in file order, each read when its file was added, and returns it.
-async function importFiles(items:ImportItem[], added:(character|groupChat)[] = []):Promise<(character|groupChat)[]> {
+//Attempts every file through `runImportBatch` on one task card; a character that was added gets its order checked. Pushes the slots that were added onto `added`, in file order, each read when its file was added, and returns it.
+async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [], title:string = language.importTaskFilesTitle, outerBusy?:BusyHandle):Promise<(character|groupChat)[]> {
     await runImportBatch(items, {
+        task: {title, steps: IMPORT_STEPS},
+        outerBusy,
         afterImported: (outcome) => {
             if(outcome.kind === 'imported' && outcome.index !== null){
                 const slot = DBState.db.characters[outcome.index]
@@ -136,7 +144,7 @@ export const OPENED_JSON_LIMIT_BYTES = 64 * 1024 * 1024
 function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>, run:ImportArchiveRun|null, opts?:{jsonLimitBytes?:number}):ImportItem {
     return {
         name: label,
-        run: async () => {
+        run: async (progress) => {
             const kind = classifyImportFile(name, type)
             if(!kind){
                 return {kind: 'refused', reason: language.importUnsupportedFile, summaryOnly: true}
@@ -150,7 +158,7 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
                 if(limit !== undefined && kind.kind === 'card' && kind.name.toLowerCase().endsWith('.json') && data.size > limit){
                     return {kind: 'refused', reason: language.importNotCardFile}
                 }
-                return await importClassified(kind, data, run)
+                return await importClassified(kind, data, run, progress)
             } finally {
                 if(isImportSource(data)){
                     await data.close()
@@ -198,33 +206,41 @@ export async function importOpenedSources(entries:{name:string, path:string, typ
 }
 
 //Cards and modules are handed on as the File or the source as it is, for the importer to read in pieces; a preset is read whole. The caller owns a source and closes it.
-async function importClassified(file:ClassifiedImport, data:File|ImportSource, run:ImportArchiveRun|null):Promise<ImportOutcome> {
+async function importClassified(file:ClassifiedImport, data:File|ImportSource, run:ImportArchiveRun|null, progress:ImportProgress = NO_IMPORT_PROGRESS):Promise<ImportOutcome> {
     try {
         if(file.kind === 'card'){
             return await importCharacterFile({
                 name: file.name,
                 data: data
-            }, run)
+            }, run, progress)
         }
         if(file.kind === 'preset'){
+            progress.step('read')
             const bytes = data instanceof File ? new Uint8Array(await data.arrayBuffer()) : await data.read(0, data.size)
+            progress.throwIfCancelled()
+            progress.step('add')
+            progress.beforeWrite()
             //Every import write in this file that adds a character, module or preset announces itself first: one that lands before the change effects exist is unsaved work the effects cannot see.
             markBootWrite()
             await importPreset({
                 name: file.name,
                 data: bytes
             })
+            progress.committed()
             SettingsMenuIndex.set(1)
             settingsOpen.set(true)
-            alertNormal(language.successImport)
+            progress.notice(language.successImport)
             return {kind: 'imported', index: null}
         }
         //The low-level-access question comes before any asset of the module is saved; a decline saves nothing and ends the file quietly.
-        const md = await readModule(data instanceof File ? importSourceOfFile(data) : data, {beforeAssets: (module) => confirmRisumLowLevel(module)})
+        const md = await readModule(data instanceof File ? importSourceOfFile(data) : data, {progress, beforeAssets: (module) => confirmRisumLowLevel(module)})
         md.id = v4()
+        progress.step('add')
+        progress.beforeWrite()
         markBootWrite()
         DBState.db.modules.push(md)
-        alertNormal(language.successImport)
+        progress.committed()
+        progress.notice(language.successImport)
         SettingsMenuIndex.set(14)
         settingsOpen.set(true)
         return {kind: 'imported', index: null}
@@ -253,11 +269,11 @@ export async function importCharacter():Promise<(character|groupChat)[]> {
         const run = newImportArchiveRun()
         await importFiles(Array.from(files, (f) => ({
             name: f.name,
-            run: () => importCharacterFile({
+            run: (progress) => importCharacterFile({
                 name: f.name,
                 data: f
-            }, run)
-        })), added)
+            }, run, progress)
+        })), added, language.importTaskCharactersTitle)
     } catch (error) {
         alertError(error)
     }
@@ -294,9 +310,9 @@ export async function importCharacterFile(f:{
     returnCharacter?:boolean
     lowLevelLabel?:LowLevelLabel
     archive?:boolean
-}, run:ImportArchiveRun|null = f.archive ? newImportArchiveRun() : null):Promise<ImportOutcome>{
+}, run:ImportArchiveRun|null = f.archive ? newImportArchiveRun() : null, progress:ImportProgress = NO_IMPORT_PROGRESS):Promise<ImportOutcome>{
     try {
-        return await readCharacterFile(f, run)
+        return await readCharacterFile(f, run, progress)
     } catch (error) {
         console.error(error)
         return outcomeOfError(error)
@@ -308,14 +324,17 @@ async function readCharacterFile(f:{
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
     lowLevelLabel?:LowLevelLabel
-}, run:ImportArchiveRun|null):Promise<ImportOutcome>{
+}, run:ImportArchiveRun|null, progress:ImportProgress):Promise<ImportOutcome>{
     //Every suffix is matched without regard to case; the name itself is passed on unchanged.
     const lower = f.name.toLowerCase()
     if(lower.endsWith('json')){
         if(!f.data || f.data instanceof ReadableStream){
             return refusedOutcome(language.errors.noData)
         }
+        progress.step('read')
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
+        progress.throwIfCancelled()
+        progress.step('check')
         //Text that is not JSON is not a card file, the same as JSON with no card in it.
         let da
         try {
@@ -323,7 +342,7 @@ async function readCharacterFile(f:{
         } catch {
             return refusedOutcome(language.importNotCardFile)
         }
-        const spec = await importCharacterCardSpec(da, undefined, 'normal', undefined, undefined, undefined, undefined, undefined, run)
+        const spec = await importCharacterCardSpec(da, undefined, 'normal', undefined, undefined, undefined, undefined, undefined, run, progress)
         //A v2 or v3 card that was refused is not an old card: its top-level fields are not the card.
         if(spec === null && (da?.spec === 'chara_card_v2' || da?.spec === 'chara_card_v3')){
             return refusedOutcome(language.errors.noData)
@@ -342,15 +361,19 @@ async function readCharacterFile(f:{
         if(oldCard === null){
             return refusedOutcome(language.errors.noData)
         }
-        const index = await addImportedCharacter(oldCard, run)
-        alertNormal(language.importedCharacter)
+        progress.step('add')
+        const index = await addImportedCharacter(oldCard, run, progress)
+        progress.notice(language.importedCharacter)
         return {kind: 'imported', index}
     }
     if(lower.endsWith('.yaml') || lower.endsWith('.yml')){
         if(!f.data || f.data instanceof ReadableStream){
             return refusedOutcome(language.errors.noData)
         }
+        progress.step('read')
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
+        progress.throwIfCancelled()
+        progress.step('check')
         //The parser is fetched only when a YAML card is imported. A parse error is not caught here: it ends the import as a failure, unlike malformed JSON, which is refused as not a card file.
         const { parse } = await import('yaml')
         const parsed: unknown = parse(Buffer.from(data).toString('utf-8'))
@@ -358,28 +381,58 @@ async function readCharacterFile(f:{
         if(oldCard === null){
             return refusedOutcome(language.errors.noData)
         }
-        const index = await addImportedCharacter(oldCard, run)
-        alertNormal(language.importedCharacter)
+        progress.step('add')
+        const index = await addImportedCharacter(oldCard, run, progress)
+        progress.notice(language.importedCharacter)
         return {kind: 'imported', index}
     }
     let db = getDatabase()
     db.statics.imports += 1
 
     if(lower.endsWith('.byaf')){
-        return await importByafArchive(f, run)
+        return await importByafArchive(f, run, progress)
     }
 
     if(lower.endsWith('charx') || lower.endsWith('jpg') || lower.endsWith('jpeg')){
         console.log('reading charx')
-        alertStore.set({
-            type: 'wait',
-            msg: language.alerts.readingCard
-        })
+        progress.step('read')
 
         const importer = new CharXImporter()
-        importer.alertInfo = true
+        //The importer reports to the card: the archive bytes while it reads, then the saves. Before the read ends the count has no known total ("found so far"); during the check it is held back and caught up when the closed count opens.
+        let phase:'read'|'check'|'assets' = 'read'
+        const tally = progress.tally
+        let reported = 0
+        const reportSaved = (done:number) => {
+            while(reported < done){
+                tally.saved()
+                reported++
+            }
+        }
+        importer.readProgress = progress.bytes
+        importer.saveProgress = (done, queued) => {
+            if(phase === 'read'){
+                progress.found(done, queued)
+            }
+            else if(phase === 'assets'){
+                reportSaved(done)
+            }
+        }
+        importer.beforeWrite = () => {
+            try {
+                progress.beforeWrite()
+                return true
+            } catch {
+                return false
+            }
+        }
+        //A Cancel press abandons the importer, which ends a read in progress; the listener leaves on every exit, and a press made earlier is applied at once.
+        const onAbort = () => importer.abandon()
+        progress.signal.addEventListener('abort', onAbort)
+        if(progress.signal.aborted){
+            importer.abandon()
+        }
+        try {
         //A zip failure means the archive is unreadable; an entry over its size limit refuses the card with a message naming the file; a failure of the read or of the importer itself shows its own message.
-        //The importer shows no progress after its first failure, so nothing replaces the message.
         try {
             //The end-of-archive check needs the tail of the whole input, so a stream is buffered into a Blob-backed File first.
             const charxData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
@@ -391,6 +444,9 @@ async function readCharacterFile(f:{
             }
             await importer.parse(charxData)
         } catch (error) {
+            if(progress.signal.aborted){
+                throw new ImportCancelled()
+            }
             if(error instanceof CharXParseError && error.origin === 'size'){
                 return refusedOutcome(language.cardFileEntryTooLarge(error.entryName ?? '', Math.round((error.limitBytes ?? 0) / (1024 * 1024))))
             }
@@ -402,7 +458,9 @@ async function readCharacterFile(f:{
             }
             return outcomeOfError(error)
         }
-        //Whichever way this ends, the importer is finished with: asset saves that have not started do not start, and no progress message replaces what the import shows next.
+        phase = 'check'
+        progress.step('check')
+        //Whichever way this ends, the importer is finished with: asset saves that have not started do not start.
         try {
             const cardData = importer.cardData
             if(!cardData){
@@ -416,7 +474,7 @@ async function readCharacterFile(f:{
             if(importer.moduleData){
                 let md:RisuModule
                 try {
-                    md = await readModule(Buffer.from(importer.moduleData))
+                    md = await readModule(Buffer.from(importer.moduleData), {progress: progress.nested()})
                 } catch (error) {
                     //An embedded module that is not usable refuses the whole card
                     if(error instanceof ModuleRefusal){
@@ -432,8 +490,14 @@ async function readCharacterFile(f:{
                     lorebook = md.lorebook
                 }
             }
+            //Every entry is queued now, so the count is closed: the saves that already ended are counted, the card-spec saves follow.
+            phase = 'assets'
+            progress.step('assets')
+            tally.setTotal(importer.queuedCount + cardSpecSaveTotal(card, false))
+            reportSaved(importer.savedCount)
             await importer.done()
-            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter, false, f.lowLevelLabel, run)
+            reportSaved(importer.savedCount)
+            const v = await importCharacterCardSpec(card, undefined, 'normal', importer.assets, lorebook, f.returnCharacter, false, f.lowLevelLabel, run, progress)
             if(v === null){
                 return refusedOutcome(language.errors.noData)
             }
@@ -447,24 +511,23 @@ async function readCharacterFile(f:{
         } finally {
             importer.abandon()
         }
+        } finally {
+            progress.signal.removeEventListener('abort', onAbort)
+        }
     }
 
     if(!lower.endsWith('png')){
         return refusedOutcome(language.importNotCardFile)
     }
-    
 
-    alertStore.set({
-        type: 'wait',
-        msg: language.alerts.readingCard
-    })
+    progress.step('read')
     await sleep(10)
 
     //A stream is buffered into a Blob-backed File first, so the card is read by offset like any other file.
     const pngData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
         ? new File([await new Response(f.data).blob()], f.name, {type: 'image/png'})
         : f.data
-    return await importPngCard(f.name, pngData, run)
+    return await importPngCard(f.name, pngData, run, progress)
 }
 
 //First pass over a Backyard archive: the manifest, character and scenario JSON are kept, every other entry is read to its end and dropped, whatever its size.
@@ -476,8 +539,10 @@ type ByafRead = {ok: true, plan: ByafPlan, imageSizes: {[key:string]:number}} | 
 
 //Reads the whole archive once and plans the import. Only the plan and the sizes of the listed images leave this function, so the JSON the first pass retained is released before anything is saved.
 //A listed image's size is the largest the archive states or delivers for its name, which is what the second pass is bounded by. With a validated central directory that includes the central size; on the fallback path the central size is not included, and the second pass refuses on it before it reads any chunk.
-async function readByafPlan(data:File|Uint8Array|ImportSource):Promise<ByafRead> {
+async function readByafPlan(data:File|Uint8Array|ImportSource, progress:ImportProgress):Promise<ByafRead> {
     const importer = new CharXImporter(byafReadRoute)
+    importer.readProgress = progress.bytes
+    const stopWatching = abandonOnAbort(importer, progress.signal)
     try {
         await importer.parse(data)
         const planned = planByaf(importer.texts)
@@ -492,8 +557,19 @@ async function readByafPlan(data:File|Uint8Array|ImportSource):Promise<ByafRead>
         }
         return {ok: true, plan: planned.plan, imageSizes}
     } finally {
+        stopWatching()
         importer.abandon()
     }
+}
+
+//A Cancel press abandons the importer, which ends a read in progress; a press made earlier is applied at once. The returned function removes the listener and belongs in the caller's `finally`.
+function abandonOnAbort(importer:CharXImporter, signal:AbortSignal):() => void {
+    const abandon = () => importer.abandon()
+    signal.addEventListener('abort', abandon)
+    if(signal.aborted){
+        importer.abandon()
+    }
+    return () => signal.removeEventListener('abort', abandon)
 }
 
 function byafRefusalMessage(refusal:ByafRefusal):string {
@@ -519,12 +595,10 @@ async function importByafArchive(f:{
     name: string;
     data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
     returnCharacter?:boolean
-}, run:ImportArchiveRun|null):Promise<ImportOutcome>{
-    alertStore.set({
-        type: 'wait',
-        msg: language.alerts.readingCard
-    })
+}, run:ImportArchiveRun|null, progress:ImportProgress):Promise<ImportOutcome>{
+    progress.step('read')
     let importer:CharXImporter|undefined
+    let stopWatching:(() => void)|undefined
     try {
         //A stream is buffered into a Blob-backed File first: both passes need the whole input, and the end-of-archive check needs its tail.
         const data:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
@@ -538,10 +612,11 @@ async function importByafArchive(f:{
         if(first.size !== source.size){
             return refusedOutcome(language.cardFileChanged)
         }
-        const read = await readByafPlan(data)
+        const read = await readByafPlan(data, progress)
         if('refusal' in read){
             return refusedOutcome(byafRefusalMessage(read.refusal))
         }
+        progress.step('check')
         const { plan } = read
         const limit = assetByteLimit()
         for(const image of plan.images){
@@ -556,13 +631,39 @@ async function importByafArchive(f:{
         importer = new CharXImporter((name) => wanted.has(name)
             ? {kind: 'asset', limitBytes: assetByteLimit()}
             : {kind: 'drop', limitBytes: Infinity})
-        importer.alertInfo = true
+        //The wanted set is known, so the count is closed from the start: every listed image, plus what the card itself saves (nothing for a card whose assets all sit in the archive).
+        progress.step('assets')
+        const everyKey:{[key:string]:string} = {}
+        for(const image of plan.images){
+            everyKey[image.key] = image.key
+        }
+        progress.tally.setTotal(plan.images.length + cardSpecSaveTotal(buildByafCard(plan, everyKey), false))
+        let reported = 0
+        importer.saveProgress = (done) => {
+            while(reported < done){
+                progress.tally.saved()
+                reported++
+            }
+        }
+        importer.readProgress = progress.bytes
+        importer.beforeWrite = () => {
+            try {
+                progress.beforeWrite()
+                return true
+            } catch {
+                return false
+            }
+        }
+        stopWatching = abandonOnAbort(importer, progress.signal)
         await importer.parse(data)
         await importer.done()
+        if(progress.signal.aborted){
+            throw new ImportCancelled()
+        }
         if(!(await sourceUnchanged(source, first))){
             return refusedOutcome(language.cardFileChanged)
         }
-        const v = await importCharacterCardSpec(buildByafCard(plan, importer.assets), undefined, 'normal', importer.assets, null, f.returnCharacter, false, undefined, run)
+        const v = await importCharacterCardSpec(buildByafCard(plan, importer.assets), undefined, 'normal', importer.assets, null, f.returnCharacter, false, undefined, run, progress)
         if(v === null){
             return refusedOutcome(language.errors.noData)
         }
@@ -585,7 +686,8 @@ async function importByafArchive(f:{
         }
         return outcomeOfError(error)
     } finally {
-        //Asset saves that have not started do not start, and no progress message replaces what the import shows next.
+        //Asset saves that have not started do not start.
+        stopWatching?.()
         importer?.abandon()
     }
 }
@@ -854,7 +956,7 @@ async function hasPngSignature(source:ImportSource):Promise<boolean> {
  * asset chunks one at a time, saves them and imports the card the first pass chose. A file that is not the one the
  * first pass saw, or cannot be read, is refused and saves nothing further.
  */
-async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run:ImportArchiveRun|null):Promise<ImportOutcome> {
+async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run:ImportArchiveRun|null, progress:ImportProgress = NO_IMPORT_PROGRESS):Promise<ImportOutcome> {
     const source = isImportSource(data) ? data : data instanceof Uint8Array ? importSourceOfBytes(name, data) : importSourceOfFile(data)
     try {
         const stat = await source.stat()
@@ -866,7 +968,9 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run
         if(!(await hasPngSignature(source))){
             return refusedOutcome(language.importNotCardFile)
         }
-        const scan = await PngChunk.scanCard(data, {layout: true})
+        const scan = await PngChunk.scanCard(sourceWithProgress(source, progress.bytes, progress.signal), {layout: true})
+        progress.throwIfCancelled()
+        progress.step('check')
         if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
             return refusedOutcome(language.cardFileIncomplete)
         }
@@ -891,33 +995,22 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run
             return plan
         }
 
-        const pngChunks = scan.assetCount
-        let readedPngChunks = 0
         const assets:{[key:string]:string} = {}
-        const showAssetProgress = () => {
-            if(pngChunks === 0){
-                alertWait(fillLang(language.alerts.loadedAssets, { count: readedPngChunks }))
-            }
-            else{
-                alertStore.set({
-                    type: 'progress',
-                    msg: language.alerts.loadingAssets,
-                    submsg: (readedPngChunks / pngChunks * 100).toFixed(2)
-                })
-            }
-
-            readedPngChunks++
-        }
+        //The count is closed before the first save: every asset chunk plus what the card spec itself saves, its image included (a tavern card saves only its image, its asset chunks are skipped). A save counts once it has resolved.
+        progress.step('assets')
+        progress.tally.setTotal(plan.kind === 'spec' ? scan.assetCount + cardSpecSaveTotal(plan.card, true) : 1)
+        //Dominates every save below (assets, image, card-spec saves) and the add: Cancel is refused from here on.
+        progress.beforeWrite()
         //An old card has no assets of its own to keep, so only its image is read.
         const img = await walkPngCard(source, {chunks, imageBytes, stat}, plan.kind === 'spec', async (assetIndex, assetData) => {
-            showAssetProgress()
             assets[assetIndex] = await saveAsset(assetData)
+            progress.tally.saved()
         }, {
             minBytes: ASSET_PIECE_SAVE_MIN_BYTES,
             onAssetPieces: async (assetIndex, asset) => {
-                showAssetProgress()
                 try {
                     assets[assetIndex] = await saveAssetFromPieces(asset.pieces, {sizeBound: asset.sizeBound, beforeFinish: asset.beforeFinish})
+                    progress.tally.saved()
                 } catch (error) {
                     if(error instanceof AssetSourceChangedError){
                         throw new PngCardSourceChanged('the card file changed while an asset was saved', error)
@@ -929,13 +1022,19 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run
 
         if(plan.kind === 'tavern'){
             plan.character.image = await saveAsset(img)
-            const index = await addImportedCharacter(plan.character, run)
-            alertNormal(language.importedCharacter)
+            progress.tally.saved()
+            progress.step('add')
+            const index = await addImportedCharacter(plan.character, run, progress)
+            progress.notice(language.importedCharacter)
             return {kind: 'imported', index}
         }
-        const result = await importCharacterCardSpec(plan.card, img, "normal", assets, null, false, true, undefined, run)
+        const result = await importCharacterCardSpec(plan.card, img, "normal", assets, null, false, true, undefined, run, progress)
         return cardSpecOutcome(result)
     } catch (error) {
+        //A Cancel press ends the reads; its refusal is not the card file having changed.
+        if(progress.signal.aborted){
+            throw new ImportCancelled()
+        }
         if(error instanceof PngCardSourceChanged){
             console.error(error)
             return refusedOutcome(language.cardFileChanged)
@@ -1083,35 +1182,45 @@ export async function characterURLImport() {
             window.history.replaceState(null, '', url.toString());
         }
         if(charPath && await alertConfirm(fillLang(language.importLinkConfirm, {host: new URL(CHUB_DOWNLOAD_URL).host}))){
-            alertWait(language.alerts.loadingFromChub)
-            const chara = await fetch(CHUB_DOWNLOAD_URL, {
-                method: "POST",
-                body: JSON.stringify({
-                    "format": "tavern",
-                    "fullPath": charPath,
-                    "version": "main"
-                }),
-                headers: {
-                    "content-type": "application/json"
-                }
-            })
-            if(!chara.ok){
-                alertError(language.errors.noData)
-            }
-            else{
-                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                const busy = beginBusy('import')
-                try {
-                    await importCharacterProcess({
-                        name: 'charahub.png',
-                        data: new File([await chara.blob()], 'charahub.png', {type: 'image/png'}),
-                        archive: true
+            //The card covers the download too; its busy scope is the runner's.
+            const run = newImportArchiveRun()
+            const chubItem:ImportItem = {
+                name: 'charahub.png',
+                run: async (progress) => {
+                    progress.step('download')
+                    const chara = await fetch(CHUB_DOWNLOAD_URL, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            "format": "tavern",
+                            "fullPath": charPath,
+                            "version": "main"
+                        }),
+                        headers: {
+                            "content-type": "application/json"
+                        },
+                        signal: progress.signal,
                     })
-                    checkCharOrder()
-                } finally {
-                    busy.end()
+                    if(!chara.ok){
+                        return refusedOutcome(language.errors.noData)
+                    }
+                    //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                    const blob = await responseBlobWithProgress(chara, progress.bytes, progress.signal)
+                    return await importCharacterFile({
+                        name: 'charahub.png',
+                        data: new File([blob], 'charahub.png', {type: 'image/png'}),
+                    }, run, progress)
                 }
             }
+            await runImportBatch([chubItem], {
+                task: {title: language.importTaskLinkTitle, steps: DOWNLOAD_IMPORT_STEPS},
+                afterImported: () => {
+                    try {
+                        checkCharOrder()
+                    } catch (error) {
+                        console.error(error)
+                    }
+                },
+            })
         }
     } catch (error) {
         alertError(language.errors.noData)
@@ -1143,7 +1252,8 @@ export async function characterURLImport() {
                     const fileName = getFileName(res)
                     //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                     const blob = await res.blob()
-                    await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
+                    //The runner ends this scope when its first result posts, so the scope never holds an unanswered card.
+                    await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())], [], language.importTaskFilesTitle, busy)
                 }
             } catch (error) {
                 alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)
@@ -1417,7 +1527,40 @@ async function readCardExportImage(image?: string) {
 
 //Resolves to `null` when `card` is not a v2 or v3 card, has no `data` object or has a character book that cannot convert (nothing is saved), to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
 //A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
-async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:LowLevelLabel, archive:ImportArchiveRun|null = null):Promise<T extends true ? character|false|null : number|false|null>{
+/**
+ * How many asset saves `importCharacterCardSpec` makes for this card: its image when it has one, plus every entry that is
+ * saved rather than mapped to a key a caller already saved (not `__asset:`, not `embeded://`, not `ccdefault:`), a v3 data
+ * uri only when it is under the size cut. It only counts and never throws.
+ */
+export function cardSpecSaveTotal(card:CharacterCardV2Risu|CharacterCardV3, hasImage:boolean):number {
+    let total = hasImage ? 1 : 0
+    if(!card || typeof card.data !== 'object' || card.data === null){
+        return total
+    }
+    if(card.spec === 'chara_card_v2'){
+        const risuext = card.data.extensions?.risuai
+        for(const [, value] of risuext?.emotions ?? []){
+            total += typeof value === 'string' && !value.startsWith('__asset:') ? 1 : 0
+        }
+        for(const entry of risuext?.additionalAssets ?? []){
+            total += typeof entry[1] === 'string' && !entry[1].startsWith('__asset:') ? 1 : 0
+        }
+        for(const value of Object.values(risuext?.vits ?? {})){
+            total += typeof value === 'string' && !value.startsWith('__asset:') ? 1 : 0
+        }
+    }
+    if(card.spec === 'chara_card_v3'){
+        for(const asset of card.data.assets ?? []){
+            const uri = asset.uri
+            if(typeof uri === 'string' && uri.startsWith('data:') && (uri.split(',')[1] ?? '').length < 50 * 1024 * 1024){
+                total += 1
+            }
+        }
+    }
+    return total
+}
+
+async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:LowLevelLabel, archive:ImportArchiveRun|null = null, progress:ImportProgress = NO_IMPORT_PROGRESS):Promise<T extends true ? character|false|null : number|false|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
         return null
     }
@@ -1454,7 +1597,15 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         }
     }
 
+    //The step comes first because entering a step clears its count. A caller that knows the whole item's total is on this step and has set it already (the step is then unchanged and the tally ignores a second total); otherwise this card's own saves are the total.
+    progress.step('assets')
+    progress.tally.setTotal(cardSpecSaveTotal(card, !!img))
+    //The first stored byte of the card when no earlier gate fired; it dominates every save below and the add.
+    progress.beforeWrite()
     let im = img ? await saveAsset(img) : undefined
+    if(img){
+        progress.tally.saved()
+    }
 
     const risuext = safeStructuredClone(data.extensions?.risuai)
     let emotions:[string, string][] = []
@@ -1475,11 +1626,6 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
     if(risuext && card.spec === 'chara_card_v2'){
         if(risuext.emotions){
             for(let i=0;i<risuext.emotions.length;i++){
-                alertStore.set({
-                    type: 'progress',
-                    msg: language.alerts.loadingEmotions,
-                    submsg: (i / risuext.emotions.length * 100).toFixed(2)
-                })
                 await sleep(10)
                 if(risuext.emotions[i][1].startsWith('__asset:')){
                     const key = risuext.emotions[i][1].replace('__asset:', '')
@@ -1491,17 +1637,12 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     continue
                 }
                 const imgp = await saveAsset(mode === 'hub' ? (await getHubResources(risuext.emotions[i][1])) : Buffer.from(risuext.emotions[i][1], 'base64'))
+                progress.tally.saved()
                 emotions.push([risuext.emotions[i][0],imgp])
             }
         }
         if(risuext.additionalAssets){
             for(let i=0;i<risuext.additionalAssets.length;i++){
-                alertStore.set({
-                    type: 'progress',
-                    msg: language.alerts.loadingAssets,
-                    submsg: (i / risuext.additionalAssets.length * 100).toFixed(2)
-                })
-
                 if(i % 100 === 0){
                     await sleep(10)
                 }
@@ -1518,17 +1659,13 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     continue
                 }
                 const imgp = await saveAsset(mode === 'hub' ? (await getHubResources(risuext.additionalAssets[i][1])) :Buffer.from(risuext.additionalAssets[i][1], 'base64'), '', fileName)
+                progress.tally.saved()
                 extAssets.push([risuext.additionalAssets[i][0],imgp,fileName])
             }
         }
         if(risuext.vits){
             const keys = Object.keys(risuext.vits)
             for(let i=0;i<keys.length;i++){
-                alertStore.set({
-                    type: 'progress',
-                    msg: language.alerts.loadingVits,
-                    submsg: (i / keys.length * 100).toFixed(2)
-                })
                 await sleep(10)
                 const key = keys[i]
                 if(risuext.vits[key].startsWith('__asset:')){
@@ -1541,6 +1678,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     continue
                 }
                 const imgp = await saveAsset(mode === 'hub' ? (await getHubResources(risuext.vits[key])) : Buffer.from(risuext.vits[key], 'base64'))
+                progress.tally.saved()
                 risuext.vits[key] = imgp
             }
 
@@ -1567,11 +1705,6 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         const data = card.data //required for type checking
         if(data.assets){
             for(let i=0;i<data.assets.length;i++){
-                alertStore.set({
-                    type: 'progress',
-                    msg: language.alerts.loadingAssets,
-                    submsg: (i / data.assets.length * 100).toFixed(2)
-                })
                 if(i % 100 === 0){
                     await sleep(10)
                 }
@@ -1602,6 +1735,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
                     const b64 = data.assets[i].uri.split(',')[1]
                     if(b64.length < 50 * 1024 * 1024){
                         imgp = await saveAsset(Buffer.from(b64, 'base64'))
+                        progress.tally.saved()
                     }
                     else{
                         alertError(language.errors.dataUriTooLarge)
@@ -1741,8 +1875,9 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
         return char as any
     }
 
-    const index = await addImportedCharacter(char, archive)
-    alertNormal(language.importedCharacter)
+    progress.step('add')
+    const index = await addImportedCharacter(char, archive, progress)
+    progress.notice(language.importedCharacter)
     return index as any
 
 }
@@ -2724,12 +2859,14 @@ export function downloadRisuHub(id:string, arg:{
     forceRedirect?: boolean
     creator?: string
 } = {}) {
-    return withBusy('import', () => downloadRealmCard(id, arg))
+    return withBusy('import', (busy) => downloadRealmCard(id, {...arg, outerBusy: busy}))
 }
 
 async function downloadRealmCard(id:string, arg:{
     forceRedirect?: boolean
     creator?: string
+    //The scope that covers the agreement and creator checks; the runner ends it when its first result posts.
+    outerBusy?: BusyHandle
 }) {
     try {
         if(!(await askUpstreamAgreement())){
@@ -2752,74 +2889,70 @@ async function downloadRealmCard(id:string, arg:{
         //A card that opens at once is imported live: it is the one in use. Read once, before the download, so the archive decision and the redirect agree.
         const opensAtOnce = !!(DBState.db.goCharacterOnImport || arg.forceRedirect)
 
-        if(!arg.forceRedirect){
-            alertStore.set({
-                type: "wait",
-                msg: language.alerts.downloading
-            })
-        }
-        const res = await fetch("https://realm.risuai.net/api/v1/download/dynamic/" + id + '?cors=true', {
-            headers: {
-                "x-risu-api-version": "4"
+        //The card shows on both paths. The caller's busy scope ends with the runner's first result, and a navigation for a card that opens at once runs as soon as the character is added.
+        let openReason:'realm.openPng'|'realm.openCard' = 'realm.openPng'
+        const realmItem:ImportItem = {
+            name: 'Realm',
+            run: async (progress) => {
+                progress.step('download')
+                const res = await fetch("https://realm.risuai.net/api/v1/download/dynamic/" + id + '?cors=true', {
+                    headers: {
+                        "x-risu-api-version": "4"
+                    },
+                    signal: progress.signal,
+                })
+                if(res.status !== 200){
+                    return {kind: 'failed', error: await res.text()}
+                }
+                const contentType = res.headers.get('content-type')
+                if(contentType === 'image/png' || contentType === 'application/zip' || contentType === 'application/charx'){
+                    const isCharx = contentType === 'application/zip' || contentType === 'application/charx'
+                    const name = isCharx ? 'realm.charx' : 'realm.png'
+                    //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                    const blob = await responseBlobWithProgress(res, progress.bytes, progress.signal)
+                    return await importCharacterFile({
+                        name,
+                        data: new File([blob], name, {type: contentType}),
+                    }, opensAtOnce ? null : newImportArchiveRun(), progress)
+                }
+
+                const result = await res.json()
+                const data:CharacterCardV3 = result.card
+                const img:string = result.img
+
+                data.data.extensions ??= {}
+                data.data.extensions.risuRealmImportId = id
+
+                openReason = 'realm.openCard'
+                progress.step('check')
+                const hubImage = await getHubResources(img)
+                const added = await importCharacterCardSpec(data, hubImage, 'hub', undefined, undefined, undefined, undefined, undefined, opensAtOnce ? null : newImportArchiveRun(), progress)
+                if(added === null){
+                    return refusedOutcome(language.errors.noData)
+                }
+                if(typeof added !== 'number'){
+                    return {kind: 'declined'}
+                }
+                return {kind: 'imported', index: added}
             }
+        }
+        await runImportBatch([realmItem], {
+            task: {title: language.importTaskRealmTitle, steps: DOWNLOAD_IMPORT_STEPS},
+            outerBusy: arg.outerBusy,
+            afterImported: (outcome) => {
+                if(outcome.kind !== 'imported' || outcome.index === null){
+                    return
+                }
+                try {
+                    checkCharOrder()
+                } catch (error) {
+                    console.error(error)
+                }
+                if(opensAtOnce && getDatabase().characters[outcome.index]){
+                    void changeCharOrAlert(openReason, outcome.index)
+                }
+            },
         })
-        if(res.status !== 200){
-            alertError(await res.text())
-            return
-        }
-
-        if(res.headers.get('content-type') === 'image/png' || res.headers.get('content-type') === 'application/zip' || res.headers.get('content-type') === 'application/charx'){
-            let imported:number|null
-            if(res.headers.get('content-type') === 'application/zip' || res.headers.get('content-type') === 'application/charx'){
-                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                imported = await importCharacterProcess({
-                    name: 'realm.charx',
-                    data: new File([await res.blob()], 'realm.charx', {type: res.headers.get('content-type')}),
-                    archive: !opensAtOnce,
-                })
-            }
-            else{
-                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                imported = await importCharacterProcess({
-                    name: 'realm.png',
-                    data: new File([await res.blob()], 'realm.png', {type: res.headers.get('content-type')}),
-                    archive: !opensAtOnce,
-                })
-            }
-            //A file that was declined, refused or failed has shown its own message and leaves the library as it was.
-            if(typeof imported !== 'number'){
-                return
-            }
-            checkCharOrder()
-            if(opensAtOnce && getDatabase().characters[imported]){
-                void changeCharOrAlert('realm.openPng', imported)
-            }
-            return
-        }
-    
-        const result = await res.json()
-        const data:CharacterCardV3 = result.card
-        const img:string = result.img
-
-        data.data.extensions ??= {}
-        data.data.extensions.risuRealmImportId = id
-    
-        const added = await importCharacterCardSpec(data, await getHubResources(img), 'hub', undefined, undefined, undefined, undefined, undefined, opensAtOnce ? null : newImportArchiveRun())
-        if(added === null){
-            alertError(language.errors.noData)
-            return
-        }
-        if(typeof added !== 'number'){
-            return
-        }
-        checkCharOrder()
-        if(opensAtOnce && getDatabase().characters[added]){
-            void changeCharOrAlert('realm.openCard', added)
-            alertStore.set({
-                type: 'none',
-                msg: ''
-            })
-        }
     } catch (error) {
         console.error(error)
         console.log(error.stack)

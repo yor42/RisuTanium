@@ -525,8 +525,9 @@ describe('Retry and the legacy surfaces', () => {
     })
 })
 
-describe('the .charx module route in 2a', () => {
-    test('R-a25 (RR-m): from the start of a .charx module file Cancel is withdrawn and a press is refused', async () => {
+describe('the .charx module route', () => {
+    //The card importer here is a recorder, so this pins the module route (no entry gate; the progress is handed to the importer), not the importer's own gates.
+    test('R-b25 (RR-m, recorder level): a .charx module file no longer withdraws Cancel at its start; a press during its read ends the round Cancelled with y never read', async () => {
         h.files = [
             risum('x.charx', 'X'),
             risum('y.risum', 'Y', { records: [patterned(10, 2)] }),
@@ -537,16 +538,12 @@ describe('the .charx module route in 2a', () => {
             requestTaskCancel()
             return { kind: 'declined' }
         }
-        h.beforeRead = (file) => {
-            if (file === 'y.risum') requestTaskCancel()
-        }
         const { done, view } = await importToResult()
         expect(h.cardStarted).toBe(1)
-        expect(offered, 'expected Cancel to be withdrawn when x starts').toEqual([false])
-        expect(view?.cancelled).toBe(false)
-        expect(view?.result?.skipped?.map((s) => s.name)).toEqual(['x.charx'])
+        expect(offered).toEqual([true])
+        expect(view?.cancelled).toBe(true)
         await answerOk(done)
-        expect(names()).toEqual(['Y'])
+        expect(names()).toEqual([])
     })
 })
 

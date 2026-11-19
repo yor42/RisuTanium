@@ -145,6 +145,8 @@ import { characterURLImport, importOpenedFiles } from 'src/ts/characterCards'
 import { openBootWindow, resetBootWindowForTest } from 'src/ts/bootWindow'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import type { Residency } from 'src/ts/storage/store2/residency'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 
 const enc = new TextEncoder()
 const setUrl = (pathAndQuery: string) => window.history.replaceState(null, '', pathAndQuery)
@@ -170,6 +172,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
     resetBootWindowForTest()
     resetResidencyForTest()
@@ -180,7 +183,7 @@ describe('an import on a store2 page marks a boot write at each call site', () =
     test('guard: a character added to the library (addImportedCharacter)', async () => {
         h.tauriFiles['/docs/card.yaml'] = enc.encode('name: Yaya\ncontext: d\ngreeting: hi\n')
 
-        await importOpenedFiles(['/docs/card.yaml'])
+        await answerImportCard(() => importOpenedFiles(['/docs/card.yaml']))
 
         expect(h.characters).toHaveLength(1)
         expect(markUnsaved).toHaveBeenCalledTimes(1)
@@ -189,7 +192,7 @@ describe('an import on a store2 page marks a boot write at each call site', () =
     test('guard: a preset file (importClassified, preset branch)', async () => {
         h.tauriFiles['/docs/a.risup'] = enc.encode('{"name":"p"}')
 
-        await importOpenedFiles(['/docs/a.risup'])
+        await answerImportCard(() => importOpenedFiles(['/docs/a.risup']))
 
         expect(h.presets).toHaveLength(1)
         expect(markUnsaved).toHaveBeenCalledTimes(1)
@@ -198,7 +201,7 @@ describe('an import on a store2 page marks a boot write at each call site', () =
     test('guard: a module file (importClassified, module branch)', async () => {
         h.tauriFiles['/docs/a.risum'] = new Uint8Array([1, 2, 3])
 
-        await importOpenedFiles(['/docs/a.risum'])
+        await answerImportCard(() => importOpenedFiles(['/docs/a.risum']))
 
         expect(h.modules).toHaveLength(1)
         expect(markUnsaved).toHaveBeenCalledTimes(1)

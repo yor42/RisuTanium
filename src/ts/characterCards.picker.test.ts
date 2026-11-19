@@ -235,12 +235,14 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources, isOpenedSourceImportable, OPENED_JSON_LIMIT_BYTES } from 'src/ts/characterCards'
-import { alertError } from 'src/ts/alert'
 import { importPreset } from 'src/ts/storage/database.svelte'
 import { open } from '@tauri-apps/plugin-fs'
 import { charxLimits } from 'src/ts/process/processzip'
 import { language } from 'src/lang'
 import { fflateZipArchive } from 'src/ts/process/tests/zipFixtures'
+import * as alertTaskModule from 'src/ts/alertTask.svelte'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic files (no real images, no user data)
@@ -355,13 +357,26 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
-async function pick(files: File[]) {
+//Every entry below resolves only after its result card is answered; each helper answers it and returns the card the import ended on (null when it closed without one).
+async function pick(files: File[] | null) {
     h.picked = files
-    await importCharacter()
+    return await answerImportCard(() => importCharacter())
 }
+
+/** Picks files, answers the card and returns both the card and the slots `importCharacter` resolved to. */
+async function pickWithSlots(files: File[] | null) {
+    h.picked = files
+    let slots: Awaited<ReturnType<typeof importCharacter>> = []
+    const card = await answerImportCard(async () => { slots = await importCharacter() })
+    return { card, slots }
+}
+
+const openFiles = (paths: string[]) => answerImportCard(() => importOpenedFiles(paths))
+const openSources = (entries: Parameters<typeof importOpenedSources>[0]) => answerImportCard(() => importOpenedSources(entries))
 
 // ---------------------------------------------------------------------------------------------
 // The picker: every file is attempted, and what did not import is named once at the end
@@ -369,50 +384,65 @@ async function pick(files: File[]) {
 
 describe('importCharacter with several files', () => {
     test('a cut image, a good archive and a text file: the archive imports and the last message names the others with their reasons', async () => {
-        await pick([cutPng('Cut'), charx('Good'), textFile('notes.txt')])
+        const card = await pick([cutPng('Cut'), charx('Good'), textFile('notes.txt')])
         expect(names()).toEqual(['Good'])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'Cut.png: ' + language.cardFileIncomplete + '\nnotes.txt: ' + language.importNotCardFile))
+        //what did not import is named once, with its reason, on the result card
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped).toEqual([
+            { name: 'Cut.png', reason: language.cardFileIncomplete },
+            { name: 'notes.txt', reason: language.importNotCardFile },
+        ])
     })
 
     test('an archive whose assets fail to save does not stop the next card, and is named with the save failure', async () => {
         //Every save fails; only the first archive has assets to save.
         h.saveFails = 'storage full'
-        await pick([charx('Failing', { assets: 12 }), charx('Next')])
+        const card = await pick([charx('Failing', { assets: 12 }), charx('Next')])
         expect(names()).toEqual(['Next'])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'Failing.charx: Failed to save 12 assets'))
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped).toEqual([{ name: 'Failing.charx', reason: 'Failed to save 12 assets' }])
     })
 
     test('two good files import two characters, order them after each, and show no error (guard)', async () => {
-        await pick([charx('One'), png('Two')])
+        const card = await pick([charx('One'), png('Two')])
         expect(names()).toEqual(['One', 'Two'])
         expect(h.errors).toEqual([])
         expect(h.ordered).toBe(2)
-        expect(h.last).toBe('normal:' + language.importedCharacter)
+        //the success lines are notes on the result card, not an alert
+        expect(card?.result?.headline).toBe(language.importTaskImported(2))
+        expect(card?.result?.summary?.length).toBeGreaterThan(0)
+        expect(card?.result?.summary?.every((note) => note === language.importedCharacter)).toBe(true)
+        expect(card?.result?.skipped).toBeUndefined()
+        expect(h.last).toBe('none')
     })
 
-    test('one refused file shows its own message as the last message (guard)', async () => {
-        await pick([cutPng('Cut')])
-        expect(h.last).toBe('error:' + language.cardFileIncomplete)
+    test('one refused file shows its own message on the failure card (guard)', async () => {
+        const card = await pick([cutPng('Cut')])
+        expect(card?.failure?.headline).toBe(language.importTaskFailedOne('Cut.png'))
+        expect(card?.failure?.detail).toBe(language.cardFileIncomplete)
+        expect(card?.failure?.dataState).toBe('same')
     })
 
     test('one failed file shows its own error, not a summary (guard)', async () => {
         h.saveFails = 'storage full'
-        await pick([charx('Failing', { assets: 12 })])
-        expect(h.last).toBe('error:Failed to save 12 assets')
+        const card = await pick([charx('Failing', { assets: 12 })])
+        expect(card?.failure?.detail).toBe('Failed to save 12 assets')
+        expect(card?.failure?.skipped).toBeUndefined()
     })
 
     test('a declined file is not listed, and the files after it import (guard)', async () => {
         //Only the first archive asks for low-level access.
         h.confirm = false
-        await pick([charx('Declined', { lowLevelAccess: true }), charx('Next')])
+        const card = await pick([charx('Declined', { lowLevelAccess: true }), charx('Next')])
         expect(names()).toEqual(['Next'])
         expect(h.errors).toEqual([])
-        expect(h.last).toBe('normal:' + language.importedCharacter)
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped).toBeUndefined()
     })
 
     test('a single unrecognised file is refused with its own reason', async () => {
-        await pick([textFile('notes.txt')])
-        expect(h.last).toBe('error:' + language.importNotCardFile)
+        const card = await pick([textFile('notes.txt')])
+        expect(card?.failure?.detail).toBe(language.importNotCardFile)
     })
 
     test('an off-spec json card is imported and does not appear in the summary (guard)', async () => {
@@ -429,8 +459,7 @@ describe('importCharacter with several files', () => {
 
 describe('importCharacter result', () => {
     test('two good files return their two slots, in file order', async () => {
-        h.picked = [charx('One'), png('Two')]
-        const result = await importCharacter()
+        const { slots: result } = await pickWithSlots([charx('One'), png('Two')])
         expect(h.characters.length).toBe(2)
         expect(result.length).toBe(2)
         expect(result[0]).toBe(h.characters[0])
@@ -438,18 +467,21 @@ describe('importCharacter result', () => {
     })
 
     test('a good file followed by a refused file returns the good slot only', async () => {
-        h.picked = [charx('Good'), cutPng('Cut')]
-        const result = await importCharacter()
+        const { slots: result } = await pickWithSlots([charx('Good'), cutPng('Cut')])
         expect(h.characters.length).toBe(1)
         expect(result.length).toBe(1)
         expect(result[0]).toBe(h.characters[0])
     })
 
     test('a throw after two files were collected returns those two slots, the last collected one last', async () => {
-        //The summary of the refused third file is shown after both good files were collected; showing it throws once.
-        vi.mocked(alertError).mockImplementationOnce(() => { throw new Error('summary failed') })
-        h.picked = [charx('One'), png('Two'), cutPng('Cut')]
-        const result = await importCharacter()
+        //The result of the batch is posted after both good files were collected; posting it throws once (the throw is the card's finish).
+        const openTask = alertTaskModule.alertTask
+        vi.spyOn(alertTaskModule, 'alertTask').mockImplementationOnce((def) => {
+            const handle = openTask(def)
+            handle.finish = () => { throw new Error('summary failed') }
+            return handle
+        })
+        const { slots: result } = await pickWithSlots([charx('One'), png('Two'), cutPng('Cut')])
         expect(h.characters.length).toBe(2)
         expect(result.length).toBe(2)
         expect(result[0]).toBe(h.characters[0])
@@ -458,13 +490,15 @@ describe('importCharacter result', () => {
     })
 
     test('files that are all refused return an empty list', async () => {
-        h.picked = [cutPng('Cut'), textFile('notes.txt')]
-        expect(await importCharacter()).toEqual([])
+        const { slots } = await pickWithSlots([cutPng('Cut'), textFile('notes.txt')])
+        expect(slots).toEqual([])
     })
 
     test.each([['an empty pick', []], ['a cancelled pick', null]])('%s returns an empty list', async (_label, picked) => {
-        h.picked = picked as File[] | null
-        expect(await importCharacter()).toEqual([])
+        const { card, slots } = await pickWithSlots(picked as File[] | null)
+        expect(slots).toEqual([])
+        //no file, no card
+        expect(card).toBeNull()
         expect(h.characters).toEqual([])
     })
 })
@@ -555,7 +589,7 @@ describe('importOpenedFiles', () => {
         const bytes = bigCharx('Huge', CALL_CAP + 1000)
         h.files.set('C:\\cards\\Huge.charx', bytes)
 
-        await importOpenedFiles(['C:\\cards\\Huge.charx'])
+        await openFiles(['C:\\cards\\Huge.charx'])
 
         expect(names()).toEqual(['Huge'])
         expect(h.errors).toEqual([])
@@ -567,7 +601,7 @@ describe('importOpenedFiles', () => {
     test('a small archive imports through the same open and read path (guard)', async () => {
         h.files.set('/home/u/Small.charx', new U8(await charx('Small').arrayBuffer()))
 
-        await importOpenedFiles(['/home/u/Small.charx'])
+        await openFiles(['/home/u/Small.charx'])
 
         expect(names()).toEqual(['Small'])
         expect(h.openHandles).toBe(0)
@@ -576,10 +610,12 @@ describe('importOpenedFiles', () => {
     test('a path that cannot be opened is reported for that file, the others import, and no handle stays open', async () => {
         h.files.set('/home/u/Good.charx', new U8(await charx('Good').arrayBuffer()))
 
-        await importOpenedFiles(['/home/u/Gone.charx', '/home/u/Good.charx'])
+        const card = await openFiles(['/home/u/Gone.charx', '/home/u/Good.charx'])
 
         expect(names()).toEqual(['Good'])
-        expect(h.last.startsWith('error:')).toBe(true)
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped?.map((skip) => skip.name)).toEqual(['Gone.charx'])
+        expect(card?.result?.skipped?.[0].reason).toBeTruthy()
         expect(h.openHandles).toBe(0)
     })
 })
@@ -591,8 +627,8 @@ describe('importOpenedFiles', () => {
 describe('importOpenedFiles with a JSON card', () => {
     test('a JSON over the cap is refused as not a card file before any of it is read, and its handle is closed', async () => {
         putFile('/x/big.json', bigZeros(JSON_CAP + 1))
-        await importOpenedFiles(['/x/big.json'])
-        expect(h.last).toBe('error:' + language.importNotCardFile)
+        const card = await openFiles(['/x/big.json'])
+        expect(card?.failure?.detail).toBe(language.importNotCardFile)
         expect(h.bytesRead).toBe(0)
         expect(h.openHandles).toBe(0)
     })
@@ -617,7 +653,7 @@ describe('importOpenedFiles with a .risum module', () => {
         //One record in flight at a time, so the reader cannot run ahead of the saves.
         charxLimits.backlogBytes = 1
 
-        await importOpenedFiles(['C:\\mods\\Big.risum'])
+        await openFiles(['C:\\mods\\Big.risum'])
 
         expect(h.errors).toEqual([])
         expect(h.saves.map((save) => save.hash)).toEqual(records.map(hashOf))
@@ -629,10 +665,10 @@ describe('importOpenedFiles with a .risum module', () => {
     test('a module whose record count does not match its asset list is refused before any asset is saved, and its handle is closed', async () => {
         h.files.set('/mods/Mismatch.risum', risumBytes({ records: [patterned(500, 1), patterned(500, 2)], listed: 3 }))
 
-        await importOpenedFiles(['/mods/Mismatch.risum'])
+        const card = await openFiles(['/mods/Mismatch.risum'])
 
         expect(h.saves).toEqual([])
-        expect(h.last).toBe('error:' + language.errors.noData)
+        expect(card?.failure?.detail).toBe(language.errors.noData)
         expect(h.openHandles).toBe(0)
     })
 
@@ -640,10 +676,10 @@ describe('importOpenedFiles with a .risum module', () => {
         const full = risumBytes({ records: [patterned(500, 1), patterned(500, 2)] })
         h.files.set('/mods/Cut.risum', full.slice(0, full.length - 300))
 
-        await importOpenedFiles(['/mods/Cut.risum'])
+        const card = await openFiles(['/mods/Cut.risum'])
 
         expect(h.saves).toEqual([])
-        expect(h.last).toBe('error:' + language.moduleFileIncomplete)
+        expect(card?.failure?.detail).toBe(language.moduleFileIncomplete)
         expect(h.openHandles).toBe(0)
     })
 
@@ -651,9 +687,9 @@ describe('importOpenedFiles with a .risum module', () => {
         h.files.set('/mods/Failing.risum', risumBytes({ records: [patterned(500, 1), patterned(500, 2)] }))
         h.saveFails = 'storage full'
 
-        await importOpenedFiles(['/mods/Failing.risum'])
+        const card = await openFiles(['/mods/Failing.risum'])
 
-        expect(h.last).toBe('error:Failed to save 2 assets')
+        expect(card?.failure?.detail).toBe('Failed to save 2 assets')
         expect(h.openHandles).toBe(0)
     })
 })
@@ -698,7 +734,7 @@ describe('importOpenedFiles with a PNG card', () => {
         expect(bytes.length).toBeGreaterThan(CALL_CAP)
         h.files.set('C:\\cards\\BigCard.png', bytes)
 
-        await importOpenedFiles(['C:\\cards\\BigCard.png'])
+        await openFiles(['C:\\cards\\BigCard.png'])
 
         expect(h.errors).toEqual([])
         expect(names()).toEqual(['BigCard'])
@@ -712,10 +748,10 @@ describe('importOpenedFiles with a PNG card', () => {
         const bytes = cardWithAssets('Cut', [patterned(500, 1), patterned(500, 2)])
         h.files.set('/cards/Cut.png', bytes.slice(0, 120))
 
-        await importOpenedFiles(['/cards/Cut.png'])
+        const card = await openFiles(['/cards/Cut.png'])
 
         expect(h.saves).toEqual([])
-        expect(h.last).toBe('error:' + language.cardFileIncomplete)
+        expect(card?.failure?.detail).toBe(language.cardFileIncomplete)
         expect(h.openHandles).toBe(0)
     })
 })
@@ -734,7 +770,7 @@ describe('importOpenedSources', () => {
     test('a content URI is opened as given and imports under its display name, and its handle is closed', async () => {
         h.files.set('content://provider/doc/7', new U8(await charx('Shared').arrayBuffer()))
 
-        await importOpenedSources([{ name: 'Shared.charx', path: 'content://provider/doc/7' }])
+        await openSources([{ name: 'Shared.charx', path: 'content://provider/doc/7' }])
 
         expect(names()).toEqual(['Shared'])
         expect(vi.mocked(open)).toHaveBeenCalledWith('content://provider/doc/7', { read: true })
@@ -746,7 +782,7 @@ describe('importOpenedSources', () => {
         h.files.set('content://p/2', new U8([1, 2, 3]))
         h.files.set('content://p/3', new U8([4, 5, 6]))
 
-        await importOpenedSources([
+        await openSources([
             { name: 'Upper.CHARX', path: 'content://p/1' },
             { name: 'Pre.RISUP', path: 'content://p/2' },
             { name: 'Pre2.RisuPreset', path: 'content://p/3' },
@@ -758,7 +794,7 @@ describe('importOpenedSources', () => {
 
     test('a .preset file is an allowed preset', async () => {
         h.files.set('content://p/1', new U8([1, 2, 3]))
-        await importOpenedSources([{ name: 'x.preset', path: 'content://p/1' }])
+        await openSources([{ name: 'x.preset', path: 'content://p/1' }])
         expect(vi.mocked(importPreset)).toHaveBeenCalledTimes(1)
     })
 
@@ -770,9 +806,9 @@ describe('importOpenedSources', () => {
         ]
         for (const [name, type] of entries) {
             vi.mocked(open).mockClear()
-            h.last = 'none'
-            await importOpenedSources([{ name, path: 'content://p/9', type }])
-            expect(h.last, `${name} (${type})`).toBe('error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile))
+            const card = await openSources([{ name, path: 'content://p/9', type }])
+            expect(card?.failure?.headline, `${name} (${type})`).toBe(language.importTaskFailedOne(name))
+            expect(card?.failure?.detail, `${name} (${type})`).toBe(language.importUnsupportedFile)
             expect(vi.mocked(open)).not.toHaveBeenCalled()
         }
         expect(names()).toEqual([])
@@ -780,7 +816,7 @@ describe('importOpenedSources', () => {
 
     test('a PNG card imports from an opened source and its handle is closed', async () => {
         putFile('content://p/1', pngBytes('Pic'))
-        await importOpenedSources([{ name: 'Card.png', path: 'content://p/1' }])
+        await openSources([{ name: 'Card.png', path: 'content://p/1' }])
         expect(names()).toEqual(['Pic'])
         expect(h.openHandles).toBe(0)
     })
@@ -788,7 +824,7 @@ describe('importOpenedSources', () => {
     test('a jpg-charx imports under .jpg and .jpeg in any case', async () => {
         putFile('content://p/1', jpgCharx('Jpg'))
         putFile('content://p/2', jpgCharx('Jpeg'))
-        await importOpenedSources([
+        await openSources([
             { name: 'Card.jpg', path: 'content://p/1' },
             { name: 'Card2.JPEG', path: 'content://p/2' },
         ])
@@ -797,7 +833,7 @@ describe('importOpenedSources', () => {
 
     test('a JSON card imports from an opened source', async () => {
         putFile('content://p/1', enc.encode(v2Json('Json')))
-        await importOpenedSources([{ name: 'Card.json', path: 'content://p/1' }])
+        await openSources([{ name: 'Card.json', path: 'content://p/1' }])
         expect(names()).toEqual(['Json'])
     })
 
@@ -805,7 +841,7 @@ describe('importOpenedSources', () => {
         putFile('content://p/1', pngBytes('ByPng'))
         putFile('content://p/2', enc.encode(v2Json('ByJson')))
         putFile('content://p/3', jpgCharx('ByJpeg'))
-        await importOpenedSources([
+        await openSources([
             { name: 'download', path: 'content://p/1', type: 'image/png' },
             { name: 'x', path: 'content://p/2', type: 'application/json; charset=utf-8' },
             { name: 'y', path: 'content://p/3', type: 'IMAGE/JPEG' },
@@ -821,8 +857,8 @@ describe('importOpenedSources', () => {
         ['malformed JSON', 'broken.json', () => enc.encode('{ not json')],
     ])('%s is refused as not a card file on its own and nothing is saved', async (_label, name, bytes) => {
         putFile('content://p/1', bytes())
-        await importOpenedSources([{ name, path: 'content://p/1' }])
-        expect(h.last).toBe('error:' + language.importNotCardFile)
+        const card = await openSources([{ name, path: 'content://p/1' }])
+        expect(card?.failure?.detail).toBe(language.importNotCardFile)
         expect(h.saves).toEqual([])
         expect(names()).toEqual([])
         expect(h.openHandles).toBe(0)
@@ -830,15 +866,15 @@ describe('importOpenedSources', () => {
 
     test('a JSON over the cap is refused as not a card file before any of it is read, and its handle is closed', async () => {
         putFile('content://p/1', bigZeros(JSON_CAP + 1))
-        await importOpenedSources([{ name: 'big.json', path: 'content://p/1' }])
-        expect(h.last).toBe('error:' + language.importNotCardFile)
+        const card = await openSources([{ name: 'big.json', path: 'content://p/1' }])
+        expect(card?.failure?.detail).toBe(language.importNotCardFile)
         expect(h.bytesRead).toBe(0)
         expect(h.openHandles).toBe(0)
     })
 
     test('a JSON of exactly the cap is read and imports', async () => {
         putFile('content://p/1', paddedV2('Exact', JSON_CAP))
-        await importOpenedSources([{ name: 'exact.json', path: 'content://p/1' }])
+        await openSources([{ name: 'exact.json', path: 'content://p/1' }])
         expect(names()).toEqual(['Exact'])
     })
 
@@ -846,33 +882,35 @@ describe('importOpenedSources', () => {
     test('the cap is 64 MiB and applies to JSON only', async () => {
         expect(OPENED_JSON_LIMIT_BYTES).toBe(JSON_CAP)
         putFile('content://p/1', bigZeros(JSON_CAP + 1))
-        await importOpenedSources([{ name: 'big.risum', path: 'content://p/1' }])
-        expect(h.last).not.toBe('error:' + language.importNotCardFile)
+        const card = await openSources([{ name: 'big.risum', path: 'content://p/1' }])
+        expect(card?.failure?.detail).not.toBe(language.importNotCardFile)
     })
 
     test('a batch with a photo imports the cards and the summary names the photo', async () => {
         putFile('content://p/1', pngBytes('Card'))
         putFile('content://p/2', JPEG_HEAD)
         putFile('content://p/3', new U8(await charx('Card2').arrayBuffer()))
-        await importOpenedSources([
+        const card = await openSources([
             { name: 'Card.png', path: 'content://p/1' },
             { name: 'photo.jpg', path: 'content://p/2' },
             { name: 'Card2.charx', path: 'content://p/3' },
         ])
         expect(names()).toEqual(['Card', 'Card2'])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 3, 'photo.jpg: ' + language.importNotCardFile))
+        expect(card?.result?.headline).toBe(language.importTaskImported(2))
+        expect(card?.result?.skipped).toEqual([{ name: 'photo.jpg', reason: language.importNotCardFile }])
     })
 
     test('a refused .bin in a batch does not stop the allowed files', async () => {
         h.files.set('content://p/1', new U8(await charx('Kept').arrayBuffer()))
 
-        await importOpenedSources([
+        const card = await openSources([
             { name: 'backup.bin', path: 'content://p/0' },
             { name: 'Kept.charx', path: 'content://p/1' },
         ])
 
         expect(names()).toEqual(['Kept'])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'backup.bin: ' + language.importUnsupportedFile))
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped).toEqual([{ name: 'backup.bin', reason: language.importUnsupportedFile }])
     })
 
     // Guard: the drain routing asks this predicate, and the import must agree with it for every name.
@@ -889,9 +927,8 @@ describe('importOpenedSources', () => {
         for (const [name, type] of pairs) {
             vi.mocked(open).mockClear()
             h.files.set('content://p/9', new U8([1, 2, 3]))
-            h.last = 'none'
-            await importOpenedSources([{ name, path: 'content://p/9', type }])
-            const refused = h.last === 'error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile)
+            const card = await openSources([{ name, path: 'content://p/9', type }])
+            const refused = card?.failure?.detail === language.importUnsupportedFile
             expect(isOpenedSourceImportable(name, type), `${name} (${type})`).toBe(!refused)
         }
         expect(isOpenedSourceImportable('IMG.webp', 'image/png')).toBe(true)
@@ -901,8 +938,9 @@ describe('importOpenedSources', () => {
     })
 
     test('a URI that cannot be opened is reported for that file and never rejects', async () => {
-        await expect(importOpenedSources([{ name: 'Gone.charx', path: 'content://p/missing' }])).resolves.toBeUndefined()
-        expect(h.last.startsWith('error:')).toBe(true)
+        const card = await openSources([{ name: 'Gone.charx', path: 'content://p/missing' }])
+        expect(card?.failure?.headline).toBe(language.importTaskFailedOne('Gone.charx'))
+        expect(card?.failure?.detail).toBeTruthy()
         expect(h.openHandles).toBe(0)
     })
 })

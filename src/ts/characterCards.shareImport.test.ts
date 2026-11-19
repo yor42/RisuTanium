@@ -232,7 +232,9 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { characterURLImport, importCharacterFile, importOpenedFiles } from 'src/ts/characterCards'
+import { characterURLImport as runCharacterURLImport, importCharacterFile, importOpenedFiles as runImportOpenedFiles } from 'src/ts/characterCards'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import { CharXImporter } from 'src/ts/process/processzip'
 import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixtures'
 import { PngChunk } from 'src/ts/pngChunk'
@@ -432,6 +434,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    lastCard = null
+    resetTaskHostForTests()
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
     delete (window as unknown as { launchQueue?: unknown }).launchQueue
@@ -440,6 +444,22 @@ afterEach(() => {
 })
 
 const charName = (i: number) => (h.characters[i] as { name?: string })?.name
+
+//An import that opens a result card resolves only after the card is answered. These wrappers answer it and keep the card the entry ended on (null when it ended without one) for assertions.
+let lastCard: ImportCard = null
+async function characterURLImport(): Promise<ImportCard> {
+    lastCard = await answerImportCard(() => runCharacterURLImport())
+    return lastCard
+}
+async function importOpenedFiles(paths: string[]): Promise<ImportCard> {
+    lastCard = await answerImportCard(() => runImportOpenedFiles(paths))
+    return lastCard
+}
+//The file-handler consumer's import, answered the same way.
+async function consume<T>(run: () => Promise<T>): Promise<ImportCard> {
+    lastCard = await answerImportCard(run)
+    return lastCard
+}
 
 // ---------------------------------------------------------------------------------------------
 // #import= links
@@ -565,9 +585,11 @@ describe('?charahub= downloads', () => {
         setUrl('/?charahub=someone/card')
         await characterURLImport()
         expect(scanArgs).toHaveLength(1)
-        expect(scanArgs[0]).toBeInstanceOf(File)
-        expect((scanArgs[0] as File).name).toBe('charahub.png')
-        expect((scanArgs[0] as File).type).toBe('image/png')
+        //The scan reads the downloaded Blob-backed file through a byte-counting source named after it, never one buffer.
+        expect(scanArgs[0]).not.toBeInstanceOf(Uint8Array)
+        expect((scanArgs[0] as { name: string }).name).toBe('charahub.png')
+        expect((scanArgs[0] as { size: number }).size).toBe(pngCard('FromChub').length)
+        expect(typeof (scanArgs[0] as { read: unknown }).read).toBe('function')
         expect(reads.arrayBuffer).toBe(0)
         expect(h.errors).toEqual([])
         expect(charName(0)).toBe('FromChub')
@@ -579,8 +601,11 @@ describe('?charahub= downloads', () => {
         const reads = watched(res)
         routes.set(CHUB, () => res)
         setUrl('/?charahub=someone/card')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.errors.noData])
+        const card = await characterURLImport()
+        //the refusal is the failure card's detail now, not an alert
+        expect(card?.failure?.detail).toBe(language.errors.noData)
+        expect(card?.failure?.dataState).toBe('same')
+        expect(h.errors).toEqual([])
         expect(reads).toEqual({ arrayBuffer: 0, blob: 0, other: 0 })
         expect(scanArgs).toEqual([])
         expect(h.characters).toEqual([])
@@ -635,8 +660,8 @@ describe('launchQueue', () => {
         await characterURLImport()
         const file = new File([new U8(64 * 1024 * 1024 + 1)], 'big.json', { type: 'application/json' })
         const spies = (['arrayBuffer', 'slice', 'stream', 'text'] as const).map((method) => vi.spyOn(file, method))
-        await consumer!({ files: [{ name: 'big.json', getFile: async () => file }] })
-        expect(h.last).toBe('error:' + language.importNotCardFile)
+        const card = await consume(() => consumer!({ files: [{ name: 'big.json', getFile: async () => file }] }))
+        expect(card?.failure?.detail).toBe(language.importNotCardFile)
         expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0, 0, 0])
         expect(h.characters).toEqual([])
     })
@@ -669,14 +694,18 @@ describe('launchQueue', () => {
             ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
             await characterURLImport()
             const good = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
-            await consumer!({ files: [
+            const card = await consume(() => consumer!({ files: [
                 { name: 'broken.charx', getFile: async () => { throw new Error('read failed') } },
                 { name: 'q.charx', getFile: async () => good },
                 { name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') },
-            ] })
+            ] }))
             await vi.waitFor(() => expect(h.characters).toHaveLength(1), { timeout: 500 })
             expect(charName(0)).toBe('Queued')
-            expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read failed\nbad.risum: ' + language.errors.noData))
+            expect(card?.result?.headline).toBe(language.importTaskImported(1))
+            expect(card?.result?.skipped).toEqual([
+                { name: 'broken.charx', reason: 'read failed' },
+                { name: 'bad.risum', reason: language.errors.noData },
+            ])
             expect(h.modules).toEqual([])
             await new Promise((resolve) => setTimeout(resolve, 20))
             expect(unhandled).toEqual([])
@@ -690,9 +719,10 @@ describe('launchQueue', () => {
         let consumer: ((params: LaunchParams) => Promise<void>) | null = null
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
         await characterURLImport()
-        await consumer!({ files: [{ name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') }] })
-        await vi.waitFor(() => expect(h.last).toBe('error:' + language.errors.noData), { timeout: 500 })
-        expect(h.errorKinds).toEqual(['string'])
+        const card = await consume(() => consumer!({ files: [{ name: 'bad.risum', getFile: async () => new File([new U8([8])], 'bad.risum') }] }))
+        expect(card?.failure?.detail).toBe(language.errors.noData)
+        //the refusal is on the card, not an alert
+        expect(h.errorKinds).toEqual([])
         expect(h.modules).toEqual([])
     })
 })
@@ -710,11 +740,15 @@ describe('importOpenedFiles', () => {
             'C:\\docs\\ok.charx': good,
             'C:\\docs\\bad.risum': new U8([8]),
         }
-        await importOpenedFiles(['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum'])
+        const card = await importOpenedFiles(['C:\\docs\\broken.charx', 'C:\\docs\\ok.charx', 'C:\\docs\\bad.risum'])
         expect(charName(0)).toBe('Opened')
         expect(h.characters).toHaveLength(1)
         expect(h.modules).toEqual([])
-        expect(h.last).toBe('error:' + language.importFilesNotImported(2, 3, 'broken.charx: read denied\nbad.risum: ' + language.errors.noData))
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(card?.result?.skipped).toEqual([
+            { name: 'broken.charx', reason: 'read denied' },
+            { name: 'bad.risum', reason: language.errors.noData },
+        ])
     })
 
     test('files that all import show no error (guard)', async () => {
@@ -1066,7 +1100,7 @@ describe('imports are registered as busy while they run', () => {
         await characterURLImport()
         const file = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
 
-        await consumer!({ files: [{ name: 'q.charx', getFile: async () => { during = busyKinds(); return file } }] })
+        await consume(() => consumer!({ files: [{ name: 'q.charx', getFile: async () => { during = busyKinds(); return file } }] }))
 
         expect(during).toEqual(['import'])
         expect(isBusy()).toBe(false)
@@ -1077,8 +1111,9 @@ describe('imports are registered as busy while they run', () => {
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
         await characterURLImport()
 
-        await consumer!({ files: [{ name: 'broken.charx', getFile: async () => { throw new Error('read failed') } }] })
+        const card = await consume(() => consumer!({ files: [{ name: 'broken.charx', getFile: async () => { throw new Error('read failed') } }] }))
 
+        expect(card?.failure?.detail).toBe('read failed')
         expect(isBusy()).toBe(false)
     })
 
@@ -1135,15 +1170,22 @@ describe('a reload that keeps the fragment of an inline link', () => {
 })
 
 describe('download links that fail', () => {
+    //A #import= link refuses before its card opens (an alert); a Chub download runs on the card and fails there.
     test.each([
-        ['a #import= link answered with a non-ok status', () => { routes.set('https://files.test/dl', () => new Response('gone', { status: 404 })); return '/#import=https://files.test/dl' }],
-        ['a ?charahub= download answered with a non-ok status', () => { routes.set('https://api.chub.ai/api/characters/download', () => new Response('gone', { status: 404 })); return '/?charahub=someone/card' }],
-    ] as Array<[string, () => string]>)('%s shows noData and the file-handler consumer is still registered', async (_label, link) => {
+        ['a #import= link answered with a non-ok status', () => { routes.set('https://files.test/dl', () => new Response('gone', { status: 404 })); return '/#import=https://files.test/dl' }, 'alert'],
+        ['a ?charahub= download answered with a non-ok status', () => { routes.set('https://api.chub.ai/api/characters/download', () => new Response('gone', { status: 404 })); return '/?charahub=someone/card' }, 'card'],
+    ] as Array<[string, () => string, 'alert' | 'card']>)('%s shows noData and the file-handler consumer is still registered', async (_label, link, where) => {
         const setConsumer = vi.fn()
         ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
         setUrl(link())
-        await characterURLImport()
-        expect(h.last).toBe('error:' + language.errors.noData)
+        const card = await characterURLImport()
+        if (where === 'alert') {
+            expect(h.last).toBe('error:' + language.errors.noData)
+            expect(card).toBeNull()
+        } else {
+            expect(card?.failure?.detail).toBe(language.errors.noData)
+            expect(h.errors).toEqual([])
+        }
         expect(setConsumer).toHaveBeenCalledTimes(1)
     })
 })
@@ -1153,22 +1195,24 @@ describe('download links that fail', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('a .risum module and the low-level-access prompt', () => {
-    const paths: Array<[string, () => Promise<void>]> = [
+    //Each path answers its result card and hands it back (null when the import ended without one).
+    const paths: Array<[string, () => Promise<ImportCard>]> = [
         ['open-with', async () => {
             h.tauriFiles = { '/docs/m.risum': new U8([8]) }
-            await importOpenedFiles(['/docs/m.risum'])
+            return await importOpenedFiles(['/docs/m.risum'])
         }],
         ['#import= link', async () => {
             routes.set('https://files.test/m.risum', () => new Response(new U8([4, 5]), { headers: { 'content-disposition': 'attachment; filename="m.risum"' } }))
             setUrl('/#import=https://files.test/m.risum')
-            await characterURLImport()
+            return await characterURLImport()
         }],
         ['launchQueue consumer', async () => {
             let consumer: ((params: LaunchParams) => Promise<void>) | null = null
             ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
             await characterURLImport()
-            await consumer!({ files: [{ name: 'm.risum', getFile: async () => new File([new U8([8])], 'm.risum') }] })
+            const card = await consume(() => consumer!({ files: [{ name: 'm.risum', getFile: async () => new File([new U8([8])], 'm.risum') }] }))
             await new Promise((resolve) => setTimeout(resolve, 50))
+            return card
         }],
     ]
 
@@ -1185,10 +1229,12 @@ describe('a .risum module and the low-level-access prompt', () => {
     test.each(paths)('%s: a confirmed prompt imports the module and reports success (compatibility guard: passes before and after)', async (_label, run) => {
         h.moduleLowLevel = true
         h.confirm = true
-        await run()
+        const card = await run()
         expect(h.moduleSaved).toBe(1)
         expect(h.modules).toHaveLength(1)
-        expect(h.events).toContain('normal:' + language.successImport)
+        //the success line is a note on the result card, not an alert
+        expect(card?.result?.summary).toContain(language.successImport)
+        expect(h.events.filter((e) => e.startsWith('normal:') || e.startsWith('error:'))).toEqual([])
     })
 })
 
@@ -1243,7 +1289,9 @@ describe('the charx low-level-access prompt label (feature tests)', () => {
         h.confirm = true
         await importCharacterFile({ name: file.name, data: file, lowLevelLabel: 'Label line' })
         expect(vi.mocked(readModule)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(readModule).mock.calls[0][1]).toBeUndefined()
+        //Only the progress of the card is handed over (nested under the card's own); there is no beforeAssets hook.
+        expect(vi.mocked(readModule).mock.calls[0][1]?.beforeAssets).toBeUndefined()
+        expect(vi.mocked(readModule).mock.calls[0][1]?.progress).toBeDefined()
         expect(h.prompts).toEqual([`Label line\n${language.lowLevelAccessConfirm}`])
     })
 })
