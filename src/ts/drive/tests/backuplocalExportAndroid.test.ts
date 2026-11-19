@@ -243,6 +243,9 @@ vi.mock('@tauri-apps/api/core', () => ({
         if (command === 'read_range') {
             bridge.calls.push({ command, keys: [(args as { key: string }).key], len: (args as { len: number }).len })
         }
+        if (command === 'read_store2_units') {
+            bridge.calls.push({ command, keys: [...(args as { keys: string[] }).keys] })
+        }
         return (desktop.invoke as (command: string, args?: unknown, options?: unknown) => Promise<unknown>)(command, args, options)
     },
 }))
@@ -362,6 +365,16 @@ import { alertClear, alertWait } from 'src/ts/alert'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import type { ImportPhaseRingHandle } from 'src/ts/drive/importPhaseRing'
+import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
+import { createTauriBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
+import { assembleCharacter, assembleDatabase, stubFromEntry } from 'src/ts/storage/store2/codec'
+import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
+import { createResidency } from 'src/ts/storage/store2/residency'
+import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
+import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
+import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
+import { buildSmall, fakeLists, seededEnv, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 
 //#region helpers
 
@@ -904,6 +917,110 @@ describe('an Android export reads a large asset in pieces', () => {
 })
 
 //#endregion
+
+describe('store2 batch stats cover the export only', () => {
+    const NOW = 1_700_000_000_000
+    let backend: Store2Backend
+    let unitKeys: string[] = []
+
+    /** msgpackr under Node rejects strings of 64 or more characters, so the fixture keeps them short. */
+    function shortened(value: unknown): unknown {
+        if (typeof value === 'string') {
+            return value.slice(0, 50)
+        }
+        if (Array.isArray(value)) {
+            return value.map(shortened)
+        }
+        if (typeof value === 'object' && value !== null) {
+            return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, shortened(inner)]))
+        }
+        return value
+    }
+
+    /** A store2 page of three characters on the Tauri backend: the first resident, the other two stubs of their entities. */
+    async function seedPage(): Promise<void> {
+        backend = await createTauriBackend(createTauriFilesStore({ platform: 'posix' }))
+        const env = testEnv(createClock(), 4242)
+        const fixture = { ...(shortened(buildSmall(3)) as Obj), archiveCharacters: true } as unknown as Database
+        const seeded = await seedTree(backend, JSON.parse(JSON.stringify(fixture)) as Database, env, fakeLists)
+        unitKeys = seeded.tree.units.slice(0, 3).map((unit) => unit.key)
+        const residentId = (fixture.characters[0] as unknown as Obj).chaId
+        const read = await readTreeBytes(backend, seeded.manifestKey, {
+            resident: (input) => new Set(input.entries.filter((entry) => entry.chaId === residentId).map((entry) => entry.u)),
+        })
+        if (read.status !== 'ok') {
+            throw new Error(`The seeded tree read ${read.status}.`)
+        }
+        const db = assembleDatabase(read.tree.manifest, read.tree.source, {
+            character: (entry, units) => (entry.chaId === residentId ? assembleCharacter(entry, units) : stubFromEntry(entry)),
+        })
+        const previous = previousOfTree(read.tree)
+        const context = { lists: fakeLists, env: seededEnv(77), encoder: createSaveEncoder({ previous, lists: fakeLists, env: seededEnv(77), now: () => NOW }) }
+        registerResidency(createResidency({ backend, context }))
+        vi.mocked(getDatabase).mockImplementation(() => db)
+    }
+
+    function numberIn(note: string, name: string): number {
+        const match = new RegExp(`(?:^| )${name}=(-?[0-9.]+)`).exec(note)
+        if (match === null) {
+            throw new Error(`"${note}" has no ${name}`)
+        }
+        return Number(match[1])
+    }
+
+    function collectedNote(): string {
+        const found = (ring()?.snapshot() ?? []).map((record) => record.phase).filter((phase) => phase.startsWith('export cold collected'))
+        expect(found).toHaveLength(1)
+        return found[0]
+    }
+
+    beforeEach(async () => {
+        desktop.chunk.reportFlushes()
+        fakeFs.directories.add('store2')
+        localStorage.setItem('risu-measure-import', 'on')
+        // The file mocks the cold storage reader as absent; this page reads its archived characters through the residency, as the real reader does.
+        const actual = await vi.importActual<typeof import('src/ts/process/coldstorage.svelte')>('src/ts/process/coldstorage.svelte')
+        vi.mocked(readColdStorageItem).mockImplementation(actual.readColdStorageItem)
+        await seedPage()
+    })
+
+    afterEach(() => {
+        vi.mocked(readColdStorageItem).mockImplementation(async () => ({ status: 'missing' }) as Awaited<ReturnType<typeof readColdStorageItem>>)
+        resetResidencyForTest()
+        localStorage.removeItem('risu-measure-store2-batch')
+    })
+
+    test('new behaviour: the note counts the batch reads of the export, not those made before it, and the arm reads back as on', async () => {
+        // The page's own reads before the export would pollute a counter that is not reset at its start.
+        await backend.readUnits(unitKeys)
+        expect(commandCalls('read_store2_units').length).toBeGreaterThanOrEqual(1)
+        bridge.calls.length = 0
+
+        const outcome = await SaveLocalBackup({ mode: 'stub' })
+
+        expect(outcome.status).toBe('saved')
+        const listedAt = bridge.calls.findIndex((call) => call.command === 'list_assets_sized')
+        const duringExport = (listedAt < 0 ? bridge.calls : bridge.calls.slice(0, listedAt)).filter((call) => call.command === 'read_store2_units').length
+        // A harness that does not reach the batch would pass the equality below with zeros.
+        expect(duringExport).toBeGreaterThanOrEqual(1)
+        const note = collectedNote()
+        expect(numberIn(note, 'store2BatchCalls')).toBe(duringExport)
+        expect(numberIn(note, 'store2BatchOffCalls')).toBe(0)
+    })
+
+    test('new behaviour: the knob off makes the export read per key and the note says so', async () => {
+        localStorage.setItem('risu-measure-store2-batch', 'off')
+        bridge.calls.length = 0
+
+        const outcome = await SaveLocalBackup({ mode: 'stub' })
+
+        expect(outcome.status).toBe('saved')
+        expect(commandCalls('read_store2_units')).toHaveLength(0)
+        const note = collectedNote()
+        expect(numberIn(note, 'store2BatchCalls')).toBe(0)
+        expect(numberIn(note, 'store2BatchOffCalls')).toBeGreaterThanOrEqual(1)
+    })
+})
 
 describe('a .bin export waiting on the save dialog', () => {
     type Entry = { name: string, run: () => Promise<{ status: string }> }
