@@ -674,6 +674,173 @@ describe('the carry, its answers and its undo', () => {
     })
 })
 
+describe('the renames the uses list reads (B1, B2)', () => {
+    const TEXT = 'a=Mode\nb=B\n'
+
+    function renamed(rig: CarryRig) {
+        const builder = createToggleBuilder(fakePort(TEXT), liveCarry(rig))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.checkpoint()
+        return builder
+    }
+
+    test('B1 the question holds every rename, a late line included', () => {
+        const builder = renamed(carryRig({ toggle_a: '1' }))
+        expect(builder.question?.renames).toEqual([{ from: 'a', to: 'c' }])
+        expect(builder.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+        expect(builder.usesKept).toBe(false)
+
+        const rig = carryRig({ toggle_s: '0' })
+        const port = fakePort('s=S=select=x,y\n')
+        const first = createToggleBuilder(port, liveCarry(rig))
+        const id = first.def.lines[0].id
+        first.open(id)
+        first.setOptions(id, ['y', 'x'], 'single')
+        first.dispose()
+        const second = createToggleBuilder(port, liveCarry(rig))
+        second.open(second.def.lines[0].id)
+        second.setKey(second.def.lines[0].id, 'd')
+        second.checkpoint()
+        expect(second.question?.lines).toEqual([{ kind: 'late', key: 's', now: 'd' }])
+        expect(second.usesRenames).toEqual([{ from: 's', to: 'd' }])
+    })
+
+    test('B2 Carry keeps the renames for the list and Close clears them', () => {
+        const carried = renamed(carryRig({ toggle_a: '1' }))
+        expect(carried.carryValues().ok).toBe(true)
+        expect(carried.question).toBeNull()
+        expect(carried.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+        expect(carried.usesKept).toBe(true)
+        carried.dismissUses()
+        expect(carried.usesRenames).toEqual([])
+        expect(carried.usesKept).toBe(false)
+    })
+
+    test('B2 Leave keeps the renames; a new question replaces them, and the old ones do not return when it is cancelled', () => {
+        const left = renamed(carryRig({ toggle_a: '1' }))
+        left.answerCarry()
+        expect(left.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+        expect(left.usesKept).toBe(true)
+        left.setKey(idOf(TEXT, 0), 'd')
+        left.checkpoint()
+        expect(left.usesRenames).toEqual([{ from: 'c', to: 'd' }])
+        expect(left.usesKept).toBe(false)
+        left.setKey(idOf(TEXT, 0), 'c')
+        left.checkpoint()
+        expect(left.question).toBeNull()
+        expect(left.usesRenames).toEqual([])
+    })
+
+    test('B2 an update clears the kept renames', () => {
+        const updated = renamed(carryRig({ toggle_a: '1' }))
+        updated.answerCarry()
+        expect(updated.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+        updated.noteUpdated()
+        expect(updated.usesRenames).toEqual([])
+    })
+
+    test('B2 the end of the visit clears the kept renames', () => {
+        const ended = renamed(carryRig({ toggle_a: '1' }))
+        ended.answerCarry()
+        expect(ended.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+        ended.dispose()
+        expect(ended.usesRenames).toEqual([])
+    })
+
+    test('B2 an Undo that reopens nothing leaves no kept renames behind', () => {
+        const port = fakePort(TEXT)
+        const builder = createToggleBuilder(port, liveCarry(carryRig({ toggle_a: '1' })))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.checkpoint()
+        expect(builder.carryValues().ok).toBe(true)
+        port.text = TEXT
+        builder.resync(port.text)
+        expect(builder.undoCarry().ok).toBe(true)
+        expect(builder.question).toBeNull()
+        expect(builder.usesRenames).toEqual([])
+        expect(builder.usesKept).toBe(false)
+    })
+
+    test('B1 a question with two renames holds both, in order, and the kept list holds both after Leave', () => {
+        const port = fakePort(TEXT)
+        const builder = createToggleBuilder(port, liveCarry(carryRig({ toggle_a: '1', toggle_b: '2' })))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.open(idOf(TEXT, 1))
+        expect(builder.setKey(idOf(TEXT, 1), 'd').ok).toBe(true)
+        builder.checkpoint()
+        expect(builder.usesRenames).toEqual([{ from: 'a', to: 'c' }, { from: 'b', to: 'd' }])
+        builder.answerCarry()
+        expect(builder.usesRenames).toEqual([{ from: 'a', to: 'c' }, { from: 'b', to: 'd' }])
+    })
+
+    test('O-P2 a kept rename that a resync reverts is dropped, and stays dropped when the rename is made again', () => {
+        const port = fakePort(TEXT)
+        const builder = createToggleBuilder(port, liveCarry(carryRig({ toggle_a: '1' })))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.checkpoint()
+        builder.answerCarry()
+        expect(builder.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+        const renamedText = port.text
+        port.text = TEXT
+        builder.resync(port.text)
+        expect(builder.usesRenames).toEqual([])
+        expect(builder.usesKept).toBe(false)
+        port.text = renamedText
+        builder.resync(port.text)
+        expect(builder.usesRenames).toEqual([])
+        expect(builder.usesKept).toBe(false)
+    })
+
+    test('O-P2 a kept rename whose old key a resync defines again is dropped while its new key stays defined', () => {
+        const port = fakePort(TEXT)
+        const builder = createToggleBuilder(port, liveCarry(carryRig({ toggle_a: '1' })))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.checkpoint()
+        builder.answerCarry()
+        port.text = 'c=Mode\na=New\nb=B\n'
+        builder.resync(port.text)
+        expect(builder.usesRenames).toEqual([])
+    })
+
+    test('O-P2 a key edit after Leave that moves the new key away ends the kept list at once, without a resync', () => {
+        const port = fakePort(TEXT)
+        const builder = createToggleBuilder(port, liveCarry(carryRig({ toggle_a: '1' })))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.checkpoint()
+        builder.answerCarry()
+        expect(builder.usesKept).toBe(true)
+        expect(builder.setKey(idOf(TEXT, 0), 'e').ok).toBe(true)
+        expect(builder.usesRenames).toEqual([])
+        expect(builder.usesKept).toBe(false)
+    })
+
+    test('O-P2 a kept rename whose target key a resync removes is dropped', () => {
+        const port = fakePort(TEXT)
+        const builder = createToggleBuilder(port, liveCarry(carryRig({ toggle_a: '1' })))
+        builder.open(idOf(TEXT, 0))
+        expect(builder.setKey(idOf(TEXT, 0), 'c').ok).toBe(true)
+        builder.checkpoint()
+        builder.answerCarry()
+        port.text = 'z=Z\nb=B\n'
+        builder.resync(port.text)
+        expect(builder.usesRenames).toEqual([])
+    })
+
+    test('B2 an Undo of the carry drops the kept renames and the reopened question supplies its own', () => {
+        const builder = renamed(carryRig({ toggle_a: '1' }))
+        expect(builder.carryValues().ok).toBe(true)
+        expect(builder.undoCarry().ok).toBe(true)
+        expect(builder.usesKept).toBe(false)
+        expect(builder.usesRenames).toEqual([{ from: 'a', to: 'c' }])
+    })
+})
+
 describe('F-N1 a renumbering seen in an earlier visit is not carried', () => {
     const TEXT = 'p=Pick=select=x,y\n'
 
