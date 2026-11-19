@@ -15,8 +15,8 @@ export const SHARED_CHAT_PARTS: readonly string[] = ['notifications-off-notice']
 export const LEGACY_CHAT_PARTS: readonly string[] = ['chat-messages']
 
 const CHAT_PART_NAMES: readonly string[] = [
-    'chat-action-group', 'chat-ai-law-notice', 'chat-announcer', 'chat-attachment-chip', 'chat-cold-loading', 'chat-cold-notice', 'chat-composer',
-    'chat-composer-enter-scope', 'chat-composer-host', 'chat-composer-input', 'chat-composer-persona', 'chat-composer-plus', 'chat-composer-progress',
+    'chat-action-group', 'chat-ai-law-notice', 'chat-announcer', 'chat-attaching-chip', 'chat-attaching-text', 'chat-attachment-chip', 'chat-cold-loading', 'chat-cold-notice', 'chat-composer',
+    'chat-composer-attaching', 'chat-composer-enter-scope', 'chat-composer-host', 'chat-composer-input', 'chat-composer-persona', 'chat-composer-plus', 'chat-composer-progress',
     'chat-composer-row', 'chat-composer-stop', 'chat-composer-tools', 'chat-composer-translate', 'chat-critical-action', 'chat-critical-body', 'chat-critical-handle',
     'chat-critical-header', 'chat-critical-title', 'chat-customize-action', 'chat-customize-preview', 'chat-drag-handle', 'chat-drop-indicator', 'chat-extras-strip',
     'chat-failed-card', 'chat-find-bar', 'chat-find-empty', 'chat-find-field', 'chat-find-filters', 'chat-find-results', 'chat-first-message', 'chat-floating-actions', 'chat-folder', 'chat-folder-host', 'chat-folder-menu', 'chat-folder-name',
