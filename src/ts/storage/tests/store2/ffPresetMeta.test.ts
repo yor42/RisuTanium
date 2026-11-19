@@ -47,7 +47,6 @@ import { changeToPreset, type Database } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { setFastForwardHostForTest } from 'src/ts/storage/store2/fastForward'
 import { bootB, ffSetup, ffTeardown, ffWorld, runLoopWorld, runSpyOf, signal, takenBy } from './ffFixtures'
-import { until } from './lineFixtures'
 
 /**
  * Preset meta (id, folder, slot) through the fast-forward: the page's own `changeToPreset` and the fast-forward's
@@ -96,17 +95,44 @@ function markPresetDirty(loop: ReturnType<typeof runLoopWorld>): void {
     loop.state.due = true
 }
 
+/**
+ * Resolves when the loop reports its first save. The wait is driven by the loop's own `saved` report rather than a
+ * polling deadline, so a loaded machine only makes it later; a save that never comes fails at the test timeout.
+ */
+function firstSave(loop: ReturnType<typeof runLoopWorld>): Promise<void> {
+    return new Promise<void>((resolve) => {
+        let saved = loop.state.saved
+        Object.defineProperty(loop.state, 'saved', {
+            configurable: true,
+            enumerable: true,
+            get: () => saved,
+            set: (value: number) => {
+                saved = value
+                if (saved >= 1) {
+                    resolve()
+                }
+            },
+        })
+        if (saved >= 1) {
+            resolve()
+        }
+    })
+}
+
 describe('A4 two clean preset switches over presets that carry meta', () => {
     test('the last saved switch stays, nothing asks, and every entry keeps its id, folder and slot', async () => {
         const { memory, page, b, loop } = await world()
         const run = runSpyOf(b)
         expect(b.db.botPresets[1]).toMatchObject(META[1])
+        const saved = firstSave(loop)
         chainSwitch(b.db, 2)
         markPresetDirty(loop)
         await page.commitEdit((db) => { chainSwitch(db, 1) })
         signal(loop)
-        await takenBy(b, memory)
-        await until(() => loop.state.saved >= 1, 'the page to save over the peer\'s switch', 8000)
+        await saved
+        // The page's save over the peer's switch leaves its encoding on the store's current manifest, so the check must
+        // hold on its first look: a zero budget makes it a plain assertion with no polling deadline.
+        await takenBy(b, memory, 0)
         expect(await run.mock.results[0].value).toEqual({ kind: 'applied' })
         expect(b.peer.asked).toEqual([])
         expect(b.peer.clean).toEqual([])
