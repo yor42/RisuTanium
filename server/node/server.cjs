@@ -2192,7 +2192,7 @@ app.get('/api/caps', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
-    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true, privateProxy: PROXY_ALLOW_PRIVATE, ...exportJobs.caps() });
+    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true, privateProxy: PROXY_ALLOW_PRIVATE, ...exportJobs.caps(), now: Date.now() });
 }));
 
 // Only whole, even-length hex names are keys. Everything else in the

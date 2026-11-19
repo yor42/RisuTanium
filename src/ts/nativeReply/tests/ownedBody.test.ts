@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { createPumpProbe, resolveOwnedFetch, type OwnedFetchResult, type PumpProbe } from '../ownedBody'
+import { createPumpProbe, parseReplyStamp, resolveOwnedFetch, type OwnedFetchResult, type PumpProbe } from '../ownedBody'
 import {
-    configurePageState, heldReply, holdInflight, noteBound, noteInvoked, resetPageStateForTests, settleNativeReplyInflight,
+    configurePageState, heldReply, holdInflight, noteBound, noteInvoked, resetPageStateForTests, settleNativeReplyInflight, takeAnnounced,
 } from '../pageState'
 import { readReplyBody, type ReplyListing } from '../store'
 import { RANGE_TRAILER_BYTES, TEXT_RANGE_MAX_BYTES, bytesToBase64 } from '../../storage/tauriByteTransport'
@@ -232,6 +232,136 @@ describe('resolveOwnedFetch', () => {
         const quiet = rig()
         quiet.probe.stamp = { key: KEY, outcome: 'failed', stored: false }
         expect((await quiet.run(Promise.resolve(live('x', false)))).nativeFinal).toBeUndefined()
+    })
+})
+
+describe('finality of an announced reply (T1, T1b, T2: guard, new rule)', () => {
+    const announcedDone = (r: Rig, status: number) => {
+        r.probe.stamp = { key: KEY, outcome: 'done', stored: true, announced: true, status }
+    }
+
+    test('T1: an announced stored 500 is final on the record path, with the head lost as well as seen', async () => {
+        const lost = rig({ body: JSON.stringify({ error: { message: 'boom' } }) })
+        announcedDone(lost, 500)
+        const lostResult = await lost.run(Promise.resolve(live('x', false)))
+        expect(lostResult).toMatchObject({ ok: false, status: 500, nativeFinal: true })
+        expect(heldReply(KEY)?.bodySource).toBe('record')
+
+        const seen = rig({ body: JSON.stringify({ error: { message: 'boom' } }) })
+        announcedDone(seen, 500)
+        seen.probe.head = { status: 500, headers: {} }
+        expect((await seen.run(Promise.resolve(live('x', false)))).nativeFinal).toBe(true)
+    })
+
+    test('T1: an announced stored 200 with a JSON body is not final', async () => {
+        const r = rig()
+        announcedDone(r, 200)
+        r.probe.head = { status: 200, headers: {} }
+        const result = await r.run(Promise.resolve(live()))
+        expect(result).toMatchObject({ ok: true, data: record })
+        expect(result.nativeFinal).toBeUndefined()
+    })
+
+    test('T1: an announced stored 200 whose body is not JSON fails as a record but is not final (it was told as "Replied")', async () => {
+        const r = rig({ body: '<html>oops</html>' })
+        announcedDone(r, 200)
+        r.probe.head = { status: 200, headers: {} }
+        const result = await r.run(Promise.resolve(live('x', false)))
+        expect(result.ok).toBe(false)
+        expect(result.nativeFinal).toBeUndefined()
+    })
+
+    test('T1: a 500 that was not announced is not final on either branch', async () => {
+        const r = rig({ body: JSON.stringify({ error: 'x' }) })
+        r.probe.stamp = { key: KEY, outcome: 'done', stored: true, status: 500 }
+        r.probe.head = { status: 500, headers: {} }
+        expect((await r.run(Promise.resolve(live('x', false)))).nativeFinal).toBeUndefined()
+    })
+
+    test('T1b: an announced 200 whose record cannot be read and whose live read failed is not final', async () => {
+        const r = rig({ body: new Error('io') })
+        announcedDone(r, 200)
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        const result = await r.run(Promise.resolve(live('x', false)))
+        expect(result.ok).toBe(false)
+        expect(result.nativeFinal).toBeUndefined()
+    })
+
+    test('T1b: an announced 500 whose record cannot be read and whose live read failed is final', async () => {
+        const r = rig({ body: new Error('io') })
+        announcedDone(r, 500)
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        expect((await r.run(Promise.resolve(live('x', false)))).nativeFinal).toBe(true)
+        // An ok live result is never marked final.
+        const ok = rig({ body: new Error('io') })
+        announcedDone(ok, 500)
+        expect((await ok.run(Promise.resolve(live()))).nativeFinal).toBeUndefined()
+    })
+
+    test('T2: a visible return that lists an announced stored 500 settles final from the record', async () => {
+        const r = rig({ listing: [done({ status: 500, announced: true })], body: JSON.stringify({ error: 'x' }) })
+        let finishLive: (value: OwnedFetchResult) => void = () => {}
+        const pending = r.run(new Promise<OwnedFetchResult>((resolve) => { finishLive = resolve }))
+        r.visibleCallbacks[0]()
+        const result = await pending
+        expect(result).toMatchObject({ ok: false, status: 500, nativeFinal: true })
+        expect(takeAnnounced([KEY])).toBe(true)
+        finishLive(live())
+    })
+
+    test('T2: a visible return that lists an announced stored 200 is not final but is told', async () => {
+        const r = rig({ listing: [done({ announced: true })] })
+        const pending = r.run(new Promise<OwnedFetchResult>(() => {}))
+        r.visibleCallbacks[0]()
+        const result = await pending
+        expect(result.nativeFinal).toBeUndefined()
+        expect(takeAnnounced([KEY])).toBe(true)
+    })
+
+    test('T2: a visible return that lists a stored 500 that was not announced settles retryable from the record', async () => {
+        const r = rig({ listing: [done({ status: 500 })], body: JSON.stringify({ error: 'x' }) })
+        let finishLive: (value: OwnedFetchResult) => void = () => {}
+        const pending = r.run(new Promise<OwnedFetchResult>((resolve) => { finishLive = resolve }))
+        r.visibleCallbacks[0]()
+        const result = await pending
+        expect(result).toMatchObject({ ok: false, status: 500 })
+        expect(result.nativeFinal).toBeUndefined()
+        finishLive(live())
+    })
+})
+
+describe('the page learns that the native side told the person', () => {
+    test('an announced stamp, listing or result is noted for the send; an unannounced one and a Stop are not', async () => {
+        const stamped = rig()
+        stamped.probe.stamp = { key: KEY, outcome: 'done', stored: true, announced: true, status: 200 }
+        await stamped.run(Promise.resolve(live()))
+        expect(takeAnnounced([KEY])).toBe(true)
+
+        const quiet = rig()
+        stampDone(quiet)
+        await quiet.run(Promise.resolve(live()))
+        expect(takeAnnounced([KEY])).toBe(false)
+
+        const aborted = rig()
+        aborted.probe.stamp = { key: KEY, outcome: 'done', stored: true, announced: true, status: 200 }
+        aborted.controller.abort()
+        await aborted.run(Promise.resolve(live('aborted', false)))
+        expect(takeAnnounced([KEY])).toBe(false)
+
+        const listed = rig({ visible: true, listing: [done({ announced: true })] })
+        await listed.run(Promise.resolve(live()))
+        expect(takeAnnounced([KEY])).toBe(true)
+    })
+})
+
+describe('parseReplyStamp status', () => {
+    test('a finite integer status is kept; anything else is dropped', () => {
+        const base = { key: KEY, outcome: 'done', stored: true, announced: true }
+        expect(parseReplyStamp({ ...base, status: 500 })).toEqual({ ...base, status: 500 })
+        expect(parseReplyStamp({ ...base, status: '500' })).toEqual(base)
+        expect(parseReplyStamp({ ...base, status: 500.5 })).toEqual(base)
+        expect(parseReplyStamp({ ...base, status: null })).toEqual(base)
+        expect(parseReplyStamp({ key: KEY, outcome: 'done', stored: true })).toEqual({ key: KEY, outcome: 'done', stored: true })
     })
 })
 

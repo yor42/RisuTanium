@@ -1,4 +1,5 @@
 import { encodeReplyBlob, REPLY_BLOB_PAGE_VERSION, type ReplyBlobBase } from './blob'
+import { newNoticeToken } from './notice'
 import { holdInflight, noteBound } from './pageState'
 import type { OpenAIParseContext } from '../process/request/openAI/chatBodyParse'
 
@@ -34,6 +35,15 @@ export interface NativeReplyOwnerArg {
     key: string
     pageVersion: number
     blob: string
+    /** Present only for a send that armed a native notice: the same value the arm carried. */
+    noticeToken?: number
+}
+
+/** What the native invoke takes from a bound owner: the owner argument, and the notice payload to arm just before it. */
+export interface TakenReplyOwner {
+    arg: NativeReplyOwnerArg
+    /** The arm payload whose token is `arg.noticeToken`; null when the send arms nothing. */
+    noticeJson: string | null
 }
 
 /** The bound grant a request hands to `globalFetch`; it carries no data a caller could change. */
@@ -44,11 +54,13 @@ export interface NativeReplyOwner {
 export class NativeReplyGrant {
     readonly #key: string
     readonly #base: ReplyBlobBase
+    readonly #noticeJson: string | null
     #bound = false
 
-    constructor(key: string, base: ReplyBlobBase) {
+    constructor(key: string, base: ReplyBlobBase, noticeJson: string | null) {
         this.#key = key
         this.#base = base
+        this.#noticeJson = noticeJson
     }
 
     /** Binds once; null when the grant was bound before or the blob cannot be built. */
@@ -65,7 +77,11 @@ export class NativeReplyGrant {
             return null
         }
         const owner: NativeReplyOwner = Object.freeze({ key: grant.#key })
-        pending.set(owner, { key: grant.#key, pageVersion: REPLY_BLOB_PAGE_VERSION, blob })
+        const arg: NativeReplyOwnerArg = { key: grant.#key, pageVersion: REPLY_BLOB_PAGE_VERSION, blob }
+        if (grant.#noticeJson !== null) {
+            arg.noticeToken = newNoticeToken()
+        }
+        pending.set(owner, { arg, noticeJson: grant.#noticeJson })
         noteBound(grant.#key)
         return owner
     }
@@ -76,12 +92,15 @@ export class NativeReplyGrant {
 }
 
 /** Bound owners that no native fetch has taken yet; an object that is not a key here owns nothing. */
-const pending = new WeakMap<NativeReplyOwner, NativeReplyOwnerArg>()
+const pending = new WeakMap<NativeReplyOwner, TakenReplyOwner>()
 
-/** Issues the grant of `key` and records the send's interest in it. The record does not exist until a request owns it. */
-export function issueNativeReplyGrant(key: string, base: ReplyBlobBase): NativeReplyGrant {
+/**
+ * Issues the grant of `key` and records the send's interest in it. The record does not exist until a request owns it.
+ * `noticeJson` is the arm payload of a send whose native notice may post while the page is hidden; null arms nothing.
+ */
+export function issueNativeReplyGrant(key: string, base: ReplyBlobBase, noticeJson: string | null = null): NativeReplyGrant {
     holdInflight(key)
-    return new NativeReplyGrant(key, base)
+    return new NativeReplyGrant(key, base, noticeJson)
 }
 
 /** Binds a grant to the request that parses the reply; null for no grant, a lookalike, a second bind or a failed blob. */
@@ -93,7 +112,7 @@ export function bindGrant(grant: unknown, parse: OpenAIParseContext): NativeRepl
 }
 
 /** What the native invoke carries, once: a second take, a lookalike and an unbound owner give null. */
-export function takeReplyOwner(owner: unknown): NativeReplyOwnerArg | null {
+export function takeReplyOwnerWithNotice(owner: unknown): TakenReplyOwner | null {
     if (typeof owner !== 'object' || owner === null) {
         return null
     }
@@ -103,4 +122,9 @@ export function takeReplyOwner(owner: unknown): NativeReplyOwnerArg | null {
     }
     pending.delete(owner as NativeReplyOwner)
     return taken
+}
+
+/** The owner argument alone, with the same one-shot rule as `takeReplyOwnerWithNotice`. */
+export function takeReplyOwner(owner: unknown): NativeReplyOwnerArg | null {
+    return takeReplyOwnerWithNotice(owner)?.arg ?? null
 }

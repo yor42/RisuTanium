@@ -154,6 +154,43 @@ describe('a live run of several clients against one server', () => {
     }, (LIVE_SECONDS * 4 + 240) * 1000)
 })
 
+describe('a live run with the aged collector', () => {
+    let fixture: NodeServerFixture | undefined
+
+    afterAll(async () => {
+        await fixture?.stop()
+    }, 30_000)
+
+    const AGED_MIN_AGE_MS = 1500
+
+    // Guard and diagnostic of the age rule under the live workload (L1): the same writers, lost replies and restart, with a
+    // collector that retires a unit only on its third sighting a minimum age apart. The observer judges I1 as above; the ledger
+    // judges each retire that applied with a reply (a lost-reply retire is not judged) against the observed namings, except units
+    // whose flight from upload to commit exceeded the minimum age (counted and printed). While the writers run, bulk markers and
+    // commits usually refuse or conflict the aged pass, so most judged retires apply in the writer-free phase; the binding of the
+    // record and the retires to the commit key is pinned by the real-server cases of gcPassAged.test.ts. The minimum age is
+    // injected through the pass's dependencies, never a page option.
+    test('keeps I1, and retires only units no observed state named within the minimum age', async () => {
+        fixture = await startNodeServer()
+        const report = await runLiveWorkload(fixture, { seconds: LIVE_SECONDS, seed: LIVE_SEED, committers: LIVE_COMMITTERS, restartAt: 0.5, aged: { minAgeMs: AGED_MIN_AGE_MS } })
+        console.info(`LIVE-AGED-REPORT ${JSON.stringify({ counts: report.counts, mainCounts: report.mainCounts, agedWindow: report.agedWindow })}`)
+
+        expect(report.violations).toEqual([])
+        expect(report.unexpected).toEqual([])
+        expect(report.counts['server:restart']).toBe(1)
+        expect(report.counts['commit:committed'] ?? 0).toBeGreaterThan(0)
+        expect(report.counts['observer:ok'] ?? 0).toBeGreaterThan(0)
+
+        const window = report.agedWindow
+        expect(window).not.toBeNull()
+        expect(window?.violations).toEqual([])
+        expect(window?.retired ?? 0, `No aged retire was applied (mainCounts ${JSON.stringify(report.mainCounts)})`).toBeGreaterThan(0)
+        expect(report.endState.snapshot).toBe('stable')
+        expect(report.endState.missing).toEqual([])
+        expect(report.endState.damaged).toEqual([])
+    }, (LIVE_SECONDS * 4 + 240) * 1000)
+})
+
 // ---- the client's refusal of a stub proxy ----
 
 describe('the client refuses a proxy that answers a guarded route with a page or a 405', () => {

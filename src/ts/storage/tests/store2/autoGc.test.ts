@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { MEASURE } from 'src/ts/process/memory/measureFlag'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
+import type { ByteStore, GuardedOperations } from 'src/ts/storage/store/contract'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { encodeUnit, newUnitKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
@@ -44,6 +45,21 @@ const CLEAN: AutoGcFacts = {
     restoreInProgress: () => false,
     peers: async () => 'alone',
     ownBase: () => null,
+}
+
+/** Guarded routes that answer nothing: enough to show which deps a node session is given. */
+function guardedStub(over: Partial<GuardedOperations>): GuardedOperations {
+    const refuse = async (): Promise<never> => {
+        throw new Error('The stub answers no request.')
+    }
+    return {
+        probe: async () => ({ checkOnly: true, retire: true, pieces: false }),
+        serverNow: async () => Date.now(),
+        writeChecked: refuse,
+        removeChecked: refuse,
+        retireChecked: refuse,
+        ...over,
+    }
 }
 
 beforeEach(() => {
@@ -431,12 +447,41 @@ describe('the web pass: sole-tab proof and own base', () => {
         expect(ownBase).not.toHaveBeenCalled()
     })
 
-    test.each(['node', 'opfs-transitional'] as const)('guard: a %s session runs nothing, not even a read', async (kind) => {
+    test('compatibility guard: an opfs-transitional session runs nothing, not even a read (passes before and after)', async () => {
         const page = await openWeb(30)
-        const session = Object.create(page.session, { kind: { value: kind } }) as Store2Session
+        const session = Object.create(page.session, { kind: { value: 'opfs-transitional' } }) as Store2Session
 
         expect(await runAutoGc(session, webFacts(page))).toBeNull()
         expect(page.over.calls).toEqual([])
+    })
+
+    test('guard: a node session without a byte store, or with a store lacking the guarded routes or the server clock, is refused capability-missing before any store2 read', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const session = Object.create(page.session, { kind: { value: 'node' } }) as Store2Session
+        const noClock: ByteStore = { ...createMemoryByteStore(), guarded: guardedStub({ serverNow: undefined }) }
+
+        for (const store of [undefined, createMemoryByteStore(), noClock]) {
+            expect(await runAutoGc(session, webFacts(page), store)).toMatchObject({ status: 'refused', reason: 'capability-missing' })
+        }
+        expect(page.over.calls).toEqual([])
+    })
+
+    test('guard: the node deps carry the probe, the aged deps, the peer proof and the own base; the web has no aged deps', async () => {
+        const page = await openWeb(30)
+        const facts = webFacts(page)
+        const store: ByteStore = { ...createMemoryByteStore(), guarded: guardedStub({}) }
+
+        const node = buildAutoGcDeps({ kind: 'node', backend: page.memory, idleReason: null }, facts, store)
+        const web = buildAutoGcDeps({ kind: 'indexeddb', backend: page.memory, idleReason: null }, facts, store)
+
+        expect(node?.probe).toBeTypeOf('function')
+        expect(node?.age).toBeDefined()
+        expect(node?.peers).toBeTypeOf('function')
+        expect(node?.ownBase).toBeTypeOf('function')
+        expect(web?.age).toBeUndefined()
+        expect(web?.probe).toBeUndefined()
+        expect(buildAutoGcDeps({ kind: 'node', backend: page.memory, idleReason: null }, facts)?.age, 'no store, no aged deps').toBeUndefined()
     })
 
     test('guard: an own base that is not the commit key\'s current refuses stale-base with exactly one read of the commit key', async () => {

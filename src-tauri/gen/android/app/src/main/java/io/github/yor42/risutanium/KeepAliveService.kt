@@ -144,8 +144,9 @@ class KeepAliveService : Service() {
 
       override fun applyHeld(message: HeldMessage) = replayHeld(message)
 
-      // The Stop tap enters Stopping before the notification is built and before the page is told.
-      override fun enterStopTap(): StopTap = changeDisplay { display.stopTapped() }
+      // The Stop tap enters Stopping before the notification is built and before the page is told. An
+      // entered tap also marks the held reply notices of its chat, in this same turn (D17).
+      override fun enterStopTap(): StopTap = changeDisplay { onStopTap(display, NativeReplyNotices.tokens) }
 
       override fun startForeground(): Boolean = startForegroundNow()
 
@@ -554,6 +555,18 @@ class KeepAliveService : Service() {
       val route = handOff.offerOutcome(live, notice) { instance, held -> instance.applyOutcome(held) }
       heldRouteName(route)?.let { Log.i(TAG, "Outcome held: $it") }
       logCapDrops(capBefore)
+    }
+
+    // One native reply poll's effect on the card: block runs with the live instance's display (null
+    // without one) inside the display's single change point, and the card is reposted when it says the
+    // card changed. Main thread only.
+    fun applyNativePoll(block: (KeepAliveDisplay?) -> PollEffect): PollEffect {
+      val instance = live ?: return block(null)
+      val effect = instance.changeDisplay { block(instance.display) }
+      if (effect.cardChanged) {
+        instance.repost()
+      }
+      return effect
     }
 
     // A stop clears the held messages. It matters only when a start's command is still pending at the

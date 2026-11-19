@@ -162,6 +162,7 @@ class MainActivity : TauriActivity() {
     // Below API 30 the platform reports the keyboard in the insets only under adjust-resize.
     window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     onBackPressedDispatcher.addCallback(this, backCallback)
+    NativeReplyNotices.install(applicationContext)
 
     // The content frame is the WebView's parent (wry sets the WebView as the content view), so
     // padding it moves and shrinks the page clear of the status bar, the navigation bar and a

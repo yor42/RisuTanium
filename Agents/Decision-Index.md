@@ -2021,3 +2021,261 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2214](Maintainer-Context.md#mc-2214--chore-656-sweep-option-b-delete-only-notinany-assets-2026-11-17) | CHORE-656 sweep option (b): delete only notInAny assets, 2026-11-17 |
 | [MC-2215](Maintainer-Context.md#mc-2215--chore-656-notinany-sweep-always-on-at-boot-behind-the-keep-set-complete-guard-2026-11-17) | CHORE-656 notInAny sweep always on at boot, behind the keep-set complete guard, 2026-11-17 |
 | [MC-2216](Maintainer-Context.md#mc-2216--merge-pr-42-mc-2127-fixture-fix-without-ci-on-its-approve-review-2026-11-17) | Merge PR #42 (MC-2127 fixture fix) without CI on its APPROVE review, 2026-11-17 |
+| [MC-2217](Maintainer-Context.md#mc-2217--chore-833-adds-the-adbg-push-target-tightening-2026-11-17) | CHORE-833 adds the adbg push-target tightening, 2026-11-17 |
+| [MC-2218](Maintainer-Context.md#mc-2218--studio-assets-45m-s1-refuse-a-merge-undo-whose-row-insert-fails-2026-11-17) | Studio assets 4.5m S1: refuse a merge undo whose row insert fails, 2026-11-17 |
+| [MC-2219](Maintainer-Context.md#mc-2219--45m-e1-merge-counts-are-progressive-in-this-pr-2026-11-17) | 4.5m E1: merge counts are progressive in this PR, 2026-11-17 |
+| [MC-2220](Maintainer-Context.md#mc-2220--chore-375-d2-after-three-gate-1-rejects-r7-with-the-two-guard-mechanism-2026-11-17) | CHORE-375 D2 after three Gate 1 REJECTs: r7 with the two-guard mechanism, 2026-11-17 |
+| [MC-2221](Maintainer-Context.md#mc-2221--archive-the-settings-engines-c818-anim-and-c35-upstream-sessions-2026-11-17) | Archive the settings-engines, c818-anim and c35-upstream sessions, 2026-11-17 |
+| [MC-2222](Maintainer-Context.md#mc-2222--chore-375-d2-mp-1-the-10-s-native-timeout-counts-running-time-only-2026-11-17) | CHORE-375 D2 MP-1: the 10 s native timeout counts running time only, 2026-11-17 |
+| [MC-2223](Maintainer-Context.md#mc-2223--chore-555-an-import-link-that-is-not-https-or-has-a-userinfo-part-is-refused-before-any-prompt-2026-11-17) | CHORE-555: an #import= link that is not https, or has a userinfo part, is refused before any prompt, 2026-11-17 |
+| [MC-2224](Maintainer-Context.md#mc-2224--chore-555-import_module-with-low-level-access-shows-two-prompts-2026-11-17) | CHORE-555: #import_module= with low-level access shows two prompts, 2026-11-17 |
+| [MC-2225](Maintainer-Context.md#mc-2225--chore-555-https-redirects-followed-without-a-second-prompt-non-https-final-url-refused-2026-11-17) | CHORE-555: https redirects followed without a second prompt; non-https final URL refused, 2026-11-17 |
+| [MC-2226](Maintainer-Context.md#mc-2226--chore-154-dynamic-asset-fuzzy-match-index-built-lazily-2026-11-17) | CHORE-154: dynamic-asset fuzzy-match index built lazily, 2026-11-17 |
+| [MC-2227](Maintainer-Context.md#mc-2227--pr-44-ci-red-diagnose-and-fix-2026-11-17) | PR #44 CI red: diagnose and fix, 2026-11-17 |
+| [MC-2228](Maintainer-Context.md#mc-2228--extend-the-studio-45m-refusal-to-reverts-2026-11-17) | Extend the Studio 4.5m refusal to reverts, 2026-11-17 |
+| [MC-2229](Maintainer-Context.md#mc-2229--asset-rows-and-text-in-one-history-step-are-all-or-nothing-2026-11-17) | Asset rows and text in one history step are all-or-nothing, 2026-11-17 |
+| [MC-2230](Maintainer-Context.md#mc-2230--chore-819-builds-the-content-visibility-skip-with-an-80-px-overflow-clip-margin-2026-11-17) | CHORE-819 builds the content-visibility skip with an 80 px overflow clip margin, 2026-11-17 |
+| [MC-2231](Maintainer-Context.md#mc-2231--translator-fix-for-cn-and-zh-hant-peerrecordloadouts-2026-11-17) | Translator fix for cn and zh-Hant peerRecordLoadouts, 2026-11-17 |
+| [MC-2232](Maintainer-Context.md#mc-2232--paint-containment-on-legacy-rows-4-and-up-is-accepted-2026-11-17) | Paint containment on legacy rows 4 and up is accepted, 2026-11-17 |
+| [MC-2233](Maintainer-Context.md#mc-2233--where-overflow-clip-margin-is-unsupported-nothing-is-skipped-2026-11-17) | Where overflow-clip-margin is unsupported, nothing is skipped, 2026-11-17 |
+| [MC-2234](Maintainer-Context.md#mc-2234--no-user-setting-for-the-chore-819-skip-2026-11-17) | No user setting for the CHORE-819 skip, 2026-11-17 |
+| [MC-2235](Maintainer-Context.md#mc-2235--pr-46-merges-only-after-its-stage-a-mutants-run-2026-11-17) | PR #46 merges only after its Stage A mutants run, 2026-11-17 |
+| [MC-2236](Maintainer-Context.md#mc-2236--size-and-fix-the-runscripted-python-access-id-delete-leak-now-2026-11-17) | Size and fix the runScripted Python access-id delete leak now, 2026-11-17 |
+| [MC-2237](Maintainer-Context.md#mc-2237--chore-667-per-send-rise-plateaus-close-the-ticket-2026-11-17) | CHORE-667 per-send rise plateaus; close the ticket, 2026-11-17 |
+| [MC-2238](Maintainer-Context.md#mc-2238--plain-http-lan-node-sign-in-file-a-fix-ticket-chore-840-2026-11-17) | Plain-HTTP LAN Node sign-in: file a fix ticket (CHORE-840), 2026-11-17 |
+| [MC-2239](Maintainer-Context.md#mc-2239--chore-807-s2-d2-on-phone-2-with-a-chrome-flag-superseded-2026-11-17) | CHORE-807 S2 D2 on phone 2 with a Chrome flag: superseded, 2026-11-17 |
+| [MC-2240](Maintainer-Context.md#mc-2240--amends-mc-2036-third-mutant-only-run-slot-c-2026-11-17) | Amends MC-2036: third mutant-only run slot C, 2026-11-17 |
+| [MC-2241](Maintainer-Context.md#mc-2241--chore-841-android-saf-export-truncation-ships-as-its-own-small-pr-2026-11-17) | CHORE-841: Android SAF export truncation ships as its own small PR, 2026-11-17 |
+| [MC-2242](Maintainer-Context.md#mc-2242--chore-841-keep-saved-when-the-reopen-size-is-unknown-2026-11-17) | CHORE-841: keep "saved" when the reopen size is unknown, 2026-11-17 |
+| [MC-2243](Maintainer-Context.md#mc-2243--amends-mc-2036-and-mc-2240-two-more-mutant-only-slots-d-and-e-2026-11-17) | Amends MC-2036 and MC-2240: two more mutant-only slots D and E, 2026-11-17 |
+| [MC-2244](Maintainer-Context.md#mc-2244--studio-lane-d-45m-the-reference-scanner-decides-still-matches-2026-11-17) | Studio lane D 4.5m: the reference scanner decides "still matches", 2026-11-17 |
+| [MC-2245](Maintainer-Context.md#mc-2245--accepted-limitation-l1-same-name-reference-at-the-same-offset-2026-11-17) | Accepted limitation L1: same-name reference at the same offset, 2026-11-17 |
+| [MC-2246](Maintainer-Context.md#mc-2246--narrows-mc-2218-to-steps-holding-rows-plus-text-2026-11-17) | Narrows MC-2218 to steps holding rows plus text, 2026-11-17 |
+| [MC-2247](Maintainer-Context.md#mc-2247--chore-620-default-embedding-model-becomes-multilingual-e5-small-2026-11-17) | CHORE-620 default embedding model becomes multilingual-e5-small, 2026-11-17 |
+| [MC-2248](Maintainer-Context.md#mc-2248--chore-620-oq1-existing-databases-keep-their-stored-hypamodel-2026-11-17) | CHORE-620 OQ1: existing databases keep their stored hypaModel, 2026-11-17 |
+| [MC-2249](Maintainer-Context.md#mc-2249--chore-620-oq2-bin-export-omits-an-unknown-hypamodel-value-2026-11-17) | CHORE-620 OQ2: .bin export omits an unknown hypaModel value, 2026-11-17 |
+| [MC-2250](Maintainer-Context.md#mc-2250--chore-620-oq3-no-gpu-e5-variant-in-this-ticket-2026-11-17) | CHORE-620 OQ3: no GPU e5 variant in this ticket, 2026-11-17 |
+| [MC-2251](Maintainer-Context.md#mc-2251--chore-128-s12-oq-1-drafts-as-written-button-placement-2026-11-17) | CHORE-128 S12 OQ-1: drafts as written, button placement, 2026-11-17 |
+| [MC-2252](Maintainer-Context.md#mc-2252--chore-128-s12-oq-3-v3-plugin-grants-cleared-before-the-commit-2026-11-17) | CHORE-128 S12 OQ-3: V3 plugin grants cleared before the commit, 2026-11-17 |
+| [MC-2253](Maintainer-Context.md#mc-2253--chore-128-s12-oq-5-commit-outcome-mapping-stop-with-no-retry-2026-11-17) | CHORE-128 S12 OQ-5: commit outcome mapping, stop with no retry, 2026-11-17 |
+| [MC-2254](Maintainer-Context.md#mc-2254--chore-128-s12-oq-2-and-oq-4-restore-button-in-settings-only-2026-11-17) | CHORE-128 S12 OQ-2 and OQ-4: restore button in Settings only, 2026-11-17 |
+| [MC-2255](Maintainer-Context.md#mc-2255--one-restore-button-for-both-formats-the-router-sniffs-the-picked-file-2026-11-17) | One restore button for both formats; the router sniffs the picked file, 2026-11-17 |
+| [MC-2256](Maintainer-Context.md#mc-2256--adbg-guard-r14-pick-the-note-9-download-file-only-for-local-bin-2026-11-17) | adbg guard r14: pick the Note 9 Download file only for local-*.bin, 2026-11-17 |
+| [MC-2257](Maintainer-Context.md#mc-2257--chore-351-dv-351-5-stays-partial-2026-11-17) | CHORE-351 DV-351-5 stays PARTIAL, 2026-11-17 |
+| [MC-2258](Maintainer-Context.md#mc-2258--chore-841-o1-not-run-record-why-2026-11-17) | CHORE-841 O1 NOT RUN: record why, 2026-11-17 |
+| [MC-2259](Maintainer-Context.md#mc-2259--router-classifier-for-chore-128-s12-positive-rtb-check-first-entry-check-for-bin-2026-11-17) | Router classifier for CHORE-128 S12: positive .rtb check, first-entry check for .bin, 2026-11-17 |
+| [MC-2260](Maintainer-Context.md#mc-2260--lane-d-45m-refuse-a-step-whose-removed-rows-file-is-gone-2026-11-17) | Lane D 4.5m: refuse a step whose removed row's file is gone, 2026-11-17 |
+| [MC-2261](Maintainer-Context.md#mc-2261--chore-128-s12-router-notice-for-a-file-that-is-neither-format-2026-11-17) | CHORE-128 S12 router notice for a file that is neither format, 2026-11-17 |
+| [MC-2262](Maintainer-Context.md#mc-2262--android-load-backup-locally-drops-the-bin-only-filter-2026-11-17) | Android "Load Backup Locally" drops the .bin-only filter, 2026-11-17 |
+| [MC-2263](Maintainer-Context.md#mc-2263--chore-819-commits-the-11-named-files-and-opens-the-pr-2026-11-17) | CHORE-819 commits the 11 named files and opens the PR, 2026-11-17 |
+| [MC-2264](Maintainer-Context.md#mc-2264--chore-596-dv-596-1-one-short-wi-fi-window-huggingfaceco-only-2026-11-17) | CHORE-596 DV-596-1: one short Wi-Fi window, huggingface.co only, 2026-11-17 |
+| [MC-2265](Maintainer-Context.md#mc-2265--chore-620-embedding-playground-reads-dbstatedbhypamodel-first-2026-11-17) | CHORE-620 Embedding Playground reads DBState.db.hypaModel first, 2026-11-17 |
+| [MC-2266](Maintainer-Context.md#mc-2266--clean-tab-must-not-claim-unsaved-changes-after-a-peers-selection-only-switch-2026-11-17) | Clean tab must not claim unsaved changes after a peer's selection-only switch, 2026-11-17 |
+| [MC-2267](Maintainer-Context.md#mc-2267--chore-620-committed-merged-with-originmain-pr-opened-2026-11-17) | CHORE-620 committed, merged with origin/main, PR opened, 2026-11-17 |
+| [MC-2268](Maintainer-Context.md#mc-2268--chore-471-dv-d-windows-open-with-deferred-2026-11-18) | CHORE-471 DV-D (Windows Open-with) deferred, 2026-11-18 |
+| [MC-2269](Maintainer-Context.md#mc-2269--45m-gate-2-r4-small-fix-empty-kept-name-2026-11-18) | 4.5m Gate 2 r4 small fix: empty kept name, 2026-11-18 |
+| [MC-2270](Maintainer-Context.md#mc-2270--chore-808-row-6-d-returns-in-trash-in-both-tabs-accepted-2026-11-18) | CHORE-808 row 6: D returns in Trash in both tabs, accepted, 2026-11-18 |
+| [MC-2271](Maintainer-Context.md#mc-2271--chore-833-stage-2-adds-exact-am-start-view-and-send-intents-2026-11-18) | CHORE-833 stage 2 adds exact am start VIEW and SEND intents, 2026-11-18 |
+| [MC-2272](Maintainer-Context.md#mc-2272--the-maintainer-joins-phone-2-to-wi-fi-once-for-the-mc-2264-window-2026-11-18) | The maintainer joins phone 2 to Wi-Fi once for the MC-2264 window, 2026-11-18 |
+| [MC-2273](Maintainer-Context.md#mc-2273--chore-833-adds-comandroiddocumentsui-front-package-for-hold-and-swipe-2026-11-18) | CHORE-833 adds com.android.documentsui front package for hold and swipe, 2026-11-18 |
+| [MC-2274](Maintainer-Context.md#mc-2274--chore-833-adds-one-read-only-wi-fi-and-connectivity-status-form-2026-11-18) | CHORE-833 adds one read-only Wi-Fi and connectivity status form, 2026-11-18 |
+| [MC-2275](Maintainer-Context.md#mc-2275--chore-833-intent-forms-carry-one-fixed---grant-read-uri-permission-token-2026-11-18) | CHORE-833 intent forms carry one fixed --grant-read-uri-permission token, 2026-11-18 |
+| [MC-2276](Maintainer-Context.md#mc-2276--dv-596-1-one-more-single-window-with-the-wi-fi-auto-off-handled-2026-11-18) | DV-596-1 one more single window, with the Wi-Fi auto-off handled, 2026-11-18 |
+| [MC-2277](Maintainer-Context.md#mc-2277--narrow-the-dumpsys-wifi-and-connectivity-refusal-on-playground-note-9s-2026-11-18) | Narrow the dumpsys wifi and connectivity refusal on playground Note 9s, 2026-11-18 |
+| [MC-2278](Maintainer-Context.md#mc-2278--chore-833-part-d-deny-list-on-playground-serials-2026-11-18) | CHORE-833 Part D deny list on playground serials, 2026-11-18 |
+| [MC-2279](Maintainer-Context.md#mc-2279--ci-fix-onnxruntime_node_install_cudaskip-in-the-workflows-and-dockerfile-2026-11-18) | CI fix: ONNXRUNTIME_NODE_INSTALL_CUDA=skip in the workflows and Dockerfile, 2026-11-18 |
+| [MC-2280](Maintainer-Context.md#mc-2280--the-ort-cuda-skip-fix-is-committed-and-its-pr-opened-2026-11-18) | The ORT CUDA skip fix is committed and its PR opened, 2026-11-18 |
+| [MC-2281](Maintainer-Context.md#mc-2281--dumpsys-becomes-an-allow-list-on-playground-note-9s-2026-11-18) | dumpsys becomes an allow list on playground Note 9s, 2026-11-18 |
+| [MC-2282](Maintainer-Context.md#mc-2282--lane-d-takes-the-nodeexportroutes-flake-and-chore-846-2026-11-18) | Lane D takes the nodeExportRoutes flake and CHORE-846, 2026-11-18 |
+| [MC-2283](Maintainer-Context.md#mc-2283--chore-846-park-prompt-only-content-changes-count-as-unsaved-2026-11-18) | CHORE-846 park prompt: only content changes count as unsaved, 2026-11-18 |
+| [MC-2284](Maintainer-Context.md#mc-2284--chore-846-park-prompt-stays-aware-of-unsaved-changes-before-reload-2026-11-18) | CHORE-846 park prompt stays aware of unsaved changes before Reload, 2026-11-18 |
+| [MC-2285](Maintainer-Context.md#mc-2285--nodeexportroutes-flake-race-safe-readall-and-labelled-bounds-2026-11-18) | nodeExportRoutes flake: race-safe readAll and labelled bounds, 2026-11-18 |
+| [MC-2286](Maintainer-Context.md#mc-2286--investigate-the-chore-807-g2-save-pass-mismatch-now-2026-11-18) | Investigate the CHORE-807 G2 save-pass mismatch now, 2026-11-18 |
+| [MC-2287](Maintainer-Context.md#mc-2287--chore-833-playground-dumpsys-allow-list-adds-four-forms-2026-11-18) | CHORE-833 playground dumpsys allow list adds four forms, 2026-11-18 |
+| [MC-2288](Maintainer-Context.md#mc-2288--five-chore-202-rerun-dumpsys-and-activity-forms-stay-refused-2026-11-18) | Five CHORE-202 rerun dumpsys and activity forms stay refused, 2026-11-18 |
+| [MC-2289](Maintainer-Context.md#mc-2289--chore-846-residual-windows-a-to-d-accepted-2026-11-18) | CHORE-846 residual windows (a) to (d) accepted, 2026-11-18 |
+| [MC-2290](Maintainer-Context.md#mc-2290--the-sibling-fast-forward-take-case-becomes-a-separate-follow-up-2026-11-18) | The sibling fast-forward take case becomes a separate follow-up, 2026-11-18 |
+| [MC-2291](Maintainer-Context.md#mc-2291--the-reload-press-check-ignores-view-only-differences-2026-11-18) | The Reload-press check ignores view-only differences, 2026-11-18 |
+| [MC-2292](Maintainer-Context.md#mc-2292--save-mine-overwrite-lead-investigate-once-2026-11-18) | Save mine overwrite lead: investigate once, 2026-11-18 |
+| [MC-2293](Maintainer-Context.md#mc-2293--chore-846-takes-the-simpler-judge-at-prompt-path-2026-11-18) | CHORE-846 takes the simpler judge-at-prompt path, 2026-11-18 |
+| [MC-2294](Maintainer-Context.md#mc-2294--the-chore-846-prompt-judges-only-marked-residents-2026-11-18) | The CHORE-846 prompt judges only marked residents, 2026-11-18 |
+| [MC-2295](Maintainer-Context.md#mc-2295--residual-a-widens-to-view-only-verdict-ticks-2026-11-18) | Residual (a) widens to view-only verdict ticks, 2026-11-18 |
+| [MC-2296](Maintainer-Context.md#mc-2296--hooked-fast-forward-cold-stub-investigate-defect-confirmed-by-the-investigation-2026-11-18) | Hooked fast-forward cold stub: investigate (defect confirmed by the investigation), 2026-11-18 |
+| [MC-2297](Maintainer-Context.md#mc-2297--lane-d-fixes-chore-849-before-chore-846-2026-11-18) | Lane D fixes CHORE-849 before CHORE-846, 2026-11-18 |
+| [MC-2298](Maintainer-Context.md#mc-2298--chore-846-r3-judges-settings-by-value-too-2026-11-18) | CHORE-846 r3 judges settings by value too, 2026-11-18 |
+| [MC-2299](Maintainer-Context.md#mc-2299--chore-833-committed-merged-with-originmain-pr-64-opened-2026-11-18) | CHORE-833 committed, merged with origin/main, PR #64 opened, 2026-11-18 |
+| [MC-2300](Maintainer-Context.md#mc-2300--residual-check-a-or-oracle-park-save-mine-keeps-the-pre-ff-overwrite-2026-11-18) | Residual check-a or oracle park: Save mine keeps the pre-ff overwrite, 2026-11-18 |
+| [MC-2301](Maintainer-Context.md#mc-2301--no-leftover-stub-guard-at-save-mine-or-in-the-save-loop-2026-11-18) | No leftover-stub guard at Save mine or in the save loop, 2026-11-18 |
+| [MC-2302](Maintainer-Context.md#mc-2302--chore-833-and-chore-471-dv-9-recorded-not-run-2026-11-18) | CHORE-833 and CHORE-471 DV-9 recorded NOT RUN, 2026-11-18 |
+| [MC-2303](Maintainer-Context.md#mc-2303--adbg-form-pick---id-for-documentsui-ids-only-2026-11-18) | adbg form "pick --id" for DocumentsUI ids only, 2026-11-18 |
+| [MC-2304](Maintainer-Context.md#mc-2304--no-mediastore-id-lookup-form-dv-in1-mediastore-stays-not-run-2026-11-18) | No MediaStore id lookup form; DV-IN1 MediaStore stays NOT RUN, 2026-11-18 |
+| [MC-2305](Maintainer-Context.md#mc-2305--chore-830-dv1-boots-0-and-1-now-then-a-25-hour-wait-before-boot-2-2026-11-18) | CHORE-830 DV1: boots 0 and 1 now, then a 25-hour wait before boot 2, 2026-11-18 |
+| [MC-2306](Maintainer-Context.md#mc-2306--pick---id-any-documentsui-id-matching-the-regex-2026-11-18) | pick --id: any DocumentsUI id matching the regex, 2026-11-18 |
+| [MC-2307](Maintainer-Context.md#mc-2307--chore-850-committed-merged-with-originmain-pr-66-opened-2026-11-18) | CHORE-850 committed, merged with origin/main, PR #66 opened, 2026-11-18 |
+| [MC-2308](Maintainer-Context.md#mc-2308--chore-819-dv1-recorded-as-no-verdict-2026-11-18) | CHORE-819 DV1 recorded as no verdict, 2026-11-18 |
+| [MC-2309](Maintainer-Context.md#mc-2309--chore-738-s2-flat-2-px-shadow-limit-for-chat-and-studio-2026-11-19) | CHORE-738 S2 flat 2 px shadow limit for chat and Studio, 2026-11-19 |
+| [MC-2310](Maintainer-Context.md#mc-2310--chore-738-s2-r6-whitelist-shadow-reader-2026-11-19) | CHORE-738 S2 r6: whitelist shadow reader, 2026-11-19 |
+| [MC-2311](Maintainer-Context.md#mc-2311--open-ticket-survey-start-seven-code-batches-and-close-eleven-tickets-2026-11-19) | Open-ticket survey: start seven code batches and close eleven tickets, 2026-11-19 |
+| [MC-2312](Maintainer-Context.md#mc-2312--ui-sound-effect-storage-per-device-on-by-default-where-supported-2026-11-19) | UI sound-effect storage: per-device, on by default where supported, 2026-11-19 |
+| [MC-2313](Maintainer-Context.md#mc-2313--chore-738-s3-refusal-rule-d-refuse-plain-rules-2026-11-19) | CHORE-738 S3 refusal rule "(D) Refuse plain rules", 2026-11-19 |
+| [MC-2314](Maintainer-Context.md#mc-2314--pack-colour-pairing-wording-unless-a-text-colour-that-can-actually-win-is-set-2026-11-19) | Pack colour pairing wording "unless a text colour that can actually win is set", 2026-11-19 |
+| [MC-2315](Maintainer-Context.md#mc-2315--benign-fixtures-get-important-send-and-focus-rule-fixtures-2026-11-19) | Benign fixtures get !important (Send and focus-rule fixtures), 2026-11-19 |
+| [MC-2316](Maintainer-Context.md#mc-2316--reach-parts-with-no-live-dom-judged-as-if-the-pack-paints-guard-test-2026-11-19) | Reach parts with no live DOM judged as if the pack paints (guard test), 2026-11-19 |
+| [MC-2317](Maintainer-Context.md#mc-2317--thickness-limit-extends-to-inset-box-shadow-any-colour-every-part-2026-11-19) | Thickness limit extends to inset box-shadow, any colour, every part, 2026-11-19 |
+| [MC-2318](Maintainer-Context.md#mc-2318--inset-limit-2-px-same-as-outer-2026-11-19) | Inset limit "2 px, same as outer", 2026-11-19 |
+| [MC-2319](Maintainer-Context.md#mc-2319--inset-residue-on-a-container-with-a-same-colour-descendant-label-record-as-known-gap-2026-11-19) | Inset residue on a container with a same-colour descendant label: record as known gap, 2026-11-19 |
+| [MC-2320](Maintainer-Context.md#mc-2320--focus-ring-width-capped-at-4-px-both-tokens-2026-11-19) | Focus ring width capped at 4 px (both tokens), 2026-11-19 |
+| [MC-2321](Maintainer-Context.md#mc-2321--inset-and-wide-focus-offsets-range--6-to-6-px-2026-11-19) | Inset and wide focus offsets range -6 to 6 px, 2026-11-19 |
+| [MC-2322](Maintainer-Context.md#mc-2322--settings-pattern-ring-caps-now-2026-11-19) | Settings pattern ring caps now, 2026-11-19 |
+| [MC-2323](Maintainer-Context.md#mc-2323--focus-caps-are-per-token-not-combined-2026-11-19) | Focus caps are per token, not combined, 2026-11-19 |
+| [MC-2324](Maintainer-Context.md#mc-2324--reply-parse-happens-on-the-page-on-return-native-saves-raw-body-2026-11-19) | Reply parse happens on the page on return (native saves raw body), 2026-11-19 |
+| [MC-2325](Maintainer-Context.md#mc-2325--native-reply-covers-11-chats-only-2026-11-19) | Native reply covers 1:1 chats only, 2026-11-19 |
+| [MC-2326](Maintainer-Context.md#mc-2326--recovered-reply-after-the-chat-moved-on-is-appended-at-the-end-2026-11-19) | Recovered reply after the chat moved on is appended at the end, 2026-11-19 |
+| [MC-2327](Maintainer-Context.md#mc-2327--parked-reply-one-dialog-at-launch-copy-save-as-txt-discard-later-2026-11-19) | Parked reply: one dialog at launch (Copy, Save as .txt, Discard, Later), 2026-11-19 |
+| [MC-2328](Maintainer-Context.md#mc-2328--openai-compatible-chat-format-only-in-the-first-build-2026-11-19) | OpenAI-compatible chat format only in the first build, 2026-11-19 |
+| [MC-2329](Maintainer-Context.md#mc-2329--renderer-loss-during-a-live-owned-request-is-a-later-stage-2026-11-19) | Renderer loss during a live owned request is a later stage, 2026-11-19 |
+| [MC-2330](Maintainer-Context.md#mc-2330--defaults-for-in-app-reload-and-recovered-replies-2026-11-19) | Defaults for in-app reload and recovered replies, 2026-11-19 |
+| [MC-2331](Maintainer-Context.md#mc-2331--native-reply-delivery-in-three-prs-each-with-its-own-opus-gates-2026-11-19) | Native reply delivery in three PRs, each with its own opus gates, 2026-11-19 |
+| [MC-2332](Maintainer-Context.md#mc-2332--import-cancel-only-before-the-first-write-2026-11-19) | Import Cancel only before the first write, 2026-11-19 |
+| [MC-2333](Maintainer-Context.md#mc-2333--first-build-extras-for-import-popups-2026-11-19) | First-build extras for import popups, 2026-11-19 |
+| [MC-2334](Maintainer-Context.md#mc-2334--progress-popup-defaults-module-and-character-import-first-all-alert-types-restyled-2026-11-19) | Progress popup defaults (module and character import first; all alert types restyled), 2026-11-19 |
+| [MC-2335](Maintainer-Context.md#mc-2335--chore-241-s3-dedicated-dompurify-instance-for-chat-bodies-option-a-only-2026-11-19) | CHORE-241 S3: dedicated DOMPurify instance for chat bodies (option A only), 2026-11-19 |
+| [MC-2336](Maintainer-Context.md#mc-2336--chore-241-s4-closed-edit-render-is-3-to-4-ms-the-stall-is-the-store2-save-plan-2026-11-19) | CHORE-241 S4 closed: edit render is 3 to 4 ms; the stall is the store2 save plan, 2026-11-19 |
+| [MC-2337](Maintainer-Context.md#mc-2337--chore-156-closed-item-3-already-matches-mc-257-2026-11-19) | CHORE-156 closed: item 3 already matches MC-257, 2026-11-19 |
+| [MC-2338](Maintainer-Context.md#mc-2338--settings-sheet-refuses-a-ring-width-above-4-px-2026-11-19) | Settings sheet refuses a ring width above 4 px, 2026-11-19 |
+| [MC-2339](Maintainer-Context.md#mc-2339--settings-pattern-ring-floor-is-a-separate-follow-up-ticket-2026-11-19) | Settings pattern ring floor is a separate follow-up ticket, 2026-11-19 |
+| [MC-2340](Maintainer-Context.md#mc-2340--adopt-three-upstream-changes-2026-11-19) | Adopt three upstream changes, 2026-11-19 |
+| [MC-2341](Maintainer-Context.md#mc-2341--upstream-adoption-as-a-port-pr-then-a--s-ours-merge-pr-2026-11-19) | Upstream adoption as a port PR, then a -s ours merge PR, 2026-11-19 |
+| [MC-2342](Maintainer-Context.md#mc-2342--upstream-top-level-en-keys-comfyworkflow-and-comfyworkflowinvalidjson-2026-11-19) | Upstream top-level en keys comfyWorkflow and comfyWorkflowInvalidJson, 2026-11-19 |
+| [MC-2343](Maintainer-Context.md#mc-2343--setfullchat-role-normalisation-is-skipped-the-difference-is-recorded-2026-11-19) | Setfullchat role normalisation is skipped; the difference is recorded, 2026-11-19 |
+| [MC-2344](Maintainer-Context.md#mc-2344--chore-557-s1-devserver-first-in-stage-order-2026-11-19) | CHORE-557 S1: dev:server first in stage order, 2026-11-19 |
+| [MC-2345](Maintainer-Context.md#mc-2345--chore-557-s1-remove-verify-assets-2026-11-19) | CHORE-557 S1: remove verify-assets, 2026-11-19 |
+| [MC-2346](Maintainer-Context.md#mc-2346--chore-557-s1-drop-share_target-keep-file_handlers-2026-11-19) | CHORE-557 S1: drop share_target, keep file_handlers, 2026-11-19 |
+| [MC-2347](Maintainer-Context.md#mc-2347--chore-557-stage-3-android-ignores-the-stored-useplainfetch-2026-11-19) | CHORE-557 stage 3: Android ignores the stored usePlainFetch, 2026-11-19 |
+| [MC-2348](Maintainer-Context.md#mc-2348--chore-557-no-stale-service-worker-cleanup-2026-11-19) | CHORE-557: no stale-service-worker cleanup, 2026-11-19 |
+| [MC-2349](Maintainer-Context.md#mc-2349--pack-colour-and-fill-on-the-seven-parts-refuse-every-plain-declaration-2026-11-19) | Pack colour and fill on the seven parts: refuse every plain declaration, 2026-11-19 |
+| [MC-2350](Maintainer-Context.md#mc-2350--inherited-ancestor-colour-is-a-residual-follow-up-row-for-descendant-pairing-2026-11-19) | Inherited ancestor colour is a residual; follow-up row for descendant pairing, 2026-11-19 |
+| [MC-2351](Maintainer-Context.md#mc-2351--pack-author-note-goes-in-docsdesignthemingmd-in-the-s3-pr-2026-11-19) | Pack-author note goes in docs/design/THEMING.md in the S3 PR, 2026-11-19 |
+| [MC-2352](Maintainer-Context.md#mc-2352--new-charorder-the-swapped-character-keeps-its-old-place-2026-11-19) | NEW-charorder: the swapped character keeps its old place, 2026-11-19 |
+| [MC-2353](Maintainer-Context.md#mc-2353--progress-task-card-mark-has-no-ring-progress-lives-in-the-bar-and-count-2026-11-19) | Progress task card mark has no ring; progress lives in the bar and count, 2026-11-19 |
+| [MC-2354](Maintainer-Context.md#mc-2354--cancel-ends-in-a-result-card-cancelled---nothing-was-changed-2026-11-19) | Cancel ends in a result card "Cancelled - Nothing was changed", 2026-11-19 |
+| [MC-2355](Maintainer-Context.md#mc-2355--a-second-task-replaces-the-one-shown-2026-11-19) | A second task replaces the one shown, 2026-11-19 |
+| [MC-2356](Maintainer-Context.md#mc-2356--the-three-new-chore-373-chat-parts-are-themable-2026-11-19) | The three new CHORE-373 chat parts are themable, 2026-11-19 |
+| [MC-2357](Maintainer-Context.md#mc-2357--chore-722-stage-2-seven-strings-approved-as-worded-2026-11-19) | CHORE-722 stage 2: seven strings approved as worded, 2026-11-19 |
+| [MC-2358](Maintainer-Context.md#mc-2358--a-recovered-reply-gets-the-unseen-mark-2026-11-19) | A recovered reply gets the unseen mark, 2026-11-19 |
+| [MC-2359](Maintainer-Context.md#mc-2359--image-generation-tags-left-as-they-are-2026-11-19) | Image-generation tags left as they are, 2026-11-19 |
+| [MC-2360](Maintainer-Context.md#mc-2360--discard-on-a-parked-reply-has-no-confirmation-2026-11-19) | Discard on a parked reply has no confirmation, 2026-11-19 |
+| [MC-2361](Maintainer-Context.md#mc-2361--chore-738-s3-goes-to-r3-with-an-allowlist-guard-reader-second-consecutive-reject-2026-11-19) | CHORE-738 S3 goes to r3 with an allowlist guard reader (second consecutive REJECT), 2026-11-19 |
+| [MC-2362](Maintainer-Context.md#mc-2362--locale-only-overlaps-local-merged-tree-check-instead-of-a-fresh-ci-run-2026-11-19) | Locale-only overlaps: local merged-tree check instead of a fresh CI run, 2026-11-19 |
+| [MC-2363](Maintainer-Context.md#mc-2363--ticket-status-moves-to-github-issues-and-a-projects-board-2026-11-19) | Ticket status moves to GitHub Issues and a Projects board, 2026-11-19 |
+| [MC-2364](Maintainer-Context.md#mc-2364--import-cancel-first-write-includes-asset-files-2026-11-19) | Import Cancel: "first write" includes asset files, 2026-11-19 |
+| [MC-2365](Maintainer-Context.md#mc-2365--a-replaced-import-finishes-silently-2026-11-19) | A replaced import finishes silently, 2026-11-19 |
+| [MC-2366](Maintainer-Context.md#mc-2366--realm-opensatonce-navigate-after-the-character-is-added-result-card-on-top-2026-11-19) | Realm opensAtOnce: navigate after the character is added, result card on top, 2026-11-19 |
+| [MC-2367](Maintainer-Context.md#mc-2367--agents-may-send-input-with-talkback-on-on-the-two-note-9-phones-only-2026-11-19) | Agents may send input with TalkBack on, on the two Note 9 phones only, 2026-11-19 |
+| [MC-2368](Maintainer-Context.md#mc-2368--talkback-e8-approved-including-e83-and-e84-on-phone-2-before-chore-375-d1-2026-11-19) | TalkBack E8 approved, including E8.3 and E8.4 on phone 2, before CHORE-375 D1, 2026-11-19 |
+| [MC-2369](Maintainer-Context.md#mc-2369--talkback-e9-approved-reconfirm-the-e6-throwaway-package-choice-2026-11-19) | TalkBack E9 approved; reconfirm the E6 throwaway-package choice, 2026-11-19 |
+| [MC-2370](Maintainer-Context.md#mc-2370--flat-pack-colour-and-fill-rule-plain-colour-or-fill-on-47-reach-parts-is-refused-unless-important-2026-11-19) | Flat pack colour and fill rule: plain colour or fill on 47 reach parts is refused unless !important, 2026-11-19 |
+| [MC-2371](Maintainer-Context.md#mc-2371--maintainer-observation-on-the-talkback-e9-ruling-free-text-no-ruling-chosen-2026-11-19) | Maintainer observation on the TalkBack E9 ruling (free text; no ruling chosen), 2026-11-19 |
+| [MC-2372](Maintainer-Context.md#mc-2372--commit-the-tbdriver-helper-under-agentstoolstbdriver-file-the-accessibility-defects-2026-11-19) | Commit the tbdriver helper under Agents/Tools/tbdriver; file the accessibility defects, 2026-11-19 |
+| [MC-2373](Maintainer-Context.md#mc-2373--new-emotion-list-o1-a-static-rename-sentence-2026-11-19) | NEW-emotion-list O1: a static rename sentence, 2026-11-19 |
+| [MC-2374](Maintainer-Context.md#mc-2374--new-emotion-list-o2-refuse-a-blank-name-with-a-message-2026-11-19) | NEW-emotion-list O2: refuse a blank name with a message, 2026-11-19 |
+| [MC-2375](Maintainer-Context.md#mc-2375--new-emotion-list-o3-allow-a-name-clash-2026-11-19) | NEW-emotion-list O3: allow a name clash, 2026-11-19 |
+| [MC-2376](Maintainer-Context.md#mc-2376--new-emotion-list-o4-no-winner-marker-2026-11-19) | NEW-emotion-list O4: no winner marker, 2026-11-19 |
+| [MC-2377](Maintainer-Context.md#mc-2377--new-emotion-list-o5-no-neutral-warning-2026-11-19) | NEW-emotion-list O5: no neutral warning, 2026-11-19 |
+| [MC-2378](Maintainer-Context.md#mc-2378--new-emotion-list-o6-a-short-pause-line-in-the-section-2026-11-19) | NEW-emotion-list O6: a short pause line in the section, 2026-11-19 |
+| [MC-2379](Maintainer-Context.md#mc-2379--new-emotion-list-o7-the-empty-state-points-to-the-classic-editor-2026-11-19) | NEW-emotion-list O7: the empty state points to the classic editor, 2026-11-19 |
+| [MC-2380](Maintainer-Context.md#mc-2380--new-emotion-list-o8-the-emotion-list-goes-after-the-asset-list-accepted-default-2026-11-19) | NEW-emotion-list O8: the emotion list goes after the asset list (accepted default), 2026-11-19 |
+| [MC-2381](Maintainer-Context.md#mc-2381--new-emotion-list-o9-no-add-in-the-empty-state-accepted-default-2026-11-19) | NEW-emotion-list O9: no Add in the empty state (accepted default), 2026-11-19 |
+| [MC-2382](Maintainer-Context.md#mc-2382--new-emotion-list-o10-no-reorder-accepted-default-2026-11-19) | NEW-emotion-list O10: no reorder (accepted default), 2026-11-19 |
+| [MC-2383](Maintainer-Context.md#mc-2383--new-emotion-list-o11-interim-double-report-accepted-default-2026-11-19) | NEW-emotion-list O11: interim double report (accepted default), 2026-11-19 |
+| [MC-2384](Maintainer-Context.md#mc-2384--new-emotion-list-o12-ship-unwindowed-and-measure-2026-11-19) | NEW-emotion-list O12: ship unwindowed and measure, 2026-11-19 |
+| [MC-2385](Maintainer-Context.md#mc-2385--new-emotion-list-o13-assets-in-step-names-accepted-default-2026-11-19) | NEW-emotion-list O13: assets in step names (accepted default), 2026-11-19 |
+| [MC-2386](Maintainer-Context.md#mc-2386--new-emotion-list-spec-72-g6-and-g8-deferred-to-a-follow-up-2026-11-19) | NEW-emotion-list: spec 7.2 G6 and G8 deferred to a follow-up, 2026-11-19 |
+| [MC-2387](Maintainer-Context.md#mc-2387--amends-mc-1634-ruling-2-the-usedinport-producer-belongs-to-lane-d-not-stage-45-2026-11-19) | Amends MC-1634 ruling 2: the UsedInPort producer belongs to lane D, not stage 4.5, 2026-11-19 |
+| [MC-2388](Maintainer-Context.md#mc-2388--chore-738-s3-pq-r4-1-approved-three-judge-reasons-2026-11-19) | CHORE-738 S3 PQ-R4-1 approved: three judge reasons, 2026-11-19 |
+| [MC-2389](Maintainer-Context.md#mc-2389--tab-s9-talkback-chip-and-create-check-with-tbdriver-test-only-helper-then-disable-2026-11-19) | Tab S9 TalkBack chip and Create check with tbdriver (test-only helper, then disable), 2026-11-19 |
+| [MC-2390](Maintainer-Context.md#mc-2390--app-important-hygiene-check-gets-the-three-regex-fix-unlisted-spellings-are-residue-2026-11-19) | App !important hygiene check gets the three-regex fix; unlisted spellings are residue, 2026-11-19 |
+| [MC-2391](Maintainer-Context.md#mc-2391--commit-push-and-open-the-tbdriver-pr-no-app-code-2026-11-19) | Commit, push and open the tbdriver PR (no app code), 2026-11-19 |
+| [MC-2392](Maintainer-Context.md#mc-2392--studio-asset-list-shows-the-blank-name-message-instead-of-reverting-silently-follow-up-issue-2026-11-19) | Studio asset list shows the blank-name message instead of reverting silently (follow-up issue), 2026-11-19 |
+| [MC-2393](Maintainer-Context.md#mc-2393--tab-s9-e11-install-the-release-apk-allow-one-blank-create-2026-11-19) | Tab S9 E11: install the release APK, allow one blank Create, 2026-11-19 |
+| [MC-2394](Maintainer-Context.md#mc-2394--test-on-the-pc-unless-the-behaviour-is-android-specific-three-android-devices-2026-11-19) | Test on the PC unless the behaviour is Android-specific (three Android devices), 2026-11-19 |
+| [MC-2395](Maintainer-Context.md#mc-2395--native-reply-failed-notice-reuses-reply-failed-with-the-character-name-2026-11-19) | Native reply failed notice reuses "Reply failed" with the character name, 2026-11-19 |
+| [MC-2396](Maintainer-Context.md#mc-2396--native-reply-failed-notice-is-silent-2026-11-19) | Native reply failed notice is silent, 2026-11-19 |
+| [MC-2397](Maintainer-Context.md#mc-2397--stored-http-4xx-or-5xx-while-hidden-is-final-no-automatic-retry-2026-11-19) | Stored HTTP 4xx or 5xx while hidden is final; no automatic retry, 2026-11-19 |
+| [MC-2398](Maintainer-Context.md#mc-2398--keep-alive-card-shows-finishing-up-after-a-native-done-until-the-page-returns-2026-11-19) | Keep-alive card shows "Finishing up..." after a native done, until the page returns, 2026-11-19 |
+| [MC-2399](Maintainer-Context.md#mc-2399--no-replied-notification-after-stop-was-pressed-2026-11-19) | No "Replied" notification after Stop was pressed, 2026-11-19 |
+| [MC-2400](Maintainer-Context.md#mc-2400--preflight-confirm-only-for-in-app-multi-file-picks-2026-11-20) | Preflight confirm only for in-app multi-file picks, 2026-11-20 |
+| [MC-2401](Maintainer-Context.md#mc-2401--cancel-at-the-preflight-closes-the-sheet-with-no-result-card-2026-11-20) | Cancel at the preflight closes the sheet with no result card, 2026-11-20 |
+| [MC-2402](Maintainer-Context.md#mc-2402--250-ms-arm-guard-on-the-preflight-import-button-2026-11-20) | 250 ms arm guard on the preflight Import button, 2026-11-20 |
+| [MC-2403](Maintainer-Context.md#mc-2403--the-c807-size-decision-logged-as-mc-2040-is-renumbered-mc-2403-2026-11-20) | The c807-size decision logged as MC-2040 is renumbered MC-2403, 2026-11-20 |
+| [MC-2404](Maintainer-Context.md#mc-2404--chore-329-import-imported-summaries-go-first-reroll-is-a-no-op-import-takes-all-text-entries-behind-one-confirm-2026-11-18) | CHORE-329 import: imported summaries go first, reroll is a no-op, import takes all text entries behind one confirm, 2026-11-18 |
+| [MC-2405](Maintainer-Context.md#mc-2405--chore-324-scope-the-option-applies-only-where-matching-is-partial-2026-11-18) | CHORE-324 scope: the option applies only where matching is partial, 2026-11-18 |
+| [MC-2406](Maintainer-Context.md#mc-2406--chore-159-scope-web-only-hosted-page-is-the-node-server-gc-design-ticket-2026-11-18) | CHORE-159 scope: web-only, hosted page is the Node server, GC design ticket, 2026-11-18 |
+| [MC-2407](Maintainer-Context.md#mc-2407--chore-159-bfcache-a-restored-page-reloads-instead-of-resuming-2026-11-18) | CHORE-159 bfcache: a restored page reloads instead of resuming, 2026-11-18 |
+| [MC-2408](Maintainer-Context.md#mc-2408--chore-604-second-ai-pass-on-flagged-ja-lines-2026-11-18) | CHORE-604 "Second AI pass" on flagged ja lines, 2026-11-18 |
+| [MC-2409](Maintainer-Context.md#mc-2409--cbsts-time-duplicate-registration-remove-the-dead-one-2026-11-18) | cbs.ts "{{time}}" duplicate registration: remove the dead one, 2026-11-18 |
+| [MC-2410](Maintainer-Context.md#mc-2410--voyage-key-cache-key-sharing-voyagecontext3-query-and-document-file-and-fix-now-2026-11-18) | voyage-key cache-key sharing (voyageContext3 query and document): file and fix now, 2026-11-18 |
+| [MC-2411](Maintainer-Context.md#mc-2411--chore-846-follow-up-q-847-fold-settings-and-resident-pushes-in-reorder-stays-in-chore-847-2026-11-18) | CHORE-846 follow-up Q-847: fold settings and resident pushes in, reorder stays in CHORE-847, 2026-11-18 |
+| [MC-2412](Maintainer-Context.md#mc-2412--chore-846-value-normalising-writers-count-as-unsaved-2026-11-18) | CHORE-846: value-normalising writers count as unsaved, 2026-11-18 |
+| [MC-2413](Maintainer-Context.md#mc-2413--chore-846-boot-normalisation-window-accepted-as-a-residual-2026-11-18) | CHORE-846: boot normalisation window accepted as a residual, 2026-11-18 |
+| [MC-2414](Maintainer-Context.md#mc-2414--chore-846-view-only-stubbed-module-load-content-mark-is-a-named-residual-2026-11-18) | CHORE-846: view-only stubbed-module load content mark is a named residual, 2026-11-18 |
+| [MC-2415](Maintainer-Context.md#mc-2415--chore-128-s13-sizing-answers-open-with-only-rtb-follows-bin-rules-no-android-registration-yet-2026-11-18) | CHORE-128 S13 sizing answers: open-with only, .rtb follows .bin rules, no Android registration yet, 2026-11-18 |
+| [MC-2416](Maintainer-Context.md#mc-2416--parked-review-answers-29-brought-back-4-kept-parked-2026-11-18) | Parked-review answers: 29 brought back, 4 kept parked, 2026-11-18 |
+| [MC-2417](Maintainer-Context.md#mc-2417--brought-back-tickets-close-set-and-follow-up-dispositions-2026-11-18) | Brought-back tickets: close set and follow-up dispositions, 2026-11-18 |
+| [MC-2418](Maintainer-Context.md#mc-2418--waiting-on-you-answers-closes-and-follow-ups-2026-11-18) | Waiting-on-you answers: closes and follow-ups, 2026-11-18 |
+| [MC-2419](Maintainer-Context.md#mc-2419--chore-68-answers-lost-body-image-left-out-toast-wording-cap-of-8-images-and-512-kib-2026-11-18) | CHORE-68 answers: lost body image left out, toast wording, cap of 8 images and 512 KiB, 2026-11-18 |
+| [MC-2420](Maintainer-Context.md#mc-2420--bb-import-answers-chore-117-1c-built-anyway-2026-11-18) | bb-import answers: CHORE-117-1c built anyway, 2026-11-18 |
+| [MC-2421](Maintainer-Context.md#mc-2421--bb-sizing-answers-chore-109-and-chore-108-retired-a-lite-5b-folds-in-chore-835-and-chore-837-2026-11-18) | bb-sizing answers: CHORE-109 and CHORE-108 retired; A-lite 5b folds in CHORE-835 and CHORE-837, 2026-11-18 |
+| [MC-2422](Maintainer-Context.md#mc-2422--chore-328-answers-half-life-scope-earliest-source-time-kept-reroll-keeps-its-time-2026-11-18) | CHORE-328 answers: half-life scope, earliest source time kept, reroll keeps its time, 2026-11-18 |
+| [MC-2423](Maintainer-Context.md#mc-2423--bb-import-round-3-chore-101-retry-limit-and-patch-plan-chore-102-fast-checksum-2026-11-18) | bb-import round 3: CHORE-101 retry limit and patch plan; CHORE-102 fast checksum, 2026-11-18 |
+| [MC-2424](Maintainer-Context.md#mc-2424--studio-tracks-parallelised-multiselect-2026-11-18) | Studio tracks parallelised (multiSelect), 2026-11-18 |
+| [MC-2425](Maintainer-Context.md#mc-2425--chore-128-s14-start-and-recovery-screens-take-bin-or-rtb-behind-one-button-2026-11-18) | CHORE-128 S14: start and recovery screens take .bin or .rtb behind one button, 2026-11-18 |
+| [MC-2426](Maintainer-Context.md#mc-2426--close-chore-320-and-chore-321-file-new-emotion-list-and-new-kept-file-relink-2026-11-18) | Close CHORE-320 and CHORE-321; file NEW-emotion-list and NEW-kept-file-relink, 2026-11-18 |
+| [MC-2427](Maintainer-Context.md#mc-2427--windowing-adoption-window-any-list-the-user-can-grow-2026-11-18) | Windowing adoption: window any list the user can grow, 2026-11-18 |
+| [MC-2428](Maintainer-Context.md#mc-2428--windowing-tier-new-ui-only-recommended-2026-11-18) | Windowing tier: "New UI only (Recommended)", 2026-11-18 |
+| [MC-2429](Maintainer-Context.md#mc-2429--chore-159-closed-s0-and-s1-merged-four-follow-ups-go-to-the-orphan-features-session-2026-11-18) | CHORE-159 closed (S0 and S1 merged); four follow-ups go to the orphan-features session, 2026-11-18 |
+| [MC-2430](Maintainer-Context.md#mc-2430--chore-823-answers-split-windows-rows-to-their-own-ticket-new-asset-thumbs-item-n-of-m-2026-11-18) | CHORE-823 answers: split windows rows to their own ticket; NEW-asset-thumbs; "item N of M", 2026-11-18 |
+| [MC-2431](Maintainer-Context.md#mc-2431--chore-681-translator-review-all-locales-with-new-english-small-pr-2026-11-18) | CHORE-681 translator review: all locales with new English; small PR, 2026-11-18 |
+| [MC-2432](Maintainer-Context.md#mc-2432--web-gc-retention-investigate-sharing-first-boot-notice-stop-it-recurring-2026-11-18) | Web GC: retention "Investigate sharing first"; boot notice "Stop it recurring", 2026-11-18 |
+| [MC-2433](Maintainer-Context.md#mc-2433--new-archive-notice-answers-aq-1-to-aq-4-all-recommended-2026-11-18) | NEW-archive-notice answers AQ-1 to AQ-4 (all Recommended), 2026-11-18 |
+| [MC-2434](Maintainer-Context.md#mc-2434--new-node-gc-answers-a-second-clock-always-rewrite-images-pq-b-s2-1-2026-11-18) | NEW-node-gc answers: a second clock, always rewrite images, PQ-B, S2-1, 2026-11-18 |
+| [MC-2435](Maintainer-Context.md#mc-2435--new-node-gc-implement-pr-1-plan-s2-recommended-2026-11-18) | NEW-node-gc: implement PR-1, plan S2 (Recommended), 2026-11-18 |
+| [MC-2436](Maintainer-Context.md#mc-2436--chore-451-answers-oi-1-to-oi-4-and-two-follow-ups-2026-11-18) | CHORE-451 answers OI-1 to OI-4 and two follow-ups, 2026-11-18 |
+| [MC-2437](Maintainer-Context.md#mc-2437--ui-s7-audit-answers-tickets-for-page-language-date-and-time-locale-button-names-and-contrast-theme-tokens-everywhere-2026-11-18) | UI-S7 audit answers: tickets for page language, date and time locale, button names and contrast; theme tokens everywhere, 2026-11-18 |
+| [MC-2438](Maintainer-Context.md#mc-2438--home-job-direction-home-follows-the-docsdesign-home-mockup-function-wise-2026-11-18) | Home job direction: Home follows the docs/design home mockup function-wise, 2026-11-18 |
+| [MC-2439](Maintainer-Context.md#mc-2439--theme-pack-picker-styled-not-a-plain-list-superseded-by-mc-2311-2026-11-18) | Theme-pack picker styled, not a plain list (SUPERSEDED by MC-2311), 2026-11-18 |
+| [MC-2440](Maintainer-Context.md#mc-2440--chore-128-s14b-oi-2-land-on-recovery-m1-reload-once-2026-11-18) | CHORE-128 S14b: OI-2 "Land on recovery"; M1 "Reload once", 2026-11-18 |
+| [MC-2441](Maintainer-Context.md#mc-2441--tab-s9-offload-all-four-groups-restricted-guard-blocks-pick-hold-and-tap-2026-11-18) | Tab S9 offload: all four groups; restricted guard blocks pick, hold and tap, 2026-11-18 |
+| [MC-2442](Maintainer-Context.md#mc-2442--guard-r19-oq-2-guard-refuses-a-tab-screencap-while-a-system-picker-is-in-front-2026-11-18) | Guard r19 OQ-2: guard refuses a Tab screencap while a system picker is in front, 2026-11-18 |
+| [MC-2443](Maintainer-Context.md#mc-2443--archive-audit-approval-tokens-to-src-direction-2026-11-18) | Archive audit approval; tokens-to-src direction, 2026-11-18 |
+| [MC-2444](Maintainer-Context.md#mc-2444--chip-talkback-fail-d0-then-d1-on-tab-trash-move-gets-one-confirm-2026-11-18) | Chip TalkBack FAIL: D0 then D1 on Tab; trash move gets one confirm, 2026-11-18 |
+| [MC-2445](Maintainer-Context.md#mc-2445--talkback-e1-answer-talkback-is-fine-outside-the-app-e3-approved-2026-11-18) | TalkBack E1 answer: TalkBack is fine outside the app; E3 approved, 2026-11-18 |
+| [MC-2446](Maintainer-Context.md#mc-2446--avd-survey-direction-use-local-avds-instead-of-m1-m1b-and-m2-2026-11-19) | AVD survey direction: use local AVDs instead of M1, M1b and M2, 2026-11-19 |
+| [MC-2447](Maintainer-Context.md#mc-2447--chore-375-conflict-answers-keep-merged-and-still-run-d1-2026-11-19) | CHORE-375 conflict answers: keep merged and still run D1, 2026-11-19 |
+| [MC-2448](Maintainer-Context.md#mc-2448--avd-survey-sub-answers-jump-phone-2s-clock-now-talkback-on-a-note-9-release-build-2026-11-19) | AVD survey sub-answers: jump phone 2's clock now; TalkBack on a Note 9 release build, 2026-11-19 |
+| [MC-2449](Maintainer-Context.md#mc-2449--chore-738-s2-answers-pq-a-to-pq-d-neighbour-table-shadow-counts-451-bar-refuse-neighbour-currentcolor-2026-11-19) | CHORE-738 S2 answers PQ-A to PQ-D: neighbour table, shadow counts, 4.5:1 bar, refuse neighbour currentcolor, 2026-11-19 |
+| [MC-2450](Maintainer-Context.md#mc-2450--new-chat-each-key-dup-size-a-fix-now-superseded-by-mc-2311-2026-11-19) | NEW-chat-each-key-dup: "Size a fix now" (SUPERSEDED by MC-2311), 2026-11-19 |
+| [MC-2451](Maintainer-Context.md#mc-2451--bb-import-answers-chore-227-closed-chore-102-re-parked-with-numbers-2026-11-19) | bb-import answers: CHORE-227 closed; CHORE-102 re-parked with numbers, 2026-11-19 |
+| [MC-2452](Maintainer-Context.md#mc-2452--desktop-bgcrash-investigate-now-crash-at-display-of-custombackground-2026-11-19) | Desktop bgcrash: "Investigate now"; crash at display of customBackground, 2026-11-19 |
+| [MC-2453](Maintainer-Context.md#mc-2453--e7-answers-and-note-9-guard-split-fold-into-r19a-2026-11-19) | E7 answers and Note 9 guard split: "Fold into r19a", 2026-11-19 |
+| [MC-2454](Maintainer-Context.md#mc-2454--note-9-guard-r3-preparation-danger-zones-and-full-control-accepted-2026-11-19) | Note 9 guard r3 preparation: danger zones and full control accepted, 2026-11-19 |
+| [MC-2455](Maintainer-Context.md#mc-2455--128-desktop-whole-use-limit-256-mib-2026-11-19) | #128 desktop whole-use limit: 256 MiB, 2026-11-19 |
+| [MC-2456](Maintainer-Context.md#mc-2456--pc-checks-chosen-multiselect-ui-sfx-file-ticket--size-it-2026-11-19) | PC checks chosen (multiSelect); UI SFX "File ticket + size it", 2026-11-19 |
+| [MC-2457](Maintainer-Context.md#mc-2457--chore-373-answers-progress-chip-while-a-file-writes-name-and-size-box-above-256-mib-on-desktop-2026-11-19) | CHORE-373 answers: progress chip while a file writes; name-and-size box above 256 MiB on desktop, 2026-11-19 |
+| [MC-2458](Maintainer-Context.md#mc-2458--chore-637-adaptive-early-load-trigger-at-max-of-one-screen-and-scroll-speed-times-last-mount-time-2026-11-19) | CHORE-637 "Adaptive early load" (trigger at max of one screen and scroll speed times last mount time), 2026-11-19 |
+| [MC-2459](Maintainer-Context.md#mc-2459--new-progress-popups-a-progress-bar-on-import-and-loading-popups-redesigned-with-the-ui-rework-mockup-2026-11-19) | NEW-progress-popups: a progress bar on import and loading popups, redesigned with the UI-Rework mockup, 2026-11-19 |
+| [MC-2460](Maintainer-Context.md#mc-2460--new-progress-popups-scope-widened-to-all-popups-progress-first-2026-11-19) | NEW-progress-popups scope widened to all popups, progress first, 2026-11-19 |
+| [MC-2461](Maintainer-Context.md#mc-2461--close-chore-468-and-chore-845-start-the-charlist-trio-and-two-follow-ups-2026-11-19) | Close CHORE-468 and CHORE-845; start the charlist trio and two follow-ups, 2026-11-19 |
+| [MC-2462](Maintainer-Context.md#mc-2462--chore-70-notice-answers-notices-name-the-kinds-and-a-character-count-backup-notice-gives-the-backup-date-2026-11-19) | CHORE-70 notice answers: notices name the kinds and a character count; backup notice gives the backup date, 2026-11-19 |
+| [MC-2463](Maintainer-Context.md#mc-2463--upstream-triage-direction-adopt-what-is-needed-then-git-merge-2026-11-19) | Upstream triage direction: adopt what is needed, then git merge, 2026-11-19 |
+| [MC-2464](Maintainer-Context.md#mc-2464--chore-70-three-answers-cache-filled-blocks-give-no-notice-export-after-a-complete-backup-asks-with-the-date-2026-11-19) | CHORE-70 three answers: cache-filled blocks give no notice; export after a complete backup asks with the date, 2026-11-19 |
+| [MC-2465](Maintainer-Context.md#mc-2465--device-testing-a-new-dedicated-device-testing-session-on-account-1-2026-11-19) | Device testing: a new dedicated device-testing session on account 1, 2026-11-19 |
+| [MC-2466](Maintainer-Context.md#mc-2466--start-chore-722-stage-3-android-done-notice-then-stage-0c-2026-11-19) | Start CHORE-722 stage 3: Android done notice, then stage 0c, 2026-11-19 |
+| [MC-2467](Maintainer-Context.md#mc-2467--108-n4-keeps-the-real-24-h-no-clock-shift-no-shifted-clock-diagnostic-2026-11-19) | #108 N4 keeps the real 24 h (no clock shift, no shifted-clock diagnostic), 2026-11-19 |
+| [MC-2468](Maintainer-Context.md#mc-2468--108-blocking-merge-gate-is-a-deterministic-real-server-integration-test-n4-supplementary-superseded-by-mc-2471-2026-11-19) | #108 blocking merge gate is a deterministic real-server integration test; N4 supplementary (SUPERSEDED by MC-2471), 2026-11-19 |
+| [MC-2469](Maintainer-Context.md#mc-2469--proportionality-rule-for-newly-found-coverage-gaps-2026-11-19) | Proportionality rule for newly found coverage gaps, 2026-11-19 |
+| [MC-2470](Maintainer-Context.md#mc-2470--s3d4-timing-flag-file-a-follow-up-2026-11-19) | S3d4 timing flag: file a follow-up, 2026-11-19 |
+| [MC-2471](Maintainer-Context.md#mc-2471--n4-retired-the-real-server-integration-test-replaces-it-2026-11-19) | N4 retired; the real-server integration test replaces it, 2026-11-19 |
+| [MC-2472](Maintainer-Context.md#mc-2472--batch-speed-item-measured-by-a-deterministic-test-through-the-real-sweep-path-2026-11-19) | Batch-speed item measured by a deterministic test through the real sweep path, 2026-11-19 |
+| [MC-2473](Maintainer-Context.md#mc-2473--20-x-20-px-studio-row-tick-box-folded-into-chore-823-212-2026-11-19) | 20 x 20 px Studio row tick box folded into CHORE-823 (#212), 2026-11-19 |
+| [MC-2474](Maintainer-Context.md#mc-2474--no-new-track-a-ticket-until-the-quota-resets-candidates-292-290-and-179-2026-11-19) | No new track-A ticket until the quota resets; candidates #292, #290 and #179, 2026-11-19 |

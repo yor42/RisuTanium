@@ -714,6 +714,26 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             return { checkOnly: body.checkOnly, retire: body.retire, pieces: body.pieces }
         },
 
+        async serverNow(): Promise<number> {
+            const answer = await guardedRequest({
+                operation: 'caps',
+                capability: 'caps',
+                method: 'GET',
+                headers: {},
+                checkOnlyCount: null,
+                ownConditionCount: 0,
+                retiredCount: null,
+                keysByHex: new Map(),
+                removedHex: [],
+                keyCount: 0,
+            })
+            const serverClock = answer.kind === 'ok' ? answer.body.now : undefined
+            if (typeof serverClock !== 'number' || !Number.isSafeInteger(serverClock) || serverClock < 0) {
+                throw new ServerLacksCapabilityError('caps', 'the answer lacks a non-negative integer now', false)
+            }
+            return serverClock
+        },
+
         async writeChecked(key: string, bytes: Uint8Array, condition: StoreCondition, checkOnly: readonly CheckOnlyEntry[]): Promise<WriteResult> {
             const reason = nodeAddressableViolation(key) ?? nodeCreatableViolation(key)
             if (reason !== null) {
