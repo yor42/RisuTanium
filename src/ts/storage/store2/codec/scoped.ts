@@ -357,6 +357,8 @@ interface ScopedParts {
     skipped: SkippedCharacter[]
     /** The `chaId` of every character the pass encoded. */
     encoded: string[]
+    /** The `String(chaId)` of every slot of the pass's one copy of the list: stubs, carried and skipped slots included. */
+    listed: string[]
     /** The characters carried from the previous encoding, by entity id, with the display name taken when they were carried. */
     owners: ReadonlyMap<string, string>
     /** The names (else ids) of the module stubs carried from the previous encoding. */
@@ -429,12 +431,14 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     const carriedOwners = new Map<string, string>()
     const skipped: SkippedCharacter[] = []
     const encoded: string[] = []
+    const listed: string[] = []
     for (let position = 0; position < characters.length; position++) {
         const slot = characters[position]
         if (typeof slot !== 'object' || slot === null) {
             throw new CodecInputError(`characters[${position}] is not an object.`)
         }
         const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+        listed.push(chaId)
         const stub = isColdStub(slot)
         if (stub && ambiguous.has(chaId)) {
             throw new SharedChaIdStubError(chaId)
@@ -498,7 +502,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     if (MEASURE && split !== undefined) {
         split.addMs('splitFinishTreeMs', split.now() - finishStarted)
     }
-    return { tree, parents: encoder.parents, skipped, encoded, owners: carriedOwners, modules: encoder.carriedModuleNames, skippedItems: encoder.skippedItems }
+    return { tree, parents: encoder.parents, skipped, encoded, listed, owners: carriedOwners, modules: encoder.carriedModuleNames, skippedItems: encoder.skippedItems }
 }
 
 /**
@@ -669,6 +673,11 @@ export interface ScopedPlan {
     skipped: readonly SkippedCharacter[]
     /** The `chaId` of every character the pass encoded. */
     encoded: readonly string[]
+    /**
+     * The `String(chaId)` of every slot of the pass's copy of the character list, stubs and skipped slots included. A
+     * chaId absent from it was not in the list when the pass began.
+     */
+    listed: readonly string[]
     /** Existing units the tree names without writing them (reused by digest or carried by key), and the names of the characters and module stubs carried by key. */
     carried: {
         units: number
@@ -705,7 +714,7 @@ export interface ScopedPlan {
  * is ignored: the plan owns the keys.
  */
 export async function planScopedEncode(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedPlan> {
-    const { tree, parents, skipped, encoded, owners, modules, skippedItems } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
+    const { tree, parents, skipped, encoded, listed, owners, modules, skippedItems } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
     const split = MEASURE ? scope.split : undefined
     const tailStarted = readClock(split)
     const newUnits = tree.units.filter(unit => !unit.reused).length
@@ -724,6 +733,7 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
         unchanged,
         skipped,
         encoded,
+        listed,
         carried: { units: tree.index.units.size - newUnits, owners, modules, items: skippedItems.filter(item => item.saved).map(item => item.label) },
         skippedItems,
         modulesEncoded: scope.modules,

@@ -3,8 +3,9 @@
 // size and SHA-256 are also written in goldens/README.md; the three must agree. The goldens are never regenerated.
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { strFromU8, unzipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { judgePackSheets } from './index'
+import { judgePackSheets, lintAreaPack } from './index'
 import { intakePackBytes, type IntakeResult, type PackJudge } from './intake'
 import { checkPackIcon, inspectIcon } from './packIcon'
 
@@ -88,4 +89,27 @@ describe('T1-31 golden v1 packs', () => {
             expect(pack.size.warn).toBe(false)
         })
     }
+})
+
+// Intake skips studio.css today, so no installed pack changes verdict. These rows record what the Studio judge says of the frozen sheets, so a build that starts
+// applying Studio sheets settles the Banana Cocoa verdict first (MC-2313, MC-2370).
+describe('the frozen Studio sheets under the plain-paint rule', () => {
+    const PLAIN_PAINT = /\(MC-2313, MC-2370\)/
+    const studioSheet = (file: string): string => strFromU8(unzipSync(bytesOf(file))['studio.css'])
+
+    it('RG1 (REPRO): the Banana Cocoa Studio sheet is refused with exactly three plain-paint errors', () => {
+        const result = lintAreaPack('studio', studioSheet('banana-cocoa.risutheme'), 'banana-cocoa')
+        expect(result.ok).toBe(false)
+        const plain = result.errors.filter((e) => PLAIN_PAINT.test(e.why))
+        expect(plain.map((e) => `${e.selector} ${e.prop}`).sort(), JSON.stringify(result.errors)).toEqual([
+            '[data-part="studio-side-tab"] background',
+            '[data-part="studio-tree-row"] background',
+            '[data-part="studio-tree-row"] color',
+        ])
+    })
+
+    it('RG2 (GUARD, accepted before and after): the Origin Navy Studio sheet is accepted', () => {
+        const result = lintAreaPack('studio', studioSheet('origin-navy.risutheme'), 'origin-navy')
+        expect(result.ok, JSON.stringify(result.errors)).toBe(true)
+    })
 })

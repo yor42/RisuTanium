@@ -22,7 +22,7 @@ export interface alertData{
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
@@ -30,6 +30,8 @@ export interface alertData{
     choices?: string[],
     /** The rows of a `peerConflicts` prompt; its answer is the JSON of `{ [row id]: choice }`. */
     peerConflicts?: PeerConflictRowView[],
+    /** The reply of a `parkedReply` prompt: the character's name and the reply text, both shown as text. Its answer is `discard` or `later`. */
+    parkedReply?: { name: string, text: string },
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */

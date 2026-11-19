@@ -23,16 +23,16 @@ export const NEW_BENIGN = {
     ['the new shared tokens inside their limits', ':root{--nexus-focus-ring-width:3px;--nexus-focus-ring-offset:4px;--nexus-touch:40px;--nexus-warm-rgb:255 179 138;--nexus-success-rgb:110 231 168}'],
     ['a field border at 40%', ':root{--nexus-field-border:rgb(255 255 255 / 0.4)}'],
     ['an opaque sheet and toast', ':root{--color-surface-sheet:#10112e;--color-surface-toast:#1d1f48}'],
-    ['a focus colour on a focus rule', '[data-part="chat-send"]:focus-visible{background:#fee500;color:#191919}'],
+    ['a focus colour on a focus rule', '[data-part="chat-send"]:focus-visible{background:#fee500 !important;color:#191919 !important}'],
   ],
   chat: [
-    ['recolour and reshape Send (reach)', '[data-part="chat-send"]{background:#fee500;color:#191919;border-radius:999px}'],
+    ['recolour and reshape Send (reach)', '[data-part="chat-send"]{background:#fee500 !important;color:#191919 !important;border-radius:999px}'],
     ['respace the composer (reach)', '[data-part="chat-composer"]{padding:8px 12px;border-radius:20px}'],
-    ['recolour a list row (reach)', '[data-part="chat-list-row"]{border-radius:12px;background:rgb(255 255 255 / 0.05)}'],
+    ['recolour a list row (reach)', '[data-part="chat-list-row"]{border-radius:12px;background:rgb(255 255 255 / 0.05) !important}'],
     ['a safe leaf hidden', '[data-part="chat-message-badges"]{display:none}'],
   ],
   home: [['recolour the rail item (reach)', '[data-part="home-rail-item"]{border-radius:14px;padding:8px 12px}'], ['persona chip recolour (reach)', '[data-part="home-pill"]{background:#fee500;color:#191919}']],
-  studio: [['recolour Apply (reach)', '[data-part="studio-item-apply"]{background:#fee500;color:#191919;border-radius:10px}'], ['recolour the save slot (reach)', '[data-part="studio-save-slot"]{border-radius:999px;padding:2px 10px}']],
+  studio: [['recolour Apply (reach)', '[data-part="studio-item-apply"]{background:#fee500 !important;color:#191919 !important;border-radius:10px}'], ['recolour the save slot (reach)', '[data-part="studio-save-slot"]{border-radius:999px;padding:2px 10px}']],
   settings: [['recolour the index item (reach)', '[data-part="settings-index-item"]{border-radius:12px;padding:6px 10px}'], ['a safe leaf hidden', '[data-part="settings-section-title"]{display:none}']],
 };
 // DD-242/243 hostile packs that the two reviews did not contain (one per rule, per area where the part names differ)
