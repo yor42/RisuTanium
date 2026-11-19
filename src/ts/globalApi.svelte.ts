@@ -30,7 +30,11 @@ import { ASSET_RETAINED_KEY } from "./studio/assets/assetOwnerKeys";
 import { appendIfAbsent, installCharacterSaveMarks, type SaveMarkKind } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
-import type { ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
+import type { CharacterCommit, ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
+import { takeReplyOwner, type NativeReplyOwner } from "./nativeReply/grant";
+import { createPumpProbe, isOrphanReplyEvent, parseReplyStamp, resolveOwnedFetch, type PumpProbe } from "./nativeReply/ownedBody";
+import { noteInvoked, noteUnowned, requestReconcile } from "./nativeReply/pageState";
+import { createReplyStore } from "./nativeReply/store";
 import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
@@ -1332,6 +1336,30 @@ export function moduleCommitVerdict(moduleId: string): 'saved' | 'unsavable' | '
     return lastModuleHold.carriedWhole ? 'blocked' : 'saved'
 }
 
+/** The character statement of the latest reported commit; the clean one before any: nothing listed means nothing is known to be gone. */
+let lastCommitCharacters: CharacterCommit = { listed: null, encoded: new Set(), skipped: new Set() }
+
+/**
+ * What the latest reported commit did with character `chaId` (compared as `String(chaId)`): `saved` when the pass wrote
+ * it; `skipped` when the pass could not read it and kept its saved copy, or never had one; `gone` when the pass's copy
+ * of the list did not hold it; `absent` otherwise (a stub or a character the pass did not name). The order is
+ * load-bearing: a never-saved skipped slot is listed but in no tree, so `skipped` must be judged before `gone` can
+ * matter. Like `moduleCommitVerdict`, inside a next-commit callback it speaks for the commit that fired it.
+ */
+export function characterCommitVerdict(chaId: string | number): 'saved' | 'skipped' | 'gone' | 'absent' {
+    const id = String(chaId)
+    if (lastCommitCharacters.encoded.has(id)) {
+        return 'saved'
+    }
+    if (lastCommitCharacters.skipped.has(id)) {
+        return 'skipped'
+    }
+    if (lastCommitCharacters.listed !== null && !lastCommitCharacters.listed.has(id)) {
+        return 'gone'
+    }
+    return 'absent'
+}
+
 /** True when saving has stopped. The store's running value is the empty string, so test truthiness, never `!== null`. */
 export function isSavingStopped(): boolean {
     return Boolean(get(savingStoppedReason))
@@ -1876,9 +1904,10 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
                 alertToast(unsavableItemNotice(item))
             }
         },
-        saved(hold) {
+        saved(hold, characters) {
             // First, before anything that can throw and before the callbacks: a callback reads the hold of its own commit.
             lastModuleHold = hold
+            lastCommitCharacters = characters
             saveFailureStore.set(null)
             lastIterationCommitted = true
             fireNextCommitCallbacks()
@@ -2083,21 +2112,29 @@ export interface GlobalFetchArgs {
      * that route. A caller's `requestTimeoutMs` still bounds the request through `globalFetch`.
      */
     deliverWhileFrozen?: boolean;
+    /**
+     * Fork-specific: the bound owner of this request's reply record (`bindGrant`). Only the native event route of
+     * `fetchWithTauri` reads it; only an owner issued and bound by the page's own send is taken, so a caller's lookalike
+     * object owns nothing.
+     */
+    nativeReply?: NativeReplyOwner | null;
 }
 
 /**
  * Interface representing the result of the global fetch function.
- * 
+ *
  * @interface GlobalFetchResult
  * @property {boolean} ok - Whether the request was successful.
  * @property {any} data - The data returned from the request.
  * @property {{ [key: string]: string }} headers - The headers returned from the request.
+ * @property {boolean} [nativeFinal] - The failure was announced to the person by the native side: the turn is over and no retry follows.
  */
 interface GlobalFetchResult {
     ok: boolean;
     data: any;
     headers: { [key: string]: string };
     status: number;
+    nativeFinal?: boolean;
 }
 
 /**
@@ -2349,6 +2386,40 @@ const pluginDefaultUserAgent = 'tauri-plugin-http/2.8.0';
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
 async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs, internal?: NativeInternal): Promise<GlobalFetchResult> {
+    // An untrusted request and a raw read never own a reply; neither does a request without a bound owner.
+    const owner = internal || arg.rawResponse ? null : (arg.nativeReply ?? null);
+    if (owner === null) {
+        return await fetchWithNativeEventsLive(url, arg, internal);
+    }
+    const probe = createPumpProbe();
+    // The live branch never rejects: its failures are results, as for an unowned request.
+    const live = fetchWithNativeEventsLive(url, arg, internal, owner, probe);
+    return await resolveOwnedFetch(owner.key, live, {
+        probe,
+        signal: arg.abortSignal,
+        isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+        onVisible: (callback) => {
+            const listener = () => {
+                if (document.visibilityState === 'visible') {
+                    callback();
+                }
+            };
+            document.addEventListener('visibilitychange', listener);
+            return () => document.removeEventListener('visibilitychange', listener);
+        },
+        store: nativeReplyStore(),
+    });
+}
+
+let nativeReplyStoreInstance: ReturnType<typeof createReplyStore> | null = null;
+
+function nativeReplyStore(): ReturnType<typeof createReplyStore> {
+    nativeReplyStoreInstance ??= createReplyStore();
+    return nativeReplyStoreInstance;
+}
+
+/** The live branch of `fetchWithNativeEvents`: one native request, its body read from the events. */
+async function fetchWithNativeEventsLive(url: string, arg: GlobalFetchArgs, internal?: NativeInternal, owner?: NativeReplyOwner, probe?: PumpProbe): Promise<GlobalFetchResult> {
     try {
         const headers: { [key: string]: string } = { 'Content-Type': 'application/json', ...arg.headers };
         if (!Object.keys(headers).some((key) => key.toLowerCase() === 'user-agent')) {
@@ -2363,6 +2434,8 @@ async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs, internal
             chatId: arg.chatId,
             logFetch: false,
             noNativeTimeout: true,
+            nativeReply: owner,
+            pumpProbe: probe,
         }, internal);
         const data = arg.rawResponse ? new Uint8Array(await response.arrayBuffer()) : await parseJsonBody(response);
         // A stop after the head closes the stream cleanly, so a cut-off body must not pass as a reply.
@@ -2961,7 +3034,9 @@ interface StreamedFetchHeaderData {
  */
 interface StreamedFetchEndData {
     type: 'end',
-    id: string
+    id: string,
+    /** Present on the end of an owned request: what its record says. */
+    reply?: unknown
 }
 
 /**
@@ -2972,14 +3047,27 @@ interface StreamedFetchEndData {
 interface StreamedFetchErrorData {
     type: 'error',
     body: string,
-    id: string
+    id: string,
+    reply?: unknown
+}
+
+/**
+ * The first event of an owned request: whether the native side opened the reply's record.
+ * @interface
+ */
+interface StreamedFetchOwnerData {
+    type: 'owner',
+    id: string,
+    key: string,
+    owned: boolean,
+    reason?: string
 }
 
 /**
  * Type representing a streamed fetch chunk.
- * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData} StreamedFetchChunk
+ * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData} StreamedFetchChunk
  */
-type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData
+type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData | StreamedFetchOwnerData
 
 /**
  * Interface representing a streamed fetch plugin.
@@ -3022,7 +3110,15 @@ if (isTauri) {
         try {
             const parsed = JSON.parse(event.payload as string)
             const id = parsed.id
-            nativeFetchData[id]?.push(parsed)
+            if (nativeFetchData[id] === undefined) {
+                // An owned request whose pump is gone (Stop, a reload) still ends in its record: the event tells the
+                // reconcile that the record may be ready.
+                if (isOrphanReplyEvent(parsed)) {
+                    requestReconcile()
+                }
+            } else {
+                nativeFetchData[id].push(parsed)
+            }
             wakeNativeFetch(id)
         } catch (error) {
             console.error(error)
@@ -3273,6 +3369,10 @@ export async function fetchNative(url: string, arg: {
     networkRoute?: 'auto' | 'local_network'
     /** Sends the native no-limit sentinel instead of the idle limit (no data for 600 s); a given `requestTimeoutMs` still wins. */
     noNativeTimeout?: boolean
+    /** A bound reply owner (`bindGrant`): taken once, and never by an untrusted request. */
+    nativeReply?: NativeReplyOwner | null
+    /** Receives what the event pump learns of an owned request; a caller-supplied probe changes nothing else. */
+    pumpProbe?: PumpProbe
 }, internal?: NativeInternal): Promise<Response> {
 
     assertNoSecretRef(arg.headers, url)
@@ -3368,6 +3468,13 @@ export async function fetchNative(url: string, arg: {
         }
         let fetchId = fetchIdPrefix + '-' + fetchIndex.toString().padStart(5, '0')
         nativeFetchData[fetchId] = []
+        // The owner is taken here, with the listeners set up and the abort check passed: a Stop during listener setup
+        // threw above and took nothing, and an untrusted request never owns. A forged or already taken owner gives null.
+        const replyOwner = isTauri && !internal ? takeReplyOwner(arg.nativeReply) : null
+        const probe = replyOwner !== null ? arg.pumpProbe : undefined
+        if (replyOwner !== null) {
+            noteInvoked(replyOwner.key)
+        }
         // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
         let resolved = false
         // The native request was stopped or abandoned; the pump discards what is left.
@@ -3407,6 +3514,9 @@ export async function fetchNative(url: string, arg: {
             sendCancel()
             wakeNativeFetch(fetchId)
         }
+        if (probe) {
+            probe.abandon = abandonNative
+        }
 
         // Stop is the caller's own signal, so the listener outlives the timeout relay that
         // fetchNative drops when it returns. Removed by finish().
@@ -3432,7 +3542,9 @@ export async function fetchNative(url: string, arg: {
                 // whole request, body included; 0 is no limit and an absent value uses the idle limit (no data for 600 s).
                 timeoutSecs: arg.requestTimeoutMs
                     ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000))
-                    : (arg.noNativeTimeout ? 0 : undefined)
+                    : (arg.noNativeTimeout ? 0 : undefined),
+                // The key, the blob's page version and the blob: Rust opens the reply's record before it sends.
+                ...(replyOwner !== null ? { replyOwner } : {}),
             }).then((res) => {
                 try {
                     const parsedRes = JSON.parse(res as string)
@@ -3535,16 +3647,33 @@ export async function fetchNative(url: string, arg: {
                                         cancelled = true
                                     }
                                 }
+                                if (data.type === 'owner' && replyOwner !== null) {
+                                    if (probe) {
+                                        probe.owned = data.owned === true
+                                    }
+                                    if (data.owned !== true) {
+                                        noteUnowned(replyOwner.key)
+                                    }
+                                }
                                 if (data.type === 'headers') {
                                     resHeaders = data.body
                                     status = data.status
+                                    if (probe) {
+                                        probe.head = { status: data.status, headers: data.body }
+                                    }
                                     settleHeaders()
                                 }
                                 if (data.type === 'end') {
+                                    if (probe) {
+                                        probe.stamp = parseReplyStamp(data.reply)
+                                    }
                                     resolved = true
                                     settleHeaders()
                                 }
                                 if (data.type === 'error') {
+                                    if (probe) {
+                                        probe.stamp = parseReplyStamp(data.reply)
+                                    }
                                     failNative(data.body)
                                 }
                                 await Promise.resolve()

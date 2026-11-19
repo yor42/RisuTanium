@@ -461,7 +461,7 @@ export class RangeReadChangedError extends Error {
     }
 }
 
-interface RangePiece {
+export interface RangePiece {
     bytes: Uint8Array
     total: number
     identity: string
@@ -737,15 +737,23 @@ async function requestPiece(key: string, offset: number, len: number, text = fal
             endRangeRead(mark)
         }
     }
+    return splitRangeReply(response, key)
+}
+
+/**
+ * Splits one range reply into the piece and what its fixed trailer says (the file's size, first word, and its identity).
+ * `label` names the read in an error. A reply of any other shape than piece plus trailer throws.
+ */
+export function splitRangeReply(response: Uint8Array, label: string): RangePiece {
     if (response.length < RANGE_TRAILER_BYTES) {
-        throw new Error(`the range read of ${key} answered ${response.length} bytes, fewer than its trailer`)
+        throw new Error(`the range read of ${label} answered ${response.length} bytes, fewer than its trailer`)
     }
     const pieceLength = response.length - RANGE_TRAILER_BYTES
     const trailer = response.subarray(pieceLength)
     const words = new DataView(trailer.buffer, trailer.byteOffset, trailer.byteLength)
     const total = Number(words.getBigUint64(0, true))
     if (!Number.isSafeInteger(total)) {
-        throw new Error(`the range read of ${key} reported the size ${total}`)
+        throw new Error(`the range read of ${label} reported the size ${total}`)
     }
     let identity = ''
     for (const byte of trailer) {

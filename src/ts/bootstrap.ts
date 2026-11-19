@@ -12,7 +12,7 @@ import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertInput, alertToast } from "./alert";
-import { queueNotice, noticesSettled } from "./alertPrompts";
+import { queueNotice, noticesSettled, askPrompt } from "./alertPrompts";
 import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
@@ -52,11 +52,24 @@ import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { isTrashPurgeDue } from "./storage/trashPurge";
 import { startAvatarThumbSweep } from "./media/avatarThumb";
 import {
+    afterNextSaveCommit,
+    characterCommitVerdict,
     forageStorage,
+    getCommittedSaveMarkCount,
+    getSaveMarkCount,
+    requestSaveNow,
     saveDb,
     setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
+import { fillLang } from "./../lang/fill";
+import { isAndroidTransport } from "./storage/tauriByteTransport";
+import { markCharacterForSave } from "./storage/characterSaveMarks";
+import { configurePageState, requestReconcile, setReconcileTrigger } from "./nativeReply/pageState";
+import { createReconciler, recoveredText, type ReconcileNotes } from "./nativeReply/reconcile";
+import { reconcileGateOpen } from "./nativeReply/gate";
+import { setParkedReplyAsker, showParkedReplies } from "./nativeReply/parkedDialog";
+import { createReplyStore } from "./nativeReply/store";
 import { isTauri } from "./platform";
 import { isTauriDesktop } from "./tauriDesktop";
 import { registerModelDynamic } from "./model/modellist";
@@ -474,6 +487,9 @@ export async function loadData() {
             registerModelDynamic()
             if (getPageStorageMode().kind !== 'read-only') {
                 saveDb()
+                // After saving has started: the reconcile appends replies the native side received while this page
+                // could not see them, and their saves are waited for through the commits saveDb makes.
+                startNativeReply()
             }
             moduleUpdate()
             // Recording attaches handlers to the promise, which marks a failure
@@ -870,4 +886,88 @@ async function checkNewFormat(): Promise<void> {
  */
 export function assignIds() {
     repairDatabaseIds({ characters: DBState?.db?.characters })
+}
+
+let nativeReplyStarted = false
+
+/**
+ * Starts the native reply reconcile of an Android page: the page state that waits for saves, the reconcile that places
+ * replies recorded while the page could not see them, and its triggers (launch and every return to visible). Other
+ * platforms own no replies, so nothing is installed. Runs once, after saving has started.
+ */
+function startNativeReply(): void {
+    if (nativeReplyStarted || !isAndroidTransport()) {
+        return
+    }
+    nativeReplyStarted = true
+    const store = createReplyStore()
+    const notes: ReconcileNotes = {
+        failedElsewhere: (name) => fillLang(language.replyFailedElsewhere, { name }),
+        stoppedElsewhere: (name) => fillLang(language.replyStoppedElsewhere, { name }),
+        interrupted: (name) => fillLang(language.nativeReplyInterrupted, { name }),
+        unreadable: (key, problem) => fillLang(language.nativeReplyUnreadable, { key, problem }),
+    }
+    // Back and every other way out of the dialog answer `later`: only a press on Discard removes a record.
+    setParkedReplyAsker(async (reply) => {
+        const answer = await askPrompt({
+            type: 'parkedReply',
+            msg: language.parkedReplyTitle,
+            parkedReply: { name: reply.name, text: reply.text },
+        })
+        return answer === 'discard' ? 'discard' : 'later'
+    })
+    const reconciler = createReconciler({
+        store,
+        gate: () => reconcileGateOpen({
+            readOnly: getPageStorageMode().kind === 'read-only',
+            didFirstSetup: getDatabase().didFirstSetup,
+            visible: document.visibilityState === 'visible',
+        }),
+        notice: queueNotice,
+        notes,
+        recoverText: async (listing, blob, bodyText) => {
+            const [{ risuEscape }, { pluginV2 }, { createRunSubject }] = await Promise.all([
+                import('./parser/parser.svelte'),
+                import('./plugins/plugins.svelte'),
+                import('./process/chatOrigin'),
+            ])
+            return await recoveredText(listing.status, bodyText, blob, {
+                escape: risuEscape,
+                replacers: async (text) => {
+                    let replaced = text
+                    for (const replacer of pluginV2.replacerafterRequest) {
+                        replaced = await replacer(replaced, 'model')
+                    }
+                    return replaced
+                },
+                subject: createRunSubject({ chaId: blob.target.chaId, chatId: blob.target.chatId }),
+            })
+        },
+        apply: async (input) => (await import('./process/index.svelte')).applyRecoveredReply(input),
+        restoreCharacter: async (chaId) => (await import('./process/coldMemberRestore')).restoreColdCharacterByChaId(chaId),
+        preLoadChat: async (characterIndex, chatIndex) => (await import('./process/coldstorage.svelte')).preLoadChat(characterIndex, chatIndex),
+        showParked: (items) => showParkedReplies(items, {
+            discard: (key) => store.discard(key),
+            discardFailed: (reply, error) => alertToast(`${reply.name}: ${error instanceof Error ? error.message : String(error)}`),
+        }),
+    })
+    configurePageState({
+        store,
+        waiter: {
+            committedMarkCount: getCommittedSaveMarkCount,
+            markCount: getSaveMarkCount,
+            verdict: characterCommitVerdict,
+            afterNextCommit: afterNextSaveCommit,
+            markCharacter: markCharacterForSave,
+            requestSaveNow,
+        },
+        onUnreadable: reconciler.reportUnreadable,
+    })
+    setReconcileTrigger(() => { void reconciler.request() })
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            requestReconcile()
+        }
+    })
+    requestReconcile()
 }
