@@ -1629,12 +1629,6 @@ export function sweepDraftRegistrations(now: number = Date.now()): void {
     draftContentOrphanGate.sweepExpiredRegistrations(now)
 }
 
-/** What a block is called to a person: its character's name when it is a character's block, otherwise plain words for the kind of data. An internal block name is never shown. */
-export function describeBlockForPerson(blockName: string): string {
-    const character = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId) === blockName)
-    return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
-}
-
 /**
  * What an unsavable character is called in its notice: its quoted name, else its quoted id. Total: a hostile name or id
  * getter must not reach the save loop.

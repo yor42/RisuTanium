@@ -1,7 +1,6 @@
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { DBState, selectedCharID } from "../stores.svelte"
 import { get } from "svelte/store"
-import { listStoredUnitNames } from "../storage/loadTimeListing"
 import type { ReadResult, StoreCondition } from "../storage/store/contract"
 import { getAppStore } from "../storage/store/appStore"
 import { NodeHttpError } from "../storage/store/nodeHttpStore"
@@ -12,7 +11,7 @@ import { alertConfirm } from "../alert"
 import { language } from "src/lang"
 import type { Database } from "../storage/database.svelte"
 import { isPluginStorageIndex, largeIdsOfIndex } from "./pluginStorageIndex"
-import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHeader, getColdStorageAffectedCharacters, getColdStorageBackupName, isColdStorageBackupData, isRestorableColdStorageKey, listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, mergeRetriedColdChatSideFields, type ColdBackupRoot, type ColdReadErrorKind, type PreLoadChatResult, type RetryLegacyColdChatLoadResult } from "./coldstorageData"
+import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHeader, getColdStorageAffectedCharacters, getColdStorageBackupName, isColdStorageBackupData, isRestorableColdStorageKey, listColdBackupRoots, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, mergeRetriedColdChatSideFields, type ColdBackupRoot, type ColdReadErrorKind, type PreLoadChatResult, type RetryLegacyColdChatLoadResult } from "./coldstorageData"
 import { isWriting } from "./chatOrigin"
 import { isSafeColdStorageKey } from "./coldStorageKey"
 import { withoutColdValueForkOnly, type ForkOnlyChatLabel } from "../drive/exportAlternatives"
@@ -20,7 +19,6 @@ import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./co
 import { beginChokePoint } from "./memory/busyActions"
 import { noteReadSize, noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 import { getResidency, isEntityUnitKey, noteResidencyRead } from "../storage/store2/residencyActive"
-import { getPageStorageMode, pageRunsLegacyDeleters } from "../storage/pageStorageMode"
 
 export {
     coldStorageHeader,
@@ -78,10 +76,7 @@ export async function getColdStorageItem(key:string) {
  * result `preLoadChat` and `retryLegacyColdChatLoad` return (the legacy Retry
  * panel hides Retry for it). Every consumer that keeps, skips, deletes, counts
  * or retries data decides by `status` alone, so every `'error'` is treated
- * the same, except one: the manual clean-up (`storage/manualCleanup.ts`) also
- * reads `kind`, for the archived chats it follows and never for a blob. It
- * keeps a `'damaged'` chat and follows nothing from it; any other error stops
- * the run. The kinds:
+ * the same. The kinds:
  *   - `'unavailable'` -- the page has no storage for archived data: its byte
  *                        store cannot be opened (`AppStoreUnavailableError`).
  *                        A browser without `navigator.storage.getDirectory`
@@ -343,8 +338,7 @@ async function readLocalColdStorageValue(key: string): Promise<ColdStorageReadRe
  * `getColdStorageItem` above keeps the `null`-on-any-failure shape its
  * callers rely on; a caller that scans a stub's blob for asset references
  * treats `null` as "no usable blob". `preLoadChat`, the
- * plugin-storage bridge (`v3.svelte.ts`), the manual clean-up
- * (`storage/manualCleanup.ts`), the backup collector
+ * plugin-storage bridge (`v3.svelte.ts`), the backup collector
  * (`collectColdStorageBackupPayloads`) and the restore's final check in
  * `backuplocal.ts` use this reader instead.
  */
@@ -535,30 +529,6 @@ async function deleteColdStorageUnitsNow(keys: readonly string[]): Promise<{ key
         }
     }
     return failed
-}
-
-/** The names of the stored units, as the load-time listing sees them: the page store's and, on the web, the legacy OPFS files'. */
-export async function listColdStorageItems():Promise<{items:string[]}> {
-    return { items: await listStoredUnitNames() }
-}
-
-/**
- * The manual clean-up of unused cold-storage units and assets. The work lives
- * in `../storage/manualCleanup`, loaded on demand: that module reads this one,
- * and nothing that only stores or loads cold data needs it.
- */
-export async function cleanColdStorage(){
-    // A read-only page goes on to `runManualCleanup`, which tells the person why; a store2 or undecided page stops here.
-    if (!pageRunsLegacyDeleters() && getPageStorageMode().kind !== 'read-only') {
-        console.warn('The manual clean-up is not available on this page.')
-        return
-    }
-    const { runManualCleanup } = await import("../storage/manualCleanup")
-    await runManualCleanup()
-}
-
-export async function listColdDataKeys(db: Pick<Database, 'characters'|'pluginCustomStorage'> = DBState.db): Promise<string[]> {
-    return listColdDataKeysFromDb(db)
 }
 
 export type ColdStorageBackupPayload = {

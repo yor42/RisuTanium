@@ -622,6 +622,19 @@ fn push_frame(out: &mut Vec<u8>, status: u8, bytes: &[u8]) {
     out.extend_from_slice(bytes);
 }
 
+/// What a batch read demands of a file beyond the shared budget rules.
+pub struct ReadRules {
+    /// An admitted file's read length equals the size it reported.
+    pub exact_length: bool,
+    /// Only a regular file is admitted; anything else is an error frame.
+    pub regular_file_only: bool,
+    /// Names the batch in the log line of a failed read.
+    pub label: &'static str,
+}
+
+pub const ASSET_READ: ReadRules = ReadRules { exact_length: false, regular_file_only: false, label: "asset" };
+pub const STORE2_READ: ReadRules = ReadRules { exact_length: true, regular_file_only: true, label: "store2" };
+
 /// What reading one file for a frame came to.
 #[derive(Debug, PartialEq, Eq)]
 enum FrameRead {
@@ -640,13 +653,30 @@ enum FrameRead {
 /// frame may hold. A `size` over `limit` is `Deferred` before any byte is read;
 /// bytes beyond `limit` that arrive anyway (the file grew) are `Deferred` when
 /// `deferrable` and an error otherwise, and never leave a frame above `limit`. On
-/// every result but `Admitted`, `out` is cut back to its length on entry.
+/// every result but `Admitted`, `out` is cut back to its length on entry. The
+/// asset batch does not demand an exact length, so only the tests call it directly.
+#[cfg(test)]
 fn fill_frame<R: Read>(
     out: &mut Vec<u8>,
     reader: R,
     size: u64,
     limit: u64,
     deferrable: bool,
+) -> Result<FrameRead, String> {
+    fill_frame_checked(out, reader, size, limit, deferrable, false)
+}
+
+/// `fill_frame`, and under `exact` a read whose length is not the reported `size`
+/// (a shrink, or growth that stays within `limit`) is an error instead of an
+/// admitted frame, with `out` cut back to its length on entry. A unit read for
+/// the store2 batch must be the whole file a per-key read would return.
+fn fill_frame_checked<R: Read>(
+    out: &mut Vec<u8>,
+    reader: R,
+    size: u64,
+    limit: u64,
+    deferrable: bool,
+    exact: bool,
 ) -> Result<FrameRead, String> {
     if size > limit {
         return Ok(FrameRead::Deferred);
@@ -666,6 +696,7 @@ fn fill_frame<R: Read>(
                 Err(format!("the file grew to over {} bytes while it was read", limit))
             }
         }
+        Ok(_) if exact && length as u64 != size => Err(format!("the file changed size while it was read: {} bytes reported, {} read", size, length)),
         Ok(_) => match frame_length(length as u64) {
             Ok(frame) => {
                 out[start + 1..start + 5].copy_from_slice(&frame.to_le_bytes());
@@ -686,7 +717,14 @@ fn fill_frame<R: Read>(
 /// is bound by `chunk_max` alone: `first`). The size is checked against the
 /// file's metadata before any byte is read, and the read itself is bounded by
 /// `limit`.
-fn read_frame_into(out: &mut Vec<u8>, path: &Path, chunk_max: u64, limit: u64, first: bool) -> Result<FrameRead, String> {
+fn read_frame_into(
+    out: &mut Vec<u8>,
+    path: &Path,
+    chunk_max: u64,
+    limit: u64,
+    first: bool,
+    rules: &ReadRules,
+) -> Result<FrameRead, String> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(FrameRead::Missing),
@@ -695,10 +733,13 @@ fn read_frame_into(out: &mut Vec<u8>, path: &Path, chunk_max: u64, limit: u64, f
     let metadata = file
         .metadata()
         .map_err(|e| format!("failed to stat {}: {}", path.display(), e))?;
+    if rules.regular_file_only && !metadata.is_file() {
+        return Err(format!("{} is not a file", path.display()));
+    }
     if metadata.len() > chunk_max {
         return Ok(FrameRead::Large);
     }
-    fill_frame(out, file, metadata.len(), limit, !first).map_err(|message| format!("{} ({})", message, path.display()))
+    fill_frame_checked(out, file, metadata.len(), limit, !first, rules.exact_length).map_err(|message| format!("{} ({})", message, path.display()))
 }
 
 /// The response of a read call: one frame per key in key order,
@@ -709,6 +750,25 @@ fn read_frame_into(out: &mut Vec<u8>, path: &Path, chunk_max: u64, limit: u64, f
 /// bytes. The first file of a call is bound by `chunk_max` alone, so a call
 /// always makes progress.
 pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, chunk_max: u64, response_max: u64) -> Vec<u8> {
+    let resolve = |key: &str| -> Result<PathBuf, String> {
+        if let Some(reason) = addressable_violation(key, windows) {
+            return Err(reason.to_string());
+        }
+        guarded_asset_path(base, key, windows)
+    };
+    read_batch_with(keys, &resolve, chunk_max, response_max, &ASSET_READ)
+}
+
+/// The read loop both batch commands share. `resolve` turns a key into the path
+/// to read or the reason it is invalid (answered as an `invalid` frame); `rules`
+/// adds what the caller demands of each file.
+pub(crate) fn read_batch_with(
+    keys: &[String],
+    resolve: &dyn Fn(&str) -> Result<PathBuf, String>,
+    chunk_max: u64,
+    response_max: u64,
+    rules: &ReadRules,
+) -> Vec<u8> {
     let chunk_max = chunk_max.min(u64::from(u32::MAX));
     let mut out = Vec::new();
     let mut remaining = response_max;
@@ -719,11 +779,7 @@ pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, chunk_max: u6
             push_frame(&mut out, STATUS_DEFERRED, &[]);
             continue;
         }
-        if let Some(reason) = addressable_violation(key, windows) {
-            push_frame(&mut out, STATUS_INVALID, reason.as_bytes());
-            continue;
-        }
-        let path = match guarded_asset_path(base, key, windows) {
+        let path = match resolve(key) {
             Ok(path) => path,
             Err(reason) => {
                 push_frame(&mut out, STATUS_INVALID, reason.as_bytes());
@@ -733,7 +789,7 @@ pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, chunk_max: u6
         let first = !admitted_any;
         let limit = if first { chunk_max } else { chunk_max.min(remaining) };
         let before = out.len();
-        match read_frame_into(&mut out, &path, chunk_max, limit, first) {
+        match read_frame_into(&mut out, &path, chunk_max, limit, first, rules) {
             Ok(FrameRead::Admitted) => {
                 admitted_any = true;
                 remaining = remaining.saturating_sub((out.len() - before - 5) as u64);
@@ -745,7 +801,7 @@ pub fn get_batch_with(base: &Path, keys: &[String], windows: bool, chunk_max: u6
                 push_frame(&mut out, STATUS_DEFERRED, &[]);
             }
             Err(message) => {
-                eprintln!("asset read failed for {}: {}", key, message);
+                eprintln!("{} read failed for {}: {}", rules.label, key, message);
                 push_frame(&mut out, STATUS_ERROR, message.as_bytes());
             }
         }
@@ -1825,6 +1881,40 @@ mod tests {
         let mut out = Vec::new();
         assert_eq!(fill_frame(&mut out, Unreadable, 11, 10, true), Ok(FrameRead::Deferred));
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn an_exact_read_refuses_a_length_other_than_the_reported_size_and_cuts_the_output_back() {
+        for read_len in [2usize, 7] {
+            let mut out = vec![9u8, 9];
+            let result = fill_frame_checked(&mut out, grown(read_len), 5, 10, false, true);
+            assert!(result.unwrap_err().contains("changed size"), "read {} of 5", read_len);
+            assert_eq!(out, vec![9u8, 9]);
+            let mut out = vec![9u8, 9];
+            assert_eq!(fill_frame_checked(&mut out, grown(read_len), 5, 10, false, false), Ok(FrameRead::Admitted));
+            assert_eq!(out.len(), 2 + 5 + read_len);
+        }
+        let mut out = Vec::new();
+        assert_eq!(fill_frame_checked(&mut out, grown(5), 5, 10, false, true), Ok(FrameRead::Admitted));
+        assert_eq!(out.len(), 10);
+    }
+
+    #[test]
+    fn growth_past_the_limit_is_deferred_or_an_error_whatever_exact_says() {
+        for exact in [false, true] {
+            let mut out = vec![9u8];
+            assert_eq!(fill_frame_checked(&mut out, grown(25), 3, 10, true, exact), Ok(FrameRead::Deferred));
+            assert_eq!(out, vec![9u8]);
+            let mut out = vec![9u8];
+            assert!(fill_frame_checked(&mut out, grown(25), 3, 10, false, exact).unwrap_err().contains("grew to over 10"));
+            assert_eq!(out, vec![9u8]);
+        }
+    }
+
+    #[test]
+    fn the_read_rules_constants_demand_what_each_batch_needs() {
+        assert!(STORE2_READ.exact_length && STORE2_READ.regular_file_only);
+        assert!(!ASSET_READ.exact_length && !ASSET_READ.regular_file_only);
     }
 
     // ----- raw chunk write --------------------------------------------------------

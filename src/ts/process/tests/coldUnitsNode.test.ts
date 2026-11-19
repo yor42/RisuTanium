@@ -1,7 +1,7 @@
 /**
  * Cold-storage units on the self-hosted Node server go through the page's byte
  * store: the real `readColdStorageItem`, `setColdStorageItem`,
- * `deleteColdStorageUnits` and `listColdStorageItems` run over the real Node
+ * and `deleteColdStorageUnits` run over the real Node
  * HTTP store with the `FakeNodeServer` stand-in at the `fetch` boundary. A pass
  * here says nothing about the real server.
  *
@@ -68,6 +68,7 @@ type ColdModule = typeof import('src/ts/process/coldstorage.svelte')
 
 let cold: ColdModule
 let server: FakeNodeServer
+let storeUnits: () => Promise<string[]>
 
 const UUID = '3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10'
 const OTHER = '9a1d7c20-2b3e-4f5a-8c6d-1e2f3a4b5c6d'
@@ -92,6 +93,19 @@ beforeEach(async () => {
     const { NodeStorage } = await import('src/ts/storage/nodeStorage')
     h.forage.realStorage = new NodeStorage()
     cold = await import('src/ts/process/coldstorage.svelte')
+    const app = await import('src/ts/storage/store/appStore')
+    const location = await import('src/ts/process/coldUnitLocation')
+    // The unit keys the page's byte store lists under `coldstorage/`, named as the store layout names them.
+    storeUnits = async () => {
+        const keys: string[] = []
+        for (const storeKey of await (await app.getAppStore()).list(location.COLD_UNIT_STORE_PREFIX)) {
+            const key = location.coldUnitKeyOfStoreKey(storeKey)
+            if (key !== null) {
+                keys.push(key)
+            }
+        }
+        return keys
+    }
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'log').mockImplementation(() => { })
 })
@@ -173,7 +187,7 @@ describe('deleting units on the Node server', () => {
         await cold.setColdStorageItem(UUID, VALUE)
         await cold.setColdStorageItem(OTHER + '_accessMeta', VALUE)
 
-        expect((await cold.listColdStorageItems()).items.sort()).toEqual([UUID, OTHER + '_accessMeta'].sort())
+        expect((await storeUnits()).sort()).toEqual([UUID, OTHER + '_accessMeta'].sort())
         expect(await cold.deleteColdStorageUnits([UUID, OTHER + '_accessMeta'])).toEqual([])
         expect(server.keysWithPrefix('coldstorage/')).toEqual([])
     })

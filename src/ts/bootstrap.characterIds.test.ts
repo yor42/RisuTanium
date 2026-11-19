@@ -7,9 +7,8 @@
  * list, a repeated id, or the preset the repair appended) marks the boot write after its final `setDatabase`, so the
  * minted ids are saved by the boot's own save; a boot that minted none marks nothing.
  *
- * The real `bootstrap.ts` and `characterTreeRepair.ts` with the pass module
- * mocked at its boundary, as in `bootstrap.archivePass.test.ts` (whose module
- * mocks are copied below). What each repair does in isolation is covered by
+ * The real `bootstrap.ts` and `characterTreeRepair.ts`, with the other modules
+ * mocked below. What each repair does in isolation is covered by
  * `storage/tests/characterTreeRepair.test.ts`.
  *
  * Title labels: (R) marks a reproducer that fails against a boot with no
@@ -44,19 +43,8 @@ const world = vi.hoisted(() => ({
     setItemKeys: [] as string[],
 }))
 
-interface RunInput { tree: Record<string, unknown> }
-
-const pass = vi.hoisted(() => ({
-    opened: [] as string[],
-    runInputs: [] as unknown[],
-    releaseCalls: 0,
-    reloading: false,
-    run: null as null | ((input: unknown) => Promise<unknown>),
-}))
-
 const sleepForeverMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
-const noteMainFileBytesMock = vi.hoisted(() => vi.fn((_bytes: Uint8Array): void => { }))
 const characterURLImportMock = vi.hoisted(() => vi.fn((): void => { }))
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
@@ -157,15 +145,6 @@ vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
 
-vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
-    noteMainFileBytes: noteMainFileBytesMock,
-}) as unknown as typeof import('src/ts/storage/mainFileRecord'))
-
-vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
-    recordLoadTimeListing: vi.fn(async () => { }),
-    resetLoadTimeListingForTests: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({ startAvatarThumbSweep: vi.fn(async () => { }) }) as unknown as typeof import('src/ts/media/avatarThumb'))
 
 vi.mock(import('src/ts/model/modellist'), () => ({ registerModelDynamic: vi.fn() }) as unknown as typeof import('src/ts/model/modellist'))
@@ -235,30 +214,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     requiresFullEncoderReload: { state: false },
     fetchNative: vi.fn(async () => new Response(null, { status: 404 })),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
-
-vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
-    openBootArchiveSession: vi.fn(async (host: string) => {
-        world.events.push(`open:${host}`)
-        pass.opened.push(host)
-        return {
-            canArchive: !pass.reloading,
-            reloading: pass.reloading,
-            run: vi.fn(async (input: RunInput) => {
-                world.events.push('run')
-                pass.runInputs.push(input)
-                if (pass.run) {
-                    return pass.run(input)
-                }
-                return { kind: 'install', tree: input.tree, noteBytes: null, notices: [] }
-            }),
-            release: vi.fn(async () => {
-                pass.releaseCalls++
-                world.events.push('release')
-            }),
-        }
-    }),
-    checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-}) as unknown as typeof import('src/ts/storage/bootArchivePass'))
 
 const { encodeRisuSaveLegacy, RisuSaveEncoder, decodeRisuSave } = await import('src/ts/storage/risuSave')
 
@@ -362,17 +317,11 @@ beforeEach(() => {
     world.blockCache.clear()
     world.readKeys.length = 0
     world.setItemKeys.length = 0
-    pass.opened.length = 0
-    pass.runInputs.length = 0
-    pass.releaseCalls = 0
-    pass.run = null
-    pass.reloading = false
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     platformState.isTauri = false
     platformState.isNodeServer = false
     dbState.current = baseDb({ characters: [] })
     getDbBackupsMock.mockReset().mockResolvedValue([])
-    noteMainFileBytesMock.mockClear()
     saveDbMock.mockClear()
     requestSaveNowMock.mockClear()
     markBootWriteMock.mockReset()

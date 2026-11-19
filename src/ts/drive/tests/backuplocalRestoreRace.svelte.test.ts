@@ -272,7 +272,6 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: vi.fn(() => null),
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: vi.fn(() => false),
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: vi.fn(async () => true),
 }) as unknown as typeof import('../../process/coldstorage.svelte'))
 
@@ -410,7 +409,6 @@ class FakeSingleTabLockManager {
 let globalApi: typeof import('../../globalApi.svelte')
 let loadLocalBackup: typeof import('../backuplocal')['LoadLocalBackup']
 let encodeRisuSaveLegacy: typeof import('../../storage/risuSave')['encodeRisuSaveLegacy']
-let committedMainPrompt: () => Promise<unknown>
 
 beforeEach(async () => {
     // See the file header: every test gets its own module graph, built on its
@@ -432,13 +430,6 @@ beforeEach(async () => {
     loadLocalBackup = backuplocal.LoadLocalBackup
     const risuSave = await import('../../storage/risuSave')
     encodeRisuSaveLegacy = risuSave.encodeRisuSaveLegacy
-    const pageOwner = await import('../../storage/pageBlockOwner')
-    const profileValidate = await import('../../storage/blockProfileValidate')
-    committedMainPrompt = async () => {
-        const owner = await pageOwner.getPageBlockOwner()
-        const committed = await owner!.readCommitted({ validate: profileValidate.validateLoadedBlocks })
-        return committed.kind === 'loaded' ? (committed.tree as unknown as { mainPrompt?: unknown }).mainPrompt : null
-    }
 })
 
 /** The key a modeled save cycle writes: outside `blocks/`, so a write of the restored profile is told apart from it. */

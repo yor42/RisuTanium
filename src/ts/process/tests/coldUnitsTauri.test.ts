@@ -1,7 +1,7 @@
 /**
  * Cold-storage units on the desktop go through the page's byte store: the real
- * `readColdStorageItem`, `setColdStorageItem`, `deleteColdStorageUnits` and
- * `listColdStorageItems` run over the real desktop files store with the
+ * `readColdStorageItem`, `setColdStorageItem` and `deleteColdStorageUnits`
+ * run over the real desktop files store with the
  * in-memory `tauriFsFake` (strict mode) behind `@tauri-apps/plugin-fs`. A pass
  * here says nothing about the native plugin or a real file system. A unit write
  * goes to the `write_durable` command, which `tauriFsFake` answers by putting
@@ -80,6 +80,7 @@ vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((path: string) =>
 type ColdModule = typeof import('src/ts/process/coldstorage.svelte')
 
 let cold: ColdModule
+let storeUnits: () => Promise<string[]>
 
 const UUID = '3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10'
 const OTHER = '9a1d7c20-2b3e-4f5a-8c6d-1e2f3a4b5c6d'
@@ -99,6 +100,19 @@ beforeEach(async () => {
     fakeFs.reset()
     vi.resetModules()
     cold = await import('src/ts/process/coldstorage.svelte')
+    const app = await import('src/ts/storage/store/appStore')
+    const location = await import('src/ts/process/coldUnitLocation')
+    // The unit keys the page's byte store lists under `coldstorage/`, named as the store layout names them.
+    storeUnits = async () => {
+        const keys: string[] = []
+        for (const storeKey of await (await app.getAppStore()).list(location.COLD_UNIT_STORE_PREFIX)) {
+            const key = location.coldUnitKeyOfStoreKey(storeKey)
+            if (key !== null) {
+                keys.push(key)
+            }
+        }
+        return keys
+    }
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'log').mockImplementation(() => { })
 })
@@ -146,7 +160,7 @@ describe('writing a unit is atomic', () => {
         expect(await cold.setColdStorageItem(key, VALUE)).toBe(true)
 
         expect(await cold.readColdStorageItem(key)).toEqual({ status: 'ok', value: VALUE })
-        expect((await cold.listColdStorageItems()).items).toEqual([key])
+        expect(await storeUnits()).toEqual([key])
         expect(await cold.deleteColdStorageUnits([key])).toEqual([])
         expect(fakeFs.listing('coldstorage')).toEqual([])
     })
@@ -195,11 +209,11 @@ describe('listing and deleting units', () => {
         fakeFs.plant('coldstorage/sub/inner.json', encodeUnit(VALUE))
         fakeFs.plant(TEMP, new Uint8Array([1]))
 
-        expect((await cold.listColdStorageItems()).items.sort()).toEqual(['a', UUID].sort())
+        expect((await storeUnits()).sort()).toEqual(['a', UUID].sort())
     })
 
     test('new behaviour: a missing units folder lists as empty', async () => {
-        expect((await cold.listColdStorageItems()).items).toEqual([])
+        expect(await storeUnits()).toEqual([])
     })
 
     test('new behaviour: a unit already deleted by someone else counts as deleted, and a refused removal is reported for that unit only', async () => {
