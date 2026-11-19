@@ -461,7 +461,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     }),
     getColdStorageBackupKey: vi.fn(() => null),
     isColdStorageBackupData: vi.fn(() => false),
-    listColdDataKeys: vi.fn(async () => []),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -963,20 +962,12 @@ async function importIsolatedLoad(mode: 'store2' | 'unset' = 'unset') {
             const isolatedMode = await import('src/ts/storage/pageStorageMode')
             isolatedMode.setPageStorageMode({ kind: 'store2' })
         }
-        const pageOwner = await import('src/ts/storage/pageBlockOwner')
-        const profileValidate = await import('src/ts/storage/blockProfileValidate')
         const stores = await import('src/ts/stores.svelte')
         const database = await import('src/ts/storage/database.svelte')
         const local = await import('src/ts/drive/backuplocal')
         const busy = await import('src/ts/process/memory/busyActions')
         await api.tabPresenceLockAcquired
-        /** The ids of the characters in the profile the isolated page's head names, or `null` when it names none. */
-        const committedCharacterIds = async (): Promise<string[] | null> => {
-            const owner = await pageOwner.getPageBlockOwner()
-            const committed = await owner!.readCommitted({ validate: profileValidate.validateLoadedBlocks })
-            return committed.kind === 'loaded' ? (committed.tree.characters ?? []).map((character) => String(character.chaId)) : null
-        }
-        return { load: internal.loadInternalBackup, loadLocal: local.LoadLocalBackup, busy, requiresFullEncoderReload: api.requiresFullEncoderReload, stores, database, committedCharacterIds }
+        return { load: internal.loadInternalBackup, loadLocal: local.LoadLocalBackup, busy, requiresFullEncoderReload: api.requiresFullEncoderReload, stores, database }
     } finally {
         if (originalLocks) {
             Object.defineProperty(window.navigator, 'locks', originalLocks)

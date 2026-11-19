@@ -299,7 +299,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
         getColdStorageBackupKey,
         getColdStorageItem: vi.fn(async () => null),
         isColdStorageBackupData: vi.fn(() => true),
-        listColdDataKeys: vi.fn(async () => []),
         setColdStorageItem: setColdStorageItemMock,
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })

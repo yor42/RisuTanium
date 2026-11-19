@@ -23,8 +23,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({ writeFile: vi.fn(), exists: vi.fn(asyn
 import type { Database } from 'src/ts/storage/database.svelte'
 import { treeToBlockSet, treeToBlockSetReported } from 'src/ts/storage/treeToBlockSet'
 import { packedNamesOf } from 'src/ts/storage/packedNames'
-import { validateLoadedBlocks } from 'src/ts/storage/blockProfileValidate'
-import { createFakeStore, makeOwner, seedStore, type FakeStore } from 'src/ts/storage/tests/blockStoreHarness'
 
 type Entry = Record<string, unknown>
 
@@ -49,55 +47,9 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-async function bootedStore() {
-    const store = createFakeStore({ versioned: false })
-    await seedStore(store, await treeToBlockSet(tree([character('a'), character('b')])))
-    const { owner } = makeOwner(store)
-    const loaded = await owner.load({ validate: validateLoadedBlocks })
-    if (loaded.kind !== 'loaded') {
-        throw new Error(`the seeded store did not load: ${loaded.kind}`)
-    }
-    return { store, owner }
-}
-
-async function nextStart(store: FakeStore): Promise<string> {
-    const { owner } = makeOwner(store)
-    try {
-        const again = await owner.load({ validate: validateLoadedBlocks })
-        if (again.kind !== 'loaded') {
-            return `not loaded: ${again.kind}`
-        }
-        return (again.tree.characters as unknown as Entry[]).map((c) => String(c.chaId)).join(',')
-    } catch (error) {
-        return `THROWS ${error instanceof Error ? error.message : String(error)}`
-    }
-}
-
-describe('a tree with an entry that is not a character (regression: S1)', () => {
-    test('the committed save loads on the next start with the two characters', async () => {
-        const { store, owner } = await bootedStore()
-        const set = await treeToBlockSet(tree([character('a'), 5, character('b')]))
-        const result = await owner.commitSave(set)
-        expect(result.kind).toBe('committed')
-        expect(await nextStart(store)).toBe('a,b')
-    })
-
-    test('an empty-list entry is left out the same way', async () => {
-        const { store, owner } = await bootedStore()
-        await owner.commitSave(await treeToBlockSet(tree([character('a'), [], character('b')])))
-        expect(await nextStart(store)).toBe('a,b')
-    })
-})
-
 describe('containers that are not lists (regression: S7)', () => {
     test('modules holding an object parks with a named error before any block exists', async () => {
         await expect(treeToBlockSet(tree([character('a')], { modules: {} }))).rejects.toMatchObject({ kind: 'container-not-list' })
-    })
-
-    test('a tree with modules undefined becomes a save that loads', async () => {
-        const { store, owner } = await bootedStore()
-        await owner.commitSave(await treeToBlockSet(tree([character('a'), character('b')], { modules: undefined })))
-        expect(await nextStart(store)).toBe('a,b')
     })
 })
 

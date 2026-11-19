@@ -447,7 +447,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     }),
     getColdStorageBackupKey: vi.fn(() => null),
     isColdStorageBackupData: vi.fn(() => false),
-    listColdDataKeys: vi.fn(async () => []),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
 vi.mock('@tauri-apps/api/core', () => ({

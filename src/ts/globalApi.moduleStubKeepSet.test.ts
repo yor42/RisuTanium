@@ -1,9 +1,9 @@
 /**
  * The legacy asset keep-set over module stubs: `getUncleanablesSync` yields only the icon a stub holds and reads no
- * other key of it. The other legacy deleters stay behind the page-mode gate on a store2 page, the only page that holds
- * stubs. Titles beginning "guard:" pin behaviour that must be preserved; every other test is a regression reproducer.
+ * other key of it. Titles beginning "guard:" pin behaviour that must be preserved; every other test is a regression
+ * reproducer.
  */
-import { describe, test, expect, vi, afterEach } from 'vitest'
+import { describe, test, expect, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
@@ -51,13 +51,6 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
 
 import { getUncleanablesSync } from 'src/ts/globalApi.svelte'
-import {
-    pageRunsLegacyDeleters, resetPageStorageModeForTests, setPageStorageMode,
-} from 'src/ts/storage/pageStorageMode'
-
-afterEach(() => {
-    resetPageStorageModeForTests()
-})
 
 type Slot = Record<string, unknown>
 
@@ -103,14 +96,5 @@ describe('getUncleanablesSync over a module stub', () => {
     test('guard: a full module still yields its assets and icon', () => {
         const db = dbOf([fullModule('B', [['x', 'assets/b-asset']], 'assets/b-icon')])
         expect(getUncleanablesSync(db).sort()).toEqual(['b-asset', 'b-icon'])
-    })
-})
-
-describe('legacy deleters on the page that holds stubs', () => {
-    test('guard: legacy-deleters-gated-on-store2-with-stub: a store2 page runs none of the legacy deleters', () => {
-        setPageStorageMode({ kind: 'legacy' } as Parameters<typeof setPageStorageMode>[0])
-        expect(pageRunsLegacyDeleters()).toBe(true)
-        setPageStorageMode({ kind: 'store2' } as Parameters<typeof setPageStorageMode>[0])
-        expect(pageRunsLegacyDeleters()).toBe(false)
     })
 })

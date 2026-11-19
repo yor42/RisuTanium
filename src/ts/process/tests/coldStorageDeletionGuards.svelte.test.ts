@@ -2,24 +2,21 @@
  * CHORE-07 stage 7a step 2 -- "stop deleting" tests.
  * Agents/Reports/13-chore07-cold-read-failure-plan.md.
  *
- * These tests pin that a cold-storage read failure, an ambiguous read, or a
- * mismatched character never causes `cleanColdStorage` to delete a
- * cold-storage key that a live character or chat still needs (the manual
- * clean-up in storage/manualCleanup.ts). A blob that was never written, a read
- * that throws, or a `character.chaId` mismatch must all be treated as "keep,
- * don't delete" -- never as proof that the underlying data is gone.
+ * These tests pin that a cold-storage read failure or an ambiguous read never
+ * costs a live character or chat its data: the backup collector keeps the unit
+ * a chat's legacy error text names, and `preLoadChat` and
+ * `retryLegacyColdChatLoad` leave a chat untouched on a failed or unusable read.
+ * A blob that was never written or a read that throws must be treated as
+ * "keep, don't delete" -- never as proof that the underlying data is gone.
  *
  * Tests and assertions marked CHAR are compatibility guards: they hold
- * regardless of that failure handling and pin that the ordinary
- * (non-failure) deletion paths still delete what they are supposed to.
- * a12/a13 are the describe-level instance.
+ * regardless of that failure handling.
  *
  * This file drives the REAL seams, not a replica:
  *   - `getColdStorageItem` / `setColdStorageItem` / `preLoadChat` /
- *     `cleanColdStorage` / `listColdStorageItems` /
  *     `collectColdStorageBackupPayloads` from
  *     `src/ts/process/coldstorage.svelte.ts` (real, unmocked).
- * Every other module reachable from those three is mocked below. Only the
+ * Every other module reachable from those is mocked below. Only the
  * STORAGE BACKEND underneath `getColdStorageItem` is faked (Tauri
  * `@tauri-apps/plugin-fs` under the real desktop store, and the key/value
  * store behind `forageStorage` as the web page store, beside an OPFS
@@ -32,13 +29,13 @@
  * cites: `Agents/Tools/save-gen/asset-gc-cold-read-repro.svelte.harness.ts`
  * (the asset-sweep group, a1/a3/a4/a5) and
  * `Agents/Tools/save-gen/cold-storage-orphan-repro.svelte.harness.ts` (the
- * cold-storage-cleanup group, a7/a8/a9/a11/a11b/a12/a13). Per
+ * cold-storage-cleanup group, of which a9 remains). Per
  * Agents/Tools/README.md's "keep every rune-touching mock in ONE file",
  * both harnesses' mocks live together here.
  *
  * PLATFORM TOGGLE: unlike either harness (each fixes `isTauri` for its
  * whole file), this file needs BOTH the Tauri backend (a1/a3/a4/a5)
- * and the OPFS backend (a7/a8/a9/a11/a11b/a12/a13) in the same run.
+ * and the web backend (a9 and the `preLoadChat` groups) in the same run.
  * `src/ts/platform` is mocked with a GETTER backed by a `vi.hoisted` mutable
  * flag (`platformState.isTauri`), so `getColdStorageItem`'s live `isTauri`
  * read (it re-reads the imported binding on every call, it does not cache
@@ -50,8 +47,8 @@
  * passed. The scratch file was deleted; this comment is the record of
  * that check.
  *
- * a7/a8/a9/a11/a11b/a12/a13 need the real OPFS backend, because `cleanColdStorage` /
- * `preLoadChat` read `DBState.db` directly (no injected `db` seam exists
+ * a9 and the `preLoadChat` groups need the web backend, because
+ * `preLoadChat` reads `DBState.db` directly (no injected `db` seam exists
  * for them yet), so this file switches `platformState.isTauri` to `false`
  * for that whole group.
  */
@@ -65,7 +62,7 @@ import type { Database } from '../../storage/database.svelte'
 const platformState = vi.hoisted(() => ({ isTauri: true }))
 
 // The key/value store behind `forageStorage`: the committed main file that
-// `cleanColdStorage` reads lives here on the web build.
+// units are stored in on the web build.
 const forageMem = vi.hoisted(() => new Map<string, Uint8Array>())
 // Hooks on the reads of that key/value store: a key that fails once, and a
 // callback run before every read.
@@ -456,11 +453,8 @@ import { injectAppStore } from '../../storage/store/appStore'
 import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
 import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 import {
-    getColdStorageItem,
     setColdStorageItem,
     preLoadChat,
-    cleanColdStorage,
-    listColdStorageItems,
     collectColdStorageBackupPayloads,
     coldStorageHeader,
     readColdStorageItem,
@@ -471,26 +465,16 @@ import { isColdChat, formatColdStorageLoadError, mergeRetriedColdChatSideFields 
 import type { RetryLegacyColdChatSideFields } from '../coldstorageData'
 import { doingChat } from '../index.svelte'
 import { registerWork } from '../chatOrigin'
-import { RisuSaveEncoder } from '../../storage/risuSave'
-import { recordLoadTimeListing } from '../../storage/loadTimeListing'
-import { resetPageStorageModeForTests, setPageStorageMode } from '../../storage/pageStorageMode'
-import { noteMainFileBytes } from '../../storage/mainFileRecord'
 import { readFile as tauriReadFile, exists as tauriExists } from '@tauri-apps/plugin-fs'
-import { DBState, selectedCharID, frozenSaveKeysStore } from '../../stores.svelte'
-import { alertError, alertClear } from 'src/ts/alert'
+import { DBState, selectedCharID } from '../../stores.svelte'
 
-// The clean-up reads the committed main file through the page's byte store: the
-// key/value model behind `forageStorage` on the web build, the desktop store over
-// the file model on Tauri. Which one applies is the platform of each test.
+// Units are read and written through the page's byte store: the key/value model
+// behind `forageStorage` on the web build, the desktop store over the file model
+// on Tauri. Which one applies is the platform of each test.
 const webByteStore = createForageBackedStore(forageStorage as unknown as ForageLike)
 const tauriByteStore = createTauriFilesStore({ platform: 'posix' })
 beforeEach(() => {
     injectAppStore(createSwitchedStore(() => platformState.isTauri ? tauriByteStore : webByteStore))
-    // The clean-up runs only on a legacy or block page.
-    setPageStorageMode({ kind: 'block' })
-})
-afterEach(() => {
-    resetPageStorageModeForTests()
 })
 
 //#region shared fixture helpers
@@ -581,348 +565,9 @@ function makeRetryDb(chaId: string, chat: unknown): Database {
     } as unknown as CharacterFixture])
 }
 
-/**
- * The state a page is in when the manual clean-up may run: the live tree has
- * been committed as the main file, this tab has recorded those bytes, and the
- * load-time listing has been taken. Called after the test has seeded its units
- * and set `DBState.db`, immediately before `cleanColdStorage()`.
- */
-async function primeCleanupPreconditions(): Promise<void> {
-    // The units the test stored stay: they live in this same key/value store.
-    for (const key of Array.from(forageMem.keys())) {
-        if (!key.startsWith('coldstorage/')) {
-            forageMem.delete(key)
-        }
-    }
-    const encoder = new RisuSaveEncoder()
-    await encoder.init(DBState.db, {})
-    const committed = new Uint8Array(encoder.encode()!)
-    forageMem.set('database/database.bin', committed)
-    noteMainFileBytes(committed.slice())
-    await recordLoadTimeListing()
-}
-
 //#endregion
 
-describe('CHORE-07 stage 7a: manual cold-storage cleanup must not delete recoverable blobs', () => {
-    test('a7 / C3 CHAR: cleanColdStorage must keep a blob referenced only by an error-text message[0], with later messages too', async () => {
-        platformState.isTauri = false
-        resetOpfs()
-
-        const MAIN_KEY = 'a7-main-key'
-        const coldPayload = {
-            message: [{ time: 1000, data: 'archived message', role: 'user' }],
-            hypaV2Data: { chunks: [], mainChunks: [], lastMainChunkID: 0 },
-            hypaV3Data: { summaries: [] },
-            scriptstate: {},
-            localLore: [],
-        }
-        const writeOk = await setColdStorageItem(MAIN_KEY, coldPayload)
-        expect(writeOk).toBe(true)
-
-        // A chat that already holds the pre-7b error text -- this is the
-        // shape a chat can be left in by a failed cold read on an install
-        // from before CHORE-07 stage 7b. Built directly with
-        // `formatColdStorageLoadError` rather than by driving the real
-        // `preLoadChat` under a simulated failure, because `preLoadChat`
-        // does not write this text on a failed read (see the R1-R5 group
-        // below, which pins that it leaves the pointer untouched instead).
-        DBState.db = makeDb([{
-            chaId: 'a7-char',
-            name: 'A7 Character',
-            type: 'character',
-            chatPage: 0,
-            chats: [makeErrorTextChat('a7-chat-0', MAIN_KEY)],
-        } as unknown as CharacterFixture])
-
-        const chat = DBState.db.characters[0].chats[0] as unknown as { message: { data: string }[] }
-
-        // The user kept chatting after the error -- push further messages so
-        // the fixture also covers a chat with live messages behind the
-        // stale error-text pointer.
-        chat.message.push({ data: 'a later message the user sent after the error' } as never)
-        chat.message.push({ data: 'and one more' } as never)
-
-        // Note: whether sendChat's risuChatParser leaves this error text
-        // unchanged is NOT exercised here -- parser.svelte.ts is mocked
-        // wholesale in this file (it transitively hits the stores.svelte
-        // $effect.root trap), so testing the real parser would need a
-        // separate, differently-mocked file.
-
-        // Sanity: the blob is still physically present at cleanup time --
-        // the earlier failure was transient, not real loss.
-        const beforeItems = (await listColdStorageItems()).items
-        expect(beforeItems).toContain(MAIN_KEY)
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        const afterRead = await getColdStorageItem(MAIN_KEY)
-        // A blob referenced only by a chat whose message[0] carries the
-        // stale error text (not a coldStorageHeader-prefixed pointer) is
-        // still in use and must not be deleted as "unused".
-        expect(afterItems).toContain(MAIN_KEY)
-        expect(afterRead).not.toBeNull()
-    })
-
-    test("a11: cleanColdStorage must not delete a chat's key when it is referenced only inside a cold-stored character's own blob", async () => {
-        platformState.isTauri = false
-        resetOpfs()
-
-        const CHAT_KEY = 'a11-chat-key'
-        const chatWriteOk = await setColdStorageItem(CHAT_KEY, {
-            message: [{ time: 1, data: 'archived', role: 'user' }],
-            hypaV2Data: { chunks: [], mainChunks: [], lastMainChunkID: 0 },
-            hypaV3Data: { summaries: [] },
-            scriptstate: {},
-            localLore: [],
-        })
-        expect(chatWriteOk).toBe(true)
-
-        // The character's full data (as cold-stored) already contains a chat
-        // whose pointer was corrupted to the error text BEFORE the character
-        // itself went cold -- a stub's `coldStoragedChats` lists only chats whose
-        // message[0] still started with coldStorageHeader when the character was
-        // cold-stored, so this key is silently absent from the stub's
-        // coldStoragedChats.
-        const CHAR_CHA_ID = 'a11-char'
-        const COLD_CHAR_KEY = 'a11-cold-char-key'
-        await setColdStorageItem(COLD_CHAR_KEY, {
-            character: {
-                type: 'character',
-                chaId: CHAR_CHA_ID,
-                name: 'A11 Character',
-                chatPage: 0,
-                chats: [makeErrorTextChat('a11-inner-chat-0', CHAT_KEY)],
-            },
-        })
-
-        // The stub left in DBState.db, in the shape a cold-stored character
-        // leaves in the list.
-        DBState.db = makeDb([{
-            chaId: CHAR_CHA_ID,
-            name: 'A11 Character',
-            type: 'character',
-            chatPage: 0,
-            coldstorage: COLD_CHAR_KEY,
-            coldStoragedChats: [],
-            chats: [{
-                message: [{ time: Date.now(), data: '', role: 'char' }],
-                note: '',
-                name: '',
-                localLore: [],
-            }],
-        } as unknown as CharacterFixture])
-
-        const beforeItems = (await listColdStorageItems()).items
-        expect(beforeItems).toContain(CHAT_KEY)
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        const afterRead = await getColdStorageItem(CHAT_KEY)
-        // cleanColdStorage must read a cold CHARACTER's own blob looking for
-        // such chats too, or this key looks unused and gets deleted even
-        // though it is still referenced there.
-        expect(afterItems).toContain(CHAT_KEY)
-        expect(afterRead).not.toBeNull()
-
-        // Sanity: the character's own cold blob remains protected via
-        // character.coldstorage.
-        expect(afterItems).toContain(COLD_CHAR_KEY)
-    })
-
-    test("a11b: cleanColdStorage must abort entirely, deleting nothing, when a cold character's own blob cannot be read", async () => {
-        platformState.isTauri = false
-        resetOpfs()
-
-        // Genuinely unreferenced anywhere in DBState.db -- under the fix's
-        // normal rules this WOULD be a legitimate delete, except the abort
-        // rule below must block the whole run.
-        const ORPHAN_KEY = 'a11b-orphan-key'
-        await setColdStorageItem(ORPHAN_KEY, { message: [{ time: 1, data: 'unrelated leftover data', role: 'user' }] })
-
-        // Never written -- the cold character's blob is simply gone.
-        const BROKEN_CHAR_KEY = 'a11b-broken-char-key'
-        DBState.db = makeDb([{
-            chaId: 'a11b-char',
-            name: 'Broken Cold Character',
-            type: 'character',
-            chatPage: 0,
-            coldstorage: BROKEN_CHAR_KEY,
-            coldStoragedChats: [],
-            chats: [{
-                message: [{ time: Date.now(), data: '', role: 'char' }],
-                note: '',
-                name: '',
-                localLore: [],
-            }],
-        } as unknown as CharacterFixture])
-
-        const beforeItems = (await listColdStorageItems()).items
-        expect(beforeItems).toContain(ORPHAN_KEY)
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        // cleanColdStorage must attempt to read cold characters' own blobs,
-        // and abort deleting anything when that read is unusable -- an
-        // unreadable cold character means the "used" view is incomplete, so
-        // ORPHAN_KEY must survive even though it looks ordinarily unused.
-        expect(afterItems).toContain(ORPHAN_KEY)
-    })
-
-    test("a12 CHAR: cleanColdStorage aborts, deleting nothing, when a cold character blob's chaId does not match", async () => {
-        platformState.isTauri = false
-        resetOpfs()
-
-        // Genuinely unreferenced anywhere in DBState.db -- would be a
-        // legitimate delete under the normal rules, except the abort below
-        // must block the whole run, the same as a11b's missing-blob case.
-        const ORPHAN_KEY = 'a12-orphan-key'
-        await setColdStorageItem(ORPHAN_KEY, { message: [{ time: 1, data: 'unrelated leftover data', role: 'user' }] })
-
-        // The blob is readable, but for a DIFFERENT character -- this fails
-        // the manual clean-up's chaId check.
-        const MISMATCHED_CHAR_KEY = 'a12-mismatched-char-key'
-        await setColdStorageItem(MISMATCHED_CHAR_KEY, {
-            character: {
-                type: 'character',
-                chaId: 'a12-someone-else',
-                name: 'Mismatched Character',
-                chatPage: 0,
-                chats: [],
-            },
-        })
-
-        DBState.db = makeDb([{
-            chaId: 'a12-char',
-            name: 'Mismatched Cold Character',
-            type: 'character',
-            chatPage: 0,
-            coldstorage: MISMATCHED_CHAR_KEY,
-            coldStoragedChats: [],
-            chats: [{
-                message: [{ time: Date.now(), data: '', role: 'char' }],
-                note: '',
-                name: '',
-                localLore: [],
-            }],
-        } as unknown as CharacterFixture])
-
-        const beforeItems = (await listColdStorageItems()).items
-        expect(beforeItems).toContain(ORPHAN_KEY)
-        expect(beforeItems).toContain(MISMATCHED_CHAR_KEY)
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        // CHAR: a chaId mismatch is treated the same as an unreadable blob --
-        // the whole cleanup aborts, so even the unrelated genuinely-orphaned
-        // key survives this run.
-        expect(afterItems).toContain(ORPHAN_KEY)
-        expect(afterItems).toContain(MISMATCHED_CHAR_KEY)
-    })
-
-    test("a13 CHAR: cleanColdStorage keeps a cold character's own still-pointer-formatted chat key even when the stub has no coldStoragedChats", async () => {
-        platformState.isTauri = false
-        resetOpfs()
-
-        const POINTER_CHAT_KEY = 'a13-pointer-chat-key'
-        await setColdStorageItem(POINTER_CHAT_KEY, {
-            message: [{ time: 1, data: 'archived', role: 'user' }],
-            hypaV2Data: { chunks: [], mainChunks: [], lastMainChunkID: 0 },
-            hypaV3Data: { summaries: [] },
-            scriptstate: {},
-            localLore: [],
-        })
-
-        // The cold character's own blob has a chat whose message[0] is
-        // STILL a live coldStorageHeader pointer (never corrupted) -- the
-        // pointer-key case, not the error-text case a11 exercises.
-        const CHAR_CHA_ID = 'a13-char'
-        const COLD_CHAR_KEY = 'a13-cold-char-key'
-        await setColdStorageItem(COLD_CHAR_KEY, {
-            character: {
-                type: 'character',
-                chaId: CHAR_CHA_ID,
-                name: 'A13 Character',
-                chatPage: 0,
-                chats: [makeColdChat('a13-inner-chat-0', POINTER_CHAT_KEY)],
-            },
-        })
-
-        // The stub predates coldStoragedChats entirely (the F1 plan's
-        // "backstop stubs written between 52aee0d1 and c4783544" case) --
-        // the field is omitted, not just an empty array, so
-        // listColdDataKeysFromDb's own `character.coldStoragedChats ?? []`
-        // has nothing to read either.
-        DBState.db = makeDb([{
-            chaId: CHAR_CHA_ID,
-            name: 'A13 Character',
-            type: 'character',
-            chatPage: 0,
-            coldstorage: COLD_CHAR_KEY,
-            chats: [{
-                message: [{ time: Date.now(), data: '', role: 'char' }],
-                note: '',
-                name: '',
-                localLore: [],
-            }],
-        } as unknown as CharacterFixture])
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        // CHAR: a pointer inside a cold character's own blob keeps its target
-        // unit alive. The stub lists no coldStoragedChats and carries no
-        // pointer of its own, so the only reference to POINTER_CHAT_KEY is the
-        // chat inside the blob; a clean-up that reads only the stub, or only
-        // the error-text form of a reference, would delete it.
-        expect(afterItems).toContain(POINTER_CHAT_KEY)
-    })
-
-    test('a8 CHAR: a near-miss error-text string is not treated as a recoverable pointer', async () => {
-        platformState.isTauri = false
-        resetOpfs()
-
-        const NEAR_MISS_KEY = 'a8-near-miss-key'
-        await setColdStorageItem(NEAR_MISS_KEY, { message: [{ time: 1, data: 'unrelated leftover', role: 'user' }] })
-
-        DBState.db = makeDb([{
-            chaId: 'a8-char',
-            name: 'A8 Character',
-            type: 'character',
-            chatPage: 0,
-            chats: [{
-                message: [{
-                    time: 1,
-                    // Extra text around an otherwise-exact match -- a near
-                    // miss, not the anchored template.
-                    data: `note: [Cold storage data could not be loaded. Key: ${NEAR_MISS_KEY}] (seen by support)`,
-                    role: 'char',
-                }],
-                note: '',
-                name: '',
-                localLore: [],
-            }],
-        } as unknown as CharacterFixture])
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        // CHAR: a prefixed/suffixed near-miss is plain chat text, not a
-        // recognized pointer, both before and after the fix -- its blob
-        // stays ordinarily unused and gets cleaned up.
-        expect(afterItems).not.toContain(NEAR_MISS_KEY)
-    })
-
+describe('CHORE-07 stage 7a: the backup collector keeps the units that cold-storage text names', () => {
     test("a9: collectColdStorageBackupPayloads carries the unit a live chat's legacy error text names", async () => {
         platformState.isTauri = false
         resetOpfs()
@@ -968,8 +613,6 @@ describe('CHORE-07 stage 7a: manual cold-storage cleanup must not delete recover
  * with `formatColdStorageLoadError(key)`. C1/C2 pin only the message/
  * side-field restore behaviour on a successful read; they do not assert on
  * `preLoadChat`'s return value.
- * a7 above was re-fixtured into a C3-equivalent CHAR test for the same
- * reason -- see its own comment.
  */
 describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a chat on a failed/invalid read', () => {
     // CHORE-07 stage 7c-1 added a character-switch race check to
@@ -1313,7 +956,7 @@ describe('CHORE-07 stage 7c-1: classifyOpfsColdRead', () => {
 
 /**
  * CHORE-07 stage 7c-1 -- `readColdStorageItem` end to end, real OPFS
- * backend (same mock as the `preLoadChat`/a7-a14 groups above).
+ * backend (same mock as the `preLoadChat` and collector groups above).
  */
 describe('CHORE-07 stage 7c-1: readColdStorageItem (OPFS backend)', () => {
     test('a stored null value is ok, not missing', async () => {
@@ -2059,98 +1702,5 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
         const chat = DBState.db.characters[0].chats[0] as unknown as { message: { data: string }[] }
         expect(chat.message).toEqual(messageBefore)
         expect(chat.message[0].data).toBe(`[Cold storage data could not be loaded. Key: ${coldKey}]`)
-    })
-})
-
-// MC-078, MC-079, MC-082: a kept block for a frozen chaId can reference a
-// cold-storage entry that the in-memory character does not currently
-// reference, so cleanColdStorage refuses outright while any chaId is frozen
-// -- checked once at entry, and again immediately before anything is
-// removed, since verifying every cold-stored character in between is itself
-// awaited and can outlast the entry check.
-describe('cleanColdStorage refuses while a chaId is frozen against a save-file rewrite', () => {
-    beforeEach(() => {
-        frozenSaveKeysStore.set([])
-        ;(alertError as ReturnType<typeof vi.fn>).mockClear()
-        ;(alertClear as ReturnType<typeof vi.fn>).mockClear()
-    })
-
-    test('refuses at entry and deletes nothing when a chaId is already frozen', async () => {
-        platformState.isTauri = false
-        resetOpfs()
-        const ORPHAN_KEY = 'g12-entry-orphan-key'
-        await setColdStorageItem(ORPHAN_KEY, { message: [{ time: 1, data: 'unrelated leftover', role: 'user' }] })
-        DBState.db = makeDb([])
-        await primeCleanupPreconditions()
-        frozenSaveKeysStore.set([{ chaId: 'g12-dup-id', names: ['A', 'B'] }])
-
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        expect(afterItems).toContain(ORPHAN_KEY)
-        expect(alertError).toHaveBeenCalledTimes(1)
-    })
-
-    test('refuses when a chaId becomes frozen during verification, after the entry check already passed', async () => {
-        platformState.isTauri = false
-        resetOpfs()
-        const ORPHAN_KEY = 'g12-mid-orphan-key'
-        await setColdStorageItem(ORPHAN_KEY, { message: [{ time: 1, data: 'unrelated leftover', role: 'user' }] })
-
-        const CHAR_CHA_ID = 'g12-mid-char'
-        const COLD_CHAR_KEY = 'g12-mid-cold-char-key'
-        await setColdStorageItem(COLD_CHAR_KEY, {
-            character: { type: 'character', chaId: CHAR_CHA_ID, name: 'G12 Character', chatPage: 0, chats: [] },
-        })
-        DBState.db = makeDb([{
-            chaId: CHAR_CHA_ID,
-            name: 'G12 Character',
-            type: 'character',
-            chatPage: 0,
-            coldstorage: COLD_CHAR_KEY,
-            coldStoragedChats: [],
-            chats: [{
-                message: [{ time: Date.now(), data: '', role: 'char' }],
-                note: '',
-                name: '',
-                localLore: [],
-            }],
-        } as unknown as CharacterFixture])
-
-        // Entry check passes: nothing is frozen yet (reset in beforeEach).
-        await primeCleanupPreconditions()
-        storeHooks.onRead = (key) => {
-            if (key === 'coldstorage/' + COLD_CHAR_KEY) {
-                // A duplicate chaId appears while this cold character's own
-                // blob is being verified -- after the entry check, before
-                // anything is removed.
-                frozenSaveKeysStore.set([{ chaId: 'g12-dup-id-2', names: ['C', 'D'] }])
-            }
-        }
-
-        await cleanColdStorage()
-        storeHooks.onRead = null
-
-        const afterItems = (await listColdStorageItems()).items
-        expect(afterItems).toContain(ORPHAN_KEY)
-        expect(afterItems).toContain(COLD_CHAR_KEY)
-        expect(alertClear).toHaveBeenCalled()
-        expect(alertError).toHaveBeenCalledTimes(1)
-    })
-
-    test('cleans normally once no chaId is frozen', async () => {
-        platformState.isTauri = false
-        resetOpfs()
-        const ORPHAN_KEY = 'g12-clean-orphan-key'
-        await setColdStorageItem(ORPHAN_KEY, { message: [{ time: 1, data: 'unrelated leftover', role: 'user' }] })
-        DBState.db = makeDb([])
-        frozenSaveKeysStore.set([])
-
-        await primeCleanupPreconditions()
-        await cleanColdStorage()
-
-        const afterItems = (await listColdStorageItems()).items
-        expect(afterItems).not.toContain(ORPHAN_KEY)
-        expect(alertError).not.toHaveBeenCalled()
     })
 })
