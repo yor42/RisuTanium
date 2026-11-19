@@ -12,7 +12,7 @@ import { writable } from 'svelte/store'
 //#region module mocks
 
 const platform = vi.hoisted(() => ({ isTauri: true, isNodeServer: false }))
-const transport = vi.hoisted(() => ({ android: true, stat: vi.fn() }))
+const transport = vi.hoisted(() => ({ android: true, desktop: false, desktopSpy: vi.fn(), stat: vi.fn() }))
 const store = vi.hoisted(() => ({ urlFor: vi.fn() }))
 
 vi.mock('localforage', () => ({
@@ -34,6 +34,10 @@ vi.mock(import('src/ts/platform'), () => ({
 vi.mock(import('src/ts/storage/tauriByteTransport'), async (importOriginal) => ({
     ...(await importOriginal()),
     isAndroidTransport: () => transport.android,
+    isDesktopTransport: () => {
+        transport.desktopSpy()
+        return transport.desktop
+    },
     statStoredSize: (key: string) => transport.stat(key),
 }))
 
@@ -218,7 +222,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { getFileSrc, releaseAssetObjectUrl } from 'src/ts/globalApi.svelte'
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, androidAssetSizeVerdict, createWholeReadBudget, resetAssetUrlGateForTest, wholeReadBytesOfUrl } from 'src/ts/storage/assetUrlGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, DESKTOP_WHOLE_READ_URL_LIMIT_BYTES, androidAssetSizeVerdict, createWholeReadBudget, resetAssetUrlGateForTest, wholeReadBytesOfUrl } from 'src/ts/storage/assetUrlGate'
 
 const MIB = 1024 * 1024
 const URL_OF = (key: string) => `asset://localhost/${key}`
@@ -227,6 +231,8 @@ beforeEach(() => {
     platform.isTauri = true
     platform.isNodeServer = false
     transport.android = true
+    transport.desktop = false
+    transport.desktopSpy.mockReset()
     transport.stat.mockReset()
     store.urlFor.mockReset()
     store.urlFor.mockImplementation(async (key: string) => URL_OF(key))
@@ -259,6 +265,15 @@ describe('getFileSrc on Android above the whole-read limit', () => {
 
         expect(await getFileSrc('assets/video', 'media')).toBe(URL_OF('assets/video'))
         expect(transport.stat).not.toHaveBeenCalled()
+    })
+
+    test('guard: no Android call asks whether the page is the desktop transport', async () => {
+        transport.stat.mockImplementation(async (key: string) => (key === 'assets/tiny' ? 1 : 65 * MIB))
+
+        expect(await getFileSrc('assets/tiny')).toBe(URL_OF('assets/tiny'))
+        expect(await getFileSrc('assets/big')).toBe('')
+        expect(await getFileSrc('assets/big', 'media')).toBe(URL_OF('assets/big'))
+        expect(transport.desktopSpy).not.toHaveBeenCalled()
     })
 
     test('reproducer: an unreadable size gives no URL, is logged once, and is probed again on the next call', async () => {
@@ -381,8 +396,88 @@ describe('getFileSrc and the whole-read URL registry', () => {
     })
 })
 
+describe('getFileSrc on the desktop transport', () => {
+    beforeEach(() => {
+        transport.android = false
+        transport.desktop = true
+    })
+
+    test('reproducer: a whole use (the default) of an asset of 1 GiB gets no URL and the store is not asked', async () => {
+        transport.stat.mockResolvedValue(1024 * MIB)
+
+        expect(await getFileSrc('assets/huge')).toBe('')
+        expect(await getFileSrc('assets/huge', 'whole')).toBe('')
+        expect(store.urlFor).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: a whole use of 1 GiB from a list with a budget gets no URL', async () => {
+        transport.stat.mockResolvedValue(1024 * MIB)
+
+        expect(await getFileSrc('assets/huge', 'whole', createWholeReadBudget())).toBe('')
+        expect(store.urlFor).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: an unreadable size gives no URL, is logged once, and is probed again on the next call', async () => {
+        transport.stat.mockRejectedValueOnce(new Error('failed to open (os error 2)'))
+        transport.stat.mockRejectedValueOnce(new Error('failed to open (os error 2)'))
+        transport.stat.mockResolvedValue(10)
+
+        expect(await getFileSrc('assets/late')).toBe('')
+        expect(await getFileSrc('assets/late')).toBe('')
+        expect(console.error).toHaveBeenCalledTimes(1)
+        expect(await getFileSrc('assets/late')).toBe(URL_OF('assets/late'))
+        expect(transport.stat).toHaveBeenCalledTimes(3)
+    })
+
+    test('reproducer: a size that is never readable stays blank on every call and is logged once', async () => {
+        transport.stat.mockRejectedValue(new Error('refused key: a key holds no : and no \\ on Windows'))
+
+        expect(await getFileSrc('assets/never')).toBe('')
+        expect(await getFileSrc('assets/never')).toBe('')
+        expect(await getFileSrc('assets/never')).toBe('')
+        expect(transport.stat).toHaveBeenCalledTimes(3)
+        expect(console.error).toHaveBeenCalledTimes(1)
+        expect(store.urlFor).not.toHaveBeenCalled()
+    })
+
+    test('guard: a media use keeps the URL of a 1 GiB asset and asks no size', async () => {
+        transport.stat.mockResolvedValue(1024 * MIB)
+
+        expect(await getFileSrc('assets/video', 'media')).toBe(URL_OF('assets/video'))
+        expect(transport.stat).not.toHaveBeenCalled()
+    })
+
+    test('guard: an asset of exactly the limit keeps its URL, as does a tiny one', async () => {
+        transport.stat.mockImplementation(async (key: string) => (key === 'assets/edge' ? DESKTOP_WHOLE_READ_URL_LIMIT_BYTES : 1))
+
+        expect(await getFileSrc('assets/edge')).toBe(URL_OF('assets/edge'))
+        expect(await getFileSrc('assets/tiny')).toBe(URL_OF('assets/tiny'))
+    })
+
+    test('rule: an asset one byte above the limit gets no URL and the store is not asked', async () => {
+        transport.stat.mockResolvedValue(DESKTOP_WHOLE_READ_URL_LIMIT_BYTES + 1)
+
+        expect(await getFileSrc('assets/over')).toBe('')
+        expect(store.urlFor).not.toHaveBeenCalled()
+    })
+
+    test('guard: a whole URL of a small asset is not registered as a whole read', async () => {
+        transport.stat.mockResolvedValue(10)
+
+        expect(await getFileSrc('assets/small')).toBe(URL_OF('assets/small'))
+        expect(wholeReadBytesOfUrl(URL_OF('assets/small'))).toBeUndefined()
+    })
+
+    test('guard: a path outside the assets keys is converted as before and never probed', async () => {
+        transport.stat.mockResolvedValue(1024 * MIB)
+
+        expect(await getFileSrc('/some/where.png')).toBe('converted:/some/where.png')
+        expect(transport.stat).not.toHaveBeenCalled()
+    })
+})
+
 describe('getFileSrc off Android', () => {
-    test('guard: a page that is not the Android transport keeps the URL of a 1 GiB asset and never probes a size', async () => {
+    test('guard: a Tauri page of neither transport keeps the URL of a 1 GiB asset and never probes a size', async () => {
         transport.android = false
         transport.stat.mockResolvedValue(1024 * MIB)
 

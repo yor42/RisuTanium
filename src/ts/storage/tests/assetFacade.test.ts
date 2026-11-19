@@ -592,14 +592,35 @@ describe('getFileSrc', () => {
     const POSIX_ASSET_URL = `asset://localhost/%2Fhome%2Ftester%2F.local%2Fshare%2Fcom.risuai.app%2Fassets%2F${sha256Hex(PNG)}.png`
 
     test.each([['windows', WINDOWS_ASSET_URL], ['linux', POSIX_ASSET_URL]] as const)(
-        'guard: on Tauri (%s) an asset URL is the asset-protocol URL of its path under AppData, and no file is read',
+        'guard: on Tauri (%s) an asset URL is the asset-protocol URL of its path under AppData, and no file body is read',
         async (os, expected) => {
             useTauri(os)
+            fakeFs.plant(PNG_KEY, PNG)
             const { api } = await loadWorld()
 
             expect(await api.getFileSrc(PNG_KEY)).toBe(expected)
             expect(await api.getFileSrc(PNG_KEY)).toBe(expected)
 
+            expect(fakeFs.calls).toEqual([])
+            const probes = desktop.invoke.chunk.callsOf('read_range').filter((call) => call.args.key === PNG_KEY)
+            expect(probes).toHaveLength(1)
+            expect(probes[0].args).toMatchObject({ offset: 0, len: 0 })
+        },
+    )
+
+    test.each(['windows', 'linux'] as const)(
+        'reproducer: on Tauri (%s) an asset that is not stored gets no URL after one zero-length probe',
+        async (os) => {
+            useTauri(os)
+            const { api } = await loadWorld()
+            const logged = vi.spyOn(console, 'error').mockImplementation(() => { })
+
+            await expect(api.getFileSrc('assets/missing.png')).resolves.toBe('')
+
+            expect(logged).toHaveBeenCalled()
+            const probes = desktop.invoke.chunk.callsOf('read_range').filter((call) => call.args.key === 'assets/missing.png')
+            expect(probes).toHaveLength(1)
+            expect(probes[0].args).toMatchObject({ len: 0 })
             expect(fakeFs.calls).toEqual([])
         },
     )
