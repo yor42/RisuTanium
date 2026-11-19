@@ -340,7 +340,7 @@ describe('R0: order and refusals (T1, T21)', () => {
         expect(ended(busy)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'busy' })
         expect(alertErrorTexts(page)).toContain(language.backupLoadWorkInProgress)
 
-        page.w.pageMode.setPageStorageMode({ kind: 'block' })
+        page.w.pageMode.setPageStorageMode({ kind: 'unset' })
         const before = page.k.counted.writeCalls()
         const block = await prepare(page, await fileOf())
         expect(ended(block)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'not-store2' })

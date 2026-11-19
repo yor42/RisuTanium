@@ -61,6 +61,8 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+// This file tests the lore tester; the lazily loaded toggles view and its import graph are covered by StudioToggleCombined.svelte.test.ts.
+vi.mock('./StudioToggleCombined.svelte', () => ({ default: () => {} }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
     return { language: helpers.studioLanguageMock() }

@@ -67,12 +67,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
 }))
 
-// buildRestoreSet only needs treeToBlockSetReported and SaveParkError; the rest of restoreReplace's imports are the
-// replace machinery, which these rows never reach.
-vi.mock('src/ts/storage/blockStore', () => ({ BlockSetGateError: class BlockSetGateError extends Error { }, retireGeneration: vi.fn() }))
-vi.mock('src/ts/storage/mainFileRename', () => ({ finishMainFileRename: vi.fn() }))
-vi.mock('src/ts/storage/pageBlockOwner', () => ({ getPageBlockOwner: vi.fn() }))
-vi.mock('src/ts/storage/pageStorageMode', () => ({ getPageStorageMode: vi.fn(), pendingConvertedFrom: vi.fn(), setPageStorageMode: vi.fn() }))
+vi.mock('src/ts/storage/pageStorageMode', () => ({ getPageStorageMode: vi.fn(), setPageStorageMode: vi.fn() }))
 vi.mock('src/ts/stores.svelte', () => ({ DBState: { db: undefined } }))
 vi.mock('src/ts/process/coldstorage.svelte', () => ({ readColdStorageItem: vi.fn() }))
 vi.mock('src/ts/storage/characterTreeRepair', () => ({ repairCharacterTree: vi.fn(), summarizeRepair: vi.fn() }))
@@ -83,7 +78,6 @@ import { RisuSaveEncoder, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy 
 import type { toSaveType } from '../risuSave'
 import { writeRisuSaveV0 } from '../risuSaveV0'
 import { SaveParkError } from '../saveHold'
-import { buildRestoreSet } from '../../drive/restoreReplace'
 import { language } from 'src/lang'
 import type { Database } from '../database.svelte'
 
@@ -235,17 +229,5 @@ describe('writeRisuSaveV0', () => {
 
     test('guard: a tree without stubs is written', () => {
         expect(writeRisuSaveV0(tree([fullModule()]), {})).toBeInstanceOf(Uint8Array)
-    })
-})
-
-describe('buildRestoreSet', () => {
-    test('a tree holding a stub is refused with the generic modules wording', async () => {
-        const built = await buildRestoreSet(tree([stubModule()]))
-        expect(built).toEqual({ refusal: language.restoreRefusedUnsavable(language.saveBlockLabel('modules')) })
-    })
-
-    test('guard: a tree without stubs builds a set', async () => {
-        const built = await buildRestoreSet(tree([fullModule()]))
-        expect('set' in built).toBe(true)
     })
 })

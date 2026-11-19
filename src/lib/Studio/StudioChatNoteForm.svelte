@@ -10,6 +10,7 @@
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { DBState } from '../../ts/stores.svelte'
     import LongTextField from './LongTextField.svelte'
+    import type { PreviewSourceInput } from './LongTextPreview.svelte'
 
     // The note of the selected character's current chat. A chat without a unique id has no history and no form:
     // its note is shown read-only with the reason.
@@ -33,6 +34,8 @@
     // The chat the detail stands for, whether or not it can be edited.
     const shownChat = $derived(uniqueChat ?? character?.chats?.[character.chatPage])
     const editableChat = $derived(uniqueChat !== null)
+    // What the CBS preview reads: the character, the chat the detail stands for, and the shared variables. Read at each run.
+    const previewSource = (): PreviewSourceInput => ({ owner: character ?? null, chat: shownChat ?? null, globals: DBState.db.globalChatVariables ?? {} })
 
     const service = $derived(getStudioHistoryService())
     $effect(() => {
@@ -114,6 +117,8 @@
             {labelId}
             kind="note"
             mode="cbs"
+            ownerLabel={character?.name}
+            {previewSource}
             {editable}
             busy={!(editable || !editableChat)}
             fieldClass="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"

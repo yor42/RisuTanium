@@ -140,7 +140,6 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: (name: string) => realGetColdStorageBackupKey(name),
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: (data: unknown) => realIsColdStorageBackupData(data),
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: setColdStorageItemMock,
 }) as unknown as typeof import('../../process/coldstorage.svelte'))
 
@@ -157,7 +156,6 @@ import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
 import { injectAppStore } from '../../storage/store/appStore'
-import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { NodeHttpError } from '../../storage/store/nodeHttpStore'
 import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -274,11 +272,7 @@ beforeEach(async () => {
             }
         },
     }
-    // The page's block owner is built while the kind is 'tauri' (a mutex head swap), because the model has no revision API for
-    // the Node head swap; the owner stays cached when the selected kind then becomes 'node', which the size limits follow.
-    injectRestoreStore(restoreStore, 'tauri')
-    await getPageBlockOwner()
-    injectAppStore(restoreStore, 'node')
+    injectRestoreStore(restoreStore, 'node')
 
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)
@@ -453,32 +447,6 @@ describe('an asset over the Node server body limit is disclosed before anything 
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], assetLimit))
     })
 
-})
-
-// These two rows assert the cold-storage write of the legacy page's tail, so they run on that page.
-describe('a cold unit over the Node server body limit on the legacy page', () => {
-    // Guard (passes before and after): a non-asset entry keeps its own path and is never listed by the asset limit.
-    test('with pieces recorded a cold unit above one request still restores and is not listed', async () => {
-        nodePieces.recorded = true
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-    })
-
-    test('a cold unit whose JSON is over the limit restores and is not listed', async () => {
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(setColdStorageItemMock.mock.calls[0]).toEqual([COLD_UUID, expect.objectContaining({ message: [] })])
-        expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-    })
 })
 
 describe('an asset over the Node server body limit on a page that is not Node-served', () => {

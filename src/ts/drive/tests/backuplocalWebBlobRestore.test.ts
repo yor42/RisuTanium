@@ -142,7 +142,6 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: (name: string) => realGetColdStorageBackupKey(name),
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: (data: unknown) => realIsColdStorageBackupData(data),
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: setColdStorageItemMock,
 }) as unknown as typeof import('../../process/coldstorage.svelte'))
 
@@ -159,8 +158,6 @@ import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
-import { injectAppStore } from '../../storage/store/appStore'
-import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { StoreBlobUnsupportedError, StoreInvalidKeyError } from '../../storage/store/errors'
 import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -266,11 +263,7 @@ beforeEach(async () => {
         },
         readBlob: async (key) => keptBlobs.get(key) ?? null,
     }
-    // The page's block owner is built while the kind is 'tauri' (a mutex head swap), because the model has no revision API for
-    // the IndexedDB head swap; the owner stays cached when the selected kind then becomes 'indexeddb', which the size limits follow.
-    injectRestoreStore(restoreStore, 'tauri')
-    await getPageBlockOwner()
-    injectAppStore(restoreStore, 'indexeddb')
+    injectRestoreStore(restoreStore, 'indexeddb')
 
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)
@@ -363,25 +356,6 @@ describe('a web restore of an asset entry the browser keeps as a Blob', () => {
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
     })
 
-})
-
-// This row asserts the cold-storage write of the legacy page's tail, so it runs on that page.
-describe('a web restore of a cold unit on the legacy page', () => {
-    // Windows smaller than an entry, so the walk and the copy never read an entry's data into a window of their own.
-    beforeEach(() => overrideBackupWindowBytes({ walk: 64, copy: 64 }))
-    afterEach(() => overrideBackupWindowBytes(null))
-
-    test('guard: a cold-storage unit above the threshold is decoded whole and never stored as an asset Blob', async () => {
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(blobWrites.keys).toEqual([])
-        expect(writtenAssetKeys()).toEqual([])
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(writtenKeys()).toContain('blocks/head')
-        expect(writtenKeys()).not.toContain('database/database.bin')
-    })
 })
 
 describe('a web restore of an asset entry the browser keeps as a Blob, continued', () => {

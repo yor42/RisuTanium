@@ -223,7 +223,6 @@ import type { RisuPlugin } from '../../plugins.svelte'
 import type { Database } from '../../../storage/database.svelte'
 import type { RisuModule } from '../../../process/modules'
 import { isModuleStub } from '../../../storage/moduleStub'
-import { resetPageBlockOwnerForTests } from '../../../storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from '../../../storage/pageStorageMode'
 import { createMemoryBackend, type MemoryBackend } from '../../../storage/store2/backend'
 import { resetStore2BootForTest } from '../../../storage/store2/bootActive'
@@ -305,7 +304,6 @@ afterEach(() => {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     DBState.db = { characters: [], modules: [], enabledModules: [] } as unknown as Database
 })

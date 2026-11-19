@@ -48,6 +48,30 @@ describe('checkReleaseDist export phase fields', () => {
         expect(result.out).toContain(field)
     })
 
+    test.each(['store2BatchCalls=', 'store2BatchFallbackKeys=', 'store2BatchMs=', 'store2BatchOffCalls='])('new behaviour: a dist carrying the batch field %s is refused', (field) => {
+        writeFileSync(join(dist, 'assets', 'index.js'), `x = \`a ${field}\${1}\``)
+
+        const result = runChecker()
+
+        expect(result.status).toBe(1)
+        expect(result.out).toContain(field)
+    })
+
+    test('new behaviour: a dist carrying the store2 batch knob key is refused', () => {
+        writeFileSync(join(dist, 'assets', 'index.js'), 'x = localStorage.getItem("risu-measure-store2-batch")')
+
+        const result = runChecker()
+
+        expect(result.status).toBe(1)
+        expect(result.out).toContain('risu-measure-store2-batch')
+    })
+
+    test('guard: a dist with the command name read_store2_units and none of the batch markers is accepted', () => {
+        writeFileSync(join(dist, 'assets', 'index.js'), 'invoke("read_store2_units", { keys })')
+
+        expect(runChecker().status).toBe(0)
+    })
+
     test('new behaviour: a dist carrying the packing knob key is refused', () => {
         writeFileSync(join(dist, 'assets', 'index.js'), 'x = localStorage.getItem("risu-measure-export-pack")')
 

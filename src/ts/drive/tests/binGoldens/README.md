@@ -27,7 +27,7 @@ The plugin-index goldens use ids `...-0000000000b1` to `...-0000000000b6` (index
 
 ## What the restore does with the plugin-index goldens
 
-A legacy page installs no `_coldpluginIndex`. `upstream-plugin-index.bin` restores to `_coldplugin` slots whose units equal the original values (the large entry keeps the unit id the index named, each small entry becomes a new unit, `shared` takes the index value, `kept` stays). `upstream-plugin-index-missing.bin` asks the incomplete-restore question for the index unit and, once confirmed, installs the tree with the pointer removed.
+A store2 page installs no `_coldpluginIndex`. `upstream-plugin-index.bin` restores to `_coldplugin` slots whose units equal the original values (the large entry keeps the unit id the index named, each small entry becomes a new unit, `shared` takes the index value, `kept` stays). `upstream-plugin-index-missing.bin` asks the incomplete-restore question for the index unit and, once confirmed, installs the tree with the pointer removed.
 
 ## What the restore does with the SaveKV goldens
 

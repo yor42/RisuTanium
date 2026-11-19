@@ -38,7 +38,6 @@ import { languageKorean } from 'src/lang/ko'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { alertStore } from 'src/ts/stores.svelte'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createMemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -97,7 +96,6 @@ beforeEach(() => {
     resetBootScreenForTests()
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 
@@ -105,7 +103,6 @@ afterEach(() => {
     resetBootScreenForTests()
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 

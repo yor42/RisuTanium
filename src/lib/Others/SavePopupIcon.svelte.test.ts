@@ -213,7 +213,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
         ['conversion-failed', () => language.savingStoppedConversionFailedMessage],
         ['unconfirmed', () => language.savingStoppedUnconfirmedMessage],
     ])('says its own words for the stop reason %s', async (reason, expected) => {
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
         savingStoppedReasonStore.set(reason)
         const { target, app } = mountIcon()
         flushSync()
@@ -228,7 +228,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
     })
 
     test('names the part of the data that was too large when saving stopped for size, and does not advise archiving', async () => {
-        setPageStorageMode({ kind: 'block' })
+        setPageStorageMode({ kind: 'unset' })
         stopDetail.value = '"Alice"'
         savingStoppedReasonStore.set('too-large')
         const { target, app } = mountIcon()

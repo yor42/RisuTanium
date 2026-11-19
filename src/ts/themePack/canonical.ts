@@ -98,19 +98,21 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
     // The blocks open around the current position: a top-level rule or @font-face holds declarations, an @media block holds rules.
     type Block = 'media' | 'declarations'
     const blocks: Block[] = []
-    let preludeStart = 0
+    // The canonical text since the last `{`, `}` or `;` outside declarations. It is its own string so that judging a prelude never copies the whole text.
+    let preludeText = ''
     let text = ''
+    const emit = (s: string) => { text += s; preludeText += s }
     let i = 0
     const n = css.length
     while (i < n) {
         const ch = css[i]
         const code = ch.charCodeAt(0)
-        if (ch === '\\') { fail('', ESCAPE_REASON); text += ch; i++; continue }
-        if (code < 0x20 && ch !== '\t' && ch !== '\n') { fail('', CONTROL_REASON); text += ch; i++; continue }
-        if (code === 0x7f) { fail('', CONTROL_REASON); text += ch; i++; continue }
+        if (ch === '\\') { fail('', ESCAPE_REASON); emit(ch); i++; continue }
+        if (code < 0x20 && ch !== '\t' && ch !== '\n') { fail('', CONTROL_REASON); emit(ch); i++; continue }
+        if (code === 0x7f) { fail('', CONTROL_REASON); emit(ch); i++; continue }
         if (ch === '/' && css[i + 1] === '*') {
             const end = css.indexOf('*/', i + 2)
-            if (end < 0) { fail('', UNTERMINATED_COMMENT_REASON); text += css.slice(i); break }
+            if (end < 0) { fail('', UNTERMINATED_COMMENT_REASON); emit(css.slice(i)); break }
             // A run of adjacent comments is one placement: the browser reads the run as nothing, the checks as spaces.
             let runEnd = end + 2
             let spaces = ' '
@@ -126,11 +128,11 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
                 if (WORD_CHAR.test(before) && WORD_CHAR.test(after)) fail('', COMMENT_JOIN_REASON)
                 else fail('', commentPlacementReason(css.slice(Math.max(0, i - 12), i) + '/*...*/' + css.slice(runEnd, runEnd + 12)))
             }
-            text += spaces
+            emit(spaces)
             i = runEnd
             continue
         }
-        if (css.startsWith('<!--', i) || css.startsWith('-->', i)) { fail('', CDO_CDC_REASON); text += ch; i++; continue }
+        if (css.startsWith('<!--', i) || css.startsWith('-->', i)) { fail('', CDO_CDC_REASON); emit(ch); i++; continue }
         if (ch === '"' || ch === "'") {
             let j = i + 1
             let value = ''
@@ -148,12 +150,12 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
             if (value.includes('/*') || value.includes('*/')) fail('', COMMENT_IN_STRING_REASON)
             if (inResourceFunction()) judgeTarget(value)
             const stringStart = text.length
-            text += css.slice(i, closed ? j + 1 : j)
+            emit(css.slice(i, closed ? j + 1 : j))
             if (closed && inResourceFunction()) resources.push({ start: stringStart, end: text.length, raw: value, target: value, form: 'string' })
             i = closed ? j + 1 : j
             continue
         }
-        if (code >= 0x80) { fail('', NON_ASCII_REASON); text += ch; i++; continue }
+        if (code >= 0x80) { fail('', NON_ASCII_REASON); emit(ch); i++; continue }
         if (IDENT_CHAR.test(ch)) {
             let j = i
             while (j < n && IDENT_CHAR.test(css[j])) j++
@@ -162,17 +164,17 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
             const wordStart = text.length
             const digits = /^-?\d+/.exec(word)
             if (digits && css[i - 1] !== '#' && css.slice(i - 2, i).toLowerCase() !== 'u+' && !NUMBER_UNIT.test(word.slice(digits[0].length))) fail('', NUMBER_REASON)
-            text += word
+            emit(word)
             i = j
             if (css[i] !== '(') continue
             const name = word.toLowerCase().replace(/^-(webkit|moz|ms|o)-/, '')
             if (name === 'element') fail('url()', `${ELEMENT_REASON}`)
             if (INDIRECT.has(name) && anyResourceFunction()) fail('url()', INDIRECT_RESOURCE_REASON)
-            if (name !== 'url') { stack.push(name); text += '('; i++; continue }
+            if (name !== 'url') { stack.push(name); emit('('); i++; continue }
             // url( : a quoted argument is a function call (its string is judged as a resource); otherwise it is one url token.
             let k = i + 1
             while (k < n && WHITESPACE.test(css[k])) k++
-            if (css[k] === '"' || css[k] === "'") { stack.push('url'); text += css.slice(i, k); i = k; continue }
+            if (css[k] === '"' || css[k] === "'") { stack.push('url'); emit(css.slice(i, k)); i = k; continue }
             let target = ''
             while (k < n && css[k] !== ')' && !WHITESPACE.test(css[k])) {
                 if (!UNQUOTED_URL_CHAR.test(css[k])) { fail('url()', BAD_URL_REASON); break }
@@ -185,41 +187,41 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
             while (k < n && WHITESPACE.test(css[k])) k++
             if (css[k] !== ')') {
                 fail('url()', BAD_URL_REASON)
-                text += css.slice(i, k)
+                emit(css.slice(i, k))
                 i = k
                 continue
             }
-            text += css.slice(i, k + 1)
+            emit(css.slice(i, k + 1))
             resources.push({ start: wordStart, end: text.length, raw: target, target, form: 'url-token' })
             i = k + 1
             continue
         }
         if (ch === '{') {
             if (stack.length) fail('', BRACE_IN_GROUP_REASON)
-            const prelude = text.slice(preludeStart).trim().toLowerCase()
+            const prelude = preludeText.trim().toLowerCase()
             const inside = blocks[blocks.length - 1]
             if (inside === 'declarations') fail('', NESTED_BLOCK_REASON)
             else if (inside === 'media' && prelude.startsWith('@')) fail('', NESTED_AT_REASON)
             blocks.push(inside === undefined && prelude.startsWith('@media') ? 'media' : 'declarations')
-            text += ch
+            emit(ch)
             i++
-            preludeStart = text.length
+            preludeText = ''
             continue
         }
         if (ch === '}') {
             if (stack.length) fail('', BRACE_IN_GROUP_REASON)
             blocks.pop()
-            text += ch
+            emit(ch)
             i++
-            preludeStart = text.length
+            preludeText = ''
             continue
         }
-        if (ch === ';' && blocks[blocks.length - 1] !== 'declarations') { text += ch; i++; preludeStart = text.length; continue }
+        if (ch === ';' && blocks[blocks.length - 1] !== 'declarations') { emit(ch); i++; preludeText = ''; continue }
         if (ch === '@' && blocks[blocks.length - 1] === 'declarations') fail('', NESTED_AT_REASON)
         if (ch === '!' && css.slice(i + 1, i + 10).toLowerCase() !== 'important') fail('', IMPORTANT_REASON)
         if (ch === '(' || ch === '[') stack.push('')
         else if ((ch === ')' || ch === ']') && stack.length) stack.pop()
-        text += ch
+        emit(ch)
         i++
     }
     if (blocks.length || stack.length) fail('', UNCLOSED_REASON)

@@ -61,7 +61,6 @@ import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { queueInlayCleanupForCharacters, getInlayCleanupState } from 'src/ts/process/files/inlayCleanup'
 import { removeInlayAsset } from 'src/ts/process/files/inlays'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
 import { getResidency } from 'src/ts/storage/store2/residencyActive'
@@ -161,7 +160,6 @@ function resetPage(): void {
     resetResidencyForTest()
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 }
 

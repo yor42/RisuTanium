@@ -9,7 +9,6 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import { markIdentitySeen } from 'src/ts/storage/dbChangeEffects.svelte'
 import { uninstallDbWriteHook, withQuietCharacterInstall } from 'src/ts/storage/dbWriteHook'
 import type { DbWriteMark } from 'src/ts/storage/characterSaveMarks'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, createNodeBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { resetStore2BootForTest, type Store2BootNotice } from 'src/ts/storage/store2/bootActive'
@@ -36,7 +35,6 @@ export function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     resetRetainedForTest()
 }

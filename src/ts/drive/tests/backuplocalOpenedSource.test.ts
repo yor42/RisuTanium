@@ -250,7 +250,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
         getColdStorageBackupKey,
         getColdStorageItem: vi.fn(async () => null),
         isColdStorageBackupData: vi.fn(() => true),
-        listColdDataKeys: vi.fn(async () => []),
         setColdStorageItem: vi.fn(async () => true),
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
@@ -548,56 +547,6 @@ afterEach(() => {
 })
 
 describe('a restore from an opened source on an Android page', () => {
-    // Guard: the source restore and the picker restore write the same things (red if the adapter or the source branch of
-    // the inlay writer, or the Blob gating, changes what lands).
-    test('guard: writes the assets, the inlay and the database the picker File restore writes', async () => {
-        const inlay = await inlayEntries('equal-inlay', [patterned(40, 1), patterned(60, 2)])
-        const built = build([
-            ['small.png', patterned(500, 3)],
-            ['mid.png', patterned(300 * 1024, 4)],
-            ['big.bin', patterned(MIB + 5, 5)],
-            ...inlay.entries,
-        ])
-
-        const fileEnd = await restoreFile(built.bytes)
-        const fileAssets = storedAssets()
-        const fileInlay = await storedInlay('equal-inlay')
-        const fileInstalls = setDatabaseMock.mock.calls.length
-        fakeFs.reset()
-        fakeFs.directories.add('assets')
-        setDatabaseMock.mockReset()
-        injectRestoreStore(createTauriFilesStore({ platform: 'posix' }))
-        reloadMark.marked = false
-
-        const probe = probeSource(built.bytes)
-        const openedEnd = await restoreOpened(probe.source)
-
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(fileEnd.outcome).toBe('committed')
-        expect(openedEnd.outcome).toBe('committed')
-        expect(openedEnd.target).toBe('backup.bin')
-        expect(openedEnd.detail.source).toEqual({ kind: 'file', name: 'backup.bin', size: built.bytes.length, lastModified: 0 })
-        expect(fileAssets.size).toBe(3)
-        expect(storedAssets()).toEqual(fileAssets)
-        expect(fileInlay).toEqual(inlay.body)
-        expect(await storedInlay('equal-inlay')).toEqual(inlay.body)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(fileInstalls)
-        expect(openedEnd.detail.assets).toEqual(fileEnd.detail.assets)
-        expect(openedEnd.detail.inlays).toEqual(fileEnd.detail.inlays)
-    })
-
-    test('the source is never read by two readers at once, and is not closed by the restore (the caller owns it)', async () => {
-        const built = build(Array.from({ length: 6 }, (_, index): [string, Uint8Array] => [`l${index}.bin`, patterned(MIB + 1000 + index, index + 1)]))
-        const probe = probeSource(built.bytes)
-
-        const end = await restoreOpened(probe.source)
-
-        expect(end.outcome).toBe('committed')
-        // Reproducer against the mutant without the adapter's promise queue: the asset pipeline reads while the pass reads.
-        expect(probe.maxInFlight()).toBe(1)
-        expect(probe.closed()).toBe(0)
-    })
-
     describe('on a page whose store keeps Blobs', () => {
         onStore2Page()
 

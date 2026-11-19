@@ -32,6 +32,8 @@
  * - `read_range` answers the piece followed by the 56-byte trailer (size, then
  *   six identity words, little-endian u64) as an `ArrayBuffer`, and rejects a
  *   missing file with a message that ends in `(os error 2)`.
+ * - `read_store2_units` (`store2_batch.rs`) answers the `get_assets_batch` frames for the store2 unit files of one call, with
+ *   the Rust key guard, the 256-key cap and the 4 MiB budgets (`store2BatchStatuses`); it is on by default.
  * - `read_range_text` is `read_range` clamped to 64 KiB of piece with the response as
  *   one base64 string.
  *
@@ -89,6 +91,57 @@ export interface RangeHooks {
 export const TRAILER_BYTES = 56
 /** `TEXT_RANGE_MAX_BYTES` of `chunked_io.rs`. */
 const TEXT_RANGE_MAX_BYTES = 64 * 1024
+/** `STORE2_BATCH_MAX_KEYS` of `store2_batch.rs`. */
+export const STORE2_BATCH_MAX_KEYS = 256
+/** `CHUNK_MAX` and `RESPONSE_MAX` of `asset_batch.rs`, which the store2 batch shares. */
+export const STORE2_BATCH_CHUNK_MAX = 4 * 1024 * 1024
+export const STORE2_BATCH_RESPONSE_MAX = 4 * 1024 * 1024
+
+export type BatchStatus = 'ok' | 'missing' | 'invalid' | 'error' | 'large' | 'deferred'
+const BATCH_STATUS_CODES: readonly BatchStatus[] = ['ok', 'missing', 'invalid', 'error', 'large', 'deferred']
+
+/** What a key came to before the budget is applied: the file's state as the reader finds it. */
+export type BatchEntry =
+    | { state: 'invalid' | 'missing' | 'error' }
+    | { state: 'file', size: number }
+
+/**
+ * The budget rule of `read_batch_with` (`asset_batch.rs`): once a key is deferred every later key is deferred, whatever its
+ * state; a file over `chunkMax` is `large` and spends nothing; the first admitted file of a call is bound by `chunkMax` alone,
+ * a later one by the remaining response budget, and one that does not fit is `deferred`. A missing, invalid or failed key
+ * admits nothing, so it does not make a later file "not first".
+ */
+export function store2BatchStatuses(entries: readonly BatchEntry[], chunkMax: number, responseMax: number): BatchStatus[] {
+    const statuses: BatchStatus[] = []
+    let remaining = responseMax
+    let admittedAny = false
+    let deferred = false
+    for (const entry of entries) {
+        if (deferred) {
+            statuses.push('deferred')
+        } else if (entry.state !== 'file') {
+            statuses.push(entry.state)
+        } else if (entry.size > chunkMax) {
+            statuses.push('large')
+        } else if (entry.size > (admittedAny ? Math.min(chunkMax, remaining) : chunkMax)) {
+            deferred = true
+            statuses.push('deferred')
+        } else {
+            admittedAny = true
+            remaining = Math.max(0, remaining - entry.size)
+            statuses.push('ok')
+        }
+    }
+    return statuses
+}
+
+/** The statuses of files of the given sizes (`null`: no file) under the budget, for the shared table's `budget` cases. */
+export function budgetStatuses(sizes: readonly (number | null)[], chunkMax: number, responseMax: number): BatchStatus[] {
+    return store2BatchStatuses(sizes.map((size): BatchEntry => size === null ? { state: 'missing' } : { state: 'file', size }), chunkMax, responseMax)
+}
+
+/** What a batch-only fault makes one key answer, whatever the file holds; the per-key `read_range` is not affected. */
+export type BatchFault = 'missing' | 'error' | 'invalid' | 'large'
 const WRITE_ID = /^[0-9a-f]{16}$/
 
 export function createChunkedInvoke(fs: FakeTauriFs) {
@@ -108,6 +161,11 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
     const hooks: RangeHooks = {}
     const ids = new WeakMap<Uint8Array, number>()
     let nextId = 1
+    /** Opt-in: `read_range` and the batch refuse `:` and `\` in a key, as the Rust key rule does on Windows. */
+    let windowsKeys = false
+    const batchFaults = new Map<string, BatchFault>()
+    let batchCallFault: string | undefined
+    let batchReply: ((reply: ArrayBuffer, keys: readonly string[]) => unknown) | undefined
 
     function identityOf(file: Uint8Array): number {
         let id = ids.get(file)
@@ -225,6 +283,9 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         const key = stringArg(args, 'key')
         const offset = numberArg(args, 'offset')
         const len = numberArg(args, 'len')
+        if (windowsKeys && /[:\\]/.test(key)) {
+            throw `refused key: ${JSON.stringify(key)} is not an addressable key on Windows`
+        }
         const index = rangeCalls++
         hooks.before?.({ key, offset, len, index })
         const link = fs.symlinks.get(key)
@@ -269,6 +330,110 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             throw `refused key: ${JSON.stringify(key)} is not an addressable key`
         }
         return key
+    }
+
+    /**
+     * The key guard of `store2_batch.rs`: the `store2/` prefix with a name after it, then the key rule of `read_range`
+     * (and, with `windowsKeyRules`, its Windows refusal of `:` and `\`). Answers the reason, or `null` for a key that may be read.
+     */
+    function batchKeyRefusal(key: string): string | null {
+        if (!key.startsWith('store2/') || key.length <= 'store2/'.length) {
+            return 'a store2 batch key starts with store2/'
+        }
+        if (windowsKeys && /[:\\]/.test(key)) {
+            return `refused key: ${JSON.stringify(key)} is not an addressable key on Windows`
+        }
+        try {
+            appFsKey({ key }, false)
+        } catch (error) {
+            return String(error)
+        }
+        return null
+    }
+
+    function frameOf(status: BatchStatus, body: Uint8Array): Uint8Array {
+        const frame = new Uint8Array(5 + body.length)
+        frame[0] = BATCH_STATUS_CODES.indexOf(status)
+        new DataView(frame.buffer).setUint32(1, body.length, true)
+        frame.set(body, 5)
+        return frame
+    }
+
+    /**
+     * `read_store2_units`: one frame per key, `[u8 status][u32 LE length][bytes]`, as `get_assets_batch` answers, with the
+     * key guard, the 256-key cap and the 4 MiB budgets of the Rust command. `errorKeys` are keys the caller (the desktop
+     * fake's read probe) found unreadable: they answer `error`. A batch-only fault changes only this command's answer.
+     */
+    function readStore2Units(args: Record<string, unknown>, errorKeys: ReadonlySet<string>): unknown {
+        if (batchCallFault !== undefined) {
+            throw batchCallFault
+        }
+        const keys = args.keys
+        if (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string')) {
+            throw new Error('keys must be an array of strings')
+        }
+        const named = keys as string[]
+        if (named.length > STORE2_BATCH_MAX_KEYS) {
+            throw `refused: a store2 batch holds at most ${STORE2_BATCH_MAX_KEYS} keys`
+        }
+        const reasons: (string | null)[] = []
+        const data: (Uint8Array | null)[] = []
+        const entries = named.map((key, i): BatchEntry => {
+            reasons[i] = null
+            data[i] = null
+            const refusal = batchKeyRefusal(key)
+            if (refusal !== null) {
+                reasons[i] = refusal
+                return { state: 'invalid' }
+            }
+            const fault = batchFaults.get(key)
+            if (fault === 'invalid') {
+                reasons[i] = 'batch fault'
+                return { state: 'invalid' }
+            }
+            if (fault === 'missing' || fault === 'error') {
+                reasons[i] = 'batch fault'
+                return { state: fault }
+            }
+            if (fault === 'large') {
+                return { state: 'file', size: STORE2_BATCH_CHUNK_MAX + 1 }
+            }
+            if (errorKeys.has(key)) {
+                reasons[i] = `failed to read ${key}`
+                return { state: 'error' }
+            }
+            const link = fs.symlinks.get(key)
+            if (link !== undefined && link.kind !== 'file') {
+                reasons[i] = `${key} is not a file`
+                return { state: 'error' }
+            }
+            const file = link?.kind === 'file' ? link.data : fs.files.get(key)
+            if (file === undefined) {
+                if (fs.directories.has(key)) {
+                    reasons[i] = `${key} is not a file`
+                    return { state: 'error' }
+                }
+                return { state: 'missing' }
+            }
+            data[i] = file
+            return { state: 'file', size: file.length }
+        })
+        const statuses = store2BatchStatuses(entries, STORE2_BATCH_CHUNK_MAX, STORE2_BATCH_RESPONSE_MAX)
+        const encoder = new TextEncoder()
+        const frames = statuses.map((status, i) => {
+            if (status === 'ok') {
+                return frameOf('ok', data[i] ?? new Uint8Array(0))
+            }
+            const reason = reasons[i]
+            return frameOf(status, (status === 'invalid' || status === 'error') && reason !== null ? encoder.encode(reason) : new Uint8Array(0))
+        })
+        const reply = new Uint8Array(frames.reduce((sum, frame) => sum + frame.length, 0))
+        let at = 0
+        for (const frame of frames) {
+            reply.set(frame, at)
+            at += frame.length
+        }
+        return batchReply === undefined ? reply.buffer : batchReply(reply.buffer, named)
     }
 
     /** The entries one level below `directory` (empty: the root) as `[name, kind]`, read from the fake's files, directories and links without a `readDir` call. */
@@ -483,10 +648,13 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         return report
     }
 
-    async function invoke(command: string, args?: unknown): Promise<unknown> {
+    /** `extra.errorKeys`: keys a one-call caller found unreadable; `read_store2_units` answers `error` for them. */
+    async function invoke(command: string, args?: unknown, extra?: { errorKeys?: ReadonlySet<string> }): Promise<unknown> {
         const named = (args ?? {}) as Record<string, unknown>
         calls.push({ command, args: named })
         switch (command) {
+            case 'read_store2_units':
+                return readStore2Units(named, extra?.errorKeys ?? new Set<string>())
             case 'store2_register_page':
                 if (registrationFault !== undefined) {
                     throw registrationFault
@@ -545,6 +713,26 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             abortFault = error
         },
         topChunkSizes,
+        /** `read_range` and `read_store2_units` refuse a key with `:` or `\` from now on, as the Rust rule does on Windows; until the next reset. */
+        windowsKeyRules(on = true): void {
+            windowsKeys = on
+        },
+        /** `read_store2_units` answers `fault` for `key` whatever the file holds; the per-key `read_range` is unchanged. `undefined` clears it. */
+        failBatchKey(key: string, fault: BatchFault | undefined): void {
+            if (fault === undefined) {
+                batchFaults.delete(key)
+            } else {
+                batchFaults.set(key, fault)
+            }
+        },
+        /** `read_store2_units` rejects with `error` until cleared with `undefined`. */
+        failBatchCalls(error: string | undefined): void {
+            batchCallFault = error
+        },
+        /** `read_store2_units` answers what `rewrite` returns for the whole reply (the frames as an `ArrayBuffer` and the keys sent); `undefined` restores it. */
+        rewriteBatchReply(rewrite: ((reply: ArrayBuffer, keys: readonly string[]) => unknown) | undefined): void {
+            batchReply = rewrite
+        },
         /** Whether a call carrying `gen` would pass the gate's generation check now. */
         isCurrent,
         /** The generation the gate holds now. */
@@ -566,6 +754,10 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             flushFault = undefined
             hooks.before = undefined
             hooks.limit = undefined
+            windowsKeys = false
+            batchFaults.clear()
+            batchCallFault = undefined
+            batchReply = undefined
         },
     }
 }

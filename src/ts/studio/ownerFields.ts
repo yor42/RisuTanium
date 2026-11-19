@@ -5,6 +5,8 @@ import type { OwnerKey } from './history/ownerPhase'
 
 export interface OwnerFields {
     readonly greetings: readonly string[]
+    readonly firstMessage: unknown
+    readonly exampleMessage: unknown
     readonly desc: unknown
     readonly hideChatIcon: unknown
     readonly renderWhenComplete: unknown
@@ -16,12 +18,14 @@ export function readOwnerFields(owner: OwnerKey): OwnerFields | null {
     const resolved = resolveLiveTarget(owner)
     if (resolved.ok === false) return null
     const live = createLiveReader(resolved.target)
-    const valueOf = (path: 'desc' | 'hideChatIcon' | 'risutanium_render_when_complete' | 'note') => {
+    const valueOf = (path: 'desc' | 'firstMessage' | 'exampleMessage' | 'hideChatIcon' | 'risutanium_render_when_complete' | 'note') => {
         const read = live.field(path)
         return read.had ? read.value : undefined
     }
     return {
         greetings: [...(live.greetings() ?? [])],
+        firstMessage: valueOf('firstMessage'),
+        exampleMessage: valueOf('exampleMessage'),
         desc: valueOf('desc'),
         hideChatIcon: valueOf('hideChatIcon'),
         renderWhenComplete: valueOf('risutanium_render_when_complete'),

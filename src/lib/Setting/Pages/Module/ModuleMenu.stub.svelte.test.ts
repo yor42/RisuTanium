@@ -9,7 +9,7 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
-import { describe, test, expect, vi, afterEach } from 'vitest'
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
 
 //#region module mocks
 
@@ -91,9 +91,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Record<string, unknown> })
+    const selection = $state({ selId: 0 })
     return {
         DBState: state,
+        selIdState: selection,
         selectedCharID: writable(-1),
+        MobileGUI: writable(false),
+        settingsOpen: writable(false),
+        SettingsMenuIndex: writable(-1),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
@@ -132,8 +137,13 @@ vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 
 //#endregion
 
+import { get } from 'svelte/store'
 import type { RisuModule } from 'src/ts/process/modules'
+import { DBState, SettingsMenuIndex, settingsOpen } from 'src/ts/stores.svelte'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
+import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
+import { studioOpen } from 'src/ts/studio/studioOpen'
 import ModuleMenu from './ModuleMenu.svelte'
 
 let mounted: { target: HTMLElement, app: Record<string, unknown> }[] = []
@@ -177,5 +187,66 @@ describe('the module editor form', () => {
         tabs[1].click()
         flushSync()
         expect(Array.isArray(module.lorebook)).toBe(true)
+    })
+})
+
+describe('GL-3 the Edit in Studio link beside the module toggle definition', () => {
+    const link = (target: HTMLElement) => target.querySelector<HTMLButtonElement>('[data-part="studio-toggle-link"]')
+
+    function install(modules: Record<string, unknown>[]): void {
+        DBState.db = {
+            characters: [{ chaId: 'char-a', type: 'character', chatPage: 0, chats: [{ id: 'chat-a' }] }],
+            modules,
+        } as never
+    }
+
+    beforeEach(() => {
+        localStorage.clear()
+        resetStudioScreenForTests()
+        settingsOpen.set(false)
+        SettingsMenuIndex.set(-1)
+        setStudioEnabled(true)
+    })
+
+    afterEach(() => {
+        resetStudioScreenForTests()
+        setStudioEnabled(false)
+        localStorage.clear()
+        DBState.db = {} as never
+    })
+
+    test('a click from Settings closes Settings, remembers its page and opens the module toggles', () => {
+        const module = { name: 'One', description: '', id: 'm-one' } as unknown as RisuModule
+        install([module as unknown as Record<string, unknown>])
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(3)
+        const target = open(module)
+        const button = link(target)
+        expect(button).not.toBeNull()
+        button!.click()
+        flushSync()
+        expect(get(settingsOpen)).toBe(false)
+        expect(get(studioOpen)).toBe(true)
+        expect(studioScreen.settingsReturn).toBe(3)
+        expect(studioScreen.target).toEqual({ owner: { type: 'module', id: 'm-one' }, kind: 'toggles', from: 'settings' })
+        expect(studioScreen.opener?.element).toBe(button)
+    })
+
+    test('a module whose id another row also holds has no link', () => {
+        const module = { name: 'One', description: '', id: 'm-dup' } as unknown as RisuModule
+        install([module as unknown as Record<string, unknown>, { name: 'Two', description: '', id: 'm-dup' }])
+        expect(link(open(module))).toBeNull()
+    })
+
+    test('a module that is not in the module list has no link', () => {
+        install([])
+        expect(link(open({ name: 'One', description: '', id: 'm-one' } as unknown as RisuModule))).toBeNull()
+    })
+
+    test('with Studio off there is no link', () => {
+        setStudioEnabled(false)
+        const module = { name: 'One', description: '', id: 'm-one' } as unknown as RisuModule
+        install([module as unknown as Record<string, unknown>])
+        expect(link(open(module))).toBeNull()
     })
 })

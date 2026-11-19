@@ -88,7 +88,7 @@ export type BlockedReason = typeof BLOCKED_REASONS[number]
 /**
  * What the dispatch decided.
  *   store2:          a store2 profile is open. `database` is installed by the shared boot tail; the legacy boot is skipped.
- *   legacy-readonly: the legacy profile is opened by the legacy read path, with no archive pass, no block owner and no
+ *   legacy-readonly: the legacy profile is opened by the legacy read path, with no archive pass and no
  *                    write other than the Tauri owner id that opening the session stores. `reason` says which store condition caused it;
  *                    `notices` are the notices the dispatch raised on the way (the page posts them once the database is installed).
  *   stopped:         nothing is installed and `loadedStore` stays unset; the dispatch has shown why through its UI port.

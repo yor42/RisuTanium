@@ -1,7 +1,7 @@
 // The largest request body, in bytes, the server's authenticated body parsers
-// (json, raw and text) accept. The client's boot archive pass holds its own copy of
-// this number in src/ts/storage/bootArchiveHost.ts, and a test pins the two
-// equal, so changing one without the other fails that test.
+// (json, raw and text) accept. The client holds its own copy of this number in
+// src/ts/storage/nodeBodyLimit.ts, and a test pins the two equal, so changing
+// one without the other fails that test.
 const NODE_BODY_LIMIT_BYTES = 104857600; // 100 MiB, what express's '100mb' means
 
 // The largest body of a request that is not authenticated (login, password

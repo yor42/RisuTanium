@@ -75,7 +75,7 @@ import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
 import { decidePlainFetch } from "./network/androidHttp";
-import { androidWithholdsUrl, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
+import { wholeUseUrlWithheld, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
@@ -430,9 +430,12 @@ function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
  * from the store and are handed to the service worker or encoded into a data
  * URL.
  *
- * On Android a URL for a `'whole'` use is withheld (`''`) when the stored size
- * is above the whole-read limit or cannot be read, because the asset protocol
- * would read the file whole into the WebView's heap. A caller that does not say
+ * On Android and on the desktop a URL for a `'whole'` use is withheld (`''`)
+ * when the stored size is above the platform's whole-read limit
+ * (`ANDROID_WHOLE_READ_URL_LIMIT_BYTES`, `DESKTOP_WHOLE_READ_URL_LIMIT_BYTES`)
+ * or cannot be read, because the asset protocol would read the file whole into
+ * memory (the WebView's heap on Android, the host process on the desktop). A
+ * caller that does not say
  * what the URL is for gets `'whole'`; only a media element passes `'media'`.
  *
  * A list passes the `budget` of its run for every `'whole'` row: the call joins
@@ -453,7 +456,7 @@ export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: 
         if (loc.startsWith('assets')) {
             const admission = use === 'whole' && budget !== undefined ? budget.admit(loc) : undefined
             try {
-                if (await androidWithholdsUrl(loc, use)) {
+                if (await wholeUseUrlWithheld(loc, use)) {
                     return ''
                 }
                 if (admission !== undefined && !(await admission)) {
@@ -1624,12 +1627,6 @@ export function liveCharacterCheck(options: { holds?: boolean } = {}): { held: H
  */
 export function sweepDraftRegistrations(now: number = Date.now()): void {
     draftContentOrphanGate.sweepExpiredRegistrations(now)
-}
-
-/** What a block is called to a person: its character's name when it is a character's block, otherwise plain words for the kind of data. An internal block name is never shown. */
-export function describeBlockForPerson(blockName: string): string {
-    const character = getDatabase()?.characters?.find((candidate) => String(candidate?.chaId) === blockName)
-    return character?.name ? `"${character.name}"` : language.saveBlockLabel(blockName)
 }
 
 /**

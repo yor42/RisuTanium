@@ -127,8 +127,7 @@ describe('no page mode deletes an inlay', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['legacy', { kind: 'legacy', convertedFrom: null }],
-        ['block', { kind: 'block' }],
+        ['unset', { kind: 'unset' }],
     ])('reproducer: a registered residency refuses even while the page mode still reads %s', async (_label, mode) => {
         // The store2 boot registers the residency before it moves the page mode.
         setPageStorageMode(mode)
@@ -151,8 +150,7 @@ describe('no page mode deletes an inlay', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['legacy', { kind: 'legacy', convertedFrom: null }],
-        ['block', { kind: 'block' }],
+        ['unset', { kind: 'unset' }],
     ])('reproducer: a %s page with no residency deletes nothing and says so', async (_label, mode) => {
         setPageStorageMode(mode)
 

@@ -25,7 +25,6 @@ vi.mock(import('src/ts/storage/store2/legacy/importTree'), async () => {
 
 import { changeLanguage, language } from 'src/lang'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import {
@@ -332,14 +331,12 @@ beforeEach(() => {
     changeLanguage('en')
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 
 afterEach(() => {
     resetStore2SaveForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 

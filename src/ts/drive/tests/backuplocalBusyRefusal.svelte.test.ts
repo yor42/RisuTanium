@@ -447,7 +447,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     }),
     getColdStorageBackupKey: vi.fn(() => null),
     isColdStorageBackupData: vi.fn(() => false),
-    listColdDataKeys: vi.fn(async () => []),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -1102,39 +1101,5 @@ describe('LoadLocalBackup is registered as busy once its file is chosen', () => 
         }
 
         expect(isBusy()).toBe(false)
-    })
-})
-
-describe('LoadLocalBackup waits for work', () => {
-    test('a send streaming: LoadLocalBackup is refused before the restored profile is written and DBState.db is the same object', async () => {
-        installWorld()
-        const { running } = await startHeldSendBk()
-        const dbBefore = DBState.db
-        const { fixture } = localBackupBytes('restored-marker-b4')
-
-        await loadBackupBytes(fixture).catch(() => {})
-        const dbAfter = DBState.db
-        const written = Array.from(forageMemStore.keys()).some((key) => key === 'database/database.bin' || key.startsWith('blocks/'))
-        const installed = vi.mocked(setDatabase).mock.calls.length
-        const reloadFlag = requiresFullEncoderReload.state
-        await drain(running)
-
-        expect.soft(written, 'a block of the restored profile was written').toBe(false)
-        expect.soft(installed, 'setDatabase calls').toBe(0)
-        expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
-        expect.soft(reloadFlag, 'requiresFullEncoderReload').toBe(false)
-    })
-
-    // A restore that commits keeps dbWriteLock closed for the life of the module instance, so this control stays the last test of the file.
-    test('control: the same restore with no send running commits its block generation, so the refusal above is the busy guard and not a broken setup', async () => {
-        installWorld()
-        const { fixture } = localBackupBytes('restored-marker-b4-control')
-
-        await loadBackupBytes(fixture).catch(() => {})
-
-        const keys = Array.from(forageMemStore.keys())
-        expect(keys).toContain('blocks/head')
-        expect(keys).not.toContain('database/database.bin')
-        expect(vi.mocked(setDatabase).mock.calls.length).toBeGreaterThan(0)
     })
 })

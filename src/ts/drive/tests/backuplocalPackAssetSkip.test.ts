@@ -177,7 +177,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: (name: string) => realGetColdStorageBackupKey(name),
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: (data: unknown) => realIsColdStorageBackupData(data),
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: setColdStorageItemMock,
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
@@ -390,6 +389,20 @@ describe('a desktop restore leaves the page\'s pack file as it is, on every rout
         expect(fakeFs.files.has('assets/ordinary.png')).toBe(true)
         expect(notedKeys()).not.toContain(PACK_KEY)
         expect(shownTexts()).not.toContain('tp-')
+    })
+
+    test('T3-9 guard: an icon file name (tp-<hex>.webp) is skipped like the archive name: the page\'s bytes stay and nothing is sent for it', async () => {
+        desktopPage({ pipeline: true })
+        const iconName = `tp-${HEX}.webp`
+        const iconKey = `assets/${iconName}`
+        fakeFs.plant(iconKey, PAGE_BYTES)
+
+        await loadBackupBytes(concatChunks([entry(iconName, 200, 1), entry('ordinary.png', 100, 2), databaseEntry()]))
+
+        expect(same(fakeFs.files.get(iconKey), PAGE_BYTES)).toBe(true)
+        expect(batchFake.ctl.calls.flatMap((call) => call.keys)).not.toContain(iconKey)
+        expect(fakeFs.files.has('assets/ordinary.png')).toBe(true)
+        expect(notedKeys()).not.toContain(iconKey)
     })
 
     test('T2-16 reproducer: the pipeline\'s addStreamed (an entry above one batch): the page\'s bytes stay, no stream starts for the name', async () => {

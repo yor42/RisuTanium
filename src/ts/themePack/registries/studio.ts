@@ -2,6 +2,8 @@
 // A registry is { critical, safe, surfaces, tokens } (DS-075): the slice 4 part names, the surfaces its critical text sits on, and its own token defaults. strictSafe stays false: the spec does not ask for it (positioning of the safe parts is judged by chat's rule).
 import * as chat from '../engine'
 import type { ContrastPair, LintError, LintResult, RegistryInput, Rgba, SheetRef, SurfaceCheck, TokenMap } from '../engine'
+import { parseConcrete } from '../colour'
+import { parseTriple } from '../failclosed'
 import type { GeometryChain, GeometrySheet, SheetTerm } from '../geometry'
 import { STUDIO_PARTS, tokenFile } from '../tokens'
 import type { TokenFile } from '../tokens'
@@ -120,23 +122,8 @@ export const STUDIO_REGISTRY: StudioRegistry = { fixedWidth: ['studio-sheet-root
 /* DD-195: the colour part, which the shared lint's per-token pass cannot do. The risky section's tint is the danger channel at --studio-form-risky-tint-alpha over the canvas. Its heading is drawn in --nexus-danger; the warning in
    --nexus-text; the explanations in --nexus-text-secondary. Each must keep 4.5:1 on THAT tinted surface in the worst case the pack allows, and --nexus-danger-rgb (the tint's channel) must be the colour of --nexus-danger. */
 const APP_T: TokenMap = readTokens(tokenFile('theme/nexus-tokens.css'), new Map())
-const hexRgb = (s: string): Rgba | null => {
-    const m = /^#([0-9a-f]{3,8})$/i.exec(s.trim())
-    if (!m) return null
-    let h = m[1]
-    if (h.length <= 4) h = [...h].map((c) => c + c).join('')
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]
-}
-const parseCol = (input: string): Rgba | null => {
-    const s = String(input).trim().toLowerCase()
-    const h = hexRgb(s)
-    if (h) return h
-    const m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s)
-    if (m) return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4])]
-    const t3 = /^([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)$/.exec(s)
-    if (t3) return [+t3[1], +t3[2], +t3[3], 1]   // a channel triple (--nexus-danger-rgb)
-    return null
-}
+// the shared concrete reader, plus a bare channel triple (--nexus-danger-rgb)
+const parseCol = (input: string): Rgba | null => parseConcrete(input) ?? parseTriple(input)
 const lum = (c: Rgba): number => {
     const f = c.slice(0, 3).map((x) => {
         x /= 255

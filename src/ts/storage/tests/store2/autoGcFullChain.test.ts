@@ -280,7 +280,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         expect(started).not.toBeNull()
         ;(fire as (() => void) | null)?.()
         await getStartupCleanup()
-        w.pageMode.setPageStorageMode({ kind: 'block' })
+        w.pageMode.setPageStorageMode({ kind: 'unset' })
 
         // A yielding sweep still logs its own result line; only the clean-up pass's line is this case's subject.
         const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
@@ -377,7 +377,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         )
         ;(fire as (() => void) | null)?.()
         await getStartupCleanup()
-        w.pageMode.setPageStorageMode({ kind: 'block' })
+        w.pageMode.setPageStorageMode({ kind: 'unset' })
         const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
         const after = new Set(await k.memory.listStore2())
         return { k, deleted: dead.every(unit => !after.has(unit)), lines, dead, named, after, droppedBase, droppedUnits }

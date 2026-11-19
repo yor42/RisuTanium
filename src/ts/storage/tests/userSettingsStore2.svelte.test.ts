@@ -1,15 +1,12 @@
 // @vitest-environment happy-dom
 
 /**
- * `UserSettings.svelte` ("Backup & Files") on a store2 page: the "Clean Unused Archived Data and Assets" button is
- * hidden, because only a legacy or block page owns what that clean-up deletes (`modeRunsLegacyDeleters`). The buttons the
- * store2 page keeps (save, partial save, load, internal load, dataset) stay. The two backstops behind the hidden button
- * are in `exportAsDatasetStore2.test.ts`, which runs the real functions.
+ * `UserSettings.svelte` ("Backup & Files"): the "Clean Unused Archived Data and Assets" button is never shown, whatever the
+ * page storage mode (store2, read-only, unset, legacy, block). The buttons the store2 page keeps (save, partial save,
+ * load, internal load, dataset) stay. The two backstops behind the removed button are in `exportAsDatasetStore2.test.ts`,
+ * which runs the real functions.
  *
- * These are guards (B5 G5): the button follows the page storage mode, whatever the backup export does. The legacy-page test is the
- * control that shows the button is findable, so a hidden button on store2 is a result and not a selector miss.
- *
- * MOCKED: every module the component calls into (backup, restore, dataset, clean-up, alerts), the platform and the
+ * MOCKED: every module the component calls into (backup, restore, dataset, alerts), the platform and the
  * `stores.svelte` state the nested maintenance panel binds. `src/lang`, `Button.svelte`, the nested panel and the page
  * storage mode store are real.
  */
@@ -57,14 +54,10 @@ vi.mock(import('src/ts/storage/exportAsDataset'), () => ({
     exportAsDataset: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/storage/exportAsDataset'))
 
-vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
-    cleanColdStorage: vi.fn(async () => {}),
-}) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
-
 //#endregion
 
 import { language } from 'src/lang'
-import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
+import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import UserSettings from 'src/lib/Setting/Pages/UserSettings.svelte'
 
 function mountPage(): { target: HTMLElement, app: Record<string, unknown> } {
@@ -104,22 +97,26 @@ describe('UserSettings "Backup & Files" by page storage mode', () => {
         return teardown(target, app)
     })
 
-    test('guard (G5 control): on a legacy page the clean-up button is there, so its absence on store2 is a result', () => {
-        setPageStorageMode({ kind: 'legacy', convertedFrom: null })
+    test.each([
+        { kind: 'unset' },
+    ] as const satisfies readonly PageStorageMode[])('regression reproducer (G5): the clean-up button is never shown, page mode $kind', (mode) => {
+        setPageStorageMode(mode)
 
         const { target, app } = mountPage()
 
-        expect(buttonLabels(target)).toContain(language.cleanColdStorage)
+        expect(buttonLabels(target)).not.toContain(language.cleanColdStorage)
         return teardown(target, app)
     })
 
-    test('guard (G5): the button follows the page mode: it appears for a block page and is gone again for an undecided one', () => {
-        setPageStorageMode({ kind: 'block' })
-        const { target, app } = mountPage()
-        expect(buttonLabels(target)).toContain(language.cleanColdStorage)
+    test.each([
+        { kind: 'store2' },
+        { kind: 'read-only', reason: 'opfs-transitional' },
+        { kind: 'unset' },
+    ] as const satisfies readonly PageStorageMode[])('guard (passes before and after): the clean-up button is never shown, page mode $kind', (mode) => {
+        setPageStorageMode(mode)
 
-        setPageStorageMode({ kind: 'unset' })
-        flushSync()
+        const { target, app } = mountPage()
+
         expect(buttonLabels(target)).not.toContain(language.cleanColdStorage)
         return teardown(target, app)
     })

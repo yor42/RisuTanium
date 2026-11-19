@@ -85,9 +85,8 @@ describe('refuseOnReadOnlyPage', () => {
     })
 
     test.each([
-        ['a block page', { kind: 'block' } as const],
+        ['an unset page', { kind: 'unset' } as const],
         ['a store2 page', { kind: 'store2' } as const],
-        ['a legacy page', { kind: 'legacy', convertedFrom: null } as const],
     ])('guard: %s on a store that is not OPFS lets the caller go on', async (_label, mode) => {
         selection.answer = false
         setPageStorageMode(mode)

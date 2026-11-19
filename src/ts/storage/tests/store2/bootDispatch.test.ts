@@ -27,7 +27,6 @@ import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/file
 import { crc32 } from 'src/ts/storage/blockFrame'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { fingerprintMainFile } from 'src/ts/storage/mainFileFingerprint'
-import { getPageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { getPageStorageMode, resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { GuardedOperations } from 'src/ts/storage/store/contract'
@@ -503,7 +502,6 @@ beforeEach(() => {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 
@@ -511,7 +509,6 @@ afterEach(() => {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 
@@ -576,12 +573,6 @@ describe('new behaviour: row 5, a normal store2 profile', () => {
         const encoder = createSaveEncoder({ previous: active.previous, lists: fakeLists, env: testEnv(createClock(), 321) })
         const plan = await encoder.plan(result.database, { marked: new Set(), modules: true, whole: true })
         expect(plan.unchanged).toBe(true)
-    })
-
-    test('the legacy block owner is disabled for the page: no later caller can build one', async () => {
-        const world = await seedWorld()
-        expectStoreResult(await rig({ memory: world.memory }).dispatch())
-        expect(await getPageBlockOwner()).toBeNull()
     })
 
     test('a standing fence that parses is carried without a notice', async () => {
@@ -1927,14 +1918,12 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
         expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'opfs-transitional', notices: [] })
         expect(test.ui.notices).toEqual([])
         expect(test.store.reads).toEqual([])
-        expect(await getPageBlockOwner()).toBeNull()
     })
 
-    test('a Node server without the check-only route, with no store2 commit key and a main file, is read-only legacy with its named notice and no block owner', async () => {
+    test('a Node server without the check-only route, with no store2 commit key and a main file, is read-only legacy with its named notice', async () => {
         const test = unavailableRig('node', { capable: false })
         expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'server-capability', notices: [expect.objectContaining({ name: 'server-capability' })] })
         expect(test.ui.notices).toEqual([expect.objectContaining({ name: 'server-capability' })])
-        expect(await getPageBlockOwner()).toBeNull()
         expect(test.store.reads).toContain('store2-commit')
         expect(test.store.writes).toEqual([])
         expect(test.store.deletes).toEqual([])

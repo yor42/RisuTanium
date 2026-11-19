@@ -463,7 +463,7 @@ describe('TK-P: a take in the real page, then an immediate park, gives the clean
                     throw new Error(`The boot answered ${booted.result.kind}.`)
                 }
                 h.db = booted.result.database as unknown as Entry
-                world.pageMode.setPageStorageMode({ kind: 'block' })
+                world.pageMode.setPageStorageMode({ kind: 'unset' })
             },
         })
         await honourCheckDeadline()

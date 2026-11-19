@@ -16,7 +16,6 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { coldStorageHeader } from 'src/ts/process/coldstorageData'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -565,14 +564,12 @@ describe('the callers hand the planner the page\'s store', () => {
     beforeEach(() => {
         resetStore2SaveForTest()
         resetStore2BootForTest()
-        resetPageBlockOwnerForTests()
         resetPageStorageModeForTests()
     })
 
     afterEach(() => {
         resetStore2SaveForTest()
         resetStore2BootForTest()
-        resetPageBlockOwnerForTests()
         resetPageStorageModeForTests()
     })
 

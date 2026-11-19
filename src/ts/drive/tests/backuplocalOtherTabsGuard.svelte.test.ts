@@ -252,13 +252,12 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
     getColdStorageBackupKey: vi.fn(() => null),
     getColdStorageItem: vi.fn(async () => null),
     isColdStorageBackupData: vi.fn(() => false),
-    listColdDataKeys: vi.fn(async () => []),
     setColdStorageItem: vi.fn(async () => true),
 }) as unknown as typeof import('../../process/coldstorage.svelte'))
 
 //#endregion
 
-//#region byte-layout and File harness, matching backuplocalIdRepair.test.ts's own pattern
+//#region byte-layout and File harness
 
 function u32le(n: number): Uint8Array {
     const buf = new Uint8Array(4)
@@ -399,17 +398,15 @@ interface BootedTabA {
  * `backuplocalRestoreRace.svelte.test.ts` and
  * `globalApi.storageTabLocksIdentity.svelte.test.ts` document).
  */
-async function bootTabA(locksValue: LockManager | undefined, mode: 'store2' | 'unset' = 'store2'): Promise<BootedTabA> {
+async function bootTabA(locksValue: LockManager | undefined): Promise<BootedTabA> {
     vi.resetModules()
     Object.defineProperty(window.navigator, 'locks', {
         value: locksValue,
         configurable: true,
     })
     const globalApi = await import('../../globalApi.svelte')
-    if (mode === 'store2') {
-        const pageMode = await import('../../storage/pageStorageMode')
-        pageMode.setPageStorageMode({ kind: 'store2' })
-    }
+    const pageMode = await import('../../storage/pageStorageMode')
+    pageMode.setPageStorageMode({ kind: 'store2' })
     // The restore commits a block generation through the page's byte store: the
     // storage-object model on the web, the desktop store on Tauri.
     const platform = await import('../../platform')
@@ -666,81 +663,6 @@ describe('J5: every early exit leaves this page, and the origin, still usable (g
 
         await expectPageStillUsable(tabA, core, 'B-after-decode-throw')
         expectNoSaveFirstWait(tabA)
-    })
-})
-
-// The rows below are about the block-era tail (the cold-storage prompt before the write, the block write itself) and
-// stay on a page of mode `unset`, a fresh tab A booted without the store2 mode.
-describe('J5 on the legacy page: every early exit leaves this page, and the origin, still usable (guard, mutation-checked)', () => {
-    beforeEach(async () => {
-        core = new FakeLockManagerCore()
-        tabA = await bootTabA(new FakeTabLockManagerView(core, 'A') as unknown as LockManager, 'unset')
-    })
-
-    test('guard: a cancelled cold-storage prompt leaves this page usable', async () => {
-        vi.mocked(tabA.coldstorage.confirmIncompleteColdStorageOperation).mockResolvedValueOnce(false)
-        const fixture = buildValidFixture('cold-storage-cancelled', tabA.encodeRisuSaveLegacy)
-
-        await loadBackupBytes(tabA.loadLocalBackup, fixture)
-
-        await expectPageStillUsable(tabA, core, 'B-after-cold-cancel')
-    })
-
-    test('guard: a rejecting database write leaves this page usable', async () => {
-        vi.mocked(tabA.globalApi.forageStorage.setItem).mockImplementation(async (key: unknown, value: unknown) => {
-            if (typeof key === 'string' && key.startsWith('blocks/') && key !== 'blocks/head') {
-                throw new Error('scratch: restore write failed')
-            }
-            webFiles.set(key as string, value as Uint8Array)
-            return null
-        })
-        const fixture = buildValidFixture('write-failed-j5', tabA.encodeRisuSaveLegacy)
-
-        await loadBackupBytes(tabA.loadLocalBackup, fixture).catch(() => { })
-
-        await expectPageStillUsable(tabA, core, 'B-after-write-failure')
-    })
-})
-
-// The first row is about the block-era tail's database write and stays on a page of mode `unset`.
-describe('J6 on the legacy page: exactly one message on failure, never an unhandled rejection', () => {
-    beforeEach(async () => {
-        core = new FakeLockManagerCore()
-        tabA = await bootTabA(new FakeTabLockManagerView(core, 'A') as unknown as LockManager, 'unset')
-    })
-
-    test('regression reproducer: a rejecting database write shows one error, never becomes an unhandled rejection, and leaves the pre-restore database installed', async () => {
-        // A plain rejecting function, not vi.fn() -- a vi.fn()-produced
-        // rejection already looks handled to Node's unhandledRejection
-        // detector regardless of what the code under test does with it.
-        tabA.globalApi.forageStorage.setItem = ((key: string, value: Uint8Array) => {
-            if (key.startsWith('blocks/') && key !== 'blocks/head') {
-                return Promise.reject(new Error('scratch: restore write failed'))
-            }
-            webFiles.set(key, value)
-            return Promise.resolve(null)
-        }) as typeof tabA.globalApi.forageStorage.setItem
-
-        const fixture = buildValidFixture('write-failed-unhandled', tabA.encodeRisuSaveLegacy)
-
-        const unhandled: unknown[] = []
-        const onUnhandledRejection = (reason: unknown) => { unhandled.push(reason) }
-        process.on('unhandledRejection', onUnhandledRejection)
-        try {
-            triggerBackupBytesWithoutAwaiting(tabA.loadLocalBackup, fixture)
-            // An unhandled rejection is reported asynchronously, not
-            // synchronously with the rejection itself -- give that a turn.
-            await new Promise((resolve) => setTimeout(resolve, 50))
-        } finally {
-            process.off('unhandledRejection', onUnhandledRejection)
-        }
-
-        expect(unhandled).toEqual([])
-        expect(tabA.alertModule.alertError).toHaveBeenCalledTimes(1)
-        // The restored database must never reach setDatabase() until its
-        // write has actually succeeded -- a failed write must leave this
-        // page on its pre-restore database.
-        expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 })
 

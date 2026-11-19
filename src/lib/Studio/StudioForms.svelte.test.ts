@@ -33,7 +33,7 @@ vi.mock('src/lang', async () => {
     // The problem list's keys take arguments, so they answer with the key and its arguments.
     const withArguments = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const own: Record<string, unknown> = {}
-    for (const key of ['ltProblemCount', 'ltProblemsShowAll', 'ltProblemLine', 'ltProblemFix', 'cbsUnclosed', 'cbsStrayBlockClose', 'cbsNotABlock', 'ltMacroMatches']) own[key] = withArguments(key)
+    for (const key of ['ltProblemCount', 'ltProblemsShowAll', 'ltProblemLine', 'ltProblemFix', 'cbsUnclosed', 'cbsStrayBlockClose', 'cbsNotABlock', 'ltMacroMatches', 'ltCardHandle', 'ltCardMenu', 'ltCardMoved']) own[key] = withArguments(key)
     // The macro table's labels: one per row id, answering `row:<id>`.
     own.ltMacroRows = new Proxy({}, { get: (_target, id) => typeof id === 'string' ? `row:${id}` : undefined })
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
@@ -71,6 +71,7 @@ interface LiveCharacter {
     type: string
     license?: string
     desc: string
+    firstMessage?: string
     hideChatIcon?: boolean
     risutanium_render_when_complete?: boolean
     alternateGreetings: string[]
@@ -232,6 +233,14 @@ const note = () => part('studio-form-note') as HTMLTextAreaElement
 const hideIcon = () => part('studio-form-hide-icon') as HTMLInputElement
 const renderBox = () => part('studio-form-render-when-complete') as HTMLInputElement
 const greetingInputs = () => parts('studio-greeting-input') as HTMLTextAreaElement[]
+const firstMessage = () => part('studio-form-first-message') as HTMLTextAreaElement
+
+// Delete is an item of the card's menu: open the menu of the card, then press the item.
+function deleteViaMenu(index: number): void {
+    ;(parts('studio-card-menu')[index] as HTMLButtonElement).click()
+    flushSync()
+    ;(part('studio-greeting-delete') as HTMLButtonElement).click()
+}
 
 function type(field: HTMLTextAreaElement, value: string): void {
     field.value = value
@@ -810,7 +819,7 @@ describe('the character form edits through the history service', () => {
 
 describe('T-UI4 deleting a first message', () => {
     function deleteRow(index: number): void {
-        ;(parts('studio-greeting-delete')[index] as HTMLButtonElement).click()
+        deleteViaMenu(index)
     }
 
     test('posts one Undo toast per delete and moves focus to the next row, else the previous, else Add', async () => {
@@ -870,6 +879,76 @@ describe('T-UI4 deleting a first message', () => {
 })
 
 // ---------------------------------------------------------------- banners
+
+describe('F1 the first-message field', () => {
+    test('F1-FM1 typing three times inside one second is one coalesced step, three save marks, stored endings kept', async () => {
+        live().firstMessage = 'f0\r\nw'
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(firstMessage().value).toBe('f0\nw')
+        type(firstMessage(), 'f0\nwX')
+        type(firstMessage(), 'f0\nwXY')
+        type(firstMessage(), 'f0\nwXYZ')
+        expect(live().firstMessage).toBe('f0\r\nwXYZ')
+        expect(h.marks).toBe(3)
+        const steps = rig.service.view(A).done
+        expect(steps).toHaveLength(1)
+        expect(steps[0].label).toEqual({ kind: 'field', field: 'firstMessage' })
+    })
+
+    test('F1-FM3 a character with no first-message key refuses typing: the refusal line shows, nothing is written, marked or recorded', async () => {
+        expect('firstMessage' in live()).toBe(false)
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(firstMessage().readOnly).toBe(false)
+        type(firstMessage(), 'typed')
+        expect('firstMessage' in live()).toBe(false)
+        expect(part('studio-form-refusal')?.textContent).toBe(refusalText('precondition'))
+        expect(h.marks).toBe(0)
+        expect(rig.service.view(A).done).toHaveLength(0)
+    })
+
+    test('F1-FM4 the field sits between the render-when-complete hint and the alternates, and is read-only while the owner loads', async () => {
+        const rig = makeRig()
+        const gate = createGate()
+        rig.claim.hook = () => gate.promise
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(firstMessage().readOnly).toBe(true)
+        const order = Array.from(part('studio-character-form')!.querySelectorAll('[data-part="studio-form-render-when-complete-hint"], [data-part="studio-form-first-message"], [data-part="studio-form-greetings"]')).map((node) => node.getAttribute('data-part'))
+        expect(order).toEqual(['studio-form-render-when-complete-hint', 'studio-form-first-message', 'studio-form-greetings'])
+        gate.release()
+        await settle()
+    })
+})
+
+describe('F1-DEL the menu delete follows the open chat (MC-1917)', () => {
+    // [A, B, C, D] with the chat showing alternate 2: an earlier delete moves it down one, deleting the shown entry sends it
+    // to the default first message, a later delete leaves it.
+    test.each([
+        ['an earlier card', 0, 1],
+        ['the shown card', 2, -1],
+        ['a later card', 3, 2],
+    ])('deleting %s makes one greetingRemove step and the chat shows index %i -> %i', async (_name, at, expected) => {
+        live().alternateGreetings = ['A', 'B', 'C', 'D']
+        const rig = makeRig()
+        const { host } = makeToastHost()
+        mountInto(StudioCharacterForm, { chaId: 'A', host })
+        await settle()
+        deleteViaMenu(at)
+        await settle()
+        expect(live().chats[0].fmIndex).toBe(expected)
+        const done = rig.service.view(A).done
+        expect(done).toHaveLength(1)
+        expect(done[0].label).toEqual({ kind: 'greetingRemove' })
+        expect(h.marks).toBe(1)
+        // Focus goes to the row that took the place, else the one before it.
+        const rows = greetingInputs()
+        expect(document.activeElement).toBe(rows[at] ?? rows[at - 1])
+    })
+})
 
 describe('the banner names why history is not kept', () => {
     const bannerOf = () => part('studio-form-banner')
@@ -1067,7 +1146,7 @@ describe('first-message rows are keyed by identity', () => {
     }
 
     const valuesOf = () => greetingInputs().map((field) => field.value)
-    const deleteButton = (index: number) => parts('studio-greeting-delete')[index] as HTMLButtonElement
+    const deleteButton = (index: number) => ({ click: () => deleteViaMenu(index) })
 
     async function mountList(list: string[]): Promise<{ rig: Rig; host: ToastRig }> {
         const rig = makeRig()
@@ -1255,7 +1334,8 @@ describe('first-message rows are keyed by identity', () => {
         expect(parts('studio-greeting-row')).toHaveLength(2)
         expect(greetingInputs().map((field) => field.dataset.index)).toEqual(['0', '1'])
         expect(greetingInputs().map((field) => field.getAttribute('aria-label'))).toEqual(['altGreet 1', 'altGreet 2'])
-        expect(parts('studio-greeting-delete').map((button) => button.getAttribute('aria-label'))).toEqual(['studioGreetingDelete 1', 'studioGreetingDelete 2'])
+        expect(parts('studio-card-menu').map((button) => button.getAttribute('aria-label'))).toEqual(['ltCardMenu(1)', 'ltCardMenu(2)'])
+        expect(parts('studio-card-handle').map((button) => button.getAttribute('aria-label'))).toEqual(['ltCardHandle(1)', 'ltCardHandle(2)'])
     })
 
     test('G4 typing keeps the node, the focus and the caret and writes no value back', async () => {
@@ -1378,15 +1458,15 @@ describe('first-message rows are keyed by identity', () => {
 
 type EolFixture = 'plain' | 'crlf' | 'mixed' | 'lonecr'
 
-const FIXTURE_TEXT: Record<EolFixture, { desc: string; greeting: string; note: string }> = {
-    plain: { desc: 'd0', greeting: 'g1', note: 'n0' },
-    crlf: { desc: 'd0\r\nx', greeting: 'g1\r\ny', note: 'n0\r\nz' },
-    mixed: { desc: 'a\r\nb\nc', greeting: 'g\r\nh\ni', note: 'n\r\no\np' },
-    lonecr: { desc: 'a\rb', greeting: 'g\rh', note: 'n\ro' },
+const FIXTURE_TEXT: Record<EolFixture, { desc: string; greeting: string; note: string; first: string }> = {
+    plain: { desc: 'd0', greeting: 'g1', note: 'n0', first: 'f0' },
+    crlf: { desc: 'd0\r\nx', greeting: 'g1\r\ny', note: 'n0\r\nz', first: 'f0\r\nw' },
+    mixed: { desc: 'a\r\nb\nc', greeting: 'g\r\nh\ni', note: 'n\r\no\np', first: 'f\r\nq\nr' },
+    lonecr: { desc: 'a\rb', greeting: 'g\rh', note: 'n\ro', first: 'f\rq' },
 }
 
 interface LongTarget {
-    name: 'desc' | 'greeting 1' | 'note'
+    name: 'desc' | 'greeting 1' | 'note' | 'first message'
     owner: typeof A
     mountForm(): void
     field(): HTMLTextAreaElement
@@ -1408,6 +1488,16 @@ const LONG_TARGETS: LongTarget[] = [
         seed: (text) => { live().desc = text },
         edit: (service, text) => { service.editField(A, 'desc', text) },
         textOf: (fixture) => FIXTURE_TEXT[fixture].desc,
+    },
+    {
+        name: 'first message',
+        owner: A,
+        mountForm: () => { mountInto(StudioCharacterForm, { chaId: 'A' }) },
+        field: firstMessage,
+        stored: () => live().firstMessage ?? '',
+        seed: (text) => { live().firstMessage = text },
+        edit: (service, text) => { service.editText(A, 'firstMessage', text, 'typing') },
+        textOf: (fixture) => FIXTURE_TEXT[fixture].first,
     },
     {
         name: 'greeting 1',

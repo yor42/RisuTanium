@@ -198,7 +198,7 @@ describe('the install point is compiled out when MEASURE is false', () => {
 
     test('guard: a page that is not a store2 page gets no action either way', async () => {
         resetPageStorageModeForTests()
-        setPageStorageMode({ kind: 'legacy', convertedFrom: null })
+        setPageStorageMode({ kind: 'unset' })
         const { session } = await openReadySession()
 
         startStore2Maintenance(noStore, { session: () => session, startTrigger: neverTrigger })

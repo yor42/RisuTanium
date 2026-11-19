@@ -168,7 +168,6 @@ import { crc32 } from 'src/ts/storage/blockFrame'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { writeRisuSaveV0 } from 'src/ts/storage/risuSaveV0'
 import { isModuleStub, MODULE_STUB_KEY, MODULE_STUB_VALUE, ModuleStubRefusal } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
@@ -259,7 +258,6 @@ function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 }
 

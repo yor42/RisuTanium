@@ -138,6 +138,19 @@ describe('StorageMaintenanceSettings renders only the asset integrity panel (sce
         await teardown(target, app)
     })
 
+    test('regression reproducer, web: the startup corruption-warning checkbox is gone and the one button stays', async () => {
+        revokeOpfsSupport()
+
+        const { target, app } = mountPanel()
+        flushSync()
+
+        expect(target.querySelectorAll('input[type=checkbox]').length).toBe(0)
+        expect(target.textContent).not.toContain(language.assetIntegrityWarnOnStartup)
+        expect(target.querySelectorAll('button').length).toBe(1)
+
+        await teardown(target, app)
+    })
+
     test('compatibility guard, web without OPFS support: the integrity panel renders with its one button', async () => {
         revokeOpfsSupport()
 

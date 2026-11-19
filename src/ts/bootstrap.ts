@@ -463,7 +463,7 @@ export async function loadData() {
             selectedCharID.set(-1)
             startObserveDom()
             assignIds()
-            // A store2 page starts the put-back too: it unloads a loaded, unchanged character through the residency, not the cold-storage re-archive.
+            // A store2 page starts the put-back too: it unloads a loaded, unchanged character through the residency.
             if (getPageStorageMode().kind !== 'read-only') {
                 try {
                     startCharacterPutBack()

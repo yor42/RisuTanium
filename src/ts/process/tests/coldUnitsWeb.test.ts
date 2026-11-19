@@ -1,7 +1,7 @@
 /**
  * Cold-storage units on the web build go through the page's byte store: the
- * real `readColdStorageItem`, `setColdStorageItem`, `deleteColdStorageUnits`,
- * `listColdStorageItems` and the load-time listing run over the real IndexedDB
+ * real `readColdStorageItem`, `setColdStorageItem` and `deleteColdStorageUnits`
+ * run over the real IndexedDB
  * store (`fake-indexeddb`) with an in-memory OPFS root for the units that older
  * builds kept as `coldstorage_<key>.json` files. A pass here says nothing about
  * a real browser's IndexedDB or OPFS. `fake-indexeddb/auto` is imported first
@@ -70,11 +70,11 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'linux' }))
 
 type ColdModule = typeof import('src/ts/process/coldstorage.svelte')
 type AppStoreModule = typeof import('src/ts/storage/store/appStore')
-type ListingModule = typeof import('src/ts/storage/loadTimeListing')
+type LocationModule = typeof import('src/ts/process/coldUnitLocation')
 
 let cold: ColdModule
 let app: AppStoreModule
-let listing: ListingModule
+let location: LocationModule
 let root: FakeOpfsRoot
 let getDirectory: ReturnType<typeof vi.fn>
 
@@ -105,6 +105,18 @@ async function storeHas(key: string): Promise<boolean> {
     return (await profile.getItem('coldstorage/' + key)) !== null
 }
 
+/** The unit keys the page's byte store lists under `coldstorage/`, named as the store layout names them. */
+async function storeUnits(): Promise<string[]> {
+    const keys: string[] = []
+    for (const storeKey of await (await app.getAppStore()).list(location.COLD_UNIT_STORE_PREFIX)) {
+        const key = location.coldUnitKeyOfStoreKey(storeKey)
+        if (key !== null) {
+            keys.push(key)
+        }
+    }
+    return keys
+}
+
 function installOpfs(navigatorStorage: unknown): void {
     Object.defineProperty(navigator, 'storage', { configurable: true, value: navigatorStorage })
 }
@@ -121,7 +133,7 @@ beforeEach(async () => {
     vi.resetModules()
     cold = await import('src/ts/process/coldstorage.svelte')
     app = await import('src/ts/storage/store/appStore')
-    listing = await import('src/ts/storage/loadTimeListing')
+    location = await import('src/ts/process/coldUnitLocation')
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'log').mockImplementation(() => { })
 })
@@ -224,9 +236,9 @@ describe('writing a unit: the page store only, never OPFS', () => {
         expect(await cold.setColdStorageItem(key, { message: [] })).toBe(true)
 
         expect(await cold.readColdStorageItem(key)).toEqual({ status: 'ok', value: { message: [] } })
-        expect((await cold.listColdStorageItems()).items).toEqual([key])
+        expect(await storeUnits()).toEqual([key])
         expect(await cold.deleteColdStorageUnits([key])).toEqual([])
-        expect((await cold.listColdStorageItems()).items).toEqual([])
+        expect(await storeUnits()).toEqual([])
     })
 
     test('new behaviour: a key the cold-key rule accepts but the store refuses (a leading dot) reads damaged, writes false and touches neither store nor OPFS', async () => {
@@ -252,7 +264,8 @@ describe('deleting units: the legacy file first, then the store entry', () => {
 
         expect(failed).toEqual([])
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'missing' })
-        expect((await cold.listColdStorageItems()).items).toEqual([])
+        expect(await storeUnits()).toEqual([])
+        expect(root.files.has(legacyName(UUID))).toBe(false)
     })
 
     test('new behaviour: a legacy file that cannot be removed leaves the store entry, is reported not deleted, and the newer value stays readable', async () => {
@@ -299,38 +312,6 @@ describe('deleting units: the legacy file first, then the store entry', () => {
     })
 })
 
-describe('listing: the store united with the legacy OPFS files', () => {
-    test('new behaviour: the union lists a unit once whether the store, OPFS or both hold it', async () => {
-        await putInStore(UUID, { n: 1 })
-        putLegacy(UUID, { n: 0 })
-        await putInStore(OTHER, { n: 2 })
-        putLegacy('legacy-only', { n: 3 })
-        root.files.set(hexName('assets/not-a-unit.png'), new Uint8Array([1]))
-        await profile.setItem('assets/other.png', new Uint8Array([1]))
-
-        expect((await cold.listColdStorageItems()).items.sort()).toEqual([OTHER, UUID, 'legacy-only'].sort())
-    })
-
-    test('new behaviour: an OPFS listing that fails fails the whole listing: no listing is recorded', async () => {
-        await putInStore(UUID, { n: 1 })
-        root.failEntries = new Error('listing failed')
-
-        await listing.recordLoadTimeListing()
-
-        expect(listing.getLoadTimeListing()).toBeNull()
-        await expect(listing.takeStorageListing()).rejects.toThrow('listing failed')
-    })
-
-    test('new behaviour: a stored name the key rule rejects is never a listed unit', async () => {
-        await profile.setItem('coldstorage/a:b', new Uint8Array([1]))
-        await putInStore(UUID, { n: 1 })
-
-        const taken = await listing.takeStorageListing()
-
-        expect([...taken.units]).toEqual([UUID])
-    })
-})
-
 describe('the backup carries units from both places', () => {
     test('new behaviour: the collector carries a unit that only the store holds and one that only a legacy file holds, as the same JSON text either way', async () => {
         await putInStore(UUID, { slot: 'store' })
@@ -369,10 +350,10 @@ describe('a browser without OPFS', () => {
     test('new behaviour: the listing is the store\'s only and a delete touches only the store', async () => {
         await putInStore(UUID, { n: 1 })
 
-        expect((await cold.listColdStorageItems()).items).toEqual([UUID])
+        expect(await storeUnits()).toEqual([UUID])
         expect(await cold.deleteColdStorageUnits([UUID])).toEqual([])
         expect(await storeHas(UUID)).toBe(false)
-        expect((await listing.takeStorageListing()).units.size).toBe(0)
+        expect(await storeUnits()).toEqual([])
     })
 })
 
@@ -388,7 +369,7 @@ describe('a page that fell back to the OPFS main store keeps its units in that s
         expect(root.files.has(hexName('coldstorage/' + UUID))).toBe(true)
         expect(root.files.has(legacyName(UUID))).toBe(false)
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { message: [] } })
-        expect((await cold.listColdStorageItems()).items).toEqual([UUID])
+        expect(await storeUnits()).toEqual([UUID])
         expect(await profile.keys()).toEqual([])
     })
 })

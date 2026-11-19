@@ -112,7 +112,7 @@ export function getGlobalChatVar(key:string, subject?: RunSubject): string {
     if(vt !== 'null' && vt){
         return vt
     }
-    return DBState.db.globalChatVariables[key] ?? 'null'
+    return (subject?.sharedGlobals ?? DBState.db.globalChatVariables)[key] ?? 'null'
 }
 
 export function setGlobalChatVar(key:string, value:string, subject?: RunSubject) {

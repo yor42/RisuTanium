@@ -290,10 +290,8 @@ describe('the page gate', () => {
         expect(utilityAvailable()).toBe(false)
 
         h.desktop = true
-        for (const kind of ['unset', 'block', 'legacy'] as const) {
-            setPageStorageMode(kind === 'legacy' ? { kind, convertedFrom: null } : { kind })
-            expect(utilityAvailable()).toBe(false)
-        }
+        setPageStorageMode({ kind: 'unset' })
+        expect(utilityAvailable()).toBe(false)
         setPageStorageMode({ kind: 'read-only', reason: 'too-new', source: 'manifest' } as never)
         expect(utilityAvailable()).toBe(false)
     })
