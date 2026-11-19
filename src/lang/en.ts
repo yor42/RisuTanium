@@ -3846,6 +3846,14 @@ export const languageEnglish = {
     saveLeftoverNotice: "RisuTanium found unused save data left behind by an interrupted save or restore. It does no harm. You can remove it in the clean-up in the settings.",
     saveMainFileLeftNotice: "Your data has moved to a new format, but the old save file is too large for this server to move aside. An upstream version of RisuAI opening the same data may open that old file. The clean-up in the settings keeps it safe until you delete it.",
     opfsReadOnlyNotice: "RisuTanium is running from a temporary copy of your data this time, so it will not save changes, and restoring a backup or cleaning up storage is not available. Your data is not lost. Close other tabs of this app and restart it so the data can be moved to browser storage.",
+    legacyPartialCharacters: (count: number) => count === 1 ? "1 character" : `${count} characters`,
+    legacyPartialUnreadable: (count: number) => count === 1 ? "1 other part this version cannot read" : `${count} other parts this version cannot read`,
+    legacyPartialNotice: (items: string[]) =>
+        `Part of your saved data could not be read, so this page opened without it:\n\n${items.join('\n')}\n\nNothing was changed on disk. A backup saved from this page will not include it.`,
+    legacyBackupNotice: (date: string, items: string[]) =>
+        `Your save file could not be read, so this page opened your backup from ${date}. It may be older than your latest changes. Nothing was changed on disk.${items.length === 0 ? '' : `\n\nPart of this backup could not be read either, so the page opened without:\n\n${items.join('\n')}`}`,
+    legacyPartialExportConfirm: (date: string | null, items: string[]) =>
+        `${date === null ? '' : `This page opened your backup from ${date}, which may be older than your latest changes.\n\n`}${items.length === 0 ? '' : `This backup file will not include what this page could not read:\n\n${items.join('\n')}\n\n`}Save the backup anyway? Nothing has been written yet.`,
     otherTabSavedReloadTitle: "Another tab or device changed how or what is saved, so this tab's copy of your data is out of date and its changes cannot be saved from this tab. Reloading gets a working, saveable state again, but any unsaved changes in this tab will be lost.",
     savingStoppedReplacedMessage: "This tab has stopped saving. Another tab or device replaced the saved data (a backup was loaded or the data was moved to a new format), so this tab's copy is out of date and cannot be saved from this tab. Changes made from now on will not be kept. Reloading will fetch the current data, and any unsaved changes in this tab will be lost.",
     savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number, assetLimitBytes: number) =>

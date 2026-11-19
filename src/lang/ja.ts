@@ -3847,6 +3847,14 @@ export const languageJapanese = {
     saveLeftoverNotice: "RisuTaniumは、中断された保存または復元によって取り残された未使用のセーブデータを検出しました。害はありません。設定のクリーンアップから削除できます。",
     saveMainFileLeftNotice: "データは新しい形式に移行されましたが、古いセーブファイルが大きすぎるため、このサーバーで退避させることができませんでした。同じデータを開くアップストリーム版のRisuAIがその古いファイルを開いてしまう可能性があります。削除するまで、設定のクリーンアップで安全に保持されます。",
     opfsReadOnlyNotice: "今回はデータのテンポラリコピーからRisuTaniumが実行されているため、変更は保存されず、バックアップの復元やストレージのクリーンアップも利用できません。データは失われていません。データをブラウザストレージに移動できるよう、本アプリの他のタブを閉じて再起動してください。",
+    legacyPartialCharacters: (count: number) => count === 1 ? "キャラクター1体" : `キャラクター${count}体`,
+    legacyPartialUnreadable: (count: number) => count === 1 ? "このバージョンでは読み取れないその他の部分1件" : `このバージョンでは読み取れないその他の部分${count}件`,
+    legacyPartialNotice: (items: string[]) =>
+        `保存データの一部を読み取れなかったため、このページはその部分なしで開かれました:\n\n${items.join('\n')}\n\nディスク上のデータは何も変更されていません。このページから保存したバックアップには、その部分は含まれません。`,
+    legacyBackupNotice: (date: string, items: string[]) =>
+        `セーブファイルを読み取れなかったため、このページは${date}のバックアップを開きました。最新の変更より古い可能性があります。ディスク上のデータは何も変更されていません。${items.length === 0 ? '' : `\n\nこのバックアップの一部も読み取れなかったため、ページは次の項目なしで開かれました:\n\n${items.join('\n')}`}`,
+    legacyPartialExportConfirm: (date: string | null, items: string[]) =>
+        `${date === null ? '' : `このページは${date}のバックアップを開いており、最新の変更より古い可能性があります。\n\n`}${items.length === 0 ? '' : `このバックアップファイルには、このページが読み取れなかった次の項目は含まれません:\n\n${items.join('\n')}\n\n`}それでもバックアップを保存しますか？まだ何も書き込まれていません。`,
     otherTabSavedReloadTitle: "別のタブまたは端末がセーブデータの保存方法または内容を変更したため、このタブ内のデータコピーが古くなり、このタブからの変更を保存できなくなりました。再読み込みすると再び保存可能な正常な状態に戻りますが、このタブ内の未保存の変更は失われます。",
     savingStoppedReplacedMessage: "このタブでの保存を停止しました。別のタブまたは端末がセーブデータを置き換えたため（バックアップが読み込まれたか、データが新しい形式に移行されました）、このタブのコピーは古くなり、このタブから保存できなくなりました。これ以降に行われた変更は保持されません。再読み込みすると現在のデータが取得されますが、このタブ内の未保存の変更は失われます。",
     savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number, assetLimitBytes: number) =>

@@ -3703,6 +3703,14 @@ export const languageChinese = {
     "saveLeftoverNotice": "RisuTanium 发现了因保存或恢复被中断而遗留的未使用存档数据。这些数据无害，您可以在设置中的清理里将其删除。",
     "saveMainFileLeftNotice": "您的数据已迁移到新格式，但旧的存档文件过大，此服务器无法将其移开。打开同一份数据的上游版本 RisuAI 可能会打开那个旧文件。在您将其删除之前，设置中的清理会妥善保留它。",
     "opfsReadOnlyNotice": "RisuTanium 这次是在您数据的临时副本上运行，因此不会保存更改，也无法恢复备份或清理存储。您的数据没有丢失。请关闭此应用的其他标签页并重新启动，以便将数据迁移到浏览器存储。",
+    "legacyPartialCharacters": (count: number) => count === 1 ? "1 个角色" : `${count} 个角色`,
+    "legacyPartialUnreadable": (count: number) => count === 1 ? "另外 1 个此版本无法读取的部分" : `另外 ${count} 个此版本无法读取的部分`,
+    "legacyPartialNotice": (items: string[]) =>
+        `您的部分已保存数据无法读取，因此此页面在没有这些数据的情况下打开：\n\n${items.join('\n')}\n\n磁盘上没有任何更改。从此页面保存的备份将不包含这些数据。`,
+    "legacyBackupNotice": (date: string, items: string[]) =>
+        `您的存档文件无法读取，因此此页面打开了 ${date} 的备份。它可能比您最新的更改更旧。磁盘上没有任何更改。${items.length === 0 ? '' : `\n\n此备份的部分内容同样无法读取，因此页面在没有以下内容的情况下打开：\n\n${items.join('\n')}`}`,
+    "legacyPartialExportConfirm": (date: string | null, items: string[]) =>
+        `${date === null ? '' : `此页面打开的是 ${date} 的备份，它可能比您最新的更改更旧。\n\n`}${items.length === 0 ? '' : `此备份文件将不包含此页面无法读取的以下内容：\n\n${items.join('\n')}\n\n`}仍要保存备份吗？目前尚未写入任何内容。`,
     "otherTabSavedReloadTitle": "另一个标签页或设备更改了保存方式或保存内容，因此此标签页的数据副本已过期，其更改无法从此标签页保存。重新加载可恢复到可正常保存的状态，但此标签页中任何未保存的更改都将丢失。",
     "savingStoppedReplacedMessage": "此标签页已停止保存。另一个标签页或设备替换了已保存的数据（加载了备份，或数据已迁移到新格式），因此此标签页的副本已过期，无法从此标签页保存。从现在起所做的更改将不会被保留。重新加载会获取当前的数据，此标签页中任何未保存的更改都将丢失。",
     "savingStoppedTooLargeBlockMessage": (what: string, limitBytes: number, assetLimitBytes: number) =>
