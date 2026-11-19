@@ -459,3 +459,32 @@ No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Behaviour ch
 - **Next merge:** `git log --no-merges 4d87a70ff..upstream/main`; move the suffix in `appSubVer` and `version.json` only (README no longer carries it).
 - `RealmFrame.svelte` `pmfunc` had no origin check (fork and upstream alike): filed and fixed separately as CHORE-707.
 - Optional: refresh `docs/wiki/Changes-from-upstream.md` (its upstream version lines are stale).
+
+## 2026-11-19 — merge of upstream/main `7ee467abc`
+
+Merge commit: the commit that adds this entry. Parents: `40258ebf2` (fork `main` after PR #137) and `7ee467abc`. Like the 2026-11-04/05 merges this is `git merge -s ours`: the tree is the fork's (`git diff --cached HEAD` was empty before this entry was added), and the merge only records upstream as merged. The adopted changes were ported by hand first in PR #137. After this merge, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `4d87a70ff..7ee467abc`: 21 commits, 8 non-merge and 13 merges. Several merges are upstream's PR merges whose first-parent diff equals a triaged commit: `7ee467abc` (#1626) = `66ab5e5f5`, `23480484e` (#1669) = `fc3dcfeab`, `459e1192b` (#1674) = `d897bec3a`, `61398d48a` (#1611) = `9067f47a6`, `7be37f64f` (#1658) = `603469c44`, `a438c0974` (#1471) = `46311cc28` + `43e084756`, `041f21303` (#1589) = `a97723687`. Upstream did not bump its version, so the suffix stays `up2026.10.295` (`MC-440`). **Last upstream commit merged: `7ee467abc`.**
+
+**Why.** The maintainer chose the dispositions on 2026-11-19 after the triage and an independent verification: adopt three (`MC-2340`), port first and then a separate `-s ours` merge (`MC-2341`), upstream's top-level en key names (`MC-2342`), and skip the setFullChat role normalization (`MC-2343`). A content merge was not used: it would have silently added `src/ts/storage/autoStorage.test.ts` (it tests the deleted `checkAccountSync`), auto-merged upstream's ko help rewording past the translator (`MC-058`), and placed the edit-listener gate inside the fork's Python branch instead of the Lua one.
+
+### Disposition
+
+| Upstream commit | Disposition | Reason / where |
+|---|---|---|
+| `d897bec3a` feat: optional default value in scripting alertInput | TAKEN | `03e899946`: `alertInput(id, value, defaultValue?)` forwards the default to the prompt; no cancel option for scripts. Tests T7/T7b in `scriptings.accessIds.test.ts`. |
+| `66ab5e5f5` perf: cache Lua edit callback presence | TAKEN-ADAPTED (Lua only) | `0a1c25998`: each Lua engine records the edit events its code subscribed to through `listenEdit`; an edit run for any other event returns the input unchanged, with no Lua call or JSON round trip. Adapted to the per-mode, per-code engine cache (new code gets an empty set); the skip stays inside the try, so the access id is still revoked (CHORE-157). Tests in `scriptings.test.ts`. |
+| `fc3dcfeab` feat: textarea with JSON upload for ComfyUI workflow | TAKEN-ADAPTED | `15755235f`: the non-legacy ComfyUI block gets a text area and a `.json` upload; invalid JSON alerts and keeps the workflow. Fork additions: aria-label/title (the existing `import` string) and a `warnOnReject` wrapper. Upstream's top-level en keys `comfyWorkflow`/`comfyWorkflowInvalidJson` (`MC-2342`); the legacy block is unchanged. Locales by the translator in `6f1511994` (ko help keeps "Risu", not "Risuai"). Test `OtherBotSettings.comfyWorkflow.svelte.test.ts`. |
+| `603469c44` fix(anthropic): multi-byte characters across stream chunks | ALREADY IN FORK | `52987bd95` (one `TextDecoder` per stream with `{stream: true}`, also for Gemini, fresh decoder on the overload retry; `streamMultibyte.test.ts`). |
+| `9067f47a6` fix: preserve message metadata in Lua setFullChat | ALREADY IN FORK; role normalization SKIPPED (`MC-2343`) | `52987bd95` and `f8f5007f1` (chatId exposure and chatId-first matching; pinned by `scriptingsSetFullChat.test.ts`). Upstream's normalization of any non-`user` role to `char` and missing data to `''` is not taken; it only matters for malformed script input. |
+| `a97723687` perf: defer account sync database snapshot | NOT APPLICABLE | Changes `checkAccountSync`, which the fork deleted with RisuAccount (`87b974e5c`, CHORE-33). Its new `src/ts/storage/autoStorage.test.ts` is not taken. |
+| `43e084756` fix: skip IndexedDB backup scan for OPFS storage | NOT APPLICABLE | Changes `getDbBackups`, which store2 and the byte store replaced; the fork lists backups through the active backend's store contract. |
+| `46311cc28` perf: avoid full key scan when pruning DB backups | NOT APPLICABLE | Same deleted `getDbBackups`; the fork's listing is already prefix-bounded and it never writes or prunes numbered backups. |
+
+### Persistence
+
+No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Lua written for upstream that passes an `alertInput` default or relies on the edit-listener gate behaves the same in the fork.
+
+### Follow-ups
+
+- **Next merge:** `git log --no-merges 7ee467abc..upstream/main`; move the suffix in `appSubVer` and `version.json` only when upstream bumps.
