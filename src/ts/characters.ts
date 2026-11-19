@@ -1261,9 +1261,13 @@ export async function removeChar(identifier:string|number|character|groupChat,na
         if(!conf){
             return
         }
-        const conf2 = await alertConfirm(language.removeConfirm2 + name)
-        if(!conf2){
-            return
+        // A move to the Trash can be undone for its retention period, so one
+        // confirmation is enough; only a permanent delete asks a second time.
+        if(type === 'permanent'){
+            const conf2 = await alertConfirm(language.removeConfirm2 + name)
+            if(!conf2){
+                return
+            }
         }
     }
     let chars = db.characters

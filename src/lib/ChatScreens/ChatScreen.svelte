@@ -60,13 +60,13 @@
         <SideBarArrow />
         <BackgroundDom />
         {#if $selectedCharID >= 0}
-            {#if DBState.db.characters[$selectedCharID].viewScreen !== 'none'}
+            {#if DBState.db.characters[$selectedCharID] && DBState.db.characters[$selectedCharID].viewScreen !== 'none'}
                 <div class="h-full mr-10 flex justify-end halfw" style:width="{42 * (DBState.db.waifuWidth2 / 100)}rem">
                     <TransitionImage classType="waifu" src={getEmotion(DBState.db, $CharEmotion, 'plain', lookups)}/>
                 </div>
             {/if}
         {/if}
-        <div class="h-full w-2xl" style:width="{42 * (DBState.db.waifuWidth / 100)}rem" class:halfwp={$selectedCharID >= 0 && DBState.db.characters[$selectedCharID].viewScreen !== 'none'}>
+        <div class="h-full w-2xl" style:width="{42 * (DBState.db.waifuWidth / 100)}rem" class:halfwp={$selectedCharID >= 0 && DBState.db.characters[$selectedCharID] && DBState.db.characters[$selectedCharID].viewScreen !== 'none'}>
             <DefaultChatScreen customStyle={`${externalStyles}backdrop-filter: blur(4px);`} bind:openChatList bind:openModuleList/>
         </div>
     </div>
@@ -76,7 +76,7 @@
         <BackgroundDom />
         <div style={bgImg} class="h-full w-full" class:max-w-6xl={DBState.db.classicMaxWidth}>
             {#if $selectedCharID >= 0}
-                {#if DBState.db.characters[$selectedCharID].viewScreen !== 'none' && (DBState.db.characters[$selectedCharID].type === 'group' || (!DBState.db.characters[$selectedCharID].inlayViewScreen))}
+                {#if DBState.db.characters[$selectedCharID] && DBState.db.characters[$selectedCharID].viewScreen !== 'none' && (DBState.db.characters[$selectedCharID].type === 'group' || (!DBState.db.characters[$selectedCharID].inlayViewScreen))}
                     <ResizeBox />
                 {/if}
             {/if}

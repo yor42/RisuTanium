@@ -24,6 +24,7 @@ import { sleep } from "src/ts/util";
 import { alertConfirm, alertError, alertNormal } from "src/ts/alert";
 import { language } from "src/lang";
 import { checkCharOrder, getFetchLogs } from "src/ts/globalApi.svelte";
+import { keepOrderPlaceOnSwap } from "../characterSwapOrder";
 import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untrustedFetch";
 import { changeColorScheme, effectiveColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
 import { isNodeServer, isTauri } from "src/ts/platform";
@@ -1374,6 +1375,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 keepLiveAlt([replaced], [char])
                 keepLiveRetained([replaced], [char], 'chaId')
                 DBState.db.characters[charId] = char
+                keepOrderPlaceOnSwap(DBState.db, replaced, char)
                 noteIdlessCopyWrite(plugin.name, replaced, char, wasIdless)
                 clearSupaMemoryIfEmptyIn([DBState.db.characters[charId]])
             }
