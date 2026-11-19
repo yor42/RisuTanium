@@ -141,10 +141,6 @@ vi.mock(import('src/ts/hotkey'), () => ({ initMobileGesture: vi.fn() }) as unkno
 
 vi.mock(import('src/ts/process/modules'), () => ({ moduleUpdate: vi.fn(async () => { }) }) as unknown as typeof import('src/ts/process/modules'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({ startAvatarThumbSweep: vi.fn(async () => { }) }) as unknown as typeof import('src/ts/media/avatarThumb'))
 
 vi.mock(import('src/ts/model/modellist'), () => ({ registerModelDynamic: vi.fn() }) as unknown as typeof import('src/ts/model/modellist'))

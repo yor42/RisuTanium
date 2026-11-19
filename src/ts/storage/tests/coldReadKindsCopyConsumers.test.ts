@@ -1,8 +1,7 @@
 /**
  * The consumers that read an archived character as a copy
  * (`readColdCharacterCopy`) and only ask whether it could be read:
- * `exportAsDataset` (`../exportAsDataset`) and `verifyAssetIntegrity`
- * (`../storageMaintenance`).
+ * `exportAsDataset` (`../exportAsDataset`).
  *
  * A read that cannot succeed here (no storage on the page) and a read whose
  * copy is damaged reach them as an unreadable copy, exactly as a plain read
@@ -28,7 +27,6 @@ const alertMdMock = vi.hoisted(() => vi.fn())
 const alertConfirmMock = vi.hoisted(() => vi.fn(async () => true))
 const alertStoreSetMock = vi.hoisted(() => vi.fn())
 const markCharacterForSaveMock = vi.hoisted(() => vi.fn())
-const scanAssetCacheIntegrityMock = vi.hoisted(() => vi.fn())
 
 interface FakeCharacter {
     type?: string
@@ -83,11 +81,6 @@ vi.mock(import('src/ts/storage/opfsStorage'), () => ({
     OpfsStorage: class {},
 }) as unknown as typeof import('src/ts/storage/opfsStorage'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    scanAssetCacheIntegrity: scanAssetCacheIntegrityMock,
-    evictAssetCacheEntries: vi.fn(async () => 0),
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/reloadGuard'), () => ({
     markAppInitiatedReload: vi.fn(),
 }) as unknown as typeof import('src/ts/reloadGuard'))
@@ -110,7 +103,6 @@ vi.mock(import('src/ts/platform'), async (importOriginal) => ({
 }))
 
 import { exportAsDataset } from 'src/ts/storage/exportAsDataset'
-import { verifyAssetIntegrity } from 'src/ts/storage/storageMaintenance'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
@@ -147,12 +139,11 @@ function shownTexts(): string[] {
 }
 
 beforeEach(() => {
-    for (const fn of [readColdStorageItemMock, downloadFileMock, alertNormalMock, alertErrorMock, alertToastMock, alertMdMock, alertConfirmMock, alertStoreSetMock, markCharacterForSaveMock, scanAssetCacheIntegrityMock]) {
+    for (const fn of [readColdStorageItemMock, downloadFileMock, alertNormalMock, alertErrorMock, alertToastMock, alertMdMock, alertConfirmMock, alertStoreSetMock, markCharacterForSaveMock]) {
         fn.mockReset()
     }
     downloadFileMock.mockResolvedValue(true)
     alertConfirmMock.mockResolvedValue(true)
-    scanAssetCacheIntegrityMock.mockImplementation(async (targets: string[]) => ({ checked: targets.length, mismatches: [], notCached: 0, notContentAddressed: 0, unsupported: false }))
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -175,35 +166,5 @@ describe('exportAsDataset with an archived character that cannot be read', () =>
         expect(DBState.db.characters[1]).toBe(stubB)
         expect(stubB.coldstorage).toBe('unit-b')
         expect(markCharacterForSaveMock).not.toHaveBeenCalled()
-    })
-})
-
-describe('verifyAssetIntegrity with an archived character that cannot be read', () => {
-    test.each(UNREADABLE_READS)('%s: the scan still runs for everything else and the report names the character as not checked', async (_label, answer) => {
-        const unitC = fullCharacter('c', 'Cora', { emotionImages: [['sad', 'c-emotion.png']] })
-        const stubC = stubOf(unitC, 'unit-c')
-        installDb([fullCharacter('a', 'Anna', { image: 'a-avatar.png' }), stubC])
-        readColdStorageItemMock.mockResolvedValue(answer)
-
-        await verifyAssetIntegrity()
-
-        expect(scanAssetCacheIntegrityMock).toHaveBeenCalledTimes(1)
-        expect(scanAssetCacheIntegrityMock.mock.calls[0][0]).toEqual(['a-avatar.png'])
-        expect(shownTexts().some((text) => text.includes(language.assetIntegrityReportArchivedNotChecked('Cora')))).toBe(true)
-        expect(DBState.db.characters[1]).toBe(stubC)
-        expect(stubC.coldstorage).toBe('unit-c')
-        expect(markCharacterForSaveMock).not.toHaveBeenCalled()
-    })
-
-    test.each(UNREADABLE_READS)('%s: with no target left to scan the report still names the character and nothing is scanned', async (_label, answer) => {
-        const unitC = fullCharacter('c', 'Cora', { emotionImages: [['sad', 'c-emotion.png']] })
-        installDb([fullCharacter('a', 'Anna'), stubOf(unitC, 'unit-c')])
-        readColdStorageItemMock.mockResolvedValue(answer)
-
-        await verifyAssetIntegrity()
-
-        expect(scanAssetCacheIntegrityMock).not.toHaveBeenCalled()
-        expect(alertMdMock).toHaveBeenCalledTimes(1)
-        expect(String(alertMdMock.mock.calls[0][0])).toContain(language.assetIntegrityReportArchivedNotChecked('Cora'))
     })
 })

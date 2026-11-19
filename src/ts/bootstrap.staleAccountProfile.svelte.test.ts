@@ -20,7 +20,7 @@
  * `platform`, `util`, `reloadGuard`, `update`, `stores.svelte`,
  * `plugins/plugins.svelte`, `characterCards`, `gui/*`,
  * `observer.svelte`, `characters`, `hotkey`, `process/modules`,
- * `storage/assetIntegrity`, `media/avatarThumb`,
+ * `media/avatarThumb`,
  * `model/modellist`, and every `@tauri-apps/*` package `bootstrap.ts`
  * touches.
  *
@@ -54,7 +54,6 @@
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
-import type { AssetVerifyResult } from './storage/assetIntegrity'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { registerRealDispatch, stopAcknowledgingAlerts } from 'src/ts/tests/realDispatchBoot.test-helpers'
@@ -80,14 +79,12 @@ const forageState = vi.hoisted(() => ({
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
-const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async (_path: string): Promise<AssetVerifyResult> => ({ status: 'ok' })))
 const characterURLImportMock = vi.hoisted(() => vi.fn())
 const handlePendingRealmLinkMock = vi.hoisted(() => vi.fn(async () => { }))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async () => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
 const moduleUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
 const markAppInitiatedReloadMock = vi.hoisted(() => vi.fn())
-const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 
@@ -210,10 +207,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: moduleUpdateMock,
 }) as unknown as typeof import('src/ts/process/modules'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: verifyAssetCacheEntryMock,
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -275,7 +268,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: getDbBackupsMock,
     buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: setUsingSwMock,
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
     wasAssetWrittenThisPage: vi.fn(() => false),
@@ -453,13 +445,11 @@ beforeEach(() => {
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
-    verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
     characterURLImportMock.mockReset()
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
     saveDbMock.mockReset().mockResolvedValue(undefined)
     moduleUpdateMock.mockReset().mockResolvedValue(undefined)
     markAppInitiatedReloadMock.mockReset()
-    setUsingSwMock.mockReset()
     setDatabaseMock.mockClear()
     setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
     getDatabaseMock.mockClear()
@@ -525,7 +515,6 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // notice is acknowledged.
             expect(seenAlertTypes).toContain('staleAccountNotice')
             expect(get(loadedStore)).toBe(false)
-            expect(setUsingSwMock).not.toHaveBeenCalled()
 
             // The keys must survive while the notice is up: removing them
             // early would lose the notice's own record of a stale profile if
@@ -610,7 +599,6 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             expect(localStorage.getItem('fallbackRisuToken')).toBeNull()
             expect(markAppInitiatedReloadMock).toHaveBeenCalled()
             expect(window.location.reload).toHaveBeenCalled()
-            expect(setUsingSwMock).not.toHaveBeenCalled()
             expect(characterURLImportMock).not.toHaveBeenCalled()
             expect(loadPluginsMock).not.toHaveBeenCalled()
             expect(get(loadedStore)).toBe(false)
