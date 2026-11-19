@@ -16,9 +16,15 @@
     class="mt-2 flex min-h-11 max-w-[calc(100%-2rem)] flex-col items-center rounded-md border border-borderc/10 bg-darkbg px-4 py-1 text-textcolor hover:bg-selected/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-selected"
     onclick={openPersonaSettings}
 >
+    <!-- The set-up label wraps (whole words, break-keep for Korean) so it is never cut at large font
+         sizes; a stored name can be arbitrarily long, so the named label stays one truncated line. -->
     <span class="flex max-w-full items-center gap-2">
         <UserRoundIcon size={16} aria-hidden="true" class="shrink-0" />
-        <span class="truncate">{name === null ? language.homePersonaChipUnnamed : language.homePersonaChip(name)}</span>
+        {#if name === null}
+            <span data-part="home-persona-chip-label" class="min-w-0 break-keep text-center">{language.homePersonaChipUnnamed}</span>
+        {:else}
+            <span data-part="home-persona-chip-label" class="min-w-0 truncate">{language.homePersonaChip(name)}</span>
+        {/if}
     </span>
     <span class="max-w-full overflow-hidden text-ellipsis break-keep text-xs text-textcolor2">{language.homePersonaChipHint}</span>
     <span class="sr-only">{language.homePersonaChipGo}</span>

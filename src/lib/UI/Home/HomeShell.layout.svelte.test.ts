@@ -62,7 +62,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 
 import HomeShell from './HomeShell.svelte'
 import { openHomeLibrary, showHomeLanding } from './homeView.svelte'
-import { OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
+import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
 
 const mountedInstances: unknown[] = []
 const mountedTargets: HTMLElement[] = []
@@ -401,15 +401,30 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(minimumRem).toBeGreaterThanOrEqual(3.75)
     })
 
-    // Class guards: the chip is capped inside the bar and its name label truncates, so a long
-    // unbroken name is clipped by the chip instead of widening it past the bar.
+    // Class guards: the chip is capped inside the bar and a stored name's label truncates, so a long
+    // unbroken name is clipped by the chip instead of widening it past the bar. The set-up label (no
+    // name) wraps instead, so it is never cut off at large font sizes.
     test.each([360, 900, 1280])('T-H3: at %i the chip is width-capped and the name label truncates', (width) => {
+        const before = DBState.db.username
+        DBState.db.username = 'Averyveryverylongunbrokenpersonaname'
+        try {
+            const root = mountShellAt(width)
+            const chip = chipOf(root)!
+            expect(classesOf(chip)).toContain('max-w-[calc(100%-2rem)]')
+            const label = chip.querySelector('[data-part="home-persona-chip-label"]')!
+            expect(label.textContent).toContain('Averyveryverylongunbrokenpersonaname')
+            expect(classesOf(label)).toContain('truncate')
+        } finally {
+            DBState.db.username = before
+        }
+    })
+
+    test.each([360, 900, 1280])('T-H3b: at %i the set-up label wraps instead of truncating', (width) => {
         const root = mountShellAt(width)
-        const chip = chipOf(root)!
-        expect(classesOf(chip)).toContain('max-w-[calc(100%-2rem)]')
-        const label = chip.querySelector('span > span')!
-        expect(label.textContent).not.toBe('')
-        expect(classesOf(label)).toContain('truncate')
+        const label = chipOf(root)!.querySelector('[data-part="home-persona-chip-label"]')!
+        expect(label.textContent).toBe(language.homePersonaChipUnnamed)
+        expect(classesOf(label)).not.toContain('truncate')
+        expect(classesOf(label)).toContain('break-keep')
     })
 
     // Compatibility guard (passes before and after): the phone bar and its wrappers are unchanged.

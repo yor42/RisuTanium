@@ -1200,7 +1200,7 @@
                     {/if}
                     {#if DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.time}
                         <span class="text-xs text-gray-600 mt-1 block">
-                            {appDateFormat(MESSAGE_TIME_OPTIONS).format(DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].time)}
+                            {appDateFormat(MESSAGE_TIME_OPTIONS).format(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.time)}
                         </span>
                     {/if}
                 </div>
