@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { CharacterVerdict } from '../characterSaved'
 import {
-    configurePageState, consumeReply, heldReply, holdInflight, noteBodySource, noteBound, noteInvoked, notePageEnded, noteReplyPushed,
+    configurePageState, consumeReply, heldReply, holdInflight, noteAnnounced, noteBodySource, noteBound, noteInvoked, notePageEnded, noteReplyPushed, takeAnnounced,
     noteTerminal, noteUnowned, ownsPushedReply, requestReconcile, resetPageStateForTests, setReconcileTrigger, settleNativeReplyInflight,
 } from '../pageState'
 
@@ -180,5 +180,41 @@ describe('consumeReply', () => {
 
     test('requestReconcile does nothing before the reconcile is installed', () => {
         expect(() => requestReconcile()).not.toThrow()
+    })
+})
+
+describe('the announced keys (T8, T5b: guard, new rule)', () => {
+    const OTHER = '22222222-0000-4000-8000-000000000002'
+
+    test('a take forgets every key it was given and answers whether any was announced', () => {
+        noteAnnounced(KEY)
+        noteAnnounced(OTHER)
+        expect(takeAnnounced([KEY, OTHER])).toBe(true)
+        expect(takeAnnounced([KEY])).toBe(false)
+        expect(takeAnnounced([OTHER])).toBe(false)
+    })
+
+    test('a take of keys that were not announced is false and leaves the others', () => {
+        noteAnnounced(OTHER)
+        expect(takeAnnounced([KEY])).toBe(false)
+        expect(takeAnnounced([])).toBe(false)
+        expect(takeAnnounced([OTHER])).toBe(true)
+    })
+
+    test('the fact outlives the held entry: a save that consumed the reply does not lose it', async () => {
+        const r = rig()
+        granted()
+        noteAnnounced(KEY)
+        noteReplyPushed(KEY, 'cha', 1)
+        await r.commit(1)
+        expect(r.consume).toHaveBeenCalledWith(KEY)
+        expect(heldReply(KEY)).toBeUndefined()
+        expect(takeAnnounced([KEY])).toBe(true)
+    })
+
+    test('the page-state reset forgets announced keys', () => {
+        noteAnnounced(KEY)
+        resetPageStateForTests()
+        expect(takeAnnounced([KEY])).toBe(false)
     })
 })

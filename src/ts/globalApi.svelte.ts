@@ -31,7 +31,8 @@ import { appendIfAbsent, installCharacterSaveMarks, type SaveMarkKind } from "./
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { CharacterCommit, ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
-import { takeReplyOwner, type NativeReplyOwner } from "./nativeReply/grant";
+import { takeReplyOwnerWithNotice, type NativeReplyOwner } from "./nativeReply/grant";
+import { armNativeReplyNotice } from "./android/replyNotifications.svelte";
 import { createPumpProbe, isOrphanReplyEvent, parseReplyStamp, resolveOwnedFetch, type PumpProbe } from "./nativeReply/ownedBody";
 import { noteInvoked, noteUnowned, requestReconcile } from "./nativeReply/pageState";
 import { createReplyStore } from "./nativeReply/store";
@@ -3399,10 +3400,22 @@ export async function fetchNative(url: string, arg: {
         nativeFetchData[fetchId] = []
         // The owner is taken here, with the listeners set up and the abort check passed: a Stop during listener setup
         // threw above and took nothing, and an untrusted request never owns. A forged or already taken owner gives null.
-        const replyOwner = isTauri && !internal ? takeReplyOwner(arg.nativeReply) : null
+        const takenOwner = isTauri && !internal ? takeReplyOwnerWithNotice(arg.nativeReply) : null
+        const replyOwner = takenOwner?.arg ?? null
         const probe = replyOwner !== null ? arg.pumpProbe : undefined
         if (replyOwner !== null) {
             noteInvoked(replyOwner.key)
+            // Armed before the request is invoked: the host holds the payload by the same token the invoke carries.
+            if (takenOwner?.noticeJson != null && replyOwner.noticeToken !== undefined) {
+                armNativeReplyNotice(replyOwner.noticeToken, takenOwner.noticeJson)
+            }
+        }
+        // An owned request's stamp, from an event or from the command's own result; a source without one never clears it.
+        const noteStamp = (value: unknown) => {
+            const stamp = parseReplyStamp(value)
+            if (probe && stamp !== null) {
+                probe.stamp = stamp
+            }
         }
         // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
         let resolved = false
@@ -3477,6 +3490,8 @@ export async function fetchNative(url: string, arg: {
             }).then((res) => {
                 try {
                     const parsedRes = JSON.parse(res as string)
+                    // A failure result carries the same stamp its event did; whichever arrives first sets it.
+                    noteStamp(parsedRes.reply)
                     if (!parsedRes.success) {
                         failNative(parsedRes.body)
                     }
@@ -3593,16 +3608,12 @@ export async function fetchNative(url: string, arg: {
                                     settleHeaders()
                                 }
                                 if (data.type === 'end') {
-                                    if (probe) {
-                                        probe.stamp = parseReplyStamp(data.reply)
-                                    }
+                                    noteStamp(data.reply)
                                     resolved = true
                                     settleHeaders()
                                 }
                                 if (data.type === 'error') {
-                                    if (probe) {
-                                        probe.stamp = parseReplyStamp(data.reply)
-                                    }
+                                    noteStamp(data.reply)
                                     failNative(data.body)
                                 }
                                 await Promise.resolve()

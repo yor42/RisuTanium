@@ -154,6 +154,7 @@ describe('the reply notifications over the channel', () => {
         ['notify', ['cha/chat', 'Title', 'Body', true]],
         ['notify', ['cha/chat', 'Title', 'Body', false]],
         ['notifyState', ['{"v":2,"key":"cha/chat","silent":true}']],
+        ['armNative', [1234567, '{"v":1,"done":{},"failed":{},"closing":{}}']],
         ['cancel', ['cha/chat']],
     ] as const)('%s goes out as one message', (method, args) => {
         const fake = createHostChannelFake()

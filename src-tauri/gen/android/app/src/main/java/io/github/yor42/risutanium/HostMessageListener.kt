@@ -145,6 +145,7 @@ class HostMessageListener(
       is BridgeCommand.ReplyNotificationsNotify ->
         replyNotifications.notify(command.key, command.title, command.body, command.silent)
       is BridgeCommand.ReplyNotificationsNotifyState -> replyNotifications.notifyState(command.json)
+      is BridgeCommand.ReplyNotificationsArmNative -> replyNotifications.armNative(command.token, command.json)
       is BridgeCommand.ReplyNotificationsCancel -> replyNotifications.cancel(command.key)
       is BridgeCommand.OpenedFilesConfirm -> openedFiles.confirm(command.through)
       is BridgeCommand.OpenedFilesMalformedTake -> reply(replyProxy, encodeTakeReply(command.id, "[]", 0))

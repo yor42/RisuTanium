@@ -28,6 +28,7 @@
 
 use crate::chunked_io::{read_range, TEXT_RANGE_MAX_BYTES};
 use crate::durable_write::{is_temp_name, rename_with_retry, FileOps, RealOps};
+use crate::reply_notice::{process_notices, NoticeHub, NoticeLink};
 use crate::streamed_fetch::{OpenRecord, OwnedReply, ReplyDetail, ReplyEnd, ReplyJournal, ReplyOutcome};
 use base64::{engine::general_purpose, Engine as _};
 use serde::de::DeserializeOwned;
@@ -50,9 +51,6 @@ const TICKET_FORMAT: &str = "risu-native-reply-ticket";
 const END_FORMAT: &str = "risu-native-reply-end";
 const PARK_FORMAT: &str = "risu-native-reply-park";
 const FORMAT_VERSION: u32 = 1;
-/// The visibility recorded in stage 1; the native visibility signal arrives later.
-const VISIBILITY_UNKNOWN: &str = "unknown";
-
 pub const MAX_BLOB_BYTES: usize = 1024 * 1024;
 const MAX_ERROR_BYTES: usize = 1024;
 
@@ -80,6 +78,14 @@ struct EndFile {
     detail: Option<ReplyDetail>,
     error: Option<String>,
     ended_ms: u64,
+    /// Additive: written only when true, so an unannounced end is byte for byte
+    /// a v1 end and a reader that predates it ignores the field.
+    #[serde(default, skip_serializing_if = "is_false")]
+    announced: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Serialize, Deserialize)]
@@ -98,6 +104,10 @@ pub struct ReplyOwnerArg {
     pub key: String,
     pub page_version: u32,
     pub blob: String,
+    /// The notice token the page armed for this request. It lives in the
+    /// in-memory notice hub only and is never written to the ticket.
+    #[serde(default)]
+    pub notice_token: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -134,6 +144,9 @@ pub struct ReplyListing {
     pub detail: Option<ReplyDetail>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// `Some(true)` when the end was announced by a native notice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub announced: Option<bool>,
     /// Why an `unreadable` record cannot be read, so the page can name the item.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
@@ -154,6 +167,7 @@ impl ReplyListing {
             visibility: None,
             detail: None,
             error: None,
+            announced: None,
             problem: None,
         }
     }
@@ -377,6 +391,7 @@ fn classify(dir: &Path, key: &str, nonce: &str) -> Option<ReplyListing> {
         listing.visibility = Some(end.visibility);
         listing.detail = end.detail;
         listing.error = end.error;
+        listing.announced = if end.announced { Some(true) } else { None };
     } else if ticket.process != nonce {
         listing.state = ReplyState::Dead;
     }
@@ -413,10 +428,11 @@ impl<O: FileOps + Send + Sync + 'static> OpenRecord for Record<O> {
             outcome: end.outcome,
             status: end.status,
             body_bytes: end.body_bytes,
-            visibility: VISIBILITY_UNKNOWN.to_string(),
+            visibility: end.visibility.as_str().to_string(),
             detail: end.detail,
             error: end.error.as_deref().map(truncate_error),
             ended_ms: (self.inner.clock)(),
+            announced: end.announced,
         };
         let bytes = serde_json::to_vec(&file).map_err(|e| e.to_string())?;
         write_new_in_existing_dir(&self.inner.ops, &self.dir, END_FILE, &bytes).map(|_| ())
@@ -442,12 +458,24 @@ pub fn owned_reply_for<O: FileOps + Send + Sync + 'static>(
     arg: Option<ReplyOwnerArg>,
     base: impl FnOnce() -> Result<PathBuf, String>,
 ) -> Option<OwnedReply> {
+    owned_reply_with_hub(store, arg, base, process_notices())
+}
+
+/// `owned_reply_for` with the notice hub named. A positive `notice_token` binds
+/// the request to that token; the link ends the token however the request exits.
+pub fn owned_reply_with_hub<O: FileOps + Send + Sync + 'static>(
+    store: &ReplyStore<O>,
+    arg: Option<ReplyOwnerArg>,
+    base: impl FnOnce() -> Result<PathBuf, String>,
+    hub: Arc<NoticeHub>,
+) -> Option<OwnedReply> {
     let arg = arg?;
+    let notice = arg.notice_token.filter(|token| *token > 0).map(|token| NoticeLink::bind(hub, token));
     let journal = base().ok().map(|base| {
         let journal: Arc<dyn ReplyJournal> = Arc::new(StoreJournal { store: store.clone(), base });
         journal
     });
-    Some(OwnedReply { key: arg.key, page_version: arg.page_version, blob: arg.blob, journal })
+    Some(OwnedReply { key: arg.key, page_version: arg.page_version, blob: arg.blob, journal, notice })
 }
 
 impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
@@ -726,6 +754,7 @@ impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::*;
+    use crate::reply_notice::Visibility;
     use std::collections::HashMap;
     use std::sync::Condvar;
     use std::time::Duration;
@@ -801,11 +830,24 @@ pub(crate) mod test_support {
         counts: Mutex<HashMap<String, usize>>,
         faults: Vec<(String, usize)>,
         block: Option<(String, usize, Arc<Gate>)>,
+        hook: Option<(String, usize, Box<dyn Fn() + Send + Sync>)>,
     }
 
     impl FaultOps {
         pub fn new() -> FaultOps {
-            FaultOps { log: Arc::new(Mutex::new(Vec::new())), counts: Mutex::new(HashMap::new()), faults: Vec::new(), block: None }
+            FaultOps {
+                log: Arc::new(Mutex::new(Vec::new())),
+                counts: Mutex::new(HashMap::new()),
+                faults: Vec::new(),
+                block: None,
+                hook: None,
+            }
+        }
+
+        /// Runs `hook` at the n-th step of a kind (1-based), before any fault of that step.
+        pub fn hooking(mut self, kind: &str, nth: usize, hook: Box<dyn Fn() + Send + Sync>) -> FaultOps {
+            self.hook = Some((kind.to_string(), nth, hook));
+            self
         }
 
         pub fn failing(mut self, kind: &str, nth: usize) -> FaultOps {
@@ -829,6 +871,11 @@ pub(crate) mod test_support {
             if let Some((blocked, at, gate)) = &self.block {
                 if blocked == kind && *at == nth {
                     gate.arrive_and_wait();
+                }
+            }
+            if let Some((hooked, at, hook)) = &self.hook {
+                if hooked == kind && *at == nth {
+                    hook();
                 }
             }
             if self.faults.iter().any(|(failing, at)| failing == kind && *at == nth) {
@@ -893,6 +940,8 @@ pub(crate) mod test_support {
             body_bytes: Some(body_bytes),
             detail: None,
             error: None,
+            visibility: Visibility::Unknown,
+            announced: false,
         }
     }
 
@@ -903,6 +952,8 @@ pub(crate) mod test_support {
             body_bytes: None,
             detail: Some(ReplyDetail::Transport),
             error,
+            visibility: Visibility::Unknown,
+            announced: false,
         }
     }
 
@@ -933,6 +984,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::*;
     use super::*;
+    use crate::reply_notice::Visibility;
 
     const FIXTURE_BLOB: &str = "{\"target\":\"synthetic\"}";
     const FIXTURE_BODY: &[u8] = b"{\"choices\":[{\"message\":{\"content\":\"synthetic reply\"}}]}";
@@ -1253,7 +1305,7 @@ mod tests {
         let store = plain_store();
         let resolved = owned_reply_for(&store, None, || -> Result<PathBuf, String> { panic!("the base must not be resolved") });
         assert!(resolved.is_none());
-        let arg = ReplyOwnerArg { key: KEY.to_string(), page_version: 1, blob: "{}".to_string() };
+        let arg = ReplyOwnerArg { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), notice_token: None };
         let unresolved = owned_reply_for(&store, Some(arg), || Err("no base".to_string())).unwrap();
         assert!(unresolved.journal.is_none());
     }
@@ -1264,5 +1316,120 @@ mod tests {
         assert_eq!((parsed.key.as_str(), parsed.page_version, parsed.blob.as_str()), ("k", 2, "b"));
         assert!(serde_json::from_str::<ReplyOwnerArg>(r#"{"key":"k","pageVersion":2,"blob":"b","extra":1}"#).is_err());
         assert!(serde_json::from_str::<ReplyOwnerArg>(r#"{"key":"k","page_version":2,"blob":"b"}"#).is_err());
+    }
+
+    fn announced_done_end(body_bytes: u64) -> ReplyEnd {
+        ReplyEnd { visibility: Visibility::Hidden, announced: true, ..done_end(body_bytes) }
+    }
+
+    // R4, guard (producer-built): the announced end as the real writer produces it.
+    #[test]
+    fn announced_end_golden() {
+        let base = scratch("announced-golden");
+        let store = plain_store();
+        let mut record = store.open_record(&base, KEY, 1, FIXTURE_BLOB).unwrap();
+        record.write_body(FIXTURE_BODY).unwrap();
+        record.write_end(&announced_done_end(FIXTURE_BODY.len() as u64)).unwrap();
+        drop(record);
+
+        let written = fs::read_to_string(record_dir(&base, KEY).join(END_FILE)).unwrap();
+
+        assert_eq!(
+            written,
+            r#"{"format":"risu-native-reply-end","v":1,"outcome":"done","status":200,"bodyBytes":55,"visibility":"hidden","detail":null,"error":null,"endedMs":1700000000000,"announced":true}"#
+        );
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R4 compatibility half: an unannounced end never names the field, whatever its visibility.
+    #[test]
+    fn an_unannounced_end_omits_the_field() {
+        let base = scratch("unannounced-end");
+        let store = plain_store();
+        let mut record = store.open_record(&base, KEY, 1, "{}").unwrap();
+        record.write_body(b"b").unwrap();
+        record.write_end(&ReplyEnd { visibility: Visibility::Visible, ..done_end(1) }).unwrap();
+        drop(record);
+
+        let written = fs::read_to_string(record_dir(&base, KEY).join(END_FILE)).unwrap();
+
+        assert!(!written.contains("announced"), "{}", written);
+        assert!(written.contains("\"visibility\":\"visible\""));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R6, guard: the listing reports an announced end, and the v1 fixture reports none.
+    #[test]
+    fn listing_announced() {
+        let base = scratch("listing-announced");
+        let store = plain_store();
+        let mut record = store.open_record(&base, KEY, 1, "{}").unwrap();
+        record.write_body(b"body").unwrap();
+        record.write_end(&announced_done_end(4)).unwrap();
+        drop(record);
+        let listings = store.list(&base).unwrap();
+        assert_eq!(listings[0].announced, Some(true));
+        assert_eq!(listings[0].visibility.as_deref(), Some("hidden"));
+        let json = serde_json::to_value(&listings[0]).unwrap();
+        assert_eq!(json["announced"], serde_json::json!(true));
+        fs::remove_dir_all(&base).unwrap();
+
+        let base = scratch("listing-v1");
+        let target = record_dir(&base, KEY);
+        fs::create_dir_all(&target).unwrap();
+        for name in [TICKET_FILE, BODY_FILE, END_FILE] {
+            fs::write(target.join(name), fs::read(fixture_dir().join(name)).unwrap()).unwrap();
+        }
+        let listings = store.list(&base).unwrap();
+        assert_eq!(listings[0].announced, None);
+        assert!(serde_json::to_value(&listings[0]).unwrap().get("announced").is_none());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R6 compatibility half: a reader that predates the field reads an announced end.
+    #[test]
+    fn an_end_without_the_field_reads_as_unannounced() {
+        let parsed: EndFile = serde_json::from_str(
+            r#"{"format":"risu-native-reply-end","v":1,"outcome":"done","status":200,"bodyBytes":1,"visibility":"unknown","detail":null,"error":null,"endedMs":1}"#,
+        )
+        .unwrap();
+        assert!(!parsed.announced);
+    }
+
+    // R10, guard + compatibility half: the token is read, never stored, and an unknown field is still refused.
+    #[test]
+    fn owner_arg_token() {
+        let parsed: ReplyOwnerArg =
+            serde_json::from_str(r#"{"key":"k","pageVersion":2,"blob":"b","noticeToken":77}"#).unwrap();
+        assert_eq!(parsed.notice_token, Some(77));
+        let without: ReplyOwnerArg = serde_json::from_str(r#"{"key":"k","pageVersion":2,"blob":"b"}"#).unwrap();
+        assert_eq!(without.notice_token, None);
+        assert!(serde_json::from_str::<ReplyOwnerArg>(r#"{"key":"k","pageVersion":2,"blob":"b","noticeToken":1,"extra":1}"#).is_err());
+
+        let base = scratch("owner-token");
+        let store = plain_store();
+        let hub = Arc::new(NoticeHub::new());
+        let arg = ReplyOwnerArg {
+            key: KEY.to_string(),
+            page_version: 1,
+            blob: "{}".to_string(),
+            notice_token: Some(4242),
+        };
+        let owner = owned_reply_with_hub(&store, Some(arg), || Ok(base.clone()), hub.clone()).unwrap();
+        assert_eq!(hub.poll(4242), 0, "a positive token binds");
+        let mut record = owner.journal.as_ref().unwrap().open(KEY, 1, "{}").unwrap();
+        record.write_end(&failed_end(None)).unwrap();
+        drop(record);
+        let ticket = fs::read_to_string(record_dir(&base, KEY).join(TICKET_FILE)).unwrap();
+        let end = fs::read_to_string(record_dir(&base, KEY).join(END_FILE)).unwrap();
+        assert!(!ticket.contains("4242") && !ticket.contains("oticeToken"), "{}", ticket);
+        assert!(!end.contains("4242") && !end.contains("oticeToken"), "{}", end);
+        drop(owner);
+
+        // A token that is not positive binds nothing.
+        let arg = ReplyOwnerArg { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), notice_token: Some(0) };
+        let owner = owned_reply_with_hub(&store, Some(arg), || Ok(base.clone()), hub.clone()).unwrap();
+        assert!(owner.notice.is_none());
+        fs::remove_dir_all(&base).unwrap();
     }
 }

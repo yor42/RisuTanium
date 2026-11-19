@@ -61,6 +61,8 @@ sealed class BridgeCommand {
   data class ReplyNotificationsNotify(val key: String, val title: String, val body: String, val silent: Boolean) : BridgeCommand()
   // Contract v2: carries the page's notice as a JSON string, because toCommand rejects nested values.
   data class ReplyNotificationsNotifyState(val json: String) : BridgeCommand()
+  // The notices native posts for the reply that the positive token names; the arm is a JSON string for the same reason.
+  data class ReplyNotificationsArmNative(val token: Int, val json: String) : BridgeCommand()
   data class ReplyNotificationsCancel(val key: String) : BridgeCommand()
 }
 
@@ -156,6 +158,12 @@ private fun replyNotificationsCommand(method: String, args: List<Any?>): BridgeC
       if (args.size != 1) return null
       val json = args[0] as? String ?: return null
       return BridgeCommand.ReplyNotificationsNotifyState(json)
+    }
+    "armNative" -> {
+      if (args.size != 2) return null
+      val token = intArg(args[0]) ?: return null
+      val json = args[1] as? String ?: return null
+      return if (token > 0) BridgeCommand.ReplyNotificationsArmNative(token, json) else null
     }
     "cancel" -> {
       if (args.size != 1) return null

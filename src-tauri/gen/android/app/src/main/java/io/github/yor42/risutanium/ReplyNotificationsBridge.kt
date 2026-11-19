@@ -59,6 +59,14 @@ class ReplyNotificationsBridge(
     }
   }
 
+  // Hands native a token and the notices to post if the reply it names ends while the app is hidden. A
+  // token that is not a positive int arms nothing.
+  @JavascriptInterface
+  fun armNative(token: Int, json: String) {
+    if (token <= 0) return
+    mainHandler.post { NativeReplyNotices.arm(token, json) }
+  }
+
   @JavascriptInterface
   fun cancel(key: String) {
     mainHandler.post { notifier.cancel(key) }
@@ -82,4 +90,30 @@ internal fun parseReplyNoticeJson(json: String): ReplyNotice? {
   } catch (error: Exception) {
     null
   }
+}
+
+// The native arm in a payload, or null when it is not a JSON object or does not fit (parseNativeArm). Its
+// nested objects (done, failed, closing) become maps; JSON null becomes Kotlin null, and an array is never a
+// field of the arm and is read as a value of another type.
+internal fun parseNativeArmJson(json: String): NativeArm? {
+  return try {
+    parseNativeArm(plainMap(JSONObject(json)))
+  } catch (error: Exception) {
+    null
+  }
+}
+
+private fun plainMap(source: JSONObject): Map<String, Any?> {
+  val copy = HashMap<String, Any?>()
+  val keys = source.keys()
+  while (keys.hasNext()) {
+    val key = keys.next()
+    val value = source.opt(key)
+    copy[key] = when {
+      value === JSONObject.NULL -> null
+      value is JSONObject -> plainMap(value)
+      else -> value
+    }
+  }
+  return copy
 }

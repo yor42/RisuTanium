@@ -38,6 +38,28 @@ export interface HeldReply {
 
 const held = new Map<string, HeldReply>()
 
+/**
+ * The keys whose native end told the person already (an announced stamp, result or listing). It lives outside `held`:
+ * a save can consume the held entry before the send's finally reads this, and the fact must survive that.
+ */
+const announcedKeys = new Set<string>()
+
+/** The native side told the person about `key`'s reply; the send's finally reads it once. */
+export function noteAnnounced(key: string): void {
+    announcedKeys.add(key)
+}
+
+/** True when any of `keys` was announced; every given key is forgotten, so the fact is read once per unit. */
+export function takeAnnounced(keys: readonly string[]): boolean {
+    let announced = false
+    for (const key of keys) {
+        if (announcedKeys.delete(key)) {
+            announced = true
+        }
+    }
+    return announced
+}
+
 export interface PageStateDeps {
     store: Pick<NativeReplyStore, 'consume'>
     waiter: CharacterSavedDeps
@@ -69,6 +91,7 @@ export function requestReconcile(): void {
 
 export function resetPageStateForTests(): void {
     held.clear()
+    announcedKeys.clear()
     consumeStore = null
     waiter = null
     unreadableReporter = () => {}
