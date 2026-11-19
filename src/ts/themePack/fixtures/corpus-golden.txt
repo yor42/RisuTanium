@@ -3,7 +3,7 @@
 "shipped pack: settings/origin-navy" d240e167207aae56 chat:ea99b490198f582c settings:c8c11433fd9e295a studio:ea99b490198f582c home:ea99b490198f582c
 "shipped pack: settings/banana-cocoa" e5a7d6f533d6f73d chat:6c5d481d9ecb6c3e settings:1c099ad36e6b7acc studio:06a78026ec1d50c0 home:03a5a0b3a3a895a1
 "shipped pack: studio/origin-navy" 37cb52a0097edf29 chat:91653b3b6aaf0fbe settings:91653b3b6aaf0fbe studio:8bb4784aab3e0cb1 home:91653b3b6aaf0fbe
-"shipped pack: studio/banana-cocoa" 4fcefaca7eff4779 chat:f5e9bf983ad68e4a settings:bc6905ae7f90e516 studio:ff54bac87e0d20fd home:90aae82c0d85f997
+"shipped pack: studio/banana-cocoa" b785e9d3ef5799ab chat:f5e9bf983ad68e4a settings:bc6905ae7f90e516 studio:ff54bac87e0d20fd home:90aae82c0d85f997
 "shipped pack: home/origin-navy" 965645ee8feccd4f chat:c8e854b207155726 settings:c8e854b207155726 studio:c8e854b207155726 home:ab395f5fc1971506
 "shipped pack: home/banana-cocoa" 466c01c95097d757 chat:f4b10ddde035ecd2 settings:611be66102b0acaf studio:78cac93aff540370 home:a7cfdde87c01e8ee
 "home-hostile: A1" 386bcaff1aa3fee1 chat:3c67420edc0f9895 settings:3c67420edc0f9895 studio:3c67420edc0f9895 home:13cc2657ab2aa0b9
@@ -540,14 +540,14 @@
 "NEW_BENIGN all: the new shared tokens inside their limits" 79e2ec034b8b413d chat:71e484f9b2088b91 settings:71e484f9b2088b91 studio:71e484f9b2088b91 home:71e484f9b2088b91
 "NEW_BENIGN all: a field border at 40%" 8526e6a2da06816d chat:30d9afebff8e42ef settings:30d9afebff8e42ef studio:30d9afebff8e42ef home:30d9afebff8e42ef
 "NEW_BENIGN all: an opaque sheet and toast" 060e79dda5cc4920 chat:16bd16a6be4dc6b6 settings:16bd16a6be4dc6b6 studio:16bd16a6be4dc6b6 home:16bd16a6be4dc6b6
-"NEW_BENIGN all: a focus colour on a focus rule" d081dc755f276d14 chat:b92837b3eccd42ec settings:b92837b3eccd42ec studio:40a4b619ab1b2187 home:b92837b3eccd42ec
-"NEW_BENIGN chat: recolour and reshape Send (reach)" f6bf91da670198a0 chat:04d4fbf2f7e91584 settings:04d4fbf2f7e91584 studio:b36b293b00e0550f home:04d4fbf2f7e91584
+"NEW_BENIGN all: a focus colour on a focus rule" 42ec539c583d59a9 chat:b92837b3eccd42ec settings:b92837b3eccd42ec studio:40a4b619ab1b2187 home:b92837b3eccd42ec
+"NEW_BENIGN chat: recolour and reshape Send (reach)" fbb0cb13c22e17c1 chat:04d4fbf2f7e91584 settings:04d4fbf2f7e91584 studio:b36b293b00e0550f home:04d4fbf2f7e91584
 "NEW_BENIGN chat: respace the composer (reach)" e6adef0d5861858e chat:4dffe3d6b1580065 settings:4dffe3d6b1580065 studio:4882b89e05d623f6 home:4dffe3d6b1580065
-"NEW_BENIGN chat: recolour a list row (reach)" 4953d14605cb615e chat:1504f5eb512da3a8 settings:1504f5eb512da3a8 studio:23e190f4bc233922 home:1504f5eb512da3a8
+"NEW_BENIGN chat: recolour a list row (reach)" c1729683a5f9b0f1 chat:1504f5eb512da3a8 settings:1504f5eb512da3a8 studio:23e190f4bc233922 home:1504f5eb512da3a8
 "NEW_BENIGN chat: a safe leaf hidden" bce13f69b99fbf6c chat:b68cdf9ca2f6e015 settings:b68cdf9ca2f6e015 studio:1551ad5a0c018b13 home:b68cdf9ca2f6e015
 "NEW_BENIGN home: recolour the rail item (reach)" 390484af5c9e2330 chat:311a8ae473ec2855 settings:02b00bd3a0eca61e studio:d4b1e52569cc0e83 home:02b00bd3a0eca61e
 "NEW_BENIGN home: persona chip recolour (reach)" f2ba2f73fbd0897f chat:14c56b87965d4496 settings:14c56b87965d4496 studio:14c56b87965d4496 home:3e4a705fada09171
-"NEW_BENIGN studio: recolour Apply (reach)" 95a450c9e07788e5 chat:c0a6fbbe3ad8b40e settings:c0a6fbbe3ad8b40e studio:467d887bd4c9fc92 home:195aa47a853fa9e0
+"NEW_BENIGN studio: recolour Apply (reach)" 173861119e45f419 chat:c0a6fbbe3ad8b40e settings:c0a6fbbe3ad8b40e studio:467d887bd4c9fc92 home:195aa47a853fa9e0
 "NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:493fa6d44c07b721 settings:cf7a529f6aa0348b studio:cf7a529f6aa0348b home:cf7a529f6aa0348b
 "NEW_BENIGN settings: recolour the index item (reach)" c521d9a0c6c9a98e chat:31a2583a90337019 settings:13078a265a9c6318 studio:afa7e61dd441a8b8 home:13078a265a9c6318
 "NEW_BENIGN settings: a safe leaf hidden" 20fc69e3e5072670 chat:c4581b9a85766a46 settings:9e1c4683ec49c4de studio:c4581b9a85766a46 home:c4581b9a85766a46

@@ -97,7 +97,7 @@ describe('axis B: a selector names only parts of the screen (REPRO)', () => {
     })
 
     it('GUARD: a root entry that names a part of the screen is judged as that part', () => {
-        accepted('chat', `html${SEND}{color:#111111;background:#ffff00}`)
+        accepted('chat', `html${SEND}{color:#111111 !important;background:#ffff00 !important}`)
     })
 
     // T0a-18: an ancestor part of another screen, and the sibling combinators.
