@@ -2,12 +2,13 @@ import { language } from '../../lang'
 import { fillLang } from '../../lang/fill'
 import sendSound from '../../etc/send.mp3'
 import type * as NotificationAvatarModule from '../android/notificationAvatar'
-import { hasReplyStateHost, notifyReply, notifyReplyState, replyNotificationKey, state as replyNotificationState } from '../android/replyNotifications.svelte'
+import { hasNativeArmHost, hasReplyStateHost, notifyReply, notifyReplyState, replyNotificationKey, state as replyNotificationState, type ReplyNoticeState } from '../android/replyNotifications.svelte'
+import { buildNativeNoticeArm } from '../nativeReply/notice'
 import { readNotificationStatus } from '../gui/notificationPermission'
 import { isAndroidTransport } from '../storage/tauriByteTransport'
 import { DBState } from '../stores.svelte'
 import { postToast } from '../toast/toastHost.svelte'
-import { readAt } from './chatOrigin'
+import { readAt, type Origin } from './chatOrigin'
 import { isPageVisible } from './chatOnScreen.svelte'
 import type { ReplyAnnouncement, ReplyOutcome } from './replyMarks'
 
@@ -81,9 +82,9 @@ interface ChatNames {
     ownerImage: string
 }
 
-function namesOf(announcement: ReplyAnnouncement): ChatNames | null {
+function namesOf(origin: Origin): ChatNames | null {
     const found: { names: ChatNames | null } = { names: null }
-    readAt(announcement.origin, (ctx) => {
+    readAt(origin, (ctx) => {
         found.names = {
             owner: ctx.owner.name || language.settingsPage.unnamed,
             chat: ctx.chat.name || '',
@@ -120,19 +121,58 @@ function postWebNotification(title: string, body: string): void {
 }
 
 /**
+ * The v2 notice of a finished reply. The v2 notice names the owner and says nothing of the chat. The avatar is only what
+ * the thumbnail memo already holds (undefined, not yet looked up, is no icon): nothing is looked up or waited for here.
+ */
+function doneNoticeOf(origin: Origin, names: ChatNames, silent: boolean): ReplyNoticeState {
+    return {
+        v: 2,
+        key: replyNotificationKey(origin),
+        name: names.owner,
+        text: language.replyNoticeText,
+        publicTitle: language.replyNoticePublicTitle,
+        chaId: origin.chaId,
+        chatId: origin.chatId,
+        avatar: avatarCode?.notificationAvatarOf(names.ownerImage) ?? null,
+        silent,
+    }
+}
+
+/**
+ * The arm payload of the notice native may post for a reply of this chat, as the page would post it itself. Null off
+ * Android, on a host that cannot arm, or when the chat's names cannot be read: the send then arms nothing and the page
+ * posts as before. The names are read now, so a rename while the request runs shows the old name.
+ */
+export function nativeNoticeArmOf(origin: Origin): string | null {
+    if (!isAndroidTransport() || !hasNativeArmHost()) {
+        return null
+    }
+    void prepareReplyNoticeAvatar()
+    const names = namesOf(origin)
+    return names === null ? null : buildNativeNoticeArm(doneNoticeOf(origin, names, true))
+}
+
+/**
  * Announces how an off-screen send ended. Called once per outermost send, after its registration has ended, so the chat no
  * longer reads as writing when the chip appears. `callerSignal` is the signal the send was started with.
  *
  * One sound per finished reply: the page chime plays while the page is visible, or when the system notification will not
  * sound; otherwise the notification's own channel sound is the one. Either way the signal is recorded, so a `playMessage`
  * chime of the composer adds none.
+ *
+ * `nativeAnnounced` says the native side already posted the notice of a finished reply (its stamp, result or listing
+ * reached this page): the page then posts no system notification and plays no chime of its own, and the signal is
+ * recorded as chimed so the composer adds none either. The chip still shows. A failed or stopped outcome is unchanged.
  */
-export function announceReply(announcement: ReplyAnnouncement | null, callerSignal: AbortSignal | undefined): void {
+export function announceReply(announcement: ReplyAnnouncement | null, callerSignal: AbortSignal | undefined, nativeAnnounced = false): void {
     if (announcement === null) {
+        if (nativeAnnounced && callerSignal !== undefined) {
+            chimedFor.add(callerSignal)
+        }
         return
     }
     noteReplySound(callerSignal, announcement.outcome)
-    const names = namesOf(announcement)
+    const names = namesOf(announcement.origin)
     if (names === null) {
         return
     }
@@ -146,6 +186,13 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
         return
     }
     const title = fillLang(language.replyFinishedElsewhere, { name: names.owner })
+    if (nativeAnnounced) {
+        postToast({ kind: 'info', text: title, sub })
+        if (callerSignal !== undefined) {
+            chimedFor.add(callerSignal)
+        }
+        return
+    }
     const body = names.chat || names.owner
     const visible = isPageVisible()
     const android = isAndroidTransport()
@@ -158,19 +205,7 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
         const key = replyNotificationKey(announcement.origin)
         void prepareReplyNoticeAvatar()
         if (hasReplyStateHost()) {
-            // The v2 notice names the owner and says nothing of the chat. The avatar is only what the thumbnail memo
-            // already holds (undefined, not yet looked up, is no icon): nothing is looked up or waited for here.
-            notifyReplyState({
-                v: 2,
-                key,
-                name: names.owner,
-                text: language.replyNoticeText,
-                publicTitle: language.replyNoticePublicTitle,
-                chaId: announcement.origin.chaId,
-                chatId: announcement.origin.chatId,
-                avatar: avatarCode?.notificationAvatarOf(names.ownerImage) ?? null,
-                silent: visible,
-            })
+            notifyReplyState(doneNoticeOf(announcement.origin, names, visible))
         } else {
             notifyReply(key, title, body, visible)
         }

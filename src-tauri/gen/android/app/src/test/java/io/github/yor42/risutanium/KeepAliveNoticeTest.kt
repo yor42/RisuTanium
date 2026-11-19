@@ -1540,4 +1540,81 @@ class KeepAliveNoticeTest {
     neutral.outcome(empty("", null, null, null))
     assertTrue(neutral.endWanted())
   }
+
+  // K3 (CHORE-722 stage 3): native closes the card of a reply it announced while the app was hidden.
+  // Labels: new-rule guards.
+
+  // K3a: a plain Generating card of the same chat becomes Finishing with no Stop, and Failed with the
+  // chat's name kept, both without a chronometer.
+  @Test
+  fun aNativeOutcomeClosesTheGeneratingCardOfTheSameChat() {
+    val finishing = KeepAliveDisplay(foreground = false)
+    finishing.pageNotice(notice(identity = alice, text = "1 chunk"))
+    assertTrue(finishing.nativeOutcome(NoticeState.FINISHING, "Finishing…", "", NoticeTarget("g1", "c1")))
+    val card = finishing.current()!!
+    assertEquals(NoticeState.FINISHING, card.state)
+    assertEquals("Finishing…", card.title)
+    assertEquals("Finishing…", card.publicTitle)
+    assertNull(card.startedAtMs)
+    assertEquals("", card.stopLabel)
+    assertFalse(card.stoppable)
+    val plan = noticePlan(card, finishing.stopping, 34)
+    assertNull(plan.actionLabel)
+    assertNull(plan.publicVersion.actionLabel)
+    assertFalse(plan.chronometer)
+    assertEquals(StopTap.PLAIN, finishing.stopTapped())
+
+    val failed = KeepAliveDisplay(foreground = false)
+    failed.pageNotice(notice(identity = alice))
+    assertTrue(failed.nativeOutcome(NoticeState.FAILED, "Reply failed", "Check the connection", NoticeTarget("g1", "c1")))
+    val failedPlan = noticePlan(failed.current()!!, failed.stopping, 34)
+    assertEquals("Alice", failedPlan.title)
+    assertEquals("Reply failed · Check the connection", failedPlan.text)
+    assertNull(failedPlan.actionLabel)
+    assertFalse(failedPlan.chronometer)
+  }
+
+  // K3b: it never replaces a card the user's Stop owns or another chat's card.
+  @Test
+  fun aNativeOutcomeLeavesAStopAndOtherCardsAlone() {
+    val target = NoticeTarget("g1", "c1")
+    val stopping = KeepAliveDisplay(foreground = false)
+    stopping.pageNotice(notice())
+    stopping.stopTapped()
+    assertFalse(stopping.nativeOutcome(NoticeState.FINISHING, "Finishing…", "", target))
+    assertTrue(stopping.stopping)
+    assertEquals(NoticeState.GENERATING, stopping.current()!!.state)
+
+    val confirmed = confirmedDisplay()
+    assertFalse(confirmed.nativeOutcome(NoticeState.FINISHING, "Finishing…", "", target))
+    assertTrue(confirmed.cancelConfirmed)
+    assertEquals(NoticeState.GENERATING, confirmed.current()!!.state)
+
+    val cleared = confirmedDisplay()
+    assertTrue(cleared.appForeground(true))
+    assertFalse(cleared.nativeOutcome(NoticeState.FAILED, "Reply failed", "", target))
+
+    val other = KeepAliveDisplay(foreground = false)
+    other.pageNotice(notice())
+    assertFalse(other.nativeOutcome(NoticeState.FINISHING, "Finishing…", "", NoticeTarget("g2", "c2")))
+    assertFalse(other.nativeOutcome(NoticeState.FINISHING, "Finishing…", "", null))
+    assertEquals(NoticeState.GENERATING, other.current()!!.state)
+
+    val speaking = KeepAliveDisplay(foreground = false)
+    speaking.pageNotice(notice(state = NoticeState.SPEAKING))
+    assertFalse(speaking.nativeOutcome(NoticeState.FINISHING, "Finishing…", "", target))
+    assertFalse(KeepAliveDisplay().nativeOutcome(NoticeState.FINISHING, "Finishing…", "", target))
+  }
+
+  // K3c: it is not the page's closing outcome. A closed page outcome on a neutral card ends the service in
+  // front (MC-1508); native's card of the same shape must not, because the page's outcome is still to come.
+  @Test
+  fun aNativeOutcomeIsNotTheClosingOutcome() {
+    val display = KeepAliveDisplay(foreground = true)
+    display.pageNotice(notice(identity = null, target = null))
+    assertTrue(display.nativeOutcome(NoticeState.FINISHING, "", "", null))
+    assertFalse(display.endWanted())
+    display.outcome(display.current())
+    assertTrue(display.endWanted())
+  }
 }

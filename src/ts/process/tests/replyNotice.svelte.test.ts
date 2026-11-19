@@ -597,7 +597,8 @@ async function sendThenLeaveWith(arg: Parameters<typeof sendChat>[1]): Promise<b
 
 import { toastHost, resetToastHostForTests, type ToastView } from 'src/ts/toast/toastHost.svelte'
 import { state as replyNotificationState } from 'src/ts/android/replyNotifications.svelte'
-import { announceReply, hasChimedFor, hasSilencedFor, prepareReplyNoticeAvatar } from 'src/ts/process/replyNotice'
+import { announceReply, hasChimedFor, hasSilencedFor, nativeNoticeArmOf, prepareReplyNoticeAvatar } from 'src/ts/process/replyNotice'
+import { noteAnnounced } from 'src/ts/nativeReply/pageState'
 import { __avatarThumbTestHooks, getAvatarThumbSrc, peekAvatarThumb, THUMB_VERSION } from 'src/ts/media/avatarThumb'
 import { createHostChannelFake, type HostChannelFake } from 'src/ts/android/hostChannelFake'
 
@@ -1196,5 +1197,129 @@ describe('the web Notification (T26, C2)', () => {
         await sendThenLeave(toB)
 
         expect(notifications).toEqual([])
+    })
+})
+
+describe('the notice native posts for the page (T4, T5, T6: guard, new rule)', () => {
+    const ORIGIN = { chaId: 'char-0', chatId: 'chat-0' }
+
+    afterEach(() => {
+        delete window.__risuTaniumReplyNotificationsHost
+    })
+
+    /** The separate host object with the arm and the v2 post, as a host that takes both has it. */
+    function legacyHost() {
+        delete window.__risuTaniumHost
+        const host = { armNative: vi.fn(), notifyState: vi.fn() }
+        window.__risuTaniumReplyNotificationsHost = host
+        return host
+    }
+
+    test('T6: the arm payload carries the page\'s own notice, a silent failed notice worded "Reply failed", and the closing strings', () => {
+        installWorld()
+        androidWithSwitchOn()
+        const host = legacyHost()
+
+        const arm = JSON.parse(nativeNoticeArmOf(ORIGIN) ?? 'null') as { v: number, done: StatePayload, failed: StatePayload, closing: Record<string, string> }
+        announceFirstChat()
+
+        expect(arm.v).toBe(1)
+        expect(arm.done).toEqual(JSON.parse(host.notifyState.mock.calls[0][0] as string))
+        expect(arm.failed).toEqual({ ...arm.done, text: 'Reply failed', publicTitle: 'Reply failed', silent: true })
+        expect(arm.failed.name).toBe('char-0')
+        expect(arm.closing).toEqual({
+            chaId: 'char-0', chatId: 'chat-0', finishingTitle: 'Finishing up…', failedTitle: 'Reply failed', failedText: 'Open the app to see why.',
+        })
+    })
+
+    test('T6: nothing is armed off Android or on a host that cannot arm', () => {
+        installWorld()
+        legacyHost()
+        platform.android = false
+        expect(nativeNoticeArmOf(ORIGIN)).toBeNull()
+
+        androidWithSwitchOn()
+        delete window.__risuTaniumReplyNotificationsHost
+        window.__risuTaniumReplyNotificationsHost = { notifyState: vi.fn() }
+        expect(nativeNoticeArmOf(ORIGIN)).toBeNull()
+    })
+
+    test('T4: an announced reply shows the chip only: no system notification, no chime, and the signal is recorded as chimed', () => {
+        installWorld()
+        androidWithSwitchOn()
+        const caller = new AbortController()
+
+        announceReply({ origin: ORIGIN, outcome: 'reply' }, caller.signal, true)
+
+        expect(toasts().map((toast) => [toast.kind, toast.text])).toEqual([['info', 'char-0 replied']])
+        expect(notifyCalls()).toEqual([])
+        expect(audioPlays.count).toBe(0)
+        expect(hasChimedFor(caller.signal)).toBe(true)
+    })
+
+    test('T4: not announced is today\'s notice: one post, the chime and the chimed record', () => {
+        installWorld()
+        androidWithSwitchOn()
+        const caller = new AbortController()
+
+        announceReply({ origin: ORIGIN, outcome: 'reply' }, caller.signal, false)
+
+        expect(statePayloads()).toHaveLength(1)
+        expect(audioPlays.count).toBe(1)
+        expect(hasChimedFor(caller.signal)).toBe(true)
+    })
+
+    test('T4: an announced reply on screen (no announcement) only records the signal as chimed', () => {
+        installWorld()
+        androidWithSwitchOn()
+        const told = new AbortController()
+        const plain = new AbortController()
+
+        announceReply(null, told.signal, true)
+        announceReply(null, plain.signal, false)
+
+        expect(hasChimedFor(told.signal)).toBe(true)
+        expect(hasChimedFor(plain.signal)).toBe(false)
+        expect(toasts()).toEqual([])
+        expect(notifyCalls()).toEqual([])
+    })
+
+    test('T4: a failed or stopped outcome is unchanged by the announced fact', () => {
+        installWorld()
+        androidWithSwitchOn()
+
+        announceReply({ origin: ORIGIN, outcome: 'failed' }, undefined, true)
+        announceReply({ origin: ORIGIN, outcome: 'stopped' }, undefined, true)
+
+        expect(toasts().map((toast) => toast.kind)).toEqual(['error', 'warning'])
+        expect(notifyCalls()).toEqual([])
+    })
+
+    test('T5: a send whose native end told the person posts no notice and no chime of its own, though the reply was already saved', async () => {
+        readyWorld()
+        androidWithSwitchOn()
+        requestChatDataMock.mockReset()
+        requestChatDataMock.mockImplementationOnce(async (request: { chatId: string }) => {
+            noteAnnounced(request.chatId)
+            return { type: 'success', result: 'Hello there.' }
+        })
+        const caller = new AbortController()
+        const outcome = settled(() => sendChat(-1, { signal: caller.signal }))
+        toB()
+        expect(await outcome).toBe(true)
+
+        expect(toasts().map((toast) => toast.text)).toEqual(['char-0 replied'])
+        expect(notifyCalls()).toEqual([])
+        expect(audioPlays.count).toBe(0)
+        expect(hasChimedFor(caller.signal)).toBe(true)
+    })
+
+    test('T5: the same send without the announced fact posts its own notice', async () => {
+        readyWorld()
+        androidWithSwitchOn()
+
+        expect(await sendThenLeave(toB)).toBe(true)
+
+        expect(statePayloads()).toHaveLength(1)
     })
 })

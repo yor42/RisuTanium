@@ -18,6 +18,11 @@ export interface ReplyNotificationsHost {
     notify(key: string, title: string, body: string, silent: boolean): unknown
     /** Contract v2: the notice as the JSON string of a `ReplyNoticeState`. A host without it is an old one and gets `notify`. */
     notifyState(json: string): unknown
+    /**
+     * Contract v1 of the native notice: `token` is a positive int that the same reply's fetch also carries, `json` the
+     * arm payload (`nativeReply/notice`). A host without it never posts a native notice and the page posts as before.
+     */
+    armNative(token: number, json: string): unknown
     cancel(key: string): unknown
     /** Opens the app's system notification settings. It never changes the reply opt-in. */
     openNotificationSettings(): unknown
@@ -225,6 +230,23 @@ export function notifyReplyState(notice: ReplyNoticeState): void {
         return
     }
     callHost('notifyState', JSON.stringify(notice))
+}
+
+/** True when the host takes a native notice arm. An older host has none, and the send arms nothing. */
+export function hasNativeArmHost(): boolean {
+    try {
+        return typeof replyNotificationsHost()?.armNative === 'function'
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Arms the native notice of one reply. Not gated on the opt-in: the host reads the opt-in itself when the reply ends,
+ * so a switch turned on or off meanwhile decides at that time. A failing call is logged and the page posts as before.
+ */
+export function armNativeReplyNotice(token: number, json: string): void {
+    callHost('armNative', token, json)
 }
 
 /** Removes the chat's notification, if any. */

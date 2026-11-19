@@ -83,7 +83,7 @@ private fun capped(value: String, max: Int): String {
   return value.substring(0, end)
 }
 
-private fun stringOf(value: Any?, max: Int): String = if (value is String) capped(value, max) else ""
+internal fun stringOf(value: Any?, max: Int): String = if (value is String) capped(value, max) else ""
 
 private fun identityOf(value: Any?): NoticeIdentity? {
   if (value !is Map<*, *>) return null
@@ -92,7 +92,9 @@ private fun identityOf(value: Any?): NoticeIdentity? {
   return NoticeIdentity(capped(key, MAX_TITLE_LENGTH), stringOf(value["name"], MAX_TITLE_LENGTH))
 }
 
-private fun targetOf(value: Any?): NoticeTarget? {
+// Shared with the native reply arm, so one chat reads as the same target (null included) on the card and
+// in the arm.
+internal fun targetOf(value: Any?): NoticeTarget? {
   if (value !is Map<*, *>) return null
   val chaId = value["chaId"] as? String ?: return null
   val chatId = value["chatId"] as? String ?: return null
@@ -449,6 +451,27 @@ class KeepAliveDisplay(
     }
     cancelConfirmed = false
     return wasStopping
+  }
+
+  // Native ended a reply it announced while the app was hidden (the "Replied" or "Reply failed" notice
+  // already posted): the Generating card of that chat becomes the closing card, with no Stop action and
+  // no chronometer. It applies only to a plain Generating card of the same target, never during Stopping,
+  // a confirmed Stopped or after the clear, so a Stop the user pressed keeps its own card. It is not the
+  // page's outcome: it never sets closed and never replaces the page's latest notice, so the page's
+  // closing outcome and the early end (MC-1508) behave as before. Returns whether the card changed.
+  fun nativeOutcome(state: NoticeState, title: String, text: String, target: NoticeTarget?): Boolean {
+    val current = shown ?: return false
+    if (stopping || cancelConfirmed || clearedStop) return false
+    if (current.state != NoticeState.GENERATING || current.target != target) return false
+    shown = current.copy(
+      state = state,
+      title = title,
+      text = text,
+      startedAtMs = null,
+      stopLabel = "",
+      publicTitle = title
+    )
+    return true
   }
 
   // The same stoppable work as the cancelled one: same state, start and chat. The page gives each kind of
