@@ -249,7 +249,8 @@ function expectBootOrderAndNoWaiting(): void {
     const sweepAt = commands.indexOf('app_fs_sweep_write_temps')
     expect(dispatchEntryIndex, 'the registered dispatch was entered').not.toBeNull()
     expect(sweepAt, 'the native sweep is sent before the dispatch is entered').toBeLessThan(dispatchEntryIndex as number)
-    const firstRead = commands.indexOf('read_range')
+    // A store read is a per-key `read_range` or, for a multi-key unit read, the batched `read_store2_units`.
+    const firstRead = commands.findIndex((cmd) => cmd === 'read_range' || cmd === 'read_store2_units')
     if (firstRead >= 0) {
         expect(sweepAt, 'the native sweep runs before the first store read').toBeLessThan(firstRead)
     }

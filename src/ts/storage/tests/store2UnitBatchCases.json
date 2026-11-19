@@ -1,0 +1,46 @@
+{
+    "keys": [
+        { "key": "store2/u-0123456789abcdefghijklmnop", "windows": "ok", "posix": "ok", "why": "a generated unit key" },
+        { "key": "store2/m-0123456789abcdefghijklmnop", "windows": "ok", "posix": "ok", "why": "a generated manifest key" },
+        { "key": "store2/g-0123456789abcdef-s0123456789abcdef", "windows": "ok", "posix": "ok", "why": "a staged shard key" },
+        { "key": "store2/sub/u-x", "windows": "ok", "posix": "ok", "why": "a key with more than one segment under the prefix" },
+        { "key": "assets/x", "windows": "invalid", "posix": "invalid", "why": "an asset key is outside the store2 prefix" },
+        { "key": "store2-commit", "windows": "invalid", "posix": "invalid", "why": "a top-level key is outside the prefix" },
+        { "key": "store2-fence", "windows": "invalid", "posix": "invalid", "why": "a top-level key is outside the prefix" },
+        { "key": "store2-sweep", "windows": "invalid", "posix": "invalid", "why": "a top-level key is outside the prefix" },
+        { "key": "store2", "windows": "invalid", "posix": "invalid", "why": "the prefix without its slash" },
+        { "key": "store2/", "windows": "invalid", "posix": "invalid", "why": "the prefix alone names no unit" },
+        { "key": "", "windows": "invalid", "posix": "invalid", "why": "an empty key" },
+        { "key": "../x", "windows": "invalid", "posix": "invalid", "why": "a leading parent segment" },
+        { "key": "store2/../secret", "windows": "invalid", "posix": "invalid", "why": "a parent segment leaves the prefix" },
+        { "key": "store2/a/../../x", "windows": "invalid", "posix": "invalid", "why": "parent segments climb out of the prefix" },
+        { "key": "/etc/passwd", "windows": "invalid", "posix": "invalid", "why": "an absolute path" },
+        { "key": "\\x", "windows": "invalid", "posix": "invalid", "why": "a leading backslash" },
+        { "key": "C:x", "windows": "invalid", "posix": "invalid", "why": "a drive prefix" },
+        { "key": "store2/a\u0000b", "windows": "invalid", "posix": "invalid", "why": "a NUL" },
+        { "key": "store2/.", "windows": "invalid", "posix": "invalid", "why": "a dot segment" },
+        { "key": "store2/..", "windows": "invalid", "posix": "invalid", "why": "a parent segment" },
+        { "key": "store2//x", "windows": "invalid", "posix": "invalid", "why": "an empty segment" },
+        { "key": "store2/a\\b", "windows": "invalid", "posix": "missing", "why": "a backslash: refused on Windows, one ordinary segment name on posix" },
+        { "key": "store2/a\\..\\..\\secret", "windows": "invalid", "posix": "missing", "why": "backslash traversal: refused on Windows, one ordinary segment name on posix" },
+        { "key": "store2/a:b", "windows": "invalid", "posix": "missing", "why": "a colon: refused on Windows, an ordinary name on posix" },
+        { "key": "store2/absent-unit", "windows": "missing", "posix": "missing", "why": "an addressable key with no file" }
+    ],
+    "budget": [
+        { "name": "B1", "chunkMax": 10, "responseMax": 10, "sizes": [4, 4, 4], "statuses": ["ok", "ok", "deferred"] },
+        { "name": "B2", "chunkMax": 10, "responseMax": 10, "sizes": [4, 4, 2], "statuses": ["ok", "ok", "ok"] },
+        { "name": "B3", "chunkMax": 10, "responseMax": 10, "sizes": [11, 2], "statuses": ["large", "ok"] },
+        { "name": "B4", "chunkMax": 10, "responseMax": 10, "sizes": [3, 11, 3], "statuses": ["ok", "large", "ok"] },
+        { "name": "B5", "chunkMax": 10, "responseMax": 10, "sizes": [6, 6, 11], "statuses": ["ok", "deferred", "deferred"] },
+        { "name": "B6", "chunkMax": 10, "responseMax": 10, "sizes": [6, 6, null], "statuses": ["ok", "deferred", "deferred"] },
+        { "name": "B7", "chunkMax": 10, "responseMax": 5, "sizes": [8, 0, 1], "statuses": ["ok", "ok", "deferred"] },
+        { "name": "B8", "chunkMax": 10, "responseMax": 10, "sizes": [null, 10, 1], "statuses": ["missing", "ok", "deferred"] },
+        { "name": "B9a", "chunkMax": 10, "responseMax": 10, "sizes": [10], "statuses": ["ok"] },
+        { "name": "B9b", "chunkMax": 10, "responseMax": 10, "sizes": [11], "statuses": ["large"] }
+    ],
+    "realUnit": {
+        "base64": "UlNBTAEMAAAhAAAA5YeTEHsidGFnIjoicmlzdS1zNC1yZWFsLXVuaXQiLCJ2IjoxfXBVVaI=",
+        "length": 53,
+        "why": "encodeUnit(UNIT_TYPE.preset, { v: 1, tag: 'risu-s4-real-unit' }) of the TS producer"
+    }
+}

@@ -59,6 +59,8 @@ import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatch
  */
 
 const READ_PARALLELISM = 8
+/** A `readUnits` of fewer keys than this stays on the per-key read: one key gains nothing from a batch. */
+const MIN_BATCH_KEYS = 2
 /** Unit writes of one commit in flight at once: a whole append (three or four units) in parallel, and few base64 payloads at a time on Android. */
 const UNIT_WRITE_PARALLELISM = 4
 const STORE2_PREFIX = 'store2/'
@@ -251,14 +253,32 @@ export async function createTauriBackend(store: ByteStore): Promise<Store2Backen
         async readUnits(keys) {
             checkUnitKeys(keys)
             const out = new Map<string, Uint8Array | null>()
+            // The batch supplies only the bytes it read whole; every other key is read per key, which alone decides `null` or a failure.
+            const rest: string[] = []
+            let batched: Map<string, Uint8Array> | null = null
+            if (keys.length >= MIN_BATCH_KEYS && store.readUnitBatch !== undefined) {
+                try {
+                    batched = await store.readUnitBatch(keys)
+                } catch {
+                    batched = null
+                }
+            }
+            for (const key of keys) {
+                const bytes = batched?.get(key)
+                if (bytes === undefined) {
+                    rest.push(key)
+                } else {
+                    out.set(key, bytes)
+                }
+            }
             let next = 0
             const worker = async (): Promise<void> => {
-                while (next < keys.length) {
-                    const key = keys[next++]
+                while (next < rest.length) {
+                    const key = rest[next++]
                     out.set(key, await readKey(key))
                 }
             }
-            await Promise.all(Array.from({ length: Math.min(READ_PARALLELISM, keys.length) }, worker))
+            await Promise.all(Array.from({ length: Math.min(READ_PARALLELISM, rest.length) }, worker))
             return new Map(keys.map((key) => [key, out.get(key) ?? null]))
         },
 

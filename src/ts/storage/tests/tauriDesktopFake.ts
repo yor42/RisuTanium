@@ -193,6 +193,31 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
         })
     }
 
+    /**
+     * `read_store2_units` through the chunk fake. With `probeReads`, each sent key is first read through the plugin
+     * `readFile` stand-in, as its per-key `read_range` would be; a key whose probe throws answers an `error` frame
+     * (its per-key read then probes again and fails as today). The size check counts the file bytes of the reply
+     * (`byteLength - 5 x frameCount`), with no trailer, which is what `cap` means.
+     */
+    async function readStore2Units(args: unknown): Promise<unknown> {
+        const keys = (args as { keys?: unknown } | undefined)?.keys
+        const errorKeys = new Set<string>()
+        if (options.probeReads === true && Array.isArray(keys)) {
+            for (const key of keys) {
+                try {
+                    await (fs.module.readFile as (path: string) => Promise<Uint8Array>)(`./${String(key)}`)
+                } catch {
+                    errorKeys.add(String(key))
+                }
+            }
+        }
+        const result = await chunk.invoke('read_store2_units', args, { errorKeys })
+        if (result instanceof ArrayBuffer && Array.isArray(keys)) {
+            check('response', Math.max(0, result.byteLength - 5 * keys.length))
+        }
+        return result
+    }
+
     async function invoke(command: string, args?: unknown, invokeOptions?: DurableInvokeOptions): Promise<unknown> {
         commands.push(command)
         check('request', requestPayload(args))
@@ -208,6 +233,9 @@ export function createDesktopInvoke(fs: FakeTauriFs, options: DesktopInvokeOptio
             default: {
                 if (command === 'read_range' && options.probeReads === true) {
                     await (fs.module.readFile as (path: string) => Promise<Uint8Array>)(`./${(args as { key: string }).key}`)
+                }
+                if (command === 'read_store2_units') {
+                    return await readStore2Units(args)
                 }
                 const result = await chunk.invoke(command, args)
                 if (result instanceof ArrayBuffer) {

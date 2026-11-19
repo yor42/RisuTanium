@@ -283,6 +283,14 @@ export interface ByteStore {
      * Tauri only: every other adapter leaves it out.
      */
     pageGate?: PageGateOperations
+
+    /**
+     * Reads several store2 unit files in one call. Optional and Tauri only, like `pageGate`. It answers only the keys whose
+     * whole, current bytes it read, each with a buffer of its own; every key it leaves out (absent, unreadable, too large,
+     * refused, or never asked) is for the caller to read with `read`, which alone decides `null` or a failure. It never
+     * rejects. `null` means the batch was not taken (a transport, a hidden page or a setting that does not batch).
+     */
+    readUnitBatch?(keys: readonly string[]): Promise<Map<string, Uint8Array> | null>
 }
 
 /**
