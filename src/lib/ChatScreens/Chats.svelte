@@ -55,8 +55,10 @@
 
     // One sibling view per chat, rebuilt when the path ids or `alt` change. Rows read it through
     // `getTreeView` at render time, so no tree data enters the row hash and no row remounts for it.
+    // The rows are separate effect roots, so one can re-read this after the selection was cleared and before
+    // this list is torn down; a missing character then has no tree view instead of throwing.
     const chatTreeView = $derived.by(() => {
-        const chat = currentCharacter.chats?.[currentCharacter.chatPage];
+        const chat = currentCharacter?.chats?.[currentCharacter.chatPage];
         return chat ? treeView(chat) : null;
     });
     const getTreeView = () => chatTreeView;
@@ -148,7 +150,8 @@
     }
 
     const updateChatBody = () => {
-        if(!chatBody){
+        // A character removed while this list is still mounted leaves nothing to render; the parent tears the list down.
+        if(!chatBody || !currentCharacter){
             return
         }
 
