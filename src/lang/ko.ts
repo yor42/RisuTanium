@@ -3703,6 +3703,14 @@ export const languageKorean = {
     saveLeftoverNotice: "RisuTanium이 중단된 저장 또는 복원 작업으로 남겨진, 사용하지 않는 저장 데이터를 발견했습니다. 해롭지 않으며, 설정의 정리에서 제거할 수 있습니다.",
     saveMainFileLeftNotice: "데이터가 새 형식으로 이동했지만, 이전 저장 파일이 너무 커서 이 서버가 옆으로 옮기지 못했습니다. 같은 데이터를 여는 업스트림 버전의 RisuAI가 그 이전 파일을 열 수 있습니다. 설정의 정리는 삭제하기 전까지 그 파일을 안전하게 보관합니다.",
     opfsReadOnlyNotice: "RisuTanium이 이번에는 데이터의 임시 사본으로 실행 중이므로 변경 사항을 저장하지 않으며, 백업 복원이나 저장소 정리도 사용할 수 없습니다. 데이터는 사라지지 않았습니다. 이 앱의 다른 탭을 닫고 다시 시작하면 데이터를 브라우저 저장소로 옮길 수 있습니다.",
+    legacyPartialCharacters: (count: number) => count === 1 ? "캐릭터 1개" : `캐릭터 ${count}개`,
+    legacyPartialUnreadable: (count: number) => count === 1 ? "이 버전에서 읽을 수 없는 기타 부분 1개" : `이 버전에서 읽을 수 없는 기타 부분 ${count}개`,
+    legacyPartialNotice: (items: string[]) =>
+        `저장된 데이터의 일부를 읽을 수 없어 이 페이지가 해당 부분 없이 열렸습니다:\n\n${items.join('\n')}\n\n디스크에서는 아무것도 변경되지 않았습니다. 이 페이지에서 저장한 백업에는 해당 부분이 포함되지 않습니다.`,
+    legacyBackupNotice: (date: string, items: string[]) =>
+        `저장 파일을 읽을 수 없어 이 페이지가 ${date}의 백업을 열었습니다. 최신 변경 사항보다 오래된 것일 수 있습니다. 디스크에서는 아무것도 변경되지 않았습니다.${items.length === 0 ? '' : `\n\n이 백업의 일부도 읽을 수 없어 이 페이지가 다음 항목 없이 열렸습니다:\n\n${items.join('\n')}`}`,
+    legacyPartialExportConfirm: (date: string | null, items: string[]) =>
+        `${date === null ? '' : `이 페이지는 ${date}의 백업을 열었으며, 최신 변경 사항보다 오래된 것일 수 있습니다.\n\n`}${items.length === 0 ? '' : `이 백업 파일에는 이 페이지가 읽을 수 없었던 다음 항목이 포함되지 않습니다:\n\n${items.join('\n')}\n\n`}그래도 백업을 저장하시겠습니까? 아직 아무것도 기록되지 않았습니다.`,
     otherTabSavedReloadTitle: "다른 탭이나 기기에서 저장 방식 또는 저장 내용이 변경되어, 이 탭의 데이터 사본은 오래되었고 이 탭의 변경 사항은 이 탭에서 저장할 수 없습니다. 새로고침하면 저장 가능한 정상 상태로 돌아가지만, 이 탭에서 저장되지 않은 변경 사항은 모두 사라집니다.",
     savingStoppedReplacedMessage: "이 탭은 저장을 멈췄습니다. 다른 탭이나 기기가 저장된 데이터를 교체했기 때문에(백업을 불러왔거나 데이터가 새 형식으로 옮겨졌습니다), 이 탭의 사본은 오래되었고 이 탭에서 저장할 수 없습니다. 지금부터 하는 변경 사항은 유지되지 않습니다. 새로고침하면 최신 데이터를 가져오지만, 이 탭에서 저장되지 않은 변경 사항은 모두 사라집니다.",
     savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number, assetLimitBytes: number) =>

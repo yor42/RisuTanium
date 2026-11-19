@@ -3702,6 +3702,14 @@ export const languageVietnamese = {
     saveLeftoverNotice: "RisuTanium đã tìm thấy dữ liệu lưu không dùng đến bị bỏ lại bởi một lần lưu hoặc khôi phục bị gián đoạn. Dữ liệu này không gây hại. Bạn có thể xóa nó trong phần dọn dẹp ở cài đặt.",
     saveMainFileLeftNotice: "Dữ liệu của bạn đã được chuyển sang định dạng mới, nhưng tệp lưu cũ quá lớn để máy chủ này dời sang một bên. Một phiên bản RisuAI thượng nguồn mở cùng dữ liệu có thể mở tệp cũ đó. Phần dọn dẹp ở cài đặt sẽ giữ nó an toàn cho đến khi bạn xóa nó.",
     opfsReadOnlyNotice: "Lần này RisuTanium đang chạy từ một bản sao tạm thời của dữ liệu của bạn, nên sẽ không lưu các thay đổi, và việc khôi phục bản sao lưu hoặc dọn dẹp bộ nhớ không khả dụng. Dữ liệu của bạn không bị mất. Hãy đóng các tab khác của ứng dụng này và khởi động lại để dữ liệu có thể được chuyển sang bộ nhớ trình duyệt.",
+    legacyPartialCharacters: (count: number) => count === 1 ? "1 nhân vật" : `${count} nhân vật`,
+    legacyPartialUnreadable: (count: number) => count === 1 ? "1 phần khác mà phiên bản này không thể đọc" : `${count} phần khác mà phiên bản này không thể đọc`,
+    legacyPartialNotice: (items: string[]) =>
+        `Một phần dữ liệu đã lưu của bạn không thể đọc được, nên trang này đã mở mà không có phần đó:\n\n${items.join('\n')}\n\nKhông có gì bị thay đổi trên ổ đĩa. Bản sao lưu được lưu từ trang này sẽ không bao gồm phần đó.`,
+    legacyBackupNotice: (date: string, items: string[]) =>
+        `Không thể đọc tệp lưu của bạn, nên trang này đã mở bản sao lưu từ ${date}. Bản này có thể cũ hơn các thay đổi mới nhất của bạn. Không có gì bị thay đổi trên ổ đĩa.${items.length === 0 ? '' : `\n\nMột phần của bản sao lưu này cũng không thể đọc được, nên trang đã mở mà không có:\n\n${items.join('\n')}`}`,
+    legacyPartialExportConfirm: (date: string | null, items: string[]) =>
+        `${date === null ? '' : `Trang này đã mở bản sao lưu từ ${date}, có thể cũ hơn các thay đổi mới nhất của bạn.\n\n`}${items.length === 0 ? '' : `Tệp sao lưu này sẽ không bao gồm những gì trang này không thể đọc:\n\n${items.join('\n')}\n\n`}Vẫn lưu bản sao lưu chứ? Chưa có gì được ghi.`,
     otherTabSavedReloadTitle: "Một tab hoặc thiết bị khác đã thay đổi cách hoặc nội dung được lưu, nên bản sao dữ liệu của tab này đã lỗi thời và các thay đổi của nó không thể được lưu từ tab này. Tải lại sẽ đưa về trạng thái hoạt động và có thể lưu được, nhưng mọi thay đổi chưa lưu trong tab này sẽ bị mất.",
     savingStoppedReplacedMessage: "Tab này đã ngừng lưu. Một tab hoặc thiết bị khác đã thay thế dữ liệu đã lưu (một bản sao lưu đã được tải hoặc dữ liệu đã được chuyển sang định dạng mới), nên bản sao của tab này đã lỗi thời và không thể lưu từ tab này. Các thay đổi thực hiện từ bây giờ sẽ không được giữ lại. Tải lại sẽ lấy dữ liệu hiện tại, và mọi thay đổi chưa lưu trong tab này sẽ bị mất.",
     savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number, assetLimitBytes: number) =>
