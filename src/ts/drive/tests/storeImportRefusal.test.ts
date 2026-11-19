@@ -51,7 +51,6 @@ vi.mock('src/ts/storage/store2/bootActive', () => ({ getStore2BootSession: () =>
 vi.mock('src/ts/storage/store2/lists', inert)
 vi.mock('src/ts/storage/store2/saveActive', () => ({ getActiveStore2Save: () => world.active }))
 vi.mock('src/ts/storage/risuSave', inert)
-vi.mock('src/ts/storage/bootBlockLoad', inert)
 vi.mock('src/ts/storage/store2/ui/bootText', inert)
 vi.mock('src/ts/storage/store2/legacy/storeReader', inert)
 vi.mock('src/ts/storage/store2/legacy/importTree', () => ({

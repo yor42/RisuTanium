@@ -68,9 +68,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 }))
 
 vi.mock('src/ts/storage/blockStore', () => ({ BlockSetGateError: class BlockSetGateError extends Error { }, retireGeneration: vi.fn() }))
-vi.mock('src/ts/storage/mainFileRename', () => ({ finishMainFileRename: vi.fn() }))
 vi.mock('src/ts/storage/pageBlockOwner', () => ({ getPageBlockOwner: vi.fn() }))
-vi.mock('src/ts/storage/pageStorageMode', () => ({ getPageStorageMode: vi.fn(), pendingConvertedFrom: vi.fn(), setPageStorageMode: vi.fn() }))
+vi.mock('src/ts/storage/pageStorageMode', () => ({ getPageStorageMode: vi.fn(), setPageStorageMode: vi.fn() }))
 vi.mock('src/ts/stores.svelte', () => ({ DBState: { db: undefined } }))
 vi.mock('src/ts/process/coldstorage.svelte', () => ({ readColdStorageItem: vi.fn() }))
 vi.mock('src/ts/storage/characterTreeRepair', () => ({ repairCharacterTree: vi.fn(), summarizeRepair: vi.fn() }))

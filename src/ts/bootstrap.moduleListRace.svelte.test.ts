@@ -138,12 +138,6 @@ vi.mock(import('src/ts/alert'), async (importOriginal) => ({
     alertConfirm: async () => false,
 }) as unknown as typeof import('src/ts/alert'))
 
-// The load-time listing also lists storage keys; it is not the step under test, and leaving it real would make
-// `forageStorage.keys` ambiguous.
-vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
-    recordLoadTimeListing: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
     loadPlugins: loadPluginsMock,
 }) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
@@ -181,15 +175,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
     exportModuleLegacy: vi.fn(),
     readModule: vi.fn(),
 }) as unknown as typeof import('src/ts/process/modules'))
-
-vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
-    openBootArchiveSession: vi.fn(async () => ({
-        canArchive: false,
-        run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
-        release: vi.fn(async () => { }),
-    })),
-    checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-}) as unknown as typeof import('src/ts/storage/bootArchivePass'))
 
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: verifyAssetCacheEntryMock,
