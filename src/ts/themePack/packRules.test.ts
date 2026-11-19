@@ -357,6 +357,7 @@ function expectAcceptedPack(area: PackArea, css: string): void {
     const result = lintAreaPack(area, css)
     expect(result.errors, `${area}: ${css}`).toEqual([])
 }
+const E2_WHY = /may reach at most 2 px past its element/
 const RE_1549 = /MC-1549/
 const RE_1550 = /MC-1550/
 const RE_1564 = /MC-1564/
@@ -679,7 +680,7 @@ describe('GN: compatibility guards (accepted before and after)', () => {
         ['a negative margin by negation', `${SAFE_LEAF}{margin-right:calc(var(--space-3) * -1)}`],
         ['a negation of a number', `${SAFE_LEAF}{margin-right:calc(-1 * 8px)}`],
         ['a helper with a root default and a state value', `:root{--pack-a:12px}html[data-input="touch"]{--pack-a:10px}${SAFE_LEAF}{padding:var(--pack-a)}`],
-        ['a colour with alpha', `${SAFE_LEAF}{border:1px solid rgb(0 0 0 / 0.4);box-shadow:0 1px 2px rgb(0 0 0 / 20%)}`],
+        ['a colour with alpha', `${SAFE_LEAF}{border:1px solid rgb(0 0 0 / 0.4);box-shadow:0 1px 1px rgb(0 0 0 / 20%)}`],
         ['a percent padding', `${SAFE_LEAF}{padding:5%}`],
         ['a calc in a colour argument', `${SAFE_LEAF}{background:hsl(calc(var(--h) + 10) 50% 50%)}`],
         ['a plain font size', `${TEXT_LEAF}{font-size:15px}`],
@@ -695,6 +696,11 @@ describe('GN: compatibility guards (accepted before and after)', () => {
         ['a run of comments beside a space', `${SAFE_LEAF}{opacity:1} /**//**/${SAFE_LEAF}{opacity:1}`],
         ['a grid function in a token', ':root{--nexus-ease:cubic-bezier(0.2, 0, 0, 1)}'],
     ])('accepts %s', (_name, css) => { expectAcceptedPack('chat', css) })
+
+    // REPRO: the former spelling of 'a colour with alpha' reaches 3 px, so the flat 2 px limit on outer shadows (MC-2309) refuses it.
+    test('a colour with alpha whose shadow reaches 3 px is refused by the flat 2 px limit', () => {
+        expectRefused('chat', `${SAFE_LEAF}{border:1px solid rgb(0 0 0 / 0.4);box-shadow:0 1px 2px rgb(0 0 0 / 20%)}`, E2_WHY)
+    })
 
     test('the settings grid token guard', () => {
         expectNoReason('settings', ':root{--body-columns:240px minmax(0, 1fr)}', RE_1549)
