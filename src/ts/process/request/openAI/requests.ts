@@ -19,6 +19,8 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters } f
 
 import { buildUserContents } from './chatContents'
 import type { OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
+import { openAIParseContextOf, parseOpenAIChatBody, processOpenAIChatText, type OpenAIChatBody } from './chatBodyParse'
+import { bindGrant } from 'src/ts/nativeReply/grant'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
 import { leaseRequestKey, limitedField, sendArgKey, sendKeyLine } from '../secretKey'
@@ -696,6 +698,9 @@ export async function requestHTTPOpenAI(
 ):Promise<requestDataResponse>{
     
     const db = getDatabase()
+    const parseContext = openAIParseContextOf(arg, db)
+    // An owned request keeps its reply in a record the next launch can read; a body preview sends nothing.
+    const nativeReply = arg.previewBody ? null : bindGrant(arg.nativeReplyGrant, parseContext)
     const res = await globalFetch(replacerURL, {
         body: body,
         headers: headers,
@@ -704,53 +709,24 @@ export async function requestHTTPOpenAI(
         interceptor: 'openai_basic',
         networkRoute: networkOptions.networkRoute,
         requestTimeoutMs: networkOptions.requestTimeoutMs,
-        deliverWhileFrozen: true
+        deliverWhileFrozen: true,
+        nativeReply,
     })
 
-    function processTextResponse(dat: any):string{
-        if(dat?.choices[0]?.text){
-            let text = dat.choices[0].text as string
-            if(arg.extractJson && (db.jsonSchemaEnabled || arg.schema)){
-                try {
-                    const parsed = JSON.parse(text)
-                    const extracted = extractJSON(parsed, arg.extractJson, {subject: arg.subject})
-                    return extracted
-                } catch (error) {
-                    console.log(error)
-                    return text
-                }
-            }
-            return text
-        }
-        if(arg.extractJson && (db.jsonSchemaEnabled || arg.schema)){
-            return extractJSON(dat.choices[0].message.content, arg.extractJson, {subject: arg.subject})
-        }
-        const msg:OpenAIChatFull = (dat.choices[0].message)
-        let result = msg.content ?? ''
-        const reasoningContentField = dat?.choices[0]?.reasoning_content ?? dat?.choices[0]?.message?.reasoning_content
-        if(arg.modelInfo.flags.includes(LLMFlags.deepSeekThinkingOutput) && !reasoningContentField){
-            let reasoningContent = ""
-            result = result.replace(/(.*)\<\/think\>/gms, (m, p1) => {
-                reasoningContent = p1
-                return ""
-            })
-            if(reasoningContent){
-                reasoningContent = reasoningContent.replace(/\<think\>/gms, '')
-                result = `<Thoughts>\n${reasoningContent}\n</Thoughts>\n${result}`
-            }
-        }
-        if(reasoningContentField && !result.startsWith('<Thoughts>')){
-            result = `<Thoughts>\n${reasoningContentField}\n</Thoughts>\n${result}`
-        }
-        // For openrouter, https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request#response.body.choices.message.reasoning
-        if(dat?.choices?.[0]?.message?.reasoning){
-            result = `<Thoughts>\n${dat.choices[0].message.reasoning}\n</Thoughts>\n${result}`
-        }
-
-        return result
+    function processTextResponse(dat: OpenAIChatBody):string{
+        return processOpenAIChatText(dat, parseContext, arg.subject)
     }
 
     const dat = res.data as any
+
+    // An announced failure ends the turn: the reply's own record has told the person already.
+    if(res.nativeFinal && !res.ok){
+        return {
+            type: 'fail',
+            result: (language.errors.httpError + `${dat?.error?.message ?? JSON.stringify(res.data)}`),
+            endsTurn: true,
+        }
+    }
 
     if(res.ok){
         reportChatUsage(arg, dat)
@@ -895,34 +871,8 @@ export async function requestHTTPOpenAI(
                 return resRec
             }
                     
-            if(arg.multiGen && dat.choices){
-                if(arg.extractJson && (db.jsonSchemaEnabled || arg.schema)){
-                    
-                    const c = dat.choices.map((v:{message:{content:string}}) => {
-                        const extracted = extractJSON(v.message.content ?? '', arg.extractJson, {subject: arg.subject})
-                        return ["char", extracted]
-                    })
-                    
-                    return {
-                        type: 'multiline',
-                        result: c
-                    }
-                }
-                return {
-                    type: 'multiline',
-                    result: dat.choices.map((v) => {
-                        return ["char", v.message.content ?? '']
-                    })
-                }
-            }            
-                    
-            const result = processTextResponse(dat) ?? ''
-            
-            return {
-                type: 'success',
-                result: result
-            }
-            
+            return parseOpenAIChatBody(dat, parseContext, arg.subject)
+
         } catch (error) {                    
             return {
                 type: 'fail',

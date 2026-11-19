@@ -43,7 +43,7 @@ import {
     alertClear,
 } from './alert'
 import { ALERT_BACK_ACTIONS, cancelHasOwnButton, offeredCancel } from './alertBack'
-import { ANSWER_GUARD_MS, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
+import { ANSWER_GUARD_MS, askPrompt, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
 import { dispatchBack, resetBackHandlersForTests } from './backHandlers'
 import { alertStore } from './stores.svelte'
 
@@ -121,6 +121,15 @@ describe('a prompt with a cancel button', () => {
         expect(dispatchBack()).toBe(true)
         await settle()
         expect(out).toEqual({ settled: true, value: 'cancel' })
+    })
+
+    test('a parked reply is answered later by Back, never discard', async () => {
+        const out = track(askPrompt({ type: 'parkedReply', msg: 'Title', parkedReply: { name: 'Ann', text: 'Hello' } }))
+        expect(shown().type).toBe('parkedReply')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(out).toEqual({ settled: true, value: 'later' })
+        expect(shown().type).toBe('none')
     })
 
     test('chat options resolve as the Cancel button does, which its caller reads as no choice', async () => {

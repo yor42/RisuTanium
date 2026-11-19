@@ -40,6 +40,7 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     cardexport: { kind: 'answer', message: JSON.stringify({ type: 'cancel', type2: '' }) },
     addchar: { kind: 'answer', message: 'cancel' },
     chatOptions: { kind: 'answer', message: 'cancel' },
+    parkedReply: { kind: 'answer', message: 'later' },
     patternSelect: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     patternInput: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     normal: CLOSE,
