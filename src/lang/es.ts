@@ -4501,5 +4501,7 @@ export const languageSpanish = {
         moduleEditedKeep: "Seguir trabajando (los cambios en los módulos no se guardan hasta que recargues)",
         moduleNotSaved: "El módulo \"{name}\" no se puede guardar. Tus personajes y chats se siguen guardando, pero los cambios en los módulos no se guardan hasta que se elimine o reemplace \"{name}\", y se pierden si se cierra o recarga la aplicación.",
     },
+    "comfyWorkflow": "Flujo de trabajo (API)",
+    "comfyWorkflowInvalidJson": "Archivo de flujo de trabajo no válido. Debe ser un JSON válido.",
     chatShellAttachingFile: (name: string, written: string, total: string) => `Adjuntando ${name}: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

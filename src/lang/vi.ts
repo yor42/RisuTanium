@@ -4494,5 +4494,7 @@ export const languageVietnamese = {
         moduleEditedKeep: "Tiếp tục làm việc (các thay đổi đối với mô-đun không được lưu cho đến khi bạn tải lại)",
         moduleNotSaved: "Không thể lưu mô-đun \"{name}\". Nhân vật và cuộc trò chuyện của bạn vẫn đang được lưu, nhưng các thay đổi đối với mô-đun sẽ không được lưu cho đến khi \"{name}\" bị xóa hoặc được thay thế, và sẽ bị mất nếu ứng dụng bị đóng hoặc được tải lại.",
     },
+    "comfyWorkflow": "Quy trình làm việc (API)",
+    "comfyWorkflowInvalidJson": "Tệp quy trình làm việc không hợp lệ. Phải là JSON hợp lệ.",
     chatShellAttachingFile: (name: string, written: string, total: string) => `Đang đính kèm ${name}: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

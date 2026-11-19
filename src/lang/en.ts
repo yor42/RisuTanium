@@ -4649,6 +4649,8 @@ export const languageEnglish = {
         moduleEditedKeep: "Keep working (module changes are not saved until you reload)",
         moduleNotSaved: "The module \"{name}\" cannot be saved. Your characters and chats are still being saved, but changes to modules are not saved until \"{name}\" is deleted or replaced, and they are lost if the app is closed or reloaded.",
     },
+    comfyWorkflow: "Workflow (API)",
+    comfyWorkflowInvalidJson: "Invalid workflow file. It must be a valid JSON.",
     chatShellAttachingFile: (name: string, written: string, total: string) => `Attaching ${name}: ${written} / ${total} MiB`,
 } satisfies I18nTranslation;
 

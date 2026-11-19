@@ -4518,5 +4518,7 @@ export const languageGerman = {
         "moduleEditedKeep": "Weiterarbeiten (Änderungen an Modulen werden nicht gespeichert, bis neu geladen wird)",
         "moduleNotSaved": "Das Modul \"{name}\" kann nicht gespeichert werden. Charaktere und Chats werden weiterhin gespeichert, Änderungen an Modulen jedoch nicht, bis \"{name}\" gelöscht oder ersetzt wird, und sie gehen verloren, wenn die App geschlossen oder neu geladen wird."
     },
+    "comfyWorkflow": "Workflow (API)",
+    "comfyWorkflowInvalidJson": "Ungültige Workflow-Datei. Es muss ein gültiges JSON sein.",
     "chatShellAttachingFile": (name: string, written: string, total: string) => `${name} wird angehängt: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

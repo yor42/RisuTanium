@@ -4539,5 +4539,7 @@ export const languageChineseTraditional = {
         "moduleEditedKeep": "繼續工作（重新載入之前不會儲存模組變更）",
         "moduleNotSaved": "無法儲存模組「{name}」。角色和聊天仍會繼續儲存，但在刪除或取代「{name}」之前，對模組的變更不會被儲存，並且如果關閉或重新載入應用程式，這些變更將遺失。"
     },
+    "comfyWorkflow": "工作流程 (API)",
+    "comfyWorkflowInvalidJson": "工作流程檔案無效。必須是有效的 JSON。",
     "chatShellAttachingFile": (name: string, written: string, total: string) => `正在附加 ${name}：${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>
