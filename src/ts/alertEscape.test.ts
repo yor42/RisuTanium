@@ -29,6 +29,7 @@ const SPECIFIED: Record<alertData['type'], AlertEscapeAction> = {
     patternSelect: 'ignore',
     patternInput: 'ignore',
     peerConflicts: 'ignore',
+    parkedReply: 'ignore',
     progress: 'ignore',
     normal: 'close',
     error: 'close',

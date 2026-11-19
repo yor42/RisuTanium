@@ -41,3 +41,12 @@ Out of scope for now: finished packs, fonts, images, pack loading and the theme 
 - **Extended state and parts** ([DD-153](DECISIONS.md)). Streaming, selected, hidden-from-AI, bookmarked, current and unread states are `data-*`. Buttons, fields, composer innards, header title, list-row innards and sheet header/handle have parts. Selection, scrollbar, caret and icon size/stroke have tokens.
 - **Selection colour:** Deep Nexus uses an accent-tint text selection, the one deliberate change to the default look ([DD-156](DECISIONS.md)).
 - **Origin Navy** uses upstream's default scheme colours, adjusted for AA ([DD-150](DECISIONS.md), Settings DS-076). Banana Cocoa puts own-message actions beside the bubble on hover input and above it on touch ([DD-152](DECISIONS.md)).
+
+## Colours that need !important
+
+On every part of the reach tier (item 4 of the install rule above: the chat parts in `REACH_CHAT` and the Studio parts in `STUDIO_REACH`), a text colour or a fill must be written with `!important`. The app's own styles for these controls can outrank a plain pack rule. The app's install check refuses a plain one and asks for `!important` (the reference lint does not apply this rule):
+
+- **Text colour:** `color`.
+- **Fill:** `background`, `background-color` and `background-image`.
+
+This holds for every value, keywords such as `inherit`, `unset`, `transparent` and `none` included, and in every `@media` block and state. Write `color: #191919 !important`, not `color: #191919`. An `!important` colour is then judged like any other, so it still needs its contrast against the fill it sits on. Other properties on these parts, and colours on every other part, take plain declarations.

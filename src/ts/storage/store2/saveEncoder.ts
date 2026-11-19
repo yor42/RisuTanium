@@ -95,6 +95,8 @@ export interface SavePlan {
     readonly modulesEncoded: boolean
     /** The `chaId` of every character this pass encoded. */
     readonly encoded: readonly string[]
+    /** The `String(chaId)` of every slot of the pass's copy of the character list (`ScopedPlan.listed`). */
+    readonly listed: readonly string[]
     /** Existing units the new manifest names without writing them, and the names (taken at plan time) of the characters and modules carried by key. */
     readonly carried: ScopedPlan['carried']
     /** The identity and digest of every unit this plan writes that holds no Ref of another unit (`ScopedPlan.written`). */
@@ -548,6 +550,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 skippedItems: scoped.skippedItems,
                 modulesEncoded: scoped.modulesEncoded,
                 encoded: scoped.encoded,
+                listed: scoped.listed,
                 carried: scoped.carried,
                 written: scoped.written,
                 commitRequest: () => ({

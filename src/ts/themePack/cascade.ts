@@ -5,6 +5,8 @@
 // states the other colour. It covers the reach parts of the area's registry (the controls a person needs to navigate, stop
 // work, send, apply or undo). Colours that reach a control through an ancestor part stay engine-bound (plan residue R1, R5).
 //
+// A plain colour or fill on a reach part is refused (MC-2313, widened to every reach part by MC-2370; value-blind, MC-2349). The app's own styles for these controls can outrank a plain pack rule, so color, background, background-color and background-image on a part of the area registry's reach tier must be written with one trailing !important. The rule reads the written stylesheet, before private variables are inlined, in every at-rule, state, selector-list position and ancestor form. A refused declaration adds no Rule S or Rule P member: on a reach part only an !important colour or fill can paint (MC-2314).
+//
 // Rule P (CHORE-738, MC-2072, MC-2090) judges what a control paints over its own text, on the same reach parts, per
 // `--pack-*` variant, in chat and Studio only:
 // - An inset box-shadow layer (or a layer that still holds a var(), which may hold the word) is judged against every text colour
@@ -20,7 +22,7 @@
 //   and block sets are untouched.
 // - A part gets at most one pairing error per text colour and source; a declaration's immediate errors are pushed once per part.
 //   Labels in these messages are clipped to 200 characters.
-// - The app's own text colour pairs with an overlay only when no text colour is set on the part in any block of the variant.
+// - The app's own text colour pairs with an overlay only when no !important text colour is set on the part in any block of the variant; a plain one cannot paint on a reach part (MC-2314, restating MC-2090 PQ-2).
 // - A decoration thickness over 3 px or 0.2em, from-font and an unreadable thickness are refused; so are currentcolor and unreadable
 //   colours on a qualifying layer.
 // - Translucent pairs are counted from member and fill counts before anything is flattened; over 4096 the part's translucent
@@ -78,6 +80,22 @@ interface PartPaint {
 }
 
 const registryOf = (area: 'chat' | 'studio'): Registry => (area === 'chat' ? CHAT_REGISTRY : effective(STUDIO_REGISTRY))
+
+type PaintChannel = 'text' | 'fill'
+const paintChannelOf = (prop: string): PaintChannel | null => prop === 'color' ? 'text' : BACKGROUND_PROPS.test(prop) ? 'fill' : null
+const isWrittenImportant = (value: string): boolean => /!important\s*$/.test(value) && value.split('!').length === 2
+const holdsOtherBang = (value: string): boolean => value.includes('!') && !isWrittenImportant(value)
+/** The parts of the registry's reach tier that a selector-list entry has as its subject. */
+const reachedParts = (registry: Registry, entry: string): string[] => {
+    const parsed = parseSelectorEntry(entry)
+    if (parsed.grammarWhy || !parsed.compounds.length) return []
+    return parsed.compounds[parsed.compounds.length - 1].attrs.filter(([name, v]) => name === 'data-part' && v !== undefined && registry.reach.has(v)).map(([, v]) => v as string)
+}
+const plainPaintWhy = (part: string, prop: string, value: string, channel: PaintChannel): string => {
+    const noun = channel === 'text' ? 'text colour' : 'background'
+    if (holdsOtherBang(value)) return `${part}: "${prop}: ${clip(value)}" is not a valid !important declaration, and a ${noun} on this control must be written with !important, because the app's own styles can outrank a plain one; write one !important at the end of the value, or remove it (MC-2313, MC-2370)`
+    return `${part}: a ${noun} on this control must be written with !important, because the app's own styles can outrank a plain one; "${prop}: ${clip(value)}" is plain, so write it with !important, or remove it (MC-2313, MC-2370)`
+}
 const hex = (c: readonly number[]): string => '#' + c.slice(0, 3).map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')
 const flatten = (top: Rgba, base: Rgba): Rgba => [top[0] * top[3] + base[0] * (1 - top[3]), top[1] * top[3] + base[1] * (1 - top[3]), top[2] * top[3] + base[2] * (1 - top[3]), 1]
 
@@ -215,7 +233,7 @@ function judgeOver(part: string, members: readonly OverMember[], paint: PartPain
         texts.push({ ...t, lum: lum(t.colour) })
     }
     if (paint) for (const t of paint.texts) addText(t)
-    // the app's own text colour is on the control only when no text colour is set on it
+    // only an !important colour on a reach part is a member, so the app's own text colour pairs unless one is set (MC-2314)
     const textSet = paint ? paint.texts.some((t) => !t.fallback) : false
     if (!textSet && fallbackText) addText({ colour: fallbackText, fallback: true, label: APP_TEXT_LABEL })
 
@@ -310,9 +328,7 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
             const judgedParts = new Set<string>()
             const cappedParts = new Set<string>()
             for (const entry of d.ctx.selector.split(',').map((s) => s.trim()).filter(Boolean)) {
-                const parsed = parseSelectorEntry(entry)
-                if (parsed.grammarWhy || !parsed.compounds.length) continue
-                const reached = parsed.compounds[parsed.compounds.length - 1].attrs.filter(([name, v]) => name === 'data-part' && v !== undefined && registry.reach.has(v)).map(([, v]) => v as string)
+                const reached = reachedParts(registry, entry)
                 const block = `${entry}@${d.ctx.at.join(' ')}`
                 const label = short(`${entry}{${prop}:${written}}`)
                 for (const part of reached) {
@@ -352,15 +368,14 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
         }
         const isText = TEXT_PROPS.test(d.prop)
         if (!isText && !BACKGROUND_PROPS.test(d.prop)) continue
+        if (paintChannelOf(d.prop) !== null && !isWrittenImportant(d.value)) continue
         const value = d.value.replace(/\s*!important\s*$/, '').trim()
         const colours = CSS_WIDE.test(value) ? [] : coloursIn(value, tokens)
         const paintsOwnColour = !isText && OWN_COLOUR_WORD.test(settled(value, tokens))
         const canvasText = d.prop === 'color' && CANVAS_TEXT_KEYWORD.test(settled(value, tokens).trim())
         const inheritsBackground = !isText && settled(value, tokens).trim() === 'inherit'
         for (const entry of d.ctx.selector.split(',').map((s) => s.trim()).filter(Boolean)) {
-            const parsed = parseSelectorEntry(entry)
-            if (parsed.grammarWhy || !parsed.compounds.length) continue
-            const reached = parsed.compounds[parsed.compounds.length - 1].attrs.filter(([name, v]) => name === 'data-part' && v !== undefined && registry.reach.has(v)).map(([, v]) => v as string)
+            const reached = reachedParts(registry, entry)
             const block = `${entry}@${d.ctx.at.join(' ')}`
             const label = `${entry}{${d.prop}:${value}}`
             for (const part of reached) {
@@ -414,6 +429,25 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
     return errors
 }
 
+/** Every plain colour or fill declaration whose selector-list entry has a reach part as its subject; one error per declaration and part, whatever the value, at-rule or state. */
+function plainPaintErrors(area: 'chat' | 'studio', text: string): LintError[] {
+    const registry = registryOf(area)
+    const errors: LintError[] = []
+    for (const d of decls(text)) {
+        const channel = paintChannelOf(d.prop)
+        if (d.ctx.keyframes || channel === null || isWrittenImportant(d.value)) continue
+        const done = new Set<string>()
+        for (const entry of d.ctx.selector.split(',').map((s) => s.trim()).filter(Boolean)) {
+            for (const part of reachedParts(registry, entry)) {
+                if (done.has(part)) continue
+                done.add(part)
+                errors.push({ selector: `[data-part="${part}"]`, prop: d.prop, why: plainPaintWhy(part, d.prop, d.value, channel) })
+            }
+        }
+    }
+    return errors
+}
+
 /**
  * Judges the reach parts of a chat or Studio stylesheet by superset (Rule S). `css` is the stylesheet with its @font-face
  * blocks taken out. Every value a private `--pack-*` variable can take is judged, as the engine judges them.
@@ -421,8 +455,8 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
 export function cascadePass(area: ThemeArea, css: string): LintError[] {
     if (area !== 'chat' && area !== 'studio') return []
     const text = normalise(css)
-    const errors: LintError[] = []
-    const seen = new Set<string>()
+    const errors: LintError[] = plainPaintErrors(area, text)
+    const seen = new Set<string>(errors.map((e) => `${e.selector}|${e.prop}|${e.why}`))
     for (const variant of inlinePrivate(text, '--pack-').variants) {
         for (const e of judgeVariant(area, variant)) {
             const key = `${e.selector}|${e.prop}|${e.why}`

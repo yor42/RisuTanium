@@ -127,11 +127,29 @@ vi.mock(import('src/ts/process/memory/busyActions'), async (importOriginal) => {
     }
 })
 
-import { importModule, readModule } from 'src/ts/process/modules'
+import { importModule as importModuleOnCard, readModule } from 'src/ts/process/modules'
 import { ModuleImportStopped } from 'src/ts/process/moduleImportStop'
 import { charxLimits } from 'src/ts/process/processzip'
 import { isBusy } from 'src/ts/process/memory/busyActions'
+import { answerTask, resetTaskHostForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import type { TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 import { language } from 'src/lang'
+
+/** The card the last `importModule` ended on, or null when the import closed without one. */
+let lastCard: TaskView | null = null
+
+/** Runs the import, reads its result card, answers OK, and leaves the card in `lastCard`. */
+async function importModule() {
+    const done = importModuleOnCard()
+    let ended = false
+    void done.then(() => { ended = true })
+    for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    lastCard = taskResultShowing() ? taskHostView() : null
+    if (lastCard) answerTask({ kind: 'ok' })
+    await done
+}
 
 const limitDefaults = { ...charxLimits }
 
@@ -153,33 +171,37 @@ beforeEach(() => {
     h.busyBegins = []
     h.card = null
     h.cardArgs = []
+    lastCard = null
     Object.assign(charxLimits, limitDefaults)
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     Object.assign(charxLimits, limitDefaults)
     vi.restoreAllMocks()
 })
 
 describe('several picked files', () => {
-    test('regression reproducer: two files through importModule both import, and the end message is a count', async () => {
+    test('regression reproducer: two files through importModule both import, and the result card is a count', async () => {
         h.files = [risum('a.risum', 'A'), risum('b.risum', 'B')]
         await importModule()
         expect(names()).toEqual(['A', 'B'])
-        expect(h.log).toEqual(['normal:' + language.importModulesDone(2, 0)])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(2))
+        expect(h.log).toEqual([])
     })
 
-    test('feature: five files with the third refused import the other four and end on one message naming the failure', async () => {
+    test('feature: five files with the third refused import the other four and end on one card listing the failure', async () => {
         h.files = [
             risum('f1.risum', 'One'), risum('f2.risum', 'Two'), risum('f3.risum', 'Three', { magic: 0 }),
             risum('f4.risum', 'Four'), risum('f5.risum', 'Five'),
         ]
         await importModule()
         expect(names()).toEqual(['One', 'Two', 'Four', 'Five'])
-        const message = language.importFilesNotImported(1, 5, 'f3.risum: ' + language.errors.noData)
-        expect(h.log).toEqual(['error:' + message])
-        expect(h.last).toBe('error:' + message)
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(4))
+        expect(lastCard?.result?.skipped).toEqual([{ name: 'f3.risum', reason: language.errors.noData }])
+        expect(lastCard?.result?.actions ?? []).toEqual([])
+        expect(h.log).toEqual([])
     })
 
     test('feature: the count message says "module" for one and "modules" otherwise', () => {
@@ -192,14 +214,19 @@ describe('several picked files', () => {
     test('feature: the first failure is in the summary when later files fail too', async () => {
         h.files = [risum('f1.risum', 'One', { magic: 0 }), risum('f2.risum', 'Two'), risum('f3.risum', 'Three', { magic: 0 })]
         await importModule()
-        expect(h.log).toEqual(['error:' + language.importFilesNotImported(2, 3, `f1.risum: ${language.errors.noData}\nf3.risum: ${language.errors.noData}`)])
+        expect(lastCard?.result?.skipped).toEqual([
+            { name: 'f1.risum', reason: language.errors.noData },
+            { name: 'f3.risum', reason: language.errors.noData },
+        ])
+        expect(h.log).toEqual([])
     })
 
     test('feature: an unsupported file is listed with the short reason and the rest import', async () => {
         h.files = [risum('a.risum', 'A'), new File(['x'], 'notes.txt')]
         await importModule()
         expect(names()).toEqual(['A'])
-        expect(h.log).toEqual(['error:' + language.importFilesNotImported(1, 2, 'notes.txt: ' + language.importUnsupportedFile)])
+        expect(lastCard?.result?.skipped).toEqual([{ name: 'notes.txt', reason: language.importUnsupportedFile }])
+        expect(h.log).toEqual([])
     })
 
     test('feature: a declined low-level prompt is listed in a multi-file summary, saves no asset and adds no module', async () => {
@@ -209,7 +236,8 @@ describe('several picked files', () => {
         expect(h.events).toEqual([])
         expect(h.prompts).toHaveLength(1)
         expect(h.prompts[0]).toBe(`${language.moduleLowLevelNamed('A', 'a.risum')}\n${language.lowLevelAccessConfirm}`)
-        expect(h.log).toEqual(['error:' + language.importFilesNotImported(1, 2, 'a.risum: ' + language.importDeclinedLowLevel)])
+        expect(lastCard?.result?.skipped).toEqual([{ name: 'a.risum', reason: language.importDeclinedLowLevel }])
+        expect(h.log).toEqual([])
     })
 
     test('feature: a confirmed low-level prompt imports the module', async () => {
@@ -220,7 +248,7 @@ describe('several picked files', () => {
         expect(h.events).toEqual(['save:' + patterned(10, 1)[0]])
     })
 
-    test('feature: the whole pick runs inside one busy scope that ends with it', async () => {
+    test('feature: the whole pick runs inside one busy scope that ends when the result is posted', async () => {
         h.files = [risum('a.risum', 'A'), risum('b.risum', 'B'), risum('c.risum', 'C')]
         await importModule()
         expect(h.busyBegins).toEqual(['import'])
@@ -263,7 +291,7 @@ describe('several picked files', () => {
         h.files = [new File([new Uint8Array([1])], 'card.charx'), risum('b.risum', 'B')]
         await importModule()
         expect(names()).toEqual(['B'])
-        expect(h.log).toEqual(['error:' + language.importFilesNotImported(1, 2, 'card.charx: boom')])
+        expect(lastCard?.result?.skipped).toEqual([{ name: 'card.charx', reason: 'boom' }])
     })
 
     test('feature: an empty pick shows nothing and starts no import', async () => {
@@ -275,18 +303,21 @@ describe('several picked files', () => {
 })
 
 describe('one picked file: what the user is left looking at', () => {
-    test('a .risum that imports shows nothing', async () => {
+    test('a .risum that imports ends on a one-item result card and no alert', async () => {
         h.files = [risum('a.risum', 'A')]
         await importModule()
         expect(names()).toEqual(['A'])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(1))
         expect(h.log).toEqual([])
     })
 
-    test('a .risum that is refused shows the reason as an error', async () => {
+    test('a .risum that is refused ends on a failure card with the reason', async () => {
         h.files = [risum('a.risum', 'A', { magic: 0 })]
         await importModule()
         expect(h.modules).toEqual([])
-        expect(h.log).toEqual(['error:' + language.errors.noData])
+        expect(lastCard?.failure?.headline).toBe(language.importTaskFailedOne('a.risum'))
+        expect(lastCard?.failure?.detail).toBe(language.errors.noData)
+        expect(h.log).toEqual([])
     })
 
     test('feature: a .risum whose low-level prompt is declined shows nothing, saves no asset and adds no module', async () => {
@@ -302,7 +333,7 @@ describe('one picked file: what the user is left looking at', () => {
         h.files = [new File([new Uint8Array([1])], 'card.charx')]
         await importModule()
         expect(h.modules).toEqual([{ id: 'converted', name: 'Card' }])
-        expect(h.log).toEqual(['normal:' + language.successImport])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(1))
     })
 
     test('a .charx that is declined shows nothing', async () => {
@@ -313,11 +344,12 @@ describe('one picked file: what the user is left looking at', () => {
         expect(h.modules).toEqual([])
     })
 
-    test('a .charx that is refused shows the reason as an error', async () => {
+    test('a .charx that is refused ends on a failure card with the reason', async () => {
         h.card = async () => ({ kind: 'refused', reason: language.cardFileIncomplete })
         h.files = [new File([new Uint8Array([1])], 'card.charx')]
         await importModule()
-        expect(h.log).toEqual(['error:' + language.cardFileIncomplete])
+        expect(lastCard?.failure?.detail).toBe(language.cardFileIncomplete)
+        expect(h.log).toEqual([])
     })
 
     test('the single-file charx prompt label names the card and no file', async () => {
@@ -337,25 +369,27 @@ describe('one picked file: what the user is left looking at', () => {
             h.files = [json('x.json', value)]
             await importModule()
             expect(h.modules, JSON.stringify(value)).toHaveLength(1)
+            expect(lastCard?.result?.headline, JSON.stringify(value)).toBe(language.importTaskImported(1))
         }
         expect(h.log).toEqual([])
     })
 
-    test('a json risuModule without a name or an id is an error', async () => {
+    test('a json risuModule without a name or an id is a failure card', async () => {
         h.files = [json('x.json', { type: 'risuModule', name: 'M' })]
         await importModule()
         expect(h.modules).toEqual([])
-        expect(h.log).toEqual(['error:' + language.errors.noData])
+        expect(lastCard?.failure?.detail).toBe(language.errors.noData)
+        expect(h.log).toEqual([])
     })
 
-    test('a json that is not usable, or does not parse, is a normal alert (compatibility guard: same level as before)', async () => {
+    test('a json that is not usable, or does not parse, is a failure card with the same reason', async () => {
         for (const file of [json('x.json', { hello: 1 }), new File(['{ not json'], 'y.lorebook')]) {
-            h.log = []
             h.files = [file]
             await importModule()
-            expect(h.log).toEqual(['normal:' + language.errors.noData])
+            expect(lastCard?.failure?.detail).toBe(language.errors.noData)
         }
         expect(h.modules).toEqual([])
+        expect(h.log).toEqual([])
     })
 
     test('a json risuModule whose low-level prompt is declined shows nothing; confirmed it imports with the plain prompt text', async () => {
@@ -369,10 +403,11 @@ describe('one picked file: what the user is left looking at', () => {
         expect(h.prompts).toEqual([language.lowLevelAccessConfirm, language.lowLevelAccessConfirm])
     })
 
-    test('feature: an unsupported file is a normal alert naming the file', async () => {
+    test('feature: an unsupported file is a failure card naming the file', async () => {
         h.files = [new File(['x'], 'notes.txt')]
         await importModule()
-        expect(h.log).toEqual(['normal:' + language.moduleUnsupportedFile('notes.txt')])
+        expect(lastCard?.failure?.headline).toBe(language.importTaskFailedOne('notes.txt'))
+        expect(lastCard?.failure?.detail).toBe(language.moduleUnsupportedFile('notes.txt'))
         expect(h.modules).toEqual([])
     })
 
@@ -388,7 +423,7 @@ describe('one picked file: what the user is left looking at', () => {
         await importModule()
         expect(h.cardArgs.map((a) => a.name)).toEqual(['X.charx'])
         expect(h.modules).toHaveLength(1)
-        expect(h.log).toEqual(['normal:' + language.successImport])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(1))
     })
 })
 

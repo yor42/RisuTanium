@@ -139,13 +139,23 @@ vi.mock(import('src/ts/characterCards'), () => ({
     }),
 }) as unknown as typeof import('src/ts/characterCards'))
 
-import { exportModuleLegacy, importModule, readModule, type RisuModule } from 'src/ts/process/modules'
+import { exportModuleLegacy, importModule as importModuleOnCard, readModule, type RisuModule } from 'src/ts/process/modules'
 import { charxLimits } from 'src/ts/process/processzip'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import { language } from 'src/lang'
 import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
+
+/** The card the last `importModule` ended on, or null when the import closed without one. */
+let lastCard: ImportCard = null
+
+/** Runs the import, answers its result card with OK and keeps the card in `lastCard`. */
+async function importModule() {
+    lastCard = await answerImportCard(importModuleOnCard)
+}
 
 /** The asset limit follows the store the page selected: the browser store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
 function selectStoreKind(kind: 'node' | 'indexeddb'): void {
@@ -184,6 +194,7 @@ function sourceOf(bytes: Uint8Array, over: Partial<ImportSource> = {}): ImportSo
 beforeEach(() => {
     h.log = []
     h.last = 'none'
+    lastCard = null
     h.modules = []
     h.node = false
     selectStoreKind('indexeddb')
@@ -201,6 +212,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     restoreFileReader()
     Object.assign(charxLimits, limitDefaults)
     vi.restoreAllMocks()
@@ -231,7 +243,8 @@ describe('regression reproducers', () => {
 
         expect(h.saves).toEqual([])
         expect(h.modules).toEqual([])
-        expect(h.log).toEqual(['error:' + language.errors.noData])
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe(language.errors.noData)
     })
 
     test('a record over the asset limit is refused naming the asset and the limit, and nothing is saved', async () => {
@@ -242,8 +255,8 @@ describe('regression reproducers', () => {
 
         expect(h.saves).toEqual([])
         expect(h.modules).toEqual([])
-        expect(h.log).toHaveLength(1)
-        expect(h.log[0]).toMatch(new RegExp(`"${assetName(1)}".*larger than the 2 MB limit`))
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toMatch(new RegExp(`"${assetName(1)}".*larger than the 2 MB limit`))
     })
 
     test('on the Node server a record over the 100 MB write limit is refused naming the limit before anything is saved', async () => {
@@ -256,8 +269,8 @@ describe('regression reproducers', () => {
 
         expect(h.saves).toEqual([])
         expect(h.modules).toEqual([])
-        expect(h.log).toHaveLength(1)
-        expect(h.log[0]).toMatch(new RegExp(`"${assetName(1)}".*larger than the 100 MB limit`))
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toMatch(new RegExp(`"${assetName(1)}".*larger than the 100 MB limit`))
     })
 
     test('a .charx picked in Settings > Modules reaches the card importer as the picked File, not as one buffer', async () => {
@@ -327,14 +340,15 @@ describe('guards', () => {
         for (const cut of cuts) {
             h.log = []
             h.modules = []
+            lastCard = null
             pick(full.slice(0, cut))
 
             await importModule()
 
             expect(h.saves, `cut at ${cut}`).toEqual([])
             expect(h.modules, `cut at ${cut}`).toEqual([])
-            expect(h.log, `cut at ${cut}`).toHaveLength(1)
-            expect(h.log[0].startsWith('error:'), `cut at ${cut}`).toBe(true)
+            expect(h.log, `cut at ${cut}`).toEqual([])
+            expect(lastCard?.failure?.detail, `cut at ${cut}`).toBeTruthy()
         }
     })
 
@@ -344,7 +358,8 @@ describe('guards', () => {
         await importModule()
 
         expect(h.saves).toEqual([])
-        expect(h.log).toEqual(['error:' + language.moduleFileIncomplete])
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe(language.moduleFileIncomplete)
     })
 
     test('a failed save is retried five seconds later, and the failed record is read from the file again each time', async () => {
@@ -375,7 +390,8 @@ describe('guards', () => {
 
         expect(h.sleeps).toEqual([5000, 5000, 5000])
         expect(h.modules).toEqual([])
-        expect(h.log).toEqual(['error:Failed to save 2 assets'])
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe('Failed to save 2 assets')
     })
 
     test('a piece-saved record that a browser without Blob storage refuses shows the localized refusal at once, without retries or the generic count (regression reproducer)', async () => {

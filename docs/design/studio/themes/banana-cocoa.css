@@ -84,7 +84,7 @@
 
 /* the tree: banana pill for the selected row, owners in cocoa */
 [data-part="studio-tree-row"] { border-radius: var(--studio-radius-pill); }
-[data-part="studio-tree-row"][data-selected] { background: #fee500; color: #191919; }
+[data-part="studio-tree-row"][data-selected] { background: #fee500 !important; color: #191919 !important; }
 [data-part="studio-tree-row"][data-kind="owner"] { font-weight: 600; }
 
 /* the save chip: a pill */
@@ -99,7 +99,7 @@
 [data-part="studio-search-result"] { border-radius: var(--studio-radius-card); }
 [data-part="studio-search-result"][data-selected] { background: #fee500; }
 [data-part="studio-kind-row"] { border-radius: var(--studio-radius-card); background: #ffffff; }
-[data-part="studio-side-tab"][data-selected] { background: #fee500; }
+[data-part="studio-side-tab"][data-selected] { background: #fee500 !important; }
 [data-part="studio-field-control"] { border-radius: var(--studio-radius-card); }
 
 /* toggle builder rows and long-text cards */
