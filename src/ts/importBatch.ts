@@ -6,7 +6,7 @@ import { ModuleRefusal } from "./process/moduleRefusal"
 import { ModuleImportStopped } from "./process/moduleImportStop"
 import { withBusy, type BusyHandle } from "./process/memory/busyActions"
 import { alertTask, trackTaskAction, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
-import type { TaskFailure, TaskResult, TaskSkip, TaskStepDef } from "../lib/Nexus/pattern/taskProgress"
+import { taskMiB, type TaskConfirm, type TaskFailure, type TaskResult, type TaskSkip, type TaskStepDef } from "../lib/Nexus/pattern/taskProgress"
 import { ImportCancelled, makeImportProgress, type ImportProgress, type ImportStep } from "./importProgress"
 import { restoreInProgress } from "./drive/restoreInProgress"
 
@@ -28,8 +28,11 @@ export type ImportOutcome =
     | {kind: 'refused', reason: string, summaryOnly?: true, normal?: true}
     | {kind: 'failed', error: Error|string}
 
-/** `run` receives the file's progress; an item that reports nothing ignores it. */
-export type ImportItem = {name: string, run: (progress: ImportProgress) => Promise<ImportOutcome>}
+/**
+ * `run` receives the file's progress; an item that reports nothing ignores it. `size` is the bytes known without reading
+ * the item (a picked file's size); an item whose size is not known leaves it unset.
+ */
+export type ImportItem = {name: string, run: (progress: ImportProgress) => Promise<ImportOutcome>, size?: number}
 
 /** The card a batch opens: its title, the steps its files go through, and an optional subtitle (a single file's name by default). */
 export type ImportTaskSpec = {title: string, steps: readonly ImportStep[], subtitle?: string}
@@ -47,6 +50,8 @@ export type ImportSummary = {
     message: string|null
     //True when the last round ended on a Cancel before its first write: nothing of that round was changed.
     cancelled?: true
+    //True when the preflight ended without a confirm (declined, replaced, closed or a restore began): nothing was run.
+    notStarted?: true
 }
 
 //A refused module is a refusal whichever import it came out of, a stop the user chose is not an error; any other error is a failure.
@@ -203,6 +208,32 @@ export function composeImportResult(items:ImportItem[], outcomes:ImportOutcome[]
     }}
 }
 
+//A preflight asks only before a batch: one file is its own confirmation.
+const PREFLIGHT_MIN_FILES = 2
+
+/**
+ * What the preflight sheet says before anything runs: the file count and, when every item's size is known, the exact
+ * total. A missing or invalid size drops the size line; it is never counted as zero. Null when no sheet is due.
+ */
+export function composeImportPreflight(items:ImportItem[]):TaskConfirm|null {
+    if(items.length < PREFLIGHT_MIN_FILES){
+        return null
+    }
+    const consequences:string[] = []
+    const sizes = items.map((item) => item.size)
+    if(sizes.every((size) => size !== undefined && Number.isFinite(size) && size >= 0)){
+        const total = sizes.reduce((sum:number, size) => sum + (size ?? 0), 0)
+        consequences.push(language.importPreflightSize(taskMiB(total)))
+    }
+    consequences.push(language.importPreflightAdds)
+    return {
+        headline: language.importPreflightHeadline(items.length),
+        consequences,
+        cancelLabel: language.cancel,
+        primaryLabel: language.importPreflightStart,
+    }
+}
+
 const STEP_MARK = {download: 'transfer_in', read: 'scanning', check: 'scanning', assets: 'transfer_in', add: 'transfer_in'} as const
 
 function stepLabel(step:ImportStep):string {
@@ -238,6 +269,19 @@ async function clearStaleLegacyProgress():Promise<void> {
 
 type RoundEntry = {item:ImportItem}
 
+//A card the preflight opened and the user confirmed, with the abort its Cancel drives.
+type OpenedCard = {handle:TaskHandle, abort:AbortController}
+
+function openCard(entries:RoundEntry[], task:ImportTaskSpec, abort:AbortController, confirm?:TaskConfirm):TaskHandle {
+    return alertTask({
+        title: task.title,
+        subtitle: task.subtitle ?? (entries.length === 1 ? entries[0].item.name : undefined),
+        steps: stepDefs(task.steps),
+        onCancel: () => abort.abort(),
+        ...(confirm ? {confirm} : {}),
+    })
+}
+
 type RoundEnd = {
     summary:ImportSummary
     closed:Promise<TaskCloseAnswer>
@@ -245,18 +289,13 @@ type RoundEnd = {
 }
 
 /**
- * One round: opens the card, runs the entries in order and posts the result inside the caller's busy scope. It returns
- * the promise of the answer, not the answer, so the wait for it stays outside that scope.
+ * One round: opens the card (unless the preflight already did), runs the entries in order and posts the result inside the
+ * caller's busy scope. It returns the promise of the answer, not the answer, so the wait for it stays outside that scope.
  */
-async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions):Promise<RoundEnd> {
+async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions, opened?:OpenedCard):Promise<RoundEnd> {
     const count = entries.length
-    const abort = new AbortController()
-    const handle:TaskHandle = alertTask({
-        title: task.title,
-        subtitle: task.subtitle ?? (count === 1 ? entries[0].item.name : undefined),
-        steps: stepDefs(task.steps),
-        onCancel: () => abort.abort(),
-    })
+    const abort = opened?.abort ?? new AbortController()
+    const handle:TaskHandle = opened?.handle ?? openCard(entries, task, abort)
     const gate = {locked: false}
     const items:ImportItem[] = []
     const outcomes:ImportOutcome[] = []
@@ -344,7 +383,41 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
     return {summary, closed, retry}
 }
 
-type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle}
+//`preflight` asks once, before anything runs, when the batch has two or more files; Retry rounds never ask.
+type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle, preflight?:true}
+
+function notStartedSummary():ImportSummary {
+    return {imported: 0, skipped: 0, declined: 0, notImported: 0, notes: [], own: null, message: null, notStarted: true}
+}
+
+/**
+ * The preflight: opens the card in its confirm state and waits for the answer outside every busy scope (the caller's own
+ * scope ends first, so an unanswered sheet holds neither busy nor the keep-alive). Returns the confirmed card, or null when
+ * the action must not start: declined, replaced by a newer task, closed, or a restore began during the wait. Nothing was
+ * run and no result card is posted; a replacement or close is logged only, as a replaced import ends silently.
+ */
+async function askPreflight(items:ImportItem[], opts:ImportBatchOptions, task:ImportTaskSpec):Promise<OpenedCard|null|undefined> {
+    const confirm = opts.preflight ? composeImportPreflight(items) : null
+    if(!confirm){
+        return undefined
+    }
+    opts.outerBusy?.end()
+    const abort = new AbortController()
+    const handle = openCard(items.map((item) => ({item})), task, abort, confirm)
+    const answer = await handle.confirmation
+    if(answer !== 'confirm'){
+        if(answer === 'replaced' || answer === 'closed'){
+            console.info(`The import preflight ended without a confirm (${answer}).`)
+        }
+        return null
+    }
+    //A restore that began during the wait ends the action silently: the restore's own UI is on screen.
+    if(restoreInProgress()){
+        handle.close()
+        return null
+    }
+    return {handle, abort}
+}
 
 /**
  * The batch on a task card: each round runs inside its own busy scope and ends with its result posted; the answer is
@@ -355,11 +428,17 @@ type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, decli
 async function runTaskBatch(items:ImportItem[], opts:ImportBatchOptions, task:ImportTaskSpec):Promise<ImportSummary> {
     let entries:RoundEntry[] = items.map((item) => ({item}))
     let number = 0
+    let opened = await askPreflight(items, opts, task)
+    if(opened === null){
+        return notStartedSummary()
+    }
     for(;;){
         const current = entries
+        const preOpened = opened
+        opened = undefined
         let round:RoundEnd
         try {
-            round = await withBusy('import', () => runRound(current, number, task, opts))
+            round = await withBusy('import', () => runRound(current, number, task, opts, preOpened))
         } finally {
             //The caller's own scope for work before the card ends with the first result.
             opts.outerBusy?.end()

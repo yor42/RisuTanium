@@ -18,10 +18,12 @@
         /** Drops movement and caps durations. */
         lowPower?: boolean
         open?: boolean
+        /** `dialog` for a card that is not a decision (a running task); every other shell keeps `alertdialog`. */
+        role?: 'alertdialog' | 'dialog'
         children: Snippet
     }
 
-    let { labelId, descriptionId, cancelSafe = false, oncancel, trigger = null, background = [], lowPower = false, open = true, children }: Props = $props()
+    let { labelId, descriptionId, cancelSafe = false, oncancel, trigger = null, background = [], lowPower = false, open = true, role = 'alertdialog', children }: Props = $props()
 
     const PHONE_QUERY = '(max-width: 640px)'
     const token = {}
@@ -87,7 +89,7 @@
             bind:this={dialog}
             data-part="pattern-dialog"
             data-part-critical
-            role="alertdialog"
+            {role}
             aria-modal="true"
             aria-labelledby={labelId}
             aria-describedby={descriptionId}

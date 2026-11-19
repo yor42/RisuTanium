@@ -195,7 +195,7 @@ vi.mock(import('src/ts/rpack/rpack_js'), () => ({
 
 import { exportModule, importModule, type RisuModule } from 'src/ts/process/modules'
 import { risumBytes } from 'src/ts/process/tests/risumFixtures'
-import { answerTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import { answerTask, confirmTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskConfirmShowing, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskClock, TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 
 const PORTRAIT = Uint8Array.from([
@@ -272,6 +272,7 @@ async function runImport(): Promise<TaskView[]> {
     void done.then(() => { ended = true }, () => { ended = true })
     const cards: TaskView[] = []
     for (let i = 0; i < 5000 && !ended; i++) {
+        if (taskConfirmShowing()) confirmTask()
         if (taskResultShowing()) {
             const view = taskHostView()
             if (view) cards.push(view)
