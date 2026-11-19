@@ -112,7 +112,6 @@ import { MODULE_FAULT_KEY, MODULE_FAULT_TEXT } from 'src/ts/process/moduleFaultF
 import { crc32 } from 'src/ts/storage/blockFrame'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, Store2BackendFailureError, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
@@ -331,7 +330,6 @@ afterEach(() => {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     h.state.db = undefined
 })

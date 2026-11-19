@@ -399,3 +399,57 @@ describe('IndexedDB backend: database and entries', () => {
         expect(await backend.listStore2()).toEqual([unitKey(1)])
     })
 })
+
+/**
+ * Compatibility guards (they pass before and after the retired head swap's open helper is removed): what the backend's
+ * open does with a database whose object store is absent and with an open that truly fails.
+ */
+describe('IndexedDB backend: the open', () => {
+    test('a database that exists without the object store reads as empty and is left as it is', async () => {
+        await dropDatabase()
+        await new Promise<void>((resolve, reject) => {
+            const opening = indexedDB.open(DATABASE, 1)
+            opening.onupgradeneeded = () => { opening.result.createObjectStore('somethingElse') }
+            opening.onsuccess = () => { opening.result.close(); resolve() }
+            opening.onerror = () => reject(opening.error)
+        })
+        const backend = backendOf()
+
+        expect((await backend.readCommit()).bytes).toBeNull()
+        expect(await backend.listStore2()).toEqual([])
+
+        const schema = await new Promise<{ version: number, stores: string[] }>((resolve, reject) => {
+            const reading = indexedDB.open(DATABASE)
+            reading.onsuccess = () => {
+                const found = { version: reading.result.version, stores: Array.from(reading.result.objectStoreNames) }
+                reading.result.close()
+                resolve(found)
+            }
+            reading.onerror = () => reject(reading.error)
+        })
+        expect(schema).toEqual({ version: 1, stores: ['somethingElse'] })
+    })
+
+    test('an open that throws rejects the read as a backend failure instead of reading as empty', async () => {
+        await dropDatabase()
+        vi.spyOn(indexedDB, 'open').mockImplementation(() => {
+            throw new DOMException('denied', 'SecurityError')
+        })
+
+        await expect(backendOf().readCommit()).rejects.toBeInstanceOf(Store2BackendFailureError)
+    })
+
+    test('an open that fails with an error event rejects the read as a backend failure instead of reading as empty', async () => {
+        await dropDatabase()
+        vi.spyOn(indexedDB, 'open').mockImplementation(() => {
+            const failing: Partial<IDBOpenDBRequest> = {}
+            setTimeout(() => {
+                const handler = failing.onerror
+                handler?.call(failing as IDBOpenDBRequest, new Event('error'))
+            }, 0)
+            return failing as IDBOpenDBRequest
+        })
+
+        await expect(backendOf().readCommit()).rejects.toBeInstanceOf(Store2BackendFailureError)
+    })
+})

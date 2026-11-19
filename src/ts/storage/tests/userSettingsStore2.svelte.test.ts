@@ -98,8 +98,7 @@ describe('UserSettings "Backup & Files" by page storage mode', () => {
     })
 
     test.each([
-        { kind: 'legacy', convertedFrom: null },
-        { kind: 'block' },
+        { kind: 'unset' },
     ] as const satisfies readonly PageStorageMode[])('regression reproducer (G5): the clean-up button is never shown, page mode $kind', (mode) => {
         setPageStorageMode(mode)
 

@@ -391,7 +391,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     } finally {
         try {
             // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
-            // that flush, and a put-back or re-archive that waits on the registration cannot race it. Never throws.
+            // that flush, and a put-back that waits on the registration cannot race it. Never throws.
             if(!(arg.preview || arg.previewPrompt)){
                 const facts = { completed, signal: unit.signal, threw, modulesFailed }
                 announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)

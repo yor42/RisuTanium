@@ -4,7 +4,7 @@
  * character's identity, and the unit keys cleanup must treat as referenced.
  *
  * The stores are a stand-in with plain objects; the reactive-proxy case and the
- * put-back itself are in `characterPutBack.svelte.test.ts`. Every test is an
+ * put-back itself are in `characterPutBackStore2.svelte.test.ts`. Every test is an
  * acceptance test of code that does not exist on the base, except where
  * labelled a guard.
  */
@@ -223,7 +223,7 @@ describe('records of characters a store2 residency loaded', () => {
         expect(hasLoaded()).toBe(true)
     })
 
-    test('acceptance: a load is no legacy record: nothing the legacy put-back or the unit-key scan reads sees it', () => {
+    test('acceptance: a load is no legacy record: nothing the retained-record readers or the unit-key scan reads sees it', () => {
         const a = full('a')
         install(a)
 

@@ -5,11 +5,8 @@ import type { Store2LegacyReadOnlyReason } from './store2/bootActive'
 /**
  * What the page's persistence is, as boot found it and as it has moved since.
  * One value per page load; `bootstrap.ts` and the store2 dispatch set it, and
- * the writers that run later read it. No production path sets `block` or
- * `legacy`: those members remain only in the type.
+ * the writers that run later read it.
  *
- * - `block`: retired; no page runs in it.
- * - `legacy`: retired; no page runs in it.
  * - `store2`: the profile is a store2 tree this page opened. Saves are store2 commits; no write goes to the legacy
  *   block or main-file store.
  * - `read-only`: nothing is written this page load (the page runs from OPFS, or the boot found a store it must not
@@ -18,8 +15,6 @@ import type { Store2LegacyReadOnlyReason } from './store2/bootActive'
  */
 export type PageStorageMode =
     | { kind: 'unset' }
-    | { kind: 'block' }
-    | { kind: 'legacy', convertedFrom: string | null }
     | { kind: 'store2' }
     | PageReadOnlyMode
 

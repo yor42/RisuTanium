@@ -53,7 +53,6 @@ vi.mock(import('src/ts/storage/store2/saveActive'), async (importOriginal) => {
 import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
 import type { Database, character } from 'src/ts/storage/database.svelte'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { resetStore2BootForTest, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
 import { previousFrom, stubFromEntry } from 'src/ts/storage/store2/codec'
@@ -117,7 +116,6 @@ function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
     resetRetainedForTest()
 }

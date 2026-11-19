@@ -184,8 +184,6 @@ function expectModeRefusal(end: LocalBackupEnd, mode: string): void {
 
 const MODES: ReadonlyArray<{ label: string, mode: PageStorageMode, named: string }> = [
     { label: 'unset', mode: { kind: 'unset' }, named: 'unset' },
-    { label: 'legacy', mode: { kind: 'legacy', convertedFrom: null }, named: 'legacy' },
-    { label: 'block', mode: { kind: 'block' }, named: 'block' },
 ]
 
 describe('a page restore on a page whose mode is not store2', () => {

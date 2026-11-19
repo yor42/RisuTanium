@@ -248,7 +248,7 @@ import { contentFingerprint, resetRetainedForTest, retainedRecordOf } from 'src/
 import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { resetRestoredBytesForTest } from 'src/ts/process/memory/restoredBytes'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
-import { resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
+import { resetPutBackForTest } from 'src/ts/process/memory/characterPutBack'
 
 const enc = new TextEncoder()
 
@@ -316,11 +316,7 @@ beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
-let stopPutBack: (() => void) | null = null
-
 afterEach(() => {
-    stopPutBack?.()
-    stopPutBack = null
     vi.restoreAllMocks()
 })
 
@@ -381,58 +377,5 @@ describe('the format step', () => {
         characterFormatUpdate(char)
 
         expect(contentFingerprint(char)).toBe(once)
-    })
-})
-
-describe('a character opened, changed by the open, left and re-archived', () => {
-    /** One macrotask: the re-archive job the commit scheduled runs and finishes. */
-    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
-    const commitAndSettle = async (): Promise<void> => {
-        for (const callback of h.commits.splice(0)) {
-            callback()
-        }
-        await settle()
-    }
-
-    test.each([
-        ['a V2 card', v2Card],
-        ['a tavern card', tavernCard],
-    ])('new behaviour (MC-273): a unit written without the format step (as the boot pass writes it) that %s opens changed is re-archived in its formatted state, so the next open is clean and leaving it writes no unit', async (_name, card) => {
-        stopPutBack = startCharacterPutBack()
-        h.skipImportFormat = true
-        const archived = await importAndOpen(card, true)
-        h.skipImportFormat = false
-        expect(archived.wasStub).toBe(true)
-        expect(archived.cleanAfterOpen).toBe(false)
-        const chaId = slot(archived.index).chaId as string
-        const firstUnit = [...h.units.keys()][0]
-
-        // Two live characters to move on to, so that the opened one is neither selected nor previous.
-        noteBootArchiveSession(false)
-        const b = await importCharacterProcess({ name: 'b.json', data: jsonData(v3Card), archive: false }) as number
-        const c = await importCharacterProcess({ name: 'c.json', data: jsonData(tavernCard), archive: false }) as number
-        noteBootArchiveSession(true)
-        selectedCharID.set(b)
-        selectedCharID.set(c)
-
-        await commitAndSettle()
-
-        expect(typeof slot(archived.index).coldstorage).toBe('string')
-        expect(slot(archived.index).coldstorage).not.toBe(firstUnit)
-        expect(h.writes.filter((id) => id === chaId)).toHaveLength(2)
-
-        await changeChar(archived.index)
-        const opened = slot(archived.index)
-        const record = retainedRecordOf(opened)
-        expect(record).toBeDefined()
-        expect(contentFingerprint(opened)).toBe(record!.fp)
-
-        selectedCharID.set(b)
-        selectedCharID.set(c)
-        const writesBeforeLeaving = h.writes.filter((id) => id === chaId).length
-        await commitAndSettle()
-
-        expect(typeof slot(archived.index).coldstorage).toBe('string')
-        expect(h.writes.filter((id) => id === chaId)).toHaveLength(writesBeforeLeaving)
     })
 })

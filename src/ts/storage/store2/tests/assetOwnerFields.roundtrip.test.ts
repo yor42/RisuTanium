@@ -217,7 +217,6 @@ import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
 import { unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 import { createMemoryBackend } from 'src/ts/storage/store2/backend'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { asDatabase, buildSmall, encodeWith, seededEnv } from 'src/ts/storage/tests/store2/codecFixtures'
 import { bootThroughDispatch, createClock, savedDatabase, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
@@ -251,7 +250,6 @@ afterEach(() => {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 })
 

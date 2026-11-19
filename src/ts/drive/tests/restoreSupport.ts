@@ -6,14 +6,12 @@
  *
  * Nothing here says anything about a real store.
  */
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectAppStore, type AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 
-/** Makes `store` the page's store, of the given kind, with no owner and no page mode carried over from an earlier test. */
+/** Makes `store` the page's store, of the given kind, with no page mode carried over from an earlier test. */
 export function injectRestoreStore(store: ByteStore, kind: AppStoreKind = 'tauri'): void {
     injectAppStore(store, kind)
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 }

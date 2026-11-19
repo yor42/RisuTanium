@@ -158,8 +158,6 @@ import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
-import { injectAppStore } from '../../storage/store/appStore'
-import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { StoreBlobUnsupportedError, StoreInvalidKeyError } from '../../storage/store/errors'
 import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -265,11 +263,7 @@ beforeEach(async () => {
         },
         readBlob: async (key) => keptBlobs.get(key) ?? null,
     }
-    // The page's block owner is built while the kind is 'tauri' (a mutex head swap), because the model has no revision API for
-    // the IndexedDB head swap; the owner stays cached when the selected kind then becomes 'indexeddb', which the size limits follow.
-    injectRestoreStore(restoreStore, 'tauri')
-    await getPageBlockOwner()
-    injectAppStore(restoreStore, 'indexeddb')
+    injectRestoreStore(restoreStore, 'indexeddb')
 
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)

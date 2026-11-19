@@ -5,12 +5,11 @@
  *   type(1) compression(1) nameLength(1) name length(4, LE) headerCrc(4, LE)
  *   payload dataCrc(4, LE)
  *
- * The block store keeps these bytes unchanged as the value of a key, so a
- * character, module or preset block is byte-identical to the one in a `.bin`.
- * Only the root is framed here, because its content gains the block store's
- * bookkeeping. The guard test `blockStore.compat.test.ts` compares this module
- * with the encoder, which this module deliberately does not import: the encoder
- * pulls the application's whole dependency graph.
+ * The framing and checksum the `.bin` path uses are guarded by
+ * `drive/tests/binDatabaseStream.test.ts` (fixtures from the real encoder) and
+ * `drive/tests/rtb/crc32Running.test.ts` (`crc32` against the `crc` package).
+ * This module deliberately does not import the encoder: the encoder pulls the application's whole dependency
+ * graph.
  */
 
 export const BLOCK_TYPE_ROOT = 1
