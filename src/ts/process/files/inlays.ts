@@ -6,7 +6,7 @@ import { asBuffer } from "../../util";
 import { getAppStore } from "../../storage/store/appStore";
 import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
-import { isAndroidTransport } from "../../storage/tauriByteTransport";
+import { isAndroidTransport, isDesktopTransport } from "../../storage/tauriByteTransport";
 import { rememberWholeReadUrlOfSize } from "../../storage/assetUrlGate";
 import { displayMimeOfInlay } from "../../storage/assetDisplayMime";
 import {
@@ -15,7 +15,7 @@ import {
     dropInlayRender,
     type InlayRender,
 } from "./inlayRenderCache";
-import { blobVideoWholeReadWithheld, inlayImageWithheld, inlayReadVerdict, withheldStringMediaKind } from "./inlaySendGate";
+import { blobVideoWholeReadWithheld, inlayImageRenderWithheld, inlayReadVerdict, withheldStringMediaKind } from "./inlaySendGate";
 import {
     decodedTextSize,
     fieldsOf,
@@ -63,10 +63,13 @@ export function isInlayRefusal(result: string | InlayRefusal | null): result is 
     return result !== null && typeof result === 'object'
 }
 
-async function writeInlay(id: string, value: InlayAsset) {
+/** Bytes of one attached file handed to the store so far, and the file's size. */
+export type InlayWriteProgress = { name: string, written: number, total: number }
+
+async function writeInlay(id: string, value: InlayAsset, onProgress?: (doneBytes: number, totalBytes: number) => void) {
     try {
         await withInlayLock(id, async () => {
-            await writeAppInlay(await getAppStore(), id, value)
+            await writeAppInlay(await getAppStore(), id, value, { onProgress })
         })
     } catch (error) {
         // The raw browser quota error shows an empty dialog; the copy and import flows call `writeAppInlay` directly and keep matching the raw error.
@@ -81,10 +84,23 @@ function isQuotaExceeded(error: unknown): boolean {
     return error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014)
 }
 
+/**
+ * `onProgress` hears of an audio or video file's write: once with `written` 0 after the size check
+ * passes, then as the store reports. A refused file and an image report nothing, and nothing is
+ * reported after the write settles. A callback that throws never changes the write.
+ */
 export async function postInlayAsset(img:{
     name:string,
     data:Uint8Array|Blob
-}): Promise<string | InlayRefusal | null> {
+}, onProgress?: (progress: InlayWriteProgress) => void): Promise<string | InlayRefusal | null> {
+
+    const report = (written: number, total: number) => {
+        try {
+            onProgress?.({ name: img.name, written, total })
+        } catch {
+            // A progress callback never changes the write.
+        }
+    }
 
     const extention = img.name.split('.').at(-1)
     const imgObj = new Image()
@@ -112,12 +128,13 @@ export async function postInlayAsset(img:{
         const blob = new Blob([partOf()], {type: `${kind}/${extention}`})
         const imgid = v4()
 
+        report(0, size)
         await writeInlay(imgid, {
             name: img.name,
             data: blob,
             ext: extention,
             type: kind
-        })
+        }, report)
 
         return `${imgid}`
     }
@@ -373,7 +390,7 @@ async function resolveInlayRender(id: string): Promise<{ render: InlayRender, ob
     }
     if(store !== null && record !== null){
         // An image this platform does not load is named by its record alone: its body is never read and no URL is asked for.
-        if(record.fields.type === 'image' && inlayImageWithheld('image', inlayRecordSize(record), isAndroidTransport())){
+        if(record.fields.type === 'image' && inlayImageRenderWithheld('image', inlayRecordSize(record), isAndroidTransport(), isDesktopTransport())){
             return withheldRender('image', record.fields.name, id, inlayRecordSize(record))
         }
         // A string video or audio this platform does not decode is named by its record alone, before its body is read.

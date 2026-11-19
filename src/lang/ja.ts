@@ -4628,6 +4628,7 @@ export const languageJapanese = {
     },
     comfyWorkflow: "ワークフロー (API)",
     comfyWorkflowInvalidJson: "無効なワークフローファイルです。有効なJSONである必要があります。",
+    chatShellAttachingFile: (name: string, written: string, total: string) => `${name} を添付中: ${written} / ${total} MiB`,
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

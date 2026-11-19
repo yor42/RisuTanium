@@ -4472,4 +4472,5 @@ export const languageVietnamese = {
     },
     "comfyWorkflow": "Quy trình làm việc (API)",
     "comfyWorkflowInvalidJson": "Tệp quy trình làm việc không hợp lệ. Phải là JSON hợp lệ.",
+    chatShellAttachingFile: (name: string, written: string, total: string) => `Đang đính kèm ${name}: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

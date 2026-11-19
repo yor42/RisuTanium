@@ -194,8 +194,12 @@ export interface ByteStore {
      * `list`, `has` and `delete` treat the key like any other. A File is stored as
      * a Blob over the same bytes. An error thrown while a slice of the Blob is
      * read reaches the caller as it is, and the write is abandoned and not re-sent.
+     * `onProgress`, when given, may be called with `doneBytes`, the bytes handed to the
+     * store so far, and `totalBytes`, the Blob's size, in increasing order and only
+     * before the write settles; a store may never call it. An error the callback
+     * throws is ignored and never ends the write.
      */
-    writeBlob?(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult>
+    writeBlob?(key: string, blob: Blob, condition: StoreCondition, onProgress?: (doneBytes: number, totalBytes: number) => void): Promise<WriteResult>
 
     /**
      * The Blob a `writeBlob` stored under `key`, still backed by the store and

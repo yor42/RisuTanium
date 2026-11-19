@@ -4472,5 +4472,6 @@ export const languageChinese = {
         "moduleNotSaved": "无法保存模块“{name}”。角色和聊天仍会继续保存，但在删除或替换“{name}”之前，对模块的更改不会被保存，并且如果关闭或重新加载应用，这些更改将丢失。"
     },
     "comfyWorkflow": "工作流 (API)",
-    "comfyWorkflowInvalidJson": "工作流文件无效。必须是有效的 JSON。"
+    "comfyWorkflowInvalidJson": "工作流文件无效。必须是有效的 JSON。",
+    "chatShellAttachingFile": (name: string, written: string, total: string) => `正在附加 ${name}：${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

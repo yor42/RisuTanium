@@ -4479,4 +4479,5 @@ export const languageSpanish = {
     },
     "comfyWorkflow": "Flujo de trabajo (API)",
     "comfyWorkflowInvalidJson": "Archivo de flujo de trabajo no válido. Debe ser un JSON válido.",
+    chatShellAttachingFile: (name: string, written: string, total: string) => `Adjuntando ${name}: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

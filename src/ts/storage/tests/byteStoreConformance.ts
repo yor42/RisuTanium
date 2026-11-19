@@ -315,6 +315,30 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 expect(await readBytes(store, BODY)).toEqual(Array.from(payload))
             })
 
+            // Compatibility guard: a store may report nothing; what it does report is increasing, bounded and made before the write settles.
+            test('a progress callback hears increasing sizes before the write settles, and a throwing one never ends the write', async () => {
+                if (store.writeBlob === undefined) {
+                    return
+                }
+                const payload = patternBytes(3000, 17)
+                const reports: Array<{ written: number, total: number, settled: boolean }> = []
+                let settled = false
+                const write = store.writeBlob(BODY, new Blob([payload as BlobPart]), 'unconditional', (written, total) => {
+                    reports.push({ written, total, settled })
+                })
+                void write.then(() => { settled = true }, () => { settled = true })
+                await write
+                expect(await readBytes(store, BODY)).toEqual(Array.from(payload))
+                expect(reports.every((report) => !report.settled && report.total === payload.length && report.written <= payload.length)).toBe(true)
+                expect(reports.every((report, i) => i === 0 || report.written > reports[i - 1].written)).toBe(true)
+
+                const other = patternBytes(2000, 29)
+                await store.writeBlob(BODY, new Blob([other as BlobPart]), 'unconditional', () => {
+                    throw new Error('progress callback failure')
+                })
+                expect(await readBytes(store, BODY)).toEqual(Array.from(other))
+            })
+
             test('the key is held, listed and deleted like any other', async () => {
                 if (store.writeBlob === undefined) {
                     return

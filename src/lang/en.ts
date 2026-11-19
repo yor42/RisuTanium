@@ -4627,6 +4627,7 @@ export const languageEnglish = {
     },
     comfyWorkflow: "Workflow (API)",
     comfyWorkflowInvalidJson: "Invalid workflow file. It must be a valid JSON.",
+    chatShellAttachingFile: (name: string, written: string, total: string) => `Attaching ${name}: ${written} / ${total} MiB`,
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;

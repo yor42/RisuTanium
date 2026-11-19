@@ -4473,4 +4473,5 @@ export const languageKorean = {
     },
     "comfyWorkflow": "워크플로 (API)",
     "comfyWorkflowInvalidJson": "올바르지 않은 워크플로 파일입니다. 유효한 JSON이어야 합니다.",
+    chatShellAttachingFile: (name: string, written: string, total: string) => `${name} 첨부 중: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>
