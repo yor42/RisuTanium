@@ -2,19 +2,17 @@
  * The legacy archive writers are unreachable on a store2 page. The real `loadData()` boots a store2
  * profile through the real dispatch (its characters open as stubs and a residency is registered), the
  * real put-back starts, the selection moves and the save loop reports a commit; through all of it the
- * character archive never writes and the re-archive engine never starts. The two are behavioural spies on
- * the modules' exports, not source-text checks. The boot no longer reaches the boot archive module at all.
+ * character archive never writes. The spy is behavioural, on the module's export, not a source-text check.
+ * The boot no longer reaches the boot archive module at all.
  *
  * The archive gate is asserted as well, with a database that would otherwise pass every other gate
  * (`archiveCharacters` on, a block-format version): the one thing that keeps `archiveMayRun()` closed
  * on this page is the boot's `noteBootArchiveSession(false)`.
  *
  * Label: compatibility guard (passes on the base commit and after, because the store2 boot already
- * starts none of them). Mutants it catches: `noteBootArchiveSession(true)` in the store2 boot,
- * which opens the gate (only the gate assertion fails; the spies stay quiet since the re-archive engine
- * is not started on a store2 page either way, and the card import that the mutant would make reachable
- * is covered by `characterCards.store2Import.test.ts`); and the put-back starting the re-archive engine
- * on a store2 page (the `startCharacterRearchive` spy).
+ * starts none of them). Mutant it catches: `noteBootArchiveSession(true)` in the store2 boot,
+ * which opens the gate (only the gate assertion fails; the spy stays quiet, and the card import that the
+ * mutant would make reachable is covered by `characterCards.store2Import.test.ts`).
  *
  * The mocked page store and backend say nothing about a native one.
  */
@@ -39,7 +37,6 @@ const dbState = vi.hoisted(() => ({
 
 const spies = vi.hoisted(() => ({
     archiveCharacterNow: vi.fn(),
-    startCharacterRearchive: vi.fn(),
     putBackStarted: vi.fn(),
     commitCallbacks: [] as Array<() => void>,
 }))
@@ -160,11 +157,6 @@ vi.mock(import('src/ts/storage/startupCleanupState'), async (importOriginal) => 
 vi.mock(import('src/ts/process/coldCharacterArchive'), async (importOriginal) => ({
     ...await importOriginal(),
     archiveCharacterNow: spies.archiveCharacterNow,
-}))
-
-vi.mock(import('src/ts/process/memory/characterRearchive'), async (importOriginal) => ({
-    ...await importOriginal(),
-    startCharacterRearchive: spies.startCharacterRearchive,
 }))
 
 vi.mock(import('src/ts/process/memory/characterPutBack'), async (importOriginal) => {
@@ -328,7 +320,6 @@ beforeEach(() => {
     platformState.isTauri = false
     platformState.isNodeServer = false
     spies.archiveCharacterNow.mockReset()
-    spies.startCharacterRearchive.mockReset()
     spies.putBackStarted.mockReset()
     spies.commitCallbacks.length = 0
     saveDbMock.mockReset().mockResolvedValue(undefined)
@@ -385,7 +376,6 @@ describe('a store2 page never reaches the legacy archive writers', () => {
         commit()
 
         expect(spies.archiveCharacterNow).not.toHaveBeenCalled()
-        expect(spies.startCharacterRearchive).not.toHaveBeenCalled()
         const { archiveMayRun } = await import('src/ts/process/archiveGate')
         expect(archiveMayRun(), 'the boot leaves the archive gate closed').toBe('unavailable')
     })

@@ -164,7 +164,6 @@ import { SaveLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
@@ -279,7 +278,6 @@ function resetPage(): void {
     resetStore2SaveForTest()
     resetResidencyForTest()
     resetStore2BootForTest()
-    resetPageBlockOwnerForTests()
     resetPageStorageModeForTests()
 }
 

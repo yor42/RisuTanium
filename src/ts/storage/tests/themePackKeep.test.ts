@@ -97,11 +97,6 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
-vi.mock(import('src/ts/storage/pageBlockOwner'), () => ({
-    getPageBlockOwner: async () => null,
-    resetPageBlockOwnerForTests: () => { },
-}) as unknown as typeof import('src/ts/storage/pageBlockOwner'))
-
 vi.mock(import('src/ts/process/index.svelte'), () => ({
     doingChat: writable(false),
 }) as unknown as typeof import('src/ts/process/index.svelte'))

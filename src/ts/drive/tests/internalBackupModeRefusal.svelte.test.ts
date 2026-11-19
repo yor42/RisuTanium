@@ -142,8 +142,6 @@ beforeEach(() => {
 
 const MODES: ReadonlyArray<{ mode: PageStorageMode, named: string }> = [
     { mode: { kind: 'unset' }, named: 'unset' },
-    { mode: { kind: 'legacy', convertedFrom: null }, named: 'legacy' },
-    { mode: { kind: 'block' }, named: 'block' },
 ]
 
 describe('loadInternalBackup on a page whose mode is not store2', () => {

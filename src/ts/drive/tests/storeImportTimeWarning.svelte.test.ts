@@ -132,7 +132,7 @@ interface Page {
     reloads: { count: number }
 }
 
-async function openPage(mode: 'store2' | 'block' = 'store2'): Promise<Page> {
+async function openPage(mode: 'store2' | 'unset' = 'store2'): Promise<Page> {
     const locks = new FakeLockManagerCore()
     Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
     h.db = makeDb('base', ['alpha', 'beta'])
@@ -145,7 +145,7 @@ async function openPage(mode: 'store2' | 'block' = 'store2'): Promise<Page> {
     const reloads = { count: 0 }
     const page: Page = { w, alert: await import('src/ts/alert'), reloads }
     bootActive.setStore2BootSession({ kind: 'tauri', backend: k.counted.backend, committer: k.committer as Committer } as unknown as Store2Session)
-    w.pageMode.setPageStorageMode(mode === 'store2' ? { kind: 'store2' } : { kind: 'block' })
+    w.pageMode.setPageStorageMode({ kind: mode })
     vi.spyOn(page.alert.alertStore, 'set').mockImplementation(() => { })
     vi.spyOn(window.location, 'reload').mockImplementation(() => { reloads.count++ })
     vi.spyOn(window.history, 'replaceState').mockImplementation(() => { })
@@ -369,8 +369,8 @@ describe('the Android time warning on a store2 page', () => {
         expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18, true)])
     })
 
-    test('guard: the warning belongs to store2 pages, so an Android block-mode import over the threshold shows no time text', async () => {
-        const page = await openPage('block')
+    test('guard: the warning belongs to store2 pages, so an Android import on a page that is not store2 over the threshold shows no time text', async () => {
+        const page = await openPage('unset')
         answer(page, false)
         osBox.os = 'android'
 

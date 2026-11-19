@@ -25,8 +25,8 @@ import UserSettings from './UserSettings.svelte'
 let component: ReturnType<typeof mount> | null = null
 let host: HTMLElement
 
-function mountWith(kind: 'store2' | 'legacy'): void {
-    setPageStorageMode(kind === 'store2' ? { kind: 'store2' } : { kind: 'legacy', convertedFrom: null })
+function mountWith(kind: 'store2' | 'unset'): void {
+    setPageStorageMode({ kind })
     host = document.createElement('div')
     document.body.appendChild(host)
     component = mount(UserSettings, { target: host })
@@ -51,7 +51,7 @@ function buttons(): string[] {
 }
 
 describe('the .rtb button', () => {
-    test.each(['store2', 'legacy'] as const)('on a %s page it sits directly below the .bin save button and one click starts the entry once', async (kind) => {
+    test.each(['store2', 'unset'] as const)('on a %s page it sits directly below the .bin save button and one click starts the entry once', async (kind) => {
         mountWith(kind)
         const labels = buttons()
         expect(labels.indexOf(language.rtbExportButton)).toBe(labels.indexOf(language.saveBackupLocal) + 1)

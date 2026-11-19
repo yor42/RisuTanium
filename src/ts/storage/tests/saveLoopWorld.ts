@@ -13,7 +13,6 @@
  */
 import { vi } from 'vitest'
 import { makeHeldStore, type HeldStore } from './saveLoopSupport'
-import type { BlockStoreOwner } from 'src/ts/storage/blockStore'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 
@@ -48,14 +47,12 @@ export interface StartOptions {
 export interface World {
     id: number
     store: HeldStore
-    owner: BlockStoreOwner
     api: typeof import('src/ts/globalApi.svelte')
     appStore: typeof import('src/ts/storage/store/appStore')
     marks: typeof import('src/ts/storage/characterSaveMarks')
     bootState: typeof import('src/ts/process/memory/bootArchiveState')
     risuSave: typeof import('src/ts/storage/risuSave')
     pageMode: typeof import('src/ts/storage/pageStorageMode')
-    blockStore: typeof import('src/ts/storage/blockStore')
     errors: typeof import('src/ts/storage/store/errors')
     start(): void
 }
@@ -152,9 +149,7 @@ export function createWorldKit(env: WorldEnv) {
         const bootState = await import('src/ts/process/memory/bootArchiveState')
         const risuSave = await import('src/ts/storage/risuSave')
         const pageMode = await import('src/ts/storage/pageStorageMode')
-        const blockStore = await import('src/ts/storage/blockStore')
         const errors = await import('src/ts/storage/store/errors')
-        const pageOwner = await import('src/ts/storage/pageBlockOwner')
 
         const kind = options.kind ?? 'tauri'
         const store = makeHeldStore({ versioned: kind === 'node' })
@@ -171,13 +166,8 @@ export function createWorldKit(env: WorldEnv) {
         for (let earlier = 1; earlier < id; earlier++) {
             env.parked.add(earlier)
         }
-        const owner = await pageOwner.getPageBlockOwner()
-        // A page that runs from OPFS this time has no owner; a suite that asks for one gets a world without it.
-        if (owner === null && kind !== 'opfs-transitional') {
-            throw new Error('the page has no owner')
-        }
         const world: World = {
-            id, store, owner: owner as BlockStoreOwner, api, appStore, marks, bootState, risuSave, pageMode, blockStore, errors,
+            id, store, api, appStore, marks, bootState, risuSave, pageMode, errors,
             start() {
                 void api.saveDb()
             },
