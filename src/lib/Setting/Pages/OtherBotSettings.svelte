@@ -45,6 +45,23 @@
 
     let submenu = $state(DBState.db.useLegacyGUI ? -1 : 0);
 
+    // Only text that parses as JSON replaces the stored workflow; anything else
+    // keeps the current workflow and shows an error.
+    async function importComfyWorkflow() {
+        const file = await selectSingleFile(['json'])
+        if (!file) {
+            return
+        }
+        const text = new TextDecoder().decode(file.data)
+        try {
+            JSON.parse(text)
+        } catch {
+            alertError(language.comfyWorkflowInvalidJson)
+            return
+        }
+        DBState.db.comfyConfig.workflow = text
+    }
+
     // HypaV3
     // Each effect tracks only its own field, so the field passed to the clamp is the one the
     // user just edited and the other ratio yields. A preset switch runs all three.
@@ -750,8 +767,13 @@
             <span class="text-textcolor mt-2">ComfyUI {language.providerURL}</span>
             <TextInput size="sm" marginBottom placeholder="http://127.0.0.1:8188" bind:value={DBState.db.comfyUiUrl}/>
 
-            <span class="text-textcolor">{language.settingsPage.workflow} <Help key="comfyWorkflow" /></span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.comfyConfig.workflow}/>
+            <span class="text-textcolor">{language.comfyWorkflow} <Help key="comfyWorkflow" /></span>
+            <TextAreaInput size="sm" fullwidth height="32" bind:value={DBState.db.comfyConfig.workflow}/>
+            <div class="mt-2 mb-4 flex items-center">
+                <button class="text-textcolor2 hover:text-green-500 cursor-pointer" title={language.import} aria-label={language.import} onclick={() => {
+                    Promise.resolve(warnOnReject('OtherBotSettings: ComfyUI workflow import failed', importComfyWorkflow())).catch(() => {})
+                }}><HardDriveUploadIcon size={24}/></button>
+            </div>
 
             <span class="text-textcolor">{language.settingsPage.timeoutSec}</span>
             <NumberInput size="sm" marginBottom bind:value={DBState.db.comfyConfig.timeout} min={1} max={120} />

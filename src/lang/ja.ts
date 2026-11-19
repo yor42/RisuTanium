@@ -4650,6 +4650,8 @@ export const languageJapanese = {
         moduleEditedKeep: "作業を続ける（再読み込みするまでモジュールの変更は保存されません）",
         moduleNotSaved: "モジュール「{name}」は保存できません。キャラクターとチャットは引き続き保存されますが、「{name}」を削除または置換するまでモジュールへの変更は保存されず、アプリを閉じるか再読み込みすると失われます。",
     },
+    comfyWorkflow: "ワークフロー (API)",
+    comfyWorkflowInvalidJson: "無効なワークフローファイルです。有効なJSONである必要があります。",
 } satisfies I18nTranslation;
 
 type I18nTranslationFunction = (...args: any[]) => string;
