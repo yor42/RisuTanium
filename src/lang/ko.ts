@@ -4495,4 +4495,5 @@ export const languageKorean = {
         moduleEditedKeep: "계속 작업 (새로고침하기 전까지 모듈 변경 사항은 저장되지 않습니다)",
         moduleNotSaved: "모듈 \"{name}\"을(를) 저장할 수 없습니다. 캐릭터와 채팅은 계속 저장되지만, \"{name}\"을(를) 삭제하거나 교체하기 전까지 모듈 변경 사항은 저장되지 않으며, 앱을 닫거나 새로고침하면 사라집니다.",
     },
+    chatShellAttachingFile: (name: string, written: string, total: string) => `${name} 첨부 중: ${written} / ${total} MiB`,
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

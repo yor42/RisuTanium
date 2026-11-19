@@ -4,7 +4,7 @@
     import { DBState, popUpEditorStore, selIdState } from '../../ts/stores.svelte'
     import { doingChat, chatProcessStage } from '../../ts/process/index.svelte'
     import { sendMain, stopComposerWorkIn, isComposerBusy, isComposerBusyIn, isComposerLocked, reroll, updateInputTransateMessage, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
-    import { createComposerSurface, beginChatFileUpload, trackChatFileUpload } from '../../ts/process/composerSurface.svelte'
+    import { createComposerSurface, beginChatFileUpload, trackChatFileUpload, trackChatFileAttachment, attachmentsForDraft } from '../../ts/process/composerSurface.svelte'
     import * as composerDrafts from '../../ts/process/composerDrafts.svelte'
     import { COMPOSER_DRAFT_KIND, registerDraft, unregisterDraft } from '../../ts/localDrafts'
     import { postChatFile } from '../../ts/process/files/multisend'
@@ -43,6 +43,7 @@
     let sendBlocked = $derived(sendWaitsForDelete || writingElsewhere)
     const surface = createComposerSurface({ character: () => character, chat: () => chat })
     let shownDraft = $derived(surface.shownDraft)
+    let shownAttachments = $derived(attachmentsForDraft(surface.currentDraftKey))
     let enterMode: EnterMode = $state(readEnterMode(DBState.db.sendWithEnter))
     const enter = createEnterKeyController()
     const source: ComposerActionsSource = shellGenerationSource(() => {})
@@ -135,7 +136,8 @@
             reader.onload = async () => {
                 try {
                     if (reader.result instanceof ArrayBuffer) {
-                        appendResults(await postChatFile({ name: file.name, data: new Uint8Array(reader.result) }, key, hint), key)
+                        const data = new Uint8Array(reader.result)
+                        appendResults(await trackChatFileAttachment(key, (report) => postChatFile({ name: file.name, data }, key, hint, report)), key)
                     }
                 } finally {
                     settle()
@@ -152,7 +154,11 @@
         if (isComposerLocked()) return
         const key = surface.resolveDraftKeyForWrite()
         const hint = originHint()
-        appendResults(await trackChatFileUpload(() => postChatFile(composerDrafts.peek(key).messageInput, key, hint)), key)
+        appendResults(await trackChatFileUpload(() => trackChatFileAttachment(key, (report) => postChatFile(composerDrafts.peek(key).messageInput, key, hint, report))), key)
+    }
+
+    function mib(bytes: number): string {
+        return (bytes / (1024 * 1024)).toFixed(1)
     }
 
     function keydown(event: KeyboardEvent): void {
@@ -203,6 +209,14 @@
                 ? message.replace(/ +\(.+?\) *$| - [^"'*]*?$/, '') : message
         ) })} send={() => sendBlocked ? undefined : sendMain(source, false)} />
     </ExtrasStrip>
+    {#if shownAttachments.length > 0}
+        <div data-part="chat-composer-attaching">
+            {#each shownAttachments as attachment (attachment.token)}
+                {@const text = language.chatShellAttachingFile(attachment.name, mib(attachment.written), mib(attachment.total))}
+                <span data-part="chat-attaching-chip" role="progressbar" aria-valuemin={0} aria-valuemax={attachment.total} aria-valuenow={attachment.written} aria-valuetext={text}><span data-part="chat-attaching-text">{text}</span></span>
+            {/each}
+        </div>
+    {/if}
     {#if DBState.db.useAutoTranslateInput && DBState.db.translator}
         <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown}></textarea>
     {/if}
@@ -231,6 +245,9 @@
     [data-part="chat-composer-input"], [data-part="chat-composer-translate"] { min-width: 0; min-height: var(--size-touch); max-height: calc(5 * var(--leading-field-22) + 2 * var(--composer-field-padding-y)); resize: none; overflow-y: auto; padding: var(--composer-field-padding-y) var(--composer-field-padding-x); line-height: var(--leading-field-22); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-field); }
     [data-part="chat-composer-input"] { flex: 1; }
     [data-part="chat-composer-translate"] { display: block; width: 100%; margin-bottom: var(--space-3); }
+    [data-part="chat-composer-attaching"] { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
+    [data-part="chat-attaching-chip"] { display: inline-flex; align-items: center; min-height: var(--size-touch); max-width: 100%; padding-inline: var(--space-7); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-5); overflow: hidden; }
+    [data-part="chat-attaching-text"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-composer-tools"] { display: flex; justify-content: space-between; font-size: var(--font-size-xs); }
     [data-part="chat-composer-tools"] button, [data-part="chat-composer-tools"] select { min-height: var(--size-14); color: inherit; }
     [data-part="chat-composer-persona"] { position: absolute; inset-block-end: 100%; inset-inline-start: var(--space-7); isolation: isolate; display: inline-flex; align-items: center; gap: var(--space-3); max-inline-size: 70%; min-block-size: var(--size-touch); padding-inline: var(--space-7); color: var(--nexus-text); }

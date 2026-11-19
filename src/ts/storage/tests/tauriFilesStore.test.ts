@@ -287,6 +287,17 @@ describe('Tauri files store', () => {
             expect(fakeFs.renameLog.at(-1)?.to).toBe('./assets/x.png')
             expect(fakeFs.renameLog.at(-1)?.from).toMatch(/^\.\/assets\/risu-write-[0-9a-f]{16}\.tmp$/)
         })
+
+        // Compatibility guard: passes before and after; a page without chunk commands writes in one call and reports nothing.
+        test('a Blob written in one call on a page without chunk commands stores the value and reports no progress', async () => {
+            const store = createTauriFilesStore({ platform: 'posix' })
+            const reports: Array<[number, number]> = []
+
+            await store.writeBlob?.('assets/p.mp4', new Blob([NEW as BlobPart]), 'unconditional', (written, total) => { reports.push([written, total]) })
+
+            expect(reports).toEqual([])
+            expect(Array.from((await store.read('assets/p.mp4')).bytes)).toEqual(Array.from(NEW))
+        })
     })
 
     describe('reading', () => {
