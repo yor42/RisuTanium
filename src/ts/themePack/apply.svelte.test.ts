@@ -489,6 +489,18 @@ describe('T3-4 a pack that cannot apply', () => {
         expectBalanced()
     })
 
+    it('R12 a chat ring over the 4 px cap: refused for the ceiling reason, the stored archive untouched (REPRO, MC-2320)', async () => {
+        const bytes = packOf(':root{--focus-ring-w:5px}')
+        const key = store(bytes)
+        const before = new Map(world.files)
+        const prepared = await prepare({ kind: 'archive', key })
+        expect(prepared).toMatchObject({ ok: false, reason: 'refused' })
+        const refusals = prepared.ok === false && 'refusals' in prepared ? prepared.refusals : []
+        expect(JSON.stringify(refusals)).toMatch(/--focus-ring-w can be 5 .*the ceiling is 4px/)
+        expect(world.files).toEqual(before)
+        expectBalanced()
+    })
+
     it('judge timeout: couldNotCheck, nothing minted', async () => {
         const rig = judgeRig({ silent: true, timeoutMs: 20 })
         const prepared = await prepareArchive(packOf(PLAIN_CHAT_SHEET), rig)
