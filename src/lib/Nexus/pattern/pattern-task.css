@@ -1,0 +1,131 @@
+/*
+  Pattern task card and result card: layout, colour and type, then the motion of the same parts.
+  Needs styles/nexus-tokens.css, styles/pattern-tokens.css and pattern-dialog.css (the shell, the buttons and the --pm-* switches it defines).
+  Every value comes from a token; a literal here is 0, a 1px hairline, a keyword or a percentage. There is no backdrop-filter.
+  Every rule keyed on data-layout, data-step-state, data-task-state or data-task-mode names a pattern part in the same compound, so the card works inside any host.
+*/
+
+/* ---- task card: mark, title, steps, bar, count, status, actions ---- */
+[data-part="pattern-task-root"] { display: grid; gap: var(--pattern-warn-gap); padding: var(--pattern-warn-padding); outline: none; min-width: 0; font-size: var(--pattern-warn-body-size); line-height: var(--pattern-warn-body-leading); color: var(--nexus-text); }
+[data-part="pattern-task-head"] { display: flex; align-items: center; gap: var(--pattern-warn-padding); min-width: 0; }
+[data-part="pattern-task-titles"] { min-width: 0; display: grid; gap: var(--pattern-bullet-inset); }
+[data-part="pattern-task-mark"] { position: relative; flex: none; width: var(--pattern-task-mark-size); height: var(--pattern-task-mark-size); }
+[data-part="pattern-task-title"] { margin: 0; font-size: var(--pattern-warn-headline-size); font-weight: var(--pattern-warn-headline-weight); line-height: var(--pattern-warn-headline-leading); overflow-wrap: anywhere; }
+[data-part="pattern-task-subtitle"] { margin: 0; color: var(--nexus-text-secondary); font-size: var(--pattern-warn-body-size); overflow-wrap: anywhere; }
+[data-part="pattern-task-mark-badge"] { position: absolute; right: 0; bottom: 0; width: 40%; height: 40%; display: grid; place-items: center; border-radius: 50%; color: var(--pattern-warn-edge-caution); background: var(--pattern-surface); border: 1px solid var(--pattern-warn-edge-caution); }
+[data-part="pattern-task-mark-badge"] .pattern-icon { width: 75%; height: 75%; }
+
+[data-part="pattern-task-steps"] { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--pattern-task-step-gap); }
+[data-part="pattern-task-step"] { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--pattern-warn-gap); color: var(--nexus-text-muted); }
+[data-part="pattern-task-step"][data-step-state="now"] { color: var(--nexus-text); font-weight: var(--pattern-weight-strong); }
+[data-part="pattern-task-step"][data-step-state="done"] { color: var(--nexus-text-secondary); }
+[data-part="pattern-task-step"][data-step-state="failed"] { color: var(--pattern-fill-danger); font-weight: var(--pattern-weight-strong); }
+[data-part="pattern-layer"][data-layout="phone"] [data-part="pattern-task-step"]:not([data-near]) { display: none; }
+[data-part="pattern-task-step-label"] { min-width: 0; overflow-wrap: anywhere; }
+[data-part="pattern-task-step-icon"] { position: relative; display: block; width: var(--pattern-step-icon-size); height: var(--pattern-step-icon-size); }
+[data-part="pattern-task-step-icon"] > [data-glyph] { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+[data-part="pattern-task-step-icon"] > [data-glyph] svg { width: 100%; height: 100%; }
+[data-part="pattern-task-step-icon"] > [data-glyph="next"]::before { content: ''; width: var(--pattern-step-dot); height: var(--pattern-step-dot); border-radius: 50%; border: var(--pattern-step-ring-width) solid var(--nexus-text-muted); }
+[data-part="pattern-task-step-icon"] > [data-glyph="now"]::before { content: ''; width: var(--pattern-step-dot-now); height: var(--pattern-step-dot-now); border-radius: 50%; background: var(--nexus-ring); }
+[data-part="pattern-task-step-icon"] > [data-glyph="done"] { color: var(--pattern-fill-confirm); }
+[data-part="pattern-task-step-icon"] > [data-glyph="failed"] { color: var(--pattern-fill-danger); }
+[data-part="pattern-task-step"][data-step-state="next"] > [data-part="pattern-task-step-icon"] > [data-glyph="next"],
+[data-part="pattern-task-step"][data-step-state="now"] > [data-part="pattern-task-step-icon"] > [data-glyph="now"],
+[data-part="pattern-task-step"][data-step-state="done"] > [data-part="pattern-task-step-icon"] > [data-glyph="done"],
+[data-part="pattern-task-step"][data-step-state="failed"] > [data-part="pattern-task-step-icon"] > [data-glyph="failed"] { opacity: 1; }
+
+/* the bar: a scaled fill (never a width), step ticks, and the current step's share for the working sweep */
+[data-part="pattern-task-bar"] { position: relative; height: var(--pattern-task-bar-height); border-radius: var(--pattern-pill-radius); overflow: hidden; background: var(--pattern-task-bar-track); outline: none; }
+[data-part="pattern-task-bar-fill"] { position: absolute; inset: 0; border-radius: inherit; background: var(--pattern-task-bar-fill); transform-origin: left center; transform: scaleX(var(--p-fill, 0)); }
+[data-part="pattern-task-bar"][data-task-state="failed"] [data-part="pattern-task-bar-fill"] { background: var(--pattern-task-bar-fail); }
+[data-part="pattern-task-bar-sweep"] { position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% / var(--p-steps, 1)); transform: translateX(calc(100% * var(--p-index, 0))); overflow: hidden; pointer-events: none; opacity: 0; }
+[data-part="pattern-task-bar-sweep"]::before { content: ''; position: absolute; inset: 0; }
+[data-part="pattern-task-bar"][data-task-state="failed"] [data-part="pattern-task-bar-sweep"] { opacity: 1; }
+[data-part="pattern-task-bar"][data-task-state="failed"] [data-part="pattern-task-bar-sweep"]::before { background: var(--pattern-task-bar-fail); opacity: var(--pattern-fail-sweep-opacity); }
+[data-part="pattern-task-bar-ticks"] { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(to right, transparent 0 calc(100% / var(--p-steps, 1) - var(--pattern-tick-gap)), var(--pattern-surface) calc(100% / var(--p-steps, 1) - var(--pattern-tick-gap)) calc(100% / var(--p-steps, 1))); }
+
+[data-part="pattern-task-count"] { margin: 0; min-height: var(--pattern-line-min); font-size: var(--pattern-task-count-size); color: var(--nexus-text-secondary); font-variant-numeric: tabular-nums; }
+[data-part="pattern-task-slow"] { margin: 0; min-height: var(--pattern-line-min); font-size: var(--pattern-task-count-size); color: var(--nexus-text-muted); }
+[data-part="pattern-task-slow"]:not([data-visible]) { visibility: hidden; }
+[data-part="pattern-task-status"] { margin: 0; min-height: var(--pattern-line-min); overflow-wrap: anywhere; }
+[data-part="pattern-task-actions"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pattern-warn-gap); }
+[data-part="pattern-task-actions"] > .pattern-button { flex: 1 1 var(--pattern-action-basis); }
+[data-part="pattern-task-cancel-reason"] { flex: 1 1 var(--pattern-action-basis); margin: 0; min-height: var(--pattern-warn-action-height); display: flex; align-items: center; color: var(--nexus-text-secondary); font-size: var(--pattern-warn-body-size); }
+
+/* ---- result card ---- */
+[data-part="pattern-task-result"] { display: grid; gap: var(--pattern-warn-gap); padding-top: var(--pattern-warn-gap); border-top: 1px solid var(--nexus-edge); min-width: 0; }
+[data-part="pattern-task-result-headline"] { margin: 0; font-size: var(--pattern-warn-headline-size); font-weight: var(--pattern-warn-headline-weight); line-height: var(--pattern-warn-headline-leading); outline: none; overflow-wrap: anywhere; }
+[data-part="pattern-task-result-summary"], [data-part="pattern-task-result-data"] { margin: 0; color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+[data-part="pattern-task-result"][data-outcome="failed"] [data-part="pattern-task-result-summary"] { color: var(--nexus-text); }
+[data-part="pattern-task-result-skipped"] {
+  padding: var(--pattern-warn-gap) var(--pattern-warn-padding); border-radius: var(--pattern-warn-action-radius); border-inline-start: var(--pattern-skip-edge-width) solid var(--pattern-skip-edge);
+  background: linear-gradient(var(--pattern-tint-caution), var(--pattern-tint-caution)), var(--pattern-surface);
+}
+[data-part="pattern-task-result-skipped"] h4 { margin: 0 0 var(--pattern-bullet-inset); font-size: var(--pattern-warn-body-size); font-weight: var(--pattern-weight-strong); }
+[data-part="pattern-task-result-skipped"] ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--pattern-bullet-inset); }
+[data-part="pattern-task-result-skip"] { display: flex; flex-wrap: wrap; column-gap: var(--pattern-warn-gap); }
+[data-part="pattern-task-result-skip"] [data-part="pattern-task-result-skip-name"] { font-weight: var(--pattern-weight-strong); overflow-wrap: anywhere; }
+[data-part="pattern-task-result-skip"] [data-part="pattern-task-result-skip-reason"] { color: var(--nexus-text-secondary); }
+[data-part="pattern-task-result-more"] { background: transparent; border-color: transparent; color: var(--nexus-text-secondary); justify-content: flex-start; padding-inline: 0; }
+[data-part="pattern-task-result-actions"] { display: flex; flex-wrap: wrap; gap: var(--pattern-warn-gap); justify-content: flex-end; }
+[data-part="pattern-task-result-actions"] > .pattern-button { flex: 1 1 auto; }
+
+/* ---- forced colours: the same states by shape and system colours ---- */
+@media (forced-colors: active) {
+  [data-part="pattern-task-bar"] { background: Canvas; border: 1px solid CanvasText; }
+  [data-part="pattern-task-bar-fill"] { background: Highlight; forced-color-adjust: none; }
+  [data-part="pattern-task-bar-sweep"]::before { background: Highlight; forced-color-adjust: none; }
+  [data-part="pattern-task-mark-badge"] { border-color: CanvasText; color: CanvasText; background: Canvas; }
+  [data-part="pattern-task-result-skipped"] { background: Canvas; border-inline-start-color: CanvasText; }
+}
+
+/* ---- motion: the sweep and fill switches join the --pm-* switches of the shell; reduced motion snaps the fill and stills the sweep ---- */
+[data-part="pattern-layer"] {
+  --pm-fill-on: 1;
+  --pm-sweep-anim: pattern-sweep;
+  --pm-sweep-from: -100%;
+  --pm-sweep-bg: linear-gradient(90deg, transparent, var(--pattern-task-bar-sweep), transparent);
+}
+[data-part="pattern-layer"][data-low-power] {
+  --pm-sweep-anim: none; --pm-sweep-from: 0%; --pm-sweep-bg: var(--pattern-task-bar-sweep);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not(.rm-off) [data-part="pattern-layer"] {
+    --pm-fill-on: 0; --pm-sweep-anim: none; --pm-sweep-from: 0%; --pm-sweep-bg: var(--pattern-task-bar-sweep);
+  }
+}
+:root.rm [data-part="pattern-layer"] {
+  --pm-fill-on: 0; --pm-sweep-anim: none; --pm-sweep-from: 0%; --pm-sweep-bg: var(--pattern-task-bar-sweep);
+}
+
+:where([data-part="pattern-layer"], [data-part="pattern-layer"] [data-part^="pattern-"]) {
+  --d-fill: calc(min(var(--task-fill-dur), var(--pm-cap)) * var(--pm-fill-on) * var(--chat-motion, 1));
+  --d-step: calc(min(var(--task-step-enter-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-tick: calc(min(var(--task-tick-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-badge: calc(min(var(--task-badge-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-result: calc(min(var(--task-result-enter-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --l-step: calc(min(var(--i, 0) * var(--task-step-stagger), var(--task-step-stagger-max)) * var(--pm-stagger));
+  --l-badge: calc(var(--task-badge-delay) * var(--pm-stagger));
+  --m-step: calc(var(--task-step-enter-distance) * var(--pm-move));
+  --m-result: calc(var(--task-result-distance) * var(--pm-move));
+  --s-badge: calc(1 - (1 - var(--task-badge-scale-from)) * var(--pm-scale));
+}
+
+@keyframes pattern-rise-step { from { opacity: 0; transform: translateY(var(--m-step)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-rise-result { from { opacity: 0; transform: translateY(var(--m-result)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-badge { from { opacity: 0; transform: scale(var(--s-badge)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+[data-part="pattern-task-step"] { animation: pattern-rise-step var(--d-step) var(--nexus-ease-out) var(--l-step) both; }
+[data-part="pattern-task-step-icon"] > [data-glyph] { transition: opacity var(--d-tick) var(--nexus-ease-out); }
+[data-part="pattern-task-bar-fill"] { transition: transform var(--d-fill) var(--task-fill-ease), opacity var(--d-state) var(--nexus-ease); }
+[data-part="pattern-task-bar"][data-task-state="running"] [data-part="pattern-task-bar-fill"] { will-change: transform; }
+[data-part="pattern-task-bar-sweep"] { transition: opacity var(--d-state) var(--nexus-ease); }
+[data-part="pattern-task-bar-sweep"]::before { background: var(--pm-sweep-bg); }
+[data-part="pattern-task-bar"][data-task-state="running"][data-task-mode="indeterminate"] > [data-part="pattern-task-bar-sweep"] { opacity: 1; }
+[data-part="pattern-task-bar"][data-task-state="running"][data-task-mode="indeterminate"] > [data-part="pattern-task-bar-sweep"]::before { transform: translateX(var(--pm-sweep-from)); animation: var(--pm-sweep-anim) var(--task-sweep-period) var(--nexus-ease) infinite; will-change: transform; }
+[data-part="pattern-task-bar"][data-task-state="cancelling"] > [data-part="pattern-task-bar-sweep"] { opacity: 1; }
+[data-part="pattern-task-mark-badge"]:not([hidden]) { animation: pattern-badge var(--d-badge) var(--nexus-ease-out) var(--l-badge) both; }
+[data-part="pattern-task-result"] { animation: pattern-rise-result var(--d-result) var(--nexus-ease-out) both; }
+/* The brand's error pose shakes once; in this card it does not. */
+[data-part="pattern-task-mark"] .nexus-mark[data-status="error"] .nm-body { animation: none; }
