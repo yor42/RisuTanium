@@ -14,6 +14,7 @@ mod export_append;
 mod free_space;
 mod launch_inputs;
 mod net_policy;
+mod reply_store;
 mod store2_batch;
 mod store2_gate;
 mod streamed_fetch;
@@ -419,11 +420,18 @@ async fn streamed_fetch(
     policy: Option<net_policy::NetPolicy>,
     chat_stop: Option<bool>,
     chat_target: Option<streamed_fetch::ChatTarget>,
+    reply_owner: Option<reply_store::ReplyOwnerArg>,
 ) -> String {
     let registry = app
         .state::<streamed_fetch::FetchRegistry>()
         .inner()
         .clone();
+    // Without `reply_owner` the store is not touched and the data directory is not resolved.
+    let owner = reply_store::owned_reply_for(
+        app.state::<reply_store::ReplyStore>().inner(),
+        reply_owner,
+        || app.path().app_data_dir().map_err(|e| e.to_string()),
+    );
     let request = streamed_fetch::FetchRequest {
         id,
         url,
@@ -433,12 +441,63 @@ async fn streamed_fetch(
         timeout_secs,
         policy,
         tags: streamed_fetch::stream_tags(chat_stop, chat_target),
+        owner,
     };
     streamed_fetch::run_registered(&registry, request, |payload| {
         app.emit("streamed_fetch", &payload)
             .map_err(|e| e.to_string())
     })
     .await
+}
+
+// The native reply commands. By convention the page reads replies only through these: the
+// record files are Rust's (`reply_store`) and the `native-reply` prefix is
+// refused to the page's generic file commands. The list is an array that can
+// carry blobs of up to 1 MiB, so it is a visible-page call. The body read
+// answers one base64 string like `read_range_text`, so a frozen page receives it.
+#[tauri::command]
+async fn native_reply_list(app: AppHandle) -> Result<Vec<reply_store::ReplyListing>, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.list(&base))
+        .await
+        .map_err(|e| format!("the reply task failed: {}", e))?
+}
+
+#[tauri::command]
+async fn native_reply_read_body(app: AppHandle, key: String, offset: u64, len: u64) -> Result<String, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.read_body(&base, &key, offset, len))
+        .await
+        .map_err(|e| format!("the reply task failed: {}", e))?
+}
+
+#[tauri::command]
+async fn native_reply_consume(app: AppHandle, key: String) -> Result<reply_store::RemoveOutcome, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.consume(&base, &key))
+        .await
+        .map_err(|e| format!("the reply task failed: {}", e))?
+}
+
+#[tauri::command]
+async fn native_reply_discard(app: AppHandle, key: String) -> Result<reply_store::RemoveOutcome, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.discard(&base, &key))
+        .await
+        .map_err(|e| format!("the reply task failed: {}", e))?
+}
+
+#[tauri::command]
+async fn native_reply_park(app: AppHandle, key: String) -> Result<(), String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let store = app.state::<reply_store::ReplyStore>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.park(&base, &key))
+        .await
+        .map_err(|e| format!("the reply task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -491,6 +550,7 @@ pub fn run() {
         .manage(PendingLaunch(Mutex::new(cold_launch)))
         .manage(store2_gate::Store2Gate::new())
         .manage(streamed_fetch::process_registry())
+        .manage(reply_store::ReplyStore::new())
         .manage(app_fs::StartupSweep::new());
 
     #[cfg(desktop)]
@@ -576,7 +636,12 @@ pub fn run() {
             export_append::export_append_b64,
             streamed_fetch,
             cancel_streamed_fetch,
-            cancel_all_streamed_fetch
+            cancel_all_streamed_fetch,
+            native_reply_list,
+            native_reply_read_body,
+            native_reply_consume,
+            native_reply_discard,
+            native_reply_park
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
