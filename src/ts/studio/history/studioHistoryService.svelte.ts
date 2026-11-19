@@ -87,6 +87,17 @@ const productionModuleSlotPort: ModuleSlotReplaced = () => {
     }
 }
 
+// Starts loading the slot port and returns the load, which never rejects (a failure is logged and the next call retries).
+export function primeStudioModuleSlots(): Promise<void> {
+    return primeModuleSlotPort()
+}
+
+// Runs the slot port once, as the history service does after a module slot write: the memo reset and the module
+// screen bump are synchronous when the port is primed.
+export function studioModuleSlotReplaced(): void {
+    productionModuleSlotPort()
+}
+
 // Builds the service: the modules load, then the device store and the Web Locks claim are created and the
 // service is created once over them. `tauri` makes a page without Web Locks the one live page, as on a Tauri
 // build. No `registerLeaveFlush` is passed, so the service registers its flush with the page's leave rule

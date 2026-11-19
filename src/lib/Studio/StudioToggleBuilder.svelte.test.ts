@@ -16,6 +16,7 @@ interface LiveCharacter {
     name: string
     license?: string
     customModuleToggle?: string
+    desc?: string
     chats: { id: string, note: string }[]
     chatPage: number
 }
@@ -43,9 +44,24 @@ vi.mock('src/lang', async () => {
         'studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN',
         'studioTgCarryAskKey', 'studioTgCarryAskOptions', 'studioTgCarryAskKind', 'studioTgCarryAskDrop', 'studioTgCarryAskUnclear',
         'studioTgCarryAskOptionsLate', 'studioTgCarryAskOptionsLateRenamed', 'studioTgCarryOverwrite', 'studioTgCarryShared', 'studioTgCarryOldStays',
+        'studioTgUsesRename', 'studioTgUsesWillChange', 'studioTgUsesSkipped', 'studioTgUsesAlsoUpdate', 'studioTgUsesKeyBlocked',
+        'studioTgUsesNotLoaded', 'studioTgUsesSharedId', 'studioTgUsesMore', 'studioTgUpdated', 'studioTgUpdateUndoChanged',
     ]) own[key] = withArguments(key)
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
+// The uses list names places through the asset merge module, whose import graph reaches the image pipeline; the builder
+// rows asserted here never depend on it, so this file stubs it (the uses list has its own test).
+vi.mock('src/ts/studio/assets/mergeCommit', () => ({ jumpTargetOf: () => null, placeLabelOf: (_kind: string, path: string) => path }))
+// The uses list is a component of its own with its own test; the builder mounts it lazily, and this stand-in shows what
+// the builder passed it.
+vi.mock('./StudioToggleUses.svelte', () => ({
+    default: (anchor: Comment, props: { builder: { usesRenames: readonly { from: string, to: string }[] }, target: { kind: string }, chaId: string }) => {
+        const element = document.createElement('div')
+        element.dataset.part = 'studio-toggle-uses'
+        element.textContent = `${props.builder.usesRenames.map((rename) => `${rename.from}>${rename.to}`).join(',')}|${props.target.kind}|${props.chaId}`
+        anchor.before(element)
+    },
+}))
 // The number of times a row's view is computed, by line id: an edit of one row must not compute another's.
 vi.mock('src/ts/studio/toggleBuilderModel', async (importOriginal) => {
     const actual = await importOriginal<typeof import('src/ts/studio/toggleBuilderModel')>()
@@ -573,6 +589,28 @@ describe('F-C the saved-values banner in the builder', () => {
         expect(toast.host.visible.at(-1)?.text).toBe('studioTgCarried')
         await unmountAll()
         expect(toast.host.visible.length).toBe(0)
+    })
+})
+
+describe('the uses list in the builder (B9)', () => {
+    test('a rename mounts the list under the banner with the builder, its owner kind and the bound character', async () => {
+        setText('a=Mode\nb=B\n')
+        makeRig()
+        mountBuilder({ host: makeToastHost().host })
+        await settle()
+        rowsOf()[0].click()
+        flushSync()
+        type(field('studio-toggle-key'), 'c')
+        field('studio-toggle-key').dispatchEvent(new FocusEvent('blur'))
+        flushSync()
+        // The editor page carries the banner inside itself; the list waits under the header like the banner does.
+        expect(part('studio-toggle-uses')).toBeNull()
+        part('studio-toggle-back')?.click()
+        flushSync()
+        await settle()
+        expect(parts('studio-toggle-uses')).toHaveLength(1)
+        expect(part('studio-toggle-uses')?.textContent?.endsWith('|character|A')).toBe(true)
+        expect(part('studio-toggle-carry')).not.toBeNull()
     })
 })
 

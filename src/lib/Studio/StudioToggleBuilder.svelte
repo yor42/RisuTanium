@@ -1,3 +1,8 @@
+<script module lang="ts">
+    type UsesView = typeof import('./StudioToggleUses.svelte').default
+    let usesLoaded: UsesView | null = null
+</script>
+
 <script lang="ts">
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
@@ -184,6 +189,19 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
         def: builder.def,
         selected: builder.editor?.id ?? null,
         select: selectFromPreview,
+    })
+
+    // The uses list reads every owner's texts, a heavy module the builder does not otherwise need: it is loaded with the
+    // first question that renames a key. Once it was loaded, a new builder of the page shows its result line at once.
+    let usesView = $state.raw<UsesView | null>(usesLoaded)
+    $effect(() => {
+        if (usesView !== null || builder.usesRenames.length === 0) return
+        let live = true
+        void import('./StudioToggleUses.svelte').then((loaded) => {
+            usesLoaded = loaded.default
+            if (live) usesView = loaded.default
+        }).catch((error) => { console.error(error) })
+        return () => { live = false }
     })
 
     // The sheet reads the chat panel's sources, a heavy module the builder does not otherwise need: it is loaded with
@@ -375,6 +393,10 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
         <!-- The editor page, on a narrow layout, carries the banner inside itself, under its own header. -->
         {#if !(mode === 'list' && !wide && editorOpen)}
             <StudioToggleCarryBanner {builder} {editable} error={carryError} actions={carryActions} />
+            {#if usesView}
+                {@const Uses = usesView}
+                <Uses {builder} target={fixed} chaId={fixed.kind === 'character' ? fixed.chaId : studioScreen.chaId} {editable} announce={(text) => { announcement = text }} {toasts} host={toastsHost} />
+            {/if}
         {/if}
         {#if mode === 'text'}
             <StudioToggleText bind:this={textView} {builder} {port} {editable} {caretAt} />

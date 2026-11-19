@@ -114,6 +114,11 @@ function Test-AdbRefused([string]$label, [string]$ser, [string[]]$adbArgs, [stri
     $r = Invoke-Node (@('--serial', $ser, '--log', $log) + $extra + @('--') + $adbArgs) @{} @{}
     Test-Result $label ($r.rc -eq $wantRc -and (Get-Calls).Count -eq 0) ('-> ' + $r.rc + ' (want ' + $wantRc + ') calls=' + (Get-Calls).Count)
 }
+# The Note 9 profile (r3) lifted the My Files am pin and the am character rule on the playground serials: such a call exits 0 and sends one call.
+function Test-AdbPasses([string]$label, [string]$ser, [string[]]$adbArgs, [string[]]$extra = @()) {
+    $r = Invoke-Node (@('--serial', $ser, '--log', $log) + $extra + @('--') + $adbArgs) @{} @{}
+    Test-Result $label ($r.rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $r.rc + ' calls=' + (Get-Calls).Count)
+}
 
 # MF-1: the pinned My Files start passes on phone 1 only, as one exact command string.
 $r = Invoke-Node @('--serial', $phone1, '--log', $log, '--', 'shell', $startString) @{} @{}
@@ -122,9 +127,10 @@ Test-Result 'MF-1 am start My Files on phone 1' ($r.rc -eq '0' -and $got.Count -
 $r = Invoke-Node @('--serial', $phone1, '--log', $log, '--own-package', $pkg, '--', 'shell', ('  ' + $startString.Replace(' -n ', '  -n '))) @{} @{}
 Test-Result 'MF-1 am start with extra blanks still the same command' ($r.rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $r.rc)
 
-# MF-2: the same launch on every other serial is refused, also when --own-package names My Files.
-Test-AdbRefused 'MF-2 phone 2 am start' $phone2 @('shell', $startString) '97'
-Test-AdbRefused 'MF-2 phone 2 am start with own-package My Files' $phone2 @('shell', $startString) '97' @('--own-package', $mf)
+# MF-2: the same launch on every other serial is refused, also when --own-package names My Files. On phone 2 the Note 9 profile (r3, FC-7)
+# lifted the pin: the launch passes there, and the refusals below are pinned on emulator-5580 (r11 allowlist plus the r17 pin) instead.
+Test-AdbPasses 'MF-2 phone 2 am start passes on the Note 9 profile' $phone2 @('shell', $startString)
+Test-AdbPasses 'MF-2 phone 2 am start with own-package My Files passes on the Note 9 profile' $phone2 @('shell', $startString) @('--own-package', $mf)
 Test-AdbRefused 'MF-2 emulator am start' $emu @('shell', $startString) '97'
 Test-AdbRefused 'MF-2 emulator am start with own-package My Files' $emu @('shell', $startString) '97' @('--own-package', $mf)
 foreach ($s in @($tabS9, 'R58M12345AB', '2ac80128013f7ecf', '29F3CDE9193F7ECE', ($phone1 + '1'))) {
@@ -138,9 +144,15 @@ $badStarts = @(
     ('am start -d content://media/external/file/1 -n ' + $mf + '/.external.ui.MainActivity'), ('am start -n ' + $mf + '.evil/.external.ui.MainActivity'),
     ('am start -n com.evil/' + $mf + '.external.ui.MainActivity'), ('am force-stop ' + $mf), ('am kill ' + $mf), ('am start-activity -n ' + $mf + '/.external.ui.MainActivity'),
     ('am start -n ' + $mf + '/.external.ui.MainActivity; reboot'), ('am start -n ' + $mf.ToUpper() + '/.external.ui.MainActivity'))
-foreach ($c in $badStarts) { Test-AdbRefused ('MF-2 phone 1 refuses ' + $c) $phone1 @('shell', $c) '97' }
-Test-AdbRefused 'MF-2 phone 1 refuses the start split into arguments' $phone1 (@('shell') + $startString.Split(' ')) '97'
-Test-AdbRefused 'MF-2 phone 1 refuses the start with own-package My Files and a flag' $phone1 @('shell', ($startString + ' --es k v')) '97' @('--own-package', $mf)
+# Pinned on emulator-5580 (97, r17 pin). On phone 1 the Note 9 profile passes them (FC-7), except the chained `; reboot` (89, DZ-5).
+foreach ($c in $badStarts) { Test-AdbRefused ('MF-2 emulator refuses ' + $c) $emu @('shell', $c) '97' }
+Test-AdbRefused 'MF-2 emulator refuses the start split into arguments' $emu (@('shell') + $startString.Split(' ')) '97'
+Test-AdbRefused 'MF-2 emulator refuses the start with own-package My Files and a flag' $emu @('shell', ($startString + ' --es k v')) '97' @('--own-package', $mf)
+foreach ($c in $badStarts) {
+    if ($c.Contains('; reboot')) { Test-AdbRefused ('MF-2 phone 1 ' + $c + ' is DZ-5 on the Note 9 profile') $phone1 @('shell', $c) '89' }
+    else { Test-AdbPasses ('MF-2 phone 1 passes ' + $c + ' on the Note 9 profile') $phone1 @('shell', $c) }
+}
+Test-AdbPasses 'MF-2 phone 1 passes the start split into arguments on the Note 9 profile' $phone1 (@('shell') + $startString.Split(' '))
 # The device shell expands braces, globs and quotes after the guard's text check: any `am` line with a character outside the safe set
 # refuses (97) on every serial, so no form can rebuild the refused My Files name. The -n forms also carry an own-package that names them.
 $mfBrace = 'com.sec.android.app.my{f,f}iles'
@@ -166,13 +178,13 @@ $spoofForms = @(
     @('backtick', ('am start ' + $mfBacktick + '/.external.ui.MainActivity'), $null),
     @('leading blanks brace', ('   am start ' + $mfBrace + '/.external.ui.MainActivity'), $null))
 foreach ($f in $spoofForms) {
-    foreach ($s in @($phone1, $phone2, $emu)) {
-        $extra = @(); if ($null -ne $f[2]) { $extra = @('--own-package', $f[2]) }
-        Test-AdbRefused ('MF-2 ' + $s + ' refuses ' + $f[0] + ' am line') $s @('shell', $f[1]) '97' $extra
-    }
+    $extra = @(); if ($null -ne $f[2]) { $extra = @('--own-package', $f[2]) }
+    Test-AdbRefused ('MF-2 ' + $emu + ' refuses ' + $f[0] + ' am line') $emu @('shell', $f[1]) '97' $extra
+    # The Note 9 profile (r3) has no am character rule: these forms pass there (the danger-zone scan reads them as written).
+    foreach ($s in @($phone1, $phone2)) { Test-AdbPasses ('MF-2 ' + $s + ' passes ' + $f[0] + ' am line on the Note 9 profile') $s @('shell', $f[1]) $extra }
 }
-# The same characters refuse on an `am` line that does not name My Files (no refused name is needed to trip the rule).
-Test-AdbRefused 'MF-2 phone 2 refuses a brace in an am line that names no My Files' $phone2 @('shell', 'am start -n io.github.yor42.risutanium/.Main{,}') '97' @('--own-package', 'io.github.yor42.risutanium')
+# The same characters refuse on an `am` line that does not name My Files (no refused name is needed to trip the rule), on emulator-5580.
+Test-AdbRefused 'MF-2 emulator refuses a brace in an am line that names no My Files' $emu @('shell', 'am start -n io.github.yor42.risutanium/.Main{,}') '97' @('--own-package', 'io.github.yor42.risutanium')
 # The allowed forms are unchanged: the app's own start and force-stop, and the pinned My Files start on phone 1 only.
 foreach ($s in @($phone1, $phone2)) {
     $r = Invoke-Node @('--serial', $s, '--log', $log, '--own-package', $pkg, '--', 'shell', ('am start -n ' + $pkg + '/.MainActivity')) @{} @{}
@@ -182,11 +194,16 @@ foreach ($s in @($phone1, $phone2)) {
 }
 $r = Invoke-Node @('--serial', $phone1, '--log', $log, '--', 'shell', $startString) @{} @{}
 Test-Result 'MF-2 pinned My Files start still passes on phone 1 after the safe-set rule' ($r.rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $r.rc)
-Test-AdbRefused 'MF-2 pinned My Files start still refuses on phone 2 after the safe-set rule' $phone2 @('shell', $startString) '97'
-# monkey, pm list and content queries stay refused on both phones, also when they name My Files.
+Test-AdbRefused 'MF-2 pinned My Files start still refuses on the emulator after the safe-set rule' $emu @('shell', $startString) '97'
+# monkey, pm list and content queries stay refused on emulator-5580 (r11 allowlist), also when they name My Files. On the Note 9 profile
+# they pass, except the SMS provider query (89, DZ-1) and monkey (89, DZ-13).
+$otherShell = @(('monkey -p ' + $mf + ' -c android.intent.category.LAUNCHER 1'), 'monkey 100', 'pm list packages', ('pm list packages ' + $mf), 'content query --uri content://media/external/file', 'content query --uri content://sms/inbox')
+foreach ($c in $otherShell) { Test-AdbRefused ('MF-2 ' + $emu + ' refuses ' + $c) $emu @('shell', $c) '97' }
 foreach ($s in @($phone1, $phone2)) {
-    foreach ($c in @(('monkey -p ' + $mf + ' -c android.intent.category.LAUNCHER 1'), 'monkey 100', 'pm list packages', ('pm list packages ' + $mf), 'content query --uri content://media/external/file', 'content query --uri content://sms/inbox')) {
-        Test-AdbRefused ('MF-2 ' + $s + ' refuses ' + $c) $s @('shell', $c) '97'
+    foreach ($c in $otherShell) {
+        if ($c.Contains('sms')) { Test-AdbRefused ('MF-2 ' + $s + ' ' + $c + ' is DZ-1 on the Note 9 profile') $s @('shell', $c) '89' }
+        elseif ($c.StartsWith('monkey')) { Test-AdbRefused ('MF-2 ' + $s + ' ' + $c + ' is DZ-13 on the Note 9 profile') $s @('shell', $c) '89' }
+        else { Test-AdbPasses ('MF-2 ' + $s + ' passes ' + $c + ' on the Note 9 profile') $s @('shell', $c) }
     }
 }
 
