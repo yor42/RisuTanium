@@ -276,12 +276,12 @@ describe('removeChar with permanent, for a character that was not in the trash w
         expect(stopped).toEqual(['live'])
     })
 
-    test('guard: a normal delete puts a live character in the trash and keeps it in the list', async () => {
+    test('guard: a normal delete puts a live character in the trash after one confirmation and keeps it in the list', async () => {
         const done = removeChar(DBState.db.characters[0], 'Live', 'normal')
         await sleep(10)
         await answer(true)
-        await answer(true)
         await done
+        expect(confirms.pending).toHaveLength(0)
         expect(ids()).toEqual(['live', 'trashed'])
         expect(DBState.db.characters[0].trashTime).toBeTypeOf('number')
     })

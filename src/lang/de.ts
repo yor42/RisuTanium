@@ -4533,5 +4533,7 @@ export const languageGerman = {
         "moduleEditedTitle": "Das Modul \"{name}\" wurde in diesem Tab so geändert, dass es nicht gespeichert werden kann. Charaktere und Chats werden weiterhin gespeichert, Änderungen an Modulen jedoch nicht, bis neu geladen wird, und sie gehen verloren, wenn die App geschlossen wird. Neu laden verwirft sie zusammen mit allem anderen, was in diesem Tab noch nicht gespeichert ist; alternativ kann weitergearbeitet werden.",
         "moduleEditedKeep": "Weiterarbeiten (Änderungen an Modulen werden nicht gespeichert, bis neu geladen wird)",
         "moduleNotSaved": "Das Modul \"{name}\" kann nicht gespeichert werden. Charaktere und Chats werden weiterhin gespeichert, Änderungen an Modulen jedoch nicht, bis \"{name}\" gelöscht oder ersetzt wird, und sie gehen verloren, wenn die App geschlossen oder neu geladen wird."
-    }
+    },
+    "comfyWorkflow": "Workflow (API)",
+    "comfyWorkflowInvalidJson": "Ungültige Workflow-Datei. Es muss ein gültiges JSON sein."
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

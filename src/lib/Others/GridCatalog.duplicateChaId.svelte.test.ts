@@ -321,7 +321,7 @@ describe('GridCatalog acts on the row that was clicked, even when two characters
         await teardown(target, app)
     })
 
-    test('when B specifically is removed from the list before the confirms resolve, nothing happens to A', async () => {
+    test('when B specifically is removed from the list before the confirm resolves, nothing happens to A', async () => {
         DBState.db = buildDb([makeCharacter('dup-id', 'A'), makeCharacter('dup-id', 'B')])
         const { target, app } = mountGridCatalog()
         clickLayoutButton(target, 1) // list view
@@ -329,8 +329,8 @@ describe('GridCatalog acts on the row that was clicked, even when two characters
         let call = 0
         alertConfirmSpy.mockImplementation(async () => {
             call += 1
-            if (call === 2) {
-                // B itself is gone by the time the second confirm resolves --
+            if (call === 1) {
+                // B itself is gone by the time the move-to-Trash confirm resolves --
                 // e.g. removed by another action while this dialog was open.
                 // A, sharing the same chaId, is still present.
                 DBState.db.characters = DBState.db.characters.filter((c) => c.name !== 'B')

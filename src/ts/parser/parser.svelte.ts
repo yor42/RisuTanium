@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import type { Config, ElementHook, UponSanitizeAttributeHook, UponSanitizeElementHook } from 'dompurify';
 import markdownit from 'markdown-it'
 import { replaceThoughtsBlocks } from './thoughts';
 import { appVer, getCurrentCharacter, getDatabase, type Database, type character, type customscript, type groupChat, type triggerscript } from '../storage/database.svelte';
@@ -59,7 +60,10 @@ md.disable(['code'])
 mdHighlight.disable(['code'])
 mdLiteral.disable(['code', 'entity'])
 
-DOMPurify.addHook("uponSanitizeElement", (node: HTMLElement, data) => {
+type Purifier = typeof DOMPurify
+
+// The chat-body instances and the default instance share these hook functions and their registration order.
+const trimElementHook: UponSanitizeElementHook = (node: HTMLElement, data) => {
     if (data.tagName === "iframe") {
        const src = node.getAttribute("src") || "";
        if (!src.startsWith("https://www.youtube.com/embed/")) {
@@ -87,14 +91,14 @@ DOMPurify.addHook("uponSanitizeElement", (node: HTMLElement, data) => {
             node.setAttribute("decoding", "async")
         }
     }
-});
+}
 
 export { DEFERRED_IMAGE_PLACEHOLDER_SRC }
 
 // Set for the synchronous body of one `trimMarkdown` call that asked for large asset images to wait for the load queue.
 let deferLargeAssetImagesActive = false
 
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+const deferredImageHook: ElementHook = (node) => {
     if(!deferLargeAssetImagesActive || node.nodeName !== 'IMG'){
         return
     }
@@ -107,9 +111,9 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
         node.setAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE, src)
         node.setAttribute('src', DEFERRED_IMAGE_PLACEHOLDER_SRC)
     }
-});
+}
 
-DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
+const trimAttributeHook: UponSanitizeAttributeHook = (node, data) => {
     if(deferLargeAssetImagesActive && data.attrName === DEFERRED_IMAGE_SRC_ATTRIBUTE){
         // Only the hook above may put this attribute in the output; an author's would be promoted as a real source.
         data.keepAttr = false
@@ -153,15 +157,24 @@ DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
             break
         }
     }
-})
+}
 
-DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+const keepLocalMediaSrcHook: UponSanitizeAttributeHook = (node, data) => {
     if (['IMG', 'SOURCE', 'VIDEO', 'AUDIO', 'STYLE'].includes(node.nodeName) && data.attrName === 'src') {
         if (data.attrValue.startsWith('blob:') || data.attrValue.startsWith('asset:')) {
             data.forceKeepAttr = true;
         }
     }
-});
+}
+
+function registerTrimHooks(purifier: Purifier){
+    purifier.addHook('uponSanitizeElement', trimElementHook)
+    purifier.addHook('afterSanitizeAttributes', deferredImageHook)
+    purifier.addHook('uponSanitizeAttribute', trimAttributeHook)
+    purifier.addHook('uponSanitizeAttribute', keepLocalMediaSrcHook)
+}
+
+registerTrimHooks(DOMPurify)
 
 
 const replacements = [
@@ -997,6 +1010,33 @@ const trimPurifyConfig = {
     ADD_ATTR: ["allow", "allowfullscreen", "frameborder", "scrolling", "risu-btn", "risu-ctrl", 'risu-form', 'risu-trigger', 'risu-mark', 'risu-id', 'x-hl-lang', 'x-hl-text'],
 }
 
+const trimPurifyDomConfig: Config & { RETURN_DOM: true } = { ...trimPurifyConfig, RETURN_DOM: true }
+
+// Chat bodies are sanitized on dedicated instances configured once with setConfig, so the config is not
+// re-parsed per call. The default instance is never setConfig'd, because its other callers pass per-call configs.
+// Creation is lazy so that importing this module needs only `addHook` from the default instance.
+let chatHtmlPurifier: Purifier | null = null
+let chatDomPurifier: Purifier | null = null
+
+function createTrimPurifier(cfg: Config): Purifier{
+    const purifier = DOMPurify(window)
+    registerTrimHooks(purifier)
+    purifier.setConfig(cfg)
+    return purifier
+}
+
+function trimHtmlPurifier(): Purifier{
+    return chatHtmlPurifier ??= createTrimPurifier(trimPurifyConfig)
+}
+
+function trimDomPurifier(): Purifier{
+    return chatDomPurifier ??= createTrimPurifier(trimPurifyDomConfig)
+}
+
+export function trimPurifiersForTests(){
+    return { html: trimHtmlPurifier(), dom: trimDomPurifier(), config: trimPurifyConfig, domConfig: trimPurifyDomConfig }
+}
+
 /**
  * Sanitizes `data`. With `deferLargeAssetImages` (Android chat bodies that scan for the result) an `<img>` whose `src` is
  * a whole-read asset URL (or an Android Blob inlay image URL registered with its size) of 8 MiB or more keeps that URL in `data-risu-deferred-src` and shows a placeholder source,
@@ -1024,7 +1064,7 @@ function sanitizeTrimmed(data:string){
     // risu-style is in ADD_TAGS, so cards, model output and user scripts can
     // author one directly. Only its position in the parsed tree is relied on.
     if(!data.includes('<risu-style')){
-        return DOMPurify.sanitize(data, trimPurifyConfig)
+        return trimHtmlPurifier().sanitize(data)
     }
 
     // Decoded CSS must never be handed back to the HTML sanitizer as <style>
@@ -1034,10 +1074,9 @@ function sanitizeTrimmed(data:string){
     // place instead, so the CSS never re-enters the HTML parser at all.
     // RETURN_DOM hands back the sanitized <body>, typed as Node. It is null only
     // for empty input, which the guard above already excludes.
-    const root = DOMPurify.sanitize(data, {
-        ...trimPurifyConfig,
-        RETURN_DOM: true,
-    }) as HTMLElement | null
+    // The instance already holds this config and ignores the per-call argument; it is passed only so the
+    // overload is typed as returning the DOM.
+    const root = trimDomPurifier().sanitize(data, trimPurifyDomConfig) as HTMLElement | null
     if(!root){
         return ''
     }
