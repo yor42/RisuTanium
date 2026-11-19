@@ -26,7 +26,8 @@ export const UNIT_RECORD_CAP = 2_000
 export type UnitRecordRead =
     | { status: 'ok', value: SweepRecord, version: number }
     | { status: 'absent' | 'unreadable', version: number }
-    | { status: 'too-new' | 'io-failed' }
+    | { status: 'too-new' }
+    | { status: 'io-failed' }
 
 /** The outcome of a record write: written, refused by a version check (on which key), or not known. */
 export type UnitRecordWrite = 'written' | { conflict: 'record' | 'commit' | 'fence' } | 'unknown'
