@@ -23,6 +23,13 @@ const YELLOW_ON_DARK = 'background:#ffff00;color:#111111'
 const RULE_S = /MC-1569/
 
 const reasons = (area: ThemeArea, css: string): string[] => lintAreaPack(area, css, 'probe').errors.map((e) => e.why)
+// Rule E-2 (MC-2309): the reason text every E-2 refusal carries. The helpers use only the public lint, so they fail by assertion on a base without the rule.
+const E2_WHY = /may reach at most 2 px past its element/
+const refusedOnlyByE2 = (area: ThemeArea, css: string): boolean => {
+    const result = lintAreaPack(area, css, 'probe')
+    return !result.ok && result.errors.length > 0 && result.errors.every((e) => E2_WHY.test(e.why))
+}
+const e2Count = (area: ThemeArea, css: string): number => lintAreaPack(area, css, 'probe').errors.filter((e) => E2_WHY.test(e.why)).length
 const refusedBySuperset = (area: ThemeArea, css: string): boolean => {
     const result = lintAreaPack(area, css, 'probe')
     return !result.ok && result.errors.some((e) => RULE_S.test(e.why))
@@ -762,10 +769,7 @@ describe('Rule P: painting over a control', () => {
             ['G1 readable ring in the same block', 'chat', send('box-shadow:inset 0 0 0 2px #ffffff')],
             ['G1 readable ring in a focus block that states both colours', 'chat', `${SEND}:focus-visible{${YELLOW_ON_DARK};box-shadow:inset 0 0 0 2px #ffffff}`],
             ['G1c focus-only ring, text set elsewhere', 'chat', `${SEND}{${YELLOW_ON_DARK}}${SEND}:focus-visible{box-shadow:inset 0 0 0 2px #ffffff}`],
-            ['G2 outer shadow in the text colour', 'chat', send('box-shadow:0 0 0 64px #111111')],
-            ['G2 outer shadow in currentcolor', 'chat', send('box-shadow:0 2px 8px currentcolor')],
             ['G3 box-shadow none', 'chat', send('box-shadow:none')],
-            ['G3 box-shadow inherit', 'chat', send('box-shadow:inherit')],
             ['G3 text-shadow unset', 'chat', send('text-shadow:unset')],
             ['G3 thickness inherit', 'chat', send('text-decoration-thickness:inherit')],
             ['G4 underline', 'chat', send('text-decoration:underline')],
@@ -778,25 +782,15 @@ describe('Rule P: painting over a control', () => {
             ['G5 thick', 'chat', send('text-decoration-thickness:thick')],
             ['G5 thin', 'chat', send('text-decoration-thickness:thin')],
             ['G5 medium', 'chat', send('text-decoration-thickness:medium')],
-            ['G6 readable glow', 'chat', send('text-shadow:0 0 6px #ffff00')],
-            ['G6 three readable glows', 'chat', send(`text-shadow:${Array(3).fill('0 0 6px #ffff00').join(',')}`)],
-            ['G6 white glow', 'chat', send('text-shadow:0 0 8px #ffffff')],
             ['G7 blur 2px', 'chat', send('text-shadow:0 0 2px #111111')],
             ['G7 blur 0.125rem', 'chat', send('text-shadow:0 0 0.125rem #111111')],
-            ['G7 hard offset', 'chat', send('text-shadow:3px 3px 0 #111111')],
-            ['G8 one translucent halo over its own fill, 5.01:1', 'chat', send('text-shadow:0 0 6px rgb(17 17 17 / 0.5)')],
-            ['G10 safe part', 'chat', `${SAFE}{color:#111111;box-shadow:inset 0 0 0 4px #111111;text-shadow:0 0 6px #111111}`],
             ['G13 cap boundary, 64 x 64 = 4096', 'chat', hoverBlocks(64)],
-            ['G15 halo at 3.49:1', 'chat', send('text-shadow:0 0 6px #6a6a6a')],
             // R20: a text colour set only in a state, @media or context turns the app-text pairing off
             ['G16 conditional-only text colour, inset', 'chat', `${APP_TEXT}${SEND}{background:#808080;box-shadow:inset 0 0 0 64px #e0e0e0}${SEND}:hover{background:#808080;color:#000000}`],
-            ['G16b conditional-only text colour, halo', 'chat', `${APP_TEXT}${SEND}{background:#808080;text-shadow:0 0 6px #e0e0e0}${SEND}:hover{background:#808080;color:#000000}`],
             ['G16c dead-context form', 'chat', `@media (max-width:0px){${SEND}{background:#ffffff;color:#000000}}${SEND}{box-shadow:inset 0 0 0 64px #ffffff}`],
-            ['G17 outer layer with an unreadable colour', 'chat', send('box-shadow:0 2px 8px oklch(0.5 0.1 200)')],
             ['G18 thin-blur halo with an unreadable colour', 'chat', send('text-shadow:0 1px 0 oklch(0.5 0.1 200)')],
             ['G19 colour function in the shorthand', 'chat', send('text-decoration:underline rgb(17 17 17)')],
             ['G19 unreadable colour function in the shorthand', 'chat', send('text-decoration:underline oklch(0.5 0.1 200)')],
-            ['G20 readable halo over a readable inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px #ffffff;text-shadow:0 0 6px rgb(255 255 255 / 0.5)}`],
             ['K3 control: the fill-less block of K2 removed', 'chat', `${SEND}:focus-visible{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px rgb(255 255 255 / 0.3)}`],
             // an opaque top layer hides the layer beneath it
             ['G21 opaque top layer hides the translucent layer beneath', 'chat', `${SEND}{background:#000000;color:#767676;box-shadow:inset 0 0 0 64px #ffffff,inset 0 0 0 64px rgb(0 0 0 / 0.5)}`],
@@ -823,12 +817,39 @@ describe('Rule P: painting over a control', () => {
         })
     })
 
-    // The halo (or inset) is judged at its own colour, so a fade through the text's lightness is accepted residue (R26 and R26b, 2026-11-17 halo-fade answer, MC-2117).
-    describe('residue: a fade that crosses the text colour is accepted (GUARD)', () => {
+    // Rule E-2 (CHORE-738 stage 2, MC-2309) now refuses these stage-1 accepts, so the halo-fade residue (MC-2117) no longer decides any accepted
+    // chat or Studio pack; only an inset layer, which E-2 does not judge, keeps it. Each row keeps its fixture and says two things:
+    // the Rule P pass alone still finds nothing (SEAM GUARD, same before and after), and the whole pack is refused for the E-2 reason alone (REPRO,
+    // ok:true on the base).
+    describe('stage-1 accepts that the E-2 flat limit refuses (CHORE-738 stage 2, MC-2309)', () => {
         it.each([
+            ['G2 outer shadow in the text colour', 'chat', send('box-shadow:0 0 0 64px #111111')],
+            ['G2 outer shadow in currentcolor', 'chat', send('box-shadow:0 2px 8px currentcolor')],
+            ['G3 box-shadow inherit', 'chat', send('box-shadow:inherit')],
+            ['G6 readable glow', 'chat', send('text-shadow:0 0 6px #ffff00')],
+            ['G6 three readable glows', 'chat', send(`text-shadow:${Array(3).fill('0 0 6px #ffff00').join(',')}`)],
+            ['G6 white glow', 'chat', send('text-shadow:0 0 8px #ffffff')],
+            ['G7 hard offset', 'chat', send('text-shadow:3px 3px 0 #111111')],
+            ['G8 one translucent halo over its own fill, 5.01:1', 'chat', send('text-shadow:0 0 6px rgb(17 17 17 / 0.5)')],
+            ['G10 safe part', 'chat', `${SAFE}{color:#111111;box-shadow:inset 0 0 0 4px #111111;text-shadow:0 0 6px #111111}`],
+            ['G15 halo at 3.49:1', 'chat', send('text-shadow:0 0 6px #6a6a6a')],
+            ['G16b conditional-only text colour, halo', 'chat', `${APP_TEXT}${SEND}{background:#808080;text-shadow:0 0 6px #e0e0e0}${SEND}:hover{background:#808080;color:#000000}`],
+            ['G17 outer layer with an unreadable colour', 'chat', send('box-shadow:0 2px 8px oklch(0.5 0.1 200)')],
+            ['G20 readable halo over a readable inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px #ffffff;text-shadow:0 0 6px rgb(255 255 255 / 0.5)}`],
             ['H1 grey text on white with a black glow', 'chat', `${SEND}{background:#ffffff;color:#666666;text-shadow:0 0 6px #000000}`],
             ['H2 light-on-dark mirror', 'chat', `${SEND}{background:#000000;color:#808080;text-shadow:0 0 6px #ffffff}`],
             ['H1s Studio', 'studio', `${APPLY}{background:#ffffff;color:#666666;text-shadow:0 0 6px #000000}`],
+        ] as const)('%s', (_name, area, css) => {
+            // SEAM GUARD: Rule P and Rule S stay silent on this sheet, before and after.
+            expect(cascadePass(area, css), css).toEqual([])
+            // REPRO: the whole pack is refused for E-2 alone.
+            expect(refusedOnlyByE2(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+    })
+
+    // The inset is judged at its own colour, so a fade through the text's lightness is accepted residue (R26 and R26b, 2026-11-17 halo-fade answer, MC-2117).
+    describe('residue: a fade that crosses the text colour is accepted (GUARD)', () => {
+        it.each([
             ['H3 blurred inset under P1', 'chat', `${SEND}{background:#ffffff;color:#767676;box-shadow:inset 0 0 8px 12px #000000}`],
         ] as const)('%s', (_name, area, css) => {
             expect(acceptedPack(area, css), JSON.stringify(reasons(area, css))).toBe(true)
@@ -973,6 +994,197 @@ describe('Rule P: painting over a control', () => {
                 expect(stackCount(asLayers(colours), count - 1)).toBe(count)
                 expect(layerStacks(asLayers(colours), count - 1)).toBeNull()
             }
+        })
+    })
+})
+
+// Rule E-2 (CHORE-738 stage 2, MC-2309): in a chat or Studio sheet every outer box-shadow layer and every text-shadow layer may reach at most
+// 2 px past its element, whatever its colour and whatever part it sits on. Classes: REPRO = the pack is ok:true on the base and refused for the
+// E-2 reason alone now; GUARD = accepted or refused identically before and after. Every fixture is a pack stylesheet as an author writes one.
+describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)', () => {
+    const NOTICE = '[data-part="chat-ai-law-notice"]'
+    const STUDIO = '[data-part="studio"]'
+    const rep = (n: number, layer: string): string => Array.from({ length: n }, () => layer).join(',')
+    const E2_RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309)'
+    const INHERIT_WHY = `box-shadow: inherit copies the parent's shadow, which the check cannot measure; ${E2_RULE}`
+    const UNMEASURED = /cannot be measured/
+    const accepted = (area: ThemeArea, css: string): boolean => lintAreaPack(area, css, 'probe').ok
+    const whys = (area: ThemeArea, css: string): string[] => reasons(area, css)
+
+    const REFUSED: readonly (readonly [string, ThemeArea, string, RegExp | null])[] = [
+        ['E1 a control', 'chat', `${SEND}{box-shadow:0 0 0 64px #ffffff}`, null],
+        ['E2 a non-control neighbour', 'chat', `${NOTICE}{box-shadow:0 0 0 64px #ffffff}`, null],
+        ['E3 ancestor of every control', 'chat', '[data-part="chat-shell"]{box-shadow:0 0 0 64px #ffffff}', null],
+        ['E4 expression part', 'chat', '[data-part="chat-message-tts"]{box-shadow:0 0 0 64px #000000}', null],
+        ['E5 header fixture', 'chat', `[data-part="chat-header"]{background:transparent !important;color:#808080 !important}${NOTICE}{box-shadow:0 0 0 64px #303030}`, null],
+        ['E6 sidebar', 'chat', '[data-part="chat-sidebar"]{box-shadow:0 0 0 64px #000000}', null],
+        ['E7 Studio root', 'studio', `${STUDIO}{box-shadow:0 0 0 64px #000000}`, null],
+        ['E8 Studio forwarded name', 'studio', '[data-part="studio-form-desc"]{box-shadow:0 0 0 64px #000000}', null],
+        ['E9 a name that never renders', 'chat', '[data-part="chat-list-row"]{box-shadow:0 0 0 64px #ffffff}', null],
+        ['E10 inherited halo', 'chat', '[data-part="chat-message-list"]{text-shadow:0 0 12px #808080}', null],
+        ['E11 hard-offset text-shadow', 'chat', '[data-part="chat-message-text"]{text-shadow:3px 3px 0 #111111}', null],
+        ['E12 second layer', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,0 4px 8px #000000}`, /"0 4px 8px[^"]*" reaches 12 px/],
+        ['E13a --pack- value in a state', 'chat', `:root{--pack-s:0 0 0 1px #000000}html[data-input="hover"]{--pack-s:0 0 0 64px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+        ['E13b --pack- value in @media', 'chat', `:root{--pack-s:0 0 0 1px #000000}@media (min-width:1px){:root{--pack-s:0 0 0 64px #000000}}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+        ['E13c big value as the root default', 'chat', `:root{--pack-s:0 0 0 64px #000000}html[data-input="hover"]{--pack-s:0 0 0 1px #000000}${NOTICE}{box-shadow:var(--pack-s)}`, null],
+        ['E14 @media', 'chat', `@media (min-width:1px){${NOTICE}{box-shadow:0 0 0 64px #000000}}`, null],
+        ['E15 a state', 'chat', `${SEND}:hover{box-shadow:0 0 8px #000000}`, null],
+        ['E16 !important', 'chat', `${NOTICE}{box-shadow:0 0 0 64px #000000 !important}`, null],
+        ['E18 app token measured', 'chat', `${NOTICE}{box-shadow:var(--shadow-float)}`, /reaches 12 px/],
+        ['E19 transparent', 'chat', `${NOTICE}{box-shadow:0 0 0 64px transparent}`, null],
+        ['E20 currentcolor', 'chat', `${NOTICE}{box-shadow:0 0 0 64px currentcolor}`, null],
+        ['E21a 3 px from spread alone', 'chat', `${NOTICE}{box-shadow:0 0 0 3px #000000}`, null],
+        ['E21b 3 px from blur alone', 'chat', `${NOTICE}{box-shadow:0 0 3px #000000}`, null],
+        ['E21c 3 px from offset alone', 'chat', `${NOTICE}{box-shadow:3px 0 0 #000000}`, null],
+        ['E22a calc spread at its magnitude, inner negation', 'chat', `${NOTICE}{box-shadow:0 0 0 calc(-64px * -1) #000000}`, null],
+        ['E22b calc spread at its magnitude, outer negation', 'chat', `${NOTICE}{box-shadow:0 0 0 calc(64px * -1) #000000}`, null],
+        ['E23 outer focus ring over 2 px (decided cost)', 'chat', `${SEND}:focus-visible{box-shadow:0 0 0 3px #ffffff}`, null],
+        ['E24 rem at 16', 'chat', `${NOTICE}{box-shadow:0 0 0 0.25rem #000000}`, /reaches 4 px/],
+        ['E25 elevation idiom with a negative spread (decided cost)', 'chat', `${NOTICE}{box-shadow:0 2px 4px -4px #000000}`, /reaches 6 px/],
+        ['J1 juxtaposed colour function, box', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0)64px 0 0 0}`, UNMEASURED],
+        ['J6 juxtaposed, Studio', 'studio', `${STUDIO}{box-shadow:rgb(0 0 0)48px 0 0 0}`, UNMEASURED],
+        ['J8 juxtaposed, text', 'chat', `${NOTICE}{text-shadow:rgb(0 0 0)12px 0 0}`, UNMEASURED],
+        ['J10 juxtaposed calc', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0)calc(64px * -1) 0 0 0}`, UNMEASURED],
+        ['J11 juxtaposed in a second layer', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,hsl(0 0% 0%)64px 0 0 0}`, UNMEASURED],
+        ['J1s spaced control of J1', 'chat', `${NOTICE}{box-shadow:rgb(0 0 0) 64px 0 0 0}`, /reaches 64 px/],
+        ['W1 + length after a hex hash', 'chat', `${NOTICE}{box-shadow:#ffffff+64px 0 0 0}`, UNMEASURED],
+        ['W2 + length after an identifier', 'chat', `${NOTICE}{box-shadow:white+64px 0 0 0}`, UNMEASURED],
+        ['W3 . length after a hex hash', 'chat', `${NOTICE}{box-shadow:#ffffff.99rem 0 0 0}`, UNMEASURED],
+        ['W4 text, + length after currentcolor', 'chat', `${NOTICE}{text-shadow:currentcolor+12px 0 0}`, UNMEASURED],
+        ['W5 W1 on the Studio root', 'studio', `${STUDIO}{box-shadow:#ffffff+64px 0 0 0}`, UNMEASURED],
+        ['W6 W2 on the Studio root', 'studio', `${STUDIO}{box-shadow:white+64px 0 0 0}`, UNMEASURED],
+        ['W7 W3 on the Studio root', 'studio', `${STUDIO}{box-shadow:#ffffff.99rem 0 0 0}`, UNMEASURED],
+        ['W8 W4 on the Studio root', 'studio', `${STUDIO}{text-shadow:currentcolor+12px 0 0}`, UNMEASURED],
+        ['W9 in a second layer', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,#ffffff+64px 0 0 0}`, UNMEASURED],
+        ['W10 hidden blur', 'chat', `${NOTICE}{box-shadow:0 0 #ffffff+64px}`, UNMEASURED],
+        ['W11 through a --pack- value', 'chat', `:root{--pack-s:#ffffff+64px 0 0 0}${NOTICE}{box-shadow:var(--pack-s)}`, UNMEASURED],
+        ['W12 on chat-transcript', 'chat', '[data-part="chat-transcript"]{box-shadow:#ffffff+64px 0 0 0}', UNMEASURED],
+        ['W13 transparent', 'chat', `${NOTICE}{box-shadow:transparent+64px 0 0 0}`, UNMEASURED],
+        ['W14 spaced + control', 'chat', `${NOTICE}{box-shadow:red +64px 0 0 0}`, /reaches 64 px/],
+        ['RT1 pack :root override of an app token, box', 'chat', `:root{--focus-ring-w:60px}${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`, /reaches 60 px/],
+        ['RT2 the same, text', 'chat', `:root{--focus-ring-w:3px}${NOTICE}{text-shadow:0 0 var(--focus-ring-w) #000000}`, /reaches 3 px/],
+        ['RT3 the same, Studio', 'studio', `:root{--focus-ring-w:60px}${STUDIO}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`, /reaches 60 px/],
+        ['ST1 stacked blurred negative spread', 'chat', `${NOTICE}{box-shadow:${rep(300, '0 0 20px -18px #ffffff')}}`, /reaches 20 px/],
+        ['ST4 the same on chat-transcript', 'chat', `[data-part="chat-transcript"]{box-shadow:${rep(300, '0 0 64px -62px #ffffff')}}`, /reaches 64 px/],
+        ['ST5 one such layer', 'chat', `${NOTICE}{box-shadow:0 0 64px -62px #ffffff}`, null],
+    ]
+    describe('what is refused (REPRO: ok:true on the base, refused for the E-2 reason alone now)', () => {
+        it.each(REFUSED)('%s', (_id, area, css, re) => {
+            expect(refusedOnlyByE2(area, css), JSON.stringify(whys(area, css))).toBe(true)
+            if (re) expect(whys(area, css).some((why) => re.test(why)), `${re} against ${JSON.stringify(whys(area, css))}`).toBe(true)
+        })
+
+        it('E12b two over layers of one declaration give one error', () => {
+            expect(e2Count('chat', `${NOTICE}{box-shadow:0 0 0 3px #000000,0 0 0 4px #000000}`)).toBe(1)
+        })
+        it('E12c an unmeasurable layer followed by another bad layer gives one error', () => {
+            expect(e2Count('chat', `${NOTICE}{box-shadow:#000000+64px 0 0 0,0 0 0 64px #000000}`)).toBe(1)
+        })
+        it('E17 a selector list gives one error', () => {
+            expect(e2Count('chat', `${SAFE},${NOTICE}{box-shadow:0 0 0 64px #000000}`)).toBe(1)
+        })
+        it('I4 box-shadow: inherit !important is refused with exactly the inherit reason', () => {
+            expect(whys('chat', `${NOTICE}{box-shadow:inherit !important}`)).toEqual([INHERIT_WHY])
+        })
+        it('V1 4000 layers: one error, judged quickly', () => {
+            const css = `${NOTICE}{box-shadow:${rep(4000, '0 0 0 1px #000000')},0 0 0 3px #000000}`
+            const start = performance.now()
+            const count = e2Count('chat', css)
+            const ms = performance.now() - start
+            expect(count).toBe(1)
+            expect(ms).toBeLessThan(1000)
+        })
+        it('V2 2000 selector entries: one error, short, judged quickly', () => {
+            const css = `${Array.from({ length: 2000 }, () => `${NOTICE}:hover`).join(',')}{box-shadow:0 0 0 64px #000000}`
+            const start = performance.now()
+            const result = lintAreaPack('chat', css, 'probe')
+            const ms = performance.now() - start
+            const e2 = result.errors.filter((e) => E2_WHY.test(e.why))
+            expect(e2).toHaveLength(1)
+            expect(e2[0].selector.length + e2[0].why.length).toBeLessThanOrEqual(600)
+            expect(ms).toBeLessThan(1000)
+        })
+        it('V3 2000 declarations are deduped to one error per distinct reach', () => {
+            const css = Array.from({ length: 2000 }, (_v, i) => `@media (min-width:${i + 1}px){${NOTICE}{box-shadow:0 0 0 ${3 + (i % 60)}px #000000}}`).join('')
+            const start = performance.now()
+            const count = e2Count('chat', css)
+            const ms = performance.now() - start
+            expect(count).toBe(60)
+            expect(ms).toBeLessThan(2000)
+        })
+    })
+
+    const ACCEPTED: readonly (readonly [string, ThemeArea, string])[] = [
+        ['K1 box exactly 2 px', 'chat', `${NOTICE}{box-shadow:0 0 0 2px #000000}`],
+        ['K2 text blur exactly 2 px', 'chat', `${NOTICE}{text-shadow:0 0 2px #000000}`],
+        ['K3 text offsets 1px 1px blur 1px', 'chat', `${NOTICE}{text-shadow:1px 1px 1px #000000}`],
+        ['K4 negative offset -2px', 'chat', `${NOTICE}{box-shadow:-2px 0 0 #000000}`],
+        ['K6 hard negative spread floored at 0', 'chat', `${NOTICE}{box-shadow:0 0 0 -9px #000000}`],
+        ['K13 hard negative spread nets 2', 'chat', `${NOTICE}{box-shadow:-4px 0 0 -2px #000000}`],
+        ['K7 inset on a non-control part', 'chat', `${NOTICE}{box-shadow:inset 0 0 0 64px #ffffff}`],
+        ['K8 none', 'chat', `${NOTICE}{box-shadow:none;text-shadow:none}`],
+        ['K9 0.125rem', 'chat', `${NOTICE}{box-shadow:0 0 0 0.125rem #000000}`],
+        ['K10 hairline ring beside an inset', 'chat', `${NOTICE}{box-shadow:0 0 0 1px #000000,inset 0 0 0 64px #ffffff}`],
+        ['K11a box-shadow revert', 'chat', `${NOTICE}{box-shadow:revert}`],
+        ['K11b box-shadow revert-layer', 'chat', `${NOTICE}{box-shadow:revert-layer}`],
+        ['K11c box-shadow initial', 'chat', `${NOTICE}{box-shadow:initial}`],
+        ['K11d box-shadow unset', 'chat', `${NOTICE}{box-shadow:unset}`],
+        ['K12 text-shadow inherit', 'chat', `${NOTICE}{text-shadow:inherit}`],
+        ['K14 a whole colour function at the layer end', 'chat', `${NOTICE}{box-shadow:0 1px 1px rgb(0 0 0 / 0.2)}`],
+        ['WG1 hex with alpha digits', 'chat', `${NOTICE}{box-shadow:0 0 1px #0008}`],
+        ['WG2 named colour', 'chat', `${NOTICE}{box-shadow:0 0 2px rebeccapurple}`],
+        ['WG3 text, colour first', 'chat', `${NOTICE}{text-shadow:currentcolor 1px 1px 0}`],
+        ['WG4 oklch', 'chat', `${NOTICE}{box-shadow:0 0 0 2px oklch(0.5 0.1 200)}`],
+        ['WG5 hex first', 'chat', `${NOTICE}{box-shadow:#ffffff99 0 0 0 2px}`],
+        ['WG6 transparent', 'chat', `${NOTICE}{box-shadow:0 0 0 2px transparent}`],
+        ['WG7 rgb with slash alpha', 'chat', `${NOTICE}{box-shadow:0 1px 1px rgb(0 0 0 / 0.2)}`],
+        ['WG8 Studio hsl with alpha', 'studio', `${STUDIO}{box-shadow:0 0 2px hsl(0 0% 0% / 50%)}`],
+        ['RT4 :root override at exactly 2 px', 'chat', `:root{--focus-ring-w:2px}${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`],
+        ['RT5 the app value of --focus-ring-w', 'chat', `${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`],
+        ['I1 box-shadow none !important', 'chat', `${NOTICE}{box-shadow:none !important}`],
+        ['I2 box-shadow revert-layer !important', 'chat', `${NOTICE}{box-shadow:revert-layer !important}`],
+        ['I3 text-shadow inherit !important', 'chat', `${NOTICE}{text-shadow:inherit !important}`],
+        ['ST2 1000 stacked 0 0 2px (accepted residue: stacked blur tails)', 'chat', `${NOTICE}{box-shadow:${rep(1000, '0 0 2px #ffffff')}}`],
+        ['ST3 300 stacked text 0 0 2px (accepted residue: stacked blur tails)', 'chat', `${NOTICE}{text-shadow:${rep(300, '0 0 2px #ffffff')}}`],
+        ['O5a Home is not judged', 'home', '[data-part="home-card"]{box-shadow:0 0 0 64px #000000}'],
+        ['O5b Settings is not judged', 'settings', '[data-part="settings-index"]{box-shadow:0 0 0 64px #000000}'],
+        // accepted by the reader and by the engine; the browser drops the declaration, so nothing paints
+        ['F1 an unreadable-in-the-browser length is accepted and dropped', 'chat', `${NOTICE}{box-shadow:0 0 0 1.px #ffffff}`],
+    ]
+    describe('what stays accepted (GUARD: ok:true before and after)', () => {
+        it.each(ACCEPTED)('%s', (_id, area, css) => {
+            expect(accepted(area, css), JSON.stringify(whys(area, css))).toBe(true)
+        })
+    })
+
+    describe('a sheet another pass refuses reports exactly its own reasons and no E-2 reason (GUARD: same before and after)', () => {
+        it('O1 Rule SCOPE first', () => {
+            const found = whys('chat', `${STUDIO}{box-shadow:0 0 0 64px #000000}`)
+            expect(found.length).toBeGreaterThan(0)
+            expect(found.every((why) => /MC-1586/.test(why)), JSON.stringify(found)).toBe(true)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+        })
+        it('O2 the engine or Rule S first', () => {
+            const found = whys('chat', `${SEND}{${DARK}}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
+            expect(found.length).toBeGreaterThan(0)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+        })
+        it('O3 the live chain first', () => {
+            const found = whys('chat', `[data-part="chat-composer-host"]{padding-inline:64px}${NOTICE}{box-shadow:0 0 0 64px #000000}`)
+            expect(found.some((why) => /ancestor padding along the failed-card chain/.test(why)), JSON.stringify(found)).toBe(true)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+        })
+        it('O4 Rule P first', () => {
+            const found = whys('chat', `${SEND}{background:#ffffff;color:#000000;box-shadow:inset 0 0 0 64px #000000,0 0 0 64px #000000}`)
+            expect(found.some((why) => /MC-2072/.test(why)), JSON.stringify(found)).toBe(true)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
+        })
+        // Records a dependency: the engine's :root-only rule for settable tokens refuses this sheet before E-2 runs, so the E-2 pass
+        // sees only :root overrides and needs no attribute-scoped token resolution.
+        it('F2 GUARD: a settable app token written under an attribute selector is refused by the engine, not by E-2', () => {
+            const found = whys('chat', `html[data-layout="phone"]{--focus-ring-w:60px}${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`)
+            expect(found.some((why) => /a pack may set tokens only on :root/.test(why)), JSON.stringify(found)).toBe(true)
+            expect(found.some((why) => E2_WHY.test(why))).toBe(false)
         })
     })
 })
