@@ -1064,9 +1064,10 @@ describe('E-2: the flat 2 px limit on outer shadows (CHORE-738 stage 2, MC-2309)
         ['W12 on chat-transcript', 'chat', '[data-part="chat-transcript"]{box-shadow:#ffffff+64px 0 0 0}', UNMEASURED],
         ['W13 transparent', 'chat', `${NOTICE}{box-shadow:transparent+64px 0 0 0}`, UNMEASURED],
         ['W14 spaced + control', 'chat', `${NOTICE}{box-shadow:red +64px 0 0 0}`, /reaches 64 px/],
-        ['RT1 pack :root override of an app token, box', 'chat', `:root{--focus-ring-w:60px}${NOTICE}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`, /reaches 60 px/],
+        // --message-gap is a settable app token whose own ceiling (64 px) is above the probe value, so only E-2 refuses the sheet
+        ['RT1 pack :root override of an app token, box', 'chat', `:root{--message-gap:60px}${NOTICE}{box-shadow:0 0 0 var(--message-gap) #000000}`, /reaches 60 px/],
         ['RT2 the same, text', 'chat', `:root{--focus-ring-w:3px}${NOTICE}{text-shadow:0 0 var(--focus-ring-w) #000000}`, /reaches 3 px/],
-        ['RT3 the same, Studio', 'studio', `:root{--focus-ring-w:60px}${STUDIO}{box-shadow:0 0 0 var(--focus-ring-w) #000000}`, /reaches 60 px/],
+        ['RT3 the same, Studio', 'studio', `:root{--message-gap:60px}${STUDIO}{box-shadow:0 0 0 var(--message-gap) #000000}`, /reaches 60 px/],
         ['ST1 stacked blurred negative spread', 'chat', `${NOTICE}{box-shadow:${rep(300, '0 0 20px -18px #ffffff')}}`, /reaches 20 px/],
         ['ST4 the same on chat-transcript', 'chat', `[data-part="chat-transcript"]{box-shadow:${rep(300, '0 0 64px -62px #ffffff')}}`, /reaches 64 px/],
         ['ST5 one such layer', 'chat', `${NOTICE}{box-shadow:0 0 64px -62px #ffffff}`, null],
