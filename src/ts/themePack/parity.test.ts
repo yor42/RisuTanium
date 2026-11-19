@@ -317,12 +317,14 @@ const SCOPE_REFUSALS: readonly string[] = [
     'values REJECT: name-connection-warning|chat',
     'values REJECT: name-connection-warning|studio',
 ]
-// Rule E-2 (MC-2309): a chat or Studio stylesheet may not paint an outer shadow or a text-shadow more than 2 px past its element, so the
-// three corpus pairs below, which the reference accepts, are refused for that reason alone. None is a shipped pack or an own-area benign pair.
+// Rule E-2 (MC-2309, MC-2317): a chat or Studio stylesheet may not paint an outer shadow or a text-shadow more than 2 px past its element,
+// nor an inset shadow more than 2 px into it, so the four corpus pairs below, which the reference accepts, are refused for that reason alone.
+// The last is the sheet-root inset of 64 px. None is a shipped pack or an own-area benign pair.
 const E2_REFUSALS: readonly string[] = [
     'studio-hostile: P17|studio',
     'studio-hostile on Navy: P17|studio',
     'studio reach: R5 toast-box border 16px|studio',
+    'studio reach: R6 sheet-root border 16 + shadow 64|studio',
 ]
 const E2_WHY = /may reach at most 2 px past its element/
 describe('PT1: comment placement keeps a verdict (A19)', () => {
@@ -354,7 +356,7 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
         const fontPacks = flips.filter((f) => /H52|studio reach: R9/.test(f))
         const others = flips.filter((f) => !fontPacks.includes(f))
-        // REPRO for the E-2 entries: the base sweep holds 71 entries, this one 74.
+        // REPRO for the E-2 entries: the base sweep holds 74 entries, this one 75 (the R6 sheet-root inset).
         expect(others.sort()).toEqual([...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS].sort())
         // The census of system-font packs the reference accepts and the app refuses: a new one is a stop-and-report.
         expect(fontPacks).toHaveLength(9)
@@ -384,10 +386,10 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
     })
 
-    // REPRO: the E-2 census is 3 pairs of 3 inputs, each refused for the flat-limit reason alone.
-    it('the Rule E-2 census: 3 pairs of 3 inputs, none a shipped pack or an own-area benign pair', { timeout: 120_000 }, () => {
-        expect(E2_REFUSALS).toHaveLength(3)
-        expect(new Set(E2_REFUSALS.map((e) => e.split('|')[0])).size).toBe(3)
+    // REPRO: the E-2 census is 4 pairs of 4 inputs, each refused for the flat-limit reason alone.
+    it('the Rule E-2 census: 4 pairs of 4 inputs, none a shipped pack or an own-area benign pair', { timeout: 120_000 }, () => {
+        expect(E2_REFUSALS).toHaveLength(4)
+        expect(new Set(E2_REFUSALS.map((e) => e.split('|')[0])).size).toBe(4)
         for (const entry of E2_REFUSALS) {
             const [label, area] = entry.split('|')
             const input = inputs.find((i) => i.label === label)

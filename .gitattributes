@@ -20,3 +20,4 @@ src/ts/drive/tests/rtbGoldens/*.rtbseg binary
 src/ts/drive/tests/rtbGoldens/*.json text eol=lf
 src/ts/themePack/goldens/*.risutheme binary
 src/ts/themePack/fixtures/packs/*.risutheme binary
+src-tauri/tests/fixtures/native-reply-v1/** binary

@@ -1,5 +1,5 @@
 import { appFsMkdirAll } from "./storage/appFs"
-import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
+import { changeFullscreen, checkNullish, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import localforage from "localforage"
 import { v4 as uuidv4 } from 'uuid';
@@ -35,7 +35,6 @@ import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
-import { cleanRouteServedCacheOnce } from "./storage/routeCacheCleanup";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { startInlayCopy } from "./process/files/inlayCopy";
 import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
@@ -55,7 +54,6 @@ import { startAvatarThumbSweep } from "./media/avatarThumb";
 import {
     forageStorage,
     saveDb,
-    setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
 import { isTauri } from "./platform";
@@ -216,24 +214,6 @@ export async function loadData() {
                     }
                     throw error
                 }
-                // A page the service worker does not control yet reloads once to be controlled. That is decided after the
-                // store is selected (which may itself run the OPFS copy-back and its progress alert; a failed copy-back is
-                // attempted again by the next life) and before the profile is read or any boot prompt or notice is posted,
-                // so the life that reloads shows and consumes none of them and the next life does. A stale account profile
-                // never reaches the service worker: it ends at its own notice below.
-                if (!forageStorage.staleAccountProfile) {
-                    LoadingStatusState.text = "Checking Service Worker..."
-                    if (navigator.serviceWorker) {
-                        setUsingSw(true)
-                        if (await registerSw()) {
-                            await sleepForever()
-                            return
-                        }
-                    }
-                    else {
-                        setUsingSw(false)
-                    }
-                }
                 const store2Boot = await runStore2Boot()
                 if (store2Boot.kind === 'stopped') {
                     await sleepForever()
@@ -369,8 +349,7 @@ export async function loadData() {
                 // itself against any other alertStore write, and only its own OK
                 // acknowledges it. Acknowledging removes the three account-sync
                 // keys and reloads -- this page life never reaches
-                // characterURLImport, plugins, loadedStore or saveDb below, and
-                // it never registered the service worker above.
+                // characterURLImport, plugins, loadedStore or saveDb below.
                 if (forageStorage.staleAccountProfile) {
                     await noticesSettled()
                     void alertStaleAccountNotice().then(() => {
@@ -390,8 +369,6 @@ export async function loadData() {
                 localStorage.removeItem('dosync')
                 localStorage.removeItem('fallbackRisuToken')
 
-                // Never awaited: the clean-up must not delay the app.
-                void cleanRouteServedCacheOnce(typeof localStorage === 'undefined' ? null : localStorage)
                 if (getDatabase().didFirstSetup) {
                     characterURLImport()
                 }
@@ -402,9 +379,8 @@ export async function loadData() {
             }
             // Both boot branches reach here on the non-stale path of a life
             // that stays (the stale-profile notice above returns before this
-            // point, and so does a life that reloads for the service worker;
-            // the next boot's ordinary path runs it instead). Drops the leftovers
-            // of two upstream services this app does not offer: the
+            // point). Drops the leftovers of two upstream services this app does
+            // not offer: the
             // account-sync LocalForage instance named "risuaiAccountCached",
             // and the Google Drive backup's last-saved timestamp
             // (`risu_lastsaved`) and save/load flag (`localStorage['backup']`,
@@ -654,23 +630,6 @@ async function decodeMainFile(bytes: Uint8Array): Promise<{ tree: Database, stri
         const lenient = await decodeRisuSaveReporting(bytes)
         return { tree: lenient.db, strict: false, omitted: lenient.omitted }
     }
-}
-
-/**
- * Registers the service worker and initializes it. Answers whether it started a reload, which ends this page life.
- */
-async function registerSw(): Promise<boolean> {
-    await navigator.serviceWorker.register("/sw.js", {
-        scope: "/"
-    });
-    await sleep(100);
-    const da = await fetch('/sw/init');
-    if (!(da.status >= 200 && da.status < 300)) {
-        markAppInitiatedReload();
-        location.reload();
-        return true;
-    }
-    return false;
 }
 
 /**

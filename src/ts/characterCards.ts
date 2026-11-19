@@ -629,7 +629,7 @@ function pngCardOverLimit(chunks:PngLayoutChunk[], imageBytes:number, plainWebSt
             return language.cardFileEntryTooLarge(chunk.key, limitMiB)
         }
     }
-    //The image is built and saved as one value in page memory. On the browser's IndexedDB store it keeps the plain web limit, because a page without the service worker shows a bytes value as one base64 string; asset chunks stream in pieces and keep the store's limit.
+    //The image is built and saved as one value in page memory. On the browser's IndexedDB store it keeps the plain web limit, because the page shows a bytes value as one base64 string; asset chunks stream in pieces and keep the store's limit.
     const imageLimit = plainWebStore ? Math.min(limit, WEB_ASSET_LIMIT_BYTES) : limit
     return imageBytes > imageLimit ? language.cardImageTooLarge(Math.round(imageLimit / (1024 * 1024))) : null
 }
@@ -1012,7 +1012,6 @@ export async function handlePendingRealmLink(): Promise<void> {
 export const showRealmInfoStore:Writable<null|hubType> = writable(null)
 
 type ClassifiedImport = {kind: 'card'|'preset'|'module', name: string}
-type ShareIndexEntry = {key: string, name: string, type: string}
 
 //A file's kind is decided by its name suffix, compared without regard to case, whatever the form field or link it came from.
 //The returned name carries the lower-case suffix, which the preset importer still needs because it compares case-sensitively; `readCharacterFile` compares card suffixes in lower case itself.
@@ -1037,22 +1036,6 @@ function classifyImportFile(name:string, type:string):ClassifiedImport|null {
     //Octet-stream, zip and an empty type say nothing about the kind, so only these types stand in for a missing suffix.
     const typeSuffix = importTypeSuffixes[type.split(';')[0].trim().toLowerCase()]
     return typeSuffix ? {kind: 'card', name: name + typeSuffix} : null
-}
-
-//A share index lists only files stored under its own share id.
-function parseShareIndex(value:{files?: Partial<ShareIndexEntry>[]}|null, id:string):ShareIndexEntry[]|null {
-    if(!value || !Array.isArray(value.files)){
-        return null
-    }
-    const entries:ShareIndexEntry[] = []
-    const keyPattern = new RegExp(`^/sw/share/${id.replace(/[^0-9a-z-]/gi, '')}/[0-9]+$`)
-    for(const entry of value.files){
-        if(!entry || typeof entry.key !== 'string' || !keyPattern.test(entry.key) || typeof entry.name !== 'string' || typeof entry.type !== 'string'){
-            return null
-        }
-        entries.push({key: entry.key, name: entry.name, type: entry.type})
-    }
-    return entries
 }
 
 const CHUB_DOWNLOAD_URL = 'https://api.chub.ai/api/characters/download'
@@ -1219,15 +1202,6 @@ export async function characterURLImport() {
             alertError(error)
         }
     }
-    //A failure while receiving a share never stops the rest of the start-up work below.
-    const shareId = /^#share=([0-9]+-[0-9a-f-]+)$/i.exec(hash)?.[1]
-    if(shareId || hash === '#share-empty' || hash === '#share-failed'){
-        try {
-            await consumeShare(hash, shareId)
-        } catch (error) {
-            alertError(language.shareFailed)
-        }
-    }
     if ("launchQueue" in window) {
         //Every file is attempted; what did not import is shown once at the end. The consumer hands back the promise of that work.
         const handleFiles = (files:FileSystemFileHandle[]) => {
@@ -1247,57 +1221,6 @@ export async function characterURLImport() {
                 return handleFiles(files)
             }
         });
-    }
-
-    function clearShareHash() {
-        window.history.replaceState(null, '', location.pathname + location.search)
-    }
-
-    //Exactly one caller wins the claim of a share's index; every other caller finds nothing and imports nothing.
-    //The share's stored files are removed afterwards whether or not the imports succeeded.
-    async function consumeShare(shareHash:string, id:string|undefined) {
-        if(!id){
-            clearShareHash()
-            alertError(shareHash === '#share-empty' ? language.shareEmpty : language.shareFailed)
-            return
-        }
-        const base = `/sw/share/${id}`
-        let claim:Response
-        try {
-            claim = await fetch(`${base}/index`, {method: 'DELETE'})
-        } catch (error) {
-            clearShareHash()
-            alertError(language.shareFailed)
-            return
-        }
-        clearShareHash()
-        if(claim.status !== 200){
-            alertError(language.shareNotFound)
-            return
-        }
-        try {
-            let entries:ShareIndexEntry[]|null = null
-            try {
-                entries = parseShareIndex(await claim.json(), id)
-            } catch (error) {}
-            if(!entries){
-                alertError(language.shareInvalid)
-                return
-            }
-            const run = newImportArchiveRun()
-            await importFiles(entries.map((entry) => classifiedImport(entry.name, entry.name, entry.type, async (kind) => {
-                const res = await fetch(entry.key)
-                if(!res.ok){
-                    return null
-                }
-                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                return new File([await res.blob()], kind.name, {type: entry.type})
-            }, run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})))
-        } finally {
-            try {
-                await fetch(base, {method: 'DELETE'})
-            } catch (error) {}
-        }
     }
 
     function getFileName(res : Response) : string {

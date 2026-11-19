@@ -5,7 +5,6 @@
     import { restoreFromBinFile, restoreFromInternalBackup } from "src/ts/drive/settingsRestore";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import { exportAsDataset } from "src/ts/storage/exportAsDataset";
-    import StorageMaintenanceSettings from "./StorageMaintenanceSettings.svelte";
 </script>
 
 <h2 class="mb-2 text-2xl font-bold mt-2">{language.backupAndFiles}</h2>
@@ -48,8 +47,6 @@
 <Button onclick={exportAsDataset} className="mt-2">
     {language.exportAsDataset}
 </Button>
-
-<StorageMaintenanceSettings />
 
 <!--
 

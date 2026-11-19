@@ -30,7 +30,6 @@ vi.mock('src/ts/drive/backuplocal', () => ({
 vi.mock('src/ts/drive/internalBackup', () => ({ loadInternalBackup: loaders.loadInternalBackup }))
 vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
 vi.mock('src/ts/storage/exportAsDataset', () => ({ exportAsDataset: vi.fn() }))
-vi.mock('./StorageMaintenanceSettings.svelte', () => ({ default: () => { } }))
 
 import { language } from 'src/lang'
 import UserSettings from './UserSettings.svelte'

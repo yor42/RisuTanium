@@ -23,7 +23,7 @@ import { beginInFlight, inFlightKinds, type InFlightKind } from '../inFlightWork
 /** Names the kind of work in an entry, so entries can be told apart. */
 export type BusyKind =
     | 'charImage' | 'charEmotion' | 'groupImage' | 'assetAdd' | 'imageAdd'
-    | 'import' | 'export' | 'backupSave' | 'backupLoad' | 'cleanup' | 'integrityCheck'
+    | 'import' | 'export' | 'backupSave' | 'backupLoad' | 'cleanup'
     | 'hypaBulk' | 'mcpWrite' | 'themePack'
 
 export interface BusyEndedRecord {

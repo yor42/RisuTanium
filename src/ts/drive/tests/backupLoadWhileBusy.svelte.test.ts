@@ -1116,9 +1116,6 @@ async function startHeldSendBk(): Promise<{ running: Promise<boolean> }> {
 
 //#region UserSettings buttons
 
-vi.mock('src/lib/Setting/Pages/StorageMaintenanceSettings.svelte', () => ({
-    default: (_target: unknown) => ({ destroy: () => {} }),
-}))
 
 vi.mock(import('src/ts/storage/exportAsDataset'), () => ({
     exportAsDataset: vi.fn(),

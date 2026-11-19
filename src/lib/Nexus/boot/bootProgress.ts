@@ -112,7 +112,6 @@ const legacyText: readonly (readonly [string, BootStep, Partial<BootProgress>?])
     ['Decoding Local Save File...', 'library'],
     ['Reading Backup Files...', 'library', { recovering: true, detail: recoveringLabel }],
     ['Checking Update...', 'app'],
-    ['Checking Service Worker...', 'storage'],
     ['Listing Stored Files...', 'files'],
     ['Loading Plugins...', 'plugins'],
     ['Checking For Format Update...', 'finish'],
