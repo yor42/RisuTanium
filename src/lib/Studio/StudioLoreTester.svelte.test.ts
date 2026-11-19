@@ -61,7 +61,7 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
-// This file tests the lore tester; the lazily loaded toggles view and its import graph are covered by StudioToggleCombined.svelte.test.ts.
+// The toggles view is stubbed: its unawaited lazy import would evaluate the parser/moduleRefList graph during later rows (vite-node TDZ race).
 vi.mock('./StudioToggleCombined.svelte', () => ({ default: () => {} }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
