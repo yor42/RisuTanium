@@ -56,6 +56,7 @@ import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
 import { reloadOntoRestoredState } from "./internalBackup";
 import { saveFirst, SAVE_FIRST_BOUND_MS } from "./storeRestore";
 import { getPageStorageMode } from "../storage/pageStorageMode";
+import { getLegacyPartialSave, legacyPartialExportText } from "../storage/legacyPartialSave";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
 import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
 import { emptyImportFacts, outcomeOfBootFinish, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
@@ -810,12 +811,32 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
     return message
 }
 
+const FULL_BACKUP_WAIT = "Saving local backup..."
+const PARTIAL_BACKUP_WAIT = "Saving partial local backup..."
+
+/**
+ * The first prompt of a whole-save `.bin` export from a read-only legacy page that opened from a backup or without what it
+ * could not read: whether to save that copy at all, asked before the cold-storage collection and before any writer opens. Answers true when the
+ * page holds no such fact. An accepted prompt shows the export's own wait again, as the prompt took it off the screen.
+ */
+async function askLegacyPartialExport(session: ExportSession, waitText: string): Promise<boolean> {
+    const fact = getLegacyPartialSave()
+    if (fact === null) {
+        return true
+    }
+    if (!await confirmDuringExport(session, true, () => alertConfirm(legacyPartialExportText(fact)))) {
+        return false
+    }
+    session.gate.wait(waitText)
+    return true
+}
+
 export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
     return withBusy('backupSave', (busy) => runExport((session) => writeLocalBackup(session, options), busy))
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait("Saving local backup...")
+    session.gate.wait(FULL_BACKUP_WAIT)
     // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
     noteImportPhase('export start')
     if (MEASURE) {
@@ -842,6 +863,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     assertNoForeignModuleStubs(db.modules, 'writeLocalBackup')
     // The snapshot keeps a stub only when the page has no residency; such a stub must not reach an encoder even if it has left the live list since.
     assertNoModuleStubs(modules, 'writeLocalBackup snapshot')
+    if (!await askLegacyPartialExport(session, FULL_BACKUP_WAIT)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
     if (MEASURE) {
         exportResidentsAtStart = residentCharacterCount(db.characters)
     }
@@ -963,7 +987,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
-        alertError('Failed')
+        // A dismissed save dialog is the person's decline, not a failure: the export's own wait comes off the screen and
+        // nothing is reported, as for a `.rtb`.
+        session.gate.clear()
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
     noteImportPhase('export writer opened')
@@ -1186,7 +1212,7 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait("Saving partial local backup...")
+    session.gate.wait(PARTIAL_BACKUP_WAIT)
     clearModuleSnapshotMarks()
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
@@ -1197,6 +1223,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // Same invariant as writeLocalBackup: only a foreign marker left in the live list stops the export here, before any read or file.
     assertNoForeignModuleStubs(db.modules, 'writePartialLocalBackup')
     assertNoModuleStubs(modules, 'writePartialLocalBackup snapshot')
+    if (!await askLegacyPartialExport(session, PARTIAL_BACKUP_WAIT)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
     const collected = await collectBackupColdStorage(db, options)
     if(!await confirmDuringExport(session, collected.unavailableKeys.length > 0, () => confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners))){
         return { status: 'declined', cause: 'incomplete-data-declined' }
@@ -1313,7 +1342,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
-        alertError('Failed')
+        // A dismissed save dialog is the person's decline, not a failure: the export's own wait comes off the screen and
+        // nothing is reported, as for a `.rtb`.
+        session.gate.clear()
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
 

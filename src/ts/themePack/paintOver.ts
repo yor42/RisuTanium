@@ -184,3 +184,69 @@ export function thicknessProblems(value: string, shorthand: boolean): ThicknessP
     }
     return problems
 }
+
+/** The furthest a box-shadow or text-shadow layer may reach past its element, or an inset box-shadow layer into it, in px (MC-2309, MC-2318). */
+export const MAX_OUTER_REACH_PX = 2
+
+const HEX = /^#[0-9a-f]{3,8}$/
+const IDENT = /^[a-z][a-z-]*$/
+
+/** True when a top-level `)` brings the bracket depth back to 0 before the token's last character: the token is two juxtaposed values. */
+function closesEarly(token: string): boolean {
+    let depth = 0
+    for (let i = 0; i < token.length; i++) {
+        const c = token[i]
+        if (c === '(') depth++
+        else if (c === ')') {
+            if (depth > 0) depth--
+            if (depth === 0 && i < token.length - 1) return true
+        }
+    }
+    return false
+}
+
+/**
+ * The shape of one top-level token of a shadow layer: `inset`, a readable px or rem length, or a colour (a hex hash, a plain
+ * identifier or one whole colour function). The reader measures only these shapes; any other shape is unmeasurable, never
+ * harmless, which is this module's own doctrine. A shape cannot hide a length: an identifier or a hash holds only name code
+ * points, a whole function holds its arguments, and a length match is one numeric token, or a number followed by a `.` delim
+ * that makes the browser drop the declaration.
+ */
+function tokenShape(token: string): 'inset' | 'length' | 'colour' | null {
+    if (closesEarly(token)) return null
+    if (token === 'inset') return 'inset'
+    if (isLengthLike(token)) {
+        const measure = readLength(token)
+        return measure && !measure.em ? 'length' : null
+    }
+    if (HEX.test(token) || IDENT.test(token)) return 'colour'
+    if (COLOUR_FUNCTION.test(token) && token.endsWith(')')) return 'colour'
+    return null
+}
+
+/**
+ * The per-layer geometric bound, in px, of how far one shadow layer paints past its element's border box, or for an inset layer
+ * into its element from the padding edge: the larger offset plus the blur plus, for a box, the spread. A blurred layer's faint
+ * tail passes this bound and stacked layers accumulate it. A negative spread does not offset a blur: with blur above 0 it counts
+ * as 0, with blur 0 it shrinks the layer. rem is read at 16 px. Null
+ * means the layer is unmeasurable (a leftover var(), an em or percentage length, a wrong length count or a token of no listed
+ * shape) and the caller refuses it.
+ */
+export function shadowReach(layer: string, kind: 'box' | 'text'): number | null {
+    if (layer.includes('var(')) return null
+    const tokens = tokensOf(layer)
+    if (tokens.some((token) => tokenShape(token) === null)) return null
+    const lengths = tokens.filter((token) => tokenShape(token) === 'length')
+    if (lengths.length < 2 || lengths.length > (kind === 'box' ? 4 : 3)) return null
+    const values: number[] = []
+    for (const token of lengths) {
+        const measure = readLength(token)
+        if (!measure || measure.em) return null
+        values.push(measure.value)
+    }
+    const [x, y] = values
+    const blur = values[2] ?? 0
+    let spread = values[3] ?? 0
+    if (kind === 'box' && lengths.length === 4 && lengths[3].startsWith('-')) spread = blur > 0 ? 0 : -spread
+    return Math.max(0, Math.max(x, y) + blur + (kind === 'box' ? spread : 0))
+}

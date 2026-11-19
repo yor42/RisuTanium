@@ -14,6 +14,7 @@
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
     import { JUMP_HOLD_MS, WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
+    import { createUpwardSpeed, nextLoadEstimate, olderPrefetchDistance } from '../../ts/chatShell/olderPrefetch'
     import { beginReturn, createReturnAnchorHold, fallbackRest, returnPlan, type ReturnOutcome, type ReturnRecord } from '../../ts/chatShell/returnAnchor'
     import { STEP_HOLD_MOUNT_CAP, createStepHold, heldPin, pagesForPin, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
@@ -813,6 +814,10 @@
 
     // Older rows mount above the reader: the distance from the bottom is restored explicitly, not left to CSS scroll anchoring.
     let pendingBottomDistance: number | null = null
+    // The reader's recent upward speed and the measured time of the last load: the older rows start loading while the reader is still
+    // far enough from the top that the load ends before that speed reaches it.
+    const olderSpeed = createUpwardSpeed()
+    let olderLoadMs: number | null = null
     // Mounted rows that lie wholly below or above the viewport; the window can unmount them without the reader seeing it.
     // Classified on the row containers, so a skipped (content-visibility) older row is not laid out to be measured.
     function offscreenCounts(scroller: HTMLElement): { newer: number, older: number } {
@@ -841,6 +846,7 @@
         pendingBottomDistance = current.scrollHeight - current.scrollTop - (slide.trimmedNewer > 0 ? heightOfNewest(start, slide.trimmedNewer) : 0)
         loadPages = slide.pages
         if (!folded) bottom = slide.bottom
+        const startedAt = performance.now()
         const restore = () => {
             const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
             // A step that started after the rows mounted owns the position: a restore from the old bottom distance would undo its correction.
@@ -853,6 +859,8 @@
         void afterFlush().then(() => {
             if (destroyed) { pendingBottomDistance = null; return }
             const { target: placed } = restore()
+            // The load ends at the first restore: the mount and the layout it forced are the main-thread stall the next lead has to cover.
+            olderLoadMs = nextLoadEstimate(olderLoadMs, performance.now() - startedAt)
             if (typeof requestAnimationFrame === 'undefined') { pendingBottomDistance = null; realign.start(); return }
             // The second pass is queued before the window's frame check, so it runs first in the next frame. A correction the window
             // makes lands exactly on the first pass's position, and a second pass that ran after it would restore the old bottom distance over it.
@@ -905,9 +913,11 @@
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
         follower?.sync()
+        olderSpeed.sample(host.scrollTop, performance.now())
         // The travel to the newest message owns the position: older and newer rows are not loaded under it.
         if (!traveling) {
-            if (host.scrollTop < 100 && win.hasOlder) loadOlder()
+            // A realign window that holds a position keeps the near-top trigger, so an early load cannot replace its hold.
+            if (win.hasOlder && host.scrollTop < olderPrefetchDistance({ clientHeight: host.clientHeight, speed: olderSpeed.speed(), loadMs: olderLoadMs, held: realign.isActive() })) loadOlder()
             else loadNewer()
         }
         readPosition()

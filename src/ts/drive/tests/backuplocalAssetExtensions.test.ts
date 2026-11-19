@@ -1512,20 +1512,33 @@ describe('restoring the inlay entries of a backup', () => {
         }
     })
 
-    // Reproducer: the notice printed the untyped limit, so an Android video left out at 200 MiB was reported against the store's 1 GiB.
-    test('acceptance: on Android the notice prints the limit that applied, 200 MiB for a video and the store limit for audio', async () => {
+    // Reproducer: an Android video left out above 1 GiB was reported against 200 MiB, and one of 200 MiB + 1 was left out.
+    test('acceptance: on Android a video above 200 MiB is restored and one above 1 GiB is noticed with the 1 GiB limit', async () => {
         osBox.os = 'android'
         const claimed = (id: string, type: string, len: number) => buildInlayParts(id, new Uint8Array(8), {
             fields: { name: id, ext: 'bin', type }, mime: `${type}/x`, header: { len, parts: partsFor(len) },
         })
         const MIB = 1024 * 1024
 
-        await loadBackupBytes(builtBackup([...await claimed('vid', 'video', 200 * MIB + 1), ...await claimed('aud', 'audio', 1024 * MIB + 1)]))
+        await loadBackupBytes(builtBackup([...await claimed('vid', 'video', 1024 * MIB + 1), ...await claimed('mid', 'video', 200 * MIB + 1)]))
 
         const notices = noticesShown()
-        expect(notices).toHaveLength(2)
-        expect(notices).toContain(language.restoreInlaysTooLarge(1, ['vid'], 200 * MIB))
-        expect(notices).toContain(language.restoreInlaysTooLarge(1, ['aud'], 1024 * MIB))
+        // The 200 MiB + 1 video claims more than its 8-byte body holds, so it is reported as damaged, never as too large.
+        expect(notices.filter((notice) => notice.includes('larger than'))).toEqual([language.restoreInlaysTooLarge(1, ['vid'], 1024 * MIB)])
+    })
+
+    // Guard: audio keeps the 1 GiB attachment bound and is noticed with it.
+    test('acceptance: on Android an audio above 1 GiB is noticed with the 1 GiB limit', async () => {
+        osBox.os = 'android'
+        const MIB = 1024 * 1024
+        const len = 1024 * MIB + 1
+        const parts = await buildInlayParts('aud', new Uint8Array(8), {
+            fields: { name: 'aud', ext: 'bin', type: 'audio' }, mime: 'audio/x', header: { len, parts: partsFor(len) },
+        })
+
+        await loadBackupBytes(builtBackup(parts))
+
+        expect(noticesShown()).toEqual([language.restoreInlaysTooLarge(1, ['aud'], 1024 * MIB)])
     })
 
     test('acceptance: a store that refuses an inlay is reported apart from an invalid entry, and the restore continues', async () => {

@@ -4,6 +4,7 @@ import { fillLang } from "src/lang/fill"
 import { alertClear, alertMd, alertWait, type alertData } from "../alert"
 import { alertStore } from "../stores.svelte"
 import { alertIdle, promptWaiting } from "../alertPrompts"
+import { taskShown } from "../alertTask.svelte"
 import { doingChat, sendChat, type PreviewResult, type SendChatArg } from "./index.svelte"
 import { isComposerWindowOpen } from "./generationOwnership.svelte"
 import { watchSelectedChat } from "./previewSelectionWatch.svelte"
@@ -26,10 +27,12 @@ function dropPendingResult(): void {
  * (shown, or covered by a toast or notice), nor while an alert is up: the
  * preview's wait notice would replace that alert, and the waiter of a notice
  * would then read the `none` that ends the preview as its own close. A toast
- * does not block, unless it covers a waiting prompt.
+ * does not block, unless it covers a waiting prompt. Nor while a task card is
+ * shown: the preview's wait would make the card step aside, and the preview
+ * would generate beside the task.
  */
 export function previewMayStart(): boolean {
-    if (get(doingChat) || isComposerWindowOpen() || promptWaiting()) {
+    if (get(doingChat) || isComposerWindowOpen() || promptWaiting() || taskShown()) {
         return false
     }
     const type = get(alertStore).type

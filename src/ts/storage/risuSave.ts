@@ -1293,10 +1293,13 @@ export class RisuSaveDecoder {
     // of an unknown type, or that names a remote file or a directory entry
     // which cannot be read from the file itself, rejects the whole decode. No
     // block is ever answered from the block cache in this mode.
-    // `salvage` reads like the default mode except that it never consults the
-    // block cache and records every block it cannot use in `omitted`, keyed by
-    // block name. Framing, root and version failures still throw. Set only by
-    // `salvageRisuSave`; it is exclusive with `strict`.
+    // Every non-strict mode records each block it cannot use in `omitted`,
+    // keyed by block name; recording never changes what is installed.
+    // `salvage` differs from the default mode only by never consulting the
+    // block cache. In the default mode a block the cache stands in for is not
+    // recorded: it is in the tree. Framing, root and version failures still
+    // throw. `salvage` is set only by `salvageRisuSave`; it is exclusive with
+    // `strict`.
     readonly omitted = new Map<string, SalvageOmittedBlock>();
     constructor(private hasChecksums: boolean = false, private strict: boolean = false, private salvage: boolean = false) {}
 
@@ -1307,15 +1310,13 @@ export class RisuSaveDecoder {
         }
     }
 
-    // A block of a type this reader cannot use: strict rejects the decode, salvage records it as `other`, the default
-    // mode drops it.
+    // A block of a type this reader cannot use: strict rejects the decode, every other mode records it as `other` and
+    // drops it.
     private refuseUnknownBlock(block: { name: string, type: RisuSaveType }) {
         if(this.strict){
             throw new Error(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`);
         }
-        if(this.salvage){
-            this.recordOmitted(block.name, 'other', new Error(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`));
-        }
+        this.recordOmitted(block.name, 'other', new Error(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`));
         console.warn(`Not Implemented RisuSaveType: ${block.type} for ${block.name}`);
     }
 
@@ -1386,7 +1387,8 @@ export class RisuSaveDecoder {
                 if (error instanceof CriticalBlockError || this.strict) {
                     throw error
                 }
-                if (this.salvage && framed) {
+                if (framed) {
+                    // Removed again by `assembleBlocks` when the block cache stands in for this block.
                     this.recordOmitted(framed.name, salvageKindOfType(framed.type), error);
                 }
                 continue
@@ -1462,9 +1464,16 @@ export class RisuSaveDecoder {
                                                     content: dirData.data
                                                 });
                                                 loadedBlocks.add(dirKey);
+                                                // A block the cache stands in for is in the tree, so it is not missing; this also
+                                                // clears the record the framing failure of the same block made.
+                                                this.omitted.delete(dirKey);
+                                            }
+                                            else{
+                                                this.recordOmitted(dirKey, salvageKindOfName(dirKey), new Error(`Directory block "${dirKey}" is not present in the file or the block cache.`));
                                             }
                                         } catch (error) {
                                             console.error(`Error loading directory block ${dirKey}:`, error);
+                                            this.recordOmitted(dirKey, salvageKindOfName(dirKey), error);
                                         }
                                     }
                                 }
@@ -1539,8 +1548,8 @@ export class RisuSaveDecoder {
                             if(this.strict){
                                 throw new Error(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash.`);
                             }
+                            this.recordOmitted(this.blocks[key].name, 'character', new Error(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash.`));
                             if(this.salvage){
-                                this.recordOmitted(this.blocks[key].name, 'character', new Error(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash.`));
                                 break;
                             }
                             console.warn(`Remote pointer for "${remoteInfo.name}" has an unrecognized version (${remoteInfo.v}) or a v2 pointer missing its hash; skipping.`);
@@ -1557,8 +1566,8 @@ export class RisuSaveDecoder {
                             if(this.strict){
                                 throw new RisuSaveReadError(fileName, error);
                             }
+                            this.recordOmitted(this.blocks[key].name, 'character', error);
                             if(this.salvage){
-                                this.recordOmitted(this.blocks[key].name, 'character', error);
                                 break;
                             }
                             console.error(`Error reading remote file ${fileName}:`, error);
@@ -1568,8 +1577,8 @@ export class RisuSaveDecoder {
                             if(this.strict){
                                 throw new Error(`Remote file ${fileName} not found.`);
                             }
+                            this.recordOmitted(this.blocks[key].name, 'character', new Error(`Remote file ${fileName} not found.`));
                             if(this.salvage){
-                                this.recordOmitted(this.blocks[key].name, 'character', new Error(`Remote file ${fileName} not found.`));
                                 break;
                             }
                             console.warn(`Remote file ${fileName} not found.`);
@@ -1628,9 +1637,7 @@ export class RisuSaveDecoder {
                 if(this.blocks[key].type === RisuSaveType.ROOT){
                     throw new Error('Failed to decode root block, cannot proceed with decoding RisuSave data');
                 }
-                if(this.salvage){
-                    this.recordOmitted(this.blocks[key].name, salvageKindOfType(this.blocks[key].type), error);
-                }
+                this.recordOmitted(this.blocks[key].name, salvageKindOfType(this.blocks[key].type), error);
             }
         }
         if(!rootProcessed){
@@ -1740,7 +1747,25 @@ export async function decodeRisuSave(data:Uint8Array, options?: { strict?: boole
     }
 }
 
-async function decodeRisuSaveBranches(data:Uint8Array, options?: { strict?: boolean }){
+/**
+ * The lenient decode of `decodeRisuSave`, with the blocks of the file it could not use. The tree is exactly the one
+ * `decodeRisuSave(data)` returns; only a RISUSAVE file the block decoder read to the end reports anything, so the msgpack
+ * formats, and a file whose block decoder threw and an older reader then read, give an empty map. A block the block cache
+ * stood in for is in the tree and is not listed.
+ */
+export async function decodeRisuSaveReporting(data: Uint8Array): Promise<{ db: Database, omitted: Map<string, SalvageOmittedBlock> }> {
+    let omitted = new Map<string, SalvageOmittedBlock>()
+    try {
+        const db: Database = await decodeRisuSaveBranches(data, undefined, (found) => { omitted = found })
+        return { db, omitted }
+    }
+    finally {
+        decode(msgpackNil)
+    }
+}
+
+/** `onBlocksDecoded` is told the omitted blocks of a block decoder that returned, before its tree is handed back. */
+async function decodeRisuSaveBranches(data:Uint8Array, options?: { strict?: boolean }, onBlocksDecoded?: (omitted: Map<string, SalvageOmittedBlock>) => void){
     try {
         const header = checkHeader(data)
         // The body is a view of `data`: no branch writes it, but in the raw
@@ -1781,7 +1806,9 @@ async function decodeRisuSaveBranches(data:Uint8Array, options?: { strict?: bool
                     throw new Error(`Unrecognized RisuSave format version byte: ${versionByte}`);
                 }
                 const decoder = new RisuSaveDecoder(versionByte === 1, options?.strict === true);
-                return await decoder.decode(data);
+                const tree = await decoder.decode(data);
+                onBlocksDecoded?.(decoder.omitted);
+                return tree;
             }
         }
         if (options?.strict) {

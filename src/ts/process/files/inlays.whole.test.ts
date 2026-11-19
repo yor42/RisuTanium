@@ -18,11 +18,11 @@ import { createMemoryByteStore, type MemoryByteStore, type MemoryByteStoreOption
 import { getInlayDraftPreview, getInlayRender, setInlayAsset, type InlayAsset } from './inlays'
 import { cachedInlayRender, dropInlayRender } from './inlayRenderCache'
 import { withInlayLock, writeAppInlay } from './inlayStore'
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, wholeReadBytesOfUrl } from 'src/ts/storage/assetUrlGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, DESKTOP_WHOLE_READ_URL_LIMIT_BYTES, wholeReadBytesOfUrl } from 'src/ts/storage/assetUrlGate'
 
 //#region module mocks
 
-const h = vi.hoisted(() => ({ android: true }))
+const h = vi.hoisted(() => ({ android: true, desktop: false }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -37,7 +37,7 @@ vi.mock('localforage', () => ({
 
 vi.mock(import('src/ts/storage/tauriByteTransport'), async (importOriginal) => {
     const actual = await importOriginal()
-    return { ...actual, isAndroidTransport: () => h.android }
+    return { ...actual, isAndroidTransport: () => h.android, isDesktopTransport: () => h.desktop }
 })
 
 vi.mock(import('src/ts/globalApi.svelte'), () => {
@@ -130,6 +130,7 @@ const estimateOf = (length: number) => Math.floor(length * 0.75)
 
 beforeEach(() => {
     h.android = true
+    h.desktop = false
     URL.createObjectURL = vi.fn(() => 'blob:test/created')
     URL.revokeObjectURL = vi.fn()
     resetBusyActionsForTest()
@@ -250,6 +251,65 @@ describe('an inlay above the whole-read limit on Android', () => {
         expect(render.source).toBe('store-url')
         expect(render.url).not.toBe('')
         expect(await getInlayDraftPreview(id)).toMatchObject({ kind: 'media', type: 'image' })
+    })
+})
+
+describe('an inlay image above the desktop whole-read limit', () => {
+    const LIMIT = DESKTOP_WHOLE_READ_URL_LIMIT_BYTES
+    const bodyKeys = (keys: string[]) => keys.filter((key) => key.startsWith('inlays/b-'))
+    const named = (name: string, data: Blob, type: 'image' | 'audio' | 'video' = 'image'): InlayAsset => ({ ...asset(data, type), name })
+
+    beforeEach(() => {
+        h.android = false
+        h.desktop = true
+    })
+
+    test('reproducer: an image over the limit is withheld by name and size, asks the store for no URL and reads no body', async () => {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, named('big.png', blobOfSize(LIMIT / MIB, 1, 'image/png')))
+        store.urlRequests.length = 0
+        store.reads.length = 0
+        store.blobReads.length = 0
+
+        const render = (await getInlayRender(id))!
+
+        expect(render).toEqual({ type: 'image', url: '', source: 'withheld', name: 'big.png', size: LIMIT + 1 })
+        expect(store.urlRequests).toEqual([])
+        expect(bodyKeys(store.reads)).toEqual([])
+        expect(bodyKeys(store.blobReads)).toEqual([])
+        expect(URL.createObjectURL).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: the draft preview of an image over the limit is a chip with its name and size', async () => {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, named('big.png', blobOfSize(LIMIT / MIB, 1, 'image/png')))
+
+        expect(await getInlayDraftPreview(id)).toEqual({ kind: 'file', name: 'big.png', size: LIMIT + 1 })
+    })
+
+    test('guard: an image of exactly the limit keeps its URL and a media preview', async () => {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, named('edge.png', blobOfSize(LIMIT / MIB, 0, 'image/png')))
+
+        const render = (await getInlayRender(id))!
+
+        expect(render.source).toBe('store-url')
+        expect(render.url).not.toBe('')
+        expect(await getInlayDraftPreview(id)).toMatchObject({ kind: 'media', type: 'image' })
+    })
+
+    test.each([['video', 'video/mp4'], ['audio', 'audio/mpeg']] as const)('guard: a %s over the limit keeps its URL', async (type, mime) => {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, named('big.bin', blobOfSize(LIMIT / MIB, 1, mime), type))
+
+        const render = (await getInlayRender(id))!
+
+        expect(render.source).toBe('store-url')
+        expect(render.url).not.toBe('')
     })
 })
 

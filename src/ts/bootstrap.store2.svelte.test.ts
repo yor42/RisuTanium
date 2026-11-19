@@ -44,11 +44,9 @@ const bootText = vi.hoisted(() => ({ current: '', log: [] as string[] }))
 
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
-const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async () => ({ status: 'ok' as const })))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async () => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
 const moduleUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
-const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 const sleepForeverMock = vi.hoisted(() => vi.fn(async () => { }))
@@ -172,10 +170,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: readColdStorageItemMock,
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: verifyAssetCacheEntryMock,
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -228,7 +222,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: vi.fn(async (): Promise<number[]> => []),
     buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: setUsingSwMock,
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
     AppendableBuffer: class {
@@ -472,11 +465,9 @@ beforeEach(() => {
     platformState.isNodeServer = false
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
-    verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
     saveDbMock.mockReset().mockResolvedValue(undefined)
     moduleUpdateMock.mockReset().mockResolvedValue(undefined)
-    setUsingSwMock.mockReset()
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     putBackMock.mockReset()
     checkUpdateMock.mockReset().mockResolvedValue(undefined)
@@ -720,10 +711,10 @@ describe('loadData(): a normal store2 profile', () => {
         await loadData()
         await settle()
 
-        const first = tauri ? 'Checking Files...' : 'Checking Service Worker...'
+        const first = tauri ? ['Checking Files...'] : []
         const middle = tauri ? ['Checking Update...', 'Listing Stored Files...'] : ['Listing Stored Files...']
         expect(writtenTexts()).toEqual([
-            first, 'Reading Save File...', 'Decoding Save File...', ...middle,
+            ...first, 'Reading Save File...', 'Decoding Save File...', ...middle,
             'Loading Plugins...', 'Checking For Format Update...', 'Updating States...',
         ])
         expect(textAt('dispatch')).toBe('Reading Save File...')
@@ -731,7 +722,7 @@ describe('loadData(): a normal store2 profile', () => {
         const steps = trackedSteps(writtenTexts())
         expect(steps).toEqual(tauri
             ? ['storage', 'save', 'library', 'app', 'files', 'plugins', 'finish', 'finish']
-            : ['storage', 'save', 'library', 'files', 'plugins', 'finish', 'finish'])
+            : ['save', 'library', 'files', 'plugins', 'finish', 'finish'])
         expectNeverDecreasing(steps)
     })
 })

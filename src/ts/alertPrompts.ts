@@ -2,6 +2,7 @@ import { get, writable, type Readable } from 'svelte/store'
 import type { alertData } from './alert'
 import { coversPage, escapeActionFor } from './alertEscape'
 import { alertStore } from './stores.svelte'
+import { taskShown } from './alertTask.svelte'
 
 /**
  * Prompts: the alerts whose caller waits for an answer. A prompt takes only its
@@ -252,9 +253,9 @@ export function promptWaiting(): boolean {
     return current !== null || queue.length > 0 || isPromptType(get(alertStore).type)
 }
 
-/** The one predicate for every key and Back path: a prompt is waiting, or an alert covers the page. A toast does not cover it. */
+/** The one predicate for every key and Back path: a prompt is waiting, an alert covers the page, or a task card is up. A toast does not cover it. */
 export function pageCovered(): boolean {
-    return promptWaiting() || coversPage(get(alertStore).type)
+    return promptWaiting() || coversPage(get(alertStore).type) || taskShown()
 }
 
 /** Whether a prompt is the value on screen. */

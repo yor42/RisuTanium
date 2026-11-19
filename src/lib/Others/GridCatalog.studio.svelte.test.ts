@@ -356,7 +356,7 @@ describe('List tab: the row control', { timeout: 60_000 }, () => {
             expect(a.getAttribute('title')).toBe(language.studioOpenInNamed('Char A'))
             // The trash button follows it in the same row, so the two sit together.
             expect(a.nextElementSibling?.tagName).toBe('BUTTON')
-            expect(a.nextElementSibling?.getAttribute('data-part')).toBeNull()
+            expect(a.nextElementSibling?.getAttribute('data-part')).toBe('library-trash')
         })
     })
 

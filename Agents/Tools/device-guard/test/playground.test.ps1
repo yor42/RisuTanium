@@ -62,17 +62,18 @@ foreach ($s in $pg) {
     foreach ($lc in @(@('-d'), @('-v', 'threadtime', '-d'), @('-b', 'all', '-d'), @('-s', 'Tag', '-d'), @('-d', '-t', '500'), @('--pid', '5', '-d'), @('*:W', '-d'), @('-T', '100'), @('-t', '50', 'Tag:V', '*:S'))) {
         Test-Allowed ($s + ' logcat ' + ($lc -join ' ')) $s (@('logcat') + $lc)
     }
+    # Flipped by the Note 9 profile (r3, FC-5): logcat needs no -d/-t/-T on these serials; the refusal stays pinned on emulator-5580 below.
     foreach ($lc in @(@(), @('Tag:V', '*:S'), @('-v', 'threadtime'), @('--pid', '5'), @('-s', 'Tag'), @('-b', 'all'))) {
-        Test-Refused ($s + ' logcat without -d/-t/-T refused: ' + ($lc -join ' ')) $s (@('logcat') + $lc) '97'
+        Test-Allowed ($s + ' logcat without -d/-t/-T allowed (Note 9 profile): ' + ($lc -join ' ')) $s (@('logcat') + $lc)
     }
-    # pm clear is pinned to the hard-coded id, whatever --own-package says
+    # Flipped by the Note 9 profile (r3, FC-6, DZ-6): pm clear of the test app needs no --own-package; any other package is a danger zone (89).
     Reset-Calls; & node $GuardPath --serial $s --log $log --own-package io.example.other -- shell 'pm clear io.example.other' 2>$null | Out-Null
-    Test-Result ($s + ' pm clear of a --own-package other than the pinned id') ($LASTEXITCODE -eq 97 -and (Get-Calls).Count -eq 0) ('-> ' + $LASTEXITCODE)
+    Test-Result ($s + ' pm clear of another package is DZ-6 (89), whatever --own-package says') ($LASTEXITCODE -eq 89 -and (Get-Calls).Count -eq 0) ('-> ' + $LASTEXITCODE)
     Reset-Calls; & node $GuardPath --serial $s --log $log --own-package io.example.other -- shell ('pm clear ' + $pkg) 2>$null | Out-Null
-    Test-Result ($s + ' pm clear pinned id with a different --own-package') ($LASTEXITCODE -eq 97 -and (Get-Calls).Count -eq 0) ('-> ' + $LASTEXITCODE)
+    Test-Result ($s + ' pm clear of the test app passes with a different --own-package') ($LASTEXITCODE -eq 0 -and (Get-Calls).Count -eq 1) ('-> ' + $LASTEXITCODE)
     Reset-Calls; & node $GuardPath --serial $s --log $log -- shell ('pm clear ' + $pkg) 2>$null | Out-Null
-    Test-Result ($s + ' pm clear pinned id with no --own-package') ($LASTEXITCODE -eq 97 -and (Get-Calls).Count -eq 0) ('-> ' + $LASTEXITCODE)
-    Test-Refused ($s + ' pm clear pinned id with no --own-package override: other package') $s @('shell', 'pm clear io.github.yor42.risutanium.dev') '97'
+    Test-Result ($s + ' pm clear of the test app passes with no --own-package') ($LASTEXITCODE -eq 0 -and (Get-Calls).Count -eq 1) ('-> ' + $LASTEXITCODE)
+    Test-Refused ($s + ' pm clear of a package that only starts with the test app id is DZ-6 (89)') $s @('shell', 'pm clear io.github.yor42.risutanium.dev') '89'
     $rc = Invoke-Guard $s @('exec-out', 'screencap', '-p') @('--out', $shot)
     $got = Get-Calls
     Test-Result ($s + ' full-frame screencap, no crop') ($rc -eq '0' -and $got.Count -eq 1 -and $got[0] -eq (ConvertTo-CompactJson @('-s', $s, 'exec-out', 'screencap', '-p'))) ('-> ' + $rc)
@@ -141,7 +142,9 @@ Test-Refused 'state file and log claiming playground change nothing (emulator-55
 Test-Refused 'state file and log claiming playground change nothing (restricted)' 'R58M12345AB' @('shell', 'input tap 1 2') '95' @('--state', $st)
 Remove-Item $log, $st -ErrorAction SilentlyContinue
 
-# ---- still refused on playground serials ----
+# ---- still refused on emulator-5580 (r11 allowlist) ----
+# These were refused (97) on the playground serials too until the Note 9 profile (r3) replaced the allowlist there. They are retargeted
+# to emulator-5580, where the same forms keep exit 97; the Note 9 answers (allowed, 89 or 97) live in note9-profile.test.ps1.
 $stillRefused = @(
     @('uninstall', 'io.example.app'), @('shell', 'pm uninstall io.example.app'), @('shell', 'pm uninstall -k io.example.app'),
     @('shell', 'pm clear io.example.other'), @('shell', 'pm clear com.android.chrome'), @('shell', 'pm clear'), @('shell', ('pm clear ' + $pkg + ' extra')),
@@ -162,17 +165,18 @@ $stillRefused = @(
     @('-s', 'emulator-5580', 'shell', 'input tap 1 2'), @('-s', '2ac80128013f7ece', 'shell', 'input tap 1 2'), @('-P', '5038', 'shell', 'input tap 1 2'), @('shell', 'input tap 1 2', 'extra'),
     @('shell', 'getprop', 'ro.x'), @('tcpip', '5555'), @('connect', 'x:5555'), @('sideload', 'x.zip'), @('shell', 'am start -a android.intent.action.VIEW -d https://example.com'), @('shell', 'wm size 1x1 extra')
 )
-foreach ($s in $pg) {
-    foreach ($a in $stillRefused) { Test-Refused ($s + ' still refuses ' + ($a -join ' | ')) $s $a '97' }
-}
+foreach ($a in $stillRefused) { Test-Refused ('emulator-5580 still refuses ' + ($a -join ' | ')) 'emulator-5580' $a '97' }
 # install and the r11 verbs are unchanged: install of a local .apk is r11 behaviour, install of anything else is refused.
 Test-Refused 'install of a non-apk stays refused' $pg[0] @('install', 'x.zip') '97'
-# r11 itself allows `svc wifi|data enable|disable` and `settings get|put|delete` on full-access serials; playground adds nothing to them
-# (open question for the parent: refuse svc/settings on playground serials too?). Pinned here so a change is deliberate.
+# r11 itself allows `svc wifi|data enable|disable` and `settings get|put|delete` on full-access serials. emulator-5580 keeps that parity
+# (not protected, Q-EMU), pinned here so a change is deliberate; on the playground serials the Note 9 profile (r3) refuses the enable
+# direction and the radio keys as danger zone DZ-8 (89).
 foreach ($s in $pg) {
-    Test-Allowed ($s + ' svc wifi enable is unchanged r11 behaviour') $s @('shell', 'svc wifi enable')
-    Test-Allowed ($s + ' settings put global is unchanged r11 behaviour') $s @('shell', 'settings put global airplane_mode_on 0')
+    Test-Refused ($s + ' svc wifi enable is DZ-8 (89) on the Note 9 profile') $s @('shell', 'svc wifi enable') '89'
+    Test-Refused ($s + ' settings put global airplane_mode_on 0 is DZ-8 (89) on the Note 9 profile') $s @('shell', 'settings put global airplane_mode_on 0') '89'
 }
+Test-Allowed 'emulator-5580 svc wifi enable is unchanged r11 behaviour' 'emulator-5580' @('shell', 'svc wifi enable')
+Test-Allowed 'emulator-5580 settings put global is unchanged r11 behaviour' 'emulator-5580' @('shell', 'settings put global airplane_mode_on 0')
 
 # ---- no failed-locate input lock, no typing grant ----
 foreach ($s in $pg) {
@@ -210,14 +214,14 @@ foreach ($s in $pg) {
     Remove-Item $log -ErrorAction SilentlyContinue
     Invoke-Guard $s @('shell', 'input tap 1 2') | Out-Null
     Invoke-Guard $s @('shell', 'input keyevent KEYCODE_BACK') | Out-Null
-    Invoke-Guard $s @('shell', 'dumpsys') | Out-Null
+    Invoke-Guard $s @('shell', 'dumpsys battery') | Out-Null
     $text = Get-LogText
     Test-Result ($s + ' log tags an extended call') ($text -match ('PLAYGROUND serial=' + $s + ' allow=extended adb \["shell","input tap 1 2"\]')) ''
     Test-Result ($s + ' log tags an r11 call') ($text -match ('PLAYGROUND serial=' + $s + ' allow=r11 adb \["shell","input keyevent KEYCODE_BACK"\]')) ''
     Test-Result ($s + ' log still holds intent and exit lines') (($text -match 'intent: adb -s ' + $s) -and ($text -match 'exit=0: adb -s ' + $s)) ''
     Remove-Item $log
     Invoke-Guard $s @('shell', 'pm clear io.example.other') | Out-Null
-    Test-Result ($s + ' a refused call is logged REFUSED, with no PLAYGROUND allow line') (((Get-LogText) -match 'REFUSED/ERROR exit=97') -and -not ((Get-LogText) -match 'PLAYGROUND')) ''
+    Test-Result ($s + ' a refused call is logged REFUSED (89, DZ-6), with no PLAYGROUND allow line') (((Get-LogText) -match 'REFUSED/ERROR exit=89') -and -not ((Get-LogText) -match 'PLAYGROUND')) ''
 }
 Remove-Item $log -ErrorAction SilentlyContinue
 foreach ($s in @('emulator-5580', 'R58M12345AB')) {
@@ -233,16 +237,16 @@ foreach ($s in $pg) {
     Reset-Calls
     & node $GuardPath --serial $s --log $log --own-package 'io.example.app' --own-ports '9465' -- shell ('dumpsys gfxinfo ' + $pkg + ' reset') 2>$null | Out-Null
     $rcOther = [string]$LASTEXITCODE
-    Test-Result ($s + ' gfxinfo reset refused when --own-package is another app') ($rcOther -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rcOther)
+    Test-Result ($s + ' gfxinfo reset passes when --own-package is another app (pin lifted by the Note 9 profile)') ($rcOther -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rcOther)
     Reset-Calls
     & node $GuardPath --serial $s --log $log --own-ports '9465' -- shell ('dumpsys gfxinfo ' + $pkg + ' reset') 2>$null | Out-Null
     $rcNone = [string]$LASTEXITCODE
-    Test-Result ($s + ' gfxinfo reset refused without --own-package') ($rcNone -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rcNone)
-    # The package is pinned to RisuTanium: a matching --own-package for another app does not open the reset.
+    Test-Result ($s + ' gfxinfo reset passes without --own-package (pin lifted by the Note 9 profile)') ($rcNone -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rcNone)
+    # The pin is lifted: any app's frame counters can be reset on the Note 9s (state-changing dumpsys arguments are allowed there).
     Reset-Calls
     & node $GuardPath --serial $s --log $log --own-package 'io.example.app' --own-ports '9465' -- shell 'dumpsys gfxinfo io.example.app reset' 2>$null | Out-Null
     $rcPin = [string]$LASTEXITCODE
-    Test-Result ($s + ' gfxinfo reset refused for another app even when --own-package matches it') ($rcPin -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rcPin)
+    Test-Result ($s + ' gfxinfo reset of another app passes (pin lifted by the Note 9 profile)') ($rcPin -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $rcPin)
 }
 
 Remove-Item Env:ADBG_FAKE_ADB_SCRIPT; Remove-Item Env:FAKE_CALLS

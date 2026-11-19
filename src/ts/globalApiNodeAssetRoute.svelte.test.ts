@@ -1,7 +1,8 @@
 /**
  * `getFileSrc` on a Node-hosted page: an `assets/` key that the server's asset
- * route serves gets the store's `urlFor` URL without reading a byte, with the
- * service worker on or off. Everything else keeps its existing path. This file
+ * route serves gets the store's `urlFor` URL without reading a byte, whether or
+ * not the browser exposes a service worker. Everything else keeps its existing
+ * path and no `/sw/` URL is ever requested or returned. This file
  * drives the REAL `globalApi.svelte.ts`; the modules it reaches are mocked with
  * the set that `globalApiFileCacheAv3.svelte.test.ts` proves loads it. The
  * platform flags and the page store are controlled per test.
@@ -216,7 +217,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 
 //#endregion
 
-import { getFileSrc, setUsingSw, __fileCacheTestHooks } from 'src/ts/globalApi.svelte'
+import { getFileSrc, __fileCacheTestHooks } from 'src/ts/globalApi.svelte'
 
 const ROUTE_URL = (loc: string) => `/api/asset/${Buffer.from(loc, 'utf-8').toString('hex')}?risu-auth=tok.en.sig`
 
@@ -231,7 +232,6 @@ beforeEach(() => {
     store.urlFor.mockReset()
     store.urlFor.mockImplementation(async (key: string) => ROUTE_URL(key))
     __fileCacheTestHooks.reset()
-    setUsingSw(false)
     fetchSpy = vi.fn(async () => new Response(JSON.stringify({ able: true })))
     vi.stubGlobal('fetch', fetchSpy)
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -239,17 +239,13 @@ beforeEach(() => {
 
 afterEach(() => {
     __fileCacheTestHooks.reset()
-    setUsingSw(false)
+    Reflect.deleteProperty(navigator, 'serviceWorker')
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
 })
 
 describe('getFileSrc on a Node-hosted page', () => {
-    test.each([
-        ['on plain HTTP', false],
-        ['with the service worker on', true],
-    ])('returns the route URL without reading the asset %s', async (_label, usingSw) => {
-        setUsingSw(usingSw)
+    test('returns the route URL without reading the asset', async () => {
         const loc = 'assets/0123abcd.png'
         expect(await getFileSrc(loc)).toBe(ROUTE_URL(loc))
         expect(store.read).not.toHaveBeenCalled()
@@ -261,13 +257,6 @@ describe('getFileSrc on a Node-hosted page', () => {
         const loc = 'assets/fallback.png'
         expect(await getFileSrc(loc)).toBe(`data:image/png;base64,${Buffer.from([1, 2, 3]).toString('base64')}`)
         expect(store.read).toHaveBeenCalledWith(loc)
-    })
-
-    test('guard: falls back to the service worker path when urlFor throws and the worker is on', async () => {
-        store.urlFor.mockRejectedValue(new Error('no key pair'))
-        setUsingSw(true)
-        const loc = 'assets/fallback-sw.png'
-        expect(await getFileSrc(loc)).toBe(`/sw/img/${Buffer.from(loc, 'utf-8').toString('hex')}`)
     })
 
     test('guard: falls back to the bytes when the store offers no urlFor', async () => {
@@ -296,16 +285,39 @@ describe('getFileSrc on a Node-hosted page', () => {
         expect(store.urlFor).not.toHaveBeenCalled()
     })
 
-    test('guard: a pure web page with the service worker on registers the bytes with the worker', async () => {
-        platform.isNodeServer = false
-        setUsingSw(true)
-        fetchSpy.mockImplementation(async (url: string) => (url.startsWith('/sw/check/')
-            ? new Response(JSON.stringify({ able: false }))
-            : new Response(null)))
-        const loc = 'assets/web-sw.png'
-        expect(await getFileSrc(loc)).toBe(`/sw/img/${Buffer.from(loc, 'utf-8').toString('hex')}`)
-        expect(store.urlFor).not.toHaveBeenCalled()
-        expect(store.read).toHaveBeenCalledWith(loc)
+    describe('G3 a page whose browser exposes a service worker (compatibility guard: passes before and after, because the earlier boot only set the worker flag after registering)', () => {
+        beforeEach(() => {
+            Object.defineProperty(navigator, 'serviceWorker', { value: { register: vi.fn(async () => {}) }, configurable: true })
+            vi.stubGlobal('isSecureContext', true)
+        })
+
+        const swFetches = () => fetchSpy.mock.calls.map((call) => String(call[0])).filter((url) => url.startsWith('/sw/'))
+
+        test('a route key gets the route URL with no read and no fetch', async () => {
+            const loc = 'assets/g3-route.png'
+            expect(await getFileSrc(loc)).toBe(ROUTE_URL(loc))
+            expect(store.read).not.toHaveBeenCalled()
+            expect(fetchSpy).not.toHaveBeenCalled()
+        })
+
+        test('a route key whose urlFor throws gets a data URL, not a /sw/ URL', async () => {
+            store.urlFor.mockRejectedValue(new Error('no key pair'))
+            expect(await getFileSrc('assets/g3-fallback.png')).toBe(`data:image/png;base64,${Buffer.from([1, 2, 3]).toString('base64')}`)
+            expect(swFetches()).toEqual([])
+        })
+
+        test('a non-route key gets a data URL from one store read', async () => {
+            expect(await getFileSrc('avatars/me.png')).toMatch(/^data:image\/png;base64,/)
+            expect(store.read).toHaveBeenCalledTimes(1)
+            expect(swFetches()).toEqual([])
+        })
+
+        test('a pure web page gets a data URL and requests no /sw/ URL', async () => {
+            platform.isNodeServer = false
+            expect(await getFileSrc('assets/g3-web.png')).toMatch(/^data:image\/png;base64,/)
+            expect(store.urlFor).not.toHaveBeenCalled()
+            expect(swFetches()).toEqual([])
+        })
     })
 
     test('guard: Tauri still takes the store URL for an assets key and the converted path for any other', async () => {
