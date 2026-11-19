@@ -1,4 +1,4 @@
-import { isAndroidTransport, statStoredSize } from './tauriByteTransport'
+import { isAndroidTransport, isDesktopTransport, statStoredSize } from './tauriByteTransport'
 
 /**
  * Above this stored size the Android asset protocol is not asked for a whole
@@ -9,6 +9,18 @@ import { isAndroidTransport, statStoredSize } from './tauriByteTransport'
  * thumbnail by this same value (`BOUNDED_THUMB_ABOVE_BYTES` in avatarThumb.ts).
  */
 export const ANDROID_WHOLE_READ_URL_LIMIT_BYTES = 64 * 1024 * 1024
+
+/**
+ * Above this stored size the desktop asset protocol is not asked for a whole
+ * read: tauri answers a request without a Range header by reading the entire
+ * file, and the Windows WebView bridge copies that body again. The limit stays
+ * well below the 1 GiB store limit, because a whole read near that size
+ * crashes the host process. It stays at or above
+ * `ANDROID_WHOLE_READ_URL_LIMIT_BYTES`, because a desktop avatar thumbnail
+ * decodes from a URL up to `BOUNDED_THUMB_ABOVE_BYTES`, outside this gate. It is
+ * not a thumbnail rule, so changing it needs no `THUMB_VERSION` bump.
+ */
+export const DESKTOP_WHOLE_READ_URL_LIMIT_BYTES = 256 * 1024 * 1024
 
 /**
  * What an asset URL is for. A `media` element sends Range requests, so the
@@ -182,6 +194,47 @@ export async function androidWithholdsUrl(key: string, use: AssetUse): Promise<b
         return false
     }
     return (await androidAssetSizeVerdict(key)) !== 'within'
+}
+
+/**
+ * The verdict on `key`'s stored size on the desktop transport; `within`
+ * everywhere else, where no probe is made. A size that cannot be read is
+ * `unknown`.
+ */
+export async function desktopAssetSizeVerdict(key: string): Promise<AssetSizeVerdict> {
+    if (!isDesktopTransport()) {
+        return 'within'
+    }
+    const size = await probeStoredSize(key)
+    if (size === null) {
+        return 'unknown'
+    }
+    return size > DESKTOP_WHOLE_READ_URL_LIMIT_BYTES ? 'over' : 'within'
+}
+
+/**
+ * The largest file the desktop transport displays whole, or `null` where no such
+ * limit applies. The desktop background picker caps its accepted size by this,
+ * so it does not store a file that the gate would withhold.
+ */
+export function desktopWholeUseLimitBytes(): number | null {
+    return isDesktopTransport() ? DESKTOP_WHOLE_READ_URL_LIMIT_BYTES : null
+}
+
+/**
+ * Whether the URL of `key` must not be made for `use`. A `media` use is never
+ * withheld. A `whole` use is withheld when the stored size is above the limit of
+ * the platform or cannot be read. The Android check comes first, so an Android
+ * page never evaluates the desktop transport.
+ */
+export async function wholeUseUrlWithheld(key: string, use: AssetUse): Promise<boolean> {
+    if (use === 'media') {
+        return false
+    }
+    if (isAndroidTransport()) {
+        return androidWithholdsUrl(key, use)
+    }
+    return (await desktopAssetSizeVerdict(key)) !== 'within'
 }
 
 /**
