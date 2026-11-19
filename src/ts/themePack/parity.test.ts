@@ -317,6 +317,14 @@ const SCOPE_REFUSALS: readonly string[] = [
     'values REJECT: name-connection-warning|chat',
     'values REJECT: name-connection-warning|studio',
 ]
+// Rule E-2 (MC-2309): a chat or Studio stylesheet may not paint an outer shadow or a text-shadow more than 2 px past its element, so the
+// three corpus pairs below, which the reference accepts, are refused for that reason alone. None is a shipped pack or an own-area benign pair.
+const E2_REFUSALS: readonly string[] = [
+    'studio-hostile: P17|studio',
+    'studio-hostile on Navy: P17|studio',
+    'studio reach: R5 toast-box border 16px|studio',
+]
+const E2_WHY = /may reach at most 2 px past its element/
 describe('PT1: comment placement keeps a verdict (A19)', () => {
     // A comment only stands where a space means the same to the browser, so deleting every comment outside strings keeps the
     // verdict of an accepted input. A compatibility guard over the corpus; the NF17 reproducers are in packRules.test.ts.
@@ -346,7 +354,8 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
         const fontPacks = flips.filter((f) => /H52|studio reach: R9/.test(f))
         const others = flips.filter((f) => !fontPacks.includes(f))
-        expect(others.sort()).toEqual([...NAMED_REFUSALS, ...SCOPE_REFUSALS].sort())
+        // REPRO for the E-2 entries: the base sweep holds 71 entries, this one 74.
+        expect(others.sort()).toEqual([...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS].sort())
         // The census of system-font packs the reference accepts and the app refuses: a new one is a stop-and-report.
         expect(fontPacks).toHaveLength(9)
         // The system-font packs are refused for the font rule, in every area that accepts them.
@@ -375,8 +384,25 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
     })
 
+    // REPRO: the E-2 census is 3 pairs of 3 inputs, each refused for the flat-limit reason alone.
+    it('the Rule E-2 census: 3 pairs of 3 inputs, none a shipped pack or an own-area benign pair', { timeout: 120_000 }, () => {
+        expect(E2_REFUSALS).toHaveLength(3)
+        expect(new Set(E2_REFUSALS.map((e) => e.split('|')[0])).size).toBe(3)
+        for (const entry of E2_REFUSALS) {
+            const [label, area] = entry.split('|')
+            const input = inputs.find((i) => i.label === label)
+            expect(input, label).toBeDefined()
+            expect(label.startsWith('shipped pack'), entry).toBe(false)
+            expect(label.startsWith(`NEW_BENIGN ${area}:`), entry).toBe(false)
+            const result = lintAreaPack(area as ThemeArea, input!.css, label)
+            expect(result.ok, entry).toBe(false)
+            expect(result.errors.length, entry).toBeGreaterThan(0)
+            expect(result.errors.every((e) => E2_WHY.test(e.why)), `${entry}: ${JSON.stringify(result.errors.map((e) => e.why))}`).toBe(true)
+        }
+    })
+
     it('every named entry is still refused (no stale entries)', { timeout: 120_000 }, () => {
-        for (const entry of [...NAMED_REFUSALS, ...SCOPE_REFUSALS]) {
+        for (const entry of [...NAMED_REFUSALS, ...SCOPE_REFUSALS, ...E2_REFUSALS]) {
             const [label, area] = entry.split('|')
             const input = inputs.find((i) => i.label === label)
             expect(input, label).toBeDefined()
