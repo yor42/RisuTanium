@@ -1,8 +1,9 @@
-// Rule E-2 (CHORE-738 stage 2, MC-2073, MC-2309): in a chat or Studio stylesheet every box-shadow layer without `inset` and every
-// text-shadow layer may reach at most 2 px past its element. The rule is keyed on the declaration: every subject of these areas names
-// a part, so no part list is read, and no colour is read either, so a transparent, translucent or unreadable colour does not exempt a
-// layer. An unmeasurable layer is refused (the whitelist reader of paintOver.ts fails closed on any token of no listed shape), and so
-// is `box-shadow: inherit`, which copies a shadow the check cannot see; the other keywords and every inset layer are not refused. rem
+// Rule E-2 (CHORE-738 stages 2 and 4, MC-2073, MC-2309, MC-2317, MC-2318): in a chat or Studio stylesheet every box-shadow layer and every
+// text-shadow layer may reach at most 2 px from its element's edge: an outer box-shadow layer past its border edge, a text-shadow layer
+// past its glyphs, an inset layer into it from its padding edge. The rule is keyed on the declaration: every subject of these areas names
+// a part, so no part list is read, and no colour is read either, so a transparent, translucent or unreadable colour does not exempt a layer.
+// An unmeasurable layer is refused (the whitelist reader of paintOver.ts fails closed on any token of no listed shape), and so
+// is `box-shadow: inherit`, which copies a shadow the check cannot see; the other keywords are not refused. rem
 // is read at 16 px, the engine's convention. Every `--pack-*` variant is judged, with the app's tokens and the pack's own `:root`
 // token overrides resolved first, exactly as cascade.ts builds its token map.
 // Ordering contract with index.ts: this pass runs last, and only on a sheet every earlier pass accepted, so a refused sheet never gains
@@ -15,12 +16,12 @@ import { shadowLayers, shadowReach, MAX_OUTER_REACH_PX } from './paintOver'
 import { STUDIO_REGISTRY } from './registries/studio'
 import type { ThemeArea } from './index'
 
-const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309)'
+const RULE = 'in chat and Studio an outer box-shadow or a text-shadow may reach at most 2 px past its element and an inset box-shadow at most 2 px into it, whatever its colour, so that it cannot lie under or over a control (MC-2073, MC-2309, MC-2317, MC-2318)'
 const LABEL_MAX = 200
 const clip = (text: string): string => text.slice(0, 60)
 const short = (text: string): string => text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX)}…` : text
 
-const overWhy = (prop: string, layer: string, reach: number): string => `${prop} layer "${clip(layer)}" reaches ${reach} px past its element; ${RULE}`
+const overWhy = (prop: string, layer: string, reach: number, inset: boolean): string => `${prop} layer "${clip(layer)}" reaches ${reach} px ${inset ? 'into' : 'past'} its element; ${RULE}`
 const unmeasuredWhy = (prop: string, layer: string): string => `${prop} layer "${clip(layer)}" cannot be measured, so its reach cannot be judged; write px or rem lengths with a space between values; ${RULE}`
 const inheritWhy = `box-shadow: inherit copies the parent's shadow, which the check cannot measure; ${RULE}`
 
@@ -40,14 +41,13 @@ function judgeVariant(area: 'chat' | 'studio', text: string): LintError[] {
             continue
         }
         for (const l of shadowLayers(literal, box ? 'box' : 'text')) {
-            if (box && l.inset && !l.text.includes('var(')) continue
             const reach = shadowReach(l.text, box ? 'box' : 'text')
             if (reach === null) {
                 errors.push({ selector, prop: d.prop, why: unmeasuredWhy(d.prop, l.text) })
                 break
             }
             if (reach > MAX_OUTER_REACH_PX) {
-                errors.push({ selector, prop: d.prop, why: overWhy(d.prop, l.text, reach) })
+                errors.push({ selector, prop: d.prop, why: overWhy(d.prop, l.text, reach, box && l.inset) })
                 break
             }
         }
