@@ -294,14 +294,14 @@ describe('removeChar reports the character it trashed', () => {
         expect(onTrashed).toHaveBeenCalledWith({ at: listed('C').trashTime, chaIds: ['C'] })
     })
 
-    test('guard T1n: nothing is reported for a declined first confirm, a declined second confirm, a permanent delete or a slot that was already trashed', async () => {
+    test('guard T1n: nothing is reported for a declined confirm, a declined second permanent confirm, a permanent delete or a slot that was already trashed', async () => {
         install(['a', 'C'], [mk('a'), mk('C'), mk('T', 5)])
         const onTrashed = vi.fn()
 
         vi.mocked(alertConfirm).mockResolvedValueOnce(false)
         await removeChar(listed('C'), 'C', 'normal', { onTrashed })
         vi.mocked(alertConfirm).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
-        await removeChar(listed('C'), 'C', 'normal', { onTrashed })
+        await removeChar(listed('C'), 'C', 'permanent', { onTrashed })
         expect(listed('C').trashTime).toBeUndefined()
 
         await removeChar(listed('T'), 'T', 'normal', { onTrashed })

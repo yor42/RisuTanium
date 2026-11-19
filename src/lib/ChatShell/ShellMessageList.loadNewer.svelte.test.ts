@@ -293,7 +293,7 @@ describe('reading forward in a slid window', () => {
     test('T11: a reader far from the bottom of the mounted rows loads nothing', async () => {
         await slideBack()
         const before = mountedIndexes()
-        top = 300
+        top = 1200
         app!.onScroll()
         await settle()
         expect(mountedIndexes()).toEqual(before)
