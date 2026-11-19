@@ -230,6 +230,10 @@ restoration was checked, not assumed.
 
 PowerShell scripts that run one capped phone check and write `result.json`: see [device/README.md](device/README.md).
 
+## `tbdriver/` - unattended TalkBack checks
+
+A test-only companion APK (AccessibilityService `dispatchGesture`, focus and event readout, capture TTS) plus host scripts that drive TalkBack on the playground Note 9s through adbg. It also sets the TalkBack harness rules: no `adb shell input`, and no `uiautomator dump` before a TalkBack check. See [tbdriver/README.md](tbdriver/README.md).
+
 ## `chatshell-cdp/` - chat-shell CDP harness
 
 Desktop Chrome scenarios (phone emulation, CDP) for the chat shell: see [chatshell-cdp/README.md](chatshell-cdp/README.md). `harness.mjs` injects a logger and is DIAGNOSTIC only; acceptance numbers come from the observer-free reads (`nolog.mjs`). Outputs go under the OS temp dir and never into the checkout. Its accept tests are `node chatshell-cdp/tests/lib.accept.mjs` and `node chatshell-cdp/tests/device-kit.accept.mjs` (plain node, not collected by `pnpm test`).
