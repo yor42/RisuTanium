@@ -343,9 +343,12 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         if (fallback === null && database.archiveCharacters === undefined) {
             // The first boot where the setting is absent turns archiving on and says so once, whether or not any character became a stub (MC-149 3);
             // an explicit false stays false and is not told. A boot that opened over damaged leaves is not a complete reading,
-            // so it neither writes the setting nor tells. The next pass saves the setting.
+            // so it neither writes the setting nor tells. The next pass saves the setting. A profile with no character and no
+            // module has nothing the setting could move to cold storage, so it is switched on without telling.
             database.archiveCharacters = true
-            raise({ name: 'archive-enabled' })
+            if (database.characters.length > 0 || database.modules.length > 0) {
+                raise({ name: 'archive-enabled' })
+            }
         }
         // One context object serves the residency and the save loop, so the encoding a verdict is judged by is the one the
         // next pass compares with. The residency is registered before the loop is activated and before the database is

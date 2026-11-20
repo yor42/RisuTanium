@@ -1,0 +1,70 @@
+/* OFFICE SHEET for Settings (MC-2520, MC-2523, MC-2524): the document palette on Settings. Grey chrome, the page as a white sheet with a hairline edge, square corners, a toolbar-
+   style header, document blue for the accent and the current index entry. Tokens first; part CSS only on the allowlist; no critical part is named. Light only. */
+:root {
+  --color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #e3e5e8;
+  --nexus-canvas-bloom: #e3e5e8;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.85);
+  --nexus-surface-raised: rgb(26 85 186 / 0.08);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(31 35 40 / 0.16);
+  --nexus-edge-strong: rgb(31 35 40 / 0.55);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --panel: #e3e5e8;
+  --settings-canvas-rgb: 227 229 232;
+  --settings-scrim-rgb: 31 35 40;
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #ffffff;
+  --color-surface-menu: #ffffff;
+  --color-surface-drag: #ffffff;
+  --color-surface-selbar: #e8effb;
+  --color-surface-demo: #ffffff;
+  --color-chip-hover: #dde6f7;
+  --color-option-bg: #ffffff;
+  --color-option-text: #1f2328;
+  --settings-surface-opaque: #ffffff;
+  --settings-surface-raised-opaque: #e8effb;
+
+  /* text */
+  --nexus-text: #1f2328;
+  --nexus-text-secondary: #474d55;
+  --nexus-text-muted: #50565f;
+  --color-placeholder: #50565f;
+  --color-link: #1a55ba;
+
+  /* channels */
+  --nexus-accent-rgb: 26 85 186;
+  --nexus-danger-rgb: 160 30 20;
+  --nexus-overlay-rgb: 31 35 40;
+  --nexus-shade-rgb: 31 35 40;
+  --nexus-ring: #1a55ba;
+  --nexus-core-from: #1a55ba;
+  --nexus-core-to: #154696;
+  --nexus-warm: #7a4a12;
+  --nexus-warm-from: #fdf0d5;
+  --nexus-warm-to: #f6dca6;
+  --color-on-avatar: #1f2328;
+  --color-on-accent: #ffffff;
+  --color-warning: #7a4f00;
+  --nexus-warning-rgb: 122 79 0;
+  --pattern-on-accent: #ffffff;
+  --pattern-on-danger: #ffffff;
+  --color-success: #156537;
+  --alpha-switch-off: 0.6;
+  --color-accent-tint-mark-soft: rgb(255 236 120 / 0.5);
+  --color-accent-tint-mark: rgb(255 236 120 / 0.75);
+
+  /* corners: square */
+  --radius-control: 3px;
+  --radius-field: 2px;
+  --radius-card: 3px;
+  --radius-sheet: 4px;
+  --radius-search: 2px;
+}
+
+/* the page as a white sheet; the header as a toolbar */
+[data-part="settings-page"] { background: #ffffff; border: 1px solid #c4c8ce; }
+[data-part="settings-header"] { background: #f3f4f6; border-bottom: 1px solid #c4c8ce; }

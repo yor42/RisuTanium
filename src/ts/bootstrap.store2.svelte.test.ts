@@ -321,13 +321,13 @@ function uiDouble(): UiDouble {
 }
 
 /** The numbered backups the page holds, and the main file: a legacy profile the boot can decode. */
-function legacyStore(options: { mainFile?: boolean } = {}): MemoryByteStore {
+function legacyStore(options: { mainFile?: boolean, database?: Record<string, unknown> /* the main file only */ } = {}): MemoryByteStore {
     const store = createMemoryByteStore()
     for (const time of BACKUP_TIMES) {
         store.files.set(`database/dbbackup-${time}.bin`, encodeRisuSaveLegacy(baseDb()))
     }
     if (options.mainFile !== false) {
-        store.files.set('database/database.bin', encodeRisuSaveLegacy(baseDb()))
+        store.files.set('database/database.bin', encodeRisuSaveLegacy(options.database ?? baseDb()))
     }
     return store
 }
@@ -984,7 +984,8 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
         const { loadData, alertStore, loadedStore, ui, backend } = await boot({ kind: 'indexeddb', store, injectBackend: true })
         acknowledgeNotices(alertStore)
         await loadData()
-        expect(ui.notices).toEqual([{ name: 'seeded' }, { name: 'archive-enabled' }])
+        // An empty profile has nothing to move to cold storage, so archiving is switched on without the archive notice.
+        expect(ui.notices).toEqual([{ name: 'seeded' }])
         expect(get(loadedStore)).toBe(true)
         expect((await backend.readCommit()).bytes).not.toBeNull()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
@@ -1035,7 +1036,7 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
         expect(getActiveStore2Save()).not.toBeNull()
         // The memory backend never confirms a flush, so a Tauri page's re-flush is unconfirmed here; that is the only notice.
-        expect(ui.notices).toEqual(tauri ? [{ name: 'flush-unconfirmed' }, { name: 'archive-enabled' }] : [{ name: 'archive-enabled' }])
+        expect(ui.notices).toEqual(tauri ? [{ name: 'flush-unconfirmed' }] : [])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(new Map(store.files).size).toBe(before.size + (tauri ? 1 : 0))
         for (const [key, bytes] of before) {
@@ -1054,7 +1055,7 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         await settle()
 
         expect(get(loadedStore)).toBe(true)
-        expect(ui.notices).toEqual([{ name: 'converted-from-backup', backup: BACKUP_TIMES[BACKUP_TIMES.length - 1] }, { name: 'archive-enabled' }])
+        expect(ui.notices).toEqual([{ name: 'converted-from-backup', backup: BACKUP_TIMES[BACKUP_TIMES.length - 1] }])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(store.files.get('database/database.bin')).toEqual(new Uint8Array([0, 1, 2, 3, 4, 5]))
     })
@@ -1104,7 +1105,9 @@ describe('loadData(): the informational boot notices queue and do not hold the b
     }
 
     test('R1w reproducer (web): with the archive-enabled notice unacknowledged the page goes live and the save loop starts', async () => {
-        const { loadData, loadedStore, ui } = await boot({ kind: 'indexeddb', injectBackend: true })
+        // A profile with a module is one the archive notice is told to; an empty profile is switched on without it.
+        const store = legacyStore({ database: { ...baseDb(), modules: [{ id: 'ida', name: 'Module ida', description: '', lorebook: [], regex: [], trigger: [], assets: [] }] } })
+        const { loadData, loadedStore, ui } = await boot({ kind: 'indexeddb', store, injectBackend: true })
         const queue = await noticeQueue()
 
         const loading = loadData()

@@ -243,7 +243,8 @@ interface Run {
 async function boot(tauri: boolean, fault: Fault): Promise<Run> {
     platformState.isTauri = tauri
     const store: MemoryByteStore = createMemoryByteStore()
-    store.files.set('database/database.bin', encodeRisuSaveLegacy(baseDb()))
+    // A module makes the profile one the archive notice is told to; an empty profile is switched on without it.
+    store.files.set('database/database.bin', encodeRisuSaveLegacy({ ...baseDb(), modules: [{ id: 'ida', name: 'Module ida', description: '', lorebook: [], regex: [], trigger: [], assets: [] }] }))
     const kind = tauri ? 'tauri' : 'indexeddb'
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     injectAppStore(store, kind)

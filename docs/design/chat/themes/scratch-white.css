@@ -1,0 +1,97 @@
+/* SCRATCH WHITE for chat (MC-2520, MC-2522): a school notebook. White paper, graphite text, blue-ink accent, a red margin line down the transcript and a faint blue rule under every message;
+   the header ends in a dashed perforation. Light only. Tokens on :root only (#309); text colours are :root tokens, never part-scoped (#310).
+   The validator refuses repeating gradients, background-size, masks, clip-path and pseudo-elements, so the full-page ruling, the torn edge and the paper texture are drawn as
+   one rule per message, a dashed border and a plain paper colour. Critical parts (data-part-critical) are never named; they take the tokens. DOM order never changes. */
+:root {
+  --color-scheme: light;
+
+  /* pack-local helpers (DD-258) */
+  --pack-paper: #fdfdfa;
+  --pack-rule: #b9cfe9;
+  --pack-margin: #f0a8a6;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #fdfdfa;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(43 46 52 / 0.04);
+  --nexus-surface-raised: rgb(43 46 52 / 0.08);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(43 46 52 / 0.14);
+  --nexus-edge-strong: rgb(43 46 52 / 0.55);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-bar: #f6f6f1;
+  --color-surface-toast: #fffef5;
+  --color-surface-kbd: #e4e4de;
+  --color-key: #ffffff;
+
+  /* text: graphite */
+  --nexus-text: #2b2e34;
+  --nexus-text-secondary: #464b54;
+  --nexus-text-muted: #545a64;
+
+  /* accent: blue ink */
+  --nexus-accent-rgb: 31 74 168;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #1f4aa8;
+  --nexus-core-from: #1f4aa8;
+  --nexus-core-to: #173a86;
+  --color-on-brand: #ffffff;
+  --nexus-warm: #8a3a1a;
+  --nexus-warm-from: #fde9d9;
+  --nexus-warm-to: #f8cfb0;
+  --color-on-avatar: #2b2e34;
+  --color-on-accent: #ffffff;
+  --nexus-danger-rgb: 179 38 30;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-overlay-rgb: 0 0 0;
+
+  /* what the channels do not give */
+  --color-shimmer: rgb(255 255 255 / 0.6);
+  --color-code-bg-inline: rgb(43 46 52 / 0.07);
+  --color-code-bg: rgb(43 46 52 / 0.05);
+  --color-syntax-keyword: #5b3fa0;
+  --color-warning: #8a5a00;
+  --color-hit: #8a5a00;
+  --color-hit-rgb: 255 236 120;
+  --color-hit-bg: rgb(var(--color-hit-rgb) / 0.6);
+
+  /* group speakers and scope tags: dark counterparts for a light page */
+  --chat-speaker-0: #7a3b12; --chat-speaker-1: #1f3f8a; --chat-speaker-2: #0d5434; --chat-speaker-3: #6b4a00; --chat-speaker-4: #5b2f9e; --chat-speaker-5: #8c1a42; --chat-speaker-6: #0a4f61; --chat-speaker-7: #7a2a8f;
+  --color-scope-character-text: #4b2a8a;
+  --color-scope-character-edge: #7a55d6;
+  --color-scope-character-rgb: 122 85 214;
+  --color-scope-all-text: #7a4a00;
+  --color-scope-all-edge: #c27c00;
+  --color-scope-all-rgb: 194 124 0;
+
+  /* bubbles: none, the writing sits on the page */
+  --color-bubble-char: #fdfdfa;
+  --color-bubble-char-text: #2b2e34;
+  --color-bubble-user: #fdfdfa;
+  --color-bubble-user-text: #1f4aa8;
+  --radius-bubble: var(--radius-3);
+  --radius-bubble-tail: var(--radius-3);
+
+  /* corners */
+  --radius-control: 6px;
+  --radius-field: 6px;
+  --radius-sheet: 10px;
+}
+
+/* ---- the page: paper with a red margin line; the writing starts right of it ---- */
+[data-part="chat-transcript"] {
+  padding-left: 44px;
+  background-color: var(--pack-paper);
+  background-image: linear-gradient(to right, rgb(0 0 0 / 0) 36px, var(--pack-margin) 36px, var(--pack-margin) 38px, rgb(0 0 0 / 0) 38px);
+}
+/* ---- one faint rule under every message ---- */
+[data-part="chat-message"] { border-bottom: 1px solid var(--pack-rule); }
+/* ---- the header ends in a dashed perforation, the composer begins with one ---- */
+[data-part="chat-header"] { border-bottom: 2px dashed var(--nexus-edge-strong); }
+[data-part="chat-composer"] { border-top: 2px dashed var(--nexus-edge-strong); }
+
+/* ---- forced colours: the rules are drawn by the system ---- */
+@media (forced-colors: active) { [data-part="chat-message"] { border-bottom: 1px solid CanvasText; } }
