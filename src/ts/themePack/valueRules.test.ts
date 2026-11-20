@@ -49,6 +49,10 @@ describe('VU1: the token resolver and the structure pass', () => {
         const reached = valueRulesPass(`:root{--font:"pack-missing", serif}${TEXT}{font-family:var(--font)}`, ENV)
         expect(reached.warnings.map((w) => w.selector)).toHaveLength(2)
         expect(new Set(reached.warnings.map((w) => w.selector)).size).toBe(2)
+        // Two names in one declaration share selector and property, so only the reason keeps them apart.
+        const two = valueRulesPass(`${TEXT}{font-family:"pack-a", "pack-b", serif}`, ENV)
+        expect(two.errors).toEqual([])
+        expect(two.warnings.map((w) => /^font family "([^"]+)"/.exec(w.why)?.[1])).toEqual(['pack-a', 'pack-b'])
     })
 
     test('readAppValues keeps every block of a token file, not only the last or the :root one', () => {

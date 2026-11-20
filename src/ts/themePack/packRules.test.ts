@@ -906,8 +906,8 @@ describe('MC-2542: every other family refusal stays a refusal', () => {
     })
 })
 
-// UI-S6 I4a (MC-1708, MC-1822): the pack-settable chat message font token. Its value names only the pack's own faces, the generic
-// families and resolving --pack-* helpers; any var() of an app token is refused even when the pack sets that token.
+// UI-S6 I4a (MC-1708, MC-1822): the pack-settable chat message font token. Its var() items name only resolving --pack-*
+// helpers; any var() of an app token is refused even when the pack sets that token. Its names follow Rule F (MC-2547).
 describe('MC-1708: the chat message font token', () => {
     const FACE = '@font-face{font-family:"pack-i4a";src:url(fonts/a.woff2)}'
     const TWO_FACES = '@font-face{font-family:"pack-a";src:url(fonts/a.woff2)}@font-face{font-family:"pack-b";src:url(fonts/b.woff2)}'

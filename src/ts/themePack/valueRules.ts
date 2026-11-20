@@ -16,7 +16,7 @@ import { tokenFile, type TokenFile } from './tokens'
 
 /** The font tokens a pack may set, judged as font-family wherever they are declared or reached. */
 export const FONT_TOKENS: readonly string[] = ['--font', '--mono', '--settings-font', '--home-font', '--home-mono', '--studio-font-mono', '--chat-message-font']
-/** Font tokens whose value may name only the pack's own families, generic families and --pack-* helpers that resolve to those: a var() of any app token is refused, even one the pack sets itself. */
+/** Font tokens whose var() items may name only --pack-* helpers the pack declares (MC-1822): a var() of any app token is refused, even one the pack sets itself. Their names follow Rule F like any other (MC-2547). */
 export const STRICT_FONT_TOKENS: readonly string[] = ['--chat-message-font']
 /** The symbol fonts a pack may not name (MC-2542), as `familyKey` writes them: they draw pictures in place of letters. */
 export const SYMBOL_FONTS: ReadonlySet<string> = new Set(['wingdings', 'wingdings 2', 'wingdings 3', 'webdings', 'symbol', 'marlett', 'zapf dingbats', 'itc zapf dingbats', 'segoe mdl2 assets', 'segoe fluent icons', 'segoe ui symbol'])
@@ -371,7 +371,7 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
             }
             if (bad) continue
             if (words.length === 1 && GENERIC_FAMILIES.has(words[0])) continue
-            // A run of words is one family name; a generic or CSS-wide word inside it makes it a name only if the pack registers it.
+            // A run of words is one family name, even with a generic or CSS-wide word inside it: registered passes, a symbol font is refused, any other name warns.
             judgeName(words.join(' '), out, notes)
         }
     }
