@@ -73,7 +73,7 @@
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { cardAnimationHold } from '../../ts/gui/cardAnimationHold'
     import { siblingsAt } from '../../ts/process/chatTree'
-    import { RefreshCwIcon } from '@lucide/svelte'
+    import { BookmarkIcon, RefreshCwIcon } from '@lucide/svelte'
     import { inFollowOpenZone, INSET_MAX_CSS, INSET_PROBE_MAX_CSS } from '../SideBars/panelGesture'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
@@ -814,7 +814,7 @@
                 {:else}<span data-part="chat-message-avatar" data-round={DBState.db.roundIcons ? '' : undefined} aria-hidden="true">{name.slice(0, 1)}</span>{/if}
             {/if}
             <span data-part="chat-message-name" id={labelId} data-name-hidden={namesHidden ? '' : undefined}>{name}</span>
-            {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
+            {#if isBookmarked}<span data-part="chat-message-badges" role="img" aria-label={language.bookmark}><BookmarkIcon aria-hidden="true" fill="currentColor" /></span>{/if}
             <MessageMeta bind:this={meta} {name} time={message.time} model={generationBadgeShown ? '' : modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id, shiftKey) => { void act(id === 'delete' && shiftKey ? 'deleteAfter' : id) }} onmore={openActions} />
         </div>
     </div>
@@ -875,7 +875,7 @@
     {#if swipeLocked && streaming}<span data-part="chat-swipe-arm" role="status">{language.chatShellStillWriting}</span>
     {:else if swipeLocked && dragX > 0 && position.index <= 1 && !firstMessage}<span data-part="chat-swipe-arm" role="status">{language.chatShellFirstReply}</span>
     {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
-    {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
+    {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}><RefreshCwIcon aria-hidden="true" />{language.chatShellGenerateReply}</button>{/if}
     {#if showPager || continuation > 0}
         <AlternativesRow bind:this={alternatives} {source} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={(direction) => { void browse(direction) }} onEnd={() => { void bringBackContinuation() }} />
     {/if}
@@ -906,7 +906,9 @@
     [data-part="chat-message-body"][data-commit="forward"] { animation: commit-in-forward var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-message-body"][data-commit="back"] { animation: commit-in-back var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-swipe-arm"], [data-part="chat-generate-reply"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
-    [data-part="chat-generate-reply"] { flex: none; white-space: nowrap; min-inline-size: max-content; min-block-size: var(--size-12); }
+    [data-part="chat-generate-reply"] { flex: none; white-space: nowrap; min-inline-size: max-content; min-block-size: var(--size-12); display: inline-flex; align-items: center; gap: var(--space-3); }
+    [data-part="chat-generate-reply"] :global(svg), [data-part="chat-message-badges"] :global(svg) { flex: none; width: calc(var(--icon-size-sm) * var(--icon-scale)); height: calc(var(--icon-size-sm) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
+    [data-part="chat-message-badges"] { display: inline-flex; align-items: center; }
     @keyframes commit-in-forward { from { transform: translateX(var(--swipe-nudge)); opacity: var(--opacity-half); } }
     @keyframes commit-in-back { from { transform: translateX(calc(-1 * var(--swipe-nudge))); opacity: var(--opacity-half); } }
     @keyframes commit-fade { from { opacity: var(--opacity-half); } }

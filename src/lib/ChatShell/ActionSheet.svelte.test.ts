@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
 
 vi.mock('../../lang', () => ({ language: {
@@ -24,10 +24,55 @@ vi.mock(import('src/ts/parser/chatML'), () => ({
 }) as unknown as typeof import('src/ts/parser/chatML'))
 
 import ActionSheet from './ActionSheet.svelte'
+import { glyphsIn, iconsIn } from './tests/glyphFree'
 
 let target: HTMLElement
 let app: ReturnType<typeof ActionSheet> | undefined
 afterEach(async () => { if (app) await unmount(app); app = undefined; target?.remove() })
+// The icon imports resolve lazily; a first mount in a cold run would otherwise exceed the default budget.
+beforeAll(async () => { await import('@lucide/svelte') }, 120000)
+
+describe('action sheet groups and icons', () => {
+    const every = ['copy', 'copyCard', 'selectText', 'edit', 'translate', 'retranslate', 'editTranslation', 'partialEdit', 'readAloud', 'stepPrev', 'stepNext', 'newReply', 'branch', 'bookmark', 'hideAI', 'hideAbove', 'customizeButtons', 'delete', 'deleteAfter'] as const
+    const groupsOf = () => Array.from(target.querySelectorAll<HTMLElement>('[data-part="chat-action-group"]'))
+
+    test('TC3-3a: the destructive group is the last group, holds exactly delete and deleteAfter, and is the only one marked', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(ActionSheet, { target, props: { open: true, available: every, onaction: vi.fn(), onclose: vi.fn() } })
+        flushSync()
+        const groups = groupsOf()
+        expect(groups).toHaveLength(5)
+        expect(groups.filter((group) => group.hasAttribute('data-destructive-group'))).toEqual([groups[groups.length - 1]])
+        expect(Array.from(groups[groups.length - 1].querySelectorAll('[data-action]')).map((item) => item.getAttribute('data-action'))).toEqual(['delete', 'deleteAfter'])
+        expect(groups[3].querySelector('[data-action="customizeButtons"]')).not.toBeNull()
+    })
+
+    test('TC3-3b: every item is an aria-hidden icon plus its exact label, with no glyph text', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(ActionSheet, { target, props: { open: true, available: every, onaction: vi.fn(), onclose: vi.fn() } })
+        flushSync()
+        const items = Array.from(target.querySelectorAll<HTMLElement>('[data-action]'))
+        expect(items).toHaveLength(every.length)
+        for (const item of items) {
+            const icons = iconsIn(item)
+            expect(icons, item.getAttribute('data-action') ?? '').toHaveLength(1)
+            expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+            expect(item.textContent).toBe(item.getAttribute('title'))
+        }
+        expect(glyphsIn(target)).toEqual([])
+    })
+
+    test('TC3-3c: a group with nothing available is not rendered, so no empty group or destructive marker remains', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(ActionSheet, { target, props: { open: true, available: ['copy'], onaction: vi.fn(), onclose: vi.fn() } })
+        flushSync()
+        expect(groupsOf()).toHaveLength(1)
+        expect(target.querySelector('[data-destructive-group]')).toBeNull()
+    })
+})
 
 describe('action sheet', () => {
     test('groups every reachable action and disables delete on a generating reply', () => {

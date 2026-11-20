@@ -1,5 +1,7 @@
 <script lang="ts">
     import { get } from 'svelte/store'
+    import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left'
+    import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical'
     import { DynamicGUI, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
     import { language } from '../../lang'
 
@@ -33,9 +35,9 @@
 </script>
 
 <header data-part="chat-header" data-hidden={concealed ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
-    <button data-part="chat-header-back" data-kind="icon-button" aria-label={language.chatShellBack} onclick={back}>‹</button>
+    <button data-part="chat-header-back" data-kind="icon-button" aria-label={language.chatShellBack} onclick={back}><ChevronLeftIcon aria-hidden="true" /></button>
     <span data-part="chat-header-heading"><span data-part="chat-header-title">{name}</span>{#if chatName}<span data-part="chat-header-chat">{chatName}</span>{/if}</span>
-    <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellThisChat} title={language.chatShellThisChat} aria-haspopup="dialog" onclick={(event) => onthischat(event.currentTarget)}>⋮</button>
+    <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellThisChat} title={language.chatShellThisChat} aria-haspopup="dialog" onclick={(event) => onthischat(event.currentTarget)}><EllipsisVerticalIcon aria-hidden="true" /></button>
 </header>
 
 <style>
@@ -44,7 +46,9 @@
     [data-part="chat-header-heading"] { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     [data-part="chat-header-title"], [data-part="chat-header-chat"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-header-chat"] { color: var(--nexus-text-secondary); font-size: 0.85em; }
-    [data-part="chat-header-back"], [data-part="chat-header-menu"] { width: var(--size-touch); height: var(--size-touch); flex: none; color: inherit; }
+    [data-part="chat-header-back"], [data-part="chat-header-menu"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-touch); height: var(--size-touch); flex: none; color: inherit; }
+    [data-part="chat-header-back"] :global(svg), [data-part="chat-header-menu"] :global(svg) { flex: none; width: calc(var(--icon-size-lg) * var(--icon-scale)); height: calc(var(--icon-size-lg) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
+    [data-part="chat-header-back"]:dir(rtl) :global(svg) { transform: scaleX(-1); }
     @media (min-width: 900px) { [data-part="chat-header"][data-hidden] { transform: none; opacity: 1; visibility: visible; pointer-events: auto; } }
     @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-header"] { transition: opacity var(--chat-dur-fast) var(--chat-ease-out), visibility var(--chat-dur-fast) var(--chat-ease-out); } :global(html:not(.rm-off)) [data-part="chat-header"][data-hidden] { transform: none; } }
     :global(html.rm) [data-part="chat-header"][data-hidden] { transform: none; }

@@ -11,6 +11,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import * as drafts from '../../ts/process/composerDrafts.svelte'
 import { resetLocalDraftsForTest } from '../../ts/localDrafts'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 const LONG_NAME = 'N'.repeat(60)
 const state = $state({ db: {
@@ -126,6 +127,17 @@ describe('ShellComposer persona tab', () => {
         expect(translate.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
         expect(root.querySelector('button,textarea,select')).toBe(tab)
     })
+
+    // TC2-2 (tab half, regression reproducer): the caret was the text glyph ^; the tab's accessible content is the persona text only.
+    test('the tab caret is an aria-hidden chevron icon and the tab text has no caret glyph', async () => {
+        await import('@lucide/svelte')
+        const node = await show()
+        const tab = tabOf(node)
+        expect(lucideNames(tab)).toEqual(['lucide-chevron-up'])
+        expect(iconsIn(tab)[0].getAttribute('aria-hidden')).toBe('true')
+        expect(tab.textContent?.trim()).toBe('as Ann')
+        expect(glyphsIn(tab)).toEqual([])
+    }, 120_000)
 
     test('T13: a 60-character persona name stays whole in the tab text', async () => {
         state.db.characters[0].chats[0].bindedPersona = 'p3'

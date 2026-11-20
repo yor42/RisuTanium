@@ -1,5 +1,9 @@
 <script lang="ts">
     import { stepSibling, regenerateNewest, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
+    import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left'
+    import ChevronRightIcon from '@lucide/svelte/icons/chevron-right'
+    import ListEndIcon from '@lucide/svelte/icons/list-end'
+    import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw'
     import { language } from '../../lang'
 
     interface Props {
@@ -54,22 +58,24 @@
 
 {#if pager}
 <div data-part="chat-message-alts" role="group" aria-label={counterName} {onwheel}>
-    <button type="button" data-step="prev" class:button-icon-unreroll={hotkeys} aria-label={language.chatShellPreviousReply} aria-disabled={index <= 1} title={index <= 1 ? language.chatShellFirstReply : language.chatShellPreviousReply} disabled={busy || index <= 1} onclick={() => step('back')}>‹</button>
+    <button type="button" data-step="prev" class:button-icon-unreroll={hotkeys} aria-label={language.chatShellPreviousReply} aria-disabled={index <= 1} title={index <= 1 ? language.chatShellFirstReply : language.chatShellPreviousReply} disabled={busy || index <= 1} onclick={() => step('back')}><ChevronLeftIcon aria-hidden="true" /></button>
     <span aria-live="polite">{firstMessage ? language.chatShellFirstMessageOf(index, count) : `${index} / ${count}`}</span>
-    <button type="button" data-step="next" class:button-icon-reroll={hotkeys && !atEnd} aria-label={language.chatShellNextReply} aria-disabled={atEnd} title={atEnd ? language.chatShellLastReply : language.chatShellNextReply} disabled={busy || atEnd} onclick={() => step('forward')}>›</button>
+    <button type="button" data-step="next" class:button-icon-reroll={hotkeys && !atEnd} aria-label={language.chatShellNextReply} aria-disabled={atEnd} title={atEnd ? language.chatShellLastReply : language.chatShellNextReply} disabled={busy || atEnd} onclick={() => step('forward')}><ChevronRightIcon aria-hidden="true" /></button>
     <span class="space"></span>
-    {#if hotkeys}<button type="button" data-action="newReply" class:button-icon-reroll={atEnd} disabled={busy} onclick={generate}>⟳ {language.chatShellNewReply}</button>{/if}
+    {#if hotkeys}<button type="button" data-action="newReply" class:button-icon-reroll={atEnd} disabled={busy} onclick={generate}><RefreshCwIcon aria-hidden="true" />{language.chatShellNewReply}</button>{/if}
 </div>
 {/if}
 {#if continuation > 0}
 <div data-part="chat-message-end">
-    <button type="button" data-action="endControl" class="button-icon-end-control" aria-label={language.chatShellEndControl(continuation)} title={language.chatShellEndControl(continuation)} disabled={busy} onclick={goToEnd}>⇤ {continuation}</button>
+    <button type="button" data-action="endControl" class="button-icon-end-control" aria-label={language.chatShellEndControl(continuation)} title={language.chatShellEndControl(continuation)} disabled={busy} onclick={goToEnd}><ListEndIcon aria-hidden="true" />{continuation}</button>
 </div>
 {/if}
 
 <style>
     [data-part="chat-message-alts"] { display: flex; align-items: center; gap: var(--space-7); }
     [data-part="chat-message-end"] { display: flex; justify-content: flex-end; }
-    button { min-width: var(--size-21); min-height: var(--size-21); color: var(--nexus-text); }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); min-width: var(--size-21); min-height: var(--size-21); color: var(--nexus-text); }
+    button :global(svg) { flex: none; width: calc(var(--icon-size-md) * var(--icon-scale)); height: calc(var(--icon-size-md) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
+    button[data-step]:dir(rtl) :global(svg), [data-part="chat-message-end"] button:dir(rtl) :global(svg) { transform: scaleX(-1); }
     .space { flex: 1; min-width: var(--size-14); }
 </style>

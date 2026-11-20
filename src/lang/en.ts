@@ -4,6 +4,7 @@ export const languageEnglish = {
     chatShellBack: 'Back',
     chatShellChoosePersona: 'Choose persona',
     chatShellPersonaSettings: 'Persona settings',
+    chatShellPersonaDefault: 'Default persona',
     chatShellMoreActions: 'More actions',
     chatShellReadAloud: 'Read aloud',
     chatShellBranch: 'Branch from here',

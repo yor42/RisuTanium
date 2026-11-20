@@ -7,6 +7,7 @@ import { hasLocalDrafts, resetLocalDraftsForTest } from '../../ts/localDrafts'
 import { pendingChatFileUploads, trackChatFileAttachment } from '../../ts/process/composerSurface.svelte'
 import type { InlayWriteProgress } from '../../ts/process/files/inlays'
 import { addActiveStream, noteStreamText, resetActiveStreamsForTest } from '../../ts/process/activeStreams'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 const state = $state({ db: {
     characters: [{ chaId: 'c', name: 'Character', chatPage: 0, chats: [{ id: 'chat', message: [] }] }],
@@ -41,7 +42,7 @@ vi.mock('../../lang', () => ({ language: {
     asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send', chatShellSendWaitsForDelete: 'Waiting for the reply to be deleted…',
     chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
-    chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device',
+    chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device', chatShellOnThisDeviceHelp: 'Other devices keep their own setting.',
     chatShellAttachingFile: (name: string, written: string, total: string) => `Attaching ${name}: ${written} / ${total} MiB`,
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line', postFile: 'Post File',
 } }))
@@ -208,6 +209,18 @@ describe('ShellComposer draft and actions', () => {
         expect(tools.querySelector('[data-part="chat-composer-enter-scope"]')?.textContent).toBe('On this device')
     })
 
+    test('TC3-5: the Enter key select is described by its label text, the device chip and the help, in that order', async () => {
+        const node = await show()
+        const tools = node.querySelector('[data-part="chat-composer-tools"]')!
+        const select = tools.querySelector('select')!
+        const ids = (select.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean)
+        expect(ids).toHaveLength(3)
+        const texts = ids.map((id) => node.ownerDocument.getElementById(id)?.textContent?.trim())
+        expect(texts).toEqual(['Enter key', 'On this device', 'Other devices keep their own setting.'])
+        expect(ids[1]).toBe(tools.querySelector('[data-part="chat-composer-enter-scope"]')!.id)
+        expect(tools.querySelector('[data-part="chat-composer-enter-scope"]')?.textContent).toBe('On this device')
+    })
+
     test('T11: work in the shown chat shows Stop, and Stop stops that chat only', async () => {
         const node = await show()
         busy.set(true)
@@ -218,6 +231,26 @@ describe('ShellComposer draft and actions', () => {
         expect(stopComposerWorkIn).toHaveBeenCalledWith({ chaId: 'c', chatId: 'chat' })
         expect(abortChat).not.toHaveBeenCalled()
     })
+
+    // TC2-2 (regression reproducer): plus, send and stop were the text glyphs + ➤ ■; their names are unchanged.
+    test('plus, send and stop are aria-hidden icons with no glyph text', async () => {
+        await import('@lucide/svelte')
+        const node = await show()
+        const plus = node.querySelector<HTMLElement>('[data-part="chat-composer-plus"]')!
+        const send = node.querySelector<HTMLElement>('[data-part="chat-send"]')!
+        expect(lucideNames(plus)).toEqual(['lucide-plus'])
+        expect(lucideNames(send)).toEqual(['lucide-send-horizontal'])
+        expect(send.getAttribute('aria-label')).toBe('Send')
+        expect(iconsIn(node.querySelector('[data-part="chat-composer-row"]')!).every((svg) => svg.getAttribute('aria-hidden') === 'true')).toBe(true)
+        busy.set(true)
+        work.shown = true
+        flushSync()
+        const stop = node.querySelector<HTMLElement>('[data-part="chat-composer-stop"]')!
+        expect(lucideNames(stop)).toEqual(['lucide-square'])
+        expect(stop.getAttribute('aria-label')).toBe('Stop')
+        expect(iconsIn(node.querySelector('[data-part="chat-composer-row"]')!).every((svg) => svg.getAttribute('aria-hidden') === 'true')).toBe(true)
+        expect(glyphsIn(node)).toEqual([])
+    }, 120_000)
 
     describe('the progress ring holds still once the shown chat has streamed text', () => {
         const fixtureChaId = state.db.characters[0].chaId
