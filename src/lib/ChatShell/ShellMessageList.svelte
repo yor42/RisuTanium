@@ -965,6 +965,8 @@
 </div>
 
 <style>
+    /* The reading column is capped and centred on wide panes; the scroller, header and composer stay full width. */
+    [data-part="chat-message-list"] { inline-size: 100%; max-inline-size: calc(var(--thread-max-width) + 2 * var(--space-12)); margin-inline: auto; }
     [data-part="chat-message-container"].older { content-visibility: auto; contain-intrinsic-size: auto var(--size-39); }
     /* The search hit takes no layout space: the outline is drawn inside the box and the note is absolutely positioned, so decorating
        or undecorating a row never moves the rows around it and the scroll anchor holds while stepping. */
