@@ -2279,3 +2279,12 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2472](Maintainer-Context.md#mc-2472--batch-speed-item-measured-by-a-deterministic-test-through-the-real-sweep-path-2026-11-19) | Batch-speed item measured by a deterministic test through the real sweep path, 2026-11-19 |
 | [MC-2473](Maintainer-Context.md#mc-2473--20-x-20-px-studio-row-tick-box-folded-into-chore-823-212-2026-11-19) | 20 x 20 px Studio row tick box folded into CHORE-823 (#212), 2026-11-19 |
 | [MC-2474](Maintainer-Context.md#mc-2474--no-new-track-a-ticket-until-the-quota-resets-candidates-292-290-and-179-2026-11-19) | No new track-A ticket until the quota resets; candidates #292, #290 and #179, 2026-11-19 |
+| [MC-2713](Maintainer-Context.md#mc-2713--per-session-mc-id-blocks-device-rulings-asked-in-lane-b-pr-sessions-write-their-own-device-rows-2026-11-20) | Per-session MC ID blocks, device rulings asked in lane B, PR sessions write their own device rows, 2026-11-20 |
+| [MC-2744](Maintainer-Context.md#mc-2744--approval-matrix-autonomous-to-green-merge-2026-11-20) | Approval matrix: autonomous to green merge, 2026-11-20 |
+| [MC-2745](Maintainer-Context.md#mc-2745--follow-up-policy-reviewers-classify-at-most-2-new-issues-per-pr-weekly-14-day-sweep-2026-11-20) | Follow-up policy: reviewers classify, at most 2 new issues per PR, weekly 14-day sweep, 2026-11-20 |
+| [MC-2746](Maintainer-Context.md#mc-2746--size-tiers-0-1-and-2-2026-11-20) | Size tiers 0, 1 and 2, 2026-11-20 |
+| [MC-2747](Maintainer-Context.md#mc-2747--pr-based-complete-bulk-close-of-old-owed-closeouts-2026-11-20) | PR-based COMPLETE; bulk close of old owed closeouts, 2026-11-20 |
+| [MC-2748](Maintainer-Context.md#mc-2748--native-routing-first-codex-and-agy-opt-in-after-a-fresh-route-health-check-cheapag-and-openrouter-inactive-2026-11-20) | Native routing first; Codex and agy opt-in after a fresh route-health check; cheapag and OpenRouter inactive, 2026-11-20 |
+| [MC-2749](Maintainer-Context.md#mc-2749--tssvelte-lsp-never-called-rust-analyzer-kept-for-rust-2026-11-20) | TS/Svelte LSP never called; rust-analyzer kept for Rust, 2026-11-20 |
+| [MC-2750](Maintainer-Context.md#mc-2750--main-registry-grant-rule-documented-one-tooling-ticket-for-automatic-per-worktree-grants-2026-11-20) | Main-registry grant rule documented; one tooling ticket for automatic per-worktree grants, 2026-11-20 |
+| [MC-2751](Maintainer-Context.md#mc-2751--governance-v2-rollout-as-staged-docs-only-prs-2026-11-20) | Governance v2 rollout as staged docs-only PRs, 2026-11-20 |
