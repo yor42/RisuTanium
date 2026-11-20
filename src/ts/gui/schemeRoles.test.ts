@@ -119,8 +119,34 @@ describe('deriveSchemeRoles', () => {
             'text-secondary': '#bfc6e3', 'text-muted': '#a6b0d4', 'accent': '#6f7fc8', 'accent-rgb': '111 127 200',
             'focus-ring': '#6f7fc8', 'field-border': '#6f7fc8', 'danger': '#ff6b81', 'danger-rgb': '255 107 129', 'warning-rgb': '255 209 102',
             'overlay-rgb': '238 240 255', 'switch-off-alpha': '0.36', 'surface-toast': '#2f3670', 'color-scheme': 'dark',
-            'on-selected': '#eef0ff', 'on-borderc': '#000000', 'state-amber': '#fe9a00', 'state-violet': '#8e51ff',
+            'on-selected': '#eef0ff', 'on-borderc': '#000000', 'state-amber': '#fe9a00', 'state-violet': '#8e51ff', 'on-danger': '#ffffff',
         })
+    })
+
+    // The rest, selected and hover fills of the danger Button and of GridCatalog's icon trash button
+    // (Tailwind red-700, red-800 and red-600 clipped to sRGB); the compiled-sheet tests pin them to the markup.
+    const DANGER_FILLS = ['#c10007', '#9f0712', '#e7000b']
+
+    test.each(SCHEMES)('%s: on-danger reaches 4.5:1 on every danger fill and is the text colour where that already holds', (_name, s) => {
+        const role = deriveSchemeRoles(s)['on-danger']
+        for (const fill of DANGER_FILLS) expect(cr(c(role), c(fill)), `${role} on ${fill}`).toBeGreaterThanOrEqual(4.5)
+        if (DANGER_FILLS.every((f) => cr(c(s.textcolor), c(f)) >= 4.5)) expect(role).toBe(toHex(c(s.textcolor)))
+        else expect(role).toBe('#ffffff')
+    })
+
+    test('on-danger keeps the scheme text colour on aurora and falls to white on Default', () => {
+        expect(deriveSchemeRoles(colorSchemePresets.aurora)['on-danger']).toBe(toHex(c(colorSchemePresets.aurora.textcolor)))
+        expect(deriveSchemeRoles(colorSchemePresets.light)['on-danger']).toBe('#ffffff')
+    })
+
+    test('a text colour that fails every danger fill gives white', () => {
+        const s: ColorScheme = { ...defaultColorScheme, textcolor: '#c10007' }
+        expect(deriveSchemeRoles(s)['on-danger']).toBe('#ffffff')
+    })
+
+    test('an unreadable text colour keeps the raw input for on-danger', () => {
+        const s: ColorScheme = { ...defaultColorScheme, textcolor: 'nonsense' }
+        expect(deriveSchemeRoles(s)['on-danger']).toBe('nonsense')
     })
 
     test.each(SCHEMES)('%s: on-selected is the text colour where it reaches 4.5:1 on selected, else black or white', (_name, s) => {

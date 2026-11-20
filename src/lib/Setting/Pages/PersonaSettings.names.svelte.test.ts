@@ -153,7 +153,7 @@ describe('PersonaSettings accessible names and colours', () => {
     test('regression reproducer: the persona tiles use scheme tokens instead of palette hovers', async () => {
         const root = await mountPage()
         // The danger Button and the shared checkbox keep palette classes of their own primitives.
-        const primitives = [/^bg-red-700$/, /^border-red-600$/, /^focus:ring-red-600$/, /^hover:bg-red-500$/, /^hover:border-gray-300$/, /^text-gray-300$/]
+        const primitives = [/^bg-red-700$/, /^border-red-600$/, /^focus:ring-red-600$/, /^hover:bg-red-600$/, /^hover:border-gray-300$/, /^text-gray-300$/]
         expect(paletteClasses(root, { allow: primitives })).toEqual([])
         expect(root.querySelector('.bg-textcolor2.hover\\:text-textcolor')).not.toBeNull()
     })

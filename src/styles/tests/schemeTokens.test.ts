@@ -132,7 +132,7 @@ describe('TB1b: derived roles reach the tokens', () => {
         expect(document.documentElement.style.getPropertyValue('--risu-theme-role-text-muted')).not.toBe('')
     })
 
-    test.each(['on-borderc', 'state-amber', 'state-violet'])('the %s role is written by updateColorScheme', (role) => {
+    test.each(['accent', 'on-borderc', 'on-danger', 'state-amber', 'state-violet'])('the %s role is written by updateColorScheme', (role) => {
         apply('light')
         expect(document.documentElement.style.getPropertyValue(`--risu-theme-role-${role}`)).not.toBe('')
     })
@@ -199,7 +199,7 @@ describe('TB4b: token fallbacks equal the Default derivation', () => {
                 expect(m[2].trim(), `${file} ${m[1]}`).toBe(roles[m[1]])
             }
         }
-        expect(found).toBeGreaterThanOrEqual(20)
+        expect(found).toBeGreaterThanOrEqual(23)
     })
 })
 

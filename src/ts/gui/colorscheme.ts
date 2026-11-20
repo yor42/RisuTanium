@@ -318,6 +318,7 @@ export function updateColorScheme(){
         document.documentElement.style.setProperty("--risu-theme-role-on-borderc", roles['on-borderc']);
         document.documentElement.style.setProperty("--risu-theme-role-state-amber", roles['state-amber']);
         document.documentElement.style.setProperty("--risu-theme-role-state-violet", roles['state-violet']);
+        document.documentElement.style.setProperty("--risu-theme-role-on-danger", roles['on-danger']);
         ColorSchemeTypeStore.set(colorScheme.type)
         // The colour applied above, after the lite override; also reached at boot.
         syncSystemBars(colorScheme.bgcolor)
@@ -373,6 +374,29 @@ export async function importColorScheme(){
     }
 }
 
+const STANDARD_QUOTES = {
+    dark: { FontColorQuote1: '#8BE9FD', FontColorQuote2: '#FFB86C' },
+    light: { FontColorQuote1: '#0b5f7a', FontColorQuote2: '#8a4200' },
+} as const
+
+/**
+ * The colour a Custom text theme paints for a quote. A stored string is painted verbatim; a null
+ * or absent quote follows the scheme and paints the Standard quote for the painted scheme type.
+ * Every non-'dark' scheme type counts as light, as in the standard branch, and lite is always
+ * dark. Shared by the custom branch and the plugin getter so both report the same colour.
+ */
+export function paintedCustomQuote(
+    db: Pick<Database, 'customTextTheme' | 'colorSchemeName' | 'colorScheme'>,
+    key: 'FontColorQuote1' | 'FontColorQuote2'
+): string{
+    const stored = db.customTextTheme[key]
+    if(typeof stored === 'string'){
+        return stored
+    }
+    const type = get(isLite) ? 'dark' : effectiveColorScheme(db).type
+    return STANDARD_QUOTES[type === 'dark' ? 'dark' : 'light'][key]
+}
+
 export function updateTextThemeAndCSS(){
     let db = DBState.db
     const root = document.querySelector(':root') as HTMLElement;
@@ -392,9 +416,9 @@ export function updateTextThemeAndCSS(){
                 root.style.setProperty('--FontColorQuote2', '#FFB86C');
             }else{
                 root.style.setProperty('--FontColorStandard', '#0f172a');
-                root.style.setProperty('--FontColorItalic', '#6b6c72');
+                root.style.setProperty('--FontColorItalic', '#5f6066');
                 root.style.setProperty('--FontColorBold', '#0f172a');
-                root.style.setProperty('--FontColorItalicBold', '#6b6c72');
+                root.style.setProperty('--FontColorItalicBold', '#5f6066');
                 root.style.setProperty('--FontColorQuote1', '#0b5f7a');
                 root.style.setProperty('--FontColorQuote2', '#8a4200');
             }
@@ -424,8 +448,8 @@ export function updateTextThemeAndCSS(){
             root.style.setProperty('--FontColorItalic', db.customTextTheme.FontColorItalic);
             root.style.setProperty('--FontColorBold', db.customTextTheme.FontColorBold);
             root.style.setProperty('--FontColorItalicBold', db.customTextTheme.FontColorItalicBold);
-            root.style.setProperty('--FontColorQuote1', db.customTextTheme.FontColorQuote1 ?? '#8BE9FD');
-            root.style.setProperty('--FontColorQuote2', db.customTextTheme.FontColorQuote2 ?? '#FFB86C');
+            root.style.setProperty('--FontColorQuote1', paintedCustomQuote(db, 'FontColorQuote1'));
+            root.style.setProperty('--FontColorQuote2', paintedCustomQuote(db, 'FontColorQuote2'));
             break
         }
     }

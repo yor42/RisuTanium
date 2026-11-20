@@ -95,7 +95,7 @@ export interface ModelEnv {
     hoverMedia?: boolean
 }
 
-export type PseudoName = '::before' | '::after'
+export type PseudoName = '::before' | '::after' | '::marker'
 
 interface Spec { a: number, b: number, c: number }
 interface Cond { kind: 'media' | 'supports', params: string }
@@ -175,6 +175,7 @@ function compileSelector(text: string, report: (what: string) => void): Compiled
         const v = n.value.toLowerCase()
         if (v === '::before' || v === ':before') { pseudo = '::before'; n.remove() }
         else if (v === '::after' || v === ':after') { pseudo = '::after'; n.remove() }
+        else if (v === '::marker') { pseudo = '::marker'; n.remove() }
         else if (v.startsWith('::') || v === ':host' || v === ':host-context') unsupported = true
         else if (v === ':where') n.value = ':is'
         else if (v === ':focus-visible' || v === ':focus') n.replaceWith(...selectorParser().astSync(`[${FOCUS_ATTR}]`).first.nodes)

@@ -5,7 +5,7 @@
     class="{
         styled === 'primary' ? ((selected ? 'bg-selected risu-on-selected' : 'bg-darkbutton') + " hover:bg-selected border-darkborderc")
         : styled === 'outlined' ? 'bg-transparent hover:bg-darkbg border-darkborderc text-textcolor2'
-        : ((selected ? 'bg-red-800' : 'bg-red-700') + ' hover:bg-red-500 border-red-600')
+        : ((selected ? 'bg-red-800' : 'bg-red-700') + ' hover:bg-red-600 border-red-600 risu-on-danger')
     } border text-textcolor rounded-md shadow-xs risu-focus-ring transition-colors duration-200{className ? (" " + className) : ""}"
     class:opacity-50={disabled}
     class:cursor-not-allowed={disabled}
