@@ -21,7 +21,7 @@ export async function importDroppedFile(file:File):Promise<void>{
         return
     }
     await runImportBatch([{name: file.name, run: (progress) => importDropped(file, progress)}], {
-        task: {title: language.importTaskFilesTitle, steps: IMPORT_STEPS},
+        task: {title: language.importTaskFilesTitle, steps: IMPORT_STEPS, background: true},
         afterImported: (outcome) => {
             if(outcome.kind === 'imported' && outcome.index !== null){
                 try {
@@ -45,7 +45,7 @@ async function importDropped(file:File, progress:ImportProgress):Promise<ImportO
             progress.step('add')
             progress.beforeWrite()
             await importPreset({ name: file.name, data })
-            progress.committed()
+            progress.committed({ kind: 'notUndoable', why: 'preset' })
             progress.notice(language.successImport)
             return {kind: 'imported', index: null}
         } else if (name.endsWith('.risum')) {
@@ -57,7 +57,7 @@ async function importDropped(file:File, progress:ImportProgress):Promise<ImportO
                 progress.beforeWrite()
                 markBootWrite()
                 DBState.db.modules.push(module)
-                progress.committed()
+                progress.committed({ kind: 'module', slot: DBState.db.modules[DBState.db.modules.length - 1] })
             } finally {
                 await source.close()
             }

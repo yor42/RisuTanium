@@ -92,7 +92,6 @@ export function generateAIImage(genPrompt:string, currentChar:character, neg:str
 
 async function generateAIImageUntracked(genPrompt:string, currentChar:character, neg:string, returnSdData:string, options?:ImageGenerationOptions):Promise<string|false>{
     const db = getDatabase()
-    console.log(db.sdProvider)
     if(db.sdProvider === 'webui'){
 
 
@@ -131,7 +130,6 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
             else if(da.ok){
                 let charemotions = get(CharEmotion)
                 const img = `data:image/png;base64,${da.data.images[0]}`
-                console.log(img)
                 const emos:[string, string,number][] = [[img, img, Date.now()]]
                 charemotions[currentChar.chaId] = emos
                 CharEmotion.set(charemotions)
@@ -374,15 +372,11 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
                 reqlist.body.parameters.strength = db.NAIImgConfig.strength || 0.7;
                 reqlist.body.parameters.noise = db.NAIImgConfig.noise || 0;
             }
-            
-            console.log({img2img:reqlist});
         }else{
 
             reqlist = commonReq;
             reqlist.body.action = 'generate';
 
-            console.log({nothing:reqlist});
-           
         }
         try {
             if(reqlist.headers){
@@ -441,8 +435,6 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
                 "Authorization": "Bearer " + dalleKey
             }
         })
-
-        console.log(da)
 
         if(returnSdData === 'inlay'){
             let res = da?.data?.data?.[0]?.b64_json
@@ -539,10 +531,8 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
         }
 
         const fetchWrapper = async (url: string, options = {}) => {
-            console.log(url)
             const response = await globalFetch(url, options)
             if (!response.ok) {
-                console.log(JSON.stringify(response.data))
                 throw new Error(JSON.stringify(response.data))
             }
             return response.data
@@ -581,7 +571,6 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
                 headers: { 'Content-Type': 'application/json' },
                 body: { 'prompt': prompt }
             })
-            console.log(`prompt id: ${id}`)
 
             let item
 
@@ -591,7 +580,6 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
                 headers: { 'Content-Type': 'application/json' },
                 method: 'GET'
             })).json())[id])) {
-                console.log("Checking /history...")
                 if (Date.now() - startTime >= timeout) {
                     alertError(language.errors.imageGenerationTimeout);
                     return false

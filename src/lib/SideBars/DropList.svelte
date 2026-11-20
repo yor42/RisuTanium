@@ -10,7 +10,7 @@
     {#each list as n, i}
         <div class="w-full h-10 flex items-center">
             <span class="ml-2 grow">{language.formating[n]}</span>
-            <button class="mr-1" onclick={() => {
+            <button class="mr-1" aria-label={language.chatShellMoveUp} onclick={() => {
                 if(i !== 0){
                     let tempList = list
                     const temp = tempList[i]
@@ -25,8 +25,8 @@
                     tempList[i+1] = temp
                     list = tempList
                 }
-            }}><ChevronUp /></button>
-            <button class="mr-1" onclick={() => {
+            }}><ChevronUp aria-hidden="true" /></button>
+            <button class="mr-1" aria-label={language.chatShellMoveDown} onclick={() => {
                 if(i !== (list.length - 1)){
                     let tempList = list
                     const temp = tempList[i]
@@ -41,7 +41,7 @@
                     tempList[i-1] = temp
                     list = tempList
                 }
-            }}><ChevronDown /></button>
+            }}><ChevronDown aria-hidden="true" /></button>
         </div>
         {#if i !== (list.length - 1)}
             <div class="border-t w-full border-selected"></div>

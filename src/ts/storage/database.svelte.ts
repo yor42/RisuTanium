@@ -18,9 +18,10 @@ import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset, normalizeHypaV3Presets } from '../process/memory/hypaV3Presets'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import type { TaskPreset } from '../process/utility/taskPreset'
-import type { PriceOverride } from '../usage/usageTypes'
+import type { PriceOverride, UsageRetentionMonths } from '../usage/usageTypes'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
+import { shareSafePreset } from '../shareStrip'
 import { safeStructuredClone } from '../polyfill';
 import { AssetList, toAssetList } from './assetList';
 import {
@@ -560,8 +561,8 @@ export function setDatabase(data:Database){
     data.hypaAllocatedTokens ??= 3000
     data.hypaChunkSize ??= 3000
     data.dallEQuality ??= 'standard'
-    data.customTextTheme.FontColorQuote1 ??= '#8BE9FD'
-    data.customTextTheme.FontColorQuote2 ??= '#FFB86C'
+    data.customTextTheme.FontColorQuote1 ??= null
+    data.customTextTheme.FontColorQuote2 ??= null
     data.font ??= 'default'
     data.customFont ??= ''
     data.lineHeight ??= 1.25
@@ -917,6 +918,8 @@ export interface Database{
     activeThemePack?:string
     /** Per-model price overrides in USD per 1M tokens. Absent until one is set; fork-only, never in a `.bin`. */
     usagePriceOverrides?:Record<string, PriceOverride>
+    /** Months of usage statistics kept; absent keeps every month. Fork-only, never in a `.bin`. */
+    usageRetentionMonths?:UsageRetentionMonths
     sdProvider: string
     webUiUrl:string
     sdSteps:number
@@ -939,8 +942,8 @@ export interface Database{
         FontColorBold : string,
         FontColorItalic : string,
         FontColorItalicBold : string,
-        FontColorQuote1 : string,
-        FontColorQuote2 : string
+        FontColorQuote1 : string | null,
+        FontColorQuote2 : string | null
     }
     requestRetrys:number
     localNetworkMode:boolean
@@ -2519,13 +2522,8 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
     saveCurrentPreset()
     let db = getDatabase()
     let pres = withoutPresetMeta(safeStructuredClone(db.botPresets[id]))
+    shareSafePreset(pres)
     console.log(pres)
-    pres.openAIKey = ''
-    pres.forceReplaceUrl = ''
-    pres.forceReplaceUrl2 = ''
-    pres.proxyKey = ''
-    pres.textgenWebUIStreamURL=  ''
-    pres.textgenWebUIBlockingURL=  ''
 
     if(type === 'json'){
         const saved = await downloadFile(pres.name + "_preset.json", Buffer.from(JSON.stringify(pres, null, 2)))
@@ -2566,7 +2564,7 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
 
     }
 
-    alertNormal(downloadNotice(language.successExport))
+    alertNormal(downloadNotice(language.successExport) + '\n\n' + language.shareExportKeysLeftOut)
 
 
     return {

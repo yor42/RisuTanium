@@ -3,7 +3,7 @@
  * resolve (`importModule` resolves only after the card is answered).
  */
 
-import { answerTask, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import { answerTask, confirmTask, taskConfirmShowing, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 
 export type ImportCard = TaskView | null
@@ -17,6 +17,7 @@ export async function answerImportCard(run: () => Promise<unknown>): Promise<Imp
     let ended = false
     void done.then(() => { ended = true }, () => { ended = true })
     for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        if (taskConfirmShowing()) confirmTask()
         await new Promise((resolve) => setTimeout(resolve, 0))
     }
     const card = taskResultShowing() ? taskHostView() : null

@@ -5,7 +5,6 @@ import { alertNormalWait } from "./alert"
 import streamSaver from "./vendor/streamSaver"
 import { MEASURE } from "./process/memory/measureFlag"
 import { noteMeasurePhase } from "./drive/importPhaseRing"
-import { isTauri } from "./platform"
 import { bytesToBase64, isAndroidTransport } from "./storage/tauriByteTransport"
 import type { ExportCancelToken } from "./exportCancel"
 
@@ -411,8 +410,8 @@ export class TauriWriter {
     }
 }
 
-/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
-export function withFileIncompleteSentence(e: unknown): Error {
+/** The failure's own text as `alertError` would show it: a string or an `Error`'s message as is, anything else as JSON, trimmed. */
+export function exportErrorText(e: unknown): string {
     let text: string
     if (typeof e === 'string') {
         text = e
@@ -428,7 +427,12 @@ export function withFileIncompleteSentence(e: unknown): Error {
             text = `${e}`
         }
     }
-    const result = new Error(`${text.trim()}\n${language.exportFailedFileIncomplete}`)
+    return text.trim()
+}
+
+/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
+export function withFileIncompleteSentence(e: unknown): Error {
+    const result = new Error(`${exportErrorText(e)}\n${language.exportFailedFileIncomplete}`)
     if (e instanceof Error) {
         result.stack = e.stack
     }
@@ -533,19 +537,22 @@ function answeredWithin(ready: Promise<void>, timeoutMs: number): Promise<boolea
 }
 
 /**
- * Whether opening the browser writer needs a user gesture that is still fresh. Only streamsaver's popup helper does:
- * it is used on a page that is not a secure context, when the download is not collected in memory. A secure page uses
- * a hidden frame and the service worker, the memory paths download at close, and the desktop app opens a native dialog.
+ * Whether opening the browser writer needs a user gesture that is still fresh. None does: a secure page uses a hidden
+ * frame and the service worker, a page that is not a secure context holds the export in memory instead of opening
+ * streamsaver's popup helper, the memory paths download at close, and the desktop app opens a native dialog. Callers
+ * keep asking so that a writer that does need a gesture again is covered by the same check.
  */
 export function webWriterNeedsGesture(): boolean {
-    return !isTauri && !globalThis.isSecureContext && !streamSaver.useBlobFallback
+    return false
 }
 
 /**
  * Opens the writer a browser export goes through.
  *
  * - On a secure page the helper is the one the application serves itself, set before the first stream is created.
- *   A plain-HTTP page keeps the helper page streamsaver names by default.
+ *   A page that is not a secure context (plain HTTP) never asks a helper: streamsaver would open a popup to a page on an
+ *   external host, so the user is told the export is held in memory and it is built in memory and offered as one
+ *   download. No stream is created there.
  * - When streamsaver would collect the download in memory itself, the user is told so before the export starts and
  *   `ready` is not awaited, because no helper is involved.
  * - Otherwise nothing is written until the helper has answered. If it does not answer within
@@ -562,6 +569,13 @@ export async function openWebExportWriter(filename: string, cancel?: ExportCance
     if (streamSaver.useBlobFallback) {
         await alertNormalWait(language.exportHeldInMemory)
         return new HeldInMemoryStreamWriter(streamSaver.createWriteStream(filename).writable.getWriter())
+    }
+    // Browsers always define `isSecureContext`, so the memory path is taken exactly on a non-secure page; a runtime
+    // without the property keeps the stream path.
+    if (globalThis.isSecureContext === false) {
+        await alertNormalWait(language.exportHeldInMemory)
+        cancel?.throwIfCancelled()
+        return new BlobDownloadWriter(filename)
     }
     const { writable, ready } = streamSaver.createWriteStream(filename)
     const writer = writable.getWriter()

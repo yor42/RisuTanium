@@ -5,10 +5,11 @@ import type { character } from "./storage/database.svelte"
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { ModuleImportStopped } from "./process/moduleImportStop"
 import { withBusy, type BusyHandle } from "./process/memory/busyActions"
-import { alertTask, trackTaskAction, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
-import type { TaskFailure, TaskResult, TaskSkip, TaskStepDef } from "../lib/Nexus/pattern/taskProgress"
+import { alertTask, registerDetachedModulesRound, trackTaskAction, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
+import { taskMiB, type TaskConfirm, type TaskFailure, type TaskResult, type TaskResultAction, type TaskSkip, type TaskStepDef } from "../lib/Nexus/pattern/taskProgress"
 import { ImportCancelled, makeImportProgress, type ImportProgress, type ImportStep } from "./importProgress"
 import { restoreInProgress } from "./drive/restoreInProgress"
+import { createUndoRecord, recordCreated, reportUndo, undoImport, undoOffered, type ImportUndoRecord } from "./importUndo"
 
 /**
  * How the attempt to import one file ended. The import code decides it; nothing reads alert text.
@@ -28,11 +29,18 @@ export type ImportOutcome =
     | {kind: 'refused', reason: string, summaryOnly?: true, normal?: true}
     | {kind: 'failed', error: Error|string}
 
-/** `run` receives the file's progress; an item that reports nothing ignores it. */
-export type ImportItem = {name: string, run: (progress: ImportProgress) => Promise<ImportOutcome>}
+/**
+ * `run` receives the file's progress; an item that reports nothing ignores it. `size` is the bytes known without reading
+ * the item (a picked file's size); an item whose size is not known leaves it unset.
+ */
+export type ImportItem = {name: string, run: (progress: ImportProgress) => Promise<ImportOutcome>, size?: number}
 
-/** The card a batch opens: its title, the steps its files go through, and an optional subtitle (a single file's name by default). */
-export type ImportTaskSpec = {title: string, steps: readonly ImportStep[], subtitle?: string}
+/**
+ * The card a batch opens: its title, the steps its files go through, and an optional subtitle (a single file's name by
+ * default). `background` lets the running card offer "Keep going in the background"; `backgroundHeld` withholds that offer
+ * until a file reports its last duplicate decision (see `ImportBatchOptions.mayReplace`).
+ */
+export type ImportTaskSpec = {title: string, steps: readonly ImportStep[], subtitle?: string, background?: true, backgroundHeld?: true}
 
 export type ImportSummary = {
     imported: number
@@ -47,6 +55,12 @@ export type ImportSummary = {
     message: string|null
     //True when the last round ended on a Cancel before its first write: nothing of that round was changed.
     cancelled?: true
+    //True when the preflight ended without a confirm (declined, replaced, closed or a restore began): nothing was run.
+    notStarted?: true
+    //True when any round of the action was sent to the background; a caller then does not move the user when it ends.
+    backgrounded?: true
+    //True when the action's Undo was pressed and removed what the action created; a caller then has nothing to open.
+    undone?: true
 }
 
 //A refused module is a refusal whichever import it came out of, a stop the user chose is not an error; any other error is a failure.
@@ -203,6 +217,32 @@ export function composeImportResult(items:ImportItem[], outcomes:ImportOutcome[]
     }}
 }
 
+//A preflight asks only before a batch: one file is its own confirmation.
+const PREFLIGHT_MIN_FILES = 2
+
+/**
+ * What the preflight sheet says before anything runs: the file count and, when every item's size is known, the exact
+ * total. A missing or invalid size drops the size line; it is never counted as zero. Null when no sheet is due.
+ */
+export function composeImportPreflight(items:ImportItem[]):TaskConfirm|null {
+    if(items.length < PREFLIGHT_MIN_FILES){
+        return null
+    }
+    const consequences:string[] = []
+    const sizes = items.map((item) => item.size)
+    if(sizes.every((size) => size !== undefined && Number.isFinite(size) && size >= 0)){
+        const total = sizes.reduce((sum:number, size) => sum + (size ?? 0), 0)
+        consequences.push(language.importPreflightSize(taskMiB(total)))
+    }
+    consequences.push(language.importPreflightAdds)
+    return {
+        headline: language.importPreflightHeadline(items.length),
+        consequences,
+        cancelLabel: language.cancel,
+        primaryLabel: language.importPreflightStart,
+    }
+}
+
 const STEP_MARK = {download: 'transfer_in', read: 'scanning', check: 'scanning', assets: 'transfer_in', add: 'transfer_in'} as const
 
 function stepLabel(step:ImportStep):string {
@@ -238,26 +278,61 @@ async function clearStaleLegacyProgress():Promise<void> {
 
 type RoundEntry = {item:ImportItem}
 
+//A card the preflight opened and the user confirmed, with the abort its Cancel drives.
+type OpenedCard = {handle:TaskHandle, abort:AbortController}
+
+function openCard(entries:RoundEntry[], task:ImportTaskSpec, abort:AbortController, confirm?:TaskConfirm):TaskHandle {
+    return alertTask({
+        title: task.title,
+        subtitle: task.subtitle ?? (entries.length === 1 ? entries[0].item.name : undefined),
+        steps: stepDefs(task.steps),
+        onCancel: () => abort.abort(),
+        ...(task.background ? {background: true as const} : {}),
+        ...(task.backgroundHeld ? {backgroundHeld: true as const} : {}),
+        ...(confirm ? {confirm} : {}),
+    })
+}
+
 type RoundEnd = {
     summary:ImportSummary
     closed:Promise<TaskCloseAnswer>
     retry:RoundEntry[]
+    handle:TaskHandle
+    //True when this round's card lists the Undo action; only then is an `undo` answer honoured.
+    offered:boolean
+}
+
+//A round that may still answer Replace holds the guard that keeps every other card from offering the background, until its
+//last decision shows that no Replace can follow or the round ends.
+type RoundGuard = {release:() => void}
+
+function holdRoundGuard(enabled:boolean):RoundGuard {
+    let end:(() => void)|null = enabled ? registerDetachedModulesRound() : null
+    return {release: () => {
+        end?.()
+        end = null
+    }}
 }
 
 /**
- * One round: opens the card, runs the entries in order and posts the result inside the caller's busy scope. It returns
- * the promise of the answer, not the answer, so the wait for it stays outside that scope.
+ * One round: opens the card (unless the preflight already did), runs the entries in order and posts the result inside the
+ * caller's busy scope. It returns the promise of the answer, not the answer, so the wait for it stays outside that scope.
  */
-async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions):Promise<RoundEnd> {
+async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions, record:ImportUndoRecord, opened?:OpenedCard):Promise<RoundEnd> {
+    const guard = holdRoundGuard(opts.mayReplace === true)
+    try {
+        return await runRoundWithGuard(entries, number, task, opts, guard, record, opened)
+    } finally {
+        guard.release()
+    }
+}
+
+async function runRoundWithGuard(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions, guard:RoundGuard, record:ImportUndoRecord, opened?:OpenedCard):Promise<RoundEnd> {
     const count = entries.length
-    const abort = new AbortController()
-    const handle:TaskHandle = alertTask({
-        title: task.title,
-        subtitle: task.subtitle ?? (count === 1 ? entries[0].item.name : undefined),
-        steps: stepDefs(task.steps),
-        onCancel: () => abort.abort(),
-    })
+    const abort = opened?.abort ?? new AbortController()
+    const handle:TaskHandle = opened?.handle ?? openCard(entries, task, abort)
     const gate = {locked: false}
+    const round = {replaced: false}
     const items:ImportItem[] = []
     const outcomes:ImportOutcome[] = []
     const markers:boolean[] = []
@@ -285,9 +360,21 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
             bytes: handle.setBytes,
             count: handle.setCount,
             found: handle.setFound,
-            onCommitted: () => {
+            onCommitted: (created) => {
                 marker = true
                 anyCommitted = true
+                recordCreated(record, created)
+            },
+            onDecided: (replace) => {
+                if(replace){
+                    round.replaced = true
+                    return
+                }
+                //The last file's decision with no Replace in the round: nothing can replace a module from here on.
+                if(i === count - 1 && !round.replaced && !handle.detached){
+                    guard.release()
+                    handle.offerBackground()
+                }
             },
             onNotice: (text) => { notices.push(text) },
         })
@@ -323,28 +410,97 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
         outcomes.push(outcome)
         markers.push(marker)
     }
-    await clearStaleLegacyProgress()
+    guard.release()
+    if(opts.afterRound){
+        try {
+            opts.afterRound(number)
+        } catch (error) {
+            console.error(error)
+        }
+    }
+    //A card in the background, or one that a newer task replaced, has no claim on the screen: a wait on it belongs to someone else.
+    if(!handle.detached && !handle.inBackground){
+        await clearStaleLegacyProgress()
+    }
+    //The last moment the card can be sent to the background is the round's final await above: the flag is read after it and
+    //before the call that ends the card, with no await between.
+    record.backgrounded ||= handle.backgrounded
+    const undo:TaskResultAction[] = undoOffered(record) ? [{id: 'undo', label: language.importTaskUndo, guarded: true}] : []
+    const offered = undo.length > 0
     const summary = summariseImport(items, outcomes, {declinedReason: opts.declinedReason})
     if(cancelled){
-        return {summary: {...summary, cancelled: true}, closed: handle.settleCancel(), retry: []}
+        return {summary: {...summary, cancelled: true}, closed: handle.settleCancel(undefined, offered ? undo : undefined), retry: [], handle, offered}
     }
     const retry = items.filter((_, i) => outcomes[i].kind === 'failed' && !markers[i]).map((item) => ({item}))
     const composed = composeImportResult(items, outcomes, markers, {declinedReason: opts.declinedReason})
     let closed:Promise<TaskCloseAnswer>
     if(composed.kind === 'finish'){
-        closed = handle.finish(composed.result)
+        closed = handle.finish(offered ? {...composed.result, actions: [...undo, ...(composed.result.actions ?? [])]} : composed.result)
     }
     else if(composed.kind === 'fail'){
-        closed = handle.fail(composed.failure)
+        closed = handle.fail(offered ? {...composed.failure, actions: [...undo, ...(composed.failure.actions ?? [])]} : composed.failure)
     }
     else{
         handle.close()
         closed = Promise.resolve({kind: 'closed'})
+        return {summary, closed, retry, handle, offered: false}
     }
-    return {summary, closed, retry}
+    return {summary, closed, retry, handle, offered}
 }
 
-type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle}
+/**
+ * `preflight` asks once, before anything runs, when the batch has two or more files; Retry rounds never ask.
+ * `afterRound(number)` runs inside each round's busy scope, after its files and before its result is posted; a throw is
+ * logged. `mayReplace` marks a batch whose files can answer Replace to a duplicate question: while one of its rounds can
+ * still do so, no card offers the background (see `registerDetachedModulesRound`).
+ */
+type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, afterRound?:(number:number) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle, preflight?:true, mayReplace?:true}
+
+function notStartedSummary():ImportSummary {
+    return {imported: 0, skipped: 0, declined: 0, notImported: 0, notes: [], own: null, message: null, notStarted: true}
+}
+
+/**
+ * The preflight: opens the card in its confirm state and waits for the answer outside every busy scope (the caller's own
+ * scope ends first, so an unanswered sheet holds neither busy nor the keep-alive). Returns the confirmed card, or null when
+ * the action must not start: declined, replaced by a newer task, closed, or a restore began during the wait. Nothing was
+ * run and no result card is posted; a replacement or close is logged only, as a replaced import ends silently.
+ */
+async function askPreflight(items:ImportItem[], opts:ImportBatchOptions, task:ImportTaskSpec):Promise<OpenedCard|null|undefined> {
+    const confirm = opts.preflight ? composeImportPreflight(items) : null
+    if(!confirm){
+        return undefined
+    }
+    opts.outerBusy?.end()
+    const abort = new AbortController()
+    const handle = openCard(items.map((item) => ({item})), task, abort, confirm)
+    const answer = await handle.confirmation
+    if(answer !== 'confirm'){
+        if(answer === 'replaced' || answer === 'closed'){
+            console.info(`The import preflight ended without a confirm (${answer}).`)
+        }
+        return null
+    }
+    //A restore that began during the wait ends the action silently: the restore's own UI is on screen.
+    if(restoreInProgress()){
+        handle.close()
+        return null
+    }
+    return {handle, abort}
+}
+
+/** Runs the Undo and tells the user how it went; true when something was removed. It never rejects. */
+async function runUndo(record:ImportUndoRecord):Promise<boolean> {
+    try {
+        const result = await undoImport(record)
+        reportUndo(result)
+        return !('refused' in result) && result.trashed + result.removed > 0
+    } catch (error) {
+        console.error(error)
+        reportUndo({refused: true})
+        return false
+    }
+}
 
 /**
  * The batch on a task card: each round runs inside its own busy scope and ends with its result posted; the answer is
@@ -355,23 +511,40 @@ type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, decli
 async function runTaskBatch(items:ImportItem[], opts:ImportBatchOptions, task:ImportTaskSpec):Promise<ImportSummary> {
     let entries:RoundEntry[] = items.map((item) => ({item}))
     let number = 0
+    let backgrounded = false
+    //Everything the action's rounds created, for one Undo; it lives as long as the action.
+    const record = createUndoRecord()
+    let opened = await askPreflight(items, opts, task)
+    if(opened === null){
+        return notStartedSummary()
+    }
     for(;;){
         const current = entries
+        const preOpened = opened
+        opened = undefined
         let round:RoundEnd
         try {
-            round = await withBusy('import', () => runRound(current, number, task, opts))
+            round = await withBusy('import', () => runRound(current, number, task, opts, record, preOpened))
         } finally {
             //The caller's own scope for work before the card ends with the first result.
             opts.outerBusy?.end()
         }
         const answer = await round.closed
+        backgrounded = backgrounded || round.handle.backgrounded
+        record.backgrounded ||= round.handle.backgrounded
+        //The Undo runs before this action settles, so a reader of the unread-notice wait sees the undone state.
+        if(answer.kind === 'action' && answer.id === 'undo' && round.offered){
+            const undone = await runUndo(record)
+            const ended = undone ? {...round.summary, undone: true as const} : round.summary
+            return backgrounded ? {...ended, backgrounded: true} : ended
+        }
         //A restore that began while the result waited ends the action: no import round follows it.
         if(answer.kind === 'action' && answer.id === 'retry' && round.retry.length > 0 && !restoreInProgress()){
             entries = round.retry
             number++
             continue
         }
-        return round.summary
+        return backgrounded ? {...round.summary, backgrounded: true} : round.summary
     }
 }
 

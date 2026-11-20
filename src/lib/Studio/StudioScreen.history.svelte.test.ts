@@ -452,6 +452,33 @@ describe('a skipped first-message list says why, after the outcome sentence', ()
         expect(shownMessages()).toEqual({ notice: null, panel: 'studioHistoryAlreadyUndone studioHistoryListSaveUnfinished' })
     })
 
+    test('Ctrl+Y after the list already holds the redone delete moves the step and adds the unfinished-save sentence', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        const deleted = { list: [...live().alternateGreetings], fmIndex: live().chats[0].fmIndex }
+        expect(rig.service.undo(A).ok).toBe(true)
+        live().alternateGreetings = deleted.list
+        live().chats[0].fmIndex = deleted.fmIndex
+        flushSync()
+        await ctrl({ key: 'y' })
+        expect(shownMessages()).toEqual({ notice: 'studioHistoryAlreadyRedone studioHistoryListSaveUnfinished', panel: null })
+        expect(rig.service.view(A).undone).toHaveLength(0)
+    })
+
+    test('the panel Redo after the list already holds the redone delete shows the note and the unfinished-save sentence', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: true })
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        const deleted = { list: [...live().alternateGreetings], fmIndex: live().chats[0].fmIndex }
+        expect(rig.service.undo(A).ok).toBe(true)
+        live().alternateGreetings = deleted.list
+        live().chats[0].fmIndex = deleted.fmIndex
+        flushSync()
+        await press('studio-history-redo')
+        expect(shownMessages()).toEqual({ notice: null, panel: 'studioHistoryAlreadyRedone studioHistoryListSaveUnfinished' })
+    })
+
     test('a description refusal keeps the single sentence', async () => {
         const rig = makeRig()
         await mountScreen({ panel: false })

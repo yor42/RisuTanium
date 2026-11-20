@@ -157,14 +157,14 @@ describe('the Advanced page at index 6', () => {
         await settle()
         expect(target.querySelector('[data-part="advanced-calm"]')?.textContent).toBe(language.settingsShellAdvCalm)
         expect(maybeRow(target, 'adv.warn')).toBeNull()
-        expect(target.querySelector('.text-draculared')).toBeNull()
+        expect(target.querySelector('.text-draculared:not(button.help *)')).toBeNull()
     })
 
     test('the groups render in order, with the gated ones absent while their gates are off', async () => {
         const { target } = showPage()
         await settle()
         const sections = [...target.querySelectorAll<HTMLElement>('[data-part="settings-section"]')].map((el) => el.dataset.section)
-        expect(sections).toEqual(['adv.request', 'adv.lorebook', 'adv.chatload', 'adv.display', 'adv.prompt', 'adv.trouble', 'adv.gates', 'adv.custom', 'adv.other'])
+        expect(sections).toEqual(['adv.request', 'adv.lorebook', 'adv.chatload', 'adv.display', 'adv.prompt', 'adv.trouble', 'adv.gates', 'adv.custom'])
     })
 
     test('the experimental section appears collapsed with its gate, and reveal opens it', async () => {

@@ -1,5 +1,5 @@
 /* Settings theme loader and state mirror (THEMING.md, DD-142, DD-144, DD-145 to DD-159). Included by the three Settings pages after the page stylesheets; same shape as chat/theme.js.
-   1. ?theme=origin-navy | banana-cocoa loads themes/<name>.css after them, written into the head while it is parsed so it blocks the first paint (no flash of Deep Nexus).
+   1. ?theme=origin-navy | banana-cocoa | scratch-white | office-sheet loads themes/<name>.css after them, written into the head while it is parsed so it blocks the first paint (no flash of Deep Nexus).
       No parameter, or an unknown name, loads nothing. Mockup-only: there is no picker and nothing is stored. A theme changes appearance, never behaviour.
    2. The view state that existing code keeps as classes on <html> and <body>, or as media queries, is mirrored as data-* attributes so a pack can style it with attribute selectors:
         <html>  data-layout  = wide | mid | phone    set by slice1.js from the width of the app (DD-147); the same names as chat
@@ -19,7 +19,7 @@
    4. Helpers for the page scripts: num(token) reads a length or a number from a token once (T-17: it caches the first read for the life of the page, right for a static mockup; a pack swapped at run time would need the cache cleared),
       ms(el) the longest transition or animation of an element in ms, afterMotion(el, fn, pad) runs fn when el's transition or animation ends (transitionend / animationend), at the latest ms(el) + pad after the call. */
 (function () {
-  var THEMES = new Set(['origin-navy', 'banana-cocoa']);
+  var THEMES = new Set(['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet']);
   var m = /[?&]theme=([\w-]+)/.exec(location.search);
   var name = m && THEMES.has(m[1]) ? m[1] : '';
   var root = document.documentElement;

@@ -15,8 +15,8 @@
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
-    import { downloadNotice } from "src/ts/exportNotice";
-    import { alertClear, alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
+    import { runChatScreenshot } from "src/ts/chatScreenshot";
+    import { alertError, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
     import { canChatSpeak } from "src/ts/process/ttsModes";
@@ -90,6 +90,8 @@
     let chatsInstance: any = $state()
     let isScrollingToMessage = $state(false)
     let { openModuleList = $bindable(false), openChatList = $bindable(false), customStyle = '' }: Props = $props();
+    // Ids of the composer textareas' naming elements stay unique across mounted screens.
+    const composerUid = $props.id()
 
     // Opening Settings closes the composer menu and the sticker row.
     let seenCloseEpoch = chatSurface.closeEpoch
@@ -295,9 +297,9 @@
                 await sleep(50)
                 element.scrollIntoView({behavior: "instant", block: "start"})
 
-                element.classList.add('ring-2', 'ring-blue-500')
+                element.classList.add('ring-2', 'ring-borderc')
                 setTimeout(() => {
-                    element.classList.remove('ring-2', 'ring-blue-500')
+                    element.classList.remove('ring-2', 'ring-borderc')
                 }, 2000)
             }
         } finally {
@@ -455,54 +457,44 @@
             await runWithFullWindow(chatWindowPolicyInstance, () => loadPages, (v) => { loadPages = v }, async () => {
                 const html2canvas = await import('html-to-image');
                 const chats = document.querySelectorAll('.default-chat-screen .risu-chat')
-                alertWait(language.alerts.screenshotTaking)
-                let canvases:HTMLCanvasElement[] = []
+                await runChatScreenshot<HTMLCanvasElement>({
+                    rows: chats,
+                    capture: (chat) => html2canvas.toCanvas(chat as HTMLElement),
+                    merge: (captured) => {
+                        const canvases = [...captured].reverse()
 
-                for(const chat of chats){
-                    const cnv = await html2canvas.toCanvas(chat as HTMLElement)
-                    alertWait(language.alerts.screenshotTaking+" "+canvases.length+"/"+chats.length)
-                    canvases.push(cnv)
-                }
+                        let mergedCanvas = document.createElement('canvas');
+                        mergedCanvas.width = 0;
+                        mergedCanvas.height = 0;
+                        let mergedCtx = mergedCanvas.getContext('2d');
 
-                canvases.reverse()
+                        let totalHeight = 0;
+                        let maxWidth = 0;
+                        for(let i = 0; i < canvases.length; i++) {
+                            let canvas = canvases[i];
+                            totalHeight += canvas.height;
+                            maxWidth = Math.max(maxWidth, canvas.width);
 
-                alertWait(language.alerts.screenshotMerging)
+                            mergedCanvas.width = maxWidth;
+                            mergedCanvas.height = totalHeight;
+                        }
 
-                let mergedCanvas = document.createElement('canvas');
-                mergedCanvas.width = 0;
-                mergedCanvas.height = 0;
-                let mergedCtx = mergedCanvas.getContext('2d');
+                        mergedCtx.fillStyle = 'var(--risu-theme-bgcolor)'
+                        mergedCtx.fillRect(0, 0, maxWidth, totalHeight);
+                        let indh = 0
+                        for(let i = 0; i < canvases.length; i++) {
+                            let canvas = canvases[i];
+                            indh += canvas.height
+                            mergedCtx.drawImage(canvas, 0, indh - canvas.height);
+                            canvases[i].remove();
+                        }
 
-                let totalHeight = 0;
-                let maxWidth = 0;
-                for(let i = 0; i < canvases.length; i++) {
-                    let canvas = canvases[i];
-                    totalHeight += canvas.height;
-                    maxWidth = Math.max(maxWidth, canvas.width);
-
-                    mergedCanvas.width = maxWidth;
-                    mergedCanvas.height = totalHeight;
-                }
-
-                mergedCtx.fillStyle = 'var(--risu-theme-bgcolor)'
-                mergedCtx.fillRect(0, 0, maxWidth, totalHeight);
-                let indh = 0
-                for(let i = 0; i < canvases.length; i++) {
-                    let canvas = canvases[i];
-                    indh += canvas.height
-                    mergedCtx.drawImage(canvas, 0, indh - canvas.height);
-                    canvases[i].remove();
-                }
-
-                if(mergedCanvas){
-                    const saved = await downloadFile(`chat-${v4()}.png`, Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64'))
-                    mergedCanvas.remove();
-                    if(!saved){
-                        alertClear()
-                        return
-                    }
-                }
-                alertNormal(downloadNotice(language.screenshotSaved))
+                        const png = Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64')
+                        mergedCanvas.remove();
+                        return png
+                    },
+                    save: (png, aroundPicker) => downloadFile(`chat-${v4()}.png`, png, { aroundPicker }),
+                })
             })
         } catch (error) {
             console.error(error)
@@ -525,42 +517,42 @@
     
     {#if showNewMessageButton}
         {#if (DBState.db.newMessageButtonStyle === 'bottom-center' || !DBState.db.newMessageButtonStyle)}
-            <button class="absolute bottom-16 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:bg-blue-600 transition-colors" onclick={scrollToBottom}>
-                <ArrowDown size={16} />
+            <button class="absolute bottom-16 left-1/2 -translate-x-1/2 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+                <ArrowDown size={16} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'bottom-right'}
-            <button class="absolute bottom-20 right-4 bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:bg-blue-600 transition-colors" onclick={scrollToBottom}>
-                <ArrowDown size={16} />
+            <button class="absolute bottom-20 right-4 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+                <ArrowDown size={16} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'bottom-left'}
-            <button class="absolute bottom-20 left-4 bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:bg-blue-600 transition-colors" onclick={scrollToBottom}>
-                <ArrowDown size={16} />
+            <button class="absolute bottom-20 left-4 bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+                <ArrowDown size={16} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'floating-circle'}
-            <button class="absolute bottom-36 right-4 bg-blue-500 text-white w-12 h-12 rounded-full shadow-lg z-50 flex items-center justify-center hover:bg-blue-600 transition-colors" onclick={scrollToBottom} aria-label={language.newMessage} title={language.newMessage}>
+            <button class="absolute bottom-36 right-4 bg-selected text-textcolor ring-1 ring-borderc w-12 h-12 rounded-full shadow-lg z-50 flex items-center justify-center hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom} aria-label={language.newMessage} title={language.newMessage}>
                 <ArrowDown size={20} aria-hidden="true" />
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'right-center'}
-            <button class="absolute top-1/2 right-2 -translate-y-1/2 bg-blue-500 text-white px-2 py-3 rounded-l-lg shadow-lg z-50 flex flex-col items-center gap-1 hover:bg-blue-600 transition-colors" onclick={scrollToBottom}>
-                <ArrowDown size={14} />
+            <button class="absolute top-1/2 right-2 -translate-y-1/2 bg-selected text-textcolor ring-1 ring-borderc px-2 py-3 rounded-l-lg shadow-lg z-50 flex flex-col items-center gap-1 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={scrollToBottom}>
+                <ArrowDown size={14} aria-hidden="true" />
                 <span class="text-xs writing-mode-vertical">{language.newMessage}</span>
             </button>
         {/if}
 
         {#if DBState.db.newMessageButtonStyle === 'top-bar'}
-            <button class="absolute top-2 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-6 py-1.5 rounded-full shadow-lg z-50 flex items-center gap-2 hover:bg-blue-600 transition-colors text-sm" onclick={scrollToBottom}>
-                <ArrowDown size={14} />
+            <button class="absolute top-2 left-1/2 -translate-x-1/2 bg-selected text-textcolor ring-1 ring-borderc px-6 py-1.5 rounded-full shadow-lg z-50 flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors text-sm" onclick={scrollToBottom}>
+                <ArrowDown size={14} aria-hidden="true" />
                 <span>{language.newMessage}</span>
             </button>
         {/if}
@@ -624,13 +616,16 @@
                     style="{DBState.db.fixedChatTextarea ? 'z-index:29;' : ''}"
             >
                 {#if DBState.db.useChatSticker && currentCharacter.type !== 'group'}
-                    <div onclick={()=>{toggleStickers = !toggleStickers}}
-                         class={"ml-4 bg-textcolor2 flex justify-center items-center  w-12 h-12 rounded-md hover:bg-blue-500 transition-colors "+(toggleStickers ? 'text-green-500':'text-textcolor')}>
-                        <Laugh/>
-                    </div>
+                    <button type="button" onclick={()=>{toggleStickers = !toggleStickers}}
+                         aria-label={language.chatShellStickers}
+                         aria-pressed={toggleStickers}
+                         class={"ml-4 flex justify-center items-center  w-12 h-12 rounded-md transition-colors text-textcolor "+(toggleStickers ? 'bg-selected ring-1 ring-borderc hover:ring-2' : 'bg-textcolor2 hover:bg-darkbutton')}>
+                        <Laugh aria-hidden="true"/>
+                    </button>
                 {/if}
 
-                <textarea aria-label={language.chatShellMessage} class="peer text-input-area focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full placeholder:text-sm"
+                <span id="{composerUid}-msg" class="sr-only">{language.chatShellMessage}</span>
+                <textarea aria-label={language.chatShellMessage} aria-labelledby="{composerUid}-msg" aria-describedby="{composerUid}-msg" class="peer text-input-area focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full placeholder:text-sm"
                           bind:value={() => shownDraft.messageInput, (value) => writeDraft((record) => { record.messageInput = value })}
                           bind:this={inputEle}
                           readonly={isComposerLocked()}
@@ -725,7 +720,7 @@
                 {#if shownBusy || doingChatInputTranslate}
                     <button
                             aria-label={language.chatShellStop}
-                            class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-blue-500 hover:text-white transition-colors" onclick={abortChat}
+                            class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-borderc transition-colors" onclick={abortChat}
                             style:height={inputHeight}
                     >
                         <div class="loadmove chat-process-stage-{$chatProcessStage}" class:autoload={isAutoModeActive()} use:streamTextHold={{ origin: shownOrigin }}></div>
@@ -737,7 +732,7 @@
                             aria-label={language.chatShellSend}
                             title={writingElsewhere ? language.chatShellSendBlockedWriting : undefined}
                             aria-describedby={writingElsewhere ? 'chat-send-blocked-reason' : undefined}
-                            class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-blue-500 hover:text-white transition-colors button-icon-send disabled:opacity-50"
+                            class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-borderc transition-colors button-icon-send disabled:opacity-50"
                             style:height={inputHeight}
                     >
                         <Send aria-hidden="true" />
@@ -752,24 +747,25 @@
                         }}
                             aria-label={language.menu}
                             aria-expanded={openMenu}
-                            class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-blue-500 hover:text-white transition-colors"
+                            class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-borderc transition-colors"
                             style:height={inputHeight}
                     >
                         <MenuIcon aria-hidden="true" />
                     </button>
                 {:else}
-                    <div onclick={(e) => {
+                    <button type="button" onclick={(e) => {
                         DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.push({
                             role: 'char',
                             data: ''
                         })
                         DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage] = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
                     }}
-                         class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-blue-500 hover:text-white transition-colors"
+                         aria-label={language.playgroundAddReplyMessage}
+                         class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-borderc transition-colors"
                          style:height={inputHeight}
                     >
-                        <Plus />
-                    </div>
+                        <Plus aria-hidden="true" />
+                    </button>
                 {/if}
             </div>
             <!-- The container is flex-col-reverse, so this sibling of the input row sits directly above the composer. The key is block identity only: a chat switch remounts the notice, so the instance that showed it is gone. -->
@@ -777,9 +773,10 @@
             {#if DBState.db.useAutoTranslateInput && DBState.db.characters[$selectedCharID]?.chaId !== '§playground'}
                 <div class="flex items-center mt-2 mb-2">
                     <label for='messageInputTranslate' class="text-textcolor ml-4">
-                        <LanguagesIcon />
+                        <LanguagesIcon aria-hidden="true" />
+                        <span id="{composerUid}-tr" class="sr-only">{language.autoTranslateInput}</span>
                     </label>
-                    <textarea id = 'messageInputTranslate' class="text-textcolor rounded-md p-2 min-w-0 bg-transparent input-text text-xl grow ml-4 mr-2 border-darkbutton resize-none focus:bg-selected overflow-y-hidden overflow-x-hidden max-w-full"
+                    <textarea id = 'messageInputTranslate' aria-labelledby="{composerUid}-tr" aria-describedby="{composerUid}-tr" class="text-textcolor rounded-md p-2 min-w-0 bg-transparent input-text text-xl grow ml-4 mr-2 border-darkbutton resize-none focus:bg-selected overflow-y-hidden overflow-x-hidden max-w-full"
                               bind:value={() => shownDraft.messageInputTranslate, (value) => writeDraft((record) => { record.messageInputTranslate = value })}
                               bind:this={inputTranslateEle}
                               readonly={isComposerLocked()}
@@ -923,14 +920,14 @@
             {:else}
 
             {#if chatFoldedStateMessageIndex.index !== -1}
-                <button class="w-full flex justify-center max-w-full p-4">
+                <div class="w-full flex justify-center max-w-full p-4">
                     <Button className="max-w-xl w-full" onclick={() => {
                         loadPages += chatFoldedStateMessageIndex.index + 1
                         chatFoldedState.data = null
                     }}>
                         {language.loadMore}
                     </Button>
-                </button>
+                </div>
             {/if}
 
             {#if matchColdStorageLoadErrorKey(currentChat[0]?.data)}
@@ -1041,8 +1038,8 @@
                     e.stopPropagation()
                 }}>
                     {#if DBState.db.characters[$selectedCharID].type === 'group'}
-                        <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={runAutoMode}>
-                            <DicesIcon />
+                        <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={runAutoMode}>
+                            <DicesIcon aria-hidden="true" />
                             <span class="ml-2">{language.autoMode}</span>
                         </div>
                     {/if}
@@ -1050,15 +1047,15 @@
                     
                     <!-- svelte-ignore block_empty -->
                     {#if canChatSpeak(DBState.db.characters[$selectedCharID], (id) => findCharacterbyId(id))}
-                        <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                        <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                             stopTTS()
                         }}>
-                            <MicOffIcon />
+                            <MicOffIcon aria-hidden="true" />
                             <span class="ml-2">{language.ttsStop}</span>
                         </div>
                     {/if}
 
-                    <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors"
+                    <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors"
                         class:text-textcolor2={(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length < 2) || (DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length - 1].role !== 'char')}
                         onclick={() => {
                             if((DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length < 2) || (DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length - 1].role !== 'char')){
@@ -1067,33 +1064,33 @@
                             sendContinue();
                         }}
                     >
-                        <StepForwardIcon />
+                        <StepForwardIcon aria-hidden="true" />
                         <span class="ml-2">{language.continueResponse}</span>
                     </div>
 
 
                     {#if DBState.db.showMenuChatList}
-                        <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                        <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                             openChatList = true
                             openMenu = false
                         }}>
-                            <DatabaseIcon />
+                            <DatabaseIcon aria-hidden="true" />
                             <span class="ml-2">{language.chatList}</span>
                         </div>
                     {/if}
 
                     
                     {#if DBState.db.enableRisuaiProTools}
-                        <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                        <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                             easyPanelStore.open = !easyPanelStore.open
                         }}>
-                            <SparkleIcon />
+                            <SparkleIcon aria-hidden="true" />
                             <span class="ml-2">{language.easyPanel}</span>
                         </div>
                     {/if}
 
                     {#each additionalChatMenu as menu}
-                        <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                        <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                             menu.callback()
                             openMenu = false
                         }}>
@@ -1104,7 +1101,7 @@
 
                     {#if DBState.db.showMenuHypaMemoryModal}
                         {#if (DBState.db.supaModelType !== 'none' && DBState.db.hypav2) || DBState.db.hypaV3}
-                            <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                            <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                                 if (DBState.db.hypav2) {
                                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data ??= {
                                         lastMainChunkID: 0,
@@ -1118,7 +1115,7 @@
 
                                 openMenu = false
                             }}>
-                                <BrainIcon />
+                                <BrainIcon aria-hidden="true" />
                                 <span class="ml-2">
                                     {DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}
                                 </span>
@@ -1127,23 +1124,23 @@
                     {/if}
                     
                     {#if DBState.db.translator !== ''}
-                        <div class={"flex items-center cursor-pointer "+ (DBState.db.useAutoTranslateInput ? 'text-green-500':'lg:hover:text-green-500')} onclick={() => {
+                        <div class={"flex items-center cursor-pointer "+ (DBState.db.useAutoTranslateInput ? 'bg-selected rounded-sm ring-1 ring-borderc px-1 -mx-1':'lg:hover:text-textcolor2')} onclick={() => {
                             DBState.db.useAutoTranslateInput = !DBState.db.useAutoTranslateInput
                         }}>
-                            <GlobeIcon />
+                            <GlobeIcon aria-hidden="true" />
                             <span class="ml-2">{language.autoTranslateInput}</span>
                         </div>
                         
                     {/if}
             
-                    <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                    <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                         screenShot()
                     }}>
-                        <CameraIcon />
+                        <CameraIcon aria-hidden="true" />
                         <span class="ml-2">{language.screenshot}</span>
                     </div>
 
-                    <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={async () => {
+                    <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={async () => {
                         if(isComposerLocked()){
                             return
                         }
@@ -1167,31 +1164,31 @@
                         })
                     }}>
 
-                        <ImagePlusIcon />
+                        <ImagePlusIcon aria-hidden="true" />
                         <span class="ml-2">{language.postFile}</span>
                     </div>
 
 
-                    <div class={"flex items-center cursor-pointer "+ (DBState.db.useAutoSuggestions ? 'text-green-500':'lg:hover:text-green-500')} onclick={async () => {
+                    <div class={"flex items-center cursor-pointer "+ (DBState.db.useAutoSuggestions ? 'bg-selected rounded-sm ring-1 ring-borderc px-1 -mx-1':'lg:hover:text-textcolor2')} onclick={async () => {
                         DBState.db.useAutoSuggestions = !DBState.db.useAutoSuggestions
                     }}>
-                        <ReplyIcon />
+                        <ReplyIcon aria-hidden="true" />
                         <span class="ml-2">{language.autoSuggest}</span>
                     </div>
 
 
-                    <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={() => {
+                    <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
                         DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules ??= []
                         openModuleList = true
                         openMenu = false
                     }}>
-                        <PackageIcon />
+                        <PackageIcon aria-hidden="true" />
                         <span class="ml-2">{language.modules}</span>
                     </div>
 
                     {#if DBState.db.sideMenuRerollButton}
-                        <div class="flex items-center cursor-pointer hover:text-green-500 transition-colors" onclick={reroll}>
-                            <RefreshCcwIcon />
+                        <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={reroll}>
+                            <RefreshCcwIcon aria-hidden="true" />
                             <span class="ml-2">{language.reroll}</span>
                         </div>
                     {/if}
@@ -1206,7 +1203,7 @@
 {#if additionalFloatingActionButtons.length > 0}
     <div class="fixed top-4 right-4 flex flex-col gap-3 z-50">
         {#each additionalFloatingActionButtons as button}
-            <button class="bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 hover:bg-blue-600 transition-colors" onclick={() => {
+            <button aria-label={button.name} class="bg-selected text-textcolor ring-1 ring-borderc px-4 py-2 rounded-full shadow-lg flex items-center gap-2 hover:ring-2 hover:ring-textcolor2 transition-colors" onclick={() => {
                 button.callback()
             }}>
                 <PluginDefinedIcon ico={button} />

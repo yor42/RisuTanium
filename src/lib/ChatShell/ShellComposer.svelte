@@ -1,6 +1,10 @@
 <script lang="ts">
     import { onDestroy } from 'svelte'
     import { v4 } from 'uuid'
+    import ChevronUpIcon from '@lucide/svelte/icons/chevron-up'
+    import PlusIcon from '@lucide/svelte/icons/plus'
+    import SendHorizontalIcon from '@lucide/svelte/icons/send-horizontal'
+    import SquareIcon from '@lucide/svelte/icons/square'
     import { DBState, popUpEditorStore, selIdState } from '../../ts/stores.svelte'
     import { doingChat, chatProcessStage } from '../../ts/process/index.svelte'
     import { sendMain, stopComposerWorkIn, isComposerBusy, isComposerBusyIn, isComposerLocked, reroll, updateInputTransateMessage, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
@@ -50,6 +54,10 @@
     const composerDraftKey = v4()
     const blockedReasonId = `chat-send-blocked-${composerDraftKey}`
     const personaHintId = `chat-persona-hint-${composerDraftKey}`
+    // A select's own screen reader stop speaks its description, not its wrapping label, so the label text leads the description.
+    const enterLabelId = `chat-enter-label-${composerDraftKey}`
+    const enterScopeId = `chat-enter-scope-${composerDraftKey}`
+    const enterHelpId = `chat-enter-help-${composerDraftKey}`
     let input = $state<HTMLTextAreaElement>()
     let translateInput = $state<HTMLTextAreaElement>()
     let popupTimer: ReturnType<typeof setInterval> | null = null
@@ -201,7 +209,7 @@
 
 <div data-part="chat-composer">
     <!-- The tab is the root's first child and is positioned against the root, so it stays above the extras strip and the translate box. -->
-    <button type="button" data-part="chat-composer-persona" data-kind="tab" aria-haspopup="menu" aria-expanded={personaexpanded} aria-describedby={personaHintId} onclick={(event) => onpersona(event.currentTarget)}><span>{language.asPersona(personaName)}</span><span aria-hidden="true">^</span></button>
+    <button type="button" data-part="chat-composer-persona" data-kind="tab" aria-haspopup="menu" aria-expanded={personaexpanded} aria-describedby={personaHintId} onclick={(event) => onpersona(event.currentTarget)}><span>{language.asPersona(personaName)}</span><ChevronUpIcon aria-hidden="true" /></button>
     <span id={personaHintId} hidden>{language.chatShellChoosePersona}</span>
     <ExtrasStrip files={shownDraft.fileInput} currentCharacter={character} {stickersOpen} showSuggestions={DBState.db.useAutoSuggestions} translatePreview={shownDraft.messageInputTranslate} onremove={(index) => surface.writeDraft((record) => { record.fileInput.splice(index, 1) })} onselect={selectSticker}>
         <Suggestion messageInput={(message) => surface.writeDraft((record) => { record.messageInput = (
@@ -221,39 +229,52 @@
         <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown}></textarea>
     {/if}
     <div data-part="chat-composer-row">
-        <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.tools} onclick={(event) => onplus(event.currentTarget)}>+</button>
+        <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.tools} onclick={(event) => onplus(event.currentTarget)}><PlusIcon aria-hidden="true" /></button>
         <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if shownBusy && shownOrigin}
-            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage} use:streamTextHold={{ origin: shownOrigin }}></span>■</button>
+            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage} use:streamTextHold={{ origin: shownOrigin }}></span><SquareIcon aria-hidden="true" fill="currentColor" /></button>
         {:else}
-            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendBlocked} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : (writingElsewhere ? language.chatShellSendBlockedWriting : undefined)} aria-describedby={writingElsewhere ? blockedReasonId : undefined} onclick={() => { if (!sendBlocked) void sendMain(source, false) }}>➤</button>
+            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendBlocked} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : (writingElsewhere ? language.chatShellSendBlockedWriting : undefined)} aria-describedby={writingElsewhere ? blockedReasonId : undefined} onclick={() => { if (!sendBlocked) void sendMain(source, false) }}><SendHorizontalIcon aria-hidden="true" /></button>
             {#if writingElsewhere}<span id={blockedReasonId} hidden>{language.chatShellSendBlockedWriting}</span>{/if}
         {/if}
     </div>
     <div data-part="chat-composer-tools">
         <button onclick={() => void postFile()}>{language.postFile}</button>
         {#if DBState.db.useChatSticker}<button onclick={() => stickersOpen = !stickersOpen}>{language.chatShellStickers}</button>{/if}
-        <label>{language.enterKey}<select value={enterMode} onchange={setMode}><option value="auto">{language.chatShellEnterAutomatic}</option><option value="send">{language.chatShellEnterSend}</option><option value="newline">{language.chatShellEnterNewline}</option></select></label>
-        <span data-part="chat-composer-enter-scope">{language.chatShellOnThisDevice}</span>
+        <label><span id={enterLabelId}>{language.enterKey}</span><select value={enterMode} aria-describedby="{enterLabelId} {enterScopeId} {enterHelpId}" onchange={setMode}><option value="auto">{language.chatShellEnterAutomatic}</option><option value="send">{language.chatShellEnterSend}</option><option value="newline">{language.chatShellEnterNewline}</option></select></label>
+        <span id={enterScopeId} data-part="chat-composer-enter-scope" title={language.chatShellOnThisDeviceHelp}>{language.chatShellOnThisDevice}</span>
+        <span id={enterHelpId} hidden>{language.chatShellOnThisDeviceHelp}</span>
     </div>
 </div>
 
 <style>
     [data-part="chat-composer"] { position: relative; margin-block-start: var(--size-touch); flex: none; padding: var(--space-3) var(--space-7) max(var(--space-7), env(safe-area-inset-bottom)); background: var(--nexus-canvas); color: var(--nexus-text); border-top: 1px solid var(--nexus-edge); }
     [data-part="chat-composer-row"] { display: flex; align-items: end; gap: var(--space-3); }
-    [data-part="chat-composer-row"] > button { min-width: var(--size-touch); min-height: var(--size-touch); color: inherit; }
-    [data-part="chat-composer-input"], [data-part="chat-composer-translate"] { min-width: 0; min-height: var(--size-touch); max-height: calc(5 * var(--leading-field-22) + 2 * var(--composer-field-padding-y)); resize: none; overflow-y: auto; padding: var(--composer-field-padding-y) var(--composer-field-padding-x); line-height: var(--leading-field-22); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-field); }
+    [data-part="chat-composer-row"] > button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); min-width: var(--size-touch); min-height: var(--size-touch); color: inherit; }
+    [data-part="chat-composer-row"] > button :global(svg) { flex: none; width: calc(var(--icon-size-lg) * var(--icon-scale)); height: calc(var(--icon-size-lg) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
+    [data-part="chat-send"]:dir(rtl) :global(svg) { transform: scaleX(-1); }
+    [data-part="chat-composer-input"], [data-part="chat-composer-translate"] { min-width: 0; min-height: var(--size-touch); max-height: calc(5 * var(--leading-field-22) + 2 * var(--composer-field-padding-y)); resize: none; overflow-y: auto; padding: var(--composer-field-padding-y) var(--composer-field-padding-x); line-height: var(--leading-field-22); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-field-border); border-radius: var(--radius-field); }
     [data-part="chat-composer-input"] { flex: 1; }
     [data-part="chat-composer-translate"] { display: block; width: 100%; margin-bottom: var(--space-3); }
     [data-part="chat-composer-attaching"] { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
     [data-part="chat-attaching-chip"] { display: inline-flex; align-items: center; min-height: var(--size-touch); max-width: 100%; padding-inline: var(--space-7); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-5); overflow: hidden; }
     [data-part="chat-attaching-text"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    [data-part="chat-composer-tools"] { display: flex; justify-content: space-between; font-size: var(--font-size-xs); }
+    [data-part="chat-composer-tools"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--space-3) var(--space-7); font-size: var(--font-size-xs); }
     [data-part="chat-composer-tools"] button, [data-part="chat-composer-tools"] select { min-height: var(--size-14); color: inherit; }
-    [data-part="chat-composer-persona"] { position: absolute; inset-block-end: 100%; inset-inline-start: var(--space-7); isolation: isolate; display: inline-flex; align-items: center; gap: var(--space-3); max-inline-size: 70%; min-block-size: var(--size-touch); padding-inline: var(--space-7); color: var(--nexus-text); }
+    [data-part="chat-composer-tools"] label { display: inline-flex; align-items: center; gap: var(--space-3); margin-inline-start: auto; }
+    [data-part="chat-composer-enter-scope"] { padding: 0 var(--space-5); color: var(--nexus-text-secondary); border: 1px solid var(--nexus-edge); border-radius: var(--radius-pill); }
+    /* The tab starts square at the composer's edge and slants at 45 degrees (the run equals the block size). Two clipped layers draw it: an accent layer, and a canvas layer inset by the stroke on the top and the slant, so only the top edge and the slant show the accent. Both reach one stroke below the tab so it overlaps the composer's top. */
+    [data-part="chat-composer-persona"] { position: absolute; inset-block-end: 100%; inset-inline-start: 0; isolation: isolate; display: inline-flex; align-items: center; gap: var(--space-3); max-inline-size: 70%; block-size: var(--size-touch); padding-inline: var(--space-7) var(--size-touch); color: var(--nexus-text); }
     [data-part="chat-composer-persona"] > :first-child { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    [data-part="chat-composer-persona"]::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--nexus-canvas); border: 1px solid var(--nexus-edge); border-block-end: 0; border-start-start-radius: var(--radius-field); clip-path: polygon(0 0, calc(100% - var(--space-7)) 0, 100% 100%, 0 100%); }
-    [data-part="chat-composer-persona"]:dir(rtl)::before { clip-path: polygon(var(--space-7) 0, 100% 0, 100% 100%, 0 100%); }
+    [data-part="chat-composer-persona"] :global(svg) { flex: none; width: calc(var(--icon-size-lg) * var(--icon-scale)); height: calc(var(--icon-size-lg) * var(--icon-scale)); stroke-width: var(--icon-stroke); transition: transform var(--chat-dur-fast) var(--chat-ease-out); }
+    [data-part="chat-composer-persona"][aria-expanded="true"] :global(svg) { transform: rotate(calc(var(--angle-turn) / 2)); }
+    [data-part="chat-composer-persona"]::before, [data-part="chat-composer-persona"]::after { content: ''; position: absolute; z-index: -1; inset-block-end: calc(-1 * var(--stroke-bold)); }
+    [data-part="chat-composer-persona"]::before { inset-block-start: 0; inset-inline: 0; background: var(--nexus-accent); clip-path: polygon(0 0, calc(100% - var(--size-touch) - var(--stroke-bold)) 0, 100% 100%, 0 100%); }
+    [data-part="chat-composer-persona"]::after { inset-block-start: var(--stroke-bold); inset-inline: 0 calc(var(--stroke-bold) * 1.4142); background: var(--nexus-canvas); clip-path: polygon(0 0, calc(100% - var(--size-touch)) 0, 100% 100%, 0 100%); }
+    [data-part="chat-composer-persona"]:dir(rtl)::before { clip-path: polygon(calc(var(--size-touch) + var(--stroke-bold)) 0, 100% 0, 100% 100%, 0 100%); }
+    [data-part="chat-composer-persona"]:dir(rtl)::after { clip-path: polygon(var(--size-touch) 0, 100% 0, 100% 100%, 0 100%); }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-composer-persona"] :global(svg) { transition: none; } }
+    :global(html.rm) [data-part="chat-composer-persona"] :global(svg), :global(html[data-low-power]) [data-part="chat-composer-persona"] :global(svg), :global(html.nexus-low-power) [data-part="chat-composer-persona"] :global(svg) { transition: none; }
     [data-part="chat-composer-progress"] { display: inline-block; width: var(--size-7); height: var(--size-7); border: var(--stroke-bold) solid currentColor; border-radius: var(--radius-circle); }
     [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) steps(8) infinite; }
     @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-composer-progress"] { animation: none; } }

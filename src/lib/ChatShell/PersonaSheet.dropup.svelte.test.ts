@@ -50,6 +50,7 @@ vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => val
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
 vi.mock('../ChatScreens/Suggestion.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
+vi.mock('../../ts/media/charImageLookups', () => ({ createCharImageLookups: () => ({ get: async (_slot: string, loc: string) => `background-image: url("${loc}")`, getIf: vi.fn(), dispose: vi.fn() }) }))
 
 const view = $state({ open: true, variant: 'dropup' as 'dropup' | 'sheet', opener: null as HTMLElement | null })
 const onclose = vi.fn(() => { view.open = false })
@@ -91,7 +92,9 @@ async function showSheet(): Promise<HTMLElement> {
 }
 const panelOf = (node: HTMLElement) => node.querySelector<HTMLElement>('[data-part="chat-sheet"]')!
 const radios = (node: HTMLElement) => Array.from(node.querySelectorAll<HTMLElement>('[role="menuitemradio"]'))
-const checked = (node: HTMLElement) => radios(node).filter((item) => item.getAttribute('aria-checked') === 'true').map((item) => item.textContent?.trim())
+// A row's name without its decoration: the default row carries a second line, so its whole text is more than the name.
+const nameOf = (item: Element | null | undefined): string | undefined => item?.querySelector('.text > span')?.textContent?.trim() ?? item?.textContent?.trim()
+const checked = (node: HTMLElement) => radios(node).filter((item) => item.getAttribute('aria-checked') === 'true').map((item) => nameOf(item))
 const pressKey = (key: string) => {
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
     flushSync()
@@ -106,7 +109,7 @@ describe('PersonaSheet dropup variant', () => {
         expect(panel.getAttribute('data-mode')).toBe('wide-menu')
         expect(panel.getAttribute('aria-label')).toBe('Choose persona')
         expect(panel.querySelector('h2')).toBeNull()
-        expect(radios(node).map((item) => item.textContent?.trim())).toEqual(['User', 'Ann', 'Bea', LONG_NAME])
+        expect(radios(node).map((item) => nameOf(item))).toEqual(['User', 'Ann', 'Bea', LONG_NAME])
         const last = panel.querySelector('[role="menu"] > div')!.lastElementChild!
         expect(last.getAttribute('data-part')).toBe('chat-persona-settings')
         expect(last.getAttribute('role')).toBe('menuitem')
@@ -138,7 +141,7 @@ describe('PersonaSheet dropup variant', () => {
 
         view.open = true
         flushSync()
-        radios(node).find((item) => item.textContent?.trim() === 'User')!.click()
+        radios(node).find((item) => nameOf(item) === 'User')!.click()
         flushSync()
         expect(shown.bindedPersona).toBe('')
         expect(onclose).toHaveBeenCalledTimes(2)
@@ -172,7 +175,7 @@ describe('PersonaSheet dropup variant', () => {
     test('T5: exactly one entry is checked and it takes the initial focus', async () => {
         const node = await showSheet()
         expect(checked(node)).toEqual(['User'])
-        expect(document.activeElement?.textContent?.trim()).toBe('User')
+        expect(nameOf(document.activeElement)).toBe('User')
         expect(node.querySelectorAll('[data-sheet-initial]')).toHaveLength(1)
         await unmount(mounted.pop()!.app)
         node.remove()
@@ -205,7 +208,7 @@ describe('PersonaSheet dropup variant', () => {
 
     test('T7: arrows wrap, Home and End jump, Escape closes and focus returns to the opener', async () => {
         const node = await showSheet()
-        const active = () => document.activeElement?.textContent?.trim()
+        const active = () => nameOf(document.activeElement)
         expect(active()).toBe('User')
         pressKey('ArrowUp')
         expect(active()).toBe('Persona settings')
@@ -237,6 +240,57 @@ describe('PersonaSheet dropup variant', () => {
         } finally {
             document.removeEventListener('keydown', spy)
         }
+    })
+
+    test.each(['dropup', 'sheet'] as const)('TC3-4 (%s): every row has an avatar, only the checked row has a check icon, the default row says so, and same-name rows differ by name', async (variant) => {
+        view.variant = variant
+        DBState.db.username = 'Synthetic User'
+        DBState.db.userIcon = 'user.png'
+        const personas = DBState.db.personas as Array<{ id: string, name: string, icon?: string }>
+        const saved = personas.map((persona) => ({ ...persona }))
+        personas[0].name = 'Synthetic User'
+        personas[0].icon = 'ann.png'
+        DBState.db.characters[0].chats[0].bindedPersona = 'p2'
+        try {
+            const node = await showSheet()
+            await vi.waitFor(() => { flushSync(); expect(node.querySelectorAll('.avatar[style]').length).toBe(2) })
+            const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-part="chat-sheet-item"]'))
+            expect(rows).toHaveLength(4)
+            expect(rows.every((row) => row.querySelector('.avatar') !== null)).toBe(true)
+            expect(rows[0].querySelector('.avatar')?.getAttribute('style')).toContain('user.png')
+            expect(rows[1].querySelector('.avatar')?.getAttribute('style')).toContain('ann.png')
+            // Rows without an image fall back to an initial.
+            expect(rows[2].querySelector('.avatar')?.getAttribute('data-initial')).toBe('B')
+            const withCheck = rows.filter((row) => row.querySelector('svg.lucide-check[aria-hidden="true"]') !== null)
+            expect(withCheck).toEqual([rows[2]])
+            expect(rows[0].textContent).toContain('Default persona')
+            expect(rows.filter((row) => row.textContent?.includes('Default persona'))).toEqual([rows[0]])
+            expect(rows[0].textContent).not.toBe(rows[1].textContent)
+        } finally {
+            personas.splice(0, personas.length, ...saved)
+            DBState.db.userIcon = ''
+        }
+    })
+
+    test('sheet variant, unbound chat with a globally selected persona: only the default row is pressed and checked', async () => {
+        view.variant = 'sheet'
+        DBState.db.selectedPersona = 1
+        const node = await showSheet()
+        const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-part="chat-sheet-item"]'))
+        expect(rows).toHaveLength(4)
+        expect(rows.map((row) => row.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false'])
+        expect(rows.filter((row) => row.querySelector('svg.lucide-check') !== null)).toEqual([rows[0]])
+        expect(node.querySelectorAll('svg.lucide-check')).toHaveLength(1)
+    })
+
+    test('sheet variant, bound chat: only the bound persona row is pressed and checked', async () => {
+        view.variant = 'sheet'
+        DBState.db.selectedPersona = 1
+        DBState.db.characters[0].chats[0].bindedPersona = 'p3'
+        const node = await showSheet()
+        const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-part="chat-sheet-item"]'))
+        expect(rows.map((row) => row.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'true'])
+        expect(rows.filter((row) => row.querySelector('svg.lucide-check') !== null)).toEqual([rows[3]])
     })
 
     test('T13: a 60-character persona name stays whole in its menu item', async () => {

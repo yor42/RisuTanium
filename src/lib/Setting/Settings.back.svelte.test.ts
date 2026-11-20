@@ -42,6 +42,7 @@ vi.mock('./Pages/PersonaSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./Pages/PromptSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./Pages/Module/ModuleSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./Pages/HotkeySettings.svelte', () => ({ default: () => {} }))
+vi.mock('./Pages/UsageStatisticsPage.svelte', () => ({ default: () => {} }))
 vi.mock('./SettingsLegalLinks.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
 

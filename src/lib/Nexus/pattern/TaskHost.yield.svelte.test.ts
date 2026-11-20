@@ -148,7 +148,8 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
 import { tickFake } from '../../../ts/tests/svelteTick.test-helpers'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from '../../../ts/alertPrompts'
-import { alertConfirm } from '../../../ts/alert'
+import { language } from 'src/lang'
+import { alertConfirm, alertError } from '../../../ts/alert'
 import { alertStore } from '../../../ts/stores.svelte'
 import { alertTask, resetTaskHostForTests } from '../../../ts/alertTask.svelte'
 import { hasOpenShell } from './patternFocus'
@@ -222,6 +223,38 @@ describe('TaskHost yields to a covering alert', () => {
         await settle()
         expect(await answer).toBe(true)
         expect(document.querySelector('[data-part="pattern-task-root"]'), 'the card after the answer').not.toBeNull()
-        expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-dialog"]'))
+        expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-task-title"]'))
+    })
+
+    // Compatibility guard (passes before and after S6b): an export run that ends while a legacy error is up keeps that error on top.
+    test('TY1 a legacy error posted during a locked task stays on top when the task ends, and the result returns after it is closed', async () => {
+        vi.useFakeTimers()
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mounted.push({ app: mount(TaskYieldHarness, { target, props: {} }), target })
+        await settle()
+
+        const handle = alertTask({ title: 'Export', steps: [{ label: 'Prepare' }, { label: 'Write' }] })
+        await settle()
+        expect(document.querySelector('[data-part="pattern-task-root"]')).not.toBeNull()
+
+        alertError('ERR::synthetic')
+        await settle()
+        expect(document.querySelector('[data-part="pattern-task-root"]'), 'the card while the error is up').toBeNull()
+        const box = document.querySelector('[data-alert-box]')
+        expect(box, 'the error box').not.toBeNull()
+        expect(box!.contains(document.activeElement), 'focus is inside the error').toBe(true)
+
+        void handle.finish({ headline: 'Exported', summary: ['S'] })
+        await settle()
+        expect(document.querySelector('[data-part="pattern-task-root"]'), 'the result under the error').toBeNull()
+
+        const ok = Array.from(box!.querySelectorAll('button')).find((button) => button.textContent?.trim() === language.alertComp.ok)!
+        ok.click()
+        await vi.advanceTimersByTimeAsync(0)
+        await settle()
+        const root = document.querySelector('[data-part="pattern-task-root"]')
+        expect(root, 'the card after the error is closed').not.toBeNull()
+        expect(root!.textContent).toContain('Exported')
     })
 })

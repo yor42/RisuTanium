@@ -172,6 +172,15 @@ describe('reveal on the native pages', () => {
         expect(await page.reveal('acc.sendWithEnter')).toBeNull()
     })
 
+    test('S1-R5: the Data page at index 0 reveals its action rows and the two rows that moved in, and nothing else', async () => {
+        const page = show(0)
+        await settle()
+        for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'adv.coldstorage', 'acc.goCharacterOnImport']) {
+            expect((await page.reveal(id))?.dataset.settingRow, id).toBe(id)
+        }
+        expect(await page.reveal('adv.genTime')).toBeNull()
+    })
+
     test('the Display page at index 3 still reveals its rows, and a row of another page is not found', async () => {
         const page = show(3)
         await settle()

@@ -20,11 +20,11 @@ async function mountHeader(): Promise<HTMLElement> {
     return target.querySelector('header')!
 }
 
-describe('header Back clears the classic sidebar toggle', () => {
-    test('the header reserves the toggle column so Back is not covered', async () => {
+describe('header Back is the only back control', () => {
+    test('the header reserves no column for the classic sidebar arrow', async () => {
         const header = await mountHeader()
-        expect(header.hasAttribute('data-toggle-inset')).toBe(true)
-        // The reserved column (touch-lg toggle plus one gap) must be the rule the attribute selects.
-        expect(header.style.paddingLeft).toBe('calc(var(--size-touch-lg) + var(--space-7))')
+        // The classic arrow no longer mounts over the shell, so the header pads only with its own gap.
+        expect(header.hasAttribute('data-toggle-inset')).toBe(false)
+        expect(header.style.paddingLeft).toBe('')
     })
 })

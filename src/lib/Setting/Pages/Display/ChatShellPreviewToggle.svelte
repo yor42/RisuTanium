@@ -36,7 +36,7 @@
 
 <div class="flex items-center mt-2 gap-2">
     <label class="flex items-center gap-2">
-        <input type="checkbox" checked={shellSwitch.enabled} onclick={toggle} />
+        <input type="checkbox" aria-label={language.chatShellPreviewLabel} checked={shellSwitch.enabled} onclick={toggle} />
         <span>{language.chatShellPreviewLabel}</span>
     </label>
     <span>{language.chatShellOnThisDevice}</span>
@@ -46,7 +46,7 @@
 {#if hapticsAvailable}
 <div class="flex items-center mt-2 gap-2" data-part="chat-shell-device-settings">
     <label class="flex items-center gap-2">
-        <input type="checkbox" data-setting="haptics" checked={haptics} onchange={toggleHaptics} />
+        <input type="checkbox" aria-label={language.chatShellHaptics} data-setting="haptics" checked={haptics} onchange={toggleHaptics} />
         <span>{language.chatShellHaptics}</span>
     </label>
     <span>{language.chatShellOnThisDevice}</span>

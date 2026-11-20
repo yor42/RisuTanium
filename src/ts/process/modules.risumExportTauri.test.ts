@@ -59,6 +59,10 @@ const world = vi.hoisted(() => ({
     assets: new Map<string, Uint8Array>(),
     png: new Uint8Array() as Uint8Array,
     log: [] as unknown[],
+    // `cancelOffered` of the task card at each writer write; undefined while no card is shown
+    offered: [] as Array<boolean | undefined>,
+    // whether a task card was shown at each call of the save dialog
+    cardAtSave: [] as boolean[],
 }))
 
 vi.mock('uuid', () => ({ v4: () => 'uuid-1' }))
@@ -66,6 +70,7 @@ vi.mock('uuid', () => ({ v4: () => 'uuid-1' }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({
     save: vi.fn(async (options?: unknown): Promise<string | null> => {
         world.log.push({ k: 'save', options })
+        world.cardAtSave.push((await import('src/ts/alertTask.svelte')).taskShown())
         await world.saveGate
         return world.savePath
     }),
@@ -327,6 +332,13 @@ import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { LocalWriter } from 'src/ts/globalApi.svelte'
 import type { alertData } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, taskHostView, taskResultShowing, taskShown } from 'src/ts/alertTask.svelte'
+
+/** The card's own Cancel: offered by the view, then pressed. */
+function pressCancel(): void {
+    expect(taskHostView()?.cancelOffered).toBe(true)
+    requestTaskCancel()
+}
 
 const MIB = 1024 * 1024
 
@@ -408,8 +420,11 @@ beforeEach(() => {
     world.assets = new Map()
     world.png = syntheticPng()
     world.log = []
+    world.offered = []
+    world.cardAtSave = []
     noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
+    resetTaskHostForTests()
     shown = []
     const unsubscribe = alertStore.subscribe((value) => { shown.push(value as alertData) })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -418,6 +433,7 @@ beforeEach(() => {
     const realAbort = LocalWriter.prototype.abort
     vi.spyOn(LocalWriter.prototype, 'write').mockImplementation(async function (this: LocalWriter, data: Uint8Array) {
         world.log.push({ k: 'write', bytes: data.slice() })
+        world.offered.push(taskHostView()?.cancelOffered)
         return realWrite.call(this, data)
     })
     vi.spyOn(LocalWriter.prototype, 'close').mockImplementation(async function (this: LocalWriter) {
@@ -432,6 +448,7 @@ beforeEach(() => {
     return () => {
         unsubscribe()
         world.release?.()
+        resetTaskHostForTests()
         vi.restoreAllMocks()
     }
 })
@@ -466,13 +483,19 @@ describe('the save dialog opens first', () => {
         expect(busyKinds()).not.toContain('export')
     })
 
-    test('(R) desktop: a dismissed dialog reads nothing, removes its Cancel dialog and shows no error', async () => {
+    test('(R) desktop: a dismissed dialog reads nothing, shows no wait and no card at any time, and shows no error', async () => {
         world.savePath = null
+        let cardSeen = false
+        const stop = alertStore.subscribe(() => { cardSeen ||= taskShown() })
         const outcome = await runExport(moduleOf(2))
+        stop()
 
         expect(events().filter((event) => event.k === 'read')).toEqual([])
         expect(outcome.result).toBeNull()
-        expect(shown.some((value) => value.type === 'wait' && value.onCancel !== undefined)).toBe(true)
+        expect(cardSeen).toBe(false)
+        expect(world.cardAtSave).toEqual([false])
+        expect(taskShown()).toBe(false)
+        expect(shown.some((value) => value.type === 'wait')).toBe(false)
         expect((get(alertStore) as alertData).type).toBe('none')
         expect(world.errors).toEqual([])
         expect(world.calls).toEqual([])
@@ -542,19 +565,20 @@ describe('success follows close', () => {
         try {
             await vi.waitFor(() => expect(events().some((event) => event.k === 'close')).toBe(true))
             await new Promise<void>((resolve) => setTimeout(resolve, 5))
-            expect(noticeCount(language.successExportChosenLocation)).toBe(0)
+            expect(taskResultShowing()).toBe(false)
         } finally {
             open()
         }
         await done
 
-        expect(noticeCount(language.successExportChosenLocation)).toBe(1)
+        expect(taskResultShowing()).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExportChosenLocation])
     })
 
-    test('(R) desktop: the notice names the chosen location, never the download directory', async () => {
+    test('(R) desktop: the result names the chosen location, never the download directory', async () => {
         await runExport(moduleOf(1))
 
-        expect(noticeCount(language.successExportChosenLocation)).toBe(1)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExportChosenLocation])
         expect(noticeCount(language.successExport)).toBe(0)
         expect(language.successExportChosenLocation).not.toBe(language.successExport)
     })
@@ -567,17 +591,20 @@ describe('success follows close', () => {
         const outcome = await runExport(moduleOf(1))
 
         expect(outcome.error).toBeUndefined()
-        expect(noticeCount(language.exportDownloadStarted)).toBe(1)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportDownloadStarted])
         expect(noticeCount(language.successExportChosenLocation)).toBe(0)
         expect(language.exportDownloadStarted).not.toBe(language.successExportChosenLocation)
     })
 
-    test('(N) with alertEnd false there is no notice and the Cancel dialog is gone after success', async () => {
+    test('(N) with alertEnd false there is no result, the card is gone after success, and Cancel was offered on it at each write', async () => {
         const outcome = await runExport(moduleOf(2), { alertEnd: false })
 
         expect(outcome.error).toBeUndefined()
         expect(noticeCount(language.successExportChosenLocation)).toBe(0)
-        expect(shown.some((value) => value.type === 'wait' && value.onCancel !== undefined)).toBe(true)
+        expect(taskShown()).toBe(false)
+        const onCard = world.offered.filter((value) => value !== undefined)
+        expect(onCard.length).toBeGreaterThan(0)
+        expect(onCard.every((value) => value === true)).toBe(true)
         expect((get(alertStore) as alertData).type).toBe('none')
     })
 
@@ -606,7 +633,8 @@ describe('a failure', () => {
         expect(failedAt).toBeGreaterThan(-1)
         expect(log.slice(failedAt + 1).filter((event) => event.k === 'write' || event.k === 'close')).toEqual([])
         expect(log.some((event) => event.k === 'abort')).toBe(true)
-        expect(world.errors).toEqual(['synthetic read failure of assets/a2'])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic read failure of assets/a2')
+        expect(world.errors).toEqual([])
         expect(world.calls).toEqual([])
     })
 
@@ -618,7 +646,8 @@ describe('a failure', () => {
 
         expect(outcome.error).toBeUndefined()
         expect(outcome.result).toBeNull()
-        expect(world.errors).toEqual(['synthetic append failure\n' + language.exportFailedFileIncomplete])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic append failure\n' + language.exportFailedFileIncomplete)
+        expect(world.errors).toEqual([])
         expect(events().filter((event) => event.k === 'abort')).toHaveLength(1)
         expect(noticeCount(language.successExportChosenLocation)).toBe(0)
     })
@@ -632,17 +661,15 @@ describe('Cancel', () => {
         try {
             await vi.waitFor(() => expect(world.held).toBe(true))
             const callsAtCancel = world.calls.length
-            const dialog = get(alertStore) as alertData
-            expect(dialog.type).toBe('wait')
-            expect(dialog.onCancel).toBeTypeOf('function')
-            dialog.onCancel?.()
+            pressCancel()
             world.release?.()
             const outcome = await done
 
             expect(outcome.error).toBeUndefined()
             expect(outcome.result).toBeNull()
-            expect(noticeCount(language.exportCancelledFileIncomplete)).toBe(1)
-            expect((get(alertStore) as alertData).msg).toBe(language.exportCancelledFileIncomplete)
+            expect(taskHostView()?.cancelled).toBe(true)
+            expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+            expect(noticeCount(language.exportCancelledFileIncomplete)).toBe(0)
             expect(world.errors).toEqual([])
             expect(events().some((event) => event.k === 'close')).toBe(false)
             expect(world.calls.length).toBe(callsAtCancel)
@@ -661,14 +688,14 @@ describe('Cancel', () => {
         const done = runExport(moduleOf(1))
         try {
             await vi.waitFor(() => expect(world.held).toBe(true))
-            const dialog = get(alertStore) as alertData
-            expect(dialog.onCancel).toBeTypeOf('function')
-            dialog.onCancel?.()
+            pressCancel()
             world.release?.()
             const outcome = await done
 
             expect(outcome.result).toBeNull()
-            expect(noticeCount(language.exportCancelledFileIncomplete)).toBe(1)
+            expect(taskHostView()?.cancelled).toBe(true)
+            expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+            expect(noticeCount(language.exportCancelledFileIncomplete)).toBe(0)
             expect(world.errors).toEqual([])
             expect(events().some((event) => event.k === 'close')).toBe(false)
         } finally {
@@ -677,15 +704,15 @@ describe('Cancel', () => {
         }
     })
 
-    test('(N) desktop, a cancel while the dialog is open and before any file call: no notice, no error, no read, no file call', async () => {
+    test('(N) desktop, while the dialog is pending there is no card and no wait; once the path is delivered a card with Cancel runs and the export completes', async () => {
         let answer: () => void = () => { }
         world.saveGate = new Promise<void>((resolve) => { answer = resolve })
         const done = runExport(moduleOf(2))
         try {
             await vi.waitFor(() => expect(events().some((event) => event.k === 'save')).toBe(true))
-            const dialog = get(alertStore) as alertData
-            expect(dialog.onCancel).toBeTypeOf('function')
-            dialog.onCancel?.()
+            expect(world.cardAtSave).toEqual([false])
+            expect(taskShown()).toBe(false)
+            expect(shown.some((value) => value.type === 'wait')).toBe(false)
         } finally {
             answer()
         }
@@ -693,9 +720,11 @@ describe('Cancel', () => {
 
         expect(outcome.error).toBeUndefined()
         expect(outcome.result).toBeNull()
+        expect(world.offered.length).toBeGreaterThan(0)
+        expect(world.offered.every((value) => value === true)).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExportChosenLocation])
         expect(shown.filter((value) => value.type === 'normal' || value.type === 'error')).toEqual([])
         expect(world.errors).toEqual([])
-        expect(events().filter((event) => event.k === 'read')).toEqual([])
-        expect(world.calls).toEqual([])
+        expect(world.calls.length).toBeGreaterThan(0)
     })
 })

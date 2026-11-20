@@ -282,7 +282,6 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
             plain('display.customCSS'),
             plain('display.useChatSticker'),
             plain('display.fullScreen'),
-            plain('display.hideApiKey'),
             plain('display.useLegacyGUI'),
             plain('display.menuSideBar'),
             plain('display.showPromptComparison'),

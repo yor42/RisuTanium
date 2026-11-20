@@ -67,6 +67,7 @@ import { expandBranchChats, lateBranchLabels } from "./exportBranches";
 import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
+import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -131,13 +132,13 @@ async function writeStubPayloadsAndRelease(
     writer: Pick<LocalWriter, 'writeBackup'>,
     cold: BackupColdStorage,
     stubEntries: MintedStubEntry[],
-    progressPrefix: string,
+    progress: (done: number, total: number) => string,
     wait: (message: string) => void = alertWait,
 ): Promise<void> {
     cold.stubEntries = new Map()
     const total = stubEntries.length
     for (let i = 0; i < total; i++) {
-        wait(`${progressPrefix} (${i + 1} / ${total})`)
+        wait(progress(i + 1, total))
         await writer.writeBackup(stubEntries[0].backupName, unpackStubEntry(stubEntries[0]))
         stubEntries.shift()
     }
@@ -263,6 +264,8 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
         plain.statics = withoutUsageKeys(db.statics)
     }
     delete plain.usagePriceOverrides
+    // The statistics retention period is a fork-only device preference: left out silently, so an import ends with it off.
+    delete plain.usageRetentionMonths
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -567,7 +570,7 @@ function serverExportOpener(session: ExportSession): (fileName: string, cancel?:
         now: () => Date.now(),
         trigger: submitDownloadForm,
         ensureActivation: () => ensureGestureForWriter(session, true),
-        onProgress: (sent, total) => session.gate.wait(`Saving local Backup... downloading (${formatMiB(sent)} / ${formatMiB(total)})`),
+        onProgress: (sent, total) => session.gate.wait(language.backupSaveDownloading(formatMiB(sent), formatMiB(total))),
     })
 }
 
@@ -645,6 +648,13 @@ export type { ExportDeclinedCause, ExportOutcome } from './operationEnd'
  */
 export interface BackupExportOptions extends ExportCollectionOptions {
     limitBytes?: number
+    /**
+     * Answers, in one question, what the five per-kind fork-only prompts ask. Called at most once per export, where those
+     * prompts are asked (after the size prompts, before the writer opens), and never with an empty list. `true` continues,
+     * `false` declines with nothing written, and `null` means nobody answered: the per-kind prompts run instead, in their
+     * usual order. Unset also runs the per-kind prompts. The answer never reaches the encode, so the file is the same either way.
+     */
+    askLeaveOut?: (summary: readonly BinLeaveOutEntry[]) => Promise<boolean | null>
 }
 
 /** `bytes` as GiB with two decimals, for the prompt that names an item too large for the file. */
@@ -696,7 +706,7 @@ async function upstreamOversizeNames(
         keys,
         listedKeys: listing.keys,
         cancel: session.cancel,
-        onProgress: (done, total) => session.gate.wait(`Checking asset sizes... (${done} / ${total})`),
+        onProgress: (done, total) => session.gate.wait(language.backupCheckingAssetSizes(done, total)),
     })
     return assets.filter((item) => !isPackAssetName(item.key)).map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
 }
@@ -793,6 +803,37 @@ async function confirmOmitUsageStats(session: ExportSession, present: boolean): 
     return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupUsageStatsConfirm))
 }
 
+/**
+ * The fork-only consent before the writer opens: the five per-kind prompts, or one answer to `options.askLeaveOut` that
+ * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
+ * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
+ */
+async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupExportOptions, db: Database, forkOnlyLabels: readonly ForkOnlyChatLabel[]): Promise<boolean> {
+    const perKind = async (): Promise<boolean> => await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))
+        && await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))
+        && await confirmOmitTaskPresets(session, taskPresetLabels(db))
+        && await confirmOmitThemePacks(session, themePackLabels(db))
+        && await confirmOmitUsageStats(session, hasUsageData(db))
+    const ask = options.askLeaveOut
+    if (ask === undefined) {
+        return await perKind()
+    }
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db) })
+    if (summary.length === 0) {
+        return true
+    }
+    let unanswered = false
+    const answer = await confirmDuringExport(session, true, async () => {
+        const given = await ask(summary)
+        if (given === null) {
+            unanswered = true
+            return true
+        }
+        return given
+    })
+    return unanswered ? await perKind() : answer
+}
+
 /** A person's name for an asset of a backup, as the skip report gives it. */
 function describeBackupAsset(assetMap: ReadonlyMap<string, { charName: string, assetName: string }>, key: string): string {
     const assetInfo = assetMap.get(key)
@@ -810,9 +851,6 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
     }
     return message
 }
-
-const FULL_BACKUP_WAIT = "Saving local backup..."
-const PARTIAL_BACKUP_WAIT = "Saving partial local backup..."
 
 /**
  * The first prompt of a whole-save `.bin` export from a read-only legacy page that opened from a backup or without what it
@@ -836,7 +874,7 @@ export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<Expo
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait(FULL_BACKUP_WAIT)
+    session.gate.wait(language.backupSaveWait)
     // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
     noteImportPhase('export start')
     if (MEASURE) {
@@ -863,7 +901,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     assertNoForeignModuleStubs(db.modules, 'writeLocalBackup')
     // The snapshot keeps a stub only when the page has no residency; such a stub must not reach an encoder even if it has left the live list since.
     assertNoModuleStubs(modules, 'writeLocalBackup snapshot')
-    if (!await askLegacyPartialExport(session, FULL_BACKUP_WAIT)) {
+    if (!await askLegacyPartialExport(session, language.backupSaveWait)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     if (MEASURE) {
@@ -956,23 +994,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
     // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // The other fork-only chat data (interrupted-reply notes, memory coverage pointers) is named in a prompt of its own.
-    if (!await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // Task presets are fork-only and device-local; a `.bin` has no place for them, so they are named before the writer opens.
-    if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // Installed theme packs are fork-only and device-local, and neither they nor their files are in a `.bin`.
-    if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // Usage statistics and entered model prices are fork-only; a `.bin` has no place for them.
-    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+    // The other fork-only data (interrupted-reply notes, memory coverage pointers, task presets, theme packs, usage
+    // statistics) has no place in a `.bin` either; it is named in the same consent before the writer opens.
+    if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1016,13 +1040,13 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     try {
         for(let i=0;i<assetKeys.length;i++){
             const key = assetKeys[i]
-            let message = `Saving local Backup... (${i + 1} / ${assetKeys.length})`
+            let message = language.backupSaveProgress(i + 1, assetKeys.length)
             if (missingAssets.length > 0) {
                 const skippedItems = missingAssets.map(key => {
                     const assetInfo = assetMap.get(key);
-                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+                    return assetInfo ? language.backupSaveSkippedAsset(assetInfo.assetName, assetInfo.charName) : `'${key}'`;
                 }).join(', ');
-                message += `\n(Skipping... ${skippedItems})`;
+                message += `\n${language.backupSaveSkipping(skippedItems)}`;
             }
             session.cancel.throwIfCancelled()
             session.gate.wait(message)
@@ -1079,14 +1103,14 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         // Inlays are held one part at a time (up to 64 MiB); the piece size only bounds each read reply.
         pieceBytes: tauriSource === ANDROID_PIECE_SOURCE ? ANDROID_EXPORT_PIECE_BYTES : undefined,
         openPieces: nodeSource?.open,
-        onProgress: (done, total) => session.gate.wait(`Saving local Backup Inlays... (${done} / ${total})`),
+        onProgress: (done, total) => session.gate.wait(language.backupSaveInlays(done, total)),
     })
     session.cancel.throwIfCancelled()
     noteImportPhase('export inlays done')
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
-        let message = `Saving local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
+        let message = language.backupSaveColdData(i + 1, coldStoragePayloads.payloads.length)
         session.gate.wait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
@@ -1099,15 +1123,15 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...', session.gate.wait)
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSaveColdData(done, total), session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        session.gate.wait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
+        session.gate.wait(language.backupSaveColdData(i + 1, late.payloads.length))
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
     noteImportPhase(MEASURE ? `export stub and late payloads done ${describeWriteMeasure()}` : 'export stub and late payloads done')
 
-    session.gate.wait(`Saving local Backup... (Saving database)`)
+    session.gate.wait(language.backupSaveDatabase)
 
     await writeDatabaseEntry(writer, dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
@@ -1183,19 +1207,23 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
  * - Faster and more efficient for quick backups
  * - Ideal for backing up core visual identity without bulk data
  */
-export async function SavePartialLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    // First confirmation: Explain the difference from regular backup
-    const firstConfirm = await alertConfirm(language.partialBackupFirstConfirm)
+export async function SavePartialLocalBackup(options: BackupExportOptions = {}, entry: { assetsExplained?: boolean } = {}): Promise<ExportOutcome>{
+    // A caller that already told the person what a partial backup leaves out (the Data page chooser) skips the two
+    // explanations; every other caller keeps both.
+    if (entry.assetsExplained !== true) {
+        // First confirmation: Explain the difference from regular backup
+        const firstConfirm = await alertConfirm(language.partialBackupFirstConfirm)
 
-    if (!firstConfirm) {
-        return { status: 'declined', cause: 'partial-explanation-declined' }
-    }
+        if (!firstConfirm) {
+            return { status: 'declined', cause: 'partial-explanation-declined' }
+        }
 
-    // Second confirmation: Final warning about not saving assets
-    const secondConfirm = await alertConfirm(language.partialBackupSecondConfirm)
+        // Second confirmation: Final warning about not saving assets
+        const secondConfirm = await alertConfirm(language.partialBackupSecondConfirm)
 
-    if (!secondConfirm) {
-        return { status: 'declined', cause: 'partial-explanation-declined' }
+        if (!secondConfirm) {
+            return { status: 'declined', cause: 'partial-explanation-declined' }
+        }
     }
 
     return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
@@ -1212,7 +1240,7 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait(PARTIAL_BACKUP_WAIT)
+    session.gate.wait(language.backupSavePartialWait)
     clearModuleSnapshotMarks()
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
@@ -1223,7 +1251,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // Same invariant as writeLocalBackup: only a foreign marker left in the live list stops the export here, before any read or file.
     assertNoForeignModuleStubs(db.modules, 'writePartialLocalBackup')
     assertNoModuleStubs(modules, 'writePartialLocalBackup snapshot')
-    if (!await askLegacyPartialExport(session, PARTIAL_BACKUP_WAIT)) {
+    if (!await askLegacyPartialExport(session, language.backupSavePartialWait)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     const collected = await collectBackupColdStorage(db, options)
@@ -1313,19 +1341,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
     // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+    if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1355,13 +1371,13 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
 
     for(let i=0;i<assetKeys.length;i++){
         const key = assetKeys[i]
-        let message = `Saving partial local backup... (${i + 1} / ${assetKeys.length})`
+        let message = language.backupSavePartialProgress(i + 1, assetKeys.length)
         if (missingAssets.length > 0) {
             const skippedItems = missingAssets.map(key => {
                 const assetInfo = assetMap.get(key);
-                return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+                return assetInfo ? language.backupSaveSkippedAsset(assetInfo.assetName, assetInfo.charName) : `'${key}'`;
             }).join(', ');
-            message += `\n(Skipping... ${skippedItems})`;
+            message += `\n${language.backupSaveSkipping(skippedItems)}`;
         }
         session.cancel.throwIfCancelled()
         session.gate.wait(message)
@@ -1407,21 +1423,21 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
-        let message = `Saving partial local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
+        let message = language.backupSavePartialColdData(i + 1, coldStoragePayloads.payloads.length)
         session.gate.wait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
     const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
     session.cancel.throwIfCancelled()
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...', session.gate.wait)
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSavePartialColdData(done, total), session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        session.gate.wait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
+        session.gate.wait(language.backupSavePartialColdData(i + 1, late.payloads.length))
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    session.gate.wait(`Saving partial local backup... (Saving database)`)
+    session.gate.wait(language.backupSavePartialDatabase)
 
     await writeDatabaseEntry(writer, dbData)
     await writer.close()
@@ -1667,7 +1683,7 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
                 } catch (error) {
                     // Only the router's own load can throw here; nothing was read or written.
                     console.error(error);
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                     cancelled();
                 }
             };
@@ -1678,7 +1694,7 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
             input.click();
         } catch (error) {
             console.error(error);
-            alertError('Failed, Is file corrupted?');
+            alertError(language.backupRestoreFailed);
             cancelled();
         }
     });
@@ -1734,7 +1750,7 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
                 return 'pageLive';
             }
             // From here the restore cannot be cancelled, so the wait loses its Cancel button.
-            alertWait('Loading backup...');
+            alertWait(language.backupRestoreLoading);
         }
         try {
             source = await openDesktopImportSource(entry.path);
@@ -1978,7 +1994,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 return refused();
             }
             if (lacksDatabase) {
-                alertError('Failed, Is file corrupted?');
+                alertError(language.backupRestoreFailed);
                 return refused();
             }
 
@@ -1989,7 +2005,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // first asset is written.
             const scan = scanBinForImport(backupEntries, backupNames);
             if (scan.database === null) {
-                alertError('Failed, Is file corrupted?');
+                alertError(language.backupRestoreFailed);
                 return refused();
             }
             const store2Import: Store2BinImport = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, guard: new UnsavedGuard() };
@@ -2037,7 +2053,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // or whose left-out blocks the person declines, changes nothing.
             // No database bytes or tree are held across the copy that follows:
             // the commit reads the entry from the file again.
-            alertWait('Reading the database in the backup...');
+            alertWait(language.backupRestoreReadingDatabase);
             try {
                 const omitted = await readBinDatabaseOmitted(file, store2Import.entry);
                 noteImportPhase('database decoded');
@@ -2048,7 +2064,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 facts.omitted = omitted;
             } catch (e) {
                 console.error(e);
-                alertError(e instanceof BinFileChangedError ? binChangeText(e) : 'Failed, Is file corrupted?');
+                alertError(e instanceof BinFileChangedError ? binChangeText(e) : language.backupRestoreFailed);
                 return refused();
             }
 
@@ -2389,7 +2405,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     if (stopMessage === null && passFailure === null && assetPipeline.failure === null
                             && !assetPipeline.sourceChanged && assetPipeline.outstanding) {
                         // Every entry has been read; the percentage stays at its last value until the copies end.
-                        alertWait('Finishing copying files...');
+                        alertWait(language.backupRestoreFinishingFiles);
                     }
                     await assetPipeline.drain();
                     if (assetPipeline.sourceChanged && stopMessage === null) {
@@ -2443,7 +2459,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 }
                 if (store2Import.boot !== null) {
                     // A boot import has no earlier saved state and no page to reload: the dispatch opens what was installed.
-                    alertWait('Loading backup...');
+                    alertWait(language.backupRestoreLoading);
                     noteImportPhase('loading backup, boot');
                     bootEnd = await commitBootImport({
                         target: store2Import.boot,
@@ -2471,7 +2487,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     return ended(mapped.outcome, mapped.cause);
                 }
                 if (store2Import.target === null) {
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                     return refused();
                 }
                 if (!await store2Import.guard.check()) {
@@ -2482,7 +2498,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     alertError(language.backupFileChangedWhileReading);
                     return refused();
                 }
-                alertWait('Loading backup...');
+                alertWait(language.backupRestoreLoading);
                 noteImportPhase('loading backup');
                 const end = await commitStore2Import({
                     target: store2Import.target,
@@ -2525,7 +2541,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     });
                     return ended('committed');
                 } else {
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                 }
                 if (bootEnd.kind === 'finished') {
                     // The dispatch is told this finished result, so the end names the same fact however the tail of the import threw.
@@ -2553,7 +2569,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     end = await restoreSelectedFile(busy);
                 } catch (error) {
                     console.error(error);
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                 } finally {
                     busy.end();
                     boot?.done(bootEnd);
@@ -2584,7 +2600,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
         input.click();
     } catch (error) {
         console.error(error);
-        alertError('Failed, Is file corrupted?')
+        alertError(language.backupRestoreFailed)
         boot?.done({ kind: 'cancelled' });
         settle(unfinished('failed'));
     }

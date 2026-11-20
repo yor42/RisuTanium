@@ -30,6 +30,8 @@ const h = vi.hoisted(() => ({
     reads: [] as string[],
     saved: 0,
     png: new Uint8Array() as Uint8Array,
+    // runs inside each writer write, so a test can read the task card while bytes stream
+    onWrite: null as null | (() => void),
 }))
 
 const env = vi.hoisted(() => ({
@@ -172,6 +174,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         async write(data: Uint8Array) {
             h.writes++
             h.writeSizes.push(data.length)
+            h.onWrite?.()
         }
         async close() { h.closes++ }
         useCancel() { }
@@ -266,6 +269,14 @@ import { exportCharacterCard } from 'src/ts/characterCards'
 import { getCurrentCharacter, type character } from 'src/ts/storage/database.svelte'
 import { exportModule, exportModuleLegacy, type RisuModule } from 'src/ts/process/modules'
 import { shareRealmCardData } from 'src/ts/realm'
+import { resetTaskHostForTests, setTaskClockForTests, taskHostView } from 'src/ts/alertTask.svelte'
+import type { TaskView } from 'src/lib/Nexus/pattern/taskProgress'
+
+/** A clock that advances one second per read, so every report reaches the published view at once. */
+function useSteppingClock(): void {
+    let tick = 0
+    setTaskClockForTests({ now: () => (tick += 1000), setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (timer) => clearTimeout(timer), hidden: () => false })
+}
 
 //#region synthetic data
 
@@ -400,6 +411,8 @@ beforeEach(() => {
     h.waitCancels.length = 0
     h.reads.length = 0
     h.saved = 0
+    h.onWrite = null
+    resetTaskHostForTests()
     h.png = syntheticPng()
     env.isTauri = true
     env.sizes.clear()
@@ -631,48 +644,67 @@ describe('a large CharX asset is streamed', () => {
     })
 
     describe('progress', () => {
-        function expectTwoPhaseText(): void {
-            const phases = h.waits.filter(text => text.startsWith('Checking') || text.startsWith('Writing Big'))
-            const firstWriting = phases.findIndex(text => text.startsWith('Writing'))
-            expect(firstWriting).toBeGreaterThan(0)
-            expect(phases.slice(0, firstWriting).every(text => text.startsWith('Checking'))).toBe(true)
-            expect(phases.slice(firstWriting).every(text => text.startsWith('Writing'))).toBe(true)
-            expect(phases[0]).toBe(language.exportCheckingAsset('Big Video', 4, 65))
-            expect(phases[firstWriting - 1]).toBe(language.exportCheckingAsset('Big Video', 65, 65))
-            expect(phases[firstWriting]).toBe(language.exportStreamingAsset('Big Video', 4, 65))
-            expect(phases[phases.length - 1]).toBe(language.exportStreamingAsset('Big Video', 65, 65))
+        /** The views seen at each writer write while the large asset streams. */
+        function recordViews(): TaskView[] {
+            useSteppingClock()
+            const views: TaskView[] = []
+            h.onWrite = () => {
+                const view = taskHostView()
+                if (view !== null) {
+                    views.push(view)
+                }
+            }
+            return views
         }
 
-        test('(R) on the web the wait text shows the checking pass and then the writing pass', async () => {
+        function expectBytesOnCard(views: TaskView[]): void {
+            const withBytes = views.filter(view => view.bytes !== undefined)
+            expect(withBytes.length).toBeGreaterThan(0)
+            expect(withBytes.every(view => view.bytes?.total === 65 * MIB)).toBe(true)
+            expect(Math.max(...withBytes.map(view => view.bytes?.done ?? 0))).toBe(65 * MIB)
+            expect(views.every(view => view.count === undefined)).toBe(true)
+            expect(h.waits.filter(text => text.startsWith('Checking') || text.startsWith('Writing Big'))).toEqual([])
+        }
+
+        test('(R) on the web the card shows the streamed bytes and no asset count', async () => {
             env.isTauri = false
             useSource('web')
             serveBig()
+            const views = recordViews()
             expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(true)
-            expectTwoPhaseText()
+            expectBytesOnCard(views)
         })
 
-        test('(R) on Tauri a large-asset CharX shows the same two-phase text on a wait dialog that carries a Cancel', async () => {
+        test('(R) on Tauri a large-asset CharX shows the streamed bytes on a card that carries a Cancel', async () => {
             serveBig()
+            const views = recordViews()
             expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(true)
-            expectTwoPhaseText()
-            expect(h.waitCancels.length).toBeGreaterThan(0)
-            expect(h.waitCancels.every(Boolean)).toBe(true)
+            expectBytesOnCard(views)
+            expect(views.every(view => view.cancelOffered)).toBe(true)
         })
 
-        test('(R) on Tauri a large-asset module CharX shows the same two-phase text with a Cancel', async () => {
+        test('(R) on Tauri a large-asset module CharX shows the same bytes on one card with a Cancel', async () => {
             serveBig()
+            const views = recordViews()
             await exportModule(moduleOf([BIG]), { alertEnd: false })
-            expectTwoPhaseText()
-            expect(h.waitCancels.every(Boolean)).toBe(true)
+            expectBytesOnCard(views)
+            expect(views.every(view => view.cancelOffered)).toBe(true)
+            expect(new Set(views.map(view => view.id)).size).toBe(1)
         })
     })
 
     describe('a read that fails names the asset and never the key', () => {
         function expectNamed(): void {
-            expect(h.errors).toHaveLength(1)
-            expect(h.errors[0]).toContain('Big Video')
-            expect(h.errors[0]).not.toContain(BIG)
-            expect(h.stacks[0]).not.toContain(BIG)
+            const detail = taskHostView()?.failure?.detail ?? ''
+            expect(detail).toContain('Big Video')
+            expect(detail).not.toContain(BIG)
+            expect(h.errors).toEqual([])
+            // The error the card's detail was built from is the one the adapter logs; an earlier log line may carry the raw read error.
+            const logged = vi.mocked(console.error).mock.calls
+                .map(call => call[0])
+                .find((value): value is Error => value instanceof Error && value.message.includes('Big Video'))
+            expect(logged).toBeDefined()
+            expect(logged?.stack ?? '').not.toContain(BIG)
         }
 
         beforeEach(() => {

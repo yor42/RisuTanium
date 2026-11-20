@@ -11,7 +11,9 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { SalvageOmittedBlock } from 'src/ts/storage/risuSave'
-import { language } from 'src/lang'
+import { changeLanguage, language } from 'src/lang'
+import { languageEnglish } from 'src/lang/en'
+import { languageKorean } from 'src/lang/ko'
 
 //#region module mocks
 
@@ -314,8 +316,8 @@ import { resetLegacyPartialSaveForTests, setLegacyPartialSave, type LegacyPartia
 
 const NOW = 1_700_000_000_000
 const BACKUP_TIME = 1_700_000_001_000
-const FULL_WAIT = 'Saving local backup...'
-const PARTIAL_WAIT = 'Saving partial local backup...'
+const FULL_WAIT = languageEnglish.backupSaveWait
+const PARTIAL_WAIT = languageEnglish.backupSavePartialWait
 
 /** A string value of 64 or more characters is rejected by the msgpack decoder under Node, so the fixture keeps them short. */
 function shortened(value: unknown): unknown {
@@ -492,5 +494,34 @@ describe.each([
         expect(askedWith(PROMPT_END)).toEqual([])
         expect(alertWaitMock.mock.calls.map((call) => call[0]).filter((text) => text === waitText)).toHaveLength(1)
         expect(sink.closedFile).not.toBeNull()
+    }, 120_000)
+})
+
+/** Every English export wait and progress text starts with one of these; a Korean page shows none of them. */
+const ENGLISH_EXPORT_WAIT = /Saving (partial )?local backup|Checking asset sizes/i
+
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup as Runner, languageKorean.backupSaveWait],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner, languageKorean.backupSavePartialWait],
+])('%s on a page set to Korean', (_name, run, koreanWait) => {
+    afterEach(() => {
+        changeLanguage('en')
+    })
+
+    test('new contract: the export wait and its progress (stub cold data, database) are shown in the page language, read when the export runs', async () => {
+        await pageOf()
+        // The language changes after backuplocal was loaded, as it does when a user switches languages in Settings.
+        changeLanguage('ko')
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const waits = alertWaitMock.mock.calls.map((call) => String(call[0]))
+        expect(koreanWait).toBeTruthy()
+        expect(koreanWait).not.toMatch(ENGLISH_EXPORT_WAIT)
+        expect(waits).toContain(koreanWait)
+        // The three stub characters are written as cold data, and the database last, so progress texts are among the waits too.
+        expect(waits.length).toBeGreaterThan(2)
+        expect(waits.filter((text) => ENGLISH_EXPORT_WAIT.test(text))).toEqual([])
     }, 120_000)
 })

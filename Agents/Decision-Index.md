@@ -2279,3 +2279,37 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2472](Maintainer-Context.md#mc-2472--batch-speed-item-measured-by-a-deterministic-test-through-the-real-sweep-path-2026-11-19) | Batch-speed item measured by a deterministic test through the real sweep path, 2026-11-19 |
 | [MC-2473](Maintainer-Context.md#mc-2473--20-x-20-px-studio-row-tick-box-folded-into-chore-823-212-2026-11-19) | 20 x 20 px Studio row tick box folded into CHORE-823 (#212), 2026-11-19 |
 | [MC-2474](Maintainer-Context.md#mc-2474--no-new-track-a-ticket-until-the-quota-resets-candidates-292-290-and-179-2026-11-19) | No new track-A ticket until the quota resets; candidates #292, #290 and #179, 2026-11-19 |
+| [MC-2713](Maintainer-Context.md#mc-2713--per-session-mc-id-blocks-device-rulings-asked-in-lane-b-pr-sessions-write-their-own-device-rows-2026-11-20) | Per-session MC ID blocks, device rulings asked in lane B, PR sessions write their own device rows, 2026-11-20 |
+| [MC-2744](Maintainer-Context.md#mc-2744--approval-matrix-autonomous-to-green-merge-2026-11-20) | Approval matrix: autonomous to green merge, 2026-11-20 |
+| [MC-2745](Maintainer-Context.md#mc-2745--follow-up-policy-reviewers-classify-at-most-2-new-issues-per-pr-weekly-14-day-sweep-2026-11-20) | Follow-up policy: reviewers classify, at most 2 new issues per PR, weekly 14-day sweep, 2026-11-20 |
+| [MC-2746](Maintainer-Context.md#mc-2746--size-tiers-0-1-and-2-2026-11-20) | Size tiers 0, 1 and 2, 2026-11-20 |
+| [MC-2747](Maintainer-Context.md#mc-2747--pr-based-complete-bulk-close-of-old-owed-closeouts-2026-11-20) | PR-based COMPLETE; bulk close of old owed closeouts, 2026-11-20 |
+| [MC-2748](Maintainer-Context.md#mc-2748--native-routing-first-codex-and-agy-opt-in-after-a-fresh-route-health-check-cheapag-and-openrouter-inactive-2026-11-20) | Native routing first; Codex and agy opt-in after a fresh route-health check; cheapag and OpenRouter inactive, 2026-11-20 |
+| [MC-2749](Maintainer-Context.md#mc-2749--tssvelte-lsp-never-called-rust-analyzer-kept-for-rust-2026-11-20) | TS/Svelte LSP never called; rust-analyzer kept for Rust, 2026-11-20 |
+| [MC-2750](Maintainer-Context.md#mc-2750--main-registry-grant-rule-documented-one-tooling-ticket-for-automatic-per-worktree-grants-2026-11-20) | Main-registry grant rule documented; one tooling ticket for automatic per-worktree grants, 2026-11-20 |
+| [MC-2751](Maintainer-Context.md#mc-2751--governance-v2-rollout-as-staged-docs-only-prs-2026-11-20) | Governance v2 rollout as staged docs-only PRs, 2026-11-20 |
+| [MC-2752](Maintainer-Context.md#mc-2752--untracked-handoff-2026-10-08-backlog-archived-2026-11-20) | Untracked Handoff-2026-10-08 backlog archived, 2026-11-20 |
+| [MC-2753](Maintainer-Context.md#mc-2753--workflow-policyjson-takes-the-maintainers-implementation-cap-of-10-2026-11-20) | workflow-policy.json takes the maintainer's implementation cap of 10, 2026-11-20 |
+| [MC-2775](Maintainer-Context.md#mc-2775--a-merged-prs-own-closing-keyword-is-an-approved-issue-close-2026-11-20) | A merged PR's own closing keyword is an approved issue close, 2026-11-20 |
+| [MC-2776](Maintainer-Context.md#mc-2776--devices-in-mc-2744-means-personal-devices-only-2026-11-20) | "Devices" in MC-2744 means personal devices only, 2026-11-20 |
+| [MC-2777](Maintainer-Context.md#mc-2777--the-orphan-sweep-runs-only-in-the-weekly-sweep-2026-11-20) | The orphan sweep runs only in the weekly sweep, 2026-11-20 |
+| [MC-2778](Maintainer-Context.md#mc-2778--direct-pushes-to-main-are-retired-2026-11-20) | Direct pushes to main are retired, 2026-11-20 |
+| [MC-2779](Maintainer-Context.md#mc-2779--the-follow-up-label-is-created-2026-11-20) | The follow-up label is created, 2026-11-20 |
+| [MC-2780](Maintainer-Context.md#mc-2780--the-mc-2747-bulk-close-sweep-runs-after-the-governance-stack-merges-2026-11-20) | The MC-2747 bulk-close sweep runs after the governance stack merges, 2026-11-20 |
+| [MC-2781](Maintainer-Context.md#mc-2781--the-leftover-workflow-state-temp-files-are-archived-not-deleted-2026-11-20) | The leftover Workflow-State temp files are archived, not deleted, 2026-11-20 |
+| [MC-2794](Maintainer-Context.md#mc-2794--mc-2747-bulk-close-74-merged-items-close-as-complete-2026-11-20) | MC-2747 bulk close: 74 merged items close as complete, 2026-11-20 |
+| [MC-2795](Maintainer-Context.md#mc-2795--chore-153-closes-with-the-q-c-debounce-cap-as-an-accepted-drop-2026-11-20) | CHORE-153 closes with the Q-C debounce cap as an accepted drop, 2026-11-20 |
+| [MC-2796](Maintainer-Context.md#mc-2796--ui-s6-ui-s1-and-chore-688-close-as-delivered-2026-11-20) | UI-S6, UI-S1 and CHORE-688 close as delivered, 2026-11-20 |
+| [MC-2797](Maintainer-Context.md#mc-2797--the-25-already-closed-items-get-closed-roadmap-records-2026-11-20) | The 25 already-closed items get closed Roadmap records, 2026-11-20 |
+| [MC-2762](Maintainer-Context.md#mc-2762--build-a-leftover-process-reaper-report-only-first-2026-11-20) | Build a leftover-process reaper, report-only first, 2026-11-20 |
+| [MC-2763](Maintainer-Context.md#mc-2763--lane-b-stops-its-own-leftover-processes-2026-11-20) | Lane B stops its own leftover processes, 2026-11-20 |
+| [MC-2764](Maintainer-Context.md#mc-2764--exports-on-non-secure-pages-build-in-memory-instead-of-the-streamsaver-helper-2026-11-20) | Exports on non-secure pages build in memory instead of the StreamSaver helper, 2026-11-20 |
+| [MC-2782](Maintainer-Context.md#mc-2782--risurealm-browser-offline-ux-audit-then-restyle-in-a-new-session-2026-11-20) | RisuRealm browser offline UX audit, then restyle, in a new session, 2026-11-20 |
+| [MC-2783](Maintainer-Context.md#mc-2783--the-realm-restyle-takes-all-four-finding-groups-2026-11-20) | The Realm restyle takes all four finding groups, 2026-11-20 |
+| [MC-2784](Maintainer-Context.md#mc-2784--the-realm-restyle-follows-the-realm-mockup-structure-2026-11-20) | The Realm restyle follows the realm mockup structure, 2026-11-20 |
+| [MC-2793](Maintainer-Context.md#mc-2793--chromemory-is-tracked-with-one-issue-per-stage-2026-11-20) | ChroMemory is tracked with one issue per stage, 2026-11-20 |
+| [MC-2798](Maintainer-Context.md#mc-2798--312-closes-by-hand-on-the-carried-over-note-9-rows-2026-11-20) | #312 closes by hand on the carried-over Note 9 rows, 2026-11-20 |
+| [MC-2809](Maintainer-Context.md#mc-2809--the-language-switch-hides-when-text-has-only-one-language-app-wide-2026-11-20) | The language switch hides when text has only one language, app-wide, 2026-11-20 |
+| [MC-2810](Maintainer-Context.md#mc-2810--276-closes-its-owed-rtb-device-rows-move-to-tracker-349-2026-11-20) | #276 closes; its owed .rtb device rows move to tracker #349, 2026-11-20 |
+| [MC-2811](Maintainer-Context.md#mc-2811--the-rtb-sync-folder-gets-its-own-deferred-ticket-2026-11-20) | The .rtb sync folder gets its own deferred ticket, 2026-11-20 |
+| [MC-2812](Maintainer-Context.md#mc-2812--re-run-the-dv-s8-2-truncated-export-step-on-current-main-2026-11-20) | Re-run the DV-S8-2 truncated-export step on current main, 2026-11-20 |

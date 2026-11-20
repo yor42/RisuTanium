@@ -6,6 +6,7 @@
     import { hasModuleStubs, unloadedModulesOf } from 'src/ts/process/moduleRefList';
     import { ensurePlaygroundModulesOrAlert } from 'src/ts/process/moduleEnsure';
     let input = $state("");
+    const uid = $props.id();
     let output = $state("");
     let moduleWait: Promise<boolean> | null = null;
     let moduleWaitFailed = false;
@@ -42,10 +43,10 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.syntax}</h2>
 
-<span class="text-textcolor text-lg">{language.input}</span>
+<span id="{uid}-input" class="text-textcolor text-lg">{language.input}</span>
 
-<TextAreaInput highlight onInput={onInput} bind:value={input} optimaizedInput={false} />
+<TextAreaInput labelId="{uid}-input" highlight onInput={onInput} bind:value={input} optimaizedInput={false} />
 
-<span class="text-textcolor text-lg">{language.playground.result}</span>
+<span id="{uid}-result" class="text-textcolor text-lg">{language.playground.result}</span>
 
-<TextAreaInput value={output} />
+<TextAreaInput labelId="{uid}-result" value={output} />

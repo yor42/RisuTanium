@@ -16,8 +16,9 @@
 
     // The uses list of the renames the saved-values question is about: where the old keys are still read, what Update
     // all would rewrite, what it leaves and why, and the result line with Undo all for this visit. The scan runs when
-    // the list opens and when its keys, an update or a recheck change it; it is cached together with the reach it read
-    // and is for display only: the click rescans in its own task and compares signatures.
+    // the list opens and when its keys change; after an update or a recheck the refresh runs in the next task, so no
+    // task scans twice. It is cached together with the reach it read and is for display only: the click rescans in its
+    // own task and compares signatures.
     interface Props {
         builder: Pick<ToggleBuilder, 'usesRenames' | 'usesKept' | 'dismissUses' | 'noteUpdated' | 'owner'>
         target: ToggleTarget
@@ -33,6 +34,10 @@
     const LISTED_CAP = 50
 
     let refresh = $state(0)
+    // Counts Update all clicks. A scan records the count it was taken at, so Update all stays disabled until a scan
+    // taken after the latest click has landed.
+    let runs = $state(0)
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
     let optIn = $state.raw<ReadonlySet<string>>(new Set())
     let error = $state('')
     let toastId: ToastId | null = null
@@ -50,7 +55,7 @@
         return untrack(() => {
             try {
                 const reach = readShownReach(target, chaId)
-                return { reach, scan: scanReach(reach, new Set(renames.map((rename) => rename.from))) }
+                return { reach, scan: scanReach(reach, new Set(renames.map((rename) => rename.from))), runs }
             } catch (failure) {
                 recordCaughtError('studio.toggleUses.scan', failure)
                 return null
@@ -69,7 +74,7 @@
     const listedShown = $derived((plan?.listed ?? []).slice(0, LISTED_CAP))
     const listedMore = $derived(Math.max(0, (plan?.listed.length ?? 0) - LISTED_CAP))
     const nothingFound = $derived(plan !== null && plan.writes.length === 0 && plan.skipped.length === 0 && plan.listed.length === 0)
-    const canUpdate = $derived(editable && service !== null && plan !== null && plan.count > 0 && plan.blocked.length === 0)
+    const canUpdate = $derived(editable && service !== null && plan !== null && scanned?.runs === runs && plan.count > 0 && plan.blocked.length === 0)
     const result = $derived(currentUpdate())
 
     function ownerName(key: string): string {
@@ -146,9 +151,27 @@
         optIn = next
     }
 
+    function clearRefreshTimer(): void {
+        if (refreshTimer !== null) {
+            clearTimeout(refreshTimer)
+            refreshTimer = null
+        }
+    }
+
+    // The display scan follows a click in the next task, so the click task runs the update's own scan only.
+    function scheduleRefresh(): void {
+        clearRefreshTimer()
+        refreshTimer = setTimeout(() => {
+            refreshTimer = null
+            refresh += 1
+        }, 0)
+    }
+
     function undoOutcome(token?: number): UndoOutcome {
         const undone = undoLastUpdate(token)
         if (undone.ok === true) {
+            // This scan is fresh, so the pending refresh would only scan a second time.
+            clearRefreshTimer()
             refresh += 1
             return { ok: true, text: language.studioTgUpdateUndone }
         }
@@ -163,6 +186,7 @@
             return
         }
         error = ''
+        runs += 1
         const outcome = runUpdateAll({ target, chaId, renames: () => builder.usesRenames, optIn, shownSignature: plan.signature })
         if (outcome.ok === true) {
             if (outcome.count > 0) {
@@ -176,7 +200,7 @@
         } else {
             error = refusalTextOf({ reason: outcome.reason === 'unavailable' ? 'loading' : 'unknown' }, builder.owner)
         }
-        refresh += 1
+        scheduleRefresh()
     }
 
     function undoAll(): void {
@@ -195,6 +219,7 @@
 
     // The toast ends with this list only when nothing is left to undo; a kept update keeps offering its toast Undo.
     onDestroy(() => {
+        clearRefreshTimer()
         if (toastId !== null && currentUpdate() === null) {
             host.dismiss(toastId)
         }
@@ -217,7 +242,7 @@
             <div data-part="studio-toggle-uses-skipped" class="flex flex-col gap-1">
                 <p class="text-sm text-textcolor2">{language.studioTgUsesSkipped(ownerName(entry.owner), entry.key, entry.count)}</p>
                 <label class="flex min-h-11 items-center gap-2 text-sm text-textcolor cursor-pointer">
-                    <input type="checkbox" data-part="studio-toggle-uses-optin" checked={optIn.has(entry.owner)} disabled={!editable} onchange={(event) => toggleOptIn(entry.owner, event.currentTarget.checked)} />
+                    <input type="checkbox" aria-label={language.studioTgUsesAlsoUpdate(ownerName(entry.owner))} data-part="studio-toggle-uses-optin" checked={optIn.has(entry.owner)} disabled={!editable} onchange={(event) => toggleOptIn(entry.owner, event.currentTarget.checked)} />
                     <span>{language.studioTgUsesAlsoUpdate(ownerName(entry.owner))}</span>
                 </label>
             </div>

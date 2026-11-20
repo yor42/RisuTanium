@@ -5,6 +5,8 @@
         onChange?: (check:boolean) => any,
         margin?: boolean;
         name?: string;
+        /** Accessible name when it differs from the visible `name` text. */
+        label?: string;
         hiddenName?: boolean;
         reverse?: boolean;
         className?: string;
@@ -17,12 +19,16 @@
         onChange = (check:boolean) => {},
         margin = true,
         name = '',
+        label = '',
         hiddenName = false,
         reverse = false,
         className = "",
         grayText = false,
         children
     }: Props = $props();
+
+    // A checkbox is named through aria-label only, because that is the one name TalkBack speaks in the control's own stop.
+    let accessibleName = $derived(label.trim() ? label : name.trim() ? name : undefined);
 </script>
 
 <label 
@@ -36,14 +42,14 @@
         class="sr-only peer"
         type="checkbox"
         alt={name}
-        aria-label={hiddenName && name ? name : undefined}
+        aria-label={accessibleName}
         bind:checked={check}
         onchange={() => {
             onChange(check)
         }}
     />
     <span
-        class="w-5 h-5 min-w-5 min-h-5 rounded-md border-2 border-darkborderc flex justify-center items-center {check ? 'bg-darkborderc' : 'bg-darkbutton'} transition-colors duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-textcolor2"
+        class="w-5 h-5 min-w-5 min-h-5 rounded-md border-2 border-darkborderc flex justify-center items-center {check ? 'bg-darkborderc' : 'bg-darkbutton'} transition-colors duration-200 risu-focus-ring-peer"
         aria-hidden="true"
     >
         {#if check}

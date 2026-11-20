@@ -11,6 +11,9 @@
         hideUnusedModes: DBState.db.hideUnusedModes,
     }))
 
+    // Two switchers can be mounted together, so the description ids carry the instance id.
+    const uid = $props.id()
+
     const modeNames: Record<HomeMode, () => string> = {
         rp: () => language.settingsShellModesNameRp,
         hybrid: () => language.settingsShellModesNameHybrid,
@@ -34,11 +37,13 @@
                     checked={entry.current}
                     disabled={entry.held}
                     aria-disabled={entry.held ? 'true' : undefined}
+                    aria-label={modeNames[entry.mode]()}
+                    aria-describedby={entry.held ? `${uid}-${entry.mode}-held` : undefined}
                     class="h-4 w-4"
                 />
                 <span>{modeNames[entry.mode]()}</span>
                 {#if entry.held}
-                    <span class="text-xs text-textcolor2">{language.homeModeComingLater}</span>
+                    <span id="{uid}-{entry.mode}-held" class="text-xs text-textcolor2">{language.homeModeComingLater}</span>
                 {/if}
             </label>
         {/each}

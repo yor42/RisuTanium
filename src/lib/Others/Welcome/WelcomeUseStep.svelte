@@ -31,6 +31,7 @@
                     name="welcome-use"
                     value={option.value}
                     checked={flow.use === option.value}
+                    aria-label={option.label}
                     onchange={() => flow.chooseUse(option.value)}
                 />
                 <span>{option.label}</span>
@@ -45,6 +46,7 @@
             type="checkbox"
             checked={flow.hideUnused}
             disabled={flow.finishing}
+            aria-label={language.onboarding.hideUnused}
             aria-describedby={describedBy}
             onchange={(e) => flow.setHideUnused(e.currentTarget.checked)}
         />

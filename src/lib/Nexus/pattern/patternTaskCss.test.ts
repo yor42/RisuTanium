@@ -87,4 +87,20 @@ describe('pattern task sheet', () => {
         postcss.parse(css).walkDecls('backdrop-filter', () => { blurred++ })
         expect(blurred).toBe(0)
     })
+
+    // The confirm-to-running swap fades the card's children in; its duration is bounded by the motion cap of every mode.
+    test('the swap fade reads --d-swapin, which the motion cap bounds, and moves only opacity and transform', () => {
+        expect(css).toMatch(/--d-swapin:\s*calc\(min\(var\(--warning-swap-in-dur\), var\(--pm-cap\)\)/)
+        const rule = [...postcss.parse(css).nodes].find(
+            (node): node is postcss.Rule => node.type === 'rule' && node.selector.includes('[data-part="pattern-task-root"][data-swap="in"] > *'),
+        )
+        expect(rule).toBeDefined()
+        expect(rule!.toString()).toContain('var(--d-swapin)')
+        let keyframes: postcss.AtRule | undefined
+        postcss.parse(css).walkAtRules('keyframes', (atRule) => { if (atRule.params === 'pattern-swap-in') keyframes = atRule })
+        expect(keyframes).toBeDefined()
+        const moved = new Set<string>()
+        keyframes!.walkDecls((decl) => { moved.add(decl.prop) })
+        expect([...moved]).toEqual(['opacity'])
+    })
 })

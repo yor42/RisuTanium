@@ -135,32 +135,32 @@
 {#if submenu !== 2}
 
 <div class="text-textcolor2 mt-2 flex">
-    <button onclick={() => {addLorebook(submenu)}} class="hover:text-textcolor cursor-pointer">
-        <PlusIcon />
+    <button onclick={() => {addLorebook(submenu)}} aria-label={language.add} class="hover:text-textcolor cursor-pointer">
+        <PlusIcon aria-hidden="true" />
     </button>
     <button onclick={() => {
         exportLoreBook(submenu === 0 ? 'global' : 'local')
-    }} class="hover:text-textcolor ml-1  cursor-pointer">
-        <DownloadIcon />
+    }} aria-label={language.export} class="hover:text-textcolor ml-1  cursor-pointer">
+        <DownloadIcon aria-hidden="true" />
     </button>
     <button onclick={() => {
         addLorebookFolder(submenu)
-    }} class="hover:text-textcolor ml-2  cursor-pointer">
-        <FolderPlusIcon />
+    }} aria-label={language.chatShellNewFolder} class="hover:text-textcolor ml-2  cursor-pointer">
+        <FolderPlusIcon aria-hidden="true" />
     </button>
     <button onclick={() => {
         importLoreBook(submenu === 0 ? 'global' : 'local')
-    }} class="hover:text-textcolor ml-2  cursor-pointer">
-        <HardDriveUploadIcon />
+    }} aria-label={language.import} class="hover:text-textcolor ml-2  cursor-pointer">
+        <HardDriveUploadIcon aria-hidden="true" />
     </button>
     {#if DBState.db.bulkEnabling}
         <button onclick={() => {
             toggleCharacterLoreAlwaysActive()
         }} class="hover:text-textcolor ml-2 cursor-pointer flex items-center gap-1">
             {#if isAllCharacterLoreAlwaysActive()}
-                <SunIcon />
+                <SunIcon aria-hidden="true" />
             {:else}
-                <LinkIcon />
+                <LinkIcon aria-hidden="true" />
             {/if}
             <span class="text-xs">{language.sidebarUi.loreScopeChar}</span>
         </button>
@@ -168,9 +168,9 @@
             toggleChatLoreAlwaysActive()
         }} class="hover:text-textcolor ml-2 cursor-pointer flex items-center gap-1">
             {#if isAllChatLoreAlwaysActive()}
-                <SunIcon />
+                <SunIcon aria-hidden="true" />
             {:else}
-                <LinkIcon />
+                <LinkIcon aria-hidden="true" />
             {/if}
             <span class="text-xs">{language.sidebarUi.loreScopeChat}</span>
         </button>

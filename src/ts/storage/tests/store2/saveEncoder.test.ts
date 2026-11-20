@@ -121,6 +121,7 @@ describe('guard: dependency closure through the encoder, each field changes the 
         fixed('plugins', d => { ((d.plugins as Obj[])[1]).version = 9 }, ['plugin:plugins:1']),
         fixed('characterOrder', d => { (d.characterOrder as string[]).reverse() }, ['order']),
         fixed('statics', d => { d.statics = { messages: 99 } }, ['statics']),
+        fixed('a removed statics key', d => { delete (d.statics as Obj).imports }, ['statics']),
         fixed('loadouts', d => { d.loadouts = [{ name: 'one' }] }, ['loadouts']),
         fixed('a plugin storage value', d => { ((d.pluginCustomStorage as Obj)['plugin-3'] as Obj).counter = 77 }, ['psv:plugin-3', `bucket:${bucketOfKey('plugin-3')}`]),
         fixed('a new plugin storage key', d => { (d.pluginCustomStorage as Obj)['fresh-key'] = { n: 1 } }, ['psv:fresh-key', `bucket:${bucketOfKey('fresh-key')}`]),

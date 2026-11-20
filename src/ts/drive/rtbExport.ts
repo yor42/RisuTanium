@@ -13,7 +13,12 @@
  *  - `saved` is reported only after the writer's `close()` resolved. After a cancel or a failure the writer is
  *    never closed; the S7 shell reports what became of the file. The walk's promise always settles before the
  *    export returns, so nothing keeps running inside the busy entry.
- *  - Secrets in side data stay plaintext until the encryption stage (MC-687 item 6).
+ *  - Secrets in side data stay plaintext inside the plain archive; a password seals the whole file (MC-687 item 6).
+ *  - With a password the key derivation runs before the writer opens, so a failed derivation leaves no file. The
+ *    sealing sink is finished only after the archive's last byte and before `close()`; a cancel or a failure leaves by
+ *    throw before it, so no file carries a last-flag chunk unless the export ran to its end.
+ *  - Every exit after the derivation (saved, declined, failed or cancelled) abandons the prepared seal, so the key
+ *    and the sealing sink's held plaintext are zeroed whether or not a sink was ever taken.
  */
 import { withBusy } from '../process/memory/busyActions'
 import { getDatabase, appVer } from '../storage/database.svelte'
@@ -21,6 +26,7 @@ import { getPageStorageMode, type PageStorageMode } from '../storage/pageStorage
 import { getAppStore, getAppStoreKind, pageStoreIsOpfsTransitional } from '../storage/store/appStore'
 import type { ByteStore } from '../storage/store/contract'
 import type { Store2Backend } from '../storage/store2/backend/types'
+import { yieldToEventLoop } from '../storage/saveYield'
 import { getStore2BootSession } from '../storage/store2/bootActive'
 import type { Committer } from '../storage/store2/commit'
 import type { KeyEnv } from '../storage/store2/format/keys'
@@ -35,6 +41,9 @@ import { openInlay } from './inlayBackupExport'
 import type { ExportOmitted, ExportOutcome } from './operationEnd'
 import { CoalescingSink } from './rtb/coalescingSink'
 import type { OmittedEntry } from './rtb/manifest'
+import { passwordBytes } from './rtb/sealed/password'
+import { DEFAULT_SEAL_PARAMS, type SealParams } from './rtb/sealed/policy'
+import { prepareSeal, type PreparedSeal, type SealDeps } from './rtb/sealed/sealWriter'
 import { writeRtb, type RtbWriteResult, type SideInput } from './rtb/rtbWriter'
 import { defaultSideBackends, readSideStores, type SideBackends } from './rtb/sideStores'
 import { RTB_SIDE_TAGS } from './rtb/sideTags'
@@ -56,6 +65,11 @@ export interface RtbExportOptions {
     progressText?: (event: RtbExportProgress) => string
     /** The suggested name; `local-YYYYMMDD.rtb` of the device's local date when absent. */
     fileName?: string
+    /**
+     * Seals the file under this password. Text the sealed format refuses (empty, broken characters) makes the
+     * guarded export reject with a TypeError before anything registers busy or opens; the caller validates first.
+     */
+    password?: string
 }
 
 export interface RtbExportDeps {
@@ -78,6 +92,8 @@ export interface RtbExportDeps {
     keyEnv?: KeyEnv
     /** Tests only: runs between two unit batches, inside the walk. */
     afterUnitBatch?: () => Promise<void>
+    /** Tests only: the key-derivation cost and the injected seams of the seal; live uses the policy defaults. */
+    seal?: { params: SealParams } & SealDeps
 }
 
 export type RtbExportRefusal = 'read-only' | 'not-store2' | 'no-session'
@@ -161,136 +177,154 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
 
     emit({ phase: 'opening' })
     session.cancel.throwIfCancelled()
-    await ensureGestureForWriter(session)
-    const writer = await openOutsideBusy(session.busy, () => deps.openWriter(session, fileName))
-    // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
-    session.cancel.throwIfCancelled()
-    if (writer === null) {
-        return { status: 'declined', cause: 'save-dialog-cancelled' }
-    }
-    session.writer = writer
-
-    emit({ phase: 'saving' })
-    await deps.saveFirst()
-    session.cancel.throwIfCancelled()
-    const unsavedExcluded = !deps.isSaveClean() || deps.moduleVerdicts().some((verdict) => verdict !== 'saved')
-
-    const store = await deps.store()
-    const sides = await readSideStores(deps.sideBackends)
-    const context: RtbSectionContext = { cancel: session.cancel, lateOmitted: [], onProgress: emit }
-    const platform = deps.platform()
-    const inlayState = { oldStoreUnlisted: false, unsupported: [] as string[] }
-
-    const walk: { closure: ExportClosure | null, promise: Promise<void> | null, units: number } = { closure: null, promise: null, units: 0 }
-    const bridge = createUnitBridge(() => {
-        walk.promise = exportClosure(backend, {
-            onUnits: async (batch) => {
-                walk.units += batch.length
-                await bridge.push(batch)
-            },
-            yield: async () => {
-                session.cancel.throwIfCancelled()
-                emit({ phase: 'units', units: walk.units })
-                await deps.afterUnitBatch?.()
-                // A cancel that came while the batch was handled stops the walk before it reads another one.
-                session.cancel.throwIfCancelled()
-            },
-        }).then(
-            (closure) => {
-                walk.closure = closure
-                bridge.end()
-            },
-            (error: unknown) => {
-                bridge.fail(error)
-            },
-        )
-    })
-    const walked = (): ExportClosure => {
-        if (walk.closure === null) {
-            throw new Error('The unit walk had not finished when its result was needed.')
-        }
-        return walk.closure
-    }
-
-    async function* inlays() {
-        yield* rtbInlayInputs(store, deps.inlays, walked().referenced.inlays, inlayState, context)
-    }
-    async function* assets() {
-        yield* rtbAssetInputs(store, deps.assets, walked().referenced.assets, context)
-    }
-
-    const sink = new CoalescingSink((chunk) => writer.write(chunk))
-    let result: RtbWriteResult
+    let seal: PreparedSeal | null = null
     try {
-        result = await writeRtb({
-            sink,
-            writer: deps.writerInfo,
-            clock: deps.clock,
-            keyEnv: deps.keyEnv,
-            store2: {
-                units: bridge.iterable,
-                summary: () => {
-                    const closure = walked()
-                    const [tail, bytes, crc] = closure.root
-                    return {
-                        root: [tail, bytes, crc],
-                        req: closure.req,
-                        refs: closure.refRows,
-                        units: closure.units,
-                        omitted: closure.omitted.map(({ kind, name, reason }) => ({ kind, name, reason })),
-                    }
+        if (options.password !== undefined) {
+            // The opening text paints before the derivation holds the thread, and the derivation precedes the writer so a
+            // failed one leaves no file.
+            await yieldToEventLoop()
+            const { params, ...sealDeps } = deps.seal ?? { params: DEFAULT_SEAL_PARAMS }
+            seal = await prepareSeal(options.password, params, sealDeps)
+            session.cancel.throwIfCancelled()
+        }
+        await ensureGestureForWriter(session)
+        const writer = await openOutsideBusy(session.busy, () => deps.openWriter(session, fileName))
+        // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
+        session.cancel.throwIfCancelled()
+        if (writer === null) {
+            return { status: 'declined', cause: 'save-dialog-cancelled' }
+        }
+        session.writer = writer
+
+        emit({ phase: 'saving' })
+        await deps.saveFirst()
+        session.cancel.throwIfCancelled()
+        const unsavedExcluded = !deps.isSaveClean() || deps.moduleVerdicts().some((verdict) => verdict !== 'saved')
+
+        const store = await deps.store()
+        const sides = await readSideStores(deps.sideBackends)
+        const context: RtbSectionContext = { cancel: session.cancel, lateOmitted: [], onProgress: emit }
+        const platform = deps.platform()
+        const inlayState = { oldStoreUnlisted: false, unsupported: [] as string[] }
+
+        const walk: { closure: ExportClosure | null, promise: Promise<void> | null, units: number } = { closure: null, promise: null, units: 0 }
+        const bridge = createUnitBridge(() => {
+            walk.promise = exportClosure(backend, {
+                onUnits: async (batch) => {
+                    walk.units += batch.length
+                    await bridge.push(batch)
                 },
-            },
-            late: () => ({
-                source: { device: { label: platform.label, platform: platform.platform }, committedAt: walked().committedAt, unsavedExcluded },
-                omitted: [...context.lateOmitted],
-            }),
-            sides: Object.fromEntries(Object.entries(sides).map(([id, input]) => [id, announcedSide(id, input, context)])),
-            sideTags: RTB_SIDE_TAGS,
-            inlays: inlays(),
-            assets: assets(),
+                yield: async () => {
+                    session.cancel.throwIfCancelled()
+                    emit({ phase: 'units', units: walk.units })
+                    await deps.afterUnitBatch?.()
+                    // A cancel that came while the batch was handled stops the walk before it reads another one.
+                    session.cancel.throwIfCancelled()
+                },
+            }).then(
+                (closure) => {
+                    walk.closure = closure
+                    bridge.end()
+                },
+                (error: unknown) => {
+                    bridge.fail(error)
+                },
+            )
         })
+        const walked = (): ExportClosure => {
+            if (walk.closure === null) {
+                throw new Error('The unit walk had not finished when its result was needed.')
+            }
+            return walk.closure
+        }
+
+        async function* inlays() {
+            yield* rtbInlayInputs(store, deps.inlays, walked().referenced.inlays, inlayState, context)
+        }
+        async function* assets() {
+            yield* rtbAssetInputs(store, deps.assets, walked().referenced.assets, context)
+        }
+
+        const enc = seal === null ? null : seal.sink((sealed) => writer.write(sealed))
+        const sink = new CoalescingSink((chunk) => (enc === null ? writer.write(chunk) : enc.write(chunk)))
+        let result: RtbWriteResult
+        try {
+            result = await writeRtb({
+                sink,
+                writer: deps.writerInfo,
+                clock: deps.clock,
+                keyEnv: deps.keyEnv,
+                store2: {
+                    units: bridge.iterable,
+                    summary: () => {
+                        const closure = walked()
+                        const [tail, bytes, crc] = closure.root
+                        return {
+                            root: [tail, bytes, crc],
+                            req: closure.req,
+                            refs: closure.refRows,
+                            units: closure.units,
+                            omitted: closure.omitted.map(({ kind, name, reason }) => ({ kind, name, reason })),
+                        }
+                    },
+                },
+                late: () => ({
+                    source: { device: { label: platform.label, platform: platform.platform }, committedAt: walked().committedAt, unsavedExcluded },
+                    omitted: [...context.lateOmitted],
+                }),
+                sides: Object.fromEntries(Object.entries(sides).map(([id, input]) => [id, announcedSide(id, input, context)])),
+                sideTags: RTB_SIDE_TAGS,
+                inlays: inlays(),
+                assets: assets(),
+            })
+        } finally {
+            bridge.abort()
+            await walk.promise
+        }
+
+        emit({ phase: 'finishing' })
+        await sink.flush()
+        if (enc !== null) {
+            await enc.finish()
+        }
+        await writer.close()
+
+        const closure = walked()
+        const manifestOmitted = result.manifest.omitted
+        const leftOutInlays = manifestOmitted
+            .filter((entry) => entry.kind === 'inlay')
+            .map((entry) => ({ id: entry.name, reason: inlayState.unsupported.includes(entry.name) ? 'unsupported' as const : 'unreadable' as const }))
+        const omitted: ExportOmitted = {
+            assets: namesOf(manifestOmitted, 'asset'),
+            oversize: [],
+            units: namesOf(manifestOmitted, 'unit'),
+            inlays: leftOutInlays,
+            oldStoreUnlisted: inlayState.oldStoreUnlisted,
+            repaired: null,
+        }
+        holder.report = {
+            fileName,
+            length: enc === null ? result.length : enc.bytesWritten,
+            snapshotId: result.snapshotId,
+            createdAt: result.createdAt,
+            committedAt: closure.committedAt,
+            unsavedExcluded,
+            omitted: [...manifestOmitted],
+            referencedNotices: closure.referenced.notices,
+            oldInlayStoreUnlisted: inlayState.oldStoreUnlisted,
+            // Writer v1 writes two entries per inlay (`i/*.meta` and `i/*.body`).
+            counts: { units: closure.units, inlays: rowEntries(result, 'inlays') / 2, assets: rowEntries(result, 'assets') },
+        }
+        return {
+            status: 'saved',
+            notices: [],
+            suggestedName: fileName,
+            omitted,
+            inlays: { exported: rowEntries(result, 'inlays') / 2, leftOut: leftOutInlays, oldStoreUnlisted: inlayState.oldStoreUnlisted },
+        }
     } finally {
-        bridge.abort()
-        await walk.promise
-    }
-
-    emit({ phase: 'finishing' })
-    await sink.flush()
-    await writer.close()
-
-    const closure = walked()
-    const manifestOmitted = result.manifest.omitted
-    const leftOutInlays = manifestOmitted
-        .filter((entry) => entry.kind === 'inlay')
-        .map((entry) => ({ id: entry.name, reason: inlayState.unsupported.includes(entry.name) ? 'unsupported' as const : 'unreadable' as const }))
-    const omitted: ExportOmitted = {
-        assets: namesOf(manifestOmitted, 'asset'),
-        oversize: [],
-        units: namesOf(manifestOmitted, 'unit'),
-        inlays: leftOutInlays,
-        oldStoreUnlisted: inlayState.oldStoreUnlisted,
-        repaired: null,
-    }
-    holder.report = {
-        fileName,
-        length: result.length,
-        snapshotId: result.snapshotId,
-        createdAt: result.createdAt,
-        committedAt: closure.committedAt,
-        unsavedExcluded,
-        omitted: [...manifestOmitted],
-        referencedNotices: closure.referenced.notices,
-        oldInlayStoreUnlisted: inlayState.oldStoreUnlisted,
-        // Writer v1 writes two entries per inlay (`i/*.meta` and `i/*.body`).
-        counts: { units: closure.units, inlays: rowEntries(result, 'inlays') / 2, assets: rowEntries(result, 'assets') },
-    }
-    return {
-        status: 'saved',
-        notices: [],
-        suggestedName: fileName,
-        omitted,
-        inlays: { exported: rowEntries(result, 'inlays') / 2, leftOut: leftOutInlays, oldStoreUnlisted: inlayState.oldStoreUnlisted },
+        // Every exit wipes the payload key and the sealing sink's held plaintext; after a finished sink this wipes nothing more.
+        seal?.abandon()
     }
 }
 
@@ -299,6 +333,13 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
  * are the production ones, so a test of this function exercises the real busy registry and shell.
  */
 export async function runRtbExportGuarded(deps: RtbExportDeps, options: RtbExportOptions = {}): Promise<RtbExportResult> {
+    if (options.password !== undefined) {
+        const bytes = passwordBytes(options.password)
+        if (typeof bytes === 'string') {
+            throw new TypeError(`The backup password cannot be used: ${bytes}.`)
+        }
+        bytes.fill(0)
+    }
     const reason = await refusalOf(deps)
     if (reason !== null) {
         return { status: 'refused', reason }

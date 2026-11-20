@@ -96,7 +96,7 @@ const HOME_RIGHT = (id: string): RegExp => {
 }
 // K19 (--nexus-field-border written as color-mix(in srgb, #000 5%, #fff), which is #f2f2f2) is accepted by decision: color-mix in srgb resolves (OQ4), and the hex it makes is accepted in every area.
 const HOME_DECIDED_ACCEPT = new Set(['K19'])
-const HOME_FONT_REFUSED = new Set(['H52']);   // a font family outside the pack's own @font-face families and the generic ones is refused (MC-1550)
+const HOME_FONT_REFUSED = new Set(['H52']);   // a symbol font is refused (MC-1550, MC-2542)
 
 // Private variables (--pack-*) cannot launder a value: [name, css, accepted?, reason].
 const PRIV: [string, string, boolean, RegExp?][] = [
@@ -213,7 +213,7 @@ describe('3 home review packs', () => {
     for (const f of readReviewPacks('home-hostile.json')) {
         const key = f.id
         if (HOME_FONT_REFUSED.has(key)) {
-            it(`${key} is refused by decision (a system font family, MC-1550): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
+            it(`${key} is refused by decision (a symbol font, MC-1550, MC-2542): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
             continue
         }
         if (HOME_DECIDED_ACCEPT.has(key)) {

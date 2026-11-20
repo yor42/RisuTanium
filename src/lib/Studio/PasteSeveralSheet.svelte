@@ -98,7 +98,7 @@
             class="min-h-32 w-full rounded border border-darkborderc bg-darkbg p-2 text-textcolor"
         ></textarea>
         <label class="flex min-h-11 items-center gap-2">
-            <input type="checkbox" data-part="studio-paste-dash" bind:checked={dash} />
+            <input type="checkbox" aria-label={language.ltPmDash} data-part="studio-paste-dash" bind:checked={dash} />
             <span>{language.ltPmDash}</span>
         </label>
         <p data-part="studio-paste-rule" class="text-sm text-textcolor2">{dash ? language.ltPasteRuleDash : language.ltPasteRule}</p>

@@ -31,8 +31,28 @@ describe('VU1: the token resolver and the structure pass', () => {
     })
 
     test('a two-token cycle terminates with the cycle reason', () => {
-        const errors = valueRulesPass(':root{--pack-a:var(--pack-b);--pack-b:var(--pack-a)}', ENV)
-        expect(errors.some((e) => /refers to itself through var\(\)/.test(e.why))).toBe(true)
+        const verdict = valueRulesPass(':root{--pack-a:var(--pack-b);--pack-b:var(--pack-a)}', ENV)
+        expect(verdict.errors.some((e) => /refers to itself through var\(\)/.test(e.why))).toBe(true)
+        expect(verdict.warnings).toEqual([])
+    })
+
+    test('V-T4: a non-ASCII quoted family name is refused, never warned (MC-1568)', () => {
+        const verdict = valueRulesPass(`${TEXT}{font-family:"나눔"}`, ENV)
+        expect(verdict.errors.some((e) => /must be written in ASCII.*MC-1568/.test(e.why))).toBe(true)
+        expect(verdict.warnings).toEqual([])
+    })
+
+    test('V-T5: an unbundled family warns once per selector, property and reason', () => {
+        const twice = valueRulesPass(`${TEXT}{font-family:"pack-missing", serif;font-family:"pack-missing", serif}`, ENV)
+        expect(twice.errors).toEqual([])
+        expect(twice.warnings).toHaveLength(1)
+        const reached = valueRulesPass(`:root{--font:"pack-missing", serif}${TEXT}{font-family:var(--font)}`, ENV)
+        expect(reached.warnings.map((w) => w.selector)).toHaveLength(2)
+        expect(new Set(reached.warnings.map((w) => w.selector)).size).toBe(2)
+        // Two names in one declaration share selector and property, so only the reason keeps them apart.
+        const two = valueRulesPass(`${TEXT}{font-family:"pack-a", "pack-b", serif}`, ENV)
+        expect(two.errors).toEqual([])
+        expect(two.warnings.map((w) => /^font family "([^"]+)"/.exec(w.why)?.[1])).toEqual(['pack-a', 'pack-b'])
     })
 
     test('readAppValues keeps every block of a token file, not only the last or the :root one', () => {

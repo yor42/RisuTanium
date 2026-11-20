@@ -222,7 +222,7 @@
     showHomeLanding()
   }}
 >
-  <HomeIcon />
+  <HomeIcon aria-hidden="true" />
   <span class="text-xs">{language.home}</span>
 </button>
 <button
@@ -238,7 +238,7 @@
     }
   }}
 >
-  <Settings />
+  <Settings aria-hidden="true" />
   <span class="text-xs">{language.settings}</span>
 </button>
 <button
@@ -252,7 +252,7 @@
 
   }}
 >
-  <User2Icon />
+  <User2Icon aria-hidden="true" />
   <span class="text-xs">{language.character}</span>
 </button>
 <button
@@ -267,7 +267,7 @@
     PlaygroundStore.set(1)
   }}
 >
-  <ShellIcon />
+  <ShellIcon aria-hidden="true" />
   <span class="text-xs">{language.playground.playground}</span>
 </button>
 </div>
@@ -286,15 +286,18 @@
 >
   {#if !DBState.db.hamburgerButtonBottom}
   <button
-    class="flex h-8 min-h-8 w-14 min-w-14 cursor-pointer text-white mt-2 items-center justify-center rounded-md bg-textcolor2 transition-colors hover:bg-blue-500"
+    class="flex h-8 min-h-8 w-14 min-w-14 cursor-pointer text-white mt-2 items-center justify-center rounded-md bg-textcolor2 transition-colors hover:bg-borderc"
+    aria-label={language.menu}
+    aria-expanded={menuMode === 1}
     onclick={() => {
       menuMode = 1 - menuMode;
-    }}><ListIcon />
+    }}><ListIcon aria-hidden="true" />
   </button>
   <div class="mt-2 border-b border-b-selected w-full relative text-white ">
     {#if menuMode === 1}
       <div class="absolute w-20 min-w-20 flex border-b-selected border-b bg-bgcolor flex-col items-center pt-2 rounded-b-md z-20 pb-2">
         <BarIcon
+        label={language.settings}
         onClick={() => {
           if ($settingsOpen) {
             reseter();
@@ -303,19 +306,21 @@
             reseter();
             settingsOpen.set(true);
           }
-        }}><Settings /></BarIcon
+        }}><Settings aria-hidden="true" /></BarIcon
       >
       <div class="mt-2"></div>
       <BarIcon
+        label={language.home}
         onClick={() => {
           reseter();
           selectedCharID.set(-1)
           PlaygroundStore.set(0)
           OpenRealmStore.set(false)
           showHomeLanding()
-        }}><HomeIcon /></BarIcon>
+        }}><HomeIcon aria-hidden="true" /></BarIcon>
       <div class="mt-2"></div>
       <BarIcon
+        label={language.playground.playground}
         onClick={() => {
           reseter()
           if($selectedCharID === -1 && $PlaygroundStore !== 0){
@@ -325,10 +330,11 @@
           selectedCharID.set(-1)
           PlaygroundStore.set(1)
         }}
-      ><ShellIcon /></BarIcon>
+      ><ShellIcon aria-hidden="true" /></BarIcon>
       {#each additionalHamburgerMenu as menu}
         <div class="mt-2"></div>
         <BarIcon
+          label={menu.name}
           onClick={() => {
             reseter();
             menu.callback();
@@ -339,10 +345,11 @@
       {/each}
       <div class="mt-2"></div>
       <BarIcon
+        label={language.character}
         onClick={() => {
           reseter();
           openGrid();
-        }}><LayoutGridIcon /></BarIcon
+        }}><LayoutGridIcon aria-hidden="true" /></BarIcon
       >
     </div>
     {/if}
@@ -354,6 +361,7 @@
     {#if menuMode === 1}
       <div class="absolute bottom-full w-20 min-w-20 flex border-t-selected border-t bg-bgcolor flex-col items-center pt-2 rounded-t-md z-20 pb-2">
         <BarIcon
+        label={language.settings}
         onClick={() => {
           if ($settingsOpen) {
             reseter();
@@ -362,19 +370,21 @@
             reseter();
             settingsOpen.set(true);
           }
-        }}><Settings /></BarIcon
+        }}><Settings aria-hidden="true" /></BarIcon
       >
       <div class="mt-2"></div>
       <BarIcon
+        label={language.home}
         onClick={() => {
           reseter();
           selectedCharID.set(-1)
           PlaygroundStore.set(0)
           OpenRealmStore.set(false)
           showHomeLanding()
-        }}><HomeIcon /></BarIcon>
+        }}><HomeIcon aria-hidden="true" /></BarIcon>
       <div class="mt-2"></div>
       <BarIcon
+        label={language.playground.playground}
         onClick={() => {
           reseter()
           if($selectedCharID === -1 && $PlaygroundStore !== 0){
@@ -384,10 +394,11 @@
           selectedCharID.set(-1)
           PlaygroundStore.set(1)
         }}
-      ><ShellIcon /></BarIcon>
+      ><ShellIcon aria-hidden="true" /></BarIcon>
       {#each additionalHamburgerMenu as menu}
         <div class="mt-2"></div>
         <BarIcon
+          label={menu.name}
           onClick={() => {
             reseter();
             menu.callback();
@@ -398,19 +409,22 @@
       {/each}
       <div class="mt-2"></div>
       <BarIcon
+        label={language.character}
         onClick={() => {
           reseter();
           openGrid();
-        }}><LayoutGridIcon /></BarIcon
+        }}><LayoutGridIcon aria-hidden="true" /></BarIcon
       >
     </div>
     {/if}
   </div>
   <button
-    class="flex h-8 min-h-8 w-14 min-w-14 cursor-pointer text-white mb-2 mt-2 items-center justify-center rounded-md bg-textcolor2 transition-colors hover:bg-blue-500"
+    class="flex h-8 min-h-8 w-14 min-w-14 cursor-pointer text-white mb-2 mt-2 items-center justify-center rounded-md bg-textcolor2 transition-colors hover:bg-borderc"
+    aria-label={language.menu}
+    aria-expanded={menuMode === 1}
     onclick={() => {
       menuMode = 1 - menuMode;
-    }}><ListIcon />
+    }}><ListIcon aria-hidden="true" />
   </button>
   {/if}
 </div>
@@ -463,7 +477,7 @@
       $sideBarClosing = true;
     }}
   >
-    <XIcon size={18} />
+    <XIcon size={18} aria-hidden="true" />
   </button>
   {/if}
   {#if shellMode}
@@ -489,8 +503,8 @@
         {#if DBState.db.enableDevTools}
           <button onclick={() => {
             devTool = true
-          }} class="border-l border-l-selected rounded-br-md px-1" class:text-textcolor2={!devTool}>
-            <WrenchIcon size={18} />
+          }} class="border-l border-l-selected rounded-br-md px-1" class:text-textcolor2={!devTool} aria-label={language.chatShellDevTool} aria-pressed={devTool}>
+            <WrenchIcon size={18} aria-hidden="true" />
           </button>
         {/if}
       </div>
@@ -508,14 +522,18 @@
 </div>
 
 {#if $DynamicGUI}
-    <div role="button" tabindex="0" data-panel-surface {@attach panelGestureAttachment} class="grow h-full min-w-12" class:hidden={hidden} onclick={() => {
+    <div role="button" tabindex="0" aria-label={language.closeSidebar} data-panel-surface {@attach panelGestureAttachment} class="grow h-full min-w-12" class:hidden={hidden} onclick={() => {
       if($sideBarClosing){
         return
       }
       $sideBarClosing = true;
     }}
       onkeydown={(e)=>{
-        if(e.key === 'Enter'){
+        if(e.target !== e.currentTarget){
+            return
+        }
+        if(e.key === 'Enter' || e.key === ' '){
+            e.preventDefault()
             e.currentTarget.click()
         }
       }}

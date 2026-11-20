@@ -99,6 +99,29 @@ export class Store2BulkAbortError extends Error {
     }
 }
 
+declare const heldBulkBrand: unique symbol
+
+/**
+ * A bulk marker this committer wrote and still holds, opaque to callers: only `openHeldBulk` mints one, and
+ * `commitHeld` and `clearHeld` read it back. It carries the marker key, the read-back that confirmed the marker, its
+ * prefix and its staging id.
+ */
+export interface HeldBulk {
+    readonly [heldBulkBrand]: true
+}
+
+/**
+ * What `openHeldBulk` came to. `opened` carries the read-back of the commit key with the marker on it. A refusal
+ * (`marker-present`, for one) wrote nothing. After a `conflict`, `unknown` or `failed` the marker may have landed, so the
+ * call has already cleared its own marker: `cleared` is what that clear came to, and anything but `cleared` or `nothing`
+ * means the marker may still stand.
+ */
+export type HeldOpen =
+    | { status: 'opened', held: HeldBulk, read: Store2Read }
+    | Refused
+    | { status: 'conflict', current: Store2Read, cleared: AbandonResult | null }
+    | { status: 'failed' | 'unknown', cause: Store2BackendError, cleared: AbandonResult | null }
+
 /**
  * Mints the keys of one build. A unit key is accepted by a commit only if the
  * mint of that very attempt issued it, and a commit calls `build` again on every
@@ -141,7 +164,12 @@ export interface BuiltCommit {
 export type Carry = { from: string, units: number }
 
 /**
- * The claim of a request that replaces its base. Accepted limitation (bulk import window): an import carries the base's
+ * The claim of a request that replaces its base: an import that names no unit of the base. An import that reuses base
+ * units by content carries `{ from, units }` instead, `from` being the manifest its content index was read from. When
+ * `from` is also the current of the commit read the import is made over, the carry judge protects the carried keep as
+ * well; otherwise the keep stays under the limitation below.
+ *
+ * Accepted limitation (bulk import window): an import carries the base's
  * legacy keep by value and the bulk path does not judge this claim, so the final write can land a manifest that names a
  * keep unit the garbage collector deleted while the marker stood. That needs a garbage collection pass, a peer commit
  * landing over the base during the marker, and a writer that releases the keep: a null-setting commit, `Committer.restore`
@@ -151,7 +179,9 @@ export type Carry = { from: string, units: number }
  * the Node collector refuses under any standing marker, directly after its commit read and before its mark. That refusal
  * is sound while three things hold: every commit-key write under a marker keeps the marker unless it is the owner's final
  * write or clear; a Node commit revision never returns to an earlier value; and each import derives its carried keep from
- * the same commit read that its marker write compares. If it happens, live data still loads and tree reads and export are
+ * the same commit read that its marker write compares; a held restore derives it from an install read whose `seq`
+ * equals its marker's read-back (`checkAuthoritativeBase`), so its `current` is the one the marker write compared, and
+ * its final write compares that install read. If it happens, live data still loads and tree reads and export are
  * unaffected, but restore of a manifest that names the keep is refused `tree-incomplete`, so are recovery picks of such
  * manifests, and asset sweeps stop on an incomplete keep-set, until something releases the keep.
  */
@@ -173,7 +203,10 @@ function plannedCarry(request: Pick<CommitRequest, 'carry'>): Carry | null {
 }
 
 export interface CommitRequest {
-    /** How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists. */
+    /**
+     * How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists.
+     * An existing unit the build names by key (reused or carried) is not a new unit.
+     */
     newUnits: number
     /**
      * Builds the commit's units. An ordinary commit trusts this build: every pre-existing unit the new manifest
@@ -192,7 +225,7 @@ export interface CommitRequest {
     keepPrevious?: boolean
     /**
      * Required; any other value throws a TypeError. Either a `Carry`, when the build was planned over an acknowledged
-     * manifest: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
+     * manifest, or, for an import, the manifest whose units the build names by content: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
      * writing them, the legacy keep excluded because it travels by value. A commit that carries from `from` is refused
      * unless the commit key it compares against still names `from`, because garbage collection may have deleted what it
      * would carry; the ordinary path skips the check at `units` 0, the bulk path judges any carry. Or
@@ -406,6 +439,23 @@ export interface Committer {
      */
     dropSnapshot(read: Store2Read, expected: SnapshotPointer): Promise<WriteResult>
     abandonClear(read: Store2Read, owner: string, prefix: string): Promise<AbandonResult>
+    /**
+     * Writes a bulk marker over `read` and keeps it standing, for a writer that decides by the target's contents and
+     * must hold off the Node deleters while it does (a `.rtb` restore). Only `IMPORT_REPLACES_BASE` is claimed.
+     */
+    openHeldBulk?(read: Store2Read, request: { label: StagingLabel }): Promise<HeldOpen>
+    /**
+     * The commit under a marker `openHeldBulk` wrote: always the staged path, whatever `newUnits` is, and its final write
+     * installs `current` and clears the marker in one compare-and-write over `read`. `read` must carry this committer's
+     * own marker with the held prefix, or nothing is written (`abandoned marker-lost`).
+     *
+     * Invariant: only `IMPORT_REPLACES_BASE` is accepted, and a `Carry` throws a TypeError. A `Carry` is judged against
+     * the read its marker write compared, while a held commit is built over a later install read; accepting one would
+     * let a keep named by a manifest the marker never saw reach the final write unjudged.
+     */
+    commitHeld?(held: HeldBulk, read: Store2Read, request: CommitRequest): Promise<CommitResult>
+    /** Clears the held marker through the own-marker clear; `nothing` when none stands. */
+    clearHeld?(held: HeldBulk): Promise<AbandonResult | null>
     /** Decides whether the marker on `read` may be cleared (own: yes; foreign: only through the hook) and clears it. */
     clearMarker(read: Store2Read): Promise<{ decision: ClearDecision, cleared: AbandonResult | null }>
 }
@@ -534,6 +584,19 @@ interface OpenedMarker {
     stagingId: string
 }
 
+/** The state behind an opaque `HeldBulk`. */
+type HeldState = Omit<OpenedMarker, 'status'>
+
+const heldStates = new WeakMap<HeldBulk, HeldState>()
+
+function heldStateOf(held: HeldBulk): HeldState {
+    const state = heldStates.get(held)
+    if (state === undefined) {
+        throw new TypeError('The held bulk marker was not opened by openHeldBulk.')
+    }
+    return state
+}
+
 export function createCommitter(backend: Store2Backend, options: CommitterOptions): Committer {
     const env: KeyEnv = { ...defaultKeyEnv, ...options.env }
     const owner = options.owner
@@ -642,7 +705,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
      * The marker half of a bulk commit: the carry and standing-marker refusals, the marker compare-and-write and its
      * read-back. Nothing is built before this returns `opened`.
      */
-    async function openMarker(base: Base, request: Pick<CommitRequest, 'carry' | 'label'>): Promise<OpenedMarker | CommitResult> {
+    async function openMarker(base: Base, request: Pick<CommitRequest, 'carry' | 'label'>, givenStagingId?: string): Promise<OpenedMarker | CommitResult> {
         // A bulk build may reference anything `from` names (units by key or digest, the legacy keep, opaque fields), so
         // any carry over a base that does not name `from` is refused whatever the unit count says.
         const carry = plannedCarry(request)
@@ -652,7 +715,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         if (base.key.staging !== null) {
             return refuse('marker-present', 'A bulk marker already stands on the commit key.')
         }
-        const stagingId = newStagingId(env)
+        const stagingId = givenStagingId ?? newStagingId(env)
         const prefix = stagingPrefix(stagingId)
         const marker: Staging = { owner, prefix, startedAt: env.now(), label: request.label ?? 'bulk' }
         const markerKey = nextOwnKey(base.key, { staging: marker }, env)
@@ -1033,6 +1096,61 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         },
 
         abandonClear,
+
+        async openHeldBulk(read, request) {
+            const parsed = baseOf(read)
+            if (parsed.status === 'refused') {
+                return parsed
+            }
+            const stagingId = newStagingId(env)
+            const prefix = stagingPrefix(stagingId)
+            const opened = await openMarker(parsed.base, { carry: IMPORT_REPLACES_BASE, label: request.label }, stagingId)
+            switch (opened.status) {
+                case 'opened': {
+                    const held = {} as HeldBulk
+                    heldStates.set(held, { markerKey: opened.markerKey, held: opened.held, prefix, stagingId })
+                    return { status: 'opened', held, read: opened.held }
+                }
+                case 'refused':
+                    return opened
+                // The marker write may have landed (a read-back that mismatched or failed, an unknown outcome a peer then
+                // carried), so the own clear runs here, on a fresh read, and answers `nothing` when none stands.
+                case 'conflict':
+                    return { status: 'conflict', current: opened.current, cleared: await clearOwnMarker(prefix) }
+                case 'failed':
+                case 'unknown':
+                    return { status: opened.status, cause: opened.cause, cleared: await clearOwnMarker(prefix) }
+                default:
+                    throw new Error(`The marker write answered ${opened.status}, which it cannot.`)
+            }
+        },
+
+        async commitHeld(held, read, request) {
+            const state = heldStateOf(held)
+            if (request.carry !== IMPORT_REPLACES_BASE) {
+                plannedCarry(request)
+                throw new TypeError('commitHeld accepts only IMPORT_REPLACES_BASE.')
+            }
+            const classified = classifyCommitRead(read)
+            const staging = classified.status === 'parsed' ? classified.value.staging : null
+            if (classified.status !== 'parsed' || staging === null || staging.owner !== owner || staging.prefix !== state.prefix) {
+                return { status: 'abandoned', reason: 'marker-lost', cleared: null }
+            }
+            const { mint, issued } = createMint(state.stagingId)
+            let built: BuiltCommit
+            try {
+                built = await request.build({ mint, seq: classified.value.seq + 1, now: env.now() })
+            } catch (error) {
+                return abortBuild(state.prefix, error)
+            }
+            const refused = checkBuilt(built, issued, request.newUnits, true)
+            if (refused !== null) {
+                return { ...refused, cleared: await clearOwnMarker(state.prefix) }
+            }
+            return finishBulk({ status: 'opened', markerKey: classified.value, held: read, prefix: state.prefix, stagingId: state.stagingId }, built, request)
+        },
+
+        clearHeld: (held) => clearOwnMarker(heldStateOf(held).prefix),
 
         async clearMarker(read) {
             const parsed = baseOf(read, { needCurrent: false })

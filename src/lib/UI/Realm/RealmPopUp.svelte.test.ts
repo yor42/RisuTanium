@@ -17,6 +17,7 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { language } from 'src/lang'
 import type { hubType } from 'src/ts/characterCards'
 import { ALERT_INPUT_CANCEL } from 'src/ts/alertCancel'
 import { UPSTREAM_AGREEMENT_DECLINE, UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
@@ -109,11 +110,10 @@ async function waitFor(predicate: () => boolean, expected: string, timeoutMs = 2
 }
 
 function reportButton(target: HTMLElement): HTMLButtonElement {
-    // The report control is the only button whose only child is an <svg>
-    // (the flag icon) among the popup's row of icon-only actions -- found
-    // by position among that row rather than by a test id (none is
-    // specified for this control).
-    const button = target.querySelector('.flex-row-reverse button') as HTMLButtonElement | null
+    // The report control is the button named by the Report label inside the
+    // More disclosure.
+    const button = Array.from(target.querySelectorAll('details button'))
+        .find((b) => b.textContent?.trim() === language.realmReport) as HTMLButtonElement | undefined
     if (!button) {
         throw new Error('report button not found')
     }

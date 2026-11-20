@@ -292,7 +292,7 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
 
 async function restoreChosen(row: RestorePointRow, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<RunEnd> {
     return await runExclusively(busy, async (run) => {
-        alertWait('Loading backup...')
+        alertWait(language.backupRestoreLoading)
         run.started = true
         const outcome = await restorePoint(committer, backend, row.key)
         switch (outcome.status) {
@@ -313,6 +313,8 @@ async function restoreChosen(row: RestorePointRow, committer: Committer, backend
                 alertError(language.store2RestoreListChanged)
                 return nothingReplaced()
             case 'bulk-marker':
+                // The question about a foreign marker is asked before the restore writes anything; at the commit the restore has
+                // already written, so a marker found here stays a refusal.
                 alertError(language.store2RestoreBulkMarker)
                 return nothingReplaced('marker-standing')
             case 'tree-incomplete':
@@ -390,7 +392,7 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
     }
 
     return await runExclusively(busy, async (run) => {
-        alertWait('Loading backup...')
+        alertWait(language.backupRestoreLoading)
         run.started = true
         const end: Store2ImportEnd = await commitStore2Import({
             target: { committer, backend },

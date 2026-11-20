@@ -96,6 +96,7 @@
     }
 
     let { goPromptTemplate = () => {} }: Props = $props();
+    const uid = $props.id()
 
     async function loadTokenize(){
         tokens.mainPrompt = await tokenizeAccurate(DBState.db.mainPrompt, true)
@@ -179,15 +180,15 @@
 
     {#if modelInfo.provider === LLMProvider.GoogleCloud || subModelInfo.provider === LLMProvider.GoogleCloud}
         <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-        <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.google.accessToken}/>
+        <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.VertexAI || subModelInfo.provider === LLMProvider.VertexAI}
-        <span class="text-textcolor">{language.settingsPage.projectId}</span>
-        <TextInput marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.google.projectId} oninput={clearVertexToken}/>
-        <span class="text-textcolor">{fillLang(language.settingsPage.nameClientEmail, { name: 'Vertex' })}</span>
-        <TextInput marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.vertexClientEmail} oninput={clearVertexToken}/>
-        <span class="text-textcolor">{fillLang(language.settingsPage.namePrivateKey, { name: 'Vertex' })}</span>
-        <TextInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.vertexPrivateKey} oninput={clearVertexToken}/>
+        <span class="text-textcolor" id="{uid}-f1">{language.settingsPage.projectId}</span>
+        <TextInput labelId="{uid}-f1" marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.google.projectId} oninput={clearVertexToken}/>
+        <span class="text-textcolor" id="{uid}-f2">{fillLang(language.settingsPage.nameClientEmail, { name: 'Vertex' })}</span>
+        <TextInput labelId="{uid}-f2" marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.vertexClientEmail} oninput={clearVertexToken}/>
+        <span class="text-textcolor" id="{uid}-f3">{fillLang(language.settingsPage.namePrivateKey, { name: 'Vertex' })}</span>
+        <TextInput labelId="{uid}-f3" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.vertexPrivateKey} oninput={clearVertexToken}/>
         <span class="text-textcolor">{language.settingsPage.region}</span>
         <SelectInput value={DBState.db.vertexRegion} onchange={(e) => {
             DBState.db.vertexRegion = e.currentTarget.value
@@ -206,32 +207,32 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelList || subModelInfo.provider === LLMProvider.NovelList}
         <span class="text-textcolor">NovelList {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.novellistAPI}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.novellistAPI}/>
     {/if}
     {#if DBState.db.aiModel.startsWith('mancer') || DBState.db.subModel.startsWith('mancer')}
         <span class="text-textcolor">Mancer {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mancerHeader}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mancerHeader}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Anthropic || subModelInfo.provider === LLMProvider.Anthropic
             || modelInfo.provider === LLMProvider.AWS || subModelInfo.provider === LLMProvider.AWS }
         <span class="text-textcolor">Claude {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.claudeAPIKey}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.claudeAPIKey}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Mistral || subModelInfo.provider === LLMProvider.Mistral}
         <span class="text-textcolor">Mistral {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mistralKey}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mistralKey}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelAI || subModelInfo.provider === LLMProvider.NovelAI}
         <span class="text-textcolor">{fillLang(language.settingsPage.nameBearerToken, { name: 'NovelAI' })}</span>
         <KeyListInput bind:value={DBState.db.novelai.token}/>
     {/if}
     {#if DBState.db.aiModel === 'reverse_proxy' || DBState.db.subModel === 'reverse_proxy'}
-        <span class="text-textcolor mt-2">URL <Help key="forceUrl"/></span>
-        <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.forceReplaceUrl} placeholder="https//..." />
+        <span class="text-textcolor mt-2"><span id="{uid}-f4">URL</span> <Help key="forceUrl"/></span>
+        <TextInput labelId="{uid}-f4" marginBottom={false} size={"sm"} bind:value={DBState.db.forceReplaceUrl} placeholder="https//..." />
         <span class="text-textcolor mt-4"> {language.proxyAPIKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
-        <span class="text-textcolor mt-4"> {language.proxyRequestModel}</span>
-        <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.customProxyRequestModel} placeholder={language.name} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
+        <span class="text-textcolor mt-4" id="{uid}-f5"> {language.proxyRequestModel}</span>
+        <TextInput labelId="{uid}-f5" marginBottom={false} size={"sm"} bind:value={DBState.db.customProxyRequestModel} placeholder={language.name} />
         <span class="text-textcolor mt-4"> {language.format}</span>
         <SelectInput value={DBState.db.customAPIFormat.toString()} onchange={(e) => {
             DBState.db.customAPIFormat = parseInt(e.currentTarget.value) as LLMFormat
@@ -258,16 +259,16 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.Cohere || subModelInfo.provider === LLMProvider.Cohere}
         <span class="text-textcolor mt-4">Cohere {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.cohereAPIKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.cohereAPIKey} />
     {/if}
     {#if usesOllamaLocal || usesOllamaCloud}
         {#if usesOllamaLocal}
-        <span class="text-textcolor mt-4">{fillLang(language.settingsPage.nameUrl, { name: 'Ollama' })}</span>
-        <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaURL} />
+        <span class="text-textcolor mt-4" id="{uid}-f6">{fillLang(language.settingsPage.nameUrl, { name: 'Ollama' })}</span>
+        <TextInput labelId="{uid}-f6" marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaURL} />
         {/if}
 
         {#if usesOllamaCloud}
-        <span class="text-textcolor mt-4">Ollama {language.model}</span>
+        <span class="text-textcolor mt-4" id="{uid}-ollamaModel">Ollama {language.model}</span>
         <SegmentedControl
             bind:value={DBState.db.ollamaInputMode}
             options={[
@@ -278,7 +279,7 @@
         />
 
         {#if DBState.db.ollamaInputMode === 'manual'}
-            <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaCloudModel} placeholder={language.model} oninput={() => DBState.db.ollamaCloudModelName = ''} />
+            <TextInput labelId="{uid}-ollamaModel" marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaCloudModel} placeholder={language.model} oninput={() => DBState.db.ollamaCloudModelName = ''} />
         {:else}
             {#await getOllamaModels(DBState.db.ollamaURL, 'cloud', currentKey('ollamaApiKey', DBState.db))}
                 <ModelGrid bind:value={DBState.db.ollamaCloudModel} loading={true} />
@@ -298,7 +299,7 @@
         {/if}
 
             <span class="text-textcolor mt-4">Ollama {language.apiKey}</span>
-            <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
+            <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
 
             <span class="text-textcolor mt-4">Ollama {language.format}</span>
             <SelectInput value={DBState.db.ollamaRequestFormat.toString()} onchange={(e) => {
@@ -324,8 +325,8 @@
         {/if}
 
         {#if usesOllamaLocal}
-        <span class="text-textcolor mt-4">{fillLang(language.settingsPage.nameModel, { name: 'Ollama' })}</span>
-        <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaModel} placeholder={language.model} oninput={() => { DBState.db.ollamaModelSource = 'local'; DBState.db.ollamaModelName = '' }} />
+        <span class="text-textcolor mt-4" id="{uid}-f7">{fillLang(language.settingsPage.nameModel, { name: 'Ollama' })}</span>
+        <TextInput labelId="{uid}-f7" marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaModel} placeholder={language.model} oninput={() => { DBState.db.ollamaModelSource = 'local'; DBState.db.ollamaModelName = '' }} />
         {/if}
 
         {#if usesOllamaLocal || (usesOllamaCloud && DBState.db.ollamaRequestFormat === LLMFormat.Ollama)}
@@ -354,7 +355,7 @@
     {/if}
     {#if DBState.db.aiModel === 'nanogpt' || DBState.db.subModel === 'nanogpt'}
         <span class="text-textcolor mt-4">NanoGPT {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptKey} />
 
         <NanoGPTDashboard apiKey={currentKey('nanogptKey', DBState.db)} />
 
@@ -364,7 +365,7 @@
             </div>
         {/if}
 
-        <span class="text-textcolor mt-4">NanoGPT {language.model}</span>
+        <span class="text-textcolor mt-4" id="{uid}-nanoModel">NanoGPT {language.model}</span>
         <SegmentedControl
             bind:value={nanogptInputMode}
             options={[
@@ -375,7 +376,7 @@
         />
 
         {#if nanogptInputMode === 'manual'}
-            <TextInput marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptRequestModel} placeholder={language.nanoGPTManualModelSelect} oninput={() => DBState.db.nanogptRequestModelName = ''}/>
+            <TextInput labelId="{uid}-nanoModel" marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptRequestModel} placeholder={language.nanoGPTManualModelSelect} oninput={() => DBState.db.nanogptRequestModelName = ''}/>
         {:else}
             {#await Promise.all([getNanoGPTModels(), getNanoGPTSubscriptionModels(currentKey('nanogptKey', DBState.db))])}
                 <ModelGrid bind:value={DBState.db.nanogptRequestModel} loading={true} />
@@ -399,7 +400,7 @@
     {/if}
     {#if DBState.db.aiModel === 'openrouter' || DBState.db.subModel === 'openrouter'}
         <span class="text-textcolor mt-4">OpenRouter {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.openrouterKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openrouterKey} />
 
         <span class="text-textcolor mt-4">OpenRouter {language.model}</span>
         {#await getOpenRouterModels()}
@@ -418,17 +419,17 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.OpenAI || subModelInfo.provider === LLMProvider.OpenAI}
         <span class="text-textcolor">OpenAI {language.apiKey} <Help key="oaiapikey"/></span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.openAIKey} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openAIKey} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
     {/if}
 
     {#if modelInfo.keyIdentifier}
         <span class="text-textcolor">{modelInfo.name} {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[modelInfo.keyIdentifier]} placeholder="..."/>
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[modelInfo.keyIdentifier]} placeholder="..."/>
     {/if}
 
     {#if subModelInfo.keyIdentifier && subModelInfo.keyIdentifier !== modelInfo.keyIdentifier}
         <span class="text-textcolor">{subModelInfo.name} {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[subModelInfo.keyIdentifier]} placeholder="..."/>
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[subModelInfo.keyIdentifier]} placeholder="..."/>
     {/if}
 
     <div class="py-2 flex flex-col gap-2 mb-4">
@@ -461,44 +462,42 @@
     {/if}
 
     {#if DBState.db.aiModel === "kobold" || DBState.db.subModel === "kobold"}
-        <span class="text-textcolor">{fillLang(language.settingsPage.nameUrl, { name: 'Kobold' })}</span>
-        <TextInput marginBottom={true} bind:value={DBState.db.koboldURL} />
+        <span class="text-textcolor" id="{uid}-f8">{fillLang(language.settingsPage.nameUrl, { name: 'Kobold' })}</span>
+        <TextInput labelId="{uid}-f8" marginBottom={true} bind:value={DBState.db.koboldURL} />
     {/if}
 
     {#if DBState.db.aiModel === 'echo_model' || DBState.db.subModel === 'echo_model'}
-        <span class="text-textcolor mt-2">{language.settingsPage.echoMessage}</span>
-        <TextAreaInput margin="bottom" bind:value={DBState.db.echoMessage} placeholder={language.settingsPage.echoMessagePlaceholder}/>
+        <span class="text-textcolor mt-2" id="{uid}-f9">{language.settingsPage.echoMessage}</span>
+        <TextAreaInput labelId="{uid}-f9" margin="bottom" bind:value={DBState.db.echoMessage} placeholder={language.settingsPage.echoMessagePlaceholder}/>
         <span class="text-textcolor mt-2">{language.settingsPage.echoDelaySeconds}</span>
         <NumberInput marginBottom={true} bind:value={DBState.db.echoDelay} min={0}/>
     {/if}
 
     {#if DBState.db.aiModel.startsWith("horde") || DBState.db.subModel.startsWith("horde") }
         <span class="text-textcolor">Horde {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} bind:value={DBState.db.hordeConfig.apiKey} />
+        <KeyListInput hideText marginBottom={true} bind:value={DBState.db.hordeConfig.apiKey} />
     {/if}
     {#if DBState.db.aiModel === 'textgen_webui' || DBState.db.subModel === 'textgen_webui'
         || DBState.db.aiModel === 'mancer' || DBState.db.subModel === 'mancer'}
-        <span class="text-textcolor mt-2">{fillLang(language.settingsPage.blockingProviderUrl, { url: language.providerURL })}</span>
-        <TextInput marginBottom={true} bind:value={DBState.db.textgenWebUIBlockingURL} placeholder="https://..."/>
+        <span class="text-textcolor mt-2" id="{uid}-f10">{fillLang(language.settingsPage.blockingProviderUrl, { url: language.providerURL })}</span>
+        <TextInput labelId="{uid}-f10" marginBottom={true} bind:value={DBState.db.textgenWebUIBlockingURL} placeholder="https://..."/>
         <span class="text-draculared text-xs mb-2">{language.settingsPage.textgenPublicApiNotice}</span>
-        <span class="text-textcolor mt-2">{fillLang(language.settingsPage.streamProviderUrl, { url: language.providerURL })}</span>
-        <TextInput marginBottom={true} bind:value={DBState.db.textgenWebUIStreamURL} placeholder="wss://..."/>
+        <span class="text-textcolor mt-2" id="{uid}-f11">{fillLang(language.settingsPage.streamProviderUrl, { url: language.providerURL })}</span>
+        <TextInput labelId="{uid}-f11" marginBottom={true} bind:value={DBState.db.textgenWebUIStreamURL} placeholder="wss://..."/>
         {#if !isTauri}
             <span class="text-draculared text-xs mb-2">{language.settingsPage.webuiTunnelNotice}</span>
         {/if}
         <span class="text-draculared text-xs mb-2">{language.settingsPage.oobaVersionWarning}</span>
     {/if}
     {#if DBState.db.aiModel === 'ooba' || DBState.db.subModel === 'ooba'}
-        <span class="text-textcolor mt-2">Ooba {language.providerURL}</span>
-        <TextInput marginBottom={true} bind:value={DBState.db.textgenWebUIBlockingURL} placeholder="https://..."/>
+        <span class="text-textcolor mt-2" id="{uid}-f12">Ooba {language.providerURL}</span>
+        <TextInput labelId="{uid}-f12" marginBottom={true} bind:value={DBState.db.textgenWebUIBlockingURL} placeholder="https://..."/>
     {/if}
     {#if DBState.db.aiModel.startsWith("horde") || DBState.db.aiModel === 'kobold' }
         <ChatFormatSettings />
     {/if}
 
-    {#if DBState.db.auxModelUnderModelSettings}
-        <AuxModelSelectors />
-    {/if}
+    <AuxModelSelectors />
 {/if}
 
 {#if submenu === 1 || submenu === -1}
@@ -544,23 +543,23 @@
         {#if DBState.db.localStopStrings}
             <div class="flex flex-col p-2 rounded-sm border border-selected mt-2 gap-1">
                 <div class="p-2">
-                    <button class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-green-500 w-full" onclick={() => {
+                    <button aria-label={language.add} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {
                         let localStopStrings = DBState.db.localStopStrings
                         localStopStrings.push('')
                         DBState.db.localStopStrings = localStopStrings
-                    }}><PlusIcon /></button>
+                    }}><PlusIcon aria-hidden="true" /></button>
                 </div>
                 {#each DBState.db.localStopStrings as stopString, i}
                     <div class="flex w-full">
                         <div class="grow">
-                            <TextInput marginBottom bind:value={DBState.db.localStopStrings[i]} fullwidth fullh/>
+                            <TextInput label={language.customStopWords} marginBottom bind:value={DBState.db.localStopStrings[i]} fullwidth fullh/>
                         </div>
                         <div>
-                            <button class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-green-500 w-full" onclick={() => {
+                            <button aria-label={language.remove} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {
                                 let localStopStrings = DBState.db.localStopStrings
                                 localStopStrings.splice(i, 1)
                                 DBState.db.localStopStrings = localStopStrings
-                            }}><TrashIcon /></button>
+                            }}><TrashIcon aria-hidden="true" /></button>
                         </div>
                     </div>
                 {/each}
@@ -573,10 +572,10 @@
     
     {:else if modelInfo.format === LLMFormat.NovelAI}
         <div class="flex flex-col p-3 bg-darkbg mt-4">
-            <span class="text-textcolor">{language.settingsPage.starter}</span>
-            <TextInput bind:value={DBState.db.NAIsettings.starter} placeholder={'⁂'} />
-            <span class="text-textcolor">{language.settingsPage.seperator}</span>
-            <TextInput bind:value={DBState.db.NAIsettings.seperator} placeholder={"\\n"}/>
+            <span class="text-textcolor" id="{uid}-f13">{language.settingsPage.starter}</span>
+            <TextInput labelId="{uid}-f13" bind:value={DBState.db.NAIsettings.starter} placeholder={'⁂'} />
+            <span class="text-textcolor" id="{uid}-f14">{language.settingsPage.seperator}</span>
+            <TextInput labelId="{uid}-f14" bind:value={DBState.db.NAIsettings.seperator} placeholder={"\\n"}/>
         </div>
         <span class="text-textcolor">Top P</span>
         <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.topP}/>
@@ -644,11 +643,11 @@
                 <th class="font-medium">{language.settingsPage.bias}</th>
                 <th class="font-medium">{language.value}</th>
                 <th>
-                    <button class="font-medium cursor-pointer hover:text-green-500 w-full flex justify-center items-center" onclick={() => {
+                    <button aria-label={language.add} class="font-medium cursor-pointer hover:text-textcolor2 w-full flex justify-center items-center" onclick={() => {
                         let bia = DBState.db.bias
                         bia.push(['', 0])
                         DBState.db.bias = bia
-                    }}><PlusIcon /></button>
+                    }}><PlusIcon aria-hidden="true" /></button>
                 </th>
             </tr>
             {#if DBState.db.bias.length === 0}
@@ -659,28 +658,28 @@
             {#each DBState.db.bias as bias, i}
                 <tr>
                     <td class="font-medium truncate">
-                        <TextInput bind:value={DBState.db.bias[i][0]} size="lg" fullwidth/>
+                        <TextInput label={language.settingsPage.bias} bind:value={DBState.db.bias[i][0]} size="lg" fullwidth/>
                     </td>
                     <td class="font-medium truncate">
                         <NumberInput bind:value={DBState.db.bias[i][1]} max={100} min={-101} size="lg" fullwidth/>
                     </td>
                     <td>
-                        <button class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-green-500 w-full" onclick={() => {
+                        <button aria-label={language.remove} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {
                             let bia = DBState.db.bias
                             bia.splice(i, 1)
                             DBState.db.bias = bia
-                        }}><TrashIcon /></button>
+                        }}><TrashIcon aria-hidden="true" /></button>
                     </td>
                 </tr>
             {/each}
             </tbody>
         </table>
         <div class="text-textcolor2 mt-2 flex items-center gap-2">
-            <button class="font-medium cursor-pointer hover:text-textcolor gap-2" onclick={() => {
+            <button aria-label={language.export} class="font-medium cursor-pointer hover:text-textcolor gap-2" onclick={() => {
                 const data = JSON.stringify(DBState.db.bias, null, 2)
                 downloadFile('bias.json', data)
-            }}><DownloadIcon /></button>
-            <button class="font-medium cursor-pointer hover:text-textcolor" onclick={async () => {
+            }}><DownloadIcon aria-hidden="true" /></button>
+            <button aria-label={language.import} class="font-medium cursor-pointer hover:text-textcolor" onclick={async () => {
                 const sel = await selectSingleFile(['json'])
                 if(!sel){
                     return
@@ -689,7 +688,7 @@
                 if(Array.isArray(JSON.parse(utf8))){
                     DBState.db.bias = JSON.parse(utf8)
                 }
-            }}><HardDriveUploadIcon /></button>
+            }}><HardDriveUploadIcon aria-hidden="true" /></button>
         </div>
     </Accordion>
 
@@ -700,9 +699,9 @@
                 <th class="font-medium">{language.key}</th>
                 <th class="font-medium">{language.value}</th>
                 <th>
-                    <button class="font-medium cursor-pointer hover:text-green-500 w-full flex justify-center items-center" onclick={() => {
+                    <button aria-label={language.add} class="font-medium cursor-pointer hover:text-textcolor2 w-full flex justify-center items-center" onclick={() => {
                         DBState.db.additionalParams.push(['', ''])
-                    }}><PlusIcon /></button>
+                    }}><PlusIcon aria-hidden="true" /></button>
                 </th>
             </tr>
             {#if DBState.db.additionalParams.length === 0}
@@ -713,17 +712,17 @@
             {#each DBState.db.additionalParams as additionalParams, i}
                 <tr>
                     <td class="font-medium truncate">
-                        <TextInput bind:value={DBState.db.additionalParams[i][0]} size="lg" fullwidth/>
+                        <TextInput label={language.key} bind:value={DBState.db.additionalParams[i][0]} size="lg" fullwidth/>
                     </td>
                     <td class="font-medium truncate">
-                        <TextInput bind:value={DBState.db.additionalParams[i][1]} size="lg" fullwidth/>
+                        <TextInput label={language.value} bind:value={DBState.db.additionalParams[i][1]} size="lg" fullwidth/>
                     </td>
                     <td>
-                        <button class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-green-500 w-full" onclick={() => {
+                        <button aria-label={language.remove} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {
                             let additionalParams = DBState.db.additionalParams
                             additionalParams.splice(i, 1)
                             DBState.db.additionalParams = additionalParams
-                        }}><TrashIcon /></button>
+                        }}><TrashIcon aria-hidden="true" /></button>
                     </td>
                 </tr>
             {/each}
@@ -791,7 +790,7 @@
     </Accordion>
 
     <Accordion styled name={language.moduleIntergration} help="moduleIntergration">
-        <TextAreaInput bind:value={DBState.db.moduleIntergration} fullwidth height={"32"} autocomplete="off"/>
+        <TextAreaInput label={language.moduleIntergration} bind:value={DBState.db.moduleIntergration} fullwidth height={"32"} autocomplete="off"/>
     </Accordion>
 
     <Accordion styled name={language.tools}>
@@ -823,7 +822,7 @@
                 {/if}
             </div>
         </div>
-        <button class="mt-2 text-textcolor2 hover:text-textcolor focus-within:text-textcolor" onclick={async () => {
+        <button aria-label={language.chooseIconImage} class="mt-2 text-textcolor2 hover:text-textcolor focus-within:text-textcolor" onclick={async () => {
             const sel = await selectSingleFile(['png', 'jpg', 'jpeg', 'webp'])
             if(!sel){
                 return
@@ -841,7 +840,7 @@
             const data = canvas.toDataURL('image/jpeg', 0.7)
             setCurrentPresetImage(DBState.db, data) //Since its small (max 2304 pixels), its okay to store it directly
         }}>
-            <UploadIcon />
+            <UploadIcon aria-hidden="true" />
         </button>
     </Accordion>
     {#if submenu !== -1}
@@ -851,14 +850,14 @@
 
 {#if submenu === 2 || submenu === -1}
     {#if !DBState.db.promptTemplate}
-        <span class="text-textcolor">{language.mainPrompt} <Help key="mainprompt"/></span>
-        <TextAreaInput fullwidth autocomplete="off" height={"32"} bind:value={DBState.db.mainPrompt}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-f15">{language.mainPrompt}</span> <Help key="mainprompt"/></span>
+        <TextAreaInput labelId="{uid}-f15" fullwidth autocomplete="off" height={"32"} bind:value={DBState.db.mainPrompt}></TextAreaInput>
         <span class="text-textcolor2 mb-6 text-sm mt-2">{tokens.mainPrompt} {language.tokens}</span>
-        <span class="text-textcolor">{language.jailbreakPrompt} <Help key="jailbreak"/></span>
-        <TextAreaInput fullwidth autocomplete="off" height={"32"} bind:value={DBState.db.jailbreak}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-f16">{language.jailbreakPrompt}</span> <Help key="jailbreak"/></span>
+        <TextAreaInput labelId="{uid}-f16" fullwidth autocomplete="off" height={"32"} bind:value={DBState.db.jailbreak}></TextAreaInput>
         <span class="text-textcolor2 mb-6 text-sm mt-2">{tokens.jailbreak} {language.tokens}</span>
-        <span class="text-textcolor">{language.globalNote} <Help key="globalNote"/></span>
-        <TextAreaInput fullwidth autocomplete="off" height={"32"} bind:value={DBState.db.globalNote}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-f17">{language.globalNote}</span> <Help key="globalNote"/></span>
+        <TextAreaInput labelId="{uid}-f17" fullwidth autocomplete="off" height={"32"} bind:value={DBState.db.globalNote}></TextAreaInput>
         <span class="text-textcolor2 mb-6 text-sm mt-2">{tokens.globalNote} {language.tokens}</span>  
         <span class="text-textcolor mb-2 mt-4">{language.formatingOrder} <Help key="formatOrder"/></span>
         <DropList bind:list={DBState.db.formatingOrder} />

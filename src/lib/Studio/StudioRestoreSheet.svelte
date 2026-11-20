@@ -101,7 +101,7 @@
                         <span class="font-bold">{labelOf(path)}</span>
                         {#if changed.includes(path)}
                             <label class="flex min-h-11 items-center gap-2 text-sm">
-                                <input type="checkbox" data-part="studio-restore-keep" data-path={path} checked={!overwritten.includes(path)} onchange={(event) => toggle(path, event.currentTarget.checked)} />
+                                <input type="checkbox" aria-label={language.studioRestoreKeep} data-part="studio-restore-keep" data-path={path} checked={!overwritten.includes(path)} onchange={(event) => toggle(path, event.currentTarget.checked)} />
                                 <span>{language.studioRestoreKeep}</span>
                             </label>
                         {/if}

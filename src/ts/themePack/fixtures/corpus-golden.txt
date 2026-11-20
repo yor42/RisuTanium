@@ -320,8 +320,8 @@
 "home-hostile on Navy: H50" 8a52ad2cdaf810b8 chat:a247eea65c8df5ae settings:a247eea65c8df5ae studio:f942bc8cdd738445 home:a247eea65c8df5ae
 "home-hostile: H51" 379444ff40a60970 chat:f3e19caecfd5f05d settings:f3e19caecfd5f05d studio:f3e19caecfd5f05d home:f3e19caecfd5f05d
 "home-hostile on Navy: H51" fc4fae6bf5d377f7 chat:f9e4eda42b9676b2 settings:f9e4eda42b9676b2 studio:3b35ec368fc4d511 home:f9e4eda42b9676b2
-"home-hostile: H52" 1b5ffff13a92c043 chat:fa6a8210afb8cc14 settings:fa6a8210afb8cc14 studio:fa6a8210afb8cc14 home:fa6a8210afb8cc14
-"home-hostile on Navy: H52" ed8e64016987e8e9 chat:966f7ccf9c52ba4f settings:966f7ccf9c52ba4f studio:a948cb6872a518a4 home:966f7ccf9c52ba4f
+"home-hostile: H52" 1b5ffff13a92c043 chat:731883b8bc9c20d1 settings:731883b8bc9c20d1 studio:731883b8bc9c20d1 home:731883b8bc9c20d1
+"home-hostile on Navy: H52" ed8e64016987e8e9 chat:1576ce8a4456cb6f settings:1576ce8a4456cb6f studio:3e7fff9f8cc9370d home:1576ce8a4456cb6f
 "home-hostile: H53" a1de1cc274942af6 chat:e83439166daf1a66 settings:e83439166daf1a66 studio:e83439166daf1a66 home:e83439166daf1a66
 "home-hostile on Navy: H53" 097433fa7b8d5397 chat:156d11390837d7f7 settings:156d11390837d7f7 studio:badec83174916bf6 home:156d11390837d7f7
 "home-hostile: H54" 967d8726888c36b1 chat:4b2213fe460060cb settings:4b2213fe460060cb studio:4b2213fe460060cb home:4b2213fe460060cb
@@ -581,7 +581,7 @@
 "NEW_HOSTILE all: animation speed" e1a9e5dbc15ddc60 chat:650cf1d016ed8fb4 settings:650cf1d016ed8fb4 studio:650cf1d016ed8fb4 home:650cf1d016ed8fb4
 "NEW_HOSTILE all: private variable" 78f7d6e3b3b18cc9 chat:9b5c4344d2f40bd8 settings:9b5c4344d2f40bd8 studio:9b5c4344d2f40bd8 home:9b5c4344d2f40bd8
 "NEW_HOSTILE all: focus ring width 0" daf9acaef903e16c chat:b86a79bf6a42d8b8 settings:7ff734973b451667 studio:b86a79bf6a42d8b8 home:3782c285884aae33
-"NEW_HOSTILE all: focus ring offset 99" eda3061c0c8ecf09 chat:de05642bb9f21e8f settings:de05642bb9f21e8f studio:de05642bb9f21e8f home:ae8361441ea7bbdd
+"NEW_HOSTILE all: focus ring offset 99" eda3061c0c8ecf09 chat:a3ab4d76a327acf3 settings:a3ab4d76a327acf3 studio:a3ab4d76a327acf3 home:f09b671a42997fbd
 "NEW_HOSTILE all: touch size 10" 3099a25a3437763e chat:e72f94aa177c814b settings:3527afecbeb850c9 studio:e72f94aa177c814b home:b2409d95dd686135
 "NEW_HOSTILE all: duration 60s" 48e1e5df19c843c2 chat:0e62fa88577bd878 settings:0e62fa88577bd878 studio:0e62fa88577bd878 home:0e62fa88577bd878
 "NEW_HOSTILE all: outline on any part" 119fed5a473033f9 chat:7e93252c3eee3827 settings:7e93252c3eee3827 studio:7e93252c3eee3827 home:7e93252c3eee3827
@@ -742,7 +742,7 @@
 "values ACCEPT: shell-gap" 3929915b8aadebbc chat:d8772d27d7d4f784 settings:31751d8a5b0c2f4a studio:ea9d51188a866f15 home:31751d8a5b0c2f4a
 "values ACCEPT: header-colour" 2d5a865fb561350f chat:57c8bc0673a3724a settings:077317de6493da4c studio:57c8bc0673a3724a home:ba9fa72de5b95c17
 "values ACCEPT: safe-opacity" 43fdb258d2a38d72 chat:a4b7bd8001a52df7 settings:a4b7bd8001a52df7 studio:a4b7bd8001a52df7 home:a4b7bd8001a52df7
-"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:d1202f0e9e8fd8e0 settings:8799e4236ac278e8 studio:d1202f0e9e8fd8e0 home:d1202f0e9e8fd8e0
+"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:56fae739fc0614fd settings:8799e4236ac278e8 studio:a5f9828df6087d90 home:8799e4236ac278e8
 "values ACCEPT: safe-relative" 7802ff5c6cc361d3 chat:ea5516877e285190 settings:ea5516877e285190 studio:ea5516877e285190 home:ea5516877e285190
 "values ACCEPT: dur-300" ab6b5267a899163e chat:c280c7f275e76575 settings:c280c7f275e76575 studio:c280c7f275e76575 home:c280c7f275e76575
 "values ACCEPT: dur-zero" 3cd1986c6eabaf9d chat:9155d063b41ad9a9 settings:9155d063b41ad9a9 studio:9155d063b41ad9a9 home:9155d063b41ad9a9
@@ -827,7 +827,7 @@
 "studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:2a528f589e97c774 settings:936234823aa506ec studio:c0d77459e6d90c36 home:936234823aa506ec
 "studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:dd7efa073eba8509 settings:ed2fa4f302dbce75 studio:ed2fa4f302dbce75 home:ed2fa4f302dbce75
 "studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:b9085ed846e6ce82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82
-"studio reach: R9 sheet-root font-family dingbat" 539945aa418dfe84 chat:b2b9fa6de5953797 settings:b2b9fa6de5953797 studio:b2b9fa6de5953797 home:b2b9fa6de5953797
+"studio reach: R9 sheet-root font-family dingbat" 539945aa418dfe84 chat:9a2e9db879b9a5a0 settings:9a2e9db879b9a5a0 studio:9a2e9db879b9a5a0 home:9a2e9db879b9a5a0
 "studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:bb7636f6faf3466d settings:f4f19cd3cb3a1a5e studio:f4f19cd3cb3a1a5e home:f4f19cd3cb3a1a5e
 "studio reach: R11 alert via data-kind box" ede77a0381513ceb chat:e188e6194765e4ed settings:e188e6194765e4ed studio:e188e6194765e4ed home:e188e6194765e4ed
 "studio reach: R12 data-kind=conflict padding" 983b9690cb463a5b chat:5c812330d84476d4 settings:5c812330d84476d4 studio:5c812330d84476d4 home:5c812330d84476d4

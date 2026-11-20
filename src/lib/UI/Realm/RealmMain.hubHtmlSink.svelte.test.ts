@@ -66,6 +66,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         selectedCharID: writable(-1),
         MobileGUI: writable(false),
         RealmInitialOpenChar: writable(null),
+        OpenRealmStore: writable(true),
         // `src/ts/upstreamAgreement.ts` reads and writes this store directly,
         // never through `src/ts/alert.ts` -- a mock lacking it leaves the
         // agreement helper writing to `undefined`.

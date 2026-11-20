@@ -68,6 +68,16 @@ export function splitConsequences(consequences: readonly string[] | undefined): 
     return { shown: list.slice(0, VISIBLE_CONSEQUENCES), folded: list.slice(VISIBLE_CONSEQUENCES) }
 }
 
+/**
+ * What a screen reader is told when a sheet opens: the headline alone, or the headline and one line joined so it reads
+ * as two sentences. A headline that already ends in sentence punctuation gets one space; any other gets ". ".
+ */
+export function spokenOpening(headline: string, line?: string): string {
+    const head = headline.trim()
+    if (!line) return head
+    return /[.!?…。！？:：]$/.test(head) ? `${head} ${line}` : `${head}. ${line}`
+}
+
 /** Parses a CSS time such as `250ms` or `0.25s`. Anything else is null. */
 export function parseCssDuration(text: string): number | null {
     const match = /^\s*(\d*\.?\d+)\s*(ms|s)\s*$/.exec(text)

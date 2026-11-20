@@ -3,10 +3,13 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { CRC32_INIT, crc32Final, crc32OfFill, crc32Update } from 'src/ts/drive/rtb/crc32Running'
+import { classifyRtb } from 'src/ts/drive/rtb/rtbClassify'
+import { openSealedRtb } from 'src/ts/drive/rtb/sealed/decryptingSource'
 import { checkLocalHeaders, readDirectory, readEntry } from 'src/ts/drive/rtb/zip64Reader'
 import { fillPiece, Zip64Writer, type ZipPiece } from 'src/ts/drive/rtb/zip64Writer'
+import { referenceOpen } from './sealed/sealedReference'
 import { SegmentSink, type SegmentRun } from './segmentSink'
-import { decodeSegmentList, rangeSourceOfSink } from './sparseSource'
+import { decodeSegmentList, rangeSourceOfBytes, rangeSourceOfSink } from './sparseSource'
 import { parseZip, readDescriptor } from './zipTestParser'
 
 // The run command's working directory is the repo root; RTB_GOLDENS_DIR points the guard at another directory of the same file names.
@@ -17,6 +20,14 @@ const GOLDEN4_FILE = 'v1-golden-boundary.rtbseg'
 const GOLDEN4_SHA256 = 'd2c728784948118e04efd2e527631200729da35e0316336444a4ba79e8199f34'
 const GOLDEN4_SIZE = 810221
 const GOLDEN4_BIG_CRC = 0x9d141e95
+
+const SEALED_FILE = 'v1-sealed-small.rtb'
+const SEALED_SHA256 = '4688160dda0d6a7a36409ee200a6a177620b7d37a5f773f74a6d0c055a24d336'
+const SEALED_SIZE = 96661
+const SEALED_TWIN_FILE = 'v1-sealed-small.plain.rtb'
+const SEALED_TWIN_SHA256 = '03335d97f8a37952ea6fa590c47ffbf53b6001287f971005e99de2b6752c9003'
+const SEALED_TWIN_SIZE = 96109
+const SEALED_PASSWORD = 'rtb-golden-pw'
 
 const GIB4 = 2 ** 32
 const BIG_LENGTH = GIB4 + 1
@@ -135,6 +146,58 @@ describe('T-pin golden 4 identity', () => {
         const crlf = lf.replace(/\n/g, '\r\n')
         expect(readmePins(crlf)).toEqual(readmePins(lf))
         expect(readmePins(crlf).sha256.get('f.rtbseg')).toBe(GOLDEN4_SHA256)
+    })
+})
+
+describe('T-pin the sealed golden and its unencrypted twin', () => {
+    const sealed = () => fs.readFileSync(path.join(GOLDEN_DIR, SEALED_FILE))
+    const twin = () => fs.readFileSync(path.join(GOLDEN_DIR, SEALED_TWIN_FILE))
+
+    test('both files equal their pinned SHA-256 and size', () => {
+        for (const [bytes, size, sha] of [[sealed(), SEALED_SIZE, SEALED_SHA256], [twin(), SEALED_TWIN_SIZE, SEALED_TWIN_SHA256]] as const) {
+            expect(bytes.length).toBe(size)
+            expect(createHash('sha256').update(bytes).digest('hex')).toBe(sha)
+        }
+    })
+
+    test('the README hash lines equal the pinned constants, also from a CRLF copy', () => {
+        const text = fs.readFileSync(path.join(GOLDEN_DIR, 'README.md'), 'utf8')
+        for (const variant of [text, text.replace(/\r?\n/g, '\r\n')]) {
+            const pins = readmePins(variant)
+            expect(pins.sha256.get(SEALED_FILE)).toBe(SEALED_SHA256)
+            expect(pins.size.get(SEALED_FILE)).toBe(SEALED_SIZE)
+            expect(pins.sha256.get(SEALED_TWIN_FILE)).toBe(SEALED_TWIN_SHA256)
+            expect(pins.size.get(SEALED_TWIN_FILE)).toBe(SEALED_TWIN_SIZE)
+        }
+    })
+
+    test('the sealed file opens with its password and decrypts byte for byte to the twin, as the independent reference reads it too', async () => {
+        const opened = await openSealedRtb(rangeSourceOfBytes(sealed()), { askPassword: async () => SEALED_PASSWORD })
+        if (opened.kind !== 'open') {
+            throw new Error(`the sealed golden did not open: ${opened.detail}`)
+        }
+        const plain = twin()
+        expect(opened.source.size).toBe(plain.length)
+        expect(Buffer.from(await opened.source.read(0, opened.source.size)).equals(plain)).toBe(true)
+        expect(referenceOpen(sealed(), SEALED_PASSWORD).equals(plain)).toBe(true)
+    })
+
+    test('a wrong password does not open it: the engine asks again with the wrong reason, and a cancel then ends it', async () => {
+        const reasons: string[] = []
+        const answers = ['not-the-password', null]
+        const opened = await openSealedRtb(rangeSourceOfBytes(sealed()), {
+            askPassword: async (reason) => {
+                reasons.push(reason)
+                return answers[reasons.length - 1]
+            },
+        })
+        expect(opened.kind).toBe('ended')
+        expect(opened.kind === 'ended' && opened.class).toBe('canceled')
+        expect(reasons).toEqual(['first', 'wrong'])
+    })
+
+    test('the twin classifies ok', async () => {
+        expect((await classifyRtb(rangeSourceOfBytes(twin()))).kind).toBe('ok')
     })
 })
 

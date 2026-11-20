@@ -8,11 +8,10 @@
  * The clamp is a height cut that follows `clamped`, and the clamp measurement
  * is reported only for a visible description that was given a callback.
  *
- * MOCKED: `ParseMarkdown` (the full renderer needs the whole app) and the
- * colour scheme store.
+ * MOCKED: `ParseMarkdown` (the full renderer needs the whole app). The
+ * `colorscheme` module is mocked to forward the real `surfaceTone` scheme store.
  */
 import { flushSync, mount, unmount } from 'svelte'
-import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const { parseSpy } = vi.hoisted(() => ({
@@ -23,10 +22,12 @@ vi.mock('src/ts/parser/parser.svelte', () => ({
     ParseMarkdown: parseSpy,
 }))
 
-vi.mock('src/ts/gui/colorscheme', () => ({
-    ColorSchemeTypeStore: writable(true),
-}))
+vi.mock('src/ts/gui/colorscheme', async () => {
+    const { ColorSchemeTypeStore } = await import('src/ts/gui/surfaceTone')
+    return { ColorSchemeTypeStore }
+})
 
+import { ColorSchemeTypeStore, packBaseTone } from '../../ts/gui/surfaceTone'
 import { clearDescriptionCache } from '../../ts/gui/descriptionMarkdown'
 import { previewCut } from '../../ts/gui/descriptionPreview'
 import CharacterDescription from './CharacterDescription.svelte'
@@ -64,6 +65,55 @@ async function withMounted(props: MountProps, body: (target: HTMLElement, props:
 beforeEach(() => {
     parseSpy.mockClear()
     clearDescriptionCache()
+})
+
+afterEach(() => {
+    ColorSchemeTypeStore.set('dark')
+    packBaseTone.set(null)
+})
+
+describe('CharacterDescription: prose-invert follows the colour scheme', () => {
+    const prose = (target: HTMLElement): HTMLElement => target.querySelector<HTMLElement>('.prose')!
+
+    test('RR: a light scheme does not invert the rendered prose', async () => {
+        ColorSchemeTypeStore.set('light')
+        await withMounted({ text: 'hello', visible: true }, (target) => {
+            expect(prose(target).classList.contains('prose-invert')).toBe(false)
+        })
+    })
+
+    test('RR: a light scheme under a dark pack base is still not inverted', async () => {
+        ColorSchemeTypeStore.set('light')
+        packBaseTone.set('dark')
+        await withMounted({ text: 'hello', visible: true }, (target) => {
+            expect(prose(target).classList.contains('prose-invert')).toBe(false)
+        })
+    })
+
+    test('CG (passes before and after): a dark scheme inverts the rendered prose', async () => {
+        await withMounted({ text: 'hello', visible: true }, (target) => {
+            expect(prose(target).classList.contains('prose-invert')).toBe(true)
+        })
+    })
+
+    test('CG (passes before and after): a dark scheme under a light pack base is still inverted', async () => {
+        packBaseTone.set('light')
+        await withMounted({ text: 'hello', visible: true }, (target) => {
+            expect(prose(target).classList.contains('prose-invert')).toBe(true)
+        })
+    })
+
+    test('RR: a live switch to light drops prose-invert and back to dark restores it', async () => {
+        await withMounted({ text: 'hello', visible: true }, async (target) => {
+            const el = prose(target)
+            ColorSchemeTypeStore.set('light')
+            await settle()
+            expect(el.classList.contains('prose-invert')).toBe(false)
+            ColorSchemeTypeStore.set('dark')
+            await settle()
+            expect(el.classList.contains('prose-invert')).toBe(true)
+        })
+    })
 })
 
 describe('CharacterDescription', () => {

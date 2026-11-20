@@ -55,7 +55,7 @@
         <label class="flex min-h-11 items-center gap-2">
             {#if on}<span data-part="studio-tg-preview-dot" aria-hidden="true" class="size-2 shrink-0 rounded-full bg-selected"></span>{/if}
             <span class="min-w-0 flex-1 break-words">{row.label}</span>
-            <input type="checkbox" role="switch" data-part="studio-tg-preview-switch" checked={on} onchange={() => onset(on ? '0' : '1')} />
+            <input type="checkbox" role="switch" aria-label={row.label} data-part="studio-tg-preview-switch" checked={on} onchange={() => onset(on ? '0' : '1')} />
         </label>
     {:else}
         <div class="flex min-h-11 items-center gap-2">

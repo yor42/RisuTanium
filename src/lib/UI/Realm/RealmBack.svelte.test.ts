@@ -15,6 +15,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { hubType } from 'src/ts/characterCards'
+import { languageEnglish } from 'src/lang/en'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 
 //#region module mocks
@@ -170,7 +171,7 @@ describe('Realm frame Back', () => {
 
     test('(G) Back leaves the store as the close button does', () => {
         const first = mountFrame()
-        const button = Array.from(first.target.querySelectorAll('button')).find((b) => b.textContent === '×')
+        const button = Array.from(first.target.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === languageEnglish.uiCommon.close)
         button?.click()
         flushSync()
         const afterButton = get(ShowRealmFrameStore)

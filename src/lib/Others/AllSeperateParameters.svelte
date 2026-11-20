@@ -10,6 +10,7 @@
     import { FileDownIcon, FileUpIcon, ImportIcon } from "@lucide/svelte";
     import { selectSingleFile } from "src/ts/util";
     import { getModelInfo } from "src/ts/model/modellist";
+    import { auxSlotModel } from "src/ts/process/request/auxModelSlot";
 
     type AuxModelKey = 'memory' | 'emotion' | 'translate' | 'otherAx'
     const auxModelKeys: AuxModelKey[] = ['memory', 'emotion', 'translate', 'otherAx']
@@ -27,10 +28,7 @@
     let effectiveModel = $derived.by(() => {
         if (!paramKey) return DBState.db.subModel
         if (auxModelKeys.includes(paramKey as AuxModelKey)) {
-            if (DBState.db.seperateModelsForAxModels) {
-                return DBState.db.seperateModels[paramKey as AuxModelKey] || DBState.db.subModel
-            }
-            return DBState.db.subModel
+            return auxSlotModel(DBState.db.seperateModels, paramKey) || DBState.db.subModel
         }
         return paramKey
     })
@@ -99,13 +97,13 @@
 
 {#if withImportExport}
     <div class="flex">
-        <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onclick={() => {
+        <button class="bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 font-bold py-2 px-4 rounded" aria-label={language.export} onclick={() => {
             const json = JSON.stringify(value, null, 2)
             downloadFile(`parameters-${Date.now()}.json`, json)
         }}>
-            <FileDownIcon />
+            <FileDownIcon aria-hidden="true" />
         </button>
-        <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded ml-2" onclick={async () => {
+        <button class="bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 font-bold py-2 px-4 rounded ml-2" aria-label={language.import} onclick={async () => {
             const file = await selectSingleFile(['json'])
             if(!file){
                 return
@@ -119,7 +117,7 @@
                 alert(language.noData)
             }
         }}>
-            <FileUpIcon />
+            <FileUpIcon aria-hidden="true" />
         </button>
     </div>
 {/if}

@@ -73,7 +73,7 @@
                             $SettingsMenuIndex = 1
                             
                     }}>
-                        <BotIcon />
+                        <BotIcon aria-hidden="true" />
                         <span>{language.chatBot}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
@@ -82,7 +82,7 @@
                         onclick={() => {
                             $SettingsMenuIndex = 12
                     }}>
-                        <ContactIcon />
+                        <ContactIcon aria-hidden="true" />
                         <span>{language.persona}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
@@ -91,7 +91,7 @@
                         onclick={() => {
                             $SettingsMenuIndex = 2
                     }}>
-                        <Sailboat />
+                        <Sailboat aria-hidden="true" />
                         <span>{language.otherBots}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
@@ -100,7 +100,7 @@
                         onclick={() => {
                             $SettingsMenuIndex = 3
                     }}>
-                        <MonitorIcon />
+                        <MonitorIcon aria-hidden="true" />
                         <span>{language.display}</span>
                     </button>
                 {/if}
@@ -110,7 +110,7 @@
                     onclick={() => {
                         $SettingsMenuIndex = 10
                 }}>
-                    <LanguagesIcon />
+                    <LanguagesIcon aria-hidden="true" />
                     <span>{language.language}</span>
                 </button>
                 {#if !$isLite}
@@ -120,7 +120,7 @@
                         onclick={() => {
                             $SettingsMenuIndex = 11
                     }}>
-                        <AccessibilityIcon />
+                        <AccessibilityIcon aria-hidden="true" />
                         <span>{language.accessibility}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
@@ -129,7 +129,7 @@
                         onclick={() => {
                             $SettingsMenuIndex = 14
                     }}>
-                        <PackageIcon />
+                        <PackageIcon aria-hidden="true" />
                         <span>{language.modules}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
@@ -138,7 +138,7 @@
                         onclick={() => {
                         $SettingsMenuIndex = 4
                     }}>
-                        <CodeIcon />
+                        <CodeIcon aria-hidden="true" />
                         <span>{language.plugin}</span>
                     </button>
                 {/if}
@@ -148,7 +148,7 @@
                     onclick={() => {
                         $SettingsMenuIndex = 0
                 }}>
-                    <UserIcon />
+                    <UserIcon aria-hidden="true" />
                     <span>{language.backupAndFiles}</span>
                 </button>
                 <button class="flex gap-2 items-center hover:text-textcolor"
@@ -157,7 +157,7 @@
                         onclick={() => {
                         $SettingsMenuIndex = 15
                     }}>
-                        <KeyboardIcon />
+                        <KeyboardIcon aria-hidden="true" />
                         <span>{language.hotkey}</span>
                     </button>
                 {#if !$isLite}
@@ -167,7 +167,7 @@
                         onclick={() => {
                         $SettingsMenuIndex = 17
                     }}>
-                        <ChartColumnIcon />
+                        <ChartColumnIcon aria-hidden="true" />
                         <span>{language.settingsShellPageStatistics}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
@@ -176,7 +176,7 @@
                         onclick={() => {
                         $SettingsMenuIndex = 6
                     }}>
-                        <ActivityIcon />
+                        <ActivityIcon aria-hidden="true" />
                         <span>{language.advancedSettings}</span>
                     </button>
                     {#each additionalSettingsMenu as menu}
@@ -197,14 +197,14 @@
                             easyPanelStore.open = true
                         }}>
                             <!-- From Lucide Icons, licensed under MIT/ISC License, modified to fit the design. see license from bundled lucide icons. -->
-                            <svg width={24} height={24}>
+                            <svg width={24} height={24} aria-hidden="true">
                                 <defs>
                                     <linearGradient id={`grad1`} x1='0' y1='0' x2='1' y2='0'>
                                     <stop offset='0%' style="stop-color:#587bff"/>
                                     <stop offset='100%' style="stop-color:#00a1ad"/>
                                     </linearGradient>
                                 </defs>
-                                    <SparkleIcon color="url(#grad1)" />
+                                    <SparkleIcon color="url(#grad1)" aria-hidden="true" />
                             </svg>
                             <span>{language.easyPanel}</span>
                         </button>
@@ -212,7 +212,7 @@
                 {/if}
                 <SettingsLegalLinks />
                 {#if window.innerWidth < 700}
-                    <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}> <CircleXIcon size={DBState.db.settingsCloseButtonSize} /> </button>
+                    <button class="absolute top-2 right-2 hover:text-textcolor2 text-textcolor" aria-label={language.uiCommon.close} onclick={settingsBackClose}> <CircleXIcon size={DBState.db.settingsCloseButtonSize} aria-hidden="true" /> </button>
                 {/if}
             </div>
         {/if}
@@ -252,8 +252,8 @@
                     {/if}
             </div>
             {/key}
-            <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}>
-                <CircleXIcon size={DBState.db.settingsCloseButtonSize} />
+            <button class="absolute top-2 right-2 hover:text-textcolor2 text-textcolor" aria-label={language.uiCommon.close} onclick={settingsBackClose}>
+                <CircleXIcon size={DBState.db.settingsCloseButtonSize} aria-hidden="true" />
             </button>
         {/if}
     </div>

@@ -64,6 +64,7 @@ vi.mock('../../lang', () => ({ language: {
 
 import ShellMessage from './ShellMessage.svelte'
 import { DBState } from '../../ts/stores.svelte'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 const WIDTH = 1024
 let target: HTMLElement
@@ -514,6 +515,31 @@ describe('C10 swipe feedback', () => {
         button.click()
         expect(regenerateNewest).toHaveBeenCalledTimes(1)
     })
+    // TC2-5 (regression reproducer): the chip led with the text glyph ⟳; the bookmark badge was the text glyph ★.
+    test('Generate a reply carries an aria-hidden refresh icon and its text is the label alone', async () => {
+        await import('@lucide/svelte')
+        show({ role: 'user' })
+        const button = target.querySelector<HTMLButtonElement>('[data-part="chat-generate-reply"]')!
+        expect(button.textContent?.trim()).toBe('Generate a reply')
+        expect(lucideNames(button)).toEqual(['lucide-refresh-cw'])
+        expect(iconsIn(button)[0].getAttribute('aria-hidden')).toBe('true')
+        expect(glyphsIn(button)).toEqual([])
+    }, 120_000)
+    test('the bookmark badge is an image-role Bookmark icon that keeps its name', async () => {
+        await import('@lucide/svelte')
+        Object.assign(DBState.db.characters[0].chats[0], { bookmarks: ['m'] })
+        try {
+            show({ role: 'char' })
+            const badge = target.querySelector<HTMLElement>('[data-part="chat-message-badges"]')!
+            expect(badge.getAttribute('role')).toBe('img')
+            expect(badge.getAttribute('aria-label')).toBe('Bookmark')
+            expect(lucideNames(badge)).toEqual(['lucide-bookmark'])
+            expect(iconsIn(badge)[0].getAttribute('aria-hidden')).toBe('true')
+            expect(glyphsIn(badge)).toEqual([])
+        } finally {
+            Object.assign(DBState.db.characters[0].chats[0], { bookmarks: undefined })
+        }
+    }, 120_000)
     test('a busy chat disables the user-last generate button and a reply row has none', () => {
         show({ role: 'user', busy: true })
         expect(target.querySelector<HTMLButtonElement>('[data-part="chat-generate-reply"]')!.disabled).toBe(true)

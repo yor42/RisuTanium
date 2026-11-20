@@ -75,6 +75,12 @@ describe('chats of the owner', () => {
         expect(chatNames(searchSidebar([o], o, 'manual', 'needle').chats)).toEqual(['needle holder'])
     })
 
+    test('TC3-2: a phrase matches across emphasis markup in the last line, and a single word still matches', () => {
+        const o = owner([chat('Trip', ['**fjord** reply 29, *alpha* and `cob`'])])
+        expect(chatNames(searchSidebar([o], o, 'manual', 'fjord reply').chats)).toEqual(['Trip'])
+        expect(chatNames(searchSidebar([o], o, 'manual', 'fjord').chats)).toEqual(['Trip'])
+    })
+
     test('TS1: an archived chat matches by name only, never by its placeholder text', () => {
         const archived = chat('Old archive', [`${coldStorageHeader}secretword`])
         const o = owner([archived, chat('Live', ['secretword'])])

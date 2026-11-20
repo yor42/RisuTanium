@@ -481,7 +481,7 @@
                     <textarea id="{uid}-desc" autocomplete="off" class="w-full min-h-40 px-3 py-2 rounded-md border border-darkborderc bg-transparent text-textcolor focus:border-borderc focus:outline-hidden" value={shown.personaPrompt ?? ''} oninput={(event) => edit('personaPrompt', event.currentTarget.value)}></textarea>
                     <span class="text-xs text-textcolor2">{language.settingsShellPersonaDescCount((shown.personaPrompt ?? '').length)}</span>
                     <!-- Function binding: binding an absent flag directly would write `false` into the persona on mount. -->
-                    <Check className="min-h-11" bind:check={() => shown.largePortrait ?? false, (value) => setLarge(value)}>{language.settingsShellPersonaLarge}</Check>
+                    <Check className="min-h-11" label={language.settingsShellPersonaLarge} bind:check={() => shown.largePortrait ?? false, (value) => setLarge(value)}>{language.settingsShellPersonaLarge}</Check>
                     <div class="flex flex-wrap gap-2">
                         <button type="button" class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected disabled:opacity-50" disabled={shownActive} onclick={() => { if (shown.id) activatePersona(DBState.db, shown.id) }}>{shownActive ? language.settingsShellPersonaUsed : language.settingsShellPersonaUse}</button>
                         <button type="button" class="min-h-11 px-4 rounded-md bg-darkbutton text-textcolor hover:bg-selected" onclick={exportShown}>{language.settingsShellPersonaExport}</button>

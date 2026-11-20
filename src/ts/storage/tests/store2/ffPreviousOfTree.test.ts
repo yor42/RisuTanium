@@ -33,6 +33,14 @@ describe('guard: the in-memory bodies a stored tree is read into', () => {
         expect(objects?.presets?.length).toBe((db.botPresets as unknown as Obj[]).length)
     })
 
+    test('the loadouts body is the stored list, and a loadouts unit the boot did not read leaves it unknown', () => {
+        expect(previousOfTree(storedOf(tree)).objects?.loadouts).toEqual(JSON.parse(JSON.stringify(db.loadouts ?? [])))
+        const objects = previousOfTree(storedOf(tree, identity => identity === 'loadouts')).objects
+        expect(objects?.loadouts).toBeUndefined()
+        expect(objects?.statics).toBeDefined()
+        expect(objects?.order).toBeDefined()
+    })
+
     test('entityIdsOf numbers repeated ids by occurrence and refuses an order that names an unknown entity', () => {
         const entry = (u: string, chaId: string): ShardEntry => ({ u, chaId }) as unknown as ShardEntry
         const entries = new Map([['u1', entry('u1', 'a')], ['u2', entry('u2', 'a')], ['u3', entry('u3', 'b')]])

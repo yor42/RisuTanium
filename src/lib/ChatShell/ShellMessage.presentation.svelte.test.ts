@@ -87,16 +87,6 @@ describe('ShellMessage body presentation wrapper', () => {
         expect(body.style.lineHeight).toBe(`${1.5 * 1.2}rem`)
     })
 
-    test('prose-invert follows the old row rule: any non-empty colour scheme value turns it on', async () => {
-        const body = await show()
-        scheme.store?.set('light')
-        flushSync()
-        expect(body.classList.contains('prose-invert')).toBe(true)
-        scheme.store?.set('' as 'dark')
-        flushSync()
-        expect(body.classList.contains('prose-invert')).toBe(false)
-    })
-
     test('card CSS rewritten to .chattext reaches the body content', async () => {
         style = document.createElement('style')
         style.textContent = '.chattext .card-paragraph { color: rgb(1, 2, 3); }'

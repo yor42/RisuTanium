@@ -201,12 +201,12 @@ describe('HypaV3 modal lorebook transfer', () => {
         const checkbox = target.querySelector('input[type="checkbox"]') as HTMLInputElement
         checkbox.click()
         flushSync()
-        expect(target.querySelectorAll('.ring-blue-500')).toHaveLength(1)
+        expect(target.querySelectorAll('div.ring-2.ring-borderc')).toHaveLength(1)
         openMore(target)
         byLabel(target, IMPORT_LABEL)!.click()
         await settle()
         expect(chat().hypaV3Data!.summaries).toHaveLength(2)
-        expect(target.querySelectorAll('.ring-blue-500')).toHaveLength(0)
+        expect(target.querySelectorAll('div.ring-2.ring-borderc')).toHaveLength(0)
     })
 
     test('H5 a cancelled import keeps the bulk selection', async () => {
@@ -223,7 +223,7 @@ describe('HypaV3 modal lorebook transfer', () => {
         byLabel(target, IMPORT_LABEL)!.click()
         await settle()
         expect(chat().hypaV3Data!.summaries).toHaveLength(1)
-        expect(target.querySelectorAll('.ring-blue-500')).toHaveLength(1)
+        expect(target.querySelectorAll('div.ring-2.ring-borderc')).toHaveLength(1)
     })
 
     test('P2 reroll on a summary with no connected messages sends no summarization request', async () => {

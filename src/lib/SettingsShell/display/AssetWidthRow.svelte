@@ -37,6 +37,7 @@
                     type="radio"
                     name={group}
                     value={choice.mode}
+                    aria-label={choice.label()}
                     checked={mode === choice.mode}
                     onchange={() => choose(choice.mode)}
                 />

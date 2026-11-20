@@ -89,7 +89,7 @@ export function rtbSavedNotice(report: RtbExportReport, isTauriPage: boolean): s
     return parts.join('\n\n')
 }
 
-function liveRtbEntryDeps(): RtbEntryDeps {
+export function liveRtbEntryDeps(): RtbEntryDeps {
     return {
         refusal: () => rtbExportRefusal(),
         confirm: alertConfirm,
@@ -104,7 +104,7 @@ function liveRtbEntryDeps(): RtbEntryDeps {
 let inFlight = false
 
 /** Resolves to the run's result, or `null` when nothing ran (a refusal, a declined confirm or a start already in flight). */
-export async function startRtbExport(deps: RtbEntryDeps = liveRtbEntryDeps()): Promise<RtbExportResult | null> {
+export async function startRtbExport(deps: RtbEntryDeps = liveRtbEntryDeps(), options: { password?: string } = {}): Promise<RtbExportResult | null> {
     if (inFlight) {
         return null
     }
@@ -118,7 +118,7 @@ export async function startRtbExport(deps: RtbEntryDeps = liveRtbEntryDeps()): P
         if (!await deps.confirm(language.rtbExportConfirm(language.saveBackupLocal))) {
             return null
         }
-        const result = await deps.run({ progressText: rtbProgressText })
+        const result = await deps.run({ progressText: rtbProgressText, password: options.password })
         if (result.status === 'refused') {
             deps.error(rtbRefusalText(result.reason))
         } else if (result.outcome.status === 'saved') {

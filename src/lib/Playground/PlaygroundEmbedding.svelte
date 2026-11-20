@@ -19,6 +19,7 @@
     let data:string[] = $state([]);
     let dataresult:[string, number][] = $state([]);
     let running = $state(false);
+    const uid = $props.id();
 
     // HypaProcesser falls back to the saved value when given a blank one, so a blank
     // local field must stop the run rather than silently use the saved value.
@@ -80,28 +81,28 @@
 </SelectInput>
 
 {#if model === 'openai3small' || model === 'openai3large' || model === 'ada'}
-    <span class="text-textcolor text-lg">OpenAI API Key</span>
-    <TextInput size="sm" marginBottom bind:value={openAIKey}/>
+    <span id="{uid}-openai-key" class="text-textcolor text-lg">OpenAI API Key</span>
+    <TextInput labelId="{uid}-openai-key" size="sm" marginBottom bind:value={openAIKey}/>
 {/if}
 
 {#if model === "custom"}
-    <span class="text-textcolor text-lg">URL</span>
-    <TextInput size="sm" marginBottom bind:value={customEmbeddingUrl}/>
-    <span class="text-textcolor text-lg">{language.proxyAPIKey}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.key}/>
-    <span class="text-textcolor text-lg">{language.playground.requestModel}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
+    <span id="{uid}-url" class="text-textcolor text-lg">URL</span>
+    <TextInput labelId="{uid}-url" size="sm" marginBottom bind:value={customEmbeddingUrl}/>
+    <span id="{uid}-proxy-key" class="text-textcolor text-lg">{language.proxyAPIKey}</span>
+    <TextInput labelId="{uid}-proxy-key" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.key}/>
+    <span id="{uid}-request-model" class="text-textcolor text-lg">{language.playground.requestModel}</span>
+    <TextInput labelId="{uid}-request-model" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
     <span class="text-textcolor2 text-sm mb-4">{language.playground.embeddingSharedSettingsNote}</span>
 {/if}
 
 <div class="mb-4"></div>
 
-<span class="text-textcolor text-lg">{language.playground.query}</span>
-<TextInput bind:value={query} size="lg" fullwidth />
+<span id="{uid}-query" class="text-textcolor text-lg">{language.playground.query}</span>
+<TextInput labelId="{uid}-query" bind:value={query} size="lg" fullwidth />
 
-<span class="text-textcolor text-lg mt-6">{language.playground.data}</span>
+<span id="{uid}-data" class="text-textcolor text-lg mt-6">{language.playground.data}</span>
 {#each data as item, i}
-    <TextInput bind:value={data[i]} size="lg" fullwidth marginBottom />
+    <TextInput labelId="{uid}-data" bind:value={data[i]} size="lg" fullwidth marginBottom />
 {/each}
 <Button styled="outlined" onclick={() => {
     data.push("");

@@ -1,7 +1,9 @@
 <script lang="ts">
     import './pattern-dialog.css'
-    import { untrack, type Snippet } from 'svelte'
-    import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from './patternFocus'
+    import { flushSync, untrack, type Snippet } from 'svelte'
+    import { isImeComposing } from '../../../ts/ime/compositionGuard'
+    import { takePickReturn } from '../../../ts/pickOpener'
+    import { ANNOUNCE_SETTLE_MS, PICK_REFOCUS_SETTLE_MS, afterFrameSettle, isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from './patternFocus'
 
     interface Props {
         /** Id of the element that names the dialog. */
@@ -18,16 +20,27 @@
         /** Drops movement and caps durations. */
         lowPower?: boolean
         open?: boolean
+        /** `dialog` for a card that is not a decision (a running task); every other shell keeps `alertdialog`. */
+        role?: 'alertdialog' | 'dialog'
+        /**
+         * The opening text for a screen reader. When given, the dialog holds an empty polite region from the first frame
+         * and writes this text into it once, a frame plus a settle after the dialog opened (and after one refocus when
+         * the sheet opened over a returning file picker).
+         */
+        announce?: string
+        /** Called once at the same moment the announcement is written, for a caller that speaks through its own region. */
+        onsettled?: () => void
         children: Snippet
     }
 
-    let { labelId, descriptionId, cancelSafe = false, oncancel, trigger = null, background = [], lowPower = false, open = true, children }: Props = $props()
+    let { labelId, descriptionId, cancelSafe = false, oncancel, trigger = null, background = [], lowPower = false, open = true, role = 'alertdialog', announce, onsettled, children }: Props = $props()
 
     const PHONE_QUERY = '(max-width: 640px)'
     const token = {}
 
     let dialog = $state<HTMLElement>()
     let layout = $state<'phone' | 'wide'>('wide')
+    let spoken = $state('')
 
     /** The shell's own cancel: calls `oncancel` only when the caller marked cancel as safe. */
     export function cancel(): void {
@@ -55,6 +68,22 @@
         initial.focus()
         const stopWatching = watchFocus(shell, shell,() => isTopmostShell(token))
 
+        // A sheet that opens right after a file picker returned opens while the window is still changing state, and
+        // the screen reader can drop the first focus event. One blur and refocus of the same control, after that
+        // settles and only if focus has not moved, gives it a fresh one. The opening text is written after the
+        // refocus (and flushed in the same task), so the focus speech cannot cut it.
+        const afterPick = takePickReturn()
+        const stopSettle = afterFrameSettle(() => {
+            if (afterPick && isTopmostShell(token) && shell.ownerDocument.activeElement === initial) {
+                initial.blur()
+                initial.focus()
+            }
+            const text = untrack(() => announce)
+            if (text) spoken = text
+            untrack(() => onsettled)?.()
+            flushSync()
+        }, afterPick ? PICK_REFOCUS_SETTLE_MS : ANNOUNCE_SETTLE_MS)
+
         const onKeyDown = (event: KeyboardEvent) => {
             if (!isTopmostShell(token)) return
             if (event.key === 'Escape') {
@@ -62,7 +91,7 @@
                 // would read the alert as idle and close an open settings panel.
                 event.preventDefault()
                 event.stopPropagation()
-                if (!event.repeat && !event.isComposing) cancel()
+                if (!event.repeat && !isImeComposing(event)) cancel()
                 return
             }
             trapTab(event, shell)
@@ -71,6 +100,7 @@
 
         return () => {
             window.removeEventListener('keydown', onKeyDown, true)
+            stopSettle()
             stopWatching()
             unregister()
             restoreInert()
@@ -87,12 +117,15 @@
             bind:this={dialog}
             data-part="pattern-dialog"
             data-part-critical
-            role="alertdialog"
+            {role}
             aria-modal="true"
             aria-labelledby={labelId}
             aria-describedby={descriptionId}
             tabindex="-1"
         >
+            {#if announce !== undefined}
+                <p class="sr-only" role="status" data-part="pattern-dialog-announce">{spoken}</p>
+            {/if}
             {@render children()}
         </div>
     </div>

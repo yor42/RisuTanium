@@ -4,7 +4,9 @@
  * REAL: surfaceGate.svelte.ts. The probe elements are plain `style` elements; the cover is a rune object the test drives.
  */
 import { flushSync } from 'svelte'
+import { get } from 'svelte/store'
 import { afterEach, describe, expect, test } from 'vitest'
+import { packBaseTone } from '../gui/surfaceTone'
 import {
     declareSurface,
     installThemePackGate,
@@ -206,5 +208,179 @@ describe('the registered elements follow the gate after each flush', () => {
         flushSync()
         syncThemePackMedia()
         expect(element.getAttribute('media')).toBe('not all')
+    })
+})
+
+describe('the pack base: the root attribute and the base tone follow the sheet that is on', () => {
+    // New behaviour: before the base existed neither was written. Every assertion runs synchronously after a sync, so a
+    // deferred write would fail.
+    const ATTRIBUTE = 'data-theme-pack-base'
+
+    function expectBase(on: boolean): void {
+        expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(on)
+        expect(document.body.hasAttribute(ATTRIBUTE)).toBe(false)
+        expect(get(packBaseTone)).toBe(on ? 'dark' : null)
+    }
+
+    test('present while a registered chat element is on, absent when released', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        const release = declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        release()
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('absent while the cover is up and present again when it lifts', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        cover.on = true
+        syncThemePackMedia()
+        expectBase(false)
+        cover.on = false
+        syncThemePackMedia()
+        expectBase(true)
+    })
+
+    test('the gate effect writes them too, without a direct sync', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        declareSurface('chat')
+        flushSync()
+        expectBase(true)
+        cover.on = true
+        flushSync()
+        expectBase(false)
+    })
+
+    test('absent with chat shown and nothing registered', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('unregistering the element clears them at the next sync', () => {
+        installThemePackGate(() => cover.on)
+        const element = probe('chat')
+        const registered = registerThemePackElement(element, 'chat')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        registered()
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('a studio-only registration with chat shown leaves them absent', () => {
+        installThemePackGate(() => cover.on)
+        probe('studio')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('a foreign unregistered style[data-theme-pack] that is on never sets them', () => {
+        installThemePackGate(() => cover.on)
+        const foreign = document.createElement('style')
+        foreign.setAttribute('data-theme-pack', 'chat')
+        foreign.setAttribute('media', 'all')
+        document.head.appendChild(foreign)
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('reset clears the attribute and the tone', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        resetThemePackGateForTests()
+        expectBase(false)
+    })
+})
+
+describe('the light base: the attribute value and the tone follow the base the element was registered with', () => {
+    // TD13. The light cases are regression reproducers: before the third argument the gate wrote an empty value and the
+    // dark tone for every element. The dark, cover and reset cases are compatibility guards.
+    const ATTRIBUTE = 'data-theme-pack-base'
+
+    function probeWith(base: 'dark' | 'light'): { element: HTMLStyleElement, unregister: () => void } {
+        const element = document.createElement('style')
+        element.setAttribute('data-theme-pack', 'chat')
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        return { element, unregister: registerThemePackElement(element, 'chat', base) }
+    }
+
+    const value = (): string | null => document.documentElement.getAttribute(ATTRIBUTE)
+
+    test('a light element writes the value light and the light tone; a dark one writes an empty value and the dark tone', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const dark = probeWith('dark')
+        syncThemePackMedia()
+        expect(value()).toBe('')
+        expect(get(packBaseTone)).toBe('dark')
+        dark.unregister()
+        probeWith('light')
+        syncThemePackMedia()
+        expect(value()).toBe('light')
+        expect(get(packBaseTone)).toBe('light')
+    })
+
+    test('a replacement with the other base rewrites the value while the attribute stays present', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const light = probeWith('light')
+        syncThemePackMedia()
+        expect(value()).toBe('light')
+        light.unregister()
+        light.element.remove()
+        probeWith('dark')
+        syncThemePackMedia()
+        expect(value()).toBe('')
+        expect(get(packBaseTone)).toBe('dark')
+    })
+
+    test('a cover removes the attribute and the tone, and lifting it restores the light base', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        probeWith('light')
+        syncThemePackMedia()
+        cover.on = true
+        syncThemePackMedia()
+        expect(value()).toBeNull()
+        expect(get(packBaseTone)).toBeNull()
+        cover.on = false
+        syncThemePackMedia()
+        expect(value()).toBe('light')
+        expect(get(packBaseTone)).toBe('light')
+    })
+
+    test('reset clears a light base', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        probeWith('light')
+        syncThemePackMedia()
+        resetThemePackGateForTests()
+        expect(value()).toBeNull()
+        expect(get(packBaseTone)).toBeNull()
+    })
+
+    test('an element registered without a base is dark', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        probe('chat')
+        syncThemePackMedia()
+        expect(value()).toBe('')
+        expect(get(packBaseTone)).toBe('dark')
     })
 })

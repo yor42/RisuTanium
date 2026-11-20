@@ -114,7 +114,7 @@
             <!-- The grip is a pointer affordance only: Move up and Move down stay the accessible path. -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <span class="customize-grip" aria-hidden="true" data-panel-gesture="off" style:touch-action="none" onpointerdown={(event) => gripDown(event, id)}><GripVerticalIcon size={18} /></span>
-            <label style:min-height="var(--size-touch)"><input type="checkbox" style:width="var(--space-12)" style:height="var(--space-12)" checked={slots.pinned.includes(id)} onchange={() => pin(id)} />{labelOf(id)}</label>
+            <label style:min-height="var(--size-touch)"><input type="checkbox" aria-label={labelOf(id)} style:width="var(--space-12)" style:height="var(--space-12)" checked={slots.pinned.includes(id)} onchange={() => pin(id)} />{labelOf(id)}</label>
             <button type="button" aria-label={`${language.chatShellMoveUp} ${labelOf(id)}`} onclick={() => move(id, -1)}>{language.chatShellMoveUp}</button>
             <button type="button" aria-label={`${language.chatShellMoveDown} ${labelOf(id)}`} onclick={() => move(id, 1)}>{language.chatShellMoveDown}</button>
             {#if drop?.index === index}<span class="customize-drop-line" aria-hidden="true"></span>{/if}

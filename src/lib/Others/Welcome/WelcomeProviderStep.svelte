@@ -22,6 +22,21 @@
         { value: 'later', label: language.onboarding.setUpLater, description: '', recommended: false },
     ])
 
+    const uid = $props.id()
+    const keyLabelId = `${uid}-key-label`
+    const advisoryId = `${uid}-key-advisory`
+    const advisoryShown = $derived(flow.advisory !== null && flow.advisory.ready && !flow.advisory.standardPrefix)
+    // The label id comes first so the field's own spoken stop starts with its name.
+    const keyDescribedBy = $derived(advisoryShown ? `${keyLabelId} ${advisoryId}` : keyLabelId)
+
+    function optionDescribedBy(option: ProviderOption): string | undefined {
+        const ids = [
+            option.recommended ? `${uid}-${option.value}-badge` : '',
+            option.description !== '' ? `${uid}-${option.value}-desc` : '',
+        ].filter((id) => id !== '')
+        return ids.length > 0 ? ids.join(' ') : undefined
+    }
+
     const providerLabel = $derived(options.find((option) => option.value === flow.provider)?.label ?? '')
     const guide = $derived.by(() => {
         switch (flow.provider) {
@@ -63,17 +78,19 @@
                     name="welcome-provider"
                     value={option.value}
                     checked={flow.provider === option.value}
+                    aria-label={option.label}
+                    aria-describedby={optionDescribedBy(option)}
                     onchange={() => flow.chooseProvider(option.value)}
                 />
                 <span class="flex flex-col">
                     <span class="font-bold">
                         {option.label}
                         {#if option.recommended}
-                            <span class="ml-1 text-xs p-1 rounded-sm bg-selected text-textcolor">{language.recommended}</span>
+                            <span id="{uid}-{option.value}-badge" class="ml-1 text-xs p-1 rounded-sm bg-selected text-textcolor">{language.recommended}</span>
                         {/if}
                     </span>
                     {#if option.description !== ''}
-                        <span class="text-sm text-textcolor2">{option.description}</span>
+                        <span id="{uid}-{option.value}-desc" class="text-sm text-textcolor2">{option.description}</span>
                     {/if}
                 </span>
             </label>
@@ -84,10 +101,12 @@
 {#if flow.provider !== null && providerTakesKey(flow.provider)}
     <div class="mt-4">
         <div class="flex flex-col gap-1">
-            <label for="welcome-api-key" class="text-sm text-textcolor2">{language.apiKey}</label>
+            <label id={keyLabelId} for="welcome-api-key" class="text-sm text-textcolor2">{language.apiKey}</label>
             <span class="flex gap-2">
                 <input
                     id="welcome-api-key"
+                    aria-labelledby={keyLabelId}
+                    aria-describedby={keyDescribedBy}
                     type={flow.showKey ? 'text' : 'password'}
                     class="grow min-w-0 min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor"
                     bind:value={flow.apiKey}
@@ -106,8 +125,8 @@
             </span>
         </div>
         <!-- Advisory only: a key with another shape, from a proxy or a newer format, still continues. -->
-        {#if flow.advisory !== null && flow.advisory.ready && !flow.advisory.standardPrefix}
-            <p class="mt-2 text-sm text-textcolor2" role="note" data-key-advisory>{language.onboarding.keyAdvisory(providerLabel, standardKeyPrefix(flow.provider))}</p>
+        {#if advisoryShown}
+            <p id={advisoryId} class="mt-2 text-sm text-textcolor2" role="note" data-key-advisory>{language.onboarding.keyAdvisory(providerLabel, standardKeyPrefix(flow.provider))}</p>
         {/if}
         <p class="mt-3 text-sm"><strong>{language.onboarding.keyCautionTitle}</strong> <span class="text-textcolor2">{language.onboarding.keyCautionBody}</span></p>
         <details class="mt-3">
@@ -123,11 +142,11 @@
         <legend class="mb-2">{language.onboarding.setUpNowQuestion}</legend>
         <div class="flex flex-col gap-2">
             <label class="flex items-center gap-3 min-h-11 px-3 rounded-md border border-darkborderc cursor-pointer has-checked:border-selected has-checked:bg-bgcolor">
-                <input type="radio" name="welcome-set-up-now" value="yes" checked={flow.setUpNow === true} onchange={() => { flow.setUpNow = true }} />
+                <input type="radio" name="welcome-set-up-now" value="yes" checked={flow.setUpNow === true} aria-label={language.onboarding.yes} onchange={() => { flow.setUpNow = true }} />
                 <span>{language.onboarding.yes}</span>
             </label>
             <label class="flex items-center gap-3 min-h-11 px-3 rounded-md border border-darkborderc cursor-pointer has-checked:border-selected has-checked:bg-bgcolor">
-                <input type="radio" name="welcome-set-up-now" value="no" checked={flow.setUpNow === false} onchange={() => { flow.setUpNow = false }} />
+                <input type="radio" name="welcome-set-up-now" value="no" checked={flow.setUpNow === false} aria-label={language.onboarding.no} onchange={() => { flow.setUpNow = false }} />
                 <span>{language.onboarding.no}</span>
             </label>
         </div>

@@ -17,7 +17,6 @@
     import ModelList from "src/lib/UI/ModelList.svelte";
     import { onDestroy, onMount } from "svelte";
     import {defaultAutoSuggestPrompt} from "../../../ts/storage/defaultPrompts";
-    import AuxModelSelectors from './Model/AuxModelSelectors.svelte'
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
 
     let sorted = 0
@@ -35,6 +34,7 @@
   }
 
   let { onGoBack = () => {}, mode = 'independent', subMenu = $bindable(0) }: Props = $props();
+  const uid = $props.id()
 
     async function executeTokenize(prest: PromptItem[]){
         tokens = await tokenizePreset(prest, true)
@@ -132,8 +132,8 @@
 </script>
 {#if mode === 'independent'}
     <h2 class="mb-2 text-2xl font-bold mt-2 items-center flex">
-        <button class="mr-2 text-textcolor2 hover:text-textcolor" onclick={onGoBack}>
-            <ArrowLeft />
+        <button aria-label={language.settingsPage.back} class="mr-2 text-textcolor2 hover:text-textcolor" onclick={onGoBack}>
+            <ArrowLeft aria-hidden="true" />
         </button>
         {language.promptTemplate}
     </h2>
@@ -152,9 +152,9 @@
     </div>
 {/if}
 {#if warns.length > 0 && subMenu === 0}
-    <div class="text-red-500 flex flex-col items-start p-2 rounded-md border-red-500 border mt-4">
+    <div class="text-draculared flex flex-col items-start p-2 rounded-md border-draculared border mt-4">
         <h2 class="text-xl font-bold">{language.settingsPage.warning}</h2>
-        <div class="border-b border-b-red-500 mt-1 mb-2 w-full"></div>
+        <div class="border-b border-b-draculared mt-1 mb-2 w-full"></div>
         {#each warns as warn}
             <span class="ml-4">{warn}</span>
         {/each}
@@ -246,7 +246,7 @@
         {/key}
     </div>
 
-    <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+    <button aria-label={language.add} class="font-medium cursor-pointer hover:text-textcolor2" onclick={() => {
         let value = DBState.db.promptTemplate ?? []
         value.push({
             type: "plain",
@@ -255,13 +255,13 @@
             type2: 'normal'
         })
         DBState.db.promptTemplate = value
-    }}><PlusIcon /></button>
+    }}><PlusIcon aria-hidden="true" /></button>
 
     <span class="text-textcolor2 text-sm mt-2">{tokens} {language.fixedTokens}</span>
     <span class="text-textcolor2 mb-6 text-sm mt-2">{extokens} {language.exactTokens}</span>
 {:else}
-    <span class="text-textcolor mt-4">{language.postEndInnerFormat}</span>
-    <TextInput bind:value={DBState.db.promptSettings.postEndInnerFormat}/>
+    <span class="text-textcolor mt-4" id="{uid}-f1">{language.postEndInnerFormat}</span>
+    <TextInput labelId="{uid}-f1" bind:value={DBState.db.promptSettings.postEndInnerFormat}/>
 
     <Check bind:check={DBState.db.promptSettings.sendChatAsSystem} name={language.sendChatAsSystem} className="mt-4"/>
     <Check bind:check={DBState.db.promptSettings.sendName} name={language.formatGroupInSingle} className="mt-4"/>
@@ -285,34 +285,30 @@
         <OptionInput value="system">System</OptionInput>
         <OptionInput value="assistant">assistant</OptionInput>
     </SelectInput>
-    <span class="text-textcolor mt-4">{language.customPromptTemplateToggle} <Help key='customPromptTemplateToggle' /></span>
-    <TextAreaInput bind:value={DBState.db.customPromptTemplateToggle}/>
-    <span class="text-textcolor mt-4">{language.defaultVariables} <Help key='defaultVariables' /></span>
-    <TextAreaInput bind:value={DBState.db.templateDefaultVariables}/>
-    <span class="text-textcolor mt-4">{language.predictedOutput}</span>
-    <TextAreaInput bind:value={DBState.db.OAIPrediction}/>
-    <span class="text-textcolor mt-4">{language.autoSuggest} <Help key='autoSuggest' /></span>
-    <TextAreaInput bind:value={DBState.db.autoSuggestPrompt} placeholder={defaultAutoSuggestPrompt}/>
-    <span class="text-textcolor mt-4">{language.groupInnerFormat} <Help key='groupInnerFormat' /></span>
-    <TextAreaInput placeholder={`<{{char}}\'s Message>\n{{slot}}\n</{{char}}\'s Message>`} bind:value={DBState.db.groupTemplate}/>
-    <span class="text-textcolor mt-4">{language.systemContentReplacement} <Help key="systemContentReplacement"/></span>
-    <TextAreaInput bind:value={DBState.db.systemContentReplacement}/>
+    <span class="text-textcolor mt-4"><span id="{uid}-f2">{language.customPromptTemplateToggle}</span> <Help key='customPromptTemplateToggle' /></span>
+    <TextAreaInput labelId="{uid}-f2" bind:value={DBState.db.customPromptTemplateToggle}/>
+    <span class="text-textcolor mt-4"><span id="{uid}-f3">{language.defaultVariables}</span> <Help key='defaultVariables' /></span>
+    <TextAreaInput labelId="{uid}-f3" bind:value={DBState.db.templateDefaultVariables}/>
+    <span class="text-textcolor mt-4" id="{uid}-f4">{language.predictedOutput}</span>
+    <TextAreaInput labelId="{uid}-f4" bind:value={DBState.db.OAIPrediction}/>
+    <span class="text-textcolor mt-4"><span id="{uid}-f5">{language.autoSuggest}</span> <Help key='autoSuggest' /></span>
+    <TextAreaInput labelId="{uid}-f5" bind:value={DBState.db.autoSuggestPrompt} placeholder={defaultAutoSuggestPrompt}/>
+    <span class="text-textcolor mt-4"><span id="{uid}-f6">{language.groupInnerFormat}</span> <Help key='groupInnerFormat' /></span>
+    <TextAreaInput labelId="{uid}-f6" placeholder={`<{{char}}\'s Message>\n{{slot}}\n</{{char}}\'s Message>`} bind:value={DBState.db.groupTemplate}/>
+    <span class="text-textcolor mt-4"><span id="{uid}-f7">{language.systemContentReplacement}</span> <Help key="systemContentReplacement"/></span>
+    <TextAreaInput labelId="{uid}-f7" bind:value={DBState.db.systemContentReplacement}/>
     <span class="text-textcolor mt-4">{language.systemRoleReplacement} <Help key="systemRoleReplacement"/></span>
     <SelectInput bind:value={DBState.db.systemRoleReplacement}>
         <OptionInput value="user">User</OptionInput>
         <OptionInput value="assistant">assistant</OptionInput>
     </SelectInput>
     {#if DBState.db.jsonSchemaEnabled}
-        <span class="text-textcolor mt-4">{language.jsonSchema} <Help key='jsonSchema' /></span>
-        <TextAreaInput bind:value={DBState.db.jsonSchema}/>
-        <span class="text-textcolor mt-4">{language.extractJson} <Help key='extractJson' /></span>
-        <TextInput bind:value={DBState.db.extractJson}/>
+        <span class="text-textcolor mt-4"><span id="{uid}-f8">{language.jsonSchema}</span> <Help key='jsonSchema' /></span>
+        <TextAreaInput labelId="{uid}-f8" bind:value={DBState.db.jsonSchema}/>
+        <span class="text-textcolor mt-4"><span id="{uid}-f9">{language.extractJson}</span> <Help key='extractJson' /></span>
+        <TextInput labelId="{uid}-f9" bind:value={DBState.db.extractJson}/>
     {/if}
 
-    {#if !DBState.db.auxModelUnderModelSettings}
-        <AuxModelSelectors />
-    {/if}
-    
     {#snippet fallbackModelList(arg:'model'|'memory'|'translate'|'emotion'|'otherAx')}
         {#each DBState.db.fallbackModels[arg] as model, i}
             <span class="text-textcolor mt-4">
@@ -321,16 +317,16 @@
             <ModelList bind:value={DBState.db.fallbackModels[arg][i]} blankable />
         {/each}
         <div class="flex gap-2">
-            <button class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
+            <button aria-label={language.add} class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
                 let value = DBState.db.fallbackModels[arg] ?? []
                 value.push('')
                 DBState.db.fallbackModels[arg] = value
-            }}><PlusIcon /></button>
-            <button class="bg-red-500 text-white p-2 rounded-md" onclick={() => {
+            }}><PlusIcon aria-hidden="true" /></button>
+            <button aria-label={language.remove} class="border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor p-2 rounded-md" onclick={() => {
                 let value = DBState.db.fallbackModels[arg] ?? []
                 value.pop()
                 DBState.db.fallbackModels[arg] = value
-            }}><TrashIcon /></button>
+            }}><TrashIcon aria-hidden="true" /></button>
         </div>
     {/snippet}
 

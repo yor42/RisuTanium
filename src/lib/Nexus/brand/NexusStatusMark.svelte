@@ -20,7 +20,7 @@
          * indeterminate. From PROGRESS_MIN_SIZE (40 px) up it draws a ring; smaller marks show the percentage beside them.
          */
         progress?: number
-        /** `light` recolours the mark for light colour schemes; bind it to ColorSchemeTypeStore at integration. */
+        /** `light` recolours the mark for a light surface: pass the tone of the surface the mark sits on. */
         tone?: 'dark' | 'light'
     }
 

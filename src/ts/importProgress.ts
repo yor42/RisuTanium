@@ -1,6 +1,8 @@
 import type { ImportSource } from './importSource'
 import type { ProgressSink } from './progressSink'
 import { alertNormal } from './alert'
+import type { character, groupChat } from './storage/database.svelte'
+import type { RisuModule } from './process/modules'
 
 /**
  * What one import file reports to its task card and how it stops. The runner (`runImportBatch`) builds one per file;
@@ -22,6 +24,15 @@ export class ImportCancelled extends Error {
         this.name = 'ImportCancelled'
     }
 }
+
+/**
+ * What one commit created, for the action's Undo: the slot a character or module now occupies, or a write that no Undo
+ * covers (a Replace, a preset).
+ */
+export type ImportCreated =
+    | { kind: 'character', slot: character | groupChat }
+    | { kind: 'module', slot: RisuModule }
+    | { kind: 'notUndoable', why: 'replace' | 'preset' }
 
 /** One item's asset count: a closed total is set once and never changes; `saved` adds one after a save resolves. */
 export interface AssetTally {
@@ -55,8 +66,17 @@ export interface ImportProgress {
      * it throws `ImportCancelled` and the caller writes nothing. Later calls in the round return at once.
      */
     beforeWrite(): void
-    /** This file's library write happened; Retry never re-runs a file that fired it. */
-    committed(): void
+    /**
+     * This file's library write happened; Retry never re-runs a file that fired it. `created` names what the write added
+     * (the exact slot, read in the same synchronous stretch as the write) or why it cannot be undone; a bare call sets the
+     * marker and records nothing.
+     */
+    committed(created?: ImportCreated): void
+    /**
+     * A module import's duplicate question was answered for this file and the file goes on (a skip is not reported).
+     * `replace` is true when the answer replaces an installed module. It is called before the file's first write.
+     */
+    decided(replace: boolean): void
     /** A success line: `alertNormal` without a card, kept for the result card with one. */
     notice(text: string): void
     /** The same gate, signal and marker, with no steps or sinks of its own, for a flow nested inside this one. */
@@ -80,6 +100,7 @@ export const NO_IMPORT_PROGRESS: ImportProgress = {
     throwIfCancelled: () => { },
     beforeWrite: () => { },
     committed: () => { },
+    decided: () => { },
     notice: (text) => alertNormal(text),
     nested: () => NO_IMPORT_PROGRESS,
     round: { number: 0, index: 0, count: 1 },
@@ -102,8 +123,9 @@ export interface ImportProgressContext {
     readonly bytes: ProgressSink
     readonly count: ProgressSink
     readonly found: ProgressSink
-    onCommitted(): void
+    onCommitted(created?: ImportCreated): void
     onNotice(text: string): void
+    onDecided?(replace: boolean): void
 }
 
 /** The tally of one item: reports to `sink` as (saved, total); a total that was set is not set again. */
@@ -154,6 +176,7 @@ export function makeImportProgress(ctx: ImportProgressContext): ImportProgress {
         throwIfCancelled,
         beforeWrite: gate,
         committed: ctx.onCommitted,
+        decided: (replace) => ctx.onDecided?.(replace),
         notice: ctx.onNotice,
         nested: () => ({
             signal: ctx.signal,
@@ -165,6 +188,7 @@ export function makeImportProgress(ctx: ImportProgressContext): ImportProgress {
             throwIfCancelled,
             beforeWrite: gate,
             committed: ctx.onCommitted,
+            decided: (replace) => ctx.onDecided?.(replace),
             notice: ctx.onNotice,
             nested: () => progress.nested(),
             round: ctx.round,

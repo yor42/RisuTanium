@@ -100,10 +100,39 @@ export function isArchivedChat(chat: Chat): boolean {
     return typeof first === 'string' && first.startsWith(coldStorageHeader)
 }
 
+// Private-use characters stand in for a set-aside macro, so no markdown pass can match the slot.
+const MACRO_OPEN = String.fromCharCode(0xE000)
+const MACRO_CLOSE = String.fromCharCode(0xE001)
+const MACRO_SLOT = new RegExp(`${MACRO_OPEN}(\\d+)${MACRO_CLOSE}`, 'g')
+
+/**
+ * Markdown the chat renders as formatting, reduced to its text. Emphasis,
+ * code, links, images, headings, quotes, list markers and code fences go;
+ * text that only looks like markup (`snake_case`, `5 * 3`) stays. Every
+ * `{{...}}` span is set aside first and put back verbatim, so a macro is
+ * never rewritten and emphasis never pairs across one.
+ */
+function stripMarkdown(text: string): string {
+    const macros: string[] = []
+    const masked = text.replace(/\{\{[\s\S]*?\}\}/g, (macro) => `${MACRO_OPEN}${macros.push(macro) - 1}${MACRO_CLOSE}`)
+    return masked
+        .replace(/^[ \t]*(?:`{3,}|~{3,})[^\n]*$/gm, '')
+        .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)/gm, '')
+        .replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+        .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+        .replace(/`([^`\n]+)`/g, '$1')
+        .replace(/\*\*([^*\n]+?)\*\*/g, '$1')
+        .replace(/(^|\W)__([^_\n]+?)__(?!\w)/g, '$1$2')
+        .replace(/~~([^~\n]+?)~~/g, '$1')
+        .replace(/\*([^*\s][^*\n]*?)\*/g, '$1')
+        .replace(/(^|\W)_([^_\n]+?)_(?!\w)/g, '$1$2')
+        .replace(MACRO_SLOT, (whole, index: string) => macros[Number(index)] ?? whole)
+}
+
 /**
  * The second line of a row: the last message as plain text with markup tags
- * dropped and white space collapsed, at most 200 characters. Expression
- * syntax in the text is left as written.
+ * and markdown formatting dropped and white space collapsed, at most 200
+ * characters. Expression syntax in the text is left as written.
  */
 export function previewLine(chat: Chat): string {
     const messages = chat.message
@@ -113,9 +142,9 @@ export function previewLine(chat: Chat): string {
     }
     // Only the head can reach the preview, so a huge message is never scanned whole.
     const head = data.slice(0, PREVIEW_LIMIT * 8)
-    return head
+    return stripMarkdown(head
         .replace(/<[^>]*>/g, '')
-        .replace(/<[^>]*$/, '')
+        .replace(/<[^>]*$/, ''))
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, PREVIEW_LIMIT)

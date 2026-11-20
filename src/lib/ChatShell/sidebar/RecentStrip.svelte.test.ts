@@ -96,6 +96,14 @@ describe('how many avatars and whether they carry names', () => {
         }
     })
 
+    test('TC3-7: a name wraps to two lines at the avatar width instead of being cut to one (class guard; the wrap itself is a device row)', () => {
+        render({ characters: [character('a', { name: 'Synthetic Longname' })], layout: 'wide' })
+        const name = target.querySelector<HTMLElement>('[data-part="strip-name"]')!
+        expect(name.classList.contains('line-clamp-2')).toBe(true)
+        expect(name.classList.contains('truncate')).toBe(false)
+        expect(name.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
+    })
+
     test('TB6: the follow layout shows no names and gives each avatar a tooltip', () => {
         render({ characters: many(), layout: 'follow' })
         expect(target.querySelectorAll('[data-part="strip-name"]').length).toBe(0)

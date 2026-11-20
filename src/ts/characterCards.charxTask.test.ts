@@ -26,6 +26,8 @@ const h = vi.hoisted(() => {
         saved: 0,
         /** held until released: the first save does not end before it */
         firstSave: null as Promise<void> | null,
+        /** held until released: no save ends before it */
+        everySave: null as Promise<void> | null,
         onSaveStart: null as null | ((n: number) => void),
         /** called before each chunk of the archive is handed to the reader */
         beforeChunk: null as null | ((index: number) => void | Promise<void>),
@@ -124,6 +126,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
             const n = h.saveStarts
             h.onSaveStart?.(n)
             if (n === 1 && h.firstSave) await h.firstSave
+            if (h.everySave) await h.everySave
             h.saved += 1
             return `asset-${n}-${data.length}`
         }),
@@ -295,6 +298,7 @@ beforeEach(() => {
     h.saveStarts = 0
     h.saved = 0
     h.firstSave = null
+    h.everySave = null
     h.onSaveStart = null
     h.beforeChunk = null
     h.pulled = 0
@@ -365,6 +369,36 @@ describe('charx read: the count while the archive is read', () => {
         //At the add the count is closed and complete.
         expect(atAdd).toMatchObject({ done: ASSET_COUNT, total: ASSET_COUNT })
         expect(atAdd?.open).not.toBe(true)
+    })
+
+    //A save that has not ended still counts its asset as found: in a real browser the read usually ends before the first
+    //save does, so the found count must come from the enqueue and not only from a finished save.
+    test.each(producers)('%s: with every save still in flight the Read step shows the found count and 0 saved', async (_label, build) => {
+        const bytes = await build()
+        h.files = [new GatedFile(bytes, 'card.charx')]
+        let releaseAll: () => void = () => {}
+        h.everySave = new Promise<void>((resolve) => { releaseAll = resolve })
+        const during: Array<{ done: number, total: number, text: string }> = []
+        h.beforeChunk = async (index) => {
+            await settle()
+            const view = taskHostView()
+            if (view?.count && view.stepIndex === 0) {
+                during.push({ done: view.count.done, total: view.count.total, text: taskAmountText(view, labels) })
+            }
+            if (index === chunkCount(bytes) - 1) {
+                releaseAll()
+            }
+        }
+        const card = await runImport()
+
+        expect(card?.result?.headline).toBe(language.importTaskImported(1))
+        expect(h.saveStarts).toBe(ASSET_COUNT)
+        const last = during.at(-1)
+        expect(last, 'expected a sample of the Read step count').toBeDefined()
+        expect(last?.done).toBe(0)
+        expect(last?.total).toBeGreaterThanOrEqual(2)
+        expect(last?.text).toBe(language.patternTaskCountFound(language.importNounAssets, 0, last?.total ?? 0))
+        expect(during.every((s) => s.done === 0)).toBe(true)
     })
 })
 

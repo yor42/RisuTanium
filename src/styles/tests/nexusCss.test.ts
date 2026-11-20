@@ -15,7 +15,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, test } from 'vitest'
 
-const BASE_STYLES_BLOB = 'd211a4955922360d27b0df0ee0cb2d9de512c584'
+const BASE_STYLES_BLOB = '7b4b961f87b4c9658209b62cf11d72c8d1a54103'
 
 // Files and folders UI-S0 adds that Tailwind scans. The pre side negates them so it
 // approximates the scan set before UI-S0; the post side scans everything.
@@ -107,6 +107,8 @@ const WRAPPERS = [
     // The device reduce-motion setting scopes token overrides on the root: on (`rm`) and the OS rule stepping aside for off (`rm-off`).
     /^:root\.rm$/,
     /^:root:not\(\.rm-off\)$/,
+    // The theme pack's fixed base: the gate sets the root attribute while a pack sheet is on, and these rules restore the judged reference.
+    /^:root:where\(\[data-theme-pack-base\]\)$/,
     /^@media /,
     /^@layer [\w-]+$/,
     /^@supports /,

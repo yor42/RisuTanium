@@ -1,5 +1,6 @@
+import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
-import { planRewrite, spliceTextEdits } from './referenceRewrite'
+import { planRewrite, spliceTextEdits, type TextEdit } from './referenceRewrite'
 import { enumerateClassifiedTargets, type CharacterTargetFields } from './referenceTargets'
 import { applyEditsTo, characterOwner, encodeCreatorNotes, luaTriggers, moduleOwner, v2Trigger } from './assetFixtures.test-helpers'
 
@@ -345,5 +346,94 @@ describe('pre-write text and overlap', () => {
         const result = plan({ desc: '{{img::a}}' }, 'asset', 'a', 'a')
         expect(result.edits).toEqual([])
         expect(result.notRewritten).toHaveLength(1)
+    })
+})
+
+describe('spliceTextEdits equals applying the edits one by one', () => {
+    // Compatibility guard (passes before and after the one-pass assembly): the reference is the edit-by-edit loop.
+    function oneByOne(text: string, edits: readonly TextEdit[]): string {
+        let result = text
+        for (const edit of edits) {
+            result = result.slice(0, edit.offset) + edit.to + result.slice(edit.offset + edit.from.length)
+        }
+        return result
+    }
+
+    // The inputs the one-pass assembly is allowed to take: every edit in range and every span ends at or before the
+    // previous edit's offset.
+    function isDescendingInRange(text: string, edits: readonly TextEdit[]): boolean {
+        let limit = text.length
+        for (const edit of edits) {
+            if (!Number.isInteger(edit.offset) || edit.offset < 0 || edit.offset + edit.from.length > limit) {
+                return false
+            }
+            limit = edit.offset
+        }
+        return true
+    }
+
+    const textArb = fc.array(fc.constantFrom('a', 'b', '{', '}'), { maxLength: 30 }).map((chars) => chars.join(''))
+    const replacementArb = fc.array(fc.constantFrom('x', 'y', '{', '}'), { maxLength: 4 }).map((chars) => chars.join(''))
+
+    // Descending, non-overlapping edits cut from consecutive sorted points; zero-length spans and equal offsets occur.
+    const validArb = textArb.chain((text) => fc.record({
+        text: fc.constant(text),
+        cuts: fc.array(fc.nat(text.length), { maxLength: 12 }).map((cuts) => cuts.slice(0, cuts.length - (cuts.length % 2)).sort((a, b) => a - b)),
+        replacements: fc.array(replacementArb, { minLength: 6, maxLength: 6 }),
+    })).map(({ text, cuts, replacements }) => {
+        const edits: TextEdit[] = []
+        for (let i = 0; i < cuts.length; i += 2) {
+            edits.push({ target: 'desc', offset: cuts[i], from: text.slice(cuts[i], cuts[i + 1]), to: replacements[i / 2] })
+        }
+        return { text, edits: edits.reverse() }
+    })
+
+    // Any order, overlap or range, including negative, past-the-end and fractional offsets.
+    const arbitraryArb = fc.record({
+        text: textArb,
+        edits: fc.array(fc.record({
+            target: fc.constant('desc'),
+            offset: fc.oneof(fc.integer({ min: -3, max: 34 }), fc.double({ min: -1, max: 5, noNaN: true })),
+            from: replacementArb,
+            to: replacementArb,
+        }), { maxLength: 6 }),
+    })
+
+    test('for descending in-range lists and for arbitrary lists alike', () => {
+        let fast = 0
+        let other = 0
+        fc.assert(
+            fc.property(fc.oneof(validArb, arbitraryArb), ({ text, edits }) => {
+                if (isDescendingInRange(text, edits)) {
+                    fast += 1
+                } else {
+                    other += 1
+                }
+                expect(spliceTextEdits(text, edits)).toBe(oneByOne(text, edits))
+            }),
+            { seed: 3404, numRuns: 2000 },
+        )
+        // Both paths are exercised: the check is not vacuous.
+        expect(fast).toBeGreaterThan(200)
+        expect(other).toBeGreaterThan(200)
+    })
+
+    test('equal-offset inserts apply later edit first, as one by one', () => {
+        const edits: TextEdit[] = [
+            { target: 'desc', offset: 2, from: '', to: 'A' },
+            { target: 'desc', offset: 2, from: '', to: 'B' },
+        ]
+        expect(spliceTextEdits('abcd', edits)).toBe('abBAcd')
+        expect(spliceTextEdits('abcd', edits)).toBe(oneByOne('abcd', edits))
+    })
+
+    test('a long text with many descending edits matches one by one', () => {
+        const text = 'x'.repeat(5000)
+        const edits: TextEdit[] = []
+        for (let offset = 4990; offset >= 0; offset -= 10) {
+            edits.push({ target: 'desc', offset, from: 'xx', to: 'longer' })
+        }
+        expect(isDescendingInRange(text, edits)).toBe(true)
+        expect(spliceTextEdits(text, edits)).toBe(oneByOne(text, edits))
     })
 })

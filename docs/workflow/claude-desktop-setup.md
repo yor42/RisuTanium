@@ -8,19 +8,23 @@ Run from `C:\Projects\RisuAI` in PowerShell with Node/npm and rustup available. 
 
 | Plugin | Server and coverage |
 |---|---|
-| `typescript-lsp@claude-plugins-official` | `typescript-language-server` plus TypeScript; TypeScript/JavaScript source. |
-| `rust-analyzer-lsp@claude-plugins-official` | `rust-analyzer`; Rust source. |
-| `svelte-lsp@risutanium-lsp` | `svelteserver` from `svelte-language-server`; `.svelte` components, through this repository's local adapter. |
+| `typescript-lsp@claude-plugins-official` | **Disabled (MC-1836, MC-2017, MC-2749):** `false` in `.claude/settings.json`; its servers held tens of GB and caused OOM kills. Steps kept below so it can be re-enabled. `typescript-language-server` plus TypeScript; TypeScript/JavaScript source. |
+| `rust-analyzer-lsp@claude-plugins-official` | Enabled: `rust-analyzer`; Rust source, the only LSP in use (MC-2749). |
+| `svelte-lsp@risutanium-lsp` | **Disabled (MC-1836, MC-2017, MC-2749)**, as above. `svelteserver` from `svelte-language-server`; `.svelte` components, through this repository's local adapter. |
 
 Anthropic's language plugins require separately installed server binaries. The Svelte adapter uses the supported inline `lspServers` manifest form; it is a local plugin, not an Anthropic-maintained plugin. [Official code intelligence](https://code.claude.com/docs/en/plugins/code-intelligence), [manifest reference](https://code.claude.com/docs/en/plugins-reference#lspservers), [Svelte language server](https://github.com/sveltejs/language-tools/tree/master/packages/language-server).
 
 ```powershell
-npm install -g typescript@5.9.3 typescript-language-server svelte-language-server
 rustup component add rust-analyzer
-
 claude plugin marketplace add anthropics/claude-plugins-official --scope project
-claude plugin install typescript-lsp@claude-plugins-official --scope project
 claude plugin install rust-analyzer-lsp@claude-plugins-official --scope project
+```
+
+Re-enable only, do not run: the TypeScript and Svelte servers are disabled by MC-2749 (re-enabling needs a maintainer decision), and installing these plugins at project scope turns them back on.
+
+```text
+npm install -g typescript@5.9.3 typescript-language-server svelte-language-server
+claude plugin install typescript-lsp@claude-plugins-official --scope project
 claude plugin marketplace add ./.claude/lsp-marketplace --scope project
 claude plugin install svelte-lsp@risutanium-lsp --scope project
 ```
@@ -40,7 +44,7 @@ claude plugin list
 
 `-MetadataOnly` checks repository wiring, not runtime readiness. The normal checker inspects installed plugin inventory and bounded server availability/version probes; it does not demonstrate an initialized LSP connection or prove diagnostics. Before installation, missing prerequisites are expected. At audit discovery, TypeScript/Svelte server binaries were absent, the Rust rustup shim could not run the missing component, and the official marketplace was absent. Installed user plugins were `codex@openai-codex` and `eli5@claude-community`. These are dated observations, not prerequisites to remove anything.
 
-In the Desktop Code session, inspect plugin errors and ask for one read-only definition/reference lookup in an existing `.ts`, `.rs` and `.svelte` file. Record actual tool availability, the source location returned and any startup failure. Open each relevant source file with Read before interpreting it. Scoped rules trigger on Read/Write/Edit, so an LSP lookup alone is insufficient to load its rule. The four rule files cover storage, Svelte, translations and tests; universal compatibility/gates remain in AGENTS.md. [Scoped-rule triggers](https://code.claude.com/docs/en/memory#path-specific-rules).
+In the Desktop Code session, inspect plugin errors and ask for one read-only definition/reference lookup in an existing `.rs` file (never `.ts` or `.svelte`: MC-1836, MC-2749). Record actual tool availability, the source location returned and any startup failure. Open each relevant source file with Read before interpreting it. Scoped rules trigger on Read/Write/Edit, so an LSP lookup alone is insufficient to load its rule. The four rule files cover storage, Svelte, translations and tests; universal compatibility/gates remain in AGENTS.md. [Scoped-rule triggers](https://code.claude.com/docs/en/memory#path-specific-rules).
 
 Successful symbol navigation is evidence for that operation, not for post-edit diagnostics. Observe diagnostics on the next authorized relevant edit and record that separately; do not introduce a source change just to finish setup. LSP results do not replace literal coverage searches, required compiler/tests or independent review. Selected source-reading agent profiles receive `LSP`; tool availability must still be checked at dispatch. A missing server blocks LSP-specific verification, not unrelated source reads or campaign work.
 

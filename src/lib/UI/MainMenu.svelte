@@ -2,7 +2,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import Hub from "./Realm/RealmMain.svelte";
     import { OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
-    import { ArrowLeft, ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
+    import { ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
     import { getVersionString, openURL } from "src/ts/globalApi.svelte";
     import { language } from "src/lang";
     import { getRisuHub, type hubType } from "src/ts/characterCards";
@@ -425,18 +425,18 @@
               cap instead of forcing a tall solid block onto tablet widths.
             -->
             <div
-              class="group relative flex min-h-[296px] lg:min-h-[380px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-borderc/10 bg-primary-500 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-primary-300 hover:bg-primary-400 hover:shadow-xl hover:shadow-darkbg/50 md:col-span-2 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:row-span-2"
+              class="group relative flex min-h-[296px] lg:min-h-[380px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-borderc/10 border-t-borderc bg-darkbg p-6 transition-all duration-300 hover:-translate-y-1 hover:border-borderc/30 hover:border-t-borderc hover:bg-selected/50 hover:shadow-xl hover:shadow-darkbg/50 md:col-span-2 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:row-span-2"
               onclick={handleCardClick}
             >
               <div class="relative z-10 mb-2 flex flex-col">
                 <button
-                  class="w-fit border-0 bg-transparent p-0 text-left text-2xl font-bold tracking-tight text-textcolor hover:underline"
+                  class="risu-focus-ring min-h-11 w-fit border-0 bg-transparent p-0 text-left text-2xl font-bold tracking-tight text-textcolor hover:underline"
                   aria-label={language.hubBrowseMore}
                   onclick={() => {
                     $OpenRealmStore = true
                   }}
                 >{language.hub}</button>
-                <span class="mt-1 block text-base leading-relaxed text-textcolor/80">{language.hubDescription}</span>
+                <span class="mt-1 block text-base leading-relaxed text-textcolor2">{language.hubDescription}</span>
               </div>
               {#if hubStatus === 'populated'}
                 <!--
@@ -470,7 +470,7 @@
                   reintroduces the shift — verify both again with real
                   measurements before changing either.
                 -->
-                <div class="relative z-10 rounded-lg bg-black/30 p-2" data-realm-preview-list>
+                <div class="relative z-10 rounded-lg bg-darkbg/30 p-2" data-realm-preview-list>
                   <div class="flex min-h-0 max-h-[150px] lg:max-h-[200px] flex-col gap-1 overflow-y-auto">
                     <!-- Clamped to 10, not the full page of results: every
                          row is its own button in the tab order, and a page
@@ -492,13 +492,13 @@
                      pending/failed/empty/offline) share one announced
                      region, so a screen reader hears the transition between
                      them, including into and out of offline. -->
-                <div role="status" aria-live="polite" class="relative z-10 flex grow flex-col items-center justify-center gap-2 text-center text-textcolor/80">
+                <div role="status" aria-live="polite" class="relative z-10 flex grow flex-col items-center justify-center gap-2 text-center text-textcolor2">
                   {#if !$upstreamAccepted}
                     <div data-testid="upstream-consent-placeholder" class="flex flex-col items-center gap-2">
                       <span>{language.upstreamConsentPlaceholder}</span>
                       <button
                         data-testid="upstream-consent-accept"
-                        class="transition-all duration-300 hover:-translate-y-1"
+                        class="risu-focus-ring min-h-11 rounded-md bg-selected px-4 text-textcolor hover:bg-selected/50"
                         onclick={(event) => {
                           event.stopPropagation();
                           // Only asks; the acceptance effect above is the sole thing that loads
@@ -515,12 +515,12 @@
                     <span>{language.hubOffline}</span>
                     <button
                       aria-disabled="true"
-                      class="cursor-not-allowed opacity-50"
+                      class="risu-focus-ring min-h-11 cursor-not-allowed rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor opacity-50"
                       onclick={(event) => { event.stopPropagation(); }}
                     >{language.hubRetry}</button>
                   {:else if hubStatus === 'failed'}
                     <span>{language.hubLoadFailed}</span>
-                    <button class="transition-all duration-300 hover:-translate-y-1" onclick={(event) => { event.stopPropagation(); loadHubPreview(); }}>{language.hubRetry}</button>
+                    <button class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={(event) => { event.stopPropagation(); loadHubPreview(); }}>{language.hubRetry}</button>
                   {:else if hubStatus === 'empty'}
                     <span>{language.hubEmpty}</span>
                   {/if}
@@ -561,11 +561,6 @@
       {/if}
 
       {:else}
-        <div class="flex items-center mt-4">
-          <button class="mr-2 text-textcolor2 hover:text-green-500" onclick={() => ($OpenRealmStore = false)}>
-            <ArrowLeft/>
-          </button>
-        </div>
         <Hub />
       {/if}
   </div>

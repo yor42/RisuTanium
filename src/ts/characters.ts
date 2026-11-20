@@ -1,9 +1,10 @@
 import { get, writable } from "svelte/store";
 import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCurrentChat, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
-import { alertAddCharacter, alertClear, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
+import { alertAddCharacter, alertClear, alertConfirm, alertError, alertNormal, alertSelect, alertStore } from "./alert";
 import { ALERT_SELECT_CANCEL } from "./alertCancel";
 import { language } from "../lang";
 import { downloadNotice } from "./exportNotice";
+import { createExportTask, pickerAside, type ExportTask } from "./exportTask";
 import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, readPickedFileBytes, selectMultipleFileObjects, selectSingleFile, selectSingleFileObject } from "./util";
 import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "./storage/pickedAssetLimit";
 import { v4 as uuidv4, v4 } from 'uuid';
@@ -16,7 +17,7 @@ import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from "./process/mod
 import { hasModuleStubs, unloadedModulesOf } from "./process/moduleRefList";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
-import { importCharacter } from "./characterCards";
+import { importCharacter, type ImportReport } from "./characterCards";
 import { PngChunk } from "./pngChunk";
 import { findChaIdHolders, restoreColdCharacter, type ColdRestoreFailure } from "./process/coldCharacterRestore";
 import { getAvatarThumbSrc, isThumbEligible, THUMB_ABORTED, type ThumbAborted, type ThumbRequestOptions } from "./media/avatarThumb";
@@ -357,7 +358,34 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 }
 
 
+const PAINT_YIELD_INTERVAL_MS = 50
+const PAINT_YIELD_COST_FACTOR = 4
+
+/**
+ * The export card must be able to paint its message count during a long export. Message parsing resolves through
+ * microtasks only, so the loop hands the browser a real task boundary once enough wall time has passed since the
+ * last one resumed; a fast export never yields. The wait is at least `PAINT_YIELD_INTERVAL_MS` and at least
+ * `PAINT_YIELD_COST_FACTOR` times the last yield's duration, so a yield that pays for a heavy render is not repeated
+ * every message and yields cost at most about 1/(1+factor) of the loop time.
+ */
+function createPaintYield(): () => Promise<void> {
+    let last = performance.now()
+    let lastYieldMs = 0
+    return async () => {
+        const now = performance.now()
+        if(now - last < Math.max(PAINT_YIELD_INTERVAL_MS, PAINT_YIELD_COST_FACTOR * lastYieldMs)){
+            return
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        const resumed = performance.now()
+        lastYieldMs = resumed - now
+        last = resumed
+    }
+}
+
 export async function exportChat(page:number){
+    // The card of the HTML modes only: instant modes and every stop before the render never create it.
+    let task: ExportTask<'messages' | 'write'> | null = null
     try {
 
         const mode = await alertSelect([language.alerts.exportAsJson, language.alerts.exportAsTxt, language.alerts.exportAsHtmlFile, language.alerts.exportAsHtmlEmbed], undefined, { cancel: ALERT_SELECT_CANCEL })
@@ -463,14 +491,32 @@ export async function exportChat(page:number){
 
             let chatContentHTML = ''
 
+            const card = createExportTask<'messages' | 'write'>({
+                title: language.chatExportTaskTitle,
+                subtitle: char.name,
+                steps: [
+                    { id: 'messages', label: language.chatExportStepMessages, noun: language.chatShellMessages },
+                    { id: 'write', label: language.exportStepWrite },
+                ],
+            })
+            task = card
+            card.useToken(null)
+            card.open()
+            const total = chat.message.length
+            if(total > 0){
+                card.count(0, total)
+            }
+            const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
-                alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
+                const parsed = await htmlChatParse(v.data)
                 chatContentHTML += `<div class="chat">
                     <h2>${escapeHtmlText(name)}</h2>
-                    <div>${await htmlChatParse(v.data)}</div>
+                    <div>${parsed}</div>
                 </div>`
+                card.count(++i, total)
+                await paintYield()
             }
 
             const doc = `
@@ -528,24 +574,46 @@ export async function exportChat(page:number){
             `
 
 
-            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.html', Buffer.from(doc, 'utf-8'))
+            card.step('write')
+            // On Android the card steps aside right before the system picker opens, so no card covers it.
+            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.html', Buffer.from(doc, 'utf-8'), { aroundPicker: pickerAside(card) })
             if(!saved){
-                alertClear()
+                card.close()
                 return
             }
+            card.done(downloadNotice(language.successExport))
+            return
         }
         else if(mode === '3'){
             //create a html table
             let chatContentHTML = ''
 
+            const card = createExportTask<'messages' | 'write'>({
+                title: language.chatCopyTaskTitle,
+                subtitle: char.name,
+                steps: [
+                    { id: 'messages', label: language.chatExportStepMessages, noun: language.chatShellMessages },
+                    { id: 'write', label: language.chatCopyStepCopy },
+                ],
+            })
+            task = card
+            card.useToken(null)
+            card.open()
+            const total = chat.message.length
+            if(total > 0){
+                card.count(0, total)
+            }
+            const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
-                alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
+                const parsed = await htmlChatParse(v.data)
                 chatContentHTML += `<tr>
                     <td>${escapeHtmlText(name)}</td>
-                    <td>${await htmlChatParse(v.data)}</td>
+                    <td>${parsed}</td>
                 </tr>`
+                card.count(++i, total)
+                await paintYield()
             }
 
             const template = `
@@ -565,13 +633,14 @@ export async function exportChat(page:number){
 
             //copy to clipboard
 
+            card.step('write')
             const item = new ClipboardItem({
                 'text/html': new Blob([template], { type: 'text/html' }),
                 'text/plain': new Blob([template], { type: 'text/plain' })
             })
             await navigator.clipboard.write([item])
 
-            alertNormal(language.clipboardSuccess)
+            card.done(language.clipboardSuccess)
             return
 
         }
@@ -599,7 +668,14 @@ export async function exportChat(page:number){
         }
         alertNormal(downloadNotice(language.successExport))
     } catch (error) {
-        alertError(error)
+        if(task){
+            task.endOnError(error, undefined)
+        }
+        else{
+            alertError(error)
+        }
+    } finally {
+        task?.close()
     }
 }
 
@@ -1541,6 +1617,15 @@ export async function trashCharacters(picked: { characters: readonly (character 
     if(doomed.length === 0){
         return 0
     }
+    return trashSlotsNow(doomed, picked.folders, report)
+}
+
+/**
+ * The writes of a trash, in one synchronous stretch: stop the work in each slot, stamp `trashTime`, record the origins,
+ * dissolve the picked folders in the order, repair the order, mark every slot for saving and deselect a trashed
+ * selection. `doomed` is already checked (listed, visible, untrashed). Returns the number trashed.
+ */
+function trashSlotsNow(doomed: (character | groupChat)[], folders: readonly folder[], report?: TrashReport): number {
     const selectedBefore = get(selectedCharID)
     const selectedRef = selectedBefore >= 0 ? DBState.db.characters[selectedBefore] : undefined
     const now = Date.now()
@@ -1549,12 +1634,12 @@ export async function trashCharacters(picked: { characters: readonly (character 
         c.trashTime = now
     }
     // Before the folder splices: a picked folder is dissolved below, so nothing is recorded against it.
-    recordTrashOrigins(DBState.db, doomed, now, picked.folders)
+    recordTrashOrigins(DBState.db, doomed, now, folders)
     const batch: TrashedBatch = { at: now, chaIds: chaIdsInOrderPosition(doomed, DBState.db.characterOrder) }
     const trashedIds = new Set(doomed.map((c) => c.chaId))
     const order = DBState.db.characterOrder
     if(order){
-        for(const entry of picked.folders){
+        for(const entry of folders){
             const at = order.findIndex((item) => item === entry)
             if(at !== -1){
                 order.splice(at, 1, ...entry.data.filter((id) => !trashedIds.has(id)))
@@ -1570,6 +1655,20 @@ export async function trashCharacters(picked: { characters: readonly (character 
     }
     reportTrashed(report, batch)
     return doomed.length
+}
+
+/**
+ * Moves characters an import created to the trash with no confirmation: the import's Undo already asked. The caller
+ * resolved each slot by reference from the live list; one that is no longer listed or is already trashed is left alone.
+ * Nothing but the character records is written (no asset, inlay or store call). Returns the number trashed.
+ */
+export function trashImportedCharacters(slots: readonly (character | groupChat)[]): number {
+    const present = new Set(DBState.db.characters)
+    const doomed = [...new Set(slots)].filter((c) => present.has(c) && !c.trashTime)
+    if(doomed.length === 0){
+        return 0
+    }
+    return trashSlotsNow(doomed, [])
 }
 
 /** A caller's own confirmation for `removeChatConfirmed`: it gets the chat and the advisory working flag. */
@@ -1730,6 +1829,7 @@ export async function addCharacter(arg:{
     }
     reseter();
     let added: character | groupChat | undefined
+    const report: ImportReport = {}
     switch(r){
         case 'createfromScratch':
             added = DBState.db.characters[createNewCharacter()]
@@ -1738,13 +1838,14 @@ export async function addCharacter(arg:{
             added = DBState.db.characters[createNewGroup()]
             break
         case 'importCharacter':
-            added = (await importCharacter()).at(-1)
+            added = (await importCharacter(report)).at(-1)
             break
         default:
             return
     }
     //Only a slot this call added is selected, found again by identity because the list can change during an import; nothing added leaves the selection as it was.
-    if(!added){
+    //An import that was sent to the background never moves the user when it ends.
+    if(!added || report.backgrounded){
         return
     }
     const index = DBState.db.characters.indexOf(added)

@@ -1,3 +1,4 @@
+import type { BrandStatus } from '../../lib/Nexus/brand/brandStatus'
 import { recordCaughtError } from '../caughtErrors'
 
 /**
@@ -23,7 +24,12 @@ export interface ToastConfig {
     undoMs: number
     /** An undo run unsettled this long takes the failure path. */
     undoRunTimeoutMs: number
+    /** A task toast that finished cleanly hides after this long; `DEFAULT_TASK_DONE_MS` when omitted. */
+    taskDoneMs?: number
 }
+
+/** Kept apart from `DEFAULT_TOAST_CONFIG` so that object keeps naming only the plain-toast settings. */
+export const DEFAULT_TASK_DONE_MS = 6000
 
 export const DEFAULT_TOAST_CONFIG: Readonly<ToastConfig> = Object.freeze({
     maxVisible: 3,
@@ -77,6 +83,41 @@ export interface ToastView {
     readonly pending: boolean
 }
 
+export type TaskToastPhase = 'running' | 'done' | 'stays'
+
+/** What a task toast shows. The host copies it; a caller changes it only through `updateTask`. */
+export interface TaskToastContent {
+    readonly title: string
+    readonly line: string
+    readonly mark: BrandStatus
+    readonly fraction: number
+    readonly determinate: boolean
+    readonly badge: boolean
+    /** `done` hides after the clean-finish hold; `stays` never hides; `running` has no timer. */
+    readonly phase: TaskToastPhase
+    readonly openLabel: string
+}
+
+export interface TaskToastAnnouncement {
+    readonly text: string
+    readonly assertive?: boolean
+}
+
+export interface TaskToastInit extends TaskToastContent {
+    readonly announce?: TaskToastAnnouncement
+    onOpen(): void
+    /** The toast ended by the user (`dismissed`) or by its hold (`hidden`); never called for `endTask`. */
+    onEnd(why: 'dismissed' | 'hidden'): void
+}
+
+export interface TaskToastView extends TaskToastContent {
+    readonly id: ToastId
+    /** False while the entry is collapsed behind "+N". */
+    readonly shown: boolean
+    /** True only for the newest entry. */
+    readonly newest: boolean
+}
+
 /** `seq` counts the writes of one live region, so identical consecutive texts still render as a new node. */
 export interface Announcement {
     readonly text: string
@@ -122,6 +163,30 @@ export interface ToastHost {
     clearHolds(): void
     /** The Undo button. */
     activate(id: ToastId): Promise<void>
+    /**
+     * Task toasts are a second list beside the plain toasts: updated in place, never queued or evicted, and
+     * showing the newest two. Plain admission, caps and the queue never see them. Ids come from the plain counter.
+     */
+    postTask(init: TaskToastInit): ToastId
+    /** An unknown id changes nothing. A changed field increments `version` once; an identical update does not. */
+    updateTask(id: ToastId, content: TaskToastContent, announce?: TaskToastAnnouncement): void
+    /**
+     * The owner removes the toast: `onEnd` is not called. `returnFocus: false` makes the view skip its focus
+     * return for that removal (`takeFocusReturnSkip`). An unknown id changes nothing.
+     */
+    endTask(id: ToastId, opts?: { returnFocus?: boolean }): void
+    /** The Dismiss button: removes the toast, then calls `onEnd('dismissed')`. */
+    dismissTask(id: ToastId): void
+    /** The Open button: calls the entry's `onOpen` (a throw is logged); the entry stays until its owner ends it. */
+    openTask(id: ToastId): void
+    /** Oldest first, collapsed entries included (`shown` false). */
+    readonly tasks: readonly TaskToastView[]
+    /** The count behind "+N". */
+    readonly tasksHidden: number
+    readonly tasksExpanded: boolean
+    toggleTasksExpanded(): void
+    /** View seam: true once after an `endTask(..., { returnFocus: false })` that removed an entry. */
+    takeFocusReturnSkip(): boolean
     count(): { visible: number, queued: number, suspenders: number, pausers: number }
     holds(): { hover: boolean, focus: boolean }
     reset(): void
@@ -142,6 +207,29 @@ interface Entry {
     cancel: (() => void) | null
     ended: boolean
 }
+
+interface TaskEntry {
+    readonly id: ToastId
+    content: TaskToastContent
+    readonly onOpen: () => void
+    readonly onEnd: (why: 'dismissed' | 'hidden') => void
+    /** False while collapsed behind "+N"; a collapsed entry's timer does not run. */
+    shown: boolean
+    remaining: number | null
+    startedAt: number | null
+    cancel: (() => void) | null
+    ended: boolean
+}
+
+/** The timer fields both entry kinds share. */
+interface Timed {
+    remaining: number | null
+    startedAt: number | null
+    cancel: (() => void) | null
+}
+
+/** How many task toasts show while collapsed. */
+const TASK_VISIBLE = 2
 
 type Region = 'polite' | 'assertive'
 
@@ -209,10 +297,21 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
             throw new Error('toast config: ' + key + ' must be positive')
         }
     }
+    if (cfg.taskDoneMs !== undefined && !(cfg.taskDoneMs > 0)) {
+        throw new Error('toast config: taskDoneMs must be positive')
+    }
+    const taskDoneMs = cfg.taskDoneMs ?? DEFAULT_TASK_DONE_MS
 
     // Source of truth for shown toasts (plain, mutated in place); `shown` is the published copy.
     let entries: Entry[] = []
     let queue: Entry[] = []
+    // The task toasts, oldest first; `shownTasks` and the two counters below are their published copy.
+    let taskEntries: TaskEntry[] = []
+    let expandedTasks = false
+    let focusReturnSkip = false
+    let shownTasks = $state<TaskToastView[]>([])
+    let hiddenTasks = $state(0)
+    let expandedTasksPublished = $state(false)
     let shown = $state<ToastView[]>([])
     let version = $state(0)
     let suspended = $state(false)
@@ -248,9 +347,16 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         }
     }
 
-    /** Every mutation of `visible` or `suspended` ends here. */
+    function toTaskView(entry: TaskEntry, index: number, all: TaskEntry[]): TaskToastView {
+        return { ...entry.content, id: entry.id, shown: entry.shown, newest: index === all.length - 1 }
+    }
+
+    /** Every mutation of `visible`, the task list or `suspended` ends here. */
     function touch(): void {
         shown = entries.map(toView)
+        shownTasks = taskEntries.map(toTaskView)
+        hiddenTasks = taskEntries.filter((entry) => !entry.shown).length
+        expandedTasksPublished = expandedTasks
         versionCounter += 1
         version = versionCounter
     }
@@ -294,7 +400,12 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         return entry.remaining !== null && !isSuspended && !isPaused && !hold.hover && !hold.focus && !entry.pending && !entry.ended
     }
 
-    function pauseTimer(entry: Entry): void {
+    /** A task timer runs only while its entry shows, so a collapsed entry keeps its time. */
+    function shouldRunTask(entry: TaskEntry): boolean {
+        return entry.remaining !== null && entry.shown && !isSuspended && !isPaused && !hold.hover && !hold.focus && !entry.ended
+    }
+
+    function pauseTimer(entry: Timed): void {
         if (entry.cancel === null) {
             return
         }
@@ -306,19 +417,26 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         entry.startedAt = null
     }
 
-    function startTimer(entry: Entry): void {
+    function startTimer(entry: Timed, onExpire: () => void): void {
         if (entry.cancel !== null || entry.remaining === null) {
             return
         }
         entry.startedAt = clock.now()
-        entry.cancel = clock.after(entry.remaining, () => expire(entry))
+        entry.cancel = clock.after(entry.remaining, onExpire)
     }
 
     /** Starts or pauses each timer according to the current holds, suspension and pending state. */
     function reconcile(): void {
         for (const entry of entries) {
             if (shouldRun(entry)) {
-                startTimer(entry)
+                startTimer(entry, () => expire(entry))
+            } else {
+                pauseTimer(entry)
+            }
+        }
+        for (const entry of taskEntries) {
+            if (shouldRunTask(entry)) {
+                startTimer(entry, () => expireTask(entry))
             } else {
                 pauseTimer(entry)
             }
@@ -378,7 +496,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         for (const entry of ended) {
             removeEntry(entry)
         }
-        if (entries.length === 0) {
+        if (entries.length === 0 && taskEntries.length === 0) {
             hold = { hover: false, focus: false }
         }
         releaseQueue()
@@ -504,6 +622,154 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         if (matches.length > 0) {
             endEntries(matches)
         }
+    }
+
+    /** The newest two show unless expanded; two or fewer entries always show and reset the expansion. */
+    function layoutTasks(): void {
+        if (taskEntries.length <= TASK_VISIBLE) {
+            expandedTasks = false
+        }
+        const first = expandedTasks ? 0 : Math.max(0, taskEntries.length - TASK_VISIBLE)
+        taskEntries.forEach((entry, index) => {
+            entry.shown = index >= first
+        })
+    }
+
+    function publishTasks(): void {
+        layoutTasks()
+        reconcile()
+        touch()
+        flushAnnouncements()
+    }
+
+    function removeTask(entry: TaskEntry): void {
+        if (entry.cancel !== null) {
+            entry.cancel()
+            entry.cancel = null
+        }
+        entry.startedAt = null
+        entry.ended = true
+        taskEntries = taskEntries.filter((candidate) => candidate !== entry)
+        if (entries.length === 0 && taskEntries.length === 0) {
+            hold = { hover: false, focus: false }
+        }
+    }
+
+    /** A callback runs after the state is published, and a throw never reaches the host's caller. */
+    function runTaskCallback(run: () => void): void {
+        try {
+            run()
+        } catch (error) {
+            recordCaughtError('toast.task', error)
+        }
+    }
+
+    function queueTaskAnnouncement(announce: TaskToastAnnouncement | undefined): void {
+        if (announce !== undefined) {
+            queueAnnouncement(announce.assertive === true ? 'assertive' : 'polite', announce.text)
+        }
+    }
+
+    function sameContent(a: TaskToastContent, b: TaskToastContent): boolean {
+        return a.title === b.title && a.line === b.line && a.mark === b.mark && a.fraction === b.fraction
+            && a.determinate === b.determinate && a.badge === b.badge && a.phase === b.phase && a.openLabel === b.openLabel
+    }
+
+    function copyContent(content: TaskToastContent): TaskToastContent {
+        const { title, line, mark, fraction, determinate, badge, phase, openLabel } = content
+        return { title, line, mark, fraction, determinate, badge, phase, openLabel }
+    }
+
+    function expireTask(entry: TaskEntry): void {
+        entry.cancel = null
+        entry.startedAt = null
+        if (!taskEntries.includes(entry)) {
+            return
+        }
+        removeTask(entry)
+        publishTasks()
+        runTaskCallback(() => entry.onEnd('hidden'))
+    }
+
+    function postTask(init: TaskToastInit): ToastId {
+        const entry: TaskEntry = {
+            id: nextId,
+            content: copyContent(init),
+            onOpen: init.onOpen,
+            onEnd: init.onEnd,
+            shown: true,
+            remaining: init.phase === 'done' ? taskDoneMs : null,
+            startedAt: null,
+            cancel: null,
+            ended: false,
+        }
+        nextId += 1
+        taskEntries = [...taskEntries, entry]
+        queueTaskAnnouncement(init.announce)
+        publishTasks()
+        return entry.id
+    }
+
+    function updateTask(id: ToastId, content: TaskToastContent, announce?: TaskToastAnnouncement): void {
+        const entry = taskEntries.find((candidate) => candidate.id === id)
+        if (entry === undefined) {
+            return
+        }
+        queueTaskAnnouncement(announce)
+        if (sameContent(entry.content, content)) {
+            flushAnnouncements()
+            return
+        }
+        if (entry.content.phase !== content.phase) {
+            // Entering done starts the clean-finish hold; leaving it drops the timer.
+            pauseTimer(entry)
+            entry.remaining = content.phase === 'done' ? taskDoneMs : null
+        }
+        entry.content = copyContent(content)
+        publishTasks()
+    }
+
+    function endTask(id: ToastId, opts: { returnFocus?: boolean } = {}): void {
+        const entry = taskEntries.find((candidate) => candidate.id === id)
+        if (entry === undefined) {
+            return
+        }
+        if (opts.returnFocus === false) {
+            focusReturnSkip = true
+        }
+        removeTask(entry)
+        publishTasks()
+    }
+
+    function dismissTask(id: ToastId): void {
+        const entry = taskEntries.find((candidate) => candidate.id === id)
+        if (entry === undefined) {
+            return
+        }
+        removeTask(entry)
+        publishTasks()
+        runTaskCallback(() => entry.onEnd('dismissed'))
+    }
+
+    function openTask(id: ToastId): void {
+        const entry = taskEntries.find((candidate) => candidate.id === id)
+        if (entry !== undefined) {
+            runTaskCallback(() => entry.onOpen())
+        }
+    }
+
+    function toggleTasksExpanded(): void {
+        if (taskEntries.length <= TASK_VISIBLE) {
+            return
+        }
+        expandedTasks = !expandedTasks
+        publishTasks()
+    }
+
+    function takeFocusReturnSkip(): boolean {
+        const skip = focusReturnSkip
+        focusReturnSkip = false
+        return skip
     }
 
     function setSuspended(): void {
@@ -700,6 +966,17 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
             cancel()
         }
         runCancels.clear()
+        for (const entry of taskEntries) {
+            if (entry.cancel !== null) {
+                entry.cancel()
+                entry.cancel = null
+            }
+            entry.startedAt = null
+            entry.ended = true
+        }
+        taskEntries = []
+        expandedTasks = false
+        focusReturnSkip = false
         entries = []
         queue = []
         tokens.clear()
@@ -739,6 +1016,16 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         setHold,
         clearHolds,
         activate,
+        postTask,
+        updateTask,
+        endTask,
+        dismissTask,
+        openTask,
+        get tasks() { return shownTasks },
+        get tasksHidden() { return hiddenTasks },
+        get tasksExpanded() { return expandedTasksPublished },
+        toggleTasksExpanded,
+        takeFocusReturnSkip,
         count: () => ({ visible: entries.length, queued: queue.length, suspenders: tokens.size, pausers: pauseTokens.size }),
         holds: () => ({ ...hold }),
         reset,

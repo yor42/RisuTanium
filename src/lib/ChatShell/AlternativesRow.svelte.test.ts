@@ -12,6 +12,7 @@ vi.mock('../../lang', () => ({ language: {
 } }))
 
 import AlternativesRow from './AlternativesRow.svelte'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 let target: HTMLElement
 let app: ReturnType<typeof AlternativesRow> | undefined
@@ -28,6 +29,26 @@ afterEach(async () => {
     app = undefined
     stepSibling.mockClear()
     regenerateNewest.mockClear()
+})
+
+describe('TC2-4 alternatives icons', () => {
+    // Regression reproducer: the arrows, the new-reply mark and the end control were text glyphs.
+    test('arrows, new reply and the end control are aria-hidden icons; the labels and the count stay text', async () => {
+        await import('@lucide/svelte')
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(AlternativesRow, { target, props: { idx: 2, expectedId: 'reply', index: 3, count: 3, continuation: 2 } })
+        flushSync()
+        expect(glyphsIn(target)).toEqual([])
+        expect(lucideNames(target.querySelector('[data-step="prev"]')!)).toEqual(['lucide-chevron-left'])
+        expect(lucideNames(target.querySelector('[data-step="next"]')!)).toEqual(['lucide-chevron-right'])
+        expect(lucideNames(target.querySelector('[data-action="newReply"]')!)).toEqual(['lucide-refresh-cw'])
+        expect(lucideNames(target.querySelector('[data-action="endControl"]')!)).toEqual(['lucide-list-end'])
+        expect(iconsIn(target).every((svg) => svg.getAttribute('aria-hidden') === 'true')).toBe(true)
+        expect(target.querySelector('[data-action="newReply"]')!.textContent?.trim()).toBe('New reply')
+        expect(target.querySelector('[data-action="endControl"]')!.textContent?.trim()).toBe('2')
+        expect(target.querySelector('[aria-live="polite"]')!.textContent).toBe('3 / 3')
+    }, 120_000)
 })
 
 describe('T3 alternatives controls', () => {

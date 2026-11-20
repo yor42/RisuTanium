@@ -170,15 +170,15 @@ body {
   --FontColorQuote1: #8c8d93;
   --FontColorQuote2: #8c8d93;
   --risu-animation-speed: 0.2s;
-  --risu-theme-bgcolor: #282a36;
-  --risu-theme-darkbg: #21222c;
-  --risu-theme-borderc: #6272a4;
-  --risu-theme-selected: #44475a;
-  --risu-theme-draculared: #ff5555;
-  --risu-theme-textcolor: #f5f5f5;
-  --risu-theme-textcolor2: #64748b;
-  --risu-theme-darkborderc: #4b5563;
-  --risu-theme-darkbutton: #374151;
+  --risu-theme-bgcolor: #151836;
+  --risu-theme-darkbg: #0f112a;
+  --risu-theme-borderc: #6f7fc8;
+  --risu-theme-selected: #2f3670;
+  --risu-theme-draculared: #ff6b81;
+  --risu-theme-textcolor: #eef0ff;
+  --risu-theme-textcolor2: #a6b0d4;
+  --risu-theme-darkborderc: #3c4478;
+  --risu-theme-darkbutton: #242a52;
   --risu-height-size: 100%;
   --risu-font-family: Arial, sans-serif, serif;
 
@@ -390,7 +390,107 @@ body {
 }
 
 .x-risu-button-default {
-  @apply border text-textcolor rounded-md shadow-xs focus:outline-hidden focus:ring-2 transition-colors duration-200 border-darkborderc px-4 py-2 bg-darkbutton hover:bg-borderc focus:ring-borderc;
+  @apply border text-textcolor rounded-md shadow-xs transition-colors duration-200 border-darkborderc px-4 py-2 bg-darkbutton hover:bg-borderc;
+}
+
+/*
+ * The hovered CBS button text. The card hovers to the scheme borderc fill, so its text comes from the
+ * scheme's derived on-borderc role, which stays readable on that fill. It sits under the same
+ * hover-capable media query as the fill, so a touch device keeps the resting text. The compound
+ * selector outranks the class's own colour utility.
+ */
+@media (hover: hover) {
+  .x-risu-button-default:hover {
+    color: var(--risu-theme-role-on-borderc, #000000);
+  }
+}
+
+/*
+ * The classic keyboard focus ring. Classic surfaces stay on the user's colour scheme even while a
+ * theme pack is on, so this reads the scheme role and never `--nexus-ring`. The ring is guaranteed
+ * on bgcolor, darkbg and darkbutton only. Width and offset stay inside the CHORE-738 ring limits.
+ * It is unlayered, so a caller's utility class cannot remove it.
+ */
+.risu-focus-ring:focus-visible,
+.x-risu-button-default:focus-visible,
+.risu-focus-ring-within:focus-within,
+.peer:focus-visible ~ .risu-focus-ring-peer {
+  outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
+  outline-offset: 0;
+}
+
+/*
+ * The same ring drawn inside a container whose child has keyboard focus, for a segment of a group
+ * that clips overflow (an outline outside the segment would be cut off). Keyboard focus only.
+ */
+.risu-focus-ring-inset-within:has(:focus-visible) {
+  outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
+  outline-offset: -2px;
+}
+
+/*
+ * The text on the selected primary Button fill. It comes from the scheme even while a theme pack is
+ * on, and the scheme derives it to stay readable on the selected colour. It is unlayered, so it wins
+ * over the button's own text utility.
+ */
+.risu-on-selected {
+  color: var(--risu-theme-role-on-selected, #eef0ff);
+}
+
+/*
+ * The categorical module-state glyphs. Classic module surfaces stay on the user's colour scheme even
+ * while a theme pack is on, so these read the scheme's derived state roles, which stay at least 3:1
+ * on the scheme's page and panel colours. They are unlayered, so they win over any utility colour:
+ * amber's hover therefore lives here, under the same hover-capable media query Tailwind uses, so a
+ * touch device gets no sticky hover colour.
+ */
+.risu-state-amber {
+  color: var(--risu-theme-role-state-amber, #fe9a00);
+}
+
+.risu-state-violet {
+  color: var(--risu-theme-role-state-violet, #8e51ff);
+}
+
+@media (hover: hover) {
+  .risu-state-amber:hover {
+    color: var(--color-textcolor);
+  }
+}
+
+/*
+ * The text on the danger fills (rest, selected and hover). It comes from the scheme even while a theme
+ * pack is on, and the scheme derives it to stay readable on all three red fills. It is unlayered, so it
+ * wins over the button's own text utility.
+ */
+.risu-on-danger {
+  color: var(--risu-theme-role-on-danger, #ffffff);
+}
+
+/*
+ * Prose list markers paint the list item's own text colour on every scheme and every prose surface. The
+ * typography plugin's grey marker colours fall below 3:1 on all built-in schemes. It is unlayered, so it
+ * wins over the plugin's utilities-layer declarations.
+ */
+.prose {
+  --tw-prose-bullets: currentColor;
+  --tw-prose-counters: currentColor;
+}
+
+/*
+ * The inline link of a classic dialog. It reads the scheme accent, which the scheme derives to stay at
+ * least 4.5:1 on its page and panel colours, and hover or focus moves to the scheme text colour under
+ * the same hover-capable media query Tailwind uses, so a touch device gets no sticky hover colour.
+ */
+.risu-link {
+  color: var(--risu-theme-role-accent, #6f7fc8);
+}
+
+@media (hover: hover) {
+  .risu-link:hover,
+  .risu-link:focus-visible {
+    color: var(--color-textcolor);
+  }
 }
 
 .loadmove {

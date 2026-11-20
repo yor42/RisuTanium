@@ -6,8 +6,8 @@
 //   N2  var() is exactly var(--name): no fallback, set apart from the text around it, naming a token that has a value.
 //   N3  every length is px or rem, only allow-listed functions compute a value, percent appears only where the engine
 //       reads it; the rules judge the written value and every value var() reaches, app token values included.
-// plus the font size, line height, bounded-token and font family rules. The engine is untouched; this pass only adds
-// refusals. Colour readings (oklch, hwb, lab and the like on focus and contrast checks) are not closed here.
+// plus the font size, line height, bounded-token and font family rules (MC-2542: an unbundled family warns, a symbol font
+// is refused). The engine is untouched; this pass only adds refusals and warnings. Colour readings (oklch, hwb, lab and the like on focus and contrast checks) are not closed here.
 import { decls, type Decl } from './csslit'
 import { normalise, type LintError } from './engine'
 import { FAMILY_IDENT, FAMILY_IDENT_REASON, GENERIC_FAMILIES } from './fontFace'
@@ -16,8 +16,12 @@ import { tokenFile, type TokenFile } from './tokens'
 
 /** The font tokens a pack may set, judged as font-family wherever they are declared or reached. */
 export const FONT_TOKENS: readonly string[] = ['--font', '--mono', '--settings-font', '--home-font', '--home-mono', '--studio-font-mono', '--chat-message-font']
-/** Font tokens whose value may name only the pack's own families, generic families and --pack-* helpers that resolve to those: a var() of any app token is refused, even one the pack sets itself. */
+/** Font tokens whose var() items may name only --pack-* helpers the pack declares (MC-1822): a var() of any app token is refused, even one the pack sets itself. Their names follow Rule F like any other (MC-2547). */
 export const STRICT_FONT_TOKENS: readonly string[] = ['--chat-message-font']
+/** The symbol fonts a pack may not name (MC-2542), as `familyKey` writes them: they draw pictures in place of letters. */
+export const SYMBOL_FONTS: ReadonlySet<string> = new Set(['wingdings', 'wingdings 2', 'wingdings 3', 'webdings', 'symbol', 'marlett', 'zapf dingbats', 'itc zapf dingbats', 'segoe mdl2 assets', 'segoe fluent icons', 'segoe ui symbol'])
+/** A family name as the symbol-font list compares it: whitespace runs collapsed, trimmed, lower case. */
+const familyKey = (name: string): string => name.replace(/\s+/g, ' ').trim().toLowerCase()
 /** Tokens the engine bounds only through its largest-number reading: each must be one plain length (rule B). */
 export const BOUNDED_TOKENS: readonly string[] = ['--size-touch-lg', '--size-touch', '--font-size-sm', '--font-size-md', '--font-size-base', '--sheet-padding-x', '--sheet-padding-bottom', '--control-padding-x', '--item-padding-x', '--item-gap', '--focus-ring-w', '--focus-ring-w-forced']
 
@@ -148,6 +152,14 @@ function stripImportant(v: string): string {
 const siteOf = (d: Decl): string => (d.ctx.at.length ? `${d.ctx.at.join(' ')} ${d.ctx.selector.trim()}` : d.ctx.selector.trim()).trim()
 const isPlainRoot = (d: Decl): boolean => d.ctx.selector.trim() === ':root' && d.ctx.at.length === 0
 
+// A bare `html` entry (0,0,1) loses to a plain :root value (0,1,0) whatever the at-rule; a list that also names :root
+// still applies its value through that entry, so only a list without :root loses.
+const htmlWithoutRoot = (selector: string): boolean => {
+    const entries = selector.split(',').map((s) => s.trim())
+    return entries.includes('html') && !entries.includes(':root')
+}
+const HTML_HELPER_WHY = 'a --pack-* helper set on bare html never applies, because its :root value outranks html; set the value on :root, or on html[data-input] or html[data-layout] for one input or layout (MC-2586)'
+
 interface TokenSite { value: string, plain: boolean }
 
 /** The token index the rules share: every pack declaration of each custom property, and the resolver R. */
@@ -204,17 +216,30 @@ export function tokenValues(canon: string, name: string, env: ValueEnv, withApp 
     return buildIndex(text, env, decls(text)).R(name, withApp)
 }
 
-export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
+/** What the value rules found: `errors` refuse the sheet; `warnings` are notes the install shows and never change a verdict. */
+export interface ValueVerdict {
+    errors: LintError[]
+    warnings: LintError[]
+}
+
+export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
     const text = normalise(canon)
     const all = decls(text)
     const { sites, R, known, chain } = buildIndex(text, env, all)
     const errors: LintError[] = []
+    const warnings: LintError[] = []
     const seen = new Set<string>()
+    const warned = new Set<string>()
     const push = (selector: string, prop: string, why: string) => {
         const key = `${selector}|${prop}|${why}`
         if (!seen.has(key)) { seen.add(key); errors.push({ selector, prop, why }) }
     }
     const report = (d: Decl, why: string) => push(d.ctx.selector.trim() || '(stylesheet)', d.prop, why)
+    const warn = (d: Decl, why: string) => {
+        const selector = d.ctx.selector.trim() || '(stylesheet)'
+        const key = `${selector}|${d.prop}|${why}`
+        if (!warned.has(key)) { warned.add(key); warnings.push({ selector, prop: d.prop, why }) }
+    }
 
     const operand = (a: string, depth: number): boolean => {
         const t = a.trim()
@@ -305,10 +330,23 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
     const FONT_SIZE_REASON = 'a font size must be one px or rem length above 0, a CSS-wide keyword or a token of those (no percent, keyword, function or zero): the checks measure only plain lengths (MC-1549, MC-1555)'
     const LINE_HEIGHT_REASON = 'a line height must be a plain number, a px or rem length, normal or a CSS-wide keyword (MC-1555)'
 
-    // Rule F: a font family list names only the pack's own @font-face families and the generic families.
-    const familyReason = (name: string): string => `font family "${name}" is not allowed: a pack may name only its own @font-face families and the generic families (MC-1550)`
+    // Rule F (MC-2542): a family name the pack registers passes, a generic family passes, any other ASCII name warns that the
+    // pack does not bundle it, and a name on the symbol-font list is refused. Every other malformed item is refused.
+    const unbundledReason = (name: string): string => `font family "${name}" is not bundled with the pack: it shows only on devices that have it installed, and others use the next family in the list, so end the list with a generic family such as serif, sans-serif or monospace (MC-2542, MC-2543)`
+    const symbolReason = (name: string): string => `font family "${name}" is not allowed: it is a symbol font, which draws pictures in place of letters (MC-1550, MC-2542)`
+    const asciiReason = (name: string): string => `font family "${name}" is not allowed: a family name must be written in ASCII (MC-1550, MC-1568)`
+    const varFamilyReason = (ref: string): string => `font family "var(${ref})" is not allowed: var() in a font family list must name a token the pack declares or an app font token; in --chat-message-font only a --pack-* helper the pack declares (MC-1550, MC-1822)`
+    const varChainReason = (ref: string): string => `font family "var(${ref})" is not allowed: it refers back to itself or forms a chain longer than the checks follow (MC-1550)`
+    /** One name that is not a generic family: registered passes, a symbol font is refused, any other warns. */
+    const judgeName = (name: string, out: string[], notes: string[]) => {
+        if (env.ownFamilies.has(name)) return
+        const key = familyKey(name)
+        if (SYMBOL_FONTS.has(key)) out.push(symbolReason(key))
+        else notes.push(unbundledReason(name))
+    }
     // In strict mode a var() item passes only as a --pack-* helper the pack declares; its values are judged strictly too.
-    const judgeFamilies = (list: string, depth: number, active: ReadonlySet<string>, out: string[], strict = false) => {
+    // The name rules are the same in strict mode (MC-2547): a name in --chat-message-font warns or is refused like any other.
+    const judgeFamilies = (list: string, depth: number, active: ReadonlySet<string>, out: string[], notes: string[], strict = false) => {
         const whole = list.trim()
         if (CSS_WIDE.has(whole)) return
         for (const item of splitTop(whole, ',')) {
@@ -317,19 +355,20 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             const quoted = /^(?:"([^"\\\n]*)"|'([^'\\\n]*)')$/.exec(it)
             if (quoted) {
                 const name = quoted[1] ?? quoted[2]
-                if (/[^\u0000-\u007f]/.test(name) || !env.ownFamilies.has(name)) out.push(familyReason(name))
+                if (/[^\u0000-\u007f]/.test(name)) out.push(asciiReason(name))
+                else judgeName(name, out, notes)
                 continue
             }
             const ref = VAR_EXACT.exec(it)
             if (ref) {
                 const declared = sites.get(ref[1])
-                if (strict && !ref[1].startsWith('--pack-')) out.push(familyReason(`var(${ref[1]})`))
+                if (strict && !ref[1].startsWith('--pack-')) out.push(varFamilyReason(ref[1]))
                 else if (!declared) {
-                    if (!FONT_TOKENS.includes(ref[1])) out.push(familyReason(`var(${ref[1]})`))
-                } else if (depth > MAX_DEPTH || active.has(ref[1])) out.push(familyReason(`var(${ref[1]})`))
+                    if (!FONT_TOKENS.includes(ref[1])) out.push(varFamilyReason(ref[1]))
+                } else if (depth > MAX_DEPTH || active.has(ref[1])) out.push(varChainReason(ref[1]))
                 else {
                     const next = new Set(active).add(ref[1])
-                    for (const s of declared) judgeFamilies(s.value, depth + 1, next, out, strict)
+                    for (const s of declared) judgeFamilies(s.value, depth + 1, next, out, notes, strict)
                 }
                 continue
             }
@@ -340,9 +379,8 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             }
             if (bad) continue
             if (words.length === 1 && GENERIC_FAMILIES.has(words[0])) continue
-            // A run of words is one family name; a generic or CSS-wide word inside it makes it a name only if the pack registers it.
-            const name = words.join(' ')
-            if (!env.ownFamilies.has(name)) out.push(familyReason(name))
+            // A run of words is one family name, even with a generic or CSS-wide word inside it: registered passes, a symbol font is refused, any other name warns.
+            judgeName(words.join(' '), out, notes)
         }
     }
 
@@ -356,6 +394,7 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
         if (custom) {
             if (d.prop === '--pack-') report(d, 'the bare name --pack- is not a helper token: add a name after the prefix, for example --pack-gap (DD-258)')
             else if (!d.prop.startsWith('--pack-') && !isPlainRoot(d)) report(d, `${d.prop} is set on ${siteOf(d)}: a pack may set tokens only on :root; for a value that changes with the input or layout, set a --pack-* helper there and point the token at it on :root (MC-1565)`)
+            else if (d.prop.startsWith('--pack-') && htmlWithoutRoot(d.ctx.selector) && sites.get(d.prop)?.some((s) => s.plain)) warn(d, HTML_HELPER_WHY)
             if (value.includes('!')) report(d, `"!" is not allowed in a token value (${d.prop}): the browser drops or reorders the declaration in a way the checks do not read (MC-1564)`)
             if (value === '') report(d, `${d.prop} may not be empty: the browser then uses a value the checks do not see; give it a value or remove the declaration (MC-1549)`)
             else if (CSS_WIDE.has(value)) report(d, `${d.prop} may not be ${value}: the browser then uses a value the checks do not see; write the value out (MC-1549)`)
@@ -399,28 +438,34 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             if (!everyForm(value, lineHeightTerminal, 0, new Set())) report(d, LINE_HEIGHT_REASON)
         } else if (d.prop === 'font-family') {
             const out: string[] = []
-            judgeFamilies(value, 0, new Set(), out)
+            const notes: string[] = []
+            judgeFamilies(value, 0, new Set(), out, notes)
             for (const why of out) report(d, why)
+            for (const why of notes) warn(d, why)
         } else if (d.prop === 'font' && !CSS_WIDE.has(value)) {
             if (/var\(/.test(value)) report(d, 'var() is not allowed in the font shorthand: write font-family and font-size separately (MC-1556)')
             else {
                 const split = splitFontShorthand(value)
-                if (!split) report(d, SYSTEM_FONTS.has(value.split(/\s+/)[0]) ? `the font shorthand may not name a system font (${value.slice(0, 40)}): a pack may name only its own @font-face families and the generic families (MC-1550)` : 'the font shorthand needs a size and a family (MC-1550)')
+                if (!split) report(d, SYSTEM_FONTS.has(value.split(/\s+/)[0]) ? `the font shorthand may not be a system font keyword (${value.slice(0, 40)}): the device chooses its size and family, which the checks do not know; write the size and family out (MC-1550)` : 'the font shorthand needs a size and a family (MC-1550)')
                 else {
                     if (!everyForm(split.size, fontSizeTerminal, 0, new Set())) report(d, FONT_SIZE_REASON)
                     if (split.lineHeight !== undefined && !everyForm(split.lineHeight, lineHeightTerminal, 0, new Set())) report(d, LINE_HEIGHT_REASON)
                     if (split.family === '') report(d, 'the font shorthand needs a size and a family (MC-1550)')
                     else {
                         const out: string[] = []
-                        judgeFamilies(split.family, 0, new Set(), out)
+                        const notes: string[] = []
+                        judgeFamilies(split.family, 0, new Set(), out, notes)
                         for (const why of out) report(d, why)
+                        for (const why of notes) warn(d, why)
                     }
                 }
             }
         } else if (custom && FONT_TOKENS.includes(d.prop)) {
             const out: string[] = []
-            judgeFamilies(value, 0, new Set([d.prop]), out, STRICT_FONT_TOKENS.includes(d.prop))
+            const notes: string[] = []
+            judgeFamilies(value, 0, new Set([d.prop]), out, notes, STRICT_FONT_TOKENS.includes(d.prop))
             for (const why of out) report(d, why)
+            for (const why of notes) warn(d, why)
         }
 
         // rule B: the bounded tokens are one plain length
@@ -467,5 +512,5 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             for (const why of judgeFamilyList(stripImportant(d.value))) report(d, why)
         }
     }
-    return errors
+    return { errors, warnings }
 }

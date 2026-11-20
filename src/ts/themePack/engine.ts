@@ -137,7 +137,7 @@ export const SIZE_CEILINGS: Record<string, string> = (() => {
         ...px('font-size-2xs font-size-xs font-size-sm font-size-md font-size-base font-size-lg', '24px'), ...px('font-size-xl', '28px'), ...px('font-size-2xl', '40px'),
         ...px('bubble-pad-y bubble-pad-start bubble-pad-end', '48px'), ...px('radius-bubble radius-bubble-tail', '32px'), ...px('stroke-medium stroke-bold stroke-heavy stroke-xheavy', '8px') }
 })()
-export const SHARED_MAXIMUMS: Record<string, string | number> = { ...SIZE_CEILINGS, '--opacity-dim': 1, '--opacity-soft': 1, '--nexus-focus-ring-width': '8px', '--nexus-focus-ring-offset': '8px', '--focus-ring-w': '4px', '--focus-ring-w-forced': '4px', '--focus-ring-offset-inset': '6px', '--focus-ring-offset-wide': '6px', '--nexus-touch': '72px', '--nexus-blur': '40px', '--nexus-duration-press': '600ms', '--nexus-duration-enter': '600ms', '--nexus-duration-exit': '600ms',
+export const SHARED_MAXIMUMS: Record<string, string | number> = { ...SIZE_CEILINGS, '--opacity-dim': 1, '--opacity-soft': 1, '--nexus-focus-ring-width': '4px', '--nexus-focus-ring-offset': '6px', '--focus-ring-w': '4px', '--focus-ring-w-forced': '4px', '--focus-ring-offset-inset': '6px', '--focus-ring-offset-wide': '6px', '--nexus-touch': '72px', '--nexus-blur': '40px', '--nexus-duration-press': '600ms', '--nexus-duration-enter': '600ms', '--nexus-duration-exit': '600ms',
     '--nexus-duration-lowpower-cap': '600ms', '--nexus-scrim-duration': '600ms', '--nexus-dialog-enter-distance': '48px', '--nexus-sheet-enter-distance': '48px' }
 // chat's own role tokens (DD-148 role block, DD-153 decoration hooks, the bubble hooks of DD-018/Banana Cocoa, the named sizes) and its non-ladder scales. The numbered ladder (--space-N, --size-N, --offset-N, --size-rel-N, --radius-N, --leading-N) is NOT listed.
 export const CHAT_SETTABLE: NameMatch[] = [/^--(control-gap|control-padding-x|header-height|transcript-padding-(top|top-strip|x|bottom)|message-(gap|meta-gap|name-row-height|inset-start)|composer-(gap|padding-x|padding-y|field-padding-x|field-padding-y|field-height)|sheet-padding-(x|bottom)|item-gap|item-padding-x|row-padding-(start|end)|status-row-padding-start)$/,
@@ -323,6 +323,10 @@ function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
     const control = tier === 'reach' && sp.length > 0 && sp.every((p) => reg.controls.has(p))
     return { why, ok: syntax && why.length === 0, tier, rootOnly, sp, control, pseudo: subj ? subj.pseudo : '' }
 }
+/** The tier the engine gives one selector in a registry (root, safe or reach), including the safe context of a user or system message. */
+export function selectorTier(sel: string, registry?: RegistryInput): 'root' | 'safe' | 'reach' | undefined {
+    return analyse(sel, effective(registry)).tier
+}
 // DD-243: a rule in a focus state (:focus-visible, :focus-within) may add to the indication but not take it away: no outline at all (see lintOnce), and no border or shadow that is none or fully transparent
 const colourWords = (v: string): Rgba[] => [...v.matchAll(/#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g)].map((m) => parseConcrete(m[0])).filter((c): c is Rgba => Boolean(c))
 function focusLoss(prop: string, value: string, T: TokenMap): string {
@@ -385,7 +389,10 @@ function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | u
         return /^[\d.]+$/.test(r.trim()) && (n < 1 || n > 3) ? 'a line height outside 1 to 3' : /px|rem|em/.test(r) && maxLen(v, T) < 11 ? 'a line height under 11 px' : ''
     }
     if (prop === 'letter-spacing') return maxLen(v, T) > 2 ? 'letter spacing beyond 2 px' : ''
-    if (/^(width|max-width)$/.test(prop)) return /^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%)$/.test(v) || (/^\d+(\.\d+)?%$/.test(v) && parseFloat(v) >= 50) ? '' : `a ${prop} that can collapse the surface`
+    // a max-width of 320 px or more (#316) is never narrower than the 50% already accepted on the 360 px phone the checks model
+    if (/^(width|max-width)$/.test(prop)) return /^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%)$/.test(v) || (/^\d+(\.\d+)?%$/.test(v) && parseFloat(v) >= 50) || (prop === 'max-width' && /^\d+(\.\d+)?(px|rem)$/.test(v) && parseFloat(v) * (v.endsWith('rem') ? 16 : 1) >= 320) ? '' : `a ${prop} that can collapse the surface`
+    // these only size, place or tile the background inside the element's own box; every colour of the background is judged on its own (#315)
+    if (/^background-(size|position(-x|-y)?|repeat)$/.test(prop)) return ''
     if (/^(padding|margin)(-(top|right|bottom|left|inline|block)(-(start|end))?)?$|^(gap|row-gap|column-gap)$/.test(prop)) {
         const r = resolve(v, T)
         if (/(^|[\s(*\/])-\s*[\d.]|\*\s*-\s*[\d.]/.test(r)) return `negative ${prop} on a surface that can hold a protected element`
@@ -471,8 +478,9 @@ const VALUES: ValueSpace = (() => {
     const COLOUR_RE = /#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g
     // every colour a value mentions (gradient stops included); words that are not colours (to, linear-gradient, 50%) are skipped; any other bare word that is not a colour is an undefined entry.
     // The scan splits a value into words, so a color-mix() in a declaration is never read as one colour: its words (color, mix, srgb) are unknown and the value is refused. Teaching this scan color-mix means judging the resolved mix as ONE colour, with the verdict of the same colour written as hex.
+    // A repeating gradient reads as the gradient it repeats, and repeat-x / repeat-y as one keyword; each is dropped whole, so the bare words repeating, x and y stay unknown.
     function coloursIn(v: string, T: TokenMap): (Rgba | undefined)[] {
-        const r = resolve(v, T).replace(/!important/, '')
+        const r = resolve(v, T).replace(/!important/, '').replace(/(^|[\s,(])repeating-(?=(?:linear|radial|conic)-gradient\()/g, '$1').replace(/(^|[\s,\/])repeat-[xy](?=[\s,]|$)/g, '$1')
         const out: (Rgba | undefined)[] = []
         for (const m of r.matchAll(COLOUR_RE)) {
             const w = m[0]
@@ -919,8 +927,8 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
                     continue
                 }
             }
-            // DD-242: a selector that names no part (a data-kind, data-state or data-fail attribute) can match a protected surface itself, so it may not paint a background
-            if (a.tier === 'reach' && !(a.sp || []).length && /^(background|background-color|background-image)$/.test(d.prop)) {
+            // DD-242: a selector that names no part (a data-kind, data-state or data-fail attribute) can match a protected surface itself, so it may not paint a background or size, place or tile the one the app gives it
+            if (a.tier === 'reach' && !(a.sp || []).length && /^(background|background-color|background-image|background-(size|position(-x|-y)?|repeat))$/.test(d.prop)) {
                 fail(sel, d.prop, 'a background on a selector that names no part can match a protected surface directly (DD-242): name a part instead')
                 continue
             }

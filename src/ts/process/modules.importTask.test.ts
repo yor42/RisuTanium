@@ -174,7 +174,7 @@ vi.mock('src/ts/process/moduleLoader', () => ({
 }))
 
 import { importModule } from 'src/ts/process/modules'
-import { answerTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import { answerTask, confirmTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskConfirmShowing, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskClock, TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { inFlightKinds } from 'src/ts/process/inFlightWork'
@@ -211,6 +211,7 @@ async function importToResult(): Promise<{ done: Promise<void>, view: TaskView |
     let ended = false
     void done.then(() => { ended = true })
     for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        if (taskConfirmShowing()) confirmTask()
         await new Promise((resolve) => setTimeout(resolve, 0))
     }
     return { done, view: taskResultShowing() ? taskHostView() : null }
@@ -482,7 +483,7 @@ describe('Retry and the legacy surfaces', () => {
         h.beforeRead = (file, start) => { if (start === 0) reads[file] = (reads[file] ?? 0) + 1 }
         h.saveHook = () => { if (h.saves[h.saves.length - 1] === patterned(10, 2)[0]) h.saveFailures = 1 }
         const { done, view } = await importToResult()
-        expect(view?.result?.actions?.map((a) => a.id), 'expected a Retry action').toEqual(['retry'])
+        expect(view?.result?.actions?.map((a) => a.id), 'expected Undo before Retry').toEqual(['undo', 'retry'])
         expect(names()).toEqual(['A', 'C'])
         h.saveHook = null
         answerTask({ kind: 'action', id: 'retry' })
@@ -621,13 +622,13 @@ describe('duplicates, the commit marker and the module screens', () => {
         expect(h.selectLog).toEqual([6, 3])
     })
 
-    test('the module screens are told to reload once, after the result card is answered', async () => {
+    test('the module screens are told to reload once, when the replacing round ends and before the result card is answered', async () => {
         h.modules = [installed('ida', 'D')]
         h.files = [json('d.json', 'D')]
         h.selectAnswer = '0'
         const { done, view } = await importToResult()
         expect(view?.result?.headline).toBe(language.importTaskImported(1))
-        expect(h.bumps).toEqual([])
+        expect(h.bumps).toEqual([false])
         await answerOk(done)
         expect(h.bumps).toEqual([false])
     })

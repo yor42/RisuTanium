@@ -12,6 +12,8 @@
 
     let { item, ctx }: Props = $props();
 
+    const uid = $props.id();
+
     let localValue: any = $state(untrack(() => getSettingValue(item, ctx)));
 
     // Sync: DB → local (one-way read)
@@ -32,10 +34,11 @@
 </script>
 
 <span class="text-textcolor {item.classes ?? ''}">
-    {getLabel(item)}
+    <span id="{uid}-label">{getLabel(item)}</span>
     {#if item.helpKey}<Help key={item.helpKey as any}/>{/if}
 </span>
 <TextInput
+    labelId="{uid}-label"
     marginBottom={true}
     size="sm"
     bind:value={localValue}

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from 'vitest'
-import { isTopmostShell, makeInert, registerShell, returnFocus, tabbables, trapTab, watchFocus } from './patternFocus'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { ANNOUNCE_SETTLE_MS, afterFrameSettle, isTopmostShell, makeInert, registerShell, returnFocus, tabbables, trapTab, watchFocus } from './patternFocus'
 
 let host: HTMLElement
 
@@ -54,6 +54,66 @@ describe('trapTab', () => {
         expect(trapTab(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true }), root)).toBe(true)
         expect(document.activeElement).toBe(root)
         outside.remove()
+    })
+
+    // R307-13
+    test('Shift+Tab from a non-tabbable heading before the first control wraps to the last control', () => {
+        const root = build('<h2 id="title" tabindex="-1">Title</h2><button id="a">a</button><button id="b">b</button>')
+        document.getElementById('title')!.focus()
+        expect(document.activeElement?.id).toBe('title')
+        const event = tab(true)
+        expect(trapTab(event, root)).toBe(true)
+        expect(event.defaultPrevented).toBe(true)
+        expect(document.activeElement?.id).toBe('b')
+    })
+
+    test('Shift+Tab from a non-tabbable element after the first control is left to the browser', () => {
+        const root = build('<button id="a">a</button><p id="mid" tabindex="-1">mid</p><button id="b">b</button>')
+        document.getElementById('mid')!.focus()
+        expect(trapTab(tab(true), root)).toBe(false)
+    })
+})
+
+describe('afterFrameSettle', () => {
+    // R307-8
+    test('runs once, one frame plus the settle after the call, not before', () => {
+        vi.useFakeTimers()
+        try {
+            const callback = vi.fn()
+            afterFrameSettle(callback)
+            vi.advanceTimersByTime(ANNOUNCE_SETTLE_MS)
+            expect(callback).not.toHaveBeenCalled()
+            vi.advanceTimersByTime(20)
+            expect(callback).toHaveBeenCalledTimes(1)
+            vi.advanceTimersByTime(5000)
+            expect(callback).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    test('takes its own delay, and the returned function cancels before or after the frame', () => {
+        vi.useFakeTimers()
+        try {
+            const late = vi.fn()
+            afterFrameSettle(late, 500)
+            vi.advanceTimersByTime(300)
+            expect(late).not.toHaveBeenCalled()
+            vi.advanceTimersByTime(300)
+            expect(late).toHaveBeenCalledTimes(1)
+
+            const beforeFrame = vi.fn()
+            afterFrameSettle(beforeFrame)()
+            const afterFrame = vi.fn()
+            const cancel = afterFrameSettle(afterFrame)
+            vi.advanceTimersByTime(30)
+            cancel()
+            vi.advanceTimersByTime(1000)
+            expect(beforeFrame).not.toHaveBeenCalled()
+            expect(afterFrame).not.toHaveBeenCalled()
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })
 

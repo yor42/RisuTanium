@@ -11,6 +11,7 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
+import { controlDescription, controlName, controls } from 'src/lib/a11yNames.test-helpers'
 
 type ModeFields = { visibleModes: string[]; hideUnusedModes: boolean }
 
@@ -150,5 +151,53 @@ describe('HomeModeSwitcher', () => {
         DBState.db = { visibleModes: ['rp'], hideUnusedModes: true } as unknown as typeof DBState.db
         flushSync()
         expect(root.querySelector('fieldset')).toBeNull()
+    })
+})
+
+/**
+ * Name-level reproducers only: they read the attributes a screen reader computes from, not what
+ * Android TalkBack speaks. The Note 9 rows N3 (radios) and the hand check on the final APK are the
+ * acceptance. Radios are named by `aria-label` equal to the visible mode name, because TalkBack
+ * speaks `aria-label` in the control's own stop and does not speak the wrapping label.
+ */
+describe('HomeModeSwitcher accessible names', () => {
+    const modeNames: Record<string, string> = {
+        rp: language.settingsShellModesNameRp,
+        hybrid: language.settingsShellModesNameHybrid,
+        utility: language.settingsShellModesNameUtility,
+    }
+
+    test('regression reproducer: every radio, enabled or held, is named by its mode name', () => {
+        const root = mountSwitcher()
+        const radios = controls(root)
+        expect(radios).toHaveLength(3)
+        for (const mode of Object.keys(modeNames)) {
+            const input = radio(root, mode)
+            expect(controlName(input)).toBe(modeNames[mode])
+            expect(input.getAttribute('aria-label')).toBe(modeNames[mode])
+            expect(input.hasAttribute('aria-labelledby')).toBe(false)
+        }
+    })
+
+    test('regression reproducer: held radios are described as coming later and the enabled one is not', () => {
+        const root = mountSwitcher()
+        expect(controlDescription(radio(root, 'rp'))).toBe('')
+        expect(radio(root, 'rp').hasAttribute('aria-describedby')).toBe(false)
+        for (const held of ['hybrid', 'utility']) {
+            expect(controlDescription(radio(root, held))).toBe(language.homeModeComingLater)
+        }
+    })
+
+    test('regression reproducer: two mounted switchers share no description id', () => {
+        const first = mountSwitcher()
+        const second = mountSwitcher()
+        const idsOf = (root: HTMLElement) => Array.from(root.querySelectorAll('input[aria-describedby]'))
+            .flatMap((input) => (input.getAttribute('aria-describedby') ?? '').split(/\s+/))
+        const firstIds = idsOf(first)
+        const secondIds = idsOf(second)
+        expect(firstIds).toHaveLength(2)
+        expect(secondIds).toHaveLength(2)
+        expect(new Set([...firstIds, ...secondIds]).size).toBe(4)
+        expect(controlDescription(radio(second, 'hybrid'))).toBe(language.homeModeComingLater)
     })
 })

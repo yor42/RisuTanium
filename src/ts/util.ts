@@ -14,6 +14,8 @@ import { isTauriDesktop } from "src/ts/tauriDesktop"
 import type { Attachment } from "svelte/attachments"
 import { mount, unmount, type Snippet } from "svelte"
 import PopupList from "src/lib/UI/PopupList.svelte"
+import { markPickReturned, rememberPickOpener, returnFocusToPickOpener } from "./pickOpener"
+import { openKeypairStoreDB } from "./storage/nodeKey"
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 export interface Messagec extends Message{
@@ -283,7 +285,13 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
         }
 
 
-        // Nothing picked (a closed chooser, or a confirmed empty selection) resolves [] once and removes the input.
+        // The chooser takes focus off the button that opened it. This picker keeps its own opener, so a late finish of an
+        // older picker never acts on a newer picker's remembered button.
+        const active = document.activeElement
+        const opener = active instanceof HTMLElement && active !== document.body ? active : null
+
+        // Nothing picked (a closed chooser, or a confirmed empty selection) resolves [] once, removes the input and gives
+        // focus back to the opener; a pick hands the opener to the card that follows.
         let settled = false
         const finish = (files: File[]) => {
             if (settled) {
@@ -291,6 +299,11 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
             }
             settled = true
             fileInput.remove()
+            if (files.length > 0) {
+                markPickReturned()
+            } else {
+                returnFocusToPickOpener(opener)
+            }
             resolve(files)
         }
 
@@ -310,6 +323,7 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
         fileInput.addEventListener('cancel', () => finish([]));
 
         document.body.appendChild(fileInput);
+        rememberPickOpener(opener)
         fileInput.click();
         fileInput.style.display = 'none'; // Hide the file input element
     });
@@ -1050,22 +1064,6 @@ export class Semaphore {
             this.available += 1
         }
     }
-}
-
-export function openKeypairStoreDB(name:string):Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open("DPoPDB", 1);
-
-        request.onupgradeneeded = (event) => {
-            const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains(name || "DPoPStore")) {
-                db.createObjectStore(name || "DPoPStore");
-            }
-        };
-
-        request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-        request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
-    });
 }
 
 export async function saveKeypairStore(name:string, keyPair: CryptoKeyPair) {

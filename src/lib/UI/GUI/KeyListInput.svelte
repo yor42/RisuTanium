@@ -1,7 +1,7 @@
 <div class="flex flex-col gap-1" class:mb-4={marginBottom}>
     {#each rows as row, i (row.id)}
         <input
-            class={"border border-darkborderc peer focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 w-full" + ((className) ? (' ' + className) : '')}
+            class={"border border-darkborderc peer focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent risu-focus-ring transition-colors duration-200 w-full" + ((className) ? (' ' + className) : '')}
             class:text-sm={size === 'sm'}
             class:text-md={size === 'md'}
             class:text-lg={size === 'lg'}

@@ -1,18 +1,18 @@
-<button title={name+' '+language.showHelp} class="relative help inline-flex items-center cursor-default hover:text-green-500" style="vertical-align: -2px;" onclick={() => {
+<button title={name+' '+language.showHelp} aria-label={(name ? name + ' ' : '') + language.showHelp} class="relative help inline-flex items-center cursor-default text-textcolor2 hover:text-textcolor" style="vertical-align: -2px;" onclick={() => {
     alertMd(language.help[key])
 }}>
     
     {#if key === "experimental"}
-        <div class="text-red-500 hover:text-green-500">
-            <FlaskConicalIcon size={16} />
+        <div class="text-draculared hover:text-textcolor">
+            <FlaskConicalIcon size={16} aria-hidden="true" />
         </div>
     {:else if unrecommended}
-        <div class="text-red-500 hover:text-green-500">
-            <TriangleAlert size={14} />
+        <div class="text-draculared hover:text-textcolor">
+            <TriangleAlert size={14} aria-hidden="true" />
         </div>
     {:else}
-        <CircleQuestionMarkIcon size={14} />
-    {/if}    
+        <CircleQuestionMarkIcon size={14} aria-hidden="true" />
+    {/if}
 </button>
 <script lang="ts">
     import { TriangleAlert, FlaskConicalIcon, CircleQuestionMarkIcon } from "@lucide/svelte";

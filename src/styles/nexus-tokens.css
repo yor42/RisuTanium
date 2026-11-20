@@ -1,38 +1,40 @@
 /*
   DEEP NEXUS tokens. Plain CSS, so it works without a build step;
-  nexus.css maps the same variables into Tailwind. Values are static: they do not follow the
-  user's colour scheme (--risu-theme-*), and nothing here switches themes.
+  nexus.css maps the same variables into Tailwind. Colours follow the user's colour scheme:
+  directly through --risu-theme-* and through the derived --risu-theme-role-* names that
+  updateColorScheme writes (each reference carries the built-in Default's value as its fallback).
+  A theme pack's :root declarations still win over these.
 */
 /* Registered so the ambient bloom can crossfade between modes. */
 @property --nexus-canvas-warm { syntax: '<color>'; inherits: true; initial-value: rgb(255 154 122 / 0.13); }
 
 :root {
-  /* Canvas: a darker abyss with the original #00023B kept as a soft bloom. */
-  --nexus-canvas: #00011c;
-  --nexus-canvas-bloom: #00023b;
-  /* A second, warm bloom low on the canvas, so the abyss reads as lit from below rather than empty. */
-  --nexus-canvas-warm: rgb(255 154 122 / 0.13);
+  /* Canvas: the scheme's background. The bloom and the warm glow are off by default; a pack may declare them. */
+  --nexus-canvas: var(--risu-theme-bgcolor);
+  --nexus-canvas-bloom: transparent;
+  /* A second, warm bloom low on the canvas, for a pack that wants the canvas lit from below. */
+  --nexus-canvas-warm: transparent;
 
   /* Glass surfaces over the canvas. */
-  --nexus-surface: rgb(255 255 255 / 0.03);
-  --nexus-surface-raised: rgb(255 255 255 / 0.06);
+  --nexus-surface: var(--risu-theme-darkbg);
+  --nexus-surface-raised: var(--risu-theme-darkbutton);
   /* Used instead of blur in low-power mode or with reduced transparency. */
-  --nexus-surface-flat: rgb(14 15 42 / 0.94);
-  --nexus-edge: rgb(255 255 255 / 0.07);
-  --nexus-edge-strong: rgb(255 255 255 / 0.16);
-  --nexus-field-border: rgb(var(--nexus-overlay-rgb) / 0.36);  /* a text field's border: at least 3:1 against the canvas (34% measures 2.92:1, so 36%). --nexus-edge-strong stays at 16% for cards and dividers */
+  --nexus-surface-flat: var(--risu-theme-darkbg);
+  --nexus-edge: var(--risu-theme-darkborderc);
+  --nexus-edge-strong: var(--risu-theme-borderc);
+  --nexus-field-border: var(--risu-theme-role-field-border, #6f7fc8);  /* a text field's border: the scheme's border colour lifted to at least 3:1 against the canvas and surface. --nexus-edge-strong is for cards and dividers */
   --nexus-blur: 12px;
 
-  /* Text. Nothing below white at 55%: lower alphas fail WCAG AA on this canvas. */
-  --nexus-text: rgb(255 255 255 / 0.92);
-  --nexus-text-secondary: rgb(255 255 255 / 0.64);
-  --nexus-text-muted: rgb(255 255 255 / 0.55);
+  /* Text: the scheme's text colour, and two derived steps that stay at least 4.5:1 on the canvas and surfaces. */
+  --nexus-text: var(--risu-theme-textcolor);
+  --nexus-text-secondary: var(--risu-theme-role-text-secondary, #bfc6e3);
+  --nexus-text-muted: var(--risu-theme-role-text-muted, #a6b0d4);
 
-  /* Luminescence and brand. */
-  --nexus-accent: rgb(var(--nexus-accent-rgb));
-  --nexus-ring: #7fe9ff;
-  --nexus-core-from: #00a1ad;
-  --nexus-core-to: #587bff;
+  /* Luminescence and brand: the accent is the scheme's border colour lifted to 4.5:1. */
+  --nexus-accent: var(--risu-theme-role-accent, #6f7fc8);
+  --nexus-ring: var(--risu-theme-role-accent, #6f7fc8);
+  --nexus-core-from: var(--risu-theme-role-accent, #6f7fc8);
+  --nexus-core-to: var(--risu-theme-borderc);
 
   /* Warmth: the colour for people (names, greetings, avatars). Never used for status, warnings or errors. */
   --nexus-warm: #ffb38a;
@@ -54,19 +56,19 @@
   /* ---- Shared across screens. ---- */
   /* Colour channels. Tinted versions are written rgb(var(--nexus-<name>-rgb) / <alpha>), so a theme pack states each colour once, as a channel triplet.
      A pack that changes --nexus-accent also sets --nexus-accent-rgb, and may set --nexus-accent: rgb(var(--nexus-accent-rgb)) to derive the solid from it. */
-  --nexus-accent-rgb: 56 217 255;             /* = --nexus-accent */
-  --nexus-danger: rgb(var(--nexus-danger-rgb));
-  --nexus-danger-rgb: 255 107 129;            /* = --nexus-danger */
-  --nexus-overlay-rgb: 255 255 255;           /* the colour glass tints and hover fills are drawn in (white on the dark canvas; a light pack sets 0 0 0) */
+  --nexus-accent-rgb: var(--risu-theme-role-accent-rgb, 111 127 200);             /* = --nexus-accent */
+  --nexus-danger: var(--risu-theme-role-danger, #ff6b81);
+  --nexus-danger-rgb: var(--risu-theme-role-danger-rgb, 255 107 129);            /* = --nexus-danger */
+  --nexus-overlay-rgb: var(--risu-theme-role-overlay-rgb, 238 240 255);           /* the colour glass tints and hover fills are drawn in: the scheme's text colour */
   --nexus-shade-rgb: 0 0 0;                   /* the colour shadows and inset wells are drawn in */
-  --nexus-warning-rgb: 255 209 102;           /* = --color-warning */
+  --nexus-warning-rgb: var(--risu-theme-role-warning-rgb, 255 209 102);           /* = --color-warning */
 
   /* Names shared with chat (and read by Settings) with one meaning and one default app-wide. Values are chat's. */
   --font: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
-  --alpha-switch-off: 0.36;                   /* the off track of a switch, in the overlay colour: 3:1 */
-  --color-placeholder: #888aaa;               /* placeholder text: 4.5:1 on a field */
-  --color-surface-sheet: #0e0f2a;             /* an opaque sheet, panel or well */
-  --color-surface-toast: #1c1e45;             /* a toast or a small floating chip */
+  --alpha-switch-off: var(--risu-theme-role-switch-off-alpha, 0.36);                   /* the off track of a switch, in the overlay colour: 3:1 */
+  --color-placeholder: var(--risu-theme-role-text-muted, #a6b0d4);               /* placeholder text: 4.5:1 on a field */
+  --color-surface-sheet: var(--risu-theme-bgcolor);             /* an opaque sheet, panel or well */
+  --color-surface-toast: var(--risu-theme-role-surface-toast, #2f3670);             /* a toast or a small floating chip */
   --color-warning: rgb(var(--nexus-warning-rgb));   /* derived from its channel */
   --color-accent-tint-faint: rgb(var(--nexus-accent-rgb) / 0.06);
   --color-accent-tint-strong: rgb(var(--nexus-accent-rgb) / 0.14);
@@ -91,6 +93,38 @@
   --nexus-dialog-enter-distance: 8px;                 /* centred dialog: rise on enter */
   --nexus-sheet-enter-distance: 16px;                 /* phone bottom sheet: rise on enter */
   --nexus-scrim-duration: 200ms;                      /* scrim fade in */
+}
+
+/* A theme pack sits on the fixed base it was judged against, whatever the user's colour scheme (the gate sets the
+   attribute while a pack sheet is on). These are the pre-scheme declarations, restored verbatim at the specificity of
+   the mapping above, after it, so a name the pack does not set resolves to the judged reference. The pack's own :root
+   is later in the document and still wins. */
+:root:where([data-theme-pack-base]) {
+  --nexus-canvas: #00011c;
+  --nexus-canvas-bloom: #00023b;
+  --nexus-canvas-warm: rgb(255 154 122 / 0.13);
+  --nexus-surface: rgb(255 255 255 / 0.03);
+  --nexus-surface-raised: rgb(255 255 255 / 0.06);
+  --nexus-surface-flat: rgb(14 15 42 / 0.94);
+  --nexus-edge: rgb(255 255 255 / 0.07);
+  --nexus-edge-strong: rgb(255 255 255 / 0.16);
+  --nexus-field-border: rgb(var(--nexus-overlay-rgb) / 0.36);
+  --nexus-text: rgb(255 255 255 / 0.92);
+  --nexus-text-secondary: rgb(255 255 255 / 0.64);
+  --nexus-text-muted: rgb(255 255 255 / 0.55);
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #7fe9ff;
+  --nexus-core-from: #00a1ad;
+  --nexus-core-to: #587bff;
+  --nexus-accent-rgb: 56 217 255;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-danger-rgb: 255 107 129;
+  --nexus-overlay-rgb: 255 255 255;
+  --nexus-warning-rgb: 255 209 102;
+  --alpha-switch-off: 0.36;
+  --color-placeholder: #888aaa;
+  --color-surface-sheet: #0e0f2a;
+  --color-surface-toast: #1c1e45;
 }
 
 /* The app's reduce-motion setting: `rm` turns it on whatever the OS says, `rm-off` keeps the OS query out. */
