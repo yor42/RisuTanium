@@ -15,7 +15,7 @@ The orchestrator names a record owner and identifies applicable records in the i
 
 | Record | Required content when applicable |
 |---|---|
-| Maintainer-Context | Actual maintainer facts/decisions, stable next ID, exact scope and source; append only. Pending notes are not silently promoted. |
+| Maintainer-Context | Actual maintainer facts/decisions, an ID from the session's own MC block, exact scope and source; append only. Pending notes are not silently promoted. |
 | Report / gate record | Requirements and amendments, actual reviewed snapshot, independent verdict, finding disposition, check provenance, accepted limitations and remaining uncertainty. |
 | GitHub issue and board 1 card (Roadmap as scope history) | Item/stage state and remaining dependencies; COMPLETE per the definition above (MC-2747). |
 | Live-State / Carry-Forward | What remains now, who owns it, and durable dependencies left for later stages; avoid copying the full report. |
@@ -31,7 +31,7 @@ The item owner records final closure against the merged PR, distinguishing optio
 
 One workClass records / mode implement Haiku drafter may run beside the ticket sessions and device runs. Freeze its source/facts packet: exact quotations/reserved IDs, target anchors/schema, accepted gate/test provenance and limitations. Later code changes do not alter that historical batch's claims. Records completion is not a prerequisite for unrelated authorized code work.
 
-The guard remains unchanged. Ordinary explicitly granted Markdown may be edited. A clerk's Maintainer-Context/governance/Decision-Index/state changes return as a scratch draft/patch packet for its session to apply through existing helpers. No shell workaround, unconfirmed ID allocation, confidence upgrade, invented decision or self-acceptance. Parent application is integration, not a second whole-batch rewrite.
+The guard remains unchanged. Ordinary explicitly granted Markdown may be edited. A clerk's Maintainer-Context entries and Decision-Index regeneration from its session's own MC block return as a scratch packet for verified application by its session; governance, Live-State and handoff changes go to lane A (MC-2713). No shell workaround, unconfirmed ID allocation, confidence upgrade, invented decision or self-acceptance. Parent application is integration, not a second whole-batch rewrite.
 
 Missing/contradictory facts return in one exception packet with TODO(evidence). Substantive ambiguity goes to the responsible role. Haiku unavailability/exhaustion is reported or parked for an explicit parent fallback decision; no hidden stronger-model upgrade. Correctly scoped independent review still consumes consequential changed claims once.
 
@@ -39,10 +39,10 @@ Earlier record failures included a forbidden AGENTS.md dependency and native Edi
 
 ## IDs and PR-written records (MC-2713)
 
-- **MC ID blocks.** Each session self-assigns MC IDs from its own block of 10 (lane A records the blocks and the entries in batches) and asks lane A for a new block when it runs out. Never guess an ID outside a granted block. CHORE IDs follow the same block rule where a ticket still needs one; new work is normally just its GitHub issue number.
-- **What the PR records.** The PR's own session writes, in its PR: the decisions it asked the maintainer (as MC entries from its block, appended to `Agents/Maintainer-Context.md` with the Decision-Index regenerated), the gate dispositions, known limitations and follow-ups, and its device-row steps written from the actual diff and checked against code. Lane A only routes device rows; it does not write them.
-- **What goes through lane A.** Governance files (AGENTS.md, CLAUDE.md, `docs/workflow/**`, `.claude/**`), `Agents/Live-State.md`, the latest lane handoffs and lane A's own decisions log. Device-affecting rulings are asked in lane B's own session, not relayed (MC-2713).
-- **Index.** When two PRs both append MC entries, the second to merge regenerates `Agents/Decision-Index.md` after merging main (`pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1`, then `-Check`).
+- **MC ID blocks.** Each session self-assigns MC IDs from its own block of 10 and asks lane A for a new block when it runs out. Never guess an ID outside a granted block. CHORE IDs follow the same block rule where a ticket still needs one; new work is normally just its GitHub issue number.
+- **What the PR records.** MC-2713 sets the blocks, lane B rulings and PR-written device rows (written from the actual diff and checked against code; lane A only routes them). Derived from it: the PR's own session is the only writer of its MC entries, appended to `Agents/Maintainer-Context.md` in its PR with the Decision-Index regenerated, and also writes its gate dispositions, known limitations and follow-ups. Lane A's batches record block grants and only those decisions-log entries not already in Maintainer-Context, checking for an existing ID first.
+- **What goes through lane A.** Governance files (AGENTS.md, CLAUDE.md, `docs/workflow/**`, `.claude/**` other than `.claude/worktrees/`), `Agents/Live-State.md`, the latest lane handoffs and lane A's own decisions log. Device-affecting rulings are asked in lane B's own session, not relayed (MC-2713).
+- **Index.** Every PR that appends MC entries regenerates `Agents/Decision-Index.md` after merging the latest main, and again whenever it merges main later; CI skips `Agents/**`, so `-Check` before merge is the only catch (`pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1`, then `-Check`).
 - **Ticket authority.** The GitHub issue on yor42/RisuTanium and its card on project board 1 are the ticket's status. `Agents/Roadmap.md` is scope history keyed to issue numbers; where the two disagree, the issue wins.
 ## Batching and session discipline
 
@@ -59,11 +59,11 @@ Once a week lane A runs a sweep batch (it may be a dedicated low-cost session). 
 - reports the issues opened and closed that week and the open-issue trend;
 - runs the orphan sweep below over GitHub issues.
 
-Derived reconciliation (not stated in either decision): MC-2745 has the sweep close stale issues while MC-2744 keeps issue closes in the always-asked list, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them.
+Derived reconciliation (not stated in either decision): MC-2745 has the sweep close stale issues while MC-2744 keeps issue closes in the always-asked list, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them. The one-time MC-2747 bulk close runs after the governance v2 PRs merge, with the list shown to the maintainer first (MC-2780).
 
-## Orphan sweep and leftover disposal (MC-2064, amended by MC-2745)
+## Orphan sweep and leftover disposal (MC-2064, amended by MC-2745 and MC-2777)
 
-The orphan sweep lists every open issue (and any open Roadmap row not yet mirrored to an issue) where either:
+The orphan sweep runs only inside the weekly sweep (MC-2777, amending MC-2064 item 1), not in every records batch. It lists every open issue (and any open Roadmap row not yet mirrored to an issue) where either:
 
 - the owner is not an active session and it has had no issue, PR, git or log activity for 7 days; or
 - it waits on a ticket or batch that is closed or already planned.

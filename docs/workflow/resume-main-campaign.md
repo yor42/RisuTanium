@@ -1,5 +1,7 @@
 # Resume under parallel tracks and primary Haiku records
 
+> **Historical, non-operative (governance v2, 2026-11-20).** This dated record describes the workflow as it stood then. Current rules: [AGENTS](../../AGENTS.md), [gates](gates.md), [records](records.md), [ownership](ownership.md), [routing](routing.md). Where this text conflicts with them or with a later MC decision, they win.
+
 Use Sonnet as parent. A fresh Claude Code session loads changed profiles/hooks; a running parent must re-read the current amendment before new dispatches. Preserve existing registered/running identities, grants and accepted evidence. This prompt grants no commit/push authority or device acceptance.
 
 ```text

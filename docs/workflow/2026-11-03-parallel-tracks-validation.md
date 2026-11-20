@@ -1,5 +1,7 @@
 # Parallel-track amendment validation — 2026-11-03
 
+> **Historical, non-operative (governance v2, 2026-11-20).** This dated record describes the workflow as it stood then. Current rules: [AGENTS](../../AGENTS.md), [gates](gates.md), [records](records.md), [ownership](ownership.md), [routing](routing.md). Where this text conflicts with them or with a later MC decision, they win.
+
 Status: ACTIVE, independently approved. Scheduling amendment `2026-11-03-parallel-records` is additive to policy revision `2026-11-03.1`; it preserves existing saved dispatches and current worker ownership. Authority and procedures are in [parallel tracks](2026-11-03-parallel-tracks.md); the [independent implementation review](reviews/2026-11-03-parallel-records.md) records exact reviewed identities, two corrected admission findings, and the fixture-renaming addendum.
 
 ## Observed validation

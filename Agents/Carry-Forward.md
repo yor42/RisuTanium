@@ -1,6 +1,6 @@
 # Carry-Forward
 
-Workflow resumption (2026-11-03, MC-1036): use [Workflow-State](Workflow-State.json), the final PAUSE section of [lane A's handoff](Handoff-2026-11-02-laneA.md), and [the current resume prompt](../docs/workflow/resume-main-campaign.md). Preserve SR2 PC acceptance and its pending S4 native gate. The workflow cutover grants no application/device acceptance; paid fallback and Antigravity remain unavailable until their specific verification prerequisites in the [cutover record](../docs/workflow/2026-11-03-workflow-cutover.md) are met.
+Historical (governance v2, 2026-11-20): current rules are AGENTS.md and docs/workflow; current state is Agents/Live-State.md. Workflow resumption as of 2026-11-03 (MC-1036): [Workflow-State](Workflow-State.json), the final PAUSE section of lane A's untracked 2026-11-02 handoff (not in the repository), and the then-current [resume prompt](../docs/workflow/resume-main-campaign.md). Preserve SR2 PC acceptance and its pending S4 native gate. The workflow cutover grants no application/device acceptance; paid fallback and Antigravity remain unavailable until their specific verification prerequisites in the [cutover record](../docs/workflow/2026-11-03-workflow-cutover.md) are met.
 
 This file holds what finished stages leave for later ones: durable facts a later stage relies on,
 and hand-offs a later owner must still act on. It is organised by the stage that needs each item,

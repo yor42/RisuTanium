@@ -1,5 +1,7 @@
 # Parallel code, device and records tracks — 2026-11-03
 
+> **Partly superseded (governance v2, 2026-11-20).** The native Haiku `record-clerk` as primary records worker and the records/device scheduling caps here still apply until they are folded into [records](records.md) and [routing](routing.md); the rest describes the workflow as it stood then. Current rules: [AGENTS](../../AGENTS.md), [gates](gates.md), [records](records.md), [ownership](ownership.md), [routing](routing.md). Where this text conflicts with them or with a later MC decision, they win.
+
 The maintainer's follow-up explicitly authorizes separating device runs/records from code, using Git worktrees for simultaneous TODOs, and dedicating Haiku to routine records. This later instruction amends conflicting fallback-only/global-serialization wording of MC-1036's implementation. Scheduling ID: `2026-11-03-parallel-records`; compatible policy revision: `2026-11-03.1`. Preserve existing registered/running identities and accepted evidence. Record this supplied decision in the next approved records pass with a confirmed ID; this amendment allocates no MC block and overwrites no original decision.
 
 ## Ready tracks

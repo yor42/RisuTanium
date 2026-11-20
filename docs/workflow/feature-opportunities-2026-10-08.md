@@ -1,5 +1,7 @@
 # Claude Desktop Code-tab opportunities — 2026-10-08
 
+> **Historical, non-operative (governance v2, 2026-11-20).** This dated record describes the workflow as it stood then. Current rules: [AGENTS](../../AGENTS.md), [gates](gates.md), [records](records.md), [ownership](ownership.md), [routing](routing.md). Where this text conflicts with them or with a later MC decision, they win.
+
 The maintainer primarily uses Claude Desktop's Code tab (MC-242). The terminal CLI was observed as 2.1.286; this does not establish the Desktop version. Desktop Code shares project instructions, settings, hooks and skills with the CLI. Chat/Cowork are different surfaces. [Official Desktop reference](https://code.claude.com/docs/en/desktop#shared-configuration).
 
 The first survey below has been updated after the maintainer's MC-243 decisions: path-scoped rules and language intelligence are accepted, Desktop preview is the primary live-check surface with Chrome available as a fallback, and side chats are already in use. Plugin/server installations remain manual. The six MC-241 changes are documented separately in [the implementation record](improvements-2026-10-08.md).
