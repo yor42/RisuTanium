@@ -41,8 +41,8 @@ import {
 } from './colorscheme'
 
 const PINNED_DEFAULT = {
-    bgcolor: '#282a36', darkbg: '#21222c', borderc: '#6272a4', selected: '#44475a', draculared: '#ff5555',
-    textcolor: '#f8f8f2', textcolor2: '#94a3b8', darkBorderc: '#4b5563', darkbutton: '#374151', type: 'dark',
+    bgcolor: '#151836', darkbg: '#0f112a', borderc: '#6f7fc8', selected: '#2f3670', draculared: '#ff6b81',
+    textcolor: '#eef0ff', textcolor2: '#a6b0d4', darkBorderc: '#3c4478', darkbutton: '#242a52', type: 'dark',
 }
 
 const PINNED_PRESETS = {

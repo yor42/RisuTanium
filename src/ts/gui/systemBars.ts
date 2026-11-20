@@ -13,7 +13,7 @@ declare global {
 }
 
 /** The default dark scheme's background, used for any colour the browser cannot reduce to RGB. */
-export const FALLBACK_BAR_COLOR = '#282a36'
+export const FALLBACK_BAR_COLOR = '#151836'
 
 export interface Rgb {
     red: number
@@ -21,7 +21,7 @@ export interface Rgb {
     blue: number
 }
 
-const FALLBACK_RGB: Rgb = { red: 0x28, green: 0x2a, blue: 0x36 }
+const FALLBACK_RGB: Rgb = { red: 0x15, green: 0x18, blue: 0x36 }
 
 // What `getComputedStyle` returns for a colour it could reduce to sRGB: comma or space
 // separated channels, with or without alpha. Anything else (oklch, color-mix, color()) is not

@@ -1,10 +1,13 @@
 import { untrack } from 'svelte'
+import { packBaseTone } from '../gui/surfaceTone'
 
 /**
  * The surface gate: a theme pack's sheet may be on only while the screen it was judged against is shown, and at most
  * one sheet is ever on. A screen declares itself while mounted (`declareSurface`); App masks the declaration with its
  * own cover. The gate switches only the `media` attribute of the elements the apply code registered, never a document
- * query, so a `style[data-theme-pack]` rendered by card or model HTML is never touched.
+ * query, so a `style[data-theme-pack]` rendered by card or model HTML is never touched. While a registered sheet is on,
+ * the gate also marks the document root (`data-theme-pack-base`) and sets the base tone, in the same call as the media,
+ * so the tokens the pack does not set resolve to the base it was judged against instead of the user's colour scheme.
  */
 
 /** The areas a sheet can be gated to. Registered elements of any other area are never switched on. */
@@ -48,13 +51,27 @@ export function shownSurface(): GatedArea | null {
     return declared.chat > 0 ? 'chat' : null
 }
 
-/** Sets each registered element on exactly when its area is the shown surface. */
+/** The root attribute that selects the pack's fixed base. Present exactly while a registered element is on. */
+const BASE_ATTRIBUTE = 'data-theme-pack-base'
+
+/**
+ * Sets each registered element on exactly when its area is the shown surface, and marks the document root and the
+ * base tone while one is on. The registry decides, never a document query.
+ */
 export function syncThemePackMedia(): void {
     const shown = shownSurface()
+    let on = false
     for (const [element, area] of registry) {
         const wanted = area === shown ? 'all' : 'not all'
+        if (wanted === 'all') on = true
         if (element.getAttribute('media') !== wanted) element.setAttribute('media', wanted)
     }
+    const root = document.documentElement
+    if (root.hasAttribute(BASE_ATTRIBUTE) !== on) {
+        if (on) root.setAttribute(BASE_ATTRIBUTE, '')
+        else root.removeAttribute(BASE_ATTRIBUTE)
+    }
+    packBaseTone.set(on ? 'dark' : null)
 }
 
 /** Installs the gate once; `coveredNow` is App's own cover predicate, read by the gate effect. */
@@ -83,6 +100,8 @@ export function resetThemePackGateForTests(): void {
     cover = () => false
     declared.chat = 0
     registry.clear()
+    document.documentElement.removeAttribute(BASE_ATTRIBUTE)
+    packBaseTone.set(null)
     generation += 1
     untrack(() => { version = 0 })
 }

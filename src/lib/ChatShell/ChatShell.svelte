@@ -2,6 +2,7 @@
     import { onMount, tick, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/chat-tokens.css'
+    import '../../styles/chat-pack-base.css'
     import { get } from 'svelte/store'
     import { DBState, alertStore, selIdState, sideBarStore } from '../../ts/stores.svelte'
     import { language } from '../../lang'

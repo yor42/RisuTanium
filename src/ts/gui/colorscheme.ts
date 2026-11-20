@@ -1,4 +1,4 @@
-import { get, writable } from "svelte/store";
+import { get } from "svelte/store";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { downloadFile } from "../globalApi.svelte";
 import { BufferToText, selectSingleFile } from "../util";
@@ -8,6 +8,8 @@ import { isLite } from "../lite";
 import { CustomCSSStore, DBState, SafeModeStore } from "../stores.svelte";
 import { syncSystemBars } from "./systemBars";
 import { nexusColorScheme } from "./nexusColorScheme";
+import { deriveSchemeRoles } from "./schemeRoles";
+import { ColorSchemeTypeStore } from "./surfaceTone";
 
 export interface ColorScheme{
     bgcolor: string;
@@ -24,15 +26,15 @@ export interface ColorScheme{
 
 
 export const defaultColorScheme: ColorScheme = {
-    bgcolor: "#282a36",
-    darkbg: "#21222c",
-    borderc: "#6272a4",
-    selected: "#44475a",
-    draculared: "#ff5555",
-    textcolor: "#f8f8f2",
-    textcolor2: "#94a3b8",
-    darkBorderc: "#4b5563",
-    darkbutton: "#374151",
+    bgcolor: "#151836",
+    darkbg: "#0f112a",
+    borderc: "#6f7fc8",
+    selected: "#2f3670",
+    draculared: "#ff6b81",
+    textcolor: "#eef0ff",
+    textcolor2: "#a6b0d4",
+    darkBorderc: "#3c4478",
+    darkbutton: "#242a52",
     type:'dark'
 }
 
@@ -234,7 +236,8 @@ const colorShemes = {
 
 } as const
 
-export const ColorSchemeTypeStore = writable('dark' as 'dark'|'light')
+// Defined in surfaceTone.ts so components that only need the tone do not import this module.
+export { ColorSchemeTypeStore }
 
 export const colorSchemePresets = colorShemes
 
@@ -294,6 +297,20 @@ export function updateColorScheme(){
         document.documentElement.style.setProperty("--risu-theme-textcolor2", colorScheme.textcolor2);
         document.documentElement.style.setProperty("--risu-theme-darkborderc", colorScheme.darkBorderc);
         document.documentElement.style.setProperty("--risu-theme-darkbutton", colorScheme.darkbutton);
+        // Derived roles the new-screen tokens read; they are never stored.
+        const roles = deriveSchemeRoles(colorScheme)
+        document.documentElement.style.setProperty("--risu-theme-role-text-secondary", roles['text-secondary']);
+        document.documentElement.style.setProperty("--risu-theme-role-text-muted", roles['text-muted']);
+        document.documentElement.style.setProperty("--risu-theme-role-accent", roles['accent']);
+        document.documentElement.style.setProperty("--risu-theme-role-accent-rgb", roles['accent-rgb']);
+        document.documentElement.style.setProperty("--risu-theme-role-field-border", roles['field-border']);
+        document.documentElement.style.setProperty("--risu-theme-role-danger", roles['danger']);
+        document.documentElement.style.setProperty("--risu-theme-role-danger-rgb", roles['danger-rgb']);
+        document.documentElement.style.setProperty("--risu-theme-role-warning-rgb", roles['warning-rgb']);
+        document.documentElement.style.setProperty("--risu-theme-role-overlay-rgb", roles['overlay-rgb']);
+        document.documentElement.style.setProperty("--risu-theme-role-switch-off-alpha", roles['switch-off-alpha']);
+        document.documentElement.style.setProperty("--risu-theme-role-surface-toast", roles['surface-toast']);
+        document.documentElement.style.setProperty("--risu-theme-role-color-scheme", roles['color-scheme']);
         ColorSchemeTypeStore.set(colorScheme.type)
         // The colour applied above, after the lite override; also reached at boot.
         syncSystemBars(colorScheme.bgcolor)

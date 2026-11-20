@@ -55,7 +55,7 @@ import { changeColorScheme, colorSchemePresets, defaultColorScheme, updateColorS
 import { isLite } from '../lite'
 import { createHostChannelFake } from '../android/hostChannelFake'
 
-const FALLBACK = { red: 0x28, green: 0x2a, blue: 0x36 }
+const FALLBACK = { red: 0x15, green: 0x18, blue: 0x36 }
 
 describe('cssColorToRgb', () => {
     test.each([

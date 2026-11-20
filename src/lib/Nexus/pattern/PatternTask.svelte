@@ -3,6 +3,7 @@
     import PatternDialog from './PatternDialog.svelte'
     import NexusStatusMark from '../brand/NexusStatusMark.svelte'
     import { language } from '../../../lang'
+    import { patternSurfaceTone } from '../../../ts/gui/surfaceTone'
     import { createArmGuard, type ArmGuard } from './armGuard'
     import { armDelayMs, splitConsequences } from './patternWarning'
     import {
@@ -176,7 +177,7 @@
             <div data-part="pattern-task-head">
                 <!-- No ring on the mark (MC-2353): it moves only as a sign of life, and the bar and count carry the progress. -->
                 <div data-part="pattern-task-mark" aria-hidden="true">
-                    <NexusStatusMark status={taskMarkStatus(view)} size={48} {lowPower} label={announcement} />
+                    <NexusStatusMark status={taskMarkStatus(view)} size={48} {lowPower} label={announcement} tone={$patternSurfaceTone} />
                     {#if view.state === 'done-with-skips'}
                         <span data-part="pattern-task-mark-badge">
                             <svg class="pattern-icon" data-part="pattern-task-mark-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v8M12 18h.01" /></svg>

@@ -37,8 +37,8 @@
   --pattern-warn-scrim: rgb(var(--nexus-shade-rgb) / 0.62);
   --pattern-surface: var(--color-surface-sheet);        /* opaque: no backdrop-filter anywhere in the pattern */
   --pattern-surface-toast: var(--color-surface-toast);
-  --pattern-on-accent: #001018;               /* the label of a confirm button on --nexus-accent (4.5:1) */
-  --pattern-on-danger: #1c0309;               /* the label of a danger button on the danger fill */
+  --pattern-on-accent: var(--nexus-canvas);   /* the label of a confirm button on --nexus-accent: the accent role is lifted to 4.5:1 against the canvas */
+  --pattern-on-danger: var(--nexus-canvas);   /* the label of a danger button on the danger fill, same rule */
   --pattern-z-layer: 60;                      /* dialog layer; the toast stack sits one above */
   --pattern-z-toast: 61;
 
@@ -93,6 +93,12 @@
   --pattern-disabled-opacity: 0.55;
   --pattern-dim-opacity: 0.5;                 /* the fill of a cancelled task */
   --pattern-fail-sweep-opacity: 0.6;
+}
+
+/* The labels of a theme pack's fixed base: restored verbatim after the mapping above (see nexus-tokens.css). */
+:root:where([data-theme-pack-base]) {
+  --pattern-on-accent: #001018;
+  --pattern-on-danger: #1c0309;
 }
 
 /* 44 dp on touch, 40 on hover input. Packs may set tokens under the root attributes too. */
