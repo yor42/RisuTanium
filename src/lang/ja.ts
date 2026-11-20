@@ -3456,7 +3456,7 @@ export const languageJapanese = {
     add: "追加",
     nightlyWarning:
         "## ナイトリービルド\n\n本ソフトウェアのナイトリービルドに接続しています。このバージョンはテスト用であり、バグが含まれている可能性が高いです。**このバージョンでは、問題が発生した場合でも直接の解決サポートは行っていません。**",
-    pluginRiskDetectedAlert: "RisuTaniumは、APIキーや個人データを盗み出す可能性のある有害なコードを検出しました。このプラグインをインストールしないことを推奨します。",
+    pluginRiskDetectedAlert: "RisuTaniumは、APIキーや個人データが盗まれる恐れのある有害なコードを検出しました。このプラグインは絶対にインストールしないでください。",
     doNotInstall: "インストールしない",
     continueAnyway: "無視して続行",
 
@@ -3583,6 +3583,19 @@ export const languageJapanese = {
     backupThemePacksConfirm: (count: number, names: string[]) =>
         `${count}件のテーマパックはこのデバイスにのみ保存されており、バックアップファイルにはそれらとそのファイルを保存できる場所がないため、このバックアップから除外されます。テーマパックはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupUsageStatsConfirm: ".bin バックアップには使用統計や入力したモデル価格を保存する場所がないため、このバックアップではそれらが除外されます。この端末には残り、.rtb バックアップには含まれます。それらを含めずにバックアップを作成しますか？",
+    backupSaveWait: "ローカルバックアップを保存中…",
+    backupSavePartialWait: "部分ローカルバックアップを保存中…",
+    backupSaveProgress: (done: number, total: number) => `ローカルバックアップを保存中… (${done} / ${total})`,
+    backupSavePartialProgress: (done: number, total: number) => `部分ローカルバックアップを保存中… (${done} / ${total})`,
+    backupSaveDownloading: (sent: string, total: string) => `ローカルバックアップを保存中… ダウンロード中 (${sent} / ${total})`,
+    backupCheckingAssetSizes: (done: number, total: number) => `アセットのサイズを確認中… (${done} / ${total})`,
+    backupSaveInlays: (done: number, total: number) => `ローカルバックアップのチャット画像を保存中… (${done} / ${total})`,
+    backupSaveColdData: (done: number, total: number) => `ローカルバックアップのコールドストレージデータを保存中… (${done} / ${total})`,
+    backupSavePartialColdData: (done: number, total: number) => `部分ローカルバックアップのコールドストレージデータを保存中… (${done} / ${total})`,
+    backupSaveDatabase: "ローカルバックアップを保存中… (データベースを保存中)",
+    backupSavePartialDatabase: "部分ローカルバックアップを保存中… (データベースを保存中)",
+    backupSaveSkipping: (items: string) => `(スキップ中… ${items})`,
+    backupSaveSkippedAsset: (asset: string, character: string) => `${character} の「${asset}」`,
     usageStats: {
         title: "使用統計",
         month: "月",
