@@ -272,6 +272,27 @@ describe('PersonaSheet dropup variant', () => {
         }
     })
 
+    test('sheet variant, unbound chat with a globally selected persona: only the default row is pressed and checked', async () => {
+        view.variant = 'sheet'
+        DBState.db.selectedPersona = 1
+        const node = await showSheet()
+        const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-part="chat-sheet-item"]'))
+        expect(rows).toHaveLength(4)
+        expect(rows.map((row) => row.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false', 'false'])
+        expect(rows.filter((row) => row.querySelector('svg.lucide-check') !== null)).toEqual([rows[0]])
+        expect(node.querySelectorAll('svg.lucide-check')).toHaveLength(1)
+    })
+
+    test('sheet variant, bound chat: only the bound persona row is pressed and checked', async () => {
+        view.variant = 'sheet'
+        DBState.db.selectedPersona = 1
+        DBState.db.characters[0].chats[0].bindedPersona = 'p3'
+        const node = await showSheet()
+        const rows = Array.from(node.querySelectorAll<HTMLElement>('[data-part="chat-sheet-item"]'))
+        expect(rows.map((row) => row.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'true'])
+        expect(rows.filter((row) => row.querySelector('svg.lucide-check') !== null)).toEqual([rows[3]])
+    })
+
     test('T13: a 60-character persona name stays whole in its menu item', async () => {
         const node = await showSheet()
         expect(radios(node).find((item) => item.textContent?.includes(LONG_NAME))?.textContent?.trim()).toBe(LONG_NAME)
