@@ -80,22 +80,16 @@ Standing rule from 2026-10-21 (MC-329).
 
 ## Device checks
 
-Standing rule from 2026-10-21 (MC-330). It applies to checks on a physical Android device (currently the Note 9); browser-preview checks follow [live checks](live-checks.md).
+Standing rule from 2026-10-21 (MC-330). It applies to checks on a physical Android device; the device policy, the per-brief checklist and the device-row template are in [live checks](live-checks.md#device-and-pc-checklist).
 
 - **Ceiling, time limit, exit.** Every device-check brief states a data-size ceiling, a time limit and a pass/fail exit for each check. No open-ended sessions.
-- **PC first.** Check the logic on the PC first (headless Chrome or vitest). The device is for WebView, bridge, file-system or service behaviour only.
-- **Data sized to the question.** A rate needs a synthetic set of about 200-500 MB, measured a few times and extrapolated. Large or real-shape runs are reserved for Android-only risk or pre-release (see tiered data below).
-- **Keep the phone awake.** Before each run, keep the device awake while charging and exempt the app from battery optimisation. The screen stays on unless the check is about screen-off behaviour.
+- **PC first (MC-2394).** Run on the PC unless the behaviour is Android-specific (WebView or TalkBack, SAF and pickers, share intents, native reply and notifications, Android lifecycle, low-spec performance); split mixed rows into a PC leg and a phone leg.
+- **Data sized to the question.** A rate needs a synthetic set of about 200-500 MB, measured a few times and extrapolated. Large or real-shape runs are reserved for Android-only risk or pre-release (see the data tier rule in the checklist).
+- **Power and heat.** Exempt the app from battery optimisation before a run. Thermal A/B timing runs use the dual gate before every window (screen off, battery and CPU zone both below their caps; MC-2308 method note); never keep the screen awake while cooling.
 - **Batch.** Gather device checks of several stages into one planned session.
 - **Stop and carry forward.** For each named claim/setup/hypothesis allow the planned check plus one targeted diagnostic retry, then park. Persist attempts and accepted limits across devices/batches/context clears. Reopen only for changed relevant implementation/setup, a new hypothesis, contradicted evidence or explicit maintainer instruction; name that predicate before dispatch. An optional inconclusive oddity does not block unrelated scope; a named required unmet claim blocks only its affected acceptance.
 
-Existing practice, restated for context (not new in MC-330):
-
-- A device agent uses only its own debug ports and port ranges, with a free-port and identity check before it drives a forward.
-- Kill only processes you started; never by image name.
-- Use a test-only app profile and never hand-edit app state.
-- Tiered test data: small synthetic by default, large data on the PC, Note 9 large runs only for Android-specific risk or pre-release.
-- A performance number names its hardware (see Evidence discipline).
+Ports, processes, profiles, data tiers and the rest of standing practice are in the [device and PC checklist](live-checks.md#device-and-pc-checklist). On the two Note 9s, MC-1666 allows `pm clear` and app-storage edits; elsewhere never hand-edit app state.
 
 ## Repository and comment discipline
 
