@@ -394,6 +394,18 @@ body {
 }
 
 /*
+ * The hovered CBS button text. The card hovers to the scheme borderc fill, so its text comes from the
+ * scheme's derived on-borderc role, which stays readable on that fill. It sits under the same
+ * hover-capable media query as the fill, so a touch device keeps the resting text. The compound
+ * selector outranks the class's own colour utility.
+ */
+@media (hover: hover) {
+  .x-risu-button-default:hover {
+    color: var(--risu-theme-role-on-borderc, #000000);
+  }
+}
+
+/*
  * The classic keyboard focus ring. Classic surfaces stay on the user's colour scheme even while a
  * theme pack is on, so this reads the scheme role and never `--nexus-ring`. The ring is guaranteed
  * on bgcolor, darkbg and darkbutton only. Width and offset stay inside the CHORE-738 ring limits.
@@ -414,6 +426,27 @@ body {
  */
 .risu-on-selected {
   color: var(--risu-theme-role-on-selected, #eef0ff);
+}
+
+/*
+ * The categorical module-state glyphs. Classic module surfaces stay on the user's colour scheme even
+ * while a theme pack is on, so these read the scheme's derived state roles, which stay at least 3:1
+ * on the scheme's page and panel colours. They are unlayered, so they win over any utility colour:
+ * amber's hover therefore lives here, under the same hover-capable media query Tailwind uses, so a
+ * touch device gets no sticky hover colour.
+ */
+.risu-state-amber {
+  color: var(--risu-theme-role-state-amber, #fe9a00);
+}
+
+.risu-state-violet {
+  color: var(--risu-theme-role-state-violet, #8e51ff);
+}
+
+@media (hover: hover) {
+  .risu-state-amber:hover {
+    color: var(--color-textcolor);
+  }
 }
 
 .loadmove {

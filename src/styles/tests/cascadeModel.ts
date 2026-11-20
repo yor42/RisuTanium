@@ -89,6 +89,10 @@ export interface ModelEnv {
     reducedMotion?: boolean
     /** The element `:focus` and `:focus-visible` match; `:focus-within` matches it and every ancestor. */
     focused?: Element | null
+    /** The element `:hover` matches. Without it `:hover` matches nothing. */
+    hovered?: Element | null
+    /** Matches exactly `@media (hover: hover)`; `(hover: none)`, `(any-hover: ...)` and the pointer queries stay false. */
+    hoverMedia?: boolean
 }
 
 export type PseudoName = '::before' | '::after'
@@ -121,6 +125,7 @@ export interface RuleSet {
 
 const FOCUS_ATTR = 'data-cm-focus'
 const FOCUS_WITHIN_ATTR = 'data-cm-focus-within'
+const HOVER_ATTR = 'data-cm-hover'
 const IGNORED_AT_RULES = new Set(['keyframes', 'font-face', 'charset', 'import', 'namespace', 'counter-style', 'font-feature-values'])
 
 function specOf(selector: selectorParser.Selector): Spec {
@@ -174,6 +179,7 @@ function compileSelector(text: string, report: (what: string) => void): Compiled
         else if (v === ':where') n.value = ':is'
         else if (v === ':focus-visible' || v === ':focus') n.replaceWith(...selectorParser().astSync(`[${FOCUS_ATTR}]`).first.nodes)
         else if (v === ':focus-within') n.replaceWith(...selectorParser().astSync(`[${FOCUS_WITHIN_ATTR}]`).first.nodes)
+        else if (v === ':hover') n.replaceWith(...selectorParser().astSync(`[${HOVER_ATTR}]`).first.nodes)
     })
     if (unsupported) {
         report(`selector ${text}`)
@@ -430,6 +436,8 @@ export class CascadeModel {
         this.unmodelled = set.unmodelled
         for (const el of document.querySelectorAll(`[${FOCUS_ATTR}]`)) el.removeAttribute(FOCUS_ATTR)
         for (const el of document.querySelectorAll(`[${FOCUS_WITHIN_ATTR}]`)) el.removeAttribute(FOCUS_WITHIN_ATTR)
+        for (const el of document.querySelectorAll(`[${HOVER_ATTR}]`)) el.removeAttribute(HOVER_ATTR)
+        env.hovered?.setAttribute(HOVER_ATTR, '')
         env.focused?.setAttribute(FOCUS_ATTR, '')
         for (let el: Element | null | undefined = env.focused; el; el = el.parentElement) el.setAttribute(FOCUS_WITHIN_ATTR, '')
     }
@@ -448,6 +456,7 @@ export class CascadeModel {
             let holds = false
             if (c.kind === 'media') {
                 if (/prefers-reduced-motion:\s*reduce/.test(p)) holds = this.env.reducedMotion === true
+                else if (/^\(\s*hover:\s*hover\s*\)$/.test(p)) holds = this.env.hoverMedia === true
                 else if (/forced-colors|prefers-reduced-transparency|prefers-contrast|prefers-color-scheme|hover|pointer|print|width|height|orientation/.test(p)) holds = false
                 else if (p === 'screen' || p === 'all') holds = true
                 else this.extra.add(`${sheet}: @media ${c.params}`)
