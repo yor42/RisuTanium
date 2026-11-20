@@ -2254,9 +2254,30 @@ app.get('/api/list-prefix', storageRouteLimiter, asyncRoute(async (req, res, nex
             return;
         }
     }
+    // Optional: each key's revision, answered from the in-memory map with no
+    // file read. One shape per answer, so it is not combined with `min-size`.
+    const revisionsWanted = req.query.revisions === '1'
+    if(revisionsWanted && minSize !== null){
+        res.status(400).send({
+            success: false,
+            error: 'revisions cannot be combined with min-size'
+        });
+        return;
+    }
     try {
         const matching = (await fs.readdir(path.join(savePath)))
             .filter((v) => keyFileNamePattern.test(v) && v.toLowerCase().startsWith(lowerPrefix))
+        if(revisionsWanted && !countOnly){
+            // The map is keyed by the lowercase hex name every write uses. A file
+            // whose on-disk name differs in letter case is not that key, so it has
+            // no revision to report (null); a present file with no entry is at 0.
+            res.send({
+                success: true,
+                content: matching.map((v) => Buffer.from(v, 'hex').toString('utf-8')),
+                revisions: matching.map((v) => v === v.toLowerCase() ? (revisions[v] ?? 0) : null)
+            });
+            return;
+        }
         if(minSize !== null){
             const sizes = await fileSizesWithLimit(matching, LIST_STAT_CONCURRENCY)
             const keptNames = []

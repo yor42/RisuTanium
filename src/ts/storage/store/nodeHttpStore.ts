@@ -1511,6 +1511,37 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             return Array.from(kept, ([key, size]) => ({ key, size }))
         },
 
+        async listRevisions(prefix: string): Promise<{ key: string, rev: number | null }[] | null> {
+            checkAddressable(prefix)
+            if (listPrefixUnsupported) {
+                return null
+            }
+            const response = await send(`/api/list-prefix?prefix=${hexOf(prefix)}&revisions=1`, { method: 'GET', headers: {} })
+            // A server error or a rejected request is not "the route is missing": the caller must not read it as no answer.
+            if (isAuthOrRateRefusal(response.status) || response.status >= 500 || response.status === 400) {
+                throw new NodeHttpError(response.status, 'list')
+            }
+            const body = response.ok ? await jsonObjectOf(response) : null
+            // A server that does not know `revisions` answers the plain name list: no revisions, so no answer.
+            if (body === null || body.success !== true || !Array.isArray(body.content) || !Array.isArray(body.revisions) || body.revisions.length !== body.content.length) {
+                return null
+            }
+            const listed = new Map<string, number | null>()
+            for (let i = 0; i < body.content.length; i++) {
+                const name: unknown = body.content[i]
+                const rev: unknown = body.revisions[i]
+                if (typeof name !== 'string' || (rev !== null && (typeof rev !== 'number' || !Number.isSafeInteger(rev) || rev < 0))) {
+                    return null
+                }
+                if (!name.startsWith(prefix)) {
+                    continue
+                }
+                // Names that differ only in hex letter case arrive as one key; a variant has no recorded revision, and one is enough to leave the key unrecorded.
+                listed.set(name, listed.has(name) ? null : rev)
+            }
+            return Array.from(listed, ([key, rev]) => ({ key, rev }))
+        },
+
         async has(key: string): Promise<boolean> {
             checkAddressable(key)
             return (await readState(key, 'HEAD')).exists

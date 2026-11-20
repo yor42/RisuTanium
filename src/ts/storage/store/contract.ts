@@ -158,6 +158,19 @@ export interface ByteStore {
     listSized?(prefix: string, minSize: number): Promise<{ key: string, size: number }[] | null>
 
     /**
+     * The keys that start with `prefix`, each with its current revision, from
+     * one listing and no value transferred. Optional and Node only. A present key
+     * the server has no revision for is at 0; a key whose stored name differs
+     * only in hex letter case from the one the server addresses has `rev: null`
+     * (no revision is known for it). `null` means the server cannot answer (it
+     * lacks `/api/list-prefix`, or ignores `revisions` and so sends none). A
+     * server error (5xx), a rejected request (400), a refused token or a
+     * transport failure rejects, never `null`. Never falls back to listing and
+     * reading.
+     */
+    listRevisions?(prefix: string): Promise<{ key: string, rev: number | null }[] | null>
+
+    /**
      * Whether `key` holds a value. The value is never transferred to the caller.
      * The Node server answers from the file's size and revision, IndexedDB
      * looks the key up and loads no value, and the desktop store checks the
