@@ -61,6 +61,10 @@ export interface TaskDef {
     readonly onCancel?: () => void
     /** When set, the task starts in `confirm` and runs only after `confirm()`. */
     readonly confirm?: TaskConfirm
+    /** The running card may offer "Keep going in the background" (see `backgroundHeld`). */
+    readonly background?: true
+    /** The button is offered only after `offerBackground()`: a Modules round holds it until no Replace can still happen. */
+    readonly backgroundHeld?: true
 }
 export interface TaskSnapshot {
     readonly title: string
@@ -77,6 +81,8 @@ export interface TaskSnapshot {
     readonly result?: TaskResult
     readonly failure?: TaskFailure
     readonly confirm?: TaskConfirm
+    /** Present only while the card offers the background button. */
+    readonly background?: true
 }
 export interface TaskView extends TaskSnapshot {
     /** Unique per task; re-keys the card. */
@@ -98,6 +104,8 @@ export interface TaskLabels {
     /** The headline of a task that ended by a cancel. */
     cancelledHeadline: string
     skippedTitle(count: number): string
+    /** The failure's data line; a caller that never builds a toast may omit it. */
+    dataLine?(failure: TaskFailure): string
 }
 
 export const TASK_WRITE_INTERVAL_MS = 250
@@ -213,6 +221,66 @@ export function taskMarkStatus(s: TaskSnapshot): BrandStatus {
     }
 }
 
+/** Where a task toast stands: it runs, it finished cleanly and hides after its hold, or it stays until the user ends it. */
+export type TaskToastPhase = 'running' | 'done' | 'stays'
+
+export function taskToastPhase(s: TaskSnapshot): TaskToastPhase {
+    switch (s.state) {
+        case 'confirm':
+        case 'running':
+        case 'cancelling':
+            return 'running'
+        case 'done':
+            return !s.cancelled && resultSkipCount(s) === 0 ? 'done' : 'stays'
+        case 'done-with-skips':
+        case 'failed':
+            return 'stays'
+    }
+}
+
+export interface TaskToastLines {
+    readonly title: string
+    readonly line: string
+    readonly mark: BrandStatus
+    readonly fraction: number
+    readonly determinate: boolean
+    readonly badge: boolean
+}
+
+/**
+ * What the background toast shows for a view. A running line is "File i of n: step · amount" and never holds a percentage;
+ * an ended task shows its headline and the first line worth reading: the skipped count, the failure's data line or the
+ * first summary line.
+ */
+export function taskToastContent(view: TaskView, labels: TaskLabels): TaskToastLines {
+    const mark = taskMarkStatus(view)
+    const determinate = taskDeterminate(view)
+    const base = { mark, fraction: view.fraction, determinate }
+    switch (view.state) {
+        case 'confirm':
+        case 'running':
+        case 'cancelling': {
+            const step = view.steps[view.stepIndex]?.label ?? ''
+            const file = view.file ? `${labels.fileOf(view.file.index + 1, view.file.total)}: ` : ''
+            const amount = taskAmountText(view, labels)
+            return { ...base, title: view.title, line: `${file}${step}${amount ? ` · ${amount}` : ''}`, badge: false }
+        }
+        case 'failed': {
+            const failure = view.failure
+            const skips = failure?.skipped?.length ?? 0
+            const line = skips > 0 ? labels.skippedTitle(skips) : failure ? (labels.dataLine?.(failure) ?? '') : ''
+            return { ...base, title: failure?.headline ?? '', line, badge: false }
+        }
+        case 'done':
+        case 'done-with-skips': {
+            const skips = resultSkipCount(view)
+            const title = view.cancelled ? labels.cancelledHeadline : (view.result?.headline ?? '')
+            const line = skips > 0 ? labels.skippedTitle(skips) : (view.result?.summary?.[0] ?? '')
+            return { ...base, title, line, badge: skips > 0 && !view.cancelled }
+        }
+    }
+}
+
 export function canMoveTo(from: TaskState, to: TaskState): boolean {
     if (from === 'confirm') return to === 'running'
     if (from === 'running') return to === 'cancelling' || to === 'done' || to === 'done-with-skips' || to === 'failed'
@@ -236,6 +304,10 @@ export interface TaskController {
     /** An open count: `done` saved of `found` so far. A later `setCount` closes it; a step change clears it. */
     readonly setFound: ProgressSink
     readonly setBytes: ProgressSink
+    /** Shows the background button of a card that was created held; ignored once it was withdrawn. */
+    offerBackground(): void
+    /** Removes the background button for good; the card never offers it again. */
+    withdrawBackground(): void
     /** True when Cancel is now locked and no cancel was requested; only then may the caller write. */
     lockCancel(reason?: string): boolean
     requestCancel(): boolean
@@ -279,6 +351,8 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
     let slow = false
     let maxFraction = 0
     let disposed = false
+    let backgroundHeld = def.backgroundHeld === true
+    let backgroundWithdrawn = false
 
     let lastPublish = 0
     let dirty = false
@@ -301,6 +375,7 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
             result,
             failure,
             confirm: def.confirm,
+            background: def.background === true && !backgroundHeld && !backgroundWithdrawn ? true : undefined,
         }
     }
 
@@ -429,6 +504,16 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
             bytes = next
             if (advanced) restartSlowTimer()
             request()
+        },
+        offerBackground() {
+            if (disposed || backgroundWithdrawn || !backgroundHeld) return
+            backgroundHeld = false
+            publish()
+        },
+        withdrawBackground() {
+            if (disposed || backgroundWithdrawn) return
+            backgroundWithdrawn = true
+            publish()
         },
         lockCancel(reason) {
             if (disposed || state !== 'running') return false

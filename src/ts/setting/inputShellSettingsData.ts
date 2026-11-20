@@ -108,12 +108,11 @@ export const INPUT_SHELL_SECTIONS: readonly ShellSection[] = [
         ],
     },
     {
-        // Rows that belong on other pages (Data, Models) until those pages take them over.
+        // Rows that belong on the Models page until that page takes them over.
         id: 'input.other',
         labelKey: 'settingsShellOtherSettings',
         collapsed: false,
         rows: [
-            plain('acc.goCharacterOnImport'),
             plain('acc.applyAdditionalParamsToAll'),
             plain('acc.localActivationInGlobalLorebook'),
             plain('acc.bulkEnabling'),
@@ -134,8 +133,8 @@ export const INPUT_NOT_OFFERED_IDS: ReadonlySet<string> = new Set(['acc.header']
 /** Legacy Accessibility ids that no longer do anything. */
 export const INPUT_DEAD_IDS: ReadonlySet<string> = new Set(['acc.moveInsteadOfCopyOnCMPConvert']);
 
-/** Legacy Accessibility ids that live on the Advanced page (Troubleshooting) instead. */
-export const INPUT_MOVED_OUT_IDS: ReadonlySet<string> = new Set(['acc.requestInfoInsideChat']);
+/** Legacy Accessibility ids that live on other pages instead: Advanced (Troubleshooting) or Data. */
+export const INPUT_MOVED_OUT_IDS: ReadonlySet<string> = new Set(['acc.requestInfoInsideChat', 'acc.goCharacterOnImport']);
 
 /** Every setting item the page renders through the registry, including the overrides. */
 export const inputShellItems: readonly SettingItem[] = settingItemsOf(INPUT_SHELL_SECTIONS);

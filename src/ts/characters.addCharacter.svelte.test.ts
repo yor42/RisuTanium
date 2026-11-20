@@ -305,3 +305,33 @@ describe('addCharacter after a create selects the slot it created (guard)', () =
         expect(slot(1).type).toBe('group')
     })
 })
+
+describe('addCharacter after an import that was sent to the background selects nothing', () => {
+    test('R4-25 (RR): the picker reports a backgrounded import, so the added slot is not selected', async () => {
+        installDb([fullCharacter('live') as unknown as CharacterFixture])
+        selectedCharID.set(0)
+        askMock.mockResolvedValue('importCharacter')
+        importMock.mockImplementation(async (report?: { backgrounded?: boolean }) => {
+            if (report) report.backgrounded = true
+            return [push(fullCharacter('away'))]
+        })
+
+        await addCharacter()
+        await settle()
+
+        expect(get(selectedCharID)).toBe(0)
+        expect(slot(1).lastInteraction).toBe(LONG_AGO)
+    })
+
+    test('R4-25 (CG): an import that stays in front selects the added slot by its own index', async () => {
+        installDb([fullCharacter('live') as unknown as CharacterFixture])
+        selectedCharID.set(0)
+        askMock.mockResolvedValue('importCharacter')
+        importMock.mockImplementation(async () => [push(fullCharacter('front'))])
+
+        await addCharacter()
+        await settle()
+
+        expect(get(selectedCharID)).toBe(1)
+    })
+})

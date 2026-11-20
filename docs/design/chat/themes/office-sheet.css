@@ -1,0 +1,102 @@
+/* OFFICE SHEET for chat (MC-2520, MC-2523): a nod to word processors in general, no product name, logo or trade dress. Light grey chrome, the transcript as a white page with
+   a hairline edge and a short shadow, a ruler along the bottom of the header, a toolbar-style composer, serif body text from the generic serif family, blue accent. Light only.
+   Tokens on :root only (#309); text colours are :root tokens (#310). The validator caps a chat shadow at 2 px and admits only generic font families, so the page shadow is
+   short and the serif is the platform's own. Critical parts are never named; they take the tokens. DOM order never changes. */
+:root {
+  --color-scheme: light;
+
+  /* pack-local helpers (DD-258) */
+  --pack-desk: #e3e5e8;
+  --pack-bar: #f3f4f6;
+  --pack-page: #ffffff;
+  --pack-page-edge: #c4c8ce;
+  --pack-tick: #8c939c;
+  --pack-desk-gap: 16px;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #f3f4f6;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(31 35 40 / 0.04);
+  --nexus-surface-raised: rgb(31 35 40 / 0.07);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(31 35 40 / 0.16);
+  --nexus-edge-strong: rgb(31 35 40 / 0.55);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-bar: #f3f4f6;
+  --color-surface-toast: #ffffff;
+  --color-surface-kbd: #e3e5e8;
+  --color-key: #ffffff;
+
+  /* text */
+  --nexus-text: #1f2328;
+  --nexus-text-secondary: #474d55;
+  --nexus-text-muted: #50565f;
+
+  /* accent: document blue */
+  --nexus-accent-rgb: 26 85 186;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #1a55ba;
+  --nexus-core-from: #1a55ba;
+  --nexus-core-to: #154696;
+  --color-on-brand: #ffffff;
+  --nexus-warm: #7a4a12;
+  --nexus-warm-from: #fdf0d5;
+  --nexus-warm-to: #f6dca6;
+  --color-on-avatar: #1f2328;
+  --color-on-accent: #ffffff;
+  --nexus-danger-rgb: 180 35 24;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-overlay-rgb: 0 0 0;
+
+  --color-shimmer: rgb(255 255 255 / 0.6);
+  --color-code-bg-inline: rgb(31 35 40 / 0.07);
+  --color-code-bg: rgb(31 35 40 / 0.05);
+  --color-syntax-keyword: #5b3fa0;
+  --color-warning: #7a4f00;
+  --color-hit: #7a4f00;
+  --color-hit-rgb: 255 236 120;
+  --color-hit-bg: rgb(var(--color-hit-rgb) / 0.6);
+
+  --chat-speaker-0: #7a3b12; --chat-speaker-1: #1f3f8a; --chat-speaker-2: #0d5434; --chat-speaker-3: #6b4a00; --chat-speaker-4: #5b2f9e; --chat-speaker-5: #8c1a42; --chat-speaker-6: #0a4f61; --chat-speaker-7: #7a2a8f;
+  --color-scope-character-text: #4b2a8a;
+  --color-scope-character-edge: #7a55d6;
+  --color-scope-character-rgb: 122 85 214;
+  --color-scope-all-text: #7a4a00;
+  --color-scope-all-edge: #c27c00;
+  --color-scope-all-rgb: 194 124 0;
+
+  --color-bubble-char: #ffffff;
+  --color-bubble-char-text: #1f2328;
+  --color-bubble-user: #ffffff;
+  --color-bubble-user-text: #1f2328;
+  --radius-bubble: var(--radius-1);
+  --radius-bubble-tail: var(--radius-1);
+
+  /* type: the platform serif for the writing */
+  --chat-message-font: ui-serif, serif;
+
+  /* corners: square, like a document */
+  --radius-control: 3px;
+  --radius-field: 2px;
+  --radius-sheet: 4px;
+  --radius-popup: 4px;
+}
+
+/* ---- the desk and the page ---- */
+[data-part="chat-transcript"] { background-color: var(--pack-desk); padding-left: var(--pack-desk-gap); padding-right: var(--pack-desk-gap); }
+[data-part="chat-message-list"] { background-color: var(--pack-page); border: 1px solid var(--pack-page-edge); box-shadow: 0 1px 1px rgb(0 0 0 / 0.18); }
+/* ---- the ruler: ticks along the bottom 6 px of the header (the upper layer covers them above that line) ---- */
+[data-part="chat-header"] {
+  background-color: var(--pack-bar) !important;
+  background-image: linear-gradient(to top, rgb(0 0 0 / 0) 6px, var(--pack-bar) 6px), linear-gradient(to right, rgb(0 0 0 / 0) 23px, var(--pack-tick) 23px 24px, rgb(0 0 0 / 0) 24px 47px, var(--pack-tick) 47px 48px, rgb(0 0 0 / 0) 48px 71px, var(--pack-tick) 71px 72px, rgb(0 0 0 / 0) 72px 95px, var(--pack-tick) 95px 96px, rgb(0 0 0 / 0) 96px 119px, var(--pack-tick) 119px 120px, rgb(0 0 0 / 0) 120px 143px, var(--pack-tick) 143px 144px, rgb(0 0 0 / 0) 144px 167px, var(--pack-tick) 167px 168px, rgb(0 0 0 / 0) 168px 191px, var(--pack-tick) 191px 192px, rgb(0 0 0 / 0) 192px 215px, var(--pack-tick) 215px 216px, rgb(0 0 0 / 0) 216px 239px, var(--pack-tick) 239px 240px, rgb(0 0 0 / 0) 240px 263px, var(--pack-tick) 263px 264px, rgb(0 0 0 / 0) 264px 287px, var(--pack-tick) 287px 288px, rgb(0 0 0 / 0) 288px 311px, var(--pack-tick) 311px 312px, rgb(0 0 0 / 0) 312px 335px, var(--pack-tick) 335px 336px, rgb(0 0 0 / 0) 336px 359px, var(--pack-tick) 359px 360px, rgb(0 0 0 / 0) 360px 383px, var(--pack-tick) 383px 384px, rgb(0 0 0 / 0) 384px 407px, var(--pack-tick) 407px 408px, rgb(0 0 0 / 0) 408px 431px, var(--pack-tick) 431px 432px, rgb(0 0 0 / 0) 432px 455px, var(--pack-tick) 455px 456px, rgb(0 0 0 / 0) 456px 479px, var(--pack-tick) 479px 480px, rgb(0 0 0 / 0) 480px 503px, var(--pack-tick) 503px 504px, rgb(0 0 0 / 0) 504px 527px, var(--pack-tick) 527px 528px, rgb(0 0 0 / 0) 528px 551px, var(--pack-tick) 551px 552px, rgb(0 0 0 / 0) 552px 575px, var(--pack-tick) 575px 576px, rgb(0 0 0 / 0) 576px 599px, var(--pack-tick) 599px 600px, rgb(0 0 0 / 0) 600px 623px, var(--pack-tick) 623px 624px, rgb(0 0 0 / 0) 624px 647px, var(--pack-tick) 647px 648px, rgb(0 0 0 / 0) 648px 671px, var(--pack-tick) 671px 672px, rgb(0 0 0 / 0) 672px 695px, var(--pack-tick) 695px 696px, rgb(0 0 0 / 0) 696px 719px, var(--pack-tick) 719px 720px, rgb(0 0 0 / 0) 720px 743px, var(--pack-tick) 743px 744px, rgb(0 0 0 / 0) 744px 767px, var(--pack-tick) 767px 768px, rgb(0 0 0 / 0) 768px 791px, var(--pack-tick) 791px 792px, rgb(0 0 0 / 0) 792px 815px, var(--pack-tick) 815px 816px, rgb(0 0 0 / 0) 816px 839px, var(--pack-tick) 839px 840px, rgb(0 0 0 / 0) 840px 863px, var(--pack-tick) 863px 864px, rgb(0 0 0 / 0) 864px 887px, var(--pack-tick) 887px 888px, rgb(0 0 0 / 0) 888px 911px, var(--pack-tick) 911px 912px, rgb(0 0 0 / 0) 912px 935px, var(--pack-tick) 935px 936px, rgb(0 0 0 / 0) 936px 959px, var(--pack-tick) 959px 960px, rgb(0 0 0 / 0) 960px 983px, var(--pack-tick) 983px 984px, rgb(0 0 0 / 0) 984px 1007px, var(--pack-tick) 1007px 1008px, rgb(0 0 0 / 0) 1008px 1031px, var(--pack-tick) 1031px 1032px, rgb(0 0 0 / 0) 1032px 1055px, var(--pack-tick) 1055px 1056px, rgb(0 0 0 / 0) 1056px 1079px, var(--pack-tick) 1079px 1080px, rgb(0 0 0 / 0) 1080px 1103px, var(--pack-tick) 1103px 1104px, rgb(0 0 0 / 0) 1104px 1127px, var(--pack-tick) 1127px 1128px, rgb(0 0 0 / 0) 1128px 1151px, var(--pack-tick) 1151px 1152px, rgb(0 0 0 / 0) 1152px 1175px, var(--pack-tick) 1175px 1176px, rgb(0 0 0 / 0) 1176px 1199px, var(--pack-tick) 1199px 1200px, rgb(0 0 0 / 0) 1200px 1223px, var(--pack-tick) 1223px 1224px, rgb(0 0 0 / 0) 1224px 1247px, var(--pack-tick) 1247px 1248px, rgb(0 0 0 / 0) 1248px 1271px, var(--pack-tick) 1271px 1272px, rgb(0 0 0 / 0) 1272px 1295px, var(--pack-tick) 1295px 1296px, rgb(0 0 0 / 0) 1296px 1319px, var(--pack-tick) 1319px 1320px, rgb(0 0 0 / 0) 1320px 1343px, var(--pack-tick) 1343px 1344px, rgb(0 0 0 / 0) 1344px 1367px, var(--pack-tick) 1367px 1368px, rgb(0 0 0 / 0) 1368px 1391px, var(--pack-tick) 1391px 1392px, rgb(0 0 0 / 0) 1392px 1415px, var(--pack-tick) 1415px 1416px, rgb(0 0 0 / 0) 1416px 1439px, var(--pack-tick) 1439px 1440px, rgb(0 0 0 / 0) 1440px 1463px, var(--pack-tick) 1463px 1464px, rgb(0 0 0 / 0) 1464px 1487px, var(--pack-tick) 1487px 1488px, rgb(0 0 0 / 0) 1488px 1511px, var(--pack-tick) 1511px 1512px, rgb(0 0 0 / 0) 1512px 1535px, var(--pack-tick) 1535px 1536px, rgb(0 0 0 / 0) 1536px 1559px, var(--pack-tick) 1559px 1560px, rgb(0 0 0 / 0) 1560px 1583px, var(--pack-tick) 1583px 1584px, rgb(0 0 0 / 0) 1584px 1607px, var(--pack-tick) 1607px 1608px, rgb(0 0 0 / 0) 1608px 1631px, var(--pack-tick) 1631px 1632px, rgb(0 0 0 / 0) 1632px 1655px, var(--pack-tick) 1655px 1656px, rgb(0 0 0 / 0) 1656px 1679px, var(--pack-tick) 1679px 1680px, rgb(0 0 0 / 0) 1680px 1703px, var(--pack-tick) 1703px 1704px, rgb(0 0 0 / 0) 1704px 1727px, var(--pack-tick) 1727px 1728px, rgb(0 0 0 / 0) 1728px 1751px, var(--pack-tick) 1751px 1752px, rgb(0 0 0 / 0) 1752px 1775px, var(--pack-tick) 1775px 1776px, rgb(0 0 0 / 0) 1776px 1799px, var(--pack-tick) 1799px 1800px, rgb(0 0 0 / 0) 1800px 1823px, var(--pack-tick) 1823px 1824px, rgb(0 0 0 / 0) 1824px 1847px, var(--pack-tick) 1847px 1848px, rgb(0 0 0 / 0) 1848px 1871px, var(--pack-tick) 1871px 1872px, rgb(0 0 0 / 0) 1872px 1895px, var(--pack-tick) 1895px 1896px, rgb(0 0 0 / 0) 1896px 1919px, var(--pack-tick) 1919px 1920px, rgb(0 0 0 / 0) 1920px) !important;
+  border-bottom: 1px solid var(--pack-page-edge);
+}
+/* ---- the composer as a toolbar: a flat bar, square buttons, a boxed field ---- */
+[data-part="chat-composer"] { background-color: var(--pack-bar) !important; border-top: 1px solid var(--pack-page-edge); }
+[data-part="chat-composer-input"] { border-radius: var(--radius-field); }
+[data-part="chat-composer-plus"], [data-part="chat-send"], [data-part="chat-composer-stop"] { border-radius: var(--radius-control); }
+
+@media (forced-colors: active) { [data-part="chat-message-list"] { border: 1px solid CanvasText; } }

@@ -1,5 +1,5 @@
 /* Home theme loader and root-state mirror (THEMING.md, DD-142, DD-144, DD-147). Included by home.html after the stylesheets. Same shape as chat/theme.js.
-   1. ?theme=origin-navy | banana-cocoa loads themes/<name>.css after the page stylesheets, written into the head while it is parsed so it blocks the first paint
+   1. ?theme=origin-navy | banana-cocoa | scratch-white | office-sheet loads themes/<name>.css after the page stylesheets, written into the head while it is parsed so it blocks the first paint
       (no flash of Deep Nexus). No parameter, or an unknown name, loads nothing. Mockup-only: no picker, nothing is stored.
    2. State packs may key on is mirrored as data-* on <html> (DD-147):
         data-layout = wide | mid | phone    phone below 768 px, mid below 1200 px, wide from 1280 px (DD-247: with the switcher on the viewport centre, a narrower wide band would overlap the brand beside a 240 px rail) (viewport width; the same in every mode, DD-209)
@@ -10,7 +10,7 @@
    The breakpoints are mirrored in tokens (--home-bp-*) only for documentation: media queries cannot read tokens, so the script owns the numbers. */
 (function () {
   'use strict';
-  var THEMES = { 'origin-navy': 1, 'banana-cocoa': 1 };
+  var THEMES = { 'origin-navy': 1, 'banana-cocoa': 1, 'scratch-white': 1, 'office-sheet': 1 };
   var P = new URLSearchParams(location.search);
   var m = /[?&]theme=([\w-]+)/.exec(location.search);
   var name = m && Object.prototype.hasOwnProperty.call(THEMES, m[1]) ? m[1] : '';

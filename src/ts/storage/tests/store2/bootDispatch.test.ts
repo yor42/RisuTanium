@@ -1014,7 +1014,8 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
         const test = rig({ backups: [] })
         const result = expectStoreResult(await test.dispatch())
         expect(result.database).toMatchObject({ characters: [], botPresets: [], modules: [], loadouts: [], plugins: [], pluginCustomStorage: {} })
-        expect(test.ui.notices).toEqual([{ name: 'seeded' }, { name: 'archive-enabled' }])
+        // An empty profile has nothing to move to cold storage, so archiving is switched on without the archive notice.
+        expect(test.ui.notices).toEqual([{ name: 'seeded' }])
         const key = await currentKey(test.memory)
         expect(key.current).not.toBeNull()
         expect(key.staging).toBeNull()
@@ -1033,7 +1034,7 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
         // The memory backend reports no flush at all (undefined), which is not a confirmation.
         const test = rig({ backups: [], kind: 'tauri' })
         const result = expectStoreResult(await test.dispatch())
-        expect(test.ui.notices.map(notice => notice.name)).toEqual(['flush-unconfirmed', 'seeded', 'archive-enabled'])
+        expect(test.ui.notices.map(notice => notice.name)).toEqual(['flush-unconfirmed', 'seeded'])
         const writes = test.logs[0].writes
         const commitWrites = writes.filter(write => write === 'casCommit').length
         // The marker, the final write, and the re-flush's rewrites of the same bytes.
@@ -1044,7 +1045,8 @@ describe('new behaviour: row 1, a store with no commit key and no unit', () => {
     test('a Tauri install whose writes are all confirmed flushed is not flushed again and says nothing about it', async () => {
         const test = rig({ backups: [], kind: 'tauri', hooks: { flushed: true } })
         const result = expectStoreResult(await test.dispatch())
-        expect(test.ui.notices).toEqual([{ name: 'seeded' }, { name: 'archive-enabled' }])
+        // An empty profile has nothing to move to cold storage, so archiving is switched on without the archive notice.
+        expect(test.ui.notices).toEqual([{ name: 'seeded' }])
         expect(test.logs[0].writes.filter(write => write === 'casCommit')).toHaveLength(2)
         expect(result.session.idleReason).toBeNull()
     })

@@ -1,7 +1,10 @@
-// The built-in packs: the two shipped chat themes, bundled as text. Only the chat sheet of each is bundled, because chat is
-// the one applied area; the manifest values are those of the frozen golden packs built from the same sheets.
+// The built-in packs: the shipped chat themes, bundled as text. Only the chat sheet of each is bundled, because chat is
+// the one applied area; for Origin Navy and Banana Cocoa the manifest values are those of the frozen golden packs built
+// from the same sheets. Scratch White and Office Sheet carry no golden: they are bundled as text and name no font file.
 import originNavyChat from '../../../docs/design/chat/themes/origin-navy.css?raw'
 import bananaCocoaChat from '../../../docs/design/chat/themes/banana-cocoa.css?raw'
+import scratchWhiteChat from '../../../docs/design/chat/themes/scratch-white.css?raw'
+import officeSheetChat from '../../../docs/design/chat/themes/office-sheet.css?raw'
 
 export interface BuiltinPack {
     id: `builtin:${string}`
@@ -25,6 +28,14 @@ export const BUILTIN_PACKS: readonly BuiltinPack[] = [
     {
         id: 'builtin:banana-cocoa', slug: 'banana-cocoa', name: 'Banana Cocoa', version: '1.0.0', license: 'GPL-3.0',
         attribution: 'RisuTanium contributors', modes: ['light'], chatCss: bananaCocoaChat, mainColor: '#6b3f18', secondaryColor: '#b2c7da',
+    },
+    {
+        id: 'builtin:scratch-white', slug: 'scratch-white', name: 'Scratch White', version: '1.0.0', license: 'GPL-3.0',
+        attribution: 'RisuTanium contributors', modes: ['light'], chatCss: scratchWhiteChat, mainColor: '#1f4aa8', secondaryColor: '#fdfdfa',
+    },
+    {
+        id: 'builtin:office-sheet', slug: 'office-sheet', name: 'Office Sheet', version: '1.0.0', license: 'GPL-3.0',
+        attribution: 'RisuTanium contributors', modes: ['light'], chatCss: officeSheetChat, mainColor: '#1a55ba', secondaryColor: '#f3f4f6',
     },
 ]
 

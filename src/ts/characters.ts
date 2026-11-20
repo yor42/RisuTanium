@@ -16,7 +16,7 @@ import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from "./process/mod
 import { hasModuleStubs, unloadedModulesOf } from "./process/moduleRefList";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
-import { importCharacter } from "./characterCards";
+import { importCharacter, type ImportReport } from "./characterCards";
 import { PngChunk } from "./pngChunk";
 import { findChaIdHolders, restoreColdCharacter, type ColdRestoreFailure } from "./process/coldCharacterRestore";
 import { getAvatarThumbSrc, isThumbEligible, THUMB_ABORTED, type ThumbAborted, type ThumbRequestOptions } from "./media/avatarThumb";
@@ -1730,6 +1730,7 @@ export async function addCharacter(arg:{
     }
     reseter();
     let added: character | groupChat | undefined
+    const report: ImportReport = {}
     switch(r){
         case 'createfromScratch':
             added = DBState.db.characters[createNewCharacter()]
@@ -1738,13 +1739,14 @@ export async function addCharacter(arg:{
             added = DBState.db.characters[createNewGroup()]
             break
         case 'importCharacter':
-            added = (await importCharacter()).at(-1)
+            added = (await importCharacter(report)).at(-1)
             break
         default:
             return
     }
     //Only a slot this call added is selected, found again by identity because the list can change during an import; nothing added leaves the selection as it was.
-    if(!added){
+    //An import that was sent to the background never moves the user when it ends.
+    if(!added || report.backgrounded){
         return
     }
     const index = DBState.db.characters.indexOf(added)

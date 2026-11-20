@@ -29,9 +29,25 @@
         onconfirm?: () => void
         /** The preflight was declined by its Cancel button or Escape. */
         ondecline?: () => void
+        /** "Keep going in the background" was pressed after its arm delay. */
+        onbackground?: () => void
+        /** False while the slot refuses to offer the background button (a Modules round that may still answer Replace is running). */
+        backgroundOffered?: boolean
+        /** The card was reopened from its toast: Cancel, background and the result buttons ignore input for the arm delay. */
+        armOnMount?: boolean
     }
 
-    let { view, lowPower = false, oncancel, onanswer, onconfirm = () => { }, ondecline = () => { } }: Props = $props()
+    let {
+        view,
+        lowPower = false,
+        oncancel,
+        onanswer,
+        onconfirm = () => { },
+        ondecline = () => { },
+        onbackground = () => { },
+        backgroundOffered = true,
+        armOnMount = false,
+    }: Props = $props()
 
     const uid = $props.id()
     const titleId = `${uid}-title`
@@ -129,20 +145,52 @@
         if (event.repeat) event.preventDefault()
     }
 
-    // The task Cancel that replaces the primary at the swap ignores input for the same delay, so a double tap on the
-    // primary cannot land on Cancel. A card that never showed a confirm has no guard.
+    // The task Cancel and the background button that replace the primary at the swap ignore input for the same delay, so a
+    // double tap on the primary cannot land on them. A card reopened from its toast guards them (and the result buttons)
+    // the same way, since the user's tap on Open may still be arriving. A card that never showed a confirm and was not
+    // reopened has no guard.
+    const guarded = $derived(fromConfirm || armOnMount)
     let taskCancel = $state<HTMLButtonElement>()
     let cancelGuard: ArmGuard | null = null
     $effect(() => {
         const element = taskCancel
         cancelGuard = null
-        if (!element || !fromConfirm) return
+        if (!element || !guarded) return
         const delay = armDelayMs(element)
         const guard = createArmGuard(performance.now(), delay)
         cancelGuard = guard
         const timer = setTimeout(() => guard.arm(), delay)
         return () => clearTimeout(timer)
     })
+
+    let backgroundButton = $state<HTMLButtonElement>()
+    let backgroundGuard: ArmGuard | null = null
+    $effect(() => {
+        const element = backgroundButton
+        backgroundGuard = null
+        if (!element || !guarded) return
+        const delay = armDelayMs(element)
+        const guard = createArmGuard(performance.now(), delay)
+        backgroundGuard = guard
+        const timer = setTimeout(() => guard.arm(), delay)
+        return () => clearTimeout(timer)
+    })
+
+    // One guard serves the reopened result card's OK and action buttons.
+    let resultActions = $state<HTMLElement>()
+    let resultGuard: ArmGuard | null = null
+    $effect(() => {
+        const element = resultActions
+        resultGuard = null
+        if (!element || !armOnMount) return
+        const delay = armDelayMs(element)
+        const guard = createArmGuard(performance.now(), delay)
+        resultGuard = guard
+        const timer = setTimeout(() => guard.arm(), delay)
+        return () => clearTimeout(timer)
+    })
+
+    const backgroundShown = $derived(view.state === 'running' && view.background === true && backgroundOffered)
 
     function onEscape() {
         if (terminal) onanswer({ kind: 'ok' })
@@ -152,6 +200,16 @@
     function onCancelPress(event: MouseEvent) {
         if (cancelGuard && !cancelGuard.accepts(event.timeStamp)) return
         if (view.cancelOffered) oncancel()
+    }
+
+    function onBackgroundPress(event: MouseEvent) {
+        if (backgroundGuard && !backgroundGuard.accepts(event.timeStamp)) return
+        onbackground()
+    }
+
+    function onResultPress(event: MouseEvent, answer: { kind: 'ok' } | { kind: 'action', id: string }) {
+        if (resultGuard && !resultGuard.accepts(event.timeStamp)) return
+        onanswer(answer)
     }
 </script>
 
@@ -286,6 +344,16 @@
                 {:else}
                     <p id={reasonId} data-part="pattern-task-cancel-reason">{view.lockReason ?? language.patternTaskCancelUnsafe}</p>
                 {/if}
+                {#if backgroundShown}
+                    <button
+                        bind:this={backgroundButton}
+                        type="button"
+                        class="pattern-button"
+                        data-part="pattern-task-background"
+                        data-variant="secondary"
+                        onclick={onBackgroundPress}
+                    >{language.patternTaskBackground}</button>
+                {/if}
             </div>
         {:else}
             <div data-part="pattern-task-result" role="group" aria-labelledby={headlineId} data-outcome={outcome}>
@@ -318,11 +386,11 @@
                         {/if}
                     </section>
                 {/if}
-                <div data-part="pattern-task-result-actions">
+                <div bind:this={resultActions} data-part="pattern-task-result-actions">
                     {#each actions as action (action.id)}
-                        <button type="button" class="pattern-button" data-part="pattern-task-result-action" data-variant="secondary" onclick={() => onanswer({ kind: 'action', id: action.id })}>{action.label}</button>
+                        <button type="button" class="pattern-button" data-part="pattern-task-result-action" data-variant="secondary" onclick={(event) => onResultPress(event, { kind: 'action', id: action.id })}>{action.label}</button>
                     {/each}
-                    <button type="button" class="pattern-button" data-part="pattern-task-result-ok" data-variant="confirm" onclick={() => onanswer({ kind: 'ok' })}>{language.alertComp.ok}</button>
+                    <button type="button" class="pattern-button" data-part="pattern-task-result-ok" data-variant="confirm" onclick={(event) => onResultPress(event, { kind: 'ok' })}>{language.alertComp.ok}</button>
                 </div>
             </div>
         {/if}

@@ -5,7 +5,7 @@ import type { character } from "./storage/database.svelte"
 import { ModuleRefusal } from "./process/moduleRefusal"
 import { ModuleImportStopped } from "./process/moduleImportStop"
 import { withBusy, type BusyHandle } from "./process/memory/busyActions"
-import { alertTask, trackTaskAction, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
+import { alertTask, registerDetachedModulesRound, trackTaskAction, type TaskCloseAnswer, type TaskHandle } from "./alertTask.svelte"
 import { taskMiB, type TaskConfirm, type TaskFailure, type TaskResult, type TaskSkip, type TaskStepDef } from "../lib/Nexus/pattern/taskProgress"
 import { ImportCancelled, makeImportProgress, type ImportProgress, type ImportStep } from "./importProgress"
 import { restoreInProgress } from "./drive/restoreInProgress"
@@ -34,8 +34,12 @@ export type ImportOutcome =
  */
 export type ImportItem = {name: string, run: (progress: ImportProgress) => Promise<ImportOutcome>, size?: number}
 
-/** The card a batch opens: its title, the steps its files go through, and an optional subtitle (a single file's name by default). */
-export type ImportTaskSpec = {title: string, steps: readonly ImportStep[], subtitle?: string}
+/**
+ * The card a batch opens: its title, the steps its files go through, and an optional subtitle (a single file's name by
+ * default). `background` lets the running card offer "Keep going in the background"; `backgroundHeld` withholds that offer
+ * until a file reports its last duplicate decision (see `ImportBatchOptions.mayReplace`).
+ */
+export type ImportTaskSpec = {title: string, steps: readonly ImportStep[], subtitle?: string, background?: true, backgroundHeld?: true}
 
 export type ImportSummary = {
     imported: number
@@ -52,6 +56,8 @@ export type ImportSummary = {
     cancelled?: true
     //True when the preflight ended without a confirm (declined, replaced, closed or a restore began): nothing was run.
     notStarted?: true
+    //True when any round of the action was sent to the background; a caller then does not move the user when it ends.
+    backgrounded?: true
 }
 
 //A refused module is a refusal whichever import it came out of, a stop the user chose is not an error; any other error is a failure.
@@ -278,6 +284,8 @@ function openCard(entries:RoundEntry[], task:ImportTaskSpec, abort:AbortControll
         subtitle: task.subtitle ?? (entries.length === 1 ? entries[0].item.name : undefined),
         steps: stepDefs(task.steps),
         onCancel: () => abort.abort(),
+        ...(task.background ? {background: true as const} : {}),
+        ...(task.backgroundHeld ? {backgroundHeld: true as const} : {}),
         ...(confirm ? {confirm} : {}),
     })
 }
@@ -286,6 +294,19 @@ type RoundEnd = {
     summary:ImportSummary
     closed:Promise<TaskCloseAnswer>
     retry:RoundEntry[]
+    handle:TaskHandle
+}
+
+//A round that may still answer Replace holds the guard that keeps every other card from offering the background, until its
+//last decision shows that no Replace can follow or the round ends.
+type RoundGuard = {release:() => void}
+
+function holdRoundGuard(enabled:boolean):RoundGuard {
+    let end:(() => void)|null = enabled ? registerDetachedModulesRound() : null
+    return {release: () => {
+        end?.()
+        end = null
+    }}
 }
 
 /**
@@ -293,10 +314,20 @@ type RoundEnd = {
  * caller's busy scope. It returns the promise of the answer, not the answer, so the wait for it stays outside that scope.
  */
 async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions, opened?:OpenedCard):Promise<RoundEnd> {
+    const guard = holdRoundGuard(opts.mayReplace === true)
+    try {
+        return await runRoundWithGuard(entries, number, task, opts, guard, opened)
+    } finally {
+        guard.release()
+    }
+}
+
+async function runRoundWithGuard(entries:RoundEntry[], number:number, task:ImportTaskSpec, opts:ImportBatchOptions, guard:RoundGuard, opened?:OpenedCard):Promise<RoundEnd> {
     const count = entries.length
     const abort = opened?.abort ?? new AbortController()
     const handle:TaskHandle = opened?.handle ?? openCard(entries, task, abort)
     const gate = {locked: false}
+    const round = {replaced: false}
     const items:ImportItem[] = []
     const outcomes:ImportOutcome[] = []
     const markers:boolean[] = []
@@ -327,6 +358,17 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
             onCommitted: () => {
                 marker = true
                 anyCommitted = true
+            },
+            onDecided: (replace) => {
+                if(replace){
+                    round.replaced = true
+                    return
+                }
+                //The last file's decision with no Replace in the round: nothing can replace a module from here on.
+                if(i === count - 1 && !round.replaced && !handle.detached){
+                    guard.release()
+                    handle.offerBackground()
+                }
             },
             onNotice: (text) => { notices.push(text) },
         })
@@ -362,10 +404,21 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
         outcomes.push(outcome)
         markers.push(marker)
     }
-    await clearStaleLegacyProgress()
+    guard.release()
+    if(opts.afterRound){
+        try {
+            opts.afterRound(number)
+        } catch (error) {
+            console.error(error)
+        }
+    }
+    //A card in the background, or one that a newer task replaced, has no claim on the screen: a wait on it belongs to someone else.
+    if(!handle.detached && !handle.inBackground){
+        await clearStaleLegacyProgress()
+    }
     const summary = summariseImport(items, outcomes, {declinedReason: opts.declinedReason})
     if(cancelled){
-        return {summary: {...summary, cancelled: true}, closed: handle.settleCancel(), retry: []}
+        return {summary: {...summary, cancelled: true}, closed: handle.settleCancel(), retry: [], handle}
     }
     const retry = items.filter((_, i) => outcomes[i].kind === 'failed' && !markers[i]).map((item) => ({item}))
     const composed = composeImportResult(items, outcomes, markers, {declinedReason: opts.declinedReason})
@@ -380,11 +433,16 @@ async function runRound(entries:RoundEntry[], number:number, task:ImportTaskSpec
         handle.close()
         closed = Promise.resolve({kind: 'closed'})
     }
-    return {summary, closed, retry}
+    return {summary, closed, retry, handle}
 }
 
-//`preflight` asks once, before anything runs, when the batch has two or more files; Retry rounds never ask.
-type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle, preflight?:true}
+/**
+ * `preflight` asks once, before anything runs, when the batch has two or more files; Retry rounds never ask.
+ * `afterRound(number)` runs inside each round's busy scope, after its files and before its result is posted; a throw is
+ * logged. `mayReplace` marks a batch whose files can answer Replace to a duplicate question: while one of its rounds can
+ * still do so, no card offers the background (see `registerDetachedModulesRound`).
+ */
+type ImportBatchOptions = {afterImported?:(outcome:ImportOutcome) => void, afterRound?:(number:number) => void, declinedReason?:string, task:ImportTaskSpec, outerBusy?:BusyHandle, preflight?:true, mayReplace?:true}
 
 function notStartedSummary():ImportSummary {
     return {imported: 0, skipped: 0, declined: 0, notImported: 0, notes: [], own: null, message: null, notStarted: true}
@@ -428,6 +486,7 @@ async function askPreflight(items:ImportItem[], opts:ImportBatchOptions, task:Im
 async function runTaskBatch(items:ImportItem[], opts:ImportBatchOptions, task:ImportTaskSpec):Promise<ImportSummary> {
     let entries:RoundEntry[] = items.map((item) => ({item}))
     let number = 0
+    let backgrounded = false
     let opened = await askPreflight(items, opts, task)
     if(opened === null){
         return notStartedSummary()
@@ -444,13 +503,14 @@ async function runTaskBatch(items:ImportItem[], opts:ImportBatchOptions, task:Im
             opts.outerBusy?.end()
         }
         const answer = await round.closed
+        backgrounded = backgrounded || round.handle.backgrounded
         //A restore that began while the result waited ends the action: no import round follows it.
         if(answer.kind === 'action' && answer.id === 'retry' && round.retry.length > 0 && !restoreInProgress()){
             entries = round.retry
             number++
             continue
         }
-        return round.summary
+        return backgrounded ? {...round.summary, backgrounded: true} : round.summary
     }
 }
 

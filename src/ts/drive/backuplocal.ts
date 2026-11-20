@@ -67,6 +67,7 @@ import { expandBranchChats, lateBranchLabels } from "./exportBranches";
 import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
+import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -645,6 +646,13 @@ export type { ExportDeclinedCause, ExportOutcome } from './operationEnd'
  */
 export interface BackupExportOptions extends ExportCollectionOptions {
     limitBytes?: number
+    /**
+     * Answers, in one question, what the five per-kind fork-only prompts ask. Called at most once per export, where those
+     * prompts are asked (after the size prompts, before the writer opens), and never with an empty list. `true` continues,
+     * `false` declines with nothing written, and `null` means nobody answered: the per-kind prompts run instead, in their
+     * usual order. Unset also runs the per-kind prompts. The answer never reaches the encode, so the file is the same either way.
+     */
+    askLeaveOut?: (summary: readonly BinLeaveOutEntry[]) => Promise<boolean | null>
 }
 
 /** `bytes` as GiB with two decimals, for the prompt that names an item too large for the file. */
@@ -791,6 +799,37 @@ async function confirmOmitThemePacks(session: ExportSession, labels: readonly st
  */
 async function confirmOmitUsageStats(session: ExportSession, present: boolean): Promise<boolean> {
     return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupUsageStatsConfirm))
+}
+
+/**
+ * The fork-only consent before the writer opens: the five per-kind prompts, or one answer to `options.askLeaveOut` that
+ * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
+ * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
+ */
+async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupExportOptions, db: Database, forkOnlyLabels: readonly ForkOnlyChatLabel[]): Promise<boolean> {
+    const perKind = async (): Promise<boolean> => await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))
+        && await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))
+        && await confirmOmitTaskPresets(session, taskPresetLabels(db))
+        && await confirmOmitThemePacks(session, themePackLabels(db))
+        && await confirmOmitUsageStats(session, hasUsageData(db))
+    const ask = options.askLeaveOut
+    if (ask === undefined) {
+        return await perKind()
+    }
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db) })
+    if (summary.length === 0) {
+        return true
+    }
+    let unanswered = false
+    const answer = await confirmDuringExport(session, true, async () => {
+        const given = await ask(summary)
+        if (given === null) {
+            unanswered = true
+            return true
+        }
+        return given
+    })
+    return unanswered ? await perKind() : answer
 }
 
 /** A person's name for an asset of a backup, as the skip report gives it. */
@@ -956,23 +995,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
     // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // The other fork-only chat data (interrupted-reply notes, memory coverage pointers) is named in a prompt of its own.
-    if (!await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // Task presets are fork-only and device-local; a `.bin` has no place for them, so they are named before the writer opens.
-    if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // Installed theme packs are fork-only and device-local, and neither they nor their files are in a `.bin`.
-    if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    // Usage statistics and entered model prices are fork-only; a `.bin` has no place for them.
-    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+    // The other fork-only data (interrupted-reply notes, memory coverage pointers, task presets, theme packs, usage
+    // statistics) has no place in a `.bin` either; it is named in the same consent before the writer opens.
+    if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1183,19 +1208,23 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
  * - Faster and more efficient for quick backups
  * - Ideal for backing up core visual identity without bulk data
  */
-export async function SavePartialLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    // First confirmation: Explain the difference from regular backup
-    const firstConfirm = await alertConfirm(language.partialBackupFirstConfirm)
+export async function SavePartialLocalBackup(options: BackupExportOptions = {}, entry: { assetsExplained?: boolean } = {}): Promise<ExportOutcome>{
+    // A caller that already told the person what a partial backup leaves out (the Data page chooser) skips the two
+    // explanations; every other caller keeps both.
+    if (entry.assetsExplained !== true) {
+        // First confirmation: Explain the difference from regular backup
+        const firstConfirm = await alertConfirm(language.partialBackupFirstConfirm)
 
-    if (!firstConfirm) {
-        return { status: 'declined', cause: 'partial-explanation-declined' }
-    }
+        if (!firstConfirm) {
+            return { status: 'declined', cause: 'partial-explanation-declined' }
+        }
 
-    // Second confirmation: Final warning about not saving assets
-    const secondConfirm = await alertConfirm(language.partialBackupSecondConfirm)
+        // Second confirmation: Final warning about not saving assets
+        const secondConfirm = await alertConfirm(language.partialBackupSecondConfirm)
 
-    if (!secondConfirm) {
-        return { status: 'declined', cause: 'partial-explanation-declined' }
+        if (!secondConfirm) {
+            return { status: 'declined', cause: 'partial-explanation-declined' }
+        }
     }
 
     return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
@@ -1313,19 +1342,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
     // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
-        return { status: 'declined', cause: 'incomplete-data-declined' }
-    }
-    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+    if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
