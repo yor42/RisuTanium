@@ -3459,6 +3459,7 @@ export const languageKorean = {
     "themePackReplaceConfirm": (name: string) => `설치된 테마 팩 "${name}"을(를) 이 파일로 바꿀까요?`,
     "themePackInstalled": (name: string) => `"${name}"을(를) 설치했어요.`,
     "themePackSkippedAreas": (files: string) => `이 팩에는 ${files}도 들어 있어요. 이 버전은 새 채팅 화면만 꾸밀 수 있어서, 해당 부분은 팩과 함께 보관만 해요.`,
+    "themePackInstalledWithWarnings": (sheet: string) => `경고와 함께 설치했어요 (${sheet}):`,
     "themePackRefusedHeader": "이 파일은 설치되지 않았어요:",
     "themePackBusy": "다른 작업이 진행 중이에요 (저장, 복원 또는 다른 테마 팩 설치). 끝난 뒤에 다시 시도해 주세요.",
     "themePackInstallFailedFiles": "저장한 뒤 테마 팩을 다시 읽었을 때 내용이 맞지 않아 설치하지 않았어요. 다시 시도해 주세요.",

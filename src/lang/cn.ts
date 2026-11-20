@@ -3460,6 +3460,7 @@ export const languageChinese = {
     "themePackReplaceConfirm": (name: string) => `要用此文件替换已安装的主题包“${name}”吗？`,
     "themePackInstalled": (name: string) => `已安装“${name}”。`,
     "themePackSkippedAreas": (files: string) => `此包还包含 ${files}。此版本仅为新的聊天界面换肤；这些部分会随主题包一并保留。`,
+    "themePackInstalledWithWarnings": (sheet: string) => `已安装，但有警告（${sheet}）：`,
     "themePackRefusedHeader": "此文件未被安装：",
     "themePackBusy": "另一项任务正在运行（保存、恢复或另一个主题包的安装）。请在其完成后重试。",
     "themePackInstallFailedFiles": "保存后重新读取主题包时内容不正确，因此未安装。请重试。",

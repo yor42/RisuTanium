@@ -98,10 +98,11 @@ function readAreaSheet(value: unknown): AreaSheetJudgement | null {
     }
     const resources = readResources(value.resources, value.canonical)
     const fontFaceBlocks = readFontFaceBlocks(value.fontFaceBlocks)
-    if (resources === null || fontFaceBlocks === null) {
+    const warnings = readErrors(value.warnings)
+    if (resources === null || fontFaceBlocks === null || warnings === null) {
         return null
     }
-    return { result: { ok, errors: errorList, name: typeof name === 'string' ? name : '' }, canonical: value.canonical, resources, fontFaceBlocks }
+    return { result: { ok, errors: errorList, name: typeof name === 'string' ? name : '' }, canonical: value.canonical, resources, fontFaceBlocks, warnings }
 }
 
 /** Narrows a worker answer into a fresh judgement, or null when any part is out of shape. Only the chat area is read. */

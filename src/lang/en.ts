@@ -3600,6 +3600,7 @@ export const languageEnglish = {
     themePackReplaceConfirm: (name: string) => `Replace the installed theme pack "${name}" with this file?`,
     themePackInstalled: (name: string) => `Installed "${name}".`,
     themePackSkippedAreas: (files: string) => `This pack also has ${files}. This version themes only the new chat screen; those parts are kept with the pack.`,
+    themePackInstalledWithWarnings: (sheet: string) => `Installed with warnings (${sheet}):`,
     themePackRefusedHeader: 'This file was not installed:',
     themePackBusy: 'Another task is running (a save, a restore or another theme pack install). Try again when it finishes.',
     themePackInstallFailedFiles: 'The theme pack did not read back correctly after saving, so it was not installed. Try again.',

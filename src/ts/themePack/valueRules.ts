@@ -204,17 +204,30 @@ export function tokenValues(canon: string, name: string, env: ValueEnv, withApp 
     return buildIndex(text, env, decls(text)).R(name, withApp)
 }
 
-export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
+/** What the value rules found: `errors` refuse the sheet; `warnings` are notes the install shows and never change a verdict. */
+export interface ValueVerdict {
+    errors: LintError[]
+    warnings: LintError[]
+}
+
+export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
     const text = normalise(canon)
     const all = decls(text)
     const { sites, R, known, chain } = buildIndex(text, env, all)
     const errors: LintError[] = []
+    const warnings: LintError[] = []
     const seen = new Set<string>()
+    const warned = new Set<string>()
     const push = (selector: string, prop: string, why: string) => {
         const key = `${selector}|${prop}|${why}`
         if (!seen.has(key)) { seen.add(key); errors.push({ selector, prop, why }) }
     }
     const report = (d: Decl, why: string) => push(d.ctx.selector.trim() || '(stylesheet)', d.prop, why)
+    const warn = (d: Decl, why: string) => {
+        const selector = d.ctx.selector.trim() || '(stylesheet)'
+        const key = `${selector}|${d.prop}|${why}`
+        if (!warned.has(key)) { warned.add(key); warnings.push({ selector, prop: d.prop, why }) }
+    }
 
     const operand = (a: string, depth: number): boolean => {
         const t = a.trim()
@@ -467,5 +480,5 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             for (const why of judgeFamilyList(stripImportant(d.value))) report(d, why)
         }
     }
-    return errors
+    return { errors, warnings }
 }

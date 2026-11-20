@@ -3601,6 +3601,7 @@ export const languageJapanese = {
     themePackReplaceConfirm: (name: string) => `インストール済みのテーマパック「${name}」をこのファイルで置き換えますか？`,
     themePackInstalled: (name: string) => `「${name}」をインストールしました。`,
     themePackSkippedAreas: (files: string) => `このパックには${files}も含まれています。このバージョンでは新しいチャット画面のみがテーマの対象となり、それ以外の部分はパックとともに保持されます。`,
+    themePackInstalledWithWarnings: (sheet: string) => `警告付きでインストールしました（${sheet}）:`,
     themePackRefusedHeader: "このファイルはインストールされませんでした:",
     themePackBusy: "別の処理（保存、復元、または別のテーマパックのインストール）を実行中です。完了してからもう一度お試しください。",
     themePackInstallFailedFiles: "保存後にテーマパックを正しく読み戻せなかったため、インストールされませんでした。もう一度お試しください。",

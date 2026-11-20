@@ -3504,6 +3504,7 @@ export const languageChineseTraditional = {
     "themePackReplaceConfirm": (name: string) => `要用此檔案取代已安裝的主題包「${name}」嗎？`,
     "themePackInstalled": (name: string) => `已安裝「${name}」。`,
     "themePackSkippedAreas": (files: string) => `此主題包還包含 ${files}。此版本僅為新聊天畫面套用主題；這些部分會隨主題包一併保留。`,
+    "themePackInstalledWithWarnings": (sheet: string) => `已安裝，但有警告（${sheet}）：`,
     "themePackRefusedHeader": '未安裝此檔案：',
     "themePackBusy": '另一項工作正在執行（儲存、還原或另一個主題包安裝）。請在完成後再試一次。',
     "themePackInstallFailedFiles": '儲存後重新讀取的主題包內容不正確，因此未安裝。請再試一次。',

@@ -77,6 +77,8 @@ export interface AreaSheetJudgement {
     resources: readonly ResourceSpan[]
     /** The top-level @font-face blocks, in text order. */
     fontFaceBlocks: readonly FontFaceBlock[]
+    /** Notes the install shows under its outcome; they never change result.ok. */
+    warnings: readonly LintError[]
 }
 
 export interface PackSheetsJudgement {
@@ -95,7 +97,7 @@ export function judgeAreaSheet(area: ThemeArea, source: string, packFamilies?: R
     try {
         return judgeSheet(area, source, name, packFamilies)
     } catch {
-        return { result: { ok: false, errors: [{ selector: '(stylesheet)', prop: '', why: COULD_NOT_CHECK_REASON }], name }, canonical: '', resources: [], fontFaceBlocks: [] }
+        return { result: { ok: false, errors: [{ selector: '(stylesheet)', prop: '', why: COULD_NOT_CHECK_REASON }], name }, canonical: '', resources: [], fontFaceBlocks: [], warnings: [] }
     }
 }
 
@@ -124,7 +126,7 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
     const engine = AREA_LINT[area](fonts.remainder, name)
     const ownFamilies = new Set([...fonts.families, ...(packFamilies ?? [])])
     const values = valueRulesPass(fonts.remainder, { ownFamilies, app: appValues(area), source: canonical.text })
-    const extra: LintError[] = [...canonical.errors, ...structure, ...fonts.errors, ...values]
+    const extra: LintError[] = [...canonical.errors, ...structure, ...fonts.errors, ...values.errors]
     const seen = new Set(engine.errors.map((e) => `${e.selector}|${e.prop}|${e.why}`))
     const errors = [...engine.errors]
     for (const e of extra) {
@@ -137,7 +139,7 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
     if (area === 'chat' && !errors.length) errors.push(...chatLiveChainErrors(fonts.remainder))
     // Rule E-2 (outerShadow.ts) runs last, on a sheet every pass above accepted, so a refused sheet never gains or loses a reason.
     if ((area === 'chat' || area === 'studio') && !errors.length) errors.push(...outerShadowPass(area, fonts.remainder))
-    return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks }
+    return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks, warnings: values.warnings }
 }
 
 export interface ThemePackInput {

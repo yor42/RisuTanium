@@ -14,7 +14,7 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import { beginBusy, beginDialogWait, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { beginRestoreRun, resetRestoreInProgressForTests } from 'src/ts/drive/restoreInProgress'
 import { judgePackSheets } from 'src/ts/themePack'
-import { installThemePack } from 'src/ts/themePack/install'
+import { installThemePack, type InstallOutcome, type InstallRequest } from 'src/ts/themePack/install'
 import { intakePackBytes, type IntakeRefusal, type IntakeResult, type PackJudge } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
 import { createHash } from 'node:crypto'
@@ -443,6 +443,118 @@ describe('T4-4 a pack with another area keeps it and says so', () => {
         await runThemePackInstall(runOf(bytes).deps)
         expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackSkippedAreas('studio.css')])
         expect(storedPacks()).toHaveLength(1)
+    })
+})
+
+describe('W1 warnings of an accepted sheet show under the installed line', () => {
+    const WARNINGS = [
+        { selector: '[data-part="chat-message-text"]', prop: 'font-family', why: 'first note' },
+        { selector: '.b', prop: 'color', why: 'second note' },
+    ]
+    const warningLines = WARNINGS.map((w) => language.themePackLintLine(w.selector, w.prop, w.why))
+
+    /** The real judge, with the chat judgement carrying warnings: the seam for a rule that does not warn yet. */
+    const warnJudge: PackJudge = async (sheets) => {
+        const judged = judgePackSheets(sheets)
+        const chat = judged.areas.chat
+        if (chat === undefined) throw new Error('the fixture pack has no chat sheet')
+        return { ...judged, areas: { ...judged.areas, chat: { ...chat, warnings: WARNINGS } } }
+    }
+    const warnIntake = (verified: Uint8Array): Promise<IntakeResult> => intakePackBytes(verified, warnJudge)
+
+    test('the installed line is followed by the header and one line per warning, in the info tone', async () => {
+        attach()
+        await runThemePackInstall(runOf(validPack(), [], { intake: warnIntake }).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithWarnings('chat.css'), ...warningLines])
+        expect(installFlowState.outcome?.tone).toBe('info')
+    })
+
+    test('the warnings come after the skipped-areas line', async () => {
+        attach()
+        const bytes = zipPack(validPackFiles({ 'studio.css': PLAIN_CHAT_SHEET }))
+        await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
+        expect(outcomeLines()).toEqual([
+            language.themePackInstalled('Test Pack'),
+            language.themePackSkippedAreas('studio.css'),
+            language.themePackInstalledWithWarnings('chat.css'),
+            ...warningLines,
+        ])
+    })
+
+    test('a refused sheet shows only the refusal, even when its judgement carries warnings', async () => {
+        attach()
+        const bytes = zipPack(validPackFiles({ 'chat.css': 'a{background:url(https://example.invalid/x.png)}' }))
+        await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
+        const lines = outcomeLines() ?? []
+        expect(installFlowState.outcome?.tone).toBe('error')
+        expect(lines[0]).toBe(language.themePackRefusedHeader)
+        expect(lines).toHaveLength(2)
+        expect(lines[1].startsWith(language.themePackSheetRefused('chat.css'))).toBe(true)
+        expect(lines.some((line) => line === language.themePackInstalledWithWarnings('chat.css') || warningLines.includes(line))).toBe(false)
+        expect(world.log).toEqual([])
+    })
+
+    test.each([
+        ['the write fails', { ok: false, kind: 'writeFailed', error: new Error('write') } as const, language.themePackWriteFailed],
+        ['the second other-work check refuses', { ok: false, kind: 'busy' } as const, language.themePackBusy],
+        ['the stored files are found damaged', { ok: false, kind: 'filesDamaged' } as const, language.themePackInstallFailedFiles],
+    ])('verify accepts a pack with warnings, then %s: only the failure line shows', async (_name, failure, text) => {
+        attach()
+        const verified: boolean[] = []
+        const install = async <R>(request: InstallRequest<R>): Promise<InstallOutcome<R>> => {
+            const verdict = await request.verify(request.bytes)
+            verified.push(verdict.ok)
+            if (verdict.ok === false) return { ok: false, kind: 'refused', refusal: verdict.refusal }
+            return failure
+        }
+        await runThemePackInstall(runOf(validPack(), [], { intake: warnIntake, install }).deps)
+        expect(verified).toEqual([true])
+        expect(outcomeLines()).toEqual([text])
+        expect(installFlowState.outcome?.tone).toBe('error')
+        expect(outcomeLines()?.some((line) => line.startsWith(language.themePackInstalledWithWarnings('chat.css')))).toBe(false)
+        expect(world.log).toEqual([])
+    })
+
+    test('Replace?: a decline shows nothing, an accept shows the warnings', async () => {
+        attach()
+        const bytes = validPack()
+        await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
+        const writes = world.log.length
+
+        await runThemePackInstall(runOf(bytes, [false], { intake: warnIntake }).deps)
+        expect(installFlowState.outcome).toBeNull()
+        expect(world.log).toHaveLength(writes)
+
+        await runThemePackInstall(runOf(bytes, [true], { intake: warnIntake }).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithWarnings('chat.css'), ...warningLines])
+    })
+
+    test('with no row open nothing is alerted; the first row shows the warnings and clears them when it closes', async () => {
+        const { deps, notify } = runOf(validPack(), [], { intake: warnIntake })
+        await runThemePackInstall(deps)
+        expect(notify).not.toHaveBeenCalled()
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithWarnings('chat.css'), ...warningLines])
+        const first = attachRow()
+        expect(outcomeLines()).toContain(language.themePackInstalledWithWarnings('chat.css'))
+        first()
+        expect(installFlowState.outcome).toBeNull()
+    })
+
+    test('a later clean install shows no warnings of the earlier one', async () => {
+        attach()
+        await runThemePackInstall(runOf(validPack(), [], { intake: warnIntake }).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackInstalledWithWarnings('chat.css'), ...warningLines])
+        await runThemePackInstall(runOf(validPack({ name: 'Second Pack' })).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Second Pack')])
+    })
+
+    test('the stored record carries no warnings', async () => {
+        attach()
+        await runThemePackInstall(runOf(validPack(), [], { intake: warnIntake }).deps)
+        const record = storedPacks()[0]
+        expect(record).toBeDefined()
+        expect(Object.keys(record as object)).not.toContain('warnings')
+        expect(JSON.stringify(record)).not.toContain('first note')
     })
 })
 

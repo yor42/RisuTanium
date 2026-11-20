@@ -180,6 +180,7 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
             for (const area of THEME_AREAS) {
                 const judged = judgeAreaSheet(area, input.css, undefined, input.label)
                 expect(judged.result, `${area} / ${input.label}`).toEqual(lintAreaPack(area, input.css, input.label))
+                expect(judged.warnings, `${area} / ${input.label}`).toEqual([])
                 expect(judged.canonical, `${area} / ${input.label}`).toBe(canonical.text)
                 expect(judged.resources, `${area} / ${input.label}`).toEqual(canonical.resources)
                 for (const block of judged.fontFaceBlocks) expect(judged.canonical.slice(block.start, block.end), `${area} / ${input.label}`).toBe(block.text)
@@ -245,6 +246,7 @@ describe('Ts-4: a sheet the checks throw on is refused, not thrown on', () => {
         expect(judged.canonical).toBe('')
         expect(judged.resources).toEqual([])
         expect(judged.fontFaceBlocks).toEqual([])
+        expect(judged.warnings).toEqual([])
     })
 
     it('judgePackSheets refuses the pack and still judges the other sheets', () => {

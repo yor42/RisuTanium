@@ -31,8 +31,9 @@ describe('VU1: the token resolver and the structure pass', () => {
     })
 
     test('a two-token cycle terminates with the cycle reason', () => {
-        const errors = valueRulesPass(':root{--pack-a:var(--pack-b);--pack-b:var(--pack-a)}', ENV)
-        expect(errors.some((e) => /refers to itself through var\(\)/.test(e.why))).toBe(true)
+        const verdict = valueRulesPass(':root{--pack-a:var(--pack-b);--pack-b:var(--pack-a)}', ENV)
+        expect(verdict.errors.some((e) => /refers to itself through var\(\)/.test(e.why))).toBe(true)
+        expect(verdict.warnings).toEqual([])
     })
 
     test('readAppValues keeps every block of a token file, not only the last or the :root one', () => {
