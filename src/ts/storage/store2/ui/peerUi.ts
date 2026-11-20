@@ -89,7 +89,9 @@ async function untilClear(): Promise<void> {
 
 /**
  * The foreign-marker question, Wait first. Only the Clear button gives 'clear'; an index with no button or any other
- * key reads as 'wait'. Back and Escape press the Wait button. The caller has already waited for a clear screen.
+ * key reads as 'wait'. Back and Escape press the Wait button. The peer-UI member waits with `untilClear` before it asks;
+ * the import check and the restore's bulk-marker step call this directly, from a person's action right after their own
+ * prompts, so no other question is expected to be showing.
  */
 export async function askForeignMarkerQuestion(marker: Staging): Promise<'wait' | 'clear'> {
     const question = foreignMarkerScreen(marker)

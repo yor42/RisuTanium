@@ -20,6 +20,7 @@ import { encodeUnit, UNIT_TYPE, type CommitKey } from 'src/ts/storage/store2/for
 import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import { importSourceOfBytes } from 'src/ts/importSource'
 import type { Committer } from 'src/ts/storage/store2/commit'
+import { Store2UnknownOutcomeError } from 'src/ts/storage/store2/backend/errors'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { AssetPlanDeps, SizedListing } from 'src/ts/drive/rtb/rtbAssetPlan'
@@ -895,6 +896,37 @@ describe('P.1b: the restore\'s own bulk marker (T-V2, T-R6, T-R12)', () => {
         const bare: Committer = { ...page.k.committer, openHeldBulk: undefined, clearHeld: undefined }
         const second = await prepare(page, await fileOf(), { deps: { ...target(page, bare), heldMarker: () => true } })
         expect(ended(second)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'library-refused' })
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test.each([
+        ['conflict', 'nothing-replaced', 'base-moved'],
+        ['unknown', 'failed', 'commit-read-failed'],
+        ['failed', 'failed', 'commit-read-failed'],
+    ] as const)('T-R13: an openHeldBulk answer of %s ends %s / %s before any asset listing, with no marker, the hold released and nothing cleared (guard; a conflict that continues, or an answer mapped to another end, fails it)', async (status, outcome, cause) => {
+        const page = await openPage()
+        const log: string[] = []
+        const key = await page.k.commitKey()
+        const current = await page.k.committer.readCommit()
+        const error = new Store2UnknownOutcomeError('The marker write kept an unknown outcome.')
+        const answers: Record<typeof status, Awaited<ReturnType<OpenHeld>>> = {
+            conflict: { status: 'conflict', current, cleared: null },
+            unknown: { status: 'unknown', cause: error, cleared: null },
+            failed: { status: 'failed', cause: error, cleared: null },
+        }
+        const cleared = vi.fn(async () => ({ status: 'nothing' as const }))
+        const committer: Committer = { ...spied(page, log, async () => answers[status]), clearHeld: cleared as unknown as NonNullable<Committer['clearHeld']> }
+        const listing = vi.fn(async () => null)
+        vi.spyOn(console, 'error').mockImplementation(() => { })
+        const run = await prepare(page, await fileOf(), { deps: { ...target(page, committer), heldMarker: () => true, assetDeps: assetDeps({ sizedListing: listing }) } })
+        expect(ended(run)).toEqual({ kind: 'ended', outcome, cause })
+        expect(log).toEqual(['openHeldBulk'])
+        expect(listing).not.toHaveBeenCalled()
+        expect(cleared).not.toHaveBeenCalled()
+        expect(alertErrorTexts(page)).toContain(status === 'conflict' ? language.restoreNotHappenedNotice : language.store2ImportReadFailed)
+        const after = await page.k.commitKey()
+        expect(after.staging ?? null).toBeNull()
+        expect(after.seq).toBe(key.seq)
         expect(await writeLockIsFree(page)).toBe(true)
     })
 
