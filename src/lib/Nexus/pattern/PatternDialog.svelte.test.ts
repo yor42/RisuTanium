@@ -191,6 +191,32 @@ describe('PatternDialog', () => {
         expect(oncancel).not.toHaveBeenCalled()
     })
 
+    test.each([
+        ['keyCode 229 with isComposing false', { keyCode: 229, isComposing: false }],
+        ['isComposing true', { keyCode: 229, isComposing: true }],
+    ])('a composing Escape (%s) cancels nothing and is still consumed and unseen', (_label, init) => {
+        const oncancel = vi.fn()
+        openDialog({ oncancel, cancelSafe: true })
+        const seen = vi.fn()
+        document.addEventListener('keydown', seen)
+        try {
+            const composing = press('Escape', init)
+            expect(oncancel).not.toHaveBeenCalled()
+            expect(composing.defaultPrevented).toBe(true)
+            expect(seen).not.toHaveBeenCalled()
+            // Controls in the same open dialog: a key the dialog ignores reaches the document, and a plain Escape cancels once.
+            press('x')
+            expect(seen).toHaveBeenCalledTimes(1)
+            seen.mockClear()
+            const plain = press('Escape', { keyCode: 27, isComposing: false })
+            expect(oncancel).toHaveBeenCalledTimes(1)
+            expect(plain.defaultPrevented).toBe(true)
+            expect(seen).not.toHaveBeenCalled()
+        } finally {
+            document.removeEventListener('keydown', seen)
+        }
+    })
+
     test('when the focused control is hidden, focus moves to the dialog', async () => {
         const { target } = openDialog()
         const cancel = document.getElementById('cancel')!

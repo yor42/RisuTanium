@@ -137,6 +137,15 @@ describe('the confirm and the run (T-S9-5)', () => {
         expect(deps.calls.run).toHaveBeenCalledWith({ progressText: rtbProgressText })
     })
 
+    test('T-S2-10: a password in the options reaches the run, and no options leave it undefined', async () => {
+        const sealed = entryDeps()
+        await startRtbExport(sealed, { password: 'pw' })
+        expect(sealed.calls.run).toHaveBeenCalledWith({ progressText: rtbProgressText, password: 'pw' })
+        const plain = entryDeps()
+        await startRtbExport(plain)
+        expect(plain.calls.run.mock.calls[0][0].password).toBeUndefined()
+    })
+
     test('a run that finds the page changed shows the refusal text', async () => {
         const deps = entryDeps({ run: async () => ({ status: 'refused', reason: 'read-only' }) })
         await startRtbExport(deps)
