@@ -2464,7 +2464,6 @@ export const languageChineseTraditional = {
     "studioAssetModuleSharedId": "此模組與另一個模組使用相同的 ID，因此已停用資源變更",
     "studioAssetFileGone": (name: string) => `${name} 的檔案已不存在，因此未還原此列`,
     "studioAssetFileUnchecked": (name: string) => `無法檢查 ${name} 的檔案，因此未做任何變更。請再試一次。`,
-    "studioAssetUseKeptFile": "使用內容相同的已保留檔案",
     "studioAssetToastUseHistory": "請使用歷程記錄面板來復原此操作",
     "studioAssetUndone": "已復原",
     "studioAssetUndoFailed": "無法復原此操作。",

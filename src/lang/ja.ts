@@ -2555,7 +2555,6 @@ export const languageJapanese = {
     studioAssetModuleSharedId: "このモジュールは別のモジュールとIDが同じため、アセットの変更は無効です",
     studioAssetFileGone: (name: string) => `${name} のファイルが見つからないため、この行は復元されませんでした`,
     studioAssetFileUnchecked: (name: string) => `${name} のファイルを確認できなかったため、何も変更していません。もう一度お試しください。`,
-    studioAssetUseKeptFile: "保持されている同一のファイルを使用",
     studioAssetToastUseHistory: "これを元に戻すには履歴パネルを使用してください",
     studioAssetUndone: "元に戻しました",
     studioAssetUndoFailed: "元に戻せませんでした。",

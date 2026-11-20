@@ -2419,7 +2419,6 @@ export const languageKorean = {
     "studioAssetModuleSharedId": "이 모듈은 다른 모듈과 ID가 같아서 에셋 변경이 꺼져 있어요",
     studioAssetFileGone: (name: string) => `${name}의 파일이 없어서 이 행을 복원하지 못했어요`,
     studioAssetFileUnchecked: (name: string) => `${name}의 파일을 확인하지 못해서 아무것도 변경하지 않았어요. 다시 시도해 주세요.`,
-    "studioAssetUseKeptFile": "보관된 동일한 파일 사용",
     "studioAssetToastUseHistory": "기록 패널에서 실행 취소해 주세요",
     "studioAssetUndone": "취소했어요",
     "studioAssetUndoFailed": "실행 취소하지 못했어요.",
