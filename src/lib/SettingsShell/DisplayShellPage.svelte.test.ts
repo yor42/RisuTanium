@@ -241,7 +241,7 @@ describe('Advanced section', () => {
         openAdvanced(first.target)
         expect(button().getAttribute('aria-expanded')).toBe('true')
         expect(maybeRow(first.target, 'display.customCSS')).not.toBeNull()
-        for (const id of ['display.hideApiKey', 'display.useLegacyGUI', 'display.menuSideBar', 'display.showPromptComparison', 'display.useAdditionalAssetsPreview']) {
+        for (const id of ['display.useLegacyGUI', 'display.menuSideBar', 'display.showPromptComparison', 'display.useAdditionalAssetsPreview']) {
             expect(maybeRow(first.target, id), id).not.toBeNull()
         }
         openAdvanced(first.target)

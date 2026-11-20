@@ -25,6 +25,7 @@ import { requestGoogleCloudVertex } from './google';
 import { wholeCharacterStream } from './wholeCharacterStream';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type ModelModeExtended } from './shared';
+import { auxSlotModel } from './auxModelSlot';
 import { leaseArgKey, limitedField, readKeyField, sendArgKey, sendKeyLine, type KeyFieldId } from './secretKey';
 import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } from './keyRing';
 import { SecretRefError } from '../../secretRef';
@@ -593,9 +594,10 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
     
     targ.aiModel = arg.staticModel ? arg.staticModel : (model === 'model' ? db.aiModel : db.subModel)
     targ.modelInfo = getModelInfo(targ.aiModel)
-    if(db.seperateModelsForAxModels && !arg.staticModel){
-        if(db.seperateModels[model]){
-            targ.aiModel = db.seperateModels[model]
+    if(!arg.staticModel){
+        const slotModel = auxSlotModel(db.seperateModels, model)
+        if(slotModel){
+            targ.aiModel = slotModel
             targ.modelInfo = getModelInfo(targ.aiModel)
         }
     }

@@ -161,8 +161,8 @@ describe('changedFromDefault (T-A11 seam)', () => {
     test('a value that differs from the default is changed, and the default itself is not', () => {
         expect(changedFromDefault('lineHeight', 1.5)).toBe(true)
         expect(changedFromDefault('lineHeight', 1.25)).toBe(false)
-        expect(changedFromDefault('hideApiKey', false)).toBe(true)
-        expect(changedFromDefault('hideApiKey', true)).toBe(false)
+        expect(changedFromDefault('fullScreen', true)).toBe(true)
+        expect(changedFromDefault('fullScreen', false)).toBe(false)
         expect(changedFromDefault('animationSpeed', 0.4)).toBe(false)
         expect(changedFromDefault('theme', 'waifu')).toBe(true)
     })
