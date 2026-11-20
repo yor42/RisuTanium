@@ -1247,12 +1247,12 @@
     <div class="flex rounded-md border border-darkborderc overflow-hidden">
       {#each options as opt (opt.value)}
         <label
-          class={`${pillBase} ${value === opt.value ? pillActive : pillInactive} ${
+          class={`${pillBase} risu-focus-ring-within ${value === opt.value ? pillActive : pillInactive} ${
                   disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
           }`}
         >
           <input
-            class="hidden"
+            class="sr-only"
             type="radio"
             aria-label={opt.label}
             {name}

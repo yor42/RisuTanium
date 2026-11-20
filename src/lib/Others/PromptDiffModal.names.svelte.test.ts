@@ -101,6 +101,12 @@ describe('PromptDiffModal accessible names', { timeout: 60_000 }, () => {
         for (const radio of radios) {
             expect(controlName(radio)).toBe((radio.parentElement!.textContent ?? '').trim())
             expect(radio.hasAttribute('aria-labelledby')).toBe(false)
+            // A display:none radio (Tailwind `hidden`) is dropped from the accessibility tree and the tab
+            // order, so its name never reaches a screen reader; it stays visually hidden with `sr-only`
+            // and its pill shows the focus ring instead.
+            expect(radio.classList.contains('hidden')).toBe(false)
+            expect(radio.classList.contains('sr-only')).toBe(true)
+            expect(radio.parentElement!.classList.contains('risu-focus-ring-within')).toBe(true)
         }
         const boxes = Array.from(target.querySelectorAll('input[type=checkbox]')) as HTMLInputElement[]
         expect(boxes).toHaveLength(3)
