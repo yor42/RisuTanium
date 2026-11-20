@@ -67,7 +67,7 @@ export function trapTab(event: KeyboardEvent, root: HTMLElement): boolean {
 export const ANNOUNCE_SETTLE_MS = 200
 
 /** The same wait after a sheet opened over a returning file picker: past the window's state changes. */
-export const PICK_REFOCUS_SETTLE_MS = 300
+export const PICK_REFOCUS_SETTLE_MS = 600
 
 /**
  * Runs `callback` once, one animation frame and then `ms` after the call. The returned function cancels it, before or

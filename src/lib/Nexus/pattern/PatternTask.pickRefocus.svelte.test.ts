@@ -48,6 +48,7 @@ import { language } from '../../../lang'
 import { selectFileByDom } from 'src/ts/util'
 import { installDomPicker, type DomPicker } from 'src/ts/util.domPickerHarness'
 import { PICK_RETURN_WINDOW_MS, resetPickOpenerForTest } from '../../../ts/pickOpener'
+import { PICK_REFOCUS_SETTLE_MS } from './patternFocus'
 
 const steps = [{ label: 'Read file' }, { label: 'Add items' }]
 const confirm: TaskConfirm = {
@@ -139,11 +140,11 @@ afterEach(async () => {
 
 describe('the preflight sheet after a picker returned files', () => {
     // R307-2
-    test('Cancel is blurred and refocused once after a frame plus 300 ms, and the opening text follows the refocus', async () => {
+    test('Cancel is blurred and refocused once after a frame plus the pick refocus delay, and the opening text follows the refocus', async () => {
         await pickTwoFiles()
         const { log, cancel, status } = openWatched()
         expect(status.textContent).toBe('')
-        vi.advanceTimersByTime(250)
+        vi.advanceTimersByTime(PICK_REFOCUS_SETTLE_MS - 50)
         expect(log.events).toEqual([])
         vi.advanceTimersByTime(100)
         flushSync()
