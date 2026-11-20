@@ -36,6 +36,17 @@ import { deriveSchemeRoles, deriveSchemeRolesChecked } from './schemeRoles'
 const SCHEMES = Object.entries(colorSchemePresets) as [string, ColorScheme][]
 const c = (hex: string) => parseConcrete(hex)!
 
+/** Hue (degrees) and chroma of an sRGB hex colour in OKLCH. */
+function oklch(hex: string): { h: number, c: number } {
+    const lin = c(hex).slice(0, 3).map((v) => v / 255).map((u) => (u <= 0.04045 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4))
+    const l = Math.cbrt(0.4122214708 * lin[0] + 0.5363325363 * lin[1] + 0.0514459929 * lin[2])
+    const m = Math.cbrt(0.2119034982 * lin[0] + 0.6806995451 * lin[1] + 0.1073969566 * lin[2])
+    const s = Math.cbrt(0.0883024619 * lin[0] + 0.2817188376 * lin[1] + 0.6299787005 * lin[2])
+    const a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s
+    const b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+    return { h: ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360, c: Math.hypot(a, b) }
+}
+
 describe('deriveSchemeRoles', () => {
     test.each(SCHEMES)('%s: every role meets its floor on the scheme surfaces', (_name, s) => {
         const { roles, short } = deriveSchemeRolesChecked(s)
@@ -58,7 +69,41 @@ describe('deriveSchemeRoles', () => {
         expect(cr(c(roles['focus-ring']), bg), 'focus-ring').toBeGreaterThanOrEqual(3)
         expect(cr(c(roles['focus-ring']), dbg), 'focus-ring').toBeGreaterThanOrEqual(3)
         expect(cr(c(roles['focus-ring']), btn), 'focus-ring').toBeGreaterThanOrEqual(3)
+        expect(cr(c(roles['state-amber']), bg), 'state-amber').toBeGreaterThanOrEqual(3)
+        expect(cr(c(roles['state-amber']), dbg), 'state-amber').toBeGreaterThanOrEqual(3)
+        expect(cr(c(roles['state-violet']), bg), 'state-violet').toBeGreaterThanOrEqual(3)
+        expect(cr(c(roles['state-violet']), dbg), 'state-violet').toBeGreaterThanOrEqual(3)
         expect(roles['color-scheme']).toBe(s.type)
+    })
+
+    test.each(SCHEMES)('%s: a state role equals its seed wherever the seed already passes', (_name, s) => {
+        const roles = deriveSchemeRoles(s)
+        for (const [role, seed] of [['state-amber', '#fe9a00'], ['state-violet', '#8e51ff']] as const) {
+            const passes = cr(c(seed), c(s.bgcolor)) >= 3 && cr(c(seed), c(s.darkbg)) >= 3
+            if (passes) expect(roles[role]).toBe(seed)
+            else expect(roles[role]).not.toBe(seed)
+        }
+    })
+
+    test.each(SCHEMES)('%s: the state roles keep their hue family and stay saturated', (_name, s) => {
+        const roles = deriveSchemeRoles(s)
+        const amber = oklch(roles['state-amber'])
+        const violet = oklch(roles['state-violet'])
+        expect(amber.h, 'amber hue').toBeGreaterThanOrEqual(53)
+        expect(amber.h, 'amber hue').toBeLessThanOrEqual(77)
+        expect(violet.h, 'violet hue').toBeGreaterThanOrEqual(282)
+        expect(violet.h, 'violet hue').toBeLessThanOrEqual(306)
+        expect(amber.c, 'amber chroma').toBeGreaterThanOrEqual(0.09)
+        expect(violet.c, 'violet chroma').toBeGreaterThanOrEqual(0.09)
+    })
+
+    test('a scheme whose text colour equals the page colour reports both state roles as short', () => {
+        // Light presets fail the amber seed, and the lift target is as bright as the page, so no mix reaches the floor.
+        const light = colorSchemePresets.light
+        const { short } = deriveSchemeRolesChecked({ ...light, textcolor: light.bgcolor, darkbg: light.bgcolor })
+        expect(short).toContain('state-amber')
+        const dark = deriveSchemeRolesChecked({ ...colorSchemePresets.nature, textcolor: colorSchemePresets.nature.bgcolor, darkbg: colorSchemePresets.nature.bgcolor })
+        expect(dark.short).toContain('state-violet')
     })
 
     test('the accent channel is the accent solid', () => {
@@ -74,7 +119,7 @@ describe('deriveSchemeRoles', () => {
             'text-secondary': '#bfc6e3', 'text-muted': '#a6b0d4', 'accent': '#6f7fc8', 'accent-rgb': '111 127 200',
             'focus-ring': '#6f7fc8', 'field-border': '#6f7fc8', 'danger': '#ff6b81', 'danger-rgb': '255 107 129', 'warning-rgb': '255 209 102',
             'overlay-rgb': '238 240 255', 'switch-off-alpha': '0.36', 'surface-toast': '#2f3670', 'color-scheme': 'dark',
-            'on-selected': '#eef0ff',
+            'on-selected': '#eef0ff', 'on-borderc': '#000000', 'state-amber': '#fe9a00', 'state-violet': '#8e51ff',
         })
     })
 
@@ -88,6 +133,23 @@ describe('deriveSchemeRoles', () => {
 
     test.each([['cherry', '#000000'], ['galaxy', '#ffffff'], ['nature', '#000000']])('%s: on-selected falls to the extreme %s', (name, extreme) => {
         expect(deriveSchemeRoles(colorSchemePresets[name])['on-selected']).toBe(extreme)
+    })
+
+    test.each(SCHEMES)('%s: on-borderc is the text colour where it reaches 4.5:1 on borderc, else black or white', (_name, s) => {
+        const role = deriveSchemeRoles(s)['on-borderc']
+        const bc = c(s.borderc)
+        expect(cr(c(role), bc)).toBeGreaterThanOrEqual(4.5)
+        if (cr(c(s.textcolor), bc) >= 4.5) expect(role).toBe(toHex(c(s.textcolor)))
+        else expect(role).toBe(toHex(bestExtreme(bc)))
+    })
+
+    test.each([['light', '#ffffff'], ['default', '#000000'], ['cherry', '#000000'], ['galaxy', '#000000']])('%s: on-borderc falls to the extreme %s', (name, extreme) => {
+        expect(deriveSchemeRoles(colorSchemePresets[name])['on-borderc']).toBe(extreme)
+    })
+
+    test('an unreadable borderc colour keeps the text colour', () => {
+        const s: ColorScheme = { ...defaultColorScheme, borderc: 'nonsense' }
+        expect(deriveSchemeRoles(s)['on-borderc']).toBe('#eef0ff')
     })
 
     test('an unreadable selected colour keeps the text colour', () => {
@@ -112,6 +174,8 @@ describe('deriveSchemeRoles', () => {
         expect(roles.accent).toBe('#6f7fc8')
         expect(roles['accent-rgb']).toBe('111 127 200')
         expect(roles['focus-ring']).toBe('#6f7fc8')
+        expect(roles['state-amber']).toBe('#fe9a00')
+        expect(roles['state-violet']).toBe('#8e51ff')
     })
 
     test('a scheme whose muted text sits just under the floor is lifted above it', () => {

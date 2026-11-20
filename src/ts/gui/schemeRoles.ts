@@ -15,6 +15,12 @@ export interface SchemeRoles {
     'focus-ring': string
     /** The text on the selected primary button fill; it stays at least 4.5:1 on `selected`. */
     'on-selected': string
+    /** The text on the `borderc` hover fill of the CBS button card; it stays at least 4.5:1 on `borderc`. */
+    'on-borderc': string
+    /** A categorical module state shown as a glyph and a `currentColor` ring; at least 3:1 on the scheme's page and panel colours. */
+    'state-amber': string
+    /** As `state-amber`, for the other categorical module state. */
+    'state-violet': string
     'field-border': string
     'danger': string
     'danger-rgb': string
@@ -33,6 +39,9 @@ const FALLBACK_ACCENT_RGB = '111 127 200'
 const FALLBACK_DANGER_RGB = '255 107 129'
 const FALLBACK_WARNING = '#ffd166'
 const FALLBACK_WARNING_RGB = '255 209 102'
+// Tailwind's amber-500 and violet-500 clipped to sRGB: the categorical state hues, kept wherever they already pass.
+const STATE_AMBER_SEED = '#fe9a00'
+const STATE_VIOLET_SEED = '#8e51ff'
 const FALLBACK_OVERLAY_RGB = '255 255 255'
 const FALLBACK_SWITCH_OFF = '0.36'
 
@@ -94,6 +103,9 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
         'accent-rgb': FALLBACK_ACCENT_RGB,
         'focus-ring': FALLBACK_ACCENT,
         'on-selected': tx ?? scheme.textcolor,
+        'on-borderc': tx ?? scheme.textcolor,
+        'state-amber': STATE_AMBER_SEED,
+        'state-violet': STATE_VIOLET_SEED,
         'field-border': bc ?? scheme.borderc,
         'danger': red ?? scheme.draculared,
         'danger-rgb': FALLBACK_DANGER_RGB,
@@ -142,6 +154,13 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
         roles['warning-rgb'] = channels(warning.c)
         roles['overlay-rgb'] = channels(tx)
 
+        const amber = lift(STATE_AMBER_SEED, tx, 3, [bg, dbg])
+        note('state-amber', amber)
+        roles['state-amber'] = amber.c
+        const violet = lift(STATE_VIOLET_SEED, tx, 3, [bg, dbg])
+        note('state-violet', violet)
+        roles['state-violet'] = violet.c
+
         const txv = parseConcrete(tx)!
         const bgv = parseConcrete(bg)!
         const dbgv = parseConcrete(dbg)!
@@ -162,6 +181,9 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
     if (tx !== null && sel !== null) {
         // Black or white always reaches about 4.58:1 on any fill, so the role never falls short.
         roles['on-selected'] = cr(parseConcrete(tx)!, parseConcrete(sel)!) >= 4.5 ? tx : toHex(bestExtreme(parseConcrete(sel)!))
+    }
+    if (tx !== null && bc !== null) {
+        roles['on-borderc'] = cr(parseConcrete(tx)!, parseConcrete(bc)!) >= 4.5 ? tx : toHex(bestExtreme(parseConcrete(bc)!))
     }
     return { roles, short }
 }

@@ -313,6 +313,13 @@ import type { ByteStore } from 'src/ts/storage/store/contract'
 import { ExportCancelToken } from 'src/ts/exportCancel'
 import { LocalWriter, VirtualWriter, readImage } from 'src/ts/globalApi.svelte'
 import { alertError, type alertData } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
+
+/** The card's own Cancel: offered by the view, then pressed. */
+function pressCancel(): void {
+    expect(taskHostView()?.cancelOffered).toBe(true)
+    requestTaskCancel()
+}
 
 /** A Blob that reports a size and holds no bytes. */
 class SizedBlob extends Blob {
@@ -369,6 +376,7 @@ beforeEach(() => {
     world.served.clear()
     noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
+    resetTaskHostForTests()
     shown = []
     const unsubscribe = alertStore.subscribe((value) => { shown.push(value as alertData) })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -395,16 +403,13 @@ describe('Cancel of a large-asset CharX export on Tauri', () => {
             await vi.waitFor(() => expect(world.held).toBe(true))
             const callsAtCancel = world.calls.length
 
-            const dialog = get(alertStore) as alertData
-            expect(dialog.type).toBe('wait')
-            expect(dialog.onCancel).toBeTypeOf('function')
-            dialog.onCancel?.()
+            pressCancel()
             world.release?.()
 
             expect(await result).toBe(false)
-            const notice = get(alertStore) as alertData
-            expect(notice.type).toBe('normal')
-            expect(notice.msg).toBe(language.exportCancelledFileIncomplete)
+            const view = taskHostView()
+            expect(view?.cancelled).toBe(true)
+            expect(view?.result?.summary).toEqual([language.exportFailedFileIncomplete])
             expect(world.errors).toEqual([])
             // only the call that was already in flight at the cancel ran
             expect(world.calls.length).toBe(callsAtCancel)
@@ -494,11 +499,17 @@ describe('exportOffersCancel', () => {
 })
 
 describe('no Cancel without a large asset', () => {
-    test('(G) a desktop CharX with small assets only keeps its progress and offers no Cancel', async () => {
+    test('(N) a desktop CharX with small assets only shows a card without Cancel and no progress alert', async () => {
+        let offered: boolean | undefined
+        vi.mocked(readImage).mockImplementation(async () => {
+            offered ??= taskHostView()?.cancelOffered
+            return world.png
+        })
         expect(await exportCharacterCard(syntheticCharacter(false), 'charx', { spec: 'v3' })).toBe(true)
 
+        expect(offered).toBe(false)
         expect(shown.filter((value) => value.onCancel !== undefined)).toEqual([])
-        expect(shown.filter((value) => value.type === 'progress').length).toBeGreaterThan(0)
+        expect(shown.filter((value) => value.type === 'progress' || value.type === 'wait')).toEqual([])
     })
 })
 
@@ -508,7 +519,8 @@ describe('a failure after the file was opened', () => {
         expect(await exportCharacterCard(syntheticCharacter(false), 'charx', { spec: 'v3' })).toBe(false)
 
         expect(world.calls).toEqual([])
-        expect(world.errors).toEqual(['synthetic read failure of assets/a2'])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic read failure of assets/a2')
+        expect(world.errors).toEqual([])
     })
 
     test('(R) a failure after the Android document was created adds the sentence, though no byte was written', async () => {
@@ -518,7 +530,8 @@ describe('a failure after the file was opened', () => {
         expect(await exportCharacterCard(syntheticCharacter(false), 'charx', { spec: 'v3' })).toBe(false)
 
         expect(world.calls).toEqual([])
-        expect(world.errors).toEqual(['synthetic read failure of assets/a2\n' + language.exportFailedFileIncomplete])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic read failure of assets/a2\n' + language.exportFailedFileIncomplete)
+        expect(world.errors).toEqual([])
     })
 
     test('(G) a content:// path off the Android transport is still untouched before its first call', async () => {
@@ -526,7 +539,8 @@ describe('a failure after the file was opened', () => {
         world.failRead.add('assets/a2')
         expect(await exportCharacterCard(syntheticCharacter(false), 'charx', { spec: 'v3' })).toBe(false)
 
-        expect(world.errors).toEqual(['synthetic read failure of assets/a2'])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic read failure of assets/a2')
+        expect(world.errors).toEqual([])
     })
 
     test('(N) a failure that is not an Error keeps its text and gets the sentence once', async () => {
@@ -540,8 +554,9 @@ describe('a failure after the file was opened', () => {
         })
         expect(await exportCharacterCard(syntheticCharacter(false), 'charx', { spec: 'v3' })).toBe(false)
 
-        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
-        expect(world.errors).toEqual(['plain string failure\n' + language.exportFailedFileIncomplete])
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        expect(console.error).toHaveBeenCalledWith('plain string failure')
+        expect(taskHostView()?.failure?.detail).toBe('plain string failure\n' + language.exportFailedFileIncomplete)
     })
 })
 
@@ -557,7 +572,7 @@ describe('the failure text of a kept file', () => {
         })
         expect(await exportCharacterCard(syntheticCharacter(false), 'charx', { spec: 'v3' })).toBe(false)
 
-        expect(world.errors).toEqual(['{"code":7}\n' + language.exportFailedFileIncomplete])
+        expect(taskHostView()?.failure?.detail).toBe('{"code":7}\n' + language.exportFailedFileIncomplete)
     })
 })
 
@@ -573,12 +588,17 @@ describe('a dismissed save dialog', () => {
         expect(world.calls).toEqual([])
     })
 
-    test('(R) a large-asset desktop CharX removes its wait dialog, shows no error and writes nothing', async () => {
+    test('(R) a large-asset desktop CharX whose dialog is dismissed shows no wait and no card at any time', async () => {
         serveBig()
         world.savePath = null
+        let cardSeen = false
+        const stop = alertStore.subscribe(() => { cardSeen ||= taskHostView() !== null })
         expect(await exportCharacterCard(syntheticCharacter(true), 'charx', { spec: 'v3' })).toBe(false)
+        stop()
 
-        expect(shown.some((value) => value.type === 'wait' && value.onCancel !== undefined)).toBe(true)
+        expect(cardSeen).toBe(false)
+        expect(taskHostView()).toBeNull()
+        expect(shown.some((value) => value.type === 'wait')).toBe(false)
         expect(vi.mocked(alertError)).not.toHaveBeenCalled()
         expect(world.errors).toEqual([])
         expect((get(alertStore) as alertData).type).toBe('none')

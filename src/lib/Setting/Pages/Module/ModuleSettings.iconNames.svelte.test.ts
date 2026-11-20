@@ -68,7 +68,7 @@ import ModuleSettings from './ModuleSettings.svelte'
 
 //#region helpers
 
-const EXCEPTIONS = [/^text-amber-500$/, /^text-violet-500$/]
+const EXCEPTIONS: RegExp[] = []
 
 function makeModule(name: string, extra: Partial<RisuModule> = {}): RisuModule {
     return { name, description: '', id: 'id-' + name, ...extra } as RisuModule
@@ -154,7 +154,7 @@ describe('ModuleSettings accessible names', () => {
         flushSync()
         expect(unnamedControls(target)).toEqual([])
         expect(rowButtons(target, 'A').map(controlName)).toEqual([language.moduleConvertRow])
-        expect(rowButtons(target, 'A')[0].className).toContain('text-violet-500')
+        expect(rowButtons(target, 'A')[0].className).toContain('risu-state-violet')
         expect(toolbarButtons(target)[1].getAttribute('aria-pressed')).toBe('true')
     })
 
@@ -179,7 +179,7 @@ describe('ModuleSettings state and colour', () => {
         }
         const integrated = rowButtons(target, 'B')[0]
         expect(integrated.getAttribute('aria-pressed')).toBe('false')
-        expect(integrated.classList.contains('text-amber-500')).toBe(true)
+        expect(integrated.classList.contains('risu-state-amber')).toBe(true)
         expect(integrated.classList.contains('ring-current')).toBe(true)
         expect(controlDescription(integrated)).toBe(language.moduleOnByIntegration)
         const off = rowButtons(target, 'C')[0]

@@ -275,6 +275,19 @@ describe('OtherBotSettings memory fields are named', () => {
     })
 })
 
+describe('OtherBotSettings key inputs are masked', () => {
+    function typeOf(target: HTMLElement, name: string): string | undefined {
+        return Array.from(target.querySelectorAll<HTMLInputElement>(FIELDS)).find((el) => controlName(el) === name)?.getAttribute('type') ?? undefined
+    }
+
+    test('OK1: the Voyage and WaveSpeed keys are password inputs although the saved hide-key value is off', async () => {
+        const voyage = await render({ hypaModel: 'voyageContext3', hideApiKey: false }, [])
+        expect(typeOf(voyage, fillLang(language.settingsPage.nameApiKey, { name: 'Voyage' }))).toBe('password')
+        const wavespeed = await render({ sdProvider: 'wavespeed', hideApiKey: false }, [])
+        expect(typeOf(wavespeed, language.apiKey)).toBe('password')
+    })
+})
+
 describe('OtherBotSettings glyphs and colours', () => {
     test('regression reproducer: glyphs are hidden and the delete buttons of the reference images use scheme tokens', async () => {
         const target = await render({ sdProvider: 'novelai', hypaV3: true }, [language.advancedSettings])

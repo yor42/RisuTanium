@@ -292,7 +292,7 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
 
 async function restoreChosen(row: RestorePointRow, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<RunEnd> {
     return await runExclusively(busy, async (run) => {
-        alertWait('Loading backup...')
+        alertWait(language.backupRestoreLoading)
         run.started = true
         const outcome = await restorePoint(committer, backend, row.key)
         switch (outcome.status) {
@@ -392,7 +392,7 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
     }
 
     return await runExclusively(busy, async (run) => {
-        alertWait('Loading backup...')
+        alertWait(language.backupRestoreLoading)
         run.started = true
         const end: Store2ImportEnd = await commitStore2Import({
             target: { committer, backend },

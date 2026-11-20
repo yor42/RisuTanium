@@ -304,7 +304,6 @@ export const displayOtherSettingsItems: SettingItem[] = [
     { id: 'display.useChatCopy', type: 'check', labelKey: 'useChatCopy', bindKey: 'useChatCopy', keywords: ['chat', 'copy'] },
     { id: 'display.useAdditionalAssetsPreview', type: 'check', labelKey: 'useAdditionalAssetsPreview', bindKey: 'useAdditionalAssetsPreview', keywords: ['additional', 'assets', 'preview'] },
     { id: 'display.useLegacyGUI', type: 'check', labelKey: 'useLegacyGUI', bindKey: 'useLegacyGUI', keywords: ['legacy', 'gui'] },
-    { id: 'display.hideApiKey', type: 'check', labelKey: 'hideApiKeys', bindKey: 'hideApiKey', keywords: ['api', 'key', 'hide'] },
     { id: 'display.unformatQuotes', type: 'check', labelKey: 'unformatQuotes', bindKey: 'unformatQuotes', keywords: ['quotes'] },
     { id: 'display.blockquoteStyling', type: 'check', labelKey: 'blockquoteStyling', bindKey: 'blockquoteStyling', keywords: ['blockquote', 'quote'] },
     { id: 'display.customQuotes', type: 'check', labelKey: 'customQuotes', bindKey: 'customQuotes', keywords: ['custom', 'quotes'] },

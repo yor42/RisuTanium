@@ -270,7 +270,10 @@ import { alertStore } from 'src/ts/stores.svelte'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import type { ByteStore } from 'src/ts/storage/store/contract'
-import type { alertData } from 'src/ts/alert'
+import { alertError, type alertData } from 'src/ts/alert'
+import { reencodeImage } from 'src/ts/process/files/inlays'
+import { resetTaskHostForTests, taskHostView, taskResultShowing, taskShown } from 'src/ts/alertTask.svelte'
+import { language } from 'src/lang'
 
 function syntheticPng(): Uint8Array {
     const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -310,6 +313,8 @@ beforeEach(() => {
     resetBusyActionsForTest()
     resetByteTransportForTests()
     vi.mocked(save).mockClear()
+    vi.mocked(alertError).mockClear()
+    resetTaskHostForTests()
     noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
     shown = []
@@ -356,6 +361,43 @@ describe('a card export waiting on the save dialog', () => {
 
         dialog.deliver('content://documents/1')
         await exporting
+    })
+
+    // AD1: the card opens only after the picker answered, and it is the export's card from the first file call on.
+    test('(R) no card while the Android save dialog is pending; after the path is delivered one card runs and ends with a result', async () => {
+        const dialog = holdSaveDialog()
+        const atFirstCall: Array<{ title: string | undefined, cancelOffered: boolean | undefined }> = []
+        world.onFirstCall = () => { atFirstCall.push({ title: taskHostView()?.title, cancelOffered: taskHostView()?.cancelOffered }) }
+        const exporting = exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
+        await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+
+        expect(taskShown()).toBe(false)
+
+        dialog.deliver('content://documents/1')
+        expect(await exporting).toBe(true)
+
+        expect(atFirstCall).toEqual([{ title: language.exportTaskCharacterTitle, cancelOffered: false }])
+        expect(taskResultShowing()).toBe(true)
+    })
+
+    // AD3: a failure before the card was opened ends as today: the legacy error, never a card.
+    test.each([
+        ['the save dialog call rejects', () => vi.mocked(save).mockRejectedValueOnce(new Error('dialog plugin failed')), 'dialog plugin failed'],
+        ['the image re-encode rejects', () => vi.mocked(reencodeImage).mockRejectedValueOnce(new Error('reencode failed')), 'reencode failed'],
+    ] as const)('(G) %s: the export resolves false with the legacy error and never shows a card', async (_name, arrange, message) => {
+        arrange()
+        let cardSeen = false
+        const stop = alertStore.subscribe(() => { cardSeen ||= taskShown() })
+        world.onFirstCall = () => { cardSeen ||= taskShown() }
+
+        expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(false)
+        stop()
+
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(world.errors).toEqual([message])
+        expect(cardSeen).toBe(false)
+        expect(taskShown()).toBe(false)
+        expect(isBusy()).toBe(false)
     })
 
     // Compatibility guard (G1): a dismissed dialog gives today's outcome and leaves nothing registered.
