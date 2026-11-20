@@ -16,6 +16,7 @@
     import localforage from "localforage";
     import { IRIS_STORE } from "src/ts/drive/rtb/sideStoreConfig";
     import { getModelInfo, LLMFormat } from "src/ts/model/modellist";
+    import { auxSlotModel } from "src/ts/process/request/auxModelSlot";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     interface DialogueLine {
@@ -53,7 +54,7 @@
     let userInputEl = $state<HTMLInputElement | null>(null);
     
     let isUnsupportedModel = $derived.by(() => {
-        const currentModel = (DBState.db.seperateModelsForAxModels ? DBState.db.seperateModels.otherAx : '') || DBState.db.subModel;
+        const currentModel = auxSlotModel(DBState.db.seperateModels, 'otherAx') || DBState.db.subModel;
         const modelInfo = getModelInfo(currentModel);
         return !(
             modelInfo.format === LLMFormat.Anthropic ||
