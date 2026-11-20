@@ -623,7 +623,8 @@ describe('loadData(): the queued boot notices are drained before the stale-accou
         localStorage.setItem('accountst', 'able')
         localStorage.setItem('dosync', 'sync')
         forageState.staleAccountProfile = true
-        await armInstallBranch('decode', baseDb())
+        // A module makes the profile one the archive notice is told to; an empty profile is switched on without it.
+        await armInstallBranch('decode', { ...baseDb(), modules: [{ id: 'ida', name: 'Module ida', description: '', lorebook: [], regex: [], trigger: [], assets: [] }] })
         vi.mocked(window.location.reload).mockClear()
 
         const { loadData, alertStore, loadedStore, dispatch } = await freshLoadData({ realDispatch: true, acknowledge: false })
