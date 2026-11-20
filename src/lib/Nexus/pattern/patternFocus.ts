@@ -156,14 +156,25 @@ export function watchFocus(root: HTMLElement, fallback: HTMLElement, isActive: (
 }
 
 const openShells: object[] = []
+const shellOpenListeners = new Set<(element: HTMLElement | undefined) => void>()
+
+/**
+ * Calls `listener` each time a shell registers, with the shell's element when its caller passed one. The shell is
+ * already registered when the listener runs. Returns the function that stops listening.
+ */
+export function onShellOpen(listener: (element: HTMLElement | undefined) => void): () => void {
+    shellOpenListeners.add(listener)
+    return () => { shellOpenListeners.delete(listener) }
+}
 
 /**
  * Records an opened shell. Only the most recently opened one acts on keys. An open shell also holds a modal layer,
  * which pauses the toast timers. Returns the unregister function.
  */
-export function registerShell(token: object): () => void {
+export function registerShell(token: object, element?: HTMLElement): () => void {
     openShells.push(token)
     const releaseLayer = holdModalLayer()
+    for (const listener of [...shellOpenListeners]) listener(element)
     return () => {
         releaseLayer()
         const index = openShells.indexOf(token)
