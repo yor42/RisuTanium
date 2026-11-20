@@ -1,5 +1,6 @@
 import type { BackupIndexEntry, BinFile } from '../../../drive/backupContainer'
 import { streamBinDatabase, type BinStreamDeclineReason, type BinStreamSink } from '../../../drive/binDatabaseStream'
+import { v4 as uuidv4 } from 'uuid'
 import { repairCharacterIds } from '../../../process/chatIds'
 import { characterIdProblem, isCharacterEntry } from '../../characterIds'
 import { summarizeRepair } from '../../characterTreeRepair'
@@ -27,7 +28,8 @@ import { LegacyReadError, resolveLegacyCharacter, resolveLegacyRoot, type Incomp
  *    count of units, the first unsavable detail, and the CRC-32 and length of the bytes it read. It writes nothing.
  *  - P2 (`streamedImportUnits`) is the `finalize` of the commit's build. It reads the entry again under the attempt's
  *    staged mint and puts each character's units at once. It commits only bytes whose CRC-32, length, incomplete
- *    signature and unit count equal P1b's; any difference is `BinFileChangedError('content')`, which aborts the commit.
+ *    signature, unit count and number of minted plugin unit ids equal P1b's; any difference is
+ *    `BinFileChangedError('content')`, which aborts the commit.
  *
  * Invariants:
  *  - Every file the streamed prepare cannot answer exactly as the whole prepare does returns 'whole' (a decline of the
@@ -37,8 +39,11 @@ import { LegacyReadError, resolveLegacyCharacter, resolveLegacyRoot, type Incomp
  *    `repairImportRoot`, `resolveLegacyRoot`, `applyImportOverlay`, `confirmImportIncomplete`); the `CodecError`
  *    precedence lives in the codec. This module restates none of it.
  *  - A request with `baseContent` reads the base content index once, before P1b, and P2 consults that same object (it
- *    travels in `StreamPrepared`). P2 never reads the base, so both passes make equal reuse decisions. Routing counts
- *    the units the file holds before reuse (`count + reused`), the commit's `newUnits` the units it writes (`count`).
+ *    travels in `StreamPrepared`). P2 never reads the base, so it consults the same index object; P1b records the
+ *    plugin unit ids it mints in `StreamPrepared.minted` and P2 replays them, so both passes make equal reuse decisions. Routing counts the units the file holds before reuse (`count + reused`), the commit's `newUnits` the
+ *    units it writes (`count`). Every other per-pass random value (entity ids, repaired chat ids, the placeholder chat's
+ *    id and time, the manifest's `createdAt`) reaches only units the content index does not hold or units whose own
+ *    bytes carry it.
  *  - P2 never decodes the whole entry and never falls back. `context.put` is awaited outside every `catch`, so a failed
  *    upload reaches the committer as its own stop and is never reported as a changed file.
  */
@@ -82,6 +87,8 @@ export interface StreamPrepared {
     length: number
     incomplete: readonly IncompleteItem[]
     repair: RepairSummary
+    /** The plugin unit ids P1b minted, in mint order; P2 mints exactly these, so a pass that needs another number is a changed file. */
+    minted: readonly string[]
 }
 
 interface PassResult {
@@ -170,12 +177,15 @@ async function runPass(request: StreamPrepareRequest, encode: StreamedEncode, re
     return result
 }
 
-/** The root steps of both passes, after every character: the adjustment, the root repairs, the root resolve and the overlay. Rejects `LegacyReadError`. */
-async function resolveRoot(request: StreamPrepareRequest, root: Database, incomplete: IncompleteItem[]): Promise<Database> {
+/**
+ * The root steps of both passes, after every character: the adjustment, the root repairs, the root resolve and the overlay.
+ * `newUnitId` is the one source of plugin unit ids both passes share. Rejects `LegacyReadError`.
+ */
+async function resolveRoot(request: StreamPrepareRequest, root: Database, incomplete: IncompleteItem[], newUnitId: () => string): Promise<Database> {
     const adjusted = request.stream.adjustRoot === undefined ? root : request.stream.adjustRoot(root)
     repairImportRoot(adjusted)
     // The characters went through the encoder one by one; the root carries an empty stand-in list.
-    const resolved = await resolveLegacyRoot(adjusted, [], request.reader, incomplete, request.resolve)
+    const resolved = await resolveLegacyRoot(adjusted, [], request.reader, incomplete, { ...request.resolve, newUnitId })
     applyImportOverlay(resolved, request)
     return resolved
 }
@@ -218,9 +228,15 @@ async function prepareDry(request: StreamPrepareRequest, hooks: ImportHooks): Pr
     notePhase(hooks, 'import repaired')
     let readFailure: LegacyReadError | null = pass.heldRead
     let root: Database | null = null
+    const minted: string[] = []
+    const source = request.resolve?.newUnitId ?? uuidv4
     if (readFailure === null) {
         try {
-            root = await resolveRoot(request, pass.root, pass.incomplete)
+            root = await resolveRoot(request, pass.root, pass.incomplete, () => {
+                const id = source()
+                minted.push(id)
+                return id
+            })
         } catch (error) {
             if (!(error instanceof LegacyReadError)) {
                 throw error
@@ -268,6 +284,7 @@ async function prepareDry(request: StreamPrepareRequest, hooks: ImportHooks): Pr
         length: pass.done.length,
         incomplete: pass.incomplete,
         repair: summarizeRepair([]),
+        minted: [...minted],
     }
 }
 
@@ -280,7 +297,8 @@ function isStreamContext(context: BuildContext): context is StreamContext {
  * whose context carries `put`. `newUnits` is P1b's count (the units written, not the ones reused). The build encodes with
  * P1b's index object and never reads the base. The build reads the entry again, puts every character's units
  * as they are encoded, and returns the tail (front, modules, finish units and the manifest). A difference from P1b in
- * the bytes read, the incomplete items, a codec refusal or the number of units is `BinFileChangedError('content')`; a
+ * the bytes read, the incomplete items, a codec refusal, the number of units or the number of plugin unit ids it mints
+ * is `BinFileChangedError('content')`; a
  * read failure of the reader is the `LegacyReadError` it is.
  */
 export function streamedImportUnits(prepared: StreamPrepared, request: StreamPrepareRequest, hooks: ImportHooks): ImportUnits {
@@ -301,7 +319,17 @@ export function streamedImportUnits(prepared: StreamPrepared, request: StreamPre
                 throw contentChanged(new Error('The entry is not the bytes the first pass read.'))
             }
             checkOmitted(request, pass.omitted)
-            const root = await resolveRoot(request, pass.root, pass.incomplete)
+            // The cursor belongs to this build: every build replays the ids from the first one.
+            let next = 0
+            const root = await resolveRoot(request, pass.root, pass.incomplete, () => {
+                if (next >= prepared.minted.length) {
+                    throw contentChanged(new Error('The entry asks for more plugin unit ids than the first pass minted.'))
+                }
+                return prepared.minted[next++]
+            })
+            if (next !== prepared.minted.length) {
+                throw contentChanged(new Error('The entry mints fewer plugin unit ids than the first pass.'))
+            }
             if (JSON.stringify(pass.incomplete) !== prepared.signature) {
                 throw contentChanged(new Error('The items left incomplete differ from the first pass.'))
             }

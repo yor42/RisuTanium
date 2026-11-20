@@ -97,7 +97,7 @@ import { language } from 'src/lang'
 import { createMemoryBackend, Store2BackendFailureError, type Store2Backend } from 'src/ts/storage/store2/backend'
 import type { MemoryBackend } from 'src/ts/storage/store2/backend/memory'
 import { readBaseContentIndex } from 'src/ts/storage/store2/baseContent'
-import { assembleDatabase, unitDigest } from 'src/ts/storage/store2/codec'
+import { assembleDatabase, bucketOfKey, unitDigest } from 'src/ts/storage/store2/codec'
 import { toPlainJson } from 'src/ts/storage/store2/codec/normalize'
 import { IMPORT_REPLACES_BASE, Store2BulkAbortError, type CommitRequest } from 'src/ts/storage/store2/commit'
 import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
@@ -109,6 +109,15 @@ import {
 import { LegacyListBuilder } from 'src/ts/storage/store2/lists/legacyList'
 import { BinFileChangedError } from 'src/ts/storage/store2/legacy/binReader'
 import { LegacyReadError } from 'src/ts/storage/store2/legacy/resolve'
+import {
+    commitImportStreamed, prepareImportStream, streamedImportUnits, type StreamCommitRequest, type StreamPrepared,
+} from 'src/ts/storage/store2/legacy/importStream'
+import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
+import { createKeyMint, type StreamContext } from 'src/ts/storage/store2/commit'
+import type { UnitWrite } from 'src/ts/storage/store2/backend/types'
+import { seededEnv } from 'src/ts/storage/tests/store2/codecFixtures'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
 import { CodecError } from 'src/ts/storage/store2/codec/types'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
@@ -1348,5 +1357,191 @@ describe('a page abort under the marker', () => {
             expect(failure).toBeInstanceOf(BinFileChangedError)
             expect((failure as BinFileChangedError).reason).toBe(reason)
         }
+    })
+})
+
+// ---- the plugin unit ids of a streamed import ----
+
+const PLUGIN_INDEX_GOLDEN = path.join(process.cwd(), 'src/ts/drive/tests/binGoldens/upstream-plugin-index.bin')
+const mintedId = (n: number): string => `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`
+/** The fixed unit ids of the golden (`binGoldens.harness.ts`): the index, the large and kept values, the shadowed, trashed and old ones. */
+const GOLDEN_FIXED_IDS: ReadonlySet<string> = new Set([0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6].map(mintedId))
+const GOLDEN_LARGE_ID = mintedId(0xb2)
+const GOLDEN_KEPT_ID = mintedId(0xb4)
+/** The golden's small index entries; each one draws one plugin unit id. */
+const GOLDEN_MINTED = 7
+/** The bucket of the `_coldplugin` key, which every import stores. */
+const COLD_PLUGIN_BUCKET = bucketOfKey('_coldplugin')
+const emptyBucketDigest = (): string => unitDigest(encodeUnit(UNIT_TYPE.pluginStorageBucket, { v: 1, entries: [] }))
+
+/** The first `count` v4-shaped ids that are not the golden's fixed ones and that `accept` (given the buckets already taken). */
+function idsWhere(count: number, accept: (bucket: number, taken: ReadonlySet<number>) => boolean): string[] {
+    const ids: string[] = []
+    const taken = new Set<number>()
+    for (let n = 1; ids.length < count && n < 0x1000; n++) {
+        const id = mintedId(n)
+        const bucket = bucketOfKey(id)
+        if (GOLDEN_FIXED_IDS.has(id) || !accept(bucket, taken)) {
+            continue
+        }
+        ids.push(id)
+        taken.add(bucket)
+    }
+    expect(ids).toHaveLength(count)
+    return ids
+}
+
+/** Every id in the `_coldplugin` bucket: the entries of the golden then fill that bucket and the kept value's one. */
+const SAME_BUCKET_IDS = idsWhere(12, (bucket) => bucket === COLD_PLUGIN_BUCKET)
+/** Ids in pairwise distinct buckets, none of them a bucket the golden's other keys use. */
+const SPREAD_IDS = idsWhere(GOLDEN_MINTED, (bucket, taken) => ![COLD_PLUGIN_BUCKET, bucketOfKey(GOLDEN_LARGE_ID), bucketOfKey(GOLDEN_KEPT_ID)].includes(bucket) && !taken.has(bucket))
+
+interface IdBox {
+    ids: string[]
+    calls: number
+}
+
+type ImportStreamHooks = Parameters<typeof prepareImportStream>[1]
+
+/** A store holding at least 16 buckets of equal (empty) content, as any library without plugin storage leaves behind. */
+async function storeWithEmptyBuckets(): Promise<BaseStore> {
+    const first = await run(await dbContainer(library(5)), { stream: false })
+    expect(first.end.kind).toBe('landed')
+    const base = await storeAfter(first)
+    const known = await readBaseContentIndex(base.raw, await base.raw.readCommit())
+    expect(known.units.get(emptyBucketDigest())?.length ?? 0).toBeGreaterThanOrEqual(16)
+    return base
+}
+
+/** The request `commitStore2Import` builds for the golden over `base`, with the plugin unit ids drawn from `box`. */
+async function pluginIndexRequest(base: BaseStore, box: IdBox): Promise<{ request: StreamCommitRequest, hooks: ImportStreamHooks }> {
+    const opened = await open(new Uint8Array(fs.readFileSync(PLUGIN_INDEX_GOLDEN)), [])
+    const committer = committerOf(base.raw, base.clock, 101)
+    const request: StreamCommitRequest = {
+        stream: { file: opened.file, entry: opened.entry, omitted: new Map(), minUnits: 0 },
+        reader: createBinImportReader(opened.file, opened.index, async () => ({ status: 'missing' })),
+        lists: createListDerivation(),
+        yieldToMain: async () => { },
+        baseContent: async () => readBaseContentIndex(base.raw, await committer.readCommit()),
+        resolve: {
+            newUnitId: () => {
+                box.calls += 1
+                const id = box.ids.shift()
+                if (id === undefined) {
+                    throw new Error('The test ran out of plugin unit ids.')
+                }
+                return id
+            },
+        },
+        committer,
+        backend: base.raw,
+    }
+    return { request, hooks: { confirmIncomplete: async () => true } }
+}
+
+/** The streamed prepare's answer, failing the test when the file took another route. */
+function streamedOf(verdict: Awaited<ReturnType<typeof prepareImportStream>>): StreamPrepared {
+    if (verdict === 'whole' || 'status' in verdict) {
+        throw new Error(`The golden did not take the stream route (${verdict === 'whole' ? verdict : verdict.status}).`)
+    }
+    return verdict
+}
+
+describe('a streamed import mints each plugin unit id once, whatever the id source answers later', () => {
+    // Regression reproducer: P2 drew new ids, so its buckets held another number of equal-content empty ones than P1b's
+    // and the unit count check refused the commit as a changed file.
+    test('R1: a base holding 16 equal-content empty buckets: ids drawn between the passes change nothing, and the commit names the first pass\'s ids', async () => {
+        const base = await storeWithEmptyBuckets()
+        const box: IdBox = { ids: [...SAME_BUCKET_IDS], calls: 0 }
+        const { request, hooks } = await pluginIndexRequest(base, box)
+
+        const prepared = streamedOf(await prepareImportStream(request, hooks))
+        expect(box.calls).toBe(GOLDEN_MINTED)
+        box.ids = [...SPREAD_IDS]
+        const outcome = await commitImportStreamed(request, prepared, hooks)
+
+        expect(outcome.status).toBe('committed')
+        expect(box.calls).toBe(GOLDEN_MINTED)
+        expect(box.ids).toEqual(SPREAD_IDS)
+        const key = (await parsedCommit(base.raw)).current?.key as string
+        const read = await readTreeBytes(base.raw, key)
+        if (read.status !== 'ok') {
+            throw new Error(`The stored tree reads ${read.status}.`)
+        }
+        const storage = (assembleDatabase(read.tree.manifest, read.tree.source).pluginCustomStorage ?? {}) as unknown as Obj
+        const slots = storage._coldplugin as Record<string, string>
+        const minted = Object.entries(slots).filter(([, id]) => !GOLDEN_FIXED_IDS.has(id))
+        expect(minted).toHaveLength(GOLDEN_MINTED)
+        expect(new Set(minted.map(([, id]) => id))).toEqual(new Set(SAME_BUCKET_IDS.slice(0, GOLDEN_MINTED)))
+        for (const id of Object.values(slots)) {
+            expect(Object.hasOwn(storage, id)).toBe(true)
+        }
+        expect(storage[slots.bigKey]).toEqual({ big: ['a', 'b', 'c'] })
+        expect(storage[slots.objKey]).toEqual({ theme: 'dark', nested: { list: [1, 2, null], flag: false } })
+        expect(slots.bigKey).toBe(GOLDEN_LARGE_ID)
+        await expectInvariant(base.raw)
+    })
+
+    // New-behaviour guard: one prepared stream builds again from its first id.
+    test('R3: two builds of one prepared stream name the same plugin unit ids', async () => {
+        const base = await storeWithEmptyBuckets()
+        const box: IdBox = { ids: [...SAME_BUCKET_IDS], calls: 0 }
+        const { request, hooks } = await pluginIndexRequest(base, box)
+        const prepared = streamedOf(await prepareImportStream(request, hooks))
+        box.ids = [...SPREAD_IDS]
+        // One build description finalized twice: the replay cursor must not outlive a call.
+        const importUnits = streamedImportUnits(prepared, request, hooks)
+
+        const bucketBodies = async (): Promise<string> => {
+            const units: UnitWrite[] = []
+            const context: StreamContext = {
+                mint: createKeyMint(seededEnv(5), null).mint,
+                seq: 1,
+                now: NOW,
+                put: async (unit) => { units.push(unit) },
+            }
+            const built = await importUnits.finalize(context)
+            const bodies: string[] = []
+            // A reused unit is a base unit by content and carries no bytes; the minted ids live in written buckets.
+            for (const unit of [...units, ...built.units]) {
+                if (!('bytes' in unit)) {
+                    continue
+                }
+                const read = readUnit(unit.bytes, UNIT_TYPE.pluginStorageBucket)
+                if (read.status === 'ok') {
+                    bodies.push(JSON.stringify(read.value.body))
+                }
+            }
+            return bodies.sort().join('\n')
+        }
+        const first = await bucketBodies()
+        const second = await bucketBodies()
+
+        expect(first).toContain(SAME_BUCKET_IDS[0])
+        expect(second).toBe(first)
+        expect(box.calls).toBe(GOLDEN_MINTED)
+        expect(box.ids).toEqual(SPREAD_IDS)
+    })
+
+    // New-behaviour guards: a build that needs another number of plugin unit ids than the first pass minted is a changed file.
+    test.each([
+        ['R4a', 'a build that asks for one id more than recorded', (minted: readonly string[]) => minted.slice(1), 'more plugin unit ids'],
+        ['R4b', 'a build that uses one id fewer than recorded', (minted: readonly string[]) => [...minted, mintedId(0x2000)], 'fewer plugin unit ids'],
+    ])('%s: %s aborts with the content error, the marker cleared and the tree unchanged', async (_id, _name, reshape, text) => {
+        const base = await storeWithEmptyBuckets()
+        const box: IdBox = { ids: [...SAME_BUCKET_IDS], calls: 0 }
+        const { request, hooks } = await pluginIndexRequest(base, box)
+        const prepared = streamedOf(await prepareImportStream(request, hooks))
+        const before = (await parsedCommit(base.raw)).current?.key
+
+        const failure = await commitImportStreamed(request, { ...prepared, minted: reshape(prepared.minted) }, hooks).catch((error: unknown) => error)
+
+        expect(failure).toBeInstanceOf(Store2BulkAbortError)
+        expect((failure as Store2BulkAbortError).original).toMatchObject({ reason: 'content', cause: { message: expect.stringContaining(text) } })
+        expect((failure as Store2BulkAbortError).original).toBeInstanceOf(BinFileChangedError)
+        const key = await parsedCommit(base.raw)
+        expect(key.staging).toBeNull()
+        expect(key.current?.key).toBe(before)
+        expect(box.calls).toBe(GOLDEN_MINTED)
     })
 })

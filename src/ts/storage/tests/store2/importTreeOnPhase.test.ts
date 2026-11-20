@@ -53,7 +53,13 @@ const NEVER = 'never settles'
 /** What a test hook may do with each phase it is told. */
 type Observer = (phase: string) => void
 
-const PAGE_MARKS = [/^import repaired$/, /^import resolved$/, /^import planned, \d+ units$/, /^import commit start$/]
+/** The boot import has no base to reuse units from, so it reads no base index. */
+const BOOT_MARKS = [/^import repaired$/, /^import resolved$/, /^import planned, \d+ units$/, /^import commit start$/]
+/** The page import reads the index of its base between the question and the plan. */
+const PAGE_MARKS = [
+    /^import repaired$/, /^import resolved$/, /^import base index start$/, /^import base indexed, \d+ units, \d+ bytes, \d+ skipped$/,
+    /^import planned, \d+ units$/, /^import commit start$/,
+]
 
 /** A page import over a seeded memory store; `log` receives the phases, the question and the commit call in the order they happen. */
 async function pageImport(golden: Golden, options: { onPhase?: Observer, confirm?: boolean } = {}) {
@@ -122,13 +128,13 @@ async function within<T>(work: Promise<T>): Promise<T> {
 }
 
 describe('new behaviour: the page import tells its phases in order', () => {
-    test('repaired, resolved, planned and commit start come in this order, and commit start is before the commit call', async () => {
+    test('repaired, resolved, base index, planned and commit start come in this order, and commit start is before the commit call', async () => {
         const { outcome, log } = await pageImport(await loadGolden('upstream-full.bin'))
         expect(outcome.status).toBe('committed')
         const marks = marksOf(log)
         expect(marks).toHaveLength(PAGE_MARKS.length)
         PAGE_MARKS.forEach((pattern, index) => expect(marks[index]).toMatch(pattern))
-        expect(log.indexOf('import commit start')).toBeGreaterThan(log.indexOf(marks[2]))
+        expect(log.indexOf('import commit start')).toBeGreaterThan(log.indexOf(marks[4]))
         expect(log.indexOf('import commit start')).toBe(log.indexOf('COMMIT') - 1)
     })
 
@@ -186,15 +192,15 @@ describe('new behaviour: the boot import tells its phases in order', () => {
         const { result, log } = await bootImport(await loadGolden('upstream-full.bin'))
         expect(result.status).toBe('installed')
         const marks = marksOf(log)
-        expect(marks).toHaveLength(PAGE_MARKS.length)
-        PAGE_MARKS.forEach((pattern, index) => expect(marks[index]).toMatch(pattern))
+        expect(marks).toHaveLength(BOOT_MARKS.length)
+        BOOT_MARKS.forEach((pattern, index) => expect(marks[index]).toMatch(pattern))
         expect(log.indexOf('PUT')).toBeGreaterThan(log.indexOf('import commit start'))
     })
 
     test('the exit entry tells commit start too, before its first unit write', async () => {
         const { result, log } = await bootImport(await loadGolden('upstream-full.bin'), { exit: true })
         expect(result.status).toBe('installed')
-        expect(marksOf(log)).toHaveLength(PAGE_MARKS.length)
+        expect(marksOf(log)).toHaveLength(BOOT_MARKS.length)
         expect(log.indexOf('PUT')).toBeGreaterThan(log.indexOf('import commit start'))
     })
 
@@ -220,7 +226,7 @@ describe('new behaviour: an observer never decides the boot import', () => {
     test.each([false, true])('an observer that throws at every mark leaves the import installed (exit entry: %s)', async (exit) => {
         const { result, log } = await bootImport(await loadGolden('upstream-full.bin'), { exit, onPhase: () => { throw new Error('observer failed') } })
         expect(result.status).toBe('installed')
-        expect(marksOf(log)).toHaveLength(PAGE_MARKS.length)
+        expect(marksOf(log)).toHaveLength(BOOT_MARKS.length)
     })
 
     test.each([false, true])(`an observer that returns a promise that ${NEVER} does not stall the import (exit entry: %s)`, async (exit) => {
