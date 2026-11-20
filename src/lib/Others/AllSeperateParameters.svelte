@@ -10,6 +10,7 @@
     import { FileDownIcon, FileUpIcon, ImportIcon } from "@lucide/svelte";
     import { selectSingleFile } from "src/ts/util";
     import { getModelInfo } from "src/ts/model/modellist";
+    import { auxSlotModel } from "src/ts/process/request/auxModelSlot";
 
     type AuxModelKey = 'memory' | 'emotion' | 'translate' | 'otherAx'
     const auxModelKeys: AuxModelKey[] = ['memory', 'emotion', 'translate', 'otherAx']
@@ -27,10 +28,7 @@
     let effectiveModel = $derived.by(() => {
         if (!paramKey) return DBState.db.subModel
         if (auxModelKeys.includes(paramKey as AuxModelKey)) {
-            if (DBState.db.seperateModelsForAxModels) {
-                return DBState.db.seperateModels[paramKey as AuxModelKey] || DBState.db.subModel
-            }
-            return DBState.db.subModel
+            return auxSlotModel(DBState.db.seperateModels, paramKey) || DBState.db.subModel
         }
         return paramKey
     })

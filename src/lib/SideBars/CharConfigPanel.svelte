@@ -1002,7 +1002,7 @@
                     placeholder="https://api.openai.com/v1" />
 
                 <span id="{uid}-openai-api-key" class="text-textcolor">{language.sidebarUi.apiKeyOverridesGlobal}</span>
-                <TextInput className="mb-4 mt-2" hideText={DBState.db.hideApiKey}
+                <TextInput className="mb-4 mt-2" hideText
                     labelId="{uid}-openai-api-key"
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.apiKey}
                     placeholder={language.sidebarUi.apiKeyEmptyPlaceholder} />

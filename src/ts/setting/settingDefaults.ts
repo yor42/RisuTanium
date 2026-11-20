@@ -31,7 +31,6 @@ const DISPLAY_DEFAULTS: Readonly<Partial<Record<keyof Database, DefaultValue>>> 
     showSavingIcon: false,
     showPromptComparison: false,
     hideAllImages: false,
-    hideApiKey: true,
     unformatQuotes: false,
     customQuotes: false,
     customCSS: '',

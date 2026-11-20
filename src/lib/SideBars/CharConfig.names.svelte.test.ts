@@ -275,11 +275,11 @@ function unnamed(root: HTMLElement): string[] {
 }
 
 function fieldNames(root: HTMLElement): string[] {
-    return Array.from(root.querySelectorAll<HTMLElement>('input[type="text"], input:not([type]), textarea, [role="textbox"]')).map(controlName)
+    return Array.from(root.querySelectorAll<HTMLElement>('input[type="text"], input[type="password"], input:not([type]), textarea, [role="textbox"]')).map(controlName)
 }
 
 function field(root: HTMLElement, label: string, index = 0): HTMLElement {
-    const found = Array.from(root.querySelectorAll<HTMLElement>('input[type="text"], input:not([type]), textarea, [role="textbox"]'))
+    const found = Array.from(root.querySelectorAll<HTMLElement>('input[type="text"], input[type="password"], input:not([type]), textarea, [role="textbox"]'))
         .filter((el) => controlName(el) === label)[index]
     if (!found) expect.fail('no field named ' + label + ' #' + index)
     return found

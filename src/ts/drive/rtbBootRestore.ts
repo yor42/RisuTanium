@@ -110,7 +110,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
     const installBuiltTree = target.installBuiltTree
     if (installBuiltTree === undefined) {
         // A test double of the target only: the real boot target always carries the method.
-        deps.error('Failed, Is file corrupted?')
+        deps.error(language.backupRestoreFailed)
         return CANCELLED
     }
     let busy: BusyHandle | null = null
