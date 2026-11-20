@@ -1529,9 +1529,16 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             const listed = new Map<string, number | null>()
             for (let i = 0; i < body.content.length; i++) {
                 const name: unknown = body.content[i]
-                const rev: unknown = body.revisions[i]
-                if (typeof name !== 'string' || (rev !== null && (typeof rev !== 'number' || !Number.isSafeInteger(rev) || rev < 0))) {
+                const raw: unknown = body.revisions[i]
+                if (typeof name !== 'string') {
                     return null
+                }
+                let rev: number | null = null
+                if (raw !== null) {
+                    if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < 0) {
+                        return null
+                    }
+                    rev = raw
                 }
                 if (!name.startsWith(prefix)) {
                     continue
