@@ -3,6 +3,8 @@
     import { language } from "src/lang"
     import { fillLang } from "src/lang/fill"
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers"
+    import { untrack } from "svelte"
+    import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from "src/lib/Nexus/pattern/patternFocus"
     import { getDatabase, type PromptDiffPrefs } from "../../ts/storage/database.svelte"
     import type { PromptItem, PromptItemPlain, PromptItemChatML, PromptItemTyped, PromptItemAuthorNote, PromptItemChat } from "src/ts/process/prompt.ts";
 
@@ -196,6 +198,62 @@
         snapshot: () => closeRequested,
         close: handleClose,
     })))
+
+    let layer: HTMLElement | undefined = $state()
+    let panel: HTMLElement | undefined = $state()
+    let closeButton: HTMLElement | undefined = $state()
+
+    const shellToken = {}
+    // The control that opened the modal; focus returns to it on close.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+
+    /** Every sibling along the path from `node` up to the enclosing `<main>` (or the body). */
+    function backgroundOf(node: HTMLElement): HTMLElement[] {
+        const held: HTMLElement[] = []
+        let current = node
+        for (let parent = current.parentElement; parent && parent !== document.body; parent = current.parentElement) {
+            for (const sibling of Array.from(parent.children)) {
+                if (sibling !== current && sibling instanceof HTMLElement) held.push(sibling)
+            }
+            if (parent.tagName === 'MAIN') break
+            current = parent
+        }
+        return held
+    }
+
+    // While open: the page behind goes inert, focus starts on the close button, Tab stays inside the
+    // panel and Escape closes through the same path as the X. Teardown undoes all of it in reverse and
+    // returns focus last, once the page is no longer inert.
+    $effect(() => {
+        const shell = panel
+        const area = layer
+        const initial = closeButton
+        if (!shell || !area || !initial) return
+        const unregisterShell = registerShell(shellToken, shell)
+        const restoreInert = makeInert(backgroundOf(area))
+        initial.focus()
+        const stopWatching = watchFocus(shell, initial, () => isTopmostShell(shellToken))
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!isTopmostShell(shellToken)) return
+            if (event.key === 'Escape') {
+                event.preventDefault()
+                event.stopPropagation()
+                if (!event.repeat && !event.isComposing) handleClose()
+                return
+            }
+            trapTab(event, shell)
+        }
+        window.addEventListener('keydown', onKeyDown, true)
+
+        return () => {
+            window.removeEventListener('keydown', onKeyDown, true)
+            stopWatching()
+            unregisterShell()
+            restoreInert()
+            untrack(() => returnFocus(opener))
+        }
+    })
 
 
 // Derived values
@@ -1602,8 +1660,15 @@
 {/snippet}
 
 
-<div class="absolute inset-0 z-50 bg-black bg-black/60 flex justify-center items-center p-4">
-  <div class="bg-darkbg rounded-md w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
+<div bind:this={layer} class="absolute inset-0 z-50 bg-black bg-black/60 flex justify-center items-center p-4">
+  <div
+    bind:this={panel}
+    role="dialog"
+    aria-modal="true"
+    aria-label={language.comparePreset}
+    tabindex="-1"
+    class="bg-darkbg rounded-md w-full max-w-4xl max-h-full overflow-hidden flex flex-col outline-hidden"
+  >
     
     <div class="flex items-center justify-between px-4 py-3 border-b border-darkborderc">
       <div class="flex items-center gap-4 flex-wrap">
@@ -1618,7 +1683,7 @@
         {/if}
       </div>
 
-      <button class="text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={(e) => {handleClose()}}>
+      <button bind:this={closeButton} class="risu-focus-ring text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={(e) => {handleClose()}}>
         <XIcon size={20} aria-hidden="true"/>
       </button>
     </div>
