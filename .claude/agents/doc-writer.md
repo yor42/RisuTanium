@@ -15,7 +15,7 @@ Match surrounding headings/tables/style and line endings; preserve pre-existing 
 For user references, show syntax, minimal examples and edge cases; suspected bugs are never intended behaviour. Mark fork differences as the packet states.
 Put commit drafts in the report file for the parent, never commit. The Orchestrator independently dispatches doc-verifier; do not claim review occurred or dispatch it yourself.
 Report file (result.md): FILES CHANGED, CLAIMS NOT FROM THE BRIEF with source, CITATION MISMATCHES, TODO(evidence) LEFT, OMITTED SUSPECTED BUGS and DRAFT TEXT; handback per evidence-reporting.
-Own complex technical and persistence commit-message drafts from evidence; routine evidence-complete drafts can come from record-clerk. The Orchestrator uses the routine independent-review route for ordinary factual claims (native doc-verifier fallback); actual changed-critical-contract claims remain in the existing opus-reviewer gate.
+Own complex technical and persistence commit-message drafts from evidence; routine evidence-complete drafts can come from record-clerk. The Orchestrator sends ordinary factual claims to a fresh native doc-verifier (MC-2748); actual changed-critical-contract claims remain in the existing opus-reviewer gate.
 
 ## Bounded leaf delegation
 For substantial helper work, return the bounded question to the parent. Tiny targeted lookups run inline. The bounded nested read-only helper grant stays read-only: no nested writers, recursive specialists or acceptance authority. Tool availability is not authorization to bypass routing.

@@ -12,7 +12,7 @@ Everything below "Current state" up to 2026-11-20 is archived verbatim in [Archi
 
 ## Current state
 
-- **Merged work and open PRs:** read `git log origin/main` and the open PR list on yor42/RisuTanium; the records batch 5 paragraph that stood here is archived verbatim in [Archive/Live-State-history-2026-11-20.md](Archive/Live-State-history-2026-11-20.md). MC IDs come from per-session blocks of 10 assigned by lane A (MC-2713); the decisions log runs through MC-2753.
+- **Merged work and open PRs:** read `git log origin/main` and the open PR list on yor42/RisuTanium; the records batch 5 paragraph that stood here is archived verbatim in [Archive/Live-State-history-2026-11-20.md](Archive/Live-State-history-2026-11-20.md). MC IDs come from per-session blocks of 10 assigned by lane A (MC-2713); the decisions log runs through MC-2781.
 
 - **Current MVP (batch 54, 2026-11-05):** the release-signed APK of main `a3b5d706e` (`MC-1082`), built by the maintainer and installed on their phone at 14:39 KST; APK sha256 `4716857a605c614beebe0888e3e67291006de53112313317102b470c29f30cc4` (as typed, matches `result.json`); the maintainer reports no data loss (not checked by the lane). It contains CHORE-412 layout 2, so an older APK cannot read the store after the update and the way back is the pre-update `.bin` (`MC-1074`). `MC-350` carry-forward is live from this build. Dirty tree at build time: `dirty: true` (the unowned files, including the Android manifest edit). Owed: the Note 9 check of the streamed-fetch port (`MC-1078`).
 
