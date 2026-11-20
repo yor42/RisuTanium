@@ -210,6 +210,7 @@
             <span id="{uid}-sort">{language.hubSortLabel}</span>
             <select
                 aria-labelledby="{uid}-sort"
+                aria-describedby="{uid}-sort"
                 class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-2 text-textcolor"
                 value={sort}
                 onchange={(event) => {

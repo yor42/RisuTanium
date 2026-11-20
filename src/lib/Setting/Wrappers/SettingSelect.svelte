@@ -14,6 +14,8 @@
 
     let { item, ctx }: Props = $props();
 
+    const uid = $props.id();
+
     let localValue: any = $state(untrack(() => getSettingValue(item, ctx)));
 
     // Sync: DB → local (one-way read)
@@ -45,10 +47,10 @@
 </script>
 
 <span class="text-textcolor {item.classes ?? 'mt-4'}">
-    {getLabel(item)}
+    <span id="{uid}-label">{getLabel(item)}</span>
     {#if item.helpKey}<Help key={item.helpKey as any}/>{/if}
 </span>
-<SelectInput bind:value={localValue}>
+<SelectInput labelId="{uid}-label" bind:value={localValue}>
     {#each processedOptions as opt}
         <OptionInput value={opt.value}>
             {opt.labelKey ? ((language as any)[opt.labelKey] ?? opt.label) : opt.label}

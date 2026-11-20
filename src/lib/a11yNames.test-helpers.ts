@@ -9,6 +9,8 @@
 
 const FORM_CONTROL_SELECTOR = 'input, textarea, [role="textbox"]'
 const CHOICE_CONTROL_SELECTOR = 'input[type="radio"], input[type="checkbox"]'
+const VALUE_CONTROL_SELECTOR = 'select, input[type="number"], input[type="range"], input[type="color"], input[type="date"], [role="slider"]'
+const TEXT_FIELD_SELECTOR = 'textarea, input[type="text"], input[type="password"], input:not([type]), [role="textbox"]'
 
 const PALETTE_NAMES = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
 const PALETTE_PROPERTIES = 'text|bg|border|ring|outline|fill|stroke|from|via|to|divide|placeholder|shadow|accent|caret|decoration'
@@ -64,7 +66,7 @@ export function describedByIncludesName(el: Element): boolean {
 
 export function controlName(el: Element): string {
     const labelled = referencedText(el, 'aria-labelledby')
-    if(el.matches(FORM_CONTROL_SELECTOR) && !el.matches(CHOICE_CONTROL_SELECTOR)){
+    if((el.matches(FORM_CONTROL_SELECTOR) || el.matches(VALUE_CONTROL_SELECTOR)) && !el.matches(CHOICE_CONTROL_SELECTOR)){
         return describedByIncludesName(el) ? labelled : ''
     }
     if(el.matches(CHOICE_CONTROL_SELECTOR)){
@@ -84,12 +86,13 @@ export function controlDescription(el: Element): string {
     return referencedText(el, 'aria-describedby')
 }
 
-export type ControlOptions = { fields?: boolean }
+export type ControlOptions = { fields?: boolean, values?: boolean }
 
 export function controls(root: ParentNode, options: ControlOptions = {}): Element[] {
-    const selector = options.fields
+    const base = options.fields
         ? 'button, [role="button"], input[type="radio"], textarea, input[type="checkbox"], input[type="text"], input[type="password"], input:not([type]), [role="textbox"]'
         : 'button, [role="button"], input[type="radio"], textarea'
+    const selector = options.values ? `${base}, ${VALUE_CONTROL_SELECTOR}` : base
     return Array.from(root.querySelectorAll(selector)).filter((el) => el.closest('[aria-hidden="true"]') === null)
 }
 
@@ -101,6 +104,174 @@ export function describeElement(el: Element): string {
 
 export function unnamedControls(root: ParentNode, options: ControlOptions = {}): string[] {
     return controls(root, options).filter((el) => controlName(el) === '').map(describeElement)
+}
+
+const EMBEDDED_VALUE_TAGS = new Set(['input', 'select', 'textarea'])
+
+function accessibleParts(node: Node, isRoot: boolean): string {
+    if(node.nodeType === Node.TEXT_NODE){
+        return node.textContent ?? ''
+    }
+    if(node.nodeType !== Node.ELEMENT_NODE){
+        return ''
+    }
+    const element = node as Element
+    if(!isRoot && (element.getAttribute('aria-hidden') === 'true' || element.hasAttribute('hidden'))){
+        return ''
+    }
+    const label = normalize(element.getAttribute('aria-label') ?? '')
+    if(label !== ''){
+        return ` ${label} `
+    }
+    const tag = element.tagName.toLowerCase()
+    if(tag === 'img'){
+        return ` ${element.getAttribute('alt') ?? ''} `
+    }
+    if(EMBEDDED_VALUE_TAGS.has(tag)){
+        return ` ${(element as HTMLInputElement).value} `
+    }
+    let text = ''
+    for(const child of Array.from(element.childNodes)){
+        text += accessibleParts(child, false)
+    }
+    return text
+}
+
+/**
+ * Approximates the text a browser computes from a referenced element's content: text nodes count,
+ * aria-hidden and hidden descendants are skipped, an element with an aria-label contributes that label
+ * instead of its children, an img contributes its alt and an embedded input or select its value. Unlike
+ * `controlName`, it sees a Help button, whose only content is aria-hidden icons behind an aria-label.
+ */
+export function accessibleText(node: Node): string {
+    return normalize(accessibleParts(node, true))
+}
+
+function otherFieldIn(parent: Element, control: Element): boolean {
+    return Array.from(parent.querySelectorAll(`${VALUE_CONTROL_SELECTOR}, ${TEXT_FIELD_SELECTOR}`)).some((el) => el !== control)
+}
+
+/**
+ * The checkbox that switches a field on or off: the last checkbox inside the control's parent that comes
+ * before the control in document order, and only when that parent holds no other value control or text
+ * field. SliderInput and OptionalInput put the toggle and the field side by side under one root.
+ */
+export function toggleFor(control: Element): HTMLInputElement | null {
+    const parent = control.parentElement
+    if(parent === null || otherFieldIn(parent, control)){
+        return null
+    }
+    let found: HTMLInputElement | null = null
+    for(const box of Array.from(parent.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))){
+        if(box.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING){
+            found = box
+        }
+    }
+    return found
+}
+
+/** The value controls, plus the text fields that have a `toggleFor`, in document order and not aria-hidden. */
+export function fieldControls(root: ParentNode): Element[] {
+    const selector = `${VALUE_CONTROL_SELECTOR}, ${TEXT_FIELD_SELECTOR}`
+    return Array.from(root.querySelectorAll(selector))
+        .filter((el) => el.closest('[aria-hidden="true"]') === null)
+        .filter((el) => el.matches(VALUE_CONTROL_SELECTOR) || toggleFor(el) !== null)
+}
+
+export type FieldExpectation = { name: string, help?: string, toggle?: boolean }
+
+const NAMING_FORBIDDEN_DESCENDANTS = 'button, [role="button"], a[href], input, select, textarea, [role="slider"], [tabindex], [aria-label]'
+
+function textOfIds(el: Element, idList: string[]): string {
+    const parts: string[] = []
+    for(const id of idList){
+        const target = el.ownerDocument.getElementById(id)
+        if(target){
+            parts.push(accessibleText(target))
+        }
+    }
+    return normalize(parts.join(' '))
+}
+
+/**
+ * Checks each value control of `root`, in document order, against the expected names and returns one
+ * line per violation, written `#<index> <element> F<rule> <detail>`; a test asserts an empty list.
+ * F1 count, F2 exact name, F3 naming ids first in aria-describedby, F4 description is the name then the
+ * help, F5 naming element holds only text and is not the control's wrapper, F6 naming ids are not shared
+ * with another element, F7 toggle checkbox present exactly when expected and named like the field.
+ */
+export function fieldNameProblems(root: ParentNode, expected: FieldExpectation[]): string[] {
+    const problems: string[] = []
+    const fields = fieldControls(root)
+    if(fields.length !== expected.length){
+        problems.push(`#* F1 expected ${expected.length} controls, found ${fields.length}`)
+    }
+    const namingIdsOfRoot = new Set<string>()
+    for(const el of Array.from(root.querySelectorAll('[aria-labelledby]'))){
+        for(const id of ids(el, 'aria-labelledby')){
+            namingIdsOfRoot.add(id)
+        }
+    }
+    fields.forEach((control, index) => {
+        const expectation = expected[index]
+        const report = (rule: string, detail: string) => problems.push(`#${index} ${describeElement(control)} ${rule} ${detail}`)
+        if(expectation === undefined){
+            report('F1', 'unexpected control')
+            return
+        }
+        const labelIds = ids(control, 'aria-labelledby')
+        const describedIds = ids(control, 'aria-describedby')
+        const name = textOfIds(control, labelIds)
+        if(name === '' || name !== expectation.name){
+            report('F2', `name "${name}" expected "${expectation.name}"`)
+        }
+        const prefixOk = labelIds.length > 0 && labelIds.every((id, i) => describedIds[i] === id)
+        if(!prefixOk){
+            report('F3', `aria-describedby "${describedIds.join(' ')}" does not start with aria-labelledby "${labelIds.join(' ')}"`)
+        }
+        const wantedDescription = expectation.help ? `${expectation.name} ${expectation.help}` : expectation.name
+        const description = textOfIds(control, describedIds)
+        if(description !== wantedDescription){
+            report('F4', `description "${description}" expected "${wantedDescription}"`)
+        }
+        for(const id of describedIds.slice(labelIds.length)){
+            if(namingIdsOfRoot.has(id)){
+                report('F4', `help id ${id} is also a naming id`)
+            }
+        }
+        for(const id of labelIds){
+            const target = control.ownerDocument.getElementById(id)
+            if(target === null){
+                report('F5', `aria-labelledby id ${id} does not resolve`)
+                continue
+            }
+            if(target.contains(control) || target.querySelector(NAMING_FORBIDDEN_DESCENDANTS) !== null){
+                report('F5', `naming element ${id} contains the control or a focusable or labelled descendant`)
+            }
+            for(const other of Array.from(root.querySelectorAll('[aria-labelledby], [aria-describedby]'))){
+                if(other === control){
+                    continue
+                }
+                if(ids(other, 'aria-labelledby').includes(id) || ids(other, 'aria-describedby').includes(id)){
+                    report('F6', `naming id ${id} is also referenced by ${describeElement(other)}`)
+                }
+            }
+        }
+        const toggle = toggleFor(control)
+        if(toggle === null && expectation.toggle === true){
+            report('F7', 'expected a toggle checkbox, found none')
+        }
+        else if(toggle !== null && expectation.toggle !== true){
+            report('F7', 'found an unexpected toggle checkbox')
+        }
+        else if(toggle !== null){
+            const toggleName = controlName(toggle)
+            if(toggleName === '' || toggleName !== expectation.name){
+                report('F7', `toggle name "${toggleName}" expected "${expectation.name}"`)
+            }
+        }
+    })
+    return problems
 }
 
 export type IconOptions = { extra?: string[], skip?: string[] }
