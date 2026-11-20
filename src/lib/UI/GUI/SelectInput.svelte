@@ -10,6 +10,7 @@
     class:py-1={size === 'sm'}
     class:px-6={size === 'lg'}
     class:py-3={size === 'lg'}
+    aria-describedby={ariaDescribedby}
     bind:value
     onchange={onchange}
 >
@@ -20,6 +21,8 @@
         value: string | number;
         className?: string;
         size?: 'sm'|'md'|'lg'|'xl';
+        /** The id of the element that describes this select; no attribute is rendered when absent. */
+        ariaDescribedby?: string;
         children?: import('svelte').Snippet;
         onchange?: (event: Event & {
             currentTarget: EventTarget & HTMLSelectElement;
@@ -30,6 +33,7 @@
         value = $bindable(),
         className = "",
         size = 'md',
+        ariaDescribedby,
         children,
         onchange
     }: Props = $props();

@@ -5,6 +5,7 @@ import type { requestDataResponse, StreamResponseChunk } from '../process/reques
 import { recordUsage } from './usageLedger'
 import { createUsageMeter } from './usageMeter'
 import { usagePurposeOf } from './usagePurpose'
+import { applyUsageRetention } from './usageRetention'
 import type { UsageEntry, UsageMeterState, UsageMode, UsagePurpose } from './usageTypes'
 
 /**
@@ -92,7 +93,10 @@ type Attempt = ReturnType<typeof snapshotAttempt>
 
 function record(attempt: Attempt, entry: Pick<UsageEntry, 'reported' | 'estimated'>): void {
     try {
-        recordUsage(DBState.db?.statics, { modelKey: attempt.modelKey, purpose: attempt.purpose, ...entry }, new Date())
+        const now = new Date()
+        // Pruning first frees room under the key cap; in an unchanged month this is one string compare.
+        applyUsageRetention(DBState.db, now)
+        recordUsage(DBState.db?.statics, { modelKey: attempt.modelKey, purpose: attempt.purpose, ...entry }, now)
     } catch (error) {}
 }
 

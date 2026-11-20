@@ -1,12 +1,15 @@
 <script lang="ts">
-    import { onMount, tick } from "svelte";
+    import { onMount, tick, untrack } from "svelte";
     import { language } from "src/lang";
+    import { alertConfirm } from "src/ts/alert";
     import { LLMProvider } from "src/ts/model/types";
     import { DBState } from "src/ts/stores.svelte";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import SelectInput from "src/lib/UI/GUI/SelectInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
-    import type { CostResult, PriceOverride } from "src/ts/usage/usageTypes";
+    import { retentionCutoff, retentionMonthsOf, USAGE_RETENTION_CHOICES, withoutClearedUsage, type UsageClearScope } from "src/ts/usage/usageLedger";
+    import { applyUsageRetention } from "src/ts/usage/usageRetention";
+    import type { CostResult, PriceOverride, UsageRetentionMonths } from "src/ts/usage/usageTypes";
     import { buildUsageView, formatUsd, purposeLabelKey, type ModelRow, type UsageViewContext } from "src/ts/usage/usageView";
 
     // A price is a non-negative plain decimal; the length cap keeps the exact cost arithmetic well inside its limits.
@@ -115,6 +118,60 @@
         invalid = false;
         editing = null;
         focusSetPrice(modelKey);
+    }
+
+    // Retention. The select is bound to a local pick so a declined confirm can put the stored choice back on screen.
+    const storedPick = $derived(String(retentionMonthsOf(DBState.db.usageRetentionMonths) ?? "off"));
+    let retentionPick = $state(untrack(() => storedPick));
+    // A change from outside (a peer fast-forward, an import) is shown; the pick in progress is not overwritten otherwise.
+    $effect.pre(() => {
+        const stored = storedPick;
+        untrack(() => { retentionPick = stored; });
+    });
+
+    async function onRetentionChange(): Promise<void> {
+        const next = retentionPick;
+        const previous = storedPick;
+        if (next === previous) {
+            return;
+        }
+        if (next === "off") {
+            delete DBState.db.usageRetentionMonths;
+            return;
+        }
+        const months = Number(next) as UsageRetentionMonths;
+        const now = new Date();
+        // The dry run: how many months this period would delete now. Overflow is never a month, so it never asks.
+        const { months: count } = withoutClearedUsage(DBState.db.statics, { kind: "before", month: retentionCutoff(now, months) });
+        if (count > 0 && !(await alertConfirm(language.usageStats.retentionConfirm(months, count)))) {
+            retentionPick = previous;
+            return;
+        }
+        DBState.db.usageRetentionMonths = months;
+        applyUsageRetention(DBState.db, now, { force: true });
+    }
+
+    // Clear. The oldest month is not offered: nothing lies before it.
+    let clearPick = $state("all");
+    let cleared = $state(false);
+    const clearableMonths = $derived(view.months.slice(0, -1));
+    const clearChoice = $derived(clearableMonths.some((row) => "before:" + row.month === clearPick) ? clearPick : "all");
+
+    async function onClear(): Promise<void> {
+        const choice = clearChoice;
+        const scope: UsageClearScope = choice === "all" ? { kind: "all" } : { kind: "before", month: choice.slice("before:".length) };
+        const message = scope.kind === "all" ? language.usageStats.clearConfirmAll : language.usageStats.clearConfirmBefore(scope.month);
+        if (!(await alertConfirm(message))) {
+            return;
+        }
+        const { statics, removed } = withoutClearedUsage(DBState.db.statics, scope);
+        if (removed > 0) {
+            DBState.db.statics = statics;
+        }
+        clearPick = "all";
+        cleared = true;
+        // A clear-all removes the clear controls, which would drop focus to the page; it moves to the notice.
+        void tick().then(() => document.querySelector<HTMLElement>('[data-part="usage-cleared"]')?.focus());
     }
 </script>
 
@@ -314,6 +371,43 @@
             </table>
         </div>
     {/if}
+{/if}
+
+{#if ready}
+    <section aria-labelledby="usage-manage-title" data-part="usage-manage" class="mb-6">
+        <h3 id="usage-manage-title" class="text-lg font-semibold mb-1">{language.usageStats.manageTitle}</h3>
+
+        <label class="flex flex-col gap-1 mb-2 max-w-xs">
+            <span class="text-textcolor2">{language.usageStats.retentionLabel}</span>
+            <SelectInput bind:value={retentionPick} ariaDescribedby="usage-retention-help" onchange={onRetentionChange}>
+                <option value="off">{language.usageStats.retentionOff}</option>
+                {#each USAGE_RETENTION_CHOICES as choice (choice)}
+                    <option value={String(choice)}>{language.usageStats.retentionMonths(choice)}</option>
+                {/each}
+            </SelectInput>
+        </label>
+        <p id="usage-retention-help" class="text-textcolor2 text-sm mb-4">{language.usageStats.retentionHelp}</p>
+
+        {#if !empty}
+            <div data-part="usage-clear" class="flex flex-col gap-2 mb-2 max-w-xs">
+                <label class="flex flex-col gap-1">
+                    <span class="text-textcolor2">{language.usageStats.clearScopeLabel}</span>
+                    <SelectInput bind:value={clearPick} onchange={() => { cleared = false }}>
+                        <option value="all">{language.usageStats.clearScopeAll}</option>
+                        {#each clearableMonths as row (row.month)}
+                            <option value={"before:" + row.month}>{language.usageStats.clearScopeBefore(row.month)}</option>
+                        {/each}
+                    </SelectInput>
+                </label>
+                <div>
+                    <Button styled="danger" onclick={() => { void onClear() }}>{language.usageStats.clearButton}</Button>
+                </div>
+            </div>
+        {/if}
+        {#if cleared}
+            <p class="text-textcolor2 text-sm" role="status" tabindex="-1" data-part="usage-cleared">{language.usageStats.clearedNotice}</p>
+        {/if}
+    </section>
 {/if}
 
 <p class="text-textcolor2 text-sm mb-2" data-part="usage-note">{language.usageStats.note}</p>

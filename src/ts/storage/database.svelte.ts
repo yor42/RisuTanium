@@ -18,7 +18,7 @@ import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset, normalizeHypaV3Presets } from '../process/memory/hypaV3Presets'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import type { TaskPreset } from '../process/utility/taskPreset'
-import type { PriceOverride } from '../usage/usageTypes'
+import type { PriceOverride, UsageRetentionMonths } from '../usage/usageTypes'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
 import { safeStructuredClone } from '../polyfill';
@@ -917,6 +917,8 @@ export interface Database{
     activeThemePack?:string
     /** Per-model price overrides in USD per 1M tokens. Absent until one is set; fork-only, never in a `.bin`. */
     usagePriceOverrides?:Record<string, PriceOverride>
+    /** Months of usage statistics kept; absent keeps every month. Fork-only, never in a `.bin`. */
+    usageRetentionMonths?:UsageRetentionMonths
     sdProvider: string
     webUiUrl:string
     sdSteps:number
