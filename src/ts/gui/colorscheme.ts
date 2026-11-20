@@ -252,7 +252,9 @@ export function changeColorScheme(colorScheme: string){
             DBState.db.colorScheme = safeStructuredClone(colorShemes[colorScheme])
         }
         DBState.db.colorSchemeName = colorScheme
-        updateColorScheme()   
+        updateColorScheme()
+        // The text theme's font colours depend on the scheme type, so they follow a scheme change.
+        updateTextThemeAndCSS()
     } catch (error) {}
 }
 

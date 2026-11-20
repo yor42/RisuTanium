@@ -57,7 +57,7 @@
     import { draftIdentityKey } from '../../ts/draftContents'
     import { chatWindowKey } from '../../ts/chatWindowPolicy'
     import { DBState, selIdState, HideIconStore } from '../../ts/stores.svelte'
-    import { ColorSchemeTypeStore } from '../../ts/gui/colorscheme'
+    import { patternSurfaceTone } from '../../ts/gui/surfaceTone'
     import { aiLawApplies, changeChatTo, foldChatToMessage } from '../../ts/globalApi.svelte'
     import { createMessageEditorController } from '../../ts/process/messageEditorController.svelte'
     import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
@@ -841,7 +841,7 @@
                 {#if peek.text}<span data-part="chat-swipe-peek-text">{peek.text}</span>{/if}
             </div>
         {/if}
-        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" use:cardAnimationHold class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={(event) => { if (event.target === event.currentTarget) commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" use:cardAnimationHold class:prose-invert={$patternSurfaceTone === 'dark'} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={(event) => { if (event.target === event.currentTarget) commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
             {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
             {:else if message.isComment}
                 {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
