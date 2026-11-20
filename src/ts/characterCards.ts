@@ -69,7 +69,8 @@ const MAX_ARCHIVE_FAILURES_IN_ROW = 2
 const newImportArchiveRun = ():ImportArchiveRun => ({failuresInRow: 0})
 
 //Formats a new card and writes it straight to the archive, so the full card never sits in the list. Returns the slot's index, or null when the card is to be added live: the format step threw (not a storage failure, so it does not count against the run), the engine could not be loaded, or the archive was refused or failed. The silent fallback is the import as it always was.
-async function archiveImportedCharacter(char:character, run:ImportArchiveRun):Promise<number|null> {
+//The stub is the exact slot the archive placed, handed back so an Undo never looks the slot up by index after an await.
+async function archiveImportedCharacter(char:character, run:ImportArchiveRun):Promise<{index:number, stub:character|groupChat}|null> {
     try {
         characterFormatUpdate(char)
         applyCharacterDefaults(char)
@@ -83,7 +84,7 @@ async function archiveImportedCharacter(char:character, run:ImportArchiveRun):Pr
         const result = await archiveCharacterNow({kind: 'new', character: char})
         if(result.ok){
             run.failuresInRow = 0
-            return result.index
+            return {index: result.index, stub: result.stub}
         }
         if(result.ok === false && result.countsAsFailure){
             run.failuresInRow += 1
@@ -104,12 +105,12 @@ async function addImportedCharacter(char:character, run:ImportArchiveRun|null, p
     if(run && getResidency() === null && run.failuresInRow < MAX_ARCHIVE_FAILURES_IN_ROW && canBootArchive() && DBState.db.archiveCharacters === true){
         const archived = await archiveImportedCharacter(char, run)
         if(archived !== null){
-            progress.committed()
-            return archived
+            progress.committed({kind: 'character', slot: archived.stub})
+            return archived.index
         }
     }
     const index = DBState.db.characters.push(char) - 1
-    progress.committed()
+    progress.committed({kind: 'character', slot: DBState.db.characters[index]})
     return index
 }
 
@@ -143,6 +144,10 @@ async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [
     })
     if(summary.backgrounded && opts.report){
         opts.report.backgrounded = true
+    }
+    //An undone action leaves nothing for a caller to open: the list is emptied in place, as callers hold this array.
+    if(summary.undone){
+        added.length = 0
     }
     return added
 }
@@ -238,7 +243,7 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, r
                 name: file.name,
                 data: bytes
             })
-            progress.committed()
+            progress.committed({kind: 'notUndoable', why: 'preset'})
             SettingsMenuIndex.set(1)
             settingsOpen.set(true)
             progress.notice(language.successImport)
@@ -251,7 +256,7 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, r
         progress.beforeWrite()
         markBootWrite()
         DBState.db.modules.push(md)
-        progress.committed()
+        progress.committed({kind: 'module', slot: DBState.db.modules[DBState.db.modules.length - 1]})
         progress.notice(language.successImport)
         SettingsMenuIndex.set(14)
         settingsOpen.set(true)

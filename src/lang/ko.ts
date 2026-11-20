@@ -655,6 +655,19 @@ export const languageKorean = {
     importTaskFailedOne: (name: string) => `${name}을(를) 가져오지 못했습니다`,
     importTaskDuplicatesLeftOut: (count: number) => `중복으로 ${count}개 제외됨`,
     importTaskRetryFailed: (count: number) => `실패한 ${count}개 다시 시도`,
+    importTaskUndo: "가져오기 되돌리기",
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed}개를 휴지통으로 이동`] : []),
+            ...(removed > 0 ? [`모듈 ${removed}개 제거`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing}개는 되돌리지 못함`
+        }
+        return done || '되돌릴 항목이 없습니다'
+    },
+    importUndoRefused: "지금은 가져오기를 되돌릴 수 없습니다. 대신 라이브러리에서 항목을 직접 삭제하세요.",
     importTaskCharactersTitle: "캐릭터 가져오는 중",
     importTaskFilesTitle: "파일 가져오는 중",
     importTaskRealmTitle: "Realm에서 가져오는 중",

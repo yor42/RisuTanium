@@ -11,6 +11,7 @@ import { lint5b } from './registries/settings5b'
 import { lintPack as lintStudio } from './registries/studio'
 import { APP_TOKEN_FILES } from './appThemeNames'
 import { canonicalStylesheet, type ResourceSpan } from './canonical'
+import { chainWidthWarnings, coverageWarnings } from './engineWarnings'
 import { cascadePass } from './cascade'
 import { outerShadowPass } from './outerShadow'
 import { scopePass } from './scope'
@@ -59,7 +60,7 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
  * a font-family may name without a warning: any other name warns, except a symbol font, which is refused (MC-2542). A chat or Studio stylesheet that all of these accept is then judged by Rule S
  * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach), and
- * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows).
+ * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows). Warnings never enter the result returned here.
  */
 export function lintAreaPack(area: ThemeArea, source: string, name = '', packFamilies?: ReadonlySet<string>): LintResult {
     return judgeSheet(area, source, name, packFamilies).result
@@ -77,7 +78,7 @@ export interface AreaSheetJudgement {
     resources: readonly ResourceSpan[]
     /** The top-level @font-face blocks, in text order. */
     fontFaceBlocks: readonly FontFaceBlock[]
-    /** Notes the install shows under its outcome; they never change result.ok. */
+    /** Notes the install shows under its outcome; they never change result.ok. The value rules' warnings come first, then the engine-side ones, which exist only for a chat or Studio sheet with no errors (chat-width warnings only for chat). */
     warnings: readonly LintError[]
 }
 
@@ -139,7 +140,16 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
     if (area === 'chat' && !errors.length) errors.push(...chatLiveChainErrors(fonts.remainder))
     // Rule E-2 (outerShadow.ts) runs last, on a sheet every pass above accepted, so a refused sheet never gains or loses a reason.
     if ((area === 'chat' || area === 'studio') && !errors.length) errors.push(...outerShadowPass(area, fonts.remainder))
-    return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks, warnings: values.warnings }
+    // Engine-side warnings read only a sheet that every pass above accepted. A throw adds no warning: a warning must never change a verdict or turn lintAreaPack into a refusal.
+    const warnings: LintError[] = [...values.warnings]
+    if ((area === 'chat' || area === 'studio') && !errors.length) {
+        try {
+            const known = new Set(values.warnings.map((w) => `${w.selector}|${w.prop}|${w.why}`))
+            const found = [...coverageWarnings(area, fonts.remainder), ...(area === 'chat' ? chainWidthWarnings(fonts.remainder) : [])]
+            for (const w of found) if (!known.has(`${w.selector}|${w.prop}|${w.why}`)) warnings.push(w)
+        } catch { /* no engine-side warning */ }
+    }
+    return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks, warnings }
 }
 
 export interface ThemePackInput {
