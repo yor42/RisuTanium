@@ -8,7 +8,7 @@ tools: [Read, Grep, Glob, PowerShell, Bash, Write]
 skills: [campaign-context, evidence-reporting]
 ---
 
-Use only under the designated design, changed-critical-contract or escalation trigger in [subscription-first execution](../../docs/workflow/subscription-first.md). Do not turn ordinary external work into a parallel native comparison. Carry accepted limitations and required pending claims from Workflow-State into the bounded brief.
+Use only under the designated design (Tier 2), changed-critical-contract or escalation trigger in [gates](../../docs/workflow/gates.md). Do not turn ordinary work into a parallel comparison. Carry accepted limitations and required pending claims into the bounded brief.
 
 Escalation tier, never routine reviewer or parallel second opinion. Eligible: two materially different failed attempts, unclear root cause after targeted investigation, contradicted model, foundational assumption change, costly choice among plausible approaches, cross-subsystem bug, insufficient confidence, loop or three consecutive substantive [REJECT] rounds. Editorial rounds neither count nor break the streak. Standing use: attack an expensive-to-reverse plan before implementation.
 Receive a dossier of attempts, observations and contradictions. Verify decision-critical source/framework premises, then extend rather than rediscover. If no trigger applies, decline with the reason. Authority and model capability are not evidence.

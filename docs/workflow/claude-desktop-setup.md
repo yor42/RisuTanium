@@ -8,9 +8,9 @@ Run from `C:\Projects\RisuAI` in PowerShell with Node/npm and rustup available. 
 
 | Plugin | Server and coverage |
 |---|---|
-| `typescript-lsp@claude-plugins-official` | `typescript-language-server` plus TypeScript; TypeScript/JavaScript source. |
-| `rust-analyzer-lsp@claude-plugins-official` | `rust-analyzer`; Rust source. |
-| `svelte-lsp@risutanium-lsp` | `svelteserver` from `svelte-language-server`; `.svelte` components, through this repository's local adapter. |
+| `typescript-lsp@claude-plugins-official` | **Disabled (MC-1836, MC-2017, MC-2749):** `false` in `.claude/settings.json`; its servers held tens of GB and caused OOM kills. Steps kept below so it can be re-enabled. `typescript-language-server` plus TypeScript; TypeScript/JavaScript source. |
+| `rust-analyzer-lsp@claude-plugins-official` | Enabled: `rust-analyzer`; Rust source, the only LSP in use (MC-2749). |
+| `svelte-lsp@risutanium-lsp` | **Disabled (MC-1836, MC-2017, MC-2749)**, as above. `svelteserver` from `svelte-language-server`; `.svelte` components, through this repository's local adapter. |
 
 Anthropic's language plugins require separately installed server binaries. The Svelte adapter uses the supported inline `lspServers` manifest form; it is a local plugin, not an Anthropic-maintained plugin. [Official code intelligence](https://code.claude.com/docs/en/plugins/code-intelligence), [manifest reference](https://code.claude.com/docs/en/plugins-reference#lspservers), [Svelte language server](https://github.com/sveltejs/language-tools/tree/master/packages/language-server).
 
