@@ -108,9 +108,7 @@ describe('PromptDiffModal accessible names', { timeout: 60_000 }, () => {
             expect(radio.classList.contains('hidden')).toBe(false)
             expect(radio.classList.contains('sr-only')).toBe(true)
             const pill = radio.parentElement!.classList
-            expect(pill.contains('has-[:focus-visible]:ring-2')).toBe(true)
-            expect(pill.contains('has-[:focus-visible]:ring-inset')).toBe(true)
-            expect(pill.contains('has-[:focus-visible]:ring-(--risu-theme-role-focus-ring)')).toBe(true)
+            expect(pill.contains('risu-focus-ring-inset-within')).toBe(true)
             expect(pill.contains('risu-focus-ring-within')).toBe(false)
             if (radio.checked) expect(pill.contains('ring-inset')).toBe(true)
         }
