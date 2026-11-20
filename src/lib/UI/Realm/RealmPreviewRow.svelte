@@ -16,7 +16,7 @@
 </script>
 
 <button
-    class="flex w-full items-center gap-2 rounded-lg p-1 text-left transition-all duration-300 hover:-translate-y-1 hover:bg-selected"
+    class="risu-focus-ring flex min-h-11 w-full items-center gap-2 rounded-lg p-1 text-left transition-colors duration-300 hover:bg-selected/50"
     onclick={onClick}
 >
     {#if DBState.db.hideAllImages}
