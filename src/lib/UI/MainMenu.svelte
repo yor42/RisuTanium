@@ -2,7 +2,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import Hub from "./Realm/RealmMain.svelte";
     import { OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
-    import { ArrowLeft, ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
+    import { ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
     import { getVersionString, openURL } from "src/ts/globalApi.svelte";
     import { language } from "src/lang";
     import { getRisuHub, type hubType } from "src/ts/characterCards";
@@ -561,11 +561,6 @@
       {/if}
 
       {:else}
-        <div class="flex items-center mt-4">
-          <button class="mr-2 text-textcolor2 hover:text-textcolor" aria-label={language.settingsPage.back} onclick={() => ($OpenRealmStore = false)}>
-            <ArrowLeft aria-hidden="true"/>
-          </button>
-        </div>
         <Hub />
       {/if}
   </div>

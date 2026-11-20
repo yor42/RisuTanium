@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * `MainMenu.svelte`: the Realm full view's back arrow is named, its glyph is hidden and it hovers to
- * a token different from its rest colour, and the Realm preview list backing is the scheme tint
+ * `MainMenu.svelte`: the Realm full view leaves its back control to the hub header, and the Realm preview list backing is the scheme tint
  * instead of a black one. Mounts the REAL component with the module set of
  * `MainMenu.hubStates.svelte.test.ts` (the Realm view itself and the hub are stubs).
  */
@@ -12,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import type { hubType } from 'src/ts/characterCards'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
-import { controlName, exposedIcons, textColourTokens } from 'src/lib/a11yNames.test-helpers'
+import { controlName, exposedIcons } from 'src/lib/a11yNames.test-helpers'
 
 //#region module mocks
 
@@ -83,17 +82,17 @@ afterEach(async () => {
 })
 
 describe('MainMenu Realm header back and preview backing', () => {
-    test('regression reproducer: the Realm view back arrow is named, its glyph hidden and its hover differs from its rest', async () => {
+    // The named Back button now lives in the hub's own header (RealmMain.layout covers it), so the
+    // Realm view in MainMenu must not render a second, unnamed or duplicate back control.
+    test('the Realm view leaves its back control to the hub header and exposes no unnamed button or glyph', async () => {
         const target = await mountMainMenu()
         OpenRealmStore.set(true)
         flushSync()
-        const back = target.querySelector('div.flex.items-center.mt-4 > button') as HTMLButtonElement
-        expect(back).not.toBeNull()
-        expect(controlName(back)).toBe(language.settingsPage.back)
-        expect(exposedIcons(back)).toEqual([])
-        const { rest, hover } = textColourTokens(back.querySelector('svg')!.parentElement!)
-        expect(hover).not.toBeNull()
-        expect(hover).not.toBe(rest)
+        expect(target.querySelector('div.flex.items-center.mt-4 > button')).toBeNull()
+        expect(exposedIcons(target)).toEqual([])
+        for (const button of Array.from(target.querySelectorAll('button'))) {
+            expect(controlName(button)).not.toBe('')
+        }
     })
 
     test('regression reproducer: the Realm preview list backing is the scheme tint, not black', async () => {

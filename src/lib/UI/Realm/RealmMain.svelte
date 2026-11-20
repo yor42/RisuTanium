@@ -1,13 +1,13 @@
 <script lang="ts">
-    import { untrack } from "svelte";
+    import { tick, untrack } from "svelte";
     import { downloadRisuHub, getRisuHub, type hubType } from "src/ts/characterCards";
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
-    import { ArrowLeft, ArrowRight, MenuIcon, SearchIcon, XIcon } from "@lucide/svelte";
+    import { ArrowLeft, ArrowRight, SearchIcon } from "@lucide/svelte";
     import { alertInput } from "src/ts/alert";
     import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
     import { language } from "src/lang";
     import RisuHubIcon from "./RealmHubIcon.svelte";
-    import { RealmInitialOpenChar } from "src/ts/stores.svelte";
+    import { DBState, OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
     import RealmPopUp from "./RealmPopUp.svelte";
     import RealmBlockedCreators from "./RealmBlockedCreators.svelte";
     import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
@@ -27,9 +27,23 @@
     let sort = $state('recommended')
 
     let search = $state('')
-    let menuOpen = $state(false)
     let blockedCreatorsOpen = $state(false)
     let nsfw = $state(false)
+
+    let resultsRegion:HTMLElement|undefined = $state()
+    // The latest load started by the acceptance effect, so the accept button can wait for exactly
+    // that load before moving focus to the results.
+    let acceptanceLoad:Promise<void> = Promise.resolve()
+
+    // Sort options in display order; the value is exactly what `getRisuHub` receives ('' is Recent).
+    const sortOptions = $derived([
+        { value: 'recommended', label: language.hubSortRecommended },
+        { value: '', label: language.recent },
+        { value: 'trending', label: language.trending },
+        { value: 'downloads', label: language.downloads },
+        { value: 'random', label: language.random },
+    ])
+    const paged = $derived(sort !== 'random' && sort !== 'recommended')
 
     // Monotonic generation counter: getHub() has roughly eight independent
     // call sites (search, sort, paging, NSFW toggle), each starting its own
@@ -89,13 +103,39 @@
     }
 
     function changeSort(type:string) {
-        if(sort === type){
-            sort = 'recommended'
-        }else{
-            sort = type
-        }
+        sort = type
         page = 0
         return getHub()
+    }
+
+    // Opens the agreement prompt; once it is accepted and the acceptance effect's load has
+    // finished, focus moves to the results region. A decline or a dismissal moves nothing.
+    async function acceptFromButton(){
+        const accepted = await askUpstreamAgreement()
+        if(!accepted){
+            return
+        }
+        await tick()
+        await acceptanceLoad
+        await tick()
+        resultsRegion?.focus()
+    }
+
+    async function importFromUrlOrId(){
+        const input = await alertInput(language.alerts.realmInputUrlOrId, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
+        if(input === ALERT_INPUT_CANCEL){
+            return
+        }
+        if(input.startsWith("http")){
+            const url = new URL(input)
+            const id = url.searchParams.get("realm") ?? url.searchParams.get("code") ?? input.split("/").at(-1)
+            if(id){
+                downloadRisuHub(id)
+                return
+            }
+        }
+        const id = input.split("?").at(-1)
+        downloadRisuHub(id)
     }
 
     // The one place this view loads in response to acceptance (MC-086, MC-087 #3, MC-087 #3a),
@@ -105,7 +145,7 @@
     // value), so this never becomes a second, redundant call alongside one `getHub()` already made.
     $effect(() => {
         if($upstreamAccepted){
-            untrack(() => { getHub() })
+            untrack(() => { acceptanceLoad = getHub() })
         }
     })
 
@@ -129,126 +169,170 @@
         return () => window.removeEventListener('online', handleOnline)
     })
 </script>
-<div class="w-full flex justify-center mt-4 mb-2">
-    <div class="flex items-stretch w-2xl max-w-full">
-        <span id="{uid}-search" class="sr-only">{language.search}</span>
-        <input bind:value={search} aria-labelledby="{uid}-search" aria-describedby="{uid}-search" class="peer focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full">
+<div class="flex w-full flex-col gap-3 pb-4">
+    <header class="flex flex-wrap items-center gap-3 pl-14 pr-4 pt-4 lg:pl-4">
+        <button
+            type="button"
+            class="risu-focus-ring flex min-h-11 shrink-0 items-center gap-2 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50"
+            onclick={() => ($OpenRealmStore = false)}
+        >
+            <ArrowLeft size={18} aria-hidden="true" />
+            <span>{language.hubBackToHome}</span>
+        </button>
+        <h1 class="min-w-0 text-2xl font-bold tracking-tight text-textcolor whitespace-nowrap">{language.hub}</h1>
+    </header>
+    <div class="flex w-full flex-wrap items-center gap-2 px-4">
+        <div class="flex w-full max-w-2xl min-w-0 grow items-stretch sm:w-auto">
+            <span id="{uid}-search" class="sr-only">{language.hubSearchLabel}</span>
+            <input
+                bind:value={search}
+                aria-labelledby="{uid}-search"
+                aria-describedby="{uid}-search"
+                placeholder={language.hubSearchLabel}
+                class="risu-focus-ring min-h-11 min-w-0 max-w-full grow rounded-md rounded-r-none border border-r-0 border-darkborderc bg-transparent px-3 text-textcolor outline-hidden"
+            >
             <button
-            onclick={() => {
-                if(sort === 'random' || sort === 'recommended'){
-                    sort = ''
-                }
-                page = 0
-                getHub()
-            }}
-                class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-borderc hover:text-textcolor transition-colors"
+                type="button"
                 aria-label={language.search}
-        >
-            <SearchIcon aria-hidden="true" />
-        </button>
-        <button
-            onclick={(e) => {
-                menuOpen = true
-            }}
-                class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-borderc hover:text-textcolor transition-colors"
-                aria-label={language.menu}
-        >
-            <MenuIcon aria-hidden="true" />
-        </button>
-    </div>
-</div>
-<div class="w-full p-1 flex mb-3 overflow-x-auto sm:justify-center">
-    <button class="bg-darkbg p-2 rounded-lg ml-2 flex justify-center items-center hover:bg-selected transition-shadow" class:ring-3={nsfw} onclick={() => {
-        nsfw = !nsfw
-        getHub()
-    }}>
-        NSFW
-    </button>
-    <div class="ml-2 mr-2 h-full border-r border-r-selected"></div>
-    <button class="bg-darkbg p-2 rounded-lg ml-2 flex justify-center items-center hover:bg-selected transition-shadow" class:ring-3={sort === ''} onclick={() => {
-        changeSort('')
-    }}>
-        {language.recent}
-    </button>
-    <button class="bg-darkbg p-2 rounded-lg ml-2 flex justify-center items-center hover:bg-selected transition-shadow" class:ring-3={sort === 'trending'} onclick={() => {
-        changeSort('trending')
-    }}>
-        {language.trending}
-    </button>
-    <button class="bg-darkbg p-2 rounded-lg ml-2 flex justify-center items-center hover:bg-selected transition-shadow" class:ring-3={sort === 'downloads'} onclick={() => {
-        changeSort('downloads')
-    }}>
-        {language.downloads}
-    </button>
-    <button class="bg-darkbg p-2 rounded-lg ml-2 flex justify-center items-center hover:bg-selected transition-shadow min-w-0 max-w-full" class:ring-3={sort === 'random'} onclick={() => {
-        changeSort('random')
-    }}>
-        {language.random}
-    </button>
-</div>
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- A keyboard Enter on a focused anchor dispatches a bubbling click, so this delegated handler already covers keyboard activation; see hubHtml.ts. -->
-<div onclick={handleHubHtmlClick}>
-    {@html sanitizeHubHtml(hubAnnouncement)}
-</div>
-{#if !$upstreamAccepted}
-    <div role="status" aria-live="polite" data-testid="upstream-consent-placeholder" class="w-full flex flex-col justify-center items-center gap-2 text-textcolor2">
-        <span>{language.upstreamConsentPlaceholder}</span>
-        <button
-            data-testid="upstream-consent-accept"
-            onclick={(event) => {
-                event.stopPropagation()
-                // Only asks; the acceptance effect above is the sole thing that loads in
-                // response to whatever answer this resolves to (MC-086, MC-087 #3, MC-087 #3a).
-                askUpstreamAgreement()
-            }}
-        >{language.upstreamConsentShow}</button>
-    </div>
-{:else if hubStatus === 'offline'}
-    <div role="status" aria-live="polite" class="w-full flex justify-center items-center gap-2 text-textcolor2">
-        <span>{language.hubOffline}</span>
-        <button aria-disabled="true" class="cursor-not-allowed opacity-50" onclick={() => {}}>{language.hubRetry}</button>
-    </div>
-{:else if hubStatus === 'failed'}
-    <div role="status" aria-live="polite" class="w-full flex justify-center items-center gap-2 text-textcolor2">
-        <span>{language.hubLoadFailed}</span>
-        <button onclick={getHub}>{language.hubRetry}</button>
-    </div>
-{:else if hubStatus === 'empty'}
-    <div role="status" aria-live="polite" class="w-full flex justify-center text-textcolor2">{language.hubEmpty}</div>
-{:else}
-    <div class="w-full flex gap-4 p-2 flex-wrap justify-center">
-        {#key charas}
-            {#each charas as chara}
-                <RisuHubIcon onClick={() =>{openedData = chara}} chara={chara} />
-            {/each}
-        {/key}
-    </div>
-{/if}
-{#if sort !== 'random' && sort !== 'recommended'}
-    <div class="w-full flex justify-center">
-        <div class="flex">
-            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg flex justify-center items-center hover:ring-3 transition-shadow" aria-label={language.realmPrevPage} onclick={() => {
-                if(page > 0){
-                    page -= 1
+                onclick={() => {
+                    if(sort === 'random' || sort === 'recommended'){
+                        sort = ''
+                    }
+                    page = 0
                     getHub()
-                }
-            }}>
-                <ArrowLeft aria-hidden="true" />
-            </button>
-            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg ml-2 flex justify-center items-center transition-shadow">
-                <span>{page + 1}</span>
-            </button>
-            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg ml-2 flex justify-center items-center hover:ring-3 transition-shadow" aria-label={language.realmNextPage} onclick={() => {
-                page += 1
-                getHub()
-            }}>
-                <ArrowRight aria-hidden="true" />
+                }}
+                class="risu-focus-ring flex min-h-11 min-w-11 items-center justify-center rounded-md rounded-l-none border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected/50"
+            >
+                <SearchIcon size={18} aria-hidden="true" />
             </button>
         </div>
+        <label class="flex items-center gap-2 text-textcolor2">
+            <span id="{uid}-sort">{language.hubSortLabel}</span>
+            <select
+                aria-labelledby="{uid}-sort"
+                class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-2 text-textcolor"
+                value={sort}
+                onchange={(event) => {
+                    changeSort(event.currentTarget.value)
+                }}
+            >
+                {#each sortOptions as option (option.value)}
+                    <option value={option.value}>{option.label}</option>
+                {/each}
+            </select>
+        </label>
+        <button
+            type="button"
+            aria-pressed={nsfw}
+            class="risu-focus-ring min-h-11 rounded-md border px-3 text-textcolor hover:bg-selected/50 {nsfw ? 'border-selected bg-selected' : 'border-darkborderc bg-darkbutton'}"
+            onclick={() => {
+                nsfw = !nsfw
+                getHub()
+            }}
+        >NSFW</button>
+        <button
+            type="button"
+            class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50"
+            onclick={() => {
+                blockedCreatorsOpen = true
+            }}
+        >{language.hubBlockedCreatorsCount.replace('{count}', String((DBState.db.blockedRealmCreators ?? []).length))}</button>
+        <button
+            type="button"
+            class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50"
+            onclick={importFromUrlOrId}
+        >{language.uiCommon.importCharacterFromUrlOrId}</button>
     </div>
-{/if}
+    {#if hubAnnouncement}
+        <section class="mx-4 rounded-xl bg-darkbg p-4 text-textcolor" aria-labelledby="hub-announcement-title">
+            <h2 id="hub-announcement-title" class="mb-2 text-lg font-bold">{language.hubAnnouncementTitle}</h2>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- A keyboard Enter on a focused anchor dispatches a bubbling click, so this delegated handler already covers keyboard activation; see hubHtml.ts. -->
+            <div class="wrap-anywhere [&_a]:underline" onclick={handleHubHtmlClick}>
+                {@html sanitizeHubHtml(hubAnnouncement)}
+            </div>
+        </section>
+    {/if}
+    <div bind:this={resultsRegion} tabindex="-1" aria-busy={$upstreamAccepted && hubStatus === 'pending'} class="flex w-full flex-col gap-3 outline-hidden">
+        {#if !$upstreamAccepted}
+            <div role="status" aria-live="polite" data-testid="upstream-consent-placeholder" class="flex w-full flex-col items-center justify-center gap-3 px-4 text-textcolor2">
+                <span class="text-center">{language.upstreamConsentPlaceholder}</span>
+                <button
+                    type="button"
+                    data-testid="upstream-consent-accept"
+                    class="risu-focus-ring min-h-11 rounded-md bg-selected px-4 text-textcolor hover:bg-selected/50"
+                    onclick={(event) => {
+                        event.stopPropagation()
+                        // Only asks; the acceptance effect above is the sole thing that loads in
+                        // response to whatever answer this resolves to (MC-086, MC-087 #3, MC-087 #3a).
+                        acceptFromButton()
+                    }}
+                >{language.upstreamConsentShow}</button>
+            </div>
+        {:else if hubStatus === 'offline'}
+            <div role="status" aria-live="polite" class="flex w-full flex-wrap items-center justify-center gap-3 px-4 text-textcolor2">
+                <span>{language.hubOffline}</span>
+                <button type="button" aria-disabled="true" class="risu-focus-ring min-h-11 cursor-not-allowed rounded-md border border-darkborderc bg-darkbutton px-3 opacity-50" onclick={() => {}}>{language.hubRetry}</button>
+            </div>
+        {:else if hubStatus === 'failed'}
+            <div role="status" aria-live="polite" class="flex w-full flex-wrap items-center justify-center gap-3 px-4 text-textcolor2">
+                <span>{language.hubLoadFailed}</span>
+                <button type="button" class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={getHub}>{language.hubRetry}</button>
+            </div>
+        {:else if hubStatus === 'empty'}
+            <div role="status" aria-live="polite" class="flex w-full justify-center px-4 text-textcolor2">{language.hubEmpty}</div>
+        {:else}
+            {#if hubStatus === 'pending'}
+                <div role="status" aria-live="polite" class="flex w-full items-center justify-center gap-2 px-4 text-textcolor2">
+                    <div class="h-5 w-5 animate-spin rounded-full border-2 border-textcolor2 border-t-transparent"></div>
+                    <span>{language.loading}...</span>
+                </div>
+            {/if}
+            {#if charas.length > 0}
+                <div class="grid w-full grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4 px-4 {hubStatus === 'pending' ? 'opacity-60' : ''}">
+                    {#key charas}
+                        {#each charas as chara}
+                            <RisuHubIcon onClick={() =>{openedData = chara}} chara={chara} />
+                        {/each}
+                    {/key}
+                </div>
+            {/if}
+        {/if}
+    </div>
+    <!-- Past page 0 the pager stays whatever the status, so an empty or failed later page still offers Previous. -->
+    {#if paged && (hubStatus === 'populated' || hubStatus === 'pending' || page > 0)}
+        <nav class="flex w-full items-center justify-center gap-2" aria-label={language.hubPageIndicator.replace('{page}', String(page + 1))}>
+            <button
+                type="button"
+                aria-label={language.realmPrevPage}
+                disabled={page === 0}
+                class="risu-focus-ring flex size-11 items-center justify-center rounded-md border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected/50 disabled:opacity-50"
+                onclick={() => {
+                    if(page > 0){
+                        page -= 1
+                        getHub()
+                    }
+                }}
+            >
+                <ArrowLeft size={18} aria-hidden="true" />
+            </button>
+            <span class="min-w-16 text-center text-textcolor2">{language.hubPageIndicator.replace('{page}', String(page + 1))}</span>
+            <button
+                type="button"
+                aria-label={language.realmNextPage}
+                disabled={hubStatus !== 'populated' && hubStatus !== 'pending'}
+                class="risu-focus-ring flex size-11 items-center justify-center rounded-md border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected/50 disabled:opacity-50"
+                onclick={() => {
+                    page += 1
+                    getHub()
+                }}
+            >
+                <ArrowRight size={18} aria-hidden="true" />
+            </button>
+        </nav>
+    {/if}
+</div>
 
 {#if openedData}
     <RealmPopUp bind:openedData={openedData} onBlock={(creatorId) => {
@@ -263,48 +347,4 @@
     <RealmBlockedCreators onClose={() => {
         blockedCreatorsOpen = false
     }} onUnblock={getHub} />
-{/if}
-
-
-{#if menuOpen}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="top-0 left-0 z-50 fixed w-full h-full bg-black/50 flex justify-center items-center" role="button" tabindex="0" onclick={() => {
-        menuOpen = false
-    }}>
-        <div class="max-w-full bg-darkbg rounded-md flex flex-col gap-4 overflow-y-auto p-4">
-            <h1 class="font-bold text-2xl w-full">
-                <span>
-                    {language.menu}
-                </span>
-                <button class="float-right text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={() => {menuOpen = false}}>
-                    <XIcon aria-hidden="true" />
-                </button>
-            </h1>
-            <div class=" mt-2 w-full border-t-2 border-t-bgcolor"></div>
-            <button class="w-full hover:bg-selected p-4" onclick={(e) => {
-                e.stopPropagation()
-                menuOpen = false
-                blockedCreatorsOpen = true
-            }}>{language.manageBlockedRealmCreators}</button>
-            <button class="w-full hover:bg-selected p-4" onclick={(async (e) => {
-                e.stopPropagation()
-                menuOpen = false
-                const input = await alertInput(language.alerts.realmInputUrlOrId, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
-                if(input === ALERT_INPUT_CANCEL){
-                    return
-                }
-                if(input.startsWith("http")){
-                    const url = new URL(input)
-                    const id = url.searchParams.get("realm") ?? url.searchParams.get("code") ?? input.split("/").at(-1)
-                    if(id){
-                        downloadRisuHub(id)
-                        return
-                    }
-                }
-                const id = input.split("?").at(-1)
-                downloadRisuHub(id)
-
-            })}>{language.uiCommon.importCharacterFromUrlOrId}</button>
-        </div>
-    </div>
 {/if}

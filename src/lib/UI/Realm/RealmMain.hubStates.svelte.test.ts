@@ -75,6 +75,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         selectedCharID: writable(-1),
         MobileGUI: writable(false),
         RealmInitialOpenChar: writable(null),
+        OpenRealmStore: writable(true),
         // `src/ts/upstreamAgreement.ts` reads and writes this store directly,
         // never through `src/ts/alert.ts` -- a mock lacking it leaves the
         // agreement helper writing to `undefined`.
@@ -146,13 +147,15 @@ function bannerText(target: HTMLElement): string {
     return host?.textContent?.trim() ?? ''
 }
 
-// Clicking "Trending" (desktop, non-mobile sort row) is a second,
-// independent `getHub()` call site distinct from the one that fires at
-// mount -- one of the roughly eight named in the file header.
+// Choosing "Trending" in the sort select is a second, independent
+// `getHub()` call site distinct from the one that fires at mount -- one of
+// the roughly eight named in the file header.
 function clickTrending(target: HTMLElement) {
-    const button = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.trending)
-    expect(button).toBeTruthy()
-    button!.click()
+    const select = target.querySelector('select')
+    expect(select).toBeTruthy()
+    expect(Array.from(select!.options).some((o) => o.textContent?.trim() === language.trending)).toBe(true)
+    select!.value = 'trending'
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
     flushSync()
 }
 
