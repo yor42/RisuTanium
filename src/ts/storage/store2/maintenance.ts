@@ -10,6 +10,7 @@ import type { Store2Session } from './session'
 import { installImportBench } from '../../drive/importBench'
 import { runAutoGc, type AutoGcFacts } from './gc/autoGc'
 import { installGcMeasure } from './gc/gcMeasure'
+import { buildNodeGcAge } from './gc/unitAge'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
 import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './sweep/run'
 
@@ -19,9 +20,12 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
  * `indexeddb` and `node` sessions) by one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only
  * when the sole-tab proof and the own-base rule hold, and otherwise logs one refusal line and deletes nothing; on Node the
  * pass is aged: a unit is retired only on its third sighting a day apart, and it needs the server's guarded routes and
- * clock), followed on the app and on the web
- * (`tauri` and `indexeddb` sessions; a Node server and the transitional OPFS page never list `assets/`) by one asset
- * sweep (`sweep/run.ts`; on the web its tab check is the same sole-tab proof as the collector's) that deletes stored assets nothing refers to once a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
+ * clock), followed on the app, on the web and on a Node server
+ * (`tauri`, `indexeddb` and `node` sessions; the transitional OPFS page never lists `assets/`) by one asset
+ * sweep (`sweep/run.ts`; on the web and on Node its tab check is the same sole-tab proof as the collector's, except that
+ * the sweep also refuses where Web Locks are missing) that deletes stored assets nothing refers to once a record at least a
+ * day old has named them (on Node, twice, each time at the asset's current revision, with the server's clock and guarded
+ * routes). All three run inside the one registered step and each logs and swallows its
  * own failure, so a failed deleter never keeps the next one from running.
  *
  * - It runs only on a page whose own boot found a normal store2 profile (the "commit key parses with a readable tree" row),
@@ -94,15 +98,19 @@ export function formatSweepResult(result: AssetSweepResult): string {
 }
 
 /**
- * Runs the asset sweep, or does nothing: only a `tauri` or `indexeddb` session with a backend on a store2 page, and nothing
- * is loaded or read before that is known. Throws what the pass throws; the caller logs and swallows it.
+ * Runs the asset sweep, or does nothing: only a `tauri`, `indexeddb` or `node` session with a backend on a store2 page, and
+ * nothing is loaded or read before that is known. Throws what the pass throws; the caller logs and swallows it.
  */
 async function runStore2AssetSweep(env: MaintenanceEnv, session: Store2Session, facts?: SweepPageFacts): Promise<void> {
-    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb') || session.backend === null || getPageStorageMode().kind !== 'store2') {
+    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node') || session.backend === null || getPageStorageMode().kind !== 'store2') {
         return
     }
     const live = facts ?? await loadSweepFacts()
-    const result = await runAssetSweep({ session, store: await env.store(), pace: batchPaceOf(session.kind), ...live })
+    const store = await env.store()
+    // The clocks of a Node page are the unit pass's own: the server's and the page's, read together. Without the server's
+    // guarded clock there is none, and the pass ends `no-server-time` before it reads anything.
+    const sampleClock = session.kind === 'node' ? buildNodeGcAge(store)?.sampleClock : undefined
+    const result = await runAssetSweep({ session, store, pace: batchPaceOf(session.kind), sampleClock, ...live })
     console.info(formatSweepResult(result))
 }
 

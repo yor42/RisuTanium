@@ -29,7 +29,7 @@ import type { AssetPlanDeps } from 'src/ts/drive/rtb/rtbAssetPlan'
 import type { BusyHandle } from 'src/ts/process/memory/busyActions'
 import type { RtbInstallDeps, RtbInstallEnd, RtbInstallPlan } from 'src/ts/drive/rtbRestoreInstall'
 import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
-import type { RestorePlan } from 'src/ts/drive/rtbRestorePlan'
+import type { RestorePlan, RtbPrepareDeps } from 'src/ts/drive/rtbRestorePlan'
 import { encodeUnit, keyOfTail, readUnit, refOfFrame, UNIT_TYPE, type Manifest, type Shard } from 'src/ts/storage/store2/format'
 import { repackRtb, withBrokenDeflate, writeRtbFile, type RtbBuild, type WorldLike } from './rtb/rtbRestoreFixtures'
 import { committerAnswering, loggingSideBackends, MemoryByteStore } from './rtb/rtbInstallFixtures'
@@ -225,7 +225,7 @@ interface Prepared {
 }
 
 /** The page's own profile as an `.rtb` file, prepared by S11 into the plan and the hold the install consumes. */
-async function prepared(page: Page, build: Partial<RtbBuild> = {}, bytesOf?: (file: Uint8Array) => Promise<Uint8Array>): Promise<Prepared> {
+async function prepared(page: Page, build: Partial<RtbBuild> = {}, bytesOf?: (file: Uint8Array) => Promise<Uint8Array>, deps: Partial<RtbPrepareDeps> = {}): Promise<Prepared> {
     const written = (await writeRtbFile({ world: await worldOfPage(page), ...build })).bytes
     const bytes = bytesOf === undefined ? written : await bytesOf(written)
     const busy = page.busy.beginBusy('backupLoad')
@@ -233,7 +233,7 @@ async function prepared(page: Page, build: Partial<RtbBuild> = {}, bytesOf?: (fi
     const end = await page.plan.prepareRtbRestore(
         { name: 'a.rtb', size: bytes.length, lastModified: 1, source: importSourceOfBytes('a.rtb', bytes) },
         busy,
-        { saveBoundMs: 100, deps: { assetDeps: assetDeps(), confirmScale: async () => true } },
+        { saveBoundMs: 100, deps: { assetDeps: assetDeps(), confirmScale: async () => true, ...deps } },
     )
     if (end.kind !== 'ready') {
         throw new Error(`the preparation ended ${end.kind}`)
@@ -896,6 +896,81 @@ describe('a file from a later writer (U15, U13)', () => {
             { saveBoundMs: 100, deps: { assetDeps: assetDeps(), confirmScale: async () => true } },
         )
         expect(end).toMatchObject({ kind: 'ended', outcome: 'nothing-replaced', cause: 'damaged' })
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+})
+
+describe('the held marker of a Node restore (T-R6, T-R10, T-R11)', () => {
+    const heldDeps: Partial<RtbPrepareDeps> = { heldMarker: () => true }
+
+    function heldOf(committer: Committer) {
+        if (committer.clearHeld === undefined) {
+            throw new Error('The committer has no clearHeld.')
+        }
+        return committer.clearHeld
+    }
+
+    test('T-R6: a plan with no held marker commits through commit and never calls commitHeld or clearHeld, on a landed end and on a stop (compatibility guard; passes before and after; a held path taken without a held marker fails it)', async () => {
+        const page = await openPage()
+        const commitHeld = vi.fn(async (): Promise<CommitResult> => { throw new Error('commitHeld must not be called') })
+        const clearHeld = vi.fn(async (): Promise<AbandonResult | null> => null)
+        const committer: Committer = { ...page.k.committer, commitHeld, clearHeld }
+        const first = await prepared(page)
+        expect(first.plan.held ?? null).toBeNull()
+        expect((await install({ ...first, plan: withCommitter(first.plan, committer) }, setupOf())).kind).toBe('landed')
+        expect(commitHeld).not.toHaveBeenCalled()
+        expect(clearHeld).not.toHaveBeenCalled()
+        worlds.parkAll()
+
+        const second = await openPage()
+        const stopping = await prepared(second)
+        await peerCommit(second.k, (db) => { db.mainPrompt = 'peer moved it' })
+        const end = stoppedOf(await install({ ...stopping, plan: withCommitter(stopping.plan, { ...second.k.committer, commitHeld, clearHeld }) }, setupOf()))
+        expect(end.cause).toBe('base-moved')
+        expect(commitHeld).not.toHaveBeenCalled()
+        expect(clearHeld).not.toHaveBeenCalled()
+    })
+
+    test('T-R10: an unconfirmed end clears the held marker before release(true) keeps the write lock closed (guard; MR11 fails it)', async () => {
+        const page = await openPage()
+        const prep = await prepared(page, {}, undefined, heldDeps)
+        expect(prep.plan.held).toBeTruthy()
+        const order: string[] = []
+        const clear = heldOf(page.k.committer)
+        const committer: Committer = {
+            ...page.k.committer,
+            commitHeld: async () => {
+                order.push('commitHeld')
+                return { status: 'unknown', cause: new errors.Store2BackendFailureError('The final write timed out.') }
+            },
+            clearHeld: async (held) => {
+                order.push('clear')
+                return await clear(held)
+            },
+        }
+        const release = vi.fn(async (keep: boolean) => {
+            order.push(`release:${keep}`)
+            await prep.hold.release(keep)
+        })
+        const end = await install({ plan: withCommitter(prep.plan, committer), hold: { ...prep.hold, release } }, setupOf())
+        expect(end.kind).toBe('unconfirmed')
+        expect(order).toEqual(['commitHeld', 'clear', 'release:true'])
+        expect((await page.k.commitKey()).staging).toBeNull()
+        expect(await writeLockIsFree(page)).toBe(false)
+    })
+
+    test('T-R11: a clearHeld that throws does not keep the release from running or the stop from being shown (guard; MR13 fails it)', async () => {
+        const page = await openPage()
+        const prep = await prepared(page, {}, undefined, heldDeps)
+        expect(prep.plan.held).toBeTruthy()
+        await peerCommit(page.k, (db) => { db.mainPrompt = 'peer moved it' })
+        const clearHeld = vi.fn(async (): Promise<AbandonResult | null> => { throw new Error('the clear failed') })
+        const spied = spiedHold(prep.hold)
+        const end = stoppedOf(await install({ plan: withCommitter(prep.plan, { ...page.k.committer, clearHeld }), hold: spied.hold }, setupOf()))
+        expect(end).toMatchObject({ outcome: 'nothing-replaced', cause: 'base-moved' })
+        expect(clearHeld).toHaveBeenCalledTimes(1)
+        expect(spied.release).toHaveBeenCalledWith(false)
+        expect(errorsOf(page).at(-1)).toBe(withCopiedKept(language.restoreNotHappenedNotice))
         expect(await writeLockIsFree(page)).toBe(true)
     })
 })

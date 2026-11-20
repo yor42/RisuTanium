@@ -11,10 +11,13 @@ import type { AssetKeepSet } from './types'
  * and the keep-set check are inputs, and the result says what to delete and what
  * record to write next.
  *
- * The aged unit rule on Node (subject `unit`) deletes on a third sighting: a unit
- * is retired only when the stored record names it with `SEEN_BEFORE` and it is a
- * candidate again, each sighting at least the minimum age after the previous
- * record in the earlier clock. A record is dated with the later clock.
+ * The aged rule on Node (units, and assets of a Node page) deletes on a third
+ * sighting: an item is deleted only when the stored record names it with
+ * `SEEN_BEFORE` and it is a candidate again, each sighting at least the minimum
+ * age after the previous record in the earlier clock. An asset must also be
+ * listed at the revision the record holds: an asset whose revision moved was
+ * written or touched since, so it starts again as a first sighting. A record is
+ * dated with the later clock.
  */
 
 /** The only third tuple element that marks an item as seen before; every other value reads as a first sighting. */
@@ -106,28 +109,29 @@ export interface AgeDecision {
     nextRecord: SweepRecord | null
 }
 
-/** The items that may enter the record: on Node only those with a revision, at most the cap; elsewhere all, without revisions. */
-function recordItems(
-    candidates: readonly AgeCandidate[], backend: BackendKind, cap: number,
-): SweepRecord['items'] {
-    if (backend === 'node') {
-        return candidates
-            .filter(candidate => candidate.rev !== null)
-            .slice(0, cap)
-            .map((candidate): SweepRecord['items'][number] => [candidate.name, candidate.rev])
-    }
+/** The items that may enter the record off Node: every one, without a revision. */
+function recordItems(candidates: readonly AgeCandidate[]): SweepRecord['items'] {
     return candidates.map((candidate): SweepRecord['items'][number] => [candidate.name, null])
 }
 
+/** What the sighting rule reads of an input of either subject. */
+interface SightingInput extends AgeInputBase {
+    keep: { holds(name: string): boolean }
+}
+
 /**
- * The unit rule on Node. The next record holds, marked `SEEN_BEFORE`, the candidates the stored record already named
- * (marked or not) and, unmarked, every other candidate: a fresh candidate is always recorded unmarked. Each class is
- * capped separately, and so are the retires.
+ * The rule of a Node page, for units and for assets. The next record holds, marked `SEEN_BEFORE`, the candidates the
+ * stored record already named unmarked and, unmarked, every other candidate: a fresh candidate is always recorded
+ * unmarked. A candidate is a name that is listed and that the keep-set does not hold, in every class. Each class is capped
+ * separately, and so are the deletions; a marked item the deletion cap leaves over restarts unmarked.
+ *
+ * With `byRevision` (assets) an item is acted on only at the revision it was recorded at and still has on the store: a
+ * moved revision, or a candidate or item without one, is recorded unmarked at the listed revision (never, when there is
+ * none), and the deletion carries the recorded revision.
  */
-function decideUnits(input: UnitAgeInput): AgeDecision {
+function decideSightings(input: SightingInput, cap: number, byRevision: boolean): AgeDecision {
     const minAge = input.minAgeMs ?? SWEEP_MIN_AGE_MS
     const skew = input.futureSkewMs ?? SWEEP_FUTURE_SKEW_MS
-    const cap = input.nodeRecordCap
     const clock: AgeClock = { early: input.now, late: input.late ?? input.now }
     const record = input.record.status === 'ok' ? input.record.value : null
     const verdict = ageOf(record, clock, minAge, skew)
@@ -135,64 +139,62 @@ function decideUnits(input: UnitAgeInput): AgeDecision {
         return { phase: 'young', delete: [], nextRecord: null }
     }
 
-    const listed = new Set<string>()
-    const names: string[] = []
+    // The first sighting of each name in this scan, with the revision observed now.
+    const listed = new Map<string, number | null>()
     for (const candidate of input.candidates) {
         if (!listed.has(candidate.name) && !input.keep.holds(candidate.name)) {
-            listed.add(candidate.name)
-            names.push(candidate.name)
+            listed.set(candidate.name, byRevision ? candidate.rev : null)
         }
     }
-    const unmarkedOf = (excluded: ReadonlySet<string>): SweepRecord['items'] => names
-        .filter(name => !excluded.has(name))
+    const unmarkedOf = (excluded: ReadonlySet<string>): SweepRecord['items'] => [...listed]
+        .filter(([name, rev]) => !excluded.has(name) && (!byRevision || rev !== null))
         .slice(0, cap)
-        .map((name): SweepRecord['items'][number] => [name, null])
+        .map(([name, rev]): SweepRecord['items'][number] => [name, rev])
     if (record === null || verdict === 'restart') {
         return { phase: 'recorded', delete: [], nextRecord: { v: 1, at: clock.late, items: unmarkedOf(new Set()) } }
     }
 
-    const stored = new Map<string, boolean>()
+    const stored = new Map<string, { seenBefore: boolean, rev: number | null }>()
     for (const item of record.items) {
         if (!stored.has(item[0])) {
-            stored.set(item[0], item[2] === SEEN_BEFORE)
+            stored.set(item[0], { seenBefore: item[2] === SEEN_BEFORE, rev: item[1] })
         }
     }
     const deletions: Deletion[] = []
-    const marked: string[] = []
-    for (const [name, seenBefore] of stored) {
-        if (!listed.has(name)) {
+    const marked: SweepRecord['items'] = []
+    for (const [name, was] of stored) {
+        const rev = listed.get(name)
+        if (rev === undefined) {
             continue
         }
-        if (seenBefore) {
+        if (byRevision && (was.rev === null || rev !== was.rev)) {
+            continue
+        }
+        if (was.seenBefore) {
             if (deletions.length < cap) {
-                deletions.push({ name, ifVersion: null })
+                deletions.push({ name, ifVersion: byRevision ? was.rev : null })
             }
         } else if (marked.length < cap) {
-            marked.push(name)
+            marked.push([name, rev, SEEN_BEFORE])
         }
     }
-    const taken = new Set([...deletions.map(deletion => deletion.name), ...marked])
+    const taken = new Set([...deletions.map(deletion => deletion.name), ...marked.map(item => item[0])])
     return {
         phase: 'swept',
         delete: deletions,
-        nextRecord: {
-            v: 1,
-            at: clock.late,
-            items: [
-                ...marked.map((name): SweepRecord['items'][number] => [name, null, SEEN_BEFORE]),
-                ...unmarkedOf(taken),
-            ],
-        },
+        nextRecord: { v: 1, at: clock.late, items: [...marked, ...unmarkedOf(taken)] },
     }
 }
 
 export function decideAge(input: AgeInput): AgeDecision {
     if (input.subject === 'unit') {
-        return decideUnits(input)
+        return decideSightings(input, input.nodeRecordCap, false)
+    }
+    if (input.backend === 'node') {
+        return decideSightings(input, input.nodeRecordCap ?? NODE_RECORD_CAP, true)
     }
     const minAge = input.minAgeMs ?? SWEEP_MIN_AGE_MS
     const skew = input.futureSkewMs ?? SWEEP_FUTURE_SKEW_MS
-    const cap = input.nodeRecordCap ?? NODE_RECORD_CAP
     const clock: AgeClock = { early: input.now, late: input.late ?? input.now }
     const fresh = new Map<string, AgeCandidate>()
     for (const candidate of input.candidates) {
@@ -208,7 +210,7 @@ export function decideAge(input: AgeInput): AgeDecision {
         return {
             phase: 'recorded',
             delete: [],
-            nextRecord: { v: 1, at: clock.late, items: recordItems(candidates, input.backend, cap) },
+            nextRecord: { v: 1, at: clock.late, items: recordItems(candidates) },
         }
     }
     if (verdict === 'young') {
@@ -217,27 +219,17 @@ export function decideAge(input: AgeInput): AgeDecision {
 
     const deletions: Deletion[] = []
     const deleted = new Set<string>()
-    for (const item of record.items) {
-        const [name, recordedRev] = item
-        const current = fresh.get(name)
-        if (current === undefined || deleted.has(name) || input.keep.holds(name)) {
+    for (const [name] of record.items) {
+        if (!fresh.has(name) || deleted.has(name) || input.keep.holds(name)) {
             continue
         }
-        if (input.backend === 'node') {
-            // A Node item is acted on only through its revision: the one recorded, and still the one on the store.
-            if (recordedRev === null || current.rev !== recordedRev) {
-                continue
-            }
-            deletions.push({ name, ifVersion: recordedRev })
-        } else {
-            deletions.push({ name, ifVersion: null })
-        }
+        deletions.push({ name, ifVersion: null })
         deleted.add(name)
     }
     const remaining = candidates.filter(candidate => !deleted.has(candidate.name))
     return {
         phase: 'swept',
         delete: deletions,
-        nextRecord: { v: 1, at: clock.late, items: recordItems(remaining, input.backend, cap) },
+        nextRecord: { v: 1, at: clock.late, items: recordItems(remaining) },
     }
 }

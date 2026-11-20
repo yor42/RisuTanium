@@ -266,4 +266,38 @@ describe('checkStore2Import names the cause of each refusal (new behaviour)', ()
             expect(world.errors).toEqual(['language.store2RestoreBulkMarker'])
         })
     })
+
+    describe('the question about a foreign marker is a Node page\'s alone (compatibility guard for the other kinds; passes before the change)', () => {
+        const restoreMarker = { status: 'parsed', value: { current: {}, staging: { owner: 'other-page', prefix: 'pfx-other', label: 'restore' } } }
+
+        test.each(['indexeddb', 'tauri', 'opfs-transitional'] as const)('a %s page keeps the refusal: the question is never asked and nothing is cleared', async (kind) => {
+            world.session = { ...sessionWith(readsNothing), kind }
+            world.classified = restoreMarker
+            world.active = { markerOwnerProbe: async () => 'unknown' }
+            const ask = vi.fn(async () => 'clear' as const)
+            expect(await checkStore2Import({ ask })).toEqual({ kind: 'refused', cause: 'foreign-marker' })
+            expect(ask).not.toHaveBeenCalled()
+            expect(world.abandoned).toEqual([])
+            expect(world.errors).toEqual(['language.store2RestoreBulkMarker'])
+        })
+
+        test('a Node page that answers Clear clears exactly the asked owner and prefix and is ready', async () => {
+            const session = { ...sessionWith(readsNothing), kind: 'node' }
+            world.session = session
+            world.classified = restoreMarker
+            const ask = vi.fn(async () => 'clear' as const)
+            expect(await checkStore2Import({ ask })).toEqual({ kind: 'ready', target: { committer: session.committer, backend: session.backend } })
+            expect(ask).toHaveBeenCalledTimes(1)
+            expect(world.abandoned).toEqual([{ owner: 'other-page', prefix: 'pfx-other' }])
+            expect(world.errors).toEqual([])
+        })
+
+        test('a Node page that answers Wait refuses with no message and clears nothing', async () => {
+            world.session = { ...sessionWith(readsNothing), kind: 'node' }
+            world.classified = restoreMarker
+            expect(await checkStore2Import({ ask: async () => 'wait' })).toEqual({ kind: 'refused', cause: 'foreign-marker' })
+            expect(world.abandoned).toEqual([])
+            expect(world.errors).toEqual([])
+        })
+    })
 })
