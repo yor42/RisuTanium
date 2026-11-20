@@ -69,7 +69,7 @@
                 {/each}
             </div>
         {:else if row.kind === 'select'}
-            <select data-part="studio-tg-preview-select-list" aria-labelledby={labelId} class={FIELD_CLASS} value={String(chosen)} onchange={(event) => onset(event.currentTarget.value)}>
+            <select data-part="studio-tg-preview-select-list" aria-labelledby={labelId} aria-describedby={labelId} class={FIELD_CLASS} value={String(chosen)} onchange={(event) => onset(event.currentTarget.value)}>
                 {#each row.options as option, index}
                     <option value={String(index)}>{option}</option>
                 {/each}

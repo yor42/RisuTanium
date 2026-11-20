@@ -564,11 +564,12 @@
                 {/if}
             </div>
             <div class="flex flex-col gap-1">
+                <span id="{uid}-sort-label" class="sr-only">{language.chatShellSortLabel}</span>
                 <select
                     data-part="sidebar-sort"
                     class="rounded-md border border-darkborderc bg-darkbutton px-2 py-1 text-textcolor"
-                    aria-label={language.chatShellSortLabel}
-                    aria-describedby="{uid}-sort-help"
+                    aria-labelledby="{uid}-sort-label"
+                    aria-describedby="{uid}-sort-label {uid}-sort-help"
                     value={sort}
                     onchange={(event) => {
                         sort = event.currentTarget.value === 'manual' ? 'manual' : 'recent';

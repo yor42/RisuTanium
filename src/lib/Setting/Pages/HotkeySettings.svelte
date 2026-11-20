@@ -455,10 +455,12 @@
                                 {#if readOnly}
                                     <span class="text-sm text-textcolor2" data-hotkey-slot-name>{slotNameOf(row.action)}</span>
                                 {:else}
+                                    <span id={"hotkey-slot-" + row.action + "-label"} class="sr-only">{language.settingsShellHkSlotFor(presetSlotOf(row.action) ?? 0)}</span>
                                     <select
                                         class="text-sm text-textcolor bg-darkbg border border-darkborderc rounded-md px-1 py-0.5 max-w-40"
                                         data-hotkey-slot-select={row.action}
-                                        aria-label={language.settingsShellHkSlotFor(presetSlotOf(row.action) ?? 0)}
+                                        aria-labelledby={"hotkey-slot-" + row.action + "-label"}
+                                        aria-describedby={"hotkey-slot-" + row.action + "-label"}
                                         value={slotValue(row.action)}
                                         onchange={(e) => chooseSlot(row.action, e.currentTarget.value, e.currentTarget)}
                                     >

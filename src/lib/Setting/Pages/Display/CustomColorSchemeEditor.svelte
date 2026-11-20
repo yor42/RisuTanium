@@ -12,6 +12,8 @@
     import { language } from 'src/lang';
     import { fillLang } from 'src/lang/fill';
 
+    const uid = $props.id();
+
     const colors = [
         ['bgcolor', () => language.settingsPage.background],
         ['darkbg', () => language.settingsPage.darkBackground],
@@ -28,6 +30,7 @@
 {#if DBState.db.colorSchemeName === 'custom'}
     <div class="border border-darkborderc p-2 m-2 rounded-md">
         <SelectInput
+            label={language.colorSchemeType}
             className="mt-2"
             value={DBState.db.customColorScheme.type}
             onchange={(e) => {
@@ -43,11 +46,12 @@
                 <input
                     type="color"
                     class="native-color-input"
-                    aria-label={color[1]()}
+                    aria-labelledby="{uid}-color-{color[0]}"
+                    aria-describedby="{uid}-color-{color[0]}"
                     bind:value={DBState.db.customColorScheme[color[0]]}
                     oninput={updateCustomColorScheme}
                 />
-                <span class="ml-2">{color[1]()}</span>
+                <span id="{uid}-color-{color[0]}" class="ml-2">{color[1]()}</span>
             </div>
         {/each}
 

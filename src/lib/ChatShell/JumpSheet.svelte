@@ -92,9 +92,9 @@
                     {/if}
                 </div>
                 <div data-part="chat-jump-date" class="jump-row">
-                    <label for="jump-date-field">{language.chatShellJumpDate}</label>
+                    <label id="jump-date-label" for="jump-date-field">{language.chatShellJumpDate}</label>
                     <div class="jump-field">
-                        <input id="jump-date-field" type="date" bind:value={dateText} />
+                        <input id="jump-date-field" type="date" aria-labelledby="jump-date-label" aria-describedby="jump-date-label" bind:value={dateText} />
                         <button type="button" data-kind="button" class="jump-go" disabled={!dateValid} onclick={goDate}>{language.chatShellJumpGo}</button>
                     </div>
                     {#if untimed}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { accessibleText, controlDescription, controlName, controls, exposedIcons, fieldControls, fieldNameProblems, paletteClasses, textColourTokens, toggleFor, unnamedControls } from './a11yNames.test-helpers'
+import { accessibleText, controlDescription, controlName, controls, exposedIcons, fieldControls, fieldNameProblems, hideClosedColorPickerDialogs, paletteClasses, textColourTokens, toggleFor, unnamedControls } from './a11yNames.test-helpers'
 
 function mount(html: string){
     const root = document.createElement('div')
@@ -177,6 +177,21 @@ describe('toggleFor and fieldControls', () => {
             <select id="select"></select>
         `)
         expect(fieldControls(root).map((el) => el.id)).toEqual(['toggled', 'select'])
+    })
+})
+
+describe('hideClosedColorPickerDialogs', () => {
+    it('hides only the library closed popup, so an open picker and any other dialog stay counted', () => {
+        const root = mount(`
+            <div class="wrapper" role="dialog"><input type="number" id="closedInner"></div>
+            <div class="wrapper is-open" role="dialog"><input type="number" id="openInner"></div>
+            <div role="dialog" id="plain"><input type="number" id="plainInner"></div>
+        `)
+        expect(controls(root, { values: true }).map((el) => el.id)).toEqual(['closedInner', 'openInner', 'plainInner'])
+        hideClosedColorPickerDialogs(root)
+        expect(controls(root, { values: true }).map((el) => el.id)).toEqual(['openInner', 'plainInner'])
+        expect(unnamedControls(root, { values: true })).toHaveLength(2)
+        expect(fieldControls(root).map((el) => el.id)).toEqual(['openInner', 'plainInner'])
     })
 })
 
