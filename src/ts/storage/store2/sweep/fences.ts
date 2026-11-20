@@ -33,7 +33,12 @@ export interface FenceInput {
     legacyFiles: readonly { key: string, status: 'ok' | 'unreadable' | 'gone' }[]
     /** Tauri: the commit key's last write has not been reported flushed. False on other backends. */
     tauriFlushPending: boolean
-    /** Every bulk operation (restore, import) has set its marker before writing its first asset. */
+    /**
+     * The caller vouches that no bulk operation's asset writes can be lost to the pass. A page that is the only tab or
+     * page covers its own bulk operations with the busy check, the written set and the deletion hold. On the Node
+     * server, every bulk operation that decides by the store's contents holds its marker before it lists, and every
+     * other asset write moves the key's revision, which a deletion must have seen in two bound sightings.
+     */
     bulkMarkersSet: boolean
 }
 

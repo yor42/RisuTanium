@@ -1,33 +1,49 @@
-import type { ByteStore } from '../../store/contract'
+import type { ByteStore, CheckOnlyEntry, GuardedOperations } from '../../store/contract'
+import { StoreVersionConflictError } from '../../store/errors'
 import { AssetDeleteHoldOverlapError } from '../../assetDeleteHold'
 import { Store2BackendError, Store2CommitConflictError, Store2StalePageError } from '../backend/errors'
-import { REMOVE_BATCH_MAX, bytesTokenOf, tokenMatches, type Store2Backend } from '../backend/types'
+import {
+    REMOVE_BATCH_MAX, bytesTokenOf, revisionTokenOf, tokenMatches, type CompareToken, type Store2Backend,
+} from '../backend/types'
 import type { GateOpen, GateRefusal } from '../boot'
+import { COMMIT_KEY, FENCE_KEY, SWEEP_KEY } from '../format'
+import { readUnitAgeRecord, writeUnitAgeRecord, type UnitRecordRead } from '../gc/unitAge'
 import type { Store2Session } from '../session'
-import { decideAge, type AgeCandidate, type AgePhase, type RecordRead } from './ageRecord'
+import { ageOf, decideAge, type AgeCandidate, type AgeClock, type AgeDecision, type AgePhase, type RecordRead } from './ageRecord'
 import { AssetKeySet } from './assetKey'
 import { createBackendClosureReader } from './backendReader'
 import { checkFences } from './fences'
 import { buildClosureAssetKeepSet, legacyFilesOf } from './keepSet'
 import { decideAutoSweep, type AssetCount } from './limit'
+import { SWEEP_FUTURE_SKEW_MS, SWEEP_MIN_AGE_MS } from './params'
 import { readSweepRecord, writeSweepRecord } from './record'
 
 /**
- * The deleting pass of the asset sweep on a store2 page (`tauri` and `indexeddb` kinds; every other kind reads and writes
- * nothing). It deletes an `assets/` file only when all of these hold:
+ * The deleting pass of the asset sweep on a store2 page (`tauri`, `indexeddb` and `node` kinds; every other kind reads and
+ * writes nothing). It deletes an `assets/` file only when all of these hold:
  *
  * - the closure keep-set over `{current} + retained + pins` is complete (an incomplete one deletes nothing and writes
  *   nothing), so an asset a restore point still names is never touched;
- * - an age record at least `minAgeMs` old named the asset and this pass's fresh scan names it again;
+ * - an age record at least `minAgeMs` old named the asset and this pass's fresh scan names it again; on Node the asset
+ *   must have been named by two such records (a third sighting), each time at the revision it still has;
  * - the deleter gate is open, the fences are clear and, per batch, the commit key and the fence are still what the gate
  *   read: a Tauri page proves it with a same-bytes `casCommit` on the gate's commit token (a page that a newer page
- *   superseded is refused by the native gate, so it deletes nothing and writes no record), a web page by a read;
+ *   superseded is refused by the native gate, so it deletes nothing and writes no record), a web page by a read, and a
+ *   Node page by a read of the revisions the gate saw, its deletes and its record write carrying the same two
+ *   revisions as check-only entries;
  * - at that very delete: no stop condition holds, this page did not write the asset, the resident database does not
- *   refer to it and, on the web, no other tab is open.
+ *   refer to it and, on the web and on Node, no other tab is open.
  *
  * The stop check, the written check, the resident check and the registration of the deletion hold are one synchronous
  * run, so a same-page writer of the key either was seen by the check or waits for the hold. The stored assets are
  * listed before the keep-set is built, so an asset written after the listing is never a candidate.
+ *
+ * The Node server differs in its order and in its proofs. The age is read first (a young record ends the pass before any
+ * gate, listing or closure read), then the gate is opened, then the assets are listed with their revisions: a commit
+ * that lands after the gate conflicts with every delete and with the record write, and an asset written or touched after
+ * the listing has a revision the delete does not carry. A Node page refuses `'unsupported'` (plain HTTP, no Web Locks,
+ * so no sole-tab proof) and the sweep never proceeds on it, whereas the aged unit pass does proceed there under its
+ * minimum age: the two passes differ here on purpose (PQ-1).
  *
  * The one data write is the age record. A stopped pass writes none. The pass is silent: it reports counts and reasons,
  * never an asset name.
@@ -64,15 +80,21 @@ export interface AssetSweepEnv {
     limit?: number
     /** The minimum record age; defaults to 24 hours. */
     minAgeMs?: number
+    /**
+     * One sample of the Node server's clock and the page's, read together (`buildNodeGcAge(store)?.sampleClock`). Node
+     * only: a Node pass without it, or whose sample rejects, ends `no-server-time` before it deletes or writes anything.
+     */
+    sampleClock?(): Promise<AgeClock>
 }
 
 export type SweepStopReason =
     | 'yielded' | 'idle' | 'other-tab' | 'fence-conflict' | 'commit-conflict' | 'stale-page' | 'probe-failed'
+    | 'record-conflict' | 'record-unknown'
 
 export type SweepRefusalReason =
     | GateRefusal
     | 'no-backend' | 'no-web-locks' | 'other-tab' | 'listing-failed' | 'over-limit' | 'unknown-count'
-    | 'keep-incomplete' | 'fences' | 'record-too-new' | 'record-io-failed'
+    | 'keep-incomplete' | 'fences' | 'record-too-new' | 'record-io-failed' | 'no-server-time'
 
 export type AssetSweepResult =
     | { status: 'skipped' }
@@ -129,15 +151,23 @@ function stopped(tally: Tally, reason: SweepStopReason): Ended {
     return new Ended({ status: 'done', ...tally, stopped: reason })
 }
 
+/** Whether a read token is the gate's revision token: the same kind and the same revision, never the revision alone. */
+function sameRevision(gateToken: CompareToken, read: CompareToken): boolean {
+    return gateToken.kind === 'revision' && read.kind === 'revision' && gateToken.revision === read.revision
+}
+
 /**
  * Whether the commit key and the fence are still what the gate read, in the check that precedes a batch or the record
  * write. A moved commit key is `moved` (rebuild the keep-set); a moved fence, a stale page or a failed probe ends the pass.
+ * A Node page compares the revisions of the gate's tokens (a token of another kind counts as moved) and never byte
+ * tokens, which a revision token cannot be compared with.
  */
 async function checkFresh(env: AssetSweepEnv, gate: GateOpen, backend: Store2Backend, tally: Tally): Promise<'fresh' | 'moved'> {
     const { session } = env
+    const node = session.kind === 'node'
     try {
         const fence = await backend.readFence()
-        if (!tokenMatches(gate.fenceToken, fence.bytes)) {
+        if (node ? !sameRevision(gate.fenceToken, fence.token) : !tokenMatches(gate.fenceToken, fence.bytes)) {
             throw stopped(tally, 'fence-conflict')
         }
         if (session.kind === 'tauri') {
@@ -150,7 +180,7 @@ async function checkFresh(env: AssetSweepEnv, gate: GateOpen, backend: Store2Bac
             await backend.casCommit(gate.commitToken, bytes)
         } else {
             const commit = await backend.readCommit()
-            if (!tokenMatches(gate.commitToken, commit.bytes)) {
+            if (node ? !sameRevision(gate.commitToken, commit.token) : !tokenMatches(gate.commitToken, commit.bytes)) {
                 return 'moved'
             }
         }
@@ -175,22 +205,111 @@ async function checkFresh(env: AssetSweepEnv, gate: GateOpen, backend: Store2Bac
     return 'fresh'
 }
 
+/** The names under `assets/` (top level only), their count and, on Node, the revision each is listed at (null: none is known). */
+interface AssetListing {
+    names: string[]
+    count: AssetCount
+    revisions: ReadonlyMap<string, number | null> | null
+}
+
 /** The names under `assets/` (top level only) and their count. */
-async function listAssets(store: ByteStore): Promise<{ names: string[], count: AssetCount }> {
+async function listAssets(store: ByteStore): Promise<AssetListing> {
     const keys = await store.list(ASSETS_PREFIX)
     const names = keys.map(key => key.slice(ASSETS_PREFIX.length)).filter(name => !name.includes('/'))
     const count: AssetCount = store.countPrefix === undefined ? keys.length : (await store.countPrefix(ASSETS_PREFIX)) ?? 'unknown'
-    return { names, count }
+    return { names, count, revisions: null }
+}
+
+/**
+ * The names under `assets/` (top level only) with the revision the server lists each at, from one listing that reads no
+ * value. A store that cannot list revisions or cannot delete under a condition cannot sweep: it rejects.
+ */
+async function listAssetRevisions(store: ByteStore): Promise<AssetListing> {
+    if (store.listRevisions === undefined || store.guarded === undefined) {
+        throw new Error('The store cannot list revisions or delete under a condition.')
+    }
+    const rows = await store.listRevisions(ASSETS_PREFIX)
+    if (rows === null) {
+        throw new Error('The server does not list revisions.')
+    }
+    const names: string[] = []
+    const revisions = new Map<string, number | null>()
+    for (const row of rows) {
+        const name = row.key.slice(ASSETS_PREFIX.length)
+        if (!name.includes('/')) {
+            names.push(name)
+            revisions.set(name, row.rev)
+        }
+    }
+    return { names, count: rows.length, revisions }
+}
+
+type NodeRecordRead = Extract<UnitRecordRead, { status: 'ok' | 'absent' | 'unreadable' }>
+
+/** One sample of the Node server's clock and the page's; a missing or rejected sample ends the pass `no-server-time`. */
+async function sampleOf(env: AssetSweepEnv): Promise<AgeClock> {
+    if (env.sampleClock === undefined) {
+        throw refused('no-server-time')
+    }
+    try {
+        return await env.sampleClock()
+    } catch {
+        throw refused('no-server-time')
+    }
+}
+
+/**
+ * Clock sample A and the versioned read of the record (`store2-sweep`), before the gate: the record a Node write is bound
+ * to. `young` is a record younger than the minimum age; the round then ends before any gate, listing or closure read.
+ */
+async function readNodeRecord(env: AssetSweepEnv): Promise<NodeRecordRead | 'young'> {
+    const first = await sampleOf(env)
+    const read = await readUnitAgeRecord(env.store, SWEEP_KEY)
+    if (read.status === 'too-new') {
+        throw refused('record-too-new')
+    }
+    if (read.status === 'io-failed') {
+        throw refused('record-io-failed')
+    }
+    const verdict = ageOf(read.status === 'ok' ? read.value : null, first, env.minAgeMs ?? SWEEP_MIN_AGE_MS, SWEEP_FUTURE_SKEW_MS)
+    return verdict === 'young' ? 'young' : read
+}
+
+/** The revisions a Node delete and the record write carry as check-only entries: the commit key's and the fence's, as the gate read them. */
+function checkOnlyOf(gate: GateOpen): CheckOnlyEntry[] {
+    return [
+        { key: COMMIT_KEY, version: revisionTokenOf(gate.commitToken).revision },
+        { key: FENCE_KEY, version: revisionTokenOf(gate.fenceToken).revision },
+    ]
+}
+
+function nodeGuarded(store: ByteStore): GuardedOperations {
+    if (store.guarded === undefined) {
+        throw new Error('The store has no guarded routes.')
+    }
+    return store.guarded
+}
+
+/**
+ * Removes one asset at the revision the record named, with the commit key and the fence compared in the same step. A Node
+ * page never sends a removal without a revision: it is refused here.
+ */
+async function removeAtRevision(store: ByteStore, key: string, ifVersion: number | null, checkOnly: readonly CheckOnlyEntry[]): Promise<void> {
+    if (ifVersion === null) {
+        throw new RangeError('A Node deletion needs the recorded revision.')
+    }
+    await nodeGuarded(store).removeChecked([{ key, condition: { ifVersion } }], checkOnly)
 }
 
 /** One scan and delete round: a commit key that moved ends it with `rebuild`. */
 async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally): Promise<'finished' | 'rebuild'> {
     const { session, store } = env
     const web = session.kind === 'indexeddb'
+    const node = session.kind === 'node'
     if (env.shouldStop()) {
         throw stopped(tally, 'yielded')
     }
-    if (web) {
+    if (web || node) {
         const peers = await env.peers()
         if (peers === 'unsupported') {
             throw refused('no-web-locks')
@@ -199,15 +318,22 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
             throw refused('other-tab')
         }
     }
+    // The age is judged before anything else is read: a young record ends the round with no gate, listing or closure read.
+    const nodeRecord = node ? await readNodeRecord(env) : null
+    if (nodeRecord === 'young') {
+        tally.phase = 'young'
+        return 'finished'
+    }
     const gate = await session.openGate('sweep')
     if (gate.status === 'refused') {
         throw refused(gate.reason)
     }
+    const checkOnly = node ? checkOnlyOf(gate) : []
 
     // Listed before the keep-set is built: an asset written after this point is never a candidate.
-    let listed: { names: string[], count: AssetCount }
+    let listed: AssetListing
     try {
-        listed = await listAssets(store)
+        listed = node ? await listAssetRevisions(store) : await listAssets(store)
     } catch {
         throw refused('listing-failed')
     }
@@ -232,41 +358,56 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
         fence: gate.fence === 'absent' ? 'absent' : 'present',
         legacyFiles: legacyFilesOf([...reader.manifests().values()]),
         tauriFlushPending: session.idleReason !== null,
-        // A web pass runs only while it is the sole tab and a Tauri pass is the sole page, so no other writer's bulk
-        // operation runs; this page's own restore is covered by the busy check, the written set and the hold.
+        // The caller vouches that no bulk operation's asset writes can be lost to the pass. A web pass runs only while
+        // it is the sole tab and a Tauri pass is the sole page, so no other writer's bulk operation runs; this page's own
+        // restore is covered by the busy check, the written set and the hold. On the Node server, every bulk operation
+        // that decides by the store's contents holds its marker before it lists (the gate refuses `staging`), and every
+        // other asset write moves the key's revision, which a deletion must have seen in two bound sightings.
         bulkMarkersSet: true,
     })
     if (fences.status === 'refused') {
         throw refused('fences')
     }
 
-    const candidates: AgeCandidate[] = listed.names.filter(name => !keep.holds(name)).map(name => ({ name, rev: null }))
+    const candidates: AgeCandidate[] = listed.names
+        .filter(name => !keep.holds(name))
+        .map(name => ({ name, rev: listed.revisions?.get(name) ?? null }))
     tally.candidates = candidates.length
-    const recordRead = await readSweepRecord(store)
-    if (recordRead.status === 'too-new') {
-        throw refused('record-too-new')
+    let decision: AgeDecision
+    if (nodeRecord !== null) {
+        // The deciding sample is taken after the listing and the keep-set; a rejected one ends the pass here, before any delete.
+        const second = await sampleOf(env)
+        const record: RecordRead = nodeRecord.status === 'ok' ? { status: 'ok', value: nodeRecord.value } : { status: nodeRecord.status }
+        decision = decideAge({
+            subject: 'asset', backend: 'node', record, candidates, now: second.early, late: second.late, keep, minAgeMs: env.minAgeMs,
+        })
+    } else {
+        const recordRead = await readSweepRecord(store)
+        if (recordRead.status === 'too-new') {
+            throw refused('record-too-new')
+        }
+        if (recordRead.status === 'io-failed') {
+            throw refused('record-io-failed')
+        }
+        const record: RecordRead = recordRead
+        decision = decideAge({
+            record,
+            candidates,
+            now: (env.now ?? Date.now)(),
+            backend: session.kind === 'tauri' ? 'tauri' : 'indexeddb',
+            keep,
+            minAgeMs: env.minAgeMs,
+        })
     }
-    if (recordRead.status === 'io-failed') {
-        throw refused('record-io-failed')
-    }
-    const record: RecordRead = recordRead
-    const decision = decideAge({
-        record,
-        candidates,
-        now: (env.now ?? Date.now)(),
-        backend: session.kind === 'tauri' ? 'tauri' : 'indexeddb',
-        keep,
-        minAgeMs: env.minAgeMs,
-    })
     tally.phase = decision.phase
     if (decision.phase === 'young') {
         return 'finished'
     }
 
-    const names = decision.delete.map(deletion => deletion.name)
+    const deletes = decision.delete
     const written = new AssetKeySet()
     let writtenSeen = 0
-    for (let start = 0; start < names.length; start += REMOVE_BATCH_MAX) {
+    for (let start = 0; start < deletes.length; start += REMOVE_BATCH_MAX) {
         if (start > 0 && env.pace !== undefined) {
             await env.pace()
         }
@@ -285,9 +426,10 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
             resident.addName(name)
         }
         const removed: string[] = []
+        let moved = false
         try {
-            for (const name of names.slice(start, start + REMOVE_BATCH_MAX)) {
-                if (web && await env.peers() !== 'alone') {
+            for (const { name, ifVersion } of deletes.slice(start, start + REMOVE_BATCH_MAX)) {
+                if ((web || node) && await env.peers() !== 'alone') {
                     throw stopped(tally, 'other-tab')
                 }
                 // One synchronous run from the stop check to the registration of the hold; no await may enter it.
@@ -309,12 +451,27 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
                 }
                 const key = ASSETS_PREFIX + name
                 try {
-                    await env.hold(() => store.delete(key, 'unconditional'))
+                    await env.hold(() => node ? removeAtRevision(store, key, ifVersion, checkOnly) : store.delete(key, 'unconditional'))
                     removed.push(key)
                     tally.deleted++
                 } catch (error) {
                     if (error instanceof AssetDeleteHoldOverlapError) {
                         throw error
+                    }
+                    if (node && error instanceof StoreVersionConflictError) {
+                        // The server names the first failing key: the asset (its revision moved), the commit key (a
+                        // commit landed) or the fence. Nothing was removed in any case.
+                        if (error.key === key) {
+                            tally.keptLive++
+                            continue
+                        }
+                        if (error.key === COMMIT_KEY) {
+                            moved = true
+                            break
+                        }
+                        if (error.key === FENCE_KEY) {
+                            throw stopped(tally, 'fence-conflict')
+                        }
                     }
                     tally.failed++
                 }
@@ -323,6 +480,9 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
             if (removed.length > 0) {
                 env.release(removed)
             }
+        }
+        if (moved) {
+            return 'rebuild'
         }
     }
 
@@ -336,7 +496,25 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
     if (await checkFresh(env, gate, backend, tally) === 'moved') {
         return 'rebuild'
     }
-    await writeSweepRecord(store, decision.nextRecord)
+    if (nodeRecord !== null) {
+        // The record is bound to the version it was read at and to the commit key and fence the gate saw, and is never
+        // retried: a conflict or an unknown outcome leaves the record as it was. Nothing is awaited between the last stop
+        // check and the send.
+        if (await env.peers() !== 'alone') {
+            throw stopped(tally, 'other-tab')
+        }
+        if (env.shouldStop()) {
+            throw stopped(tally, 'yielded')
+        }
+        const outcome = await writeUnitAgeRecord(
+            nodeGuarded(store), decision.nextRecord, nodeRecord.version, checkOnly[0].version, checkOnly[1].version, SWEEP_KEY,
+        )
+        if (outcome !== 'written') {
+            throw stopped(tally, outcome === 'unknown' ? 'record-unknown' : 'record-conflict')
+        }
+    } else {
+        await writeSweepRecord(store, decision.nextRecord)
+    }
     tally.recorded = true
     return 'finished'
 }
@@ -344,7 +522,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
 /** Runs the pass; rejects only with what the store or the backend threw unexpectedly, or with a hold overlap. */
 export async function runAssetSweep(env: AssetSweepEnv): Promise<AssetSweepResult> {
     const { session } = env
-    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb') || session.backend === null) {
+    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node') || session.backend === null) {
         return { status: 'skipped' }
     }
     const tally: Tally = { phase: null, candidates: 0, deleted: 0, failed: 0, keptLive: 0, batches: 0, recorded: false }
