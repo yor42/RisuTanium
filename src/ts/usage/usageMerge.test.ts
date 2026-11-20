@@ -1,14 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import type { JsonObject } from '../storage/blockFrame'
 import { mergeStatics } from '../storage/store2/fastForward/delta'
-import { recordUsage, USAGE_KEY_CAP } from './usageLedger'
+import { isUsageKey, recordUsage, USAGE_KEY_CAP } from './usageLedger'
 import type { UsageEntry } from './usageTypes'
 
 /**
- * Compatibility guard over the real `mergeStatics` (fast-forward) with ledger outputs as inputs. The merge half runs
- * against the unchanged `delta.ts`. Two tabs that make the SAME change to one key between fast-forwards keep one copy
- * of it (accepted limitation L1, follow-up FU-1 makes `mergeStatics` add them); cases (b) and (c) pin that, and flip
- * only when FU-1 lands. They must not be rewritten with unequal values.
+ * The real `mergeStatics` (fast-forward) with ledger outputs as inputs. Two tabs that make the same change to one key
+ * between fast-forwards add both changes; a key both tabs deleted stays deleted; two tabs that both reset sum what
+ * each recorded afterwards. Accepted limitation L2 (maintainer, 2026-11-20): when this page's own write landed but its save loop
+ * never learned it, the next fast-forward merges a tree that already holds that increment against the earlier base and
+ * counts it twice; `ffLoopStatics.test.ts` pins it.
  */
 
 const NOW = new Date(2026, 5, 15, 12, 0, 0)
@@ -44,7 +45,7 @@ function merged(base: JsonObject, mine: JsonObject, theirs: JsonObject): JsonObj
     return decision.value as JsonObject
 }
 
-describe('mergeStatics over recordUsage outputs (L1, FU-1)', () => {
+describe('mergeStatics over recordUsage outputs', () => {
     const base = recorded({ messages: 3, imports: 0 }, 5)
 
     test('(a) two tabs that changed a key by different amounts add: 5 + 2 + 1 = 8', () => {
@@ -53,18 +54,47 @@ describe('mergeStatics over recordUsage outputs (L1, FU-1)', () => {
         expect(result[KEY_I]).toBe(80)
     })
 
-    test('(b) L1 equal change: each tab records one request under the same key, one change is lost (6, not 7)', () => {
+    test('(b) equal change: each tab records one request under the same key, both count (7)', () => {
         const decision = mergeStatics(base, recorded(base, 1), recorded(base, 1))
-        expect(decision.kind).toBe('keep')
+        expect(decision.kind).toBe('merge')
         const result = merged(base, recorded(base, 1), recorded(base, 1))
-        expect(result[KEY_N]).toBe(6)
-        expect(result[KEY_I]).toBe(60)
+        expect(result[KEY_N]).toBe(7)
+        expect(result[KEY_I]).toBe(70)
     })
 
-    test('(c) L1 equal new key: both tabs create the key with 1, the merge holds 1 (not 2)', () => {
+    test('(c) equal new key: both tabs create the key with 1, the merge holds 2', () => {
         const empty: JsonObject = { messages: 3, imports: 0 }
         const result = merged(empty, recorded(empty, 1), recorded(empty, 1))
-        expect(result[KEY_N]).toBe(1)
+        expect(result[KEY_N]).toBe(2)
+    })
+
+    /** Stands for the reset of the usage statistics: it deletes every usage key and leaves the other statics. */
+    function reset(from: JsonObject): JsonObject {
+        const copy = structuredClone(from)
+        for (const key of Object.keys(copy)) {
+            if (isUsageKey(key)) {
+                delete copy[key]
+            }
+        }
+        return copy
+    }
+
+    test('both tabs reset: no usage key returns, the other statics stay, nothing parks (compatibility guard)', () => {
+        const result = merged(base, reset(base), reset(base))
+        expect(Object.keys(result).filter(isUsageKey)).toEqual([])
+        expect(result.messages).toBe(3)
+        expect(result.imports).toBe(0)
+    })
+
+    test('both tabs reset, then each records one request: the two requests add (2)', () => {
+        const result = merged(base, recorded(reset(base), 1), recorded(reset(base), 1))
+        expect(result[KEY_N]).toBe(2)
+        expect(result[KEY_I]).toBe(20)
+    })
+
+    test('one tab resets and the other records two requests: the reset side loses the old count (2, compatibility guard)', () => {
+        const result = merged(base, reset(base), recorded(base, 2))
+        expect(result[KEY_N]).toBe(2)
     })
 
     test('(d) a new key with differing values adds: 2 + 1 = 3', () => {
