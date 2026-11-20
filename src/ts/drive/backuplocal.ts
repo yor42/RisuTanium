@@ -1,4 +1,4 @@
-import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm, alertClear } from "../alert";
+import { alertError, alertNormalWait, alertStore, alertWait, alertConfirm, alertClear } from "../alert";
 import { takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import type { ExportCancelToken } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
@@ -11,7 +11,7 @@ import { encodeRisuSaveStreamed, type StreamedRisuSave } from "../storage/risuSa
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
 import { assertNoForeignModuleStubs, snapshotModuleList } from "./exportModules";
-import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openOutsideBusy, runExport, type ExportSession } from "./exportShell";
+import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openWriterOutsideBusy, runExport, type ExportSession, type ExportShellCard } from "./exportShell";
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -133,12 +133,12 @@ async function writeStubPayloadsAndRelease(
     cold: BackupColdStorage,
     stubEntries: MintedStubEntry[],
     progress: (done: number, total: number) => string,
-    wait: (message: string) => void = alertWait,
+    report: (done: number, total: number, text: string) => void,
 ): Promise<void> {
     cold.stubEntries = new Map()
     const total = stubEntries.length
     for (let i = 0; i < total; i++) {
-        wait(progress(i + 1, total))
+        report(i, total, progress(i + 1, total))
         await writer.writeBackup(stubEntries[0].backupName, unpackStubEntry(stubEntries[0]))
         stubEntries.shift()
     }
@@ -570,7 +570,7 @@ function serverExportOpener(session: ExportSession): (fileName: string, cancel?:
         now: () => Date.now(),
         trigger: submitDownloadForm,
         ensureActivation: () => ensureGestureForWriter(session, true),
-        onProgress: (sent, total) => session.gate.wait(language.backupSaveDownloading(formatMiB(sent), formatMiB(total))),
+        onProgress: (sent, total) => session.progress.bytes('finish', sent, total, language.backupSaveDownloading(formatMiB(sent), formatMiB(total))),
     })
 }
 
@@ -693,6 +693,8 @@ async function upstreamOversizeNames(
     keys: readonly string[] | null,
     assetMap: ReadonlyMap<string, { charName: string, assetName: string }>,
 ): Promise<string[]> {
+    // The sized listing of the desktop and Android apps reports no count, so the step is marked here.
+    session.progress.phase('sizes', null)
     let kind: Awaited<ReturnType<typeof getAppStoreKind>>
     try {
         kind = await getAppStoreKind()
@@ -706,7 +708,7 @@ async function upstreamOversizeNames(
         keys,
         listedKeys: listing.keys,
         cancel: session.cancel,
-        onProgress: (done, total) => session.gate.wait(language.backupCheckingAssetSizes(done, total)),
+        onProgress: (done, total) => session.progress.count('sizes', done, total, language.backupCheckingAssetSizes(done, total)),
     })
     return assets.filter((item) => !isPackAssetName(item.key)).map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
 }
@@ -830,7 +832,7 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
             return true
         }
         return given
-    })
+    }, 'sheet')
     return unanswered ? await perKind() : answer
 }
 
@@ -865,16 +867,53 @@ async function askLegacyPartialExport(session: ExportSession, waitText: string):
     if (!await confirmDuringExport(session, true, () => alertConfirm(legacyPartialExportText(fact)))) {
         return false
     }
-    session.gate.wait(waitText)
+    session.progress.phase('collect', waitText)
     return true
 }
 
+/**
+ * The card is back at the asset step as soon as the fork-only consent returns, before the server probe and the helper
+ * wait, so a web export has its card with Cancel through them. Tauri desktop and Android go straight to the native save
+ * dialog, which no card may cover, so they report nothing here.
+ */
+function reportWriterStepWeb(session: ExportSession): void {
+    if (!isTauri) {
+        session.progress.phase('assets', null)
+    }
+}
+
+/** The card of a full `.bin` export; read where `language` is current, at the run. */
+function fullBackupCard(): ExportShellCard {
+    return {
+        def: {
+            title: language.backupTaskTitle,
+            steps: [
+                { id: 'collect', label: language.backupStepCollect },
+                { id: 'sizes', label: language.backupStepSizes, noun: language.importNounAssets },
+                { id: 'assets', label: language.exportStepAssets, noun: language.importNounAssets, mark: 'transfer_out' },
+                { id: 'inlays', label: language.backupStepInlays, noun: language.backupNounInlays, mark: 'transfer_out' },
+                { id: 'cold', label: language.backupStepColdData, noun: language.backupNounItems },
+                { id: 'database', label: language.backupStepDatabase },
+                { id: 'finish', label: language.exportStepWrite },
+            ],
+            doneHeadline: language.backupTaskDone,
+            failedHeadline: language.backupTaskFailed,
+        },
+    }
+}
+
+/** The card of a partial `.bin` export: the full card without the inlays step. */
+function partialBackupCard(): ExportShellCard {
+    const full = fullBackupCard()
+    return { def: { ...full.def, title: language.backupTaskPartialTitle, steps: full.def.steps.filter((step) => step.id !== 'inlays') } }
+}
+
 export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', (busy) => runExport((session) => writeLocalBackup(session, options), busy))
+    return withBusy('backupSave', (busy) => runExport((session) => writeLocalBackup(session, options), busy, fullBackupCard()))
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait(language.backupSaveWait)
+    session.progress.phase('collect', language.backupSaveWait)
     // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
     noteImportPhase('export start')
     if (MEASURE) {
@@ -999,6 +1038,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    reportWriterStepWeb(session)
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -1007,16 +1047,17 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     await ensureGestureForWriter(session, !serverExport && webWriterNeedsGesture())
     const writer = new LocalWriter()
     session.writer = writer
-    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined))
+    const r = await openWriterOutsideBusy(session, () => writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
         // A dismissed save dialog is the person's decline, not a failure: the export's own wait comes off the screen and
         // nothing is reported, as for a `.rtb`.
-        session.gate.clear()
+        session.progress.dismissed()
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
     noteImportPhase('export writer opened')
+    session.progress.phase('assets', null)
 
     const assetKeys = listing.keys
     // Where the listing is sized (the desktop and Android apps) the assets are read ahead of the writer in batches, and
@@ -1049,7 +1090,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
                 message += `\n${language.backupSaveSkipping(skippedItems)}`;
             }
             session.cancel.throwIfCancelled()
-            session.gate.wait(message)
+            session.progress.count('assets', i, assetKeys.length, message)
 
             let outcome: 'written' | 'missing'
             const taken = assetReader ? await assetReader.take(i) : null
@@ -1096,6 +1137,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // Counts: keys a batch delivered, keys that went to the per-entry reader (a key it then failed to read is also
     // missing), keys reported missing, and batch replies that came as a number array.
     noteImportPhase(`export assets done, batched=${batchedAssets} fallback=${fallbackAssets} missing=${missingAssets.length} numberArrayReplies=${numberArrayReplies}`)
+    session.progress.count('assets', assetKeys.length, assetKeys.length, null)
 
     // Inlays follow the assets and stay ahead of the database, which is last.
     const inlayResult = await writeInlaysToBackup(writer, store, {
@@ -1103,7 +1145,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         // Inlays are held one part at a time (up to 64 MiB); the piece size only bounds each read reply.
         pieceBytes: tauriSource === ANDROID_PIECE_SOURCE ? ANDROID_EXPORT_PIECE_BYTES : undefined,
         openPieces: nodeSource?.open,
-        onProgress: (done, total) => session.gate.wait(language.backupSaveInlays(done, total)),
+        onProgress: (done, total) => session.progress.count('inlays', done - 1, total, language.backupSaveInlays(done, total)),
     })
     session.cancel.throwIfCancelled()
     noteImportPhase('export inlays done')
@@ -1111,7 +1153,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
         let message = language.backupSaveColdData(i + 1, coldStoragePayloads.payloads.length)
-        session.gate.wait(message)
+        session.progress.count('cold', i, coldStoragePayloads.payloads.length, message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
     noteImportPhase('export cold payloads done')
@@ -1123,18 +1165,19 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSaveColdData(done, total), session.gate.wait)
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSaveColdData(done, total), (done, total, text) => session.progress.count('cold', done, total, text))
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        session.gate.wait(language.backupSaveColdData(i + 1, late.payloads.length))
+        session.progress.count('cold', i, late.payloads.length, language.backupSaveColdData(i + 1, late.payloads.length))
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
     noteImportPhase(MEASURE ? `export stub and late payloads done ${describeWriteMeasure()}` : 'export stub and late payloads done')
 
-    session.gate.wait(language.backupSaveDatabase)
+    session.progress.phase('database', language.backupSaveDatabase)
 
     await writeDatabaseEntry(writer, dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
+    session.progress.phase('finish', null)
     await writer.close()
     noteImportPhase(MEASURE ? `export closed ${describeWriteMeasure()}${describeNetMeasure()}` : 'export closed')
 
@@ -1190,10 +1233,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         if (lateForkChatData.length > 0) {
             message += (message.endsWith('\n') ? '\n' : '\n\n') + language.backupForkChatDataLeftOut(lateForkChatData.length, shownPromptNames(lateForkChatData))
         }
-        alertMd(message)
+        session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
     }
-    alertNormal(downloadNotice('Success'))
+    session.progress.done([downloadNotice('Success')])
     return { status: 'saved', notices: [], omitted, inlays: inlayResult }
 }
 
@@ -1226,7 +1269,7 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}, 
         }
     }
 
-    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy, partialBackupCard()))
 }
 
 /**
@@ -1240,7 +1283,7 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait(language.backupSavePartialWait)
+    session.progress.phase('collect', language.backupSavePartialWait)
     clearModuleSnapshotMarks()
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
@@ -1344,6 +1387,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    reportWriterStepWeb(session)
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -1354,15 +1398,16 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     session.writer = writer
     // Computed once: the name reported in the outcome is the one the writer was asked for, also across midnight.
     const suggestedName = localBackupFileName(new Date(), true)
-    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined))
+    const r = await openWriterOutsideBusy(session, () => writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
         // A dismissed save dialog is the person's decline, not a failure: the export's own wait comes off the screen and
         // nothing is reported, as for a `.rtb`.
-        session.gate.clear()
+        session.progress.dismissed()
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
+    session.progress.phase('assets', null)
 
     const tauriSource = await exportTauriPieceSource()
     const streamAssets = tauriSource !== null
@@ -1380,7 +1425,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
             message += `\n${language.backupSaveSkipping(skippedItems)}`;
         }
         session.cancel.throwIfCancelled()
-        session.gate.wait(message)
+        session.progress.count('assets', i, assetKeys.length, message)
 
         // A referenced key outside assets/ is not an asset of this store.
         if(!key || !key.startsWith('assets/')){
@@ -1420,26 +1465,28 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
             missingAssets.push(key)
         }
     }
+    session.progress.count('assets', assetKeys.length, assetKeys.length, null)
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
         let message = language.backupSavePartialColdData(i + 1, coldStoragePayloads.payloads.length)
-        session.gate.wait(message)
+        session.progress.count('cold', i, coldStoragePayloads.payloads.length, message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
     const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
     session.cancel.throwIfCancelled()
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSavePartialColdData(done, total), session.gate.wait)
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSavePartialColdData(done, total), (done, total, text) => session.progress.count('cold', done, total, text))
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        session.gate.wait(language.backupSavePartialColdData(i + 1, late.payloads.length))
+        session.progress.count('cold', i, late.payloads.length, language.backupSavePartialColdData(i + 1, late.payloads.length))
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    session.gate.wait(language.backupSavePartialDatabase)
+    session.progress.phase('database', language.backupSavePartialDatabase)
 
     await writeDatabaseEntry(writer, dbData)
+    session.progress.phase('finish', null)
     await writer.close()
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
@@ -1483,10 +1530,10 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
             message += `\n\n${language.backupForkChatDataLeftOut(lateForkChatData.length, shownPromptNames(lateForkChatData))}`
         }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
-        alertMd(message)
+        session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: null, suggestedName }
     }
-    alertNormal(`${downloadNotice('Success')}\n\n${language.partialBackupInlaysNotIncluded}`)
+    session.progress.done([downloadNotice('Success'), language.partialBackupInlaysNotIncluded])
     return { status: 'saved', notices: [], omitted, inlays: null, suggestedName }
 }
 

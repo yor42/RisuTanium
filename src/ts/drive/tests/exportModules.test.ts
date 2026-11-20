@@ -161,6 +161,7 @@ import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuploca
 import { ExportModuleUnreadableError, snapshotModuleList, type ExportModuleFailure } from 'src/ts/drive/exportModules'
 import type { ExportOutcome } from 'src/ts/drive/operationEnd'
 import { alertError } from 'src/ts/alert'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { dbWriteLock, LocalWriter } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { isBusy } from 'src/ts/process/memory/busyActions'
@@ -437,6 +438,7 @@ function stubSlot(id: string, name: string): Plain {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    resetTaskHostForTests()
     h.state.db = { characters: [], modules: [] }
     h.platform.isTauri = false
     h.sink.writes.length = 0
@@ -514,9 +516,9 @@ describe.each(PROFILES)('$name', (profile) => {
         expect(openSpy).not.toHaveBeenCalled()
         expect(h.sink.opened).toBe(0)
         expect(h.sink.writes.length).toBe(0)
-        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
-        const shown = String(vi.mocked(alertError).mock.calls[0][0])
-        // The alert names the module and is not the generic text.
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        const shown = String(taskHostView()?.failure?.detail)
+        // The failure names the module and is not the generic text.
         expect(shown).toContain('Module idd')
         expect(shown).not.toBe(language.backupFailedNothingWritten())
         expect(shown).toBe(language.backupFailedModuleUnreadable('Module idd', 'damaged'))
@@ -570,7 +572,8 @@ describe.each(PROFILES)('$name', (profile) => {
         expect(outcome.status === 'failed' ? outcome.cause : undefined).toBeInstanceOf(ModuleStubRefusal)
         expect(openSpy).not.toHaveBeenCalled()
         expect(h.sink.writes.length).toBe(0)
-        expect(String(vi.mocked(alertError).mock.calls[0][0])).toBe(language.backupFailedNothingWritten())
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedNothingWritten())
     })
 })
 
@@ -586,7 +589,8 @@ describe('unreadable module on the Tauri backend', () => {
 
         expect(outcome.status).toBe('failed')
         expect(save).not.toHaveBeenCalled()
-        const shown = String(vi.mocked(alertError).mock.calls[0][0])
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        const shown = String(taskHostView()?.failure?.detail)
         expect(shown).toContain('Module idd')
         expect(shown).not.toBe(language.backupFailedNothingWritten())
         expect(shown).toBe(language.backupFailedModuleUnreadable('Module idd', 'damaged'))
@@ -776,7 +780,8 @@ describe('snapshotModuleList', () => {
         slotsOf(db).push(fullModule('idc', 'Other'))
         const outcome = await SaveLocalBackup({ mode: 'inline' })
         expect(outcome.status).toBe('failed')
-        expect(String(vi.mocked(alertError).mock.calls[0][0])).toBe(language.backupFailedModuleUnreadable('Module idc', 'duplicate'))
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedModuleUnreadable('Module idc', 'duplicate'))
     })
 
     test('guard: resident slots are the same objects, in order, in a new array', async () => {

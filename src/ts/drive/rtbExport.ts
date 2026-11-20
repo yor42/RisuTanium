@@ -36,7 +36,7 @@ import { assetBatchWriteMode, isAssetBatchReadAvailable, listAssetsSized, readAs
 import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, exportAssetPieceSource, exportTauriPieceSource, nodeAssetPieceSource } from './assetPieces'
 import { moduleCommitVerdict, isSaveClean, type LocalWriter } from '../globalApi.svelte'
 import { legacyInlayStore, listAppInlayKeys, withInlayLock } from '../process/files/inlayStore'
-import { ensureGestureForWriter, openOutsideBusy, runExport, type ExportSession } from './exportShell'
+import { ensureGestureForWriter, openWriterOutsideBusy, runExport, type ExportSession, type ExportShellCard } from './exportShell'
 import { openInlay } from './inlayBackupExport'
 import type { ExportOmitted, ExportOutcome } from './operationEnd'
 import { CoalescingSink } from './rtb/coalescingSink'
@@ -56,7 +56,19 @@ import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
 
 export type { RtbExportProgress } from './rtbExportSources'
 
+/** The steps of the run's task card, by the ids the core reports; the entry owns their labels. */
+export type RtbStep = 'prepare' | 'save' | 'units' | 'side' | 'inlays' | 'assets' | 'finish'
+
+/** What a run with a task card needs from its caller: the card, and how a saved run ends on it. The core holds no text. */
+export interface RtbExportCard {
+    readonly def: ExportShellCard['def']
+    /** A clean save shows `summary` on the done card; a save with a report closes the card and posts `notice`. */
+    savedEnding(report: RtbExportReport): { summary: string[] } | { notice: string }
+}
+
 export interface RtbExportOptions {
+    /** The run's task card. Without it the run is card-less: its progress is the wait dialog of `progressText`, and it posts no ending. */
+    card?: RtbExportCard
     onProgress?: (event: RtbExportProgress) => void
     /**
      * The text the run's wait dialog shows for each progress event, in event order. Without it the run shows no wait
@@ -78,7 +90,8 @@ export interface RtbExportDeps {
     opfsTransitional(): Promise<boolean>
     session(): { committer: Committer | null, backend: Store2Backend | null } | null
     openWriter(session: ExportSession, fileName: string): Promise<LocalWriter | null>
-    saveFirst(): Promise<void>
+    /** `quiet` leaves out the save's own wait dialog; the card route shows its progress on the card instead. */
+    saveFirst(quiet: boolean): Promise<void>
     isSaveClean(): boolean
     /** The commit verdict of each module of the page. */
     moduleVerdicts(): Array<'saved' | 'unsavable' | 'blocked'>
@@ -169,8 +182,29 @@ function rowEntries(result: RtbWriteResult, id: string): number {
 async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, session: ExportSession, backend: Store2Backend, holder: { report: RtbExportReport | null }): Promise<ExportOutcome> {
     const emit = (event: RtbExportProgress): void => {
         options.onProgress?.(event)
-        if (options.progressText !== undefined) {
-            session.gate.wait(options.progressText(event))
+        const text = options.progressText === undefined ? null : options.progressText(event)
+        switch (event.phase) {
+            case 'opening':
+                session.progress.phase('prepare', text)
+                break
+            case 'saving':
+                session.progress.phase('save', text)
+                break
+            case 'units':
+                session.progress.phase('units', text)
+                break
+            case 'side':
+                session.progress.phase('side', text)
+                break
+            case 'inlays':
+                session.progress.count('inlays', event.done, event.total, text)
+                break
+            case 'assets':
+                session.progress.count('assets', event.done, event.total, text)
+                break
+            case 'finishing':
+                session.progress.phase('finish', text)
+                break
         }
     }
     const fileName = options.fileName ?? rtbBackupFileName(new Date(deps.clock()))
@@ -188,7 +222,7 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
             session.cancel.throwIfCancelled()
         }
         await ensureGestureForWriter(session)
-        const writer = await openOutsideBusy(session.busy, () => deps.openWriter(session, fileName))
+        const writer = await openWriterOutsideBusy(session, () => deps.openWriter(session, fileName))
         // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
         session.cancel.throwIfCancelled()
         if (writer === null) {
@@ -197,7 +231,7 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
         session.writer = writer
 
         emit({ phase: 'saving' })
-        await deps.saveFirst()
+        await deps.saveFirst(options.card !== undefined)
         session.cancel.throwIfCancelled()
         const unsavedExcluded = !deps.isSaveClean() || deps.moduleVerdicts().some((verdict) => verdict !== 'saved')
 
@@ -315,6 +349,14 @@ async function writeExport(deps: RtbExportDeps, options: RtbExportOptions, sessi
             // Writer v1 writes two entries per inlay (`i/*.meta` and `i/*.body`).
             counts: { units: closure.units, inlays: rowEntries(result, 'inlays') / 2, assets: rowEntries(result, 'assets') },
         }
+        if (options.card !== undefined) {
+            const ending = options.card.savedEnding(holder.report)
+            if ('summary' in ending) {
+                session.progress.done(ending.summary)
+            } else {
+                session.progress.notice('normal', ending.notice)
+            }
+        }
         return {
             status: 'saved',
             notices: [],
@@ -349,7 +391,7 @@ export async function runRtbExportGuarded(deps: RtbExportDeps, options: RtbExpor
         return { status: 'refused', reason: 'no-session' }
     }
     const holder: { report: RtbExportReport | null } = { report: null }
-    const outcome = await withBusy('backupSave', (busy) => runExport((session) => writeExport(deps, options, session, backend, holder), busy))
+    const outcome = await withBusy('backupSave', (busy) => runExport((session) => writeExport(deps, options, session, backend, holder), busy, options.card ?? null))
     return { status: 'ended', outcome, report: outcome.status === 'saved' ? holder.report : null }
 }
 
@@ -378,7 +420,7 @@ export function liveRtbExportDeps(): RtbExportDeps {
         },
         session: getStore2BootSession,
         openWriter: openRtbWriter,
-        saveFirst: () => saveFirst(SAVE_FIRST_BOUND_MS),
+        saveFirst: (quiet) => (quiet ? saveFirst(SAVE_FIRST_BOUND_MS, { quiet: true }) : saveFirst(SAVE_FIRST_BOUND_MS)),
         isSaveClean,
         moduleVerdicts: () => (getDatabase().modules ?? []).map((module) => moduleCommitVerdict(module.id)),
         store: getAppStore,

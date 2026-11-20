@@ -288,6 +288,7 @@ import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
 import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { injectRestoreStore } from './restoreSupport'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from 'src/ts/storage/tests/nodeServerFixture'
@@ -465,7 +466,9 @@ beforeEach(() => {
     h.download = null
     h.beforeDownload = null
     h.afterFirstChunk = null
-    h.cancelNow = null
+    resetTaskHostForTests()
+    // A backup runs on its task card, whose Cancel is the run's cancel; the export posts no wait that carries one.
+    h.cancelNow = () => { requestTaskCancel() }
     sink.writes.length = 0
     sink.closed = false
     sink.aborted = false
@@ -652,6 +655,31 @@ describe('byte equality with the page\'s own sink', () => {
         expect(alerts.normalWait).toContain(language.backupReadyToSave())
         expect(served.bytes.equals(own.bytes)).toBe(true)
     }, 120_000)
+
+    test('BK10 the download\'s bytes show on the write step of the one card, and the gesture notice is asked with that card in the slot', async () => {
+        await pageOn(main)
+        await plantTree(main)
+        vi.mocked(alertWait).mockClear()
+        vi.stubGlobal('navigator', { userActivation: { isActive: false } })
+        alerts.gestureWaitMs = 300
+        const seen: Array<{ id: number | undefined, label: string | undefined, bytes: { done: number, total: number } | undefined, notices: number }> = []
+        const timer = setInterval(() => {
+            const view = taskHostView()
+            seen.push({ id: view?.id, label: view?.steps[view.stepIndex]?.label, bytes: view?.bytes, notices: alerts.normalWait.length })
+        }, 5)
+
+        const served = await serverFile(() => SaveLocalBackup())
+        clearInterval(timer)
+
+        expect(served.outcome.status).toBe('saved')
+        const withBytes = seen.filter((entry) => entry.label === language.exportStepWrite && entry.bytes !== undefined && entry.bytes.total > 0)
+        expect(withBytes.length).toBeGreaterThan(0)
+        // The gesture notice was asked while the card stayed in the slot, and the run kept one card throughout.
+        const whileNoticeAsked = seen.filter((entry) => entry.notices > 0 && entry.id !== undefined)
+        expect(whileNoticeAsked.length).toBeGreaterThan(0)
+        expect(new Set(seen.filter((entry) => entry.id !== undefined).map((entry) => entry.id)).size).toBe(1)
+        expect(vi.mocked(alertWait)).not.toHaveBeenCalled()
+    }, 120_000)
 })
 
 function writtenEntriesOf(bytes: Buffer): WrittenEntry[] {
@@ -677,7 +705,8 @@ describe('identity mode (the server cannot hard-link)', () => {
             expect((outcome as unknown as { cause: unknown }).cause).toBeInstanceOf(BackupAssetChangedError)
             expect((outcome as unknown as { file: string }).file).toBe('kept')
         }
-        expect(alerts.error).toContain(language.backupFailedFileKept("'assets/a.png'"))
+        expect(alerts.error).toEqual([])
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedFileKept("'assets/a.png'"))
         await vi.waitFor(async () => expect(await jobDirectories(identity)).toEqual([]))
         expect(sameBytes(await onDisk(identity, 'assets/a.png'), patterned(5001, 2))).toBe(true)
     }, 120_000)
@@ -711,7 +740,9 @@ describe('cancel', () => {
         const { outcome } = await serverFile(() => SaveLocalBackup())
 
         expect(outcome).toMatchObject({ status: 'declined', cause: 'export-cancelled', file: 'kept' })
-        expect(alerts.notice).toContain(language.backupCancelledFileIncomplete)
+        expect(alerts.notice).not.toContain(language.backupCancelledFileIncomplete)
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
         await vi.waitFor(async () => expect(await jobDirectories(main)).toEqual([]))
     }, 120_000)
 })
@@ -835,7 +866,8 @@ describe('failures reported by the export shell', () => {
         const outcome = await SaveLocalBackup()
 
         expect(outcome).toMatchObject({ status: 'failed', file: 'untouched' })
-        expect(alerts.error).toEqual([language.backupFailedNothingWritten()])
+        expect(alerts.error).toEqual([])
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedNothingWritten())
         expect(h.log.some((entry) => entry.route === '/api/export/download')).toBe(false)
         await vi.waitFor(async () => expect(await jobDirectories(main)).toEqual([]), { timeout: 5000 }).catch(() => undefined)
     })
@@ -848,7 +880,8 @@ describe('failures reported by the export shell', () => {
         const outcome = await SaveLocalBackup()
 
         expect(outcome).toMatchObject({ status: 'failed', file: 'untouched' })
-        expect(alerts.error).toEqual([language.backupFailedNothingWritten()])
+        expect(alerts.error).toEqual([])
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedNothingWritten())
     })
 
     test('new: a job gone after the download is triggered fails the export with the file kept, never as saved', async () => {
@@ -859,7 +892,8 @@ describe('failures reported by the export shell', () => {
         const outcome = await SaveLocalBackup()
 
         expect(outcome).toMatchObject({ status: 'failed', file: 'kept' })
-        expect(alerts.error).toEqual([language.backupFailedFileKept(null)])
+        expect(alerts.error).toEqual([])
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedFileKept(null))
         await h.download
     })
 

@@ -273,6 +273,7 @@ import type { ExportOutcome } from 'src/ts/drive/operationEnd'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { alertStore } from 'src/ts/stores.svelte'
 import { alertError } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { collectColdStorageBackupPayloads } from 'src/ts/process/coldstorage.svelte'
 import { ExportCancelToken, createExportWaitGate } from 'src/ts/exportCancel'
 import type { alertData } from 'src/ts/alert'
@@ -285,6 +286,7 @@ let shown: alertData[] = []
 let unsubscribe: () => void = () => { }
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     world.confirm = []
     world.confirmAnswer = true
@@ -367,6 +369,12 @@ async function stalledPartialExport(stallAfter: number): Promise<{ outcome: Prom
     const outcome = exportThisTabBackup()
     await vi.waitFor(() => expect(world.writes.length).toBe(stallAfter + 1))
     return { outcome }
+}
+
+/** Presses the Cancel of the run's task card; the card must offer it. */
+function pressTaskCancel(): void {
+    expect(taskHostView()?.cancelOffered).toBe(true)
+    requestTaskCancel()
 }
 
 function pressCancel(): void {
@@ -572,7 +580,7 @@ describe('a cancel while the writer of a full backup opens', () => {
         const readsSoFar = () => storeReads.reduce((total, spy) => total + spy.mock.calls.length, 0)
         const before = readsSoFar()
 
-        pressCancel()
+        pressTaskCancel()
         helperAnswers()
 
         expect(await outcome).toEqual({ status: 'declined', cause: 'export-cancelled', file: 'kept' })
@@ -644,10 +652,9 @@ describe('a full backup', () => {
         const outcome = SaveLocalBackup()
         await vi.waitFor(() => expect(world.writes.length).toBe(4))
 
-        const dialog = get(alertStore) as alertData
-        expect(dialog.type).toBe('wait')
-        expect(dialog.onCancel).toBeTypeOf('function')
-        dialog.onCancel?.()
+        // A full backup runs on its task card: the Cancel is the card's, and no wait is on the alert store.
+        expect((get(alertStore) as alertData).type).toBe('none')
+        pressTaskCancel()
 
         expect(await outcome).toEqual({ status: 'declined', cause: 'export-cancelled', file: 'kept' })
         const lockFree = await Promise.race([
