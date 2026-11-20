@@ -96,7 +96,10 @@
       <!-- Right Side: Category, Important, Bulk Select, Clear -->
       <div class="flex items-center gap-2">
         <!-- Category Selection -->
+        <span id="{uid}-category" class="sr-only">{language.hypaV3Modal.categoryFilter}</span>
         <select
+          aria-labelledby="{uid}-category"
+          aria-describedby="{uid}-category"
           class="risu-select px-3 py-2 rounded-sm border border-darkborderc bg-darkbg text-textcolor text-sm focus:outline-hidden risu-focus-ring"
           value={bulkEditState.selectedCategory}
           onchange={handleCategoryChange}

@@ -8,20 +8,11 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test } from 'vitest'
-import { controlName, fieldNameProblems } from 'src/lib/a11yNames.test-helpers'
+import { controlName, fieldNameProblems, hideClosedColorPickerDialogs } from 'src/lib/a11yNames.test-helpers'
 import ColorInput from './ColorInput.svelte'
 
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
-
-// The library renders its dialog's sliders and text inputs while it is closed and hides them with CSS,
-// which jsdom does not apply. Their names are the library's own (out of scope), so the closed dialog is
-// marked hidden as the stylesheet does.
-function hideClosedDialog(target: HTMLElement): void {
-    for (const dialog of Array.from(target.querySelectorAll('[role="dialog"]'))) {
-        dialog.setAttribute('aria-hidden', 'true')
-    }
-}
 
 function render(props: Record<string, unknown>, before = ''): { target: HTMLElement, input: HTMLInputElement } {
     const target = document.createElement('div')
@@ -30,7 +21,7 @@ function render(props: Record<string, unknown>, before = ''): { target: HTMLElem
     const app = mount(ColorInput as never, { target, props }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
-    hideClosedDialog(target)
+    hideClosedColorPickerDialogs(target)
     return { target, input: target.querySelector<HTMLInputElement>('input[type="color"]')! }
 }
 

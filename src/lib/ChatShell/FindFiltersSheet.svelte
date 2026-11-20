@@ -52,10 +52,10 @@
             <div class="filters-row">
                 <span class="filters-label">{language.chatShellFindDate}</span>
                 <div class="filters-dates">
-                    <label for="find-from-field">{language.chatShellFindFrom}</label>
-                    <input id="find-from-field" type="date" value={filters.from} onchange={(event) => onfilters({ from: event.currentTarget.value })} />
-                    <label for="find-to-field">{language.chatShellFindTo}</label>
-                    <input id="find-to-field" type="date" value={filters.to} onchange={(event) => onfilters({ to: event.currentTarget.value })} />
+                    <label id="find-from-label" for="find-from-field">{language.chatShellFindFrom}</label>
+                    <input id="find-from-field" type="date" aria-labelledby="find-from-label" aria-describedby="find-from-label" value={filters.from} onchange={(event) => onfilters({ from: event.currentTarget.value })} />
+                    <label id="find-to-label" for="find-to-field">{language.chatShellFindTo}</label>
+                    <input id="find-to-field" type="date" aria-labelledby="find-to-label" aria-describedby="find-to-label" value={filters.to} onchange={(event) => onfilters({ to: event.currentTarget.value })} />
                 </div>
             </div>
             <button type="button" data-kind="button" class="clear" onclick={onclear}>{language.chatShellFindClearFilters}</button>

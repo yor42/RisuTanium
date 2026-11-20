@@ -2,8 +2,8 @@
 
 /**
  * `CustomColorSchemeEditor.svelte`: the export and import buttons are named with their glyphs hidden
- * and hover to a scheme token. The native colour inputs keep their existing `aria-label` and are not
- * changed here (colour inputs belong to the number/select/slider/colour ticket). Mounts the REAL
+ * and hover to a scheme token. The native colour inputs are named through aria-labelledby, which
+ * `CustomColorSchemeEditor.valueNames.svelte.test.ts` checks per name. Mounts the REAL
  * component over a real `$state` database; the colour module is a stub.
  */
 import { flushSync, mount, unmount } from 'svelte'
@@ -72,13 +72,13 @@ describe('CustomColorSchemeEditor accessible names', () => {
         }
     })
 
-    test('guard: the native colour inputs stay unchanged (passes before and after)', () => {
+    test('regression reproducer: the native colour inputs are named by labelledby to the text beside them, with that text first in the description', () => {
         const target = render()
         const inputs = Array.from(target.querySelectorAll('input[type="color"]'))
         expect(inputs).toHaveLength(9)
         for (const input of inputs) {
-            expect(input.getAttribute('aria-label')).toBeTruthy()
-            expect(input.hasAttribute('aria-labelledby')).toBe(false)
+            expect(input.hasAttribute('aria-label')).toBe(false)
+            expect(controlName(input)).not.toBe('')
         }
     })
 })
