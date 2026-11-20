@@ -97,6 +97,7 @@
   </div>
   <button
     class="font-medium cursor-pointer hover:text-textcolor mb-2 text-textcolor2"
+    aria-label={language.add}
     onclick={() => {
       value.push({
         comment: '',
@@ -107,6 +108,6 @@
       value = value
     }}
   >
-    <PlusIcon />
+    <PlusIcon aria-hidden="true" />
   </button>
 {/key}

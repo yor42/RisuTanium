@@ -95,7 +95,7 @@
     <span class="text-draculared">{language.triggerV1Warning}</span>
 {/if}
 {#if value?.[0]?.effect?.[0]?.type === 'triggerlua'}
-    <TextAreaInput margin="both" autocomplete="off" bind:value={value[0].effect[0].code} popupLanguage="lua"></TextAreaInput>
+    <TextAreaInput margin="both" autocomplete="off" label={language.triggerScript} bind:value={value[0].effect[0].code} popupLanguage="lua"></TextAreaInput>
     <Button onclick={() => {
         openURL(FORK_WIKI_LUA_SCRIPTING_URL)
     }}>{language.helpBlock}</Button>

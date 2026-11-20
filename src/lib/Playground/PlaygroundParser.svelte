@@ -3,6 +3,7 @@
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import { language } from "src/lang";
     let input = $state("");
+    const uid = $props.id();
     let output = $state("");
     const onInput = async () => {
         try {
@@ -15,10 +16,10 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.playground.fullParser}</h2>
 
-<span class="text-textcolor text-lg">{language.input}</span>
+<span id="{uid}-input" class="text-textcolor text-lg">{language.input}</span>
 
-<TextAreaInput onInput={onInput} bind:value={input} optimaizedInput={false} />
+<TextAreaInput labelId="{uid}-input" onInput={onInput} bind:value={input} optimaizedInput={false} />
 
-<span class="text-textcolor text-lg">{language.playground.outputHtml}</span>
+<span id="{uid}-output" class="text-textcolor text-lg">{language.playground.outputHtml}</span>
 
-<TextAreaInput value={output} />
+<TextAreaInput labelId="{uid}-output" value={output} />

@@ -58,7 +58,7 @@
             <div class="flex flex-wrap gap-4">
                 {#each row.choices as choice}
                     <label class="flex items-center gap-1 text-textcolor cursor-pointer">
-                        <input type="radio" name={`peer-conflict-${row.id}`} value={choice} checked={choiceOf(row) === choice}
+                        <input type="radio" name={`peer-conflict-${row.id}`} value={choice} aria-label={labelOf[choice]} checked={choiceOf(row) === choice}
                             onchange={() => { chosen = { ...chosen, [row.id]: choice } }} />
                         <span>{labelOf[choice]}</span>
                     </label>

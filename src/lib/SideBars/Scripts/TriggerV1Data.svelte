@@ -28,6 +28,7 @@
         onOpen = () => {},
         idx
     }: Props = $props();
+    const uid = $props.id()
     let open = $state(false)
 </script>
 
@@ -44,7 +45,7 @@
         }}>
             <span>{value.comment.length === 0 ? language.sidebarUi.unnamedTrigger : value.comment}</span>
         </button>
-        <button class="valuer" onclick={async () => {
+        <button class="valuer" aria-label={language.remove} onclick={async () => {
             const target = value
             const d = await alertConfirm(language.removeConfirm + target.comment)
             if(d){
@@ -54,13 +55,13 @@
                 onRemove(target)
             }
         }}>
-            <XIcon />
+            <XIcon aria-hidden="true" />
         </button>
     </div>
     {#if open}
         <div class="seperator p-2">
-            <span class="text-textcolor mt-6">{language.name}</span>
-            <TextInput size="sm" bind:value={value.comment} />
+            <span id="{uid}-name" class="text-textcolor mt-6">{language.name}</span>
+            <TextInput size="sm" labelId="{uid}-name" bind:value={value.comment} />
             <span class="text-textcolor mt-4">{language.type}</span>
             <SelectInput bind:value={value.type}>
                 <OptionInput value="start">{language.triggerStart}</OptionInput>
@@ -70,7 +71,7 @@
             </SelectInput>
             
             <span class="text-textcolor mt-4">{language.sidebarUi.conditions}
-                <button aria-labelledby="Add Conditions" class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
+                <button aria-label={language.add} class="float-right text-textcolor2 hover:text-textcolor" onclick={() => {
                     value.conditions.push({
                         type: 'value',
                         value: '',
@@ -79,7 +80,7 @@
                     })
                     value.conditions = value.conditions
 
-                }}><PlusIcon size={18} /></button>
+                }}><PlusIcon size={18} aria-hidden="true" /></button>
             </span>
             <div class="flex flex-col px-2 py-4 border border-selected rounded-md">
                 {#if value.conditions.length === 0}
@@ -90,11 +91,11 @@
                         <hr class="border-selected my-4" />
                     {/if}
                     <span class="text-textcolor2 text-sm">{language.type}
-                        <button aria-labelledby="Add Conditions" class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
+                        <button aria-label={language.remove} class="float-right text-textcolor2 hover:text-textcolor" onclick={() => {
                             value.conditions.splice(i, 1)
                             value.conditions = value.conditions
-        
-                        }}><XIcon size={18} /></button>
+
+                        }}><XIcon size={18} aria-hidden="true" /></button>
 
                     </span>
                     <SelectInput bind:value={cond.type} size="sm" onchange={() => {
@@ -134,19 +135,19 @@
                             <OptionInput value="strict">{language.triggerMatchStrict}</OptionInput>
                             <OptionInput value="regex">{language.triggerMatchRegex}</OptionInput>
                         </SelectInput>
-                        <span  class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={cond.value} />
+                        <span id="{uid}-c{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-c{i}-value" bind:value={cond.value} />
 
                         <span  class="text-textcolor2 text-sm">{language.searchDepth}</span>
                         <NumberInput size="sm" bind:value={cond.depth} />
                     {/if}
                     {#if cond.type === 'var' || cond.type === 'chatindex' || cond.type === 'value'}
                         {#if cond.type === 'var'}
-                            <span class="text-textcolor2 text-sm">{language.varableName}</span>
-                            <TextInput size="sm" bind:value={cond.var} />
+                            <span id="{uid}-c{i}-var" class="text-textcolor2 text-sm">{language.varableName}</span>
+                            <TextInput size="sm" labelId="{uid}-c{i}-var" bind:value={cond.var} />
                         {/if}
                         {#if cond.type === 'value'}
-                            <TextAreaInput highlight size="sm" bind:value={cond.var} />
+                            <TextAreaInput highlight size="sm" label={language.ifValue} bind:value={cond.var} />
                         {/if}
                         <span  class="text-textcolor2 text-sm">{language.value}</span>
                         <SelectInput bind:value={cond.operator} size="sm">
@@ -161,14 +162,14 @@
 
                         </SelectInput>
                         {#if cond.operator !== 'null' && cond.operator !== 'true'}
-                            <TextAreaInput highlight size="sm" bind:value={cond.value} />
+                            <TextAreaInput highlight size="sm" label={language.value} bind:value={cond.value} />
                         {/if}
                     {/if}
                 {/each}
             </div>
 
             <span class="text-textcolor mt-4">{language.sidebarUi.effects}
-                <button aria-labelledby="Add Effects" class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
+                <button aria-label={language.add} class="float-right text-textcolor2 hover:text-textcolor" onclick={() => {
                     if(value.type === 'start'){
                         value.effect.push({
                             type: 'systemprompt',
@@ -186,7 +187,7 @@
                     }
                     value.effect = value.effect
 
-                }}><PlusIcon size={18} /></button>
+                }}><PlusIcon size={18} aria-hidden="true" /></button>
             </span>
 
             <div class="flex flex-col px-2 py-4 border border-selected rounded-md">
@@ -198,11 +199,11 @@
                         <hr class="border-selected my-4" />
                     {/if}
                     <span class="text-textcolor2 text-sm">{language.type}
-                        <button aria-labelledby="Add Conditions" class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
+                        <button aria-label={language.remove} class="float-right text-textcolor2 hover:text-textcolor" onclick={() => {
                             value.effect.splice(i, 1)
                             value.effect = value.effect
-        
-                        }}><XIcon size={18} /></button>
+
+                        }}><XIcon size={18} aria-hidden="true" /></button>
 
                     </span>
                     <SelectInput bind:value={effect.type} size="sm" onchange={() => {
@@ -333,7 +334,7 @@
                         (value.type !== 'start' && (effect.type === 'systemprompt' || effect.type === 'stop')) ||
                         (value.type !== 'output' && effect.type === 'sendAIprompt')
                     }
-                        <span class="text-red-400 text-sm">{language.invaildTriggerEffect}</span>
+                        <span class="text-draculared text-sm">{language.invaildTriggerEffect}</span>
                     {/if}
                     {#if
                         !lowLevelAble && (
@@ -346,7 +347,7 @@
                             effect.type === 'runAxLLM'
                         )
                     }
-                        <span class="text-red-400 text-sm">{language.triggerLowLevelOnly}</span>
+                        <span class="text-draculared text-sm">{language.triggerLowLevelOnly}</span>
 
                     {/if}
 
@@ -357,12 +358,12 @@
                             <OptionInput value="historyend">{language.historyend}</OptionInput>
                             <OptionInput value="promptend">{language.promptend}</OptionInput>
                         </SelectInput>
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
                     {/if}
                     {#if effect.type === 'setvar'}
-                        <span class="text-textcolor2 text-sm">{language.varableName}</span>
-                        <TextInput bind:value={effect.var} />
+                        <span id="{uid}-e{i}-var" class="text-textcolor2 text-sm">{language.varableName}</span>
+                        <TextInput labelId="{uid}-e{i}-var" bind:value={effect.var} />
                         <span class="text-textcolor2 text-sm">{language.operator}</span>
                         <SelectInput bind:value={effect.operator} >
                             <OptionInput value="=">{language.TriggerSetToVar}</OptionInput>
@@ -371,34 +372,34 @@
                             <OptionInput value="*=">{language.TriggerMulToVar}</OptionInput>
                             <OptionInput value="/=">{language.TriggerDivToVar}</OptionInput>
                         </SelectInput>
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
                     {/if}
 
                     {#if effect.type === 'runtrigger'}
-                        <span class="text-textcolor2 text-sm">{language.name}</span>
-                        <TextInput size="sm" bind:value={effect.value} />
+                        <span id="{uid}-e{i}-name" class="text-textcolor2 text-sm">{language.name}</span>
+                        <TextInput size="sm" labelId="{uid}-e{i}-name" bind:value={effect.value} />
                     {/if}
                     {#if effect.type === 'command'}
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
                     {/if}
                     {#if effect.type === 'runLLM'}
-                        <span class="text-textcolor2 text-sm">{language.prompt} <Help key="triggerLLMPrompt" /></span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span class="text-textcolor2 text-sm"><span id="{uid}-e{i}-prompt">{language.prompt}</span> <Help key="triggerLLMPrompt" /></span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-prompt" bind:value={effect.value} />
 
-                        <span class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
-                        <TextInput bind:value={effect.inputVar} />
+                        <span id="{uid}-e{i}-result-var" class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
+                        <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
                     {#if effect.type === 'checkSimilarity'}
-                        <span class="text-textcolor2 text-sm">{language.prompt}</span>
-                        <TextAreaInput highlight bind:value={effect.source} />
+                        <span id="{uid}-e{i}-prompt" class="text-textcolor2 text-sm">{language.prompt}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-prompt" bind:value={effect.source} />
 
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
 
-                        <span class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
-                        <TextInput bind:value={effect.inputVar} />
+                        <span id="{uid}-e{i}-result-var" class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
+                        <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
                     {#if effect.type === 'showAlert'}
                         <span class="text-textcolor2 text-sm">{language.type}</span>
@@ -409,11 +410,11 @@
                             <OptionInput value="select">{language.select}</OptionInput>
                         </SelectInput>
 
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
 
-                        <span class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
-                        <TextInput bind:value={effect.inputVar} />
+                        <span id="{uid}-e{i}-result-var" class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
+                        <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
                     {#if effect.type === 'impersonate'}
                         <span class="text-textcolor2 text-sm">{language.role}</span>
@@ -421,61 +422,61 @@
                             <OptionInput value="user">{language.user}</OptionInput>
                             <OptionInput value="char">{language.character}</OptionInput>
                         </SelectInput>
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
                     {/if}
 
                     {#if effect.type === 'extractRegex'}
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
 
-                        <span class="text-textcolor2 text-sm">{language.regex}</span>
-                        <TextInput bind:value={effect.regex} />
+                        <span id="{uid}-e{i}-regex" class="text-textcolor2 text-sm">{language.regex}</span>
+                        <TextInput labelId="{uid}-e{i}-regex" bind:value={effect.regex} />
 
-                        <span class="text-textcolor2 text-sm">{language.flags}</span>
-                        <TextInput bind:value={effect.flags} />
+                        <span id="{uid}-e{i}-flags" class="text-textcolor2 text-sm">{language.flags}</span>
+                        <TextInput labelId="{uid}-e{i}-flags" bind:value={effect.flags} />
 
-                        <span class="text-textcolor2 text-sm">{language.resultFormat}</span>
-                        <TextInput bind:value={effect.result} />
+                        <span id="{uid}-e{i}-result-format" class="text-textcolor2 text-sm">{language.resultFormat}</span>
+                        <TextInput labelId="{uid}-e{i}-result-format" bind:value={effect.result} />
 
-                        <span class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
-                        <TextInput bind:value={effect.inputVar} />
+                        <span id="{uid}-e{i}-result-var" class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
+                        <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
 
                     {#if effect.type === 'runImgGen'}
-                        <span class="text-textcolor2 text-sm">{language.prompt}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
+                        <span id="{uid}-e{i}-prompt" class="text-textcolor2 text-sm">{language.prompt}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-prompt" bind:value={effect.value} />
 
-                        <span class="text-textcolor2 text-sm">{language.negPrompt}</span>
-                        <TextAreaInput highlight bind:value={effect.negValue} />
+                        <span id="{uid}-e{i}-neg-prompt" class="text-textcolor2 text-sm">{language.negPrompt}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-neg-prompt" bind:value={effect.negValue} />
 
-                        <span class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
-                        <TextInput bind:value={effect.inputVar} />
+                        <span id="{uid}-e{i}-result-var" class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
+                        <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
 
                     {#if effect.type === 'cutchat'}
-                        <span class="text-textcolor2 text-sm">{language.start}</span>
-                        <TextInput bind:value={effect.start} />
+                        <span id="{uid}-e{i}-start" class="text-textcolor2 text-sm">{language.start}</span>
+                        <TextInput labelId="{uid}-e{i}-start" bind:value={effect.start} />
 
-                        <span class="text-textcolor2 text-sm">{language.end}</span>
-                        <TextInput bind:value={effect.end} />
+                        <span id="{uid}-e{i}-end" class="text-textcolor2 text-sm">{language.end}</span>
+                        <TextInput labelId="{uid}-e{i}-end" bind:value={effect.end} />
                     {/if}
 
                     {#if effect.type === 'modifychat'}
-                        <span class="text-textcolor2 text-sm">{language.index}</span>
-                        <TextInput bind:value={effect.index} />
+                        <span id="{uid}-e{i}-index" class="text-textcolor2 text-sm">{language.index}</span>
+                        <TextInput labelId="{uid}-e{i}-index" bind:value={effect.index} />
 
-                        <span class="text-textcolor2 text-sm">{language.value}</span>
-                        <TextAreaInput highlight bind:value={effect.value} />
-                    
+                        <span id="{uid}-e{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
+                        <TextAreaInput highlight labelId="{uid}-e{i}-value" bind:value={effect.value} />
+
                     {/if}
 
                     {#if effect.type === 'runAxLLM'}
-                    <span class="text-textcolor2 text-sm">{language.prompt} <Help key="triggerLLMPrompt" /></span>
-                    <TextAreaInput highlight bind:value={effect.value} />
+                    <span class="text-textcolor2 text-sm"><span id="{uid}-e{i}-prompt">{language.prompt}</span> <Help key="triggerLLMPrompt" /></span>
+                    <TextAreaInput highlight labelId="{uid}-e{i}-prompt" bind:value={effect.value} />
 
-                    <span class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
-                    <TextInput bind:value={effect.inputVar} />
+                    <span id="{uid}-e{i}-result-var" class="text-textcolor2 text-sm">{language.resultStoredVar}</span>
+                    <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
                 {/each}
             </div>

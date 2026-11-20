@@ -146,7 +146,7 @@
 
         {#if def.ack}
             <label data-part="pattern-warn-ack" data-part-critical>
-                <input type="checkbox" class="pattern-ack-box" bind:checked={acknowledged} />
+                <input type="checkbox" class="pattern-ack-box" aria-label={def.ack} bind:checked={acknowledged} />
                 <span>{def.ack}</span>
             </label>
         {/if}

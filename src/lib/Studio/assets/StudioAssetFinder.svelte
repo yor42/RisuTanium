@@ -198,7 +198,7 @@
     </div>
     {#if moduleArrays}
         <label class="flex min-h-11 items-center gap-2 cursor-pointer">
-            <input type="checkbox" data-part="studio-asset-dup-modules" class="h-5 w-5 cursor-pointer" bind:checked={includeModules} />
+            <input type="checkbox" data-part="studio-asset-dup-modules" class="h-5 w-5 cursor-pointer" aria-label={language.studioAssetDupIncludeModules} bind:checked={includeModules} />
             <span>{language.studioAssetDupIncludeModules}</span>
         </label>
     {/if}

@@ -125,7 +125,7 @@
         <legend class="text-sm text-textcolor2 mb-1">{language.themePackActiveLegend}</legend>
         <div class="min-w-0" data-part="theme-pack-none">
             <label class={CARD_CLASS}>
-                <input class="sr-only peer" type="radio" name={groupName} value="" checked={activeId === ''} aria-labelledby="{groupName}-none" onchange={() => select(undefined)} />
+                <input class="sr-only peer" type="radio" name={groupName} value="" checked={activeId === ''} aria-label={language.themePackNone} onchange={() => select(undefined)} />
                 <span class={FRAME_CLASS}><ThemePackTile spec={null} /></span>
                 <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
                 <span id="{groupName}-none" class={NAME_CLASS}>{language.themePackNone}</span>
@@ -134,7 +134,7 @@
         {#each BUILTIN_PACKS as pack, index (pack.id)}
             <div class="min-w-0" data-part="theme-pack-entry" data-pack-id={pack.id}>
                 <label class={CARD_CLASS}>
-                    <input class="sr-only peer" type="radio" name={groupName} value={pack.id} checked={activeId === pack.id} aria-labelledby="{groupName}-b{index}" onchange={() => select(pack.id)} />
+                    <input class="sr-only peer" type="radio" name={groupName} value={pack.id} checked={activeId === pack.id} aria-label={pack.name} onchange={() => select(pack.id)} />
                     <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: pack.id, name: pack.name, main: pack.mainColor, secondary: pack.secondaryColor })} /></span>
                     <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
                     <span id="{groupName}-b{index}" class={NAME_CLASS}>{pack.name}</span>
@@ -154,7 +154,7 @@
         {#each readable as item, index (item.record.id)}
             <div class="min-w-0" data-part="theme-pack-entry" data-pack-id={item.record.id}>
                 <label class={CARD_CLASS}>
-                    <input class="sr-only peer" type="radio" name={groupName} value={item.record.id} checked={activeId === item.record.id} aria-labelledby="{groupName}-p{index}" onchange={() => select(item.record.id)} />
+                    <input class="sr-only peer" type="radio" name={groupName} value={item.record.id} checked={activeId === item.record.id} aria-label={item.record.name} onchange={() => select(item.record.id)} />
                     <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: item.record.packId ?? item.record.name, name: item.record.name, main: item.record.mainColor, secondary: item.record.secondaryColor })} icon={item.record.icon} name={item.record.name} /></span>
                     <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
                     <span id="{groupName}-p{index}" class={NAME_CLASS}>{item.record.name}</span>

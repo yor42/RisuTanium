@@ -19,6 +19,8 @@
     tagManagerState = $bindable(),
   }: Props = $props();
 
+  const uid = $props.id();
+
   const hypaV3Data = $derived(
     DBState.db.characters[$selectedCharID].chats[
       DBState.db.characters[$selectedCharID].chatPage
@@ -115,31 +117,35 @@
 <!-- Tag Manager Modal -->
 {#if tagManagerState.isOpen && tagManagerState.currentSummaryIndex >= 0}
   <div class="fixed inset-0 z-50 p-4 bg-black/70 flex items-center justify-center">
-    <div class="bg-zinc-900 rounded-lg p-6 w-full max-w-md">
+    <div class="bg-darkbg rounded-lg p-6 w-full max-w-md">
       <div class="flex justify-between items-center mb-6">
-        <h2 class="text-lg font-semibold text-zinc-300">
+        <h2 class="text-lg font-semibold text-textcolor">
           {language.hypaV3Modal.tagManagerTitle.replace("{0}", (tagManagerState.currentSummaryIndex + 1).toString())}
         </h2>
         <button
-          class="p-2 text-zinc-400 hover:text-zinc-200 transition-colors"
+          class="p-2 text-textcolor2 hover:text-textcolor transition-colors"
+          aria-label={language.uiCommon.close}
           onclick={closeTagManager}
         >
-          <XIcon class="w-5 h-5" />
+          <XIcon class="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
 
       <!-- Add New Tag -->
       <div class="mb-4">
         <div class="flex gap-2">
+          <span id="{uid}-new-tag" class="sr-only">{language.hypaV3Modal.newTagName}</span>
           <input
             type="text"
-            class="flex-1 px-3 py-2 text-sm rounded-sm border border-zinc-600 bg-zinc-900 text-zinc-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            class="flex-1 px-3 py-2 text-sm rounded-sm border border-darkborderc bg-darkbg text-textcolor focus:outline-hidden risu-focus-ring"
+            aria-labelledby="{uid}-new-tag"
+            aria-describedby="{uid}-new-tag"
             placeholder={language.hypaV3Modal.newTagName}
             bind:value={tagManagerState.editingTag}
             onkeydown={handleAddTagKeydown}
           />
           <button
-            class="px-4 py-2 rounded-sm bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors"
+            class="px-4 py-2 rounded-sm bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 text-sm transition-colors"
             onclick={handleAddTagEnter}
           >
             {language.add}
@@ -151,45 +157,52 @@
       <div class="space-y-2 max-h-60 overflow-y-auto">
         {#if hypaV3Data.summaries[tagManagerState.currentSummaryIndex].tags && hypaV3Data.summaries[tagManagerState.currentSummaryIndex].tags.length > 0}
           {#each hypaV3Data.summaries[tagManagerState.currentSummaryIndex].tags as tag, tagIndex}
-            <div class="flex items-center gap-2 px-3 py-2 rounded-sm bg-zinc-800">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-sm bg-bgcolor">
               {#if tagManagerState.editingTagIndex === tagIndex}
+                <span id="{uid}-edit-tag" class="sr-only">{language.edit}</span>
                 <input
                   type="text"
-                  class="flex-1 px-2 py-1 text-sm rounded-sm border border-zinc-600 bg-zinc-900 text-zinc-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  class="flex-1 px-2 py-1 text-sm rounded-sm border border-darkborderc bg-darkbg text-textcolor focus:outline-hidden risu-focus-ring"
+                  aria-labelledby="{uid}-edit-tag"
+                  aria-describedby="{uid}-edit-tag"
                   bind:value={tagManagerState.editingTag}
                   onkeydown={handleEditTagKeydown}
                 />
                 <button
-                  class="p-1.5 text-green-400 hover:text-green-300 transition-colors"
+                  class="p-1.5 text-textcolor hover:text-textcolor2 transition-colors"
+                  aria-label={language.uiCommon.save}
                   onclick={saveEditingTag}
                 >
-                  <CheckIcon class="w-4 h-4" />
+                  <CheckIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
-                  class="p-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+                  class="p-1.5 text-textcolor2 hover:text-textcolor transition-colors"
+                  aria-label={language.cancel}
                   onclick={cancelEditingTag}
                 >
-                  <XIcon class="w-4 h-4" />
+                  <XIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
               {:else}
-                <span class="flex-1 text-sm text-zinc-200">#{tag}</span>
+                <span class="flex-1 text-sm text-textcolor">#{tag}</span>
                 <button
-                  class="p-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+                  class="p-1.5 text-textcolor2 hover:text-textcolor transition-colors"
+                  aria-label={language.edit}
                   onclick={() => startEditTag(tagIndex, tag)}
                 >
-                  <SquarePenIcon class="w-4 h-4" />
+                  <SquarePenIcon class="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
-                  class="p-1.5 text-red-400 hover:text-red-300 transition-colors"
+                  class="p-1.5 text-textcolor2 hover:text-draculared transition-colors"
+                  aria-label={language.uiCommon.delete}
                   onclick={() => removeTag(tagManagerState.currentSummaryIndex, tagIndex)}
                 >
-                  <Trash2Icon class="w-4 h-4" />
+                  <Trash2Icon class="w-4 h-4" aria-hidden="true" />
                 </button>
               {/if}
             </div>
           {/each}
         {:else}
-          <div class="text-center py-8 text-zinc-500 text-sm">
+          <div class="text-center py-8 text-textcolor2 text-sm">
             {language.hypaV3Modal.noTagsYet}<br>
             <span class="text-xs">{language.hypaV3Modal.addNewTagHint}</span>
           </div>

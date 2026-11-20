@@ -28,6 +28,8 @@
   import TagManagerModal from "./HypaV3Modal/tag-manager-modal.svelte";
   import BulkEditActions from "./HypaV3Modal/bulk-edit-actions.svelte";
   import BulkResummaryResult from "./HypaV3Modal/bulk-resummary-result.svelte";
+
+  const uid = $props.id();
   
   import type {
     SummaryItemState,
@@ -621,11 +623,11 @@
       });
 
       // Highlight chatMemo
-      button.classList.add("ring-2", "ring-zinc-500");
+      button.classList.add("ring-2", "ring-borderc");
 
       // Remove highlight after a short delay
       window.setTimeout(() => {
-        button.classList.remove("ring-2", "ring-zinc-500");
+        button.classList.remove("ring-2", "ring-borderc");
       }, 1000);
     }
 
@@ -774,7 +776,7 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="flex flex-col w-full max-w-3xl p-3 rounded-lg sm:p-6 bg-zinc-900 {hypaV3Data
+        class="flex flex-col w-full max-w-3xl p-3 rounded-lg sm:p-6 bg-darkbg {hypaV3Data
           .summaries.length === 0
           ? 'h-fit'
           : 'h-full'}"
@@ -807,14 +809,14 @@
             <!-- Conversion Section -->
             {#if isHypaV2ConversionPossible()}
               <div
-                class="flex flex-col p-2 border rounded-lg sm:p-4 border-zinc-700 bg-zinc-800/50"
+                class="flex flex-col p-2 border rounded-lg sm:p-4 border-darkborderc bg-bgcolor/50"
               >
                 <div class="flex flex-col items-center">
-                  <div class="my-1 text-center sm:my-2 text-zinc-300">
+                  <div class="my-1 text-center sm:my-2 text-textcolor">
                     {language.hypaV3Modal.convertLabel}
                   </div>
                   <button
-                    class="px-4 py-2 my-1 font-semibold transition-colors rounded-md sm:my-2 text-zinc-300 bg-zinc-700 hover:bg-zinc-500"
+                    class="px-4 py-2 my-1 font-semibold transition-colors rounded-md sm:my-2 text-textcolor bg-darkbutton hover:bg-borderc"
                     tabindex="-1"
                     onclick={async () => {
                       const conversionResult = convertHypaV2ToV3();
@@ -838,14 +840,14 @@
                 </div>
               </div>
             {:else}
-              <div class="p-4 text-center sm:p-3 md:p-4 text-zinc-400">
+              <div class="p-4 text-center sm:p-3 md:p-4 text-textcolor2">
                 {language.hypaV3Modal.noSummariesLabel}
               </div>
             {/if}
 
             <!-- Search Bar -->
           {:else if searchState}
-            <div class="sticky top-0 p-2 sm:p-3 bg-zinc-800">
+            <div class="sticky top-0 p-2 sm:p-3 bg-bgcolor">
               <div class="flex items-center gap-2">
                 <div class="relative flex items-center flex-1">
                   <form
@@ -855,8 +857,11 @@
                       onSearch({ key: "Enter" } as KeyboardEvent);
                     }}
                   >
+                    <span id="{uid}-search" class="sr-only">{language.search}</span>
                     <input
-                      class="w-full px-2 py-2 border rounded-sm sm:px-4 sm:py-3 border-zinc-700 focus:outline-hidden focus:ring-2 focus:ring-zinc-500 text-zinc-200 bg-zinc-900"
+                      class="w-full px-2 py-2 border rounded-sm sm:px-4 sm:py-3 border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
+                      aria-labelledby="{uid}-search"
+                      aria-describedby="{uid}-search"
                       placeholder={language.hypaV3Modal.searchPlaceholder}
                       bind:this={searchState.ref}
                       bind:value={searchState.query}
@@ -875,7 +880,7 @@
 
                   {#if searchState.results.length > 0}
                     <span
-                      class="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 sm:px-3 py-1 sm:py-2 rounded-sm text-sm font-semibold text-zinc-100 bg-zinc-700/65"
+                      class="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 sm:px-3 py-1 sm:py-2 rounded-sm text-sm font-semibold text-textcolor bg-darkbutton/65"
                     >
                       {searchState.currentResultIndex + 1}/{searchState.results
                         .length}
@@ -885,24 +890,26 @@
 
                 <!-- Previous Button -->
                 <button
-                  class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+                  class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                   tabindex="-1"
+                  aria-label={language.chatShellFindPrev}
                   onclick={() => {
                     onSearch({ shiftKey: true, key: "Enter" } as KeyboardEvent);
                   }}
                 >
-                  <ChevronUpIcon class="w-6 h-6" />
+                  <ChevronUpIcon class="w-6 h-6" aria-hidden="true" />
                 </button>
 
                 <!-- Next Button -->
                 <button
-                  class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+                  class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                   tabindex="-1"
+                  aria-label={language.chatShellFindNext}
                   onclick={() => {
                     onSearch({ key: "Enter" } as KeyboardEvent);
                   }}
                 >
-                  <ChevronDownIcon class="w-6 h-6" />
+                  <ChevronDownIcon class="w-6 h-6" aria-hidden="true" />
                 </button>
               </div>
             </div>

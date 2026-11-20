@@ -25,31 +25,32 @@
     let bulk = $state(false)
     let keepContext = $state(false)
     let bulkProgressText = $state('')
+    const uid = $props.id()
 </script>
 
 
 
-<span>{language.sourceLanguage}</span>
+<span id="{uid}-source">{language.sourceLanguage}</span>
 <SelectInput bind:value={sourceLang}>
     {#each getLanguageCodes() as lang}
         <OptionInput value={lang.code}>{lang.name}</OptionInput>
     {/each}
 </SelectInput>
-<TextAreaInput bind:value={r} />
+<TextAreaInput labelId="{uid}-source" bind:value={r} />
 
-<span>{language.translatorLanguage}</span>
+<span id="{uid}-target">{language.translatorLanguage}</span>
 <SelectInput bind:value={outputLang}>
     {#each getLanguageCodes() as lang}
         <OptionInput value={lang.code}>{lang.name}</OptionInput>
     {/each}
 </SelectInput>
-<TextAreaInput value={output} />
+<TextAreaInput labelId="{uid}-target" value={output} />
 
-<CheckInput bind:check={bulk}>
+<CheckInput bind:check={bulk} label={language.playground.bulk}>
     {language.playground.bulk}
 </CheckInput>
 {#if bulk}
-    <CheckInput bind:check={keepContext}>
+    <CheckInput bind:check={keepContext} label={language.playground.keepContext}>
         {language.playground.keepContext}
     </CheckInput>
 {/if}

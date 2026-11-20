@@ -13,6 +13,15 @@
 
     let { onClick = () => {}, chara }: Props = $props();
 
+    // A role="button" div activates on Enter and Space, and only when it is itself the event target.
+    function activateOnKey(e: KeyboardEvent) {
+        if(e.target !== e.currentTarget) return
+        if((e.key === 'Enter' || e.key === ' ') && e.currentTarget instanceof HTMLElement){
+            e.preventDefault()
+            e.currentTarget.click()
+        }
+    }
+
 </script>
 
 
@@ -31,31 +40,31 @@
         <div class="flex flex-wrap">
             {#each chara.tags as tag, i}
                 {#if i < 4}
-                    <div class="text-xs p-1 text-blue-400">{tag}</div>
+                    <div class="text-xs p-1 text-textcolor2">{tag}</div>
                 {:else if i === 4}
-                    <div class="text-xs p-1 text-blue-400">...</div>
+                    <div class="text-xs p-1 text-textcolor2">...</div>
                 {/if}
             {/each}
         </div>
         <div class="grow"></div>
         <div class="flex flex-wrap w-full flex-row-reverse gap-1">
             {#if chara.hasEmotion}
-                <div class="text-textcolor2 hover:text-green-500 transition-colors" role="button" tabindex="0" onclick={((e) => {
+                <div class="text-textcolor2 hover:text-textcolor transition-colors" role="button" tabindex="0" aria-label={language.alerts.characterHasEmotion} onclick={((e) => {
                     e.stopPropagation()
                     alertNormal(language.alerts.characterHasEmotion)
-                })} onkeydown={(e) => {}}><SmileIcon /></div>
+                })} onkeydown={activateOnKey}><SmileIcon aria-hidden="true" /></div>
             {/if}
             {#if chara.hasAsset}
-                <div class="text-textcolor2 hover:text-green-500 transition-colors" role="button" tabindex="0" onclick={((e) => {
+                <div class="text-textcolor2 hover:text-textcolor transition-colors" role="button" tabindex="0" aria-label={language.alerts.characterHasAssets} onclick={((e) => {
                     e.stopPropagation()
                     alertNormal(language.alerts.characterHasAssets)
-                })} onkeydown={(e) => {}}><ImageIcon /></div>
+                })} onkeydown={activateOnKey}><ImageIcon aria-hidden="true" /></div>
             {/if}
             {#if chara.hasLore}
-                <div class="text-textcolor2 hover:text-green-500 transition-colors" role="button" tabindex="0" onclick={((e) => {
+                <div class="text-textcolor2 hover:text-textcolor transition-colors" role="button" tabindex="0" aria-label={language.alerts.characterHasLore} onclick={((e) => {
                     e.stopPropagation()
                     alertNormal(language.alerts.characterHasLore)
-                })} onkeydown={(e) => {}}><BookIcon /></div>
+                })} onkeydown={activateOnKey}><BookIcon aria-hidden="true" /></div>
             {/if}
         </div>
     </div>

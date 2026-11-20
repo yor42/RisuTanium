@@ -42,6 +42,7 @@
         isLastInContainer = false
     }: Props = $props();
     
+    const uid = $props.id()
     let open = $derived(isOpen)
 
     // A confirmation can resolve after this row was destroyed (a nested row is destroyed when
@@ -126,9 +127,9 @@
         }}>
             {#if value.mode === 'folder'}
                 {#if open}
-                    <FolderOpen size={20} class="mr-1" />
+                    <FolderOpen size={20} class="mr-1" aria-hidden="true" />
                 {:else}
-                    <FolderIcon size={20} class="mr-1" />
+                    <FolderIcon size={20} class="mr-1" aria-hidden="true" />
                 {/if}
             {/if}
             {#if value.mode === 'folder'}
@@ -141,6 +142,8 @@
             class="mr-1"
             class:text-textcolor2={!value.alwaysActive}
             class:text-textcolor={value.alwaysActive}
+            aria-label={language.alwaysActive}
+            aria-pressed={!!value.alwaysActive}
             onclick={async () => {
                 if(value.mode === 'folder'){
                     for(let i = 0; i < externalLoreBooks.length; i++){
@@ -153,12 +156,12 @@
             }}
         >
             {#if value.alwaysActive}
-                <SunIcon size={20} />
+                <SunIcon size={20} aria-hidden="true" />
             {:else}
-                <LinkIcon size={20} />
+                <LinkIcon size={20} aria-hidden="true" />
             {/if}
         </button>
-        <button class="valuer" onclick={async () => {
+        <button class="valuer" aria-label={language.remove} onclick={async () => {
             const target = value;
             let shouldRemove = true;
             if (target.mode === 'folder' && typeof target.key === 'string' && target.key !== '' && externalLoreBooks.some(e => e.folder === target.key)) {
@@ -181,14 +184,14 @@
                 }
             }
         }}>
-            <XIcon size={20} />
+            <XIcon size={20} aria-hidden="true" />
         </button>
     {:else}
         <button class="endflex valuer border-darkborderc" onclick={() => alertMd(language.childLoreDesc)}>
-            <BookCopyIcon size={20} class="mr-1" />
+            <BookCopyIcon size={20} class="mr-1" aria-hidden="true" />
             <span>{getParentLoreName(value)}</span>
         </button>
-        <button class="valuer" onclick={async () => {
+        <button class="valuer" aria-label={language.remove} onclick={async () => {
             const target = value
             const d = await alertConfirm(language.removeConfirm + getParentLoreName(target))
             if(d){
@@ -198,22 +201,22 @@
                 onRemove(target)
             }
         }}>
-            <XIcon size={20} />
+            <XIcon size={20} aria-hidden="true" />
         </button>
     {/if}
     </div>
     {#if open}
         {#if value.mode === 'folder'}
         <div class="border-0 outline-hidden w-full mt-2 flex flex-col mb-2">
-            <span class="text-textcolor mt-6 mb-2">{language.folderName}</span>
-            <TextInput size="sm" bind:value={value.comment}/>
+            <span id="{uid}-folder-name" class="text-textcolor mt-6 mb-2">{language.folderName}</span>
+            <TextInput size="sm" labelId="{uid}-folder-name" bind:value={value.comment}/>
 
             <div class="mt-4">
                 <LoreBookList externalLoreBooks={externalLoreBooks} showFolder={value.key} />
             </div>
             
             <div class="mt-2 flex gap-1">
-                <button class="text-textcolor2 hover:text-textcolor" onclick={() => {
+                <button class="text-textcolor2 hover:text-textcolor" aria-label={language.add} onclick={() => {
                     externalLoreBooks.push({
                         key: '',
                         comment: '',
@@ -226,24 +229,24 @@
                         folder: value.key,
                     })
                 }}>
-                    <PlusIcon size={20} />
+                    <PlusIcon size={20} aria-hidden="true" />
                 </button>
             </div>
         </div>
         {:else}
         <div class="border-0 outline-hidden w-full mt-2 flex flex-col mb-2">
-            <span class="text-textcolor mt-6">{language.name} <Help key="loreName"/></span>
-            <TextInput size="sm" bind:value={value.comment}/>
+            <span class="text-textcolor mt-6"><span id="{uid}-name">{language.name}</span> <Help key="loreName"/></span>
+            <TextInput size="sm" labelId="{uid}-name" bind:value={value.comment}/>
             {#if !lorePlus}
                 {#if !value.alwaysActive}
-                    <span class="text-textcolor mt-6">{language.activationKeys} <Help key="loreActivationKey"/></span>
+                    <span class="text-textcolor mt-6"><span id="{uid}-keys">{language.activationKeys}</span> <Help key="loreActivationKey"/></span>
                     <span class="text-xs text-textcolor2">{language.activationKeysInfo}</span>
-                    <TextInput size="sm" bind:value={value.key}/>
+                    <TextInput size="sm" labelId="{uid}-keys" bind:value={value.key}/>
 
                     {#if value.selective}
-                        <span class="text-textcolor mt-6">{language.SecondaryKeys}</span>
+                        <span id="{uid}-secondary-keys" class="text-textcolor mt-6">{language.SecondaryKeys}</span>
                         <span class="text-xs text-textcolor2">{language.activationKeysInfo}</span>
-                        <TextInput size="sm" bind:value={value.secondkey}/>
+                        <TextInput size="sm" labelId="{uid}-secondary-keys" bind:value={value.secondkey}/>
                     {/if}
                 {/if}
             {/if}
@@ -264,8 +267,8 @@
                 <span class="text-textcolor mt-4">{language.insertOrder} <Help key="loreorder"/></span>
                 <NumberInput size="sm" bind:value={value.insertorder} min={0} max={1000}/>
             {/if}
-            <span class="text-textcolor mt-4 mb-2">{language.prompt}</span>
-            <TextAreaInput highlight autocomplete="off" bind:value={value.content} />
+            <span id="{uid}-prompt" class="text-textcolor mt-4 mb-2">{language.prompt}</span>
+            <TextAreaInput highlight autocomplete="off" labelId="{uid}-prompt" bind:value={value.content} />
             {#await getTokens(value.content)}
                 <span class="text-textcolor2 mt-2 mb-2 text-sm">{tokens} {language.tokens}</span>
             {:then e}

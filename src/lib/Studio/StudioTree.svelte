@@ -337,7 +337,7 @@
 
 <div data-part="studio-tree-body" class="flex min-h-0 flex-col">
     <label class="flex min-h-11 items-center gap-2 px-3 text-sm text-textcolor2">
-        <input type="checkbox" data-part="studio-hide-empty" checked={studioScreen.hideEmpty} onchange={(event) => { studioScreen.hideEmpty = event.currentTarget.checked }} />
+        <input type="checkbox" aria-label={language.studioHideEmpty} data-part="studio-hide-empty" checked={studioScreen.hideEmpty} onchange={(event) => { studioScreen.hideEmpty = event.currentTarget.checked }} />
         <span>{language.studioHideEmpty}</span>
     </label>
     <!-- The rows are the tab stops; the tree itself is not, so it carries tabindex -1. -->
