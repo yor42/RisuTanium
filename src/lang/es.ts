@@ -3919,9 +3919,13 @@ export const languageSpanish = {
         `RisuTanium no puede guardar el preset ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los presets no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos presets guardados. Si la página se recarga antes, tus ajustes actuales se conservan como un preset nuevo.`,
     saveTaskPresetsHeldNotice: (name: string) =>
         `RisuTanium no puede guardar el preset ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los presets no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos presets guardados.`,
+    saveLoadoutsHeldNotice: (name: string) =>
+        `RisuTanium no puede guardar el loadout ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los loadouts no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos loadouts guardados.`,
     saveItemModuleLabel: (name: string) => `el módulo "${name}"`,
     saveItemSettingLabel: (field: string) => `el ajuste "${field}"`,
     saveItemPluginDataLabel: (key: string) => `los datos de plugin "${key}"`,
+    saveItemStaticsLabel: "las estadísticas de uso",
+    saveItemCharacterOrderLabel: "el orden de los personajes",
     personasRepairedNotice: (count: number) =>
         `RisuTanium omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
     personaListEmptyNotice: `No quedó ninguna persona utilizable en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario e icono y la seleccionó.`,

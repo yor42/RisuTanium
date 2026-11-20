@@ -88,12 +88,12 @@ export class ModuleSetUnsavableError extends CodecInputError {
 }
 
 /** What an item the pass went on without belongs to; the label of a `moduleSet` item is made by the save loop. */
-export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'settings' | 'pluginData'
+export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder'
 
 /** A part of the database a pass could not read as plain JSON and went on without. */
 export interface SkippedItem {
     scope: SkippedItemScope
-    /** The stable name of the item inside its scope: a module id, `presets`, `taskPresets`, a settings field or a plugin-data key. */
+    /** The stable name of the item inside its scope: a module id, `presets`, `taskPresets`, `loadouts`, `statics`, `characterOrder`, a settings field or a plugin-data key. */
     key: string
     /** What a notice calls the item: the raw name, quoted. */
     label: string
@@ -177,6 +177,12 @@ export interface PreviousObjects {
     statics?: ContentBody
     /** The order unit's body (`chars`, `characterOrder`) as the encoding holds it. In memory only (never written). */
     order?: ContentBody
+    /**
+     * The loadouts unit's items as the encoding holds them. In memory only (never written): a list a later pass cannot
+     * read is put back whole from here, and the config asset list is derived from it. Absent when the unit was not read
+     * or did not parse: a later loadouts fault then fails the pass.
+     */
+    loadouts?: readonly JsonValue[]
     /**
      * The decoded bot preset bodies, in list order, of the encoding. In memory only (never written). Absent when the
      * encoding does not hold them all (a carried list, or a unit the boot did not read): a preset record is then never

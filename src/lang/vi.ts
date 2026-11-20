@@ -3916,9 +3916,13 @@ export const languageVietnamese = {
         `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ. Nếu trang được tải lại trước đó, cài đặt hiện tại của bạn sẽ được giữ lại thành một preset mới.`,
     saveTaskPresetsHeldNotice: (name: string) =>
         `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ.`,
+    saveLoadoutsHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu Loadout ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với Loadout sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các Loadout đã lưu gần nhất vẫn được giữ.`,
     saveItemModuleLabel: (name: string) => `module "${name}"`,
     saveItemSettingLabel: (field: string) => `cài đặt "${field}"`,
     saveItemPluginDataLabel: (key: string) => `dữ liệu plugin "${key}"`,
+    saveItemStaticsLabel: "thống kê sử dụng",
+    saveItemCharacterOrderLabel: "thứ tự nhân vật",
     personasRepairedNotice: (count: number) =>
         `RisuTanium đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
     personaListEmptyNotice: `Không còn persona nào dùng được trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng và biểu tượng của bạn rồi chọn nó.`,

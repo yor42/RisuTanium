@@ -4061,9 +4061,13 @@ export const languageJapanese = {
         `RisuTaniumはプリセット${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。他のデータはすべて引き続き保存されますが、修正されるまでプリセットの変更は保存されず、それより前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたプリセットは保持されます。それより前にページが再読み込みされた場合、現在の設定は新しいプリセットとして保持されます。`,
     saveTaskPresetsHeldNotice: (name: string) =>
         `RisuTaniumはプリセット${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。他のデータはすべて引き続き保存されますが、修正されるまでプリセットの変更は保存されず、それより前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたプリセットは保持されます。`,
+    saveLoadoutsHeldNotice: (name: string) =>
+        `RisuTaniumはロードアウト${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。他のデータはすべて引き続き保存されますが、修正されるまでロードアウトの変更は保存されず、それより前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたロードアウトは保持されます。`,
     saveItemModuleLabel: (name: string) => `モジュール「${name}」`,
     saveItemSettingLabel: (field: string) => `設定「${field}」`,
     saveItemPluginDataLabel: (key: string) => `プラグインデータ「${key}」`,
+    saveItemStaticsLabel: "使用統計",
+    saveItemCharacterOrderLabel: "キャラクターの順序",
     personasRepairedNotice: (count: number) =>
         `RisuTaniumはデータが無効であった${count}件のペルソナを除外しました。プラグインによって書き込まれた可能性があります。`,
     personaListEmptyNotice: `ペルソナリストに使用可能なペルソナが残っていなかったため、RisuTaniumがユーザー名とアイコンからペルソナを1つ追加して選択しました。`,
