@@ -611,8 +611,16 @@ describe('a trigger run\'s model call follows the run\'s own chat', () => {
         expect(o).toBe('ax-answer')
     })
 
-    test('runAxLLM calls the sub model when separate models are off', async () => {
+    test('runAxLLM uses the other-auxiliary slot even when the saved flag is off', async () => {
         const o = await runAxLLMTrigger(true, { aiModel: 'gpt4o', subModel: 'gpt4om', seperateModelsForAxModels: false, seperateModels: { otherAx: 'gpt41' } })
+
+        expect(h.fetches.length, 'the model was called once').toBe(1)
+        expect(h.fetches[0].body.model).toBe('gpt-4.1')
+        expect(o).toBe('ok')
+    })
+
+    test('guard: runAxLLM calls the sub model when the other-auxiliary slot is empty', async () => {
+        const o = await runAxLLMTrigger(true, { aiModel: 'gpt4o', subModel: 'gpt4om', seperateModelsForAxModels: false, seperateModels: { otherAx: '' } })
 
         expect(h.fetches.length, 'the model was called once').toBe(1)
         expect(h.fetches[0].body.model).toBe('gpt-4o-mini')

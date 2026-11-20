@@ -180,7 +180,7 @@
 
     {#if modelInfo.provider === LLMProvider.GoogleCloud || subModelInfo.provider === LLMProvider.GoogleCloud}
         <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-        <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.google.accessToken}/>
+        <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.VertexAI || subModelInfo.provider === LLMProvider.VertexAI}
         <span class="text-textcolor" id="{uid}-f1">{language.settingsPage.projectId}</span>
@@ -188,7 +188,7 @@
         <span class="text-textcolor" id="{uid}-f2">{fillLang(language.settingsPage.nameClientEmail, { name: 'Vertex' })}</span>
         <TextInput labelId="{uid}-f2" marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.vertexClientEmail} oninput={clearVertexToken}/>
         <span class="text-textcolor" id="{uid}-f3">{fillLang(language.settingsPage.namePrivateKey, { name: 'Vertex' })}</span>
-        <TextInput labelId="{uid}-f3" marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.vertexPrivateKey} oninput={clearVertexToken}/>
+        <TextInput labelId="{uid}-f3" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.vertexPrivateKey} oninput={clearVertexToken}/>
         <span class="text-textcolor">{language.settingsPage.region}</span>
         <SelectInput value={DBState.db.vertexRegion} onchange={(e) => {
             DBState.db.vertexRegion = e.currentTarget.value
@@ -207,20 +207,20 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelList || subModelInfo.provider === LLMProvider.NovelList}
         <span class="text-textcolor">NovelList {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.novellistAPI}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.novellistAPI}/>
     {/if}
     {#if DBState.db.aiModel.startsWith('mancer') || DBState.db.subModel.startsWith('mancer')}
         <span class="text-textcolor">Mancer {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mancerHeader}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mancerHeader}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Anthropic || subModelInfo.provider === LLMProvider.Anthropic
             || modelInfo.provider === LLMProvider.AWS || subModelInfo.provider === LLMProvider.AWS }
         <span class="text-textcolor">Claude {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.claudeAPIKey}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.claudeAPIKey}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Mistral || subModelInfo.provider === LLMProvider.Mistral}
         <span class="text-textcolor">Mistral {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mistralKey}/>
+        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mistralKey}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelAI || subModelInfo.provider === LLMProvider.NovelAI}
         <span class="text-textcolor">{fillLang(language.settingsPage.nameBearerToken, { name: 'NovelAI' })}</span>
@@ -230,7 +230,7 @@
         <span class="text-textcolor mt-2"><span id="{uid}-f4">URL</span> <Help key="forceUrl"/></span>
         <TextInput labelId="{uid}-f4" marginBottom={false} size={"sm"} bind:value={DBState.db.forceReplaceUrl} placeholder="https//..." />
         <span class="text-textcolor mt-4"> {language.proxyAPIKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
         <span class="text-textcolor mt-4" id="{uid}-f5"> {language.proxyRequestModel}</span>
         <TextInput labelId="{uid}-f5" marginBottom={false} size={"sm"} bind:value={DBState.db.customProxyRequestModel} placeholder={language.name} />
         <span class="text-textcolor mt-4"> {language.format}</span>
@@ -259,7 +259,7 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.Cohere || subModelInfo.provider === LLMProvider.Cohere}
         <span class="text-textcolor mt-4">Cohere {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.cohereAPIKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.cohereAPIKey} />
     {/if}
     {#if usesOllamaLocal || usesOllamaCloud}
         {#if usesOllamaLocal}
@@ -299,7 +299,7 @@
         {/if}
 
             <span class="text-textcolor mt-4">Ollama {language.apiKey}</span>
-            <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
+            <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
 
             <span class="text-textcolor mt-4">Ollama {language.format}</span>
             <SelectInput value={DBState.db.ollamaRequestFormat.toString()} onchange={(e) => {
@@ -355,7 +355,7 @@
     {/if}
     {#if DBState.db.aiModel === 'nanogpt' || DBState.db.subModel === 'nanogpt'}
         <span class="text-textcolor mt-4">NanoGPT {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptKey} />
 
         <NanoGPTDashboard apiKey={currentKey('nanogptKey', DBState.db)} />
 
@@ -400,7 +400,7 @@
     {/if}
     {#if DBState.db.aiModel === 'openrouter' || DBState.db.subModel === 'openrouter'}
         <span class="text-textcolor mt-4">OpenRouter {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.openrouterKey} />
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openrouterKey} />
 
         <span class="text-textcolor mt-4">OpenRouter {language.model}</span>
         {#await getOpenRouterModels()}
@@ -419,17 +419,17 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.OpenAI || subModelInfo.provider === LLMProvider.OpenAI}
         <span class="text-textcolor">OpenAI {language.apiKey} <Help key="oaiapikey"/></span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.openAIKey} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openAIKey} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
     {/if}
 
     {#if modelInfo.keyIdentifier}
         <span class="text-textcolor">{modelInfo.name} {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[modelInfo.keyIdentifier]} placeholder="..."/>
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[modelInfo.keyIdentifier]} placeholder="..."/>
     {/if}
 
     {#if subModelInfo.keyIdentifier && subModelInfo.keyIdentifier !== modelInfo.keyIdentifier}
         <span class="text-textcolor">{subModelInfo.name} {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[subModelInfo.keyIdentifier]} placeholder="..."/>
+        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[subModelInfo.keyIdentifier]} placeholder="..."/>
     {/if}
 
     <div class="py-2 flex flex-col gap-2 mb-4">
@@ -475,7 +475,7 @@
 
     {#if DBState.db.aiModel.startsWith("horde") || DBState.db.subModel.startsWith("horde") }
         <span class="text-textcolor">Horde {language.apiKey}</span>
-        <KeyListInput hideText={DBState.db.hideApiKey} marginBottom={true} bind:value={DBState.db.hordeConfig.apiKey} />
+        <KeyListInput hideText marginBottom={true} bind:value={DBState.db.hordeConfig.apiKey} />
     {/if}
     {#if DBState.db.aiModel === 'textgen_webui' || DBState.db.subModel === 'textgen_webui'
         || DBState.db.aiModel === 'mancer' || DBState.db.subModel === 'mancer'}
@@ -497,9 +497,7 @@
         <ChatFormatSettings />
     {/if}
 
-    {#if DBState.db.auxModelUnderModelSettings}
-        <AuxModelSelectors />
-    {/if}
+    <AuxModelSelectors />
 {/if}
 
 {#if submenu === 1 || submenu === -1}
