@@ -13,7 +13,7 @@
 <button
     type="button"
     data-part="home-persona-chip"
-    class="mt-2 flex min-h-11 max-w-[calc(100%-2rem)] flex-col items-center rounded-md border border-borderc/10 bg-darkbg px-4 py-1 text-textcolor hover:bg-selected/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-selected"
+    class="mt-2 flex min-h-11 max-w-[calc(100%-2rem)] flex-col items-center rounded-md border border-borderc/10 bg-darkbg px-4 py-1 text-textcolor hover:bg-selected/50 risu-focus-ring"
     onclick={openPersonaSettings}
 >
     <!-- The set-up label wraps (whole words, break-keep for Korean) so it is never cut at large font

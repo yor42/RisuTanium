@@ -18,6 +18,7 @@ import { unescAssetName } from './rtb/assetName'
 import { crc32Final, crc32Update, CRC32_INIT } from './rtb/crc32Running'
 import { decodeInlayMeta, type InlayPair } from './rtb/inlayEntries'
 import { RtbCouldNotReadError } from './rtb/rangeSource'
+import { RtbSealedAuthError } from './rtb/sealed/errors'
 import { readEntry, type ContainerFinding } from './rtb/zip64Reader'
 import type { RestoreHold } from './rtbRestoreHold'
 import type { RestorePlan } from './rtbRestorePlan'
@@ -184,8 +185,20 @@ function progress(state: CopyState, bytes: number): void {
     }
 }
 
+/**
+ * A chunk of a sealed file failed authentication during the copy: the bytes on disk are not the ones that were sealed. It
+ * stops like a corrupt entry with the damaged text (MC-2531).
+ */
+function damagedChunk(error: RtbSealedAuthError): Halt {
+    console.error(error)
+    return { cause: 'corrupt-entry', text: language.rtbRestoreDamaged, kept: true }
+}
+
 /** What a failed write means: a name the store refuses is skipped, a Node refusal stops, anything else is unexpected. */
 function classifyWriteError(state: CopyState, error: unknown, name: string, whole: boolean): Halt | null {
+    if (error instanceof RtbSealedAuthError) {
+        return damagedChunk(error)
+    }
     if (error instanceof RtbCouldNotReadError) {
         console.error(error)
         return { cause: 'could-not-read', text: language.backupFileChangedWhileReading, kept: false }
@@ -348,6 +361,9 @@ async function readWhole(state: CopyState, name: string): Promise<{ kind: 'ok', 
             return { kind: 'halt', halt: corruptEntry(read.finding) }
         }
     } catch (error) {
+        if (error instanceof RtbSealedAuthError) {
+            return { kind: 'halt', halt: damagedChunk(error) }
+        }
         if (error instanceof RtbCouldNotReadError) {
             console.error(error)
             return { kind: 'halt', halt: { cause: 'could-not-read', text: language.backupFileChangedWhileReading, kept: false } }
@@ -400,6 +416,9 @@ async function copyInlay(state: CopyState, pair: InlayPair, ordinal: number): Pr
             return corruptEntry(read.finding)
         }
     } catch (error) {
+        if (error instanceof RtbSealedAuthError) {
+            return damagedChunk(error)
+        }
         if (error instanceof RtbCouldNotReadError) {
             console.error(error)
             return { cause: 'could-not-read', text: language.backupFileChangedWhileReading, kept: false }

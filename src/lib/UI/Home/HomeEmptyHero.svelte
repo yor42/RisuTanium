@@ -19,8 +19,9 @@
     const empty = $derived(!hasLiveCharacter(DBState.db.characters))
 
     // Each action guards only its own button: a picker that never reports back must not block Create.
-    // The flag is checked and set before the first await, so a second synchronous tap returns early;
-    // `disabled` is presentation only.
+    // The flag is checked and set before the first await, so a second synchronous tap returns early.
+    // The Import button uses `aria-disabled`, not `disabled`: it must keep focus while the picker opens, and
+    // take it back when the card that follows the pick closes, which a disabled button cannot do.
     let creating = $state(false)
     let importing = $state(false)
 
@@ -70,7 +71,7 @@
                 <button
                     type="button"
                     class="min-h-11 max-w-full break-keep rounded-md border border-borderc/10 bg-darkbutton px-4 py-2 text-textcolor hover:bg-selected/50"
-                    disabled={importing}
+                    aria-disabled={importing}
                     onclick={importFile}
                 >
                     {language.homeEmptyImport}

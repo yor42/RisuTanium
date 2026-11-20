@@ -110,6 +110,16 @@ describe('cascade order', () => {
         expect(m.painted(document.getElementById('a')!)['outline-color']).toBe('#123456ff')
         expect(m.painted(document.getElementById('b')!)['outline-color']).toBeUndefined()
     })
+
+    test(':focus-within matches the ancestors of the focused element, not a sibling, and nothing without focus', () => {
+        mount('<div id="a" class="w"><input id="in"></div><div id="b" class="w"></div>')
+        const css = '.w:focus-within{outline:2px solid #123456}'
+        const m = model(css, { focused: document.getElementById('in') })
+        expect(m.painted(document.getElementById('a')!)['outline-color']).toBe('#123456ff')
+        expect(m.painted(document.getElementById('b')!)['outline-color']).toBeUndefined()
+        const none = model(css, {})
+        expect(none.painted(document.getElementById('a')!)['outline-color']).toBeUndefined()
+    })
 })
 
 describe('the pack element and the root attribute', () => {

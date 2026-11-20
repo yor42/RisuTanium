@@ -5,7 +5,7 @@
     import { language } from '../../../lang'
     import { patternSurfaceTone } from '../../../ts/gui/surfaceTone'
     import { createArmGuard, type ArmGuard } from './armGuard'
-    import { armDelayMs, splitConsequences } from './patternWarning'
+    import { armDelayMs, splitConsequences, spokenOpening } from './patternWarning'
     import {
         TASK_SKIPS_SHOWN,
         isTaskTerminal,
@@ -118,6 +118,21 @@
         if (confirming) fromConfirm = true
     })
 
+    // The running card's title is its first-focus target, so a screen reader speaks the task's name. A card that mounts
+    // running takes it through the dialog's initial-focus marker; one that follows a confirm sheet takes it here, on the
+    // first render without the sheet, because the sheet's Cancel it was on is gone.
+    let titleElement = $state<HTMLElement>()
+    $effect(() => {
+        if (fromConfirm && !confirming && !terminal && titleElement) titleElement.focus()
+    })
+
+    // The preflight opening text, written once into the status region when the dialog's announce moment arrives. The
+    // region shows it only while the sheet is up, so no preflight text survives the swap to the running card.
+    let confirmSpoken = $state('')
+    function speakConfirm(): void {
+        if (confirming && view.confirm) confirmSpoken = spokenOpening(view.confirm.headline, confirmParts.shown[0])
+    }
+
     // The preflight's primary ignores input for the arm delay after the sheet mounts, by the click's own event time (see
     // armGuard). The guard starts again on every mount, so a card that yielded to an alert and came back is armed afresh.
     let primary = $state<HTMLButtonElement>()
@@ -220,6 +235,7 @@
     descriptionId={confirming ? (confirmParts.shown.length > 0 ? consequencesId : undefined) : (reasonShown ? reasonId : undefined)}
     cancelSafe={confirming || escapeActs}
     oncancel={confirming ? ondecline : onEscape}
+    onsettled={speakConfirm}
     {lowPower}
 >
     <section
@@ -243,7 +259,9 @@
                     {/if}
                 </div>
                 <div data-part="pattern-task-titles">
-                    <h2 id={titleId} data-part="pattern-task-title">{view.title}</h2>
+                    <!-- Only -1: the title takes script focus and is never in the Tab order. -->
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <h2 id={titleId} bind:this={titleElement} data-part="pattern-task-title" tabindex={terminal ? undefined : -1} data-pattern-initial={terminal ? undefined : ''}>{view.title}</h2>
                     {#if subtitle}
                         <p data-part="pattern-task-subtitle">{subtitle}</p>
                     {/if}
@@ -298,9 +316,9 @@
             {/if}
         {/if}
 
-        <!-- The one live region: its text changes only on a step, file or state change. It stays mounted through the
-             confirm swap and holds no text while the sheet is up. -->
-        <p data-part="pattern-task-status" role="status" aria-live="polite" class:sr-only={terminal || confirming}>{announcement}</p>
+        <!-- The one live region: its text changes only on a step, file or state change, plus the sheet's opening text
+             once. It stays mounted through the confirm swap. -->
+        <p data-part="pattern-task-status" role="status" aria-live="polite" class:sr-only={terminal || confirming}>{confirming ? confirmSpoken : announcement}</p>
 
         {#if confirming && view.confirm}
             <div data-part="pattern-warn-root" data-part-critical data-form="sheet" data-pattern-severity="confirm">
