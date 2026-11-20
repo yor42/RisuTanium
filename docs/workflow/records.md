@@ -17,7 +17,7 @@ The orchestrator names a record owner and identifies applicable records in the i
 |---|---|
 | Maintainer-Context | Actual maintainer facts/decisions, stable next ID, exact scope and source; append only. Pending notes are not silently promoted. |
 | Report / gate record | Requirements and amendments, actual reviewed snapshot, independent verdict, finding disposition, check provenance, accepted limitations and remaining uncertainty. |
-| Roadmap / authoritative status | Item/stage state and remaining dependencies; COMPLETE only when technical acceptance and applicable closeout hold. |
+| GitHub issue and board 1 card (Roadmap as scope history) | Item/stage state and remaining dependencies; COMPLETE per the definition above (MC-2747). |
 | Live-State / Carry-Forward | What remains now, who owns it, and durable dependencies left for later stages; avoid copying the full report. |
 | Investigation-Ledger | Actual dispatch/question/tier/outcome; observed usage or explicitly unavailable costs. |
 
@@ -52,7 +52,7 @@ Once a week lane A runs a sweep batch (it may be a dedicated low-cost session). 
 - reports the issues opened and closed that week and the open-issue trend;
 - runs the orphan sweep below over GitHub issues.
 
-Closing an issue by hand is in the always-asked row of the approval matrix, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them.
+Derived reconciliation (not stated in either decision): MC-2745 has the sweep close stale issues while MC-2744 keeps issue closes in the always-asked list, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them.
 
 ## Orphan sweep and leftover disposal (MC-2064, amended by MC-2745)
 
