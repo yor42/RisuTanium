@@ -33523,3 +33523,10 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer AskUserQuestion in lane A). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`..`MC-2750`.
 
 **What the maintainer chose (lane A decisions log line 3939).** A new governance session writes governance v2 as staged docs-only PRs, with doc-verifier checking claims, merged under MC-2744. The decisions are recorded first.
+
+### MC-2752 — Untracked Handoff-2026-10-08 backlog archived, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the governance v2 session; governance v2 question Q8). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2751`.
+- Applies to the untracked `Agents/Handoff-2026-10-08.md` and `Agents/Handoff-2026-10-08/` (96 files) in the main checkout only.
+
+**What the maintainer chose.** "Archive (Recommended)": copy any still-relevant item into an existing GitHub issue first, then move the files out of the repository tree to an archive outside git. Nothing from them is committed.
