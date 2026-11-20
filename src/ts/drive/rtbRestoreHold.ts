@@ -5,7 +5,7 @@ import { isTauri } from 'src/ts/platform'
 import { language } from 'src/lang'
 import type { BusyHandle } from '../process/memory/busyActions'
 import type { Store2Read } from '../storage/store2/backend/types'
-import { Store2BulkAbortError, type Committer } from '../storage/store2/commit'
+import { Store2BulkAbortError, type Committer, type CommitRequest, type HeldBulk } from '../storage/store2/commit'
 import { classifyCommitRead } from '../storage/store2/commitKey'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from './restoreLock'
@@ -157,19 +157,22 @@ export function isRtbBusyAbort(error: unknown): boolean {
 
 /**
  * The committer whose commits ask the busy guard once more at the flip: in the build, which runs after the last read and
- * before the first unit upload (after the marker of a bulk commit, which a refusal clears).
+ * before the first unit upload (after the marker of a bulk commit, which a refusal clears). The held commit of a Node
+ * restore (`commitHeld`) is wrapped the same way; `openHeldBulk` and `clearHeld` pass through unchanged.
  */
 export function rtbGuardedCommitter(committer: Committer, busy: BusyHandle): Committer {
+    const commitHeld = committer.commitHeld
+    const guardBuild = (build: CommitRequest['build']): CommitRequest['build'] => (context) => {
+        if (refuseBackupLoadWhileBusy(busy)) {
+            throw new RtbRestoreBusyError()
+        }
+        return build(context)
+    }
     return {
         ...committer,
-        commit: (read, request) => committer.commit(read, {
-            ...request,
-            build: (context) => {
-                if (refuseBackupLoadWhileBusy(busy)) {
-                    throw new RtbRestoreBusyError()
-                }
-                return request.build(context)
-            },
+        commit: (read, request) => committer.commit(read, { ...request, build: guardBuild(request.build) }),
+        ...(commitHeld === undefined ? {} : {
+            commitHeld: (held: HeldBulk, read: Store2Read, request: CommitRequest) => commitHeld.call(committer, held, read, { ...request, build: guardBuild(request.build) }),
         }),
     }
 }

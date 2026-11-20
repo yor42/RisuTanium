@@ -254,6 +254,19 @@ export class FakeNodeServer {
             const revision = this.commit(key, new Uint8Array(body))
             return json(200, { success: true, revision })
         }
+        if (path === '/api/touch') {
+            // As the real route: only a stored `assets/` key moves its revision, bytes unchanged; an absent key answers 404.
+            const key = hexToKey(headers['file-path'] ?? '')
+            if (!key.startsWith('assets/')) {
+                return json(400, { error: 'Invaild Path' })
+            }
+            if (!this.files.has(key)) {
+                return json(404, { error: 'Not Found', code: 'absent' })
+            }
+            const revision = this.revisionOf(key) + 1
+            this.revisions.set(key, revision)
+            return json(200, { success: true, revision })
+        }
         if (path === '/api/remove') {
             const hexKeys = (headers['file-path'] ?? '').split('$$')
             const keys = hexKeys.map(hexToKey)
