@@ -1243,6 +1243,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             db.customColorScheme = scheme
             db.colorScheme = scheme
             updateColorScheme()
+            updateTextThemeAndCSS()
         },
         getColorScheme: () => {
             const db = DBState.db

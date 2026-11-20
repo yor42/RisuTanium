@@ -72,7 +72,9 @@
     </div>
 {:else}
     <div class="chat-area grow h-full min-w-0 relative justify-center flex">
-        <SideBarArrow />
+        {#if !shellEligible()}
+            <SideBarArrow />
+        {/if}
         <BackgroundDom />
         <div style={bgImg} class="h-full w-full" class:max-w-6xl={DBState.db.classicMaxWidth}>
             {#if $selectedCharID >= 0}
