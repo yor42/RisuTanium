@@ -143,7 +143,7 @@ export async function routePickedBackup(file: File, deps: Partial<RouterDeps> = 
         // Only a rejection that cannot follow a restore write reaches here: the `.bin` restore never rejects and the
         // `.rtb` restore rejects only before it replaces anything.
         console.error(error)
-        alertError('Failed, Is file corrupted?')
+        alertError(language.backupRestoreFailed)
         return { outcome: 'failed' }
     }
 }
@@ -189,7 +189,7 @@ export async function routeBootPickedBackup(file: File, target: BootImportTarget
     } catch (error) {
         // Only a failed dynamic import can reach here: the routed restores never reject, and nothing was read or written.
         console.error(error)
-        alertError('Failed, Is file corrupted?')
+        alertError(language.backupRestoreFailed)
         return { kind: 'cancelled' }
     }
 }
@@ -249,7 +249,7 @@ export async function routeOpenedBackup(opened: OpenedBin, deps: Partial<OpenedR
     } catch (error) {
         // As for a picked file: only a rejection that cannot follow a restore write reaches here.
         console.error(error)
-        alertError('Failed, Is file corrupted?')
+        alertError(language.backupRestoreFailed)
         return { outcome: 'failed' }
     }
 }
@@ -297,7 +297,7 @@ export function loadBackupFromPicker(deps: Partial<RouterDeps> = {}, route: Pick
         input.click()
     } catch (error) {
         console.error(error)
-        alertError('Failed, Is file corrupted?')
+        alertError(language.backupRestoreFailed)
         settle('failed')
     }
     return pending
