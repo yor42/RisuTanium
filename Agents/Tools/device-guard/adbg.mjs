@@ -164,6 +164,43 @@
 //     child scripts the caller names, a modified tree) are listed in README.md.
 //     Tests: test/kit-forms.test.ps1, test/kit-flag.test.ps1.
 //
+//   r22 (file-chooser; MC-2713 (4), maintainer MC-2724 two roots, MC-2725 adb tap, MC-2726 two counted failures):
+//     the verb `file-chooser` hands one named, already-pushed synthetic file to the app's own <input type=file> over CDP, so no
+//     system picker is ever operated. Only the two Note 9 serials run it (restricted, unknown and near-miss serials exit 95 before any
+//     adb call, emulator-5580 exits 97). It is not a plain adb call: `-- file-chooser ...` stays 97, `--kit` is exit 2.
+//     Usage (options only, no `--` section):
+//       node adbg.mjs file-chooser --serial <s> --log <log> --state <state> --own-package io.github.yor42.risutanium --own-ports <p,...>
+//         --port <own port> --selector <css> [--text <exact innerText or aria-label>] --file <device path> [--timeout-s <1-30, default 10>]
+//     --file is exactly /sdcard/Download/<name> or /sdcard/Android/data/io.github.yor42.risutanium/files/<name>, <name> being 1-100 chars of
+//     [A-Za-z0-9._-] with no leading dot (no traversal, no other folder). --state must hold an `offset` record (integer x and y, 0-4000).
+//     Order of checks, every one before any CDP method: serial; strict option walk (each key once, with a value); own package, port,
+//     file, selector, text, timeout; state and offset; the cap (98 once two counted failures are recorded in --state); then the device
+//     file (`[ -f p ] && [ ! -h p ] && stat -c %s p`, a regular non-symlink file of size above 0, else 4); the forward (`adb forward
+//     --list`: exactly one line for this serial and tcp:<port>, to localabstract:webview_devtools_remote_<pid>, else 5, or 96 for a
+//     foreign remote or a doubled line); the pid (pidof must list the socket's pid, else 96); the front check (the socket pid's
+//     oom_score_adj is 0, else 93); /json/version (Android-Package must be our package, redirects refused, else 96) and /json (exactly
+//     one page, and a ws:// URL on 127.0.0.1 or localhost, the same port, path /devtools/page/<id>, else 96). The raw forward list is
+//     never printed or logged. One WebSocket, a buffered message router, and every reply must carry a `result` and no `error`.
+//     Methods sent, at most 9 sends, nothing else: Runtime.evaluate (the locate-css probe: exactly one match, fully in view, on top, else
+//     6), Page.enable, Page.setInterceptFileChooserDialog {enabled:true}, then and only if both replies were results the one
+//     `input tap` at the probed centre (offset + rect * devicePixelRatio), Page.fileChooserOpened (queue first; wait --timeout-s),
+//     DOM.setFileInputFiles with exactly the one validated path and the event's backendNodeId, DOM.resolveNode, Runtime.callFunctionOn
+//     (awaitPromise; the page reads up to 64 KiB of the file through its own File and reports count, name, size and bytes read),
+//     Runtime.releaseObject, interception off, Page.disable. Exit 0 needs the page to have read min(65536, size) bytes of a file with the
+//     expected name and the device's size, and both cleanup replies to be results; stdout is `file-chooser ok name=<n> size=<n> head=<n>
+//     mode=<m>`. No die() and no process.exit runs between Page.enable and the end of the cleanup: any thrown error becomes 7 and the
+//     cleanup and the cap still run. Exit codes: 2 usage (incl. no offset record), 4 device file missing/not regular/empty, 5 no forward,
+//     transport failure before Page.enable, page count not 1, evaluate protocol failure or an unexpected error before Page.enable,
+//     6 element check, 7 from Page.enable on (interception refused, tap failed, chooser not opened or malformed, file not set, content
+//     not read or mismatched, interception off not acknowledged), 93 app not in front, 95/97 serial, 96 the port reaches something that
+//     is not our WebView page, 98 cap. Counted toward the cap in --state (`fileChooserErrors`): 4, 5, 6, 7, 93, 96. Not counted: 2, 95,
+//     97, 98. If the chooser does not open while a system picker is in front, the reason says: press Back once via the guard and stop;
+//     the verb itself never sends a key and never taps anything but the probed control. Residuals, named: a killed process skips the
+//     cleanup (Chromium scopes interception to the session); the forward-to-HTTP gap (an own port is agent-exclusive); the offset record
+//     carries no serial; a fresh --state resets the cap; the picker is never shown only for controls that open an <input type=file>
+//     in a WebView that honours interception.
+//     Tests: test/file-chooser.test.ps1.
+//
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
 //     text, prints only the bounds, and deletes the dump by its exact name. Output: `match bounds=[l,t][r,b]`
@@ -189,6 +226,9 @@
 //     is still removed), nothing is located or tapped, and the guard exits 4 with `button1 refused: no save-screen filename field in
 //     the dump`: a pick error (counts toward the two-error cap, sets no lock), not a no-match. The log names `pick --id
 //     android:id/button1 (save confirm, r18)`.
+//
+//   node adbg.mjs file-chooser <common> --state <state> --port <own cdp port> --selector <css> [--text <label>] --file <device path> [--timeout-s <1-30>]
+//     Note 9 serials only; see the file-chooser paragraph above (the r22 block).
 //
 //   node adbg.mjs offset --state <state> --log <log> --x <px> --y <px>
 //     Records the WebView's top-left on screen in device pixels.
@@ -240,7 +280,7 @@
 //   commands (screencap, locate, reads) stay allowed. A restricted-serial refusal of the verb itself (exit 95)
 //   attempted no locate and sets no lock. A locate that fails without a valid --serial
 //   never reached a device and sets no lock; the lock is strictly per serial. This closes the 2026-11-12 cloud UI run breach (guard log line 409): a failed locate followed by
-//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front; r19: a system file picker visible), 90 picker probe unreadable (r19, restricted serials).
+//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front; r19: a system file picker visible), 90 picker probe unreadable (r19, restricted serials), 7 file-chooser from Page.enable on (interception refused, tap failed, chooser not opened, file not set or not readable, interception off not acknowledged).
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -248,7 +288,7 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path'
 import { lstatSync, readdirSync } from 'node:fs'
 
 const argv = process.argv.slice(2)
-const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks', 'net-status'].includes(argv[0]) ? argv.shift() : 'adb'
+const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks', 'net-status', 'file-chooser'].includes(argv[0]) ? argv.shift() : 'adb'
 const sep = argv.indexOf('--')
 const opts = sep < 0 ? argv : argv.slice(0, sep)
 const rest = sep < 0 ? [] : argv.slice(sep + 1)
@@ -1324,6 +1364,275 @@ if (sub === 'locate-css') {
   logLine(`locate ${id} css ${JSON.stringify(selector)}${text === null ? '' : ` text=${JSON.stringify(text)}`}: bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
   console.log(`${JSON.stringify(selector)} bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
   process.exit(0)
+}
+
+// ---- file-chooser (Note 9 serials only; see the file-chooser paragraph in the header) ----
+// The two device roots (maintainer MC-2724): one file directly inside, a safe name with no leading dot, so no traversal and no other folder.
+const FC_PATH_RE = [
+  /^\/sdcard\/Download\/[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$/,
+  /^\/sdcard\/Android\/data\/io\.github\.yor42\.risutanium\/files\/[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}$/
+]
+const FC_KEYS = ['--serial', '--log', '--state', '--own-package', '--own-ports', '--port', '--selector', '--text', '--file', '--timeout-s']
+// The only CDP methods this verb ever sends; the send helper refuses any other.
+const FC_METHODS = new Set(['Runtime.evaluate', 'Page.enable', 'Page.setInterceptFileChooserDialog', 'DOM.setFileInputFiles', 'DOM.resolveNode', 'Runtime.callFunctionOn', 'Runtime.releaseObject', 'Page.disable'])
+// Counted toward the two-failure cap of one --state (MC-2726); usage, serial and cap refusals reached neither the device nor the page.
+const FC_COUNTED = [4, 5, 6, 7, 93, 96]
+// Runs in the page on the app's own input: the content read goes through the page's File, the same read the app makes first.
+const FC_READ_FN = 'async function () { const f = this.files; if (!f || f.length !== 1) return { count: f ? f.length : 0 }; const n = Math.min(65536, f[0].size); const head = (await f[0].slice(0, n).arrayBuffer()).byteLength; return { count: 1, name: f[0].name, size: f[0].size, head } }'
+class FcStop extends Error { constructor(code, msg) { super(msg); this.code = code } }
+const fcProbeExpr = (selector, text) => `(() => { const els = [...document.querySelectorAll(${JSON.stringify(selector)})]`
+  + `.filter(e => ${text === null ? 'true' : `(e.innerText || e.getAttribute('aria-label') || '').trim() === ${JSON.stringify(text)}`});`
+  + ` if (els.length !== 1) return { count: els.length }; const el = els[0]; const r = el.getBoundingClientRect();`
+  + ` const cx = r.left + r.width / 2, cy = r.top + r.height / 2;`
+  + ` const inView = r.width > 0 && r.height > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;`
+  + ` const hit = document.elementFromPoint(cx, cy); const onTop = hit !== null && (hit === el || el.contains(hit));`
+  + ` return { count: 1, x: r.left, y: r.top, w: r.width, h: r.height, dpr: devicePixelRatio, inView, onTop } })()`
+
+if (sub === 'file-chooser') {
+  needSerial()
+  if (!playground) die(restricted ? 95 : 97, `file-chooser runs only on the two Note 9 serials, not ${serial}`)
+  if (sep >= 0) die(2, 'file-chooser takes no adb arguments after --')
+  const seenKeys = new Set()
+  for (let i = 0; i < opts.length; i += 2) {
+    const k = opts[i], v = opts[i + 1]
+    if (!FC_KEYS.includes(k) || seenKeys.has(k) || v === undefined || v.startsWith('--')) die(2, 'file-chooser: unexpected, duplicate or valueless option')
+    seenKeys.add(k)
+  }
+  if (opt('--own-package') !== PG_PACKAGE) die(2, `file-chooser --own-package must be ${PG_PACKAGE}`)
+  const port = opt('--port'), selector = opt('--selector'), text = opt('--text'), file = opt('--file'), timeoutRaw = opt('--timeout-s')
+  if (!port || !/^\d{2,5}$/.test(port) || !ownPort(port)) die(2, `file-chooser --port must be one of --own-ports (got ${JSON.stringify(port)})`)
+  if (file === null || !FC_PATH_RE.some((re) => re.test(file))) die(2, `file-chooser --file must be exactly /sdcard/Download/<name> or /sdcard/Android/data/${PG_PACKAGE}/files/<name> (<name>: 1-100 of [A-Za-z0-9._-], no leading dot)`)
+  if (selector === null || !/^[\x20-\x7e]{1,200}$/.test(selector)) die(2, 'file-chooser --selector must be 1-200 printable ASCII characters')
+  if (text !== null && !(text.length >= 1 && text.length <= 80 && !/\p{Cc}/u.test(text))) die(2, 'file-chooser --text must be 1-80 characters without control characters')
+  const timeoutS = timeoutRaw === null ? 10 : /^\d{1,2}$/.test(timeoutRaw) ? Number(timeoutRaw) : NaN
+  if (!(timeoutS >= 1 && timeoutS <= 30)) die(2, 'file-chooser --timeout-s must be an integer from 1 to 30')
+  needState()
+  let s0
+  try { s0 = loadState() } catch (e) { die(2, `file-chooser: --state is not readable JSON: ${e.message}`) }
+  const off = s0 !== null && typeof s0 === 'object' ? s0.offset : null
+  if (!(off !== null && typeof off === 'object' && Number.isInteger(off.x) && Number.isInteger(off.y) && off.x >= 0 && off.x <= 4000 && off.y >= 0 && off.y <= 4000)) {
+    die(2, 'file-chooser needs a recorded screen offset in --state: run `offset` first (integer x and y, 0-4000)')
+  }
+  if (Number.isInteger(s0.fileChooserErrors) && s0.fileChooserErrors >= 2) die(98, 'two file-chooser errors already in this run; stop and report')
+  logLine(`PLAYGROUND serial=${serial} allow=file-chooser`)
+  logLine(`intent: file-chooser ${file} port ${port} selector ${JSON.stringify(selector)}${text === null ? '' : ` text ${JSON.stringify(text)}`}`)
+  const fileName = file.slice(file.lastIndexOf('/') + 1)
+  let ws = null
+  // The one exit of this verb after the argument rules: counts the failure, closes the socket, then exits. Nothing between the
+  // first CDP send and the end of the cleanup calls it.
+  const finish = async (code, msg) => {
+    // A process.exit while the socket is still closing, or right after it closed, aborts node on Windows (exit 0xC0000409, no exit code
+    // the caller can read): wait for the close (bounded) and let the closed handles settle before exiting.
+    try {
+      if (ws && ws.readyState < 3) {
+        const gone = new Promise((res) => ws.addEventListener('close', res))
+        ws.close()
+        await Promise.race([gone, new Promise((res) => setTimeout(res, 1000))])
+      }
+    } catch { /* the exit code is what the caller sees */ }
+    await new Promise((res) => setTimeout(res, 100))
+    if (FC_COUNTED.includes(code)) {
+      try {
+        const cur = loadState()
+        cur.fileChooserErrors = (Number.isInteger(cur.fileChooserErrors) ? cur.fileChooserErrors : 0) + 1
+        saveState(cur)
+        logLine(`file-chooser errors=${cur.fileChooserErrors}`)
+      } catch (e) { logLine(`file-chooser could not record the error count: ${e.message}`) }
+    }
+    if (code === 0) { logLine(`file-chooser ${msg}`); console.log(`file-chooser ${msg}`); process.exit(0) }
+    die(code, msg)
+  }
+  const pending = new Map()
+  const events = []
+  let wake = null
+  let closed = false
+  let nextId = 0
+  const okReply = (m) => m !== null && typeof m === 'object' && m.failed === undefined && m.error === undefined && m.result !== null && typeof m.result === 'object'
+  const whyNot = (m) => m?.failed ?? (m?.error ? String(m.error.message ?? 'error').slice(0, 200) : 'no result')
+  // Replies resolve their pending id; events (a method and no id) are queued, so one delivered while the tap blocked the loop, or
+  // before the waiter registered, is not lost. A frame that does not parse or has an unexpected shape is ignored and never logged.
+  const attach = (sock) => {
+    sock.addEventListener('message', (ev) => {
+      try {
+        const msg = JSON.parse(String(ev.data))
+        if (msg === null || typeof msg !== 'object') return
+        if (Number.isInteger(msg.id)) {
+          const p = pending.get(msg.id)
+          if (p) { pending.delete(msg.id); p(msg) }
+        } else if (typeof msg.method === 'string') {
+          events.push(msg)
+          if (wake) wake()
+        }
+      } catch { /* ignored on purpose */ }
+    })
+    sock.addEventListener('close', () => {
+      closed = true
+      for (const [id, p] of [...pending]) { pending.delete(id); p({ failed: 'socket closed' }) }
+      if (wake) wake()
+    })
+    sock.addEventListener('error', () => { /* the close event follows */ })
+  }
+  const send = (method, params) => new Promise((resolve) => {
+    const failNow = (why) => { logLine(`cdp: ${method} error`); resolve({ failed: why }) }
+    if (!FC_METHODS.has(method)) { failNow(`method ${method} is not allowed`); return }
+    if (closed) { failNow('socket closed'); return }
+    const id = ++nextId
+    const timer = setTimeout(() => { pending.delete(id); failNow(`${method} timed out`) }, 5000)
+    pending.set(id, (msg) => { clearTimeout(timer); if (!okReply(msg)) logLine(`cdp: ${method} error`); resolve(msg) })
+    logLine(`cdp: ${method}`)
+    try { ws.send(JSON.stringify({ id, method, params })) } catch (e) { clearTimeout(timer); pending.delete(id); failNow(e.message) }
+  })
+  const nextChooser = (ms) => new Promise((resolve) => {
+    const take = () => { const i = events.findIndex((e) => e.method === 'Page.fileChooserOpened'); return i < 0 ? null : events.splice(i, 1)[0] }
+    const first = take()
+    if (first) { resolve(first); return }
+    const timer = setTimeout(() => { wake = null; resolve(null) }, ms)
+    wake = () => { const e = take(); if (e || closed) { clearTimeout(timer); wake = null; resolve(e) } }
+  })
+  const stop = (code, msg) => { throw new FcStop(code, msg) }
+  const getJson = async (path) => {
+    try {
+      // `connection: close` keeps no idle socket for the exit: a process.exit with one open aborts node on Windows (exit 0xC0000409).
+      const r = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'error', signal: AbortSignal.timeout(5000), headers: { connection: 'close' } })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      return await r.json()
+    } catch (e) { stop(5, `file-chooser: ${path} on port ${port} failed: ${e.message}`) }
+  }
+  const num = (n) => Number.isFinite(n) ? n : 'n/a'
+  let outcome
+  try {
+    // Device file: a regular, non-symlink file with content (the command's own `[ -f ]`/`[ ! -h ]` decide, the path is regex-validated above).
+    const dev = runAdb(['shell', `[ -f ${file} ] && [ ! -h ${file} ] && stat -c %s ${file}`], true)
+    const sizeText = dev.out.trim()
+    if (dev.code !== 0 || !/^\d{1,15}$/.test(sizeText) || Number(sizeText) <= 0) stop(4, `file-chooser: ${file} is missing, not a regular file, a link or empty on the device`)
+    const deviceSize = Number(sizeText)
+    logLine(`file-chooser device-size=${deviceSize}`)
+    // Forward: exactly one line for this serial and this port, to a WebView devtools socket. The raw list is never printed or logged.
+    const fl = runAdb(['forward', '--list'], true)
+    if (fl.code !== 0) stop(5, 'file-chooser: adb forward --list failed')
+    const mine = fl.out.split(/\r?\n/).map((l) => l.trim().split(/\s+/)).filter((f) => f.length === 3 && f[0] === serial && f[1] === `tcp:${port}`)
+    if (mine.length === 0) stop(5, `file-chooser: no forward tcp:${port} on ${serial}`)
+    if (mine.length > 1) stop(96, `file-chooser: more than one forward for tcp:${port} on ${serial}`)
+    const remote = mine[0][2].match(/^localabstract:webview_devtools_remote_(\d{1,7})$/)
+    if (!remote) stop(96, `file-chooser: tcp:${port} does not reach a WebView devtools socket`)
+    const socketPid = remote[1]
+    logLine(`file-chooser forward tcp:${port} -> webview_devtools_remote_${socketPid}`)
+    // The socket's process must be our app, and in front (the frontOf rule applied to the socket pid).
+    const ps = runAdb(['shell', `pidof ${PG_PACKAGE}`], true)
+    const ownPids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
+    if (!ownPids.includes(socketPid)) stop(96, `file-chooser: the devtools socket pid ${socketPid} is not a ${PG_PACKAGE} process`)
+    const adj = runAdb(['shell', `cat /proc/${socketPid}/oom_score_adj`], true)
+    if (adj.code !== 0 || adj.out.trim() !== '0') stop(93, `file-chooser: ${PG_PACKAGE} is not the foreground package`)
+    const ver = await getJson('/json/version')
+    if (ver === null || typeof ver !== 'object' || ver['Android-Package'] !== PG_PACKAGE) stop(96, `file-chooser: port ${port} does not report Android-Package ${PG_PACKAGE}`)
+    const list = await getJson('/json')
+    if (!Array.isArray(list)) stop(5, 'file-chooser: /json is not a target list')
+    const pages = list.filter((t) => t !== null && typeof t === 'object' && t.type === 'page' && typeof t.url === 'string' && !t.url.startsWith('devtools://'))
+    if (pages.length !== 1) stop(5, `file-chooser: need exactly one page target, found ${pages.length}`)
+    const page = pages[0]
+    let u = null
+    try { u = new URL(page.webSocketDebuggerUrl) } catch { u = null }
+    if (typeof page.id !== 'string' || page.id === '' || !u || u.protocol !== 'ws:' || !['127.0.0.1', 'localhost'].includes(u.hostname) || u.port !== port
+      || u.pathname !== `/devtools/page/${page.id}` || u.search !== '' || u.hash !== '') {
+      stop(96, `file-chooser: the page's webSocketDebuggerUrl does not point at 127.0.0.1:${port}/devtools/page/<id>`)
+    }
+    logLine(`file-chooser target package=${PG_PACKAGE} page=${JSON.stringify(page.id)}`)
+    ws = new WebSocket(page.webSocketDebuggerUrl)
+    attach(ws)
+    await new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error('CDP connect timed out')), 5000)
+      ws.addEventListener('open', () => { clearTimeout(t); res() })
+      ws.addEventListener('close', () => { clearTimeout(t); rej(new Error('CDP socket closed before it opened')) })
+    }).catch((e) => stop(5, `file-chooser: ${e.message}`))
+    // Read-only element probe (the locate-css rules): nothing else is sent before it passes.
+    const r1 = await send('Runtime.evaluate', { expression: fcProbeExpr(selector, text), returnByValue: true })
+    if (!okReply(r1)) stop(5, `file-chooser: the element probe failed (${whyNot(r1)})`)
+    if (r1.result.exceptionDetails !== undefined) stop(6, `file-chooser ${JSON.stringify(selector)}: the page could not run the element probe`)
+    const v = r1.result.result?.value
+    if (!v || v.count !== 1) stop(6, `file-chooser ${JSON.stringify(selector)}: ${v ? v.count : 'no'} matching elements (need exactly 1)`)
+    if (!v.inView) stop(6, `file-chooser ${JSON.stringify(selector)}: element not fully inside the viewport`)
+    if (!v.onTop) stop(6, `file-chooser ${JSON.stringify(selector)}: another element covers its centre`)
+    if (![v.x, v.y, v.w, v.h, v.dpr].every(Number.isFinite)) stop(6, `file-chooser ${JSON.stringify(selector)}: unusable element bounds`)
+    const b = { l: Math.round(off.x + v.x * v.dpr), t: Math.round(off.y + v.y * v.dpr), r: Math.round(off.x + (v.x + v.w) * v.dpr), b: Math.round(off.y + (v.y + v.h) * v.dpr) }
+    if (b.r <= b.l || b.b <= b.t) stop(6, `file-chooser ${JSON.stringify(selector)}: zero-area bounds`)
+    const tapX = Math.floor((b.l + b.r) / 2), tapY = Math.floor((b.t + b.b) / 2)
+    // Guarded region, Page.enable through the cleanup: no die() and no process.exit in here; it never throws, it returns the outcome.
+    const region = async () => {
+      let code = 0, msg = ''
+      let enabled = false, intercepting = false
+      try {
+        enabled = true
+        const e1 = await send('Page.enable', {})
+        if (!okReply(e1)) throw new FcStop(7, `file-chooser: Page.enable refused (${whyNot(e1)}); no tap sent`)
+        intercepting = true
+        const e2 = await send('Page.setInterceptFileChooserDialog', { enabled: true })
+        if (!okReply(e2)) throw new FcStop(7, `file-chooser: file chooser interception refused (${whyNot(e2)}); no tap sent`)
+        // The tap goes out only now: both replies above were results, so the app's chooser is intercepted, not shown.
+        const tap = runAdb(['shell', 'input', 'tap', String(tapX), String(tapY)], false)
+        if (tap.code !== 0) throw new FcStop(7, `file-chooser: the tap failed (adb exit ${tap.code})`)
+        const ev = await nextChooser(timeoutS * 1000)
+        if (ev === null) {
+          const pickerPkg = PG_FRONT_PICKERS.find(frontOf)
+          throw new FcStop(7, pickerPkg
+            ? `file-chooser: no chooser event and a system picker is in front (${pickerPkg}): press Back once via the guard and stop; never tap it`
+            : 'file-chooser: the chooser did not open (no Page.fileChooserOpened)')
+        }
+        const p = ev.params
+        if (p === null || typeof p !== 'object' || !Number.isInteger(p.backendNodeId) || !['selectSingle', 'selectMultiple'].includes(p.mode)) throw new FcStop(7, 'file-chooser: malformed Page.fileChooserOpened event')
+        logLine(`file-chooser chooser mode=${p.mode} node=${p.backendNodeId}`)
+        const sf = await send('DOM.setFileInputFiles', { files: [file], backendNodeId: p.backendNodeId })
+        if (!okReply(sf)) throw new FcStop(7, `file-chooser: DOM.setFileInputFiles failed (${whyNot(sf)})`)
+        const rn = await send('DOM.resolveNode', { backendNodeId: p.backendNodeId })
+        if (!okReply(rn)) throw new FcStop(7, `file-chooser: DOM.resolveNode failed (${whyNot(rn)})`)
+        const objectId = rn.result.object?.objectId
+        if (typeof objectId !== 'string' || objectId === '') throw new FcStop(7, 'file-chooser: DOM.resolveNode returned no object')
+        let call
+        try {
+          call = await send('Runtime.callFunctionOn', { objectId, functionDeclaration: FC_READ_FN, awaitPromise: true, returnByValue: true })
+        } finally {
+          const rel = await send('Runtime.releaseObject', { objectId })
+          if (!okReply(rel)) logLine('file-chooser releaseObject not acknowledged (ignored)')
+        }
+        if (!okReply(call)) throw new FcStop(7, `file-chooser: read-back failed (${whyNot(call)})`)
+        if (call.result.exceptionDetails !== undefined) {
+          const d = call.result.exceptionDetails
+          throw new FcStop(7, `file-chooser: read-back rejected by the page (${String(d.exception?.description ?? d.text ?? 'exception').slice(0, 200)})`)
+        }
+        const rb = call.result.result?.value
+        if (rb === null || typeof rb !== 'object') throw new FcStop(7, 'file-chooser: read-back returned no value')
+        const shownName = typeof rb.name === 'string' ? rb.name.slice(0, 120) : ''
+        logLine(`file-chooser read-back count=${num(rb.count)} name=${JSON.stringify(shownName)} size=${num(rb.size)} head=${num(rb.head)} device-size=${deviceSize}`)
+        if (rb.count !== 1) throw new FcStop(7, `file-chooser: read-back count ${num(rb.count)} (need exactly 1 file)`)
+        if (rb.name !== fileName) throw new FcStop(7, 'file-chooser: read-back name mismatch')
+        if (rb.size !== deviceSize) throw new FcStop(7, `file-chooser: read-back size mismatch (page ${num(rb.size)}, device ${deviceSize})`)
+        const wantHead = Math.min(65536, deviceSize)
+        if (rb.head !== wantHead) throw new FcStop(7, `file-chooser: read-back head mismatch (the page read ${num(rb.head)} bytes, expected ${wantHead})`)
+        msg = `ok name=${fileName} size=${deviceSize} head=${rb.head} mode=${p.mode}`
+      } catch (e) {
+        code = 7
+        msg = e instanceof FcStop ? e.message : `file-chooser: unexpected error after Page.enable: ${e.message}`
+      }
+      // Cleanup: interception off if it was requested, then Page.disable. Exit 0 needs both acknowledged.
+      let cleanupOk = true
+      if (intercepting) {
+        if (closed) { cleanupOk = false; logLine('file-chooser intercept off: socket closed') } else {
+          const offReply = await send('Page.setInterceptFileChooserDialog', { enabled: false })
+          if (okReply(offReply)) logLine('file-chooser intercept off'); else cleanupOk = false
+        }
+      }
+      if (enabled) {
+        if (closed) cleanupOk = false; else if (!okReply(await send('Page.disable', {}))) cleanupOk = false
+      }
+      if (!cleanupOk) {
+        if (code === 0) { code = 7; msg = 'file-chooser: interception off not acknowledged' } else logLine('file-chooser cleanup replies were not all results; the first failure stands')
+      }
+      return { code, msg }
+    }
+    outcome = await region()
+  } catch (e) {
+    outcome = e instanceof FcStop ? { code: e.code, msg: e.message } : { code: 5, msg: `file-chooser: unexpected error before Page.enable: ${e.message}` }
+  }
+  await finish(outcome.code, outcome.msg)
 }
 
 if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
