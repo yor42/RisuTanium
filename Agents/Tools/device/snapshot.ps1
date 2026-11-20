@@ -1,6 +1,7 @@
 # Takes a whole-app-data snapshot of the test profile (debug builds only) and writes <OutDir>\result.json.
 # The app is force-stopped first so the files are consistent, then the app data dir is archived from inside the app uid
-# (run-as ... tar) over adb exec-out into a file by process redirection, never a pipe. cache, code_cache and lib are not part of
+# (run-as ... tar) over adb exec-out into a file by process redirection, never a pipe; the stream is a guarded call like every
+# other (see the archive phase). cache, code_cache and lib are not part of
 # a snapshot. The snapshot lives in <SnapshotRoot>\<Profile>\<Id>\ as snapshot.tar plus snapshot.json (the manifest, written last).
 # The manifest records the build identity (versionCode, signing digest), the tar SHA-256, the per-entry byte sums (and du
 # totals, informational) and the file count that restore-snapshot.ps1 checks. A release build is refused: run-as does not work for it.
@@ -20,8 +21,7 @@ param(
     [string[]]$AllowedSerials,
     [string]$Package,
     [ValidateRange(1, 1800)][int]$MaxSeconds = 1500,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
@@ -74,7 +74,8 @@ try {
     if (Test-Path -LiteralPath $snapDir) { Finish 'fail' ('snapshot ' + $Id + ' already exists; ids are never overwritten') }
 
     Start-Phase 'prepare'
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $adbDir = Join-Path $OutDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log'))) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
     $ident = Get-InstalledBuildInfo $Serial $Package
@@ -107,7 +108,10 @@ try {
     $partial = Join-Path $snapDir 'snapshot.tar.partial'
     New-Item -ItemType Directory -Force -Path $snapDir | Out-Null
     $snapCreated = $true
-    $argv = @('-s', $Serial, 'exec-out', 'run-as', $Package, 'tar', '-cf', '-') + $names
+    # The stream runs through the guard like every other call: Get-AdbInvocation carries --kit and the guard sends the exec-out
+    # with inherited stdout, so the tar bytes still land in the redirected .partial file. The tracker roots at the guard process;
+    # Stop-Tracked ends it, the adb it started and their descendants.
+    $inv = Get-AdbInvocation -Serial $Serial -AdbArgs (@('exec-out', 'run-as', $Package, 'tar', '-cf', '-') + $names)
     $limit = $RefuseBytes + 16777216
     $tick = {
         $len = 0
@@ -117,13 +121,14 @@ try {
     }
     $left = Get-Remaining
     if ($left -le 0) { Finish 'timeout' 'cap reached before the archive started' }
-    $run = Invoke-TrackedProcess -FilePath $script:AdbPath -ArgumentList $argv -StdoutPath $partial -StderrPath (Join-Path $OutDir 'tar.err') `
-        -StdinPath (Join-Path $OutDir 'tar.in') -MaxSeconds $left -PollMs 1000 -OnTick $tick
+    $streamCap = Get-GuardCallCap $left
+    $run = Invoke-TrackedProcess -FilePath $inv.File -ArgumentList $inv.Args -StdoutPath $partial -StderrPath (Join-Path $OutDir 'tar.err') `
+        -StdinPath (Join-Path $OutDir 'tar.in') -MaxSeconds $streamCap -PollMs 1000 -OnTick $tick
     if ($run.TimedOut -or $run.Aborted) { $null = Stop-Tracked $run.Tracker }
     $archiveSec = ($run.EndedAt - $run.StartedAt).TotalSeconds
     $tarBytes = (Get-Item -LiteralPath $partial).Length
     End-Phase ('bytes=' + $tarBytes)
-    if ($run.TimedOut) { Finish 'timeout' 'the archive exceeded the cap' }
+    if ($run.TimedOut) { Finish 'timeout' $(if ($streamCap -lt $left) { 'the archive exceeded the ' + $streamCap + ' s bound the guard allows for one call' } else { 'the archive exceeded the cap' }) }
     if ($run.Aborted) { Finish 'fail' $run.Aborted.reason }
     if ($run.ExitCode -ne 0) { Finish 'fail' ('adb exec-out tar exit ' + $run.ExitCode + ': ' + ([IO.File]::ReadAllText((Join-Path $OutDir 'tar.err'))).Trim()) }
     if ($tarBytes -le 0 -or ($tarBytes % 512) -ne 0) { Finish 'fail' ('archive is not a whole number of tar blocks (' + $tarBytes + ' bytes); the stream was damaged') }

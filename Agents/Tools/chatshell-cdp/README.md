@@ -108,7 +108,7 @@ foreach ($s in 'H7','H13') { node harness.mjs --scenario $s }
 
 `harness.mjs` exits 2 before connecting on an unknown scenario or an out dir inside the checkout; exit 1 means an assertion failed or the run errored.
 
-Environment variables: `HARNESS_OUT` (out dir), `HARNESS_CDP` (CDP port, default 9470), `HARNESS_APP` (app URL, default `http://127.0.0.1:6293/`), `HARNESS_BASE` (label of the build under test), `HARNESS_ROW` (stepped row, default 49), `HARNESS_MIDROW` (H15b, default 13), `HARNESS_SWIPE` (`left` or `right`), `HARNESS_ALTFIRST=next`, `HARNESS_H2HIDE` (H2 hides the header first), `CHROME_PATH`. `CHATSHELL_CDP_DIR` and `CHATSHELL_REPO_ROOT` point the tool and its tests at another copy of the tool folder or another checkout.
+Environment variables: `HARNESS_OUT` (out dir), `HARNESS_CDP` (CDP port, default 9470), `HARNESS_APP` (app URL, default `http://127.0.0.1:6293/`), `HARNESS_BASE` (label of the build under test), `HARNESS_ROW` (stepped row, default 49), `HARNESS_MIDROW` (H15b, default 13), `HARNESS_SWIPE` (`left` or `right`), `HARNESS_ALTFIRST=next`, `HARNESS_H2HIDE` (H2 hides the header first), `CHROME_PATH`. `CHATSHELL_CDP_DIR` and `CHATSHELL_REPO_ROOT` point the tool and its tests at another copy of the tool folder or another checkout. Device runs (`device/`) always load `Agents/Tools/device/lib.ps1` and `device-guard/adbg.mjs` from beside the run script; a copy of the tool folder used for device runs keeps `device/` and `device-guard/` beside it.
 
 ## Scenarios
 

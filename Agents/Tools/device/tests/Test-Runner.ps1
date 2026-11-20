@@ -91,27 +91,9 @@ function Assert([bool]$Cond, [string]$Msg) {
 function New-Cmd([string]$Path, [string[]]$Lines) { Set-Content -LiteralPath $Path -Value $Lines -Encoding ascii }
 function Test-Alive([int]$Id) { return [bool](Get-Process -Id $Id -ErrorAction SilentlyContinue) }
 
-# Fake adb: get-state and pidof behaviour follow FAKE_ADB_MODE (device, offline, absent, hang).
-$fakeAdb = Join-Path $work 'fakeadb.cmd'
-New-Cmd $fakeAdb @(
-    '@echo off',
-    'if "%FAKE_ADB_MODE%"=="hang" ping -n 40 127.0.0.1 >nul',
-    'echo %* | findstr /c:"get-state" >nul',
-    'if not errorlevel 1 goto state',
-    'echo %* | findstr /c:"pidof" >nul',
-    'if not errorlevel 1 goto pidof',
-    'exit /b 0',
-    ':state',
-    'if "%FAKE_ADB_MODE%"=="offline" (echo error: device offline 1>&2 & exit /b 1)',
-    'echo device',
-    'exit /b 0',
-    ':pidof',
-    'if "%FAKE_ADB_MODE%"=="absent" exit /b 1',
-    'echo 4242',
-    'exit /b 0'
-)
-# Stateful fake adb for the stage 2 tests: node script driven by files in FAKE_ADB_DIR (pid, clock, logcat.txt, forwards.txt,
-# settings as s-<name>, whitelist.txt, mode, noapply, nostart, startpid). Logcat honours the -T start time like the real tool.
+# Stateful fake adb, the only adb stand-in: a node script driven by files in FAKE_ADB_DIR (pid, clock, logcat.txt, forwards.txt,
+# settings as s-<name>, whitelist.txt, mode (device, offline, pidoferr, hang), noapply, nostart, startpid). Logcat honours the -T
+# start time like the real tool. In hang mode it records its own pid and its parent's (the guard) before it blocks.
 $fdir = Join-Path $work 'fake-state'
 New-Item -ItemType Directory -Force -Path $fdir | Out-Null
 $fakeJs = Join-Path $work 'fakeadb.cjs'
@@ -158,6 +140,7 @@ New-Cmd $fakeJs @(
     '  const kbOf = (p) => { const s = fs.statSync(p); if (!s.isDirectory()) return Math.ceil(s.size / 4096) * 4; return 4 + fs.readdirSync(p).reduce((t, n) => t + kbOf(path.join(p, n)), 0) }',
     '  const cnt = (p) => { const s = fs.statSync(p); if (!s.isDirectory()) return 1; return fs.readdirSync(p).reduce((t, n) => t + cnt(path.join(p, n)), 0) }',
     '  if (a[0] === "exec-out" && a[1] === "run-as" && a[3] === "tar") {',
+    '    if (rd("tarhang") !== "") { fs.writeSync(1, Buffer.alloc(512)); wr("hangpid", String(process.pid)); wr("hangppid", String(process.ppid)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000); process.exit(1) }',
     '    const ex = rd("tarexclude").trim(), opt = ex ? ["--exclude=" + ex] : []',
     '    const r = cp.spawnSync("tar", ["-cf", "-", "-C", dd].concat(opt, a.slice(6)), { stdio: ["ignore", "inherit", "inherit"] })',
     '    if (rd("tarextra") !== "") fs.writeSync(1, "x")',
@@ -170,9 +153,11 @@ New-Cmd $fakeJs @(
     '    if (rd("pushrevive") !== "") { wr("pid", "4321"); wr("nostop", "1") }',
     '    out("1 file pushed"); return',
     '  }',
+    '  if (a[0] === "install" || a[0] === "uninstall") { out("Success"); return }',
     '  if (a[0] !== "shell") return',
     '  const c = a.slice(1).join(" ")',
     '  let m',
+    '  if (/^run-as \S+ id$/.test(c)) { out("uid=10000"); return }',
     '  if (/^pidof /.test(c)) { if (mode === "pidoferr") { process.stderr.write("boom\n"); process.exit(2) } const p = rd("pid").trim(); if (!p) process.exit(1); out(p); return }',
     '  if (/^date /.test(c)) { out(rd("clock", "10-21 12:00:00.000").trim()); return }',
     '  if (/^logcat /.test(c)) { m = /-T \x27([^\x27]+)\x27/.exec(c); const since = m ? m[1] : ""; lines("logcat.txt").filter((l) => l.slice(0, 18) >= since).forEach((l) => out(l)); return }',
@@ -225,9 +210,27 @@ New-Cmd $fakeJs @(
     '    return',
     '  }',
     '}',
-    'if (mode === "hang") setTimeout(() => {}, 60000); else main()')
+    'if (mode === "hang") { wr("hangpid", String(process.pid)); wr("hangppid", String(process.ppid)); setTimeout(() => {}, 60000) } else main()')
 $fake2 = Join-Path $work 'fakeadb2.cmd'
 New-Cmd $fake2 @('@echo off', ('node "' + $fakeJs + '" %*'), 'exit /b %errorlevel%')
+# Every guarded run reaches adb only through the guard, whose stand-in adb is the runner fake; the PATH sentinel still stands for a bare adb.
+# Guarded scripts run on the Note 9 serial, because the guard refuses a --kit call on any other serial.
+$env:ADBG_FAKE_ADB_SCRIPT = $fakeJs
+$env:FAKE_ADB_DIR = $fdir
+$note9Serial = '2ac80128013f7ece'
+# Decoy tree in the repository layout. Its lib appends to DECOY_MARKER when dot-sourced, so a routed script that took its lib
+# from CHATSHELL_REPO_ROOT or CHATSHELL_CDP_DIR instead of from beside itself leaves the marker behind.
+$decoyRoot = Join-Path $work 'decoy'
+$decoyLib = Join-Path $decoyRoot 'Agents\Tools\device\lib.ps1'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $decoyLib) | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $decoyRoot 'Agents\Tools\chatshell-cdp') | Out-Null
+$env:DECOY_MARKER = Join-Path $work 'decoy-marker.txt'
+New-Cmd $decoyLib @(
+    'Add-Content -LiteralPath $env:DECOY_MARKER -Value (''decoy lib loaded: '' + $PSCommandPath)',
+    'function Initialize-Adb { $true }',
+    'function Initialize-AdbGuard { $true }',
+    'function Invoke-Adb { throw ''decoy Invoke-Adb'' }',
+    'function Get-AdbInvocation { throw ''decoy Get-AdbInvocation'' }')
 # Fake CDP page for the import tests, driven by files in FAKE_ADB_DIR: ringplan (JSON array of marks; one more mark shows per ring poll,
 # a mark may carry fx = forcestop to drop the app pid like a harness-issued am force-stop, fx = chars to raise the chaId token
 # count, or fx = restart to restart the page and, unless nogrow is set, to grow the store2 entry count like a landed import),
@@ -361,22 +364,10 @@ try {
             }
         }
         $siDst.Dispose(); $siSrc.Dispose()
-        $siFakeAdb = Join-Path $siDir 'fakeadb.cmd'
-        New-Cmd $siFakeAdb @(
-            '@echo off',
-            'echo %* | findstr /c:"get-state" >nul',
-            'if not errorlevel 1 (echo device& exit /b 0)',
-            'echo %* | findstr /c:"pm path" >nul',
-            'if not errorlevel 1 (echo package:/data/app/x/base.apk& exit /b 0)',
-            'echo %* | findstr /c:"run-as" >nul',
-            'if not errorlevel 1 (echo uid=10000& exit /b 0)',
-            'echo %* | findstr /c:" install " >nul',
-            'if not errorlevel 1 (echo Success& exit /b 0)',
-            'exit /b 0')
         $siKeystore = Join-Path (Join-Path $siDir ('testks-' + [guid]::NewGuid().ToString('N'))) 'test-release.p12'
         function Invoke-SignInstallForKeyTest([string]$RunName, [string]$Keystore = $siKeystore) {
             $text = (& pwsh -NoProfile -File (Join-Path $RunnerDir 'sign-install.ps1') -OutDir (Join-Path $siDir $RunName) -Kind release -Apk $siSmallApk `
-                -Serial FAKE -AdbExe $siFakeAdb -TestKeystore $Keystore -MaxSeconds 240 | Out-String)
+                -Serial $note9Serial -TestKeystore $Keystore -MaxSeconds 240 | Out-String)
             $digest = if ($text -match 'test-key-sha256=([0-9a-f]{64})') { $Matches[1] } else { $null }
             return [pscustomobject]@{ Exit = $LASTEXITCODE; Text = $text; Digest = $digest; Signed = (Join-Path (Join-Path $siDir $RunName) 'signed.apk') }
         }
@@ -946,22 +937,31 @@ try {
 
         # install: a signature mismatch is refused without -AllowClear and nothing is uninstalled
         $adbCalls = [Collections.ArrayList]::new()
-        function Initialize-Adb { param($Dir, $AdbExe) $true }
+        $installTimeouts = [Collections.ArrayList]::new()
+        function Initialize-AdbGuard { param($Dir, $Serial, $Log, $OwnPorts) $true }
         function Get-DeviceState { param($Serial) 'device' }
         function Invoke-Adb {
             param($AdbArgs, $TimeoutSec, $Serial)
             $null = $adbCalls.Add(($Serial + ' ' + ($AdbArgs -join ' ')))
+            if ($AdbArgs[0] -eq 'install') { $null = $installTimeouts.Add($TimeoutSec) }
             if ($AdbArgs[0] -eq 'install' -and -not $script:uninstalled) { return [pscustomobject]@{ ExitCode = 1; TimedOut = $false; Out = ''; Err = 'Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]' } }
             if ($AdbArgs[0] -eq 'uninstall') { $script:uninstalled = $true }
             return [pscustomobject]@{ ExitCode = 0; TimedOut = $false; Out = 'Success'; Err = '' }
         }
         $script:uninstalled = $false
-        $i1 = Install-SignedApk $srApk 'FAKESERIAL' $false $srDir $null
-        Assert ($i1 -match 'signature-mismatch' -and $i1 -match 'AllowClear' -and -not ($adbCalls -match 'uninstall') -and $adbCalls[0] -match '^FAKESERIAL install -r ') 'sign-release: -Install refuses a signature mismatch without -AllowClear, uses -s <serial> and uninstalls nothing'
+        $i1 = Install-SignedApk $srApk 'FAKESERIAL' $false $srDir
+        Assert ($i1 -match 'signature-mismatch' -and $i1 -match 'AllowClear' -and -not ($adbCalls -match 'uninstall') -and $adbCalls[0] -match '^FAKESERIAL install -r ') 'sign-release: -Install refuses a signature mismatch without -AllowClear, names the serial and uninstalls nothing'
         $adbCalls.Clear()
-        $warnOut = (& { $script:i2 = Install-SignedApk $srApk 'FAKESERIAL' $true $srDir $null } 3>&1 | Out-String)
+        $warnOut = (& { $script:i2 = Install-SignedApk $srApk 'FAKESERIAL' $true $srDir } 3>&1 | Out-String)
         Assert ($null -eq $script:i2 -and $warnOut -match 'WIPES' -and ($adbCalls -match 'uninstall io\.github\.yor42\.risutanium')) 'sign-release: -AllowClear warns that the data is wiped, then uninstalls and installs'
-        Assert ((Install-SignedApk $srApk '' $false $srDir $null) -match 'explicit -Serial') 'sign-release: -Install without a serial is refused'
+        Assert ((Install-SignedApk $srApk '' $false $srDir) -match 'explicit -Serial') 'sign-release: -Install without a serial is refused'
+        # Every install is bounded below the guard's 600 s kill, so a slow install reports the script's own timeout.
+        Assert ($installTimeouts.Count -eq 3 -and @($installTimeouts | Where-Object { $_ -le 590 }).Count -eq $installTimeouts.Count) 'sign-release: every install call is bounded at 590 s or less'
+        $decoyAdb = Join-Path $work 'decoy-adb-sr.cmd'
+        New-Cmd $decoyAdb @('@echo off', ('>>"' + $env:DECOY_MARKER + '" echo decoy adb ran'), 'exit /b 0')
+        $adbCalls.Clear()
+        $null = Install-SignedApk $srApk 'FAKESERIAL' $false $srDir $decoyAdb
+        Assert (-not (Test-Path -LiteralPath $env:DECOY_MARKER) -and $adbCalls.Count -ge 1 -and $adbCalls[0] -match '^FAKESERIAL install -r ') 'sign-release: Install-SignedApk takes no adb path, so a stray fifth argument names no adb and no decoy adb runs'
 
         # a vault that is not a SecretStore cannot be checked for a password, so it is refused before any secret is read
         function Get-Module { param($Name, [switch]$ListAvailable) 'fake' }
@@ -1053,36 +1053,52 @@ try {
     $st = Invoke-Runner 'stale' (Join-Path $childDir 'done.cmd') $null 30 @('-ArtifactPath', $old)
     Assert ($st.Result.verdict -eq 'pass' -and $st.Result.build.artifactFresh -eq $false -and $st.Result.reason -match 'artifact not rewritten') 'stale artifact: pass kept, reason names it'
 
-    # app watch with the fake adb
-    $env:FAKE_ADB_MODE = 'device'
-    $ok = Invoke-Runner 'app-ok' (Join-Path $childDir 'short.cmd') $null 30 @('-Serial', 'FAKE', '-Package', 'p.q', '-RequireApp', '-AdbExe', $fakeAdb)
+    # app watch through the guard, with the stateful fake as the guard's adb: mode and pid files stand for device, absent and offline
+    Clear-Fake
+    Set-Fake 'pid' '4242'
+    $ok = Invoke-Runner 'app-ok' (Join-Path $childDir 'short.cmd') $null 30 @('-Serial', $note9Serial, '-Package', 'p.q', '-RequireApp')
     Assert ($ok.Result.verdict -eq 'pass') 'app: running app and clean exit pass'
-    $env:FAKE_ADB_MODE = 'absent'
-    $cr = Invoke-Runner 'app-crash' (Join-Path $childDir 'sleeper.cmd') $null 60 @('-Serial', 'FAKE', '-Package', 'p.q', '-RequireApp', '-AdbExe', $fakeAdb)
+    $okLog = Join-Path $work 'app-ok\adb\adb-commands.log'
+    $okLogText = if (Test-Path -LiteralPath $okLog) { [IO.File]::ReadAllText($okLog) } else { '' }
+    Assert ($okLogText -match '(?m)^\S+ intent: ' -and $okLogText -notmatch 'REFUSED') 'app: the run is guarded, so its adb calls leave intent lines and no refusal in the guard log'
+    Set-Fake 'pid' ''
+    $cr = Invoke-Runner 'app-crash' (Join-Path $childDir 'sleeper.cmd') $null 60 @('-Serial', $note9Serial, '-Package', 'p.q', '-RequireApp')
     Assert ($cr.Result.verdict -eq 'crash') 'app: absent on a healthy device is a crash'
     Assert ($cr.Elapsed -lt 40) 'app: crash detected well before the cap'
-    $env:FAKE_ADB_MODE = 'offline'
-    $off = Invoke-Runner 'app-offline' (Join-Path $childDir 'sleeper.cmd') $null 60 @('-Serial', 'FAKE', '-Package', 'p.q', '-RequireApp', '-AdbExe', $fakeAdb)
+    Set-Fake 'mode' 'offline'
+    $off = Invoke-Runner 'app-offline' (Join-Path $childDir 'sleeper.cmd') $null 60 @('-Serial', $note9Serial, '-Package', 'p.q', '-RequireApp')
     Assert ($off.Result.verdict -eq 'fail' -and $off.Result.reason -eq 'device-offline') 'app: offline device is device-offline, not crash'
-    $env:FAKE_ADB_MODE = 'device'
+    Clear-Fake
 
-    # adb wrapper is bounded
-    $null = Initialize-Adb -Dir (Join-Path $work 'adbwrap') -AdbExe $fakeAdb
-    $env:FAKE_ADB_MODE = 'hang'
+    # adb wrapper is bounded (guarded): the fake switches to hang only after the guard start returned, and the cut ends both the
+    # guard process and the stand-in adb it started
+    $adbWrapInit = Initialize-AdbGuard -Dir (Join-Path $work 'adbwrap') -Serial $note9Serial -Log (Join-Path $work 'adbwrap\adb-commands.log')
+    Assert ($adbWrapInit -eq $true) 'adb wrapper: the guarded wrapper starts on a spare Note 9'
+    Set-Fake 'mode' 'hang'
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $h = Invoke-Adb -AdbArgs @('get-state') -TimeoutSec 2 -Serial 'FAKE'
+    $h = Invoke-Adb -AdbArgs @('get-state') -TimeoutSec 2 -Serial $note9Serial
     $sw.Stop()
     Assert ($h.TimedOut -and $sw.Elapsed.TotalSeconds -lt 10) 'adb wrapper: a hung adb call is cut at its timeout'
-    $env:FAKE_ADB_MODE = 'offline'
-    Assert ((Get-PackagePid 'FAKE' 'p.q').Status -eq 'offline') 'adb wrapper: offline is never reported as absent'
-    $env:FAKE_ADB_MODE = 'absent'
-    Assert ((Get-PackagePid 'FAKE' 'p.q').Status -eq 'absent') 'adb wrapper: empty pidof on a device is absent'
-    $env:FAKE_ADB_MODE = 'device'
-    Assert ((Get-PackagePid 'FAKE' 'p.q').Pid -eq 4242) 'adb wrapper: pid parsed'
+    $hangIds = @(@('hangpid', 'hangppid') | ForEach-Object { $f = Join-Path $fdir $_; if (Test-Path -LiteralPath $f) { [int](Get-Content -LiteralPath $f -Raw).Trim() } })
+    $hangGone = $false
+    $hangWatch = [Diagnostics.Stopwatch]::StartNew()
+    while ($hangIds.Count -eq 2 -and $hangWatch.Elapsed.TotalSeconds -lt 5) {
+        if (@($hangIds | Where-Object { Test-Alive $_ }).Count -eq 0) { $hangGone = $true; break }
+        Start-Sleep -Milliseconds 200
+    }
+    Assert ($hangIds.Count -eq 2 -and $hangGone) 'adb wrapper: the cut ends the guard process and the stand-in adb it started, not only the first'
+    Set-Fake 'mode' 'offline'
+    Assert ((Get-PackagePid $note9Serial 'p.q').Status -eq 'offline') 'adb wrapper: offline is never reported as absent'
+    Set-Fake 'mode' 'device'
+    Set-Fake 'pid' ''
+    Assert ((Get-PackagePid $note9Serial 'p.q').Status -eq 'absent') 'adb wrapper: empty pidof on a device is absent'
+    Set-Fake 'pid' '4242'
+    Assert ((Get-PackagePid $note9Serial 'p.q').Pid -eq 4242) 'adb wrapper: pid parsed'
 
     # ---------- stage 2: crash detection, relaunch windows, forwards, CDP bounds, device-prep, cold-start ----------
-    $env:FAKE_ADB_DIR = $fdir
-    $null = Initialize-Adb -Dir (Join-Path $work 'adbwrap2') -AdbExe $fake2
+    # The port range depends on this process id so a parallel run probing the shared range cannot take one of the high ports.
+    $xBase = 40000 + ($PID % 20000)
+    $null = Initialize-AdbGuard -Dir (Join-Path $work 'adbwrap2') -Serial $note9Serial -Log (Join-Path $work 'adbwrap2\adb-commands.log') -OwnPorts (@(9770..9789) + @($xBase..($xBase + 2)))
     $pkg = 'p.q'
     $L = '10-21 12:00:05.000  100  100 '
 
@@ -1100,14 +1116,14 @@ try {
     Clear-Fake
     Set-Fake 'clock' '10-21 12:00:00.000'
     Set-Fake 'pid' '111'
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     Assert ($null -ne $w -and $w.Since -eq '10-21 12:00:00.000') 'watch: starts from the device clock'
     Assert ($null -eq (Test-AppWatch $w)) 'watch: a running app is healthy'
     Set-Fake 'pid' ''
     Assert ($null -eq (Test-AppWatch $w)) 'watch: one empty poll is not yet a crash'
     $v = Test-AppWatch $w
     Assert ($v -and $v.verdict -eq 'crash' -and $v.reason -match 'process gone') 'watch: loss of a running app is a crash'
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     $null = Test-AppWatch $w
     $v = Test-AppWatch $w
     Assert ($v -and $v.verdict -eq 'fail' -and $v.reason -eq 'app-not-running') 'watch: an app never seen running is app-not-running, not crash'
@@ -1115,7 +1131,7 @@ try {
     $v = Test-AppWatch $w
     Assert ($v -and $v.verdict -eq 'fail' -and $v.reason -eq 'device-offline') 'watch: offline is device-offline'
     Set-Fake 'mode' 'pidoferr'
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     $a1 = Test-AppWatch $w
     $a2 = Test-AppWatch $w
     $a3 = Test-AppWatch $w
@@ -1126,7 +1142,7 @@ try {
     Clear-Fake
     Set-Fake 'clock' '10-21 12:00:00.000'
     Set-Fake 'pid' '111'
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     $null = Test-AppWatch $w
     Open-RelaunchWindow $w 'force-stop' 30
     Set-Fake 'pid' ''
@@ -1137,7 +1153,7 @@ try {
     Set-Fake 'pid' '333'
     $v = Test-AppWatch $w
     Assert ($v -and $v.verdict -eq 'crash' -and $v.reason -match 'outside an expected relaunch') 'window: a pid change without a window is a crash'
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     Set-Fake 'pid' '111'
     $null = Test-AppWatch $w
     Open-RelaunchWindow $w 'reload' 1
@@ -1200,17 +1216,17 @@ try {
     Set-Fake 'clock' '10-21 12:00:00.000'
     Set-Fake 'pid' '111'
     Set-Fake 'logcat.txt' ("10-21 11:59:00.000  111  111 W chromium: Render process gone`n")
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     Assert ($null -eq (Test-AppWatch $w)) 'logcat: a line older than the start time is not read'
     Set-Fake 'logcat.txt' ("10-21 11:59:00.000  111  111 W chromium: Render process gone`n10-21 12:00:05.000  111  111 W chromium: Render process gone`n")
     $v = Test-AppWatch $w
     Assert ($v -and $v.verdict -eq 'crash' -and $v.reason -match '^renderer-gone') 'logcat: a renderer loss while the app process lives is a crash'
     Set-Fake 'logcat.txt' ($L + "E AndroidRuntime: Process: p.q, PID: 100`n")
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     $v = Test-AppWatch $w
     Assert ($v -and $v.verdict -eq 'crash' -and $v.reason -match '^java-crash') 'logcat: a java crash line is a crash'
     Set-Fake 'logcat.txt' ("10-21 12:00:05.000  111  111 W chromium: Render process gone`n")
-    $w = New-AppWatch -Serial 'FAKE' -Package $pkg
+    $w = New-AppWatch -Serial $note9Serial -Package $pkg
     $null = Test-AppWatch $w
     Open-RelaunchWindow $w 'force-stop' 30
     Set-Fake 'logcat.txt' ("10-21 12:00:05.000  111  111 W chromium: Render process gone`n")
@@ -1229,7 +1245,7 @@ try {
     Clear-Fake
     Set-Fake 'pid' '111'
     Set-Fake 'forwards.txt' ("FAKE tcp:9770 localabstract:foreign_socket`n")
-    $fw = New-CdpForward 'FAKE' $pkg 9770 9789
+    $fw = New-CdpForward $note9Serial $pkg 9770 9789
     $u = Update-CdpForward $fw
     Assert ($u.Ok -and $u.Port -ne 9770 -and $u.Port -ge 9770 -and $u.Port -le 9789) 'forward: a port already forwarded by someone else is skipped'
     $first = $u.Port
@@ -1241,13 +1257,13 @@ try {
     Set-Fake 'forwards.txt' ("FAKE tcp:9770 localabstract:foreign_socket`nFAKE tcp:" + $u2.Port + " localabstract:other_owner`n")
     Remove-CdpForward $fw
     Assert ([IO.File]::ReadAllText((Join-Path $fdir 'forwards.txt')) -match 'other_owner') 'forward: a port re-used by another owner is not removed'
-    $fw3 = New-CdpForward 'FAKE' $pkg 9770 9789
+    $fw3 = New-CdpForward $note9Serial $pkg 9770 9789
     $fw3.Port = 9775; $fw3.Pids = @(222)
     Set-Fake 'forwards.txt' ("FAKE tcp:9775 localabstract:webview_devtools_remote_999`n")
     Remove-CdpForward $fw3
     Assert ([IO.File]::ReadAllText((Join-Path $fdir 'forwards.txt')) -match 'remote_999') 'forward: a devtools forward to a pid we never forwarded is not removed'
     Set-Fake 'forwards.txt' ("FAKE tcp:9770 localabstract:foreign_socket`n")
-    $fw2 = New-CdpForward 'FAKE' $pkg 9770 9789
+    $fw2 = New-CdpForward $note9Serial $pkg 9770 9789
     $null = Update-CdpForward $fw2
     Remove-CdpForward $fw2
     $ft = Get-Content -LiteralPath (Join-Path $fdir 'forwards.txt') -Raw
@@ -1257,7 +1273,7 @@ try {
     Clear-Fake
     Set-Fake 'pid' '111'
     Set-Fake 'ghost' ("tcp:9770`n")
-    $fw4 = New-CdpForward 'FAKE' $pkg 9770 9789
+    $fw4 = New-CdpForward $note9Serial $pkg 9770 9789
     $u4 = Update-CdpForward $fw4
     $callsF = [IO.File]::ReadAllText((Join-Path $fdir 'calls.txt'))
     Assert ($u4.Ok -and $u4.Port -eq 9771) 'forward: a refused port (taken after the list) moves on to the next port'
@@ -1268,16 +1284,14 @@ try {
     Clear-Fake
     Set-Fake 'pid' '111'
     Set-Fake 'fwderr' "adb.exe: error: cannot rebind existing socket`n"
-    # The port range depends on this process id so a parallel run probing the shared range cannot take one of these ports.
-    $xBase = 40000 + ($PID % 20000)
-    $fwX = New-CdpForward 'FAKE' $pkg $xBase ($xBase + 2)
+    $fwX = New-CdpForward $note9Serial $pkg $xBase ($xBase + 2)
     $uX = Update-CdpForward $fwX
     $nTried = @([IO.File]::ReadAllLines((Join-Path $fdir 'calls.txt')) | Where-Object { $_ -match 'forward --no-rebind' }).Count
     Assert (-not $uX.Ok -and $nTried -eq 3 -and $uX.Reason -match 'no free port in range' -and $uX.Reason -match 'cannot rebind existing socket') 'forward: port exhaustion tries every port and the reason keeps the last adb error'
     Clear-Fake
     Set-Fake 'pid' '111'
     Set-Fake 'fwderr' "adb.exe: error: could not install *smartsocket* listener: cannot bind to 127.0.0.1:5037`n"
-    $fwY = New-CdpForward 'FAKE' $pkg 9770 9789
+    $fwY = New-CdpForward $note9Serial $pkg 9770 9789
     $uY = Update-CdpForward $fwY
     $nTried = @([IO.File]::ReadAllLines((Join-Path $fdir 'calls.txt')) | Where-Object { $_ -match 'forward --no-rebind' }).Count
     Assert (-not $uY.Ok -and $nTried -eq 1 -and $uY.Reason -match 'adb forward failed' -and $uY.Reason -match 'smartsocket') 'forward: an adb server error fails at once with its own text, no port loop'
@@ -1340,7 +1354,7 @@ try {
     $sp = Join-Path $work 'prep-state.json'
     function Invoke-Prep([string]$Name, [string[]]$Extra = @()) {
         $o = Join-Path $work $Name
-        $a = @('-NoProfile', '-File', $prepScript, '-OutDir', $o, '-Serial', 'FAKE', '-AllowedSerials', 'FAKE', '-StatePath', $sp, '-AdbExe', $fake2, '-RepoRoot', $work) + $Extra
+        $a = @('-NoProfile', '-File', $prepScript, '-OutDir', $o, '-Serial', $note9Serial, '-StatePath', $sp, '-RepoRoot', $work) + $Extra
         $null = (& pwsh @a | Out-String)
         $c = $LASTEXITCODE
         $res = $null
@@ -1390,7 +1404,7 @@ try {
     New-Cmd (Join-Path $work 'stall.mjs') @('console.error("timeout"); process.exit(3)')
     function Invoke-Cold([string]$Name, [string]$Cdp, [string[]]$Extra = @()) {
         $o = Join-Path $work $Name
-        $a = @('-NoProfile', '-File', $coldScript, '-OutDir', $o, '-Serial', 'FAKE', '-AllowedSerials', 'FAKE', '-AdbExe', $fake2, '-RepoRoot', $work,
+        $a = @('-NoProfile', '-File', $coldScript, '-OutDir', $o, '-Serial', $note9Serial, '-RepoRoot', $work,
             '-CdpScript', $Cdp, '-PortMin', '9770', '-PortMax', '9789', '-PollSeconds', '1', '-PauseSec', '3', '-SettleSec', '1', '-Runs', '2', '-MaxSeconds', '120') + $Extra
         $null = (& pwsh @a | Out-String)
         $c = $LASTEXITCODE
@@ -1427,24 +1441,23 @@ try {
     Assert ($st2.Exit -ne 0 -and $st2.Result.verdict -eq 'fail' -and $st2.Result.reason -match 'cdp-unresponsive') 'cold: a CDP target that keeps timing out fails as cdp-unresponsive'
 
     }
-    if ($Fast) { $env:FAKE_ADB_DIR = $fdir; $env:FAKE_ADB_MODE = 'device' }
     # ---------- stage 3: snapshot and restore against the stateful fake (real tar, fake device tree) ----------
     $snapScript = Join-Path $RunnerDir 'snapshot.ps1'
     $restScript = Join-Path $RunnerDir 'restore-snapshot.ps1'
     $sroot = Join-Path $work 'snaproot'
     $ddata = Join-Path $fdir 'data'
-    function Invoke-Snap([string]$Name, [string[]]$Extra = @(), [string]$Root = $sroot, [string]$UseSerial = 'FAKE') {
+    function Invoke-Snap([string]$Name, [string[]]$Extra = @(), [string]$Root = $sroot, [string]$UseSerial = $note9Serial) {
         $o = Join-Path $work $Name
-        $a = @('-NoProfile', '-File', $snapScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', 'FAKE', '-AdbExe', $fake2, '-RepoRoot', $work, '-SnapshotRoot', $Root) + $Extra
+        $a = @('-NoProfile', '-File', $snapScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', $note9Serial, '-RepoRoot', $work, '-SnapshotRoot', $Root) + $Extra
         $null = (& pwsh @a | Out-String)
         $c = $LASTEXITCODE
         $res = $null
         if (Test-Path -LiteralPath (Join-Path $o 'result.json')) { $res = Get-Content -LiteralPath (Join-Path $o 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
         return [pscustomobject]@{ Exit = $c; Result = $res }
     }
-    function Invoke-Restore([string]$Name, [string[]]$Extra = @(), [string]$Root = $sroot, [string]$UseSerial = 'FAKE') {
+    function Invoke-Restore([string]$Name, [string[]]$Extra = @(), [string]$Root = $sroot, [string]$UseSerial = $note9Serial) {
         $o = Join-Path $work $Name
-        $a = @('-NoProfile', '-File', $restScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', 'FAKE', '-AdbExe', $fake2, '-RepoRoot', $work, '-SnapshotRoot', $Root) + $Extra
+        $a = @('-NoProfile', '-File', $restScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', $note9Serial, '-RepoRoot', $work, '-SnapshotRoot', $Root) + $Extra
         $null = (& pwsh @a | Out-String)
         $c = $LASTEXITCODE
         $res = $null
@@ -1487,6 +1500,34 @@ try {
     $tl = @(& tar -tf (Join-Path $sdir 'snapshot.tar'))
     Assert (@($tl | Where-Object { $_ -match '(^|/)(cache|code_cache)/' }).Count -eq 0 -and $sn.Result.transfer.bytes -gt 0 -and (Test-ResultSchema $sn.Result).Count -eq 0) 'snapshot: no cache entries in the tar, transfer recorded, result passes the schema'
     Assert ((Get-FakeCalls) -match 'force-stop') 'snapshot: the app is force-stopped first'
+
+    # TR-7: the archive stream goes through the guard and arrives byte for byte as the fake's own tar stream. The data holds
+    # random bytes, so CR/LF translation or a dropped or added byte anywhere in the path shows as a different hash.
+    $snLogPath = Join-Path $work 'snap1\adb\adb-commands.log'
+    $snLog = ''
+    if (Test-Path -LiteralPath $snLogPath) { $snLog = [IO.File]::ReadAllText($snLogPath) }
+    $directTar = Join-Path $work 'direct-stream.tar'
+    $directIn = Join-Path $work 'direct-stream.in'
+    $directRun = Invoke-TrackedProcess -FilePath (Get-NodePath) -ArgumentList @($fakeJs, 'exec-out', 'run-as', $script:DefaultPackage, 'tar', '-cf', '-', 'app_webview', 'files', 'store2') `
+        -StdoutPath $directTar -StderrPath (Join-Path $work 'direct-stream.err') -StdinPath $directIn -MaxSeconds 60
+    Remove-Item -LiteralPath (Join-Path $fdir 'calls.txt') -Force -ErrorAction SilentlyContinue
+    $streamIntent = 'intent: adb -s ' + $note9Serial + ' ["exec-out","run-as","' + $script:DefaultPackage + '","tar","-cf","-","app_webview","files","store2"]'
+    Assert ($directRun.ExitCode -eq 0 -and (Get-FileHash -LiteralPath $directTar -Algorithm SHA256).Hash -eq $sm.sha256 -and (Get-Item -LiteralPath (Join-Path $sdir 'snapshot.tar')).Length -eq (Get-Item -LiteralPath $directTar).Length) 'snapshot: the archive that arrives through the guard equals the fake tar stream byte for byte'
+    Assert ($snLog -match [regex]::Escape($streamIntent) -and $snLog -match [regex]::Escape('exit=0: adb -s ' + $note9Serial + ' ["exec-out"') -and $snLog -notmatch 'REFUSED' -and $snLog -match '(?m)^\S+ PLAYGROUND') 'snapshot: the exec-out tar stream is a guarded call with an intent and an exit line, and no guard refusal'
+    Assert (-not (Test-Path -LiteralPath $script:sentinelLog) -or [IO.File]::ReadAllText($script:sentinelLog) -eq '') 'snapshot: no adb is started bare (the sentinel log stays empty)'
+    # The guard log does not show --kit, so a node stand-in first on PATH records every guard command line the run starts:
+    # the stream and every other call of the run carry --kit, and the run still passes through the stand-in.
+    $shimDir = Join-Path $work 'node-shim'
+    $shimLog = Join-Path $shimDir 'node-calls.txt'
+    New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+    New-Cmd (Join-Path $shimDir 'node.cmd') @('@echo off', ('>>"' + $shimLog + '" echo %*'), ('"' + (Get-NodePath) + '" %*'), 'exit /b %errorlevel%')
+    $shimSavedPath = $env:PATH
+    $env:PATH = $shimDir + ';' + $env:PATH
+    try { $skShim = Invoke-Snap 'snap-shim' @('-Id', 'shim1') } finally { $env:PATH = $shimSavedPath }
+    $shimLines = @()
+    if (Test-Path -LiteralPath $shimLog) { $shimLines = @([IO.File]::ReadAllLines($shimLog) | Where-Object { $_ -match 'adbg\.mjs' }) }
+    $shimStream = @($shimLines | Where-Object { $_ -match ' exec-out run-as ' })
+    Assert ($skShim.Exit -eq 0 -and $skShim.Result.verdict -eq 'pass' -and $shimStream.Count -eq 1 -and @($shimLines | Where-Object { $_ -notmatch ' --kit --serial ' + $note9Serial + ' ' }).Count -eq 0 -and $shimLines.Count -gt 5) 'snapshot: every guard command line of the run, the archive stream included, carries --kit before --serial'
 
     if (-not $Fast) {
     # mutate, then restore: the whole tree comes back, caches are left alone, the temp tar is gone from the device
@@ -1580,6 +1621,24 @@ try {
     foreach ($k in 1..4) { $null = Invoke-Snap ('snap-p' + $k) @('-Id', ('p' + $k), '-Keep', '2'); Start-Sleep -Milliseconds 1100 }
     $left = @(Get-ChildItem -LiteralPath (Join-Path $sroot 'test') -Directory | ForEach-Object Name | Sort-Object)
     Assert (($left -join ',') -eq 'base1,p3,p4') ('prune: keeps the pinned snapshot and the newest two, left: ' + ($left -join ','))
+
+    # TR-H2: a stream that never ends is cut at the cap; the guard process and the adb stand-in it started are both stopped
+    # and the half-written archive is removed.
+    Set-Fake 'tarhang' '1'
+    Remove-Item -LiteralPath (Join-Path $fdir 'hangpid'), (Join-Path $fdir 'hangppid') -Force -ErrorAction SilentlyContinue
+    $hg = Invoke-Snap 'snap-hang' @('-Id', 'hang1', '-MaxSeconds', '20')
+    Remove-Item -LiteralPath (Join-Path $fdir 'tarhang') -Force
+    $hangPids = @()
+    foreach ($hn in @('hangpid', 'hangppid')) {
+        $hf = Join-Path $fdir $hn
+        if (Test-Path -LiteralPath $hf) { $hangPids += [int]([IO.File]::ReadAllText($hf).Trim()) }
+    }
+    $hangUntil = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $hangUntil -and @($hangPids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }).Count -gt 0) { Start-Sleep -Milliseconds 200 }
+    $hangAlive = @($hangPids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+    Assert ($hg.Exit -ne 0 -and $hg.Result.verdict -eq 'timeout' -and $hg.Result.reason -match 'archive exceeded' -and -not (Test-Path -LiteralPath (Join-Path $sroot 'test\hang1'))) 'snapshot: a stream cut at the cap ends as a timeout and leaves no snapshot directory'
+    Assert ($hangPids.Count -eq 2 -and $hangPids[0] -ne $hangPids[1] -and $hangAlive.Count -eq 0) ('snapshot: a stream cut at the cap leaves neither the guard process nor the adb stand-in alive (alive: ' + ($hangAlive -join ',') + ')')
+    Remove-Item -LiteralPath (Join-Path $fdir 'hangpid'), (Join-Path $fdir 'hangppid') -Force -ErrorAction SilentlyContinue
 
     }
     # ---------- stage 3 guards: refusals that must happen before any adb call, and the checks around the data removal ----------
@@ -1687,7 +1746,7 @@ try {
 
     }
     # ---------- stage 3 round 2: a lock held by a live process refuses snapshot and restore, whatever the id ----------
-    $lockFile = Join-Path $sroot 'device-FAKE.lock'
+    $lockFile = Join-Path $sroot ('device-' + $note9Serial + '.lock')
     $liveLock = [string]$PID + ',' + (Get-Process -Id $PID).StartTime.Ticks
     New-FakeData
     Clear-Fake
@@ -1818,11 +1877,12 @@ try {
     [IO.File]::WriteAllBytes($fxFile, $fxBytes)
     $importScript = Join-Path $RunnerDir 'import-bin.ps1'
     $pushScript = Join-Path $RunnerDir 'fixture-push.ps1'
-    function Invoke-Import([string]$Name, [string[]]$Extra = @(), [int]$Cap = 90, [switch]$DefaultName, [int]$Settle = 1) {
+    function Invoke-Import([string]$Name, [string[]]$Extra = @(), [int]$Cap = 180, [switch]$DefaultName, [int]$Settle = 1, [switch]$DefaultPorts) {
         $o = Join-Path $work $Name
-        $a = @('-NoProfile', '-File', $importScript, '-OutDir', $o, '-Serial', 'FAKE', '-AllowedSerials', 'FAKE', '-AdbExe', $fake2, '-RepoRoot', $work,
-            '-CdpScript', $fakeCdp, '-PortMin', '9770', '-PortMax', '9789', '-PollSeconds', '1', '-LaunchSettleSec', '1', '-SettleSec', [string]$Settle, '-PickWaitSec', '1',
+        $a = @('-NoProfile', '-File', $importScript, '-OutDir', $o, '-Serial', $note9Serial, '-AllowedSerials', $note9Serial, '-RepoRoot', $work,
+            '-CdpScript', $fakeCdp, '-PollSeconds', '1', '-LaunchSettleSec', '1', '-SettleSec', [string]$Settle, '-PickWaitSec', '1',
             '-TapPauseSec', '0.3', '-ConfirmPauseSec', '0.3', '-SnapshotRoot', $sroot, '-MaxSeconds', [string]$Cap) + $Extra
+        if (-not $DefaultPorts) { $a += @('-PortMin', '9770', '-PortMax', '9789') }
         # Tests that do not exercise the per-run default name give the fixture the fixed name the fake file picker lists.
         if (-not $DefaultName -and $Extra -notcontains '-RemoteName') { $a += @('-RemoteName', 'fx.bin') }
         $null = (& pwsh @a | Out-String)
@@ -1832,7 +1892,7 @@ try {
         return [pscustomobject]@{ Exit = $c; Result = $res; Out = $o }
     }
     # fixture-push reaches adb only through the guard, whose stand-in adb is the runner's fake (ADBG_FAKE_ADB_SCRIPT).
-    function Invoke-FixturePush([string]$Name, [string[]]$Extra = @(), [string]$UseSerial = 'emulator-5580', [string[]]$Allowed = @('emulator-5580'), [switch]$NoSerial, [switch]$NoAllowed) {
+    function Invoke-FixturePush([string]$Name, [string[]]$Extra = @(), [string]$UseSerial = $note9Serial, [string[]]$Allowed = @($note9Serial), [switch]$NoSerial, [switch]$NoAllowed) {
         Assert-AdbIsolated
         $o = Join-Path $work $Name
         $a = @('-NoProfile', '-NonInteractive', '-File', $pushScript, '-OutDir', $o)
@@ -1857,7 +1917,6 @@ try {
     $remoteFx = Join-Path $fdir 'remote\fx.bin'
 
     # fixture-push: hash skip, changed content, damaged copy, unreadable device hash, ceiling, removal, path rules
-    $env:ADBG_FAKE_ADB_SCRIPT = $fakeJs
     Remove-Item -LiteralPath $script:sentinelLog -Force -ErrorAction SilentlyContinue
     Initialize-ImportFake
     $p1 = Invoke-FixturePush 'fp-first' @('-FixturePath', $fxFile)
@@ -1911,10 +1970,11 @@ try {
     $p12 = Invoke-FixturePush 'fp-serial' @('-FixturePath', $fxFile) 'ZZZ'
     Assert ($p12.Exit -ne 0 -and $p12.Result.reason -match 'serial ZZZ is not in the allowed list' -and (Get-FakeCalls) -eq '') 'fixture-push: a serial outside the allowed list is refused before any adb call'
 
-    # No default device: Invoke-Adb refuses a missing or malformed serial before it starts adb.
-    $savedAdbPath = $script:AdbPath
+    # No default device: Invoke-Adb refuses a missing or malformed serial before it starts adb. The guarded state in this process is
+    # restored afterwards.
+    $savedAdbGuard = $script:AdbGuard
     $savedAdbTmp = $script:AdbTmp
-    $null = Initialize-Adb -Dir (Join-Path $work 'adbwrap-c833') -AdbExe $fake2
+    $null = Initialize-AdbGuard -Dir (Join-Path $work 'adbwrap-c833') -Serial $note9Serial -Log (Join-Path $work 'adbwrap-c833\adb-commands.log')
     Clear-Calls
     $l1 = ''
     try { $null = Invoke-Adb -AdbArgs @('get-state') -TimeoutSec 10 } catch { $l1 = $_.Exception.Message }
@@ -1926,9 +1986,9 @@ try {
         $l2 += ($m2 -match 'bad -Serial')
     }
     Assert (@($l2 | Where-Object { $_ }).Count -eq 3 -and (Get-FakeCalls) -eq '') 'adb wrapper: a serial with a space, a semicolon or a trailing newline is refused before adb starts'
-    $l3 = Invoke-Adb -AdbArgs @('get-state') -TimeoutSec 10 -Serial 'FAKE'
+    $l3 = Invoke-Adb -AdbArgs @('get-state') -TimeoutSec 10 -Serial $note9Serial
     Assert ($l3.ExitCode -eq 0 -and $l3.Out -eq 'device') 'adb wrapper: a named serial still reaches adb'
-    $script:AdbPath = $savedAdbPath
+    $script:AdbGuard = $savedAdbGuard
     $script:AdbTmp = $savedAdbTmp
 
     # No default device in the entry scripts: a missing serial refuses before the result file and before any adb call; an omitted
@@ -1966,16 +2026,16 @@ try {
         if ($case.Name -eq 'mock-reverse') { continue }
         $o = Join-Path $work ('s1-' + $case.Name)
         Clear-Calls
-        $c = Invoke-ScriptChild (Join-Path $RunnerDir ($case.Name + '.ps1')) (@('-OutDir', $o) + $case.Args + @('-AdbExe', $fake2, '-RepoRoot', $work))
+        $c = Invoke-ScriptChild (Join-Path $RunnerDir ($case.Name + '.ps1')) (@('-OutDir', $o) + $case.Args + @('-RepoRoot', $work))
         Assert (-not $c.TimedOut -and $c.Exit -ne 0 -and -not (Test-Path -LiteralPath (Join-Path $o 'result.json')) -and $c.Text -match 'Serial' -and (Get-FakeCalls) -eq '') ($case.Name + ': a missing -Serial is refused before the result file and before any adb call')
     }
     $mrOut = Join-Path $work 's1-mock-reverse'
     Clear-Calls
-    $mc = Invoke-ScriptChild (Join-Path $RunnerDir 'mock-reverse.ps1') @('-OutDir', $mrOut, '-Remove', '-AdbExe', $fake2, '-RepoRoot', $work)
+    $mc = Invoke-ScriptChild (Join-Path $RunnerDir 'mock-reverse.ps1') @('-OutDir', $mrOut, '-Remove', '-RepoRoot', $work)
     Assert (-not $mc.TimedOut -and $mc.Exit -ne 0 -and -not (Test-Path -LiteralPath (Join-Path $mrOut 'result.json')) -and (Get-FakeCalls) -eq '') 'mock-reverse: a missing -Serial is refused before the result file and before any adb call'
     foreach ($case in (Get-ScriptCases 'defaultallowed')) {
         $o = Join-Path $work ('s2-' + $case.Name)
-        $c = Invoke-ScriptChild (Join-Path $RunnerDir ($case.Name + '.ps1')) (@('-OutDir', $o, '-Serial', 'FAKE') + $case.Args + @('-AdbExe', $fake2, '-RepoRoot', $work))
+        $c = Invoke-ScriptChild (Join-Path $RunnerDir ($case.Name + '.ps1')) (@('-OutDir', $o, '-Serial', $note9Serial) + $case.Args + @('-RepoRoot', $work))
         $res = $null
         if (Test-Path -LiteralPath (Join-Path $o 'result.json')) { $res = Get-Content -LiteralPath (Join-Path $o 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
         if (-not $res -or $res.reason -notlike ($case.Reason + '*')) { Write-Output ('  observed: ' + $(if ($res) { $res.reason } else { 'no result.json' }) + ' | ' + $c.Text.Trim()) }
@@ -1995,16 +2055,16 @@ try {
         Assert ($p14.Exit -ne 0 -and $null -eq $p14.Result -and $p14.Text -match [regex]::Escape($bad[1]) -and (Get-FakeCalls) -eq '') ('fixture-push: the serial "' + $bad[0] + '" is refused before the result file and before any adb call')
     }
     Initialize-ImportFake
-    $p17 = Invoke-FixturePush 'fp-defaultallowed' @('-FixturePath', $fxFile) -UseSerial 'emulator-5580' -NoAllowed
+    $p17 = Invoke-FixturePush 'fp-defaultallowed' @('-FixturePath', $fxFile) -UseSerial $note9Serial -NoAllowed
     Assert ($p17.Exit -eq 0 -and $p17.Result.verdict -eq 'pass') 'fixture-push: without -AllowedSerials the named serial is the allowed list'
 
     # fixture-push through the guard: every adb call leaves an intent and an exit line in <OutDir>\adb\adb-commands.log.
-    $p1Intents = @([regex]::Matches($p1.LogText, '(?m)^\S+ intent: adb -s emulator-5580 ')).Count
+    $p1Intents = @([regex]::Matches($p1.LogText, '(?m)^\S+ intent: adb -s ' + $note9Serial + ' ')).Count
     $p1IntentsAll = @([regex]::Matches($p1.LogText, '(?m)^\S+ intent: ')).Count
-    $p1Exits = @([regex]::Matches($p1.LogText, '(?m)^\S+ exit=\d+: adb -s emulator-5580 ')).Count
-    Assert ($p1.LogText -ne '' -and $p1Calls -eq 7 -and $p1Intents -eq $p1Calls -and $p1IntentsAll -eq $p1Calls -and $p1Exits -eq $p1Calls -and $p1.LogText -notmatch 'REFUSED' -and $p1.LogText -match [regex]::Escape('exit=0: adb -s emulator-5580 ["push",') -and $p1.Result.evidence.log -eq $p1.LogPath) 'fixture-push: every adb call goes through the guard and leaves an intent and an exit line, and the result names the log'
+    $p1Exits = @([regex]::Matches($p1.LogText, '(?m)^\S+ exit=\d+: adb -s ' + $note9Serial + ' ')).Count
+    Assert ($p1.LogText -ne '' -and $p1Calls -eq 7 -and $p1Intents -eq $p1Calls -and $p1IntentsAll -eq $p1Calls -and $p1Exits -eq $p1Calls -and $p1.LogText -notmatch 'REFUSED' -and $p1.LogText -match [regex]::Escape('exit=0: adb -s ' + $note9Serial + ' ["push",') -and $p1.Result.evidence.log -eq $p1.LogPath) 'fixture-push: every adb call goes through the guard and leaves an intent and an exit line, and the result names the log'
     $rmLine = '["shell","rm -f /sdcard/Download/fx.bin"]'
-    Assert ($p11.LogText -match [regex]::Escape('intent: adb -s emulator-5580 ' + $rmLine) -and $p11.LogText -match [regex]::Escape('exit=0: adb -s emulator-5580 ' + $rmLine) -and $p11.LogText -notmatch 'REFUSED') 'fixture-push: -Remove goes through the guard and is logged'
+    Assert ($p11.LogText -match [regex]::Escape('intent: adb -s ' + $note9Serial + ' ' + $rmLine) -and $p11.LogText -match [regex]::Escape('exit=0: adb -s ' + $note9Serial + ' ' + $rmLine) -and $p11.LogText -notmatch 'REFUSED') 'fixture-push: -Remove goes through the guard and is logged'
     Clear-Calls
     $p15 = Invoke-FixturePush 'fp-adbexe' @('-FixturePath', $fxFile, '-AdbExe', $fake2)
     Assert ($p15.Exit -ne 0 -and $null -eq $p15.Result -and (Get-FakeCalls) -eq '') 'fixture-push: -AdbExe is not accepted, so the script cannot be pointed at another adb'
@@ -2030,25 +2090,225 @@ try {
         $c = Invoke-ScriptChild $s @()
         return [pscustomobject]@{ Child = $c; Calls = @((Get-FakeCalls) -split '\r?\n' | Where-Object { $_ }) }
     }
-    function Get-GuardInit([string]$Tag) {
+    function Get-GuardInit([string]$Tag, [string]$Serial = $note9Serial) {
         $d = Join-Path (Join-Path $work 'lib-guard') $Tag
-        return '$ok = Initialize-AdbGuard -Dir ''' + $d + ''' -Serial ''emulator-5580'' -Log ''' + (Join-Path $d 'adb-commands.log') + ''''
+        return '$ok = Initialize-AdbGuard -Dir ''' + $d + ''' -Serial ''' + $Serial + ''' -Log ''' + (Join-Path $d 'adb-commands.log') + ''''
     }
-    $l4 = Invoke-LibChild 'l4' @((Get-GuardInit 'l4'), '$g = Invoke-Adb -AdbArgs @(''get-state'') -Serial ''emulator-5580'' -TimeoutSec 20', 'Write-Output (''guard='' + $ok + '' out='' + $g.Out + '' exit='' + $g.ExitCode)')
-    $l4Log = ''
-    if (Test-Path -LiteralPath (Join-Path $work 'lib-guard\l4\adb-commands.log')) { $l4Log = [IO.File]::ReadAllText((Join-Path $work 'lib-guard\l4\adb-commands.log')) }
+    # A child body from a text block: __N9__ is the Note 9 serial, __DIR__ the child's own folder under lib-guard.
+    function Get-LibBody([string]$Tag, [string]$Text) {
+        $d = Join-Path (Join-Path $work 'lib-guard') $Tag
+        return @($Text.Replace('__N9__', $note9Serial).Replace('__DIR__', $d) -split '\r?\n' | Where-Object { $_ -ne '' })
+    }
+    function Get-LibLog([string]$Tag) {
+        $f = Join-Path $work ('lib-guard\' + $Tag + '\adb-commands.log')
+        if (Test-Path -LiteralPath $f) { return [IO.File]::ReadAllText($f) }
+        return ''
+    }
+    $l4 = Invoke-LibChild 'l4' @((Get-GuardInit 'l4'), ('$g = Invoke-Adb -AdbArgs @(''get-state'') -Serial ''' + $note9Serial + ''' -TimeoutSec 20'), 'Write-Output (''guard='' + $ok + '' out='' + $g.Out + '' exit='' + $g.ExitCode)')
+    $l4Log = Get-LibLog 'l4'
     Assert ($l4.Child.Text -match 'guard=True out=device exit=0' -and ($l4.Calls -join '|') -eq 'start-server|get-state' -and @([regex]::Matches($l4Log, '(?m)^\S+ intent: ')).Count -eq 2 -and @([regex]::Matches($l4Log, '(?m)^\S+ exit=0: ')).Count -eq 2 -and $l4Log -notmatch 'REFUSED') 'guarded adb: start-server and get-state run through the guard, each with an intent and an exit line'
-    $l5 = Invoke-LibChild 'l5' @((Get-GuardInit 'l5'), ('try { $null = Initialize-Adb -Dir ''' + (Join-Path $work 'lib-guard\l5-direct') + ''' -AdbExe ''' + $fake2 + '''; Write-Output ''no-error'' } catch { Write-Output (''threw='' + $_.Exception.Message) }'))
-    Assert ($l5.Child.Text -match 'threw=.*guarded' -and ($l5.Calls -join '|') -eq 'start-server') 'guarded adb: once guarded, Initialize-Adb refuses and starts no adb'
-    $l6 = Invoke-LibChild 'l6' @((Get-GuardInit 'l6'), '$i = Get-DeviceInfo ''emulator-5580''', 'Write-Output (''info=battery:'' + $i.battery.level + '';data:'' + $i.dataFreeKB + '';end'')')
-    $l6Log = ''
-    if (Test-Path -LiteralPath (Join-Path $work 'lib-guard\l6\adb-commands.log')) { $l6Log = [IO.File]::ReadAllText((Join-Path $work 'lib-guard\l6\adb-commands.log')) }
+    # AC-5: the lib has no unguarded adb path. Initialize-Adb and the adb path variable are gone, and a call before the guard is
+    # initialised throws and starts nothing.
+    $l5 = Invoke-LibChild 'l5' (Get-LibBody 'l5' @'
+$defined = [bool](Get-Command Initialize-Adb -ErrorAction SilentlyContinue)
+$hasPath = [bool]$script:AdbPath
+try { $null = Invoke-Adb -AdbArgs @('get-state') -Serial '__N9__' -TimeoutSec 10; Write-Output 'no-error' } catch { Write-Output ('threw=' + $_.Exception.Message) }
+Write-Output ('initAdb=' + $defined + ' adbPath=' + $hasPath)
+'@)
+    Assert ($l5.Child.Text -match 'threw=Initialize-AdbGuard must run first' -and $l5.Child.Text -match 'initAdb=False adbPath=False' -and $l5.Calls.Count -eq 0) 'guarded adb: Initialize-Adb and the unguarded adb path no longer exist, and a call before Initialize-AdbGuard throws and starts nothing'
+    $l6 = Invoke-LibChild 'l6' @((Get-GuardInit 'l6'), ('$i = Get-DeviceInfo ''' + $note9Serial + ''''), 'Write-Output (''info=battery:'' + $i.battery.level + '';data:'' + $i.dataFreeKB + '';end'')')
+    $l6Log = Get-LibLog 'l6'
     Assert ($l6.Child.Text -match 'info=battery:;data:;end' -and ($l6.Calls -join '|') -match 'getprop ro.product.model' -and ($l6.Calls -join '|') -notmatch 'dumpsys battery|df /data' -and $l6Log -notmatch 'REFUSED') 'guarded adb: Get-DeviceInfo asks only what the guard allows and leaves battery and free data blank'
+
+    # Kit rule (--kit on every guard call): a serial outside the two spare Note 9s is refused at kit start and at every later call.
+    $g1 = Invoke-LibChild 'g1' (Get-LibBody 'g1' @'
+$ok = Initialize-AdbGuard -Dir '__DIR__' -Serial 'emulator-5580' -Log '__DIR__\adb-commands.log'
+Write-Output ('init=' + $ok + ' reason=' + (Get-AdbInitReason))
+$x = Invoke-Adb -AdbArgs @('shell', 'settings put global stay_on_while_plugged_in 7') -Serial 'emulator-5580' -TimeoutSec 20
+Write-Output ('second=' + $x.ExitCode + ' err=' + ($x.Err -replace '\s+', ' '))
+$ok2 = Initialize-AdbGuard -Dir '__DIR__\n9' -Serial '__N9__' -Log '__DIR__\n9\adb-commands.log'
+Write-Output ('note9=' + $ok2 + ' reason=[' + (Get-AdbInitReason) + ']')
+'@)
+    $g1Log = Get-LibLog 'g1'
+    Assert ($g1.Child.Text -match 'init=False reason=adb start-server failed \(adbg exit 97: adbg: kit call refused[^)]*two spare Note 9s' -and $g1.Child.Text -match 'second=97 err=adbg: kit call refused' -and $g1.Child.Text -match 'note9=True reason=\[\]' -and ($g1.Calls -join '|') -eq 'start-server' -and $g1Log -match 'REFUSED/ERROR exit=97' -and $g1Log -notmatch '(?m)^\S+ intent:') 'kit rule: on emulator-5580 the init fails with the guard reason and sends nothing, a later call is refused too, and a Note 9 init still works'
+    $g4 = Invoke-LibChild 'g4' (Get-LibBody 'g4' @'
+$ok = Initialize-AdbGuard -Dir '__DIR__' -Serial 'R5CT1234ABC' -Log '__DIR__\adb-commands.log'
+Write-Output ('init=' + $ok + ' reason=' + (Get-AdbInitReason))
+'@)
+    $g4Log = Get-LibLog 'g4'
+    Assert ($g4.Child.Text -match 'init=False reason=adb start-server failed \(adbg exit 95: adbg: ' -and $g4.Calls.Count -eq 0 -and $g4Log -match 'REFUSED/ERROR exit=95' -and $g4Log -notmatch '(?m)^\S+ intent:') 'kit rule: on a restricted serial the init fails with the guard reason (exit 95) and sends nothing'
+    $g5 = Invoke-LibChild 'g5' (Get-LibBody 'g5' @'
+$ok = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log'
+$a = Invoke-Adb -AdbArgs @('shell', 'getprop ro.product.model') -Serial 'emulator-5580' -TimeoutSec 20
+$b = Invoke-Adb -AdbArgs @('shell', 'settings put global stay_on_while_plugged_in 7') -Serial 'emulator-5580' -TimeoutSec 20
+$c = Invoke-Adb -AdbArgs @('get-state') -Serial '__N9__' -TimeoutSec 20
+Write-Output ('ok=' + $ok + ' a=' + $a.ExitCode + ' b=' + $b.ExitCode + ' aerr=' + ($a.Err -cmatch '(?m)^adbg: kit call refused') + ' berr=' + ($b.Err -cmatch '(?m)^adbg: kit call refused') + ' c=' + $c.ExitCode + '/' + $c.Out)
+'@)
+    Assert ($g5.Child.Text -match 'ok=True a=97 b=97 aerr=True berr=True c=0/device' -and ($g5.Calls -join '|') -eq 'start-server|get-state') 'kit rule: after a Note 9 init a call on another serial is refused by the guard and the Note 9 still works'
+    $g6 = Invoke-LibChild 'g6' (Get-LibBody 'g6' @'
+$ok = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log'
+$bad = Initialize-AdbGuard -Dir '__DIR__\b' -Serial 'emulator-5580' -Log '__DIR__\b\adb-commands.log'
+$a = Invoke-Adb -AdbArgs @('get-state') -Serial 'emulator-5580' -TimeoutSec 20
+$c = Invoke-Adb -AdbArgs @('get-state') -Serial '__N9__' -TimeoutSec 20
+Write-Output ('ok=' + $ok + ' bad=' + $bad + ' a=' + $a.ExitCode + ' c=' + $c.ExitCode)
+'@)
+    Assert ($g6.Child.Text -match 'ok=True bad=False a=97 c=0' -and ($g6.Calls -join '|') -eq 'start-server|get-state') 'kit rule: a failed re-init whose return value is ignored opens nothing on the failed serial'
+    $g7 = Invoke-LibChild 'g7' (Get-LibBody 'g7' @'
+$ok = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log'
+$c = Invoke-Adb -AdbArgs @('get-state') -Serial '29f3cde9193f7ece' -TimeoutSec 20
+Write-Output ('ok=' + $ok + ' c=' + $c.ExitCode)
+'@)
+    Assert ($g7.Child.Text -match 'ok=True c=0' -and ($g7.Calls -join '|') -eq 'start-server|get-state') 'kit rule: the rule is the Note 9 class, so the other spare Note 9 is not refused'
+    $g8 = Invoke-LibChild 'g8' (Get-LibBody 'g8' @'
+$r = @()
+foreach ($set in @((1000..1128), @(70000), @(9))) {
+    try { $null = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log' -OwnPorts $set; $r += 'accepted' } catch { $r += 'threw' }
+}
+Write-Output ('bounds=' + ($r -join ','))
+$ok10 = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log' -OwnPorts @(10)
+$ok128 = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log' -OwnPorts (1000..1127)
+$okRange = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log' -OwnPorts (6330..6399)
+$f = Invoke-Adb -AdbArgs @('forward', '--no-rebind', 'tcp:6399', 'localabstract:webview_devtools_remote_1') -Serial '__N9__' -TimeoutSec 20
+Write-Output ('ok10=' + $ok10 + ' ok128=' + $ok128 + ' range=' + $okRange + ' fwd=' + $f.ExitCode)
+'@)
+    Assert ($g8.Child.Text -match 'bounds=threw,threw,threw' -and $g8.Child.Text -match 'ok10=True ok128=True range=True fwd=0' -and ($g8.Calls -join '|') -eq 'start-server|start-server|start-server|forward --no-rebind tcp:6399 localabstract:webview_devtools_remote_1') 'own ports: 129 ports, a port above 65535 or one below 10 stop at init before any call; 10, exactly 128 ports and the 6330-6399 range are accepted and the range reaches the guard'
+    Clear-Fake
+    $g9 = Invoke-LibChild 'g9' (Get-LibBody 'g9' @'
+$ok = Initialize-AdbGuard -Dir '__DIR__' -Serial '__N9__' -Log '__DIR__\adb-commands.log'
+$codes = @()
+foreach ($s in @('emulator-5580', '__N9__')) {
+    $inv = Get-AdbInvocation -Serial $s -AdbArgs @('get-state')
+    $base = Join-Path '__DIR__' ('inv-' + $codes.Count)
+    [IO.File]::WriteAllText($base + '.in', '')
+    $p = Start-Process -FilePath $inv.File -ArgumentList (Join-ProcessArgs $inv.Args) -RedirectStandardOutput ($base + '.out') -RedirectStandardError ($base + '.err') -RedirectStandardInput ($base + '.in') -NoNewWindow -PassThru
+    $null = $p.Handle
+    $null = $p.WaitForExit(20000)
+    $codes += $p.ExitCode
+}
+Write-Output ('ok=' + $ok + ' codes=' + ($codes -join ','))
+'@)
+    Assert ($g9.Child.Text -match 'ok=True codes=97,0' -and ($g9.Calls -join '|') -eq 'start-server|get-state') 'kit rule: a call run from Get-AdbInvocation carries --kit too, so it is refused on emulator-5580 and runs on the Note 9'
+    Assert ((Get-GuardCallCap 1800) -eq 590 -and (Get-GuardCallCap 100) -eq 100 -and (Get-GuardCallCap 590) -eq 590) 'guard call cap: a bound above 590 s is cut to 590 s and a smaller bound is kept'
+    $g10 = Invoke-LibChild 'g10' (Get-LibBody 'g10' @'
+$script:seen = @()
+function Invoke-AdbShell {
+    param([string]$Serial, [string]$Command, [int]$TimeoutSec = 20)
+    $script:seen += ($Command + '=' + $TimeoutSec)
+    if ($Command -match ' du ') { return [pscustomobject]@{ ExitCode = 0; TimedOut = $false; Out = ('4' + [char]9 + 'files'); Err = '' } }
+    return [pscustomobject]@{ ExitCode = 0; TimedOut = $false; Out = '5 files/a'; Err = '' }
+}
+$null = Get-AppDataStats '__N9__' 'io.github.yor42.risutanium' @('files')
+Write-Output ('seen=' + ($script:seen -join ';'))
+'@)
+    Assert ($g10.Child.Text -match ' find files -type f [^;]*=590(;|\s|$)' -and $g10.Child.Text -match ' du -sk files=120') 'app data stats: the find/stat call is bounded at 590 s, below the guard kill'
+
+    # GT-3 and GT-4s: every routed script below, started on a serial the guard refuses for kit calls, stops at its first
+    # adb call with the guard's reason, sends nothing to the fake and leaves the fake's state files unchanged. CHATSHELL_REPO_ROOT
+    # and CHATSHELL_CDP_DIR point at the decoy tree: a script that took its lib from there would leave the decoy marker behind.
+    function Get-FakeStateHash {
+        $rows = @()
+        foreach ($f in @(Get-ChildItem -LiteralPath $fdir -File -Recurse)) { $rows += ($f.FullName.Substring($fdir.Length) + ':' + (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash) }
+        return (($rows | Sort-Object) -join '|')
+    }
+    function Use-DecoyEnv([scriptblock]$Body) {
+        $savedRoot = $env:CHATSHELL_REPO_ROOT
+        $savedCdp = $env:CHATSHELL_CDP_DIR
+        $env:CHATSHELL_REPO_ROOT = $decoyRoot
+        $env:CHATSHELL_CDP_DIR = Join-Path $decoyRoot 'Agents\Tools\chatshell-cdp'
+        try { return (& $Body) } finally {
+            if ($null -eq $savedRoot) { Remove-Item Env:\CHATSHELL_REPO_ROOT -ErrorAction SilentlyContinue } else { $env:CHATSHELL_REPO_ROOT = $savedRoot }
+            if ($null -eq $savedCdp) { Remove-Item Env:\CHATSHELL_CDP_DIR -ErrorAction SilentlyContinue } else { $env:CHATSHELL_CDP_DIR = $savedCdp }
+        }
+    }
+    function Assert-KitRefusal([string]$Label, [string]$Serial, $Run, [string]$Reason, [int]$Code, [string]$LogPath) {
+        $logText = ''
+        if (Test-Path -LiteralPath $LogPath) { $logText = [IO.File]::ReadAllText($LogPath) }
+        Assert (-not $Run.TimedOut -and $Run.Exit -ne 0 -and $Reason -match $(if ($Code -eq 97) { 'two spare Note 9s' } else { 'adb start-server failed.*adbg exit 95' }) -and (Get-FakeCalls) -eq '' -and $Run.StateBefore -eq (Get-FakeStateHash) -and $logText -match ('REFUSED/ERROR exit=' + $Code) -and $logText -notmatch '(?m)^\S+ intent:' -and -not (Test-Path -LiteralPath $env:DECOY_MARKER)) ($Label + ' on ' + $Serial + ': the run stops at its first adb call with the guard reason, nothing reaches the fake, its state is unchanged and no decoy lib is loaded')
+    }
+    $krKit = @(
+        @{ Name = 'Run-Check'; Args = @('-CheckId', 'kr', '-MaxSeconds', '30', '-FilePath', (Join-Path $childDir 'done.cmd'), '-BuildKind', 'none', '-RepoRoot', $work) },
+        @{ Name = 'device-prep'; Args = @('-RepoRoot', $work) },
+        @{ Name = 'cold-start'; Args = @('-CdpScript', (Join-Path $work 'kr-nocdp.mjs'), '-PortMin', '9770', '-PortMax', '9789', '-RepoRoot', $work) },
+        @{ Name = 'mock-reverse'; Args = @('-Remove', '-RepoRoot', $work) },
+        @{ Name = 'fixture-push'; Args = @('-FixturePath', $fxFile, '-RepoRoot', $work) },
+        @{ Name = 'snapshot'; Args = @('-Id', 'krsnap', '-SnapshotRoot', $sroot, '-RepoRoot', $work) },
+        @{ Name = 'restore-snapshot'; Args = @('-Id', 'base1', '-SnapshotRoot', $sroot, '-RepoRoot', $work) },
+        @{ Name = 'import-bin'; Args = @('-NoRestore', '-RemoteName', 'fx.bin', '-SnapshotRoot', $sroot, '-PortMin', '9770', '-PortMax', '9789', '-RepoRoot', $work) })
+    if ($env:ANDROID_HOME -and (Test-Path -LiteralPath (Join-Path $env:ANDROID_HOME 'build-tools'))) {
+        $krKit += @{ Name = 'sign-install'; Args = @('-Kind', 'debug', '-Apk', $fxFile, '-RepoRoot', $work) }
+    } else { Write-Output 'SKIP sign-install kit refusal row: the Android build-tools are missing' }
+    foreach ($krSerial in @(@('emulator-5580', 97), @('R5CT1234ABC', 95))) {
+        foreach ($krCase in $krKit) {
+            $krOut = Join-Path $work ('kr-' + $krCase.Name + '-' + $krSerial[0])
+            Clear-Calls
+            $krBefore = Get-FakeStateHash
+            $krRun = Use-DecoyEnv { Invoke-ScriptChild (Join-Path $RunnerDir ($krCase.Name + '.ps1')) (@('-OutDir', $krOut, '-Serial', $krSerial[0]) + $krCase.Args) }
+            $krRun | Add-Member -NotePropertyName StateBefore -NotePropertyValue $krBefore
+            $krRes = $null
+            if (Test-Path -LiteralPath (Join-Path $krOut 'result.json')) { $krRes = Get-Content -LiteralPath (Join-Path $krOut 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
+            Assert-KitRefusal $krCase.Name $krSerial[0] $krRun $(if ($krRes) { [string]$krRes.reason } else { '' }) $krSerial[1] (Join-Path $krOut 'adb\adb-commands.log')
+        }
+        # sign-release's installer has no script mode a test can reach (the script refuses agent shells first), so the real
+        # Install-SignedApk runs in a child that dot-sources the script.
+        $krSrDir = Join-Path $work ('kr-sign-release-' + $krSerial[0])
+        $krSrScript = Join-Path $work ('kr-sign-release-' + $krSerial[0] + '.ps1')
+        Set-Content -LiteralPath $krSrScript -Encoding utf8 -Value @('$ErrorActionPreference = ''Stop''', ('. ''' + (Join-Path $RunnerDir 'sign-release.ps1') + ''''), ('$reason = Install-SignedApk ''' + $fxFile + ''' ''' + $krSerial[0] + ''' $false ''' + $krSrDir + ''''), 'Write-Output (''install-reason='' + $reason)')
+        Clear-Calls
+        $krBefore = Get-FakeStateHash
+        $krRun = Use-DecoyEnv { Invoke-ScriptChild $krSrScript @() }
+        $krRun | Add-Member -NotePropertyName StateBefore -NotePropertyValue $krBefore
+        $krRun.Exit = if ($krRun.Text -match 'install-reason=\S') { 1 } else { 0 }
+        Assert-KitRefusal 'sign-release install' $krSerial[0] $krRun ([regex]::Match($krRun.Text, 'install-reason=(.*)').Groups[1].Value) $krSerial[1] (Join-Path $krSrDir 'adb\adb-commands.log')
+    }
+
+    # TB-1b: run as a script, sign-release loads the lib beside it even when the session already holds a lib function; dot-sourced
+    # (the seam the in-process tests use), it keeps the functions the session holds.
+    $o3Dir = Join-Path $work 'o3'
+    New-Item -ItemType Directory -Force -Path $o3Dir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $RunnerDir 'sign-release.ps1') -Destination (Join-Path $o3Dir 'sign-release.ps1')
+    New-Cmd (Join-Path $o3Dir 'lib.ps1') @('Add-Content -LiteralPath $env:O3_MARKER -Value ''sibling lib loaded''')
+    $o3Run = Join-Path $o3Dir 'run.ps1'
+    $o3Dot = Join-Path $o3Dir 'dot.ps1'
+    New-Cmd $o3Run @('function Get-AndroidGeneratedMissing { }', ('& ''' + (Join-Path $o3Dir 'sign-release.ps1') + ''' -OutDir ''' + (Join-Path $o3Dir 'out') + ''''))
+    New-Cmd $o3Dot @('function Get-AndroidGeneratedMissing { }', ('. ''' + (Join-Path $o3Dir 'sign-release.ps1') + ''''))
+    $env:O3_MARKER = Join-Path $o3Dir 'marker.txt'
+    $savedAgent = $env:CLAUDECODE
+    $env:CLAUDECODE = '1'
+    try {
+        $o3a = Invoke-ScriptChild $o3Run @()
+        $o3Loaded = Test-Path -LiteralPath $env:O3_MARKER
+        Remove-Item -LiteralPath $env:O3_MARKER -Force -ErrorAction SilentlyContinue
+        $o3b = Invoke-ScriptChild $o3Dot @()
+        $o3Kept = -not (Test-Path -LiteralPath $env:O3_MARKER)
+    } finally {
+        if ($null -eq $savedAgent) { Remove-Item Env:\CLAUDECODE -ErrorAction SilentlyContinue } else { $env:CLAUDECODE = $savedAgent }
+        Remove-Item Env:\O3_MARKER -ErrorAction SilentlyContinue
+    }
+    Assert ($o3a.Text -match 'agent shell' -and $o3Loaded) 'sign-release: run as a script it loads the lib beside it even when the session already defines a lib function'
+    Assert ($o3Kept -and $o3b.Exit -eq 0) 'sign-release: dot-sourced with a lib function already defined, it loads no lib of its own'
 
     $sentLogText = ''
     if (Test-Path -LiteralPath $script:sentinelLog) { $sentLogText = [IO.File]::ReadAllText($script:sentinelLog) }
-    Assert ($sentLogText -eq '') ('isolation: no fixture-push test started adb directly (the sentinel log is empty: "' + $sentLogText.Trim() + '")')
-    Remove-Item -LiteralPath 'Env:ADBG_FAKE_ADB_SCRIPT'
+    Assert ($sentLogText -eq '') ('isolation: no guarded test started adb directly (the sentinel log is empty: "' + $sentLogText.Trim() + '")')
+
+    # No alternate adb (TR-2): the removed -AdbExe is rejected at parameter binding and the decoy never runs.
+    $decoyAdbAll = Join-Path $work 'decoy-adb-all.cmd'
+    New-Cmd $decoyAdbAll @('@echo off', ('>>"' + $env:DECOY_MARKER + '" echo decoy adb ran'), 'exit /b 0')
+    foreach ($tr2 in @(
+            @{ Name = 'Run-Check'; Args = @('-CheckId', 'tr2', '-MaxSeconds', '30', '-FilePath', (Join-Path $childDir 'done.cmd'), '-BuildKind', 'none', '-Serial', $note9Serial) },
+            @{ Name = 'device-prep'; Args = @('-Serial', $note9Serial) },
+            @{ Name = 'cold-start'; Args = @('-Serial', $note9Serial) },
+            @{ Name = 'mock-reverse'; Args = @('-Serial', $note9Serial, '-Remove') },
+            @{ Name = 'sign-install'; Args = @('-Kind', 'debug', '-Serial', $note9Serial, '-Apk', $fxFile) },
+            @{ Name = 'fixture-push'; Args = @('-FixturePath', $fxFile, '-Serial', $note9Serial) },
+            @{ Name = 'snapshot'; Args = @('-Id', 'tr2snap', '-Serial', $note9Serial, '-SnapshotRoot', $sroot) },
+            @{ Name = 'restore-snapshot'; Args = @('-Id', 'base1', '-Serial', $note9Serial, '-SnapshotRoot', $sroot) },
+            @{ Name = 'import-bin'; Args = @('-NoRestore', '-RemoteName', 'fx.bin', '-Serial', $note9Serial, '-SnapshotRoot', $sroot) })) {
+        Clear-Calls
+        $tr2Out = Join-Path $work ('tr2-' + $tr2.Name)
+        $tr2Run = Invoke-ScriptChild (Join-Path $RunnerDir ($tr2.Name + '.ps1')) (@('-OutDir', $tr2Out) + $tr2.Args + @('-AdbExe', $decoyAdbAll, '-RepoRoot', $work))
+        Assert (-not $tr2Run.TimedOut -and $tr2Run.Exit -ne 0 -and -not (Test-Path -LiteralPath (Join-Path $tr2Out 'result.json')) -and -not (Test-Path -LiteralPath $env:DECOY_MARKER) -and (Get-FakeCalls) -eq '') ($tr2.Name + ': -AdbExe is not accepted, so no alternate adb can run')
+    }
 
     # import-bin: pass from a restored snapshot, with the fixture pushed and then hash-skipped
     Initialize-ImportFake
@@ -2071,6 +2331,15 @@ try {
     $ci = $cc.IndexOf('risu-restore'); $ca = $cc.IndexOf('am start -W')
     Assert ($ci -ge 0 -and $ca -gt $ci) 'import: the snapshot is restored before the app is launched'
     Assert (-not ([IO.File]::ReadAllText((Join-Path $fdir 'forwards.txt')) -match 'webview_devtools_remote')) 'import: the forward it made is removed at the end'
+    # TR-6: the restore child runs under its own guard log, started by import-bin without any adb path, and nothing was refused.
+    $impLog = Join-Path $i1.Out 'adb\adb-commands.log'
+    $resLog = Join-Path $i1.Out 'restore\adb\adb-commands.log'
+    $impLogText = ''
+    $resLogText = ''
+    if (Test-Path -LiteralPath $impLog) { $impLogText = [IO.File]::ReadAllText($impLog) }
+    if (Test-Path -LiteralPath $resLog) { $resLogText = [IO.File]::ReadAllText($resLog) }
+    Assert ($impLogText -match '(?m)^\S+ intent: ' -and $resLogText -match '(?m)^\S+ intent: ' -and $resLogText -match 'risu-restore' -and $impLogText -notmatch 'REFUSED' -and $resLogText -notmatch 'REFUSED' -and -not (Test-Path -LiteralPath $env:DECOY_MARKER)) 'import: the run and its restore child each write a guard log with their calls and no refusal'
+    Assert (-not (Test-Path -LiteralPath $script:sentinelLog) -or [IO.File]::ReadAllText($script:sentinelLog) -eq '') 'import: no adb is started bare by the run or its restore child (the sentinel log stays empty)'
     Initialize-ImportFake
     Set-RingPlan $okRing
     Clear-Calls
@@ -2082,6 +2351,13 @@ try {
     $i1c = Invoke-Import 'imp-skip2' @('-FixturePath', $fxFile, '-NoRestore')
     $cc = Get-FakeCalls
     Assert ($i1c.Exit -eq 0 -and $i1c.Result.fixture.pushSkipped -eq $true -and $cc -notmatch '(^|\n)push ' -and $cc -notmatch 'risu-restore' -and $null -eq $i1c.Result.snapshot) 'import: a fixture already on the device is not pushed again and -NoRestore never calls the restore'
+    # TR-5: with the default port range the CDP forward is a guarded forward inside 6330-6399, which the run named as its own ports.
+    Initialize-ImportFake
+    Set-RingPlan $okRing
+    Clear-Calls
+    $i1d = Invoke-Import 'imp-defports' @('-FixturePath', $fxFile, '-NoRestore') -DefaultPorts
+    $fwdPorts = @([regex]::Matches((Get-FakeCalls), '(?m)^forward --no-rebind tcp:(\d+) localabstract:webview_devtools_remote_') | ForEach-Object { [int]$_.Groups[1].Value })
+    Assert ($i1d.Exit -eq 0 -and $i1d.Result.verdict -eq 'pass' -and $fwdPorts.Count -ge 1 -and @($fwdPorts | Where-Object { $_ -lt 6330 -or $_ -gt 6399 }).Count -eq 0) 'import: with the default ports the CDP forward goes through the guard inside 6330-6399'
 
     # the app reloads its page after the commit: the ring ends with the commit start, and the import is done at the restart
     $restartRing = @(@{ phase = 'walked, 3 entries'; t = 1000; heapMiB = 90 }, @{ phase = 'copy 2 of 3 entries'; t = 2500; heapMiB = 91 }, @{ phase = 'import commit start, attempt 1'; t = 4000; heapMiB = 92; fx = 'restart' })
@@ -2373,8 +2649,6 @@ try {
 
     # ---------- mock-reverse against the stateful fake ----------
     # A real listener on a free loopback port stands in for the mock endpoint; the rule list lives in reverses.txt of the fake.
-    $env:FAKE_ADB_DIR = $fdir
-    $env:FAKE_ADB_MODE = 'device'
     $mockScript = Join-Path $RunnerDir 'mock-reverse.ps1'
     $mockListener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
     $mockListener.Start()
@@ -2385,9 +2659,9 @@ try {
     $mockSpare.Stop()
     $mockRule = 'tcp:' + $mockPort
     $mockNl = [string][char]10
-    function Invoke-MockReverse([string]$Name, [string[]]$Extra = @(), [int]$UsePort = $mockPort, [string]$UseSerial = 'FAKE', [string]$UseAdb = $fake2) {
+    function Invoke-MockReverse([string]$Name, [string[]]$Extra = @(), [int]$UsePort = $mockPort, [string]$UseSerial = $note9Serial) {
         $o = Join-Path $work $Name
-        $a = @('-NoProfile', '-File', $mockScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', 'FAKE', '-Port', [string]$UsePort, '-AdbExe', $UseAdb, '-RepoRoot', $work) + $Extra
+        $a = @('-NoProfile', '-File', $mockScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', $note9Serial, '-Port', [string]$UsePort, '-RepoRoot', $work) + $Extra
         $text = (& pwsh @a | Out-String)
         $c = $LASTEXITCODE
         $res = $null
@@ -2435,8 +2709,11 @@ try {
         Assert ($mr5.Exit -ne 0 -and $mr5.Result.reason -match 'not in the allowed list' -and (Get-FakeCalls) -eq '' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: a serial outside the allowed list is refused before any adb call'
         $mr6 = Invoke-MockReverse 'mr-nolistener' @() $mockFreePort
         Assert ($mr6.Exit -ne 0 -and $mr6.Result.reason -match 'no listener' -and $mr6.Result.mockReverse.listener -eq $false -and (Get-FakeCalls) -eq '' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: with no PC listener the rule is refused and adb is not called'
-        $mr7 = Invoke-MockReverse 'mr-noadb' @() $mockPort 'FAKE' (Join-Path $work 'no-such-adb.exe')
-        Assert ($mr7.Exit -ne 0 -and $mr7.Result.verdict -eq 'fail' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: an unavailable adb fails cleanly'
+        # The guard reserves the adb server's own port: a rule for the port an adb server listens on is refused (DZ-10), never added.
+        $savedServerPort = $env:ANDROID_ADB_SERVER_PORT
+        $env:ANDROID_ADB_SERVER_PORT = [string]$mockPort
+        try { $mr7 = Invoke-MockReverse 'mr-reservedport' } finally { if ($null -eq $savedServerPort) { Remove-Item Env:\ANDROID_ADB_SERVER_PORT -ErrorAction SilentlyContinue } else { $env:ANDROID_ADB_SERVER_PORT = $savedServerPort } }
+        Assert ($mr7.Exit -ne 0 -and $mr7.Result.verdict -eq 'fail' -and $mr7.Result.reason -match 'adb reverse failed' -and $mr7.Result.reason -match 'DZ-10' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: a rule for the adb server port is refused by the guard (DZ-10) and no reverse is added'
         Clear-Calls
         Set-Fake 'mode' 'offline'
         $mr8 = Invoke-MockReverse 'mr-offline'
@@ -2494,7 +2771,6 @@ try {
         Clear-Fake
     }
 } finally {
-    Remove-Item Env:\FAKE_ADB_MODE -ErrorAction SilentlyContinue
     Remove-Item Env:\FAKE_LOCK_FILE -ErrorAction SilentlyContinue
     foreach ($id in ($script:spawned | Sort-Object -Unique)) {
         $p = Get-Process -Id $id -ErrorAction SilentlyContinue

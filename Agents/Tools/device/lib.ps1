@@ -8,9 +8,9 @@
 # - Every adb call is bounded by a timeout and checked by exit code.
 # - Descendants of a child are recorded on every tick, so an orphan whose parent already exited can still be stopped by PID.
 
-$script:AdbPath = 'adb'
 $script:AdbTmp = $null
-# Set by Initialize-AdbGuard: every Invoke-Adb call then goes through device-guard/adbg.mjs and never starts adb itself.
+# Set by Initialize-AdbGuard. Every Invoke-Adb call goes through device-guard/adbg.mjs; this file never starts adb itself and
+# has no unguarded adb path.
 $script:AdbGuard = $null
 $script:AdbSeq = 0
 $script:DefaultPackage = 'io.github.yor42.risutanium'
@@ -198,19 +198,13 @@ function Assert-DeviceSerial([string]$Serial) {
 
 function Invoke-Adb {
     param([Parameter(Mandatory)][string[]]$AdbArgs, [int]$TimeoutSec = 20, [string]$Serial)
-    if (-not $script:AdbTmp) { throw 'Initialize-Adb must run first' }
+    if (-not $script:AdbTmp -or -not $script:AdbGuard) { throw 'Initialize-AdbGuard must run first' }
     Assert-DeviceSerial $Serial
     $script:AdbSeq++
     $base = Join-Path $script:AdbTmp ('adb-' + $PID + '-' + $script:AdbSeq)
-    if ($script:AdbGuard) {
-        # The guard sends the adb call itself with its own `-s <serial>` and logs an intent and an exit line for it.
-        $exe = Get-NodePath
-        $all = @($script:AdbGuard.Path, '--serial', $Serial, '--log', $script:AdbGuard.Log, '--')
-    } else {
-        $exe = $script:AdbPath
-        $all = @('-s', $Serial)
-    }
-    $all += $AdbArgs
+    # The guard sends the adb call itself with its own `-s <serial>` and logs an intent and an exit line for it.
+    $exe = Get-NodePath
+    $all = Get-GuardArgList $Serial $AdbArgs
     $stdin = $base + '.in'
     [IO.File]::WriteAllText($stdin, '')
     $p = Start-Process -FilePath $exe -ArgumentList (Join-ProcessArgs $all) `
@@ -234,50 +228,78 @@ function Invoke-Adb {
     return $res
 }
 
-# The first adb call may spawn the server, which inherits the redirect handles; run it once with output files that stay.
-function Initialize-Adb([string]$Dir, [string]$AdbExe) {
-    if ($script:AdbGuard) { throw 'Initialize-Adb refused: adb calls are guarded and never start adb directly' }
-    if ($AdbExe) { $script:AdbPath = $AdbExe }
-    New-Item -ItemType Directory -Force -Path $Dir | Out-Null
-    $script:AdbTmp = $Dir
-    $out = Join-Path $Dir 'adb-start-server.out'
-    $err = Join-Path $Dir 'adb-start-server.err'
-    $in = Join-Path $Dir 'adb-start-server.in'
-    [IO.File]::WriteAllText($in, '')
-    $p = Start-Process -FilePath $script:AdbPath -ArgumentList 'start-server' -RedirectStandardOutput $out `
-        -RedirectStandardError $err -RedirectStandardInput $in -NoNewWindow -PassThru
-    $null = $p.Handle
-    if (-not $p.WaitForExit(30000)) {
-        try { $p.Kill($true) } catch { }
-        return $false
-    }
-    return ($p.ExitCode -eq 0)
+# Provenance (TB-1): this file, chatshell-cdp/lib.mjs and device-guard/adbg.mjs are siblings in one tree. Every entry script loads
+# this file from its own tree by a relative path, and this file loads the guard beside itself. No variable or parameter selects
+# either.
+# Single builder (TB-2): every guard argument list comes from Get-GuardArgList, which always puts --kit first. The guard
+# refuses a --kit call on any serial other than the two spare Note 9s before it sends anything, so a script that starts on
+# another serial stops at its first call, and a later call on another serial is refused the same way.
+$script:AdbInitReason = ''
+
+# Why the last Initialize-AdbGuard returned $false; empty after a successful init. Every routed script reports it as its failure reason.
+function Get-AdbInitReason { return $script:AdbInitReason }
+
+# The only place that builds guard arguments. Throws before Initialize-AdbGuard has committed a guard.
+function Get-GuardArgList([string]$Serial, [string[]]$AdbArgs) {
+    if (-not $script:AdbGuard) { throw 'Initialize-AdbGuard must run first' }
+    $a = @($script:AdbGuard.Path, '--kit', '--serial', $Serial, '--log', $script:AdbGuard.Log)
+    if ($script:AdbGuard.OwnPorts.Count -gt 0) { $a += @('--own-ports', ($script:AdbGuard.OwnPorts -join ',')) }
+    return @($a + @('--') + $AdbArgs)
 }
 
-# Guarded counterpart of Initialize-Adb: from here on every Invoke-Adb call runs through device-guard/adbg.mjs, which allows or
-# refuses it and logs it to $Log. The guard sits beside this folder and its path is fixed; there is no override. The
-# start-server call keeps its own output files for the same reason as in Initialize-Adb.
-function Initialize-AdbGuard([string]$Dir, [string]$Serial, [string]$Log) {
+# Lets a bound that exceeds the guard's 600 s kill stay under it: the script reports its own timeout instead of a killed guard.
+function Get-GuardCallCap([int]$LeftSec) { return [math]::Min($LeftSec, 590) }
+
+# True when a finished call was refused by the guard itself (its exit codes plus its own stderr line), not by adb or the device.
+function Test-AdbGuardRefusal($Res) {
+    if ($null -eq $Res -or $null -eq $Res.ExitCode) { return $false }
+    return ($Res.ExitCode -in @(2, 89, 92, 93, 95, 97, 98, 99) -and $Res.Err -cmatch '(?m)^adbg: ')
+}
+
+# The only way to start adb calls: from here on every Invoke-Adb call runs through device-guard/adbg.mjs, which allows or
+# refuses it and logs it to $Log. The guard sits beside this folder and its path is fixed; there is no override. The first adb
+# call may spawn the server, which inherits the redirect handles, so the start-server call keeps its own output files. -OwnPorts
+# names the host ports the script may forward or reverse; it is passed to the guard on every call. A failure leaves its reason in
+# Get-AdbInitReason.
+function Initialize-AdbGuard([string]$Dir, [string]$Serial, [string]$Log, [int[]]$OwnPorts = @()) {
+    $script:AdbInitReason = ''
     Assert-DeviceSerial $Serial
+    if ($OwnPorts.Count -gt 128) { throw 'Initialize-AdbGuard: -OwnPorts holds more than 128 ports' }
+    foreach ($port in $OwnPorts) {
+        if ($port -lt 10 -or $port -gt 65535) { throw ('Initialize-AdbGuard: -OwnPorts value ' + $port + ' is outside 10-65535') }
+    }
     $guard = Join-Path $script:DeviceToolsDir '..\device-guard\adbg.mjs'
     if (-not (Test-Path -LiteralPath $guard -PathType Leaf)) { throw ('device guard not found: ' + $guard) }
     $guard = (Resolve-Path -LiteralPath $guard).ProviderPath
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     $script:AdbTmp = $Dir
-    $script:AdbGuard = @{ Path = $guard; Log = $Log }
+    $script:AdbGuard = @{ Path = $guard; Log = $Log; OwnPorts = @($OwnPorts) }
     $out = Join-Path $Dir 'adb-start-server.out'
     $err = Join-Path $Dir 'adb-start-server.err'
     $in = Join-Path $Dir 'adb-start-server.in'
     [IO.File]::WriteAllText($in, '')
-    $argLine = Join-ProcessArgs @($guard, '--serial', $Serial, '--log', $Log, '--', 'start-server')
+    $argLine = Join-ProcessArgs (Get-GuardArgList $Serial @('start-server'))
     $p = Start-Process -FilePath (Get-NodePath) -ArgumentList $argLine -RedirectStandardOutput $out `
         -RedirectStandardError $err -RedirectStandardInput $in -NoNewWindow -PassThru
     $null = $p.Handle
     if (-not $p.WaitForExit(30000)) {
         try { $p.Kill($true) } catch { }
+        $script:AdbInitReason = 'adb start-server timed out'
         return $false
     }
-    return ($p.ExitCode -eq 0)
+    if ($p.ExitCode -ne 0) {
+        $line = @([IO.File]::ReadAllLines($err) | Where-Object { $_ -cmatch '^adbg: ' } | Select-Object -First 1)
+        $script:AdbInitReason = 'adb start-server failed (adbg exit ' + $p.ExitCode + ': ' + ($line -join '') + '; refusals are logged in ' + $Log + ')'
+        return $false
+    }
+    return $true
+}
+
+# The executable and argument list of one guarded adb call, for a caller that must run it itself (a streamed transfer). It
+# carries --kit like every other call, so a serial outside the two spare Note 9s is refused before anything is sent.
+function Get-AdbInvocation([string]$Serial, [string[]]$AdbArgs) {
+    Assert-DeviceSerial $Serial
+    return @{ File = (Get-NodePath); Args = (Get-GuardArgList $Serial $AdbArgs) }
 }
 
 function Get-DeviceState([string]$Serial) {
@@ -554,7 +576,7 @@ function Exit-Lock([string]$Path) {
 # Same contract as Invoke-Adb for any host tool: output goes to files, the wait is bounded, the kill acts on our own handle.
 function Invoke-Bounded {
     param([Parameter(Mandatory)][string]$FilePath, [string[]]$ArgumentList = @(), [int]$TimeoutSec = 20)
-    if (-not $script:AdbTmp) { throw 'Initialize-Adb must run first' }
+    if (-not $script:AdbTmp) { throw 'Initialize-AdbGuard must run first' }
     $script:AdbSeq++
     $base = Join-Path $script:AdbTmp ('tool-' + $PID + '-' + $script:AdbSeq)
     $stdin = $base + '.in'
@@ -652,7 +674,7 @@ function Get-AppDataStats([string]$Serial, [string]$Package, [string[]]$Names) {
         }
         foreach ($n in $Names) { if (-not $kb.Contains($n)) { return $null } }
         # One line per regular file: size in bytes and path. The sizes are summed per top-level entry on this side.
-        $c = Invoke-AdbShell $Serial ('run-as ' + $Package + ' find ' + ($Names -join ' ') + ' -type f -exec stat -c ''%s %n'' {} +') 600
+        $c = Invoke-AdbShell $Serial ('run-as ' + $Package + ' find ' + ($Names -join ' ') + ' -type f -exec stat -c ''%s %n'' {} +') (Get-GuardCallCap 600)
         if ($c.TimedOut -or $c.ExitCode -ne 0) { return $null }
         foreach ($n in $Names) { $bytes[$n] = [int64]0 }
         foreach ($l in ($c.Out -split '\r?\n')) {
