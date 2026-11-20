@@ -811,8 +811,8 @@ describe('a send that fails or is stopped while its chat is not on screen (T19b,
         expect(notifyCalls()).toEqual([])
     }
 
-    test('reproducer (T19b, M45): an early failure posts an error chip and no chime and no notification, web or Android', async () => {
-        readyWorld()
+    test('reproducer (T19b, M45): an early failure written into the chat posts an error chip and no chime and no notification, web or Android', async () => {
+        readyWorld({ inlayErrorResponse: true })
         androidWithSwitchOn()
         requestChatDataMock.mockReset()
         requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
@@ -823,7 +823,7 @@ describe('a send that fails or is stopped while its chat is not on screen (T19b,
     })
 
     test('reproducer (T19b, M45): the same on the web with the opt-in on', async () => {
-        readyWorld()
+        readyWorld({ inlayErrorResponse: true })
         webWithNotificationOptIn()
         requestChatDataMock.mockReset()
         requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
@@ -831,6 +831,20 @@ describe('a send that fails or is stopped while its chat is not on screen (T19b,
         expect(await sendThenLeave(toB)).toBe(false)
 
         expectOnlyTheChip('error', 'char-0\'s reply failed')
+    })
+
+    test('reproducer (#297): an early failure that raised the error dialog posts no chip, no chime and no notification', async () => {
+        readyWorld()
+        androidWithSwitchOn()
+        requestChatDataMock.mockReset()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
+
+        expect(await sendThenLeave(toB)).toBe(false)
+
+        expect(toasts()).toEqual([])
+        expect(audioPlays.count).toBe(0)
+        expect(notifications).toEqual([])
+        expect(notifyCalls()).toEqual([])
     })
 
     test('reproducer (MC-1204): a failed reply on screen, with no chip, still silences the composer chime', async () => {

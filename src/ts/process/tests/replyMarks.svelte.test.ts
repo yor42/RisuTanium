@@ -484,6 +484,7 @@ const marks: ReplyMarkModule = (await import(/* @vite-ignore */ MARKS_PATH).catc
     replyMarkOf: missing('replyMarkOf'),
     setReplyMark: missing('setReplyMark'),
     noteUnitFailure: missing('noteUnitFailure'),
+    noteUnitAlerted: missing('noteUnitAlerted'),
     recordReplyOutcome: missing('recordReplyOutcome'),
 }
 const { classifyReplyOutcome, clearReplyMark, replyMarkOf, setReplyMark } = marks
@@ -492,6 +493,7 @@ import type { JsonObject } from 'src/ts/storage/blockFrame'
 import { installChatSurface, resetChatSurfaceForTests } from 'src/lib/ChatScreens/chatSurface.svelte'
 import { studioOpen } from 'src/ts/studio/studioOpen'
 import { toastHost, resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
+import { alertError } from 'src/ts/alert'
 import { DynamicGUI, settingsOpen, ShowRealmFrameStore, sideBarStore } from 'src/ts/stores.svelte'
 
 //#region the page and its observations
@@ -750,6 +752,34 @@ describe('a send that fails or is stopped while its chat is not on screen (T19b,
 
         expect(await sendThenLeave(toB)).toBe(false)
 
+        expect(firstChat().unseenReply).toBe('error')
+    })
+
+    test('reproducer (#297): a failure whose error dialog was raised posts no failure toast, and the chat still gets the red mark', async () => {
+        vi.mocked(alertError).mockClear()
+        resetToastHostForTests()
+        installWorld()
+        installPage()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
+
+        expect(await sendThenLeave(toB)).toBe(false)
+
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(expect.stringContaining('boom'))
+        expect(toastHost.visible).toEqual([])
+        expect(firstChat().unseenReply).toBe('error')
+    })
+
+    test('compatibility guard (#297): a failure written into the chat raises no dialog, so its failure toast stays', async () => {
+        vi.mocked(alertError).mockClear()
+        resetToastHostForTests()
+        installWorld({ inlayErrorResponse: true })
+        installPage()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
+
+        expect(await sendThenLeave(toB)).toBe(false)
+
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        expect(toastHost.visible.map((toast) => toast.kind)).toEqual(['error'])
         expect(firstChat().unseenReply).toBe('error')
     })
 
