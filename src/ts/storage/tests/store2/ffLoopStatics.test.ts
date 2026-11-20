@@ -49,7 +49,7 @@ import {
  * Statics counters over the real save loop and fast-forward: each side's increment since the base is counted once, equal
  * increments included.
  *
- * The D1 tests pin accepted limitation L2 (maintainer, 2026-11-20): when this page's own commit landed but the loop never learned it
+ * The D1 tests pin accepted limitation L2 (MC-2553): when this page's own commit landed but the loop never learned it
  * and a peer write then moved the commit key, the next fast-forward merges a tree that already holds this page's
  * increment against the earlier base, so the counter is over-counted by that increment. They document accepted
  * behaviour and flip only when the follow-up that flags a possibly-landed write lands; they must not be rewritten to hide

@@ -7,7 +7,7 @@ import type { UsageEntry } from './usageTypes'
 /**
  * The real `mergeStatics` (fast-forward) with ledger outputs as inputs. Two tabs that make the same change to one key
  * between fast-forwards add both changes; a key both tabs deleted stays deleted; two tabs that both reset sum what
- * each recorded afterwards. Accepted limitation L2 (maintainer, 2026-11-20): when this page's own write landed but its save loop
+ * each recorded afterwards. Accepted limitation L2 (MC-2553): when this page's own write landed but its save loop
  * never learned it, the next fast-forward merges a tree that already holds that increment against the earlier base and
  * counts it twice; `ffLoopStatics.test.ts` pins it.
  */
