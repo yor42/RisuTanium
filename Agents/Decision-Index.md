@@ -2289,3 +2289,4 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2750](Maintainer-Context.md#mc-2750--main-registry-grant-rule-documented-one-tooling-ticket-for-automatic-per-worktree-grants-2026-11-20) | Main-registry grant rule documented; one tooling ticket for automatic per-worktree grants, 2026-11-20 |
 | [MC-2751](Maintainer-Context.md#mc-2751--governance-v2-rollout-as-staged-docs-only-prs-2026-11-20) | Governance v2 rollout as staged docs-only PRs, 2026-11-20 |
 | [MC-2752](Maintainer-Context.md#mc-2752--untracked-handoff-2026-10-08-backlog-archived-2026-11-20) | Untracked Handoff-2026-10-08 backlog archived, 2026-11-20 |
+| [MC-2753](Maintainer-Context.md#mc-2753--workflow-policyjson-takes-the-maintainers-implementation-cap-of-10-2026-11-20) | workflow-policy.json takes the maintainer's implementation cap of 10, 2026-11-20 |
