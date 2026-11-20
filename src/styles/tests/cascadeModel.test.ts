@@ -120,6 +120,31 @@ describe('cascade order', () => {
         const none = model(css, {})
         expect(none.painted(document.getElementById('a')!)['outline-color']).toBeUndefined()
     })
+
+    test(':hover matches only the hovered element and nothing without one, and a stale hover does not leak into the next model', () => {
+        mount('<button id="a" class="h"></button><button id="b" class="h"></button>')
+        const css = '.h:hover{outline:2px solid #123456}'
+        const a = document.getElementById('a')!
+        const b = document.getElementById('b')!
+        const m = model(css, { hovered: a })
+        expect(m.painted(a)['outline-color']).toBe('#123456ff')
+        expect(m.painted(b)['outline-color']).toBeUndefined()
+        expect(model(css, {}).painted(a)['outline-color']).toBeUndefined()
+        expect(model(css, { hovered: b }).painted(a)['outline-color']).toBeUndefined()
+    })
+
+    test('@media (hover: hover) holds only with hoverMedia; other hover queries stay false', () => {
+        mount('<button id="a" class="h"></button>')
+        const css = '.h{color:#111111} @media (hover: hover){.h:hover{color:#222222}} @media (hover: none){.h:hover{background-color:#333333}} @media (any-hover: hover){.h:hover{border-top-color:#444444}}'
+        const a = document.getElementById('a')!
+        const on = model(css, { hovered: a, hoverMedia: true }).painted(a)
+        expect(on.color).toBe('#222222ff')
+        expect(on['background-color']).toBeUndefined()
+        expect(on['border-top-color']).toBeUndefined()
+        expect(model(css, { hovered: a, hoverMedia: false }).painted(a).color).toBe('#111111ff')
+        expect(model(css, { hovered: a }).painted(a).color).toBe('#111111ff')
+        expect(model(css, { hoverMedia: true }).painted(a).color).toBe('#111111ff')
+    })
 })
 
 describe('the pack element and the root attribute', () => {

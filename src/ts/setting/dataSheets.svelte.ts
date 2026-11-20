@@ -15,10 +15,13 @@ import { leaveOutSheetDef } from './dataLeaveOutSheet';
 export type BackupFormat = 'rtb' | 'bin';
 export type BackupScope = 'full' | 'partial';
 
-export interface BackupChoice {
-    format: BackupFormat;
-    scope: BackupScope;
-}
+/**
+ * What the chooser answers. Only a `.rtb` can carry a password; a `.bin` never encrypts, so its answer has none. The
+ * password is the text exactly as typed and lives only in this answer, never in the sheet state.
+ */
+export type BackupChoice =
+    | { format: 'rtb'; scope: BackupScope; password?: string }
+    | { format: 'bin'; scope: BackupScope; password?: never };
 
 /** What a person chose on the leave-out sheet: continue with the `.bin`, make an `.rtb` instead, or stop. */
 export type LeaveOutAnswer = 'bin' | 'rtb' | 'cancel';

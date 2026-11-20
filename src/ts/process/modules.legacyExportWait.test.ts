@@ -132,6 +132,7 @@ import { languageEnglish } from 'src/lang/en'
 import { languageKorean } from 'src/lang/ko'
 import { fillLang } from 'src/lang/fill'
 import { exportModuleLegacy, type RisuModule } from './modules'
+import { resetTaskHostForTests, taskHostView, taskResultShowing, taskShown } from 'src/ts/alertTask.svelte'
 
 const twoAssetModule = {
     name: 'M', description: '', id: 'm1',
@@ -163,8 +164,12 @@ beforeEach(() => {
     spies.offersCancel.mockReturnValue(false)
     spies.readImage.mockReset()
     spies.readImage.mockResolvedValue(new Uint8Array([1]))
+    resetTaskHostForTests()
 })
-afterEach(() => changeLanguage('en'))
+afterEach(() => {
+    resetTaskHostForTests()
+    changeLanguage('en')
+})
 
 describe('exportModuleLegacy asset wait text', () => {
     test('guard: English shows the exact English text per asset with a zero-based counter', async () => {
@@ -227,23 +232,32 @@ describe('exportModuleLegacy save result', () => {
     })
 
     test('regression reproducer: a saved export shows the success notice once, after the file was closed', async () => {
+        let resultWhileClosing: boolean | undefined
+        spies.close.mockImplementation(async () => { resultWhileClosing = taskResultShowing() })
+
         await exportModuleLegacy(twoAssetModule)
 
-        expect(spies.normal).toHaveBeenCalledTimes(1)
+        expect(resultWhileClosing).toBe(false)
+        expect(taskResultShowing()).toBe(true)
+        expect(taskHostView()?.result?.summary).toHaveLength(1)
+        expect(spies.normal).not.toHaveBeenCalled()
         expect(spies.clear).not.toHaveBeenCalled()
         expect(spies.close).toHaveBeenCalledTimes(1)
-        expect(spies.close.mock.invocationCallOrder[0]).toBeLessThan(spies.normal.mock.invocationCallOrder[0])
     })
 
-    test('regression reproducer: with a Cancel offered and no success notice, the wait dialog is gone after the export', async () => {
+    test('regression reproducer: with a Cancel offered and no success notice, the card is gone after the export', async () => {
         spies.offersCancel.mockReturnValue(true)
+        const offered: Array<boolean | undefined> = []
+        spies.write.mockImplementation(async () => { offered.push(taskHostView()?.cancelOffered) })
 
         await exportModuleLegacy(twoAssetModule, { alertEnd: false })
 
         expect(spies.normal).not.toHaveBeenCalled()
         expect(spies.close).toHaveBeenCalledTimes(1)
-        expect(spies.storeSet.mock.calls.some(([value]) => (value as ScreenAlert).type === 'wait' && (value as ScreenAlert).onCancel !== undefined)).toBe(true)
-        expect(spies.screen().type).not.toBe('wait')
+        expect(offered.length).toBeGreaterThan(0)
+        expect(offered.every((value) => value === true)).toBe(true)
+        expect(spies.storeSet.mock.calls.some(([value]) => (value as ScreenAlert).type === 'wait' && (value as ScreenAlert).onCancel !== undefined)).toBe(false)
+        expect(taskShown()).toBe(false)
     })
 
     test('regression reproducer: the Cancel rule is asked once with the risum type and the asset count, and a module without assets still finishes', async () => {

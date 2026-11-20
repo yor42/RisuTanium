@@ -77,17 +77,20 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 }) as unknown as typeof import('src/ts/interchangeability'))
 vi.mock(import('src/ts/characterCards'), () => ({
     exportCharacterCard: spies.exportCard,
+    exportOffersCancel: vi.fn(() => !platformBox.isTauri),
     importCharacterProcess: vi.fn(),
     preflightCardExport: vi.fn(async () => ({ kind: 'ok', large: new Map() })),
 }) as unknown as typeof import('src/ts/characterCards'))
 
 import { language } from 'src/lang'
 import { exportModule, type RisuModule } from './modules'
+import { resetTaskHostForTests, taskHostView, taskShown } from 'src/ts/alertTask.svelte'
 
 const module = { name: 'M', description: '', id: 'm1' } as unknown as RisuModule
 
 beforeEach(() => {
     vi.clearAllMocks()
+    resetTaskHostForTests()
     spies.init.mockImplementation(async () => true)
     spies.exportCard.mockImplementation(async () => true)
     platformBox.isTauri = false
@@ -97,21 +100,22 @@ describe('exportModule result handling', () => {
     test('guard: a completed web export says the download started', async () => {
         await exportModule(module)
         expect(spies.exportCard).toHaveBeenCalledTimes(1)
-        expect(spies.alertNormal).toHaveBeenCalledWith(language.exportDownloadStarted)
-        expect(spies.alertNormal).not.toHaveBeenCalledWith(language.successExport)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportDownloadStarted])
+        expect(spies.alertNormal).not.toHaveBeenCalled()
     })
 
     test('guard: a completed desktop export keeps the saved message', async () => {
         platformBox.isTauri = true
         await exportModule(module)
-        expect(spies.alertNormal).toHaveBeenCalledWith(language.successExport)
-        expect(spies.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
+        expect(spies.alertNormal).not.toHaveBeenCalled()
     })
 
     test('guard: alertEnd false keeps a completed export silent', async () => {
         await exportModule(module, { alertEnd: false })
         expect(spies.exportCard).toHaveBeenCalledTimes(1)
         expect(spies.alertNormal).not.toHaveBeenCalled()
+        expect(taskShown()).toBe(false)
     })
 
     test('regression reproducer: a failed export shows no success message over its error', async () => {
@@ -119,6 +123,8 @@ describe('exportModule result handling', () => {
         await exportModule(module)
         expect(spies.exportCard).toHaveBeenCalledTimes(1)
         expect(spies.alertNormal).not.toHaveBeenCalled()
+        // The mocked card export ends nothing; the module export's own close leaves no card behind.
+        expect(taskShown()).toBe(false)
     })
 
     test('regression reproducer: a cancelled save dialog exports nothing and shows no alert', async () => {
@@ -127,5 +133,7 @@ describe('exportModule result handling', () => {
         expect(spies.exportCard).not.toHaveBeenCalled()
         expect(spies.alertNormal).not.toHaveBeenCalled()
         expect(spies.alertError).not.toHaveBeenCalled()
+        expect(taskShown()).toBe(false)
+        expect(taskHostView()).toBeNull()
     })
 })

@@ -24,7 +24,8 @@ export interface DataBackupDeps {
     chooseBackup: () => Promise<BackupChoice | null>;
     saveBin: (options: BackupExportOptions) => Promise<ExportOutcome>;
     savePartialBin: (options: BackupExportOptions, entry: PartialBinEntry) => Promise<ExportOutcome>;
-    startRtb: () => Promise<RtbExportResult | null>;
+    /** `password` is set only for a sealed `.rtb`; the leave-out "Make .rtb instead" path calls this with no argument. */
+    startRtb: (password?: string) => Promise<RtbExportResult | null>;
     /** Shows the leave-out sheet; `null` means nobody answered it. */
     askLeaveOut: (summary: readonly BinLeaveOutEntry[]) => Promise<LeaveOutAnswer | null>;
     /** Sets, or with `null` clears, the line under the backup row that repeats what the last `.bin` left out. */
@@ -42,7 +43,7 @@ export async function runDataBackup(deps: DataBackupDeps): Promise<void> {
     const choice = await deps.chooseBackup();
     if (choice === null) return;
     if (choice.format === 'rtb') {
-        await deps.startRtb();
+        await deps.startRtb(choice.password);
         return;
     }
     const seen: { answer: LeaveOutAnswer | null, summary: readonly BinLeaveOutEntry[] } = { answer: null, summary: [] };

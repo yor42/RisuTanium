@@ -109,7 +109,7 @@ describe('the platform files', () => {
         expect(extensionsOf(effectiveAssociations('tauri.windows.conf.json'))).toEqual(WINDOWS_EXTENSIONS)
     })
 
-    test('Linux registers all eight and names the MIME type of the image and JSON associations', () => {
+    test('Linux registers all eight and names the MIME type of every association', () => {
         const linux = effectiveAssociations('tauri.linux.conf.json')
         expect(extensionsOf(linux)).toEqual(ALL_EXTENSIONS)
         const mimeOf = (ext: string) => linux.find((a) => a.ext.includes(ext))?.mimeType
@@ -117,7 +117,26 @@ describe('the platform files', () => {
         expect(mimeOf('jpg')).toBe('image/jpeg')
         expect(mimeOf('jpeg')).toBe('image/jpeg')
         expect(mimeOf('json')).toBe('application/json')
-        expect(mimeOf('byaf')).toBeUndefined()
+        expect(mimeOf('risum')).toBe('application/x-risutanium-module')
+        expect(mimeOf('risup')).toBe('application/x-risutanium-preset')
+        expect(mimeOf('charx')).toBe('application/x-risutanium-charx')
+        expect(mimeOf('byaf')).toBe('application/x-risutanium-byaf')
+    })
+
+    // The desktop entry only lists a type; the shipped XML is what makes the file manager map the extension to it.
+    test('the Linux MIME XML defines every custom type and glob, and deb and rpm install it', () => {
+        const xml = readFileSync(tauriDir('risutanium-mime.xml'), 'utf8')
+        const linux = effectiveAssociations('tauri.linux.conf.json')
+        for (const ext of ['risum', 'risup', 'charx', 'byaf']) {
+            const mime = linux.find((a) => a.ext.includes(ext))?.mimeType
+            expect(mime, ext).toBeDefined()
+            expect(xml, ext).toContain('<mime-type type="' + mime + '">')
+            expect(xml, ext).toContain('<glob pattern="*.' + ext + '"/>')
+        }
+        const bundle = JSON.parse(readFileSync(tauriDir('tauri.linux.conf.json'), 'utf8')).bundle.linux
+        for (const kind of ['deb', 'rpm']) {
+            expect(bundle[kind].files['/usr/share/mime/packages/risutanium.xml'], kind).toBe('risutanium-mime.xml')
+        }
     })
 
     // Guard: passes before and after. Android merges only an Android platform file, and none may exist.
@@ -131,7 +150,9 @@ describe('the platform files', () => {
                 continue
             }
             expect(Object.keys(config), name).toEqual(['bundle'])
-            expect(Object.keys(config.bundle ?? {}), name).toEqual(['fileAssociations'])
+            // Linux also ships the shared-mime-info file that defines the custom types named above.
+            const allowed = name === 'tauri.linux.conf.json' ? ['linux', 'fileAssociations'] : ['fileAssociations']
+            expect(Object.keys(config.bundle ?? {}).sort(), name).toEqual([...allowed].sort())
         }
     })
 })

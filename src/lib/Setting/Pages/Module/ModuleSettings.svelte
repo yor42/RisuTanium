@@ -82,7 +82,7 @@
                     <span class="text-lg">{rmodule.name}</span>
                     <div class="grow flex justify-end">
                         {#if charConversionMode}
-                            <button class="cursor-pointer text-violet-500 mr-2" aria-label={language.moduleConvertRow} onclick={async (e) => {
+                            <button class="cursor-pointer risu-state-violet mr-2" aria-label={language.moduleConvertRow} onclick={async (e) => {
                                 e.stopPropagation()
                                 const used = await useModuleRow(rmodule)
                                 if(!used){
@@ -108,7 +108,7 @@
                             <button class={enabledGlobally ?
                                     "mr-2 cursor-pointer rounded-sm bg-selected text-textcolor ring-1 ring-borderc" :
                                     integrated ?
-                                    "text-amber-500 hover:text-textcolor rounded-sm ring-1 ring-current mr-2 cursor-pointer" :
+                                    "risu-state-amber rounded-sm ring-1 ring-current mr-2 cursor-pointer" :
                                     "text-textcolor2 hover:text-textcolor mr-2 cursor-pointer"
                                 } aria-label={language.enableGlobal} aria-pressed={enabledGlobally}
                                 aria-describedby={integrated ? `${uid}-int-${i}` : undefined}
