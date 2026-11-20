@@ -26,8 +26,7 @@ param(
     [int]$PortMax = 6399,
     [int]$PollSeconds = 2,
     [string]$CdpScript,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
@@ -90,7 +89,8 @@ function Get-Median($Values) {
 try {
     if ($Serial -notin $AllowedSerials) { Finish 'fail' ('serial ' + $Serial + ' is not in the allowed list') }
     if ($Package -notin $script:AllowedPackages) { Finish 'fail' ('package ' + $Package + ' is not in the allowed list') }
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $adbDir = Join-Path $OutDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log') -OwnPorts ($PortMin..$PortMax))) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
     $wv = Get-WebViewInfo $Serial

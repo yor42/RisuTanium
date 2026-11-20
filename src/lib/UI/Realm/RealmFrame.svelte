@@ -15,6 +15,7 @@
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
     import { postToast } from "src/ts/toast/toastHost.svelte";
+    import { XIcon } from "@lucide/svelte";
 
     // Read once, before the first render: a flag that started `true` and
     // was corrected in `onMount` would still mount the `<iframe>` (and start
@@ -177,10 +178,12 @@
     })
 </script>
 
-<div class="top-0 left-0 z-50 fixed w-full h-full flex flex-col justify-center items-center text-textcolor bg-white">
+<div class="top-0 left-0 z-50 fixed w-full h-full flex flex-col justify-center items-center text-textcolor bg-bgcolor">
     <div class="bg-darkbg border-b border-b-darkborderc w-full flex p-2">
         <h1 class="text-2xl font-bold max-w-full overflow-hidden whitespace-nowrap text-ellipsis">{language.uiCommon.uploadToRealm}</h1>
-        <button class="text-textcolor text-lg hover:text-red-500 ml-auto" onclick={close}>&times;</button>
+        <button type="button" aria-label={language.uiCommon.close} class="risu-focus-ring flex size-11 shrink-0 items-center justify-center rounded-md text-textcolor hover:bg-selected/50 ml-auto" onclick={close}>
+            <XIcon aria-hidden="true" />
+        </button>
     </div>
     {#if loadingStage < 1}
     <div class="w-full flex justify-center items-center p-4 flex-1">

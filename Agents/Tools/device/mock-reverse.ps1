@@ -15,8 +15,7 @@ param(
     [switch]$Remove,
     [switch]$Probe,
     [ValidateRange(1, 600)][int]$MaxSeconds = 60,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
@@ -91,7 +90,8 @@ try {
         $r.mockReverse.listener = (Test-LocalListener $Port)
         if (-not $r.mockReverse.listener) { Finish 'fail' ('no listener on 127.0.0.1:' + $Port + '; start mock-openai.mjs first') }
     }
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $adbDir = Join-Path $OutDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log') -OwnPorts @($Port))) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
 

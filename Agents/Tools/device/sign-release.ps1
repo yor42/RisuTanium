@@ -25,11 +25,12 @@ param(
     [switch]$AllowClear,
     [string]$RepoRoot,
     [string]$ScratchRoot,
-    [string]$CargoTargetDir,
-    [string]$AdbExe
+    [string]$CargoTargetDir
 )
 $ErrorActionPreference = 'Stop'
-if (-not (Get-Command Get-AndroidGeneratedMissing -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'lib.ps1') }
+# Run as a script it always loads the lib beside it, whatever functions the session already holds. Only when dot-sourced (the
+# test seam, whose main body does not run) does a lib that is already loaded stay in force.
+if ($MyInvocation.InvocationName -ne '.' -or -not (Get-Command Get-AndroidGeneratedMissing -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'lib.ps1') }
 $script:SigningEnvNames = @('RISU_ANDROID_KEYSTORE', 'RISU_ANDROID_KEYSTORE_PASSWORD', 'RISU_ANDROID_KEY_ALIAS', 'RISU_ANDROID_KEY_PASSWORD')
 $script:SigningJdk = 'C:\Users\yor42\.gradle\jdks\azul_systems__inc_-21-amd64-windows.2'
 
@@ -202,13 +203,14 @@ function Get-ApkCertDigest([string]$Apk, [string]$WorkDir) {
     return $d
 }
 
-# Default installer: adb -s <serial> install -r. Returns a failure reason or $null.
-function Install-SignedApk([string]$Apk, [string]$SerialNo, [bool]$Clear, [string]$WorkDir, [string]$Adb) {
+# Default installer: adb install -r through the device guard for the named serial. Returns a failure reason or $null.
+function Install-SignedApk([string]$Apk, [string]$SerialNo, [bool]$Clear, [string]$WorkDir) {
     if (-not $SerialNo) { return '-Install needs an explicit -Serial' }
-    if (-not (Initialize-Adb -Dir (Join-Path $WorkDir 'adb') -AdbExe $Adb)) { return 'adb start-server failed' }
+    $adbDir = Join-Path $WorkDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $SerialNo -Log (Join-Path $adbDir 'adb-commands.log'))) { return (Get-AdbInitReason) }
     if ((Get-DeviceState $SerialNo) -ne 'device') { return 'device-offline' }
     $pkg = $script:DefaultPackage
-    $i = Invoke-Adb -AdbArgs @('install', '-r', $Apk) -Serial $SerialNo -TimeoutSec 600
+    $i = Invoke-Adb -AdbArgs @('install', '-r', $Apk) -Serial $SerialNo -TimeoutSec (Get-GuardCallCap 600)
     $txt = ($i.Out + ' ' + $i.Err).Trim()
     if (-not $i.TimedOut -and $i.ExitCode -eq 0 -and $txt -match 'Success') { return $null }
     if ($txt -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match') {
@@ -216,7 +218,7 @@ function Install-SignedApk([string]$Apk, [string]$SerialNo, [bool]$Clear, [strin
         Write-Warning '-AllowClear uninstalls the installed app, which WIPES ITS DATA, then installs this APK'
         $u = Invoke-Adb -AdbArgs @('uninstall', $pkg) -Serial $SerialNo -TimeoutSec 60
         if ($u.ExitCode -ne 0) { return ('uninstall failed: ' + $u.Out + ' ' + $u.Err) }
-        $i = Invoke-Adb -AdbArgs @('install', $Apk) -Serial $SerialNo -TimeoutSec 600
+        $i = Invoke-Adb -AdbArgs @('install', $Apk) -Serial $SerialNo -TimeoutSec (Get-GuardCallCap 600)
         $txt = ($i.Out + ' ' + $i.Err).Trim()
         if ($i.ExitCode -ne 0 -or $txt -notmatch 'Success') { return ('install after uninstall failed: ' + $txt) }
         return $null
@@ -303,7 +305,7 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $names = @($KeystorePathSecret, $KeystorePasswordSecret, $KeyAliasSecret, $KeyPasswordSecret)
 $expected = Join-Path $env:USERPROFILE '.risu-signing\expected-cert-sha256.txt'
 $installer = $null
-if ($Install) { $installer = { param($apk) Install-SignedApk $apk $Serial $AllowClear.IsPresent $OutDir $AdbExe } }
+if ($Install) { $installer = { param($apk) Install-SignedApk $apk $Serial $AllowClear.IsPresent $OutDir } }
 $result = Invoke-SignRelease -VaultName $Vault -SecretNames $names `
     -Reader { param($v, $n) Read-VaultSecret $v $n } `
     -Preflight { Get-BuildPreflight $RepoRoot } `

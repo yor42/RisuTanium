@@ -1,6 +1,9 @@
-# Acceptance test of meminfo-snapshot.ps1 on the PC, no device: the tool runs as a child pwsh against a fake -AdbExe script that prints
-# a real capture and records every argument line. Plain asserts print PASS/FAIL; exit 0 only if all hold.
+# Acceptance test of meminfo-snapshot.ps1 on the PC, no device: the tool runs as a child pwsh through the real device guard, whose
+# stand-in adb (ADBG_FAKE_ADB_SCRIPT, a node script) prints a real capture and records every argument line. A recording adb sentinel
+# is first on PATH and must stay unused. Plain asserts print PASS/FAIL; exit 0 only if all hold.
 #   pwsh -NoProfile -File Agents/Tools/device/tests/meminfo-snapshot.accept.ps1 [-SnapshotPath <another copy of the tool, for mutant runs>] [-ScratchBase <dir>]
+# The tool is staged with the lib and the guard in the repository layout (device\ and device-guard\ side by side); -SnapshotPath
+# replaces only the tool itself.
 #
 # Fixture: a read-only capture from the maintainer's spare phone 2 (Android 10, SDK 29,
 # Android System WebView 156.0.8078.47) taken with the app open and no tap, then sanitised: pids renumbered (app 1000, sandbox
@@ -17,13 +20,55 @@ if (-not $SnapshotPath) { $SnapshotPath = (Join-Path $PSScriptRoot '..\meminfo-s
 if (-not $ScratchBase) { $ScratchBase = Join-Path $env:TEMP 'risu-b715\meminfo-snapshot-accept' }
 $work = Join-Path $ScratchBase ([guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $work | Out-Null
-$staged = Join-Path $work 'tool'
+$staged = Join-Path $work 'tool\device'
+$stagedGuard = Join-Path $work 'tool\device-guard'
 New-Item -ItemType Directory -Force -Path $staged | Out-Null
+New-Item -ItemType Directory -Force -Path $stagedGuard | Out-Null
 Copy-Item -LiteralPath (Resolve-Path -LiteralPath $SnapshotPath).Path -Destination (Join-Path $staged 'meminfo-snapshot.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\lib.ps1') -Destination (Join-Path $staged 'lib.ps1')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\..\device-guard\adbg.mjs') -Destination (Join-Path $stagedGuard 'adbg.mjs')
 $toolFile = Join-Path $staged 'meminfo-snapshot.ps1'
 $pwshExe = (Get-Process -Id $PID).Path
-$testSerial = 'TESTSERIAL01'
+# One of the two spare Note 9 serials: the guard refuses a --kit call on any other serial.
+$testSerial = '2ac80128013f7ece'
+
+# A bare "adb" must resolve only to a recording sentinel: no run of this test can start a real adb.
+$sentinelDir = Join-Path $work 'no-adb'
+$sentinelLog = Join-Path $sentinelDir 'sentinel.log'
+New-Item -ItemType Directory -Force -Path $sentinelDir | Out-Null
+Set-Content -LiteralPath (Join-Path $sentinelDir 'adb.cmd') -Encoding ascii -Value @('@echo off', ('>>"' + $sentinelLog + '" echo(%*'), 'exit /b 1')
+$keptPath = @()
+foreach ($dir in ($env:PATH -split ';')) {
+    if (-not $dir) { continue }
+    $holdsAdb = $false
+    try { foreach ($ext in @('.exe', '.cmd', '.bat', '.com', '')) { if (Test-Path -LiteralPath (Join-Path $dir ('adb' + $ext)) -PathType Leaf) { $holdsAdb = $true } } } catch { $holdsAdb = $true }
+    if (-not $holdsAdb) { $keptPath += $dir }
+}
+$env:PATH = (@($sentinelDir) + $keptPath) -join ';'
+$resolvedAdb = @(Get-Command adb -CommandType Application -All -ErrorAction SilentlyContinue)
+if ($resolvedAdb.Count -ne 1 -or $resolvedAdb[0].Source -ne (Join-Path $sentinelDir 'adb.cmd')) {
+    Write-Output 'REFUSED a real adb is resolvable; this test never runs where a real adb can be started'
+    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    exit 2
+}
+
+# Decoy tree in the repository layout. Its lib appends to DECOY_MARKER when dot-sourced, so a tool that took its lib from
+# CHATSHELL_REPO_ROOT or CHATSHELL_CDP_DIR instead of from beside itself leaves the marker behind.
+$decoyRoot = Join-Path $work 'decoy'
+$decoyLib = Join-Path $decoyRoot 'Agents\Tools\device\lib.ps1'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $decoyLib) | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $decoyRoot 'Agents\Tools\chatshell-cdp') | Out-Null
+$env:DECOY_MARKER = Join-Path $work 'decoy-marker.txt'
+Set-Content -LiteralPath $decoyLib -Encoding ascii -Value @(
+    'Add-Content -LiteralPath $env:DECOY_MARKER -Value (''decoy lib loaded: '' + $PSCommandPath)',
+    'function Disable-StdHandleInherit { }',
+    'function Initialize-AdbGuard { $true }',
+    'function Get-AdbInitReason { '''' }',
+    'function Test-AdbGuardRefusal { $false }',
+    'function Get-OwnedSandboxPids { throw ''decoy lib'' }',
+    'function Invoke-Adb { throw ''decoy Invoke-Adb'' }')
+$decoyAdb = Join-Path $work 'decoy-adb.cmd'
+Set-Content -LiteralPath $decoyAdb -Encoding ascii -Value @('@echo off', ('>>"' + $env:DECOY_MARKER + '" echo decoy adb ran'), 'exit /b 0')
 
 $script:failures = 0
 function Assert-Check([bool]$Condition, [string]$Message) {
@@ -142,19 +187,25 @@ Uptime: 1 Realtime: 1
 '@
 
 $fakeAdbSource = @'
-$lineText = $args -join ' '
-Add-Content -LiteralPath $env:FAKE_CALLS -Value $lineText
-if ($args[2] -eq 'shell' -and $args[3] -eq 'pidof') { if ($env:FAKE_APP_PID) { $env:FAKE_APP_PID }; exit 0 }
-if ($args[3] -eq 'dumpsys' -and $args[4] -eq 'activity') { Get-Content -LiteralPath $env:FAKE_ACTIVITY; exit 0 }
-if ($args[3] -eq 'dumpsys' -and $args[4] -eq 'meminfo' -and $args[5] -eq '--package') { Get-Content -LiteralPath $env:FAKE_MEMINFO; exit 0 }
-'unexpected call'
-exit 0
+const fs = require('fs')
+const a = process.argv.slice(2)
+fs.appendFileSync(process.env.FAKE_CALLS, a.join(' ') + '\n')
+const out = (s) => process.stdout.write(s + '\n')
+if (a[2] === 'start-server') process.exit(0)
+if (a[2] === 'shell' && a[3] === 'pidof') { if (process.env.FAKE_APP_PID) out(process.env.FAKE_APP_PID); process.exit(0) }
+if (a[3] === 'dumpsys' && a[4] === 'activity') { process.stdout.write(fs.readFileSync(process.env.FAKE_ACTIVITY)); process.exit(0) }
+if (a[3] === 'dumpsys' && a[4] === 'meminfo' && a[5] === '--package') { process.stdout.write(fs.readFileSync(process.env.FAKE_MEMINFO)); process.exit(0) }
+out('unexpected call')
+process.exit(0)
 '@
-$fakeAdb = Join-Path $work 'fake-adb.ps1'
+$fakeAdb = Join-Path $work 'fake-adb.cjs'
 Set-Content -LiteralPath $fakeAdb -Value $fakeAdbSource -Encoding ascii
+# The guard starts this node script in place of adb; it is the only adb stand-in of the test.
+$env:ADBG_FAKE_ADB_SCRIPT = $fakeAdb
+$guardLogPath = Join-Path $work 'guard\adb-commands.log'
 
 $runCounter = 0
-function Invoke-Snapshot([string[]]$ToolArguments, [string]$ActivityText = $activityFixture, [string]$MeminfoText = $meminfoFixture, [string]$AppPid = '1000') {
+function Invoke-Snapshot([string[]]$ToolArguments, [string]$ActivityText = $activityFixture, [string]$MeminfoText = $meminfoFixture, [string]$AppPid = '1000', [hashtable]$Environment = @{}) {
     $script:runCounter++
     $name = 'run' + $script:runCounter
     $callsFile = Join-Path $work ($name + '.calls')
@@ -162,20 +213,27 @@ function Invoke-Snapshot([string[]]$ToolArguments, [string]$ActivityText = $acti
     $meminfoFile = Join-Path $work ($name + '.meminfo')
     Set-Content -LiteralPath $activityFile -Value $ActivityText -Encoding ascii
     Set-Content -LiteralPath $meminfoFile -Value $MeminfoText -Encoding ascii
+    Remove-Item -LiteralPath (Split-Path -Parent $guardLogPath) -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $env:DECOY_MARKER -Force -ErrorAction SilentlyContinue
     $env:FAKE_CALLS = $callsFile
     $env:FAKE_ACTIVITY = $activityFile
     $env:FAKE_MEMINFO = $meminfoFile
     $env:FAKE_APP_PID = $AppPid
-    $output = @(& $pwshExe -NoProfile -File $toolFile @ToolArguments 2>&1)
+    $saved = @{}
+    foreach ($key in $Environment.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key); [Environment]::SetEnvironmentVariable($key, [string]$Environment[$key]) }
+    try { $output = @(& $pwshExe -NoProfile -File $toolFile @ToolArguments 2>&1) }
+    finally { foreach ($key in $Environment.Keys) { [Environment]::SetEnvironmentVariable($key, $saved[$key]) } }
     $code = $LASTEXITCODE
     $calls = @()
     if (Test-Path -LiteralPath $callsFile) { $calls = @(Get-Content -LiteralPath $callsFile) }
+    $guardText = ''
+    if (Test-Path -LiteralPath $guardLogPath) { $guardText = [IO.File]::ReadAllText($guardLogPath) }
     $text = ($output -join "`n")
     $json = $null
     try { $json = $text | ConvertFrom-Json } catch { $json = $null }
-    return [pscustomobject]@{ Code = $code; Output = $text; Json = $json; Calls = $calls }
+    return [pscustomobject]@{ Code = $code; Output = $text; Json = $json; Calls = $calls; GuardText = $guardText }
 }
-$deviceArguments = @('-Serial', $testSerial, '-Label', 'accept', '-AdbExe', $fakeAdb)
+$deviceArguments = @('-Serial', $testSerial, '-Label', 'accept', '-GuardLog', $guardLogPath)
 
 # Independent reader of the fixture text: finds a header by pid, then the first row with the exact label after it. It shares no code with the tool.
 function Read-ByLabel([string]$Text, [string]$HeaderPid, [string]$RowLabel, [int]$Group) {
@@ -270,9 +328,36 @@ Assert-Drop (Invoke-Snapshot $deviceArguments $activityFixture $firstPidOnly) 's
 
 # T10 refused arguments exit 2 before any adb call
 foreach ($bad in @(@('-Serial', '', '-Label', 'x'), @('-Serial', '   ', '-Label', 'x'), @('-Serial', 'bad serial!', '-Label', 'x'), @('-Serial', 'OTHER', '-AllowedSerials', 'A,B', '-Label', 'x'), @('-Serial', $testSerial), @('-Serial', $testSerial, '-Label', 'has space'), @('-Serial', $testSerial, '-ChromePid', '4', '-Label', 'x'))) {
-    $run = Invoke-Snapshot ($bad + @('-AdbExe', $fakeAdb))
+    $run = Invoke-Snapshot ($bad + @('-GuardLog', $guardLogPath))
     Assert-Check ($run.Code -eq 2 -and $run.Calls.Count -eq 0) ('T10 refused arguments exit 2 with no adb call: ' + ($bad -join ' '))
 }
+$run = Invoke-Snapshot @('-Serial', $testSerial, '-Label', 'accept')
+Assert-Check ($run.Code -eq 2 -and $run.Calls.Count -eq 0 -and $run.Output -match '-GuardLog is required') 'T10 device mode without -GuardLog exits 2 with no adb call'
+
+# T11 every call runs through the guard: each stand-in call has an intent line and none is refused; the start-server files sit in adb-<pid> beside the guard log
+$run = Invoke-Snapshot $deviceArguments
+$intentCount = @([regex]::Matches($run.GuardText, '(?m)^\S+ intent: adb -s ' + $testSerial + ' ')).Count
+Assert-Check ($run.Code -eq 0 -and $run.Calls.Count -eq 4 -and $intentCount -eq $run.Calls.Count -and $run.GuardText -notmatch 'REFUSED') ('T11 start-server, pidof, activity and meminfo each have an intent line and none is refused (calls ' + $run.Calls.Count + ', intents ' + $intentCount + ')')
+$startDirs = @(Get-ChildItem -LiteralPath (Split-Path -Parent $guardLogPath) -Directory -Filter 'adb-*' -ErrorAction SilentlyContinue)
+Assert-Check ($startDirs.Count -eq 1 -and (Test-Path -LiteralPath (Join-Path $startDirs[0].FullName 'adb-start-server.out'))) 'T11 the start-server output files sit in one adb-<pid> folder beside the guard log'
+
+# T12 a refusal never reads as "app not running": a danger-zone pidof exits 4 with a named line, never a DROP line, and no call follows it
+$run = Invoke-Snapshot @('-Serial', $testSerial, '-Label', 'accept', '-GuardLog', $guardLogPath, '-Package', 'call')
+Assert-Check ($run.Code -eq 4 -and $null -eq $run.Json -and $run.Output -match 'guard refused' -and $run.Output -match 'exit 89' -and $run.Output.Contains($guardLogPath) -and $run.Output -notmatch 'drop') ('T12 the refused pidof exits 4, names the guard exit 89 and the guard log, and prints no DROP line (exit ' + $run.Code + ')')
+Assert-Check (@($run.Calls | Where-Object { $_ -notlike '* start-server' }).Count -eq 0 -and $run.GuardText -match 'exit=89') 'T12 no call follows the refusal'
+
+# T13 a serial the guard refuses for kit calls ends the run at the start with the guard reason; nothing reaches the stand-in adb and no decoy lib is loaded
+foreach ($refusedSerial in @(@('emulator-5580', 'two spare Note 9s', 97), @('R5CT1234ABC', 'adbg exit 95', 95))) {
+    $decoyEnvironment = @{ CHATSHELL_REPO_ROOT = $decoyRoot; CHATSHELL_CDP_DIR = (Join-Path $decoyRoot 'Agents\Tools\chatshell-cdp') }
+    $run = Invoke-Snapshot @('-Serial', $refusedSerial[0], '-Label', 'accept', '-GuardLog', $guardLogPath) $activityFixture $meminfoFixture '1000' $decoyEnvironment
+    Assert-Check ($run.Code -eq 4 -and $null -eq $run.Json -and $run.Output -match $refusedSerial[1] -and $run.Calls.Count -eq 0 -and $run.Output -notmatch 'drop') ('T13 ' + $refusedSerial[0] + ' exits 4 with the guard reason, no call and no DROP line (exit ' + $run.Code + ')')
+    Assert-Check ($run.GuardText -match ('REFUSED/ERROR exit=' + $refusedSerial[2]) -and $run.GuardText -notmatch '(?m)^\S+ intent:' -and -not (Test-Path -LiteralPath $env:DECOY_MARKER)) ('T13 ' + $refusedSerial[0] + ': the guard log holds the refusal and no intent, and the decoy lib is never loaded')
+}
+
+# T14 no alternate adb or guard: -AdbExe, HARNESS_ADB, TB_GUARD, ADBG_PATH and the decoy tree are never used, and the run still goes through the guard
+$noOverride = @{ HARNESS_ADB = $decoyAdb; TB_GUARD = $decoyAdb; ADBG_PATH = $decoyAdb; CHATSHELL_REPO_ROOT = $decoyRoot; CHATSHELL_CDP_DIR = (Join-Path $decoyRoot 'Agents\Tools\chatshell-cdp') }
+$run = Invoke-Snapshot ($deviceArguments + @('-AdbExe', $decoyAdb)) $activityFixture $meminfoFixture '1000' $noOverride
+Assert-Check ($run.Code -eq 0 -and $null -ne $run.Json -and -not (Test-Path -LiteralPath $env:DECOY_MARKER) -and $run.GuardText -match '(?m)^\S+ intent: ') 'T14 no override runs a decoy, no decoy lib is loaded, and the calls are in the guard log'
 
 # T10 Chrome mode
 $browserPid = 4000
@@ -300,6 +385,10 @@ $run = Invoke-ChromeSnapshot @($rendererEntry, $secondRenderer, $gpuEntry) 'chro
 Assert-Check ($run.Code -eq 3 -and $null -ne $run.Json -and $run.Json.drop -eq 'renderer' -and $run.Output -notmatch '\d{6,}') 'T10 two renderers give DROP, the first is not picked'
 $run = Invoke-ChromeSnapshot @($rendererEntry) 'chrome-nogpu'
 Assert-Check ($run.Code -eq 3 -and $null -ne $run.Json -and $run.Json.drop -eq 'gpu') 'T10 no GPU process gives DROP'
+
+$sentinelText = ''
+if (Test-Path -LiteralPath $sentinelLog) { $sentinelText = [IO.File]::ReadAllText($sentinelLog) }
+Assert-Check ($sentinelText -eq '') ('T15 no run started adb bare (the PATH sentinel log is empty: "' + $sentinelText.Trim() + '")')
 
 Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output ($(if ($script:failures -eq 0) { 'ALL PASSED' } else { 'FAILED: ' + $script:failures }))

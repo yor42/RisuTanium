@@ -1,4 +1,7 @@
-<input 
+{#if ids.srOnly}
+    <span id={ids.nameId} class="sr-only">{label}</span>
+{/if}
+<input
     class={"border border-darkborderc focus:border-borderc rounded-md shadow-xs bg-transparent numinput risu-focus-ring transition-colors duration-200" + ((className) ? (' ' + className) : '')} 
     class:text-sm={size === 'sm'}
     class:text-md={size === 'md'}
@@ -22,9 +25,13 @@
     bind:value
     onchange={onChange}
     placeholder={placeholder}
+    aria-labelledby={ids.nameId}
+    aria-describedby={ids.describedIds}
 />
 
 <script lang="ts">
+    import { fieldNameIds } from './fieldNameIds';
+
     interface Props {
         min?: number;
         max?: number;
@@ -41,6 +48,12 @@
         className?: string;
         disabled?: boolean;
         placeholder?: string;
+        /** Id of an existing visible label element that names the field. */
+        labelId?: string;
+        /** Name text for a field with no visible label; rendered as a screen-reader-only span. */
+        label?: string;
+        /** Extra description ids, listed after the naming element. */
+        describedBy?: string;
     }
 
     let {
@@ -56,8 +69,15 @@
         onChange = () => {},
         className = '',
         disabled = false,
-        placeholder
+        placeholder,
+        labelId = undefined,
+        label = '',
+        describedBy = undefined
     }: Props = $props();
+
+    const uid = $props.id();
+
+    let ids = $derived(fieldNameIds(uid, labelId, label, describedBy));
 </script>
 
 <style>

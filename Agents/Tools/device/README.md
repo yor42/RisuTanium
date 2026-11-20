@@ -15,13 +15,13 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `Run-Check.ps1` | Runs one child command under a hard cap and writes `result.json`. |
 | `build-apk.ps1` | Android APK build through Run-Check (debug or release). |
 | `sign-install.ps1` | Verifies (and for release re-signs with the persistent test key) and installs an APK on the test phone. |
-| `sign-release.ps1` | Maintainer only: builds the release APK signed with the real key from a SecretManagement vault and verifies the certificate. Refuses agent shells; setup in [SIGNING.md](SIGNING.md). |
+| `sign-release.ps1` | Maintainer only: builds the release APK signed with the real key from a SecretManagement vault and verifies the certificate. Refuses agent shells; setup in [SIGNING.md](SIGNING.md). Its `-Install` step runs through the device guard on a spare Note 9 only and has no `-AdbExe`. |
 | `device-prep.ps1` | Keeps the phone awake and exempts the app from battery optimisation; `-Revert` restores the originals. |
 | `cold-start.ps1` | N cold starts: `am start -W` time, ready signal over CDP, settled PSS. |
 | `cdp.mjs` | `node` helper: evaluates one expression in the first page target of a forwarded WebView devtools port. |
 | `cdp-session.mjs` | `node` helper: persistent CDP client (eval, CPU profile, probe injection with console capture). Probe in `probes/`. |
-| `pss-sampler.ps1` | Samples the PSS of the app process and of its own WebView sandbox process over adb into a tab-separated log; mandatory `-Serial`. |
-| `meminfo-snapshot.ps1` | One settled memory snapshot as one JSON line: phone (app and its owned WebView sandbox, App Summary and mtrack rows) or PC (renderer and GPU private bytes of one Chrome). Numbers only. |
+| `pss-sampler.ps1` | Samples the PSS of the app process and of its own WebView sandbox process over adb into a tab-separated log; mandatory `-Serial` and `-GuardLog` (every call runs through the guard). |
+| `meminfo-snapshot.ps1` | One settled memory snapshot as one JSON line: phone (app and its owned WebView sandbox, App Summary and mtrack rows; needs `-GuardLog`) or PC (renderer and GPU private bytes of one Chrome). Numbers only. |
 | `heap-read.mjs` | `node` helper: one read of the page's JS heap and DOM counters over a devtools port, optionally after a forced collection. |
 | `snapshot.ps1` | Whole-app-data snapshot of the test profile (debug builds only). |
 | `restore-snapshot.ps1` | Restores a snapshot into the app data and verifies it against the manifest (debug builds only). |
@@ -69,14 +69,21 @@ Run from the repository root with `pwsh -NoProfile -File Agents\Tools\device\<sc
 defaults; there is no default device: every script that talks to a device requires `-Serial` and refuses a missing, blank
 or malformed value before any result file or adb call. An omitted `-AllowedSerials` equals `-Serial` (see Shared defaults).
 Consequence: with that default the allowed-list gate checks nothing unless `-AllowedSerials` is given, and the explicitly
-named serial is the confirmation. Scripts other than `fixture-push.ps1` still call adb directly until CHORE-834, so a
-personal serial named there reaches that device directly.
+named serial is the confirmation. `Run-Check.ps1` (with `-Serial`), `device-prep.ps1`, `cold-start.ps1`, `mock-reverse.ps1`,
+`sign-install.ps1`, the installer of `sign-release.ps1`, `fixture-push.ps1`, `snapshot.ps1`, `restore-snapshot.ps1`,
+`import-bin.ps1`, `pss-sampler.ps1`, `meminfo-snapshot.ps1` (device mode) and `chatshell-cdp/device/run-obsfree.ps1` run every adb
+call through `device-guard/adbg.mjs` with `--kit`, so they work only on the two spare Note 9s (`29f3cde9193f7ece`,
+`2ac80128013f7ece`): `emulator-5580` stops at the first call with exit 97 and any other serial with exit 95, and nothing reaches
+adb. No script in this folder starts adb itself; `lib.ps1` has no unguarded adb path (there is no `Initialize-Adb`). This holds
+within one unmodified checkout; the residuals (node or adb on PATH and the runtimes' own settings, `ADBG_FAKE_ADB_SCRIPT`,
+caller-named child scripts and repositories, a modified tree) are listed in `device-guard/README.md`.
 
 ### Run-Check.ps1
 
 Required: `-CheckId`, `-OutDir`, `-MaxSeconds` (1-1800), `-FilePath`, `-BuildKind` (`debug|release|none`). Optional:
 `-ArgumentList`, `-WorkingDirectory`, `-Environment` (hashtable, restored afterwards), `-ArtifactPath`, `-Serial`, `-Package`,
-`-RequireApp`, `-PollSeconds 2`, `-RepoRoot`, `-AdbExe`, `-KillLingering`.
+`-RequireApp`, `-PollSeconds 2`, `-RepoRoot`, `-KillLingering`. With `-Serial` its adb calls run through the guard (log
+`<OutDir>\adb\adb-commands.log`); there is no `-AdbExe`.
 
 First condition wins: child exit (`pass` on 0, `fail` otherwise), cap (`timeout`), and only with `-RequireApp`: app process gone
 for 2 consecutive polls (`crash`) or device offline (`fail`, `device-offline`). With `-ArtifactPath` a pass also needs the
@@ -202,7 +209,8 @@ pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b
 ### sign-install.ps1
 
 `-OutDir`, `-Kind debug|release` (both required), `-Apk`, `-Serial`, `-AllowedSerials`, `-Package`, `-ResignThrowaway`,
-`-TestKeystore`, `-AllowClear`, `-MaxSeconds 600`, `-RepoRoot`, `-AdbExe`. A debug APK is verified and installed as built
+`-TestKeystore`, `-AllowClear`, `-MaxSeconds 600`, `-RepoRoot`. There is no `-AdbExe`: its adb calls run through the guard
+(`<OutDir>\adb\adb-commands.log`) and each install is bounded at 590 s. A debug APK is verified and installed as built
 (same stable debug key, so reinstalls stay signature-compatible). A release APK, or any APK with `-ResignThrowaway`, is
 zipaligned and signed with the persistent TEST keystore, by default `%LOCALAPPDATA%\risu-test-signing\test-release.p12`
 (override with `-TestKeystore`), so later test builds update in place. It is created once with `keytool` when missing
@@ -225,7 +233,8 @@ pwsh -NoProfile -File Agents\Tools\device\sign-install.ps1 -OutDir $env:TEMP\ris
 ### device-prep.ps1
 
 `-OutDir` (required), `-Revert`, `-ScreenOff`, `-Serial`, `-AllowedSerials`, `-Package`, `-StatePath`
-(default `<ScratchRoot>\device-prep\<serial>.json`), `-MaxSeconds 120` (1-600), `-RepoRoot`, `-AdbExe`. Changes exactly two
+(default `<ScratchRoot>\device-prep\<serial>.json`), `-MaxSeconds 120` (1-600), `-RepoRoot`. Its adb calls run through the
+guard (`<OutDir>\adb\adb-commands.log`); there is no `-AdbExe`. Changes exactly two
 things: the global `stay_on_while_plugged_in` setting (set to `7`) and the app's entry in the device-idle whitelist; both are
 read back. The originals are recorded in the state file before the first change and a repeated prep keeps the first recording,
 so `-Revert` restores the true originals (`fail` if nothing is recorded or it is already reverted). `-ScreenOff` leaves
@@ -241,7 +250,9 @@ pwsh -NoProfile -File Agents\Tools\device\device-prep.ps1 -OutDir $env:TEMP\risu
 `-OutDir` (required), `-CheckId cold-start`, `-MaxSeconds 900`, `-Runs 3` (1-20), `-SettleSec 25`, `-PauseSec 4`, `-ReadySec 90`,
 `-CdpTimeoutMs 5000`, `-CdpStallCalls 3`, `-RelaunchGapSec 30`, `-ReadyText`, `-ReadyExpression`, `-Activity .MainActivity`,
 `-Serial`, `-AllowedSerials`, `-Package`, `-BuildKind auto|debug|release` (default `auto`, read from the install),
-`-PortMin 6330`, `-PortMax 6399`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`, `-AdbExe`.
+`-PortMin 6330`, `-PortMax 6399`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`. There is no `-AdbExe`: its adb calls run
+through the guard, with the ports `-PortMin` to `-PortMax` as the only forwards it may make (`-PortMin` and `-PortMax` must lie
+in 10-65535, at most 128 ports).
 Per run: force-stop, pause, `am start -W` (TotalTime, WaitTime), ready signal over CDP (page text contains `-ReadyText`, or
 `-ReadyExpression` evaluates `true`, or the body has rendered text), a page probe, settle, then settled PSS. The intended
 force-stop is declared as a relaunch window, so only an unexpected loss, pid change, fatal log line or renderer loss is a
@@ -326,12 +337,19 @@ folder, which rewrites goldens).
 
 ### pss-sampler.ps1
 
-`pwsh -NoProfile -File Agents\Tools\device\pss-sampler.ps1 -Serial <adb serial> -LogPath <file outside the repo> [-Package <id>]
-[-MaxSeconds 7200] [-AllowedSerials a,b] [-SleepMs 300] [-StopFile <path>]` writes one line per cycle:
-`<unix ms><TAB><app KiB><TAB><sandbox KiB>`, from `dumpsys meminfo -s <pid>` (about 0.8 s per cycle on the Note 9).
+`pwsh -NoProfile -File Agents\Tools\device\pss-sampler.ps1 -Serial <adb serial> -LogPath <file outside the repo>
+-GuardLog <guard log file> [-Package <id>] [-MaxSeconds 7200] [-AllowedSerials a,b] [-SleepMs 300] [-StopFile <path>]` writes one
+line per cycle: `<unix ms><TAB><app KiB><TAB><sandbox KiB>`, from `dumpsys meminfo -s <pid>` (about 0.8 s per cycle on the Note 9
+before the guard; each call now also starts the guard).
 
 - `-Serial` is mandatory: empty, blank, malformed or outside `-AllowedSerials` exits 2 before the first adb call. There is no default
-  serial; every adb call is `adb -s <serial> ...`.
+  serial. `-GuardLog` is mandatory too (exit 2): every adb call runs through the guard with `--kit` (`Initialize-AdbGuard`, then
+  `Invoke-Adb` with a 20 s bound), which logs each call to `-GuardLog`; the start-server output files go to `adb-<pid>\` beside
+  it. There is no `-AdbExe` and no guard override; `lib.ps1` and the guard are found beside the script.
+- A refusal never reads as "app not running": a failed guard start (any serial other than the two spare Note 9s), a call the guard
+  refuses (for example `-Package call`, which names a danger zone) or an adb call that times out ends the run with exit 4 and one
+  line on stderr (`pss-sampler: <init reason>`, `pss-sampler: guard refused <args> (exit N; see <GuardLog>)` or
+  `pss-sampler: adb call timed out`), and no DROP line is written. The package id is shown as `<package>` in that line.
 - Sandbox ownership: the sandbox process is named after the WebView provider, not the app, so the owner is read from the app's own
   `dumpsys meminfo --package <Package>` listing (the plain `dumpsys meminfo <Package>` form prints no sandbox lines); the owned set
   is the pids of its `** MEMINFO in pid N [...] **` headers whose name contains `sandboxed_process<digits>`. The sampled pid is the
@@ -339,9 +357,10 @@ folder, which rewrites goldens).
   10th cycle, the cycle after any 0 reading), never cached, and never printed. With none or several owned pids the cycle is logged as `<ms><TAB>0<TAB>0<TAB>DROP-owner` (no pick,
   no size guess); three consecutive drops stop it with exit 3. The log holds pids' KiB only, never a package or process name.
 - Stop: create `<LogPath>.stop`, or stop the PID in `<LogPath>.pid` by exact PID; never by image name. Exit codes: 0 done, 2 refused
-  arguments, 3 three consecutive drops.
-- Test (no device, fake `-AdbExe`): `pwsh -NoProfile -File Agents\Tools\device\tests\pss-sampler.accept.ps1`
-  (`-SamplerPath` points at a mutant copy). Not part of `Test-Runner.ps1`.
+  arguments, 3 three consecutive drops, 4 the guard refused a call or did not start, or a call timed out.
+- Test (no device; a node stand-in adb behind the real guard): `pwsh -NoProfile -File Agents\Tools\device\tests\pss-sampler.accept.ps1`
+  (`-SamplerPath` points at a mutant copy that sits in the same tree layout, with `lib.ps1` beside it and `..\device-guard\adbg.mjs`).
+  Not part of `Test-Runner.ps1`.
 
 ### meminfo-snapshot.ps1 and heap-read.mjs
 
@@ -349,10 +368,14 @@ The shared memory readers of CHORE-664 (CHORE-668 reuses them). Each prints one 
 a package, process or path name. Read before and after a run, never during a frame run.
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\meminfo-snapshot.ps1 -Serial <adb serial> -Label <text> [-Package <id>] [-AllowedSerials a,b]
+pwsh -NoProfile -File Agents\Tools\device\meminfo-snapshot.ps1 -Serial <adb serial> -Label <text> -GuardLog <guard log file> [-Package <id>] [-AllowedSerials a,b]
 pwsh -NoProfile -File Agents\Tools\device\meminfo-snapshot.ps1 -ChromePid <browser pid> -Label <text>
 node Agents\Tools\device\heap-read.mjs <port> --label <text> [--gc]
 ```
+
+Phone mode needs `-GuardLog` (exit 2 without it) and runs every adb call through the guard with `--kit`, on the two spare Note 9s
+only; there is no `-AdbExe`. A failed guard start, a call the guard refuses or an adb call that times out exits 4 with one named
+line on stderr and no DROP line, so a refusal never reads as `app`. `-ChromePid` mode needs no `-GuardLog` and starts no adb.
 
 - **Phone line.** `{"label","mode":"device","complete","app":{...},"sandbox":{...},"missing":[...]}`. Each process object holds
   `javaHeapKb`, `nativeHeapKb`, `graphicsKb`, `privateOtherKb`, `systemKb`, `totalPssKb` (the App Summary rows) and
@@ -375,7 +398,7 @@ node Agents\Tools\device\heap-read.mjs <port> --label <text> [--gc]
   The method allow-set and the 127.0.0.1-only `/json` fetch are source invariants (the websocket rewrite and the method sequence are
   tested); review them by reading `heap-read.mjs` when the tool changes.
 - **Tests (no device).** `pwsh -NoProfile -File Agents\Tools\device\tests\meminfo-snapshot.accept.ps1` (`-SnapshotPath` points at a
-  mutant copy) and `node Agents\Tools\device\tests\heap-read.accept.mjs` (`HEAP_READ_PATH` points at a mutant copy). The first embeds
+  mutant copy; the test stages it with `lib.ps1` and the guard in the sibling layout) and `node Agents\Tools\device\tests\heap-read.accept.mjs` (`HEAP_READ_PATH` points at a mutant copy). The first embeds
   a real sanitised phone 2 capture; a different phone or Android release may print other labels, which the parser reports as
   `null` instead of guessing.
 
@@ -383,13 +406,20 @@ node Agents\Tools\device\heap-read.mjs <port> --label <text> [--gc]
 
 `snapshot.ps1`: `-OutDir`, `-Id` (both required), `-Profile test`, `-SnapshotRoot` (default `<ScratchRoot>\device-snapshots`),
 `-Pin`, `-ProducedBy manual`, `-WarnBytes 2147483648` (2 GiB), `-RefuseBytes 4294967296` (4 GiB), `-Keep 3` (1-50), `-Serial`,
-`-AllowedSerials`, `-Package`, `-MaxSeconds 1500`, `-RepoRoot`, `-AdbExe`.
+`-AllowedSerials`, `-Package`, `-MaxSeconds 1500`, `-RepoRoot`.
 `restore-snapshot.ps1`: `-OutDir`, `-Id` (required), `-Profile test`, `-SnapshotRoot`, `-Serial`, `-AllowedSerials`, `-Package`,
-`-MaxSeconds 1500`, `-RepoRoot`, `-AdbExe`.
+`-MaxSeconds 1500`, `-RepoRoot`. Neither has `-AdbExe`: every adb call, the archive stream included, runs through the guard with
+`--kit` (log `<OutDir>\adb\adb-commands.log`), so both work only on the two spare Note 9s; a failed init puts the guard's reason in
+the result.
 
 A snapshot lives in `<SnapshotRoot>\<Profile>\<Id>\` as `snapshot.tar` plus `snapshot.json` (the manifest, written last). The
 app is force-stopped first; the app data dir is archived from inside the app uid (`run-as ... tar`) over `adb exec-out` into a
-file, never a pipe. `cache`, `code_cache` and `lib` are not part of it. Ids are never overwritten; the newest `-Keep` unpinned
+file, never a pipe. The stream is started from `Get-AdbInvocation` (the guard process, which sends the `exec-out` with inherited
+stdout), so the bytes still go straight into the redirected file; on a cap or a size abort the script stops the guard process,
+the adb it started and their descendants. One guarded call is bounded at 590 s by the script (`Get-GuardCallCap`): the stream,
+the restore extraction and the device-side `sha256sum` use it, so an archive or extraction that needs longer ends as a timeout
+(a call the guard itself killed at 600 s shows as exit 1 with an empty reason). `adb push` keeps its own 2 h guard limit.
+`cache`, `code_cache` and `lib` are not part of it. Ids are never overwritten; the newest `-Keep` unpinned
 snapshots of a profile are kept, pinned ones never pruned. Above `-WarnBytes` a warning is recorded and printed; above
 `-RefuseBytes` the run is refused, before and during the copy. A release build is refused (`run-as` does not work for it).
 
@@ -415,8 +445,8 @@ Fixtures are synthetic `.bin` files on the PC (MC-324 tiered data; the scripts d
 
 - Every adb call (`start-server`, `get-state`, `getprop`, `sha256sum`, `push`, `rm -f`) runs through `device-guard/adbg.mjs`, which
   allows or refuses it and writes an intent line and an exit line per call to `<OutDir>\adb\adb-commands.log` (also named in
-  `evidence.log` of the result). A serial the guard does not know as a spare test device ends at `adb start-server failed` with an
-  exit-95 refusal in that log. The result leaves `device.battery` and `device.dataFreeKB` blank, because the guard refuses
+  `evidence.log` of the result). The script passes `--kit`, so a serial other than the two spare Note 9s ends at `adb start-server
+  failed` with the guard's refusal in that log (exit 97 for `emulator-5580`, 95 for a restricted serial) and no adb call. The result leaves `device.battery` and `device.dataFreeKB` blank, because the guard refuses
   the split `dumpsys battery` form this function sends and `df`, so guarded mode leaves both blank.
 - The transfer is skipped when the device already holds a file of that name with the same SHA-256 (`push.skipped`). A pushed
   copy is hashed on the device again and removed if it differs.
@@ -438,7 +468,10 @@ pwsh -NoProfile -File Agents\Tools\device\fixture-push.ps1 -OutDir $env:TEMP\ris
 `-MenuTaps`, `-ConfirmTap`, `-WarnPattern`, `-WizardPattern Airisu`, `-ReadySec 90`, `-LaunchSettleSec 12`, `-SettleSec 8`,
 `-BootWaitSec 0`, `-LoadingPattern '^\s*Loading\.\.\.'`, `-PickWaitSec 9`, `-TapPauseSec 2`, `-ConfirmPauseSec 3`,
 `-CdpTimeoutMs 4000`, `-RelaunchGapSec 30`, `-RetryGraceSec 120`, `-Activity .MainActivity`, `-Serial`, `-AllowedSerials`,
-`-Package`, `-PortMin 6330`, `-PortMax 6399`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`, `-AdbExe`.
+`-Package`, `-PortMin 6330`, `-PortMax 6399`, `-PollSeconds 2`, `-CdpScript`, `-RepoRoot`. There is no `-AdbExe`: every adb
+call runs through the guard with `--kit` (log `<OutDir>\adb\adb-commands.log`), so the run works only on the two spare Note 9s.
+`-PortMin`..`-PortMax` (at most 128 ports, each 10-65535) are passed to the guard as the run's own ports, so the CDP forward may
+use only those ports. Its one child, `restore-snapshot.ps1`, gets no adb path and keeps its own guard log in `<OutDir>\restore\adb`.
 
 Needs a debuggable MEASURE build (the import phase ring `__risuImportPhases` is on when the page's localStorage key
 `risu-measure-import` is on; the script sets that key after the app booted). Give exactly one of `-SnapshotId` (the import
@@ -469,6 +502,9 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
 - **Port.** Default 6250, `--port` overrides (`0` picks a free port and prints it). 6250 lies in lane A's 6000-6399 range and clears
   the phone ranges (6270-6309, 6310-6329) and the 6330-6399 script defaults. The mock exits 1 with `EADDRINUSE` when the port is
   taken, so check the port is free before the run. The startup line `mock-openai listening 127.0.0.1:<port> pid <pid>` goes to stdout.
+- **Guard.** `mock-reverse.ps1` runs its adb calls through `device-guard/adbg.mjs` with `--kit`, on the two spare Note 9s only, and
+  names `-Port` as its one own port, so the guard accepts `reverse --no-rebind tcp:<Port> tcp:<Port>` and refuses a port that an adb
+  server listens on (DZ-10). There is no `-AdbExe`; `-Port` must be 10 or more.
 - **Endpoints.** `POST /v1/chat/completions` answers JSON, or SSE (status 200, `text/event-stream`, a role-only first chunk, content
   chunks, one data line split across two writes, a stop chunk, `data: [DONE]`) when the body has `stream: true`. `GET /v1/models`
   lists `mock-model`. `GET /__ping` answers `{"ok":true,"mock":"openai"}`. `OPTIONS` on any path is a CORS preflight answered 204 and echoes
@@ -521,9 +557,20 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
   phone 2 is `2ac80128013f7ece`, ports 6310-6329. No script defaults to a device: pass `-Serial <serial>` every time
   (`-AllowedSerials` defaults to that serial; give it explicitly to gate against a list); a serial outside an explicit allowed
   list is refused before any adb call. Only package `io.github.yor42.risutanium` is allowed.
-- **`-s` on every adb call.** `Invoke-Adb` in `lib.ps1` adds `-s <serial>` to every call and throws on an empty or malformed
-  serial (`^[A-Za-z0-9._:-]+$`) before adb starts; call adb by hand the same way. `fixture-push.ps1` is the exception that
-  proves the route: its calls go through `device-guard/adbg.mjs` (`--serial <serial>`), which sends the `-s` itself.
+- **`-s` on every adb call.** `Invoke-Adb` in `lib.ps1` throws on an empty or malformed serial (`^[A-Za-z0-9._:-]+$`) before
+  anything starts; every kit call goes through `device-guard/adbg.mjs` with `--serial <serial>` and `--kit`, and the guard
+  sends the `-s` itself; an agent calling adb by hand goes through the guard the same way. `pss-sampler.ps1`, `meminfo-snapshot.ps1` and `run-obsfree.ps1` are routed the same way.
+- **One tree, one guard (kit routing).** `lib.ps1`, `chatshell-cdp/lib.mjs` and `device-guard/adbg.mjs` are siblings in one
+  tree. Every entry script (`run-obsfree.ps1` included, which loads `..\..\device\lib.ps1` from its own tree and never from
+  `CHATSHELL_REPO_ROOT`) loads `lib.ps1` from beside itself, and `lib.ps1` loads the guard from beside itself; no variable or
+  parameter selects either, so a copy of the kit must keep that layout. `CHATSHELL_REPO_ROOT` and `CHATSHELL_CDP_DIR` only widen
+  the outside-checkout check and choose `node_modules`. `Get-GuardArgList` is the only place that builds guard
+  arguments and always puts `--kit` first; the guard refuses a `--kit` call on any serial but the two spare Note 9s before it
+  sends anything. `Initialize-AdbGuard` takes `-OwnPorts` (10-65535, at most 128) for the host ports a script may forward or
+  reverse, and leaves its reason in `Get-AdbInitReason`. A call longer than 590 s is cut by the script before the guard's own
+  600 s kill (`Get-GuardCallCap`): the installs, the app-data `find`/`stat`, the snapshot stream and the restore extraction and
+  `sha256sum` are bounded that way, and a call the guard did kill shows as exit 1 with an empty reason. A snapshot stream is
+  started from `Get-AdbInvocation` (executable plus guard arguments, `--kit` included) because its output goes to a file.
 - **One agent per device.** Only lane A drives the phones (`Agents/Lanes/README.md`); other lanes ask the maintainer to pass the
   request, with a data ceiling, a time limit and a pass/fail exit (MC-330). A per-device lock
   (`<SnapshotRoot>\device-<serial>.lock`) is held by snapshot, restore and import-bin; a stale lock of a dead process is replaced.
@@ -683,9 +730,12 @@ pwsh -NoProfile -File Agents\Tools\device\tests\Test-Runner.ps1 -Fast -ScratchBa
   Windows directories; the cwd is searched unless `NoDefaultCurrentDirectoryInExePath` is set, and the check holds either way.
   The rule covers bare-name `adb` resolution only. `-CheckIsolationOnly` applies the filter and the check, prints
   `isolation: adb=<sentinel path>` and exits 0 without running tests. Run it from a directory that holds no adb.
-- The fixture-push tests run the real `device-guard/adbg.mjs` with `ADBG_FAKE_ADB_SCRIPT` set to the runner's fake adb; each of
-  them refuses to start unless that variable is the fake. A `-RunnerDir` copy must therefore keep `device-guard` beside
-  `device`.
+- Guarded tests (the Run-Check app watch, device-prep, cold-start, mock-reverse, sign-install keystore, fixture-push and the
+  lib-guard children) run the real `device-guard/adbg.mjs` on the Note 9 serial `2ac80128013f7ece`, with `ADBG_FAKE_ADB_SCRIPT`
+  set once to the runner's fake adb; the fixture-push tests refuse to start unless that variable is the fake. A `-RunnerDir`
+  copy must therefore keep `device-guard` beside `device`. A decoy tree (a lib that writes a marker when loaded) stands in
+  `CHATSHELL_REPO_ROOT` and `CHATSHELL_CDP_DIR` for the kit-refusal rows: a routed script that loaded its lib from there would
+  leave the marker.
 - Host ports: the forward and port-scan tests probe host ports 9770 to 9799 (outside every lane reservation). A listener on
   one of them makes those tests fail spuriously; a live device run on lane A's ports no longer does.
 - Current count: 387 PASS, 0 FAIL, 1 SKIP (sign-install keystore tests, build inputs missing on that machine), ALL PASSED (one full run on 2026-10-24, including 22 `mock-reverse` assertions;

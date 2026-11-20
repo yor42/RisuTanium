@@ -41,7 +41,7 @@
     import { followPanelWidth, WIDE_LAYOUT_MIN_PX } from "./panelGesture";
     import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
     import { takeOverlayReturnFocus } from "../../ts/chatShell/overlayFocus";
-    import { hasOpenShell } from "../Nexus/pattern/patternFocus";
+    import { hasOpenShell, onShellOpen } from "../Nexus/pattern/patternFocus";
     import { holdModalLayer } from "../Nexus/pattern/modalLayers.svelte";
     import ShellSidebar from "../ChatShell/sidebar/ShellSidebar.svelte";
     import { showHomeLanding } from "../UI/Home/homeView.svelte";
@@ -151,12 +151,41 @@
     }
   }
 
+  // Sheet wins: while a shell is open the overlay does not open, whoever asks. This runs before the
+  // inert effect below, so the page is never made inert for an overlay that is already refused.
+  $effect.pre(() => {
+    if (overlayModal && hasOpenShell()) {
+      sideBarStore.set(false);
+    }
+  });
+
+  // Set when a shell opened outside the panel closed the overlay: focus then belongs to that shell, so
+  // the teardown below must not return it to the opener.
+  let yieldedToShell = false;
+
+  // A shell that opens outside the panel while the overlay is open lives in the page this overlay made
+  // inert, so the overlay closes. A shell hosted inside the panel (a row menu, a delete confirmation)
+  // leaves it open.
+  $effect(() => {
+    if (!overlayModal || !panelEl) {
+      return;
+    }
+    const panel = panelEl;
+    return onShellOpen((element) => {
+      if (element && !panel.contains(element)) {
+        yieldedToShell = true;
+        sideBarStore.set(false);
+      }
+    });
+  });
+
   // While the panel is a modal overlay the rest of the page is inert, focus moves into the
   // panel, and it returns when the modal ends: to the element a keyboard switch named, else the opener.
   $effect(() => {
     if (!overlayModal || !panelEl) {
       return;
     }
+    yieldedToShell = false;
     // The inert page is a modal layer: the toast timers pause until this overlay ends.
     const releaseLayer = holdModalLayer();
     // A name left from an earlier overlay does not apply to this one.
@@ -179,6 +208,9 @@
         element.removeAttribute('inert');
       }
       const named = takeOverlayReturnFocus()?.() ?? null;
+      if (yieldedToShell) {
+        return;
+      }
       if (named?.isConnected && !named.closest('[inert]')) {
         named.focus();
         if (document.activeElement === named) {

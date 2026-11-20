@@ -379,7 +379,7 @@
 
         <label class="flex flex-col gap-1 mb-2 max-w-xs">
             <span class="text-textcolor2">{language.usageStats.retentionLabel}</span>
-            <SelectInput bind:value={retentionPick} ariaDescribedby="usage-retention-help" onchange={onRetentionChange}>
+            <SelectInput bind:value={retentionPick} describedBy="usage-retention-help" onchange={onRetentionChange}>
                 <option value="off">{language.usageStats.retentionOff}</option>
                 {#each USAGE_RETENTION_CHOICES as choice (choice)}
                     <option value={String(choice)}>{language.usageStats.retentionMonths(choice)}</option>

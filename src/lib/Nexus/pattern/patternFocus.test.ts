@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { ANNOUNCE_SETTLE_MS, afterFrameSettle, isTopmostShell, makeInert, registerShell, returnFocus, tabbables, trapTab, watchFocus } from './patternFocus'
+import { ANNOUNCE_SETTLE_MS, afterFrameSettle, isTopmostShell, makeInert, onShellOpen, registerShell, returnFocus, tabbables, trapTab, watchFocus } from './patternFocus'
 
 let host: HTMLElement
 
@@ -249,5 +249,19 @@ describe('shell stack', () => {
         expect(isTopmostShell(first)).toBe(true)
         dropFirst()
         expect(isTopmostShell(first)).toBe(false)
+    })
+
+    test('onShellOpen reports each registered shell with its element until the listener is dropped', () => {
+        const seen: Array<HTMLElement | undefined> = []
+        const stop = onShellOpen((element) => { seen.push(element) })
+        const element = document.createElement('div')
+        const dropWith = registerShell({}, element)
+        const dropWithout = registerShell({})
+        expect(seen).toEqual([element, undefined])
+        stop()
+        registerShell({})()
+        expect(seen.length).toBe(2)
+        dropWithout()
+        dropWith()
     })
 })

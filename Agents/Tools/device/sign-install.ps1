@@ -18,8 +18,7 @@ param(
     [string]$TestKeystore,
     [switch]$AllowClear,
     [ValidateRange(1, 1800)][int]$MaxSeconds = 600,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
@@ -82,7 +81,8 @@ try {
     $apksigner = Join-Path $bt.FullName 'apksigner.bat'
 
     Start-Phase 'adb'
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $adbDir = Join-Path $OutDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log'))) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
     End-Phase $null
@@ -146,7 +146,7 @@ try {
     Start-Phase 'install'
     $left = Get-Remaining
     if ($left -le 0) { Finish 'timeout' 'cap reached before install' }
-    $i = Invoke-Adb -AdbArgs @('install', '-r', $toInstall) -Serial $Serial -TimeoutSec ([math]::Min(600, $left))
+    $i = Invoke-Adb -AdbArgs @('install', '-r', $toInstall) -Serial $Serial -TimeoutSec (Get-GuardCallCap $left)
     $r.install.installOutput = ($i.Out + ' ' + $i.Err).Trim()
     if ($i.TimedOut) { Finish 'timeout' 'adb install exceeded the cap' }
     if ($i.ExitCode -ne 0 -or $r.install.installOutput -notmatch 'Success') {
@@ -157,7 +157,7 @@ try {
             }
             $u = Invoke-Adb -AdbArgs @('uninstall', $Package) -Serial $Serial -TimeoutSec 60
             if ($u.ExitCode -ne 0) { Finish 'fail' ('uninstall failed: ' + $u.Out + ' ' + $u.Err) }
-            $i = Invoke-Adb -AdbArgs @('install', $toInstall) -Serial $Serial -TimeoutSec ([math]::Min(600, [math]::Max(30, (Get-Remaining))))
+            $i = Invoke-Adb -AdbArgs @('install', $toInstall) -Serial $Serial -TimeoutSec (Get-GuardCallCap ([math]::Max(30, (Get-Remaining))))
             $r.install.installOutput = ($i.Out + ' ' + $i.Err).Trim()
             if ($i.ExitCode -ne 0 -or $r.install.installOutput -notmatch 'Success') { Finish 'fail' ('install after uninstall failed: ' + $r.install.installOutput) }
         } else {

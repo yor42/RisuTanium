@@ -8,6 +8,11 @@
 #   The refusal is lexical: a junction that leads into the checkout is not seen.
 # - Phase B fails closed: a failed adb start, wake, forward, node step or trial throws and stops the series. The forward this
 #   script made is always removed, and HARNESS_CDP is cleared on the way out.
+# - Every adb call goes through device-guard/adbg.mjs with --kit (lib.ps1 Initialize-AdbGuard, and obsfree.mjs through
+#   HARNESS_GUARD_LOG), which sends only the two spare Note 9s' calls. A serial the guard refuses stops Phase B at the adb start.
+#   There is no adb path parameter and no adb environment override.
+# - The device lib, open-fresh and the node scripts come from this script's own tree (relative paths only); CHATSHELL_REPO_ROOT and
+#   CHATSHELL_CDP_DIR only widen the outside-checkout check and choose node_modules.
 param(
     [Parameter(Mandatory = $true)][string]$Serial,
     [Parameter(Mandatory = $true)][string]$Build,
@@ -15,7 +20,6 @@ param(
     [int]$PortMin = 9460,
     [int]$PortMax = 9469,
     [string]$OutDir,
-    [string]$AdbExe = 'adb',
     [switch]$PlanOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -74,17 +78,18 @@ if ($PlanOnly) {
 
 # ---------- Phase B: side effects ----------
 
-$DeviceLib = Join-Path $RepoRoot 'Agents\Tools\device\lib.ps1'
+$DeviceLib = Join-Path $PSScriptRoot '..\..\device\lib.ps1'
 if (-not (Test-Path -LiteralPath $DeviceLib)) { throw ('device/lib.ps1 not found: ' + $DeviceLib) }
 . $DeviceLib
 . (Join-Path $PSScriptRoot 'open-fresh.ps1')
 Disable-StdHandleInherit
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-if (-not (Initialize-Adb $AdbDir $AdbExe)) { throw 'adb did not start' }
+$GuardLog = Join-Path $AdbDir 'adb-commands.log'
+if (-not (Initialize-AdbGuard -Dir $AdbDir -Serial $Serial -Log $GuardLog -OwnPorts ($PortMin..$PortMax))) { throw ('adb did not start: ' + (Get-AdbInitReason)) }
 $env:HARNESS_SERIAL = $Serial
 $env:HARNESS_OUT = $OutDir
-$env:HARNESS_ADB = $AdbExe
+$env:HARNESS_GUARD_LOG = $GuardLog
 $Fwd = New-CdpForward $Serial 'io.github.yor42.risutanium' $PortMin $PortMax
 $Series = Join-Path $OutDir ('series-' + $Build + '.txt')
 try {
