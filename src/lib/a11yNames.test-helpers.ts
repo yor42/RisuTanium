@@ -2,12 +2,12 @@
 // taken from Android WebView with TalkBack, which speaks neither wrapping labels nor `for` labels:
 // - a radio or checkbox is named only by aria-label, because only aria-label is spoken in the
 //   control's own stop (aria-labelledby alone is computed but not spoken);
-// - a text input or textarea is named by aria-labelledby, and only counts as named when its
-//   aria-describedby also lists the naming element's id, because only the description reaches the
-//   control's own stop.
+// - a text input, textarea or contenteditable role="textbox" is named by aria-labelledby, and only
+//   counts as named when its aria-describedby also lists the naming element's id, because only the
+//   description reaches the control's own stop.
 // title and tooltips never count as a name.
 
-const FORM_CONTROL_SELECTOR = 'input, textarea'
+const FORM_CONTROL_SELECTOR = 'input, textarea, [role="textbox"]'
 const CHOICE_CONTROL_SELECTOR = 'input[type="radio"], input[type="checkbox"]'
 
 const PALETTE_NAMES = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
@@ -88,7 +88,7 @@ export type ControlOptions = { fields?: boolean }
 
 export function controls(root: ParentNode, options: ControlOptions = {}): Element[] {
     const selector = options.fields
-        ? 'button, [role="button"], input[type="radio"], textarea, input[type="checkbox"], input[type="text"], input[type="password"], input:not([type])'
+        ? 'button, [role="button"], input[type="radio"], textarea, input[type="checkbox"], input[type="text"], input[type="password"], input:not([type]), [role="textbox"]'
         : 'button, [role="button"], input[type="radio"], textarea'
     return Array.from(root.querySelectorAll(selector)).filter((el) => el.closest('[aria-hidden="true"]') === null)
 }
@@ -138,4 +138,49 @@ export function paletteClasses(root: ParentNode, options: PaletteOptions = {}): 
         }
     }
     return Array.from(found).sort()
+}
+
+const SCHEME_TOKENS = 'textcolor2?|draculared|bgcolor|darkbg|darkbutton|selected|borderc|darkborderc'
+const TEXT_COLOUR_BODY = `(?:(?:${SCHEME_TOKENS})|[a-z]+-\\d{2,3}|white|black)(?:/\\d+)?`
+const REST_TEXT_COLOUR = new RegExp(`^text-(${TEXT_COLOUR_BODY})$`)
+const HOVER_TEXT_COLOUR = new RegExp(`^hover:text-(${TEXT_COLOUR_BODY})$`)
+
+function firstColour(el: Element, pattern: RegExp): string | null {
+    for(const token of Array.from(el.classList)){
+        const match = pattern.exec(token)
+        if(match){
+            return match[1]
+        }
+    }
+    return null
+}
+
+export type TextColourTokens = { rest: string | null, hover: string | null }
+
+/**
+ * The text-colour token pair that applies to a glyph's container. `rest` is the first `text-<colour>`
+ * class on the container or its nearest ancestor that has one, as CSS inheritance resolves it, and
+ * size classes such as `text-sm` never match. `hover` is the first `hover:text-<colour>` class on the
+ * same walk, stopping at the nearest button or `[role=button]` (inclusive), because a hover class
+ * above the control does not apply while the control is hovered. Reads classes, not computed styles.
+ */
+export function textColourTokens(glyph: Element): TextColourTokens {
+    let rest: string | null = null
+    let hover: string | null = null
+    let hoverOpen = true
+    for(let el: Element | null = glyph; el !== null; el = el.parentElement){
+        if(rest === null){
+            rest = firstColour(el, REST_TEXT_COLOUR)
+        }
+        if(hoverOpen && hover === null){
+            hover = firstColour(el, HOVER_TEXT_COLOUR)
+        }
+        if(hoverOpen && el.matches('button, [role="button"]')){
+            hoverOpen = false
+        }
+        if(rest !== null && !hoverOpen){
+            break
+        }
+    }
+    return { rest, hover }
 }

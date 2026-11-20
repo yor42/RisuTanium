@@ -87,6 +87,18 @@ describe('ChatList accessible names', () => {
     })
 })
 
+describe('ChatList rename fields', () => {
+    test('regression reproducer: in edit mode every rename field is named "Chat name"', () => {
+        const root = showList()
+        toolbar(root)[2].click()
+        flushSync()
+        const fields = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="text"]'))
+        expect(fields.length).toBe(2)
+        expect(fields.map(controlName)).toEqual([language.chatNameField, language.chatNameField])
+        expect(unnamedControls(root, { fields: true })).toEqual([])
+    })
+})
+
 describe('ChatList keyboard, state and colour', () => {
     test.each(['Enter', ' '])('regression reproducer: %j on a row download div exports the chat', (key) => {
         const root = showList()

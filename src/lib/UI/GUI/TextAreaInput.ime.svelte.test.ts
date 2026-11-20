@@ -77,7 +77,7 @@ function suggestionButtons(parent: HTMLElement): HTMLButtonElement[] {
 }
 
 function selectedSuggestion(parent: HTMLElement): number {
-    return suggestionButtons(parent).findIndex((button) => button.classList.contains('text-blue-500'))
+    return suggestionButtons(parent).findIndex((button) => button.classList.contains('bg-selected'))
 }
 
 // Opens the real autocomplete list through the editor's own input handler. A zero rect

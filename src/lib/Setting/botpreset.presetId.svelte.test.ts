@@ -236,7 +236,7 @@ describe('creation sites', () => {
     test('A10 the Add button gives the new preset an id, and no slot or folder', async () => {
         installDb(2, 0)
         const target = mountPresets()
-        const add = Array.from(target.querySelectorAll('button')).find((button) => button.className.includes('hover:text-green-500') && button.className.includes('mr-1')) as HTMLElement
+        const add = target.querySelector('div.flex.mt-2.items-center > button.mr-1') as HTMLElement
         add.click()
         await settle()
         const added = DBState.db.botPresets[2]

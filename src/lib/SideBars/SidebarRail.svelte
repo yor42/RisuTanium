@@ -1151,10 +1151,11 @@
           aria-posinset={rows.length + 1}
           use:measure={PLUS_KEY} {...itemAttrs(PLUS_KEY, 'plus')}>
           <BaseRoundedButton
+            label={language.addCharacter}
             onClick={async () => {
               addCharacter({reseter})
             }}
-            ><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+            ><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true"
               ><path
                 fill="none"
                 stroke="currentColor"

@@ -470,7 +470,7 @@ describe('a partial backup stalled mid-write', () => {
 
         const { outcome } = await stalledPartialExport(stubWrite)
         const dialog = get(alertStore) as alertData
-        expect(dialog.msg).toContain('Cold data')
+        expect(dialog.msg).toContain('cold data')
         expect(dialog.onCancel).toBeTypeOf('function')
         dialog.onCancel?.()
 
