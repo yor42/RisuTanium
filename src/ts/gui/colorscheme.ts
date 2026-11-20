@@ -313,6 +313,7 @@ export function updateColorScheme(){
         document.documentElement.style.setProperty("--risu-theme-role-switch-off-alpha", roles['switch-off-alpha']);
         document.documentElement.style.setProperty("--risu-theme-role-surface-toast", roles['surface-toast']);
         document.documentElement.style.setProperty("--risu-theme-role-color-scheme", roles['color-scheme']);
+        document.documentElement.style.setProperty("--risu-theme-role-focus-ring", roles['focus-ring']);
         ColorSchemeTypeStore.set(colorScheme.type)
         // The colour applied above, after the lite override; also reached at boot.
         syncSystemBars(colorScheme.bgcolor)
