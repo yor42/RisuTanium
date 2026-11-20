@@ -420,6 +420,15 @@ body {
 }
 
 /*
+ * The same ring drawn inside a container whose child has keyboard focus, for a segment of a group
+ * that clips overflow (an outline outside the segment would be cut off). Keyboard focus only.
+ */
+.risu-focus-ring-inset-within:has(:focus-visible) {
+  outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
+  outline-offset: -2px;
+}
+
+/*
  * The text on the selected primary Button fill. It comes from the scheme even while a theme pack is
  * on, and the scheme derives it to stay readable on the selected colour. It is unlayered, so it wins
  * over the button's own text utility.

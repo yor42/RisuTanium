@@ -35,6 +35,8 @@
     let secondField = $state<HTMLInputElement>()
     const slow = encryptionIsSlow()
     const problemId = `${uid}-problem`
+    const passwordLabelId = `${uid}-password-label`
+    const passwordAgainLabelId = `${uid}-password-again-label`
 
     // Scope applies to `.bin` only; a stale partial pick is dropped from the answer when `.rtb` is chosen.
     const scopeEnabled = $derived(format === 'bin')
@@ -78,13 +80,13 @@
         <fieldset data-part="data-chooser-format">
             <legend>{language.settingsShellDataFormat}</legend>
             <label>
-                <input type="radio" name="{uid}-format" value="rtb" data-pattern-initial bind:group={format} />
+                <input type="radio" name="{uid}-format" value="rtb" aria-label={language.settingsShellDataFormatRtb} data-pattern-initial bind:group={format} />
                 <span>{language.settingsShellDataFormatRtb}</span>
             </label>
             <p>{language.settingsShellDataFormatRtbHint}</p>
             <div data-part="data-chooser-encrypt">
                 <label>
-                    <input type="checkbox" data-part="data-chooser-encrypt-toggle" disabled={format !== 'rtb'} bind:checked={encrypt} />
+                    <input type="checkbox" data-part="data-chooser-encrypt-toggle" aria-label={language.settingsShellDataEncrypt} disabled={format !== 'rtb'} bind:checked={encrypt} />
                     <span>{language.settingsShellDataEncrypt}</span>
                 </label>
                 {#if slow}
@@ -92,7 +94,7 @@
                 {/if}
                 {#if format === 'rtb' && encrypt}
                     <label data-part="data-chooser-password-label">
-                        <span>{language.rtbRestorePasswordLabel}</span>
+                        <span id={passwordLabelId}>{language.rtbRestorePasswordLabel}</span>
                         <input
                             bind:this={firstField}
                             bind:value={first}
@@ -103,11 +105,12 @@
                             autocorrect="off"
                             spellcheck="false"
                             aria-invalid={problem === 'unusable' ? 'true' : undefined}
-                            aria-describedby={problem === 'unusable' ? problemId : undefined}
+                            aria-labelledby={passwordLabelId}
+                            aria-describedby={problem === 'unusable' ? `${passwordLabelId} ${problemId}` : passwordLabelId}
                         />
                     </label>
                     <label data-part="data-chooser-password-label">
-                        <span>{language.settingsShellDataEncryptAgain}</span>
+                        <span id={passwordAgainLabelId}>{language.settingsShellDataEncryptAgain}</span>
                         <input
                             bind:this={secondField}
                             bind:value={second}
@@ -118,11 +121,12 @@
                             autocorrect="off"
                             spellcheck="false"
                             aria-invalid={problem === 'mismatch' ? 'true' : undefined}
-                            aria-describedby={problem === 'mismatch' ? problemId : undefined}
+                            aria-labelledby={passwordAgainLabelId}
+                            aria-describedby={problem === 'mismatch' ? `${passwordAgainLabelId} ${problemId}` : passwordAgainLabelId}
                         />
                     </label>
                     <label>
-                        <input type="checkbox" data-part="data-chooser-password-show" bind:checked={shown} />
+                        <input type="checkbox" data-part="data-chooser-password-show" aria-label={language.rtbRestorePasswordShow} bind:checked={shown} />
                         <span>{language.rtbRestorePasswordShow}</span>
                     </label>
                     <p data-part="data-chooser-encrypt-warning">{language.settingsShellDataEncryptWarning}</p>
@@ -132,7 +136,7 @@
                 {/if}
             </div>
             <label>
-                <input type="radio" name="{uid}-format" value="bin" bind:group={format} />
+                <input type="radio" name="{uid}-format" value="bin" aria-label={language.settingsShellDataFormatBin} bind:group={format} />
                 <span>{language.settingsShellDataFormatBin}</span>
             </label>
             <p>{language.settingsShellDataFormatBinHint}</p>
@@ -141,11 +145,11 @@
         <fieldset data-part="data-chooser-scope" disabled={!scopeEnabled}>
             <legend>{language.settingsShellDataScope}</legend>
             <label>
-                <input type="radio" name="{uid}-scope" value="full" disabled={!scopeEnabled} bind:group={scope} />
+                <input type="radio" name="{uid}-scope" value="full" aria-label={language.settingsShellDataScopeFull} disabled={!scopeEnabled} bind:group={scope} />
                 <span>{language.settingsShellDataScopeFull}</span>
             </label>
             <label>
-                <input type="radio" name="{uid}-scope" value="partial" disabled={!scopeEnabled} bind:group={scope} />
+                <input type="radio" name="{uid}-scope" value="partial" aria-label={language.settingsShellDataScopePartial} disabled={!scopeEnabled} bind:group={scope} />
                 <span>{language.settingsShellDataScopePartial}</span>
             </label>
             {#if !scopeEnabled}

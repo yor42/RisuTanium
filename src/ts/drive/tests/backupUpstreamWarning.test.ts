@@ -711,44 +711,36 @@ describe('the ready-to-save prompt', () => {
 
     const readyCalls = () => alertNormalWaitMock.mock.calls.filter((c) => String(c[0]).includes('ready to save'))
 
-    test('reproducer: a plain-HTTP page whose activation has lapsed is asked for a click before the writer opens', async () => {
+    test('reproducer: a plain-HTTP page whose activation has lapsed is asked for no click, since no popup helper opens', async () => {
         setActivation(false)
-        let openedAtPrompt = -1
-        alertNormalWaitMock.mockImplementation(async () => {
-            openedAtPrompt = backupSink.opened
-            setActivation(true)
-        })
 
         const outcome = await SaveLocalBackup()
 
-        expect(readyCalls()).toHaveLength(1)
-        expect(openedAtPrompt).toBe(0)
+        expect(readyCalls()).toHaveLength(0)
         expect(outcome).toMatchObject({ status: 'saved' })
     })
 
-    test('reproducer: activation that lapses after the size confirmation is checked after it, not before', async () => {
+    test('reproducer: activation that lapses after the size confirmation asks for no click either', async () => {
         plantAssets(['assets/big', LIMIT + 1])
         setActivation(true)
         alertConfirmMock.mockImplementation(async () => {
             setActivation(false)
             return true
         })
-        alertNormalWaitMock.mockImplementation(async () => { setActivation(true) })
 
         await SaveLocalBackup()
 
         expect(upstreamPrompts()).toHaveLength(1)
-        expect(readyCalls()).toHaveLength(1)
-        expect(alertConfirmMock.mock.invocationCallOrder[0]).toBeLessThan(alertNormalWaitMock.mock.invocationCallOrder[0])
+        expect(readyCalls()).toHaveLength(0)
     })
 
-    test('reproducer: a partial export asks too', async () => {
+    test('reproducer: a partial export asks for no click on a plain-HTTP page either', async () => {
         getDatabaseMock.mockImplementation(() => databaseWith({ userIcon: 'assets/small' }))
         setActivation(false)
 
         await SavePartialLocalBackup()
 
-        expect(readyCalls()).toHaveLength(1)
+        expect(readyCalls()).toHaveLength(0)
     })
 
     test('guard: live activation asks nothing', async () => {
@@ -779,10 +771,10 @@ describe('the ready-to-save prompt', () => {
 })
 
 describe('webWriterNeedsGesture', () => {
-    test('new behaviour: only the popup helper of a plain-HTTP page that does not collect in memory needs a gesture', () => {
+    test('no browser writer opens a popup any more, so none needs a fresh gesture', () => {
         const cases: Array<[boolean, boolean, boolean, boolean]> = [
             // isTauri, secure, blob fallback, needs a gesture
-            [false, false, false, true],
+            [false, false, false, false],
             [false, true, false, false],
             [false, false, true, false],
             [true, false, false, false],

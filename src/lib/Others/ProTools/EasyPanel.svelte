@@ -44,11 +44,11 @@
     <div class="m-4 p-4 bg-bgcolor/80 backdrop-blur-sm rounded-lg shadow-lg pointer-events-auto flex-1 flex flex-col overflow-y-auto">
         <h2 class="text-lg font-bold mb-2 flex items-center">
             {language.easyPanel}
-            <div class="ml-2 bg-blue-800 p-1 rounded text-sm">{language.othersUi.beta}</div>
-            <button class="ml-auto p-1 rounded hover:bg-selected" onclick={() => {
+            <div class="ml-2 bg-darkbutton text-textcolor p-1 rounded text-sm">{language.othersUi.beta}</div>
+            <button class="ml-auto p-1 rounded hover:bg-selected" aria-label={language.uiCommon.close} onclick={() => {
                 onClose()
             }}>
-                <XIcon size={28} class="ml-auto hover:bg-selected rounded"></XIcon>
+                <XIcon size={28} class="ml-auto hover:bg-selected rounded" aria-hidden="true"></XIcon>
             </button>
         </h2>
         <SegmentedControl
@@ -63,7 +63,7 @@
         />
 
         {#if !hasEPRequirements}
-            <div class="mt-4 p-4 bg-yellow-100 text-yellow-800 rounded">
+            <div class="mt-4 p-4 bg-darkbutton text-textcolor rounded">
                 {language.epRequirementsNotMet}
             </div>
 

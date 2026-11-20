@@ -83,7 +83,7 @@
 {/key}
 {#if buttons}
     <div class="flex gap-2 mt-2">
-        <button class="rounded-md text-textcolor2 hover:text-textcolor focus-within:text-textcolor" onclick={() => {
+        <button class="rounded-md text-textcolor2 hover:text-textcolor focus-within:text-textcolor" aria-label={language.add} onclick={() => {
             value.push({
             comment: "",
             in: "",
@@ -91,13 +91,13 @@
             type: "editinput"
             })
         }}>
-            <PlusIcon />
+            <PlusIcon aria-hidden="true" />
         </button>
-        <button class="rounded-md text-textcolor2 hover:text-textcolor focus-within:text-textcolor" onclick={() => {
+        <button class="rounded-md text-textcolor2 hover:text-textcolor focus-within:text-textcolor" aria-label={language.export} onclick={() => {
             exportRegex(value)
-        }}><DownloadIcon /></button>
-        <button class="rounded-md text-textcolor2 hover:text-textcolor focus-within:text-textcolor" onclick={async () => {
+        }}><DownloadIcon aria-hidden="true" /></button>
+        <button class="rounded-md text-textcolor2 hover:text-textcolor focus-within:text-textcolor" aria-label={language.import} onclick={async () => {
             value = await importRegex(value)
-        }}><HardDriveUploadIcon /></button>
+        }}><HardDriveUploadIcon aria-hidden="true" /></button>
     </div>
 {/if}

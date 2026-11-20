@@ -106,6 +106,7 @@ interface fetchLog {
 }
 
 let fetchLog: fetchLog[] = []
+const FETCH_LOG_LIMIT = 20
 
 const NO_KNOWN_SECRETS: KnownSecrets = compileKnownSecrets([])
 let knownSecretsSignature: string | null = null
@@ -1261,7 +1262,7 @@ let requestSaveNowImpl: (() => void) | null = null
 let unsavableCharacterCount = 0
 /** Which characters those are, replaced whole at each store2 pass; empty on a page without a store2 loop. */
 let unsavableCharacterIds: ReadonlySet<string> = new Set()
-/** How many modules, preset lists, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
+/** How many modules, preset lists, loadouts, statics, character order, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
 let unsavableItemCount = 0
 
 /** True while the store2 loop reports the character as unsavable; always false on a page without a store2 loop. */
@@ -1686,11 +1687,18 @@ function unsavableItemNotice(item: SkippedItem): string {
         if (item.scope === 'moduleSet') {
             return language.saveModulesHeldNotice(item.label)
         }
+        if (item.scope === 'loadouts') {
+            return language.saveLoadoutsHeldNotice(item.label)
+        }
         const what = item.scope === 'module'
             ? language.saveItemModuleLabel(item.label.slice(1, -1))
             : item.scope === 'settings'
                 ? language.saveItemSettingLabel(item.key)
-                : language.saveItemPluginDataLabel(item.key)
+                : item.scope === 'statics'
+                    ? language.saveItemStaticsLabel
+                    : item.scope === 'characterOrder'
+                        ? language.saveItemCharacterOrderLabel
+                        : language.saveItemPluginDataLabel(item.key)
         return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
     } catch {
         return item.saved ? language.saveItemUnsavedNotice(`"${item.key}"`) : language.saveItemNeverSavedNotice(`"${item.key}"`)
@@ -2143,7 +2151,7 @@ interface GlobalFetchResult {
  * @param {string} arg.url - The URL of the request.
  * @param {string} [arg.resType] - The response type.
  * @param {string} [arg.chatId] - The chat ID associated with the request.
- * @returns {number} - The index of the added fetch log entry.
+ * @returns {fetchLog} - The added fetch log entry; later writes to it go through this reference.
  */
 export function addFetchLog(arg: {
     body: any,
@@ -2154,9 +2162,9 @@ export function addFetchLog(arg: {
     resType?: string,
     chatId?: string,
     status?: number
-}): number {
+}): fetchLog {
     const redact = fetchLogRedactor()
-    fetchLog.unshift({
+    const entry: fetchLog = {
         body: redact('body', typeof (arg.body) === 'string' ? arg.body : JSON.stringify(arg.body, null, 2)),
         header: redact('header', JSON.stringify(arg.headers ?? {}, null, 2)),
         response: redact('response', typeof (arg.response) === 'string' ? arg.response : JSON.stringify(arg.response, null, 2)),
@@ -2166,8 +2174,13 @@ export function addFetchLog(arg: {
         url: redact('url', arg.url),
         chatId: arg.chatId,
         status: arg.status
-    });
-    return 0;
+    }
+    fetchLog.unshift(entry)
+    // Callers hold the entry itself, so eviction never moves a held entry onto another request's row.
+    while (fetchLog.length > FETCH_LOG_LIMIT) {
+        fetchLog.pop()
+    }
+    return entry;
 }
 
 /**
@@ -2295,7 +2308,7 @@ function addFetchLogInGlobalFetch(response: any, success: boolean, url: string, 
         })
     }
 
-    if (fetchLog.length > 20) {
+    while (fetchLog.length > FETCH_LOG_LIMIT) {
         fetchLog.pop()
     }
 }
@@ -3136,19 +3149,20 @@ if (isTauri) {
 
 /**
  * Pipes the fetch log to a readable stream.
- * @param {number} fetchLogIndex - The index of the fetch log.
+ * @param {fetchLog} entry - The fetch log entry that receives the streamed text.
  * @param {ReadableStream<Uint8Array>} readableStream - The readable stream to pipe.
  * @returns {ReadableStream<Uint8Array>} - The new readable stream.
  */
-const pipeFetchLog = (fetchLogIndex: number, readableStream: ReadableStream<Uint8Array>) => {
+export const pipeFetchLog = (entry: fetchLog, readableStream: ReadableStream<Uint8Array>) => {
     
     const splited = readableStream.tee();
     
     (async () => {
         // A stream error already reaches the consumer through the other branch.
         const text = await (new Response(splited[0])).text().catch(() => null)
-        if (text !== null && fetchLog[fetchLogIndex]) {
-            fetchLog[fetchLogIndex].response = fetchLogRedactor()('response', text)
+        // An entry evicted by the cap is detached; writing to it is harmless and never re-inserts it.
+        if (text !== null) {
+            entry.response = fetchLogRedactor()('response', text)
         }
     })()
     
@@ -3162,7 +3176,7 @@ async function fetchViaProxyJobWs(url: string, arg: {
     signal?: AbortSignal,
     requestTimeoutMs?: number,
     chatId?: string,
-    fetchLogIndex?: number | null
+    fetchLogEntry?: fetchLog | null
 }): Promise<Response> {
     const auth = await getNodeServerProxyAuth();
 
@@ -3229,7 +3243,7 @@ async function fetchViaProxyJobWs(url: string, arg: {
             }
         }
     });
-    const pipedReadable = arg.fetchLogIndex != null ? pipeFetchLog(arg.fetchLogIndex, readable) : readable;
+    const pipedReadable = arg.fetchLogEntry != null ? pipeFetchLog(arg.fetchLogEntry, readable) : readable;
 
     const ensureHeadersReady = () => {
         if (!headersReady) {
@@ -3429,9 +3443,9 @@ export async function fetchNative(url: string, arg: {
     const timeoutSignal = buildTimeoutSignal(arg.signal, arg.requestTimeoutMs)
     const requestSignal = timeoutSignal.signal
     const shouldLogFetch = arg.logFetch ?? true
-    let fetchLogIndex: number | null = null
+    let logEntry: fetchLog | undefined
     if (shouldLogFetch) {
-        fetchLogIndex = addFetchLog({
+        logEntry = addFetchLog({
             body: new TextDecoder().decode(realBody),
             headers: arg.headers,
             response: 'Streamed Fetch',
@@ -3441,8 +3455,6 @@ export async function fetchNative(url: string, arg: {
             chatId: arg.chatId,
         })
     }
-    // Later fetches add entries in front, so the entry is held by reference.
-    const logEntry = fetchLogIndex !== null ? fetchLog[fetchLogIndex] : undefined
     try {
         // The userscript hook has no destination policy, so an untrusted request on Tauri never takes it.
         if (window.userScriptFetch && !throughProxy && !(internal && isTauri)) {
@@ -3770,7 +3782,7 @@ export async function fetchNative(url: string, arg: {
                     signal: requestSignal,
                     requestTimeoutMs: arg.requestTimeoutMs,
                     chatId: arg.chatId,
-                    fetchLogIndex
+                    fetchLogEntry: logEntry
                 });
             } catch (wsErr) {
                 console.warn('[ProxyJobWS] fallback to /proxy2 due to error:', wsErr);

@@ -98,7 +98,7 @@
                 {/if}
             </span>
             {#if showNames}
-                <span data-part="strip-name" class="w-full truncate text-center text-[10px] leading-tight">{entry.name || language.settingsPage.unnamed}</span>
+                <span data-part="strip-name" class="w-full line-clamp-2 [overflow-wrap:anywhere] text-center text-[10px] leading-tight">{entry.name || language.settingsPage.unnamed}</span>
             {/if}
         </button>
     {/each}

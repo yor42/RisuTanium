@@ -121,7 +121,7 @@ describe('Start with a problem (T-S2-4)', () => {
         expect(field1()!.getAttribute('aria-invalid')).toBe('true')
         expect(field2()!.getAttribute('aria-invalid')).toBeNull()
         expect(document.activeElement).toBe(field1())
-        expect(field1()!.getAttribute('aria-describedby')).toBe(problemLine()!.id)
+        expect(field1()!.getAttribute('aria-describedby')).toBe(`${field1()!.getAttribute('aria-labelledby')} ${problemLine()!.id}`)
 
         typeBoth('\ud800')
         click(startButton())
@@ -140,7 +140,7 @@ describe('Start with a problem (T-S2-4)', () => {
         expect(field2()!.getAttribute('aria-invalid')).toBe('true')
         expect(field1()!.getAttribute('aria-invalid')).toBeNull()
         expect(document.activeElement).toBe(field2())
-        expect(field2()!.getAttribute('aria-describedby')).toBe(problemLine()!.id)
+        expect(field2()!.getAttribute('aria-describedby')).toBe(`${field2()!.getAttribute('aria-labelledby')} ${problemLine()!.id}`)
         expect(field1()!.value).toBe('a')
         expect(field2()!.value).toBe('b')
         // Start stays enabled: it reports the problem instead of being disabled.

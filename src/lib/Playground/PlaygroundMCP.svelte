@@ -9,6 +9,7 @@
     import { ensurePlaygroundModulesOrAlert } from "src/ts/process/moduleEnsure";
 
     let metadatas = $state('')
+    const uid = $props.id()
     let tools:MCPToolWithURL[] = $state([]);
     let toolInputs:{[key:string]:string}= $state({});
     let moduleWait: Promise<boolean> | null = null;
@@ -33,19 +34,19 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">MCP</h2>
 
-<span class="text-textcolor text-lg">{language.playground.metadatas}</span>
-<TextAreaInput value={metadatas} />
+<span id="{uid}-metadatas" class="text-textcolor text-lg">{language.playground.metadatas}</span>
+<TextAreaInput labelId="{uid}-metadatas" value={metadatas} />
 
 <span class="text-textcolor text-lg">{language.tools}</span>
 <div class="flex flex-col gap-2">
-  {#each tools as tool}
+  {#each tools as tool, index}
     <div class="border border-gray-300 p-2 rounded-md">
-      <h3 class="text-lg font-bold">{tool.name}</h3>
+      <h3 id="{uid}-tool-{index}" class="text-lg font-bold">{tool.name}</h3>
       <p>{tool.description}</p>
       <div class="prose prose-gray w-full">
         <pre class="overflow-x-auto w-full">{JSON.stringify(tool.inputSchema, null, 2)}</pre>
       </div>
-      <TextAreaInput bind:value={toolInputs[tool.name]} placeholder={language.playground.toolInputPlaceholder} />
+      <TextAreaInput labelId="{uid}-tool-{index}" bind:value={toolInputs[tool.name]} placeholder={language.playground.toolInputPlaceholder} />
       <Button onclick={async () => {
         const x = await callMCPTool(tool.name, JSON.parse(toolInputs[tool.name]));
         alertMd(fillLang(language.playground.toolExecuted, { name: tool.name, response: JSON.stringify(x, null, 2) }));

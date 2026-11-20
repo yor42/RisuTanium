@@ -40,6 +40,7 @@
                     type="radio"
                     name="{uid}-new-message-button"
                     value={option.value}
+                    aria-label={option.labelKey ? settingsLabel(option.labelKey) : option.label}
                     checked={current === option.value}
                     onchange={() => choose(option.value)}
                 />

@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto'
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { remove } from '@tauri-apps/plugin-fs'
 import { ExportCancelToken } from 'src/ts/exportCancel'
+import { nobleAead, type AeadBackend } from 'src/ts/drive/rtb/sealed/aead'
 import { isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { exportClosure, ExportClosureError } from 'src/ts/storage/store2/rtb/exportClosure'
@@ -710,6 +711,106 @@ describe('cancel and failure through the shell (T-S8-9)', () => {
         expect(result).toMatchObject({ status: 'ended', outcome: { status: 'declined', cause: 'save-dialog-cancelled' }, report: null })
         expect(saveFirst).not.toHaveBeenCalled()
         expect(isBusy()).toBe(false)
+    })
+})
+
+describe('a sealed export wipes its key on every exit (issue 357)', () => {
+    const allZero = (bytes: Uint8Array) => bytes.every((byte) => byte === 0)
+
+    /** Cheap seal seams; `payloadKey()` is the byte array the sink would seal with (the second key imported). */
+    function sealSeam(afterPayloadKey: () => void = () => { }) {
+        const inner = nobleAead()
+        const keys: Uint8Array[] = []
+        const aead: AeadBackend = {
+            ...inner,
+            importKey: async (raw) => {
+                const key = await inner.importKey(raw)
+                keys.push(key as Uint8Array)
+                if (keys.length === 2) {
+                    afterPayloadKey()
+                }
+                return key
+            },
+        }
+        return {
+            seal: { params: { m: 8, t: 1, chunkSize: 65_536 }, kdf: async () => new Uint8Array(32).fill(9), aead },
+            payloadKey: () => {
+                expect(keys.length, 'the payload key was imported').toBe(2)
+                return keys[1]
+            },
+        }
+    }
+
+    test('a cancel during the walk leaves the key zero', async () => {
+        const seam = sealSeam()
+        let batches = 0
+        // `rtbDeps` ties the writer to the run's cancel switch when it opens the writer.
+        const writer = new FakeLocalWriter()
+        const { deps } = rtbDeps({
+            backend: await world.open(), env: world.env, files: FILES, writer,
+            over: {
+                seal: seam.seal,
+                afterUnitBatch: async () => {
+                    batches++
+                    if (batches === 2) {
+                        writer.cancel?.cancel()
+                    }
+                },
+            },
+        })
+        const result = await runRtbExportGuarded(deps, { fileName: 'test.rtb', password: 'password one' })
+        expect(result).toMatchObject({ status: 'ended', outcome: { status: 'declined', cause: 'export-cancelled' } })
+        expect(batches).toBe(2)
+        expect(allZero(seam.payloadKey())).toBe(true)
+    })
+
+    test('a write failure leaves the key zero', async () => {
+        const seam = sealSeam()
+        const writer = new FakeLocalWriter({ failWriteNumber: 1 })
+        const { deps } = rtbDeps({ backend: await world.open(), env: world.env, files: FILES, writer, over: { seal: seam.seal } })
+        const result = await runRtbExportGuarded(deps, { fileName: 'test.rtb', password: 'password one' })
+        expect(result).toMatchObject({ status: 'ended', outcome: { status: 'failed' } })
+        expect(allZero(seam.payloadKey())).toBe(true)
+    })
+
+    test('a failure before any sink is taken leaves the key zero', async () => {
+        const seam = sealSeam()
+        const { deps } = rtbDeps({
+            backend: await world.open(), env: world.env,
+            over: { seal: seam.seal, saveFirst: async () => { throw new Error('the save failed') } },
+        })
+        const result = await runRtbExportGuarded(deps, { fileName: 'test.rtb', password: 'password one' })
+        expect(result).toMatchObject({ status: 'ended', outcome: { status: 'failed' } })
+        expect(allZero(seam.payloadKey())).toBe(true)
+    })
+
+    test('a declined writer leaves the key zero', async () => {
+        const seam = sealSeam()
+        const { deps } = rtbDeps({ backend: await world.open(), env: world.env, over: { seal: seam.seal, openWriter: async () => null } })
+        const result = await runRtbExportGuarded(deps, { fileName: 'test.rtb', password: 'password one' })
+        expect(result).toMatchObject({ status: 'ended', outcome: { status: 'declined', cause: 'save-dialog-cancelled' } })
+        expect(allZero(seam.payloadKey())).toBe(true)
+    })
+
+    test('a cancel right after the derivation, before the writer opens, leaves the key zero', async () => {
+        vi.mocked(alertWait).mockClear()
+        const seam = sealSeam(() => {
+            vi.mocked(alertWait).mock.calls.at(-1)?.[1]?.()
+        })
+        const openWriter = vi.fn(async () => null)
+        const { deps } = rtbDeps({ backend: await world.open(), env: world.env, over: { seal: seam.seal, openWriter } })
+        const result = await runRtbExportGuarded(deps, { fileName: 'test.rtb', password: 'password one', progressText: (event) => JSON.stringify(event) })
+        expect(result).toMatchObject({ status: 'ended', outcome: { status: 'declined', cause: 'export-cancelled' } })
+        expect(openWriter).not.toHaveBeenCalled()
+        expect(allZero(seam.payloadKey())).toBe(true)
+    })
+
+    test('a successful export still writes the file and leaves the key zero', async () => {
+        const seam = sealSeam()
+        const { deps, writer } = rtbDeps({ backend: await world.open(), env: world.env, over: { seal: seam.seal } })
+        saved(await runRtbExportGuarded(deps, { fileName: 'test.rtb', password: 'password one' }))
+        expect(writer.bytes().length).toBeGreaterThan(0)
+        expect(allZero(seam.payloadKey())).toBe(true)
     })
 })
 

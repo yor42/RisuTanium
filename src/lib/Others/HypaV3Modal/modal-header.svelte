@@ -132,7 +132,7 @@
 
 <div class="flex items-center justify-between mb-2 sm:mb-4">
   <!-- Modal Title -->
-  <h1 class="text-lg font-semibold sm:text-2xl text-zinc-300">
+  <h1 class="text-lg font-semibold sm:text-2xl text-textcolor">
     {language.hypaV3Modal.titleLabel}
   </h1>
 
@@ -140,117 +140,128 @@
   <div class="flex items-center gap-2">
     <!-- Open Search Button -->
     <button
-      class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+      class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
       tabindex="-1"
+      aria-label={language.search}
       onclick={async () => await toggleSearch()}
     >
-      <SearchIcon class="w-6 h-6" />
+      <SearchIcon class="w-6 h-6" aria-hidden="true" />
     </button>
 
     <!-- Filter Important Summary Button -->
     <button
       class="p-2 transition-colors {filterState?.showImportantOnly
-        ? 'text-yellow-400 hover:text-yellow-300'
-        : 'text-zinc-400 hover:text-zinc-200'}"
+        ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
+        : 'text-textcolor2 hover:text-textcolor'}"
       tabindex="-1"
+      aria-label={language.hypaV3ImportantOnly}
+      aria-pressed={!!filterState?.showImportantOnly}
       onclick={toggleFilterImportant}
     >
-      <StarIcon class="w-6 h-6" />
+      <StarIcon class="w-6 h-6" aria-hidden="true" />
     </button>
 
     <!-- Bulk Edit Mode Button -->
     {#if bulkEditState}
       <button
         class="p-2 transition-colors {bulkEditState.isEnabled
-          ? 'text-blue-400 hover:text-blue-300'
-          : 'text-zinc-400 hover:text-zinc-200'}"
+          ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
+          : 'text-textcolor2 hover:text-textcolor'}"
         tabindex="-1"
+        aria-label={language.hypaV3BulkEdit}
+        aria-pressed={bulkEditState.isEnabled}
         onclick={toggleBulkEditMode}
       >
-        <SquarePenIcon class="w-6 h-6" />
+        <SquarePenIcon class="w-6 h-6" aria-hidden="true" />
       </button>
     {/if}
 
     <!-- Category Manager Button -->
     {#if categoryManagerState}
       <button
-        class="p-2 text-zinc-400 hover:text-zinc-200 transition-colors"
+        class="p-2 text-textcolor2 hover:text-textcolor transition-colors"
         tabindex="-1"
+        aria-label={language.hypaV3Modal.categoryManager}
         onclick={openCategoryManager}
       >
-        <TagIcon class="w-6 h-6" />
+        <TagIcon class="w-6 h-6" aria-hidden="true" />
       </button>
     {/if}
 
     <!-- Open Global Settings Button -->
     <button
-      class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+      class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
       tabindex="-1"
+      aria-label={language.settings}
       onclick={openGlobalSettings}
     >
-      <SettingsIcon class="w-6 h-6" />
+      <SettingsIcon class="w-6 h-6" aria-hidden="true" />
     </button>
 
     <!-- Open Dropdown Button -->
     <div class="relative">
       <button
-        class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+        class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
         tabindex="-1"
+        aria-label={language.chatShellMoreActions}
         onclick={openDropdown}
       >
-        <MoreVerticalIcon class="w-6 h-6" />
+        <MoreVerticalIcon class="w-6 h-6" aria-hidden="true" />
       </button>
 
       {#if dropdownOpen}
         <div
-          class="absolute right-0 z-10 p-2 mt-1 border rounded-md shadow-lg border-zinc-700 bg-zinc-800"
+          class="absolute right-0 z-10 p-2 mt-1 border rounded-md shadow-lg border-darkborderc bg-bgcolor"
         >
           <!-- Buttons Container -->
           <div class="flex items-center gap-2">
             <!-- Filter Selected Summary Button -->
             <button
               class="p-2 transition-colors {filterSelected
-                ? 'text-blue-400 hover:text-blue-300'
-                : 'text-zinc-400 hover:text-zinc-200'}"
+                ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
+                : 'text-textcolor2 hover:text-textcolor'}"
               tabindex="-1"
+              aria-label={language.hypaV3ShowMetrics}
+              aria-pressed={filterSelected}
               onclick={toggleFilterSelected}
             >
-              <BarChartIcon class="w-6 h-6" />
+              <BarChartIcon class="w-6 h-6" aria-hidden="true" />
             </button>
 
             <!-- Export Summaries To Chat Lorebook Button -->
             {#if onExportToLorebook}
               <button
-                class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+                class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                 tabindex="-1"
                 title={language.hypaV3Modal.exportToLorebookLabel}
                 aria-label={language.hypaV3Modal.exportToLorebookLabel}
                 onclick={async () => await onExportToLorebook()}
               >
-                <BookUpIcon class="w-6 h-6" />
+                <BookUpIcon class="w-6 h-6" aria-hidden="true" />
               </button>
             {/if}
 
             <!-- Import Chat Lorebook Entries As Summaries Button -->
             {#if onImportFromLorebook}
               <button
-                class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+                class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
                 tabindex="-1"
                 title={language.hypaV3Modal.importFromLorebookLabel}
                 aria-label={language.hypaV3Modal.importFromLorebookLabel}
                 onclick={async () => await onImportFromLorebook()}
               >
-                <BookDownIcon class="w-6 h-6" />
+                <BookDownIcon class="w-6 h-6" aria-hidden="true" />
               </button>
             {/if}
 
             <!-- Reset Data Button -->
             <button
-              class="p-2 transition-colors text-zinc-400 hover:text-rose-300"
+              class="p-2 transition-colors text-textcolor2 hover:text-draculared"
               tabindex="-1"
+              aria-label={language.reset}
               onclick={async () => await resetData()}
             >
-              <Trash2Icon class="w-6 h-6" />
+              <Trash2Icon class="w-6 h-6" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -259,11 +270,12 @@
 
     <!-- Close Modal Button -->
     <button
-      class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+      class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
       tabindex="-1"
+      aria-label={language.uiCommon.close}
       onclick={closeModal}
     >
-      <XIcon class="w-6 h-6" />
+      <XIcon class="w-6 h-6" aria-hidden="true" />
     </button>
   </div>
 </div>

@@ -43,11 +43,11 @@
             </div>
             <label class="filters-row filters-switch">
                 <span>{language.chatShellFindHasImage}</span>
-                <input type="checkbox" role="switch" checked={filters.hasImage} onchange={(event) => onfilters({ hasImage: event.currentTarget.checked })} />
+                <input type="checkbox" role="switch" aria-label={language.chatShellFindHasImage} checked={filters.hasImage} onchange={(event) => onfilters({ hasImage: event.currentTarget.checked })} />
             </label>
             <label class="filters-row filters-switch">
                 <span>{language.chatShellFindIncludeThinking}</span>
-                <input type="checkbox" role="switch" checked={filters.thinking} onchange={(event) => onfilters({ thinking: event.currentTarget.checked })} />
+                <input type="checkbox" role="switch" aria-label={language.chatShellFindIncludeThinking} checked={filters.thinking} onchange={(event) => onfilters({ thinking: event.currentTarget.checked })} />
             </label>
             <div class="filters-row">
                 <span class="filters-label">{language.chatShellFindDate}</span>

@@ -43,6 +43,14 @@ async function nextTree(previous: EncodedTree, db: Obj, named: string[], seq: nu
 
 const chaIdAt = (db: Obj, index: number): string => (db.characters as Obj[])[index].chaId as string
 
+/** The loadouts a peer commits, with the fields `makeLoadout` writes. */
+function peerLoadouts(): Obj[] {
+    return ['one', 'two'].map((id, index) => ({
+        name: `Peer ${id}`, id, lastUsed: 1_700_000_000_000 + index, favorite: false, characterIds: [], modules: [],
+        globalVariables: {}, presetName: 'Default', presetId: 'preset-1', personaId: 'persona-1', icons: [],
+    }))
+}
+
 describe('guard (S0-2): advancePrevious of the changed units is the previous of the whole peer tree', () => {
     test('each kind of supported peer change, alone', async () => {
         const kinds: { label: string, edit: (db: Obj) => string[] }[] = [
@@ -112,11 +120,14 @@ describe('guard (S0-2): advancePrevious of the changed units is the previous of 
         const first = encodeWith(buildSmall(6))
         const db = clone(buildSmall(6))
         db.statics = { counter: 9 }
+        db.loadouts = peerLoadouts()
         ;((db.botPresets as Obj[])[1]).temperature = 7
         const second = await nextTree(first, db, [], 2)
         const read = previousOfTree(fullOf(second, first)).objects
         const kept = previousFrom(second).objects
         expect(kept?.statics).toEqual(read?.statics)
+        expect(kept?.loadouts).toEqual(read?.loadouts)
+        expect(kept?.loadouts).toEqual(clone({ list: db.loadouts }).list)
         expect(kept?.order).toEqual(read?.order)
         expect(kept?.presets).toEqual(read?.presets)
         expect(kept?.presets?.length).toBe((db.botPresets as Obj[]).length)
@@ -155,6 +166,52 @@ describe('guard (S0-2): digests', () => {
         const unit = advanced.units.get(written[0].identity)
         expect(unit?.key).toBe(written[0].key)
         expect(unit?.digest).toBeUndefined()
+    })
+})
+
+describe('F2 and F5 the loadouts body across an advance', () => {
+    test('F2 reproducer: after the peer changed loadouts a faulty live list keeps the peer list, not the old one', async () => {
+        const first = encodeWith(buildSmall(6))
+        const db = clone(buildSmall(6))
+        db.loadouts = peerLoadouts()
+        const second = await nextTree(first, db, [], 2)
+        const advanced = advancePrevious(previousOfTree(fullOf(first)), changedOnly(second))
+        expect(advanced.objects?.loadouts).toEqual(clone({ list: db.loadouts }).list)
+
+        const bad = clone(db)
+        const cycle: Obj = {}
+        cycle.self = cycle
+        ;(bad.loadouts as Obj[])[1].cycle = cycle
+        const third = await encodeScoped(
+            asDatabase(bad),
+            { env: seededEnv(3), lists: fakeLists, seq: 3, createdAt: NOW, previous: advanced },
+            { modules: false, characters: new Set(), skipUnsavableItems: true },
+        )
+        expect(third.manifest.fixed.loadouts).toEqual(second.manifest.fixed.loadouts)
+        expect(third.index.objects?.loadouts).toEqual(clone({ list: db.loadouts }).list)
+        expect(third.units.filter(unit => unit.identity === 'loadouts').every(unit => unit.reused)).toBe(true)
+    })
+
+    test('F5 a changed loadouts unit the source does not hold leaves the body unknown and does not throw', async () => {
+        const first = encodeWith(buildSmall(6))
+        const db = clone(buildSmall(6))
+        db.loadouts = peerLoadouts()
+        const second = await nextTree(first, db, [], 2)
+        const source = unitMapSource(second.units.filter(isWrittenUnit).filter(unit => unit.identity !== 'loadouts'))
+        const advanced = advancePrevious(previousOfTree(fullOf(first)), { manifestKey: second.manifestKey, manifest: second.manifest, source })
+        expect(advanced.objects?.loadouts).toBeUndefined()
+        expect(advanced.units.get('loadouts')?.digest).toBeUndefined()
+    })
+
+    test('an unchanged loadouts unit keeps the body the old encoding holds', async () => {
+        const first = encodeWith(buildSmall(6))
+        const db = clone(buildSmall(6))
+        ;(db.characters as Obj[])[1].personality = 'edited'
+        const second = await nextTree(first, db, [chaIdAt(db, 1)], 2)
+        const old = previousOfTree(fullOf(first))
+        const advanced = advancePrevious(old, changedOnly(second))
+        expect(advanced.objects?.loadouts).toEqual(old.objects?.loadouts)
+        expect(advanced.objects?.loadouts).toBeDefined()
     })
 })
 

@@ -1,15 +1,17 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
 import {
-    bucketOfKey, groupKeysIntoBuckets, planScopedEncode, previousFrom, unitsToWrite,
+    assembleDatabase, bucketOfKey, groupKeysIntoBuckets, planScopedEncode, previousFrom, unitsToWrite,
     type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation, type PreviousEncoding, type ScopedPlan,
 } from '../../store2/codec'
 import { createKeyMint, type BuildContext } from '../../store2/commit'
+import { keyOfRef } from '../../store2/format'
 import { createListDerivation } from '../../store2/lists/derive'
+import { deriveConfigAssets } from '../../store2/lists/assetList'
 import { previousOfTree } from '../../store2/previousOfTree'
 import type { Database } from '../../database.svelte'
 import {
-    asDatabase, bodyIn, buildSmall, fakeLists, seededEnv, unitOf, type Obj,
+    asDatabase, bodyIn, buildSmall, fakeLists, seededEnv, storeOf, unitOf, type Obj,
 } from './codecFixtures'
 import { createClock, testEnv } from './commitFixtures'
 
@@ -79,8 +81,12 @@ function makeRig(envSeed: number, mintSeed: number, lists: ListDerivation = crea
                 store.set(unit.key, unit.bytes)
             }
         },
-        boot(tree: EncodedTree): PreviousEncoding {
-            return previousOfTree({ manifestKey: tree.manifestKey, manifest: tree.manifest, source: { get: key => store.get(key) } })
+        /** The previous a boot makes of `tree`; a key in `hide` is a unit the boot could not read. */
+        boot(tree: EncodedTree, hide: readonly string[] = []): PreviousEncoding {
+            return previousOfTree({
+                manifestKey: tree.manifestKey, manifest: tree.manifest,
+                source: { get: key => (hide.includes(key) ? undefined : store.get(key)) },
+            })
         },
     }
 }
@@ -318,6 +324,12 @@ function frontOrderOf(tree: EncodedTree): string[] {
     return tree.units.map(unit => unit.identity).filter(identity => /^(preset|taskPreset|plugin|psv|bucket):/.test(identity))
 }
 
+/** The fixed units the pass puts after the shards, in put order: it fixes the real keys the mint hands out. */
+function fixedOrderOf(tree: EncodedTree): string[] {
+    const fixed = ['loadouts', 'statics', 'order', 'config', 'al:config', 'il:config']
+    return tree.units.map(unit => unit.identity).filter(identity => fixed.includes(identity))
+}
+
 function expectedFrontOrder(db: Obj, storage: Obj): string[] {
     const order: string[] = []
     ;(db.botPresets as unknown[]).forEach((_, index) => order.push(`preset:${index}`))
@@ -348,6 +360,15 @@ describe('C8 compatibility guard: for valid data the flag changes no byte and th
             o.undefSetting = undefined
             o.fnSetting = () => 1
             o.sharedSetting = { x: shared, y: shared }
+            // The fixed units read their live values through the same JSON read.
+            o.loadouts = [
+                { name: 'Loadout D', icons: [], when: new Date(1_700_000_000_000), gone: undefined, fn: () => 1, a: shared, b: shared },
+                { toJSON() { return { name: 'Loadout J', icons: [] } } },
+                undefined,
+                7,
+            ]
+            o.statics = { messages: 1, when: new Date(1_700_000_000_000), gone: undefined, fn: () => 1, a: shared, b: shared }
+            o.characterOrder = [{ name: 'Folder', data: [], when: new Date(1_700_000_000_000), gone: undefined, a: shared, b: shared }]
         })
     }
 
@@ -391,6 +412,9 @@ describe('C8 compatibility guard: for valid data the flag changes no byte and th
             delete storage[key]
         }
         expect(frontOrderOf(on)).toEqual(expectedFrontOrder(db as unknown as Obj, storage))
+        for (const tree of [on, off, onAgain, offAgain]) {
+            expect(fixedOrderOf(tree)).toEqual(['loadouts', 'statics', 'order', 'config', 'al:config', 'il:config'])
+        }
         expect(new Set(groupKeysIntoBuckets(Object.keys(storage)).map((keys, bucket) => (keys.length > 0 ? bucket : -1)))).not.toEqual(new Set([-1]))
         expect(groupKeysIntoBuckets(Object.keys(storage)).filter(keys => keys.length > 0).length).toBeGreaterThan(1)
     })
@@ -414,6 +438,9 @@ describe('C9 compatibility guard: an import, which names no flag, still refuses 
         ['a BigInt setting', (o) => { o.someSetting = 10n }],
         ['a cyclic bot preset', (o) => { (o.botPresets as Obj[])[1].cycle = cyclic() }],
         ['a cyclic task preset', (o) => { (o.taskPresets as Obj[])[1].cycle = cyclic() }],
+        ['a cyclic loadout', (o) => { o.loadouts = [{ name: 'Loadout X', cycle: cyclic() }] }],
+        ['a BigInt statics counter', (o) => { (o.statics as Obj).messages = 10n }],
+        ['a cyclic character-order folder', (o) => { o.characterOrder = [{ name: 'Folder', data: [], cycle: cyclic() }] }],
     ]
 
     test.each(CASES)('%s fails the pass with the input error and no skip record', async (_label, mutate) => {
@@ -602,5 +629,271 @@ describe('presets are held whole, bot and task separately', () => {
         })
         const third = await rig.pass(fine, previousFrom(second.tree), FULL)
         expect(configFieldsOf(third.tree, first.tree, second.tree).botPresetsId).toBe(2)
+    })
+})
+
+const assetPath = (n: number): string => `assets/${n.toString(16).padStart(64, '0')}.png`
+
+/** A loadout with every field `makeLoadout` writes. */
+function loadoutOf(name: string, id: string, characterIds: string[], n: number): Obj {
+    return {
+        name, id, lastUsed: 1_700_000_000_000 + n, favorite: false, characterIds, modules: [], globalVariables: {},
+        presetName: 'Default', presetId: 'preset-1', personaId: 'persona-1', icons: [assetPath(n)],
+    }
+}
+
+/** `db` with real-shaped loadouts and character-order folders (a folder names its characters and an image asset). */
+function withFixedFields(db: Database): Database {
+    return live(db, (o) => {
+        const ids = (o.characters as Obj[]).map(character => character.chaId as string)
+        o.loadouts = [
+            loadoutOf('Loadout A', 'la', ids.slice(0, 1), 1),
+            loadoutOf('Loadout B', 'lb', ids.slice(1, 2), 2),
+            loadoutOf('Loadout C', 'lc', ids.slice(2), 3),
+        ]
+        o.characterOrder = [ids[0], { name: 'Folder', data: [ids[1]], color: '', id: 'f1', imgFile: assetPath(9) }, ids[2]]
+    })
+}
+
+function json<T>(value: unknown): T {
+    return JSON.parse(JSON.stringify(value)) as T
+}
+
+/** An insert at the front of the list plus a cyclic "Loadout B" (which sits at index 2 after the insert). */
+function loadoutFault(db: Database, extra: (o: Obj) => void = () => {}): Database {
+    return live(db, (o) => {
+        const list = o.loadouts as Obj[]
+        list.splice(0, 0, loadoutOf('Loadout New', 'ln', [], 4))
+        list[2].cycle = cyclic()
+        extra(o)
+    })
+}
+
+function loadoutFixed(db: Database): Database {
+    return live(db, (o) => {
+        (o.loadouts as Obj[]).splice(0, 0, loadoutOf('Loadout New', 'ln', [], 4))
+    })
+}
+
+const FIXED_FAULTS: Array<[string, (o: Obj) => void]> = [
+    ['a cyclic loadout', (o) => { (o.loadouts as Obj[])[1].cycle = cyclic() }],
+    ['a BigInt statics counter', (o) => { (o.statics as Obj).messages = 10n }],
+    ['a cyclic character-order folder', (o) => { ((o.characterOrder as unknown[])[1] as Obj).cycle = cyclic() }],
+]
+
+describe('K1 a loadout list the pass cannot read keeps the saved list whole', () => {
+    test('K1 reproducer: an insert at the front plus a cyclic loadout keeps the acknowledged list over two passes, then the live list saves', async () => {
+        const rig = makeRig(400, 12000)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const ackItems = json<Obj[]>((db as unknown as Obj).loadouts)
+        const ackRef = first.tree.manifest.fixed.loadouts
+        const chaId = chaIdOf(db, 0)
+        const scope: EncodeScope = { modules: true, characters: new Set([chaId]), ...SKIP }
+        const edit = (o: Obj): void => { (o.characters as Obj[])[0].personality = 'edited' }
+
+        const second = await rig.pass(loadoutFault(db, edit), first.previous, scope)
+        expect(second.plan.encoded).toEqual([chaId])
+        expect(briefOf(second.plan)).toEqual([{ scope: 'loadouts', key: 'loadouts', saved: true }])
+        expect(second.plan.carried.items).toEqual(['"Loadout B"'])
+        expect(second.tree.manifest.fixed.loadouts).toEqual(ackRef)
+        expect(isWritten(second.tree, 'loadouts')).toBe(false)
+        expect(second.tree.index.objects?.loadouts).toEqual(ackItems)
+        expect(bodyOfIdentity(second.tree, 'il:config', first.tree).x).toBeUndefined()
+
+        const third = await rig.pass(loadoutFault(db, edit), previousFrom(second.tree), scope)
+        expect(briefOf(third.plan)).toEqual([{ scope: 'loadouts', key: 'loadouts', saved: true }])
+        expect(third.tree.manifest.fixed.loadouts).toEqual(ackRef)
+        expect(isWritten(third.tree, 'loadouts')).toBe(false)
+        expect(third.tree.index.objects?.loadouts).toEqual(ackItems)
+
+        const fixed = await rig.pass(loadoutFixed(db), previousFrom(third.tree), FULL)
+        expect(fixed.plan.skippedItems).toEqual([])
+        const items = bodyOfIdentity(fixed.tree, 'loadouts', first.tree, second.tree, third.tree).items as Obj[]
+        expect(items.length).toBe(4)
+        expect(items[0].name).toBe('Loadout New')
+        expect(fixed.tree.index.objects?.loadouts).toEqual(items)
+    })
+
+    test('K1l reproducer: a nameless faulty loadout is named by its position and an unreadable list by its key', async () => {
+        const rig = makeRig(401, 12010)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const nameless = await rig.pass(live(db, (o) => { (o.loadouts as Obj[]).push({ cycle: cyclic() }) }), first.previous, FULL)
+        expect(nameless.plan.carried.items).toEqual(['"loadouts[3]"'])
+        const notAList = await rig.pass(live(db, (o) => { o.loadouts = 7 }), first.previous, FULL)
+        expect(briefOf(notAList.plan)).toEqual([{ scope: 'loadouts', key: 'loadouts', saved: true }])
+        expect(notAList.plan.carried.items).toEqual(['"loadouts"'])
+        expect(notAList.tree.manifest.fixed.loadouts).toEqual(first.tree.manifest.fixed.loadouts)
+    })
+
+    test('K1e reproducer: an acknowledged empty list is a saved list and is kept as the empty list', async () => {
+        const rig = makeRig(402, 12020)
+        const db = profile()
+        const first = await acknowledged(rig, db)
+        const next = live(db, (o) => { o.loadouts = [{ name: 'Loadout Z', cycle: cyclic() }] })
+        const second = await rig.pass(next, first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'loadouts', key: 'loadouts', saved: true }])
+        expect(second.tree.manifest.fixed.loadouts).toEqual(first.tree.manifest.fixed.loadouts)
+        expect(isWritten(second.tree, 'loadouts')).toBe(false)
+        expect(second.tree.index.objects?.loadouts).toEqual([])
+    })
+
+    test('K3 reproducer: the first pass after a boot keeps the acknowledged list', async () => {
+        const rig = makeRig(403, 12030)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const second = await rig.pass(loadoutFault(db), rig.boot(first.tree), FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'loadouts', key: 'loadouts', saved: true }])
+        expect(second.tree.manifest.fixed.loadouts).toEqual(first.tree.manifest.fixed.loadouts)
+        expect(isWritten(second.tree, 'loadouts')).toBe(false)
+        expect(second.tree.index.objects?.loadouts).toEqual(json((db as unknown as Obj).loadouts))
+    })
+})
+
+describe('K2 the asset list stays exact while a loadout list or a character order is kept', () => {
+    test('K2 reproducer: al:config keeps naming the icons and folder images of the saved values', async () => {
+        const rig = makeRig(410, 12100)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const config = first.tree.index.objects?.config as Obj
+        const raw = db as unknown as Obj
+        const withBoth = deriveConfigAssets(config, raw.characterOrder, raw.loadouts)
+        const without = deriveConfigAssets(config, [], [])
+        expect(bodyOfIdentity(first.tree, 'al:config')).toMatchObject({ h: withBoth.h, l: withBoth.l })
+        expect(withBoth.h.length).toBeGreaterThan(without.h.length)
+
+        const edit = (o: Obj): void => { o.someSetting = 'edited' }
+        const heldLoadouts = await rig.pass(loadoutFault(db, edit), first.previous, FULL)
+        expect(briefOf(heldLoadouts.plan)).toEqual([{ scope: 'loadouts', key: 'loadouts', saved: true }])
+        expect(heldLoadouts.tree.manifest.fixed.configAl).toEqual(first.tree.manifest.fixed.configAl)
+        expect(isWritten(heldLoadouts.tree, 'al:config')).toBe(false)
+
+        const heldOrder = await rig.pass(live(db, (o) => {
+            ((o.characterOrder as unknown[])[1] as Obj).cycle = cyclic()
+            edit(o)
+        }), first.previous, FULL)
+        expect(briefOf(heldOrder.plan)).toEqual([{ scope: 'characterOrder', key: 'characterOrder', saved: true }])
+        expect(heldOrder.tree.manifest.fixed.configAl).toEqual(first.tree.manifest.fixed.configAl)
+        expect(isWritten(heldOrder.tree, 'al:config')).toBe(false)
+        expect(bodyOfIdentity(heldOrder.tree, 'il:config', first.tree).x).toBeUndefined()
+    })
+})
+
+describe('K4 a statics value the pass cannot read keeps the saved value', () => {
+    test('K4 reproducer: over two passes and a boot pass the acknowledged value stays and other edits land', async () => {
+        const rig = makeRig(420, 12200)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const ackStatics = json((db as unknown as Obj).statics)
+        const bad = (): Database => live(db, (o) => {
+            (o.statics as Obj).messages = 10n
+            o.someSetting = 'edited'
+        })
+        const second = await rig.pass(bad(), first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'statics', key: 'statics', saved: true }])
+        expect(isWritten(second.tree, 'statics')).toBe(false)
+        expect(second.tree.manifest.fixed.statics).toEqual(first.tree.manifest.fixed.statics)
+        expect(bodyOfIdentity(second.tree, 'statics', first.tree).value).toEqual(ackStatics)
+        expect(second.tree.index.objects?.statics).toEqual(first.tree.index.objects?.statics)
+        expect(configFieldsOf(second.tree, first.tree).someSetting).toBe('edited')
+
+        const third = await rig.pass(bad(), previousFrom(second.tree), FULL)
+        expect(briefOf(third.plan)).toEqual([{ scope: 'statics', key: 'statics', saved: true }])
+        expect(third.tree.index.objects?.statics).toEqual(first.tree.index.objects?.statics)
+
+        const booted = await rig.pass(bad(), rig.boot(first.tree), FULL)
+        expect(briefOf(booted.plan)).toEqual([{ scope: 'statics', key: 'statics', saved: true }])
+        expect(bodyOfIdentity(booted.tree, 'statics', first.tree).value).toEqual(ackStatics)
+    })
+
+    test('K4n reproducer: statics that were never stored are left out, recorded as never saved, and the pass lands', async () => {
+        const rig = makeRig(421, 12210)
+        const db = live(profile(), (o) => { delete o.statics })
+        const first = await acknowledged(rig, db)
+        const second = await rig.pass(live(db, (o) => {
+            o.statics = { messages: 10n }
+            o.someSetting = 'edited'
+        }), first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'statics', key: 'statics', saved: false }])
+        expect(Object.hasOwn(bodyOfIdentity(second.tree, 'statics', first.tree), 'value')).toBe(false)
+        expect(configFieldsOf(second.tree, first.tree).someSetting).toBe('edited')
+    })
+})
+
+describe('K5 a character order the pass cannot read keeps the saved value and a fresh character list', () => {
+    function added(db: Database): Database {
+        return live(db, (o) => {
+            const characters = o.characters as Obj[]
+            characters.push({ ...json<Obj>(characters[0]), chaId: 'cha-new', name: 'New one' })
+            ;((o.characterOrder as unknown[])[1] as Obj).cycle = cyclic()
+        })
+    }
+
+    test.each<[string, boolean]>([['an acknowledged previous', false], ['the previous of a boot', true]])(
+        'K5 reproducer: with %s a new character is listed and the saved order stays', async (_label, boot) => {
+            const rig = makeRig(430, 12300)
+            const db = withFixedFields(profile())
+            const first = await acknowledged(rig, db)
+            const ackOrder = json((db as unknown as Obj).characterOrder)
+            const second = await rig.pass(added(db), boot ? rig.boot(first.tree) : first.previous, FULL)
+            expect(briefOf(second.plan)).toEqual([{ scope: 'characterOrder', key: 'characterOrder', saved: true }])
+            expect(second.tree.index.objects?.order?.chars).toHaveLength(4)
+            expect(second.tree.index.objects?.order?.characterOrder).toEqual(ackOrder)
+            const assembled = assembleDatabase(second.tree.manifest, storeOf(first.tree, second.tree)) as unknown as Obj
+            expect((assembled.characters as Obj[]).length).toBe(4)
+            expect(assembled.characterOrder).toEqual(ackOrder)
+        })
+
+    test('K5n reproducer: a character order that was never stored is left out, recorded as never saved, and the pass lands', async () => {
+        const rig = makeRig(431, 12310)
+        const db = live(withFixedFields(profile()), (o) => { delete o.characterOrder })
+        const first = await acknowledged(rig, db)
+        const second = await rig.pass(live(db, (o) => {
+            o.characterOrder = [{ name: 'Folder', data: [], cycle: cyclic() }]
+            o.someSetting = 'edited'
+        }), first.previous, FULL)
+        expect(briefOf(second.plan)).toEqual([{ scope: 'characterOrder', key: 'characterOrder', saved: false }])
+        expect(Object.hasOwn(bodyOfIdentity(second.tree, 'order', first.tree), 'characterOrder')).toBe(false)
+        expect(configFieldsOf(second.tree, first.tree).someSetting).toBe('edited')
+    })
+})
+
+describe('K6 and K7 compatibility guards: without a saved value to keep the fault fails the pass', () => {
+    test.each(FIXED_FAULTS)('K6 with no previous encoding %s fails the pass', async (_label, mutate) => {
+        const rig = makeRig(440, 12400)
+        const failure = await failureOf(() => rig.pass(live(withFixedFields(profile()), mutate), null, FULL))
+        expect(failure?.name).toBe('CodecInputError')
+    })
+
+    test.each(FIXED_FAULTS)('K7 a previous that holds no objects cannot name a saved value, so %s fails the pass', async (_label, mutate) => {
+        const rig = makeRig(441, 12410)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const { objects, ...withoutObjects } = first.previous
+        expect(objects).toBeDefined()
+        const failure = await failureOf(() => rig.pass(live(db, mutate), withoutObjects, FULL))
+        expect(failure?.name).toBe('CodecInputError')
+    })
+
+    test('K7 a previous whose loadouts body is unknown fails a loadouts fault and a boot that could not read the unit does too', async () => {
+        const rig = makeRig(442, 12420)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const unknown = { ...first.previous, objects: { ...first.previous.objects, loadouts: undefined } }
+        expect((await failureOf(() => rig.pass(live(db, FIXED_FAULTS[0][1]), unknown, FULL)))?.name).toBe('CodecInputError')
+        const hidden = rig.boot(first.tree, [keyOfRef(first.tree.manifest.fixed.loadouts)])
+        expect(hidden.objects?.loadouts).toBeUndefined()
+        expect((await failureOf(() => rig.pass(live(db, FIXED_FAULTS[0][1]), hidden, FULL)))?.name).toBe('CodecInputError')
+    })
+
+    test('K7s a previous that holds no statics body fails a statics fault', async () => {
+        const rig = makeRig(443, 12430)
+        const db = withFixedFields(profile())
+        const first = await acknowledged(rig, db)
+        const { statics, ...rest } = first.previous.objects ?? {}
+        expect(statics).toBeDefined()
+        const failure = await failureOf(() => rig.pass(live(db, FIXED_FAULTS[1][1]), { ...first.previous, objects: rest }, FULL))
+        expect(failure?.name).toBe('CodecInputError')
     })
 })

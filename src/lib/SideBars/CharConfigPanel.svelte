@@ -52,6 +52,7 @@
     }
 
     let { studioEntry = true }: Props = $props();
+    const uid = $props.id()
 
     // One hold per image position (group member, group icon, character icon, additional icon row); they end with the page.
     const lookups = useCharImageLookups();
@@ -334,16 +335,16 @@
 
 {#if $CharConfigSubMenu === 0}
     {#if DBState.db.characters[$selectedCharID].type !== 'group' && licensed !== 'private'}
-        <TextInput size="xl" marginBottom placeholder={language.sidebarUi.characterName} bind:value={DBState.db.characters[$selectedCharID].name} />
-        <span class="text-textcolor">{language.description} <Help key="charDesc"/></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={(DBState.db.characters[$selectedCharID] as character).desc}></TextAreaInput>
+        <TextInput size="xl" marginBottom placeholder={language.sidebarUi.characterName} label={language.sidebarUi.characterName} bind:value={DBState.db.characters[$selectedCharID].name} />
+        <span class="text-textcolor"><span id="{uid}-desc">{language.description}</span> <Help key="charDesc"/></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-desc" bind:value={(DBState.db.characters[$selectedCharID] as character).desc}></TextAreaInput>
         <span class="text-textcolor2 mb-6 text-sm">{tokens.desc} {language.tokens}</span>
-        <span class="text-textcolor">{language.firstMessage} <Help key="charFirstMessage"/></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].firstMessage}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-first-message">{language.firstMessage}</span> <Help key="charFirstMessage"/></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-first-message" bind:value={DBState.db.characters[$selectedCharID].firstMessage}></TextAreaInput>
         <span class="text-textcolor2 mb-6 text-sm">{tokens.firstMsg} {language.tokens}</span>
 
     {:else if licensed !== 'private' && DBState.db.characters[$selectedCharID].type === 'group'}
-        <TextInput size="xl" marginBottom placeholder={language.sidebarUi.groupName} bind:value={DBState.db.characters[$selectedCharID].name} />
+        <TextInput size="xl" marginBottom placeholder={language.sidebarUi.groupName} label={language.sidebarUi.groupName} bind:value={DBState.db.characters[$selectedCharID].name} />
         <span class="text-textcolor">{language.character}</span>
         <div class="p-4 gap-2 bg-bgcolor rounded-lg char-grid">
             {#if (DBState.db.characters[$selectedCharID] as groupChat).characters.length === 0}
@@ -354,27 +355,27 @@
                 <div class="text-center">{language.active}</div>
                 {#each (DBState.db.characters[$selectedCharID] as groupChat).characters as char, i}
                     {#await warnOnReject('CharConfig: group member icon rejected', lookups.get('member:' + i, findCharacterbyId(char).image, 'css'))}
-                        <BarIcon onClick={() => {
+                        <BarIcon label={language.remove} onClick={() => {
                             rmCharFromGroup(i)
                         }}>
-                            <User/>
+                            <User aria-hidden="true"/>
                         </BarIcon>
-                    {:then im} 
-                        <BarIcon onClick={() => {
+                    {:then im}
+                        <BarIcon label={language.remove} onClick={() => {
                             rmCharFromGroup(i)
                         }} additionalStyle={im} />
                     {:catch}
-                        <BarIcon onClick={() => {
+                        <BarIcon label={language.remove} onClick={() => {
                             rmCharFromGroup(i)
                         }}>
-                            <User/>
+                            <User aria-hidden="true"/>
                         </BarIcon>
                     {/await}
                     <div class="flex items-center px-2 py-3">
                         {#each [1,2,3,4,5,6] as barIndex}
-                            <button class="bg-selected h-full flex-1 border-r-bgcolor border-r" 
-                                aria-labelledby="loading"
-                                class:bg-green-500={(DBState.db.characters[$selectedCharID] as groupChat).characterTalks[i] >= (1 / 6 * barIndex)}
+                            <button class="h-full flex-1 border-r-bgcolor border-r"
+                                aria-label={language.groupTalkLevel(barIndex)}
+                                class:bg-textcolor2={(DBState.db.characters[$selectedCharID] as groupChat).characterTalks[i] >= (1 / 6 * barIndex)}
                                 class:bg-selected={(DBState.db.characters[$selectedCharID] as groupChat).characterTalks[i] < (1 / 6 * barIndex)}
                                 class:rounded-l-lg={barIndex === 1}
                                 class:rounded-r-lg={barIndex === 6}
@@ -387,7 +388,7 @@
                         {/each}
                     </div>
                     <div class="flex items-center justify-center">
-                        <Check margin={false} bind:check={(DBState.db.characters[$selectedCharID] as groupChat).characterActive[i]} />
+                        <Check margin={false} label={findCharacterbyId(char).name} bind:check={(DBState.db.characters[$selectedCharID] as groupChat).characterActive[i]} />
                     </div>
                 {/each}
             {/if}
@@ -399,10 +400,11 @@
         </div>
 
     {/if}
-    <span class="text-textcolor">{language.authorNote} <Help key="chatNote"/></span>
+    <span class="text-textcolor"><span id="{uid}-author-note">{language.authorNote}</span> <Help key="chatNote"/></span>
     <TextAreaInput
         margin="both"
         autocomplete="off"
+        labelId="{uid}-author-note"
         bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].note}
         highlight
         placeholder={getAuthorNoteDefaultText()}
@@ -444,7 +446,7 @@
 
     {#if viewSubMenu === 0}
         {#if DBState.db.characters[$selectedCharID].type === 'group'}
-            <button onclick={async () => {await selectCharImg($selectedCharID)}}>
+            <button aria-label={language.groupIcon} onclick={async () => {await selectCharImg($selectedCharID)}}>
                 {#await warnOnReject('CharConfig: group icon rejected', lookups.get('groupIcon', DBState.db.characters[$selectedCharID].image, 'css'))}
                     <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3"></div>
                 {:then im}
@@ -456,7 +458,7 @@
         {:else}
             <div class="p-2 border-darkborderc border rounded-md flex flex-wrap gap-2">
                 {#if DBState.db.characters[$selectedCharID].image !== '' && DBState.db.characters[$selectedCharID].image}
-                    <button onclick={() => {
+                    <button aria-label={language.charIcon} onclick={() => {
                         if(
                             DBState.db.characters[$selectedCharID].type === 'character' &&
                             DBState.db.characters[$selectedCharID].image !== '' &&
@@ -473,25 +475,25 @@
                         {#await warnOnReject('CharConfig: character icon rejected', lookups.get('charIcon', DBState.db.characters[$selectedCharID].image, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
                             <div
                                 class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
-                                class:ring-red-500={iconRemoveMode}
+                                class:ring-draculared={iconRemoveMode}
     ></div>
                         {:then im}
                             <div
                                 class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
-                                class:ring-red-500={iconRemoveMode}
+                                class:ring-draculared={iconRemoveMode}
                                 style={im}
     ></div>
                         {:catch}
                             <div
                                 class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
-                                class:ring-red-500={iconRemoveMode}
+                                class:ring-draculared={iconRemoveMode}
     ></div>
                         {/await}
                     </button>
                 {/if}
                 {#if (DBState.db.characters[$selectedCharID] as character).ccAssets}
                     {#each (DBState.db.characters[$selectedCharID] as character).ccAssets as assets, i}
-                        <button onclick={async () => {
+                        <button aria-label={language.charIcon + ' ' + (i + 2)} onclick={async () => {
                             if(!iconRemoveMode){
                                 changeCharImage($selectedCharID, i)
                             }
@@ -503,36 +505,36 @@
                             {#await warnOnReject('CharConfig: additional asset icon rejected', lookups.get('asset:' + i, assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
-                                    class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}
+                                    class:ring-draculared={iconRemoveMode} class:ring-3={iconRemoveMode}
     ></div>
                             {:then im}
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
-                                    style={im} class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}
+                                    style={im} class:ring-draculared={iconRemoveMode} class:ring-3={iconRemoveMode}
     ></div>
                             {:catch}
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
-                                    class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}
+                                    class:ring-draculared={iconRemoveMode} class:ring-3={iconRemoveMode}
     ></div>
                             {/await}
                         </button>
                     {/each}
                 {/if}
-                <button onclick={async () => {await selectCharImg($selectedCharID);}}>
+                <button aria-label={language.add} onclick={async () => {await selectCharImg($selectedCharID);}}>
                     <div
-                        class="rounded-md h-24 w-24 cursor-pointer border-darkborderc border border-dashed flex justify-center items-center hover:border-blue-500"
+                        class="rounded-md h-24 w-24 cursor-pointer border-darkborderc border border-dashed flex justify-center items-center hover:border-borderc"
                         style={(DBState.db.characters[$selectedCharID] as character).largePortrait ? 'height: 10.66rem;' : ''}
                     >
-                        <PlusIcon />
+                        <PlusIcon aria-hidden="true" />
                     </div>
                 </button>
             </div>
             <div class="flex w-full items-end justify-end mt-2">
-                <button class={iconRemoveMode ? "text-red-500" : "text-textcolor2 hover:text-textcolor"} onclick={() => {
+                <button class={iconRemoveMode ? "text-draculared rounded-sm ring-1 ring-borderc" : "text-textcolor2 hover:text-textcolor"} aria-label={language.removeIconsMode} aria-pressed={iconRemoveMode} onclick={() => {
                     iconRemoveMode = !iconRemoveMode
                 }}>
-                    <TrashIcon size="18" />
+                    <TrashIcon size="18" aria-hidden="true" />
                 </button>
             </div>
         {/if}
@@ -597,8 +599,8 @@
                                 <!-- A URL still being made, or made for another image, is undefined and shows an empty cell; '' is a URL that was withheld or could not be made, and shows the name box. -->
                                 <td class="font-medium truncate w-1/3">
                                     {#if emotionUrl === ''}
-                                        <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
-                                            <FileMusicIcon/>
+                                        <div class='w-16 h-16 m-1 rounded-md bg-darkbutton flex flex-col justify-center items-center' data-part="asset-name-box">
+                                            <FileMusicIcon aria-hidden="true"/>
                                             <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{emo[0]}</div>
                                         </div>
                                     {:else if emotionUrl}
@@ -606,12 +608,12 @@
                                     {/if}
                                 </td>
                                 <td class="font-medium truncate w-1/2">
-                                    <TextInput marginBottom size='lg' bind:value={DBState.db.characters[$selectedCharID].emotionImages[i][0]} />
+                                    <TextInput marginBottom size='lg' label={language.emotion} bind:value={DBState.db.characters[$selectedCharID].emotionImages[i][0]} />
                                 </td>
                                 <td>
-                                    <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+                                    <button class="font-medium cursor-pointer hover:text-textcolor2" aria-label={language.remove} onclick={() => {
                                         rmCharEmotion($selectedCharID,i)
-                                    }}><TrashIcon /></button>
+                                    }}><TrashIcon aria-hidden="true" /></button>
                                 </td>
 
                             </tr>
@@ -624,8 +626,8 @@
 
             <div class="text-textcolor2 hover:text-textcolor mt-2 flex">
                 {#if !$addingEmotion}
-                    <button class="cursor-pointer hover:text-green-500" onclick={() => {addCharEmotion($selectedCharID)}}>
-                        <PlusIcon />
+                    <button class="cursor-pointer hover:text-textcolor" aria-label={language.add} onclick={() => {addCharEmotion($selectedCharID)}}>
+                        <PlusIcon aria-hidden="true" />
                     </button>
                 {:else}
                     <span>{language.loadingEllipsis}</span>
@@ -633,8 +635,8 @@
             </div>
 
             {#if (DBState.db.characters[$selectedCharID] as character).inlayViewScreen}
-                <span class="text-textcolor mt-2">{language.emotionInstructions}</span>
-                <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.emotionInstructions} />
+                <span id="{uid}-emotion-instructions" class="text-textcolor mt-2">{language.emotionInstructions}</span>
+                <TextAreaInput highlight labelId="{uid}-emotion-instructions" bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.emotionInstructions} />
             {/if}
 
             <CheckInput bind:check={() => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen = v} name={language.inlayViewScreen} onChange={() => {
@@ -653,12 +655,12 @@
             <span class="text-textcolor mt-6">{language.imageGeneration} <Help key="imggen"/></span>
             <span class="text-textcolor2 text-xs">{language.emotionWarn}</span>
             
-            <span class="text-textcolor mt-2">{language.imgGenPrompt}</span>
-            <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.prompt} />
-            <span class="text-textcolor mt-2">{language.imgGenNegatives}</span>
-            <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.negative} />
-            <span class="text-textcolor mt-2">{language.imgGenInstructions}</span>
-            <TextAreaInput highlight bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.instructions} />
+            <span id="{uid}-img-prompt" class="text-textcolor mt-2">{language.imgGenPrompt}</span>
+            <TextAreaInput highlight labelId="{uid}-img-prompt" bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.prompt} />
+            <span id="{uid}-img-negatives" class="text-textcolor mt-2">{language.imgGenNegatives}</span>
+            <TextAreaInput highlight labelId="{uid}-img-negatives" bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.negative} />
+            <span id="{uid}-img-instructions" class="text-textcolor mt-2">{language.imgGenInstructions}</span>
+            <TextAreaInput highlight labelId="{uid}-img-instructions" bind:value={(DBState.db.characters[$selectedCharID] as character).newGenData.instructions} />
 
             <CheckInput bind:check={() => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).inlayViewScreen = v} name={language.inlayViewScreen} onChange={() => {
                 if((DBState.db.characters[$selectedCharID] as character).type === 'character'){
@@ -683,7 +685,7 @@
                     <tr>
                         <th class="font-medium">{language.value}</th>
                         <th class="font-medium cursor-pointer w-10">
-                            <button class="hover:text-green-500" onclick={async () => {
+                            <button class="hover:text-textcolor2" aria-label={language.add} onclick={async () => {
                                 if(DBState.db.characters[$selectedCharID].type === 'character'){
                                     const chaId = DBState.db.characters[$selectedCharID].chaId
                                     const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
@@ -721,7 +723,7 @@
                                     reportRefusedAssets(refused, limit)
                                 }
                             }}>
-                                <PlusIcon />
+                                <PlusIcon aria-hidden="true" />
                             </button>
                         </th>
                     </tr>
@@ -738,8 +740,8 @@
                                         {@const url = rowAssetUrl(assetUrls[i], assets[1], assetListUse(element))}
                                         <!-- A URL still being made, or made for another asset or use, is undefined and shows nothing; '' is a URL that was withheld or could not be made, and shows the name box. -->
                                         {#if element !== 'none' && url === ''}
-                                            <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
-                                                <FileMusicIcon/>
+                                            <div class='w-16 h-16 m-1 rounded-md bg-darkbutton flex flex-col justify-center items-center' data-part="asset-name-box">
+                                                <FileMusicIcon aria-hidden="true"/>
                                                 <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{assets[0]}</div>
                                             </div>
                                         {:else if url}
@@ -753,11 +755,11 @@
                                             {/if}
                                         {/if}
                                     {/if}
-                                    <TextInput size="sm" marginBottom bind:value={DBState.db.characters[$selectedCharID].additionalAssets[i][0]} placeholder="..." />
+                                    <TextInput size="sm" marginBottom label={language.name} bind:value={DBState.db.characters[$selectedCharID].additionalAssets[i][0]} placeholder="..." />
                                 </td>
                                 
                                 <th class="font-medium cursor-pointer w-10">
-                                    <button class="hover:text-blue-500" onclick={() => {
+                                    <button class="hover:text-textcolor2" aria-label={language.remove} onclick={() => {
                                         if(DBState.db.characters[$selectedCharID].type === 'character'){
                                             DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].fmIndex = -1
                                             let additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets
@@ -765,10 +767,11 @@
                                             DBState.db.characters[$selectedCharID].additionalAssets = additionalAssets
                                         }
                                     }}>
-                                        <TrashIcon />
+                                        <TrashIcon aria-hidden="true" />
                                     </button>
                                     {#if DBState.db.useAdditionalAssetsPreview}
-                                        <button class="hover:text-blue-500" class:text-textcolor2={DBState.db.characters[$selectedCharID].prebuiltAssetExclude?.includes?.(assets[1])} onclick={() => {
+                                        <!-- The excluded state rests on textcolor2, so its hover goes up to textcolor; the included state goes down to textcolor2. -->
+                                        <button class:hover:text-textcolor2={!DBState.db.characters[$selectedCharID].prebuiltAssetExclude?.includes?.(assets[1])} class:hover:text-textcolor={DBState.db.characters[$selectedCharID].prebuiltAssetExclude?.includes?.(assets[1])} class:text-textcolor2={DBState.db.characters[$selectedCharID].prebuiltAssetExclude?.includes?.(assets[1])} aria-label={language.assetInPrompt} aria-pressed={!DBState.db.characters[$selectedCharID].prebuiltAssetExclude?.includes?.(assets[1])} onclick={() => {
                                             DBState.db.characters[$selectedCharID].prebuiltAssetExclude ??= []
                                             if(DBState.db.characters[$selectedCharID].prebuiltAssetExclude.includes(assets[1])){
                                                 DBState.db.characters[$selectedCharID].prebuiltAssetExclude = DBState.db.characters[$selectedCharID].prebuiltAssetExclude.filter((e) => e !== assets[1])
@@ -778,9 +781,9 @@
                                             }
                                         }}>
                                             {#if DBState.db.characters[$selectedCharID]?.prebuiltAssetExclude?.includes?.(assets[1])}
-                                                <ImageOffIcon />
+                                                <ImageOffIcon aria-hidden="true" />
                                             {:else}
-                                                <ImageIcon />
+                                                <ImageIcon aria-hidden="true" />
                                             {/if}
                                         </button>
                                     {/if}
@@ -799,13 +802,13 @@
     {#if DBState.db.characters[$selectedCharID].type === 'character'}
         <h2 class="mb-2 text-2xl font-bold mt-2">{language.scripts}</h2>
 
-        <span class="text-textcolor mt-2">{language.backgroundHTML} <Help key="backgroundHTML" /></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].backgroundHTML}></TextAreaInput>
+        <span class="text-textcolor mt-2"><span id="{uid}-background-html">{language.backgroundHTML}</span> <Help key="backgroundHTML" /></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-background-html" bind:value={DBState.db.characters[$selectedCharID].backgroundHTML}></TextAreaInput>
 
         <span class="text-textcolor mt-4">{language.regexScript} <Help key="regexScript"/></span>
         <RegexList bind:value={DBState.db.characters[$selectedCharID].customscript} />
         <div class="text-textcolor2 mt-2 flex gap-2">
-            <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+            <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.add} onclick={() => {
                 if(DBState.db.characters[$selectedCharID].type === 'character'){
                     let script = DBState.db.characters[$selectedCharID].customscript
                     script.push({
@@ -816,11 +819,11 @@
                     })
                     DBState.db.characters[$selectedCharID].customscript = script
                 }
-            }}><PlusIcon /></button>
-            <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+            }}><PlusIcon aria-hidden="true" /></button>
+            <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.export} onclick={() => {
                 exportRegex(DBState.db.characters[$selectedCharID].customscript)
-            }}><DownloadIcon /></button>
-            <button class="font-medium cursor-pointer hover:text-green-500" onclick={async () => {
+            }}><DownloadIcon aria-hidden="true" /></button>
+            <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.import} onclick={async () => {
                 const chaId = DBState.db.characters[$selectedCharID].chaId
                 const added = await importRegex([])
                 if(added.length === 0){
@@ -829,7 +832,7 @@
                 writeLiveCharacter(chaId, (c) => {
                     c.customscript = [...(c.customscript ?? []), ...added]
                 })
-            }}><HardDriveUploadIcon /></button>
+            }}><HardDriveUploadIcon aria-hidden="true" /></button>
         </div>
 
         <span class="text-textcolor mt-4">{language.triggerScript} <Help key="triggerScript"/></span>
@@ -837,8 +840,8 @@
 
 
         {#if DBState.db.characters[$selectedCharID].virtualscript || DBState.db.showUnrecommended}
-            <span class="text-textcolor mt-4">{language.charjs} <Help key="charjs" unrecommended/></span>
-            <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].virtualscript}></TextAreaInput>
+            <span class="text-textcolor mt-4"><span id="{uid}-charjs">{language.charjs}</span> <Help key="charjs" unrecommended/></span>
+            <TextAreaInput margin="both" autocomplete="off" labelId="{uid}-charjs" bind:value={DBState.db.characters[$selectedCharID].virtualscript}></TextAreaInput>
         {/if}
     {/if}
 {:else if $CharConfigSubMenu === 6}
@@ -902,7 +905,7 @@
                     {/each}
                 </SelectInput>
                 {#if (DBState.db.characters[$selectedCharID] as character).ttsSpeech !== ''}
-                    <span class="text-red-400 text-sm">{language.sidebarUi.webSpeechAutoHint}</span>
+                    <span class="text-draculared text-sm">{language.sidebarUi.webSpeechAutoHint}</span>
                 {/if}
             {/if}
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'elevenlab'}
@@ -949,7 +952,7 @@
                 <span class="text-sm mb-2 text-textcolor2">{language.sidebarUi.voicevoxHint}</span>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'novelai' && ttsConfigReady}
             <span class="text-textcolor">{language.sidebarUi.ttsCustomVoiceSeed}</span>
-            <Check bind:check={DBState.db.characters[$selectedCharID].naittsConfig.customvoice}/>
+            <Check label={language.sidebarUi.ttsCustomVoiceSeed} bind:check={DBState.db.characters[$selectedCharID].naittsConfig.customvoice}/>
             {#if !DBState.db.characters[$selectedCharID].naittsConfig.customvoice}
                 <span class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
                 <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.voice}>
@@ -964,8 +967,8 @@
                     {/await}
                 </SelectInput>
             {:else}
-                <span class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
-                <TextInput size={"sm"} bind:value={DBState.db.characters[$selectedCharID].naittsConfig.voice}/>
+                <span id="{uid}-novelai-voice" class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
+                <TextInput size={"sm"} labelId="{uid}-novelai-voice" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.voice}/>
             {/if}
             <span class="text-textcolor">{language.sidebarUi.ttsVersion}</span>
             <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.version}>
@@ -973,7 +976,7 @@
                 <OptionInput value="v2">v2</OptionInput>
             </SelectInput>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'openai' && ttsConfigReady}
-            <span class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
+            <span id="{uid}-openai-voice" class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
             {#if !DBState.db.characters[$selectedCharID].oaiTTSConfig?.enabled}
                 <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].oaiVoice}>
                     <OptionInput value="">{language.sidebarUi.unset}</OptionInput>
@@ -983,26 +986,30 @@
                 </SelectInput>
             {:else}
                 <TextInput className="mb-4 mt-2"
+                    labelId="{uid}-openai-voice"
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.voice}
                     placeholder={DBState.db.characters[$selectedCharID].oaiVoice || 'alloy'} />
             {/if}
 
             <span class="text-textcolor">{language.sidebarUi.ttsAdvancedEndpoint}</span>
-            <Check bind:check={DBState.db.characters[$selectedCharID].oaiTTSConfig.enabled} />
+            <Check label={language.sidebarUi.ttsAdvancedEndpoint} bind:check={DBState.db.characters[$selectedCharID].oaiTTSConfig.enabled} />
 
             {#if DBState.db.characters[$selectedCharID].oaiTTSConfig?.enabled}
-                <span class="text-textcolor">Base URL</span>
+                <span id="{uid}-openai-base-url" class="text-textcolor">Base URL</span>
                 <TextInput className="mb-4 mt-2"
+                    labelId="{uid}-openai-base-url"
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.baseURL}
                     placeholder="https://api.openai.com/v1" />
 
-                <span class="text-textcolor">{language.sidebarUi.apiKeyOverridesGlobal}</span>
-                <TextInput className="mb-4 mt-2" hideText={DBState.db.hideApiKey}
+                <span id="{uid}-openai-api-key" class="text-textcolor">{language.sidebarUi.apiKeyOverridesGlobal}</span>
+                <TextInput className="mb-4 mt-2" hideText
+                    labelId="{uid}-openai-api-key"
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.apiKey}
                     placeholder={language.sidebarUi.apiKeyEmptyPlaceholder} />
 
-                <span class="text-textcolor">{language.model}</span>
+                <span id="{uid}-openai-model" class="text-textcolor">{language.model}</span>
                 <TextInput className="mb-4 mt-2"
+                    labelId="{uid}-openai-model"
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.model}
                     placeholder="tts-1" />
 
@@ -1018,11 +1025,11 @@
                 </SelectInput>
             {/if}
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'huggingface'}
-            <span class="text-textcolor">{language.model}</span>
-            <TextInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].hfTTS.model} />
+            <span id="{uid}-hf-model" class="text-textcolor">{language.model}</span>
+            <TextInput className="mb-4 mt-2" labelId="{uid}-hf-model" bind:value={DBState.db.characters[$selectedCharID].hfTTS.model} />
 
-            <span class="text-textcolor">{language.language}</span>
-            <TextInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].hfTTS.language} placeholder="en" />
+            <span id="{uid}-hf-language" class="text-textcolor">{language.language}</span>
+            <TextInput className="mb-4 mt-2" labelId="{uid}-hf-language" bind:value={DBState.db.characters[$selectedCharID].hfTTS.language} placeholder="en" />
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'vits'}
             {#if DBState.db.characters[$selectedCharID].vits}
                 <span class="text-textcolor">{DBState.db.characters[$selectedCharID].vits.name ?? language.sidebarUi.unnamedVitsModel}</span>
@@ -1046,19 +1053,19 @@
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'gptsovits' && ttsConfigReady}
             <span class="text-textcolor">{language.sidebarUi.ttsVolume}</span>
             <SliderInput min={0.0} max={1.0} step={0.01} fixed={2} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.volume}/>
-            <span class="text-textcolor">URL</span>
-            <TextInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.url}/>
+            <span id="{uid}-gsv-url" class="text-textcolor">URL</span>
+            <TextInput className="mb-4 mt-2" labelId="{uid}-gsv-url" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.url}/>
 
             <span class="text-textcolor">{language.sidebarUi.ttsUseAutoPath}</span>
-            <Check bind:check={DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_auto_path}/>
+            <Check label={language.sidebarUi.ttsUseAutoPath} bind:check={DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_auto_path}/>
 
             {#if !DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_auto_path}
-                <span class="text-textcolor">{language.sidebarUi.ttsRefAudioPath}</span>
-                <TextInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.ref_audio_path}/>
+                <span id="{uid}-gsv-ref-path" class="text-textcolor">{language.sidebarUi.ttsRefAudioPath}</span>
+                <TextInput className="mb-4 mt-2" labelId="{uid}-gsv-ref-path" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.ref_audio_path}/>
             {/if}
 
             <span class="text-textcolor">{language.sidebarUi.ttsUseLongAudio}</span>
-            <Check bind:check={DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_long_audio}/>
+            <Check label={language.sidebarUi.ttsUseLongAudio} bind:check={DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_long_audio}/>
 
             <span class="text-textcolor">{language.sidebarUi.ttsRefAudioData}</span>
             <Button onclick={async () => {
@@ -1113,12 +1120,12 @@
 
             {#if !DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_long_audio}
                 <span class="text-textcolor">{language.sidebarUi.ttsUseRefAudioScript}</span>
-                <Check bind:check={DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_prompt}/>
+                <Check label={language.sidebarUi.ttsUseRefAudioScript} bind:check={DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_prompt}/>
             {/if}
 
             {#if DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_prompt && !DBState.db.characters[$selectedCharID].gptSoVitsConfig.use_long_audio}
-                <span class="text-textcolor">{language.sidebarUi.ttsRefAudioScript}</span>
-                <TextAreaInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.prompt}/>
+                <span id="{uid}-gsv-ref-script" class="text-textcolor">{language.sidebarUi.ttsRefAudioScript}</span>
+                <TextAreaInput className="mb-4 mt-2" labelId="{uid}-gsv-ref-script" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.prompt}/>
             {/if}
 
             <span class="text-textcolor">{language.sidebarUi.ttsRefAudioLanguage}</span>
@@ -1180,7 +1187,7 @@
             <NumberInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].fishSpeechConfig.chunk_length}/>
 
             <span class="mt-2 text-textcolor">Normalize</span>
-            <Check className="mb-4 mt-2" bind:check={DBState.db.characters[$selectedCharID].fishSpeechConfig.normalize}/>
+            <Check className="mb-4 mt-2" label="Normalize" bind:check={DBState.db.characters[$selectedCharID].fishSpeechConfig.normalize}/>
         {/if}
         {#if DBState.db.characters[$selectedCharID].ttsMode}
             <div class="flex items-center mt-2">
@@ -1200,11 +1207,11 @@
                 <th class="font-medium w-1/2">{language.sidebarUi.bias}</th>
                 <th class="font-medium w-1/3">{language.value}</th>
                 <th>
-                    <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+                    <button class="font-medium cursor-pointer hover:text-textcolor2" aria-label={language.add} onclick={() => {
                         if(DBState.db.characters[$selectedCharID].type === 'character'){
                             (DBState.db.characters[$selectedCharID] as character).bias.push(['', 0])
                         }
-                    }}><PlusIcon /></button>
+                    }}><PlusIcon aria-hidden="true" /></button>
                 </th>
             </tr>
             {#if (DBState.db.characters[$selectedCharID] as character).bias.length === 0}
@@ -1216,17 +1223,17 @@
             {#each (DBState.db.characters[$selectedCharID] as character).bias as bias, i}
                 <tr class="align-middle text-center">
                     <td class="font-medium truncate w-1/2">
-                        <TextInput fullh fullwidth bind:value={(DBState.db.characters[$selectedCharID] as character).bias[i][0]} placeholder={language.sidebarUi.biasTokenPlaceholder} />
+                        <TextInput fullh fullwidth label={language.sidebarUi.bias} bind:value={(DBState.db.characters[$selectedCharID] as character).bias[i][0]} placeholder={language.sidebarUi.biasTokenPlaceholder} />
                     </td> 
                     <td class="font-medium truncate w-1/3">
                         <NumberInput fullh fullwidth bind:value={(DBState.db.characters[$selectedCharID] as character).bias[i][1]} max={100} min={-100} />
                     </td>
                     <td>
-                        <button class="font-medium flex justify-center items-center w-full h-full cursor-pointer hover:text-green-500" onclick={() => {
+                        <button class="font-medium flex justify-center items-center w-full h-full cursor-pointer hover:text-textcolor2" aria-label={language.remove} onclick={() => {
                             if(DBState.db.characters[$selectedCharID].type === 'character'){
                                 (DBState.db.characters[$selectedCharID] as character).bias.splice(i, 1)
                             }
-                        }}><TrashIcon /></button>
+                        }}><TrashIcon aria-hidden="true" /></button>
                     </td>
                 </tr>
             {/each}
@@ -1235,55 +1242,55 @@
         </table>
         </div>
 
-        <span class="text-textcolor">{language.exampleMessage} <Help key="exampleMessage"/></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].exampleMessage}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-example-message">{language.exampleMessage}</span> <Help key="exampleMessage"/></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-example-message" bind:value={DBState.db.characters[$selectedCharID].exampleMessage}></TextAreaInput>
 
-        <span class="text-textcolor">{language.creatorNotes} <Help key="creatorQuotes"/></span>
-        <MultiLangInput bind:value={DBState.db.characters[$selectedCharID].creatorNotes} className="my-2" onInput={() => {
+        <span class="text-textcolor"><span id="{uid}-creator-notes">{language.creatorNotes}</span> <Help key="creatorQuotes"/></span>
+        <MultiLangInput labelId="{uid}-creator-notes" bind:value={DBState.db.characters[$selectedCharID].creatorNotes} className="my-2" onInput={() => {
             DBState.db.characters[$selectedCharID].removedQuotes = false
         }}></MultiLangInput>
 
-        <span class="text-textcolor">{language.systemPrompt} <Help key="systemPrompt"/></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].systemPrompt}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-system-prompt">{language.systemPrompt}</span> <Help key="systemPrompt"/></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-system-prompt" bind:value={DBState.db.characters[$selectedCharID].systemPrompt}></TextAreaInput>
 
-        <span class="text-textcolor">{language.replaceGlobalNote} <Help key="replaceGlobalNote"/></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].replaceGlobalNote}></TextAreaInput>
+        <span class="text-textcolor"><span id="{uid}-replace-global-note">{language.replaceGlobalNote}</span> <Help key="replaceGlobalNote"/></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-replace-global-note" bind:value={DBState.db.characters[$selectedCharID].replaceGlobalNote}></TextAreaInput>
 
-        <span class="text-textcolor mt-2">{language.additionalText} <Help key="additionalText" /></span>
-        <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].additionalText}></TextAreaInput>
+        <span class="text-textcolor mt-2"><span id="{uid}-additional-text">{language.additionalText}</span> <Help key="additionalText" /></span>
+        <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-additional-text" bind:value={DBState.db.characters[$selectedCharID].additionalText}></TextAreaInput>
 
         {#if DBState.db.showUnrecommended || DBState.db.characters[$selectedCharID].personality.length > 3}
-            <span class="text-textcolor">{language.personality} <Help key="personality" unrecommended/></span>
-            <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].personality}></TextAreaInput>
+            <span class="text-textcolor"><span id="{uid}-personality">{language.personality}</span> <Help key="personality" unrecommended/></span>
+            <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-personality" bind:value={DBState.db.characters[$selectedCharID].personality}></TextAreaInput>
         {/if}
         {#if DBState.db.showUnrecommended || DBState.db.characters[$selectedCharID].scenario.length > 3}
-            <span class="text-textcolor">{language.scenario} <Help key="scenario" unrecommended/></span>
-            <TextAreaInput highlight margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].scenario}></TextAreaInput>
+            <span class="text-textcolor"><span id="{uid}-scenario">{language.scenario}</span> <Help key="scenario" unrecommended/></span>
+            <TextAreaInput highlight margin="both" autocomplete="off" labelId="{uid}-scenario" bind:value={DBState.db.characters[$selectedCharID].scenario}></TextAreaInput>
         {/if}
 
-        <span class="text-textcolor mt-2">{language.defaultVariables} <Help key="defaultVariables" /></span>
-        <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].defaultVariables}></TextAreaInput>
+        <span class="text-textcolor mt-2"><span id="{uid}-default-variables">{language.defaultVariables}</span> <Help key="defaultVariables" /></span>
+        <TextAreaInput margin="both" autocomplete="off" labelId="{uid}-default-variables" bind:value={DBState.db.characters[$selectedCharID].defaultVariables}></TextAreaInput>
 
-        <span class="text-textcolor mt-2">{language.translatorNote} <Help key="translatorNote" /></span>
-        <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].translatorNote}></TextAreaInput>
+        <span class="text-textcolor mt-2"><span id="{uid}-translator-note">{language.translatorNote}</span> <Help key="translatorNote" /></span>
+        <TextAreaInput margin="both" autocomplete="off" labelId="{uid}-translator-note" bind:value={DBState.db.characters[$selectedCharID].translatorNote}></TextAreaInput>
 
-        <span class="text-textcolor mt-2">{language.customPromptTemplateToggle} <Help key="customPromptTemplateToggle" /></span>
+        <span class="text-textcolor mt-2"><span id="{uid}-custom-toggle">{language.customPromptTemplateToggle}</span> <Help key="customPromptTemplateToggle" /></span>
         <StudioToggleLink owner={{ type: 'character' }} />
-        <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].customModuleToggle}></TextAreaInput>
+        <TextAreaInput margin="both" autocomplete="off" labelId="{uid}-custom-toggle" bind:value={DBState.db.characters[$selectedCharID].customModuleToggle}></TextAreaInput>
 
-        <span class="text-textcolor">{language.creator}</span>
-        <TextInput size="sm" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].additionalData.creator} />
+        <span id="{uid}-creator" class="text-textcolor">{language.creator}</span>
+        <TextInput size="sm" autocomplete="off" labelId="{uid}-creator" bind:value={DBState.db.characters[$selectedCharID].additionalData.creator} />
 
-        <span class="text-textcolor">{language.CharVersion}</span>
-        <TextInput size="sm" bind:value={DBState.db.characters[$selectedCharID].additionalData.character_version}/>
+        <span id="{uid}-char-version" class="text-textcolor">{language.CharVersion}</span>
+        <TextInput size="sm" labelId="{uid}-char-version" bind:value={DBState.db.characters[$selectedCharID].additionalData.character_version}/>
 
-        <span class="text-textcolor">{language.nickname} <Help key="nickname" /></span>
-        <TextInput size="sm" bind:value={DBState.db.characters[$selectedCharID].nickname}/>
+        <span class="text-textcolor"><span id="{uid}-nickname">{language.nickname}</span> <Help key="nickname" /></span>
+        <TextInput size="sm" labelId="{uid}-nickname" bind:value={DBState.db.characters[$selectedCharID].nickname}/>
 
-        <span class="text-textcolor">{language.depthPrompt}</span>
+        <span id="{uid}-depth-prompt" class="text-textcolor">{language.depthPrompt}</span>
         <div class="flex justify-center items-center">
             <NumberInput size="sm" bind:value={DBState.db.characters[$selectedCharID].depth_prompt.depth} className="w-12"/>
-            <TextInput size="sm" bind:value={DBState.db.characters[$selectedCharID].depth_prompt.prompt} className="flex-1"/>
+            <TextInput size="sm" labelId="{uid}-depth-prompt" bind:value={DBState.db.characters[$selectedCharID].depth_prompt.prompt} className="flex-1"/>
         </div>
 
         <span class="text-textcolor mt-2">{language.altGreet}</span>
@@ -1293,14 +1300,14 @@
                 <tr>
                     <th class="font-medium">{language.value}</th>
                     <th class="font-medium cursor-pointer w-8">
-                        <button class="hover:text-green-500" onclick={() => {
+                        <button class="hover:text-textcolor2" aria-label={language.add} onclick={() => {
                             if(DBState.db.characters[$selectedCharID].type === 'character'){
                                 let alternateGreetings = DBState.db.characters[$selectedCharID].alternateGreetings
                                 alternateGreetings.push('')
                                 DBState.db.characters[$selectedCharID].alternateGreetings = alternateGreetings
                             }
                         }}>
-                            <PlusIcon />
+                            <PlusIcon aria-hidden="true" />
                         </button>
                     </th>
                 </tr>
@@ -1312,17 +1319,17 @@
                 {#each DBState.db.characters[$selectedCharID].alternateGreetings as bias, i}
                     <tr>
                         <td class="font-medium truncate">
-                            <TextAreaInput highlight bind:value={DBState.db.characters[$selectedCharID].alternateGreetings[i]} placeholder="..." fullwidth />
+                            <TextAreaInput highlight label={language.altGreet} bind:value={DBState.db.characters[$selectedCharID].alternateGreetings[i]} placeholder="..." fullwidth />
                         </td>
                         <th class="font-medium cursor-pointer w-8">
                             <div class="flex flex-col items-center">
-                                <button class="hover:text-blue-500 p-1" onclick={() => moveAlternateGreetingUp(i)} disabled={i === 0}>
-                                    <ArrowUp size={16} />
+                                <button class="hover:text-textcolor2 p-1" aria-label={language.chatShellMoveUp} onclick={() => moveAlternateGreetingUp(i)} disabled={i === 0}>
+                                    <ArrowUp size={16} aria-hidden="true" />
                                 </button>
-                                <button class="hover:text-blue-500 p-1" onclick={() => moveAlternateGreetingDown(i)} disabled={i === DBState.db.characters[$selectedCharID].alternateGreetings.length - 1}>
-                                    <ArrowDown size={16} />
+                                <button class="hover:text-textcolor2 p-1" aria-label={language.chatShellMoveDown} onclick={() => moveAlternateGreetingDown(i)} disabled={i === DBState.db.characters[$selectedCharID].alternateGreetings.length - 1}>
+                                    <ArrowDown size={16} aria-hidden="true" />
                                 </button>
-                                <button class="hover:text-red-500 p-1" onclick={() => {
+                                <button class="hover:text-draculared p-1" aria-label={language.remove} onclick={() => {
                                     if(DBState.db.characters[$selectedCharID].type === 'character'){
                                         DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].fmIndex = -1
                                         let alternateGreetings = DBState.db.characters[$selectedCharID].alternateGreetings
@@ -1330,7 +1337,7 @@
                                         DBState.db.characters[$selectedCharID].alternateGreetings = alternateGreetings
                                     }
                                 }}>
-                                    <TrashIcon size={16} />
+                                    <TrashIcon size={16} aria-hidden="true" />
                                 </button>
                             </div>
                         </th>
@@ -1383,8 +1390,8 @@
                 {language.hypaMemoryV3Modal}
             </Button>
         {:else if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData.length > 4 || DBState.db.characters[$selectedCharID].supaMemory}
-            <span class="text-textcolor mt-4">{language.SuperMemory}</span>
-            <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
+            <span id="{uid}-super-memory" class="text-textcolor mt-4">{language.SuperMemory}</span>
+            <TextAreaInput margin="both" autocomplete="off" labelId="{uid}-super-memory" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
             <Button
                 onclick={async () => {
                     const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
@@ -1423,8 +1430,8 @@
         </Button>
     {:else}
         {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData.length > 4 || DBState.db.characters[$selectedCharID].supaMemory}
-            <span class="text-textcolor mt-4">{language.SuperMemory}</span>
-            <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
+            <span id="{uid}-super-memory" class="text-textcolor mt-4">{language.SuperMemory}</span>
+            <TextAreaInput margin="both" autocomplete="off" labelId="{uid}-super-memory" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
             <Button
                 onclick={async () => {
                     const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]

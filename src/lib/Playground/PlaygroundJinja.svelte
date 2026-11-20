@@ -3,6 +3,7 @@
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import { language } from "src/lang";
     let input = $state("");
+    const uid = $props.id();
     let json = $state(JSON.stringify({
         "messages": [{
             "role": "user",
@@ -30,14 +31,14 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">Jinja</h2>
 
-<span class="text-textcolor text-lg">Jinja</span>
+<span id="{uid}-template" class="text-textcolor text-lg">Jinja</span>
 
-<TextAreaInput onInput={onInput} bind:value={input} />
+<TextAreaInput labelId="{uid}-template" onInput={onInput} bind:value={input} />
 
-<span class="text-textcolor text-lg">{language.playground.jinjaData}</span>
+<span id="{uid}-data" class="text-textcolor text-lg">{language.playground.jinjaData}</span>
 
-<TextAreaInput onInput={onInput} bind:value={json} />
+<TextAreaInput labelId="{uid}-data" onInput={onInput} bind:value={json} />
 
-<span class="text-textcolor text-lg">{language.playground.result}</span>
+<span id="{uid}-result" class="text-textcolor text-lg">{language.playground.result}</span>
 
-<TextAreaInput value={output} />
+<TextAreaInput labelId="{uid}-result" value={output} />

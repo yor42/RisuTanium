@@ -360,8 +360,7 @@ describe('T4-3 the list', () => {
         expect(img.getAttribute('alt')).toBe('Pack a')
         expect(img.getAttribute('src')).toBe(urls[0])
         const radio = card.querySelector<HTMLInputElement>('input[type="radio"]')!
-        const labelled = radio.getAttribute('aria-labelledby')!
-        expect(card.querySelector(`#${labelled}`)!.textContent).toBe('Pack a')
+        expect(radio.getAttribute('aria-label')).toBe('Pack a')
         expect(entryOf(target, 'b').querySelector('img')).toBeNull()
         expect(urls).toHaveLength(1)
     })
@@ -378,14 +377,13 @@ describe('T4-3 the list', () => {
         expect(radios(target).filter((radio) => radio.checked).map((radio) => radio.value)).toEqual(['a'])
     })
 
-    test('T1-12 each radio is named through aria-labelledby by the visible name, and the summary label starts with its text', () => {
+    test('T1-12 each radio is named through aria-label by the visible name, and the summary label starts with its text', () => {
         setPacks([recordOf('a')])
         const target = show()
         const names = new Map<string, string>([['', language.themePackNone], ['a', 'Pack a'], [BUILTIN_PACKS[0].id, BUILTIN_PACKS[0].name]])
         for (const [value, name] of names) {
             const radio = radios(target).find((candidate) => candidate.value === value)!
-            const labelled = radio.getAttribute('aria-labelledby')!
-            expect(document.getElementById(labelled)!.textContent).toBe(name)
+            expect(radio.getAttribute('aria-label')).toBe(name)
         }
         const summary = entryOf(target, 'a').querySelector('summary')!
         expect(summary.getAttribute('aria-label')).toBe(language.themePackDetailsFor('Pack a'))
@@ -407,7 +405,7 @@ describe('T4-3 the list', () => {
         const badge = siblings.find((child) => child.className.includes('peer-checked:flex'))!
         expect(badge.className).toContain('hidden')
         expect(badge.querySelector('svg')).not.toBeNull()
-        expect(label.querySelector(`#${radio.getAttribute('aria-labelledby')}`)!.className).toContain('peer-checked:font-semibold')
+        expect(label.querySelector('span[id]')!.className).toContain('peer-checked:font-semibold')
     })
 
     test('the checked radio follows the stored id: None when no id is stored, the pack otherwise, whatever the apply status says', async () => {

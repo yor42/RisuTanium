@@ -292,8 +292,8 @@
                                     <div class="flex flex-col gap-2 max-w-md">
                                         {#each PRICE_FIELDS as field (field.kind)}
                                             <div class="flex flex-col gap-1">
-                                                <label for={"usage-price-" + field.kind} class="text-textcolor2">{field.label()}</label>
-                                                <TextInput id={"usage-price-" + field.kind} size="sm" bind:value={fields[field.kind]} />
+                                                <label id={"usage-price-" + field.kind + "-label"} for={"usage-price-" + field.kind} class="text-textcolor2">{field.label()}</label>
+                                                <TextInput id={"usage-price-" + field.kind} labelId={"usage-price-" + field.kind + "-label"} size="sm" bind:value={fields[field.kind]} />
                                             </div>
                                         {/each}
                                         {#if invalid}

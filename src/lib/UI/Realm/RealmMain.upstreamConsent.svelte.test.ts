@@ -71,6 +71,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         selectedCharID: writable(-1),
         MobileGUI: writable(false),
         RealmInitialOpenChar: writable(null),
+        OpenRealmStore: writable(true),
         alertStore: writable({ type: 'none', msg: '' }),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
@@ -126,26 +127,30 @@ async function waitFor(predicate: () => boolean, expected: string, timeoutMs = 2
 }
 
 function searchButton(target: HTMLElement): HTMLButtonElement {
-    // The search icon button is the first of the two buttons beside the
-    // search input, ahead of the menu button -- found by position, since
-    // it carries no text and no test id.
-    const buttons = Array.from(target.querySelectorAll('button'))
-    return buttons[0]
+    // The search icon button is named by `language.search`.
+    return target.querySelector(`button[aria-label="${language.search}"]`) as HTMLButtonElement
 }
 
 function findByText(target: HTMLElement, text: string): HTMLButtonElement | undefined {
     return Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === text)
 }
 
+// Sort is a native select; choosing an option is the sort control's one interaction.
+function chooseSort(target: HTMLElement, label: string) {
+    const select = target.querySelector('select') as HTMLSelectElement
+    const option = Array.from(select.options).find((o) => o.textContent?.trim() === label)
+    expect(option).toBeTruthy()
+    select.value = option!.value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
 // The pager only renders once `sort` has moved off its 'recommended' default
-// (see the sort buttons above), and carries no test id: its middle button is
-// the non-interactive page-number display, found by its text; its immediate
-// siblings are the previous/next-page controls.
+// (see the sort select above): its previous/next controls are named buttons and the page
+// number between them is plain text.
 function pagerArrows(target: HTMLElement): { left: HTMLElement | undefined, right: HTMLElement | undefined } {
-    const pageLabel = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === '1')
     return {
-        left: pageLabel?.previousElementSibling as HTMLElement | undefined,
-        right: pageLabel?.nextElementSibling as HTMLElement | undefined,
+        left: target.querySelector(`button[aria-label="${language.realmPrevPage}"]`) as HTMLElement | undefined ?? undefined,
+        right: target.querySelector(`button[aria-label="${language.realmNextPage}"]`) as HTMLElement | undefined ?? undefined,
     }
 }
 
@@ -208,27 +213,19 @@ describe('RealmMain.svelte desktop: the placeholder before acceptance', () => {
         // 'recommended' or 'random' at the moment it is clicked, so clicking
         // search first would silently invalidate the "Recent" lookup that
         // follows it.
-        const recent = findByText(target, language.recent)
-        expect(recent).toBeTruthy()
-        recent!.click()
+        chooseSort(target, language.recent)
         await settle()
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
 
-        const trending = findByText(target, language.trending)
-        expect(trending).toBeTruthy()
-        trending!.click()
+        chooseSort(target, language.trending)
         await settle()
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
 
-        const random = findByText(target, language.random)
-        expect(random).toBeTruthy()
-        random!.click()
+        chooseSort(target, language.random)
         await settle()
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
 
-        const downloads = findByText(target, language.downloads)
-        expect(downloads).toBeTruthy()
-        downloads!.click()
+        chooseSort(target, language.downloads)
         await settle()
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
 

@@ -24,86 +24,96 @@
     onApply,
     onCancel,
   }: Props = $props();
+
+  const uid = $props.id();
 </script>
 
 <!-- Bulk Resummarize Result Section -->
 {#if bulkResummaryState}
-  <div class="sticky bottom-0 p-4 bg-zinc-900 border-t border-zinc-700 rounded-b-lg">
+  <div class="sticky bottom-0 p-4 bg-darkbg border-t border-darkborderc rounded-b-lg">
     <div class="flex flex-col gap-3">
       <div class="flex justify-between items-center">
-        <h3 class="text-sm font-medium text-zinc-300">{language.hypaV3Modal.reSummarizeResult}</h3>
+        <h3 id="{uid}-result" class="text-sm font-medium text-textcolor">{language.hypaV3Modal.reSummarizeResult}</h3>
         <div class="flex items-center gap-2">
           <!-- Translate Button -->
           <button
-            class="p-2 text-zinc-400 hover:text-zinc-200 transition-colors {bulkResummaryState.isProcessing || !bulkResummaryState.result 
-              ? 'opacity-50 cursor-not-allowed' 
+            class="p-2 text-textcolor2 hover:text-textcolor transition-colors {bulkResummaryState.isProcessing || !bulkResummaryState.result
+              ? 'opacity-50 cursor-not-allowed'
               : ''}"
             disabled={bulkResummaryState.isProcessing || !bulkResummaryState.result}
             title={language.hypaV3Modal.translate}
+            aria-label={language.hypaV3Modal.translate}
             use:handleDualAction={{
               onMainAction: () => onToggleTranslation(false),
               onAlternativeAction: () => onToggleTranslation(true),
             }}
           >
-            <LanguagesIcon class="w-4 h-4" />
+            <LanguagesIcon class="w-4 h-4" aria-hidden="true" />
           </button>
-          
+
           <!-- Reroll Button -->
           <button
-            class="p-2 rounded transition-colors {bulkResummaryState.isProcessing 
-              ? 'text-zinc-600 cursor-not-allowed' 
-              : 'text-orange-400 hover:text-orange-300'}"
+            class="p-2 rounded transition-colors {bulkResummaryState.isProcessing
+              ? 'text-textcolor2 opacity-50 cursor-not-allowed'
+              : 'text-textcolor hover:text-textcolor2'}"
             onclick={onReroll}
             disabled={bulkResummaryState.isProcessing}
             title={language.hypaV3Modal.retry}
+            aria-label={language.hypaV3Modal.retry}
           >
-            <RefreshCw class="w-4 h-4" />
+            <RefreshCw class="w-4 h-4" aria-hidden="true" />
           </button>
-          
+
           <!-- Apply Button -->
           <button
-            class="p-2 rounded transition-colors {bulkResummaryState.isProcessing || !bulkResummaryState.result 
-              ? 'text-zinc-600 cursor-not-allowed' 
-              : 'text-green-400 hover:text-green-300'}"
+            class="p-2 rounded transition-colors {bulkResummaryState.isProcessing || !bulkResummaryState.result
+              ? 'text-textcolor2 opacity-50 cursor-not-allowed'
+              : 'text-textcolor hover:text-textcolor2'}"
             onclick={onApply}
             disabled={bulkResummaryState.isProcessing || !bulkResummaryState.result}
             title={language.apply}
+            aria-label={language.apply}
           >
-            <CheckIcon class="w-4 h-4" />
+            <CheckIcon class="w-4 h-4" aria-hidden="true" />
           </button>
-          
+
           <!-- Cancel Button -->
           <button
-            class="p-2 rounded-sm transition-colors text-zinc-400 hover:text-zinc-200"
+            class="p-2 rounded-sm transition-colors text-textcolor2 hover:text-textcolor"
             onclick={onCancel}
             title={language.cancel}
+            aria-label={language.cancel}
           >
-            <XIcon class="w-4 h-4" />
+            <XIcon class="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
-      
+
       <!-- Result Content -->
       {#if bulkResummaryState.isProcessing}
-        <div class="text-center py-4 text-zinc-400">
-          <RefreshCw class="w-6 h-6 animate-spin inline mr-2" />
+        <div class="text-center py-4 text-textcolor2">
+          <RefreshCw class="w-6 h-6 animate-spin inline mr-2" aria-hidden="true" />
           {language.hypaV3Modal.reSummarizing}
         </div>
       {:else if bulkResummaryState.result}
         <textarea
-          class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-zinc-700 focus:outline-hidden focus:ring-2 focus:ring-zinc-500 transition-colors text-zinc-200 bg-zinc-800"
+          class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-darkborderc focus:outline-hidden risu-focus-ring transition-colors text-textcolor bg-bgcolor"
+          aria-labelledby="{uid}-result"
+          aria-describedby="{uid}-result"
           readonly
           value={bulkResummaryState.result}
         ></textarea>
-        
+
         <!-- Translation Result -->
         {#if bulkResummaryState.translation}
           <div class="mt-3">
-            <div class="mb-2 text-sm text-zinc-400">
+            <div id="{uid}-translation" class="mb-2 text-sm text-textcolor2">
               {language.hypaV3Modal.translationLabel}
             </div>
             <textarea
-              class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-zinc-700 focus:outline-hidden transition-colors text-zinc-200 bg-zinc-800"
+              class="p-3 w-full min-h-32 resize-vertical rounded-sm border border-darkborderc focus:outline-hidden transition-colors text-textcolor bg-bgcolor"
+              aria-labelledby="{uid}-translation"
+              aria-describedby="{uid}-translation"
               readonly
               value={bulkResummaryState.translation}
             ></textarea>

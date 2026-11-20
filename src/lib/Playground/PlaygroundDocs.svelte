@@ -36,6 +36,7 @@
 <div class="max-w-4xl w-full p-6">
     <div class="mb-8 w-full">
         <TextInput
+            label={language.playground.docsSearchPlaceholder}
             placeholder={language.playground.docsSearchPlaceholder}
             className="w-full"
             fullwidth

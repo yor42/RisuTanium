@@ -33530,3 +33530,76 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Applies to the untracked `Agents/Handoff-2026-10-08.md` and `Agents/Handoff-2026-10-08/` (96 files) in the main checkout only.
 
 **What the maintainer chose.** "Archive (Recommended)": copy any still-relevant item into an existing GitHub issue first, then move the files out of the repository tree to an archive outside git. Nothing from them is committed.
+
+### MC-2753 — workflow-policy.json takes the maintainer's implementation cap of 10, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the governance v2 session, "Fold in your 10 (Recommended)"). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2748`, `#387`.
+- Applied in governance v2 Stage 5: `maxImplementationTracks` 2 -> 10 and the authority string; the route order and the policy revision stay unchanged (the controller tests encode the order, and a revision change without a matching Agents/Workflow-State.json update freezes every dispatch). The native-first route order is follow-up #387.
+
+**What the maintainer chose.** The governance PR folds the maintainer's uncommitted main-checkout edit (`maxImplementationTracks` 2 -> 10) into `.claude/workflow-policy.json`. After it merges, lane A drops the local edit in the main checkout, which the merged file supersedes (same cap, plus the authority string), so the fast-forward works.
+
+### MC-2775 — A merged PR's own closing keyword is an approved issue close, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A from its decisions log, governance v2 pre-merge verification item S380-2). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`, `MC-2747`.
+
+**What the maintainer chose.** An issue closed by the merged PR's own closing keyword is an approved close and needs no ask. Closing any issue by hand is still asked (MC-2744).
+
+### MC-2776 — "Devices" in MC-2744 means personal devices only, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, items R-3 and S380-4). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744` (amended), `MC-1666`, `MC-350`.
+
+**What the maintainer chose.** The always-asked "devices" in MC-2744 means the maintainer's personal devices: the Galaxy Z Fold 7 is never touched, and a Galaxy Tab S9 run is asked. Runs on the two spare Note 9s with synthetic data need no ask (MC-1666). This amends MC-2744.
+
+### MC-2777 — The orphan sweep runs only in the weekly sweep, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, item S383-4). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2064` (amended), `MC-2745`.
+
+**What the maintainer chose.** The orphan sweep runs inside the weekly sweep (with its 14-day staleness window) only, not in every records batch. This amends MC-2064 item 1.
+
+### MC-2778 — Direct pushes to main are retired, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, item K-7). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`, `MC-2014`, `MC-222` (item 4 superseded), `MC-1677` (main-push clause superseded).
+
+**What the maintainer chose.** Nobody pushes directly to `main`; `main` changes only through merged PRs. This supersedes MC-222 item 4 and the "other than push origin main" clause of MC-1677.
+
+### MC-2779 — The follow-up label is created, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, item S383-3). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2745`.
+
+**What the maintainer chose.** Create the `follow-up` label on yor42/RisuTanium for the follow-up issue template. Lane A created it on 2026-11-20.
+
+### MC-2780 — The MC-2747 bulk-close sweep runs after the governance stack merges, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2747`, `MC-2775`.
+
+**What the maintainer chose.** The one-time bulk close of the old owed administrative closeouts (MC-2747) runs after the governance v2 PRs merge, and the maintainer sees the list before anything is closed.
+
+### MC-2781 — The leftover Workflow-State temp files are archived, not deleted, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744` (destructive cleanup).
+
+**What the maintainer chose.** The 21 leftover `Agents/Workflow-State.json.*.tmp` files in the main checkout are moved, not deleted, to `%TEMP%\risu-b715\archive\workflow-state-tmp\`. Lane A moved them on 2026-11-20.
+
+### MC-2794 — MC-2747 bulk close: 74 merged items close as complete, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A after its independent check, workflow wf_32e32d0b-78e and a re-run of every cited sha against origin/main 7c80c5e4d). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list (`%TEMP%\risu-b715\b61\bulk-close\list.md`). Related: `MC-2747`, `MC-2780`, `MC-1306`, `MC-2149`, `MC-2150`.
+
+**What the maintainer chose.** Close all 74 items: the 70 close-as-complete rows of groups 1 to 11 (all except CHORE-153), plus CHORE-351, CHORE-712, CHORE-715 and CHORE-787. CHORE-712: merged as 36be674e7; DV-A, DV-B and DV-C accepted as PASS and trial58 PASS (MC-1306); DV-D is an unobserved diagnostic, not a gate. CHORE-715 merged via 12e6e5556 and CHORE-787 via 77122f12b. CHORE-351: PR #45 merged, all 57 call sites audited (MC-2149, MC-2150).
+
+### MC-2795 — CHORE-153 closes with the Q-C debounce cap as an accepted drop, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`, `MC-2794`.
+
+**What the maintainer chose.** The Q-C debounce cap on CHORE-153 is dropped, and CHORE-153 closes. An earlier doc-verifier closeout had failed it for exactly that leftover; this decision dispositions it.
+
+### MC-2796 — UI-S6, UI-S1 and CHORE-688 close as delivered, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`, `#325`.
+
+**What the maintainer chose.** UI-S6, UI-S1 and CHORE-688 close as delivered. CHORE-688's A2 and A5 leftovers and its wiki note are dropped. Later chat-shell work lives in UI-S7, and later theme-pack work in the validator PRs and #325.
+
+### MC-2797 — The 25 already-closed items get closed Roadmap records, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`.
+
+**What the maintainer chose.** The 25 items already closed on GitHub or in an earlier record get their Roadmap rows updated to closed. The 10 keep-open rows (CHORE-128, 478, 555, 557, 587, 667, 714, 722, 823 and UI-S3) stay unchanged.

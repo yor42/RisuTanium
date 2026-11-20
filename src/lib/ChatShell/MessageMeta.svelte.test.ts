@@ -4,6 +4,8 @@ import { flushSync, mount, unmount } from 'svelte'
 
 vi.mock('../../lang', () => ({ language: { edit: 'Edit', remove: 'Delete', chatShellMoreActions: 'More actions', chatShellStopAndDelete: 'Stop and delete' } }))
 import MessageMeta from './MessageMeta.svelte'
+import type { ActionId } from '../../ts/chatShell/actionSlots'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 let target: HTMLElement
 let app: ReturnType<typeof MessageMeta> | undefined
@@ -53,16 +55,48 @@ describe('message meta actions', () => {
         expect(onaction).toHaveBeenNthCalledWith(1, 'delete', false)
         expect(onaction).toHaveBeenNthCalledWith(2, 'delete', true)
     })
-    test('every pinned action has its own glyph, not a shared bullet', () => {
+    test('every pinned action has its own icon, not a shared fallback', async () => {
+        await import('@lucide/svelte')
         localStorage.setItem('risuChatShell.actionSlots', JSON.stringify({ order: ['copy', 'bookmark', 'branch', 'hideAI', 'readAloud'], pinned: ['copy', 'bookmark', 'branch', 'hideAI', 'readAloud'] }))
         target = document.createElement('div')
         document.body.appendChild(target)
         app = mount(MessageMeta, { target, props: { name: 'Ari', available: ['copy', 'bookmark', 'branch', 'hideAI', 'readAloud', 'delete'], onaction: vi.fn(), onmore: vi.fn() } })
         flushSync()
-        const glyphs = [...target.querySelectorAll<HTMLButtonElement>('[data-action]')].map((button) => button.textContent)
-        expect(glyphs).not.toContain('•')
-        expect(new Set(glyphs).size).toBe(glyphs.length)
-    })
+        const icons = [...target.querySelectorAll<HTMLButtonElement>('[data-action]')].map((button) => lucideNames(button).join())
+        expect(icons).not.toContain('lucide-puzzle')
+        expect(icons).not.toContain('')
+        expect(new Set(icons).size).toBe(icons.length)
+    }, 120_000)
+    // TC2-3 (regression reproducer, replaces "own glyph"): each pinned action is its own Lucide icon and no text glyph remains.
+    // deleteAfter is never pinned (partition drops it), so its icon is only reachable through the action sheet.
+    test('each pinned action draws its own icon, More is the horizontal ellipsis, and no glyph text remains', async () => {
+        await import('@lucide/svelte')
+        const expected: Record<string, string> = {
+            copy: 'lucide-copy', edit: 'lucide-pencil', translate: 'lucide-languages', readAloud: 'lucide-volume-2', delete: 'lucide-trash-2',
+            branch: 'lucide-git-branch', bookmark: 'lucide-bookmark', hideAI: 'lucide-eye-off', newReply: 'lucide-refresh-cw',
+            stepPrev: 'lucide-chevron-left', stepNext: 'lucide-chevron-right', selectText: 'lucide-text-select',
+            customizeButtons: 'lucide-settings-2', 'plugin:x': 'lucide-puzzle',
+        }
+        const ids = Object.keys(expected)
+        for (let start = 0; start < ids.length; start += 3) {
+            const batch = ids.slice(start, start + 3)
+            localStorage.setItem('risuChatShell.actionSlots', JSON.stringify({ order: batch, pinned: batch }))
+            target = document.createElement('div')
+            document.body.appendChild(target)
+            app = mount(MessageMeta, { target, props: { name: 'Ari', available: [...batch, 'delete'] as ActionId[], onaction: vi.fn(), onmore: vi.fn() } })
+            flushSync()
+            for (const id of batch) {
+                const button = target.querySelector<HTMLButtonElement>(`[data-action="${id}"]`)!
+                expect(lucideNames(button), id).toEqual([expected[id]])
+                expect(iconsIn(button)[0].getAttribute('aria-hidden'), id).toBe('true')
+            }
+            expect(glyphsIn(target)).toEqual([])
+            expect(lucideNames(target.querySelector('[aria-label="More actions"]')!)).toEqual(['lucide-ellipsis'])
+            await unmount(app)
+            app = undefined
+            target.remove()
+        }
+    }, 120_000)
     test('the time and the model name carry the single-line classes, the long model name is also the tooltip', () => {
         target = document.createElement('div')
         document.body.appendChild(target)

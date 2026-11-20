@@ -278,7 +278,10 @@
 // Style helpers (classnames)
 // -----------------------------------------------------------------------------
     const pillBase = 'px-2 py-1 text-xs cursor-pointer select-none'
-    const pillActive = 'text-black bg-white'
+    // The pill group clips overflow to keep its rounded border, so both rings are drawn inside the pill:
+    // an outer ring or outline would be cut off. The focus ring shows on keyboard focus only.
+    const pillActive = 'bg-selected text-textcolor ring-1 ring-inset ring-borderc'
+    const pillFocus = 'risu-focus-ring-inset-within'
     const pillInactive = 'text-textcolor2 bg-transparent'
     const diffLineBase = 'whitespace-pre-wrap'
     const diffLineCommon = 'border-l-4 rounded-sm pl-2'
@@ -295,10 +298,10 @@
     const lineAddClass    = 'pl-2 border-l-4 border-green-500 bg-green-500/10 text-green-400 rounded-sm'
     const lineModifyClass = 'pl-2 border-l-4 border-blue-500 bg-blue-500/10 rounded-sm'
 
-    const nameHeaderTagClass = 'shrink-0 text-[10px] px-1.5 py-0.5 rounded-sm border border-white/15 text-textcolor2 bg-black/20'
+    const nameHeaderTagClass = 'shrink-0 text-[10px] px-1.5 py-0.5 rounded-sm border border-textcolor/15 text-textcolor2 bg-darkbg/20'
 
     const splitEmptyLineClass = `${diffLineBase} ${diffLineCommon} ` +
-        'border-white/10 text-transparent select-none ' +
+        'border-textcolor/10 text-transparent select-none ' +
         'bg-[linear-gradient(135deg,rgba(255,255,255,0.06)_0,rgba(255,255,255,0.06)_10px,rgba(255,255,255,0.02)_10px,rgba(255,255,255,0.02)_20px)] ' +
         'bg-[length:20px_20px]'
 
@@ -1247,13 +1250,14 @@
     <div class="flex rounded-md border border-darkborderc overflow-hidden">
       {#each options as opt (opt.value)}
         <label
-          class={`${pillBase} ${value === opt.value ? pillActive : pillInactive} ${
+          class={`${pillBase} ${pillFocus} ${value === opt.value ? pillActive : pillInactive} ${
                   disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
           }`}
         >
           <input
-            class="hidden"
+            class="sr-only"
             type="radio"
+            aria-label={opt.label}
             {name}
             value={opt.value}
             {disabled}
@@ -1279,7 +1283,8 @@
     >
       <input
         type="checkbox"
-        class="accent-green-500"
+        class="accent-borderc"
+        aria-label={label}
         {disabled}
         checked={checked}
         onchange={(e) => setChecked((e.currentTarget as HTMLInputElement).checked)}
@@ -1300,7 +1305,7 @@
       max={max}
       step="1"
       value={value}
-      class="w-24 accent-green-500 disabled:opacity-40"
+      class="w-24 accent-borderc disabled:opacity-40"
       {disabled}
       oninput={(e) => {
         if (disabled) return
@@ -1492,11 +1497,11 @@
 
 {#snippet renderDivider(d: Extract<DiffSegment, { kind: 'divider' }>, scope: string)}
   <div class="my-3 flex items-center gap-3 text-xs text-textcolor2/70">
-    <div class="h-px flex-1 bg-white/10"></div>
+    <div class="h-px flex-1 bg-textcolor/10"></div>
     <button
       type="button"
       class={`px-2 py-0.5 rounded-sm border border-darkborderc bg-darkbg shadow-md
-        ${d.omitted > 0 ? 'hover:border-white/40 hover:text-textcolor hover:shadow-lg cursor-pointer' : 'text-textcolor2/50 cursor-default'}`}
+        ${d.omitted > 0 ? 'hover:border-textcolor/40 hover:text-textcolor hover:shadow-lg cursor-pointer' : 'text-textcolor2/50 cursor-default'}`}
       disabled={d.omitted === 0}
       onclick={() => expandRange(scope, d.from, d.to)}
       title={d.omitted > 0 ? language.promptDiff.expandHiddenLines : ''}
@@ -1520,7 +1525,7 @@
       {/if}
     </button>
 
-    <div class="h-px flex-1 bg-white/10"></div>
+    <div class="h-px flex-1 bg-textcolor/10"></div>
   </div>
 {/snippet}
 
@@ -1581,7 +1586,7 @@
     cardPart.k === 'modify' ? 'bg-blue-500/15 text-blue-300 border-blue-500/40'
     : cardPart.k === 'add'  ? 'bg-green-500/15 text-green-300 border-green-500/40'
     : cardPart.k === 'remove' ? 'bg-red-500/15 text-red-300 border-red-500/40'
-    : 'bg-zinc-700/40 text-textcolor2 border-zinc-600/60'}
+    : 'bg-darkbutton/40 text-textcolor2 border-darkborderc/60'}
 
   <div class="flex flex-col items-end gap-1 shrink-0">
     <span class={`text-[11px] px-2 py-0.5 rounded-full border ${statusClass}`}>
@@ -1613,8 +1618,8 @@
         {/if}
       </div>
 
-      <button class="text-textcolor2 hover:text-green-500" onclick={(e) => {handleClose()}}>
-        <XIcon size={20}/>
+      <button class="text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={(e) => {handleClose()}}>
+        <XIcon size={20} aria-hidden="true"/>
       </button>
     </div>
 
@@ -1656,7 +1661,7 @@
               {@const headerPart = lines[1]}
               {@const bodyParts = lines.slice(2)}
 
-              <div class="prompt-diff-hover bg-black/40 border border-darkborderc rounded-xl p-3 flex flex-col gap-2">
+              <div class="prompt-diff-hover bg-darkbg/40 border border-darkborderc rounded-xl p-3 flex flex-col gap-2">
                 <!-- name / header / card diff -->
                 <div class="flex items-start justify-between gap-2">
                   <div class="flex flex-col gap-2 min-w-0">
@@ -1717,8 +1722,8 @@
 
                 <div class="relative">
                   <div class="absolute inset-0 grid grid-cols-2 gap-x-3 pointer-events-none">
-                    <div class="bg-black/40 border border-darkborderc rounded-xl"></div>
-                    <div class="bg-black/40 border border-darkborderc rounded-xl"></div>
+                    <div class="bg-darkbg/40 border border-darkborderc rounded-xl"></div>
+                    <div class="bg-darkbg/40 border border-darkborderc rounded-xl"></div>
                   </div>
 
                   <div class="relative z-10 grid grid-cols-2 gap-x-3 p-px">
@@ -1733,7 +1738,7 @@
                           {@render renderCardStatus(cardPart)}
                         </div>
                       {:else}
-                        <div class="h-[70px] rounded-lg border border-dashed border-white/10 bg-black/10 flex items-center justify-center">
+                        <div class="h-[70px] rounded-lg border border-dashed border-textcolor/10 bg-darkbg/10 flex items-center justify-center">
                           <span class="text-textcolor2/60 italic text-xs select-none">-</span>
                         </div>
                       {/if}
@@ -1750,14 +1755,14 @@
                           {@render renderCardStatus(cardPart)}
                         </div>
                       {:else}
-                        <div class="h-[70px] rounded-lg border border-dashed border-white/10 bg-black/10 flex items-center justify-center">
+                        <div class="h-[70px] rounded-lg border border-dashed border-textcolor/10 bg-darkbg/10 flex items-center justify-center">
                           <span class="text-textcolor2/60 italic text-xs select-none">-</span>
                         </div>
                       {/if}
                     </div>
 
-                    <div class="h-px bg-white/10 mx-3"></div>
-                    <div class="h-px bg-white/10 mx-3"></div>
+                    <div class="h-px bg-textcolor/10 mx-3"></div>
+                    <div class="h-px bg-textcolor/10 mx-3"></div>
 
                     <!-- body rows -->
                     {#each rows as r, rIdx (r.key)}
@@ -1767,10 +1772,10 @@
                         </div>
                       {:else}
                         <div class="contents group">
-                        <div class="px-3 py-0.5 font-mono text-sm leading-5 group-hover:bg-white/10 group-hover:outline group-hover:outline-1 group-hover:outline-white/15">
+                        <div class="px-3 py-0.5 font-mono text-sm leading-5 group-hover:bg-textcolor/10 group-hover:outline group-hover:outline-1 group-hover:outline-textcolor/15">
                           {@render renderSplitCell(leftExists ? r.left : { kind: 'empty', role: r.left.role }, rIdx)}
                         </div>
-                        <div class="px-3 py-0.5 font-mono text-sm leading-5 group-hover:bg-white/10 group-hover:outline group-hover:outline-1 group-hover:outline-white/15">
+                        <div class="px-3 py-0.5 font-mono text-sm leading-5 group-hover:bg-textcolor/10 group-hover:outline group-hover:outline-1 group-hover:outline-textcolor/15">
                           {@render renderSplitCell(rightExists ? r.right : { kind: 'empty', role: r.right.role }, rIdx)}
                         </div>
                         </div>
@@ -1791,8 +1796,8 @@
 
           {#if showOnlyChanges && segments.length === 0}
             <div class="flex items-center justify-center py-10">
-              <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-darkborderc bg-black/30 text-textcolor2">
-                <span class="inline-block w-2 h-2 rounded-full bg-green-500/70"></span>
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-darkborderc bg-darkbg/30 text-textcolor2">
+                <span class="inline-block w-2 h-2 rounded-full bg-textcolor2/70"></span>
                 <span class="text-sm">{language.promptDiff.noChanges}</span>
               </div>
             </div>
@@ -1826,7 +1831,7 @@
           </div>
           {:else} <!-- split view -->
             {@const rows = toSplitRows(segments, 'raw')}
-            <div class="rounded-xl border border-darkborderc bg-black/30 overflow-hidden">
+            <div class="rounded-xl border border-darkborderc bg-darkbg/30 overflow-hidden">
               <div class="grid grid-cols-[1fr_auto_1fr] gap-0 font-mono text-sm leading-5">
                 {#each rows as r, idx (r.key)}
                   {#if r.kind === 'divider'}
@@ -1835,11 +1840,11 @@
                     </div>
                   {:else}
                     <div class="contents group">
-                    <div class="px-3 py-0.5 bg-black/10 group-hover:bg-white/10 group-hover:outline group-hover:outline-1 group-hover:outline-white/15">
+                    <div class="px-3 py-0.5 bg-darkbg/10 group-hover:bg-textcolor/10 group-hover:outline group-hover:outline-1 group-hover:outline-textcolor/15">
                       {@render renderSplitCell(r.left, idx)}
                     </div>
-                    <div class="w-px bg-white/10"></div>
-                    <div class="px-3 py-0.5 bg-black/10 group-hover:bg-white/10 group-hover:outline group-hover:outline-1 group-hover:outline-white/15">
+                    <div class="w-px bg-textcolor/10"></div>
+                    <div class="px-3 py-0.5 bg-darkbg/10 group-hover:bg-textcolor/10 group-hover:outline group-hover:outline-1 group-hover:outline-textcolor/15">
                       {@render renderSplitCell(r.right, idx)}
                     </div>
                     </div>

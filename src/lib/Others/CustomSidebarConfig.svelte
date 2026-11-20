@@ -177,7 +177,7 @@
 
         {#if configPage === "addSettingsSubmenu"}
             <div class="flex flex-col gap-2">
-                <TextInput bind:value={search} placeholder={language.settingsPage.searchEllipsis} />
+                <TextInput bind:value={search} label={language.settingsPage.searchEllipsis} placeholder={language.settingsPage.searchEllipsis} />
                 <Button
                     onclick={() => {
                         configPage = "add";

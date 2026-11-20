@@ -27,6 +27,7 @@
                     type="radio"
                     name={group}
                     value={choice.mode}
+                    aria-label={choice.label()}
                     checked={motionPrefs.reducedMotion === choice.mode}
                     onchange={() => setReducedMotion(choice.mode)}
                 />

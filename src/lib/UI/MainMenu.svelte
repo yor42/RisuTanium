@@ -2,7 +2,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import Hub from "./Realm/RealmMain.svelte";
     import { OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
-    import { ArrowLeft, ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
+    import { ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
     import { getVersionString, openURL } from "src/ts/globalApi.svelte";
     import { language } from "src/lang";
     import { getRisuHub, type hubType } from "src/ts/characterCards";
@@ -470,7 +470,7 @@
                   reintroduces the shift — verify both again with real
                   measurements before changing either.
                 -->
-                <div class="relative z-10 rounded-lg bg-black/30 p-2" data-realm-preview-list>
+                <div class="relative z-10 rounded-lg bg-darkbg/30 p-2" data-realm-preview-list>
                   <div class="flex min-h-0 max-h-[150px] lg:max-h-[200px] flex-col gap-1 overflow-y-auto">
                     <!-- Clamped to 10, not the full page of results: every
                          row is its own button in the tab order, and a page
@@ -561,11 +561,6 @@
       {/if}
 
       {:else}
-        <div class="flex items-center mt-4">
-          <button class="mr-2 text-textcolor2 hover:text-green-500" onclick={() => ($OpenRealmStore = false)}>
-            <ArrowLeft/>
-          </button>
-        </div>
         <Hub />
       {/if}
   </div>

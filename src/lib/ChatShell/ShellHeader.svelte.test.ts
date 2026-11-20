@@ -2,6 +2,7 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { describe, expect, test, vi } from 'vitest'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 const mobile = writable(false)
 const sidebar = writable(0)
@@ -19,17 +20,20 @@ describe('ShellHeader menu button', () => {
     }
 
     // Regression reproducer: the button announced "Choose persona" with a persona glyph, and opened the persona sheet.
-    test('the button is named after the sheet it opens, announces a dialog popup and shows the ⋮ glyph', async () => {
+    test('the button is named after the sheet it opens, announces a dialog popup and shows the vertical ellipsis icon', async () => {
+        await import('@lucide/svelte')
         const { target, app } = await mountHeader(vi.fn())
         const button = target.querySelector<HTMLButtonElement>('[data-part="chat-header-menu"]')!
         expect(button.getAttribute('aria-label')).toBe('This chat')
         expect(button.getAttribute('title')).toBe('This chat')
         expect(button.getAttribute('aria-label')).not.toBe('Choose persona')
         expect(button.getAttribute('aria-haspopup')).toBe('dialog')
-        expect(button.textContent?.trim()).toBe('⋮')
+        expect(lucideNames(button)).toEqual(['lucide-ellipsis-vertical'])
+        expect(iconsIn(button)[0].getAttribute('aria-hidden')).toBe('true')
+        expect(button.textContent?.trim()).toBe('')
         await unmount(app)
         target.remove()
-    })
+    }, 120_000)
 
     test('a click passes the button itself to onthischat, so focus can return to it', async () => {
         const onthischat = vi.fn()
@@ -41,6 +45,25 @@ describe('ShellHeader menu button', () => {
         await unmount(app)
         target.remove()
     })
+})
+
+describe('ShellHeader back icon', () => {
+    // TC2-1 (regression reproducer): Back was the text glyph ‹; its name is unchanged.
+    test('Back is an aria-hidden chevron icon and keeps its name', async () => {
+        await import('@lucide/svelte')
+        const { default: ShellHeader } = await import('./ShellHeader.svelte')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const app = mount(ShellHeader, { target, props: { name: 'Seraphina', hidden: false, hardwareKeyboardSeen: false, onthischat: vi.fn() } })
+        flushSync()
+        const back = target.querySelector<HTMLButtonElement>('[data-part="chat-header-back"]')!
+        expect(back.getAttribute('aria-label')).toBe('Back')
+        expect(lucideNames(back)).toEqual(['lucide-chevron-left'])
+        expect(iconsIn(back)[0].getAttribute('aria-hidden')).toBe('true')
+        expect(glyphsIn(target)).toEqual([])
+        await unmount(app)
+        target.remove()
+    }, 120_000)
 })
 
 describe('ShellHeader hide rules', () => {

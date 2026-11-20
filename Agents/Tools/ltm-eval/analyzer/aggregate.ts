@@ -98,7 +98,17 @@ function measureText(text: string): { length: number; band: HangulBand } {
 const zeroed = <K extends string>(keys: readonly K[]): Keyed<K, number> =>
     Object.fromEntries(keys.map((k) => [k, 0])) as Keyed<K, number>
 
-export function aggregateDatabase(db: Pick<Database, 'characters' | 'modules' | 'enabledModules'>): LtmAggregates {
+export type Aggregator = {
+    /** Feeds one character or group slot, in file order. */
+    addOwner(owner: unknown): void
+    /** Feeds the modules of the non-character root, once, after every owner. */
+    addRoot(db: Pick<Database, 'modules' | 'enabledModules'>): void
+    /** The aggregates of everything fed; call once. */
+    finish(): LtmAggregates
+}
+
+/** An incremental aggregator: it keeps numbers only, never an owner, so a caller can feed one owner at a time. */
+export function createAggregator(): Aggregator {
     const totals = zeroed([
         'characters', 'groups', 'chats', 'messages', 'messagesUser', 'messagesChar', 'nonStringMessageData',
         'hiddenMessages', 'hiddenByFlag', 'hiddenByReset', 'altMessages', 'modules', 'enabledModules',
@@ -181,8 +191,8 @@ export function aggregateDatabase(db: Pick<Database, 'characters' | 'modules' | 
         }
     }
 
-    for (const owner of asArray(db.characters)) {
-        if (!isRec(owner)) continue
+    const addOwner = (owner: unknown): void => {
+        if (!isRec(owner)) return
         const isGroup = owner.type === 'group'
         const scripts = asArray(owner.customscript).length
         const loreCount = countLore(owner.globalLore)
@@ -199,45 +209,59 @@ export function aggregateDatabase(db: Pick<Database, 'characters' | 'modules' | 
         for (const chat of asArray(owner.chats)) countChat(chat)
     }
 
-    totals.modules = asArray(db.modules).length
-    totals.enabledModules = asArray(db.enabledModules).length
-    for (const module of asArray(db.modules)) {
-        if (!isRec(module)) continue
-        const loreCount = countLore(module.lorebook)
-        totals.loreEntriesModule += loreCount
-        perModuleLore.push(loreCount)
-        perModuleRegex.push(asArray(module.regex).length)
+    const addRoot = (db: Pick<Database, 'modules' | 'enabledModules'>): void => {
+        totals.modules = asArray(db.modules).length
+        totals.enabledModules = asArray(db.enabledModules).length
+        for (const module of asArray(db.modules)) {
+            if (!isRec(module)) continue
+            const loreCount = countLore(module.lorebook)
+            totals.loreEntriesModule += loreCount
+            perModuleLore.push(loreCount)
+            perModuleRegex.push(asArray(module.regex).length)
+        }
     }
 
-    const bandValues = (band: HangulBand): number[] => [...byCell.user[band], ...byCell.char[band], ...otherRoleByBand[band]]
-    const roleValues = (role: Role): number[] => HANGUL_BANDS.flatMap((band) => byCell[role][band])
-    const edges = MESSAGE_LENGTH_EDGES
-    const hist = (role: Role, band: HangulBand) => histogram(edges, byCell[role][band])
+    const finish = (): LtmAggregates => {
+        const bandValues = (band: HangulBand): number[] => [...byCell.user[band], ...byCell.char[band], ...otherRoleByBand[band]]
+        const roleValues = (role: Role): number[] => HANGUL_BANDS.flatMap((band) => byCell[role][band])
+        const edges = MESSAGE_LENGTH_EDGES
+        const hist = (role: Role, band: HangulBand) => histogram(edges, byCell[role][band])
 
-    return {
-        schemaVersion: SCHEMA_VERSION,
-        totals,
-        hiddenShare: totals.messages === 0 ? 0 : totals.hiddenMessages / totals.messages,
-        hangulBandEdges: [...HANGUL_BAND_EDGES],
-        messageLength: {
-            edges: [...edges],
-            byRole: { user: histogram(edges, roleValues('user')), char: histogram(edges, roleValues('char')) },
-            byHangulBand: {
-                none: histogram(edges, bandValues('none')), low: histogram(edges, bandValues('low')),
-                mixed: histogram(edges, bandValues('mixed')), high: histogram(edges, bandValues('high')),
+        return {
+            schemaVersion: SCHEMA_VERSION,
+            totals,
+            hiddenShare: totals.messages === 0 ? 0 : totals.hiddenMessages / totals.messages,
+            hangulBandEdges: [...HANGUL_BAND_EDGES],
+            messageLength: {
+                edges: [...edges],
+                byRole: { user: histogram(edges, roleValues('user')), char: histogram(edges, roleValues('char')) },
+                byHangulBand: {
+                    none: histogram(edges, bandValues('none')), low: histogram(edges, bandValues('low')),
+                    mixed: histogram(edges, bandValues('mixed')), high: histogram(edges, bandValues('high')),
+                },
+                byRoleAndHangulBand: {
+                    user: { none: hist('user', 'none'), low: hist('user', 'low'), mixed: hist('user', 'mixed'), high: hist('user', 'high') },
+                    char: { none: hist('char', 'none'), low: hist('char', 'low'), mixed: hist('char', 'mixed'), high: hist('char', 'high') },
+                },
             },
-            byRoleAndHangulBand: {
-                user: { none: hist('user', 'none'), low: hist('user', 'low'), mixed: hist('user', 'mixed'), high: hist('user', 'high') },
-                char: { none: hist('char', 'none'), low: hist('char', 'low'), mixed: hist('char', 'mixed'), high: hist('char', 'high') },
-            },
-        },
-        messagesPerChat: histogram(MESSAGES_PER_CHAT_EDGES, perChat),
-        loreEntriesPerCharacter: histogram(LORE_ENTRIES_EDGES, perCharacterLore),
-        loreEntriesPerChat: histogram(LORE_ENTRIES_EDGES, perChatLore),
-        loreEntriesPerModule: histogram(LORE_ENTRIES_EDGES, perModuleLore),
-        loreContentLength: histogram(LORE_CONTENT_EDGES, loreContent),
-        lore,
-        regexScriptsPerCharacter: histogram(REGEX_SCRIPTS_EDGES, perCharacterRegex),
-        regexScriptsPerModule: histogram(REGEX_SCRIPTS_EDGES, perModuleRegex),
+            messagesPerChat: histogram(MESSAGES_PER_CHAT_EDGES, perChat),
+            loreEntriesPerCharacter: histogram(LORE_ENTRIES_EDGES, perCharacterLore),
+            loreEntriesPerChat: histogram(LORE_ENTRIES_EDGES, perChatLore),
+            loreEntriesPerModule: histogram(LORE_ENTRIES_EDGES, perModuleLore),
+            loreContentLength: histogram(LORE_CONTENT_EDGES, loreContent),
+            lore,
+            regexScriptsPerCharacter: histogram(REGEX_SCRIPTS_EDGES, perCharacterRegex),
+            regexScriptsPerModule: histogram(REGEX_SCRIPTS_EDGES, perModuleRegex),
+        }
     }
+
+    return { addOwner, addRoot, finish }
+}
+
+/** The whole-tree path: every owner, then the root, through one aggregator. */
+export function aggregateDatabase(db: Pick<Database, 'characters' | 'modules' | 'enabledModules'>): LtmAggregates {
+    const aggregator = createAggregator()
+    for (const owner of asArray(db.characters)) aggregator.addOwner(owner)
+    aggregator.addRoot(db)
+    return aggregator.finish()
 }

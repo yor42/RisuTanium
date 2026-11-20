@@ -137,13 +137,15 @@ test('a generation moved by a concurrent writer refuses the write', t => {
   const after = JSON.parse(fs.readFileSync(file, 'utf8')); assert.equal(after.activation, 'external'); assert.equal(after.generation, 1);
   assert.deepEqual(leftovers(root), []);
 });
-test('compact context preserves queue and parked checks; device stops after one retry', async t => {
+test('compact context keeps parked checks without the stale queue; device stops after one retry', async t => {
   const root = fixture(t);
   checkDevice({ root, claim: 'oddity', result: 'inconclusive', evidence: 'first' }); checkDevice({ root, claim: 'oddity', result: 'inconclusive', evidence: 'retry' });
   assert.throws(() => checkDevice({ root, claim: 'oddity', result: 'inconclusive' }), /parked/);
   assert.equal(loadState(root).parkedChecks.length, 1);
   const output = await hook({ hook_event_name: 'SessionStart', source: 'compact' }, { root });
-  assert.match(output.hookSpecificOutput.additionalContext, /parked checks/); assert.match(output.hookSpecificOutput.additionalContext, /SR2/);
+  assert.match(output.hookSpecificOutput.additionalContext, /parked checks/); assert.match(output.hookSpecificOutput.additionalContext, /Live-State/);
+  // The stored queue goes stale between handoffs, so the hook points at the current-state sources instead of injecting it.
+  assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /SR2/);
 });
 test('required claim remains required when diagnostic retry omits the flag', t => {
   const root = fixture(t); checkDevice({ root, claim: 'required-native', result: 'inconclusive', required: true });

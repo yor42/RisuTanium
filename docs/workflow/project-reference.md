@@ -49,6 +49,6 @@ Follow [Agents/Tools/README.md](../../Agents/Tools/README.md) for live measureme
 
 ## External worker runtimes
 
-Codex and Antigravity are the primary ordinary routes under [subscription-first execution](subscription-first.md). Verify installed/authenticated runtime and current help; do not hardcode cache/plugin paths or infer working provider calls from configuration. The parent uses the checked-in exporter/runner directly. Codex writes only in a sanitized exported workspace; Antigravity remains read-only scouting. Routine independent review uses a fresh context, not the implementer.
+Routing is native first (MC-2748): Codex and Antigravity are opt-in only after a route-health check less than 7 days old. Verify installed/authenticated runtime and current help; do not hardcode cache/plugin paths or infer working provider calls from configuration. The parent uses the checked-in exporter/runner directly. Codex writes only in a sanitized exported workspace; Antigravity remains read-only scouting. Routine independent review uses a fresh context, not the implementer.
 
 Use explicit approved model/effort and isolated instructions/configuration. Do not launch another Claude session merely to compare external output. Record exact host-observed failures, cache unavailable routes and use permitted fallbacks; no automatic installation or model upgrades. Independently verify consequential claims at their consuming gate without repeating adequate source checks.

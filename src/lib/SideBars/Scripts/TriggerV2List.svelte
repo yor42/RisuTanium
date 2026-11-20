@@ -149,6 +149,7 @@
 
     let lastClickTime = 0
     let { value = $bindable([]), lowLevelAble = false }: Props = $props();
+    const uid = $props.id()
     let selectedIndex = $state(0);
     let selectedEffectIndex = $state(-1);
     let selectedTriggerIndices = $state<number[]>([]);
@@ -2422,10 +2423,12 @@
                                 <!-- Header, skip the first trigger -->
                             {:else}
                                                         <div class="w-full h-0.5 min-h-0.5 transition-all duration-200" 
-                            class:hover:bg-gray-600={!isMobileScreen && !isDragging}
+                            class:hover:bg-selected={!isMobileScreen && !isDragging}
                             class:h-0.5={!isDragging || dragOverIndex !== i}
                             class:h-1={isDragging && dragOverIndex === i}
-                            class:bg-blue-500={isDragging && dragOverIndex === i}
+                            class:bg-selected={isDragging && dragOverIndex === i}
+                            class:ring-1={isDragging && dragOverIndex === i}
+                            class:ring-borderc={isDragging && dragOverIndex === i}
                             class:shadow-lg={isDragging && dragOverIndex === i}
                             role="listitem"
                             ondragover={handleTriggerDragOver}
@@ -2521,10 +2524,12 @@
                         {/each}
                         
                         <div class="w-full h-0.5 min-h-0.5 transition-all duration-200" 
-                            class:hover:bg-gray-600={!isMobileScreen && !isDragging}
+                            class:hover:bg-selected={!isMobileScreen && !isDragging}
                             class:h-0.5={!isDragging || dragOverIndex !== value.length}
                             class:h-1={isDragging && dragOverIndex === value.length}
-                            class:bg-blue-500={isDragging && dragOverIndex === value.length}
+                            class:bg-selected={isDragging && dragOverIndex === value.length}
+                            class:ring-1={isDragging && dragOverIndex === value.length}
+                            class:ring-borderc={isDragging && dragOverIndex === value.length}
                             class:shadow-lg={isDragging && dragOverIndex === value.length}
                             role="listitem"
                             ondragover={(e) => {
@@ -2542,7 +2547,7 @@
                         </div>
                     </div>
                     <div class="flex gap-2">
-                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor focus:bg-bgcolor" onclick={() => {
+                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor focus:bg-bgcolor" aria-label={language.add} onclick={() => {
                             value.push({
                                 comment: "",
                                 type: "manual",
@@ -2551,9 +2556,9 @@
                             })
                             selectedIndex = value.length - 1
                         }}>
-                            <PlusIcon />
+                            <PlusIcon aria-hidden="true" />
                         </button>
-                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor focus:bg-bgcolor" onclick={() => {
+                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor focus:bg-bgcolor" aria-label={language.export} onclick={() => {
                             const triggersToExport = value.slice(1);
                             const jsonData = JSON.stringify(triggersToExport, null, 2);
                             
@@ -2569,12 +2574,12 @@
                             
                             URL.revokeObjectURL(url);
                         }}>
-                            <DownloadIcon />
+                            <DownloadIcon aria-hidden="true" />
                         </button>
-                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor focus:bg-bgcolor" onclick={() => {
+                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor focus:bg-bgcolor" aria-label={language.import} onclick={() => {
                             importTriggers()
                         }}>
-                            <UploadIcon />
+                            <UploadIcon aria-hidden="true" />
                         </button>
                     </div>
                     <Button className="mt-2" onclick={(e) => {
@@ -2589,9 +2594,9 @@
                         selectedEffectIndex = -1
                     }}>
                         <div class="p-2 flex flex-col h-full min-h-18">
-                            <span class="block text-textcolor2">{language.name}</span>
+                            <span id="{uid}-trigger-name" class="block text-textcolor2">{language.name}</span>
                             <div class="flex-1 min-h-10 flex">
-                                <TextInput className="flex-1" value={value && value[selectedIndex] ? (value[selectedIndex].comment || '') : ''} onchange={(e) => {
+                                <TextInput className="flex-1" labelId="{uid}-trigger-name" value={value && value[selectedIndex] ? (value[selectedIndex].comment || '') : ''} onchange={(e) => {
                                 if (!value || !value[selectedIndex] || selectedIndex < 0 || selectedIndex >= value.length) return;
                                 const comment = e.currentTarget.value
                                 const prev = value[selectedIndex].comment
@@ -2627,7 +2632,7 @@
 
                     <!-- <div class="mx-2 mb-2 p-2 bg-darkbg2 border border-darkborderc rounded-md">
                         <div class="flex flex-wrap gap-2">
-                            <button class="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">
+                            <button class="px-3 py-1 text-xs bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 rounded-md transition-colors">
                                 TBD
                             </button>
                         </div>
@@ -2667,11 +2672,11 @@
                                             {@const endTop = endRect.top - containerRect.top + menu0Container.scrollTop + endRect.height * 0.5}
                                             {#if endTop > startTop}
                                                 <div 
-                                                    class="absolute w-px bg-gray-600 opacity-40"
+                                                    class="absolute w-px bg-darkborderc opacity-40"
                                                     style="left: {0.5 + blockIndent * 1}rem; top: {startTop}px; height: {endTop - startTop}px;"
                                                 ></div>
                                                 <div 
-                                                    class="absolute h-px bg-gray-600 opacity-40"
+                                                    class="absolute h-px bg-darkborderc opacity-40"
                                                     style="left: {0.5 + blockIndent * 1}rem; top: {endTop}px; width: 0.5rem;"
                                                 ></div>
                                             {/if}
@@ -2683,10 +2688,12 @@
                         
                         {#each (value && value[selectedIndex] && value[selectedIndex].effect) ? value[selectedIndex].effect : [] as effect, i}
                             <div class="w-full h-0.5 min-h-0.5 transition-all duration-200" 
-                                class:hover:bg-gray-600={!isMobileScreen && !isEffectDragging}
+                                class:hover:bg-selected={!isMobileScreen && !isEffectDragging}
                                 class:h-0.5={!isEffectDragging || effectDragOverIndex !== i}
                                 class:h-1={isEffectDragging && effectDragOverIndex === i}
-                                class:bg-blue-500={isEffectDragging && effectDragOverIndex === i}
+                                class:bg-selected={isEffectDragging && effectDragOverIndex === i}
+                                class:ring-1={isEffectDragging && effectDragOverIndex === i}
+                                class:ring-borderc={isEffectDragging && effectDragOverIndex === i}
                                 class:shadow-lg={isEffectDragging && effectDragOverIndex === i}
                                 role="listitem"
                                 ondragover={handleEffectDragOver}
@@ -2733,7 +2740,7 @@
                                         effectDragOverIndex = -1
                                     }
                                 }}>
-                                <button class="flex-1 p-2 text-start text-purple-500 relative break-all whitespace-normal overflow-hidden"
+                                <button class="flex-1 p-2 text-start text-textcolor relative break-all whitespace-normal overflow-hidden"
                                     bind:this={effectElements[i]}
                                     onclick={() => {
                                         if(selectedEffectIndex === i && lastClickTime + 500 > Date.now()){
@@ -2801,10 +2808,12 @@
                         {/each}
                         
                         <div class="w-full h-0.5 min-h-0.5 transition-all duration-200" 
-                            class:hover:bg-gray-600={!isMobileScreen && !isEffectDragging}
+                            class:hover:bg-selected={!isMobileScreen && !isEffectDragging}
                             class:h-0.5={!isEffectDragging || effectDragOverIndex !== (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
                             class:h-1={isEffectDragging && effectDragOverIndex === (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
-                            class:bg-blue-500={isEffectDragging && effectDragOverIndex === (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
+                            class:bg-selected={isEffectDragging && effectDragOverIndex === (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
+                            class:ring-1={isEffectDragging && effectDragOverIndex === (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
+                            class:ring-borderc={isEffectDragging && effectDragOverIndex === (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
                             class:shadow-lg={isEffectDragging && effectDragOverIndex === (value && value[selectedIndex] && value[selectedIndex].effect ? value[selectedIndex].effect.length : 0)}
                             role="listitem"
                             ondragover={handleEffectDragOver}
@@ -2836,14 +2845,14 @@
                 <div class="flex-1 bg-darkbg flex flex-col md:flex-row overflow-y-auto md:overflow-y-visible">
                     <div class="w-full md:w-48 border-b md:border-b-0 md:border-r border-darkborderc flex flex-col">
                         <div class="p-4 border-b border-darkborderc flex items-center min-h-16">
-                            <button class="border-t-darkborderc text-start text-textcolor2 hover:text-textcolor" onclick={() => {
+                            <button class="border-t-darkborderc text-start text-textcolor2 hover:text-textcolor" aria-label={language.settingsPage.back} onclick={() => {
                                 if(selectedIndex > 0) {
                                     selectedTriggerIndex = selectedIndex;
                                     selectedEffectIndexSaved = selectedEffectIndex;
                                 }
                                 menuMode = 0
                             }}>
-                                <ArrowLeftIcon />
+                                <ArrowLeftIcon aria-hidden="true" />
                             </button>
                             <h3 class="ml-4 text-lg font-medium text-textcolor md:hidden">{language.triggerCategories[selectedCategory] || selectedCategory}</h3>
                         </div>
@@ -2917,14 +2926,14 @@
             {:else if menuMode === 2 || menuMode === 3}
                 <div class="flex-1 flex-col flex overflow-y-auto">
                     <div class="flex items-center gap-2 mb-4">
-                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor" onclick={() => {
+                        <button class="p-2 border-t-darkborderc text-start text-textcolor2 hover:text-textcolor" aria-label={language.settingsPage.back} onclick={() => {
                             if(menuMode === 3 && selectedIndex > 0) {
                                 selectedTriggerIndex = selectedIndex;
                                 selectedEffectIndexSaved = selectedEffectIndex;
                             }
                             menuMode = menuMode === 2 ? 1 : 0
                         }}>
-                            <ArrowLeftIcon />
+                            <ArrowLeftIcon aria-hidden="true" />
                         </button>
                         <h2 class="text-xl">
                             {language.triggerDesc[editTrigger.type]}

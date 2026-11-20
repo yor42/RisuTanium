@@ -606,3 +606,17 @@ describe('the VOICEVOX Style label', () => {
         expect(label!.getAttribute('class')).not.toContain('=')
     })
 })
+
+describe('the OpenAI-compatible TTS key override', () => {
+    test('CK1: regression reproducer: the key input is a password input although the saved hide-key value is off', async () => {
+        changeLanguage('en')
+        install('openai')
+        ;(DBState.db as unknown as { hideApiKey: boolean }).hideApiKey = false
+
+        const root = await mountConfig()
+
+        const key = root.querySelector(`input[placeholder="${language.sidebarUi.apiKeyEmptyPlaceholder}"]`)
+        expect(key, 'the API key override input').not.toBeNull()
+        expect(key!.getAttribute('type')).toBe('password')
+    })
+})

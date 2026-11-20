@@ -47,6 +47,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         selectedCharID: writable(-1),
         MobileGUI: writable(false),
         RealmInitialOpenChar: writable(null),
+        OpenRealmStore: writable(true),
         alertStore: writable({ type: 'none', msg: '' }),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
@@ -82,9 +83,7 @@ async function settle() {
 }
 
 async function openImportPrompt(target: HTMLElement) {
-    // The menu button is the second of the two buttons beside the search input.
-    Array.from(target.querySelectorAll('button'))[1].click()
-    flushSync()
+    // The import control is a visible toolbar button, not a menu entry.
     const importButton = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.uiCommon.importCharacterFromUrlOrId)
     expect(importButton).toBeDefined()
     importButton!.click()

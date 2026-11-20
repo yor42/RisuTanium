@@ -28,17 +28,18 @@
     let instructCustom = $state('')
     
     let autopilot = $state([])
+    const uid = $props.id()
 </script>
 
 <Accordion styled name={language.devTool.variables}>
     <div class="rounded-md border border-darkborderc grid grid-cols-2 gap-2 p-2">
         {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate &&  Object.keys(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate).length > 0}
-            {#each Object.keys(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate) as key}
-                <span>{key}</span>
+            {#each Object.keys(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate) as key, keyIndex}
+                <span id="{uid}-variable-{keyIndex}">{key}</span>
                 {#if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "object"}
                     <div class="p-2 text-center">{language.devTool.object}</div>
                 {:else if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "string"}
-                    <TextInput bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as string} />
+                    <TextInput labelId="{uid}-variable-{keyIndex}" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as string} />
                 {:else if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "number"}
                     <NumberInput bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as number} />
                 {/if}
@@ -85,25 +86,25 @@
 <Accordion styled name={language.devTool.autopilot}>
     <div class="flex flex-col p-2 border border-darkborderc rounded-md">
         {#each autopilot as text, i}
-            <TextAreaInput bind:value={autopilot[i]} />
+            <TextAreaInput label={language.devTool.autopilot} bind:value={autopilot[i]} />
         {/each}
     </div>
     <div class="flex justify-end">
-        <button class="text-textcolor2 hover:text-textcolor" onclick={() => {
+        <button class="text-textcolor2 hover:text-textcolor" aria-label={language.remove} onclick={() => {
             autopilot.pop()
             autopilot = autopilot
         }}>
-            <TrashIcon />
+            <TrashIcon aria-hidden="true" />
         </button>
 
-        <button class="text-textcolor2 hover:text-textcolor" onclick={() => {
+        <button class="text-textcolor2 hover:text-textcolor" aria-label={language.add} onclick={() => {
             autopilot.push('')
             autopilot = autopilot
         }}>
-            <PlusIcon />
+            <PlusIcon aria-hidden="true" />
         </button>
 
-        <button class="text-textcolor2 hover:text-textcolor" onclick={async () => {
+        <button class="text-textcolor2 hover:text-textcolor" aria-label={language.import} onclick={async () => {
             const selected = await selectSingleFile([
                 'txt', 'csv', 'json'
             ])
@@ -129,7 +130,7 @@
                 autopilot = file.split('\n')
             }
         }}>
-            <HardDriveUploadIcon />
+            <HardDriveUploadIcon aria-hidden="true" />
         </button>
     </div>
     <Button className="mt-2" onclick={async () => {
@@ -153,8 +154,8 @@
             <OptionInput value="jinja">{language.devTool.customJinja}</OptionInput>
         </SelectInput>
         {#if instructType === 'jinja'}
-            <span>{language.devTool.customJinja}</span>
-            <TextAreaInput bind:value={instructCustom} />
+            <span id="{uid}-jinja">{language.devTool.customJinja}</span>
+            <TextAreaInput labelId="{uid}-jinja" bind:value={instructCustom} />
         {/if}
     {/if}
     <span>{language.devTool.join}</span>

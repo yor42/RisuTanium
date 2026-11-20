@@ -832,7 +832,7 @@
 
         {#if DBState.db.sdProvider === 'Imagen'}
             <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-            <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.google.accessToken}/>
+            <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
 
             <span class="text-textcolor">{language.model}</span>
             <SelectInput className="mb-4" bind:value={DBState.db.ImagenModel}>
@@ -872,7 +872,7 @@
             <TextInput labelId="{uid}-f17" size="sm" marginBottom placeholder="https://api.example.com/v1/images/generations" bind:value={DBState.db.openaiCompatImage.url}/>
 
             <span class="text-textcolor" id="{uid}-f18">{language.apiKey}</span>
-            <TextInput labelId="{uid}-f18" size="sm" marginBottom placeholder="sk-..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.openaiCompatImage.key}/>
+            <TextInput labelId="{uid}-f18" size="sm" marginBottom placeholder="sk-..." hideText bind:value={DBState.db.openaiCompatImage.key}/>
 
             <span class="text-textcolor" id="{uid}-f19">{language.model}</span>
             <TextInput labelId="{uid}-f19" size="sm" marginBottom placeholder="dall-e-3" bind:value={DBState.db.openaiCompatImage.model}/>
@@ -897,7 +897,7 @@
 
         {#if DBState.db.sdProvider === 'wavespeed'}
             <span class="text-textcolor" id="{uid}-f20">{language.apiKey}</span>
-            <TextInput labelId="{uid}-f20" size="sm" marginBottom placeholder="sk-..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.wavespeedImage.key}/>
+            <TextInput labelId="{uid}-f20" size="sm" marginBottom placeholder="sk-..." hideText bind:value={DBState.db.wavespeedImage.key}/>
 
             <span class="text-textcolor">{language.model}</span>
             <button
@@ -1387,7 +1387,7 @@
 
         {#if DBState.db.hypaModel === 'voyageContext3'}
             <span class="text-textcolor" id="{uid}-f37">{fillLang(language.settingsPage.nameApiKey, { name: 'Voyage' })}</span>
-            <TextInput labelId="{uid}-f37" size="sm" marginBottom hideText={DBState.db.hideApiKey} bind:value={DBState.db.voyageApiKey}/>
+            <TextInput labelId="{uid}-f37" size="sm" marginBottom hideText bind:value={DBState.db.voyageApiKey}/>
         {/if}
 
     </Accordion>

@@ -160,7 +160,7 @@
       {#key selection.has(id)}
         <div class="border border-darkborderc rounded-lg p-4 bg-darkbg">
           <div class="flex items-center gap-2 mb-3">
-            <CheckInput check={selection.has(id)} hiddenName margin={false} onChange={() => toggleSelect(id)} />
+            <CheckInput check={selection.has(id)} label={asset.name} hiddenName margin={false} onChange={() => toggleSelect(id)} />
             <span class="px-2 py-1 text-xs rounded bg-darkbutton text-textcolor2">
               {asset.type}
             </span>

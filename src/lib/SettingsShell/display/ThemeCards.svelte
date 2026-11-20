@@ -37,6 +37,7 @@
                     type="radio"
                     name={group}
                     value={theme.value}
+                    aria-label={names[theme.key]}
                     checked={selected}
                     onchange={() => { ctx.db.theme = theme.value }}
                 />

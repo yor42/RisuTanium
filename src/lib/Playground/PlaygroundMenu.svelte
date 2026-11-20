@@ -115,8 +115,8 @@
         {/if}
         <div class="w-full max-w-4xl flex flex-col p-2">
             <div class="flex items-center mt-4">
-                <button class="mr-2 text-textcolor2 hover:text-green-500" onclick={() => ($PlaygroundStore = 1)}>
-                <ArrowLeft/>
+                <button class="mr-2 text-textcolor2 hover:text-textcolor" aria-label={language.settingsPage.back} onclick={() => ($PlaygroundStore = 1)}>
+                <ArrowLeft aria-hidden="true"/>
                 </button>
             </div>
 

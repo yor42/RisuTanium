@@ -51,12 +51,16 @@ vi.mock('src/ts/drive/restoreReplace', inert)
 vi.mock('src/ts/drive/backupWorkGuard', () => ({ refuseBackupLoadWhileBusy: () => false }))
 vi.mock('src/ts/storage/store2/saveActive', () => ({ getActiveStore2Save: () => null }))
 
+import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import v8 from 'node:v8'
+import vm from 'node:vm'
 import { encodeBackupEntryHeader } from 'src/ts/exportWriters'
+import { coldStorageHeader, getColdStorageBackupName } from 'src/ts/process/coldstorageData'
 import { RisuSaveEncoder, RisuSaveType, encodeRisuSaveStreamed, type toSaveType } from 'src/ts/storage/risuSave'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { HANGUL_BANDS, LORE_CONTENT_EDGES, LORE_ENTRIES_EDGES, MESSAGE_LENGTH_EDGES, MESSAGES_PER_CHAT_EDGES, REGEX_SCRIPTS_EDGES, ROLES, SHAPE } from './analyzer/schema'
@@ -72,7 +76,8 @@ const SEALED = process.env.LTM_SEALED === '1'
 
 type AggregateModule = typeof import('./analyzer/aggregate')
 type AllowListModule = typeof import('./analyzer/allowList')
-type RunPathsModule = typeof import('./analyzer/runPaths')
+type RunPathsModule = typeof import('./analyzer/runPaths.mjs')
+type RealRunModule = typeof import('./analyzer/realRun')
 type BinReadModule = typeof import('./analyzer/binRead')
 type SealModule = typeof import('./analyzer/seal')
 type StatusModule = typeof import('./analyzer/status')
@@ -82,8 +87,9 @@ const load = <T>(file: string): Promise<T> => import(/* @vite-ignore */ pathToFi
 const impl = {
     aggregate: await load<AggregateModule>('aggregate.ts'),
     allowList: await load<AllowListModule>('allowList.ts'),
-    runPaths: await load<RunPathsModule>('runPaths.ts'),
+    runPaths: await load<RunPathsModule>('runPaths.mjs'),
     binRead: await load<BinReadModule>('binRead.ts'),
+    realRun: await load<RealRunModule>('realRun.ts'),
     seal: await load<SealModule>('seal.ts'),
     status: await load<StatusModule>('status.ts'),
 }
@@ -362,17 +368,43 @@ describe('errors and status', () => {
         expectNoToken(stepError.message, 'the message')
     })
 
+    test('B5b: a nested safeStep keeps the inner step and class', async () => {
+        const { safeStep, STEP, ERROR_CLASSES, StepError } = impl.status
+        const error = await safeStep(STEP.stream, () => safeStep(STEP.scan, async () => { throw new TypeError('PLNT-NESTED') }))
+            .catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(StepError)
+        const stepError = error as InstanceType<typeof StepError>
+        expect(stepError.step).toBe(STEP.scan)
+        expect(ERROR_CLASSES[stepError.errorClass]).toBe('TypeError')
+    })
+
     test('B10: degraded is 1 when a unit is incomplete or a block was omitted, else 0', () => {
         const counts = { console: 0, streams: 0, warnings: 0 }
+        const progress = { phase: 5, streamed: 1, declineReason: -1, peakHeapMiB: 12, maxRssMiB: 99, heapLimitMiB: 4096 }
         const ok = (incompleteUnits: number, omittedBlocks: number) =>
-            impl.status.statusOf({ ok: true, value: { incompleteUnits, omittedBlocks }, counts })
+            impl.status.statusOf({ ok: true, value: { incompleteUnits, omittedBlocks }, counts }, progress)
         expect(ok(0, 0).degraded).toBe(0)
         expect(ok(1, 0).degraded).toBe(1)
         expect(ok(0, 2).degraded).toBe(1)
+        expect(ok(0, 0)).toMatchObject({ started: 1, completed: 1, phase: 5, streamed: 1, peakHeapMiB: 12, maxRssMiB: 99, heapLimitMiB: 4096 })
         expect(impl.allowList.checkShape(ok(0, 0), impl.status.STATUS_SHAPE)).toEqual([])
-        const failed = impl.status.statusOf({ ok: false, failedStep: 3, errorClass: 4, counts })
+        const failed = impl.status.statusOf({ ok: false, failedStep: 3, errorClass: 4, counts }, progress)
         expect(failed).toMatchObject({ completed: 0, failedStep: 3, errorClass: 4 })
         expect(impl.allowList.checkShape(failed, impl.status.STATUS_SHAPE)).toEqual([])
+        const started = impl.status.startedStatus(progress)
+        expect(started).toMatchObject({ started: 1, completed: 0, failedStep: -1, errorClass: -1, phase: 5 })
+        expect(impl.allowList.checkShape(started, impl.status.STATUS_SHAPE)).toEqual([])
+        // A number written as a string is refused by the shape.
+        expect(impl.allowList.checkShape({ ...started, peakHeapMiB: '12' }, impl.status.STATUS_SHAPE).length).toBeGreaterThanOrEqual(1)
+    })
+
+    test('declineIndexOf: each listed reason has its own index and an unlisted one is other', () => {
+        const { declineIndexOf, DECLINE_REASONS } = impl.status
+        expect(DECLINE_REASONS.length).toBe(12)
+        for (const [index, reason] of DECLINE_REASONS.slice(0, -1).entries()) expect(declineIndexOf(reason)).toBe(index)
+        expect(declineIndexOf('blocks')).toBe(10)
+        expect(declineIndexOf('PLNT-NEW-REASON')).toBe(11)
+        expect(declineIndexOf(undefined)).toBe(11)
     })
 })
 
@@ -511,6 +543,8 @@ describe('analyzeBin on a planted stream-format .bin', () => {
         expectNoToken(recording.text, 'every channel')
         expect(analyzed.omittedBlocks).toBe(0)
         expect(analyzed.incompleteUnits).toBe(0)
+        // The token check above therefore covers the streamed path.
+        expect(analyzed.streamed).toBe(1)
         expect(analyzed.aggregates.totals).toMatchObject({ characters: 2, groups: 1, modules: 2, enabledModules: 1, loreEntriesModule: 3, chats: 2, messages: 4, hiddenMessages: 1 })
         expect(analyzed.aggregates.messageLength.byHangulBand.high.n).toBe(2)
         expect(analyzed.aggregates.lore.decorators.other).toBeGreaterThanOrEqual(1)
@@ -531,7 +565,9 @@ describe('block-format .bin with planted block names', () => {
         expectNoToken(sealedRun.recording.text, 'the recorder (sealed)')
         expect(sealed.ok).toBe(true)
         if (sealed.ok) {
-            expect(sealed.counts.console).toBeGreaterThanOrEqual(3)
+            // The streamed path skips the whole decode's own log line but keeps the omitted-block warning and the assembly catch.
+            expect(sealed.value.streamed).toBe(1)
+            expect(sealed.counts.console).toBeGreaterThanOrEqual(2)
             expect(sealed.value.omittedBlocks).toBe(2)
             expect(impl.allowList.checkAggregates(sealed.value.aggregates)).toEqual([])
             expectNoToken(JSON.stringify(sealed.value.aggregates), 'the aggregates')
@@ -575,6 +611,333 @@ describe('block-format .bin with a damaged block header', () => {
     }, 60000)
 })
 
+// ---- fixtures for the streamed path: the application's producers, wrapped in the container header
+
+const uuidN = (n: number): string => '00000000-0000-4000-8000-' + String(n).padStart(12, '0')
+
+/** Strings stay under 48 characters: msgpackr's encoder breaks on longer ones under Node 24. */
+function richChat(tag: string): Record<string, unknown> {
+    return {
+        id: 'chat-' + tag, name: 'c' + tag, note: '', localLore: [lore('@@depth 2\nlocal ' + tag), lore('f', { mode: 'folder' })],
+        message: [
+            msg('user', 'hello ' + tag), msg('char', '안녕하세요 ' + tag), msg('user', 'hidden', { disabled: true }),
+            msg('char', 'reset', { disabled: 'allBefore' }), msg('user', 'after reset ' + tag),
+        ],
+        alt: [{ m: msg('user', 'alt ' + tag), p: null, a: 1 }],
+    }
+}
+
+function richCharacter(n: number): Record<string, unknown> {
+    return {
+        type: 'character', chaId: uuidN(n), name: 'char ' + n, chatPage: 0, desc: 'd', firstMessage: 'f',
+        globalLore: [lore('@@depth 4\nbody ' + n, { selective: true }), lore('@@role user\nb', { mode: 'constant' }), lore('f', { mode: 'folder' })],
+        customscript: [{ comment: 's', in: 'a', out: 'b', type: 'editinput' }],
+        chats: [richChat(n + 'a'), richChat(n + 'b')],
+    }
+}
+
+function richRoot(characters: unknown[]): Record<string, unknown> {
+    return {
+        formatversion: 5, botPresetsId: 0, botPresets: [{ name: 'preset' }], loadouts: [], plugins: [], pluginCustomStorage: {},
+        modules: [
+            { id: 'mod-1', name: 'm1', lorebook: [lore('@@depth 1\nmod body'), lore('f', { mode: 'folder' })], regex: [{ comment: 'r', in: 'a', out: 'b', type: 'editinput' }] },
+            { id: 'mod-2', name: 'm2', lorebook: [], regex: [] },
+        ],
+        enabledModules: ['mod-1'],
+        characters,
+    }
+}
+
+/** `count` characters, one group, two modules (one enabled): chats with hidden, reset and alt messages, folder lore, scripts. */
+function richDatabase(count = 4): Record<string, unknown> {
+    const characters: unknown[] = []
+    for (let n = 1; n <= count; n++) characters.push(richCharacter(n))
+    characters.push({ type: 'group', chaId: uuidN(900), name: 'group', globalLore: [], customscript: [{}], chats: [richChat('g')] })
+    return richRoot(characters)
+}
+
+const stubCharacterOf = (chaId: string, unit: string): Record<string, unknown> => ({
+    type: 'character', chaId, name: 'stub ' + chaId.slice(-4), chatPage: 0, firstMsgIndex: 0, coldstorage: unit, coldStoragedChats: [],
+    chats: [{ message: [{ data: '', role: 'char' }], note: '', name: '', localLore: [] }],
+})
+const pointerCharacterOf = (chaId: string, unit: string): Record<string, unknown> => ({
+    type: 'character', chaId, name: 'pointer ' + chaId.slice(-4), chatPage: 0, globalLore: [], customscript: [],
+    chats: [richChat(chaId.slice(-4)), { id: 'cp', message: [{ data: coldStorageHeader + unit, role: 'char' }], note: '', name: '', localLore: [] }],
+})
+
+const concatBytes = (parts: Uint8Array[]): Uint8Array => {
+    const out = new Uint8Array(parts.reduce((n, part) => n + part.length, 0))
+    let at = 0
+    for (const part of parts) { out.set(part, at); at += part.length }
+    return out
+}
+
+const entryOf = (name: string, data: Uint8Array): Uint8Array =>
+    concatBytes([encodeBackupEntryHeader(new TextEncoder().encode(name), data.length), data])
+
+/** A cold unit entry as the application names it, with a JSON body. */
+const coldEntryOf = (unit: string, body: unknown): Uint8Array =>
+    entryOf(getColdStorageBackupName(unit), new TextEncoder().encode(JSON.stringify(body)))
+
+/** The 'compressed' gzip msgpack database entry of the application's own streaming encoder. */
+function msgpackDatabaseEntry(db: object): Uint8Array {
+    const streamed = encodeRisuSaveStreamed(db)
+    return concatBytes(streamed.pieces)
+}
+
+/** A block-format database entry of the application's encoder (every block gzipped when `compression`), plus extra blocks. */
+async function blockDatabaseEntry(db: Record<string, unknown>, compression: boolean, extra: (encoder: RisuSaveEncoder) => Promise<Uint8Array[]> = async () => []): Promise<Uint8Array> {
+    const encoder = new RisuSaveEncoder()
+    await encoder.init(db as unknown as Database, { compression })
+    await encoder.set(db as unknown as Database, toSave())
+    return concatBytes([new Uint8Array(encoder.encode()!), ...(await extra(encoder))])
+}
+
+function binOf(dir: string, name: string, databaseEntry: Uint8Array, extraEntries: Uint8Array[] = []): string {
+    const file = path.join(dir, name)
+    fs.writeFileSync(file, concatBytes([entryOf('database.risudat', databaseEntry), ...extraEntries]))
+    return file
+}
+
+type Analyzed = Awaited<ReturnType<BinReadModule['analyzeBin']>>
+
+/** Streamed (auto) and whole results of one file. */
+async function bothPaths(bin: string): Promise<{ auto: Analyzed; whole: Analyzed }> {
+    const whole = await impl.binRead.analyzeBin(bin, { mode: 'whole' })
+    const auto = await impl.binRead.analyzeBin(bin)
+    return { auto, whole }
+}
+
+/** The streamed result must equal the whole path's in every aggregate and both counts. */
+function expectEqualResults(a: Analyzed, b: Analyzed): void {
+    assert.deepStrictEqual(a.aggregates, b.aggregates)
+    expect(a.incompleteUnits).toBe(b.incompleteUnits)
+    expect(a.omittedBlocks).toBe(b.omittedBlocks)
+}
+
+describe('streamed path equals the whole path', () => {
+    test('Q1: a compressed msgpack file gives the same aggregates and counts; streamed is 1 and 0', async () => {
+        const dir = makeTmp('q1')
+        const bin = binOf(dir, 'q1.bin', msgpackDatabaseEntry(richDatabase()))
+        const { auto, whole } = await bothPaths(bin)
+        expect(auto.streamed).toBe(1)
+        expect(whole.streamed).toBe(0)
+        expect(auto.declineReason).toBe(-1)
+        expectEqualResults(auto, whole)
+        expect(auto.aggregates.totals).toMatchObject({ characters: 4, groups: 1, chats: 9, modules: 2, enabledModules: 1 })
+    }, 60000)
+
+    test('Q2: a block-format file gives the same aggregates and counts', async () => {
+        const dir = makeTmp('q2')
+        const bin = binOf(dir, 'q2.bin', await blockDatabaseEntry(richDatabase(), true))
+        const { auto, whole } = await bothPaths(bin)
+        expect(auto.streamed).toBe(1)
+        expect(whole.streamed).toBe(0)
+        expectEqualResults(auto, whole)
+        expect(auto.aggregates.totals).toMatchObject({ characters: 4, groups: 1, chats: 9, modules: 2, enabledModules: 1 })
+    }, 60000)
+
+    test('Q3: stub, missing-unit stub and pointer chat give equal results with incomplete units counted', async () => {
+        const dir = makeTmp('q3')
+        const [unitStub, unitMissing, unitPointer] = [uuidN(701), uuidN(702), uuidN(703)]
+        const db = richDatabase(2)
+        ;(db.characters as unknown[]).push(
+            stubCharacterOf(uuidN(711), unitStub), stubCharacterOf(uuidN(712), unitMissing), pointerCharacterOf(uuidN(713), unitPointer),
+        )
+        const bin = binOf(dir, 'q3.bin', msgpackDatabaseEntry(db), [
+            coldEntryOf(unitStub, { character: { chaId: uuidN(711), name: 'archived', type: 'character', chatPage: 0, chats: [richChat('arch')] } }),
+            coldEntryOf(unitPointer, [msg('user', 'archived one'), msg('char', 'archived two')]),
+        ])
+        const { auto, whole } = await bothPaths(bin)
+        expect(auto.streamed).toBe(1)
+        expectEqualResults(auto, whole)
+        expect(auto.incompleteUnits).toBeGreaterThanOrEqual(1)
+        // The archived messages of the resolved stub and of the pointer chat are counted: 2 characters x 2 chats x 5, the group's 5, and more.
+        expect(auto.aggregates.totals.messages).toBeGreaterThan(25)
+    }, 60000)
+
+    test('Q4: a decline after characters were handed out falls back with fresh state and an equal result', async () => {
+        const dir = makeTmp('q4')
+        const db = richDatabase(4)
+        const missingUnit = uuidN(799)
+        const bin = binOf(dir, 'q4.bin', await blockDatabaseEntry(db, false, async (encoder) => [
+            // A stub whose unit is missing, handed out and counted before the decline, then a second root component.
+            await encoder.encodeBlock({ type: RisuSaveType.CHARACTER_WITH_CHAT, name: uuidN(721), data: JSON.stringify(stubCharacterOf(uuidN(721), missingUnit)), compression: false }),
+            await encoder.encodeBlock({ type: RisuSaveType.ROOT_COMPONENT, name: 'component-modules', data: JSON.stringify({ key: 'modules', data: [{ id: 'mod-late', lorebook: [lore('late')], regex: [] }] }), compression: false }),
+        ]))
+        const declines: number[] = []
+        const whole = await impl.binRead.analyzeBin(bin, { mode: 'whole' })
+        const auto = await impl.binRead.analyzeBin(bin, { onDecline: (index) => { declines.push(index) } })
+        expect(auto.streamed).toBe(0)
+        // 10 is 'blocks' in DECLINE_REASONS; the literal keeps a broken mapping from agreeing with itself.
+        expect(auto.declineReason).toBe(10)
+        expect(declines).toEqual([10])
+        expect(auto.aggregates.totals.characters).toBe(5)
+        expect(whole.incompleteUnits).toBeGreaterThanOrEqual(1)
+        expectEqualResults(auto, whole)
+        expect(auto.aggregates.totals.modules).toBe(1)
+    }, 60000)
+})
+
+// ---- H1: the streamed path holds no owner list
+
+describe('streamed path memory shape', () => {
+    v8.setFlagsFromString('--expose-gc')
+    const gc = vm.runInNewContext('gc') as () => void
+
+    /** How many of the resolved owners are still alive when the root is resolved and aggregated (phase 5). */
+    async function liveOwnersAtAggregate(bin: string, mode: 'auto' | 'whole'): Promise<{ total: number; live: number }> {
+        const refs: Array<WeakRef<object>> = []
+        let live = -1
+        await impl.binRead.analyzeBin(bin, {
+            mode,
+            onOwner: (owner) => { refs.push(new WeakRef(owner as object)) },
+            async onPhase(phase) {
+                if (phase !== impl.status.STEP.aggregate) return
+                // Ends the job that keeps a fresh WeakRef target alive, then collects twice.
+                await new Promise<void>((resolve) => { setImmediate(resolve) })
+                gc()
+                gc()
+                live = refs.filter((ref) => ref.deref() !== undefined).length
+            },
+        })
+        return { total: refs.length, live }
+    }
+
+    const twelve = (): Record<string, unknown> => {
+        const db = richRoot([])
+        for (let n = 1; n <= 12; n++) (db.characters as unknown[]).push(richCharacter(n))
+        return db
+    }
+
+    test('H1: at most one resolved owner is alive at the root step; the whole path holds all twelve (the control)', async () => {
+        // This shows the analyzer keeps no owner list. It does not show the application's reader holds one character, nor any memory bound.
+        const dir = makeTmp('h1')
+        const files = {
+            msgpack: binOf(dir, 'h1-m.bin', msgpackDatabaseEntry(twelve())),
+            block: binOf(dir, 'h1-b.bin', await blockDatabaseEntry(twelve(), true)),
+        }
+        for (const [kind, bin] of Object.entries(files)) {
+            const control = await liveOwnersAtAggregate(bin, 'whole')
+            expect(control, kind + ' whole control').toEqual({ total: 12, live: 12 })
+            const streamed = await liveOwnersAtAggregate(bin, 'auto')
+            expect(streamed.total, kind + ' streamed owners').toBe(12)
+            expect(streamed.live, kind + ' streamed live owners').toBeLessThanOrEqual(1)
+        }
+    }, 60000)
+})
+
+// ---- A-split, B11: the incremental aggregator and the file adapter
+
+describe('aggregator split and file adapter', () => {
+    test('A-split: owners fed one at a time plus the root equal aggregateDatabase', () => {
+        const db = richDatabase(3)
+        const whole = impl.aggregate.aggregateDatabase(db as unknown as Dbish)
+        const aggregator = impl.aggregate.createAggregator()
+        for (const owner of db.characters as unknown[]) aggregator.addOwner(owner)
+        aggregator.addRoot(db as unknown as Dbish)
+        assert.deepStrictEqual(aggregator.finish(), whole)
+        expect(whole.totals.characters).toBe(3)
+    })
+
+    test('B11: a read past the end of a short file returns only the bytes read', async () => {
+        const dir = makeTmp('b11')
+        const file = path.join(dir, 'short.bin')
+        const content = Uint8Array.from({ length: 100 }, (_, i) => (i * 7 + 1) & 0xFF)
+        fs.writeFileSync(file, content)
+        const fd = fs.openSync(file, 'r')
+        try {
+            const adapter = impl.binRead.nodeBinFile(fd, 200)
+            const read = new Uint8Array(await adapter.slice(0, 200).arrayBuffer())
+            expect(read.length).toBe(100)
+            expect(Buffer.from(read).equals(Buffer.from(content))).toBe(true)
+            const exact = new Uint8Array(await adapter.slice(10, 60).arrayBuffer())
+            expect(Buffer.from(exact).equals(Buffer.from(content.subarray(10, 60)))).toBe(true)
+        } finally {
+            fs.closeSync(fd)
+        }
+    })
+})
+
+// ---- S1: the started marker at every phase
+
+describe('real-run progress file', () => {
+    test('S1: the status exists with started 1, completed 0 at every phase; owner progress adds writes; the end is completed', async () => {
+        const root = makeTmp('s1')
+        const bin = path.join(root, 'blocks.bin')
+        fs.writeFileSync(bin, backupFileOf((await blockFormatFile()).file))
+        const out = path.join(root, 'out')
+        const statusFile = path.join(out, 'ltm-status.json')
+        const seen: Array<{ phase: number; status: Record<string, number> }> = []
+        const r = await impl.realRun.runRealAnalysis({ bin, out, root, repoRoot: REPO_ROOT }, {
+            ownerWriteIntervalMs: 1e9,
+            afterWrite: (phase) => { seen.push({ phase, status: JSON.parse(fs.readFileSync(statusFile, 'utf8')) as Record<string, number> }) },
+        })
+        expect(r.ok).toBe(true)
+        const during = seen.slice(0, -1)
+        expect(during.map((s) => s.phase)).toEqual([-1, 0, 1, 6, 4, 5])
+        for (const { phase, status } of during) {
+            expect(status, 'phase ' + phase).toMatchObject({ started: 1, completed: 0, failedStep: -1, errorClass: -1, phase })
+            expect(impl.allowList.checkShape(status, impl.status.STATUS_SHAPE), 'shape at phase ' + phase).toEqual([])
+        }
+        const last = seen[seen.length - 1].status
+        expect(last).toMatchObject({ started: 1, completed: 1, streamed: 1, declineReason: -1 })
+        expect(last.heapLimitMiB).toBeGreaterThan(0)
+        expect(last.maxRssMiB).toBeGreaterThan(0)
+        expect(last.peakHeapMiB).toBeGreaterThan(0)
+        expect(impl.allowList.checkShape(last, impl.status.STATUS_SHAPE)).toEqual([])
+        expect(fs.readdirSync(out).sort()).toEqual(['ltm-aggregates.json', 'ltm-status.json'])
+
+        // With no interval, every owner writes the status again while the stream runs.
+        const rich = binOf(root, 'rich.bin', msgpackDatabaseEntry(richDatabase()))
+        const ownerWrites: number[] = []
+        await impl.realRun.runRealAnalysis({ bin: rich, out: path.join(root, 'out2'), root, repoRoot: REPO_ROOT }, {
+            ownerWriteIntervalMs: 0,
+            afterWrite: (phase) => { ownerWrites.push(phase) },
+        })
+        expect(ownerWrites.filter((phase) => phase === 6).length).toBeGreaterThan(1)
+
+        // With a huge interval a file that has owners still writes once in the stream phase: the phase write, no owner write.
+        const quietWrites: number[] = []
+        await impl.realRun.runRealAnalysis({ bin: rich, out: path.join(root, 'out3'), root, repoRoot: REPO_ROOT }, {
+            ownerWriteIntervalMs: 1e9,
+            afterWrite: (phase) => { quietWrites.push(phase) },
+        })
+        expect(quietWrites.filter((phase) => phase === 6).length).toBe(1)
+    }, 60000)
+
+    test('S1: a declined stream is recorded in the status file, in the mid-run write after the decline and at the end', async () => {
+        const root = makeTmp('s1d')
+        const missingUnit = uuidN(799)
+        const db = richDatabase(2)
+        const bin = binOf(root, 'decline.bin', await blockDatabaseEntry(db, false, async (encoder) => [
+            await encoder.encodeBlock({ type: RisuSaveType.CHARACTER_WITH_CHAT, name: uuidN(721), data: JSON.stringify(stubCharacterOf(uuidN(721), missingUnit)), compression: false }),
+            await encoder.encodeBlock({ type: RisuSaveType.ROOT_COMPONENT, name: 'component-modules', data: JSON.stringify({ key: 'modules', data: [{ id: 'mod-late', lorebook: [lore('late')], regex: [] }] }), compression: false }),
+        ]))
+        const out = path.join(root, 'out')
+        const statusFile = path.join(out, 'ltm-status.json')
+        const seen: Array<{ phase: number; status: Record<string, number> }> = []
+        const r = await impl.realRun.runRealAnalysis({ bin, out, root, repoRoot: REPO_ROOT }, {
+            afterWrite: (phase) => { seen.push({ phase, status: JSON.parse(fs.readFileSync(statusFile, 'utf8')) as Record<string, number> }) },
+        })
+        expect(r.ok).toBe(true)
+        // 10 is 'blocks' in DECLINE_REASONS; the whole-tree path starts with the readDatabase phase write.
+        const afterDecline = seen.find((s) => s.phase === impl.status.STEP.readDatabase)
+        expect(afterDecline?.status).toMatchObject({ streamed: 0, declineReason: 10, completed: 0 })
+        const last = seen[seen.length - 1].status
+        expect(last).toMatchObject({ started: 1, completed: 1, streamed: 0, declineReason: 10 })
+    }, 60000)
+
+    test('S1: a refused layout throws a fixed message before anything is written', async () => {
+        const root = makeTmp('s1g')
+        const out = path.join(os.tmpdir(), 'ltm-s1g-elsewhere-' + process.pid)
+        const error = await impl.realRun.runRealAnalysis({ bin: path.join(root, 'x.bin'), out, root, repoRoot: REPO_ROOT }).catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(Error)
+        expect((error as Error).message).toBe('ltm-eval: run paths refused, 1 problems')
+        expect(fs.existsSync(out)).toBe(false)
+    })
+})
+
 // ---- E1: the launcher, end to end
 
 describe.skipIf(SEALED)('launcher', () => {
@@ -597,7 +960,90 @@ describe.skipIf(SEALED)('launcher', () => {
         const status = JSON.parse(fs.readFileSync(path.join(out, 'ltm-status.json'), 'utf8')) as unknown
         expect(impl.allowList.checkAggregates(aggregates)).toEqual([])
         expect(impl.allowList.checkShape(status, impl.status.STATUS_SHAPE)).toEqual([])
-        expect(status).toMatchObject({ completed: 1, omittedBlocks: 2, degraded: 1 })
+        expect(status).toMatchObject({ started: 1, completed: 1, phase: 5, streamed: 1, omittedBlocks: 2, degraded: 1 })
+        const peaks = status as { peakHeapMiB: number; maxRssMiB: number; heapLimitMiB: number }
+        expect(peaks.peakHeapMiB).toBeGreaterThan(0)
+        expect(peaks.maxRssMiB).toBeGreaterThan(0)
+        expect(peaks.heapLimitMiB).toBeGreaterThan(0)
+    }, 180000)
+
+    /** The launcher run in `cwd` with the given paths; stdout is the one fixed line. */
+    const launch = (cwd: string, vars: Record<string, string>, extraEnv: Record<string, string> = {}) =>
+        spawnSync(process.execPath, [path.join(EVAL_DIR, 'run-real.mjs')], {
+            encoding: 'utf8', cwd, timeout: 170000,
+            env: { ...process.env, LTM_REPO_ROOT: REPO_ROOT, ...vars, ...extraEnv },
+        })
+
+    test('E2: a refused layout prints exit 3 and touches nothing; relative paths are judged where the child will use them', () => {
+        const root = makeTmp('e2')
+        const outside = makeTmp('e2-outside')
+        for (const dir of [outside, path.join(root, 'out')]) {
+            fs.mkdirSync(dir, { recursive: true })
+            fs.writeFileSync(path.join(dir, 'ltm-status.json'), 'seeded')
+        }
+        // The output folder lies outside the run root.
+        const absolute = launch(root, { LTM_ROOT: root, LTM_BIN: path.join(root, 'x.bin'), LTM_OUT: outside })
+        expect(absolute.stdout.trim()).toBe('ltm-eval real run: exit 3')
+        expect(absolute.status).toBe(3)
+        expect(fs.readFileSync(path.join(outside, 'ltm-status.json'), 'utf8')).toBe('seeded')
+        // A relative .bin that climbs out of the root: refused, and the relative output folder keeps its seeded file.
+        const relative = launch(root, { LTM_ROOT: root, LTM_BIN: path.join('..', 'elsewhere.bin'), LTM_OUT: 'out' })
+        expect(relative.stdout.trim()).toBe('ltm-eval real run: exit 3')
+        expect(relative.status).toBe(3)
+        expect(fs.readFileSync(path.join(root, 'out', 'ltm-status.json'), 'utf8')).toBe('seeded')
+    })
+
+    test('E2: a launcher-side exception exits 4, never the child code 1, and prints one fixed line', () => {
+        const root = makeTmp('e2x')
+        const out = path.join(root, 'out')
+        // A directory where the stale status file would be: removing it fails inside the launcher.
+        fs.mkdirSync(path.join(out, 'ltm-status.json'), { recursive: true })
+        const r = launch(root, { LTM_ROOT: root, LTM_BIN: path.join(root, 'x.bin'), LTM_OUT: out })
+        expect(r.stdout.trim()).toBe('ltm-eval real run: exit 4')
+        expect(r.status).toBe(4)
+        expect(r.stdout.trim().split('\n').length).toBe(1)
+        expect(r.stderr).toBe('')
+    })
+
+    test('E2: the child status is mapped: only 0, 1 and 134 keep their value; any other status is 5', () => {
+        // A stand-in repository whose vitest ends with a chosen status; the real path guard module is copied in.
+        const fake = makeTmp('e2-fake')
+        fs.mkdirSync(path.join(fake, 'Agents', 'Tools', 'ltm-eval', 'analyzer'), { recursive: true })
+        fs.mkdirSync(path.join(fake, 'node_modules', 'vitest'), { recursive: true })
+        fs.copyFileSync(path.join(IMPL_DIR, 'runPaths.mjs'), path.join(fake, 'Agents', 'Tools', 'ltm-eval', 'analyzer', 'runPaths.mjs'))
+        fs.writeFileSync(path.join(fake, 'node_modules', 'vitest', 'vitest.mjs'), 'process.exit(Number(process.env.FAKE_CHILD_STATUS))\n')
+        const root = makeTmp('e2-fake-root')
+        const run = (status: number) => launch(root, { LTM_ROOT: root, LTM_BIN: path.join(root, 'x.bin'), LTM_OUT: path.join(root, 'out') },
+            { LTM_REPO_ROOT: fake, FAKE_CHILD_STATUS: String(status) })
+        const codes = new Map<number, number | null>()
+        for (const status of [0, 1, 2, 3, 4, 7, 134]) {
+            const r = run(status)
+            expect(r.stdout.trim().split('\n').length).toBe(1)
+            expect(r.stdout.trim()).toBe('ltm-eval real run: exit ' + r.status)
+            codes.set(status, r.status)
+        }
+        expect([...codes]).toEqual([[0, 0], [1, 1], [2, 5], [3, 5], [4, 5], [7, 5], [134, 134]])
+    })
+
+    test('E3: a failing file leaves a failure status and no stale aggregates, with relative paths resolved once', () => {
+        const root = makeTmp('e3')
+        fs.writeFileSync(path.join(root, 'bad.bin'), 'PLNT-GARBAGE-BIN-BYTES that are not a backup container at all')
+        const out = path.join(root, 'out')
+        fs.mkdirSync(out, { recursive: true })
+        fs.writeFileSync(path.join(out, 'ltm-aggregates.json'), '{"stale":true}')
+        // Relative paths, with the launcher's cwd inside the run root and the child's cwd in the repository.
+        const r = launch(root, { LTM_ROOT: root, LTM_BIN: 'bad.bin', LTM_OUT: 'out' })
+        const text = (r.stdout ?? '') + (r.stderr ?? '')
+        expect(r.stdout.trim()).toBe('ltm-eval real run: exit 1')
+        expect(r.stdout.trim().split('\n').length).toBe(1)
+        expectNoToken(text, 'the launcher output')
+        expect(fs.readdirSync(out)).toEqual(['ltm-status.json'])
+        const status = JSON.parse(fs.readFileSync(path.join(out, 'ltm-status.json'), 'utf8')) as Record<string, number>
+        expect(status).toMatchObject({ started: 1, completed: 0 })
+        expect(status.failedStep).toBeGreaterThanOrEqual(0)
+        expect(status.phase).toBeGreaterThanOrEqual(0)
+        expect(impl.allowList.checkShape(status, impl.status.STATUS_SHAPE)).toEqual([])
+        expectNoToken(JSON.stringify(status), 'the status file')
     }, 180000)
 })
 
@@ -608,9 +1054,7 @@ describe.skipIf(LTM_BIN === '' || !SEALED)('ltm real run', () => {
         const bin = path.resolve(LTM_BIN)
         const out = path.resolve(LTM_OUT)
         expect(impl.runPaths.checkRunPaths({ bin, out, root: LTM_ROOT, repoRoot: REPO_ROOT })).toEqual([])
-        const r = await impl.binRead.analyzeBinSealed(bin)
-        impl.status.writeStatus(out, impl.status.statusOf(r))
-        if (r.ok) impl.binRead.writeAggregates(out, r.value.aggregates)
+        const r = await impl.realRun.runRealAnalysis({ bin, out, root: LTM_ROOT, repoRoot: REPO_ROOT })
         // End-to-end launcher test only: a write after the seal window must still not reach the launcher's streams.
         if (process.env.LTM_CANARY) {
             console.error(process.env.LTM_CANARY)
