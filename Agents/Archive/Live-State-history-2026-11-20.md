@@ -1,4 +1,6 @@
-# Live State — observed 2026-11-17
+# Live State history — archived 2026-11-20 (observed 2026-11-17)
+
+> **Archive, non-operative.** The Live-State file as it stood before governance v2 (2026-11-20), copied verbatim one directory deeper, so its relative links resolve from `Agents/`, not from here. Current state: [Live-State](../Live-State.md).
 
 Current-state entry point; rewrite when observations change. This file does not supersede maintainer decisions or reconcile pending campaign records. Authority: [README](README.md), [Maintainer-Context](Maintainer-Context.md), [Roadmap](Roadmap.md). Durable traps: [Phase2-Handoff](Phase2-Handoff.md).
 
