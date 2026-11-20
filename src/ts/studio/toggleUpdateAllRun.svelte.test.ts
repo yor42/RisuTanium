@@ -175,6 +175,20 @@ describe('the run writes what was shown (R1, R1b, R1c, R2)', () => {
         expect(live().desc).toBe(`start ${READ}${READ}`)
     })
 
+    // Compatibility guard (passes before and after): a click that still carries the signature shown before a landed run
+    // rescans in its own task and finds the post-write texts, so it writes and closes nothing.
+    test('R1d the signature shown before a landed run is stale afterwards: no second write, no further step closed', () => {
+        const signature = shown(MODULE)
+        expect(run(signature, MODULE)).toMatchObject({ ok: true, count: 2 })
+        const closedAfterFirst = closed.length
+        const marksAfterFirst = h.marks
+        expect(run(signature, MODULE)).toEqual({ ok: false, reason: 'stale' })
+        expect(live().desc).toBe('start {{getglobalvar::toggle_b}}')
+        expect(lore()).toBe('lore {{getglobalvar::toggle_b}}')
+        expect(closed.length).toBe(closedAfterFirst)
+        expect(h.marks).toBe(marksAfterFirst)
+    })
+
     test('R2 the renames are read after the held fields are flushed', () => {
         let renames: Rename[] = A_TO_B
         const signature = shown()

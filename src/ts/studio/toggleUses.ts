@@ -313,17 +313,16 @@ function walk(text: string, keys: ReadonlySet<string>): Walked {
     while (i < w.length) {
         const here = w[i]
         const next = w[i + 1]
-        const top = stack[stack.length - 1]
+        // The stack top is read only where a closer is examined: reading past an empty stack on every character is a
+        // slow path, and a closer with no macro on top is text.
         if (here === '{' && (next === '{' || next === '#')) {
             stack.push({ type: 1, open: i, start: i + 2, children: [], hadChild: false, pure: false })
             i += 2
-        } else if (here === '#' && next === '}' && top?.type === 1) {
-            stack.pop()
-            closeMacro(top, i, i + 2, false)
+        } else if (here === '#' && next === '}' && stack[stack.length - 1]?.type === 1) {
+            closeMacro(stack.pop() as Level, i, i + 2, false)
             i += 2
-        } else if (here === '}' && next === '}' && top?.type === 1) {
-            stack.pop()
-            closeMacro(top, i, i + 2, true)
+        } else if (here === '}' && next === '}' && stack[stack.length - 1]?.type === 1) {
+            closeMacro(stack.pop() as Level, i, i + 2, true)
             i += 2
         } else {
             i++

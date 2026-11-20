@@ -9,7 +9,7 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 
-const h = vi.hoisted(() => ({ marks: 0 }))
+const h = vi.hoisted(() => ({ marks: 0, scans: 0 }))
 
 const FUNCTION_KEYS = new Set([
     'studioTgUsesRename', 'studioTgUsesWillChange', 'studioTgUsesSkipped', 'studioTgUsesAlsoUpdate', 'studioTgUsesKeyBlocked',
@@ -28,6 +28,17 @@ vi.mock('src/lang', () => ({
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks, readImage: async () => null }))
 vi.mock('src/ts/process/modules', () => ({ refreshModules: () => {} }))
 vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: () => {} }))
+// Counts every scan of the reach, by the component and by the run alike; the scan itself is the real one.
+vi.mock('src/ts/studio/toggleUpdateAll', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/studio/toggleUpdateAll')>()
+    return {
+        ...actual,
+        scanReach: (...args: Parameters<typeof actual.scanReach>) => {
+            h.scans += 1
+            return actual.scanReach(...args)
+        },
+    }
+})
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Record<string, unknown> })
     return {
@@ -103,12 +114,18 @@ const live = () => DBState.db.characters[0] as unknown as ReturnType<typeof char
 const lore = () => (DBState.db.modules[0] as RisuModule).lorebook?.[0].content
 
 // The parts of a builder the list reads; the renames are state, so a change re-renders as the real builder's do.
-const fake = $state({ renames: [] as Rename[], kept: false, dismissed: 0, updated: 0 })
+// keepOnUpdate leaves the renames in place after an update, as the real builder does while a question is open.
+const fake = $state({ renames: [] as Rename[], kept: false, dismissed: 0, updated: 0, keepOnUpdate: false })
 const builder = {
     get usesRenames(): readonly Rename[] { return fake.renames },
     get usesKept(): boolean { return fake.kept },
     dismissUses(): void { fake.dismissed += 1; fake.renames = [] },
-    noteUpdated(): void { fake.updated += 1; fake.renames = [] },
+    noteUpdated(): void {
+        fake.updated += 1
+        if (!fake.keepOnUpdate) {
+            fake.renames = []
+        }
+    },
     owner: C1,
 }
 
@@ -140,9 +157,13 @@ const parts = (name: string) => Array.from(document.querySelectorAll<HTMLElement
 const texts = (name: string) => parts(name).map((element) => element.textContent?.trim())
 const update = () => part('studio-toggle-uses-update') as HTMLButtonElement | null
 const click = (element: Element | null) => { (element as HTMLElement).click(); flushSync() }
+// One macrotask: the refresh scheduled by a click lands here.
+const drain = async () => { await new Promise<void>((resolve) => setTimeout(resolve, 0)); flushSync() }
 
 beforeEach(() => {
     h.marks = 0
+    h.scans = 0
+    fake.keepOnUpdate = false
     fake.renames = A_TO_B
     fake.kept = false
     fake.dismissed = 0
@@ -292,6 +313,7 @@ describe('Update all and Undo all (B4 to B7)', () => {
         expect(lore()).toBe(`lore ${READ} ${DYNAMIC}`)
         expect(announced).toEqual(['studioTgUpdateRecheck'])
         expect(currentUpdate()).toBeNull()
+        await drain()
         click(update())
         expect(live().desc).toBe(`inserted start ${B}`)
     })
@@ -308,6 +330,83 @@ describe('Update all and Undo all (B4 to B7)', () => {
         expect(part('studio-toggle-uses-result')).not.toBeNull()
         click(part('studio-toggle-uses-undo'))
         expect(live().desc).toBe(`start ${READ}`)
+    })
+})
+
+// The click task scans once (the run); the display refresh follows in the next task, and Update all stays disabled
+// until a scan taken after the click has landed. The old list stays visible in the gap.
+describe('the display scan after a click runs in the next task (D1)', () => {
+    // Regression reproducer: before the change the click task also re-derived the list, a second scan.
+    test('T6 the Update all click task scans once; the next task refreshes the list', async () => {
+        fake.keepOnUpdate = true
+        await service.whenReady(C1)
+        mountList()
+        h.scans = 0
+        click(update())
+        expect(h.scans).toBe(1)
+        expect(texts('studio-toggle-uses-count')).not.toEqual([])
+        await drain()
+        expect(h.scans).toBe(2)
+        expect(texts('studio-toggle-uses-count')).toEqual([])
+    })
+
+    // Compatibility guard (passes before and after): one scan per mount and one per Undo all click.
+    test('T7 the mount scans once and an Undo all click scans once in its own task', async () => {
+        fake.keepOnUpdate = true
+        await service.whenReady(C1)
+        mountList()
+        expect(h.scans).toBe(1)
+        click(update())
+        await drain()
+        h.scans = 0
+        click(part('studio-toggle-uses-undo'))
+        expect(h.scans).toBe(1)
+        expect(live().desc).toBe(`start ${READ}`)
+    })
+
+    test('T8 after a stale click Update all is disabled until the refresh lands, and then a second click writes', async () => {
+        fake.keepOnUpdate = true
+        await service.whenReady(C1)
+        mountList()
+        live().desc = `inserted ${live().desc}`
+        click(update())
+        expect(announced).toEqual(['studioTgUpdateRecheck'])
+        expect(update()?.disabled).toBe(true)
+        expect(live().desc).toBe(`inserted start ${READ}`)
+        expect(lore()).toBe(`lore ${READ} ${DYNAMIC}`)
+        await drain()
+        expect(update()?.disabled).toBe(false)
+        click(update())
+        expect(live().desc).toBe(`inserted start ${B}`)
+    })
+
+    // A refused Undo in the gap leaves the pending refresh alone, so the button is not stranded disabled. The fresh plan
+    // counts one use: the appended READ in the character; the module's READ was rewritten and its regex pattern is only listed.
+    test('T10 a refused Undo all in the gap writes nothing and the refresh still lands and re-enables Update all', async () => {
+        fake.keepOnUpdate = true
+        await service.whenReady(C1)
+        mountList()
+        click(update())
+        live().desc += ` ${READ}`
+        click(part('studio-toggle-uses-undo'))
+        expect(part('studio-toggle-uses-error')?.textContent).toBe('studioTgUpdateUndoChanged(Alice)')
+        expect(live().desc).toBe(`start ${B} ${READ}`)
+        expect(update()?.disabled).toBe(true)
+        await drain()
+        expect(texts('studio-toggle-uses-count')).toEqual(['studioTgUsesWillChange(Alice,1)'])
+        expect(update()?.disabled).toBe(false)
+    })
+
+    test('T11 an Undo all that lands in the gap refreshes the list itself: no extra scan from the pending refresh', async () => {
+        fake.keepOnUpdate = true
+        await service.whenReady(C1)
+        mountList()
+        h.scans = 0
+        click(update())
+        click(part('studio-toggle-uses-undo'))
+        expect(live().desc).toBe(`start ${READ}`)
+        await drain()
+        expect(h.scans).toBe(2)
     })
 })
 
