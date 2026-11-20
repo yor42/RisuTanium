@@ -389,11 +389,12 @@ describe('fetch log redaction', () => {
         expect(logs[0].url).toContain('${RISU_X_KEY}')
     })
 
-    test('guard: with nothing resolved, log text is stored as written', async () => {
+    test('with nothing resolved, a credential header is redacted by name and other log text is stored as written', async () => {
         delete (window as { userScriptFetch?: unknown }).userScriptFetch
         await globalFetch('https://api.example.invalid/v1/chat', { body: { a: 'sk-plain-key' }, headers: { Authorization: 'Bearer sk-plain-key' } })
         const [log] = getFetchLogs()
-        expect(log.header).toContain('Bearer sk-plain-key')
+        expect(log.header).toContain('Bearer [redacted]')
+        expect(log.header).not.toContain('sk-plain-key')
         expect(log.body).toContain('sk-plain-key')
     })
 })
