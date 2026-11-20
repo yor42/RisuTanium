@@ -244,6 +244,7 @@ vi.mock('../Playground/PlaygroundMenu.svelte', () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { language } from 'src/lang'
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { chatSurface, resetChatSurfaceForTests } from './chatSurface.svelte'
 
@@ -317,7 +318,7 @@ function menuButton(root: HTMLElement): HTMLButtonElement {
 }
 
 function stickerToggle(root: HTMLElement): HTMLElement {
-    return root.querySelector<HTMLElement>('div.bg-textcolor2')!
+    return root.querySelector<HTMLElement>(`button[aria-label="${language.chatShellStickers}"]`)!
 }
 
 /** The sticker toggle first: a click anywhere else in the composer closes the side menu, the menu button's own click does not bubble. */
@@ -333,7 +334,7 @@ function menuIsOpen(root: HTMLElement): boolean {
 }
 
 function stickersAreOpen(root: HTMLElement): boolean {
-    return stickerToggle(root).classList.contains('text-green-500')
+    return stickerToggle(root).getAttribute('aria-pressed') === 'true'
 }
 
 afterEach(async () => {

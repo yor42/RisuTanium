@@ -18,8 +18,8 @@
         <div class="flex items-center text-textcolor mb-4">
             <h2 class="mt-0 mb-0">{language.chatList}</h2>
             <div class="grow flex justify-end">
-                <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer items-center" onclick={close}>
-                    <XIcon size={24}/>
+                <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" aria-label={language.uiCommon.close} onclick={close}>
+                    <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
         </div>
@@ -36,43 +36,51 @@
                     <span>{chat.name}</span>
                 {/if}
                 <div class="grow flex justify-end">
-                    <div class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" role="button" tabindex="0" onclick={async (e) => {
+                    <div class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" role="button" tabindex="0" aria-label={language.chatShellExportChat} onclick={async (e) => {
                         e.stopPropagation()
                         exportChat(i)
-                    }} onkeydown={() => {
-
+                    }} onkeydown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            e.currentTarget.click()
+                        }
                     }}>
-                        <DownloadIcon size={18}/>
+                        <DownloadIcon size={18} aria-hidden="true"/>
                     </div>
-                    <div class="text-textcolor2 hover:text-green-500 cursor-pointer" role="button" tabindex="0" onclick={async (e) => {
+                    <div class="text-textcolor2 hover:text-draculared cursor-pointer" role="button" tabindex="0" aria-label={language.chatShellDeleteChat} onclick={async (e) => {
                         e.stopPropagation()
                         await removeChatConfirmed(DBState.db.characters[$selectedCharID], chat)
-                    }} onkeydown={() => {
-                        
+                    }} onkeydown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            e.currentTarget.click()
+                        }
                     }}>
-                        <TrashIcon size={18}/>
+                        <TrashIcon size={18} aria-hidden="true"/>
                     </div>
                 </div>
             </button>
         {/each}
         <div class="flex mt-2 items-center">
-            <button class="text-textcolor2 hover:text-green-500 cursor-pointer mr-1" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor cursor-pointer mr-1" aria-label={language.newChat} onclick={() => {
                 const cha = DBState.db.characters[$selectedCharID]
                 const newIndex = createNewChat(cha)
                 changeChatTo(newIndex)
                 close()
             }}>
-                <PlusIcon/>
+                <PlusIcon aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.chatShellImportChat} onclick={() => {
                 importChat()
             }}>
-                <HardDriveUploadIcon size={18}/>
+                <HardDriveUploadIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor cursor-pointer" aria-label={language.othersUi.editMode} aria-pressed={editMode} onclick={() => {
                 editMode = !editMode
             }}>
-                <SquarePenIcon size={18}/>
+                <SquarePenIcon size={18} aria-hidden="true"/>
             </button>
         </div>
     </div>

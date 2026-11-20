@@ -5,18 +5,19 @@
   interface Props {
     onClick?: any;
     additionalStyle?: string | Promise<string>;
+    label?: string;
     children?: import('svelte').Snippet;
   }
 
-  let { onClick = () => {}, additionalStyle = "", children }: Props = $props();
+  let { onClick = () => {}, additionalStyle = "", label, children }: Props = $props();
 </script>
 
 {#await warnOnReject('BarIcon: additionalStyle rejected', additionalStyle)}
-  <button onclick={onClick} class="ico">{@render children?.()}</button>
+  <button onclick={onClick} class="ico" aria-label={label}>{@render children?.()}</button>
 {:then as}
-  <button onclick={onClick} class="ico" style={as || null}>{@render children?.()}</button>
+  <button onclick={onClick} class="ico" aria-label={label} style={as || null}>{@render children?.()}</button>
 {:catch}
-  <button onclick={onClick} class="ico">{@render children?.()}</button>
+  <button onclick={onClick} class="ico" aria-label={label}>{@render children?.()}</button>
 {/await}
 
 <style>

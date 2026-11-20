@@ -285,19 +285,19 @@
 {#if submenu === 1 && (Array.isArray(currentModule.lorebook))}
     <LoreBookList externalLoreBooks={currentModule.lorebook} />
     <div class="text-textcolor2 mt-2 flex">
-        <button onclick={() => {addLorebook()}} class="hover:text-textcolor cursor-pointer ml-1">
-            <PlusIcon />
+        <button onclick={() => {addLorebook()}} class="hover:text-textcolor cursor-pointer ml-1" aria-label={language.add}>
+            <PlusIcon aria-hidden="true" />
         </button>
-        <button onclick={() => {exportLoreBook()}} class="hover:text-textcolor cursor-pointer ml-2">
-            <DownloadIcon />
+        <button onclick={() => {exportLoreBook()}} class="hover:text-textcolor cursor-pointer ml-2" aria-label={language.export}>
+            <DownloadIcon aria-hidden="true" />
         </button>
         <button onclick={() => {
             addLorebookFolder()
-        }} class="hover:text-textcolor ml-2  cursor-pointer">
-            <FolderPlusIcon />
+        }} class="hover:text-textcolor ml-2  cursor-pointer" aria-label={language.chatShellNewFolder}>
+            <FolderPlusIcon aria-hidden="true" />
         </button>
-        <button onclick={() => {importLoreBook()}} class="hover:text-textcolor cursor-pointer ml-2">
-            <HardDriveUploadIcon />
+        <button onclick={() => {importLoreBook()}} class="hover:text-textcolor cursor-pointer ml-2" aria-label={language.import}>
+            <HardDriveUploadIcon aria-hidden="true" />
         </button>
     </div>
 {/if}
@@ -306,15 +306,15 @@
     <TextAreaInput bind:value={currentModule.backgroundEmbedding} className="mt-2" placeholder={language.backgroundHTML} size="sm"/>
     <RegexList bind:value={currentModule.regex}/>
     <div class="text-textcolor2 mt-2 flex gap-2">
-        <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+        <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.add} onclick={() => {
             addRegex()
-        }}><PlusIcon /></button>
-        <button class="font-medium cursor-pointer hover:text-green-500" onclick={() => {
+        }}><PlusIcon aria-hidden="true" /></button>
+        <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.export} onclick={() => {
             exportRegex(currentModule.regex)
-        }}><DownloadIcon /></button>
-        <button class="font-medium cursor-pointer hover:text-green-500" onclick={async () => {
+        }}><DownloadIcon aria-hidden="true" /></button>
+        <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.import} onclick={async () => {
             currentModule.regex = await importRegex(currentModule.regex)
-        }}><HardDriveUploadIcon /></button>
+        }}><HardDriveUploadIcon aria-hidden="true" /></button>
     </div>
 {/if}
 
@@ -325,7 +325,7 @@
             <tr>
                 <th class="font-medium">{language.value}</th>
                 <th class="font-medium cursor-pointer w-10">
-                    <button class="hover:text-green-500" onclick={async () => {
+                    <button class="hover:text-textcolor" aria-label={language.add} onclick={async () => {
                         const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
                         if(!da){
                             return
@@ -354,7 +354,7 @@
                         }
                         reportRefusedAssets(refused, limit)
                     }}>
-                        <PlusIcon />
+                        <PlusIcon aria-hidden="true" />
                     </button>
                 </th>
             </tr>
@@ -371,8 +371,8 @@
                                 {@const url = rowAssetUrl(assetUrls[i], assets[1], assetListUse(element))}
                                 <!-- A URL still being made, or made for another asset or use, is undefined and shows nothing; '' is a URL that was withheld or could not be made, and shows the name box. -->
                                 {#if element === 'icon' || url === ''}
-                                    <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
-                                        <FileMusicIcon/>
+                                    <div data-part="asset-name-box" class='w-16 h-16 m-1 rounded-md bg-darkbutton flex flex-col justify-center items-center'>
+                                        <FileMusicIcon aria-hidden="true"/>
                                         <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{assets[0]}</div>
                                     </div>
                                 {:else if url}
@@ -390,10 +390,10 @@
                         </td>
                         
                         <th class="font-medium cursor-pointer w-10">
-                            <button class="hover:text-green-500" onclick={() => {
+                            <button class="hover:text-draculared" aria-label={language.remove} onclick={() => {
                                 removeAsset(i)
                             }}>
-                                <TrashIcon />
+                                <TrashIcon aria-hidden="true" />
                             </button>
                         </th>
                     </tr>

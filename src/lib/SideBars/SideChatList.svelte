@@ -145,7 +145,7 @@
     {@const writing = isGeneratingIn({ chaId: chara.chaId, chatId: chat.id })}
     {@const mark = replyMarkOf(chat)}
     {#if writing}
-        <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="ml-1 animate-pulse text-textcolor2"><PencilIcon size={14} /></span>
+        <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="ml-1 animate-pulse text-textcolor2"><PencilIcon size={14} aria-hidden="true" /></span>
     {/if}
     {#if mark === 'reply'}
         <span data-part="reply-new-dot" role="img" aria-label={language.chatNewReplyDot} class="ml-1 size-2 shrink-0 rounded-full bg-selected border border-textcolor2"></span>
@@ -191,11 +191,15 @@
                         <span>{folder.name}</span>
                     {/if}
                     <div class="grow flex justify-end">
-                        <div role="button" tabindex="0" onkeydown={(e) => {
-                            if(e.key === 'Enter'){
+                        <div role="button" tabindex="0" aria-label={language.chatShellFolderMenu(folder.name)} onkeydown={(e) => {
+                            if(e.target !== e.currentTarget){
+                                return
+                            }
+                            if(e.key === 'Enter' || e.key === ' '){
+                                e.preventDefault()
                                 e.currentTarget.click()
                             }
-                        }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={async (e) => {
+                        }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={async (e) => {
                             e.stopPropagation()
                             const sel = parseInt(await alertSelect([language.changeFolderColor, language.cancel], undefined, { cancel: '1' }))
                             switch (sel) {
@@ -207,22 +211,30 @@
                                     break
                             }
                         }}>
-                            <MenuIcon size={18}/>
+                            <MenuIcon size={18} aria-hidden="true"/>
                         </div>
-                        <div role="button" tabindex="0" onkeydown={(e) => {
-                            if(e.key === 'Enter'){
+                        <div role="button" tabindex="0" aria-label={language.othersUi.editMode} aria-pressed={editMode} onkeydown={(e) => {
+                            if(e.target !== e.currentTarget){
+                                return
+                            }
+                            if(e.key === 'Enter' || e.key === ' '){
+                                e.preventDefault()
                                 e.currentTarget.click()
                             }
-                        }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={() => {
+                        }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={() => {
                             editMode = !editMode
                         }}>
-                            <PencilIcon size={18}/>
+                            <PencilIcon size={18} aria-hidden="true"/>
                         </div>
-                        <div role="button" tabindex="0" onkeydown={(e) => {
-                            if(e.key === 'Enter'){
+                        <div role="button" tabindex="0" aria-label={language.chatShellDeleteFolder} onkeydown={(e) => {
+                            if(e.target !== e.currentTarget){
+                                return
+                            }
+                            if(e.key === 'Enter' || e.key === ' '){
+                                e.preventDefault()
                                 e.currentTarget.click()
                             }
-                        }} class="text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async (e) => {
+                        }} class="text-textcolor2 hover:text-draculared cursor-pointer" onclick={async (e) => {
                             const target = folder
                             e.stopPropagation()
                             const d = await alertConfirm(`${language.removeConfirm}${target.name}`)
@@ -240,7 +252,7 @@
                                 chara.chatFolders = folders
                             }
                         }}>
-                            <TrashIcon size={18}/>
+                            <TrashIcon size={18} aria-hidden="true"/>
                         </div>
                     </div>
                 </button>
@@ -264,11 +276,15 @@
                             {@render replyMarks(chat)}
                         {/if}
                         <div class="grow flex justify-end">
-                            <div role="button" tabindex="0" onkeydown={(e) => {
-                                if(e.key === 'Enter'){
+                            <div role="button" tabindex="0" aria-label={language.chatOptions} onkeydown={(e) => {
+                                if(e.target !== e.currentTarget){
+                                    return
+                                }
+                                if(e.key === 'Enter' || e.key === ' '){
+                                    e.preventDefault()
                                     e.currentTarget.click()
                                 }
-                            }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={async () => {
+                            }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={async () => {
                                 const option = await alertChatOptions()
                                 switch(option){
                                     case 0:{
@@ -303,38 +319,50 @@
                                     }
                                 }
                             }}>
-                                <MenuIcon size={18}/>
+                                <MenuIcon size={18} aria-hidden="true"/>
                             </div>
-                            <div role="button" tabindex="0" onkeydown={(e) => {
-                                if(e.key === 'Enter'){
+                            <div role="button" tabindex="0" aria-label={language.othersUi.editMode} aria-pressed={editMode} onkeydown={(e) => {
+                                if(e.target !== e.currentTarget){
+                                    return
+                                }
+                                if(e.key === 'Enter' || e.key === ' '){
+                                    e.preventDefault()
                                     e.currentTarget.click()
                                 }
-                            }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={() => {
+                            }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={() => {
                                 editMode = !editMode
                             }}>
-                                <PencilIcon size={18}/>
+                                <PencilIcon size={18} aria-hidden="true"/>
                             </div>
-                            <div role="button" tabindex="0" onkeydown={(e) => {
-                                if(e.key === 'Enter'){
+                            <div role="button" tabindex="0" aria-label={language.chatShellExportChat} onkeydown={(e) => {
+                                if(e.target !== e.currentTarget){
+                                    return
+                                }
+                                if(e.key === 'Enter' || e.key === ' '){
+                                    e.preventDefault()
                                     e.currentTarget.click()
                                 }
-                            }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={async (e) => {
+                            }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={async (e) => {
                                 e.stopPropagation()
                                 exportChat(chara.chats.indexOf(chat))
                             }}>
-                                <DownloadIcon size={18}/>
+                                <DownloadIcon size={18} aria-hidden="true"/>
                             </div>
-                            <div role="button" tabindex="0" onkeydown={(e) => {
-                                if(e.key === 'Enter'){
+                            <div role="button" tabindex="0" aria-label={language.chatShellDeleteChat} onkeydown={(e) => {
+                                if(e.target !== e.currentTarget){
+                                    return
+                                }
+                                if(e.key === 'Enter' || e.key === ' '){
+                                    e.preventDefault()
                                     e.currentTarget.click()
                                 }
-                            }} class="text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async (e) => {
+                            }} class="text-textcolor2 hover:text-draculared cursor-pointer" onclick={async (e) => {
                                 e.stopPropagation()
                                 if(await removeChatConfirmed(chara, chat)){
                                     $ReloadGUIPointer += 1
                                 }
                             }}>
-                                <TrashIcon size={18}/>
+                                <TrashIcon size={18} aria-hidden="true"/>
                             </div>
                         </div>
                     </button>
@@ -363,11 +391,15 @@
                     {@render replyMarks(chat)}
                 {/if}
                 <div class="grow flex justify-end">
-                    <div role="button" tabindex="0" onkeydown={(e) => {
-                        if(e.key === 'Enter'){
+                    <div role="button" tabindex="0" aria-label={language.chatOptions} onkeydown={(e) => {
+                        if(e.target !== e.currentTarget){
+                            return
+                        }
+                        if(e.key === 'Enter' || e.key === ' '){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
-                    }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={async () => {
+                    }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={async () => {
                         const option = await alertChatOptions()
                         switch(option){
                             case 0:{
@@ -403,38 +435,50 @@
                             }
                         }
                     }}>
-                        <MenuIcon size={18}/>
+                        <MenuIcon size={18} aria-hidden="true"/>
                     </div>
-                    <div role="button" tabindex="0" onkeydown={(e) => {
-                        if(e.key === 'Enter'){
+                    <div role="button" tabindex="0" aria-label={language.othersUi.editMode} aria-pressed={editMode} onkeydown={(e) => {
+                        if(e.target !== e.currentTarget){
+                            return
+                        }
+                        if(e.key === 'Enter' || e.key === ' '){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
-                    }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={() => {
+                    }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={() => {
                         editMode = !editMode
                     }}>
-                        <PencilIcon size={18}/>
+                        <PencilIcon size={18} aria-hidden="true"/>
                     </div>
-                    <div role="button" tabindex="0" onkeydown={(e) => {
-                        if(e.key === 'Enter'){
+                    <div role="button" tabindex="0" aria-label={language.chatShellExportChat} onkeydown={(e) => {
+                        if(e.target !== e.currentTarget){
+                            return
+                        }
+                        if(e.key === 'Enter' || e.key === ' '){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
-                    }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={async (e) => {
+                    }} class="text-textcolor2 hover:text-textcolor mr-1 cursor-pointer" onclick={async (e) => {
                         e.stopPropagation()
                         exportChat(i)
                     }}>
-                        <DownloadIcon size={18}/>
+                        <DownloadIcon size={18} aria-hidden="true"/>
                     </div>
-                    <div role="button" tabindex="0" onkeydown={(e) => {
-                        if(e.key === 'Enter'){
+                    <div role="button" tabindex="0" aria-label={language.chatShellDeleteChat} onkeydown={(e) => {
+                        if(e.target !== e.currentTarget){
+                            return
+                        }
+                        if(e.key === 'Enter' || e.key === ' '){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
-                    }} class="text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async (e) => {
+                    }} class="text-textcolor2 hover:text-draculared cursor-pointer" onclick={async (e) => {
                         e.stopPropagation()
                         if(await removeChatConfirmed(chara, chat)){
                             $ReloadGUIPointer += 1
                         }
                     }}>
-                        <TrashIcon size={18}/>
+                        <TrashIcon size={18} aria-hidden="true"/>
                     </div>
                 </div>
             </button>
@@ -446,35 +490,35 @@
 
     <div class="border-t border-selected mt-2">
         <div class="flex mt-2 ml-2 items-center">
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.chatShellExportAllChats} onclick={() => {
                 exportAllChats()
             }}>
-                <DownloadIcon size={18}/>
+                <DownloadIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.chatShellImportChat} onclick={() => {
                 importChat()
             }}>
-                <HardDriveUploadIcon size={18}/>
+                <HardDriveUploadIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.othersUi.editMode} aria-pressed={editMode} onclick={() => {
                 editMode = !editMode
             }}>
-                <PencilIcon size={18}/>
+                <PencilIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.chatShellBranches} onclick={() => {
                 alertStore.set({
                   type: "branches",
                   msg: ""
                 })
             }}>
-                <SplitIcon size={18}/>
+                <SplitIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.bookmarks} onclick={() => {
                 $bookmarkListOpen = true;
             }}>
-                <BookmarkCheckIcon size={18}/>
+                <BookmarkCheckIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="ml-auto text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button class="ml-auto text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.chatShellNewFolder} onclick={() => {
                 if (!chara.chatFolders) {
                     chara.chatFolders = []
                 }
@@ -488,7 +532,7 @@
                 chara.chatFolders = folders
                 $ReloadGUIPointer += 1
             }}>
-                <FolderPlusIcon size={18}/>
+                <FolderPlusIcon size={18} aria-hidden="true"/>
             </button>
         </div>
 
