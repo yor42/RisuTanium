@@ -149,8 +149,8 @@ function chooseSort(target: HTMLElement, label: string) {
 // number between them is plain text.
 function pagerArrows(target: HTMLElement): { left: HTMLElement | undefined, right: HTMLElement | undefined } {
     return {
-        left: target.querySelector(`button[aria-label="${language.hubPreviousPage}"]`) as HTMLElement | undefined ?? undefined,
-        right: target.querySelector(`button[aria-label="${language.hubNextPage}"]`) as HTMLElement | undefined ?? undefined,
+        left: target.querySelector(`button[aria-label="${language.realmPrevPage}"]`) as HTMLElement | undefined ?? undefined,
+        right: target.querySelector(`button[aria-label="${language.realmNextPage}"]`) as HTMLElement | undefined ?? undefined,
     }
 }
 

@@ -104,7 +104,7 @@
                 onclick={close}
                 aria-label={language.uiCommon.close}
             >
-                <XIcon />
+                <XIcon aria-hidden="true" />
             </button>
         </div>
 

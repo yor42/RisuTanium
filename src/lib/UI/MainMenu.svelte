@@ -470,7 +470,7 @@
                   reintroduces the shift — verify both again with real
                   measurements before changing either.
                 -->
-                <div class="relative z-10 rounded-lg bg-black/30 p-2" data-realm-preview-list>
+                <div class="relative z-10 rounded-lg bg-darkbg/30 p-2" data-realm-preview-list>
                   <div class="flex min-h-0 max-h-[150px] lg:max-h-[200px] flex-col gap-1 overflow-y-auto">
                     <!-- Clamped to 10, not the full page of results: every
                          row is its own button in the tab order, and a page

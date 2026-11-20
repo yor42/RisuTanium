@@ -31,6 +31,7 @@
             type="checkbox"
             data-part="studio-asset-select-all"
             class="h-5 w-5 cursor-pointer"
+            aria-label={language.studioAssetSelectAll}
             checked={shown > 0 && count === shown}
             disabled={shown === 0}
             onchange={(event) => onselectall(event.currentTarget.checked)}

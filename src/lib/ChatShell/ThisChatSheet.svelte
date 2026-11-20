@@ -324,7 +324,7 @@
     {#if showJailbreak}
         <label data-part="this-chat-row">
             <span>{language.jailbreakToggle}</span>
-            <input type="checkbox" role="switch" data-part="this-chat-jailbreak" checked={jailbreakOn} onchange={(event) => setJailbreak(event.currentTarget.checked)} />
+            <input type="checkbox" role="switch" aria-label={language.jailbreakToggle} data-part="this-chat-jailbreak" checked={jailbreakOn} onchange={(event) => setJailbreak(event.currentTarget.checked)} />
         </label>
     {/if}
 {/snippet}
@@ -333,7 +333,7 @@
     {#if showMemory}
         <label data-part="this-chat-row">
             <span>{memoryLabel}</span>
-            <input type="checkbox" role="switch" data-part="this-chat-memory" checked={memoryOn} onchange={(event) => setMemory(event.currentTarget.checked)} />
+            <input type="checkbox" role="switch" aria-label={memoryLabel} data-part="this-chat-memory" checked={memoryOn} onchange={(event) => setMemory(event.currentTarget.checked)} />
         </label>
         {#if showMemoryView}
             <button type="button" data-part="this-chat-memory-view" data-kind="button" onclick={openMemoryView}>{DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
@@ -384,7 +384,7 @@
                 {/if}
                 <label data-part="this-chat-row">
                     <span>{language.chatShellHideNames}</span>
-                    <input type="checkbox" role="switch" data-part="this-chat-hide-names" checked={hideNamesOn} onchange={(event) => setHideNames(event.currentTarget.checked)} />
+                    <input type="checkbox" role="switch" aria-label={language.chatShellHideNames} data-part="this-chat-hide-names" checked={hideNamesOn} onchange={(event) => setHideNames(event.currentTarget.checked)} />
                 </label>
                 <!-- A flip or an Undo bubbles here, so the placement below is read again even when the chat object is not reactive. -->
                 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->

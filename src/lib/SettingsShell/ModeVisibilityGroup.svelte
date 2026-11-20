@@ -91,6 +91,7 @@
                 <input
                     type="checkbox"
                     class="mt-1"
+                    aria-label={modeName(mode)}
                     checked={shown.includes(mode)}
                     aria-disabled={lock !== null ? 'true' : undefined}
                     aria-describedby={lock !== null ? `${uid}-${mode}-desc ${uid}-${mode}-reason` : `${uid}-${mode}-desc`}

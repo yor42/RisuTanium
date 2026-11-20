@@ -42,13 +42,13 @@
         {#if chara.hasEmotion || chara.hasAsset || chara.hasLore}
             <div class="flex flex-wrap gap-2 text-xs text-textcolor2">
                 {#if chara.hasEmotion}
-                    <span class="flex items-center gap-1"><SmileIcon size={14} />{language.realmBadgeEmotion}</span>
+                    <span class="flex items-center gap-1"><SmileIcon size={14} aria-hidden="true" />{language.realmBadgeEmotion}</span>
                 {/if}
                 {#if chara.hasAsset}
-                    <span class="flex items-center gap-1"><ImageIcon size={14} />{language.realmBadgeAssets}</span>
+                    <span class="flex items-center gap-1"><ImageIcon size={14} aria-hidden="true" />{language.realmBadgeAssets}</span>
                 {/if}
                 {#if chara.hasLore}
-                    <span class="flex items-center gap-1"><BookIcon size={14} />{language.realmBadgeLore}</span>
+                    <span class="flex items-center gap-1"><BookIcon size={14} aria-hidden="true" />{language.realmBadgeLore}</span>
                 {/if}
             </div>
         {/if}

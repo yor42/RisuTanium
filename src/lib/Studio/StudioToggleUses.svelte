@@ -242,7 +242,7 @@
             <div data-part="studio-toggle-uses-skipped" class="flex flex-col gap-1">
                 <p class="text-sm text-textcolor2">{language.studioTgUsesSkipped(ownerName(entry.owner), entry.key, entry.count)}</p>
                 <label class="flex min-h-11 items-center gap-2 text-sm text-textcolor cursor-pointer">
-                    <input type="checkbox" data-part="studio-toggle-uses-optin" checked={optIn.has(entry.owner)} disabled={!editable} onchange={(event) => toggleOptIn(entry.owner, event.currentTarget.checked)} />
+                    <input type="checkbox" aria-label={language.studioTgUsesAlsoUpdate(ownerName(entry.owner))} data-part="studio-toggle-uses-optin" checked={optIn.has(entry.owner)} disabled={!editable} onchange={(event) => toggleOptIn(entry.owner, event.currentTarget.checked)} />
                     <span>{language.studioTgUsesAlsoUpdate(ownerName(entry.owner))}</span>
                 </label>
             </div>

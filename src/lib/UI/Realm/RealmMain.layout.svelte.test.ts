@@ -147,7 +147,9 @@ describe('RealmMain.svelte: header and toolbar', () => {
         await settle()
 
         const input = target.querySelector('input') as HTMLInputElement
-        expect(input.getAttribute('aria-label')).toBe(language.hubSearchLabel)
+        const naming = document.getElementById(input.getAttribute('aria-labelledby') ?? '')
+        expect(naming?.textContent?.trim()).toBe(language.hubSearchLabel)
+        expect(input.getAttribute('aria-describedby')).toBe(input.getAttribute('aria-labelledby'))
         expect(input.placeholder).toBe(language.hubSearchLabel)
         expect(target.querySelector(`button[aria-label="${language.search}"]`)).toBeTruthy()
     })
@@ -247,29 +249,29 @@ describe('RealmMain.svelte: states and pager', () => {
         select.dispatchEvent(new Event('change', { bubbles: true }))
         await settle()
         expect(target.querySelector('[role="status"]')?.textContent).toContain(language.hubLoadFailed)
-        expect(pagerButton(target, language.hubNextPage)).toBeNull()
+        expect(pagerButton(target, language.realmNextPage)).toBeNull()
 
         hubMock.getRisuHub.mockImplementation(async () => ({ ok: true, cards: [], additionalHTML: '' } satisfies RisuHubResult))
         select.value = 'trending'
         select.dispatchEvent(new Event('change', { bubbles: true }))
         await settle()
         expect(target.querySelector('[role="status"]')?.textContent).toContain(language.hubEmpty)
-        expect(pagerButton(target, language.hubNextPage)).toBeNull()
+        expect(pagerButton(target, language.realmNextPage)).toBeNull()
     })
 
     test('a populated paged list shows named Previous and Next with the page as text, not a button', async () => {
         const target = mountRealmMain()
         await settle()
         // recommended is not paged
-        expect(pagerButton(target, language.hubNextPage)).toBeNull()
+        expect(pagerButton(target, language.realmNextPage)).toBeNull()
 
         const select = target.querySelector('select') as HTMLSelectElement
         select.value = 'downloads'
         select.dispatchEvent(new Event('change', { bubbles: true }))
         await settle()
 
-        const previous = pagerButton(target, language.hubPreviousPage)!
-        const next = pagerButton(target, language.hubNextPage)!
+        const previous = pagerButton(target, language.realmPrevPage)!
+        const next = pagerButton(target, language.realmNextPage)!
         expect(previous.disabled).toBe(true)
         const indicator = language.hubPageIndicator.replace('{page}', '1')
         expect(Array.from(target.querySelectorAll('button')).some((b) => b.textContent?.trim() === indicator)).toBe(false)
@@ -278,7 +280,7 @@ describe('RealmMain.svelte: states and pager', () => {
         next.click()
         await settle()
         expect(lastCall().page).toBe(1)
-        expect(pagerButton(target, language.hubPreviousPage)!.disabled).toBe(false)
+        expect(pagerButton(target, language.realmPrevPage)!.disabled).toBe(false)
     })
 
     test('an empty page after page 0 keeps an enabled Previous that loads page 0, and disables Next', async () => {
@@ -290,13 +292,13 @@ describe('RealmMain.svelte: states and pager', () => {
         await settle()
 
         hubMock.getRisuHub.mockImplementation(async () => ({ ok: true, cards: [], additionalHTML: '' } satisfies RisuHubResult))
-        pagerButton(target, language.hubNextPage)!.click()
+        pagerButton(target, language.realmNextPage)!.click()
         await settle()
         expect(target.querySelector('[role="status"]')?.textContent).toContain(language.hubEmpty)
-        const previous = pagerButton(target, language.hubPreviousPage)
+        const previous = pagerButton(target, language.realmPrevPage)
         expect(previous).not.toBeNull()
         expect(previous!.disabled).toBe(false)
-        expect(pagerButton(target, language.hubNextPage)!.disabled).toBe(true)
+        expect(pagerButton(target, language.realmNextPage)!.disabled).toBe(true)
 
         hubMock.getRisuHub.mockImplementation(async () => ({ ok: true, cards: [makeChara('one')], additionalHTML: '' } satisfies RisuHubResult))
         previous!.click()

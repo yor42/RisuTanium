@@ -169,7 +169,7 @@
             <ChevronDownIcon size={18} />
         </button>
         <label class="flex shrink-0 items-center gap-1 text-sm">
-            <input data-part="studio-lt-find-case" type="checkbox" bind:checked={caseSensitive} onchange={() => { announcement = ''; shown = null }} />
+            <input data-part="studio-lt-find-case" type="checkbox" aria-label={language.ltMatchCase} bind:checked={caseSensitive} onchange={() => { announcement = ''; shown = null }} />
             {language.ltMatchCase}
         </label>
         <button type="button" data-part="studio-lt-find-close" class={button} aria-label={language.ltFocusClose} onclick={onclose}>

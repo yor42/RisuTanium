@@ -78,6 +78,7 @@ interface Props {
         [language.sidebarUi.flagNoNewlineSubfix, '<no_end_nl>'],
     ]
 
+    const uid = $props.id()
     let open = $state(false)
 </script>
 
@@ -94,7 +95,7 @@ interface Props {
         }}>
             <span>{value.comment.length === 0 ? language.sidebarUi.unnamedScript : value.comment}</span>
         </button>
-        <button class="valuer" onclick={async () => {
+        <button class="valuer" aria-label={language.remove} onclick={async () => {
             const target = value
             const d = await alertConfirm(language.removeConfirm + target.comment)
             if(d){
@@ -104,13 +105,13 @@ interface Props {
                 onRemove(target)
             }
         }}>
-            <XIcon />
+            <XIcon aria-hidden="true" />
         </button>
     </div>
     {#if open}
         <div class="seperator p-2">
-            <span class="text-textcolor mt-6">{language.name}</span>
-            <TextInput size="sm" bind:value={value.comment} onchange={(e) => {
+            <span id="{uid}-name" class="text-textcolor mt-6">{language.name}</span>
+            <TextInput size="sm" labelId="{uid}-name" bind:value={value.comment} onchange={(e) => {
                 $ReloadGUIPointer += 1
             }} />
             <span class="text-textcolor mt-4">{language.sidebarUi.modificationType}</span>
@@ -124,10 +125,10 @@ interface Props {
                 <OptionInput value="edittrans">{language.editTranslationDisplay}</OptionInput>
                 <OptionInput value="disabled">{language.disabled}</OptionInput>
             </SelectInput>
-            <span class="text-textcolor mt-6">{language.sidebarUi.regexIn}</span>
-            <TextInput size="sm" bind:value={value.in} />
-            <span class="text-textcolor mt-6">{language.sidebarUi.regexOut}</span>
-            <TextAreaInput highlight autocomplete="off" size="sm" bind:value={value.out} onInput={(e) => {
+            <span id="{uid}-regex-in" class="text-textcolor mt-6">{language.sidebarUi.regexIn}</span>
+            <TextInput size="sm" labelId="{uid}-regex-in" bind:value={value.in} />
+            <span id="{uid}-regex-out" class="text-textcolor mt-6">{language.sidebarUi.regexOut}</span>
+            <TextAreaInput highlight autocomplete="off" size="sm" labelId="{uid}-regex-out" bind:value={value.out} onInput={(e) => {
                 $ReloadGUIPointer += 1
             }} />
             {#if value.ableFlag}
@@ -159,7 +160,7 @@ interface Props {
                 </Accordion>
             {/if}
             <div class="flex items-center mt-4">
-                <Check bind:check={value.ableFlag} onChange={() => {
+                <Check bind:check={value.ableFlag} label={language.sidebarUi.customFlag} onChange={() => {
                     if(!value.flag){
                         value.flag = 'g'
                     }

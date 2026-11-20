@@ -105,6 +105,7 @@
             type="checkbox"
             role="switch"
             checked={scoped}
+            aria-label={language.chatShellToggleScopeLabel}
             aria-describedby={noteId}
             onchange={flip}
         />

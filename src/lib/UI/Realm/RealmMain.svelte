@@ -52,6 +52,8 @@
     // write below -- pending, success and failure alike.
     let hubGeneration = 0
 
+    const uid = $props.id()
+
     // The single guarded load entry point: every explicit control (search, sort, NSFW, paging,
     // Retry, the online listener) calls this directly, and it is inert while this view still
     // believes the upstream-services agreement needs confirming (MC-086, MC-087 #3) -- nothing
@@ -174,16 +176,18 @@
             class="risu-focus-ring flex min-h-11 shrink-0 items-center gap-2 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50"
             onclick={() => ($OpenRealmStore = false)}
         >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={18} aria-hidden="true" />
             <span>{language.hubBackToHome}</span>
         </button>
         <h1 class="min-w-0 text-2xl font-bold tracking-tight text-textcolor whitespace-nowrap">{language.hub}</h1>
     </header>
     <div class="flex w-full flex-wrap items-center gap-2 px-4">
         <div class="flex w-full max-w-2xl min-w-0 grow items-stretch sm:w-auto">
+            <span id="{uid}-search" class="sr-only">{language.hubSearchLabel}</span>
             <input
                 bind:value={search}
-                aria-label={language.hubSearchLabel}
+                aria-labelledby="{uid}-search"
+                aria-describedby="{uid}-search"
                 placeholder={language.hubSearchLabel}
                 class="risu-focus-ring min-h-11 min-w-0 max-w-full grow rounded-md rounded-r-none border border-r-0 border-darkborderc bg-transparent px-3 text-textcolor outline-hidden"
             >
@@ -199,12 +203,13 @@
                 }}
                 class="risu-focus-ring flex min-h-11 min-w-11 items-center justify-center rounded-md rounded-l-none border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected/50"
             >
-                <SearchIcon size={18} />
+                <SearchIcon size={18} aria-hidden="true" />
             </button>
         </div>
         <label class="flex items-center gap-2 text-textcolor2">
-            <span>{language.hubSortLabel}</span>
+            <span id="{uid}-sort">{language.hubSortLabel}</span>
             <select
+                aria-labelledby="{uid}-sort"
                 class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-2 text-textcolor"
                 value={sort}
                 onchange={(event) => {
@@ -300,7 +305,7 @@
         <nav class="flex w-full items-center justify-center gap-2" aria-label={language.hubPageIndicator.replace('{page}', String(page + 1))}>
             <button
                 type="button"
-                aria-label={language.hubPreviousPage}
+                aria-label={language.realmPrevPage}
                 disabled={page === 0}
                 class="risu-focus-ring flex size-11 items-center justify-center rounded-md border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected/50 disabled:opacity-50"
                 onclick={() => {
@@ -310,12 +315,12 @@
                     }
                 }}
             >
-                <ArrowLeft size={18} />
+                <ArrowLeft size={18} aria-hidden="true" />
             </button>
             <span class="min-w-16 text-center text-textcolor2">{language.hubPageIndicator.replace('{page}', String(page + 1))}</span>
             <button
                 type="button"
-                aria-label={language.hubNextPage}
+                aria-label={language.realmNextPage}
                 disabled={hubStatus !== 'populated' && hubStatus !== 'pending'}
                 class="risu-focus-ring flex size-11 items-center justify-center rounded-md border border-darkborderc bg-darkbutton text-textcolor hover:bg-selected/50 disabled:opacity-50"
                 onclick={() => {
@@ -323,7 +328,7 @@
                     getHub()
                 }}
             >
-                <ArrowRight size={18} />
+                <ArrowRight size={18} aria-hidden="true" />
             </button>
         </nav>
     {/if}

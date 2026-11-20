@@ -64,7 +64,7 @@
                     "ml-2": true,
                     "text-textcolor2": !bindedPersona,
                     "text-textcolor": bindedPersona
-                }} onclick={(e) => {
+                }} aria-label={language.bindPersona} aria-pressed={!!bindedPersona} onclick={(e) => {
                     e.stopPropagation()
                     const chatIndex =DBState.db.characters[$selectedCharID].chatPage
                     if(!DBState.db.personas[DBState.db.selectedPersona].id){
@@ -77,7 +77,7 @@
                         DBState.db.characters[$selectedCharID].chats[chatIndex].bindedPersona = DBState.db.personas[DBState.db.selectedPersona].id
                     }
                 }}>
-                    <PinIcon size={20} />
+                    <PinIcon size={20} aria-hidden="true" />
                 </button>
             </Button>
         {:else if item.type === 'setting'}

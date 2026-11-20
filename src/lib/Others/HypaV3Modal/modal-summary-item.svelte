@@ -78,7 +78,11 @@
     onSummariesRemoved,
   }: Props = $props();
 
+  const uid = $props.id();
   const summary = $derived(hypaV3Data.summaries[summaryIndex]);
+  const numberLabel = $derived(
+    language.hypaV3Modal.summaryNumberLabel.replace("{0}", (summaryIndex + 1).toString())
+  );
   const summaryItemState = $state<SummaryItemState>({
     originalRef: null,
     translationRef: null,
@@ -406,7 +410,7 @@
 </script>
 
 <div
-  class="flex flex-col p-2 border rounded-lg sm:p-4 border-zinc-700 bg-zinc-800/50 {isSelected() ? 'ring-2 ring-blue-500' : ''}"
+  class="flex flex-col p-2 border rounded-lg sm:p-4 border-darkborderc bg-bgcolor/50 {isSelected() ? 'ring-2 ring-borderc' : ''}"
 >
   <!-- Original Summary Header -->
   <div class="flex items-center justify-between">
@@ -416,22 +420,18 @@
       {#if bulkEditState?.isEnabled}
         <input
           type="checkbox"
-          class="w-4 h-4 text-blue-600 bg-zinc-900 border-zinc-600 rounded-sm focus:ring-blue-500"
+          class="w-4 h-4 accent-borderc bg-darkbg border-darkborderc rounded-sm risu-focus-ring"
+          aria-label={numberLabel}
           checked={isSelected()}
           onchange={() => onToggleSummarySelection?.(summaryIndex)}
         />
       {/if}
 
-      <span class="text-sm text-zinc-400"
-        >{language.hypaV3Modal.summaryNumberLabel.replace(
-          "{0}",
-          (summaryIndex + 1).toString()
-        )}</span
-      >
+      <span id="{uid}-number" class="text-sm text-textcolor2">{numberLabel}</span>
 
       <!-- Category Tag -->
-      <span class="px-2 py-1 text-xs rounded-full bg-zinc-700 text-zinc-300">
-        <TagIcon class="w-3 h-3 inline mr-1" />
+      <span class="px-2 py-1 text-xs rounded-full bg-darkbutton text-textcolor">
+        <TagIcon class="w-3 h-3 inline mr-1" aria-hidden="true" />
         {getCategoryName(summary.categoryId, categories)}
       </span>
 
@@ -439,7 +439,7 @@
       {#if summary.tags && summary.tags.length > 0}
         {#each summary.tags as tag}
           <button
-            class="px-2 py-1 text-xs rounded-full bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+            class="px-2 py-1 text-xs rounded-full bg-selected text-textcolor ring-1 ring-borderc hover:ring-2 hover:ring-textcolor2 transition-colors"
             onclick={() => onOpenTagManager?.(summaryIndex)}
           >
             #{tag}
@@ -449,7 +449,7 @@
 
       <!-- Add Tag Button -->
       <button
-        class="px-2 py-1 text-xs rounded-full bg-zinc-600 hover:bg-zinc-500 text-zinc-300 transition-colors"
+        class="px-2 py-1 text-xs rounded-full bg-selected hover:bg-borderc text-textcolor transition-colors"
         onclick={() => onOpenTagManager?.(summaryIndex)}
         title={language.hypaV3Modal.tagManager}
       >
@@ -494,53 +494,59 @@
     <div class="flex items-center gap-2">
       <!-- Translate Button -->
       <button
-        class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+        class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
         tabindex="-1"
+        aria-label={language.translate}
         use:handleDualAction={{
           onMainAction: () => toggleTranslate(false),
           onAlternativeAction: () => toggleTranslate(true),
         }}
       >
-        <LanguagesIcon class="w-4 h-4" />
+        <LanguagesIcon class="w-4 h-4" aria-hidden="true" />
       </button>
 
       <!-- Important Button -->
       <button
         class="p-2 transition-colors {summary.isImportant
-          ? 'text-yellow-400 hover:text-yellow-300'
-          : 'text-zinc-400 hover:text-zinc-200'}"
+          ? 'rounded-sm bg-selected text-textcolor ring-1 ring-borderc'
+          : 'text-textcolor2 hover:text-textcolor'}"
         tabindex="-1"
+        aria-label={language.hypaV3Modal.importantBadge}
+        aria-pressed={!!summary.isImportant}
         onclick={toggleImportant}
       >
-        <StarIcon class="w-4 h-4" />
+        <StarIcon class="w-4 h-4" aria-hidden="true" />
       </button>
 
       <!-- Reroll Button -->
       <button
-        class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+        class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
         tabindex="-1"
+        aria-label={language.reroll}
         disabled={isOrphan()}
         onclick={async () => await toggleReroll()}
       >
-        <RefreshCw class="w-4 h-4" />
+        <RefreshCw class="w-4 h-4" aria-hidden="true" />
       </button>
 
       <!-- Delete This Button -->
       <button
-        class="p-2 transition-colors text-zinc-400 hover:text-rose-300"
+        class="p-2 transition-colors text-textcolor2 hover:text-draculared"
         tabindex="-1"
+        aria-label={language.uiCommon.delete}
         onclick={async () => await deleteThis()}
       >
-        <Trash2Icon class="w-4 h-4" />
+        <Trash2Icon class="w-4 h-4" aria-hidden="true" />
       </button>
 
       <!-- Delete After Button -->
       <button
-        class="p-2 transition-colors text-zinc-400 hover:text-rose-300"
+        class="p-2 transition-colors text-textcolor2 hover:text-draculared"
         tabindex="-1"
+        aria-label={language.hypaV3DeleteAfter}
         onclick={async () => await deleteAfter()}
       >
-        <ScissorsLineDashed class="w-4 h-4" />
+        <ScissorsLineDashed class="w-4 h-4" aria-hidden="true" />
       </button>
     </div>
   </div>
@@ -548,7 +554,9 @@
   <!-- Original Summary -->
   <div class="mt-2 sm:mt-4">
     <textarea
-      class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden focus:ring-2 focus:ring-zinc-500 text-zinc-200 bg-zinc-900"
+      class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
+      aria-labelledby="{uid}-number"
+      aria-describedby="{uid}-number"
       bind:this={summaryItemState.originalRef}
       bind:value={summary.text}
       onfocus={() => {
@@ -563,12 +571,14 @@
   <!-- Original Summary Translation -->
   {#if translation}
     <div class="mt-2 sm:mt-4">
-      <div class="mb-2 text-sm sm:mb-4 text-zinc-400">
+      <div id="{uid}-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
         {language.hypaV3Modal.translationLabel}
       </div>
 
       <textarea
-        class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden text-zinc-200 bg-zinc-900"
+        class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+        aria-labelledby="{uid}-translation"
+        aria-describedby="{uid}-translation"
         readonly
         tabindex="-1"
         bind:this={summaryItemState.translationRef}
@@ -581,39 +591,42 @@
     <!-- Rerolled Summary Header -->
     <div class="mt-2 sm:mt-4">
       <div class="flex items-center justify-between">
-        <span class="text-sm text-zinc-400"
+        <span id="{uid}-rerolled" class="text-sm text-textcolor2"
           >{language.hypaV3Modal.rerolledSummaryLabel}</span
         >
         <div class="flex items-center gap-2">
           <!-- Translate Rerolled Button -->
           <button
-            class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+            class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
             tabindex="-1"
+            aria-label={language.translate}
             use:handleDualAction={{
               onMainAction: () => toggleTranslateRerolled(false),
               onAlternativeAction: () => toggleTranslateRerolled(true),
             }}
           >
-            <LanguagesIcon class="w-4 h-4" />
+            <LanguagesIcon class="w-4 h-4" aria-hidden="true" />
           </button>
 
           <!-- Cancel Button -->
           <button
-            class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+            class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
             tabindex="-1"
+            aria-label={language.cancel}
             onclick={cancelRerolled}
           >
-            <XIcon class="w-4 h-4" />
+            <XIcon class="w-4 h-4" aria-hidden="true" />
           </button>
 
           <!-- Apply Button -->
           <button
-            class="p-2 transition-colors text-zinc-400 hover:text-rose-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-zinc-400"
+            class="p-2 transition-colors text-textcolor2 hover:text-draculared disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-textcolor2"
             tabindex="-1"
+            aria-label={language.apply}
             disabled={!canApplyRerolled}
             onclick={applyRerolled}
           >
-            <CheckIcon class="w-4 h-4" />
+            <CheckIcon class="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -622,7 +635,9 @@
     <!-- Rerolled Summary -->
     <div class="mt-2 sm:mt-4">
       <textarea
-        class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden focus:ring-2 focus:ring-zinc-500 text-zinc-200 bg-zinc-900"
+        class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden risu-focus-ring text-textcolor bg-darkbg"
+        aria-labelledby="{uid}-rerolled"
+        aria-describedby="{uid}-rerolled"
         tabindex="-1"
         bind:value={rerolled}
         oninput={() => {
@@ -635,12 +650,14 @@
     <!-- Rerolled Summary Translation -->
     {#if rerolledTranslation}
       <div class="mt-2 sm:mt-4">
-        <div class="mb-2 text-sm sm:mb-4 text-zinc-400">
+        <div id="{uid}-rerolled-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
           {language.hypaV3Modal.rerolledTranslationLabel}
         </div>
 
         <textarea
-          class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden text-zinc-200 bg-zinc-900"
+          class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+          aria-labelledby="{uid}-rerolled-translation"
+          aria-describedby="{uid}-rerolled-translation"
           readonly
           tabindex="-1"
           bind:this={summaryItemState.rerolledTranslationRef}
@@ -654,14 +671,14 @@
   <div class="mt-2 sm:mt-4">
     <div class="flex items-center justify-between">
       <button
-        class="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+        class="flex items-center gap-2 text-sm text-textcolor2 hover:text-textcolor transition-colors"
         tabindex="-1"
         onclick={toggleSummaryCollapse}
       >
         {#if isCollapsed()}
-          <ChevronDownIcon class="w-4 h-4" />
+          <ChevronDownIcon class="w-4 h-4" aria-hidden="true" />
         {:else}
-          <ChevronUpIcon class="w-4 h-4" />
+          <ChevronUpIcon class="w-4 h-4" aria-hidden="true" />
         {/if}
         <span>{language.hypaV3Modal.connectedMessageCountLabel.replace(
           "{0}",
@@ -672,14 +689,15 @@
       <div class="flex items-center gap-2">
         <!-- Translate Message Button -->
         <button
-          class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+          class="p-2 transition-colors text-textcolor2 hover:text-textcolor"
           tabindex="-1"
+          aria-label={language.translate}
           use:handleDualAction={{
             onMainAction: () => toggleTranslateExpandedMessage(false),
             onAlternativeAction: () => toggleTranslateExpandedMessage(true),
           }}
         >
-          <LanguagesIcon class="w-4 h-4" />
+          <LanguagesIcon class="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -691,10 +709,10 @@
       {#key summary.chatMemos.length}
         {#each summary.chatMemos as chatMemo, memoIndex (chatMemo)}
           <button
-            class="px-3 py-2 rounded-full text-xs text-zinc-200 hover:bg-zinc-700 transition-colors bg-zinc-900 {isMessageExpanded(
+            class="px-3 py-2 rounded-full text-xs text-textcolor hover:bg-selected transition-colors bg-darkbg {isMessageExpanded(
               chatMemo
             )
-              ? 'ring-2 ring-zinc-500'
+              ? 'ring-2 ring-borderc'
               : ''}"
             tabindex="-1"
             bind:this={summaryItemState.chatMemoRefs[memoIndex]}
@@ -714,7 +732,7 @@
         {#await getMessageFromChatMemo(expandedMessageState.selectedChatMemo) then expandedMessage}
           {#if expandedMessage}
             <!-- Role -->
-            <div class="mb-2 text-sm sm:mb-4 text-zinc-400">
+            <div id="{uid}-message-role" class="mb-2 text-sm sm:mb-4 text-textcolor2">
               {language.hypaV3Modal.connectedMessageRoleLabel.replace(
                 "{0}",
                 expandedMessage.role
@@ -723,18 +741,20 @@
 
             <!-- Content -->
             <textarea
-              class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden text-zinc-200 bg-zinc-900"
+              class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+              aria-labelledby="{uid}-message-role"
+              aria-describedby="{uid}-message-role"
               readonly
               tabindex="-1"
               value={expandedMessage.data}
             ></textarea>
           {:else}
-            <span class="text-sm text-red-400"
+            <span class="text-sm text-draculared"
               >{language.hypaV3Modal.connectedMessageNotFoundLabel}</span
             >
           {/if}
         {:catch error}
-          <span class="text-sm text-red-400"
+          <span class="text-sm text-draculared"
             >{language.hypaV3Modal.connectedMessageLoadingError.replace(
               "{0}",
               error.message
@@ -746,12 +766,14 @@
       <!-- Expanded Message Translation -->
       {#if expandedMessageState.translation}
         <div class="mt-2 sm:mt-4">
-          <div class="mb-2 text-sm sm:mb-4 text-zinc-400">
+          <div id="{uid}-message-translation" class="mb-2 text-sm sm:mb-4 text-textcolor2">
             {language.hypaV3Modal.connectedMessageTranslationLabel}
           </div>
 
           <textarea
-            class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-zinc-700 focus:outline-hidden text-zinc-200 bg-zinc-900"
+            class="w-full p-2 transition-colors border rounded-sm sm:p-4 min-h-40 sm:min-h-56 resize-vertical border-darkborderc focus:outline-hidden text-textcolor bg-darkbg"
+            aria-labelledby="{uid}-message-translation"
+            aria-describedby="{uid}-message-translation"
             readonly
             tabindex="-1"
             bind:this={expandedMessageState.translationRef}

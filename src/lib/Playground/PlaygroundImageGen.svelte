@@ -8,6 +8,7 @@
     let negPrompt = $state("");
     let img = $state("");
     let generating = $state(false)
+    const uid = $props.id()
     const run = async () => {
         console.log('running')
         if(generating){
@@ -24,11 +25,11 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.imageGeneration}</h2>
 
-<span class="text-textcolor text-lg">{language.prompt}</span>
-<TextAreaInput bind:value={prompt} />
+<span id="{uid}-prompt" class="text-textcolor text-lg">{language.prompt}</span>
+<TextAreaInput labelId="{uid}-prompt" bind:value={prompt} />
 
-<span class="text-textcolor text-lg">{language.playground.negPrompt}</span>
-<TextAreaInput bind:value={negPrompt} />
+<span id="{uid}-neg-prompt" class="text-textcolor text-lg">{language.playground.negPrompt}</span>
+<TextAreaInput labelId="{uid}-neg-prompt" bind:value={negPrompt} />
 
 {#if img}
     <span class="text-textcolor text-lg">{language.playground.generated}</span>

@@ -17,7 +17,7 @@
 
 <div class="flex items-center mt-2 gap-2">
     <label class="flex items-center gap-2">
-        <input type="checkbox" checked={studioSwitch.enabled} onclick={toggle} />
+        <input type="checkbox" aria-label={language.studioSwitchLabel} checked={studioSwitch.enabled} onclick={toggle} />
         <span>{language.studioSwitchLabel}</span>
     </label>
     <span>{language.chatShellOnThisDevice}</span>

@@ -25,6 +25,7 @@
     let loading = $state(false);
     let aspectRatio = 1;
     let fontFamily = $state('Arial');
+    const uid = $props.id();
 
     /** Loads the chosen image into the canvas. False when nothing was chosen; the caller decides what that ends. */
     async function selectFile(){
@@ -341,15 +342,15 @@
     <option value="manual">{language.playground.modeManual}</option>
 </SelectInput>
 
-<span class="text-textcolor text-lg mt-4">{language.destinationLanguage}</span>
-<TextInput bind:value={selLang} />
+<span id="{uid}-language" class="text-textcolor text-lg mt-4">{language.destinationLanguage}</span>
+<TextInput labelId="{uid}-language" bind:value={selLang} />
 
-<span class="text-textcolor text-lg mt-4">{language.prompt}</span>
-<TextAreaInput bind:value={prompt} />
+<span id="{uid}-prompt" class="text-textcolor text-lg mt-4">{language.prompt}</span>
+<TextAreaInput labelId="{uid}-prompt" bind:value={prompt} />
 
 
-<span class="text-textcolor text-lg mt-4">{language.font}</span>
-<TextInput bind:value={fontFamily} />
+<span id="{uid}-font" class="text-textcolor text-lg mt-4">{language.font}</span>
+<TextInput labelId="{uid}-font" bind:value={fontFamily} />
 
 <span class="text-textcolor text-lg mt-4">{language.fontSize}</span>
 <NumberInput bind:value={fontSize} />
@@ -367,8 +368,8 @@
 
 
 {#if output}
-    <span class="text-textcolor text-lg mt-4">JSON</span>
-    <TextAreaInput bind:value={output} className="overflow-x-auto" onchange={render} />
+    <span id="{uid}-json" class="text-textcolor text-lg mt-4">JSON</span>
+    <TextAreaInput labelId="{uid}-json" bind:value={output} className="overflow-x-auto" onchange={render} />
 {/if}
 
 <div class="relative mt-2">
