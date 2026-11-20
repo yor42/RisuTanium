@@ -34,6 +34,7 @@ import { alertConfirm, alertNormal, alertToast, doingAlert, waitUnreadNotice } f
 import { closeDialogForBack } from './alertBack'
 import { pageCovered, promptWaiting, resetAlertPromptsForTests } from './alertPrompts'
 import { alertTask, answerTask, resetTaskHostForTests, taskShown } from './alertTask.svelte'
+import { backgroundTask, setTaskToastPresenter } from './alertTask.svelte'
 import { alertStore } from './stores.svelte'
 import type { TaskDef } from '../lib/Nexus/pattern/taskProgress'
 
@@ -151,5 +152,35 @@ describe('Back and a task', () => {
         expect(taskShown()).toBe(true)
         expect(promptWaiting()).toBe(true)
         expect(get(alertStore).type).toBe('toast')
+    })
+})
+
+describe('a backgrounded task covers nothing', () => {
+    function backgroundOne(onCancel: () => void = () => { }) {
+        setTaskToastPresenter({ post: () => 1, update: () => { }, end: () => { } })
+        const handle = alertTask({ ...def, onCancel, background: true })
+        expect(backgroundTask()).toBe(true)
+        return handle
+    }
+
+    test('the covering readers are false once the task is in the background', () => {
+        backgroundOne()
+        expect(taskShown()).toBe(false)
+        expect(pageCovered()).toBe(false)
+        expect(doingAlert()).toBe(false)
+    })
+
+    test('Back does not reach a backgrounded task', () => {
+        const onCancel = vi.fn()
+        backgroundOne(onCancel)
+        closeDialogForBack()
+        expect(onCancel).not.toHaveBeenCalled()
+    })
+
+    test('waitUnreadNotice does not wait on a background result', async () => {
+        const handle = backgroundOne()
+        void handle.finish({ headline: 'Done' })
+        expect(await settled(waitUnreadNotice())).toBe(true)
+        expect(handle.detached).toBe(false)
     })
 })

@@ -1,0 +1,36 @@
+/*
+  Task toasts: the labelled group inside the toast stack, one toast per background task, and its mini bar.
+  Needs styles/pattern-tokens.css. Every value comes from a pattern or task token; a literal here is 0, a keyword, a
+  percentage, the 1px width of the badge border, or a system colour in the forced-colours block. There is no backdrop-filter and no ring.
+  Every rule keyed on a host attribute names a task toast part in the same compound.
+  Motion is transform and opacity only: the fill scales, and reduced motion, the rm class and low power remove its transition.
+*/
+
+[data-part="task-toasts"] { display: flex; flex-direction: column; gap: var(--pattern-toast-gap); min-width: 0; }
+[data-part="task-toast"] { background: var(--pattern-surface-toast); min-width: 0; }
+[data-part="task-toast"][data-stays] { border-inline-start: var(--pattern-skip-edge-width) solid var(--pattern-skip-edge); }
+[data-part="task-toast-title"] { overflow-wrap: anywhere; font-weight: var(--pattern-weight-strong); }
+[data-part="task-toast-line"] { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+[data-part="task-toast-mark"] { flex: none; }
+[data-part="task-toast-badge"] { position: absolute; right: 0; bottom: 0; width: 50%; height: 50%; display: grid; place-items: center; border-radius: 50%; color: var(--pattern-skip-edge); background: var(--pattern-surface-toast); border: 1px solid var(--pattern-skip-edge); }
+
+/* the mini bar: a scaled fill, never a width */
+[data-part="task-toast-bar"] { position: relative; height: var(--pattern-task-bar-height-compact); margin-top: var(--pattern-toast-gap); border-radius: var(--pattern-pill-radius); overflow: hidden; background: var(--pattern-task-bar-track); }
+[data-part="task-toast-bar-fill"] { position: absolute; inset: 0; border-radius: inherit; background: var(--pattern-task-bar-fill); transform-origin: left center; transform: scaleX(var(--p-fill, 0)); transition: transform var(--task-fill-dur) var(--task-fill-ease); }
+[data-part="task-toast"][data-task-phase="running"] [data-part="task-toast-bar-fill"] { will-change: transform; }
+[data-part="task-toast"][data-stays] [data-part="task-toast-bar"] { display: none; }
+
+/* reduced motion, the rm class and low power snap the fill */
+@media (prefers-reduced-motion: reduce) {
+  :root:not(.rm-off) [data-part="task-toast-bar-fill"] { transition: none; }
+}
+:root.rm [data-part="task-toast-bar-fill"] { transition: none; }
+[data-part="task-toasts"][data-low-power] [data-part="task-toast-bar-fill"] { transition: none; }
+
+/* forced colours: the same states by shape and system colours */
+@media (forced-colors: active) {
+  [data-part="task-toast"] { background: Canvas; border: 1px solid CanvasText; }
+  [data-part="task-toast-bar"] { background: Canvas; border: 1px solid CanvasText; }
+  [data-part="task-toast-bar-fill"] { background: Highlight; forced-color-adjust: none; }
+  [data-part="task-toast-badge"] { border-color: CanvasText; color: CanvasText; background: Canvas; }
+}

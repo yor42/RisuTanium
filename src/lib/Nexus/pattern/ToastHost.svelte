@@ -1,8 +1,11 @@
 <script lang="ts">
     import { untrack } from 'svelte'
     import { language } from '../../../lang'
+    import { motionPrefs } from '../../../ts/chatShell/motionPrefs.svelte'
     import { toastHost, type ToastHost, type ToastKind } from '../../../ts/toast/toastHost.svelte'
+    import NexusStatusMark from '../brand/NexusStatusMark.svelte'
     import { modalLayerOpen } from './modalLayers.svelte'
+    import './pattern-task-toast.css'
 
     interface Props {
         /** True while an alert covers the page: the stack is hidden and inert and its timers are held. */
@@ -78,30 +81,36 @@
         syncHolds()
     }
 
-    // Deliberate side effect: the focused element inside the stack is remembered while the visible list is
+    // Deliberate side effect: the focused element inside the stack is remembered while the visible lists are
     // computed, because the markup reads it before it touches the DOM in both schedulers, whereas an
     // `$effect.pre` runs after the block update under the async scheduler and sees focus already dropped.
+    // One derived serves the task block (rendered first) and the plain block, so the capture happens before
+    // either block updates the DOM.
     // This holds while: `activeElement` and `root` are read untracked, so the capture adds no dependency;
-    // `touch()` in the host publishes `visible` and `version` together, so the capture runs exactly when the
-    // effect below restores; and a single batch computes the list once per update (a markup `await`, an async
+    // `touch()` in the host publishes `visible`, `tasks` and `version` together, so the capture runs exactly when
+    // the effect below restores; and a single batch computes the lists once per update (a markup `await`, an async
     // derived or `fork()` here would need the capture revisited).
-    const visible = $derived.by(() => {
-        const list = host.visible
+    const lists = $derived.by(() => {
+        const plain = host.visible
+        const tasks = host.tasks
         before = untrack(() => {
             const active = document.activeElement
             return root !== undefined && active !== null && root.contains(active) ? active : null
         })
-        return list
+        return { tasks, plain }
     })
 
     $effect(() => {
         void host.version
+        // Read on every run, so a skip set by one publish never outlives it.
+        const skipReturn = host.takeFocusReturnSkip()
         const hadFocus = before
         before = null
         // The focused button or its toast was removed: focus returns to where it entered the stack from. This reads
         // only the pre-update snapshot and the origin, so it holds whether or not the engine fires `focusout` on
-        // removal. While suspended the stack is inert and focus is left alone.
-        if (hadFocus !== null && root !== undefined && !root.contains(document.activeElement) && !host.suspended) {
+        // removal. While suspended the stack is inert and focus is left alone. A reopened task hands focus to its
+        // card, so its removal skips the return.
+        if (!skipReturn && hadFocus !== null && root !== undefined && !root.contains(document.activeElement) && !host.suspended) {
             if (origin !== null && origin.isConnected && !root.contains(origin)) {
                 origin.focus()
             }
@@ -141,7 +150,78 @@
     onfocusin={onFocusIn}
     onfocusout={onFocusOut}
 >
-    {#each visible as toast (toast.id)}
+    {#if lists.tasks.length > 0}
+        <div
+            class="task-toasts"
+            data-part="task-toasts"
+            role="region"
+            aria-label={language.patternTaskToastsLabel}
+            data-low-power={motionPrefs.lowPower ? '' : undefined}
+        >
+            {#if host.tasksHidden > 0 || host.tasksExpanded}
+                <button
+                    type="button"
+                    class="pointer-events-auto min-h-11 self-end rounded-md border border-darkborderc bg-darkbg px-3 text-sm text-textcolor2 hover:bg-selected"
+                    data-part="task-toast-more"
+                    aria-expanded={host.tasksExpanded}
+                    aria-label={host.tasksExpanded ? language.patternTaskShowLess : language.patternTaskToastMoreLabel(host.tasksHidden)}
+                    onclick={() => host.toggleTasksExpanded()}
+                >{host.tasksExpanded ? language.patternTaskShowLess : language.patternTaskToastMore(host.tasksHidden)}</button>
+            {/if}
+            {#each lists.tasks as task (task.id)}
+                {#if task.shown}
+                    <!-- The pointer handlers only feed the hold derivation; the buttons are the controls. -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <div
+                        class="toast pointer-events-auto flex items-center gap-2 rounded-md border p-3 text-textcolor shadow-lg {task.mark === 'error' ? 'border-draculared' : 'border-darkborderc'}"
+                        data-part="task-toast"
+                        role="group"
+                        aria-label={task.title}
+                        data-task-phase={task.phase}
+                        data-stays={task.phase === 'stays' ? '' : undefined}
+                        onpointerenter={onMouseEnterOrMove}
+                        onpointermove={onMouseEnterOrMove}
+                        onpointerleave={onMouseLeave}
+                    >
+                        <div class="relative flex-none" data-part="task-toast-mark" aria-hidden="true">
+                            <NexusStatusMark status={task.mark} size={24} still={!task.newest} lowPower={motionPrefs.lowPower} label={task.title} />
+                            {#if task.badge}
+                                <span data-part="task-toast-badge">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v9M12 19h.01" /></svg>
+                                </span>
+                            {/if}
+                        </div>
+                        <div class="min-w-0 flex-1 break-words">
+                            <p class="m-0" data-part="task-toast-title">{task.title}</p>
+                            <p class="m-0 text-sm text-textcolor2" data-part="task-toast-line" aria-hidden="true">{task.line}</p>
+                            <div data-part="task-toast-bar" aria-hidden="true" style:--p-fill={task.fraction}>
+                                <div data-part="task-toast-bar-fill"></div>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 hover:bg-selected"
+                            data-part="task-toast-open"
+                            aria-disabled={modalLayerOpen() ? 'true' : undefined}
+                            onclick={() => { if (!modalLayerOpen()) host.openTask(task.id) }}
+                        >{task.openLabel}</button>
+                        {#if task.phase !== 'running'}
+                            <button
+                                type="button"
+                                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-textcolor2 hover:bg-selected"
+                                data-part="task-toast-dismiss"
+                                aria-label={language.uiCommon.close}
+                                onclick={() => host.dismissTask(task.id)}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                            </button>
+                        {/if}
+                    </div>
+                {/if}
+            {/each}
+        </div>
+    {/if}
+    {#each lists.plain as toast (toast.id)}
         <!-- The pointer handlers only feed the hold derivation; the buttons are the controls. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
