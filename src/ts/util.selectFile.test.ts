@@ -61,6 +61,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 vi.mock('src/lib/UI/PopupList.svelte', () => ({ default: {} }))
 
 import { selectFileByDom, selectMultipleFile, selectSingleFile } from 'src/ts/util'
+import { resetPickOpenerForTest, takePickReturn } from 'src/ts/pickOpener'
 
 let picker: DomPicker
 
@@ -201,6 +202,37 @@ describe('selectFileByDom accept token and extension filter', () => {
 
         const result = await settledWithin(pending)
         expect(result.value?.map((item) => item.name)).toEqual(['X.Json'])
+    })
+})
+
+describe('selectFileByDom pick-return mark', () => {
+    beforeEach(() => resetPickOpenerForTest())
+    afterEach(() => resetPickOpenerForTest())
+
+    test('files that come back mark the pick return once', async () => {
+        const pending = selectFileByDom(['png'], 'multiple')
+        picker.pick([file('a.png', [1]), file('b.png', [2])])
+        await settledWithin(pending)
+        expect(takePickReturn()).toBe(true)
+        expect(takePickReturn()).toBe(false)
+    })
+
+    test('a pick the extension filter empties does not mark', async () => {
+        const pending = selectFileByDom(['png'], 'multiple')
+        picker.pick([file('notes.txt', [1])])
+        expect(await settledWithin(pending)).toEqual({ pending: false, value: [] })
+        expect(takePickReturn()).toBe(false)
+    })
+
+    test('a closed chooser and an empty confirmation do not mark', async () => {
+        const closed = selectFileByDom(['png'], 'single')
+        picker.cancel()
+        await settledWithin(closed)
+        expect(takePickReturn()).toBe(false)
+        const empty = selectFileByDom(['png'], 'single')
+        picker.emptyChange()
+        await settledWithin(empty)
+        expect(takePickReturn()).toBe(false)
     })
 })
 
