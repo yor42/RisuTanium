@@ -172,6 +172,78 @@ describe('T-A8: isCharacterUnsavable follows the latest pass', () => {
         expect((await page.k.saved()).botPresets[1]).toMatchObject({ temperature: 99 })
     })
 
+    // New-behaviour guards, not pre-fix reproducers: the notice keys do not exist on the pre-fix base. The page's
+    // isSaveClean is also what keeps the asset sweep from deleting an icon only a live loadout names while a list is held.
+    test('P1 guard (new rule): a loadout list that cannot be saved is told once with the held notice, keeps the page not clean, and is clean again after the fix', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.saveLoadoutsHeldNotice('"Loadout B"')
+        const toasts = (): number => vi.mocked(alertToast).mock.calls.filter(([shown]) => shown === notice).length
+        expect(page.w.api.isSaveClean()).toBe(true)
+
+        await nextCommit(page.w, () => {
+            page.db.loadouts = [{ name: 'Loadout A', id: 'l1', icons: [] }, { name: 'Loadout B', id: 'l2', icons: [], broken: unreadable() }]
+            characters(page.db)[2].personality = 'edited next to the held loadouts'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => toasts() >= 1, 'the notice', 6000)
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the held loadouts' })
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        await nextCommit(page.w, () => {
+            ;(page.db.loadouts as Entry[])[1].broken = 1
+            characters(page.db)[3].personality = 'edited after the fix'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[3].chaId))
+            page.flush()
+        }, false)
+        await until(() => page.w.api.isSaveClean(), 'a clean page after the fix', 6000)
+        expect(toasts()).toBe(1)
+        expect((await page.k.saved()).loadouts[1]).toMatchObject({ name: 'Loadout B', broken: 1 })
+    })
+
+    test('P2 guard (new rule): statics that cannot be saved get the usage statistics notice, not the plugin data one', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.saveItemUnsavedNotice(language.saveItemStaticsLabel)
+        const pluginNotice = language.saveItemUnsavedNotice(language.saveItemPluginDataLabel('statics'))
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+
+        await nextCommit(page.w, () => {
+            ;(page.db.statics as Entry).messages = unreadable()
+            characters(page.db)[2].personality = 'edited next to the held statics'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(notice) >= 1, 'the statics notice', 6000)
+        expect(shown(pluginNotice)).toBe(0)
+        expect(page.w.api.isSaveClean()).toBe(false)
+    })
+
+    test('P3 guard (new rule): a character order that cannot be saved gets the character order notice', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.saveItemUnsavedNotice(language.saveItemCharacterOrderLabel)
+        const pluginNotice = language.saveItemUnsavedNotice(language.saveItemPluginDataLabel('characterOrder'))
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+
+        await nextCommit(page.w, () => {
+            page.db.characterOrder = [...(page.db.characterOrder as unknown[]), unreadable()]
+            characters(page.db)[2].personality = 'edited next to the held character order'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(notice) >= 1, 'the character order notice', 6000)
+        expect(shown(pluginNotice)).toBe(0)
+        expect(page.w.api.isSaveClean()).toBe(false)
+    })
+
     test('a task preset list that cannot be saved gets the task preset notice, not the bot preset one', async () => {
         const page = await startPage()
         await settled(page.w)

@@ -2014,7 +2014,7 @@ describe('new behaviour: a character that cannot be saved is skipped, noticed on
     test('guard (passes before and after): a bad value outside a character still fails the pass and is reported', async () => {
         const db = clone(buildSmall(4))
         const loop = await startLoop(db, { idleNet: null })
-        ;(db as unknown as { loadouts: unknown[] }).loadouts = [cyclic()]
+        ;((db as unknown as { pluginV2: Array<Record<string, unknown>> }).pluginV2)[0].cycle = cyclic()
         loop.reloadFlag.state = true
         loop.due()
         await until(() => loop.failures.length >= 1, 'the failure report', 4000)

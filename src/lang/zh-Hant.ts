@@ -1873,6 +1873,10 @@ export const languageChineseTraditional = {
     "emptyTrashCannotUndo": "此操作無法復原。",
     "backupLoadWorkInProgress": "仍有作業正在執行（對話回覆、匯入或匯出、正在新增的圖片或資源、清理作業，或外掛請求），因此未載入備份。請等待其完成或將其停止，然後再試一次。重新載入頁面也會結束所有作業。",
     "backupLoadRefusedLine": "未載入另一個備份：仍有其他作業正在執行。",
+    "backupRestoreLoading": "正在載入備份...",
+    "backupRestoreReadingDatabase": "正在讀取備份中的資料庫...",
+    "backupRestoreFinishingFiles": "正在完成檔案複製...",
+    "backupRestoreFailed": "失敗。檔案是否已損毀？",
     "insertOrder": "插入順序",
     "activationKeys": "啟用關鍵字",
     "activationKeysInfo": "以逗號分隔",
@@ -3974,9 +3978,13 @@ export const languageChineseTraditional = {
         `RisuTanium 無法儲存預設 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對預設的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的預設會保留。如果頁面在此之前重新載入，你目前的設定會作為新預設保留。`,
     "saveTaskPresetsHeldNotice": (name: string) =>
         `RisuTanium 無法儲存預設 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對預設的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的預設會保留。`,
+    "saveLoadoutsHeldNotice": (name: string) =>
+        `RisuTanium 無法儲存設定組合 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對設定組合的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的設定組合會保留。`,
     "saveItemModuleLabel": (name: string) => `模組「${name}」`,
     "saveItemSettingLabel": (field: string) => `設定「${field}」`,
     "saveItemPluginDataLabel": (key: string) => `外掛資料「${key}」`,
+    "saveItemStaticsLabel": "使用統計",
+    "saveItemCharacterOrderLabel": "角色順序",
     "personasRepairedNotice": (count: number) =>
         `RisuTanium 排除了 ${count} 個不是有效資料的使用者人設。這可能是外掛寫入的。`,
     "personaListEmptyNotice": `使用者人設清單中沒有剩餘的可用人設，因此 RisuTanium 根據你的使用者名稱和圖示新增了一個人設並將其選取。`,

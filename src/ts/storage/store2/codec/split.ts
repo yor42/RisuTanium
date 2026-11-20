@@ -3,7 +3,7 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     carryUnknownFields, KNOWN_FIELDS, randomId26, UNIT_TYPE,
-    type ChatEntry, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import {
     CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
@@ -209,8 +209,9 @@ export class Encoder {
     declare readonly split: SplitRecorder | undefined
 
     /**
-     * `skipItems`: a module, preset list, setting or plugin-data key whose data cannot be read as plain JSON is gone
-     * without, as the front and module encodes describe; off, such a fault fails the pass as it always did.
+     * `skipItems`: a module, preset list, loadouts list, statics, character order, setting or plugin-data key whose data
+     * cannot be read as plain JSON is gone without, as the front, fixed-field and module encodes describe; off, such a
+     * fault fails the pass as it always did.
      */
     constructor(readonly options: EncodeOptions, readonly previous: PreviousEncoding | null, split?: SplitRecorder, readonly skipItems = false) {
         if (MEASURE && split !== undefined) {
@@ -1176,6 +1177,94 @@ function configOf(db: Database, encoder: Encoder, botPresetsCarried: boolean): J
     return config
 }
 
+/** The loadouts list, the statics and the character order of the live database as plain JSON, each possibly kept at its last saved value. */
+interface FixedFields {
+    loadouts: JsonValue[]
+    statics: JsonValue | undefined
+    characterOrder: JsonValue | undefined
+}
+
+/**
+ * The loadouts of the live database as plain JSON. The list is held whole (an item's position and the config asset list
+ * both depend on the whole list): when the list or any item cannot be read, the previous encoding's items are returned
+ * and every faulty loadout is reported under its name (else its position). Without those items the first fault is thrown.
+ */
+function readLoadoutsKeeping(db: Database, previous: PreviousEncoding, skipped: SkippedItem[]): JsonValue[] {
+    const items: JsonValue[] = []
+    const labels: string[] = []
+    const causes: unknown[] = []
+    let list: unknown[] = []
+    try {
+        list = listOrEmpty(db.loadouts, 'loadouts')
+    } catch (error) {
+        if (!isSkippableFault(error)) {
+            throw error
+        }
+        causes.push(error)
+        labels.push(quoted('loadouts'))
+    }
+    list.forEach((item, index) => {
+        try {
+            items.push(toPlainJson(item) ?? null)
+        } catch (error) {
+            if (!isSkippableFault(error)) {
+                throw error
+            }
+            causes.push(error)
+            labels.push(quoted(guardedName(item) ?? `loadouts[${index}]`))
+        }
+    })
+    if (causes.length === 0) {
+        return items
+    }
+    const held = previous.objects?.loadouts
+    if (held === undefined) {
+        throw causes[0]
+    }
+    skipped.push({ scope: 'loadouts', key: 'loadouts', label: labels.join(', '), saved: true, cause: causes[0] })
+    return [...held]
+}
+
+/**
+ * One whole field of the live database as plain JSON. A fault of the data keeps the value the previous encoding's body
+ * holds under `field`, or leaves the field out when that body holds none (`saved` false); without a body the fault is thrown.
+ */
+function readFieldKeeping(
+    read: () => JsonValue | undefined, held: ContentBody | undefined, field: 'value' | 'characterOrder',
+    scope: 'statics' | 'characterOrder', skipped: SkippedItem[],
+): JsonValue | undefined {
+    try {
+        return read()
+    } catch (error) {
+        if (!isSkippableFault(error) || held === undefined) {
+            throw error
+        }
+        const saved = Object.hasOwn(held, field) && held[field] !== undefined
+        skipped.push({ scope, key: scope, label: quoted(scope), saved, cause: error })
+        return saved ? held[field] : undefined
+    }
+}
+
+/**
+ * Reads the three fixed fields in the order they are put in. Without `skipItems`, or without an earlier encoding to fall
+ * back on, the first fault fails the pass; otherwise each field keeps its last saved value on a fault of its data.
+ */
+function readFixedFields(db: Database, encoder: Encoder): FixedFields {
+    const previous = encoder.previous
+    if (!encoder.skipItems || previous === null) {
+        const loadouts = listOrEmpty(db.loadouts, 'loadouts').map((item) => toPlainJson(item) ?? null)
+        const statics = toPlainJson(db.statics)
+        const characterOrder = toPlainJson(db.characterOrder)
+        return { loadouts, statics, characterOrder }
+    }
+    const loadouts = readLoadoutsKeeping(db, previous, encoder.skippedItems)
+    const statics = readFieldKeeping(() => toPlainJson(db.statics), previous.objects?.statics, 'value', 'statics', encoder.skippedItems)
+    const characterOrder = readFieldKeeping(
+        () => toPlainJson(db.characterOrder), previous.objects?.order, 'characterOrder', 'characterOrder', encoder.skippedItems,
+    )
+    return { loadouts, statics, characterOrder }
+}
+
 /**
  * Completes the tree from the parts the caller produced: the shards of `entries`,
  * the fixed units and the manifest. `carried` are the previous units this
@@ -1206,12 +1295,10 @@ export function finishTree(
         split.addMs('splitFinishShardsMs', fixedStarted - shardsStarted)
     }
 
-    const loadoutItems = listOrEmpty(db.loadouts, 'loadouts').map((item) => toPlainJson(item) ?? null)
+    const { loadouts: loadoutItems, statics, characterOrder } = readFixedFields(db, encoder)
     const loadouts = encoder.put('loadouts', UNIT_TYPE.loadouts, { v: 1, items: loadoutItems } satisfies LoadoutsBody)
-    const statics = toPlainJson(db.statics)
     const staticsBody: StaticsBody = statics === undefined ? { v: 1 } : { v: 1, value: statics }
     const staticsUnit = encoder.put('statics', UNIT_TYPE.statics, staticsBody)
-    const characterOrder = toPlainJson(db.characterOrder)
     const orderBody: OrderBody = { v: 1, chars: entries.map(entry => entry.u) }
     if (characterOrder !== undefined) {
         orderBody.characterOrder = characterOrder
@@ -1280,7 +1367,7 @@ export function finishTree(
             units: indexUnits,
             entities: encoder.entities,
             objects: {
-                manifest, shards: shardBodies, moduleIndex: moduleSet.body, config, statics: { ...staticsBody }, order: { ...orderBody },
+                manifest, shards: shardBodies, moduleIndex: moduleSet.body, config, statics: { ...staticsBody }, order: { ...orderBody }, loadouts: loadoutItems,
                 // A carried preset list keeps the bodies of the encoding it was carried from; one that held none holds none.
                 ...(presetBodies === undefined ? {} : { presets: presetBodies }),
             },

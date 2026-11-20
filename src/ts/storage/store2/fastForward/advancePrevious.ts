@@ -10,7 +10,7 @@ import {
     checkedBytes, entityIdsOf, moduleHandles, registerEntityUnits, registerModuleUnits,
     type PreviousOfTreeOptions, type StoredTree,
 } from '../previousOfTree'
-import type { JsonObject } from '../../blockFrame'
+import type { JsonObject, JsonValue } from '../../blockFrame'
 
 /**
  * The acknowledged encoding of a peer's tree, built from the encoding the page holds and the units that changed: the
@@ -115,7 +115,17 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
     const staticsBody = unchanged('statics', UNIT_TYPE.statics, fixed.statics) !== undefined
         ? objectsBefore.statics
         : bodyOf('statics', UNIT_TYPE.statics, fixed.statics, staticsBytes) as ContentBody
-    register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
+    const loadoutsBytes = register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
+    // A body that is missing or invalid is left unknown, never refused: a later loadouts fault then fails the pass, and a
+    // peer change to the loadouts is still parked by the fast-forward's own check.
+    let loadoutsBody: readonly JsonValue[] | undefined
+    if (unchanged('loadouts', UNIT_TYPE.loadouts, fixed.loadouts) !== undefined) {
+        loadoutsBody = objectsBefore.loadouts
+    } else if (loadoutsBytes !== undefined) {
+        const parsed = readUnit(loadoutsBytes, UNIT_TYPE.loadouts)
+        const items = parsed.status === 'ok' || parsed.status === 'stale' ? (parsed.value.body as ContentBody).items : undefined
+        loadoutsBody = Array.isArray(items) ? items : undefined
+    }
 
     const presets: JsonObject[] = []
     let presetsKnown = true
@@ -166,6 +176,9 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
     }
     if (staticsBody !== undefined) {
         objects.statics = staticsBody
+    }
+    if (loadoutsBody !== undefined) {
+        objects.loadouts = loadoutsBody
     }
     if (presetsKnown) {
         objects.presets = presets

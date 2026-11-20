@@ -1961,6 +1961,10 @@ export const languageEnglish = {
     emptyTrashCannotUndo: "This cannot be undone.",
     backupLoadWorkInProgress: "Something is still running (a chat reply, an import or export, an image or asset being added, a clean-up, or a plugin request), so the backup was not loaded. Wait for it to finish or stop it, then try again. Reloading the page also ends all work.",
     backupLoadRefusedLine: "Another backup was not loaded: other work is still running.",
+    backupRestoreLoading: "Loading backup...",
+    backupRestoreReadingDatabase: "Reading the database in the backup...",
+    backupRestoreFinishingFiles: "Finishing copying files...",
+    backupRestoreFailed: "Failed, Is file corrupted?",
     insertOrder: "Insertion Order",
     activationKeys: "Activation keys",
     activationKeysInfo: "Comma seperated",
@@ -4073,9 +4077,13 @@ export const languageEnglish = {
         `RisuTanium cannot save the preset ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to presets are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved presets are kept. If the page reloads before then, your current settings are kept as a new preset.`,
     saveTaskPresetsHeldNotice: (name: string) =>
         `RisuTanium cannot save the preset ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to presets are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved presets are kept.`,
+    saveLoadoutsHeldNotice: (name: string) =>
+        `RisuTanium cannot save the loadout ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to loadouts are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved loadouts are kept.`,
     saveItemModuleLabel: (name: string) => `the module "${name}"`,
     saveItemSettingLabel: (field: string) => `the setting "${field}"`,
     saveItemPluginDataLabel: (key: string) => `the plugin data "${key}"`,
+    saveItemStaticsLabel: "the usage statistics",
+    saveItemCharacterOrderLabel: "the character order",
     personasRepairedNotice: (count: number) =>
         `RisuTanium left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,

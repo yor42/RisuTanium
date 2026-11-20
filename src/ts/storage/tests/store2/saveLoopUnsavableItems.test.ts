@@ -454,12 +454,82 @@ describe('a front item is skipped without a mark', () => {
     })
 
     test('guard (passes before and after): a bad value in a part no skip rule covers still fails the pass and is reported', async () => {
-        const loop = await start({ live: (db) => { (db as unknown as Entry).loadouts = [cyclic()] } })
-        chars(loop.db)[2].personality = 'edited next to the unstorable loadout'
+        const loop = await start({ live: (db) => { ((db as unknown as Entry).pluginV2 as Entry[])[0].cycle = cyclic() } })
+        chars(loop.db)[2].personality = 'edited next to the unstorable plugin'
         loop.mark(chaIdOf(loop.db, 2))
         await until(() => loop.failures.length >= 1, 'the failure report', 4000)
         expect(loop.itemCalls).toEqual([])
         expect(loop.state.saved).toBe(0)
+    })
+})
+
+describe('loadouts, statics and the character order that cannot be stored keep their saved value', () => {
+    const assetPath = (n: number): string => `assets/${n.toString(16).padStart(64, '0')}.png`
+    const loadoutEntry = (name: string, characterIds: string[], n: number): Entry => ({
+        name, id: `l${n}`, lastUsed: 1_700_000_000_000 + n, favorite: false, characterIds, modules: [], globalVariables: {},
+        presetName: 'Default', presetId: 'preset-1', personaId: 'persona-1', icons: [assetPath(n)],
+    })
+    const loadouts = (db: Database): Entry[] => (db as unknown as Entry).loadouts as Entry[]
+    const order = (db: Database): unknown[] => (db as unknown as Entry).characterOrder as unknown[]
+
+    /** Real-shaped loadouts and character-order folders in what the acknowledged encoding holds. */
+    const seedFixed = (db: Database): void => {
+        const raw = db as unknown as Entry
+        raw.loadouts = [
+            loadoutEntry('Loadout A', [chaIdOf(db, 0)], 1),
+            loadoutEntry('Loadout B', [chaIdOf(db, 1)], 2),
+            loadoutEntry('Loadout C', [chaIdOf(db, 2)], 3),
+        ]
+        raw.characterOrder = [chaIdOf(db, 0), { name: 'Folder', data: [chaIdOf(db, 1)], color: '', id: 'f1', imgFile: assetPath(9) }, chaIdOf(db, 2), chaIdOf(db, 3)]
+        raw.statics = { messages: 12, imports: 3 }
+    }
+
+    test('L1 reproducer: a cyclic loadout keeps the saved list, the rest saves, one notice names it, and a fix saves the live list', async () => {
+        const loop = await start({ seed: seedFixed, live: (db) => { loadouts(db)[1].cyc = cyclic() } })
+        chars(loop.db)[2].personality = 'edited next to the held loadouts'
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the held loadouts' })
+        expect(loop.failures).toEqual([])
+        expect(saved.loadouts).toEqual(loop.kit.seedDb.loadouts)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'loadouts', key: 'loadouts', label: '"Loadout B"', saved: true }])
+        await quietPasses(loop, 10)
+        expect(loop.notices()).toHaveLength(1)
+        expect(loop.failures).toEqual([])
+        expect(loop.requested).toBe(0)
+
+        delete loadouts(loop.db)[1].cyc
+        loadouts(loop.db)[0].favorite = true
+        chars(loop.db)[3].personality = 'edited after the fix'
+        loop.mark(chaIdOf(loop.db, 3))
+        await until(() => loop.itemCalls.length >= 2, 'the report that clears it', 4000)
+        expect(loop.itemCalls[1].current).toEqual([])
+        expect((await loop.kit.saved()).loadouts[0]).toMatchObject({ favorite: true })
+    })
+
+    test('L2 reproducer: a BigInt in the statics keeps the saved statics while the rest saves', async () => {
+        const loop = await start({ seed: seedFixed, live: (db) => { ((db as unknown as Entry).statics as Entry).messages = 10n } })
+        chars(loop.db)[2].personality = 'edited next to the held statics'
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the held statics' })
+        expect(loop.failures).toEqual([])
+        expect(saved.statics).toEqual(loop.kit.seedDb.statics)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'statics', key: 'statics', label: '"statics"', saved: true }])
+    })
+
+    test('L3 reproducer: a cyclic folder in the character order keeps the saved order while the rest saves', async () => {
+        const loop = await start({ seed: seedFixed, live: (db) => { (order(db)[1] as Entry).cyc = cyclic() } })
+        chars(loop.db)[2].personality = 'edited next to the held character order'
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the held character order' })
+        expect(loop.failures).toEqual([])
+        expect(saved.characterOrder).toEqual(loop.kit.seedDb.characterOrder)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'characterOrder', key: 'characterOrder', label: '"characterOrder"', saved: true }])
     })
 })
 
@@ -476,6 +546,21 @@ describe('an item that stands keeps the page from reading clean', () => {
         loop.ignoreMarks = true
         chars(loop.db)[2].personality = 'first'
         loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        await parkOnPeer(loop)
+        expect(loop.kit.peer.clean).toHaveLength(1)
+        expect(await loop.kit.peer.requests[0]()).toBe('dirty')
+        expect(loop.failures).toEqual([])
+    })
+
+    test('L4 reproducer: the Reload check answers dirty while a loadouts item stands', async () => {
+        const loop = await start({
+            seed: (db) => { (db as unknown as Entry).loadouts = [{ name: 'Loadout A', id: 'l1', icons: [] }, { name: 'Loadout B', id: 'l2', icons: [] }] },
+            live: (db) => { ((db as unknown as Entry).loadouts as Entry[])[1].cyc = cyclic() },
+        })
+        loop.ignoreMarks = true
+        chars(loop.db)[2].personality = 'first'
         loop.mark(chaIdOf(loop.db, 2))
         await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
         await parkOnPeer(loop)
@@ -633,8 +718,12 @@ describe('the notice texts', () => {
         expect(language.saveModulesHeldNotice('"Mod"')).toContain('"Mod"')
         expect(language.savePresetsHeldNotice('"Preset 1"')).toContain('"Preset 1"')
         expect(language.savePresetsHeldNotice('"Preset 1"')).toContain('kept as a new preset')
+        expect(language.saveItemStaticsLabel).toBe('the usage statistics')
+        expect(language.saveItemCharacterOrderLabel).toBe('the character order')
+        expect(language.saveLoadoutsHeldNotice('"L"')).toContain('"L"')
         for (const text of [
             language.saveItemUnsavedNotice('x'), language.saveItemNeverSavedNotice('x'), language.saveModulesHeldNotice('x'), language.savePresetsHeldNotice('x'),
+            language.saveLoadoutsHeldNotice('x'),
         ]) {
             expect(text).toContain('RisuTanium')
         }

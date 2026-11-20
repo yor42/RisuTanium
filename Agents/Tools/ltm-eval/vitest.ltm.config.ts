@@ -32,6 +32,7 @@ export default defineConfig({
         setupFiles: ['vitest.setup.ts'],
         include: [
             'Agents/Tools/ltm-eval/*.harness.ts',
+            'Agents/Tools/ltm-eval/s0/*.harness.ts',
         ],
         silent: true,
         onConsoleLog: () => false,

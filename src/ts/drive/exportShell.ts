@@ -71,10 +71,11 @@ export async function confirmDuringExport(session: ExportSession, asks: boolean,
 }
 
 /**
- * Called as the last step before the writer opens. Where opening the browser writer needs a fresh user gesture (the
- * popup helper of a plain-HTTP page) and the size passes and prompts before it have let the last one lapse, asks for a
- * click whose handler is the open itself. `needsGesture` is for a caller whose writer needs a fresh click at a different
- * moment than the browser writer's open (the streamed export asks right before its download starts).
+ * Called as the last step before the writer opens. Where opening the writer needs a fresh user gesture (no browser
+ * writer does now, since a plain-HTTP page holds the export in memory instead of opening a popup helper) and the size
+ * passes and prompts before it have let the last one lapse, asks for a click whose handler is the open itself.
+ * `needsGesture` is for a caller whose writer needs a fresh click at a different moment than the browser writer's open
+ * (the streamed export asks right before its download starts).
  */
 export async function ensureGestureForWriter(session: ExportSession, needsGesture: boolean = webWriterNeedsGesture()): Promise<void> {
     if (needsGesture && globalThis.navigator?.userActivation?.isActive === false) {

@@ -1828,6 +1828,10 @@ export const languageKorean = {
     "emptyTrashCannotUndo": "이 작업은 되돌릴 수 없습니다.",
     "backupLoadWorkInProgress": "아직 실행 중인 작업(채팅 응답, 임포트 또는 내보내기, 이미지나 에셋 추가, 정리 작업, 플러그인 요청)이 있어 백업을 불러오지 않았습니다. 작업이 끝날 때까지 기다리거나 작업을 중지한 뒤 다시 시도하세요. 페이지를 새로고침해도 모든 작업이 종료됩니다.",
     "backupLoadRefusedLine": "다른 백업을 불러오지 않았습니다: 다른 작업이 아직 실행 중입니다.",
+    "backupRestoreLoading": "백업을 불러오는 중...",
+    "backupRestoreReadingDatabase": "백업 안의 데이터베이스를 읽는 중...",
+    "backupRestoreFinishingFiles": "파일 복사를 마무리하는 중...",
+    "backupRestoreFailed": "실패했습니다. 파일이 손상되었나요?",
     "insertOrder": "배치 순서",
     "activationKeys": "활성화 키",
     "activationKeysInfo": "\",\"로 나눠주세요",
@@ -3930,9 +3934,13 @@ export const languageKorean = {
         `RisuTanium이 프리셋 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 프리셋 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 프리셋은 유지됩니다. 그 전에 페이지를 새로고침하면 현재 설정이 새 프리셋으로 보관됩니다.`,
     saveTaskPresetsHeldNotice: (name: string) =>
         `RisuTanium이 프리셋 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 프리셋 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 프리셋은 유지됩니다.`,
+    saveLoadoutsHeldNotice: (name: string) =>
+        `RisuTanium이 로드아웃 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 로드아웃 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 로드아웃은 유지됩니다.`,
     saveItemModuleLabel: (name: string) => `모듈 "${name}"`,
     saveItemSettingLabel: (field: string) => `설정 "${field}"`,
     saveItemPluginDataLabel: (key: string) => `플러그인 데이터 "${key}"`,
+    saveItemStaticsLabel: "사용 통계",
+    saveItemCharacterOrderLabel: "캐릭터 순서",
     personasRepairedNotice: (count: number) =>
         `RisuTanium이 유효하지 않은 데이터인 페르소나 ${count}개를 제외했습니다. 플러그인이 기록했을 수 있습니다.`,
     personaListEmptyNotice: `페르소나 목록에 사용할 수 있는 페르소나가 남아 있지 않아, RisuTanium이 사용자 이름과 아이콘으로 페르소나를 하나 추가하고 선택했습니다.`,
