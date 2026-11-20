@@ -245,7 +245,7 @@ describe('Home persona chip and empty hero', () => {
 
     test('B4b: a pending import does not block Create', async () => {
         const held = holdPromise()
-        importCharacterSpy.mockReturnValue(held.promise)
+        importCharacterSpy.mockReturnValue(held.promise.then(() => []))
         const root = mountShell()
         const create = createButton(root)
         const importing = importButton(root)
