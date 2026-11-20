@@ -1,5 +1,7 @@
 # Workflow cutover — 2026-11-03
 
+> **Historical, non-operative (governance v2, 2026-11-20).** This dated record describes the workflow as it stood then. Current rules: [AGENTS](../../AGENTS.md), [gates](gates.md), [records](records.md), [ownership](ownership.md), [routing](routing.md). Where this text conflicts with them or with a later MC decision, they win.
+
 Status: ACTIVE — independent recheck approved, reviewed project settings installed, matching policy/state revision `2026-11-03.1` active. The existing Claude session remains paused until the maintainer starts its continuation.
 
 Authority: MC-1036 records the maintainer's explicit approval of the reviewed plan and paid-fallback amendment. The original lane-A handoff remains intact. Application source, existing unowned changes, device state, signing material, commits and pushes are outside this cutover.

@@ -8,7 +8,7 @@ tools: [Read, Grep, Glob, PowerShell, Bash, Write, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---
 
-Native fallback role: ordinary work first uses the routes in [subscription-first execution](../../docs/workflow/subscription-first.md). A recorded permitted fallback is required before this native dispatch; do not operate as a Claude relay for an external worker or repeat its full investigation. Preserve accepted limitations and pending required claims from Workflow-State.
+Default native route (MC-2748): the parent dispatches this role directly; Codex or Antigravity run only after a route-health check under 7 days old, and you never act as a relay for them or repeat their work. Preserve accepted limitations and pending required claims named in the brief.
 
 Establish a measured bottleneck or leak before proposing a correction. Use logs, heap snapshots, allocation timelines or scoped measurements; do not infer a leak from code shape alone.
 Trace effect invalidation, retention, listeners and persistence interactions where the evidence points. Match measurement to platform and fixture; mocked or offline results do not prove native/live performance. Name missing observations.
@@ -16,6 +16,6 @@ Read-only in the repository by doctrine; Write only for outside-repository measu
 Return measured baseline, mechanism with source/allocation evidence, uncertainty, minimal proposed ownership/boundary correction and validation criteria. Do not write a refactor.
 
 ## Bounded leaf delegation
-For substantial ordinary helper work, return the bounded question to the parent for direct subscription-first dispatch. Tiny targeted lookups run inline. Only a recorded native fallback may use the existing bounded nested read-only helper grant; no nested writers, recursive specialists or acceptance authority. Tool availability is not authorization to bypass routing.
+For substantial helper work, return the bounded question to the parent. Tiny targeted lookups run inline. The bounded nested read-only helper grant stays read-only: no nested writers, recursive specialists or acceptance authority. Tool availability is not authorization to bypass routing.
 
-LSP definitions, references and diagnostics are source-navigation leads. Open decision-critical source with Read for path-rule loading and verify semantic conclusions there. LSP diagnostics do not replace required compile/tests or independent gates.
+Never call the LSP tool for TypeScript or Svelte: those servers are off (MC-1836, MC-2017, MC-2749). The LSP grant is kept for Rust work with rust-analyzer only; its results are navigation leads, so open decision-critical source with Read and verify there.

@@ -53,6 +53,7 @@ vi.mock(import('src/ts/translator/translator'), () => ({
 import { languageEnglish } from 'src/lang/en'
 import { accessibilitySettingsItems } from './accessibilitySettingsData'
 import { advancedSettingsItems } from './advancedSettingsData'
+import { advancedShellRowIds } from './advancedShellSettingsData'
 import { basicParameterItems, modelSpecificParameterItems, penaltyParameterItems, samplingParameterItems, seedSetting } from './botSettingsParamsData'
 import { chatFormatSettingsItems } from './chatFormatSettingsData'
 import { displaySettingsItems } from './displaySettingsData.svelte'
@@ -106,12 +107,18 @@ describe('sections', () => {
             'display.customCSS',
             'display.useChatSticker',
             'display.fullScreen',
-            'display.hideApiKey',
             'display.useLegacyGUI',
             'display.menuSideBar',
             'display.showPromptComparison',
             'display.useAdditionalAssetsPreview',
         ])
+    })
+
+    test('RG2: the retired hide-API-keys and aux-placement rows are in no Display or Advanced list', () => {
+        expect(displaySettingsItems.map((entry) => entry.id)).not.toContain('display.hideApiKey')
+        expect(displayShellRowIds()).not.toContain('display.hideApiKey')
+        expect(advancedSettingsItems.map((entry) => entry.id)).not.toContain('adv.auxModelUnderModelSettings')
+        expect(advancedShellRowIds()).not.toContain('adv.auxModelUnderModelSettings')
     })
 })
 

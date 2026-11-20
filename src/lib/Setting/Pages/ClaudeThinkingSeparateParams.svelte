@@ -3,6 +3,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { getModelInfo } from 'src/ts/model/modellist';
     import { LLMFlags } from 'src/ts/model/types';
+    import { auxSlotModel } from 'src/ts/process/request/auxModelSlot';
     import SliderInput from 'src/lib/UI/GUI/SliderInput.svelte';
     import SelectInput from 'src/lib/UI/GUI/SelectInput.svelte';
     import OptionInput from 'src/lib/UI/GUI/OptionInput.svelte';
@@ -23,10 +24,7 @@
     let effectiveModel = $derived.by(() => {
         if (!paramKey) return DBState.db.subModel
         if (auxModelKeys.includes(paramKey as AuxModelKey)) {
-            if (DBState.db.seperateModelsForAxModels) {
-                return DBState.db.seperateModels[paramKey as AuxModelKey] || DBState.db.subModel
-            }
-            return DBState.db.subModel
+            return auxSlotModel(DBState.db.seperateModels, paramKey) || DBState.db.subModel
         }
         return paramKey
     })

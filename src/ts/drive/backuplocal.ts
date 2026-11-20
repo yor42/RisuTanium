@@ -1683,7 +1683,7 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
                 } catch (error) {
                     // Only the router's own load can throw here; nothing was read or written.
                     console.error(error);
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                     cancelled();
                 }
             };
@@ -1694,7 +1694,7 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
             input.click();
         } catch (error) {
             console.error(error);
-            alertError('Failed, Is file corrupted?');
+            alertError(language.backupRestoreFailed);
             cancelled();
         }
     });
@@ -1750,7 +1750,7 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
                 return 'pageLive';
             }
             // From here the restore cannot be cancelled, so the wait loses its Cancel button.
-            alertWait('Loading backup...');
+            alertWait(language.backupRestoreLoading);
         }
         try {
             source = await openDesktopImportSource(entry.path);
@@ -1994,7 +1994,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 return refused();
             }
             if (lacksDatabase) {
-                alertError('Failed, Is file corrupted?');
+                alertError(language.backupRestoreFailed);
                 return refused();
             }
 
@@ -2005,7 +2005,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // first asset is written.
             const scan = scanBinForImport(backupEntries, backupNames);
             if (scan.database === null) {
-                alertError('Failed, Is file corrupted?');
+                alertError(language.backupRestoreFailed);
                 return refused();
             }
             const store2Import: Store2BinImport = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, guard: new UnsavedGuard() };
@@ -2053,7 +2053,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // or whose left-out blocks the person declines, changes nothing.
             // No database bytes or tree are held across the copy that follows:
             // the commit reads the entry from the file again.
-            alertWait('Reading the database in the backup...');
+            alertWait(language.backupRestoreReadingDatabase);
             try {
                 const omitted = await readBinDatabaseOmitted(file, store2Import.entry);
                 noteImportPhase('database decoded');
@@ -2064,7 +2064,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 facts.omitted = omitted;
             } catch (e) {
                 console.error(e);
-                alertError(e instanceof BinFileChangedError ? binChangeText(e) : 'Failed, Is file corrupted?');
+                alertError(e instanceof BinFileChangedError ? binChangeText(e) : language.backupRestoreFailed);
                 return refused();
             }
 
@@ -2405,7 +2405,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     if (stopMessage === null && passFailure === null && assetPipeline.failure === null
                             && !assetPipeline.sourceChanged && assetPipeline.outstanding) {
                         // Every entry has been read; the percentage stays at its last value until the copies end.
-                        alertWait('Finishing copying files...');
+                        alertWait(language.backupRestoreFinishingFiles);
                     }
                     await assetPipeline.drain();
                     if (assetPipeline.sourceChanged && stopMessage === null) {
@@ -2459,7 +2459,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 }
                 if (store2Import.boot !== null) {
                     // A boot import has no earlier saved state and no page to reload: the dispatch opens what was installed.
-                    alertWait('Loading backup...');
+                    alertWait(language.backupRestoreLoading);
                     noteImportPhase('loading backup, boot');
                     bootEnd = await commitBootImport({
                         target: store2Import.boot,
@@ -2487,7 +2487,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     return ended(mapped.outcome, mapped.cause);
                 }
                 if (store2Import.target === null) {
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                     return refused();
                 }
                 if (!await store2Import.guard.check()) {
@@ -2498,7 +2498,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     alertError(language.backupFileChangedWhileReading);
                     return refused();
                 }
-                alertWait('Loading backup...');
+                alertWait(language.backupRestoreLoading);
                 noteImportPhase('loading backup');
                 const end = await commitStore2Import({
                     target: store2Import.target,
@@ -2541,7 +2541,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     });
                     return ended('committed');
                 } else {
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                 }
                 if (bootEnd.kind === 'finished') {
                     // The dispatch is told this finished result, so the end names the same fact however the tail of the import threw.
@@ -2569,7 +2569,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     end = await restoreSelectedFile(busy);
                 } catch (error) {
                     console.error(error);
-                    alertError('Failed, Is file corrupted?');
+                    alertError(language.backupRestoreFailed);
                 } finally {
                     busy.end();
                     boot?.done(bootEnd);
@@ -2600,7 +2600,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
         input.click();
     } catch (error) {
         console.error(error);
-        alertError('Failed, Is file corrupted?')
+        alertError(language.backupRestoreFailed)
         boot?.done({ kind: 'cancelled' });
         settle(unfinished('failed'));
     }

@@ -1971,6 +1971,10 @@ export const languageJapanese = {
     emptyTrashCannotUndo: "この操作は取り消せません。",
     backupLoadWorkInProgress: "現在実行中の処理（チャット応答、インポートまたはエクスポート、画像やアセットの追加、クリーンアップ、プラグインリクエスト）があるため、バックアップは読み込まれませんでした。処理が完了するのを待つか停止してから、もう一度お試しください。ページを再読み込みしてもすべての処理が終了します。",
     backupLoadRefusedLine: "別のバックアップは読み込まれませんでした：他の処理がまだ実行中です。",
+    backupRestoreLoading: "バックアップを読み込み中...",
+    backupRestoreReadingDatabase: "バックアップ内のデータベースを読み込み中...",
+    backupRestoreFinishingFiles: "ファイルのコピーを仕上げています...",
+    backupRestoreFailed: "失敗しました。ファイルが破損していませんか？",
     insertOrder: "挿入順序",
     activationKeys: "発動キー",
     activationKeysInfo: "カンマ区切り",
@@ -3513,7 +3517,7 @@ export const languageJapanese = {
     duplicatePluginFoundUpdateIt: "重複するプラグインが見つかりました。既存のプラグインを更新しますか？",
     pluginUpdateFoundInstallIt: "プラグインのアップデートが見つかりました。アップデートをインストールしますか？",
     pluginBatchReview: (added: string, updated: string, failed: string) =>
-        'これらのプラグインファイルを確認してください。確認すると、新しいプラグインは有効な状態でインストールされ、インストール済みのプラグインは保存された設定を保持したまま更新されます。失敗したファイルはインストールされません。'
+        'これらのプラグインファイルを確認してください。「はい」を押すと、新しいプラグインは有効な状態でインストールされ、インストール済みのプラグインは保存された設定を保持したまま更新されます。失敗したファイルはインストールされません。'
         + (added ? `\n\n新規:\n${added}` : '')
         + (updated ? `\n\n更新（設定を保持）:\n${updated}` : '')
         + (failed ? `\n\n失敗:\n${failed}` : ''),
