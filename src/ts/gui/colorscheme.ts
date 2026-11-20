@@ -315,6 +315,9 @@ export function updateColorScheme(){
         document.documentElement.style.setProperty("--risu-theme-role-color-scheme", roles['color-scheme']);
         document.documentElement.style.setProperty("--risu-theme-role-focus-ring", roles['focus-ring']);
         document.documentElement.style.setProperty("--risu-theme-role-on-selected", roles['on-selected']);
+        document.documentElement.style.setProperty("--risu-theme-role-on-borderc", roles['on-borderc']);
+        document.documentElement.style.setProperty("--risu-theme-role-state-amber", roles['state-amber']);
+        document.documentElement.style.setProperty("--risu-theme-role-state-violet", roles['state-violet']);
         ColorSchemeTypeStore.set(colorScheme.type)
         // The colour applied above, after the lite override; also reached at boot.
         syncSystemBars(colorScheme.bgcolor)

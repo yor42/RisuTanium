@@ -82,7 +82,7 @@
                                 <button class={inChat ?
                                         "mr-2 cursor-pointer rounded-sm bg-selected text-textcolor ring-1 ring-borderc" :
                                         forCharacter ?
-                                        "mr-2 cursor-pointer rounded-sm text-violet-500 ring-1 ring-current" :
+                                        "mr-2 cursor-pointer rounded-sm risu-state-violet ring-1 ring-current" :
                                         "text-textcolor2 hover:text-textcolor mr-2 cursor-pointer"
                                 } aria-label={language.moduleUseInChat} aria-pressed={inChat}
                                 aria-describedby={forCharacter ? `${uid}-char-${i}` : undefined}
