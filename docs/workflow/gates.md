@@ -8,7 +8,7 @@ The [subscription-first contract](subscription-first.md), approved 2026-11-03, s
 
 1. The designer produces and records requirements, scope, proposed approach, expected files, invariants, risks, acceptance scenarios, required tests (each labelled regression reproducer, compatibility guard or diagnostic, with mutants to kill), trade-offs and upstream compatibility; the Orchestrator routes and does not author the plan. Give a clean context to an independent reviewer to falsify assumptions, including accidental feature loss, existing artifact/integration failures and unsafe migration. An expensive-to-reverse plan also receives senior-advisor challenge before implementation.
 2. Implement the bounded accepted plan through the appropriate worker. Keep acceptance requirements available; do not feed the implementer's private reasoning to the independent reviewer.
-3. Name one full-check owner, normally the orchestrator, to run `pnpm test`, `pnpm check` and the relevant build on the final relevant application snapshot. Check exit codes. Evidence states working changes, including relevant untracked files; HEAD alone is insufficient.
+3. PR CI runs the full test, check and build on the PR snapshot (see CI ownership); the session runs targeted tests and `pnpm check` before pushing. Check exit codes. Evidence states working changes, including relevant untracked files; HEAD alone is insufficient.
 4. Give a different fresh reviewer requirements, accepted plan, actual diff, relevant source and evidence. Challenge correctness, uncovered paths, assumptions, compatibility and drift. Use opus-reviewer when the diff changes a critical contract: format/backup compatibility, durability/commit/recovery order, dirty-tracking dependencies, persisted read/write/GC or asset lifecycle, migration, or a single point enforcing a security boundary such as network policy/permission gates/native bridges (MC-912). Name the changed contract and failure scenario; filename or save-path adjacency alone does not qualify. Ordinary review uses the subscription-first independent-review route; it also checks comments, commit claims and pre-change failures.
 5. Arbitrate by evidence, not model seniority or vote. The Orchestrator decides routine cases and records in the ledger row the single source read or command that settled each. A finding is disputed when a designer or coder report marks it REBUTTED and the reviewer's next round answers NOT ACCEPTED. A verdict is borderline when every finding is labelled SUBSTANTIVE or EDITORIAL and the token disagrees with the labels, or when the implementer rebuts a label. A disputed or borderline case that one direct read or command does not settle goes to a fresh arbiter per [routing](routing.md) before the verdict is acted on; the ruling also decides whether the round counts toward the reject streak. Independently verify consequential disputed claims. Unresolved material disagreement goes to senior-advisor with both positions and source evidence; unavailable escalation leaves a blocker, not acceptance.
 
@@ -30,7 +30,7 @@ Every Gate 1 verdict carries an advisory "Simpler path" section (`MC-777`): whet
 
 ## CI ownership (MC-2014, MC-2036, MC-2240)
 
-PR CI (`.github/workflows/ci.yml`: unit tests in three shards, `pnpm check`, build and the release check) is the full run, on the PR's own snapshot; it replaces the local trial-merge full run (MC-694 is superseded for full runs). Implementers, remediation workers and Gate 2 reviewers run targeted tests, reproducers, mutants and `pnpm check` (with `NODE_OPTIONS=--max-old-space-size=8192`, as CI does), never the full suite. A change to shared test setup, mocks or test configuration relies on its PR's CI run; no extra local full run. Local full runs exist only for APK and Gradle builds (run slot A); mutant sweeps and measurements use the run slots in [project reference](project-reference.md). A red CI run goes to the PR's session: a failure that matches a known flake class (a test or hook timeout in a file on `Agents/Tools/full-run/flake-list.json` that passes alone, MC-1122) is rerun once and recorded; a repeat or new failure is a regression for the session to fix, and red CI the session cannot clear goes to the maintainer (MC-2015, MC-2744). CI skips Markdown, `docs/**` (except `docs/design/**`) and `Agents/**`: before merging a PR with no CI run, check that nothing under CI-covered paths imports the changed files. Documentation-only changes require documentation/configuration verification, not application tests. Budgets never turn unfinished work into approval.
+PR CI (`.github/workflows/ci.yml`: unit tests in three shards, `pnpm check`, build, the release check `pnpm check:dist`, a node-server smoke test and a non-blocking hono-server type check) is the full run, on the PR's own snapshot; the full run moved there from the local trial merge (MC-2014). Implementers, remediation workers and Gate 2 reviewers run targeted tests, reproducers, mutants and `pnpm check` (with `NODE_OPTIONS=--max-old-space-size=8192`, as CI does), never the full suite. A change to shared test setup, mocks or test configuration relies on its PR's CI run; no extra local full run. Local full runs exist only for APK and Gradle builds. Local run slots (MC-2036, MC-2240, MC-2243): claim a slot by a successful `mkdir` of its folder before writing `owner.txt`, release it by removing the folder; slot A (`%TEMP%\risu-b715\fullrun-slot`) is the only slot for APK and Gradle builds and also takes measurements; slot B (`fullrun-slot-b`) takes mutant sweeps and measurements; slots C, D and E (`fullrun-slot-c`, `-d`, `-e`; MC-2243) take mutant sweeps only, with a 10 GB free-RAM check before each claim; sweeps try B, C, D, E in order. A red CI run goes to the PR's session: a failure that matches a known flake class (a test or hook timeout in a file on `Agents/Tools/full-run/flake-list.json` that passes alone, MC-1122) is rerun once and recorded; a repeat or new failure is a regression for the session to fix, and red CI the session cannot clear goes to the maintainer (MC-2015, MC-2744). CI skips Markdown, `docs/**` (except `docs/design/**`) and `Agents/**`: before merging a PR with no CI run, check that nothing under CI-covered paths imports the changed files. Documentation-only changes require documentation/configuration verification, not application tests. Budgets never turn unfinished work into approval.
 
 ## Evidence discipline
 
@@ -111,7 +111,7 @@ The orchestrator supplies an evidence packet: actual diff/snapshot, requirements
 
 An independent `doc-verifier` checks ordinary commit claims against the packet/source. For changed critical contracts under the classification above, `opus-reviewer` owns the commit-message/comment check within its existing gate; adjacency alone does not add another review. When a message is corrected without a behavior change, the checker validates the changed claims and the gate owner records editorial closure; that correction does not automatically reopen Gate 2.
 
-The orchestrator arbitrates findings and executes the commit only within the maintainer's existing authorization, staging exact owned paths and preserving others' work. A delegated draft or approved message is not authorization to commit or push. Use `/draft-commit` when the installed skill is available; otherwise retain the same evidence, drafting and independent-check contract.
+The orchestrator arbitrates findings and commits under the [approval matrix](#approval-matrix-mc-2744), staging exact owned paths and preserving others' work. A delegated draft or approved message is not itself authorization; the matrix is. Use `/draft-commit` when the installed skill is available; otherwise retain the same evidence, drafting and independent-check contract.
 
 ## Before Gate 1: sizing and product behavior
 
@@ -131,19 +131,21 @@ A review verdict accepts the technical evidence at its stated scope. It does not
 
 MC-2744 (2026-11-20) makes MC-1676, MC-1677 and MC-2015 permanent and extends them to branch push and PR open. It amends MC-1069: the AskUserQuestion rule stays for everything still asked, and the per-commit, per-push and per-merge confirmations are gone. Once the maintainer has approved a ticket or task (chosen it, ordered it or queued it), its session runs it to a merged PR without asking at each step: sizing, product-decision grilling, plan, gates and their revisions, advisor escalation where the rules require it, implementation in its worktree, host tests, red-before-green and mutant evidence, remediation, then the actions below. A decision that the maintainer's records already settle is not asked again.
 
-| Action | Who | Ask? |
-|---|---|---|
-| Commit in the ticket worktree after Gate 2 APPROVE or EDITORIAL | ticket session | No |
-| Push the ticket branch; open the PR on yor42/RisuTanium (always `--repo yor42/RisuTanium`); turn Auto-fix on | ticket session | No |
-| Auto-fix CI commits on the PR | ticket session | No |
-| Merge (merge commit) when CI is green and the PR diff matches the reviewed diff | lane A, or the session the maintainer names | No |
-| A PR with no CI run (docs or records only): merge when the diff matches and the import check in [CI ownership](#ci-ownership-mc-2014-mc-2036-mc-2240) passes | same | No |
-| Red CI the session cannot clear (after one flake rerun, see CI ownership) | maintainer | Yes |
-| Diff differs from what was reviewed | back to the gate | Re-review, then no ask |
-| Product, scope, persisted-format or security choice; escalation the rules require | maintainer | Yes |
-| Personal devices (Fold 7, Tab S9) beyond observation; anything outside the device grants | maintainer | Yes |
-| Destructive cleanup (deleting branches, worktrees or files other than the session's own finished, merged worktree under MC-1918/MC-1960) | maintainer | Yes |
-| Protected paths (`docs/branding/**`, ToS, Privacy, `Legal.svelte`, signing material) | maintainer | Yes |
-| Closing an issue by hand (a PR's own `Closes #n` keyword, one per issue, closing it on merge is part of the approved ticket) | maintainer | Yes |
+Rows marked MC-2744 restate it. Rows marked "derived" are this document's reading of earlier records and practice, not part of MC-2744; where one conflicts with a maintainer decision, the decision wins.
 
-Every ask uses the AskUserQuestion tool (a push notification reaches the phone). While the work runs, other open tickets that could proceed in parallel (disjoint files and resources) are offered to the maintainer as options, as in [routing](routing.md#parallel-options-for-the-maintainer-mc-1069); lane A starts ready, already-authorised tickets for idle lanes without that ask (MC-1676 item 3).
+| Action | Who | Ask? | Source |
+|---|---|---|---|
+| Commit in the ticket worktree after Gate 2 APPROVE or EDITORIAL | ticket session | No | MC-2744 |
+| Push the ticket branch; open the PR on yor42/RisuTanium (always `--repo yor42/RisuTanium`) | ticket session | No | MC-2744 |
+| Turn Auto-fix on when the PR opens | ticket session | No | derived (practice since 2026-11-20) |
+| Auto-fix CI commits on the PR | ticket session | No | MC-2744 |
+| Merge (merge commit) when CI is green and the PR diff matches the reviewed diff | lane A | No | MC-2744, MC-2015 |
+| Merge a PR that CI skips (docs or records only) when its diff matches and the import check in [CI ownership](#ci-ownership-mc-2014-mc-2036-mc-2240) passes | lane A | No | derived (MC-2015 applied to paths CI does not run) |
+| PR diff differs from what was reviewed | ticket session | Re-review first | derived (MC-2015 merges only a matching diff) |
+| Red CI the session cannot clear | maintainer | Yes | MC-2744, MC-2015 |
+| Product, scope, persisted-format or security choice | maintainer | Yes | MC-2744 |
+| Devices (the device policy and grants say which are personal) | maintainer | Yes | MC-2744 |
+| Destructive cleanup | maintainer | Yes | MC-2744; a session's own clean, merged worktree is removed under MC-1918 |
+| Protected paths (`docs/branding/**`, ToS, Privacy, `Legal.svelte`, signing material) | maintainer | Yes | MC-2744 |
+| Closing an issue other than by the merged PR's own closing keyword | maintainer | Yes | MC-2744 (issue closes); the keyword close is derived |
+Every ask uses the AskUserQuestion tool (a push notification reaches the phone). While the work runs, other open tickets that could proceed in parallel (disjoint files and resources) are offered to the maintainer as options, as in [routing](routing.md#parallel-options-for-the-maintainer-mc-1069); lane A starts ready tickets for idle lanes without that ask (MC-1676 item 3, made permanent by MC-2744).
