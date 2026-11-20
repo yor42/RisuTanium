@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '../storage/blockFrame'
-import type { UsageEntry } from './usageTypes'
+import type { UsageEntry, UsageRetentionMonths } from './usageTypes'
 
 /**
  * The usage ledger kept in `db.statics`: flat numeric keys
@@ -10,6 +10,7 @@ import type { UsageEntry } from './usageTypes'
  *  - A key holding anything else is never overwritten (an increment for it goes to overflow; one for an overflow key is dropped).
  *  - Unknown versions (`u2|...`) and malformed keys are ignored by readers and never deleted or rewritten here.
  *  - `messages` and `imports` are never touched.
+ *  - `u1` keys are deleted only by `withoutClearedUsage`, on the person's clear or the retention setting.
  *  - This module has only type imports from outside `src/ts/usage/`, so the store2 import files can use it
  *    without a runtime dependency.
  */
@@ -174,6 +175,55 @@ export function readUsage(statics: unknown): UsageReadout {
 export function withoutUsageKeys<T extends object>(statics: T): T {
     // The kept keys are a subset of T's own keys, so the copy has T's shape for every field the caller reads.
     return Object.fromEntries(Object.entries(statics).filter(([key]) => !isUsageKey(key))) as T
+}
+
+export type UsageClearScope = { kind: 'all' } | { kind: 'before', month: string }
+
+/**
+ * A new object without the well-formed `u1` keys in `scope`; the argument is never changed and, with nothing to remove,
+ * is returned as the same reference. `all` takes every well-formed `u1` key including overflow; `before` takes the month
+ * keys of the months before `scope.month` and never overflow. Values are not judged, so a key holding a non-number goes
+ * too. `removed` counts the keys, `months` the distinct months among them (overflow is never a month).
+ */
+export function withoutClearedUsage<T extends object>(statics: T, scope: UsageClearScope): { statics: T, removed: number, months: number } {
+    if (!isPlainObject(statics) || (scope.kind === 'before' && !MONTH_PATTERN.test(scope.month))) {
+        return { statics, removed: 0, months: 0 }
+    }
+    const months = new Set<string>()
+    const kept: [string, unknown][] = []
+    let removed = 0
+    for (const entry of Object.entries(statics)) {
+        const parsed = parseUsageKey(entry[0])
+        // `in` narrows the union even without strictNullChecks, where a boolean discriminant does not.
+        const month = parsed !== null && 'month' in parsed ? parsed.month : null
+        const taken = parsed !== null && (scope.kind === 'all' || (month !== null && month < scope.month))
+        if (!taken) {
+            kept.push(entry)
+            continue
+        }
+        removed++
+        if (month !== null) {
+            months.add(month)
+        }
+    }
+    if (removed === 0) {
+        return { statics, removed: 0, months: 0 }
+    }
+    // The kept keys are a subset of T's own keys, so the copy has T's shape for every field the caller reads.
+    return { statics: Object.fromEntries(kept) as T, removed, months: months.size }
+}
+
+export const USAGE_RETENTION_CHOICES: readonly UsageRetentionMonths[] = [3, 6, 12, 24]
+
+/** The retention period a stored value names; null (off) for anything but 3, 6, 12 or 24. */
+export function retentionMonthsOf(value: unknown): UsageRetentionMonths | null {
+    return USAGE_RETENTION_CHOICES.find((choice) => choice === value) ?? null
+}
+
+/** The oldest month kept when retaining `months` months counted back from `now`'s local month, which is one of them. */
+export function retentionCutoff(now: Date, months: number): string {
+    // Day 1 avoids month-end overflow; the Date constructor carries a negative month into earlier years.
+    return localMonth(new Date(now.getFullYear(), now.getMonth() - (months - 1), 1))
 }
 
 /** True when `statics` holds a usage key of any version. */

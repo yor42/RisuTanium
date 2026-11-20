@@ -69,10 +69,28 @@ function numberOr0(value: Value): number {
     return typeof value === 'number' ? value : 0
 }
 
+function isCountOrAbsent(value: Value): value is number | undefined {
+    return value === undefined || typeof value === 'number'
+}
+
 /**
- * The statics value. Per key, `threeWay`; a key both sides changed to different numbers is theirs plus this page's
- * change since the base (an absent number counts as 0). A key both changed to anything else parks. A value that is
- * not an object on every side falls back to `threeWay` of the whole value.
+ * The counter both sides changed since the base (an absent number counts as 0). Each side's change is added exactly
+ * once, so two equal changes make two. A key both sides deleted stays deleted. When both sides went below the base
+ * (both reset) each side holds its own count since the reset, so the two are summed. The result is never negative.
+ */
+function mergeCounter(base: number | undefined, mine: number | undefined, theirs: number | undefined): number | undefined {
+    if (mine === undefined && theirs === undefined) {
+        return undefined
+    }
+    const bothBelow = base !== undefined && numberOr0(mine) < base && numberOr0(theirs) < base
+    const sum = bothBelow ? numberOr0(mine) + numberOr0(theirs) : numberOr0(theirs) + (numberOr0(mine) - numberOr0(base))
+    return Math.max(0, sum)
+}
+
+/**
+ * The statics value. Per key: only the side that changed wins. A key both sides changed to numbers is merged additively
+ * (`mergeCounter`), equal changes included. Any other key both changed to the same value keeps it, and to different
+ * values parks. A value that is not an object on every side falls back to `threeWay` of the whole value.
  */
 export function mergeStatics(base: Value, mine: Value, theirs: Value): Decision<Value> {
     if (!isJsonObject(base) || !isJsonObject(mine) || !isJsonObject(theirs)) {
@@ -85,13 +103,14 @@ export function mergeStatics(base: Value, mine: Value, theirs: Value): Decision<
         const m = Object.hasOwn(mine, name) ? mine[name] : undefined
         const t = Object.hasOwn(theirs, name) ? theirs[name] : undefined
         let value: Value
-        const decision = threeWay<Value>(b, m, t)
-        if (decision.kind === 'keep') {
+        if (sameJsonValue(t, b)) {
             value = m
-        } else if (decision.kind === 'take') {
-            value = decision.value
-        } else if ([b, m, t].every(item => item === undefined || typeof item === 'number')) {
-            value = numberOr0(t) + (numberOr0(m) - numberOr0(b))
+        } else if (sameJsonValue(m, b)) {
+            value = t
+        } else if (isCountOrAbsent(b) && isCountOrAbsent(m) && isCountOrAbsent(t)) {
+            value = mergeCounter(b, m, t)
+        } else if (sameJsonValue(m, t)) {
+            value = m
         } else {
             return { kind: 'park', reason: `statics:${name}` }
         }

@@ -189,6 +189,14 @@ describe('prepareFastForward', () => {
         expect(Reflect.get(merged.db, 'statics')).toEqual({ count: 7 })
     })
 
+    test('P8b statics: a counter both sides moved by the same amount keeps both changes', async () => {
+        const world = await ffWorld()
+        await world.page.commitEdit((peerDb) => { Reflect.set(peerDb, 'statics', { count: 1 }) })
+        const merged = await decide(world, (mine) => { Reflect.set(mine, 'statics', { count: 2 }) }, (peerDb) => { Reflect.set(peerDb, 'statics', { count: 2 }) })
+        expect(realApply(ready(merged.prepared).steps)).toBe('applied')
+        expect(Reflect.get(merged.db, 'statics')).toEqual({ count: 3 })
+    })
+
     test('P1b a settings field only the peer changed is taken and arms a field entry', async () => {
         const world = await ffWorld()
         const { prepared, db } = await decide(world, () => { }, (peerDb) => { Reflect.set(peerDb, 'ffTestSetting', 'theirs') })
