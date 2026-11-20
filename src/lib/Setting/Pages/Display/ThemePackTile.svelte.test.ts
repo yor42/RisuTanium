@@ -102,9 +102,11 @@ describe('T1-11 clash, neutral and None', () => {
         expect(svg.outerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/)
     })
 
-    test('None draws a diagonal and no text', () => {
+    test('None draws an empty dashed frame crossed by a diagonal, in theme tokens, and no text', () => {
         const svg = draw(null)
         expect(part(svg, 'tile-none-mark').tagName.toLowerCase()).toBe('line')
+        expect(part(svg, 'tile-none-frame').getAttribute('stroke-dasharray')).not.toBeNull()
+        expect(part(svg, 'tile-none-frame').getAttribute('class')).toContain('stroke-darkborderc')
         expect(part(svg, 'tile-ground').getAttribute('class')).toContain('fill-bgcolor')
         expect(svg.querySelector('text')).toBeNull()
         expect(svg.getAttribute('aria-hidden')).toBe('true')

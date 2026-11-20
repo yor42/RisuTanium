@@ -330,9 +330,11 @@ describe('T4-3 the list', () => {
         expect(ground('a').getAttribute('fill')).toBe('#101820')
         expect(ground('b').getAttribute('fill')).toBeNull()
         expect(ground('b').getAttribute('class')).toBe('fill-darkbg')
-        // The built-ins draw the colours their literals carry.
+        // The built-ins draw their own thumbnails on the ground colour their literals carry, with no letter badge.
         for (const pack of BUILTIN_PACKS) {
             expect(ground(pack.id).getAttribute('fill')).toBe(pack.secondaryColor)
+            expect(entryOf(target, pack.id).querySelector('svg')!.getAttribute('data-thumb')).toBe(pack.slug)
+            expect(entryOf(target, pack.id).querySelector('[data-part="tile-glyph"]')).toBeNull()
         }
         for (const element of target.querySelectorAll<HTMLElement>('*')) {
             if (element.closest('svg') === null) {
