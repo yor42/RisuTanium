@@ -55,6 +55,9 @@ describe('deriveSchemeRoles', () => {
         expect(cr(c(roles.accent), btn)).toBeGreaterThanOrEqual(3)
         expect(cr(c(roles.danger), bg)).toBeGreaterThanOrEqual(4.5)
         expect(cr(c(roles.danger), dbg)).toBeGreaterThanOrEqual(4.5)
+        expect(cr(c(roles['focus-ring']), bg), 'focus-ring').toBeGreaterThanOrEqual(3)
+        expect(cr(c(roles['focus-ring']), dbg), 'focus-ring').toBeGreaterThanOrEqual(3)
+        expect(cr(c(roles['focus-ring']), btn), 'focus-ring').toBeGreaterThanOrEqual(3)
         expect(roles['color-scheme']).toBe(s.type)
     })
 
@@ -69,7 +72,7 @@ describe('deriveSchemeRoles', () => {
     test('the built-in Default derives its pinned roles', () => {
         expect(deriveSchemeRoles(defaultColorScheme)).toEqual({
             'text-secondary': '#bfc6e3', 'text-muted': '#a6b0d4', 'accent': '#6f7fc8', 'accent-rgb': '111 127 200',
-            'field-border': '#6f7fc8', 'danger': '#ff6b81', 'danger-rgb': '255 107 129', 'warning-rgb': '255 209 102',
+            'focus-ring': '#6f7fc8', 'field-border': '#6f7fc8', 'danger': '#ff6b81', 'danger-rgb': '255 107 129', 'warning-rgb': '255 209 102',
             'overlay-rgb': '238 240 255', 'switch-off-alpha': '0.36', 'surface-toast': '#2f3670', 'color-scheme': 'dark',
         })
     })
@@ -90,6 +93,7 @@ describe('deriveSchemeRoles', () => {
         expect(roles['surface-toast']).toBe(bad)
         expect(roles.accent).toBe('#6f7fc8')
         expect(roles['accent-rgb']).toBe('111 127 200')
+        expect(roles['focus-ring']).toBe('#6f7fc8')
     })
 
     test('a scheme whose muted text sits just under the floor is lifted above it', () => {
