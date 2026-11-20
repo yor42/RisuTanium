@@ -81,8 +81,11 @@ type StopP = { minChats: number; minTurns: number; cap: number; step: number; wi
 type CTest = { cell: string; style: string; control: string; point: number; boot: number; t: number; failConfirmed: boolean; notConfirmed: boolean }
 type Controls = {
     controlTests(c: Record<string, CellChat[]>, o?: { B?: number; familywise?: number; m?: number }): { m: number; alpha: number; B: number; tests: CTest[]; invalid: boolean }
-    pickDonor(c: { castTokens: Set<string>; cue(cat: string, st: string): string | null }[], i: number, cat: string, st: string): { j: number; cue: string; fallback: boolean } | null
-    controlArms(sim: unknown, turn: Turn, q: Question, st: Settings, hooks: Hooks | undefined, donor: string): { rand: number; oracleRank: number } | null
+    pickDonor(c: { castTokens: Set<string>; cue(cat: string, st: string, excludeKey?: string): string | null }[], i: number, cat: string, st: string, key?: string): { j: number; cue: string; fallback: boolean } | null
+    donorEntry(chat: Chat, turns: Pick<Turn, 'kind' | 'qid' | 'category' | 'style' | 'cue'>[]): { castTokens: Set<string>; cue(cat: string, st: string, excludeKey?: string): string | null }
+    roundRobin(lists: number[][]): number[]
+    oracleQueryHit(sim: unknown, turn: Turn, q: Question, st: Settings, hooks: Hooks | undefined): number | null
+    controlArms(sim: unknown, turn: Turn, q: Question, st: Settings, hooks: Hooks | undefined, donor: string): { rand: number; oracleRank: number; oracleQuery: number } | null
     RANDOM_SHUFFLES: number
     RANDOM_SEED: number
 }
@@ -102,6 +105,7 @@ type Gate = {
     runGateAttempt(o: GateOpts): Promise<GateResult>
     settingsDigest(s: Settings): string
     checkGateArgs(a: { drawSeed: number; builder: string; settings: Settings; kind?: string }): void
+    assertGateBuilder(b: string): void
     gateVerdictCommand(l: Ledger, b: string): string
     recordOverrideCommand(l: Ledger, a: { builder: string; settings: Settings; drawSeed: number; cap: number; ref: string }): Ledger
     resolveLedgerPath(argv: string[]): string
@@ -1115,6 +1119,53 @@ describe('S0 validity controls', () => {
         expect(CTL.RANDOM_SHUFFLES).toBe(20)
         expect(CTL.RANDOM_SEED).toBe(9101)
     }, SLOW)
+
+    it('MC-2653 ORACLE-QUERY: the per-span lists merge round-robin, so a shared non-gold unit cannot outrank both gold units', () => {
+        expect(CTL.roundRobin([[0, 4], [1, 4]])).toEqual([0, 1, 4])
+        expect(CTL.roundRobin([[2, 3, 4], [3, 5]])).toEqual([2, 3, 5, 4])
+        expect(CTL.roundRobin([])).toEqual([])
+        // two gold messages, each its own list's first hit; message 4 (not gold) is second in both lists
+        const { chat } = tinyChat(14, 0)
+        const q = { ...chat.questions[0], gold: [0, 1], goldSpans: [0, 1].map((m) => ({ msg: m, start: 0, end: chat.messages[m].text.length })) } as Question
+        const c2 = { ...chat, questions: [q] } as Chat
+        const scorer: Scorer = (index, tokens) => {
+            const s = new Float64Array(index.size)
+            if (tokens.includes('w0')) { s[0] = 3; s[4] = 2 }
+            if (tokens.includes('w1')) { s[1] = 3; s[4] = 2 }
+            return s
+        }
+        const sim = new SIM.ChatSim(c2, stub())
+        const turn = { idx: 14, kind: 'fact', qid: 'q', category: 'single_fact', style: 'ask', cue: 'hi', prefix: '', suffix: '', text: 'hi', query: 'hi' } as unknown as Turn
+        const settings = { builder: 'fulltext', C: 100, L: null, budget: 50, queries: 1, tau: null, F: 2 } as Settings
+        const hooks: Hooks = { scorer }
+        expect(CTL.controlArms(sim, turn, q, settings, hooks, 'a donor cue')?.oracleQuery).toBe(1)
+        expect(CTL.oracleQueryHit(sim, turn, q, settings, hooks)).toBe(1)
+        // a gold-kept turn is in neither population
+        expect(CTL.oracleQueryHit(sim, turn, q, { ...settings, C: 100000 }, hooks)).toBeNull()
+    })
+
+    it('MC-2653 NULL donor: a donor cue never asks the recipient\'s own fact key while another same-category cue exists', () => {
+        const q = (id: string, key: string) => ({ id, category: 'single_fact', key }) as Question
+        const t = (qid: string, cue: string) => ({ kind: 'fact', qid, category: 'single_fact', style: 'ask', cue }) as Turn
+        const chatOf = (cast: string[], qs: Question[]) => ({ nf: { cast }, questions: qs }) as unknown as Chat
+        const a = chatOf(['rowan'], [q('a1', 'K1'), q('a2', 'K2')])
+        const b = chatOf(['tamsin'], [q('b1', 'K1'), q('b2', 'K3')])
+        const cands = [CTL.donorEntry(a, [t('a1', 'cue A K1'), t('a2', 'cue A K2')]), CTL.donorEntry(b, [t('b1', 'cue B K1'), t('b2', 'cue B K3')])]
+        expect(CTL.pickDonor(cands, 0, 'single_fact', 'ask', 'K1')).toMatchObject({ j: 1, cue: 'cue B K3', fallback: false })
+        expect(CTL.pickDonor(cands, 1, 'single_fact', 'ask', 'K3')).toMatchObject({ j: 0, cue: 'cue A K1' })
+        // without a distinct key the first cue is used, as before
+        expect(CTL.pickDonor(cands, 0, 'single_fact', 'ask')).toMatchObject({ j: 1, cue: 'cue B K1' })
+    })
+
+    it('MC-2655 gate: a gate attempt and record-settings for the idf builder are refused', () => {
+        const s1 = mkSettings({ builder: 'idf' })
+        s1.tuneDrawSeed = 510001
+        s1.sha256 = GATE.settingsDigest(s1)
+        expect(() => GATE.checkGateArgs({ drawSeed: 710001, builder: 'idf', settings: s1 })).toThrow(/MC-2655/)
+        expect(() => GATE.checkGateArgs({ drawSeed: TEST_SEED, builder: 'idf', settings: s1, kind: 'OVERRIDE' })).toThrow(/MC-2655/)
+        expect(() => GATE.assertGateBuilder('idf')).toThrow(/MC-2655/)
+        expect(() => GATE.assertGateBuilder('fulltext')).not.toThrow()
+    })
 })
 
 describe('S0 selection and tune', () => {
@@ -1168,6 +1219,27 @@ describe('S0 selection and tune', () => {
         expect(res.settings.idf).toMatchObject({ L: 500, k: 12 })
         expect(res.settings.idf.sha256).not.toBe(res.settings.fulltext.sha256)
     }, SLOW)
+
+    // ORACLE-QUERY points per cell and style come from the evaluator beside ORACLE-RANK
+    const withQuery = (fn: (st: Settings, regime: string) => Fake, oq: (st: Settings) => number) => (st: Settings, regime: string) => ({
+        ...fakeEv(fn)(st, regime),
+        oracleQuery: Object.fromEntries(CELLS.map((c) => [c, { ask: oq(st), allude: oq(st) }])),
+    })
+
+    it('MC-2653 SEL-OQ: a candidate whose ORACLE-QUERY is under 0.9 is not eligible even when its ORACLE-RANK passes', () => {
+        const fn = (st: Settings): Fake => ({ p: st.L === 1200 ? 0.7 : 0.6, het: 0.05 })
+        const s = SEL.selectSettings(withQuery(fn, (st) => (st.L === 300 ? 0.95 : 0.8)), { builder: 'fulltext' })
+        expect(s.L).toBe(300)
+    })
+
+    it('MC-2654 SEL-WALK: with no eligible candidate at the default budget the grid walks to the next budget with one', () => {
+        const fn = (): Fake => ({ p: 0.6, het: 0.05 })
+        const s = SEL.selectSettings(withQuery(fn, (st) => ((st.budget as number) >= 1600 ? 0.95 : 0.5)), { builder: 'fulltext' })
+        expect(s.budget as number).toBeGreaterThanOrEqual(1600)
+        expect((s.evidence as { gridBudget: number }).gridBudget).toBe(1600)
+        const none = SEL.selectSettings(withQuery(fn, () => 0.5), { builder: 'fulltext' })
+        expect((none.evidence as { oracleFlag: string }).oracleFlag).toMatch(/no oracle-eligible/)
+    })
 })
 
 describe('S0 diagnostics and end to end', () => {
