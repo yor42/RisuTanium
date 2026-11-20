@@ -84,14 +84,14 @@
             onclick?.(e)
         }}>
             <div class="flex items-center gap-3 mb-4">
-                <button 
+                <button aria-label={language.settingsPage.back} 
                     class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
                     onclick={() => {
                         openOptions = false
                     }}
                     title={language.settingsPage.back}
                 >
-                    <ArrowLeft size={20} />
+                    <ArrowLeft size={20} aria-hidden="true" />
                 </button>
                 <h1 class="font-bold text-xl flex-1">{language.model}</h1>
             </div>
@@ -114,12 +114,12 @@
                 {#await getHordeModels()}
                     <button class="p-2">{language.loadingEllipsis}</button>
                 {:then models}
-                    <button onclick={() => {changeModel("horde:::" + 'auto')}} class="p-2 hover:text-green-500">
+                    <button onclick={() => {changeModel("horde:::" + 'auto')}} class="p-2 hover:text-textcolor2">
                         {language.uiCommon.autoModel}
                         <br><span class="text-textcolor2 text-sm">{language.uiCommon.performanceAuto}</span>
                     </button>
                     {#each models as model}
-                        <button onclick={() => {changeModel("horde:::" + model.name)}} class="p-2 hover:text-green-500">
+                        <button onclick={() => {changeModel("horde:::" + model.name)}} class="p-2 hover:text-textcolor2">
                             {model.name.trim()}
                             <br><span class="text-textcolor2 text-sm">{fillLang(language.uiCommon.performance, { value: model.performance.toFixed(1) })}</span>
                         </button>

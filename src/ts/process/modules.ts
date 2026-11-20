@@ -663,11 +663,13 @@ function moduleFileRoute(name:string):{suffix: string, kind: ModuleFileKind}|nul
 function commitModule(module:RisuModule, decision:DuplicateDecision, session:DuplicateSession, progress:ImportProgress):string[] {
     markBootWrite()
     const placement = applyModulePlacement(DBState.db.modules, module, decision)
-    //Marked before anything that can throw, so a later failure never hides this write from Retry.
-    progress.committed()
+    //Marked before anything that can throw, so a later failure never hides this write from Retry. An added module is recorded
+    //as the slot now in the list, read in this synchronous block; a replaced one cannot be undone.
     if(placement.kind === 'added'){
+        progress.committed({kind: 'module', slot: DBState.db.modules[DBState.db.modules.length - 1]})
         return []
     }
+    progress.committed({kind: 'notUndoable', why: 'replace'})
     refreshModules()
     session.replaced = true
     return describeReplace(placement.previous, module)

@@ -64,7 +64,7 @@
 {#if mode === 0}
     <h2 class="mb-2 text-2xl font-bold mt-2">{language.modules}</h2>
 
-    <TextInput className="mt-4" placeholder={language.search} bind:value={moduleSearch} />
+    <TextInput className="mt-4" placeholder={language.search} label={language.search} bind:value={moduleSearch} />
 
     <div class="contain w-full max-w-full mt-4 flex flex-col border-selected border-1 rounded-md flex-1 overflow-y-auto">
         {#if DBState.db.modules.length === 0}

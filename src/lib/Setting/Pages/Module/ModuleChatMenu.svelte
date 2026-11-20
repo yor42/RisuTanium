@@ -45,7 +45,7 @@
 
         <span class="text-sm text-textcolor2">{language.chatModulesInfo}</span>
 
-        <TextInput className="mt-4" placeholder={language.search} bind:value={moduleSearch} />
+        <TextInput className="mt-4" placeholder={language.search} label={language.search} bind:value={moduleSearch} />
 
         <div class="contain w-full max-w-full mt-4 flex flex-col border-selected border-1 rounded-md">
             {#if DBState.db.modules.length === 0}

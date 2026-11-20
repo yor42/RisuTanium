@@ -660,6 +660,19 @@ export const languageChineseTraditional = {
     "importTaskFailedOne": (name: string) => `無法匯入 ${name}`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} 項因重複而被排除`,
     "importTaskRetryFailed": (count: number) => `重試失敗的 ${count} 項`,
+    "importTaskUndo": "復原匯入",
+    "importUndoDone": (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`已將 ${trashed} 個移至垃圾桶`] : []),
+            ...(removed > 0 ? [`已移除 ${removed} 個模組`] : []),
+        ]
+        const done = parts.join('，')
+        if (missing > 0) {
+            return `${done}${done ? '，' : ''}${missing} 個無法復原`
+        }
+        return done || '沒有可復原的內容'
+    },
+    "importUndoRefused": "目前無法復原此次匯入。請改為從資料庫中移除這些項目。",
     "importTaskCharactersTitle": "正在匯入角色",
     "importTaskFilesTitle": "正在匯入檔案",
     "importTaskRealmTitle": "正在從 Realm 匯入",
@@ -3395,6 +3408,10 @@ export const languageChineseTraditional = {
     "pluginBatchMore": (count: number) => `……另外還有 ${count} 個`,
     "pluginBatchRepeated": "此次選取中的另一個檔案使用了相同的外掛名稱。",
     "pluginBatchTranspileFailed": (message: string) => `轉譯 TypeScript 程式碼失敗：${message}`,
+    "pluginInstallUpdate": "安裝更新",
+    "chooseIconImage": "選擇圖示圖片",
+    "comparePreset": "與其他預設集比較",
+    "chatNameField": "對話名稱",
     "goToChat": "前往對話",
     "bookmark": "書籤",
     "translate": "翻譯",
@@ -3492,6 +3509,19 @@ export const languageChineseTraditional = {
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `有 ${count} 個主題包僅儲存在此裝置上，而備份檔案中沒有存放它們及其檔案的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupUsageStatsConfirm": ".bin 備份中沒有存放使用統計或您輸入的模型價格的位置，因此此備份不會包含它們。它們仍保留在此裝置上，.rtb 備份則會包含它們。是否建立不含它們的備份？",
+    "backupSaveWait": "正在儲存本機備份...",
+    "backupSavePartialWait": "正在儲存部分本機備份...",
+    "backupSaveProgress": (done: number, total: number) => `正在儲存本機備份...（${done} / ${total}）`,
+    "backupSavePartialProgress": (done: number, total: number) => `正在儲存部分本機備份...（${done} / ${total}）`,
+    "backupSaveDownloading": (sent: string, total: string) => `正在儲存本機備份... 正在下載（${sent} / ${total}）`,
+    "backupCheckingAssetSizes": (done: number, total: number) => `正在檢查資源大小...（${done} / ${total}）`,
+    "backupSaveInlays": (done: number, total: number) => `正在儲存本機備份的聊天圖片...（${done} / ${total}）`,
+    "backupSaveColdData": (done: number, total: number) => `正在儲存本機備份的冷儲存資料...（${done} / ${total}）`,
+    "backupSavePartialColdData": (done: number, total: number) => `正在儲存部分本機備份的冷儲存資料...（${done} / ${total}）`,
+    "backupSaveDatabase": "正在儲存本機備份...（正在儲存資料庫）",
+    "backupSavePartialDatabase": "正在儲存部分本機備份...（正在儲存資料庫）",
+    "backupSaveSkipping": (items: string) => `（正在略過... ${items}）`,
+    "backupSaveSkippedAsset": (asset: string, character: string) => `${character} 的「${asset}」`,
     "usageStats": {
         "title": "使用統計",
         "month": "月份",

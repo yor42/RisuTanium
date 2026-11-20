@@ -660,6 +660,19 @@ export const languageChinese = {
     "importTaskFailedOne": (name: string) => `无法导入 ${name}`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} 项因重复被排除`,
     "importTaskRetryFailed": (count: number) => `重试失败的 ${count} 项`,
+    "importTaskUndo": "撤销导入",
+    "importUndoDone": (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`已将 ${trashed} 个移至垃圾桶`] : []),
+            ...(removed > 0 ? [`已移除 ${removed} 个模块`] : []),
+        ]
+        const done = parts.join('，')
+        if (missing > 0) {
+            return `${done}${done ? '，' : ''}${missing} 个无法撤销`
+        }
+        return done || '没有可撤销的内容'
+    },
+    "importUndoRefused": "现在无法撤销此次导入。请改为从库中移除这些项目。",
     "importTaskCharactersTitle": "正在导入角色",
     "importTaskFilesTitle": "正在导入文件",
     "importTaskRealmTitle": "正在从 Realm 导入",
@@ -3351,6 +3364,10 @@ export const languageChinese = {
     "pluginBatchMore": (count: number) => `……以及另外 ${count} 个`,
     "pluginBatchRepeated": "此次选择中的另一个文件具有相同的插件名称。",
     "pluginBatchTranspileFailed": (message: string) => `转译 TypeScript 代码失败：${message}`,
+    "pluginInstallUpdate": "安装更新",
+    "chooseIconImage": "选择图标图片",
+    "comparePreset": "与其他预设比较",
+    "chatNameField": "聊天名称",
     "goToChat": "前往聊天",
     "branchedText": "此对话分支自 {}。",
     "noRequestLogs": "暂无请求日志。",
@@ -3447,6 +3464,19 @@ export const languageChinese = {
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `有 ${count} 个主题包仅保存在此设备上，而备份文件中没有存放它们及其文件的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupUsageStatsConfirm": ".bin 备份中没有存放使用统计或您输入的模型价格的位置，因此此备份不会包含它们。它们仍保留在此设备上，.rtb 备份则会包含它们。是否创建不含它们的备份？",
+    "backupSaveWait": "正在保存本地备份...",
+    "backupSavePartialWait": "正在保存部分本地备份...",
+    "backupSaveProgress": (done: number, total: number) => `正在保存本地备份...（${done} / ${total}）`,
+    "backupSavePartialProgress": (done: number, total: number) => `正在保存部分本地备份...（${done} / ${total}）`,
+    "backupSaveDownloading": (sent: string, total: string) => `正在保存本地备份... 正在下载（${sent} / ${total}）`,
+    "backupCheckingAssetSizes": (done: number, total: number) => `正在检查资源大小...（${done} / ${total}）`,
+    "backupSaveInlays": (done: number, total: number) => `正在保存本地备份的聊天图片...（${done} / ${total}）`,
+    "backupSaveColdData": (done: number, total: number) => `正在保存本地备份的冷存储数据...（${done} / ${total}）`,
+    "backupSavePartialColdData": (done: number, total: number) => `正在保存部分本地备份的冷存储数据...（${done} / ${total}）`,
+    "backupSaveDatabase": "正在保存本地备份...（正在保存数据库）",
+    "backupSavePartialDatabase": "正在保存部分本地备份...（正在保存数据库）",
+    "backupSaveSkipping": (items: string) => `（正在跳过... ${items}）`,
+    "backupSaveSkippedAsset": (asset: string, character: string) => `${character} 的“${asset}”`,
     "usageStats": {
         "title": "使用统计",
         "month": "月份",

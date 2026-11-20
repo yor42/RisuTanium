@@ -146,6 +146,17 @@ describe('SideChatList accessible names', () => {
     })
 })
 
+describe('SideChatList rename fields', () => {
+    test('regression reproducer: in edit mode the folder field is named by the folder label and both chat fields "Chat name"', () => {
+        const target = mountList()
+        ;(bottomButtons(target)[2] as HTMLElement).click()
+        flushSync()
+        const fields = Array.from(target.querySelectorAll<HTMLInputElement>('input[type="text"]'))
+        expect(fields.map(controlName).sort()).toEqual([language.chatNameField, language.chatNameField, language.folderName].sort())
+        expect(unnamedControls(target, { fields: true })).toEqual([])
+    })
+})
+
 describe('SideChatList keyboard and state', () => {
     test('regression reproducer: Space on a row pencil turns edit mode on, read through the toolbar pencil state', () => {
         const target = mountList()

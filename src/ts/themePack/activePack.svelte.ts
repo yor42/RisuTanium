@@ -121,7 +121,7 @@ async function run(key: ApplyKey, mine: number): Promise<void> {
         setStatus({ phase: 'broken', reason: prepared.reason, refusals: prepared.refusals })
         return
     }
-    const result = commitPackSheet(prepared.text === null ? null : { text: prepared.text, blobs: prepared.blobs })
+    const result = commitPackSheet(prepared.text === null ? null : { text: prepared.text, blobs: prepared.blobs, base: prepared.base })
     if (!result.ok) {
         commitPackSheet(null)
         applied = null

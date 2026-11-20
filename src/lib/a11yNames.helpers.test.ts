@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { controlDescription, controlName, controls, exposedIcons, paletteClasses, unnamedControls } from './a11yNames.test-helpers'
+import { controlDescription, controlName, controls, exposedIcons, paletteClasses, textColourTokens, unnamedControls } from './a11yNames.test-helpers'
 
 function mount(html: string){
     const root = document.createElement('div')
@@ -81,6 +81,52 @@ describe('controlName', () => {
         expect(name('hintOnly')).toBe('')
         expect(name('areaOk')).toBe('Field name')
         expect(controlDescription(root.querySelector('#described')!)).toBe('Field name Field hint')
+    })
+})
+
+describe('controlName for a contenteditable role="textbox"', () => {
+    it('is named only through aria-labelledby that aria-describedby also lists', () => {
+        const root = mount(`
+            <span id="nameSpan">Field name</span>
+            <div role="textbox" contenteditable="true" id="named" aria-labelledby="nameSpan" aria-describedby="nameSpan"></div>
+            <div role="textbox" contenteditable="true" id="ariaOnly" aria-label="Only aria-label"></div>
+            <div role="textbox" contenteditable="true" id="textOnly">Typed text</div>
+        `)
+        const name = (id: string) => controlName(root.querySelector(`#${id}`)!)
+        expect(name('named')).toBe('Field name')
+        expect(name('ariaOnly')).toBe('')
+        expect(name('textOnly')).toBe('')
+    })
+
+    it('joins the field set only when fields are requested', () => {
+        const root = mount('<div role="textbox" contenteditable="true"></div><button>B</button>')
+        expect(controls(root).length).toBe(1)
+        expect(controls(root, { fields: true }).length).toBe(2)
+        expect(unnamedControls(root, { fields: true }).length).toBe(1)
+    })
+})
+
+describe('textColourTokens', () => {
+    const glyph = (root: Element, selector: string) => root.querySelector(selector)!
+
+    it('resolves the rest colour by inheritance and the hover colour up to the control', () => {
+        const root = mount('<span class="text-textcolor2"><button class="hover:text-textcolor"><svg></svg></button></span>')
+        expect(textColourTokens(glyph(root, 'button'))).toEqual({ rest: 'textcolor2', hover: 'textcolor' })
+    })
+
+    it('lets an own colour class win over the parent and skips size classes', () => {
+        const root = mount('<span class="text-textcolor"><button class="text-textcolor2 text-sm"><svg></svg></button></span>')
+        expect(textColourTokens(glyph(root, 'button'))).toEqual({ rest: 'textcolor2', hover: null })
+    })
+
+    it('ignores a hover class above the control', () => {
+        const root = mount('<div class="hover:text-draculared"><button><svg></svg></button></div>')
+        expect(textColourTokens(glyph(root, 'button')).hover).toBeNull()
+    })
+
+    it('reads rest and hover from a wrapper inside the control', () => {
+        const root = mount('<button><div class="text-draculared hover:text-textcolor"><svg></svg></div></button>')
+        expect(textColourTokens(glyph(root, 'div'))).toEqual({ rest: 'draculared', hover: 'textcolor' })
     })
 })
 

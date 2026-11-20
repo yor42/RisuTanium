@@ -27,3 +27,4 @@ src-tauri/tests/fixtures/native-reply-v1/** binary
 Agents/Tools/tbdriver/** text eol=lf
 Agents/Tools/tbdriver/android/gradlew.bat text eol=crlf
 Agents/Tools/tbdriver/android/gradle/wrapper/gradle-wrapper.jar binary
+Agents/Tools/ltm-eval/** text eol=lf

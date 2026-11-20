@@ -12,6 +12,7 @@
     import type { LLMFlags, LLMFormat, LLMTokenizer } from "src/ts/model/types";
     import { v4 } from "uuid";
 
+    const uid = $props.id();
     let openedModels = $state(new Set<string>());
 
     let { noAccordion }:{
@@ -58,7 +59,7 @@
                         models[index - 1] = temp
                         DBState.db.customModels = models
                     }}>
-                        <ArrowUp />
+                        <ArrowUp aria-hidden="true" /><span class="sr-only">{language.chatShellMoveUp}</span>
                     </Button>
                     <Button size="sm" styled="outlined" onclick={(e) => {
                         e.stopPropagation()
@@ -69,7 +70,7 @@
                         models[index + 1] = temp
                         DBState.db.customModels = models
                     }}>
-                        <ArrowDown />
+                        <ArrowDown aria-hidden="true" /><span class="sr-only">{language.chatShellMoveDown}</span>
                     </Button>
                     <Button size="sm" styled="outlined" onclick={(e) => {
                         e.stopPropagation()
@@ -79,18 +80,18 @@
                         openedModels.delete(model.id)
                         openedModels = new Set(openedModels)
                     }}>
-                        <TrashIcon />
+                        <TrashIcon aria-hidden="true" /><span class="sr-only">{language.remove}</span>
                     </Button>
                 </div>
             </button>
             {#if openedModels.has(model.id)}
             <div class="flex flex-col border border-selected p-2 rounded-b-md overflow-x-auto">
-            <span class="text-textcolor mt-4">{language.name}</span>
-            <TextInput size={"sm"} bind:value={DBState.db.customModels[index].name}/>
-            <span class="text-textcolor mt-4">{language.proxyRequestModel}</span>
-            <TextInput size={"sm"} bind:value={DBState.db.customModels[index].internalId}/>
-            <span class="text-textcolor mt-4">URL</span>
-            <TextInput size={"sm"} bind:value={DBState.db.customModels[index].url}/>
+            <span class="text-textcolor mt-4" id="{uid}-name-{index}">{language.name}</span>
+            <TextInput labelId="{uid}-name-{index}" size={"sm"} bind:value={DBState.db.customModels[index].name}/>
+            <span class="text-textcolor mt-4" id="{uid}-model-{index}">{language.proxyRequestModel}</span>
+            <TextInput labelId="{uid}-model-{index}" size={"sm"} bind:value={DBState.db.customModels[index].internalId}/>
+            <span class="text-textcolor mt-4" id="{uid}-url-{index}">URL</span>
+            <TextInput labelId="{uid}-url-{index}" size={"sm"} bind:value={DBState.db.customModels[index].url}/>
             <span class="text-textcolor mt-4">{language.tokenizer}</span>
             <SelectInput size={"sm"} value={DBState.db.customModels[index].tokenizer.toString()} onchange={(e) => {
                 DBState.db.customModels[index].tokenizer = parseInt(e.currentTarget.value) as LLMTokenizer
@@ -134,8 +135,8 @@
             </SelectInput>
             <span class="text-textcolor">{language.proxyAPIKey}</span>
             <KeyListInput size={"sm"} bind:value={DBState.db.customModels[index].key}/>
-            <span class="text-textcolor">{language.additionalParams}</span>
-            <TextAreaInput bind:value={DBState.db.customModels[index].params} placeholder={`temperature=0.7
+            <span class="text-textcolor" id="{uid}-params-{index}">{language.additionalParams}</span>
+            <TextAreaInput labelId="{uid}-params-{index}" bind:value={DBState.db.customModels[index].params} placeholder={`temperature=0.7
     max_tokens=2000
     reasoning_effort="high"
     header::anthropic-dangerous-direct-browser-access=true
@@ -172,7 +173,7 @@
         </div>
     {/each}
     <div class="flex flex-col mt-2">
-        <button class="hover:bg-selected px-6 py-2 text-lg rounded-md border-selected border flex justify-center items-center cursor-pointer" onclick={() => {
+        <button aria-label={language.add} class="hover:bg-selected px-6 py-2 text-lg rounded-md border-selected border flex justify-center items-center cursor-pointer" onclick={() => {
             DBState.db.customModels.push({
                 internalId: "",
                 url: "",
@@ -185,7 +186,7 @@
                 flags: [],
             })
         }}>
-            <PlusIcon />
+            <PlusIcon aria-hidden="true" />
         </button>
     </div>
     

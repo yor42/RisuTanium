@@ -952,4 +952,35 @@
     [data-part="chat-message-divider"][data-kind="disabled"] { border-top-color: var(--color-accent); }
     [data-part="chat-message-memory-limit"] { border-top-style: solid; border-top-color: var(--color-accent); }
     button { color: var(--nexus-text-secondary); }
+    /* Under a theme pack the message text is the message element's own colour: --nexus-text, or the colour the pack's own rule
+       sets for the message, both of which the pack's judgement covers. The text theme's colours and the prose colours are
+       not judged, so every text role reads currentColor instead; the rules and borders carry no text and use the edge
+       token. Nothing here paints a background behind the transcript. */
+    :global(:root[data-theme-pack-base]) [data-part="chat-message-body"] {
+        --FontColorStandard: currentColor;
+        --FontColorBold: currentColor;
+        --FontColorItalic: currentColor;
+        --FontColorItalicBold: currentColor;
+        --FontColorQuote1: currentColor;
+        --FontColorQuote2: currentColor;
+        --tw-prose-body: currentColor;
+        --tw-prose-headings: currentColor;
+        --tw-prose-lead: currentColor;
+        --tw-prose-links: currentColor;
+        --tw-prose-bold: currentColor;
+        --tw-prose-counters: currentColor;
+        --tw-prose-bullets: currentColor;
+        --tw-prose-quotes: currentColor;
+        --tw-prose-captions: currentColor;
+        --tw-prose-kbd: currentColor;
+        --tw-prose-code: currentColor;
+        --tw-prose-pre-code: currentColor;
+        --tw-prose-hr: var(--nexus-edge-strong);
+        --tw-prose-quote-borders: var(--nexus-edge-strong);
+        --tw-prose-th-borders: var(--nexus-edge-strong);
+        --tw-prose-td-borders: var(--nexus-edge-strong);
+        --tw-prose-pre-bg: transparent;
+        --tw-prose-kbd-shadows: var(--nexus-overlay-rgb);
+    }
+    :global(:root[data-theme-pack-base]) [data-part="chat-message-body"] :global(mark[risu-mark^="blockquote"]) { background-color: transparent; }
 </style>

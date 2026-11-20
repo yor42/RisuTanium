@@ -21,6 +21,8 @@
     import { language } from "src/lang";
     import { downloadNotice } from "src/ts/exportNotice";
 
+    const uid = $props.id();
+
     function normalizeTranslatorPresets() {
         normalizeTranslatorPresetState(DBState.db);
     }
@@ -44,8 +46,8 @@
 </select>
 
 <div class="flex items-center mb-4">
-    <button
-        class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer"
+    <button aria-label={language.add}
+        class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer"
         onclick={() => {
             const newPreset = createTranslatorPreset();
             const presets = DBState.db.translatorPresets;
@@ -55,11 +57,11 @@
             normalizeTranslatorPresets();
         }}
     >
-        <PlusIcon size={24} />
+        <PlusIcon size={24} aria-hidden="true" />
     </button>
 
-    <button
-        class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer"
+    <button aria-label={language.edit}
+        class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer"
         onclick={async () => {
             const presets = DBState.db.translatorPresets;
 
@@ -79,11 +81,11 @@
             syncCurrentTranslatorPreset();
         }}
     >
-        <PencilIcon size={24} />
+        <PencilIcon size={24} aria-hidden="true" />
     </button>
 
-    <button
-        class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer"
+    <button aria-label={language.remove}
+        class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer"
         onclick={async () => {
             const presets = DBState.db.translatorPresets;
 
@@ -108,13 +110,13 @@
             normalizeTranslatorPresets();
         }}
     >
-        <TrashIcon size={24} />
+        <TrashIcon size={24} aria-hidden="true" />
     </button>
 
     <div class="ml-2 mr-4 w-px h-full bg-darkborderc"></div>
 
-    <button
-        class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer"
+    <button aria-label={language.export}
+        class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer"
         onclick={async () => {
             try {
                 const presets = DBState.db.translatorPresets;
@@ -138,11 +140,11 @@
             }
         }}
     >
-        <DownloadIcon size={24} />
+        <DownloadIcon size={24} aria-hidden="true" />
     </button>
 
-    <button
-        class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer"
+    <button aria-label={language.import}
+        class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer"
         onclick={async () => {
             try {
                 const selectedFile = await selectSingleFile(translatorPresetImportExtensions);
@@ -163,7 +165,7 @@
             }
         }}
     >
-        <HardDriveUploadIcon size={24} />
+        <HardDriveUploadIcon size={24} aria-hidden="true" />
     </button>
 </div>
 
@@ -179,8 +181,9 @@
             syncCurrentTranslatorPreset();
         }}
     />
-    <span class="text-textcolor mt-4">{language.translatorPrompt} <Help key="translatorPrompt" /></span>
+    <span class="text-textcolor mt-4"><span id="{uid}-prompt">{language.translatorPrompt}</span> <Help key="translatorPrompt" /></span>
     <TextAreaInput
+        labelId="{uid}-prompt"
         bind:value={() => preset.prompt, (value) => {
             preset.prompt = value;
             syncCurrentTranslatorPreset();

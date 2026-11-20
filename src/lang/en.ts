@@ -660,6 +660,19 @@ export const languageEnglish = {
     importTaskFailedOne: (name: string) => `Couldn't import ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} left out as duplicates`,
     importTaskRetryFailed: (count: number) => count === 1 ? 'Retry the 1 that failed' : `Retry the ${count} that failed`,
+    importTaskUndo: 'Undo import',
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`Moved ${trashed} to the Trash`] : []),
+            ...(removed > 0 ? [`${trashed > 0 ? 'removed' : 'Removed'} ${removed} ${removed === 1 ? 'module' : 'modules'}`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} could not be undone`
+        }
+        return done || 'Nothing to undo'
+    },
+    importUndoRefused: "The import can't be undone now. Remove the items from the library instead.",
     importTaskCharactersTitle: 'Importing characters',
     importTaskFilesTitle: 'Importing files',
     importTaskRealmTitle: 'Importing from Realm',
@@ -3491,6 +3504,10 @@ export const languageEnglish = {
     pluginBatchMore: (count: number) => `...and ${count} more`,
     pluginBatchRepeated: "Another file in this selection has the same plugin name.",
     pluginBatchTranspileFailed: (message: string) => `Failed to transpile TypeScript code: ${message}`,
+    pluginInstallUpdate: "Install update",
+    chooseIconImage: "Choose icon image",
+    comparePreset: "Compare with another preset",
+    chatNameField: "Chat name",
     goToChat: "Go to Chat",
     bookmark: "Bookmark",
     translate: "Translate",
@@ -3588,6 +3605,19 @@ export const languageEnglish = {
     backupThemePacksConfirm: (count: number, names: string[]) =>
         `${count} theme pack(s) are saved on this device only, and a backup file has no place for them or their files, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupUsageStatsConfirm: 'A .bin backup has no place for your usage statistics or the model prices you entered, so this backup leaves them out. This device keeps them, and .rtb backups include them. Create the backup without them?',
+    backupSaveWait: 'Saving local backup...',
+    backupSavePartialWait: 'Saving partial local backup...',
+    backupSaveProgress: (done: number, total: number) => `Saving local backup... (${done} / ${total})`,
+    backupSavePartialProgress: (done: number, total: number) => `Saving partial local backup... (${done} / ${total})`,
+    backupSaveDownloading: (sent: string, total: string) => `Saving local backup... downloading (${sent} / ${total})`,
+    backupCheckingAssetSizes: (done: number, total: number) => `Checking asset sizes... (${done} / ${total})`,
+    backupSaveInlays: (done: number, total: number) => `Saving local backup inlays... (${done} / ${total})`,
+    backupSaveColdData: (done: number, total: number) => `Saving local backup cold data... (${done} / ${total})`,
+    backupSavePartialColdData: (done: number, total: number) => `Saving partial local backup cold data... (${done} / ${total})`,
+    backupSaveDatabase: 'Saving local backup... (saving database)',
+    backupSavePartialDatabase: 'Saving partial local backup... (saving database)',
+    backupSaveSkipping: (items: string) => `(Skipping... ${items})`,
+    backupSaveSkippedAsset: (asset: string, character: string) => `'${asset}' from ${character}`,
     usageStats: {
         title: 'Usage statistics',
         month: 'Month',

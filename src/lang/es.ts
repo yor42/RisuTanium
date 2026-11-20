@@ -660,6 +660,19 @@ export const languageSpanish = {
     importTaskFailedOne: (name: string) => `No se pudo importar ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} omitidos por estar duplicados`,
     importTaskRetryFailed: (count: number) => count === 1 ? "Reintentar el 1 que falló" : `Reintentar los ${count} que fallaron`,
+    importTaskUndo: "Deshacer importación",
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed} movido${trashed === 1 ? '' : 's'} a la papelera`] : []),
+            ...(removed > 0 ? [`${removed} ${removed === 1 ? 'módulo eliminado' : 'módulos eliminados'}`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} no se ${missing === 1 ? 'pudo' : 'pudieron'} deshacer`
+        }
+        return done || 'Nada que deshacer'
+    },
+    importUndoRefused: "La importación no se puede deshacer ahora. Elimina los elementos de la biblioteca en su lugar.",
     importTaskCharactersTitle: "Importando personajes",
     importTaskFilesTitle: "Importando archivos",
     importTaskRealmTitle: "Importando desde Realm",
@@ -3357,6 +3370,10 @@ export const languageSpanish = {
     "pluginBatchMore": (count: number) => `...y ${count} más`,
     "pluginBatchRepeated": "Otro archivo de esta selección tiene el mismo nombre de plugin.",
     "pluginBatchTranspileFailed": (message: string) => `No se pudo transpilar el código TypeScript: ${message}`,
+    "pluginInstallUpdate": "Instalar actualización",
+    "chooseIconImage": "Elegir imagen de icono",
+    "comparePreset": "Comparar con otro preset",
+    "chatNameField": "Nombre del chat",
     "branch": "Rama",
     "newMessageButtonBottomLeft": "Abajo a la izquierda",
     "newMessage": "Nuevo mensaje",
@@ -3449,6 +3466,19 @@ export const languageSpanish = {
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} paquete(s) de tema se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos ni para sus archivos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupUsageStatsConfirm": "Una copia de seguridad .bin no tiene dónde guardar tus estadísticas de uso ni los precios de modelo que introdujiste, así que esta copia los deja fuera. Este dispositivo los conserva, y las copias .rtb los incluyen. ¿Crear la copia sin ellos?",
+    "backupSaveWait": "Guardando la copia de seguridad local...",
+    "backupSavePartialWait": "Guardando la copia de seguridad local parcial...",
+    "backupSaveProgress": (done: number, total: number) => `Guardando la copia de seguridad local... (${done} de ${total})`,
+    "backupSavePartialProgress": (done: number, total: number) => `Guardando la copia de seguridad local parcial... (${done} de ${total})`,
+    "backupSaveDownloading": (sent: string, total: string) => `Guardando la copia de seguridad local... descargando (${sent} de ${total})`,
+    "backupCheckingAssetSizes": (done: number, total: number) => `Comprobando el tamaño de los activos... (${done} de ${total})`,
+    "backupSaveInlays": (done: number, total: number) => `Guardando las imágenes de chat de la copia de seguridad local... (${done} de ${total})`,
+    "backupSaveColdData": (done: number, total: number) => `Guardando los datos del almacenamiento frío de la copia de seguridad local... (${done} de ${total})`,
+    "backupSavePartialColdData": (done: number, total: number) => `Guardando los datos del almacenamiento frío de la copia de seguridad local parcial... (${done} de ${total})`,
+    "backupSaveDatabase": "Guardando la copia de seguridad local... (guardando la base de datos)",
+    "backupSavePartialDatabase": "Guardando la copia de seguridad local parcial... (guardando la base de datos)",
+    "backupSaveSkipping": (items: string) => `(Omitiendo... ${items})`,
+    "backupSaveSkippedAsset": (asset: string, character: string) => `"${asset}" de ${character}`,
     "usageStats": {
         "title": "Estadísticas de uso",
         "month": "Mes",

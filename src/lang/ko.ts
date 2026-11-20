@@ -660,6 +660,19 @@ export const languageKorean = {
     importTaskFailedOne: (name: string) => `${name}을(를) 가져오지 못했습니다`,
     importTaskDuplicatesLeftOut: (count: number) => `중복으로 ${count}개 제외됨`,
     importTaskRetryFailed: (count: number) => `실패한 ${count}개 다시 시도`,
+    importTaskUndo: "가져오기 되돌리기",
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed}개를 휴지통으로 이동`] : []),
+            ...(removed > 0 ? [`모듈 ${removed}개 제거`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing}개는 되돌리지 못함`
+        }
+        return done || '되돌릴 항목이 없습니다'
+    },
+    importUndoRefused: "지금은 가져오기를 되돌릴 수 없습니다. 대신 라이브러리에서 항목을 직접 삭제하세요.",
     importTaskCharactersTitle: "캐릭터 가져오는 중",
     importTaskFilesTitle: "파일 가져오는 중",
     importTaskRealmTitle: "Realm에서 가져오는 중",
@@ -3377,6 +3390,10 @@ export const languageKorean = {
     "pluginBatchMore": (count: number) => `...외 ${count}개`,
     "pluginBatchRepeated": "이 선택에 같은 플러그인 이름을 가진 다른 파일이 있습니다.",
     "pluginBatchTranspileFailed": (message: string) => `TypeScript 코드를 트랜스파일하지 못했습니다: ${message}`,
+    "pluginInstallUpdate": "업데이트 설치",
+    "chooseIconImage": "아이콘 이미지 선택",
+    "comparePreset": "다른 프리셋과 비교",
+    "chatNameField": "채팅 이름",
     "noRequestLogs": "요청 로그가 없습니다.",
     "branchedText": "이 채팅은 {}에서 분기되었습니다.",
     "disableMessage": "메시지 비활성화",
@@ -3446,6 +3463,19 @@ export const languageKorean = {
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `테마 팩 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이와 그 파일을 담을 공간이 없어 이 백업에서 제외됩니다. 테마 팩은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupUsageStatsConfirm": ".bin 백업에는 사용 통계와 직접 입력한 모델 가격을 담을 자리가 없어서, 이 백업에서는 둘 다 빠져요. 이 기기에는 그대로 남아 있고, .rtb 백업에는 포함돼요. 이들 없이 백업을 만들까요?",
+    "backupSaveWait": "로컬 백업 저장 중...",
+    "backupSavePartialWait": "부분 로컬 백업 저장 중...",
+    "backupSaveProgress": (done: number, total: number) => `로컬 백업 저장 중... (${done} / ${total})`,
+    "backupSavePartialProgress": (done: number, total: number) => `부분 로컬 백업 저장 중... (${done} / ${total})`,
+    "backupSaveDownloading": (sent: string, total: string) => `로컬 백업 저장 중... 다운로드 중 (${sent} / ${total})`,
+    "backupCheckingAssetSizes": (done: number, total: number) => `에셋 크기 확인 중... (${done} / ${total})`,
+    "backupSaveInlays": (done: number, total: number) => `로컬 백업 채팅 이미지 저장 중... (${done} / ${total})`,
+    "backupSaveColdData": (done: number, total: number) => `로컬 백업 콜드 스토리지 데이터 저장 중... (${done} / ${total})`,
+    "backupSavePartialColdData": (done: number, total: number) => `부분 로컬 백업 콜드 스토리지 데이터 저장 중... (${done} / ${total})`,
+    "backupSaveDatabase": "로컬 백업 저장 중... (데이터베이스 저장 중)",
+    "backupSavePartialDatabase": "부분 로컬 백업 저장 중... (데이터베이스 저장 중)",
+    "backupSaveSkipping": (items: string) => `(건너뛰는 중... ${items})`,
+    "backupSaveSkippedAsset": (asset: string, character: string) => `${character}의 '${asset}'`,
     "usageStats": {
         "title": "사용 통계",
         "month": "월",

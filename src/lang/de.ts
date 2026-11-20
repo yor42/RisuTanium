@@ -70,7 +70,7 @@ export const languageGerman = {
     "chatShellFindDate": "Datum",
     "chatShellFindSpeakerAny": "Alle",
     "chatShellFindSpeakerMe": "Ich",
-    "chatShellFindSpeakerChar": "Figur",
+    "chatShellFindSpeakerChar": "Charakter",
     "chatShellFindFrom": "Von",
     "chatShellFindTo": "Bis",
     "chatShellFindNoResults": "Keine Nachrichten gefunden",
@@ -660,6 +660,19 @@ export const languageGerman = {
     "importTaskFailedOne": (name: string) => `${name} konnte nicht importiert werden`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} als Duplikate ausgelassen`,
     "importTaskRetryFailed": (count: number) => count === 1 ? "Das 1 fehlgeschlagene Element wiederholen" : `Die ${count} fehlgeschlagenen Elemente wiederholen`,
+    "importTaskUndo": "Import rückgängig machen",
+    "importUndoDone": (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed} in den Papierkorb verschoben`] : []),
+            ...(removed > 0 ? [`${removed} ${removed === 1 ? 'Modul' : 'Module'} entfernt`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} ${missing === 1 ? 'konnte' : 'konnten'} nicht rückgängig gemacht werden`
+        }
+        return done || 'Nichts rückgängig zu machen'
+    },
+    "importUndoRefused": "Der Import kann jetzt nicht rückgängig gemacht werden. Entfernen Sie die Elemente stattdessen aus der Bibliothek.",
     "importTaskCharactersTitle": "Charaktere werden importiert",
     "importTaskFilesTitle": "Dateien werden importiert",
     "importTaskRealmTitle": "Import aus Realm läuft",
@@ -3356,6 +3369,10 @@ export const languageGerman = {
     "pluginBatchMore": (count: number) => `...und ${count} weitere`,
     "pluginBatchRepeated": "Eine andere Datei in dieser Auswahl hat denselben Plugin-Namen.",
     "pluginBatchTranspileFailed": (message: string) => `TypeScript-Code konnte nicht transpiliert werden: ${message}`,
+    "pluginInstallUpdate": "Update installieren",
+    "chooseIconImage": "Symbolbild auswählen",
+    "comparePreset": "Mit anderer Voreinstellung vergleichen",
+    "chatNameField": "Chatname",
     "goToChat": "Zum Chat",
     "branch": "Zweig",
     "newMessageButtonBottomLeft": "Unten links",
@@ -3449,6 +3466,19 @@ export const languageGerman = {
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} Design-Paket(e) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür oder für ihre Dateien, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupUsageStatsConfirm": "Ein .bin-Backup hat keinen Platz für Ihre Nutzungsstatistik oder die von Ihnen eingegebenen Modellpreise, daher lässt dieses Backup sie weg. Dieses Gerät behält sie, und .rtb-Backups enthalten sie. Das Backup ohne sie erstellen?",
+    "backupSaveWait": "Lokales Backup wird gespeichert...",
+    "backupSavePartialWait": "Teilweises lokales Backup wird gespeichert...",
+    "backupSaveProgress": (done: number, total: number) => `Lokales Backup wird gespeichert... (${done} von ${total})`,
+    "backupSavePartialProgress": (done: number, total: number) => `Teilweises lokales Backup wird gespeichert... (${done} von ${total})`,
+    "backupSaveDownloading": (sent: string, total: string) => `Lokales Backup wird gespeichert... Download läuft (${sent} von ${total})`,
+    "backupCheckingAssetSizes": (done: number, total: number) => `Asset-Größen werden geprüft... (${done} von ${total})`,
+    "backupSaveInlays": (done: number, total: number) => `Chat-Bilder des lokalen Backups werden gespeichert... (${done} von ${total})`,
+    "backupSaveColdData": (done: number, total: number) => `Kaltlager-Daten des lokalen Backups werden gespeichert... (${done} von ${total})`,
+    "backupSavePartialColdData": (done: number, total: number) => `Kaltlager-Daten des teilweisen lokalen Backups werden gespeichert... (${done} von ${total})`,
+    "backupSaveDatabase": "Lokales Backup wird gespeichert... (Datenbank wird gespeichert)",
+    "backupSavePartialDatabase": "Teilweises lokales Backup wird gespeichert... (Datenbank wird gespeichert)",
+    "backupSaveSkipping": (items: string) => `(Übersprungen... ${items})`,
+    "backupSaveSkippedAsset": (asset: string, character: string) => `„${asset}“ von ${character}`,
     "usageStats": {
         "title": "Nutzungsstatistik",
         "month": "Monat",
