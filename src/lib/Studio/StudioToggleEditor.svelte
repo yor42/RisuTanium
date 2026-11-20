@@ -33,6 +33,8 @@
 
     let { builder, editable, id, actions, carry, focusOnOpen = true }: Props = $props()
 
+    const uid = $props.id()
+
     const FIELD_CLASS = 'min-h-11 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor'
     const leafKinds = ['check', 'select', 'text', 'textarea', 'divider', 'caption'] as const
     const kindText = {
@@ -191,12 +193,14 @@
             <p data-part="studio-toggle-rewrite-loss" class="text-sm text-textcolor2">{language.studioTgRewriteLoss}</p>
         {/if}
         <label class="flex flex-col gap-1">
-            <span class="text-sm text-textcolor2">{language.studioTgType}</span>
+            <span id="{uid}-kind-label" class="text-sm text-textcolor2">{language.studioTgType}</span>
             {#if draft.kind === 'group'}
                 <span data-part="studio-toggle-type-static">{language.studioTgTypeGroup}</span>
             {:else}
                 <select
                     data-part="studio-toggle-kind"
+                    aria-labelledby="{uid}-kind-label"
+                    aria-describedby="{uid}-kind-label"
                     class="min-h-11 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
                     disabled={off || locked}
                     value={draft.kind}

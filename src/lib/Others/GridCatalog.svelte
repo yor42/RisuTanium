@@ -94,6 +94,8 @@
     }
 
     let { endGrid = () => {}, studio }: Props = $props();
+
+    const uid = $props.id();
     // A dark halo behind a folder tile's icon or name keeps it readable over a bright picture.
     const FACE_SHADOW = 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]'
     let search = $state('')
@@ -1848,8 +1850,8 @@
                         {/if}
                     {:else}
                         <label class="flex items-center gap-2 text-textcolor2 text-sm">
-                            <span>{language.othersUi.sortLabel}</span>
-                            <SelectInput size="sm" value={sort} onchange={(event) => chooseSort(event.currentTarget.value)}>
+                            <span id="{uid}-sort-label">{language.othersUi.sortLabel}</span>
+                            <SelectInput size="sm" labelId="{uid}-sort-label" value={sort} onchange={(event) => chooseSort(event.currentTarget.value)}>
                                 <option value="order">{language.othersUi.sortMyOrder}</option>
                                 <option value="recent">{language.recent}</option>
                                 <option value="name">{language.name}</option>

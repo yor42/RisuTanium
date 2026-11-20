@@ -13,6 +13,8 @@
     }
     let { firstPresetId, secondPresetId, onClose = () => {} }: Props = $props();
 
+    const uid = $props.id();
+
 
 // Lazy-loaded diff module
 // -----------------------------------------------------------------------------
@@ -1296,11 +1298,13 @@
 
 {#snippet rangeControl(label: string, value: number, setValue: (v: number) => void, min = 0, max = 5, disabled = false)}
   <div class="flex items-center gap-2">
-    <span class={`text-xs ${disabled ? 'text-textcolor2/50' : 'text-textcolor2'}`}>
+    <span id="{uid}-range-label" class={`text-xs ${disabled ? 'text-textcolor2/50' : 'text-textcolor2'}`}>
       {label}
     </span>
     <input
       type="range"
+      aria-labelledby="{uid}-range-label"
+      aria-describedby="{uid}-range-label"
       min={min}
       max={max}
       step="1"

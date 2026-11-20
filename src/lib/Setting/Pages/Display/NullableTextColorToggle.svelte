@@ -11,6 +11,7 @@
 
     let { field, labelKey, defaultColor }: Props = $props();
     let currentValue = $derived(DBState.db[field]);
+    const uid = $props.id();
 </script>
 
 {#if currentValue}
@@ -27,11 +28,13 @@
             type="color"
             class="style2 text-sm mr-2"
             value={currentValue}
+            aria-labelledby="{uid}-label"
+            aria-describedby="{uid}-label"
             oninput={(e) => {
                 DBState.db[field] = e.currentTarget.value;
             }}
         />
-        <span>{language[labelKey]}</span>
+        <span id="{uid}-label">{language[labelKey]}</span>
     </div>
 {:else}
     <div class="flex items-center mt-2">

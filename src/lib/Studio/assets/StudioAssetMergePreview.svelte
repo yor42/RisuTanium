@@ -51,6 +51,8 @@
 
     let { owner, ownerKind, ownerId, kind, group, deps, service, toasts, source, references, onclose }: Props = $props()
 
+    const uid = $props.id()
+
     interface Built {
         model: MergePreview
         snapshot: OwnerSnapshot
@@ -305,8 +307,8 @@
         <h3 class="font-bold">{language.studioAssetMergeTitle(removedList, model.keptName)}</h3>
         {#if choices.length > 1}
             <label class="flex flex-wrap items-center gap-2">
-                <span>{language.studioAssetMergeKeep}</span>
-                <select data-part="studio-asset-merge-keep" class="min-h-11 rounded-md border border-darkborderc bg-darkbg px-2 text-textcolor" value={kept} onchange={(event) => chooseKept(event.currentTarget.value)}>
+                <span id="{uid}-keep-label">{language.studioAssetMergeKeep}</span>
+                <select data-part="studio-asset-merge-keep" aria-labelledby="{uid}-keep-label" aria-describedby="{uid}-keep-label" class="min-h-11 rounded-md border border-darkborderc bg-darkbg px-2 text-textcolor" value={kept} onchange={(event) => chooseKept(event.currentTarget.value)}>
                     {#each choices as choice (choice.name)}
                         <option value={choice.name}>{choice.name}</option>
                     {/each}

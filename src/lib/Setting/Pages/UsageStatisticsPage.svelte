@@ -242,8 +242,8 @@
 
     {#if month !== ""}
         <label class="flex flex-col gap-1 mb-4 max-w-xs">
-            <span class="text-textcolor2">{language.usageStats.monthPick}</span>
-            <SelectInput value={month} onchange={(event) => { picked = event.currentTarget.value }}>
+            <span id="usage-month-label" class="text-textcolor2">{language.usageStats.monthPick}</span>
+            <SelectInput labelId="usage-month-label" value={month} onchange={(event) => { picked = event.currentTarget.value }}>
                 {#each view.months as row (row.month)}
                     <option value={row.month}>{row.month}</option>
                 {/each}
@@ -378,8 +378,8 @@
         <h3 id="usage-manage-title" class="text-lg font-semibold mb-1">{language.usageStats.manageTitle}</h3>
 
         <label class="flex flex-col gap-1 mb-2 max-w-xs">
-            <span class="text-textcolor2">{language.usageStats.retentionLabel}</span>
-            <SelectInput bind:value={retentionPick} describedBy="usage-retention-help" onchange={onRetentionChange}>
+            <span id="usage-retention-label" class="text-textcolor2">{language.usageStats.retentionLabel}</span>
+            <SelectInput labelId="usage-retention-label" bind:value={retentionPick} describedBy="usage-retention-help" onchange={onRetentionChange}>
                 <option value="off">{language.usageStats.retentionOff}</option>
                 {#each USAGE_RETENTION_CHOICES as choice (choice)}
                     <option value={String(choice)}>{language.usageStats.retentionMonths(choice)}</option>
@@ -391,8 +391,8 @@
         {#if !empty}
             <div data-part="usage-clear" class="flex flex-col gap-2 mb-2 max-w-xs">
                 <label class="flex flex-col gap-1">
-                    <span class="text-textcolor2">{language.usageStats.clearScopeLabel}</span>
-                    <SelectInput bind:value={clearPick} onchange={() => { cleared = false }}>
+                    <span id="usage-clear-label" class="text-textcolor2">{language.usageStats.clearScopeLabel}</span>
+                    <SelectInput labelId="usage-clear-label" bind:value={clearPick} onchange={() => { cleared = false }}>
                         <option value="all">{language.usageStats.clearScopeAll}</option>
                         {#each clearableMonths as row (row.month)}
                             <option value={"before:" + row.month}>{language.usageStats.clearScopeBefore(row.month)}</option>

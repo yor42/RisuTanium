@@ -178,6 +178,18 @@ export function fieldControls(root: ParentNode): Element[] {
         .filter((el) => el.matches(VALUE_CONTROL_SELECTOR) || toggleFor(el) !== null)
 }
 
+/**
+ * Marks the colour picker library's closed popup dialog aria-hidden. The library renders the dialog's
+ * sliders and text inputs while it is closed and hides them with CSS, which jsdom does not apply; their
+ * names are the library's own. Only the library's root structure counts (a `.wrapper` with the dialog
+ * role that lacks `.is-open`), so an open picker and any other dialog keep their controls checked.
+ */
+export function hideClosedColorPickerDialogs(root: ParentNode): void {
+    for (const dialog of Array.from(root.querySelectorAll('.wrapper[role="dialog"]:not(.is-open)'))) {
+        dialog.setAttribute('aria-hidden', 'true')
+    }
+}
+
 export type FieldExpectation = { name: string, help?: string, toggle?: boolean }
 
 const NAMING_FORBIDDEN_DESCENDANTS = 'button, [role="button"], a[href], input, select, textarea, [role="slider"], [tabindex], [aria-label]'

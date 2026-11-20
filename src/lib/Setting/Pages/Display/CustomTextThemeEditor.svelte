@@ -4,6 +4,8 @@
     import ColorInput from 'src/lib/UI/GUI/ColorInput.svelte';
     import { language } from 'src/lang';
 
+    const uid = $props.id();
+
     const colors = [
         ['FontColorStandard', 'normalText', false],
         ['FontColorItalic', 'italicText', false],
@@ -19,10 +21,11 @@
         <div class="flex items-center mt-2">
             <ColorInput
                 nullable={color[2]}
+                labelId="{uid}-{color[0]}"
                 bind:value={DBState.db.customTextTheme[color[0]]}
                 oninput={updateTextThemeAndCSS}
             />
-            <span class="ml-2">{language.settingsPage[color[1]]}</span>
+            <span id="{uid}-{color[0]}" class="ml-2">{language.settingsPage[color[1]]}</span>
         </div>
     {/each}
 {/if}
