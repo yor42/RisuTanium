@@ -461,6 +461,33 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
         return { ...judged, areas: { ...judged.areas, chat: { ...chat, warnings: WARNINGS } } }
     }
     const warnIntake = (verified: Uint8Array): Promise<IntakeResult> => intakePackBytes(verified, warnJudge)
+    // The real producer (MC-329): a chat sheet naming a family the pack does not bundle, judged by the real validator.
+    const UNBUNDLED_SHEET = '[data-part="chat-message-text"]{font-family:"pack-missing", serif}'
+    const unbundledWhy = (name: string): string => `font family "${name}" is not bundled with the pack: it shows only on devices that have it installed, and others use the next family in the list, so end the list with a generic family such as serif, sans-serif or monospace (MC-2542, MC-2543)`
+    const unbundledPack = (): Uint8Array => zipPack(validPackFiles({ 'chat.css': UNBUNDLED_SHEET }))
+
+    test('V-T10: a real unbundled family installs and shows its warning under the installed line (MC-2542)', async () => {
+        attach()
+        await runThemePackInstall(runOf(unbundledPack()).deps)
+        expect(outcomeLines()).toEqual([
+            language.themePackInstalled('Test Pack'),
+            language.themePackInstalledWithWarnings('chat.css'),
+            language.themePackLintLine('[data-part="chat-message-text"]', 'font-family', unbundledWhy('pack-missing')),
+        ])
+        expect(installFlowState.outcome?.tone).toBe('info')
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('V-T11: a real symbol font is refused with its reason and nothing is written', async () => {
+        attach()
+        const bytes = zipPack(validPackFiles({ 'chat.css': '[data-part="chat-message-text"]{font-family:wingdings, serif}' }))
+        await runThemePackInstall(runOf(bytes).deps)
+        const lines = outcomeLines() ?? []
+        expect(installFlowState.outcome?.tone).toBe('error')
+        expect(lines[0]).toBe(language.themePackRefusedHeader)
+        expect(lines[1]).toContain('it is a symbol font')
+        expect(world.log).toEqual([])
+    })
 
     test('the installed line is followed by the header and one line per warning, in the info tone', async () => {
         attach()
@@ -507,7 +534,7 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
             if (verdict.ok === false) return { ok: false, kind: 'refused', refusal: verdict.refusal }
             return failure
         }
-        await runThemePackInstall(runOf(validPack(), [], { intake: warnIntake, install }).deps)
+        await runThemePackInstall(runOf(unbundledPack(), [], { install }).deps)
         expect(verified).toEqual([true])
         expect(outcomeLines()).toEqual([text])
         expect(installFlowState.outcome?.tone).toBe('error')

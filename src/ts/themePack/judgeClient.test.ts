@@ -281,6 +281,18 @@ describe('T3W-5 malformed answers', () => {
         expect(read?.areas.chat?.warnings[0]).not.toBe(warnings[0])
     })
 
+    it('V-T9: a real unbundled family reaches intake as a warning on the verified sheet (MC-2542)', async () => {
+        const sheet = '[data-part="chat-message-text"]{font-family:"pack-missing", serif}'
+        const judged = judgePackSheets({ chat: sheet })
+        expect(judged.areas.chat?.warnings).toHaveLength(1)
+        expect(readJudgement(structuredClone(judged))).toEqual(judged)
+        const result = await intakePackBytes(zipPack(validPackFiles({ 'chat.css': sheet })), createJudgeClient({ spawn: () => new FakeJudgeWorker('real') }))
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        expect(result.pack.sheets.chat.warnings).toHaveLength(1)
+        expect(result.pack.sheets.chat.warnings[0].why).toMatch(/^font family "pack-missing" is not bundled with the pack: /)
+    })
+
     it('readJudgement accepts a refused sheet with its errors and no locations', () => {
         const refused = judgePackSheets({ chat: 'a{background:url(https://example.invalid/x.png)}' })
         expect(refused.ok).toBe(false)

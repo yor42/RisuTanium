@@ -1,6 +1,6 @@
 // The theme-pack safety validator (UI-S6 stage 1): the reference validator of docs/design rewritten without a file system,
 // plus the pack rules the maintainer decided for the app (MC-1351 bundled fonts and images only, MC-1354 the size warning,
-// MC-1549 sizes the checks can measure, MC-1550 font families a pack bundles, MC-1564 to MC-1568 the pack normal form).
+// MC-1549 sizes the checks can measure, MC-2542 font families: unbundled ones warn, symbol fonts are refused, MC-1564 to MC-1568 the pack normal form).
 // Nothing in the app installs or applies a pack yet; a later stage should load this module lazily and run it off the main
 // thread or in slices, because a large pack takes a noticeable time to judge.
 import { chatLiveChainErrors, lintPack as lintChat, normalise, type LintError, type LintResult } from './engine'
@@ -57,7 +57,7 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * @font-face blocks leave it (structure.ts); top-level @font-face blocks are judged on their own, the rest goes to the
  * area's reference lint unchanged, and the value rules (valueRules.ts) then judge it with the area's app tokens. The
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
- * a font-family may name (MC-1550). A chat or Studio stylesheet that all of these accept is then judged by Rule S
+ * a font-family may name without a warning: any other name warns, except a symbol font, which is refused (MC-2542). A chat or Studio stylesheet that all of these accept is then judged by Rule S
  * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach), and
  * then by Rule E-2 (outerShadow.ts, a flat 2 px limit on outer and inset shadows).
  */
@@ -103,7 +103,7 @@ export function judgeAreaSheet(area: ThemeArea, source: string, packFamilies?: R
 
 /**
  * Judges every stylesheet of a pack, each with only the font families its own @font-face blocks register: an area that
- * names a family another area registers is refused (MC-1609). This is stricter than validateThemePack, which pools
+ * names a family another area registers gets a warning (MC-1609, MC-2542). This is stricter than validateThemePack, which pools
  * the families of all areas.
  */
 export function judgePackSheets(files: Partial<Record<ThemeArea, string>>): PackSheetsJudgement {

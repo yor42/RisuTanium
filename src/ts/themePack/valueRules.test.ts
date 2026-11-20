@@ -36,6 +36,21 @@ describe('VU1: the token resolver and the structure pass', () => {
         expect(verdict.warnings).toEqual([])
     })
 
+    test('V-T4: a non-ASCII quoted family name is refused, never warned (MC-1568)', () => {
+        const verdict = valueRulesPass(`${TEXT}{font-family:"나눔"}`, ENV)
+        expect(verdict.errors.some((e) => /must be written in ASCII.*MC-1568/.test(e.why))).toBe(true)
+        expect(verdict.warnings).toEqual([])
+    })
+
+    test('V-T5: an unbundled family warns once per selector, property and reason', () => {
+        const twice = valueRulesPass(`${TEXT}{font-family:"pack-missing", serif;font-family:"pack-missing", serif}`, ENV)
+        expect(twice.errors).toEqual([])
+        expect(twice.warnings).toHaveLength(1)
+        const reached = valueRulesPass(`:root{--font:"pack-missing", serif}${TEXT}{font-family:var(--font)}`, ENV)
+        expect(reached.warnings.map((w) => w.selector)).toHaveLength(2)
+        expect(new Set(reached.warnings.map((w) => w.selector)).size).toBe(2)
+    })
+
     test('readAppValues keeps every block of a token file, not only the last or the :root one', () => {
         const studio = readAppValues(['studio/studio-tokens.css'])
         expect((studio.get('--studio-dur-base') ?? []).length).toBeGreaterThan(1)

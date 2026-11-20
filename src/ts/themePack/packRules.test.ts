@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
-import { AREA_LINT, lintAreaPack, PACK_SIZE_WARN_BYTES, preprocessCss, THEME_AREAS, validateThemePack } from './index'
+import { AREA_LINT, judgeAreaSheet, judgePackSheets, lintAreaPack, PACK_SIZE_WARN_BYTES, preprocessCss, THEME_AREAS, validateThemePack } from './index'
 import { normalise } from './engine'
 import { extractFontFaces } from './fontFace'
 import { packSizeWarning } from './packSize'
@@ -389,6 +389,9 @@ function expectAcceptedPack(area: PackArea, css: string): void {
 const E2_WHY = /may reach at most 2 px past its element/
 const RE_1549 = /MC-1549/
 const RE_1550 = /MC-1550/
+const UNBUNDLED = (name: string): string => `font family "${name}" is not bundled with the pack: it shows only on devices that have it installed, and others use the next family in the list, so end the list with a generic family such as serif, sans-serif or monospace (MC-2542, MC-2543)`
+const RE_UNBUNDLED = /^font family ".*" is not bundled with the pack: .*end the list with a generic family .*\(MC-2542, MC-2543\)$/
+const RE_SYMBOL = /it is a symbol font.*\(MC-1550, MC-2542\)$/
 const RE_1564 = /MC-1564/
 const RE_1565 = /MC-1565/
 const RE_1568 = /MC-1568/
@@ -779,7 +782,6 @@ describe('MC-1550 and the font rules', () => {
         ['a family through a helper', `:root{--pack-f:Wingdings}${SAFE_LEAF}{font-family:var(--pack-f)}`],
         ['a font token', ':root{--font:Wingdings}'],
         ['the mono token', ':root{--mono:Wingdings}'],
-        ['a quoted generic (not a generic, a name)', `${SAFE_LEAF}{font-family:"serif"}`],
         ['an unresolved non-font token', `${SAFE_LEAF}{font-family:var(--nexus-text)}`],
     ])('F refuses %s', (_name, css) => { expectRefused('chat', css, RE_1550) })
 
@@ -809,8 +811,11 @@ describe('MC-1550 and the font rules', () => {
         expect(verdict.areas.settings?.errors.filter((e) => RE_1550.test(e.why))).toEqual([])
     })
 
-    test('PW reproducer: lintAreaPack judges a sheet with its own families only', () => {
-        expectRefused('settings', '[data-part="settings-section-title"]{font-family:pack}', RE_1550)
+    test('PW reproducer: a sheet judged on its own warns about a family only another sheet registers', () => {
+        const judged = judgeAreaSheet('settings', '[data-part="settings-section-title"]{font-family:pack}')
+        expect(judged.result.ok).toBe(true)
+        expect(judged.result.errors).toEqual([])
+        expect(judged.warnings.map((w) => w.why)).toEqual([UNBUNDLED('pack')])
     })
 
     test('X20: a second font-family descriptor is refused even when the first one is the name in use', () => {
@@ -820,6 +825,85 @@ describe('MC-1550 and the font rules', () => {
     test.each([
         ['italic bold shorthand with a generic', `${SAFE_LEAF}{font:italic bold 12px/1.5 "pack-serif", serif}` , '@font-face{font-family:"pack-serif";src:url(f.woff2)}'],
     ])('F guard: %s', (_name, css, face) => { expectAcceptedPack('chat', face + css) })
+})
+
+// V7 (MC-2542, MC-2543, MC-2547): a family name the pack does not bundle warns; the fixed symbol-font list stays refused.
+describe('MC-2542: an unbundled family warns', () => {
+    test.each([
+        ['B1: a quoted unregistered name', 'chat', `${TEXT_LEAF}{font-family:"pack-missing", serif}`, ['pack-missing']],
+        ['B2: an unquoted run of words', 'chat', `${TEXT_LEAF}{font-family:noto sans kr, sans-serif}`, ['noto sans kr']],
+        ['B3: a quoted generic is an unbundled name (MC-2547)', 'chat', `${TEXT_LEAF}{font-family:"serif"}`, ['serif']],
+        ['C5: the font shorthand', 'chat', `${SAFE_LEAF}{font:12px "pack-missing", serif}`, ['pack-missing']],
+        ['B12: a name in --chat-message-font warns (MC-2547)', 'chat', ':root{--chat-message-font:"pack-missing", sans-serif}', ['pack-missing']],
+        ['B18: --settings-font', 'settings', ':root{--settings-font:"pack-missing", serif}', ['pack-missing']],
+        ['B21: a CSS-wide word inside a run', 'chat', `${TEXT_LEAF}{font-family:foo inherit}`, ['foo inherit']],
+        ['B22: with !important', 'chat', `${TEXT_LEAF}{font-family:"pack-missing", serif !important}`, ['pack-missing']],
+        ['B24: on another leaf', 'chat', `${SAFE_LEAF}{font-family:"pack-missing", serif}`, ['pack-missing']],
+        ['a --pack-* helper', 'chat', `:root{--pack-f:"pack-missing", serif}${TEXT_LEAF}{font-family:var(--pack-f)}`, ['pack-missing']],
+        ['C8: --font declared and used', 'chat', `:root{--font:"pack-missing", serif}${TEXT_LEAF}{font-family:var(--font)}`, ['pack-missing', 'pack-missing']],
+    ] as const)('V-T1 %s', (_name, area, css, names) => {
+        const judged = judgeAreaSheet(area, css)
+        expect(judged.result.ok, JSON.stringify(judged.result.errors)).toBe(true)
+        expect(judged.result.errors).toEqual([])
+        expect(judged.warnings.map((w) => w.why)).toEqual(names.map(UNBUNDLED))
+        for (const w of judged.warnings) expect(w.why).toMatch(RE_UNBUNDLED)
+    })
+})
+
+describe('MC-2542: symbol fonts stay refused', () => {
+    const SYMBOLS = ['wingdings', 'wingdings 2', 'wingdings 3', 'webdings', 'symbol', 'marlett', 'zapf dingbats', 'itc zapf dingbats', 'segoe mdl2 assets', 'segoe fluent icons', 'segoe ui symbol']
+    const rows: (readonly [string, PackArea, string, string])[] = [
+        ...SYMBOLS.map((n): readonly [string, PackArea, string, string] => [`"${n}" quoted`, 'chat', `${TEXT_LEAF}{font-family:"${n}"}`, n]),
+        ['wingdings unquoted', 'chat', `${TEXT_LEAF}{font-family:wingdings}`, 'wingdings'],
+        ['segoe mdl2 assets unquoted', 'chat', `${TEXT_LEAF}{font-family:segoe mdl2 assets}`, 'segoe mdl2 assets'],
+        ['itc zapf dingbats unquoted', 'chat', `${TEXT_LEAF}{font-family:itc zapf dingbats}`, 'itc zapf dingbats'],
+        ['a doubled space', 'chat', `${TEXT_LEAF}{font-family:"wingdings  2"}`, 'wingdings 2'],
+        ['a trailing tab', 'chat', `${TEXT_LEAF}{font-family:"wingdings\t"}`, 'wingdings'],
+        ['padding spaces', 'chat', `${TEXT_LEAF}{font-family:" webdings "}`, 'webdings'],
+        ['after a generic', 'chat', `${TEXT_LEAF}{font-family:serif, wingdings}`, 'wingdings'],
+        ['after an unbundled name', 'chat', `${TEXT_LEAF}{font-family:"pack-missing", marlett}`, 'marlett'],
+        ['B9: a helper chain', 'chat', `:root{--pack-a:var(--pack-b);--pack-b:wingdings}${TEXT_LEAF}{font-family:var(--pack-a)}`, 'wingdings'],
+        ['B10: a helper state value', 'chat', `:root{--pack-f:serif}html[data-layout="phone"]{--pack-f:wingdings}${TEXT_LEAF}{font-family:var(--pack-f)}`, 'wingdings'],
+        ['B20: a non-font token chain', 'chat', `:root{--nexus-x:wingdings}${TEXT_LEAF}{font-family:var(--nexus-x)}`, 'wingdings'],
+        ['--font', 'chat', ':root{--font:wingdings}', 'wingdings'],
+        ['--mono', 'chat', ':root{--mono:webdings}', 'webdings'],
+        ['--chat-message-font (MC-2547)', 'chat', ':root{--chat-message-font:wingdings}', 'wingdings'],
+        ['--settings-font', 'settings', ':root{--settings-font:wingdings}', 'wingdings'],
+        ['--home-font', 'home', ':root{--home-font:wingdings}', 'wingdings'],
+        ['--home-mono', 'home', ':root{--home-mono:wingdings}', 'wingdings'],
+        ['--studio-font-mono', 'studio', ':root{--studio-font-mono:wingdings}', 'wingdings'],
+        ['C6: the shorthand', 'chat', `${SAFE_LEAF}{font:12px wingdings}`, 'wingdings'],
+        ['the shorthand with a line height', 'chat', `${SAFE_LEAF}{font:bold 14px/1.5 symbol, serif}`, 'symbol'],
+        ['B23: inside @media', 'chat', `@media (min-width:1px){${TEXT_LEAF}{font-family:wingdings}}`, 'wingdings'],
+    ]
+    test.each(rows)('V-T2 %s', (_name, area, css, key) => {
+        const judged = judgeAreaSheet(area, css)
+        expect(judged.result.ok).toBe(false)
+        expect(judged.result.errors.some((e) => RE_SYMBOL.test(e.why) && e.why.includes(`"${key}"`)), JSON.stringify(judged.result.errors)).toBe(true)
+        expect(judged.warnings.some((w) => w.why.includes(`"${key}"`))).toBe(false)
+    })
+})
+
+describe('MC-2542: every other family refusal stays a refusal', () => {
+    test.each([
+        ['C4: an empty item', `${TEXT_LEAF}{font-family:serif,}`, /may not have an empty item/],
+        ['C2: a word that is not an identifier', `${TEXT_LEAF}{font-family:pack -2x, serif}`, /a font family word must be a CSS identifier/],
+        ['C3: a non-font app token', `${TEXT_LEAF}{font-family:var(--font-size-base)}`, /font family "var\(--font-size-base\)" is not allowed: var\(\) in a font family list must name a token.*\(MC-1550, MC-1822\)$/],
+        ['a system font keyword in the shorthand', `${SAFE_LEAF}{font:caption}`, /the font shorthand may not be a system font keyword.*\(MC-1550\)$/],
+        ['a cycle through helpers', `:root{--pack-a:var(--pack-b);--pack-b:var(--pack-a)}${TEXT_LEAF}{font-family:var(--pack-a)}`, /font family "var\(--pack-[ab]\)" is not allowed: it refers back to itself or forms a chain longer than the checks follow \(MC-1550\)$/],
+    ])('V-T3 %s', (_name, css, why) => {
+        const judged = judgeAreaSheet('chat', css)
+        expect(judged.result.ok).toBe(false)
+        expect(judged.result.errors.some((e) => why.test(e.why)), JSON.stringify(judged.result.errors)).toBe(true)
+        expect(judged.warnings).toEqual([])
+    })
+
+    test('V-T6: a settings sheet that registers a symbol name with its own face and uses it is accepted', () => {
+        const css = '@font-face{font-family:wingdings;src:url(f.woff2)}[data-part="settings-section-title"]{font-family:wingdings}'
+        const judged = judgeAreaSheet('settings', css)
+        expect(judged.result.errors).toEqual([])
+        expect(judged.warnings).toEqual([])
+    })
 })
 
 // UI-S6 I4a (MC-1708, MC-1822): the pack-settable chat message font token. Its value names only the pack's own faces, the generic
@@ -848,7 +932,6 @@ describe('MC-1708: the chat message font token', () => {
     })
 
     test.each([
-        ['an unregistered family', TOKEN_FAMILY('"pack-missing"')],
         ['a non-ASCII family', '@font-face{font-family:"나눔";src:url(fonts/a.woff2)}' + TOKEN_FAMILY('"나눔"')],
         ['the reserved --risu-font-family', TOKEN_FAMILY('var(--risu-font-family)')],
     ])('U1d: refuses %s', (_name, css) => { expectRefused('chat', css, RE_1550) })
@@ -891,9 +974,13 @@ describe('MC-1708: the chat message font token', () => {
         ['an @property registration', '@property --chat-message-font{syntax:"*";inherits:true;initial-value:serif}'],
     ])('U1e: refuses %s', (_name, css) => { expectRefused('chat', css) })
 
-    test('U1f: the whole pack verdict follows the face', () => {
-        expect(validateThemePack({ files: { chat: TOKEN_FAMILY('"pack-i4a", sans-serif') }, totalBytes: 1 }).ok).toBe(false)
-        expect(validateThemePack({ files: { chat: FACE + TOKEN_FAMILY('"pack-i4a", sans-serif') }, totalBytes: 1 }).ok).toBe(true)
+    test('U1f: without the face the pack is accepted with a warning naming the family, with the face it has none (MC-2547)', () => {
+        const bare = judgePackSheets({ chat: TOKEN_FAMILY('"pack-i4a", sans-serif') })
+        expect(bare.ok).toBe(true)
+        expect(bare.areas.chat?.warnings.map((w) => w.why)).toEqual([UNBUNDLED('pack-i4a')])
+        const faced = judgePackSheets({ chat: FACE + TOKEN_FAMILY('"pack-i4a", sans-serif') })
+        expect(faced.ok).toBe(true)
+        expect(faced.areas.chat?.warnings).toEqual([])
     })
 
     test('U1g: the shared name is accepted in the Studio sheet too', () => {
@@ -914,7 +1001,7 @@ describe('R5: every refusal class names its token, unit, function or span and it
         ['I1', `${SAFE_LEAF}{padding:0 /**/}x[a="b"]/**/[c]{opacity:1}`, /a comment needs a space.*\(MC-1549\)$/],
         ['I2', ':root{--A:1px}', /a custom property name must be written in lower case.*\(MC-1568\)$/],
         ['I3', '[data-x="A"]{opacity:1}', /may hold only a-z, 0-9, - and _.*\(MC-1568\)$/],
-        ['F', `${SAFE_LEAF}{font-family:Wingdings}`, /font family "wingdings" is not allowed.*\(MC-1550\)$/],
+        ['F', `${SAFE_LEAF}{font-family:Wingdings}`, /font family "wingdings" is not allowed: it is a symbol font.*\(MC-1550, MC-2542\)$/],
         ['U', `${SAFE_LEAF}{background:url(c|/x.png)}`, /\(MC-1351\): c\|\/x\.png$/],
     ])('%s', (_name, css, why) => { expect(reasonsOf('chat', css).some((text) => why.test(text)), JSON.stringify(reasonsOf('chat', css))).toBe(true) })
 })

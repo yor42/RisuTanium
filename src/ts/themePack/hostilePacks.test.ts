@@ -213,7 +213,7 @@ describe('3 home review packs', () => {
     for (const f of readReviewPacks('home-hostile.json')) {
         const key = f.id
         if (HOME_FONT_REFUSED.has(key)) {
-            it(`${key} is refused by decision (a system font family, MC-1550): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
+            it(`${key} is refused by decision (a symbol font, MC-1550, MC-2542): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
             continue
         }
         if (HOME_DECIDED_ACCEPT.has(key)) {

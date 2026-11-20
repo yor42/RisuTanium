@@ -193,15 +193,30 @@ describe('Ts-3: judgePackSheets judges each sheet with its own font families', (
     const SETTINGS_SHEET = '[data-part="settings-section-title"]{font-family:pack-f}'
     const FACE_SHEET = '@font-face{font-family:pack-f;src:url(f.woff2)}'
 
-    it('a family registered only in another sheet is refused for the sheet that uses it', () => {
+    it('a family registered only in another sheet warns for the sheet that uses it (MC-1609, MC-2542)', () => {
         const pooled = validateThemePack({ files: { chat: FACE_SHEET, settings: SETTINGS_SHEET }, totalBytes: 1 })
         expect(pooled.areas.settings?.errors.filter((e) => RE_1550.test(e.why))).toEqual([])
         const perSheet = judgePackSheets({ chat: FACE_SHEET, settings: SETTINGS_SHEET })
-        expect(perSheet.ok).toBe(false)
+        expect(perSheet.ok).toBe(true)
         expect(perSheet.areas.chat?.result.ok).toBe(true)
-        expect(perSheet.areas.settings?.result.ok).toBe(false)
-        expect(perSheet.areas.settings?.result.errors.some((e) => RE_1550.test(e.why))).toBe(true)
+        expect(perSheet.areas.settings?.result.ok).toBe(true)
+        expect(perSheet.areas.settings?.result.errors).toEqual([])
+        expect(perSheet.areas.settings?.warnings.map((w) => w.why)).toEqual([expect.stringMatching(/^font family "pack-f" is not bundled with the pack: /)])
         expect(perSheet.areas.settings?.result).toEqual(lintAreaPack('settings', SETTINGS_SHEET, 'settings'))
+        expect(judgeAreaSheet('settings', SETTINGS_SHEET, new Set(['pack-f'])).warnings).toEqual([])
+    })
+
+    it('V-T8: a warning never changes the verdict, a symbol font alongside one still refuses the sheet', () => {
+        const unbundled = judgeAreaSheet('chat', '[data-part="chat-message-text"]{font-family:"pack-missing", serif}')
+        expect(unbundled.result.ok).toBe(true)
+        expect(unbundled.result.ok).toBe(unbundled.result.errors.length === 0)
+        expect(unbundled.warnings).toHaveLength(1)
+        const mixed = judgeAreaSheet('chat', '[data-part="chat-message-text"]{font-family:"pack-missing", wingdings}')
+        expect(mixed.result.ok).toBe(false)
+        expect(mixed.result.errors.some((e) => /it is a symbol font/.test(e.why))).toBe(true)
+        expect(mixed.result.errors.some((e) => /is not bundled/.test(e.why))).toBe(false)
+        expect(mixed.warnings.some((w) => /"pack-missing" is not bundled/.test(w.why))).toBe(true)
+        expect(mixed.warnings.some((w) => /symbol font/.test(w.why))).toBe(false)
     })
 
     it('a sheet that registers and uses its own family is accepted', () => {
