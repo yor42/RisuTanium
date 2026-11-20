@@ -5,7 +5,7 @@
 :root {
   /* ---- shared names that already existed (moved here from slice1/3/4.css) ---- */
   --chat-motion: 1;                          /* unitless factor: 1 = nominal durations, 0 = none; animation.ts derives it from the app's seconds-valued --risu-animation-speed */
-  --color-scheme: dark;                     /* light packs set light; the native controls follow */
+  --color-scheme: var(--risu-theme-role-color-scheme, dark);  /* follows the scheme type; a light pack sets light and the native controls follow */
   color-scheme: var(--color-scheme);
   --danger: var(--nexus-danger);              /* (the solid and its channels live in ../theme/nexus-tokens.css) */
   --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
@@ -23,7 +23,7 @@
   --dur-ring: 300ms; --dur-pulse: 600ms; --dur-spin: 1s; --dur-blink: 1s; --dur-shimmer: 1.4s; --dur-highlight: 1.4s; --dur-stagger: 30ms;
 
   /* ---- colour: surfaces, tints and roles not covered by --nexus-* ---- */
-  --color-surface-bar: #14153a;
+  --color-surface-bar: var(--risu-theme-darkbg);
   --color-surface-kbd: #1b1c33;
   --color-key: #2c2e4d;
   --color-scrim: #000;

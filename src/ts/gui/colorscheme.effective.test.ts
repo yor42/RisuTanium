@@ -89,7 +89,7 @@ describe('built-in schemes apply live', () => {
 
         updateColorScheme()
 
-        expect(textcolor2()).toBe('#94a3b8')
+        expect(textcolor2()).toBe('#a6b0d4')
         expect(h.db.colorScheme).toEqual(before)
     })
 
@@ -193,5 +193,29 @@ describe('explicit choice', () => {
         expect(h.db.colorScheme).toEqual(colorSchemePresets.light)
         expect(h.db.colorScheme).not.toBe(colorSchemePresets.light)
         expect(h.db.colorSchemeName).toBe('light')
+    })
+})
+
+describe('the retuned Default paints live and derives its roles', () => {
+    const PALETTE = {
+        '--risu-theme-bgcolor': '#151836', '--risu-theme-darkbg': '#0f112a', '--risu-theme-borderc': '#6f7fc8',
+        '--risu-theme-selected': '#2f3670', '--risu-theme-draculared': '#ff6b81', '--risu-theme-textcolor': '#eef0ff',
+        '--risu-theme-textcolor2': '#a6b0d4', '--risu-theme-darkborderc': '#3c4478', '--risu-theme-darkbutton': '#242a52',
+    }
+
+    test('TB9: an old saved Default copy paints the nine current literals, its roles are derived from them, and the database is unchanged', async () => {
+        const { deriveSchemeRoles } = await import('./schemeRoles')
+        const before = structuredClone(h.db)
+
+        updateColorScheme()
+
+        for (const [property, value] of Object.entries(PALETTE)) {
+            expect(document.documentElement.style.getPropertyValue(property), property).toBe(value)
+        }
+        const roles = deriveSchemeRoles(defaultColorScheme)
+        for (const [role, value] of Object.entries(roles)) {
+            expect(document.documentElement.style.getPropertyValue(`--risu-theme-role-${role}`), role).toBe(value)
+        }
+        expect(h.db).toEqual(before)
     })
 })
