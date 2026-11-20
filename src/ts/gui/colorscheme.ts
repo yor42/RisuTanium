@@ -358,6 +358,8 @@ export async function importColorScheme(){
         }
         DBState.db.customColorScheme = colorScheme
         updateCustomColorScheme()
+        // The text theme's font colours depend on the scheme type, so they follow the import.
+        updateTextThemeAndCSS()
     }
     catch(e){
         alertError(language.errors.invalidColorScheme)

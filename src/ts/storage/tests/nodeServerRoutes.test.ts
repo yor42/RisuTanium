@@ -162,3 +162,98 @@ describe('rate-limit buckets', () => {
         expect(remaining(remove)).toBe(remaining(read) - 3)
     })
 })
+
+describe('POST /api/touch', () => {
+    const SHA = 'a'.repeat(64)
+    const assetKey = (label: string) => `assets/${label}-${SHA}.bin`
+
+    async function write(key: string, bytes: Uint8Array): Promise<number> {
+        const response = await fetch(`${fixture.baseUrl}/api/write`, {
+            method: 'POST',
+            headers: { 'risu-auth': await fixture.authHeader(), 'file-path': hexOfKey(key), 'content-type': 'application/octet-stream' },
+            body: bytes as Uint8Array<ArrayBuffer>,
+        })
+        const body = await response.json() as { revision: number }
+        return body.revision
+    }
+
+    async function touch(hex: string, auth: string | null = null): Promise<Response> {
+        const headers: Record<string, string> = { 'file-path': hex }
+        const token = auth ?? await fixture.authHeader()
+        if (token !== '') {
+            headers['risu-auth'] = token
+        }
+        return await fetch(`${fixture.baseUrl}/api/touch`, { method: 'POST', headers })
+    }
+
+    async function state(key: string): Promise<{ revision: string | null, exists: string | null, bytes: Uint8Array }> {
+        const response = await fetch(`${fixture.baseUrl}/api/read`, { headers: { 'risu-auth': await fixture.authHeader(), 'file-path': hexOfKey(key) } })
+        return { revision: response.headers.get('x-risu-revision'), exists: response.headers.get('x-risu-exists'), bytes: new Uint8Array(await response.arrayBuffer()) }
+    }
+
+    test('a stored asset answers 200 with the next revision, keeps its bytes and is no-store', async () => {
+        const key = assetKey('present')
+        const first = await write(key, new Uint8Array([1, 2, 3]))
+
+        const response = await touch(hexOfKey(key))
+        const body = await response.json() as { success: boolean, revision: number }
+
+        expect(response.status).toBe(200)
+        expect(response.headers.get('cache-control')).toMatch(/\bno-store\b/)
+        expect(body).toEqual({ success: true, revision: first + 1 })
+        const after = await state(key)
+        expect(after.revision).toBe(String(first + 1))
+        expect(Array.from(after.bytes)).toEqual([1, 2, 3])
+    })
+
+    test('an absent key answers 404 with code absent and nothing changes', async () => {
+        const key = assetKey('absent')
+
+        const response = await touch(hexOfKey(key))
+
+        expect(response.status).toBe(404)
+        expect(await response.json()).toEqual({ error: 'Not Found', code: 'absent' })
+        expect((await state(key)).exists).toBe('0')
+    })
+
+    test('keys outside assets/ and unreadable paths answer 400 and change nothing', async () => {
+        const store2Key = 'store2/current'
+        const inlayKey = 'inlays/b-sample.0123456789abcdef'
+        const store2Revision = await write(store2Key, new Uint8Array([9]))
+        const inlayRevision = await write(inlayKey, new Uint8Array([8]))
+
+        for (const hex of [hexOfKey(store2Key), hexOfKey(inlayKey), 'zz', '']) {
+            const response = await touch(hex)
+            expect(response.status).toBe(400)
+            expect(await response.json()).toEqual({ error: 'Invaild Path' })
+        }
+
+        expect((await state(store2Key)).revision).toBe(String(store2Revision))
+        expect((await state(inlayKey)).revision).toBe(String(inlayRevision))
+    })
+
+    test('a request without a token is refused and moves nothing', async () => {
+        const key = assetKey('unauthorized')
+        const first = await write(key, new Uint8Array([4]))
+
+        const none = await touch(hexOfKey(key), '')
+        const bad = await touch(hexOfKey(key), await fixture.signToken({ iat: 1, exp: 2 }))
+
+        expect(none.status).toBe(400)
+        expect(await none.json()).toEqual({ error: 'No auth header' })
+        expect(bad.status).toBe(400)
+        expect(await bad.json()).toEqual({ error: 'Token Expired' })
+        expect((await state(key)).revision).toBe(String(first))
+    })
+
+    test('a touched revision survives a server restart', async () => {
+        const key = assetKey('restart')
+        const first = await write(key, new Uint8Array([5]))
+        expect((await touch(hexOfKey(key))).status).toBe(200)
+
+        await fixture.restart()
+
+        const head = await fetch(`${fixture.baseUrl}/api/read`, { method: 'HEAD', headers: { 'risu-auth': await fixture.authHeader(), 'file-path': hexOfKey(key) } })
+        expect(head.headers.get('x-risu-revision')).toBe(String(first + 1))
+    })
+})

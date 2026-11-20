@@ -113,13 +113,19 @@ describe('age record on Node', () => {
         expect(decision.nextRecord?.items).toEqual([])
     })
 
-    it('deletes only at the recorded revision and not when the revision moved', () => {
+    it('deletes only a seen-before item at the recorded revision and not when the revision moved', () => {
         const decision = decideAge(node({
-            record: recordAt(old, [['same', 4], ['moved', 5]]),
+            record: recordAt(old, [['same', 4, SEEN_BEFORE], ['moved', 5]]),
             candidates: [{ name: 'same', rev: 4 }, { name: 'moved', rev: 9 }],
         }))
         expect(decision.delete).toEqual([{ name: 'same', ifVersion: 4 }])
         expect(decision.nextRecord).toEqual({ v: 1, at: NOW, items: [['moved', 9]] })
+    })
+
+    it('marks an unmarked item at its recorded revision and deletes nothing', () => {
+        const decision = decideAge(node({ record: recordAt(old, [['same', 4]]), candidates: [{ name: 'same', rev: 4 }] }))
+        expect(decision.delete).toEqual([])
+        expect(decision.nextRecord).toEqual({ v: 1, at: NOW, items: [['same', 4, SEEN_BEFORE]] })
     })
 
     it('replaces a far-future record and deletes nothing', () => {
@@ -128,6 +134,115 @@ describe('age record on Node', () => {
         }))
         expect(decision.delete).toEqual([])
         expect(decision.nextRecord).toEqual({ v: 1, at: NOW, items: [['a', 4]] })
+    })
+})
+
+describe('the asset rule on Node: a third sighting at an unchanged revision', () => {
+    const DAY = SWEEP_MIN_AGE_MS
+    const stale = NOW - 2 * DAY
+    const CAP = 3
+
+    const node = (over: Partial<AssetAgeInput>): AssetAgeInput => input({ backend: 'node', nodeRecordCap: CAP, ...over })
+    const at = (...list: [string, number | null][]) => list.map(([name, rev]) => ({ name, rev }))
+
+    // S2-T7 (regression reproducer for the rule; at the pre-fix base the rule has no live Node caller, because the
+    // maintenance step returned before the sweep for a Node page: RR2 is the live-path reproducer).
+    test('S2-T7: a stored item without the mark is marked and not deleted, at an equal revision', () => {
+        const decision = decideAge(node({ record: recordAt(stale, [['x', 4]]), candidates: at(['x', 4]) }))
+
+        expect(decision.phase).toBe('swept')
+        expect(decision.delete).toEqual([])
+        expect(decision.nextRecord).toEqual({ v: 1, at: NOW, items: [['x', 4, SEEN_BEFORE]] })
+    })
+
+    test('S2-T7: a marked item that is a candidate again at the recorded revision is deleted at that revision and leaves the record', () => {
+        const decision = decideAge(node({ record: recordAt(stale, [['x', 4, SEEN_BEFORE]]), candidates: at(['x', 4]) }))
+
+        expect(decision.delete).toEqual([{ name: 'x', ifVersion: 4 }])
+        expect(decision.nextRecord?.items).toEqual([])
+    })
+
+    test('S2-T7b: a fresh candidate is recorded unmarked at its revision', () => {
+        const decision = decideAge(node({ record: recordAt(stale, [['x', 4, SEEN_BEFORE]]), candidates: at(['x', 4], ['fresh', 7]) }))
+
+        expect(decision.nextRecord?.items).toEqual([['fresh', 7]])
+        expect(decision.nextRecord?.items[0], 'no third element').toHaveLength(2)
+    })
+
+    test('S2-T7c: a stored item whose revision moved is recorded unmarked at the new revision, marked or not', () => {
+        for (const third of [[], [SEEN_BEFORE]] as JsonValue[][]) {
+            const decision = decideAge(node({ record: recordAt(stale, [['m', 5, ...third]]), candidates: at(['m', 9]) }))
+
+            expect(decision.delete).toEqual([])
+            expect(decision.nextRecord?.items).toEqual([['m', 9]])
+        }
+    })
+
+    test.each<[string, JsonValue]>([['a string', 'x'], ['true', true], ['the number 2', 2], ['the string 1', '1']])(
+        'S2-T7d: only the number 1 marks an item as seen: %s reads as a first sighting', (_label, third) => {
+            const decision = decideAge(node({ record: recordAt(stale, [['a', 4, third]]), candidates: at(['a', 4]) }))
+
+            expect(decision.delete).toEqual([])
+            expect(decision.nextRecord?.items).toEqual([['a', 4, SEEN_BEFORE]])
+        })
+
+    test('S2-T7e: marked items, unmarked items and deletions are capped separately, and a marked item over the deletion cap restarts unmarked', () => {
+        const prior = ['p1', 'p2', 'p3', 'p4', 'p5']
+        const fresh = ['f1', 'f2', 'f3', 'f4', 'f5']
+        const marking = decideAge(node({
+            record: recordAt(stale, prior.map((name): [string, number] => [name, 1])),
+            candidates: at(...fresh.map((name): [string, number] => [name, 2]), ...prior.map((name): [string, number] => [name, 1])),
+        }))
+        const items = marking.nextRecord?.items ?? []
+        expect(items.filter(item => item[2] === SEEN_BEFORE).map(item => item[0])).toEqual(['p1', 'p2', 'p3'])
+        expect(items.filter(item => item[2] !== SEEN_BEFORE)).toHaveLength(CAP)
+
+        const retiring = decideAge(node({
+            record: recordAt(stale, prior.map((name): [string, number, number] => [name, 1, SEEN_BEFORE])),
+            candidates: at(...prior.map((name): [string, number] => [name, 1])),
+        }))
+        expect(retiring.delete.map(item => item.name)).toEqual(['p1', 'p2', 'p3'])
+        expect(retiring.nextRecord?.items).toEqual([['p4', 1], ['p5', 1]])
+    })
+
+    test('S2-T7f: a candidate the keep-set holds is neither deleted nor recorded, marked or not', () => {
+        const decision = decideAge(node({
+            record: recordAt(stale, [['held', 4, SEEN_BEFORE], ['held2', 4]]),
+            candidates: at(['held', 4], ['held2', 4], ['held3', 4]),
+            keep: keepHolding('held', 'held2', 'held3'),
+        }))
+
+        expect(decision.delete).toEqual([])
+        expect(decision.nextRecord?.items).toEqual([])
+    })
+
+    test('an item recorded without a revision, and a candidate listed without one, are never deleted or marked', () => {
+        const decision = decideAge(node({
+            record: recordAt(stale, [['norev', null, SEEN_BEFORE], ['gone-rev', 4, SEEN_BEFORE]]),
+            candidates: at(['norev', 4], ['gone-rev', null]),
+        }))
+
+        expect(decision.delete).toEqual([])
+        expect(decision.nextRecord?.items).toEqual([['norev', 4]])
+    })
+
+    test('a record younger than the minimum age writes and deletes nothing; a far-future one restarts every candidate unmarked', () => {
+        const young = decideAge(node({ record: recordAt(NOW - SWEEP_MIN_AGE_MS + 1, [['x', 4, SEEN_BEFORE]]), candidates: at(['x', 4]) }))
+        expect(young).toEqual({ phase: 'young', delete: [], nextRecord: null })
+
+        const restart = decideAge(node({ record: recordAt(NOW + SWEEP_FUTURE_SKEW_MS + 1, [['x', 4, SEEN_BEFORE]]), candidates: at(['x', 4]) }))
+        expect(restart).toEqual({ phase: 'recorded', delete: [], nextRecord: { v: 1, at: NOW, items: [['x', 4]] } })
+    })
+
+    test('the earlier clock judges the age and the later one dates the next record', () => {
+        const early = NOW - SWEEP_MIN_AGE_MS
+        const decision = decideAge(node({
+            record: recordAt(early - 1, [['x', 4, SEEN_BEFORE]]), candidates: at(['x', 4]), now: early - 1 + DAY, late: NOW + 5_000,
+        }))
+
+        expect(decision.phase).toBe('swept')
+        expect(decision.delete).toEqual([{ name: 'x', ifVersion: 4 }])
+        expect(decision.nextRecord?.at).toBe(NOW + 5_000)
     })
 })
 

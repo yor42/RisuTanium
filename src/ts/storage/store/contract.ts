@@ -90,7 +90,8 @@ export interface PieceWriter {
      * Completes the write. With `finalKey` (a key in the same folder as the key
      * the writer was opened for) the value is stored under `finalKey` instead,
      * unless `finalKey` already holds a value: that value is kept, the pieces are
-     * discarded and the call still resolves.
+     * discarded and the call still resolves. On the Node server keeping the
+     * existing value also moves the key's version.
      */
     finish(finalKey?: string): Promise<void>
     /** Discards an unfinished write. Never rejects; a no-op after `finish` resolved. */
@@ -157,12 +158,33 @@ export interface ByteStore {
     listSized?(prefix: string, minSize: number): Promise<{ key: string, size: number }[] | null>
 
     /**
+     * The keys that start with `prefix`, each with its current revision, from
+     * one listing and no value transferred. Optional and Node only. A present key
+     * the server has no revision for is at 0; a key whose stored name differs
+     * only in hex letter case from the one the server addresses has `rev: null`
+     * (no revision is known for it). `null` means the server cannot answer (it
+     * lacks `/api/list-prefix`, or ignores `revisions` and so sends none). A
+     * server error (5xx), a rejected request (400), a refused token or a
+     * transport failure rejects, never `null`. Never falls back to listing and
+     * reading.
+     */
+    listRevisions?(prefix: string): Promise<{ key: string, rev: number | null }[] | null>
+
+    /**
      * Whether `key` holds a value. The value is never transferred to the caller.
      * The Node server answers from the file's size and revision, IndexedDB
      * looks the key up and loads no value, and the desktop store checks the
      * path only.
      */
     has(key: string): Promise<boolean>
+
+    /**
+     * Keeps the existing value of `key` and moves its version, so a remove
+     * conditioned on an earlier version fails. `kept: false` means the store kept
+     * nothing and the caller must write the value: the key was absent, or this
+     * server cannot touch it. Node only.
+     */
+    touch?(key: string): Promise<{ kept: true, version: StoreVersion } | { kept: false }>
 
     /**
      * A URL a web view can load `key` from, derived from the key alone: it never
