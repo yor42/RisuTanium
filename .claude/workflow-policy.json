@@ -1,10 +1,10 @@
 {
   "version": 1,
   "revision": "2026-11-03.1",
-  "authority": "MC-1036",
+  "authority": "MC-1036; cap MC-2753",
   "parentModel": "sonnet",
   "maxCorrectionAttempts": 1,
-  "maxImplementationTracks": 2,
+  "maxImplementationTracks": 10,
   "scheduling": {
     "amendment": "2026-11-03-parallel-records",
     "authority": "docs/workflow/2026-11-03-parallel-tracks.md",

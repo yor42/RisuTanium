@@ -309,6 +309,69 @@ describe("the vendored module's own memory path", () => {
     })
 })
 
+describe('openWebExportWriter on a page that is not a secure context', () => {
+    async function openInsecure() {
+        const { sut, streamSaver } = await loadSut({ secure: false })
+        expect(streamSaver.useBlobFallback).toBe(false)
+        const popup = vi.spyOn(window, 'open').mockImplementation(() => null)
+        const createStream = vi.spyOn(streamSaver, 'createWriteStream')
+        const { language } = await import('src/lang')
+        return { sut, popup, createStream, language }
+    }
+
+    test('(R) opens no helper window and no stream, shows the memory notice, and downloads exactly the written bytes on close', async () => {
+        const { sut, popup, createStream, language } = await openInsecure()
+        let blob: Blob | undefined
+        vi.spyOn(URL, 'createObjectURL').mockImplementation((object) => { blob = object as Blob; return 'blob:synthetic' })
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => { })
+
+        // Where a helper is asked for, the open waits for its answer; the timeout lets that path end for the assertions.
+        const opening = sut.openWebExportWriter('out.bin')
+        await settle()
+        await vi.advanceTimersByTimeAsync(sut.STREAM_HELPER_READY_TIMEOUT_MS)
+        const writer = await opening
+        expect(writer.heldInMemory).toBe(true)
+        await exportAll(sut, writer)
+        await settle()
+
+        expect(popup).not.toHaveBeenCalled()
+        expect(createStream).not.toHaveBeenCalled()
+        expect(frames).toEqual([])
+        expect(h.log).toEqual(['notice:' + language.exportHeldInMemory])
+        expect(click).toHaveBeenCalledTimes(1)
+        expectBytes(new Uint8Array(await blob!.arrayBuffer()), expectedContainer())
+    })
+
+    test('(R) a cancel during the notice ends the open with ExportCancelledError and offers no download', async () => {
+        const { sut, popup, createStream } = await openInsecure()
+        // The real token module pulls in the application stores; the writer only calls `throwIfCancelled`.
+        class ExportCancelledError extends Error { }
+        let cancelled = false
+        const token = {
+            throwIfCancelled() {
+                if (cancelled) {
+                    throw new ExportCancelledError('cancelled')
+                }
+            },
+        } as unknown as import('src/ts/exportCancel').ExportCancelToken
+        const { alertNormalWait } = await import('src/ts/alert')
+        vi.mocked(alertNormalWait).mockImplementationOnce(async () => { cancelled = true })
+        const createObjectURL = vi.spyOn(URL, 'createObjectURL')
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => { })
+
+        const opening = sut.openWebExportWriter('out.bin', token)
+        const outcome = expect(opening).rejects.toBeInstanceOf(ExportCancelledError)
+        await settle()
+        await vi.advanceTimersByTimeAsync(sut.STREAM_HELPER_READY_TIMEOUT_MS)
+        await outcome
+
+        expect(popup).not.toHaveBeenCalled()
+        expect(createStream).not.toHaveBeenCalled()
+        expect(createObjectURL).not.toHaveBeenCalled()
+        expect(click).not.toHaveBeenCalled()
+    })
+})
+
 describe('openWebExportWriter chooses the helper page and the memory path', () => {
     async function loadWithFakeStreamSaver(options: { secure: boolean, useBlobFallback: boolean }) {
         vi.resetModules()
@@ -342,11 +405,17 @@ describe('openWebExportWriter chooses the helper page and the memory path', () =
         expect(events).toEqual(['create:' + SELF_HOSTED])
     })
 
-    test('(G) a plain-HTTP page keeps the default helper page', async () => {
-        const { sut, events } = await loadWithFakeStreamSaver({ secure: false, useBlobFallback: false })
-        void sut.openWebExportWriter('out.bin')
+    test('(R) a plain-HTTP page never creates a stream, so the default helper page is never loaded', async () => {
+        const { sut, fake, events } = await loadWithFakeStreamSaver({ secure: false, useBlobFallback: false })
+        const { language } = await import('src/lang')
+        const opening = sut.openWebExportWriter('out.bin')
         await settle()
-        expect(events).toEqual(['create:' + DEFAULT_HELPER])
+        await vi.advanceTimersByTimeAsync(sut.STREAM_HELPER_READY_TIMEOUT_MS)
+        const writer = await opening
+        expect(writer.heldInMemory).toBe(true)
+        expect(fake.createWriteStream).not.toHaveBeenCalled()
+        expect(fake.mitm).toBe(DEFAULT_HELPER)
+        expect(events).toEqual(['notice:' + language.exportHeldInMemory])
     })
 
     test("(R) streamsaver's own memory path shows the warning before the export starts and does not wait for ready", async () => {

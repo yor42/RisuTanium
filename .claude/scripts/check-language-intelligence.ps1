@@ -20,9 +20,14 @@ if (-not (Test-LspString $plugin.name 'svelte-lsp') -or -not (Test-LspString $pl
 $server = $plugin.lspServers.svelte
 if ($server -isnot [Collections.IDictionary] -or -not (Test-LspString $server.command 'svelteserver') -or $server.args -isnot [array] -or $server.args.Count -ne 1 -or -not (Test-LspString $server.args[0] '--stdio') -or $server.extensionToLanguage -isnot [Collections.IDictionary] -or $server.extensionToLanguage.Count -ne 1 -or -not (Test-LspString $server.extensionToLanguage['.svelte'] 'svelte') -or $server.Contains('requestTimeout')) { throw 'Svelte LSP command or extension map is invalid for the supported configuration.' }
 $settings = Read-GuardObject ([IO.File]::ReadAllText((Join-Path $taskRoot '.claude/settings.json')))
-$requiredPlugins = @('typescript-lsp@claude-plugins-official', 'rust-analyzer-lsp@claude-plugins-official', 'svelte-lsp@risutanium-lsp')
+# TS/Svelte LSP servers held tens of GB and caused OOM kills, so only rust-analyzer stays enabled (MC-1836, MC-2017, MC-2749).
+$requiredPlugins = @('rust-analyzer-lsp@claude-plugins-official')
+$disabledPlugins = @('typescript-lsp@claude-plugins-official', 'svelte-lsp@risutanium-lsp')
 foreach ($id in $requiredPlugins) {
     if ($settings.enabledPlugins[$id] -isnot [bool] -or -not $settings.enabledPlugins[$id]) { throw "Required project plugin is not explicitly enabled: $id" }
+}
+foreach ($id in $disabledPlugins) {
+    if ($settings.enabledPlugins[$id] -isnot [bool] -or $settings.enabledPlugins[$id]) { throw "Disabled project plugin is not explicitly false: $id" }
 }
 Write-Output 'LSP metadata is valid. This does not prove installation, binary startup or native Claude language-intelligence use.'
 if ($MetadataOnly) { exit 0 }
@@ -52,7 +57,7 @@ function Invoke-LanguageCheck([string]$Executable, [string[]]$Arguments) {
     } finally { $process.Dispose() }
 }
 $missing = [Collections.Generic.List[string]]::new()
-foreach ($name in @('tsc', 'typescript-language-server', 'svelteserver', 'rust-analyzer')) {
+foreach ($name in @('rust-analyzer')) {
     $command = @(Get-Command -Name ($name + '.cmd'), ($name + '.exe'), $name -CommandType Application -ErrorAction SilentlyContinue)[0]
     if (-not $command) { $missing.Add("Missing binary: $name"); continue }
     $result = Invoke-LanguageCheck $command.Source @('--version')

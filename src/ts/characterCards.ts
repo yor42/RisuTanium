@@ -14,8 +14,8 @@ import { buildCardJsonTemplate, streamCardJson } from "./cardJsonStream"
 import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { AndroidHttpBlockedError, directFetch } from "./network/androidHttp"
-import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./exportCancel"
-import { exportFileState, withFileIncompleteSentence } from "./exportWriters"
+import { ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./exportCancel"
+import { createExportTask, type ExportTask } from "./exportTask"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { hasher } from "./parser/parser.svelte"
@@ -2219,6 +2219,8 @@ export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'c
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
     checked?:PreflightOk
+    /** The card of a module export that opened this run's writer: this run shares it and never opens, ends or closes it. */
+    progress?:ExportTask
 } = {}):Promise<boolean> {
     return withBusy('export', (busy) => writeCharacterCard(char, type, arg, busy))
 }
@@ -2228,14 +2230,23 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
     checked?:PreflightOk
+    progress?:ExportTask
 }, busy:BusyHandle):Promise<boolean> {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
+    // One adapter ends every route. A run with a caller-supplied writer and no shared card is a legacy run: it keeps its
+    // own dialogs, and its adapter never shows a card.
+    const legacy = arg.writer !== undefined && arg.progress === undefined
+    const nested = arg.progress !== undefined
+    const task = arg.progress ?? createExportTask(legacy ? null : {title: language.exportTaskCharacterTitle, subtitle: char.name})
     let img = await readCardExportImage(char.image)
-    // Created once the preflight has passed (see `exportOffersCancel`); the progress dialogs read them when called.
+    // Created once the preflight has passed (see `exportOffersCancel`); the legacy dialogs read them when called.
     let cancel: ExportCancelToken | null = null
     let gate: ExportWaitGate | null = null
     const showProgress = (msg:string, percent:string) => {
-        if(cancel && gate){
+        if(!legacy){
+            task.throwIfCancelled()
+        }
+        else if(cancel && gate){
             cancel.throwIfCancelled()
             gate.wait(`${msg} (${percent}%)`)
         }
@@ -2244,7 +2255,11 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         }
     }
     const showWriting = () => {
-        if(cancel && gate){
+        if(!legacy){
+            task.throwIfCancelled()
+            task.step('write')
+        }
+        else if(cancel && gate){
             cancel.throwIfCancelled()
             gate.wait(language.alerts.writingPng)
         }
@@ -2264,9 +2279,21 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             }
             checked = result
         }
-        if(exportOffersCancel({writer: arg.writer, type, tauri: isTauri, largeAssetCount: checked.large.size})){
+        if(nested){
+            cancel = task.token
+        }
+        else if(exportOffersCancel({writer: arg.writer, type, tauri: isTauri, largeAssetCount: checked.large.size})){
             cancel = new ExportCancelToken()
-            gate = createExportWaitGate(cancel, true)
+            if(legacy){
+                gate = createExportWaitGate(cancel, true)
+            }
+        }
+        if(!nested){
+            task.useToken(cancel)
+            // On web the card opens here, with a Cancel, before the writer's open can stall; on desktop and Android it opens after the save dialog.
+            if(!isTauri){
+                task.open()
+            }
         }
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
@@ -2276,7 +2303,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             arg.writer.useCancel(cancel)
         }
         //The writer's own first writes (the download prompt, the image chunks) can stall before any progress is shown.
-        if(cancel && gate){
+        if(legacy && cancel && gate){
             showWriting()
         }
         if(!arg.writer){
@@ -2285,9 +2312,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             const dialogWriter = localWriter as LocalWriter
             if(!(await openOutsideBusy(busy, () => dialogWriter.init(ext[0], [ext[1]], cardExportFileName(char.name, type), cancel ?? undefined)))){
                 //the person dismissed the save dialog: nothing was exported, so nothing is said
-                gate?.clear()
+                task.close()
                 return false
             }
+            task.open()
         }
         const writer = (type === 'charx' || type === 'charxJpeg') ? (new CharXWriter(localWriter)) : type === 'json' ? (new BlankWriter()) : (new PngChunk.streamWriter(img, localWriter))
         await writer.init()
@@ -2295,8 +2323,18 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             await writer.writeJpeg(img)
         }
         let assetIndex = 0
+        // Streamed large assets report bytes; every other asset reports a count out of the run's total.
+        const streamsLarge = writer instanceof CharXWriter && checked.large.size > 0
         if(spec === 'v2'){
             const card = await createBaseV2(char)
+            const emotionCount = card.data.extensions.risuai.emotions?.length ?? 0
+            const additionalCount = card.data.extensions.risuai.additionalAssets?.length ?? 0
+            const vitsEntries = listExportAssets(char, 'v2', type)
+            const v2Total = emotionCount + additionalCount + vitsEntries.length
+            if(v2Total > 0){
+                task.step('assets')
+                task.count(0, v2Total)
+            }
             if(card.data.extensions.risuai.emotions && card.data.extensions.risuai.emotions.length > 0){
                 for(let i=0;i<card.data.extensions.risuai.emotions.length;i++){
                     showProgress(language.alerts.addingEmotions, (i / card.data.extensions.risuai.emotions.length * 100).toFixed(2))
@@ -2306,10 +2344,11 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     assetIndex++
                     card.data.extensions.risuai.emotions[i][1] = `__asset:${assetIndex}`
                     await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
+                    task.count(assetIndex, v2Total)
                 }
             }
-    
-            
+
+
             if(card.data.extensions.risuai.additionalAssets && card.data.extensions.risuai.additionalAssets.length > 0){
                 for(let i=0;i<card.data.extensions.risuai.additionalAssets.length;i++){
                     showProgress(language.alerts.addingAdditionalAssets, (i / card.data.extensions.risuai.additionalAssets.length * 100).toFixed(2))
@@ -2319,10 +2358,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     assetIndex++
                     card.data.extensions.risuai.additionalAssets[i][1] = `__asset:${assetIndex}`
                     await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
+                    task.count(assetIndex, v2Total)
                 }
             }
-    
-            const vitsEntries = listExportAssets(char, 'v2', type)
+
             if(vitsEntries.length > 0){
                 for(const entry of vitsEntries){
                     showProgress(language.alerts.addingVits, (entry.index / vitsEntries.length * 100).toFixed(2))
@@ -2331,6 +2370,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     assetIndex++
                     card.data.extensions.risuai.vits[entry.name] = `__asset:${assetIndex}`
                     await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
+                    task.count(assetIndex, v2Total)
                 }
             }
             await sleep(10)
@@ -2356,6 +2396,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 const assets = card.data.assets ?? []
                 const template = buildCardJsonTemplate(card, assets, slots)
                 const sink = localWriter
+                if(slots.length > 0){
+                    task.step('assets')
+                    task.count(0, slots.length)
+                }
                 await streamCardJson(template.pieces, async (slot) => {
                     const index = slots[slot]
                     const entry = entryAt.get(index)
@@ -2364,12 +2408,19 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     }
                     showProgress(language.alerts.addingCardAssets, (index / assets.length * 100).toFixed(2))
                     const rData = entry.portrait ? img : await readImage(entry.key)
-                    return await compressImage(heldBytes(rData))
+                    const compressed = await compressImage(heldBytes(rData))
+                    task.count(slot + 1, slots.length)
+                    return compressed
                 }, async (chunk) => {
                     await sink.write(chunk)
                 })
             }
             else if(card.data.assets && card.data.assets.length > 0){
+                const assetTotal = card.data.assets.length
+                task.step('assets')
+                if(!streamsLarge){
+                    task.count(0, assetTotal)
+                }
                 for(let i=0;i<card.data.assets.length;i++){
                     showProgress(language.alerts.addingCardAssets, (i / card.data.assets.length * 100).toFixed(2))
                     const entry = entryAt.get(i)
@@ -2379,6 +2430,9 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     const streamSource = writer instanceof CharXWriter && largeSize !== undefined && checked.source ? checked.source : null
                     let rData:Uint8Array|null
                     if(entry === undefined){
+                        if(!streamsLarge){
+                            task.count(i + 1, assetTotal)
+                        }
                         continue
                     }
                     else if(entry.portrait){
@@ -2395,6 +2449,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                         const b64encoded = Buffer.from(await compressImage(heldBytes(rData))).toString('base64')
                         card.data.assets[i].uri = `__asset:${assetIndex}`
                         await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
+                        task.count(i + 1, assetTotal)
                     }
                     else{
                         let type = 'other'
@@ -2483,7 +2538,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                             if(!(writer instanceof CharXWriter) || !entry || !streamSource || largeSize === undefined){
                                 throw new Error('A streamed asset has no writer or source')
                             }
-                            const gateProgress: CharxStreamProgress | undefined = cancel && gate ? (phase, done, total) => {
+                            const gateProgress: CharxStreamProgress | undefined = !legacy ? (_phase, done, total) => {
+                                task.throwIfCancelled()
+                                task.bytes(done, total)
+                            } : cancel && gate ? (phase, done, total) => {
                                 cancel.throwIfCancelled()
                                 gate.wait(phase === 'check'
                                     ? language.exportCheckingAsset(entry.name, wholeMiB(done), wholeMiB(total))
@@ -2517,6 +2575,9 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                             }), 'utf-8'), 6)
                         }
                         await writer.write(path, Buffer.from(await compressImage(rData)))
+                        if(!streamsLarge){
+                            task.count(i + 1, assetTotal)
+                        }
                     }
                 }
             }
@@ -2558,29 +2619,21 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         await sleep(10)
 
         if(!arg.writer){
-            alertNormal(downloadNotice(language.successExport))
+            task.done(downloadNotice(language.successExport))
         }
 
         return true
     }
     catch(e){
-        if(cancel && (cancel.cancelled || e instanceof ExportCancelledError)){
-            // The person's choice, not a failure. The notice is posted before this resolves so the caller's next dialog waits for it.
-            if(exportFileState(localWriter instanceof LocalWriter ? localWriter.writer : undefined) === 'kept'){
-                alertNormal(language.exportCancelledFileIncomplete)
-            }
-            return false
-        }
-        if(localWriter instanceof LocalWriter){
-            //A failed export gives up on its file; the abort is not awaited because it may stay pending behind a write the browser never takes.
-            localWriter.abort(e)
-            if(exportFileState(localWriter.writer) === 'kept'){
-                alertError(withFileIncompleteSentence(e))
-                return false
-            }
-        }
-        alertError(e)
+        // The one classification of a cancel and a failure; the ending is posted before this resolves so the caller's next dialog waits for it.
+        task.endOnError(e, localWriter instanceof LocalWriter ? localWriter : undefined)
         return false
+    }
+    finally{
+        // A card that no ending reached (a dismissed dialog) leaves with the run; the module export that shares its card closes it itself.
+        if(!nested){
+            task.close()
+        }
     }
 }
 

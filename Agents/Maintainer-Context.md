@@ -33466,3 +33466,116 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer, unnumbered in the log; method not stated on the line). Date: 2026-11-19 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `#292`, `#290`, `#179`.
 
 **What the maintainer chose (lane A decisions log line 3675).** No new track-A ticket until the quota resets. The candidates are #292, #290 and #179.
+
+### MC-2713 — Per-session MC ID blocks, device rulings asked in lane B, PR sessions write their own device rows, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A, workflow efficiency). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`, `MC-2751`.
+- Gap note: this log jumps from MC-2474 to MC-2713. MC-2475..MC-2712 and MC-2714..MC-2743 exist in lane A's decisions log (many self-assigned by sessions from their blocks) and are not backfilled by the governance v2 Stage 0 records PR. TODO(evidence) for a later records batch.
+
+**What the maintainer chose (lane A decisions log line 3912).** (1) MC ID blocks of 10 per session, self-assigned; lane A records them in batches. Blocks granted on the day: lan-http-167 MC-2643..2652, ltm-spec MC-2653..2662, ui-lane MC-2663..2672, progress-popups MC-2673..2682, rtb-encryption MC-2683..2692, uis7-a23 MC-2693..2702, lane B MC-2703..2712; lane A from MC-2713. A session out of IDs asks lane A for a new block. (2) Device-affecting rulings are asked in lane B's own session, not relayed through lane A. (3) The PR's own session writes its device-row steps from the actual diff, checked against code; lane A only routes. (4) The shared main checkout is fast-forwarded and `pnpm install` run when the tree is quiet.
+
+### MC-2744 — Approval matrix: autonomous to green merge, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q1). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069`, `MC-1676`, `MC-1677`, `MC-2015`, `docs/workflow/gates.md`.
+- Makes MC-1676, MC-1677 and MC-2015 permanent (no longer an experiment) and extends them to ticket-branch push and PR open.
+
+**What the maintainer chose (lane A decisions log line 3932).** No ask for: commit after Gate 2, ticket-branch push, PR open, merge on green CI when the diff matches the reviewed one, and Auto-fix commits. Always asked: red CI, product, scope, format and security choices, devices, destructive cleanup, protected paths, and issue closes.
+
+### MC-2745 — Follow-up policy: reviewers classify, at most 2 new issues per PR, weekly 14-day sweep, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q2). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2064`.
+- Amends MC-2064: "drop with reason" is a valid leftover disposition.
+
+**What the maintainer chose (lane A decisions log line 3933).** Reviewers classify findings (blocks-merge, fix-in-this-PR or known-limitation) and never file issues. The owning session files at most 2 new issues per PR, each with an owner, a trigger and a severity, after searching for and folding into existing issues. A weekly sweep closes or parks issues untouched for 14 days that have no trigger, and reports the opened/closed trend. "Drop with reason" is valid under MC-2064.
+
+### MC-2746 — Size tiers 0, 1 and 2, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q3 in the log, Q5 in the proposal). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-778`, `MC-2469`.
+
+**What the maintainer chose (lane A decisions log line 3934).** Tier 0 (copy, style, locale, test-only, mechanical): one review plus CI. Tier 1 (contained logic or UI): a short in-session plan, one Gate 2, CI. Tier 2 (persisted format, on-device data, migration, security, signing/build, expensive to reverse): designer, grilling, opus-reviewer, advisor.
+
+### MC-2747 — PR-based COMPLETE; bulk close of old owed closeouts, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q4). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2064`, `MC-2745`, `docs/workflow/records.md`.
+
+**What the maintainer chose (lane A decisions log line 3935).** COMPLETE means: the PR is merged on green CI, the issue is closed with a link, the board card has moved, and leftovers are dispositioned (fix, known limitation, issue, or drop with reason). The old owed administrative closeouts are bulk-closed in one sweep batch.
+
+### MC-2748 — Native routing first; Codex and agy opt-in after a fresh route-health check; cheapag and OpenRouter inactive, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q5 in the log, Q3 in the proposal). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1036`, `docs/workflow/routing.md`, `.claude/workflow-policy.json`.
+
+**What the maintainer chose (lane A decisions log line 3936).** Native first: a fresh native Sonnet gate or coder by default, Opus for critical contracts. Codex and agy are opt-in only after a route-health check less than 7 days old. cheapag and OpenRouter are marked inactive.
+
+### MC-2749 — TS/Svelte LSP never called; rust-analyzer kept for Rust, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q6). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1836`, `MC-2017`.
+
+**What the maintainer chose (lane A decisions log line 3937).** The TS/Svelte LSP is never called (MC-1836, MC-2017). rust-analyzer and the LSP tool grant are kept for Rust work only.
+
+### MC-2750 — Main-registry grant rule documented; one tooling ticket for automatic per-worktree grants, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A; governance v2 question Q7). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `docs/workflow/ownership.md`.
+
+**What the maintainer chose (lane A decisions log line 3938).** Document the rule that write grants are registered through the main checkout's registry with repoRoot set to the worktree. Open one tooling ticket for automatic, self-revoking per-worktree grants.
+
+### MC-2751 — Governance v2 rollout as staged docs-only PRs, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A). Date: 2026-11-20 (on the line). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`..`MC-2750`.
+
+**What the maintainer chose (lane A decisions log line 3939).** A new governance session writes governance v2 as staged docs-only PRs, with doc-verifier checking claims, merged under MC-2744. The decisions are recorded first.
+
+### MC-2752 — Untracked Handoff-2026-10-08 backlog archived, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the governance v2 session; governance v2 question Q8). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2751`.
+- Applies to the untracked `Agents/Handoff-2026-10-08.md` and `Agents/Handoff-2026-10-08/` (96 files) in the main checkout only.
+
+**What the maintainer chose.** "Archive (Recommended)": copy any still-relevant item into an existing GitHub issue first, then move the files out of the repository tree to an archive outside git. Nothing from them is committed.
+
+### MC-2753 — workflow-policy.json takes the maintainer's implementation cap of 10, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the governance v2 session, "Fold in your 10 (Recommended)"). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2748`, `#387`.
+- Applied in governance v2 Stage 5: `maxImplementationTracks` 2 -> 10 and the authority string; the route order and the policy revision stay unchanged (the controller tests encode the order, and a revision change without a matching Agents/Workflow-State.json update freezes every dispatch). The native-first route order is follow-up #387.
+
+**What the maintainer chose.** The governance PR folds the maintainer's uncommitted main-checkout edit (`maxImplementationTracks` 2 -> 10) into `.claude/workflow-policy.json`. After it merges, lane A drops the local edit in the main checkout, which the merged file supersedes (same cap, plus the authority string), so the fast-forward works.
+
+### MC-2775 — A merged PR's own closing keyword is an approved issue close, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A from its decisions log, governance v2 pre-merge verification item S380-2). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`, `MC-2747`.
+
+**What the maintainer chose.** An issue closed by the merged PR's own closing keyword is an approved close and needs no ask. Closing any issue by hand is still asked (MC-2744).
+
+### MC-2776 — "Devices" in MC-2744 means personal devices only, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, items R-3 and S380-4). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744` (amended), `MC-1666`, `MC-350`.
+
+**What the maintainer chose.** The always-asked "devices" in MC-2744 means the maintainer's personal devices: the Galaxy Z Fold 7 is never touched, and a Galaxy Tab S9 run is asked. Runs on the two spare Note 9s with synthetic data need no ask (MC-1666). This amends MC-2744.
+
+### MC-2777 — The orphan sweep runs only in the weekly sweep, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, item S383-4). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2064` (amended), `MC-2745`.
+
+**What the maintainer chose.** The orphan sweep runs inside the weekly sweep (with its 14-day staleness window) only, not in every records batch. This amends MC-2064 item 1.
+
+### MC-2778 — Direct pushes to main are retired, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, item K-7). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744`, `MC-2014`, `MC-222` (item 4 superseded), `MC-1677` (main-push clause superseded).
+
+**What the maintainer chose.** Nobody pushes directly to `main`; `main` changes only through merged PRs. This supersedes MC-222 item 4 and the "other than push origin main" clause of MC-1677.
+
+### MC-2779 — The follow-up label is created, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A, item S383-3). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2745`.
+
+**What the maintainer chose.** Create the `follow-up` label on yor42/RisuTanium for the follow-up issue template. Lane A created it on 2026-11-20.
+
+### MC-2780 — The MC-2747 bulk-close sweep runs after the governance stack merges, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2747`, `MC-2775`.
+
+**What the maintainer chose.** The one-time bulk close of the old owed administrative closeouts (MC-2747) runs after the governance v2 PRs merge, and the maintainer sees the list before anything is closed.
+
+### MC-2781 — The leftover Workflow-State temp files are archived, not deleted, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744` (destructive cleanup).
+
+**What the maintainer chose.** The 21 leftover `Agents/Workflow-State.json.*.tmp` files in the main checkout are moved, not deleted, to `%TEMP%\risu-b715\archive\workflow-state-tmp\`. Lane A moved them on 2026-11-20.

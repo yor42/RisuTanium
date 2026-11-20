@@ -34,6 +34,7 @@
     "@mlc-ai/web-llm": "^0.2.87",
     "@mlc-ai/web-tokenizers": "^0.1.6",
     "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@risuai/ccardlib": "^0.4.2",
     "@smithy/protocol-http": "^3.3.0",

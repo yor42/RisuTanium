@@ -168,18 +168,34 @@ describe('the Claude key box keeps one key per row', () => {
 
     test('BK2 a composition commit splits at compositionend, not before', () => {
         const target = mountPage(false)
-        const node = keyInputs(target, false)[0]
+        const node = keyInputs(target)[0]
         node.focus()
         node.dispatchEvent(new CompositionEvent('compositionstart'))
         node.value = 'sk-test-A sk-test-B'
         node.setSelectionRange(19, 19)
         node.dispatchEvent(new InputEvent('input', { inputType: 'insertCompositionText', isComposing: true }))
         flushSync()
-        expect(keyInputs(target, false).filter((row) => row.value !== '')).toHaveLength(1)
+        expect(keyInputs(target).filter((row) => row.value !== '')).toHaveLength(1)
         node.dispatchEvent(new CompositionEvent('compositionend', { data: 'sk-test-A\nsk-test-B' }))
         flushSync()
         expect(DBState.db.claudeAPIKey).toBe('sk-test-A\nsk-test-B')
-        expect(keyInputs(target, false).map((row) => row.value)).toEqual(['sk-test-A', 'sk-test-B', ''])
+        expect(keyInputs(target).map((row) => row.value)).toEqual(['sk-test-A', 'sk-test-B', ''])
+    })
+
+    test('BK6 every key row is masked even when the saved hide-key value is off', () => {
+        const target = mountPage(false)
+        expect(keyInputs(target).length).toBeGreaterThanOrEqual(1)
+        expect(keyInputs(target, false)).toHaveLength(0)
+    })
+
+    test('SK1 compatibility guard (passes before and after): a secret reference stays readable in its row', () => {
+        for (const hideApiKey of [true, false]) {
+            const target = mountPage(hideApiKey)
+            DBState.db.claudeAPIKey = '${OPENAI_KEY}'
+            flushSync()
+            const shown = keyInputs(target, false).filter((row) => row.value === '${OPENAI_KEY}')
+            expect(shown).toHaveLength(1)
+        }
     })
 
     test('BK3 three keys in one insertion end as three rows', () => {
