@@ -79,6 +79,8 @@ const PINNED_NEXUS = [
 ]
 const PINNED_PATTERN = ['--pattern-on-accent', '--pattern-on-danger']
 const PINNED_CHAT = ['--color-scheme', '--color-surface-bar']
+// The app's own black under the pack canvas; it has no reference counterpart and no pack may declare it.
+const PACK_BACKDROP = '--surface-pack-backdrop'
 
 // Chat motion tokens the app deliberately keeps different from the reference (the app's own reduced-motion factor).
 const ALLOWED_DIVERGENCE = new Set(['--chat-motion', '--chat-dur-fast', '--chat-dur-base', '--chat-dur-slow'])
@@ -315,7 +317,7 @@ describe('TP1: with the base on, the app resolves every token to the judged refe
         const names3 = (file: string) => [...declaredIn(readRepoFile(file), [BASE_SELECTOR]).keys()]
         expect(names3('src/styles/nexus-tokens.css')).toEqual(PINNED_NEXUS)
         expect(names3('src/styles/pattern-tokens.css')).toEqual(PINNED_PATTERN)
-        expect(names3('src/styles/chat-pack-base.css')).toEqual(PINNED_CHAT)
+        expect(names3('src/styles/chat-pack-base.css')).toEqual([...PINNED_CHAT, PACK_BACKDROP])
     })
 })
 

@@ -71,7 +71,7 @@
         </div>
     </div>
 {:else}
-    <div class="grow h-full min-w-0 relative justify-center flex">
+    <div class="chat-area grow h-full min-w-0 relative justify-center flex">
         <SideBarArrow />
         <BackgroundDom />
         <div style={bgImg} class="h-full w-full" class:max-w-6xl={DBState.db.classicMaxWidth}>
@@ -95,6 +95,9 @@
 {/if}
 
 <style>
+    /* Under a theme pack the chat area, gutters included, is the pack canvas over black, and the card background is never seen; it stays mounted so its own style rules keep applying. */
+    :global(:root:where([data-theme-pack-base])) .chat-area { background-color: var(--surface-pack-backdrop); background-image: linear-gradient(var(--nexus-canvas), var(--nexus-canvas)); }
+    :global(:root:where([data-theme-pack-base])) .chat-area :global([data-risu-card-background]) { opacity: 0; visibility: hidden; }
     .halfw{
         max-width: calc(50% - 5rem);
     }
