@@ -31,7 +31,7 @@
                 }
             }} class="flex items-center text-textcolor border-t-1 border-solid border-0 border-darkborderc p-2 cursor-pointer" class:bg-selected={i === DBState.db.characters[$selectedCharID].chatPage}>
                 {#if editMode}
-                    <TextInput bind:value={DBState.db.characters[$selectedCharID].chats[i].name} padding={false}/>
+                    <TextInput label={language.chatNameField} bind:value={DBState.db.characters[$selectedCharID].chats[i].name} padding={false}/>
                 {:else}
                     <span>{chat.name}</span>
                 {/if}

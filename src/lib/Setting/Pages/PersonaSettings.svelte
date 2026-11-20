@@ -18,6 +18,7 @@
 
     // One hold per persona icon and one for the user icon; they end with the page.
     const lookups = useCharImageLookups()
+    const uid = $props.id()
 
     let stb: Sortable = null
     let ele: HTMLDivElement = $state()
@@ -75,24 +76,25 @@
 {#key sorted}
 <div class="p-4 rounded-md border-darkborderc border mb-2 flex-wrap flex gap-2 w-full max-w-full min-w-0" bind:this={ele}>
     {#each DBState.db.personas as persona, i}
-        <button data-risu-idx={i} onclick={() => {
+        <button data-risu-idx={i} aria-label={persona.name || language.persona} aria-pressed={i === DBState.db.selectedPersona} onclick={() => {
             changeUserPersona(i)
         }}>
             {#if persona.icon === ''}
-                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" class:ring-3={i === DBState.db.selectedPersona}></div>
+                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" class:ring-3={i === DBState.db.selectedPersona}></div>
             {:else}
                 {#await warnOnReject('PersonaSettings: persona icon rejected', lookups.get('persona:' + i, persona.icon, 'css'))}
-                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" class:ring-3={i === DBState.db.selectedPersona}></div>
+                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" class:ring-3={i === DBState.db.selectedPersona}></div>
                 {:then im} 
-                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" style={im} class:ring-3={i === DBState.db.selectedPersona}></div>
+                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" style={im} class:ring-3={i === DBState.db.selectedPersona}></div>
                 {:catch}
-                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" class:ring-3={i === DBState.db.selectedPersona}></div>
+                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" class:ring-3={i === DBState.db.selectedPersona}></div>
                 {/await}
             {/if}
         </button>
     {/each}
     <div class="flex justify-center items-center ml-2 mr-2">
         <BaseRoundedButton
+            label={language.add}
             onClick={async () => {
                 const sel = parseInt(await alertSelect([language.createfromScratch, language.importCharacter], undefined, { cancel: ALERT_SELECT_CANCEL }))
                 if(sel === 0){
@@ -107,7 +109,7 @@
                     await importUserPersona()
                 }
             }}
-            ><svg viewBox="0 0 24 24" width="1.2em" height="1.2em"
+            ><svg viewBox="0 0 24 24" width="1.2em" height="1.2em" aria-hidden="true"
                 ><path
                 fill="none"
                 stroke="currentColor"
@@ -124,27 +126,27 @@
 
 <div class="flex w-full items-starts rounded-md border-darkborderc border p-4 max-w-full flex-wrap">
     <div class="flex flex-col mt-4 mr-4">
-        <button onclick={() => {selectUserImg()}}>
+        <button aria-label={language.chooseIconImage} onclick={() => {selectUserImg()}}>
             {#if DBState.db.userIcon === ''}
-                <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500"></div>
+                <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor"></div>
             {:else}
                 {#await warnOnReject('PersonaSettings: user icon rejected', lookups.get('user', DBState.db.userIcon, DBState.db.personas[DBState.db.selectedPersona].largePortrait ? 'lgcss' : 'css'))}
-                    <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500"></div>
+                    <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor"></div>
                 {:then im} 
-                    <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" style={im}></div>
+                    <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" style={im}></div>
                 {:catch}
-                    <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500"></div>
+                    <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor"></div>
                 {/await}
             {/if}
         </button>
     </div>
     <div class="flex grow flex-col p-2 max-w-full">
-        <span class="text-sm text-textcolor2">{language.name}</span>
-        <TextInput marginBottom size="lg" placeholder={language.user} bind:value={DBState.db.username}/>
-        <span class="text-sm text-textcolor2">{language.note}</span>
-        <TextInput marginBottom size="lg" bind:value={DBState.db.userNote} placeholder={language.settingsPage.personaNotePlaceholder} />
-        <span class="text-sm text-textcolor2">{language.description}</span>
-        <TextAreaInput autocomplete="off" bind:value={DBState.db.personaPrompt} placeholder={language.settingsPage.personaPromptPlaceholder} />
+        <span class="text-sm text-textcolor2" id="{uid}-name">{language.name}</span>
+        <TextInput labelId="{uid}-name" marginBottom size="lg" placeholder={language.user} bind:value={DBState.db.username}/>
+        <span class="text-sm text-textcolor2" id="{uid}-note">{language.note}</span>
+        <TextInput labelId="{uid}-note" marginBottom size="lg" bind:value={DBState.db.userNote} placeholder={language.settingsPage.personaNotePlaceholder} />
+        <span class="text-sm text-textcolor2" id="{uid}-description">{language.description}</span>
+        <TextAreaInput labelId="{uid}-description" autocomplete="off" bind:value={DBState.db.personaPrompt} placeholder={language.settingsPage.personaPromptPlaceholder} />
         <div class="flex gap-2 mt-4 max-w-full flex-wrap">
             <Button onclick={exportUserPersona}>{language.export}</Button>
             <Button onclick={importUserPersona}>{language.import}</Button>
@@ -175,7 +177,7 @@
                 }
             }}>{language.remove}</Button>
             <!-- Function binding: binding an absent flag directly makes Svelte write `false` into the persona on mount. -->
-            <Check bind:check={() => DBState.db.personas[DBState.db.selectedPersona].largePortrait ?? false, (v) => DBState.db.personas[DBState.db.selectedPersona].largePortrait = v}>{language.largePortrait}</Check>
+            <Check label={language.largePortrait} bind:check={() => DBState.db.personas[DBState.db.selectedPersona].largePortrait ?? false, (v) => DBState.db.personas[DBState.db.selectedPersona].largePortrait = v}>{language.largePortrait}</Check>
         </div>
     </div>
 </div>

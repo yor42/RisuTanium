@@ -309,7 +309,7 @@ async function restoreVia(page: Page, file: File): Promise<void> {
 
 describe('R5: a sealed or broken-magic RTBX file reaches the .rtb restore through the real shell', () => {
     test.each([
-        ['a sealed file', new Uint8Array([0x52, 0x54, 0x42, 0x58, 0x0D, 0x0A, 0x1A, 0x0A, 1, 0, 0, 0, 0, 0, 0, 0]), () => language.rtbRestoreEncrypted],
+        ['a sealed file', new Uint8Array([0x52, 0x54, 0x42, 0x58, 0x0D, 0x0A, 0x1A, 0x0A, 1, 0, 0, 0, 0, 0, 0, 0]), () => language.rtbRestoreDamaged],
         ['a file with a broken magic', new Uint8Array([0x52, 0x54, 0x42, 0x58, 0x00, 0x0A, 0x1A, 0x0A, 1, 0, 0, 0, 0, 0, 0, 0]), () => language.rtbRestoreDamaged],
     ])('%s shows its own refusal and replaces nothing (guard)', async (_label, bytes, text) => {
         const page = await openPage()

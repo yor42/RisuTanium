@@ -626,18 +626,21 @@ describe('verification refusals reach the person (T2, the shell part)', () => {
         ['a file that is not an .rtb', 'not-an-rtb', language.rtbRestoreNotRtb],
         ['a damaged block', 'damaged', language.rtbRestoreDamaged],
         ['a file of a newer format', 'newer', language.rtbRestoreNewer('file format 2')],
-        ['a sealed file', 'encrypted', language.rtbRestoreEncrypted],
+        // The 80-byte stub has a zero aead_id: the sealed engine refuses the header as damaged before any password prompt.
+        ['a sealed file', 'damaged', language.rtbRestoreDamaged],
     ] as const)('%s ends with one message, writes nothing and releases the lock (guard)', async (name, cause, message) => {
         const page = await openPage()
+        const asked: string[] = []
         const sealed = new Uint8Array(80)
         sealed.set([0x52, 0x54, 0x42, 0x58, 0x0D, 0x0A, 0x1A, 0x0A, 1, 0])
         const bytes = name === 'a file that is not an .rtb' ? encoder.encode('plain text '.repeat(20))
             : name === 'a damaged block' ? await withBrokenCrc(await fileOf(), 'u/3/0.blk')
                 : name === 'a sealed file' ? sealed
                     : await repackRtb(await fileOf(), { manifest: (m) => { m.rtb = 2 } })
-        const run = await prepare(page, bytes)
+        const run = await prepare(page, bytes, { deps: { password: async (reason) => { asked.push(reason); return null } } })
         expect(ended(run)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause })
         expect(alertErrorTexts(page)).toEqual([message])
+        expect(asked).toEqual([])
         expect(run.granted).toBe(true)
         expect(run.writesAfterGrant).toBe(0)
         expect(run.storageChangedAfterGrant).toBe(false)

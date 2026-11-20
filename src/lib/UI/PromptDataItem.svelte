@@ -40,6 +40,7 @@
         currentIndex = -1,
         displayIndex = -1
     }: Props = $props();
+    const uid = $props.id()
 
     const chatPromptChange = () => {
         const currentprompt = promptItem as PromptItemChat
@@ -229,25 +230,25 @@
     >
         <span>{getName(promptItem)}</span>
         <div class="flex flex-1 justify-end">
-            <button onclick={(e) => {
+            <button aria-label={language.remove} onclick={(e) => {
                 e.stopPropagation()
                 onRemove()
-            }}><XIcon /></button>
-            <button onclick={(e) => {
+            }}><XIcon aria-hidden="true" /></button>
+            <button aria-label={language.chatShellMoveDown} onclick={(e) => {
                 e.stopPropagation()
                 moveDown()
-            }}><ArrowDown /></button>
-            <button onclick={(e) => {
+            }}><ArrowDown aria-hidden="true" /></button>
+            <button aria-label={language.chatShellMoveUp} onclick={(e) => {
                 e.stopPropagation()
                 moveUp()
-            }}><ArrowUp /></button>
+            }}><ArrowUp aria-hidden="true" /></button>
         </div>
     </div>
     {#if isOpened}
 
     
-        <span class="mt-6">{language.name}</span>
-        <TextInput bind:value={promptItem.name} />
+        <span class="mt-6" id="{uid}-name">{language.name}</span>
+        <TextInput labelId="{uid}-name" bind:value={promptItem.name} />
         <span class="mt-2">{language.type} </span>
         <SelectInput bind:value={promptItem.type} onchange={() => {
             if(promptItem.type === 'plain' || promptItem.type === 'jailbreak' || promptItem.type === 'cot'){
@@ -290,8 +291,8 @@
                 <OptionInput value="main">{language.mainPrompt}</OptionInput>
                 <OptionInput value="globalNote">{language.globalNote}</OptionInput>
             </SelectInput>
-            <span>{language.prompt}</span>
-            <TextAreaInput highlight bind:value={promptItem.text} />
+            <span id="{uid}-prompt">{language.prompt}</span>
+            <TextAreaInput labelId="{uid}-prompt" highlight bind:value={promptItem.text} />
             <span>{language.role}</span>
             <SelectInput bind:value={promptItem.role}>
                 <OptionInput value="user">{language.user}</OptionInput>
@@ -300,8 +301,8 @@
             </SelectInput>
         {/if}
         {#if promptItem.type === 'chatML'}
-            <span>{language.prompt}</span>
-            <TextAreaInput highlight bind:value={promptItem.text} />
+            <span id="{uid}-chatml">{language.prompt}</span>
+            <TextAreaInput labelId="{uid}-chatml" highlight bind:value={promptItem.text} />
         {/if}
         {#if promptItem.type === 'cache'}
             <span>{language.depth}</span>
@@ -341,8 +342,8 @@
             <CheckInput name={language.advanced} check={promptItem.rangeStart !== -1000} onChange={chatPromptChange} className="my-2"/>
         {/if}
         {#if promptItem.type === 'authornote'}
-            <span>{language.defaultPrompt}</span>
-            <TextInput bind:value={promptItem.defaultText} />
+            <span id="{uid}-default">{language.defaultPrompt}</span>
+            <TextInput labelId="{uid}-default" bind:value={promptItem.defaultText} />
         {/if}
         {#if promptItem.type === 'persona' || promptItem.type === 'description' || promptItem.type === 'authornote' || promptItem.type === 'memory'}
             {#if !promptItem.innerFormat}
@@ -352,8 +353,8 @@
                     }
                 }} />
             {:else}
-                <span>{language.innerFormat}</span>
-                <TextAreaInput highlight bind:value={promptItem.innerFormat}/>
+                <span id="{uid}-inner">{language.innerFormat}</span>
+                <TextAreaInput labelId="{uid}-inner" highlight bind:value={promptItem.innerFormat}/>
                 <CheckInput name={language.customInnerFormat} check={true} className="mt-2" onChange={() => {
                     if(promptItem.type === 'persona' || promptItem.type === 'description' || promptItem.type === 'authornote' || promptItem.type === 'memory'){
                         promptItem.innerFormat = null
