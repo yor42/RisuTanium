@@ -12,7 +12,7 @@
 // truncated file is never mistaken for a complete one.
 //
 // A sink may itself hold everything it is given (the web whole-file Blob fallback, taken when the
-// streaming save helper cannot open, for example on plain HTTP without a fresh user gesture); the
+// streaming save helper cannot open or, on a page that is not a secure context, is never asked); the
 // seam bounds only its own memory, not that of the sink.
 
 const RISUM_MAGIC = 111
