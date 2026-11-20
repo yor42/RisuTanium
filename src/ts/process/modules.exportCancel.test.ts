@@ -246,6 +246,13 @@ import { exportModule, exportModuleLegacy, readModule, type RisuModule } from 's
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { alertData } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, taskHostView, taskShown } from 'src/ts/alertTask.svelte'
+
+/** The card's own Cancel: offered by the view, then pressed. */
+function pressCancel(): void {
+    expect(taskHostView()?.cancelOffered).toBe(true)
+    requestTaskCancel()
+}
 
 function syntheticPng(): Uint8Array {
     const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -314,10 +321,12 @@ beforeEach(() => {
     // A module has no image of its own; the export fetches the placeholder.
     globalThis.fetch = vi.fn(async () => new Response(syntheticPng().buffer as ArrayBuffer, { status: 200 })) as unknown as typeof fetch
     alertStore.set({ type: 'none', msg: '' })
+    resetTaskHostForTests()
     shown = []
     unsubscribe = alertStore.subscribe((value) => { shown.push(value as alertData) })
     return () => {
         unsubscribe()
+        resetTaskHostForTests()
         globalThis.fetch = realFetch
         vi.restoreAllMocks()
     }
@@ -335,13 +344,12 @@ describe('a module export stalled mid-write', () => {
     test('(R) the dialog on screen at the stall carries a Cancel, and pressing it ends the export with no success and no error', async () => {
         const { done } = await stalledModuleExport(2)
 
-        const dialog = get(alertStore) as alertData
-        expect(dialog.onCancel).toBeTypeOf('function')
-        expect(dialog.type).toBe('wait')
-        dialog.onCancel?.()
+        pressCancel()
         await done
 
         expect(world.errors).toEqual([])
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
         expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
         expect(busyKinds()).not.toContain('export')
     })
@@ -349,15 +357,15 @@ describe('a module export stalled mid-write', () => {
     test('(N) a cancel after the stream opened says any saved file is incomplete, once, and closes nothing', async () => {
         const { done } = await stalledModuleExport(2)
 
-        ;(get(alertStore) as alertData).onCancel?.()
+        pressCancel()
         await done
 
-        const notice = get(alertStore) as alertData
-        expect(notice.type).toBe('normal')
-        expect(notice.msg).toBe(language.exportCancelledFileIncomplete)
-        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toEqual([])
         expect(world.aborts).toBe(1)
         expect(world.closes).toBe(0)
+        expect(taskHostView()?.cancelOffered).toBe(false)
     })
 })
 
@@ -368,15 +376,28 @@ describe('guards', () => {
         expect(world.closes).toBe(1)
         expect(world.aborts).toBe(0)
         expect(world.errors).toEqual([])
-        expect(shown.filter((value) => value.msg === language.exportDownloadStarted).length).toBeGreaterThan(0)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportDownloadStarted])
         expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
     })
 
     test('(G) a desktop module export offers no Cancel', async () => {
         platformBox.isTauri = true
+        const offered: Array<boolean | undefined> = []
+        class ViewLogMap extends Map<string, Uint8Array> {
+            get(key: string): Uint8Array | undefined {
+                offered.push(taskHostView()?.cancelOffered)
+                return super.get(key)
+            }
+        }
+        world.files = new ViewLogMap([1, 2, 3].map((n) => [`assets/a${n}`, syntheticPng()] as [string, Uint8Array]))
         await exportModule(syntheticModule())
 
         expect(shown.filter((value) => value.onCancel !== undefined)).toEqual([])
+        // Reads before the card opens see no card; every read after it sees a card without Cancel.
+        const onCard = offered.filter((value) => value !== undefined)
+        expect(onCard.length).toBeGreaterThan(0)
+        expect(onCard.every((value) => value === false)).toBe(true)
+        expect(taskHostView()?.result).toBeDefined()
     })
 })
 
@@ -400,18 +421,20 @@ describe('a .risum export on the web', () => {
         const done = exportModuleLegacy(syntheticModule())
         try {
             await vi.waitFor(() => expect(world.writes.length).toBe(3))
-            const dialog = get(alertStore) as alertData
-            expect(dialog.type).toBe('wait')
-            expect(dialog.onCancel).toBeTypeOf('function')
-            dialog.onCancel?.()
+            pressCancel()
             world.releases.forEach((release) => release())
             expect(await done).toBeNull()
         } finally {
+            // A failed assertion above must not leave the export stalled: end it by whichever Cancel is on screen.
+            requestTaskCancel()
+            ;(get(alertStore) as alertData).onCancel?.()
             world.releases.forEach((release) => release())
             await done
         }
 
-        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toEqual([])
         expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
         expect(world.errors).toEqual([])
         expect(world.aborts).toBe(1)
@@ -419,11 +442,22 @@ describe('a .risum export on the web', () => {
         expect(busyKinds()).not.toContain('export')
     })
 
-    test('(N) a finished export with alertEnd false leaves no wait dialog on screen', async () => {
+    test('(N) a finished export with alertEnd false leaves no card on screen, and offered Cancel on its card while it ran', async () => {
+        const offered: Array<boolean | undefined> = []
+        class ViewLogMap extends Map<string, Uint8Array> {
+            get(key: string): Uint8Array | undefined {
+                offered.push(taskHostView()?.cancelOffered)
+                return super.get(key)
+            }
+        }
+        world.files = new ViewLogMap([1, 2, 3].map((n) => [`assets/a${n}`, syntheticPng()] as [string, Uint8Array]))
         await exportModuleLegacy(syntheticModule(), { alertEnd: false })
 
+        expect(taskShown()).toBe(false)
         expect((get(alertStore) as alertData).type).not.toBe('wait')
-        expect(shown.some((value) => value.type === 'wait' && value.onCancel !== undefined)).toBe(true)
+        const onCard = offered.filter((value) => value !== undefined)
+        expect(onCard.length).toBeGreaterThan(0)
+        expect(onCard.every((value) => value === true)).toBe(true)
     })
 
     test('(N) the written stream reads back through the real readModule with every asset', async () => {

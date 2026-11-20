@@ -683,6 +683,13 @@ export const languageVietnamese = {
     importPreflightStart: "Nhập",
     importStepDownload: "Tải xuống",
     importNounAssets: "Tài nguyên",
+    exportTaskCharacterTitle: "Đang xuất nhân vật",
+    exportTaskModuleTitle: "Đang xuất mô-đun",
+    exportStepPrepare: "Chuẩn bị tệp",
+    exportStepAssets: "Thêm tài nguyên",
+    exportStepWrite: "Ghi tệp",
+    exportTaskDone: "Đã xuất",
+    exportTaskFailed: "Không thể xuất",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} đã lưu ${done}, đã tìm thấy ${found} cho đến nay` : `Đã lưu ${done}, đã tìm thấy ${found} cho đến nay`,
     chatShellTranslationClose: "Đóng trình chỉnh sửa bản dịch",
     "formating": {
