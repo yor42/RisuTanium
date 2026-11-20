@@ -21,7 +21,7 @@ export async function importDroppedFile(file:File):Promise<void>{
         return
     }
     await runImportBatch([{name: file.name, run: (progress) => importDropped(file, progress)}], {
-        task: {title: language.importTaskFilesTitle, steps: IMPORT_STEPS},
+        task: {title: language.importTaskFilesTitle, steps: IMPORT_STEPS, background: true},
         afterImported: (outcome) => {
             if(outcome.kind === 'imported' && outcome.index !== null){
                 try {
