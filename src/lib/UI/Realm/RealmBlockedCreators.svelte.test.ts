@@ -11,6 +11,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
+import { exposedIcons, paletteClasses, unnamedControls } from 'src/lib/a11yNames.test-helpers'
 
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: { blockedRealmCreators: [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }] } as unknown as Record<string, unknown> })
@@ -126,6 +127,15 @@ describe('RealmBlockedCreators.svelte: dialog semantics and focus', () => {
         unmount(mounted.pop()!)
         expect(opener.hasAttribute('inert')).toBe(false)
         expect(document.activeElement).toBe(opener)
+    })
+})
+
+describe('RealmBlockedCreators.svelte: names and colours', () => {
+    test('every control is named, the glyphs are hidden, and only the scrim uses a default-palette class', () => {
+        const { target } = mountDialog()
+        expect(unnamedControls(target, { fields: true })).toEqual([])
+        expect(exposedIcons(target)).toEqual([])
+        expect(paletteClasses(target, { allow: [/^bg-black\/50$/] })).toEqual([])
     })
 })
 

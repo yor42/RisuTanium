@@ -525,10 +525,10 @@
                             value={query}
                             oninput={(event) => onSearchInput(event.currentTarget.value)}
                         />
-                        <button type="button" data-part="toggles-search-clear" aria-label={language.chatShellTogglesClearSearch} hidden={query === ''} onclick={() => clearSearch(true)}><XIcon size={16} /></button>
+                        <button type="button" data-part="toggles-search-clear" aria-label={language.chatShellTogglesClearSearch} hidden={query === ''} onclick={() => clearSearch(true)}><XIcon size={16} aria-hidden="true" /></button>
                     </div>
                     <button type="button" data-part="toggles-filter-chip" aria-pressed={onlyOn} title={language.chatShellTogglesChangedState} onclick={() => { onlyOn = !onlyOn }}>
-                        <FunnelIcon size={16} /><span>{language.chatShellTogglesChangedOnly}</span>
+                        <FunnelIcon size={16} aria-hidden="true" /><span>{language.chatShellTogglesChangedOnly}</span>
                     </button>
                 </div>
                 {#if filtered}

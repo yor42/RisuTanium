@@ -2301,3 +2301,15 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2795](Maintainer-Context.md#mc-2795--chore-153-closes-with-the-q-c-debounce-cap-as-an-accepted-drop-2026-11-20) | CHORE-153 closes with the Q-C debounce cap as an accepted drop, 2026-11-20 |
 | [MC-2796](Maintainer-Context.md#mc-2796--ui-s6-ui-s1-and-chore-688-close-as-delivered-2026-11-20) | UI-S6, UI-S1 and CHORE-688 close as delivered, 2026-11-20 |
 | [MC-2797](Maintainer-Context.md#mc-2797--the-25-already-closed-items-get-closed-roadmap-records-2026-11-20) | The 25 already-closed items get closed Roadmap records, 2026-11-20 |
+| [MC-2762](Maintainer-Context.md#mc-2762--build-a-leftover-process-reaper-report-only-first-2026-11-20) | Build a leftover-process reaper, report-only first, 2026-11-20 |
+| [MC-2763](Maintainer-Context.md#mc-2763--lane-b-stops-its-own-leftover-processes-2026-11-20) | Lane B stops its own leftover processes, 2026-11-20 |
+| [MC-2764](Maintainer-Context.md#mc-2764--exports-on-non-secure-pages-build-in-memory-instead-of-the-streamsaver-helper-2026-11-20) | Exports on non-secure pages build in memory instead of the StreamSaver helper, 2026-11-20 |
+| [MC-2782](Maintainer-Context.md#mc-2782--risurealm-browser-offline-ux-audit-then-restyle-in-a-new-session-2026-11-20) | RisuRealm browser offline UX audit, then restyle, in a new session, 2026-11-20 |
+| [MC-2783](Maintainer-Context.md#mc-2783--the-realm-restyle-takes-all-four-finding-groups-2026-11-20) | The Realm restyle takes all four finding groups, 2026-11-20 |
+| [MC-2784](Maintainer-Context.md#mc-2784--the-realm-restyle-follows-the-realm-mockup-structure-2026-11-20) | The Realm restyle follows the realm mockup structure, 2026-11-20 |
+| [MC-2793](Maintainer-Context.md#mc-2793--chromemory-is-tracked-with-one-issue-per-stage-2026-11-20) | ChroMemory is tracked with one issue per stage, 2026-11-20 |
+| [MC-2798](Maintainer-Context.md#mc-2798--312-closes-by-hand-on-the-carried-over-note-9-rows-2026-11-20) | #312 closes by hand on the carried-over Note 9 rows, 2026-11-20 |
+| [MC-2809](Maintainer-Context.md#mc-2809--the-language-switch-hides-when-text-has-only-one-language-app-wide-2026-11-20) | The language switch hides when text has only one language, app-wide, 2026-11-20 |
+| [MC-2810](Maintainer-Context.md#mc-2810--276-closes-its-owed-rtb-device-rows-move-to-tracker-349-2026-11-20) | #276 closes; its owed .rtb device rows move to tracker #349, 2026-11-20 |
+| [MC-2811](Maintainer-Context.md#mc-2811--the-rtb-sync-folder-gets-its-own-deferred-ticket-2026-11-20) | The .rtb sync folder gets its own deferred ticket, 2026-11-20 |
+| [MC-2812](Maintainer-Context.md#mc-2812--re-run-the-dv-s8-2-truncated-export-step-on-current-main-2026-11-20) | Re-run the DV-S8-2 truncated-export step on current main, 2026-11-20 |
