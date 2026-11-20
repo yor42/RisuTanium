@@ -483,7 +483,7 @@ describe('Retry and the legacy surfaces', () => {
         h.beforeRead = (file, start) => { if (start === 0) reads[file] = (reads[file] ?? 0) + 1 }
         h.saveHook = () => { if (h.saves[h.saves.length - 1] === patterned(10, 2)[0]) h.saveFailures = 1 }
         const { done, view } = await importToResult()
-        expect(view?.result?.actions?.map((a) => a.id), 'expected a Retry action').toEqual(['retry'])
+        expect(view?.result?.actions?.map((a) => a.id), 'expected Undo before Retry').toEqual(['undo', 'retry'])
         expect(names()).toEqual(['A', 'C'])
         h.saveHook = null
         answerTask({ kind: 'action', id: 'retry' })

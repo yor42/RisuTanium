@@ -1541,6 +1541,15 @@ export async function trashCharacters(picked: { characters: readonly (character 
     if(doomed.length === 0){
         return 0
     }
+    return trashSlotsNow(doomed, picked.folders, report)
+}
+
+/**
+ * The writes of a trash, in one synchronous stretch: stop the work in each slot, stamp `trashTime`, record the origins,
+ * dissolve the picked folders in the order, repair the order, mark every slot for saving and deselect a trashed
+ * selection. `doomed` is already checked (listed, visible, untrashed). Returns the number trashed.
+ */
+function trashSlotsNow(doomed: (character | groupChat)[], folders: readonly folder[], report?: TrashReport): number {
     const selectedBefore = get(selectedCharID)
     const selectedRef = selectedBefore >= 0 ? DBState.db.characters[selectedBefore] : undefined
     const now = Date.now()
@@ -1549,12 +1558,12 @@ export async function trashCharacters(picked: { characters: readonly (character 
         c.trashTime = now
     }
     // Before the folder splices: a picked folder is dissolved below, so nothing is recorded against it.
-    recordTrashOrigins(DBState.db, doomed, now, picked.folders)
+    recordTrashOrigins(DBState.db, doomed, now, folders)
     const batch: TrashedBatch = { at: now, chaIds: chaIdsInOrderPosition(doomed, DBState.db.characterOrder) }
     const trashedIds = new Set(doomed.map((c) => c.chaId))
     const order = DBState.db.characterOrder
     if(order){
-        for(const entry of picked.folders){
+        for(const entry of folders){
             const at = order.findIndex((item) => item === entry)
             if(at !== -1){
                 order.splice(at, 1, ...entry.data.filter((id) => !trashedIds.has(id)))
@@ -1570,6 +1579,20 @@ export async function trashCharacters(picked: { characters: readonly (character 
     }
     reportTrashed(report, batch)
     return doomed.length
+}
+
+/**
+ * Moves characters an import created to the trash with no confirmation: the import's Undo already asked. The caller
+ * resolved each slot by reference from the live list; one that is no longer listed or is already trashed is left alone.
+ * Nothing but the character records is written (no asset, inlay or store call). Returns the number trashed.
+ */
+export function trashImportedCharacters(slots: readonly (character | groupChat)[]): number {
+    const present = new Set(DBState.db.characters)
+    const doomed = [...new Set(slots)].filter((c) => present.has(c) && !c.trashTime)
+    if(doomed.length === 0){
+        return 0
+    }
+    return trashSlotsNow(doomed, [])
 }
 
 /** A caller's own confirmation for `removeChatConfirmed`: it gets the chat and the advisory working flag. */
