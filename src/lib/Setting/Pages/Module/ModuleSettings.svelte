@@ -28,6 +28,7 @@
     let destroyed = false
     let moduleSearch = $state('')
     let charConversionMode = $state(false)
+    const uid = $props.id()
 
     // Rows follow the order of db.modules; the search only filters.
     function filterModules(modules:RisuModule[], search:string){
@@ -76,12 +77,12 @@
 
                 <div class="pl-3 pt-3 text-left flex items-center">
                     {#if rmodule.mcp}
-                        <Waypoints size={18} class="mr-2" />
+                        <Waypoints size={18} class="mr-2" aria-hidden="true" />
                     {/if}
                     <span class="text-lg">{rmodule.name}</span>
                     <div class="grow flex justify-end">
                         {#if charConversionMode}
-                            <button class="cursor-pointer text-violet-500 mr-2" onclick={async (e) => {
+                            <button class="cursor-pointer text-violet-500 mr-2" aria-label={language.moduleConvertRow} onclick={async (e) => {
                                 e.stopPropagation()
                                 const used = await useModuleRow(rmodule)
                                 if(!used){
@@ -97,17 +98,21 @@
                                 alertNormal(language.successfullyConverted)
                                 checkCharOrder()
                             }}>
-                                <UserIcon size={18}/>
+                                <UserIcon size={18} aria-hidden="true"/>
                                 
                             </button>
                         {:else}
-                            <button class={(DBState.db.enabledModules.includes(rmodule.id)) ?
-                                    "mr-2 cursor-pointer text-blue-500" :
-                                    rmodule.namespace && 
-                                    DBState.db.moduleIntergration?.split(',').map((s) => s.trim()).includes(rmodule.namespace) ?
-                                    "text-amber-500 hover:text-green-500 mr-2 cursor-pointer" :
-                                    "text-textcolor2 hover:text-green-500 mr-2 cursor-pointer"
-                                } use:tooltip={language.enableGlobal} onclick={async (e) => {
+                            {@const enabledGlobally = DBState.db.enabledModules.includes(rmodule.id)}
+                            {@const integrated = !enabledGlobally && !!rmodule.namespace &&
+                                !!DBState.db.moduleIntergration?.split(',').map((s) => s.trim()).includes(rmodule.namespace)}
+                            <button class={enabledGlobally ?
+                                    "mr-2 cursor-pointer rounded-sm bg-selected text-textcolor ring-1 ring-borderc" :
+                                    integrated ?
+                                    "text-amber-500 hover:text-textcolor rounded-sm ring-1 ring-current mr-2 cursor-pointer" :
+                                    "text-textcolor2 hover:text-textcolor mr-2 cursor-pointer"
+                                } aria-label={language.enableGlobal} aria-pressed={enabledGlobally}
+                                aria-describedby={integrated ? `${uid}-int-${i}` : undefined}
+                                use:tooltip={language.enableGlobal} onclick={async (e) => {
                                 e.stopPropagation()
                                 if(DBState.db.enabledModules.includes(rmodule.id)){
                                     DBState.db.enabledModules.splice(DBState.db.enabledModules.indexOf(rmodule.id), 1)
@@ -118,10 +123,13 @@
                                 DBState.db.enabledModules = DBState.db.enabledModules
                                 charConversionMode = false
                             }}>
-                                <Globe size={18}/>
+                                <Globe size={18} aria-hidden="true"/>
                             </button>
+                            {#if integrated}
+                                <span id="{uid}-int-{i}" hidden>{language.moduleOnByIntegration}</span>
+                            {/if}
                             {#if !rmodule.mcp}
-                                <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.download} onclick={async (e) => {
+                                <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.download} use:tooltip={language.download} onclick={async (e) => {
                                     e.stopPropagation()
                                     const answer = await alertSelect([`CharX (${language.recommended})`, language.alerts.risumLegacy], undefined, { cancel: ALERT_SELECT_CANCEL })
                                     if(answer === ALERT_SELECT_CANCEL){
@@ -144,9 +152,9 @@
                                         used.release()
                                     }
                                 }}>
-                                    <Share2Icon size={18}/>
+                                    <Share2Icon size={18} aria-hidden="true"/>
                                 </button>
-                                <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.edit} onclick={async (e) => {
+                                <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.edit} use:tooltip={language.edit} onclick={async (e) => {
                                     e.stopPropagation()
                                     if(editorLoading){
                                         return
@@ -172,17 +180,17 @@
                                         editorLoading = false
                                     }
                                 }}>
-                                    <SquarePen size={18}/>
+                                    <SquarePen size={18} aria-hidden="true"/>
                                 </button>
                             {:else}
-                                <button class="text-textcolor2 mr-2 cursor-not-allowed">
-                                    <Share2Icon size={18}/>
+                                <button class="text-textcolor2 mr-2 cursor-not-allowed" aria-label={language.download} disabled>
+                                    <Share2Icon size={18} aria-hidden="true"/>
                                 </button>
-                                <button class="text-textcolor2 mr-2 cursor-not-allowed">
-                                    <SquarePen size={18}/>
+                                <button class="text-textcolor2 mr-2 cursor-not-allowed" aria-label={language.edit} disabled>
+                                    <SquarePen size={18} aria-hidden="true"/>
                                 </button>
                             {/if}
-                            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.remove} onclick={async (e) => {
+                            <button class="text-textcolor2 hover:text-draculared mr-2 cursor-pointer" aria-label={language.remove} use:tooltip={language.remove} onclick={async (e) => {
                                 e.stopPropagation()
                                 const target = rmodule
                                 const d = await alertConfirm(`${language.removeConfirm}` + target.name)
@@ -199,7 +207,7 @@
                                     }
                                 }
                             }}>
-                                <TrashIcon size={18}/>
+                                <TrashIcon size={18} aria-hidden="true"/>
                             </button>
                         {/if}
 
@@ -213,7 +221,7 @@
     </div>
 
     <div class="flex mr-2 mt-4">
-        <button class="text-textcolor2 hover:text-blue-500 mr-2 cursor-pointer" onclick={async () => {
+        <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.createModule} onclick={async () => {
             tempModule = {
                 name: '',
                 description: '',
@@ -222,22 +230,22 @@
             DBState.db.modules.push(tempModule)
             mode = 1
         }}>
-            <PlusIcon />
+            <PlusIcon aria-hidden="true" />
         </button>
-        <button class="text-textcolor2 hover:text-blue-500 mr-2 cursor-pointer" onclick={async () => {
+        <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.moduleConvertMode} aria-pressed={charConversionMode} onclick={async () => {
             charConversionMode = !charConversionMode
         }}>
-            <UserIcon />
+            <UserIcon aria-hidden="true" />
         </button>
-        <button class="text-textcolor2 hover:text-blue-500 mr-2 cursor-pointer" onclick={async () => {
+        <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.moduleImportMcp} onclick={async () => {
             importMCPModule()
         }}>
-            <Waypoints />
+            <Waypoints aria-hidden="true" />
         </button>
-        <button class="text-textcolor2 hover:text-blue-500 mr-2 cursor-pointer" onclick={async () => {
+        <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" aria-label={language.import} onclick={async () => {
             importModule()
         }}>
-            <HardDriveUpload  />
+            <HardDriveUpload aria-hidden="true" />
         </button>
     </div>
 {:else if mode === 1}

@@ -1499,7 +1499,7 @@ describe('a sticker append', () => {
         installDb([charA], { useChatSticker: true })
 
         const { target } = mountScreen()
-        const laughToggle = target.querySelector('svg.lucide-laugh')?.closest('div')
+        const laughToggle = target.querySelector('svg.lucide-laugh')?.closest('button')
         expect(laughToggle).not.toBeNull()
         ;(laughToggle as HTMLElement).click()
         await settle()

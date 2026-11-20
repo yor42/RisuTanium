@@ -5,6 +5,8 @@
 
     let { flow }: { flow: WelcomeFlow } = $props()
 
+    const uid = $props.id()
+
     const options = $derived<{ value: MemoryChoice, label: string, description: string }[]>([
         { value: 'cheap', label: language.setup.chooseCheapOrMemoryOption2, description: language.setup.chooseCheapOrMemoryOption2Desc },
         { value: 'balanced', label: language.setup.chooseCheapOrMemoryOption3, description: language.setup.chooseCheapOrMemoryOption3Desc },
@@ -27,17 +29,19 @@
                     name="welcome-memory"
                     value={option.value}
                     checked={flow.memory === option.value}
+                    aria-label={option.label}
+                    aria-describedby={option.value === 'balanced' ? `${uid}-${option.value}-badge ${uid}-${option.value}-desc ${uid}-${option.value}-size` : `${uid}-${option.value}-desc ${uid}-${option.value}-size`}
                     onchange={() => { flow.memory = option.value }}
                 />
                 <span class="flex flex-col">
                     <span class="font-bold">
                         {option.label}
                         {#if option.value === 'balanced'}
-                            <span class="ml-1 text-xs p-1 rounded-sm bg-selected text-textcolor">{language.recommended}</span>
+                            <span id="{uid}-{option.value}-badge" class="ml-1 text-xs p-1 rounded-sm bg-selected text-textcolor">{language.recommended}</span>
                         {/if}
                     </span>
-                    <span class="text-sm text-textcolor2">{option.description}</span>
-                    <span class="text-xs text-textcolor2">{language.onboarding.tokenSizes(MEMORY_SIZES[option.value].maxContext, MEMORY_SIZES[option.value].maxResponse)}</span>
+                    <span id="{uid}-{option.value}-desc" class="text-sm text-textcolor2">{option.description}</span>
+                    <span id="{uid}-{option.value}-size" class="text-xs text-textcolor2">{language.onboarding.tokenSizes(MEMORY_SIZES[option.value].maxContext, MEMORY_SIZES[option.value].maxResponse)}</span>
                 </span>
             </label>
         {/each}

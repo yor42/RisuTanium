@@ -9,6 +9,8 @@
     /** `persona` for stories and both (name, description, picture); `nickname` for tools (a yes or no, then a nickname). */
     let { flow, mode }: { flow: WelcomeFlow, mode: 'persona' | 'nickname' } = $props()
 
+    const uid = $props.id()
+
     // The picture keeps one hold until the step goes away.
     const lookups = useCharImageLookups()
 
@@ -64,9 +66,11 @@
     </div>
 
     <label class="flex flex-col gap-1 mt-4">
-        <span class="text-sm text-textcolor2">{language.name}</span>
+        <span id="{uid}-name-label" class="text-sm text-textcolor2">{language.name}</span>
         <input
             type="text"
+            aria-labelledby="{uid}-name-label"
+            aria-describedby="{uid}-name-label"
             class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor"
             bind:value={flow.name}
             disabled={flow.finishing}
@@ -75,8 +79,10 @@
         />
     </label>
     <label class="flex flex-col gap-1 mt-4">
-        <span class="text-sm text-textcolor2">{language.description}</span>
+        <span id="{uid}-description-label" class="text-sm text-textcolor2">{language.description}</span>
         <textarea
+            aria-labelledby="{uid}-description-label"
+            aria-describedby="{uid}-description-label"
             class="min-h-24 p-3 rounded-md border border-darkborderc bg-transparent text-textcolor"
             bind:value={flow.description}
             disabled={flow.finishing}
@@ -100,20 +106,22 @@
         <legend class="sr-only">{language.onboarding.nicknameQuestion}</legend>
         <div class="flex flex-col gap-2">
             <label class="flex items-center gap-3 min-h-11 px-3 rounded-md border border-darkborderc cursor-pointer has-checked:border-selected has-checked:bg-bgcolor">
-                <input type="radio" name="welcome-nickname" value="yes" checked={flow.wantsNickname === true} onchange={() => { flow.wantsNickname = true }} />
+                <input type="radio" name="welcome-nickname" value="yes" checked={flow.wantsNickname === true} aria-label={language.onboarding.yes} onchange={() => { flow.wantsNickname = true }} />
                 <span>{language.onboarding.yes}</span>
             </label>
             <label class="flex items-center gap-3 min-h-11 px-3 rounded-md border border-darkborderc cursor-pointer has-checked:border-selected has-checked:bg-bgcolor">
-                <input type="radio" name="welcome-nickname" value="no" checked={flow.wantsNickname === false} onchange={() => { flow.wantsNickname = false }} />
+                <input type="radio" name="welcome-nickname" value="no" checked={flow.wantsNickname === false} aria-label={language.onboarding.no} onchange={() => { flow.wantsNickname = false }} />
                 <span>{language.onboarding.no}</span>
             </label>
         </div>
     </fieldset>
     {#if flow.wantsNickname === true}
         <label class="flex flex-col gap-1 mt-4">
-            <span class="text-sm text-textcolor2">{language.nickname}</span>
+            <span id="{uid}-nickname-label" class="text-sm text-textcolor2">{language.nickname}</span>
             <input
                 type="text"
+                aria-labelledby="{uid}-nickname-label"
+                aria-describedby="{uid}-nickname-label"
                 class="min-h-11 px-3 rounded-md border border-darkborderc bg-transparent text-textcolor"
                 bind:value={flow.name}
                 disabled={flow.finishing}

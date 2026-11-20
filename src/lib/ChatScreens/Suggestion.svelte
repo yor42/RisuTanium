@@ -226,12 +226,14 @@
     {:else if !shownBusy}
         {#if DBState.db.translator !== ''}
             <div class="flex mr-2 mb-2">
-                <button class={"bg-textcolor2 hover:bg-darkbutton font-bold py-2 px-4 rounded-sm " + (toggleTranslate ? 'text-green-500' : 'text-textcolor')}
+                <button class={"hover:bg-darkbutton font-bold py-2 px-4 rounded-sm text-textcolor " + (toggleTranslate ? 'bg-selected ring-1 ring-borderc hover:ring-2' : 'bg-textcolor2')}
+                    aria-label={language.translate}
+                    aria-pressed={toggleTranslate}
                     onclick={() => {
                         toggleTranslate = !toggleTranslate
                     }}
                 >
-                    <LanguagesIcon/>
+                    <LanguagesIcon aria-hidden="true"/>
                 </button>
             </div>    
         {/if}
@@ -239,6 +241,7 @@
 
         <div class="flex mr-2 mb-2">
             <button class="bg-textcolor2 hover:bg-darkbutton font-bold py-2 px-4 rounded-sm text-textcolor"
+                aria-label={language.reroll}
                 onclick={() => {
                     alertConfirm(language.askReRollAutoSuggestions).then((result) => {
                         if(result) {
@@ -249,7 +252,7 @@
                     })
                 }}
             >
-                <RefreshCcwIcon/>
+                <RefreshCcwIcon aria-hidden="true"/>
             </button>
         </div>
         {#each suggestMessages??[] as suggest, i}
@@ -266,13 +269,13 @@
                     {@html md}
                 {/await}
                 </button>
-                <button class="bg-textcolor2 hover:bg-darkbutton text-textcolor font-bold py-2 px-4 rounded-sm ml-1" onclick={() => {
+                <button class="bg-textcolor2 hover:bg-darkbutton text-textcolor font-bold py-2 px-4 rounded-sm ml-1" aria-label={language.suggestionToInput} onclick={() => {
                     if(isComposerLocked()){
                         return
                     }
                     messageInput(suggest)
                 }}>
-                    <CopyIcon/>
+                    <CopyIcon aria-hidden="true"/>
                 </button>
             </div>
         {/each}

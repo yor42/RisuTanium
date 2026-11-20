@@ -226,7 +226,7 @@ describe('the whole-read budget of the sticker list on Android', () => {
     function countIn(): { images: number, boxes: number } {
         return {
             images: host?.querySelectorAll('img').length ?? 0,
-            boxes: host?.querySelectorAll('div.bg-slate-500').length ?? 0,
+            boxes: host?.querySelectorAll('[data-part="asset-name-box"]').length ?? 0,
         }
     }
 
@@ -268,6 +268,6 @@ describe('the whole-read budget of the sticker list on Android', () => {
         const buttons = Array.from(host!.querySelectorAll('button')).slice(1) as HTMLButtonElement[]
 
         expect(buttons[1].querySelector('img')).toBeNull()
-        expect(buttons[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+        expect(buttons[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(1)
     })
 })

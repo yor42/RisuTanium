@@ -87,7 +87,7 @@ function translateToggleIsOn(): boolean {
     if (!toggle) {
         throw new Error('the translate toggle was not rendered')
     }
-    return toggle.classList.contains('text-green-500')
+    return toggle.getAttribute('aria-pressed') === 'true'
 }
 
 function visit(changeSetting: () => void): void {

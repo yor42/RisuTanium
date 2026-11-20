@@ -8,6 +8,7 @@
     import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
+    import { language } from "src/lang";
     interface Props {
         currentCharacter: character|groupChat;
         onSelect: (additionalAsset:[string,string,string])=>void;
@@ -75,7 +76,7 @@
     });
 </script>
 {#if currentCharacter.type ==='character'}
-    <button class="hover:text-green-500 bg-textcolor2 flex justify-center items-center w-16 h-16 m-1 rounded-md" onclick={async () => {
+    <button class="hover:bg-darkbutton bg-textcolor2 flex justify-center items-center w-16 h-16 m-1 rounded-md" aria-label={language.add} onclick={async () => {
         const target = currentCharacter
         if(target.type === 'character'){
             const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif'])
@@ -116,19 +117,19 @@
             reportRefusedAssets(refused, limit)
         }
     }}>
-        <PlusIcon />
+        <PlusIcon aria-hidden="true" />
     </button>
     {#if currentCharacter.additionalAssets}
         {#each currentCharacter.additionalAssets as additionalAsset, i}
                 {@const element = assetListElement(assetFileExtensions[i])}
                 {@const url = rowAssetUrl(assetUrls[i], additionalAsset[1], rowUse(assetFileExtensions[i]))}
-                <button onclick={()=>{
+                <button aria-label={additionalAsset[0]} onclick={()=>{
                     onSelect(additionalAsset)
                 }}>
                     <!-- A URL still being made, or made for another asset or use, is undefined and shows nothing; '' is a URL that was withheld or could not be made, and shows the name box. -->
                     {#if element === 'audio' || element === 'icon' || url === ''}
-                        <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
-                            <FileMusicIcon/>
+                        <div data-part="asset-name-box" class='w-16 h-16 m-1 rounded-md bg-darkbutton flex flex-col justify-center items-center'>
+                            <FileMusicIcon aria-hidden="true"/>
                             <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{additionalAsset[0]}</div>
                         </div>
                     {:else if url}

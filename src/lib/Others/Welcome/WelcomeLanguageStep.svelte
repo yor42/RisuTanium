@@ -4,6 +4,8 @@
 
     let { flow }: { flow: WelcomeFlow } = $props()
 
+    const uid = $props.id()
+
     // This step stays mounted while the person picks a language, so its text follows the flow's language table.
     const text = $derived(flow.strings)
 </script>
@@ -21,11 +23,13 @@
                     name="welcome-language"
                     value={code}
                     checked={flow.appLanguage === code}
+                    aria-label={LANGUAGE_NAMES[code]}
+                    aria-describedby={flow.detected.supported && flow.detected.shown === code ? `${uid}-${code}-tag` : undefined}
                     onchange={() => flow.pickLanguage(code)}
                 />
                 <span class="grow">{LANGUAGE_NAMES[code]}</span>
                 {#if flow.detected.supported && flow.detected.shown === code}
-                    <span class="text-xs text-textcolor2">{text.onboarding.browserLanguage}</span>
+                    <span id="{uid}-{code}-tag" class="text-xs text-textcolor2">{text.onboarding.browserLanguage}</span>
                 {/if}
             </label>
         {/each}

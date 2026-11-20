@@ -316,7 +316,7 @@ describe('the whole-read budget of the asset list on Android', () => {
     function countIn(cells: HTMLElement[]): { images: number, boxes: number } {
         return {
             images: cells.reduce((sum, cell) => sum + cell.querySelectorAll('img').length, 0),
-            boxes: cells.reduce((sum, cell) => sum + cell.querySelectorAll('div.bg-slate-500').length, 0),
+            boxes: cells.reduce((sum, cell) => sum + cell.querySelectorAll('[data-part="asset-name-box"]').length, 0),
         }
     }
 
@@ -357,7 +357,7 @@ describe('the whole-read budget of the asset list on Android', () => {
         await settle()
 
         expect(rowCells()[1].querySelector('img')).toBeNull()
-        expect(rowCells()[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+        expect(rowCells()[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(1)
     })
 
     test('reproducer: turning the preview off supersedes the runs before it', async () => {
@@ -379,6 +379,6 @@ describe('the whole-read budget of the asset list on Android', () => {
 
         // Row 1 waits for its own run; the late URL of the run before the preview was turned off is not shown.
         expect(rowCells()[1].querySelector('img')).toBeNull()
-        expect(rowCells()[1].querySelectorAll('div.bg-slate-500').length).toBe(0)
+        expect(rowCells()[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(0)
     })
 })
