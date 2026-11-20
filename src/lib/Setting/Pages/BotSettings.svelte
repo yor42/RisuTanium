@@ -189,8 +189,8 @@
         <TextInput labelId="{uid}-f2" marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.vertexClientEmail} oninput={clearVertexToken}/>
         <span class="text-textcolor" id="{uid}-f3">{fillLang(language.settingsPage.namePrivateKey, { name: 'Vertex' })}</span>
         <TextInput labelId="{uid}-f3" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.vertexPrivateKey} oninput={clearVertexToken}/>
-        <span class="text-textcolor">{language.settingsPage.region}</span>
-        <SelectInput value={DBState.db.vertexRegion} onchange={(e) => {
+        <span class="text-textcolor" id="{uid}-vertexRegion">{language.settingsPage.region}</span>
+        <SelectInput labelId="{uid}-vertexRegion" value={DBState.db.vertexRegion} onchange={(e) => {
             DBState.db.vertexRegion = e.currentTarget.value
             clearVertexToken()
         }}>
@@ -233,8 +233,8 @@
         <KeyListInput hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
         <span class="text-textcolor mt-4" id="{uid}-f5"> {language.proxyRequestModel}</span>
         <TextInput labelId="{uid}-f5" marginBottom={false} size={"sm"} bind:value={DBState.db.customProxyRequestModel} placeholder={language.name} />
-        <span class="text-textcolor mt-4"> {language.format}</span>
-        <SelectInput value={DBState.db.customAPIFormat.toString()} onchange={(e) => {
+        <span class="text-textcolor mt-4" id="{uid}-customApiFormat"> {language.format}</span>
+        <SelectInput labelId="{uid}-customApiFormat" value={DBState.db.customAPIFormat.toString()} onchange={(e) => {
             DBState.db.customAPIFormat = parseInt(e.currentTarget.value) as LLMFormat
         }}>
             <OptionInput value={LLMFormat.OpenAICompatible.toString()}>
@@ -301,8 +301,8 @@
             <span class="text-textcolor mt-4">Ollama {language.apiKey}</span>
             <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
 
-            <span class="text-textcolor mt-4">Ollama {language.format}</span>
-            <SelectInput value={DBState.db.ollamaRequestFormat.toString()} onchange={(e) => {
+            <span class="text-textcolor mt-4" id="{uid}-ollamaFormat">Ollama {language.format}</span>
+            <SelectInput labelId="{uid}-ollamaFormat" value={DBState.db.ollamaRequestFormat.toString()} onchange={(e) => {
                 DBState.db.ollamaRequestFormat = parseInt(e.currentTarget.value) as LLMFormat
             }}>
                 <OptionInput value={LLMFormat.Ollama.toString()}>
@@ -330,8 +330,8 @@
         {/if}
 
         {#if usesOllamaLocal || (usesOllamaCloud && DBState.db.ollamaRequestFormat === LLMFormat.Ollama)}
-        <span class="text-textcolor mt-4">{fillLang(language.settingsPage.nameThinking, { name: 'Ollama' })}</span>
-        <SelectInput bind:value={DBState.db.ollamaThinkingMode}>
+        <span class="text-textcolor mt-4" id="{uid}-ollamaThinking">{fillLang(language.settingsPage.nameThinking, { name: 'Ollama' })}</span>
+        <SelectInput labelId="{uid}-ollamaThinking" bind:value={DBState.db.ollamaThinkingMode}>
             <OptionInput value="auto">
                 {language.optAuto}
             </OptionInput>
@@ -410,8 +410,8 @@
         {/await}
     {/if}
     {#if DBState.db.aiModel === 'openrouter' || DBState.db.aiModel === 'reverse_proxy'}
-        <span class="text-textcolor">{language.tokenizer}</span>
-        <SelectInput bind:value={DBState.db.customTokenizer}>
+        <span class="text-textcolor" id="{uid}-tokenizer">{language.tokenizer}</span>
+        <SelectInput labelId="{uid}-tokenizer" bind:value={DBState.db.customTokenizer}>
             {#each tokenizerList as entry}
                 <OptionInput value={entry[0]}>{entry[1]}</OptionInput>
             {/each}
@@ -452,8 +452,8 @@
     </div>
 
     {#if DBState.db.aiModel === 'custom' || DBState.db.subModel === 'custom'}
-        <span class="text-textcolor mt-2">{language.plugin}</span>
-        <SelectInput className="mt-2 mb-4" bind:value={DBState.db.currentPluginProvider}>
+        <span class="text-textcolor mt-2" id="{uid}-pluginProvider">{language.plugin}</span>
+        <SelectInput labelId="{uid}-pluginProvider" className="mt-2 mb-4" bind:value={DBState.db.currentPluginProvider}>
             <OptionInput value="">{language.none}</OptionInput>
             {#each $customProviderStore as plugin}
                 <OptionInput value={plugin}>{plugin}</OptionInput>
@@ -469,8 +469,8 @@
     {#if DBState.db.aiModel === 'echo_model' || DBState.db.subModel === 'echo_model'}
         <span class="text-textcolor mt-2" id="{uid}-f9">{language.settingsPage.echoMessage}</span>
         <TextAreaInput labelId="{uid}-f9" margin="bottom" bind:value={DBState.db.echoMessage} placeholder={language.settingsPage.echoMessagePlaceholder}/>
-        <span class="text-textcolor mt-2">{language.settingsPage.echoDelaySeconds}</span>
-        <NumberInput marginBottom={true} bind:value={DBState.db.echoDelay} min={0}/>
+        <span class="text-textcolor mt-2" id="{uid}-echoDelay">{language.settingsPage.echoDelaySeconds}</span>
+        <NumberInput labelId="{uid}-echoDelay" marginBottom={true} bind:value={DBState.db.echoDelay} min={0}/>
     {/if}
 
     {#if DBState.db.aiModel.startsWith("horde") || DBState.db.subModel.startsWith("horde") }
@@ -504,20 +504,20 @@
     <!-- Data-driven basic parameters -->
     <SettingRenderer items={allBasicParameterItems} {modelInfo} {subModelInfo} />
     {#if DBState.db.aiModel === 'textgen_webui' || DBState.db.aiModel === 'mancer' || DBState.db.aiModel.startsWith('local_') || DBState.db.aiModel.startsWith('hf:::')}
-        <span class="text-textcolor">Repetition Penalty</span>
-        <SliderInput min={1} max={1.5} step={0.01} fixed={2} marginBottom bind:value={DBState.db.ooba.repetition_penalty}/>
-        <span class="text-textcolor">Length Penalty</span>
-        <SliderInput min={-5} max={5} step={0.05} marginBottom fixed={2} bind:value={DBState.db.ooba.length_penalty}/>
-        <span class="text-textcolor">Top K</span>
-        <SliderInput min={0} max={100} step={1} marginBottom bind:value={DBState.db.ooba.top_k} />
-        <span class="text-textcolor">Top P</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ooba.top_p}/>
-        <span class="text-textcolor">Typical P</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ooba.typical_p}/>
-        <span class="text-textcolor">Top A</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ooba.top_a}/>
-        <span class="text-textcolor">No Repeat n-gram Size</span>
-        <SliderInput min={0} max={20} step={1} marginBottom bind:value={DBState.db.ooba.no_repeat_ngram_size}/>
+        <span class="text-textcolor" id="{uid}-oobaRepetitionPenalty">Repetition Penalty</span>
+        <SliderInput labelId="{uid}-oobaRepetitionPenalty" min={1} max={1.5} step={0.01} fixed={2} marginBottom bind:value={DBState.db.ooba.repetition_penalty}/>
+        <span class="text-textcolor" id="{uid}-oobaLengthPenalty">Length Penalty</span>
+        <SliderInput labelId="{uid}-oobaLengthPenalty" min={-5} max={5} step={0.05} marginBottom fixed={2} bind:value={DBState.db.ooba.length_penalty}/>
+        <span class="text-textcolor" id="{uid}-oobaTopK">Top K</span>
+        <SliderInput labelId="{uid}-oobaTopK" min={0} max={100} step={1} marginBottom bind:value={DBState.db.ooba.top_k} />
+        <span class="text-textcolor" id="{uid}-oobaTopP">Top P</span>
+        <SliderInput labelId="{uid}-oobaTopP" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ooba.top_p}/>
+        <span class="text-textcolor" id="{uid}-oobaTypicalP">Typical P</span>
+        <SliderInput labelId="{uid}-oobaTypicalP" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ooba.typical_p}/>
+        <span class="text-textcolor" id="{uid}-oobaTopA">Top A</span>
+        <SliderInput labelId="{uid}-oobaTopA" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ooba.top_a}/>
+        <span class="text-textcolor" id="{uid}-oobaNoRepeatNgram">No Repeat n-gram Size</span>
+        <SliderInput labelId="{uid}-oobaNoRepeatNgram" min={0} max={20} step={1} marginBottom bind:value={DBState.db.ooba.no_repeat_ngram_size}/>
         <div class="flex items-center mt-4">
             <Check bind:check={DBState.db.ooba.do_sample} name={'Do Sample'}/>
         </div>
@@ -577,48 +577,48 @@
             <span class="text-textcolor" id="{uid}-f14">{language.settingsPage.seperator}</span>
             <TextInput labelId="{uid}-f14" bind:value={DBState.db.NAIsettings.seperator} placeholder={"\\n"}/>
         </div>
-        <span class="text-textcolor">Top P</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.topP}/>
-        <span class="text-textcolor">Top K</span>
-        <SliderInput min={0} max={100} step={1} marginBottom bind:value={DBState.db.NAIsettings.topK}/>
-        <span class="text-textcolor">Top A</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.topA}/>
-        <span class="text-textcolor">Tailfree Sampling</span>
-        <SliderInput min={0} max={1} step={0.001} marginBottom fixed={3} bind:value={DBState.db.NAIsettings.tailFreeSampling}/>
-        <span class="text-textcolor">Typical P</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.typicalp}/>
-        <span class="text-textcolor">Repetition Penalty</span>
-        <SliderInput min={0} max={3} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.repetitionPenalty}/>
-        <span class="text-textcolor">Repetition Penalty Range</span>
-        <SliderInput min={0} max={8192} step={1} marginBottom fixed={0} bind:value={DBState.db.NAIsettings.repetitionPenaltyRange}/>
-        <span class="text-textcolor">Repetition Penalty Slope</span>
-        <SliderInput min={0} max={10} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.repetitionPenaltySlope}/>
-        <span class="text-textcolor">Frequency Penalty</span>
-        <SliderInput min={-2} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.frequencyPenalty}/>
-        <span class="text-textcolor">Presence Penalty</span>
-        <SliderInput min={-2} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.presencePenalty}/>
-        <span class="text-textcolor">Mirostat LR</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.mirostat_lr}/>
-        <span class="text-textcolor">Mirostat Tau</span>
-        <SliderInput min={0} max={6} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.mirostat_tau}/>
-        <span class="text-textcolor">Cfg Scale</span>
-        <SliderInput min={1} max={3} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.cfg_scale}/>
+        <span class="text-textcolor" id="{uid}-naiTopP">Top P</span>
+        <SliderInput labelId="{uid}-naiTopP" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.topP}/>
+        <span class="text-textcolor" id="{uid}-naiTopK">Top K</span>
+        <SliderInput labelId="{uid}-naiTopK" min={0} max={100} step={1} marginBottom bind:value={DBState.db.NAIsettings.topK}/>
+        <span class="text-textcolor" id="{uid}-naiTopA">Top A</span>
+        <SliderInput labelId="{uid}-naiTopA" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.topA}/>
+        <span class="text-textcolor" id="{uid}-naiTailfree">Tailfree Sampling</span>
+        <SliderInput labelId="{uid}-naiTailfree" min={0} max={1} step={0.001} marginBottom fixed={3} bind:value={DBState.db.NAIsettings.tailFreeSampling}/>
+        <span class="text-textcolor" id="{uid}-naiTypicalP">Typical P</span>
+        <SliderInput labelId="{uid}-naiTypicalP" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.typicalp}/>
+        <span class="text-textcolor" id="{uid}-naiRepetitionPenalty">Repetition Penalty</span>
+        <SliderInput labelId="{uid}-naiRepetitionPenalty" min={0} max={3} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.repetitionPenalty}/>
+        <span class="text-textcolor" id="{uid}-naiRepetitionPenaltyRange">Repetition Penalty Range</span>
+        <SliderInput labelId="{uid}-naiRepetitionPenaltyRange" min={0} max={8192} step={1} marginBottom fixed={0} bind:value={DBState.db.NAIsettings.repetitionPenaltyRange}/>
+        <span class="text-textcolor" id="{uid}-naiRepetitionPenaltySlope">Repetition Penalty Slope</span>
+        <SliderInput labelId="{uid}-naiRepetitionPenaltySlope" min={0} max={10} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.repetitionPenaltySlope}/>
+        <span class="text-textcolor" id="{uid}-naiFrequencyPenalty">Frequency Penalty</span>
+        <SliderInput labelId="{uid}-naiFrequencyPenalty" min={-2} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.frequencyPenalty}/>
+        <span class="text-textcolor" id="{uid}-naiPresencePenalty">Presence Penalty</span>
+        <SliderInput labelId="{uid}-naiPresencePenalty" min={-2} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.presencePenalty}/>
+        <span class="text-textcolor" id="{uid}-naiMirostatLr">Mirostat LR</span>
+        <SliderInput labelId="{uid}-naiMirostatLr" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.mirostat_lr}/>
+        <span class="text-textcolor" id="{uid}-naiMirostatTau">Mirostat Tau</span>
+        <SliderInput labelId="{uid}-naiMirostatTau" min={0} max={6} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.mirostat_tau}/>
+        <span class="text-textcolor" id="{uid}-naiCfgScale">Cfg Scale</span>
+        <SliderInput labelId="{uid}-naiCfgScale" min={1} max={3} step={0.01} marginBottom fixed={2} bind:value={DBState.db.NAIsettings.cfg_scale}/>
 
     {:else if modelInfo.format === LLMFormat.NovelList}
-        <span class="text-textcolor">Top P</span>
-        <SliderInput min={0} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.top_p}/>
-        <span class="text-textcolor">Reputation Penalty</span>
-        <SliderInput min={0} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.rep_pen}/>
-        <span class="text-textcolor">Reputation Penalty Range</span>
-        <SliderInput min={0} max={2048} step={1} marginBottom fixed={2} bind:value={DBState.db.ainconfig.rep_pen_range}/>
-        <span class="text-textcolor">Reputation Penalty Slope</span>
-        <SliderInput min={0} max={10} step={0.1} marginBottom fixed={2} bind:value={DBState.db.ainconfig.rep_pen_slope}/>
-        <span class="text-textcolor">Top K</span>
-        <SliderInput min={1} max={500} step={1} marginBottom fixed={2} bind:value={DBState.db.ainconfig.top_k}/>
-        <span class="text-textcolor">Top A</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.top_a}/>
-        <span class="text-textcolor">Typical P</span>
-        <SliderInput min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.typical_p}/>
+        <span class="text-textcolor" id="{uid}-ainTopP">Top P</span>
+        <SliderInput labelId="{uid}-ainTopP" min={0} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.top_p}/>
+        <span class="text-textcolor" id="{uid}-ainRepPen">Reputation Penalty</span>
+        <SliderInput labelId="{uid}-ainRepPen" min={0} max={2} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.rep_pen}/>
+        <span class="text-textcolor" id="{uid}-ainRepPenRange">Reputation Penalty Range</span>
+        <SliderInput labelId="{uid}-ainRepPenRange" min={0} max={2048} step={1} marginBottom fixed={2} bind:value={DBState.db.ainconfig.rep_pen_range}/>
+        <span class="text-textcolor" id="{uid}-ainRepPenSlope">Reputation Penalty Slope</span>
+        <SliderInput labelId="{uid}-ainRepPenSlope" min={0} max={10} step={0.1} marginBottom fixed={2} bind:value={DBState.db.ainconfig.rep_pen_slope}/>
+        <span class="text-textcolor" id="{uid}-ainTopK">Top K</span>
+        <SliderInput labelId="{uid}-ainTopK" min={1} max={500} step={1} marginBottom fixed={2} bind:value={DBState.db.ainconfig.top_k}/>
+        <span class="text-textcolor" id="{uid}-ainTopA">Top A</span>
+        <SliderInput labelId="{uid}-ainTopA" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.top_a}/>
+        <span class="text-textcolor" id="{uid}-ainTypicalP">Typical P</span>
+        <SliderInput labelId="{uid}-ainTypicalP" min={0} max={1} step={0.01} marginBottom fixed={2} bind:value={DBState.db.ainconfig.typical_p}/>
     {:else}
         <!-- Standard parameters now handled by SettingRenderer above -->
     {/if}
@@ -661,7 +661,7 @@
                         <TextInput label={language.settingsPage.bias} bind:value={DBState.db.bias[i][0]} size="lg" fullwidth/>
                     </td>
                     <td class="font-medium truncate">
-                        <NumberInput bind:value={DBState.db.bias[i][1]} max={100} min={-101} size="lg" fullwidth/>
+                        <NumberInput label={language.value} bind:value={DBState.db.bias[i][1]} max={100} min={-101} size="lg" fullwidth/>
                     </td>
                     <td>
                         <button aria-label={language.remove} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {

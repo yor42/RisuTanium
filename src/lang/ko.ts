@@ -1108,6 +1108,7 @@ export const languageKorean = {
         "searchModels": "모델 검색...",
         "selectModel": "모델 선택...",
         "loraUrlOptional": "LoRA {index} URL (선택 사항)",
+        "loraWeightIndexed": "LoRA {index} 가중치",
         "loraFileSupport": ".safetensors 파일만 지원합니다. owner/model-name (Hugging Face) 형식이나 직접 URL (Civitai)을 사용하세요.",
         "loraNotSupported": "이 모델은 LoRA를 지원하지 않습니다. 모델 상태를 갱신하려면 모델 목록을 새로고침하세요.",
         "useCharacterImage": "캐릭터 이미지 사용",

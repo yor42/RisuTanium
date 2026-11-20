@@ -1108,6 +1108,7 @@ export const languageVietnamese = {
         "searchModels": "Tìm kiếm mô hình...",
         "selectModel": "Chọn một mô hình...",
         "loraUrlOptional": "URL LoRA {index} (tùy chọn)",
+        "loraWeightIndexed": "Trọng số LoRA {index}",
         "loraFileSupport": "Chỉ hỗ trợ tệp .safetensors. Dùng owner/model-name (Hugging Face) hoặc URL trực tiếp (Civitai).",
         "loraNotSupported": "Mô hình không hỗ trợ LoRA. Hoặc làm mới danh sách mô hình để cập nhật trạng thái mô hình.",
         "useCharacterImage": "Dùng ảnh nhân vật",

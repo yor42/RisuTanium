@@ -1108,6 +1108,7 @@ export const languageChinese = {
         "searchModels": "搜索模型...",
         "selectModel": "选择模型...",
         "loraUrlOptional": "LoRA {index} URL（可选）",
+        "loraWeightIndexed": "LoRA {index} 权重",
         "loraFileSupport": "仅支持 .safetensors 文件。请使用 owner/model-name（Hugging Face）或直接 URL（Civitai）。",
         "loraNotSupported": "该模型不支持 LoRA。也可以刷新模型列表以更新模型状态。",
         "useCharacterImage": "使用角色图片",

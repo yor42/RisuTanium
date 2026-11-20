@@ -1108,6 +1108,7 @@ export const languageSpanish = {
         "searchModels": "Buscar modelos...",
         "selectModel": "Selecciona un modelo...",
         "loraUrlOptional": "URL de LoRA {index} (opcional)",
+        "loraWeightIndexed": "Peso de LoRA {index}",
         "loraFileSupport": "Solo se admiten archivos .safetensors. Usa owner/model-name (Hugging Face) o una URL directa (Civitai).",
         "loraNotSupported": "El modelo no admite LoRA. O actualiza la lista de modelos para actualizar el estado del modelo.",
         "useCharacterImage": "Usar imagen del personaje",
