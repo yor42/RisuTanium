@@ -1,5 +1,7 @@
 <script lang="ts">
     import { untrack } from 'svelte'
+    import { get } from 'svelte/store'
+    import { packBaseTone } from '../../ts/gui/surfaceTone'
     import { afterFlush } from '../../ts/afterFlush'
     import { v4 } from 'uuid'
     import { DBState, selIdState, selectedCharID, additionalChatMenu, easyPanelStore, hypaV3ModalOpen } from '../../ts/stores.svelte'
@@ -208,8 +210,14 @@
             merged.height = Math.max(1, canvases.reduce((height, canvas) => height + canvas.height, 0))
             const context = merged.getContext('2d')
             if (!context) throw new Error('Canvas unavailable')
-            context.fillStyle = getComputedStyle(document.querySelector('.default-chat-screen') ?? document.body).backgroundColor
+            const shellStyle = getComputedStyle(document.querySelector('.default-chat-screen') ?? document.body)
+            context.fillStyle = shellStyle.backgroundColor
             context.fillRect(0, 0, merged.width, merged.height)
+            // Under a theme pack the shell is drawn as the pack canvas over its black base; the export draws the same two layers, so its backdrop equals the transcript backdrop, a translucent canvas included.
+            if (get(packBaseTone) !== null) {
+                context.fillStyle = shellStyle.getPropertyValue('--nexus-canvas').trim()
+                context.fillRect(0, 0, merged.width, merged.height)
+            }
             let y = 0
             for (const canvas of canvases) { context.drawImage(canvas, 0, y); y += canvas.height; canvas.remove() }
             await downloadFile(`chat-${v4()}.png`, Buffer.from(merged.toDataURL('image/png').split(',').at(-1) ?? '', 'base64'))

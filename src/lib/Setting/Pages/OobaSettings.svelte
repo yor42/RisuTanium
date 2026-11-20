@@ -137,23 +137,23 @@
         {#if DBState.db.localStopStrings}
             <div class="flex flex-col p-2 rounded-sm border border-selected mt-2 gap-1">
                 <div class="p-2">
-                    <button class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-green-500 w-full" onclick={() => {
+                    <button aria-label={language.add} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {
                         let localStopStrings = DBState.db.localStopStrings
                         localStopStrings.push('')
                         DBState.db.localStopStrings = localStopStrings
-                    }}><PlusIcon /></button>
+                    }}><PlusIcon aria-hidden="true" /></button>
                 </div>
                 {#each DBState.db.localStopStrings as stopString, i}
                     <div class="flex w-full">
                         <div class="grow">
-                            <TextInput marginBottom bind:value={DBState.db.localStopStrings[i]} fullwidth fullh/>
+                            <TextInput label={language.customStopWords} marginBottom bind:value={DBState.db.localStopStrings[i]} fullwidth fullh/>
                         </div>
                         <div>
-                            <button class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-green-500 w-full" onclick={() => {
+                            <button aria-label={language.remove} class="font-medium flex justify-center items-center h-full cursor-pointer hover:text-textcolor2 w-full" onclick={() => {
                                 let localStopStrings = DBState.db.localStopStrings
                                 localStopStrings.splice(i, 1)
                                 DBState.db.localStopStrings = localStopStrings
-                            }}><TrashIcon /></button>
+                            }}><TrashIcon aria-hidden="true" /></button>
                         </div>
                     </div>
                 {/each}

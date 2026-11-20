@@ -34,20 +34,20 @@
             onclick?.(e)
         }}>
             <div class="flex items-center gap-3 mb-4">
-                <button 
+                <button aria-label={language.settingsPage.back} 
                     class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
                     onclick={() => {
                         openOptions = false
                     }}
                     title={language.settingsPage.back}
                 >
-                    <ArrowLeft size={20} />
+                    <ArrowLeft size={20} aria-hidden="true" />
                 </button>
                 <h1 class="font-bold text-xl flex-1">{language.provider}</h1>
             </div>
             <div class="border-t-1 border-y-selected mb-2"></div>
 
-            <TextInput bind:value={custom} onchange={() => {changeModel(custom)}}/>
+            <TextInput label={language.provider} bind:value={custom} onchange={() => {changeModel(custom)}}/>
 
             {#each providers as provider}
                 <button class="hover:bg-selected px-6 py-2 text-lg" onclick={() => {changeModel(provider.slug)}}>{provider.name} ({provider.slug})</button>

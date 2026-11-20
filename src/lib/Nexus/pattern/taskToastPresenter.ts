@@ -1,6 +1,7 @@
 import { language } from '../../../lang'
 import type { TaskToastPresenter } from '../../../ts/alertTask.svelte'
 import type { TaskToastAnnouncement, TaskToastContent, TaskToastPhase, ToastHost } from '../../../ts/toast/toastHost.svelte'
+import { afterFrameSettle } from './patternFocus'
 import { taskAnnouncement, taskToastContent, taskToastPhase, type TaskLabels, type TaskView } from './taskProgress'
 
 function buildLabels(): TaskLabels {
@@ -44,24 +45,41 @@ function endAnnouncement(view: TaskView, content: TaskToastContent, labels: Task
 
 /**
  * Maps a backgrounded task's view to its toast and decides what is spoken: once when the task goes to the background and
- * once when it leaves `running`. Step and progress changes are never announced.
+ * once when it leaves `running`. Step and progress changes are never announced. The backgrounding notice is written a
+ * frame and the settle after the post, because the focus return that comes with backgrounding is spoken first and would
+ * cut a text written in the same turn; a task that has left `running`, or ended, by then gets no notice.
  */
 export function createTaskToastPresenter(host: ToastHost): TaskToastPresenter {
     const phases = new Map<number, TaskToastPhase>()
+    const latest = new Map<number, TaskToastContent>()
+    const pendingNotice = new Map<number, () => void>()
+    function forget(id: number): void {
+        phases.delete(id)
+        latest.delete(id)
+        pendingNotice.get(id)?.()
+        pendingNotice.delete(id)
+    }
     return {
         post(view, on) {
             const labels = buildLabels()
             const content = toastContent(view, labels)
             const id = host.postTask({
                 ...content,
-                announce: { text: language.patternTaskBackgrounded(view.title) },
                 onOpen: on.open,
                 onEnd: () => {
-                    phases.delete(id)
+                    forget(id)
                     on.end()
                 },
             })
             phases.set(id, content.phase)
+            latest.set(id, content)
+            pendingNotice.set(id, afterFrameSettle(() => {
+                pendingNotice.delete(id)
+                const current = latest.get(id)
+                if (current !== undefined && phases.get(id) === 'running') {
+                    host.updateTask(id, current, { text: language.patternTaskBackgrounded(view.title) })
+                }
+            }))
             return id
         },
         update(id, view) {
@@ -69,11 +87,12 @@ export function createTaskToastPresenter(host: ToastHost): TaskToastPresenter {
             const content = toastContent(view, labels)
             const before = phases.get(id)
             phases.set(id, content.phase)
+            latest.set(id, content)
             const leftRunning = before === 'running' && content.phase !== 'running'
             host.updateTask(id, content, leftRunning ? endAnnouncement(view, content, labels) : undefined)
         },
         end(id, opts) {
-            phases.delete(id)
+            forget(id)
             host.endTask(id, opts)
         },
     }

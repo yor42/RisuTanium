@@ -95,6 +95,14 @@ describe('ModuleChatMenu accessible names', () => {
         }
     })
 
+    test('regression reproducer: the search field is named by the search label', () => {
+        installDb()
+        const target = mountMenu()
+        const search = target.querySelector('input[type="text"]') as HTMLInputElement
+        expect(controlName(search)).toBe(language.search)
+        expect(unnamedControls(target, { fields: true })).toEqual([])
+    })
+
     test('regression reproducer: a globally enabled module renders no focusable placeholder button', () => {
         installDb()
         const target = mountMenu()

@@ -39,16 +39,16 @@
                 <OpenrouterProviderList bind:value={DBState.db.openrouterProvider.order[i]} options={openRouterProviders} />
             {/each}
             <div class="flex gap-2">
-                <button class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
+                <button aria-label={language.add} class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
                     let value = DBState.db.openrouterProvider.order ?? []
                     value.push('')
                     DBState.db.openrouterProvider.order = value
-            }}><PlusIcon /></button>
-                <button class="bg-red-500 text-white p-2 rounded-md" onclick={() => {
+            }}><PlusIcon aria-hidden="true" /></button>
+                <button aria-label={language.remove} class="border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor p-2 rounded-md" onclick={() => {
                     let value = DBState.db.openrouterProvider.order ?? []
                     value.pop()
                     DBState.db.openrouterProvider.order = value
-            }}><TrashIcon /></button>
+            }}><TrashIcon aria-hidden="true" /></button>
             </div>
         </Accordion>
 
@@ -60,16 +60,16 @@
                 <OpenrouterProviderList bind:value={DBState.db.openrouterProvider.only[i]} options={openRouterProviders} />
             {/each}
             <div class="flex gap-2">
-                <button class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
+                <button aria-label={language.add} class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
                     let value = DBState.db.openrouterProvider.only ?? []
                     value.push('')
                     DBState.db.openrouterProvider.only = value
-            }}><PlusIcon /></button>
-                <button class="bg-red-500 text-white p-2 rounded-md" onclick={() => {
+            }}><PlusIcon aria-hidden="true" /></button>
+                <button aria-label={language.remove} class="border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor p-2 rounded-md" onclick={() => {
                     let value = DBState.db.openrouterProvider.only ?? []
                     value.pop()
                     DBState.db.openrouterProvider.only = value
-            }}><TrashIcon /></button>
+            }}><TrashIcon aria-hidden="true" /></button>
             </div>
         </Accordion>
 
@@ -81,16 +81,16 @@
                 <OpenrouterProviderList bind:value={DBState.db.openrouterProvider.ignore[i]} options={openRouterProviders} />
             {/each}
             <div class="flex gap-2">
-                <button class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
+                <button aria-label={language.add} class="bg-selected text-textcolor p-2 rounded-md" onclick={() => {
                     let value = DBState.db.openrouterProvider.ignore ?? []
                     value.push('')
                     DBState.db.openrouterProvider.ignore = value
-            }}><PlusIcon /></button>
-                <button class="bg-red-500 text-white p-2 rounded-md" onclick={() => {
+            }}><PlusIcon aria-hidden="true" /></button>
+                <button aria-label={language.remove} class="border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor p-2 rounded-md" onclick={() => {
                     let value = DBState.db.openrouterProvider.ignore ?? []
                     value.pop()
                     DBState.db.openrouterProvider.ignore = value
-            }}><TrashIcon /></button>
+            }}><TrashIcon aria-hidden="true" /></button>
             </div>
         </Accordion>
     {/await}

@@ -132,13 +132,13 @@ async function writeStubPayloadsAndRelease(
     writer: Pick<LocalWriter, 'writeBackup'>,
     cold: BackupColdStorage,
     stubEntries: MintedStubEntry[],
-    progressPrefix: string,
+    progress: (done: number, total: number) => string,
     wait: (message: string) => void = alertWait,
 ): Promise<void> {
     cold.stubEntries = new Map()
     const total = stubEntries.length
     for (let i = 0; i < total; i++) {
-        wait(`${progressPrefix} (${i + 1} / ${total})`)
+        wait(progress(i + 1, total))
         await writer.writeBackup(stubEntries[0].backupName, unpackStubEntry(stubEntries[0]))
         stubEntries.shift()
     }
@@ -570,7 +570,7 @@ function serverExportOpener(session: ExportSession): (fileName: string, cancel?:
         now: () => Date.now(),
         trigger: submitDownloadForm,
         ensureActivation: () => ensureGestureForWriter(session, true),
-        onProgress: (sent, total) => session.gate.wait(`Saving local Backup... downloading (${formatMiB(sent)} / ${formatMiB(total)})`),
+        onProgress: (sent, total) => session.gate.wait(language.backupSaveDownloading(formatMiB(sent), formatMiB(total))),
     })
 }
 
@@ -706,7 +706,7 @@ async function upstreamOversizeNames(
         keys,
         listedKeys: listing.keys,
         cancel: session.cancel,
-        onProgress: (done, total) => session.gate.wait(`Checking asset sizes... (${done} / ${total})`),
+        onProgress: (done, total) => session.gate.wait(language.backupCheckingAssetSizes(done, total)),
     })
     return assets.filter((item) => !isPackAssetName(item.key)).map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
 }
@@ -852,9 +852,6 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
     return message
 }
 
-const FULL_BACKUP_WAIT = "Saving local backup..."
-const PARTIAL_BACKUP_WAIT = "Saving partial local backup..."
-
 /**
  * The first prompt of a whole-save `.bin` export from a read-only legacy page that opened from a backup or without what it
  * could not read: whether to save that copy at all, asked before the cold-storage collection and before any writer opens. Answers true when the
@@ -877,7 +874,7 @@ export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<Expo
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait(FULL_BACKUP_WAIT)
+    session.gate.wait(language.backupSaveWait)
     // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
     noteImportPhase('export start')
     if (MEASURE) {
@@ -904,7 +901,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     assertNoForeignModuleStubs(db.modules, 'writeLocalBackup')
     // The snapshot keeps a stub only when the page has no residency; such a stub must not reach an encoder even if it has left the live list since.
     assertNoModuleStubs(modules, 'writeLocalBackup snapshot')
-    if (!await askLegacyPartialExport(session, FULL_BACKUP_WAIT)) {
+    if (!await askLegacyPartialExport(session, language.backupSaveWait)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     if (MEASURE) {
@@ -1043,13 +1040,13 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     try {
         for(let i=0;i<assetKeys.length;i++){
             const key = assetKeys[i]
-            let message = `Saving local Backup... (${i + 1} / ${assetKeys.length})`
+            let message = language.backupSaveProgress(i + 1, assetKeys.length)
             if (missingAssets.length > 0) {
                 const skippedItems = missingAssets.map(key => {
                     const assetInfo = assetMap.get(key);
-                    return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+                    return assetInfo ? language.backupSaveSkippedAsset(assetInfo.assetName, assetInfo.charName) : `'${key}'`;
                 }).join(', ');
-                message += `\n(Skipping... ${skippedItems})`;
+                message += `\n${language.backupSaveSkipping(skippedItems)}`;
             }
             session.cancel.throwIfCancelled()
             session.gate.wait(message)
@@ -1106,14 +1103,14 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         // Inlays are held one part at a time (up to 64 MiB); the piece size only bounds each read reply.
         pieceBytes: tauriSource === ANDROID_PIECE_SOURCE ? ANDROID_EXPORT_PIECE_BYTES : undefined,
         openPieces: nodeSource?.open,
-        onProgress: (done, total) => session.gate.wait(`Saving local Backup Inlays... (${done} / ${total})`),
+        onProgress: (done, total) => session.gate.wait(language.backupSaveInlays(done, total)),
     })
     session.cancel.throwIfCancelled()
     noteImportPhase('export inlays done')
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
-        let message = `Saving local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
+        let message = language.backupSaveColdData(i + 1, coldStoragePayloads.payloads.length)
         session.gate.wait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
@@ -1126,15 +1123,15 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...', session.gate.wait)
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSaveColdData(done, total), session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        session.gate.wait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
+        session.gate.wait(language.backupSaveColdData(i + 1, late.payloads.length))
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
     noteImportPhase(MEASURE ? `export stub and late payloads done ${describeWriteMeasure()}` : 'export stub and late payloads done')
 
-    session.gate.wait(`Saving local Backup... (Saving database)`)
+    session.gate.wait(language.backupSaveDatabase)
 
     await writeDatabaseEntry(writer, dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
@@ -1243,7 +1240,7 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    session.gate.wait(PARTIAL_BACKUP_WAIT)
+    session.gate.wait(language.backupSavePartialWait)
     clearModuleSnapshotMarks()
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
@@ -1254,7 +1251,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // Same invariant as writeLocalBackup: only a foreign marker left in the live list stops the export here, before any read or file.
     assertNoForeignModuleStubs(db.modules, 'writePartialLocalBackup')
     assertNoModuleStubs(modules, 'writePartialLocalBackup snapshot')
-    if (!await askLegacyPartialExport(session, PARTIAL_BACKUP_WAIT)) {
+    if (!await askLegacyPartialExport(session, language.backupSavePartialWait)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     const collected = await collectBackupColdStorage(db, options)
@@ -1374,13 +1371,13 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
 
     for(let i=0;i<assetKeys.length;i++){
         const key = assetKeys[i]
-        let message = `Saving partial local backup... (${i + 1} / ${assetKeys.length})`
+        let message = language.backupSavePartialProgress(i + 1, assetKeys.length)
         if (missingAssets.length > 0) {
             const skippedItems = missingAssets.map(key => {
                 const assetInfo = assetMap.get(key);
-                return assetInfo ? `'${assetInfo.assetName}' from ${assetInfo.charName}` : `'${key}'`;
+                return assetInfo ? language.backupSaveSkippedAsset(assetInfo.assetName, assetInfo.charName) : `'${key}'`;
             }).join(', ');
-            message += `\n(Skipping... ${skippedItems})`;
+            message += `\n${language.backupSaveSkipping(skippedItems)}`;
         }
         session.cancel.throwIfCancelled()
         session.gate.wait(message)
@@ -1426,21 +1423,21 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
-        let message = `Saving partial local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
+        let message = language.backupSavePartialColdData(i + 1, coldStoragePayloads.payloads.length)
         session.gate.wait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
     const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
     session.cancel.throwIfCancelled()
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...', session.gate.wait)
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSavePartialColdData(done, total), session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        session.gate.wait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
+        session.gate.wait(language.backupSavePartialColdData(i + 1, late.payloads.length))
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    session.gate.wait(`Saving partial local backup... (Saving database)`)
+    session.gate.wait(language.backupSavePartialDatabase)
 
     await writeDatabaseEntry(writer, dbData)
     await writer.close()

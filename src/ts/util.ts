@@ -14,6 +14,7 @@ import { isTauriDesktop } from "src/ts/tauriDesktop"
 import type { Attachment } from "svelte/attachments"
 import { mount, unmount, type Snippet } from "svelte"
 import PopupList from "src/lib/UI/PopupList.svelte"
+import { clearPickOpener, markPickReturned, rememberPickOpener } from "./pickOpener"
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 export interface Messagec extends Message{
@@ -291,6 +292,11 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
             }
             settled = true
             fileInput.remove()
+            if (files.length > 0) {
+                markPickReturned()
+            } else {
+                clearPickOpener()
+            }
             resolve(files)
         }
 
@@ -310,6 +316,9 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
         fileInput.addEventListener('cancel', () => finish([]));
 
         document.body.appendChild(fileInput);
+        // The chooser takes focus off the button that opened it; a card opened after the pick returns focus there.
+        const active = document.activeElement
+        rememberPickOpener(active instanceof HTMLElement && active !== document.body ? active : null)
         fileInput.click();
         fileInput.style.display = 'none'; // Hide the file input element
     });

@@ -123,7 +123,7 @@ function editModePlaceholders(): Array<string | null> {
     const app = mount(BotPreset, { target, props: { close: vi.fn() } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
-    const toolbar = Array.from(target.querySelectorAll('button')).filter((b) => b.className.includes('hover:text-green-500'))
+    const toolbar = Array.from(target.querySelectorAll<HTMLButtonElement>('div.flex.mt-2.items-center > button'))
     // The last toolbar button toggles the edit mode.
     toolbar[toolbar.length - 1].click()
     flushSync()
