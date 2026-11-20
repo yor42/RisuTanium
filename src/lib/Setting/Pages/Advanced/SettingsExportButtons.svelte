@@ -8,6 +8,7 @@
     import { getDatabase } from "src/ts/storage/database.svelte";
     import { isNodeServer, isTauri } from "src/ts/platform";
     import { isUsageKey, withoutUsageKeys } from "src/ts/usage/usageLedger";
+    import { stripShareSecrets } from "src/ts/shareStrip";
 
 </script>
 
@@ -62,6 +63,8 @@
                 delete db[key]
             }
         }
+
+        stripShareSecrets(db, 'database')
 
         if (db.statics) {
             db.statics = withoutUsageKeys(db.statics)

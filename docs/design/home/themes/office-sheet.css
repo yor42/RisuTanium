@@ -1,0 +1,69 @@
+/* OFFICE SHEET for Home (MC-2520, MC-2523, MC-2524): the document palette on Home. Grey chrome, white cards with hairline edges, square corners, document blue for the accent.
+   Tokens first; part CSS only on safe parts; critical surfaces are never named. Light only. */
+:root {
+  color-scheme: light;
+  --color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #e3e5e8;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.85);
+  --nexus-surface-raised: rgb(26 85 186 / 0.08);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(31 35 40 / 0.16);
+  --nexus-edge-strong: rgb(31 35 40 / 0.55);
+  --nexus-field-border: rgb(31 35 40 / 0.6);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #ffffff;
+  --nexus-overlay-rgb: 0 0 0;
+  --nexus-shade-rgb: 0 0 0;
+
+  /* text */
+  --nexus-text: #1f2328;
+  --nexus-text-secondary: #474d55;
+  --nexus-text-muted: #50565f;
+
+  /* accent, warm, danger */
+  --nexus-accent-rgb: 26 85 186;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #1a55ba;
+  --nexus-core-from: #1a55ba;
+  --nexus-core-to: #154696;
+  --nexus-warm: #7a4a12;
+  --nexus-warm-from: #fdf0d5;
+  --nexus-warm-to: #f6dca6;
+  --nexus-danger-rgb: 150 28 20;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-network-node: 26 85 186;
+  --nexus-network-link: 26 85 186;
+
+  /* Home-only colour tokens */
+  --home-ring-rgb: 26 85 186;
+  --home-warm-rgb: 122 74 18;
+  --home-warm-bloom-rgb: 255 255 255;
+  --home-bloom-alpha-rp: 0; --home-bloom-alpha-hybrid: 0; --home-bloom-alpha-utility: 0;
+  --home-success-rgb: 21 101 55;
+  --home-warning-rgb: 122 79 0;
+  --home-scrim-rgb: 20 24 32;
+  --home-composer-bg: #ffffff;
+  --home-on-accent: #ffffff;
+  --home-well-bg: rgb(31 35 40 / 0.05);
+  --home-track: rgb(31 35 40 / 0.16);
+  --home-presence-glow: rgb(var(--home-warm-rgb) / 0);
+
+  /* corners: square */
+  --radius-field: 2px;
+  --radius-sheet: 4px;
+  --home-control-radius: 3px;
+  --home-card-radius: 3px;
+  --home-dialog-radius: 4px;
+  --home-rail-radius: 3px;
+  --home-mode-radius: 3px;
+  --home-mode-option-radius: 3px;
+}
+
+/* white cards with hairline edges on the grey chrome; the rail as a toolbar */
+html[data-theme="office-sheet"] [data-part="home-char-card"], html[data-theme="office-sheet"] [data-part="home-story"] { background: var(--nexus-surface-flat); border: 1px solid #c4c8ce; }
+html[data-theme="office-sheet"] [data-part="home-rail"] { background: #f3f4f6; border-right: 1px solid #c4c8ce; }

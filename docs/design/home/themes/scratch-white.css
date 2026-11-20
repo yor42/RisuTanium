@@ -1,0 +1,66 @@
+/* SCRATCH WHITE for Home (MC-2520, MC-2522, MC-2524): the notebook palette on Home. Paper canvas, white index cards, graphite text, blue-ink accent; the cards sit on faint blue
+   rules and the rail ends in a dashed perforation. Tokens first; part CSS only on safe parts; critical surfaces are never named. Light only. */
+:root {
+  color-scheme: light;
+  --color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #fdfdfa;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.8);
+  --nexus-surface-raised: rgb(31 74 168 / 0.08);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(43 46 52 / 0.14);
+  --nexus-edge-strong: rgb(43 46 52 / 0.55);
+  --nexus-field-border: rgb(43 46 52 / 0.6);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #fffef5;
+  --nexus-overlay-rgb: 0 0 0;
+  --nexus-shade-rgb: 0 0 0;
+
+  /* text */
+  --nexus-text: #2b2e34;
+  --nexus-text-secondary: #464b54;
+  --nexus-text-muted: #545a64;
+
+  /* accent, warm, danger */
+  --nexus-accent-rgb: 31 74 168;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #1f4aa8;
+  --nexus-core-from: #1f4aa8;
+  --nexus-core-to: #173a86;
+  --nexus-warm: #8a3a1a;
+  --nexus-warm-from: #fde9d9;
+  --nexus-warm-to: #f8cfb0;
+  --nexus-danger-rgb: 150 30 24;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-network-node: 31 74 168;
+  --nexus-network-link: 31 74 168;
+
+  /* Home-only colour tokens */
+  --home-ring-rgb: 31 74 168;
+  --home-warm-rgb: 138 58 26;
+  --home-warm-bloom-rgb: 255 255 255;
+  --home-bloom-alpha-rp: 0; --home-bloom-alpha-hybrid: 0; --home-bloom-alpha-utility: 0;
+  --home-success-rgb: 23 107 58;
+  --home-warning-rgb: 138 90 0;
+  --home-scrim-rgb: 20 24 32;
+  --home-composer-bg: #ffffff;
+  --home-on-accent: #ffffff;
+  --home-well-bg: rgb(43 46 52 / 0.05);
+  --home-track: rgb(43 46 52 / 0.14);
+  --home-presence-glow: rgb(var(--home-warm-rgb) / 0);
+
+  /* corners */
+  --radius-field: 6px;
+  --radius-sheet: 10px;
+  --home-control-radius: 6px;
+  --home-card-radius: 8px;
+  --home-dialog-radius: 10px;
+}
+
+/* cards on faint rules; the rail ends in a perforation */
+html[data-theme="scratch-white"] [data-part="home-char-card"], html[data-theme="scratch-white"] [data-part="home-story"] { background: var(--nexus-surface-flat); border-bottom: 1px solid #b9cfe9; }
+html[data-theme="scratch-white"] [data-part="home-rail"] { border-right: 2px dashed var(--nexus-edge-strong); }

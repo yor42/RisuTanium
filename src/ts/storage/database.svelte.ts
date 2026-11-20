@@ -21,6 +21,7 @@ import type { TaskPreset } from '../process/utility/taskPreset'
 import type { PriceOverride } from '../usage/usageTypes'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
+import { shareSafePreset } from '../shareStrip'
 import { safeStructuredClone } from '../polyfill';
 import { AssetList, toAssetList } from './assetList';
 import {
@@ -2519,13 +2520,8 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
     saveCurrentPreset()
     let db = getDatabase()
     let pres = withoutPresetMeta(safeStructuredClone(db.botPresets[id]))
+    shareSafePreset(pres)
     console.log(pres)
-    pres.openAIKey = ''
-    pres.forceReplaceUrl = ''
-    pres.forceReplaceUrl2 = ''
-    pres.proxyKey = ''
-    pres.textgenWebUIStreamURL=  ''
-    pres.textgenWebUIBlockingURL=  ''
 
     if(type === 'json'){
         const saved = await downloadFile(pres.name + "_preset.json", Buffer.from(JSON.stringify(pres, null, 2)))
@@ -2566,7 +2562,7 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
 
     }
 
-    alertNormal(downloadNotice(language.successExport))
+    alertNormal(downloadNotice(language.successExport) + '\n\n' + language.shareExportKeysLeftOut)
 
 
     return {
