@@ -1907,6 +1907,7 @@ export const languageJapanese = {
     exportCharacter: "キャラクターエクスポート",
     successExport: "正常にエクスポートされ、ダウンロードフォルダにダウンロードされました",
     successExportChosenLocation: "正常にエクスポートされ、選択した場所に保存されました",
+    shareExportKeysLeftOut: "APIキーとエンドポイントURLは除外されました。",
     exportDownloadStarted: "ダウンロードを開始しました。ブラウザがファイルをダウンロードフォルダに保存します。先に確認または保持の操作を求められる場合があります。",
     exportHeldInMemory: "このブラウザはエクスポートの作成中に直接保存できないため、完了するまでメモリに保持してからダウンロードされます。サイズが非常に大きいエクスポートは失敗する可能性があります。",
     exportHelperNotResponding: "ダウンロードヘルパーが応答しなかったため、エクスポートは完了するまでメモリに保持されてからダウンロードされます。サイズが非常に大きいエクスポートは失敗する可能性があります。",
