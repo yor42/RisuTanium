@@ -570,7 +570,7 @@ describe('T3-4 a pack that cannot apply', () => {
     it('a built-in that the validator accepts applies its judged text with no blobs and no skipped areas', async () => {
         const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, blobs: [], skippedAreas: [] })
+        expect(prepared).toEqual({ ok: true, text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, blobs: [], skippedAreas: [], base: 'dark' })
     })
 
     it('a built-in whose raw text differs from its canonical text applies the judged canonical text, never the raw one', async () => {
@@ -579,7 +579,7 @@ describe('T3-4 a pack that cannot apply', () => {
         const canonical = judgeAreaSheet('chat', raw, undefined, 'chat').canonical
         expect(canonical).not.toBe(raw)
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, text: canonical, blobs: [], skippedAreas: [] })
+        expect(prepared).toEqual({ ok: true, text: canonical, blobs: [], skippedAreas: [], base: 'dark' })
         expect(prepared.text).not.toContain('note')
     })
 })

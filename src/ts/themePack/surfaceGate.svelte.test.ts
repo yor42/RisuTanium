@@ -306,3 +306,81 @@ describe('the pack base: the root attribute and the base tone follow the sheet t
         expectBase(false)
     })
 })
+
+describe('the light base: the attribute value and the tone follow the base the element was registered with', () => {
+    // TD13. The light cases are regression reproducers: before the third argument the gate wrote an empty value and the
+    // dark tone for every element. The dark, cover and reset cases are compatibility guards.
+    const ATTRIBUTE = 'data-theme-pack-base'
+
+    function probeWith(base: 'dark' | 'light'): { element: HTMLStyleElement, unregister: () => void } {
+        const element = document.createElement('style')
+        element.setAttribute('data-theme-pack', 'chat')
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        return { element, unregister: registerThemePackElement(element, 'chat', base) }
+    }
+
+    const value = (): string | null => document.documentElement.getAttribute(ATTRIBUTE)
+
+    test('a light element writes the value light and the light tone; a dark one writes an empty value and the dark tone', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const dark = probeWith('dark')
+        syncThemePackMedia()
+        expect(value()).toBe('')
+        expect(get(packBaseTone)).toBe('dark')
+        dark.unregister()
+        probeWith('light')
+        syncThemePackMedia()
+        expect(value()).toBe('light')
+        expect(get(packBaseTone)).toBe('light')
+    })
+
+    test('a replacement with the other base rewrites the value while the attribute stays present', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const light = probeWith('light')
+        syncThemePackMedia()
+        expect(value()).toBe('light')
+        light.unregister()
+        light.element.remove()
+        probeWith('dark')
+        syncThemePackMedia()
+        expect(value()).toBe('')
+        expect(get(packBaseTone)).toBe('dark')
+    })
+
+    test('a cover removes the attribute and the tone, and lifting it restores the light base', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        probeWith('light')
+        syncThemePackMedia()
+        cover.on = true
+        syncThemePackMedia()
+        expect(value()).toBeNull()
+        expect(get(packBaseTone)).toBeNull()
+        cover.on = false
+        syncThemePackMedia()
+        expect(value()).toBe('light')
+        expect(get(packBaseTone)).toBe('light')
+    })
+
+    test('reset clears a light base', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        probeWith('light')
+        syncThemePackMedia()
+        resetThemePackGateForTests()
+        expect(value()).toBeNull()
+        expect(get(packBaseTone)).toBeNull()
+    })
+
+    test('an element registered without a base is dark', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        probe('chat')
+        syncThemePackMedia()
+        expect(value()).toBe('')
+        expect(get(packBaseTone)).toBe('dark')
+    })
+})
