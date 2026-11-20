@@ -113,12 +113,20 @@ async function addImportedCharacter(char:character, run:ImportArchiveRun|null, p
     return index
 }
 
+/**
+ * What a caller of `importFiles` may set. `background` lets the card offer "Keep going in the background", only for an
+ * import the user started inside the app. `report` is an out-parameter: `backgrounded` is set when the action was sent to
+ * the background, so the caller does not move the user when it ends.
+ */
+export type ImportReport = {backgrounded?:boolean}
+type ImportFilesOptions = {title?:string, outerBusy?:BusyHandle, preflight?:true, background?:true, report?:ImportReport}
+
 //Attempts every file through `runImportBatch` on one task card; a character that was added gets its order checked. Pushes the slots that were added onto `added`, in file order, each read when its file was added, and returns it.
-async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [], title:string = language.importTaskFilesTitle, outerBusy?:BusyHandle, preflight?:true):Promise<(character|groupChat)[]> {
-    await runImportBatch(items, {
-        task: {title, steps: IMPORT_STEPS},
-        outerBusy,
-        preflight,
+async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [], opts:ImportFilesOptions = {}):Promise<(character|groupChat)[]> {
+    const summary = await runImportBatch(items, {
+        task: {title: opts.title ?? language.importTaskFilesTitle, steps: IMPORT_STEPS, ...(opts.background ? {background: true as const} : {})},
+        outerBusy: opts.outerBusy,
+        preflight: opts.preflight,
         afterImported: (outcome) => {
             if(outcome.kind === 'imported' && outcome.index !== null){
                 const slot = DBState.db.characters[outcome.index]
@@ -133,6 +141,9 @@ async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [
             }
         }
     })
+    if(summary.backgrounded && opts.report){
+        opts.report.backgrounded = true
+    }
     return added
 }
 
@@ -258,8 +269,9 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, r
  * Picks files and imports them. Resolves to the slots it added, in file order, each read when its file was added;
  * an archived import yields its archive placeholder. A cancelled or empty pick, and files that were all refused,
  * declined or failed, yield an empty list. A throw after some files were added yields the slots collected so far.
+ * The card offers "Keep going in the background"; `report.backgrounded` tells the caller that the import was sent there.
  */
-export async function importCharacter():Promise<(character|groupChat)[]> {
+export async function importCharacter(report?:ImportReport):Promise<(character|groupChat)[]> {
     const added:(character|groupChat)[] = []
     try {
         const files = await selectFileByDom(["*"], 'multiple')
@@ -275,7 +287,7 @@ export async function importCharacter():Promise<(character|groupChat)[]> {
                 name: f.name,
                 data: f
             }, run, progress)
-        })), added, language.importTaskCharactersTitle, undefined, true)
+        })), added, {title: language.importTaskCharactersTitle, preflight: true, background: true, report})
     } catch (error) {
         alertError(error)
     }
@@ -1255,7 +1267,7 @@ export async function characterURLImport() {
                     //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                     const blob = await res.blob()
                     //The runner ends this scope when its first result posts, so the scope never holds an unanswered card.
-                    await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())], [], language.importTaskFilesTitle, busy)
+                    await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())], [], {outerBusy: busy})
                 }
             } catch (error) {
                 alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)

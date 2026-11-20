@@ -56,9 +56,10 @@ vi.mock(import('src/ts/exportNotice'), () => ({
 
 import { accessibilitySettingsItems } from './accessibilitySettingsData'
 import { advancedSettingsItems } from './advancedSettingsData'
+import { dataShellItems, dataShellRowIds } from './dataShellSettingsData'
 import { displayShellRowIds } from './displayShellSettingsData'
-import { advancedShellRowIds, unplacedLegacyAdvancedIds } from './advancedShellSettingsData'
-import { inputShellRowIds, unplacedLegacyInputIds } from './inputShellSettingsData'
+import { advancedSectionOfRow, advancedShellRowIds, unplacedLegacyAdvancedIds } from './advancedShellSettingsData'
+import { inputSectionOfRow, inputShellRowIds, unplacedLegacyInputIds } from './inputShellSettingsData'
 import { languageShellRowIds, unplacedLegacyLanguageIds } from './languageShellSettingsData'
 import { buildSearchSources } from './settingsSearchSources'
 import { getFullSettingsData } from './utils'
@@ -84,7 +85,7 @@ describe('native shell page coverage (I3)', () => {
     })
 
     test('no row id sits on two native pages, and none twice on one page', () => {
-        const pages = [displayShellRowIds(), inputShellRowIds(), languageShellRowIds(), advancedShellRowIds()]
+        const pages = [displayShellRowIds(), inputShellRowIds(), languageShellRowIds(), advancedShellRowIds(), dataShellRowIds()]
         const all = pages.flat()
         expect(new Set(all).size).toBe(all.length)
     })
@@ -113,10 +114,27 @@ describe('native shell page coverage (I3)', () => {
         const sources = new Map(buildSearchSources(context()).map((source) => [source.id, source]))
         const placed = advancedShellRowIds().filter((id) => sources.has(id))
         expect(placed).toContain('adv.genTime')
-        expect(placed).toContain('adv.coldstorage')
+        expect(placed).not.toContain('adv.coldstorage')
         for (const id of placed) {
             expect(sources.get(id)?.target, id).toEqual({ index: 6, rowId: id })
         }
+    })
+
+    test('S1-R1: the cold-storage row is an Advanced id whose result opens the Data page at that row', () => {
+        const sources = new Map(buildSearchSources(context()).map((source) => [source.id, source]))
+        expect(sources.get('adv.coldstorage')?.target).toEqual({ index: 0, rowId: 'adv.coldstorage' })
+    })
+
+    test('S1-R2: the Realm-import row is an Accessibility id whose result opens the Data page at that row', () => {
+        const sources = new Map(buildSearchSources(context()).map((source) => [source.id, source]))
+        expect(sources.get('acc.goCharacterOnImport')?.target).toEqual({ index: 0, rowId: 'acc.goCharacterOnImport' })
+    })
+
+    test('S1-R3: neither moved row stays on the Advanced or Input page', () => {
+        expect(advancedShellRowIds()).not.toContain('adv.coldstorage')
+        expect(inputShellRowIds()).not.toContain('acc.goCharacterOnImport')
+        expect(advancedSectionOfRow('adv.coldstorage')).toBeNull()
+        expect(inputSectionOfRow('acc.goCharacterOnImport')).toBeNull()
     })
 
     test('T4: acc.requestInfoInsideChat is an Accessibility id that opens the Advanced page', () => {
@@ -135,5 +153,17 @@ describe('the legacy lists stay the sidebar picker source (T10, compatibility gu
         const genTime = advancedSettingsItems.find((item) => item.id === 'adv.genTime')
         expect(genTime?.labelKey).toBe('genTimes')
         expect(full.find((item) => item.id === 'adv.genTime')).toBe(genTime)
+    })
+
+    test('S1-G2: the Data page renders the moved rows as the legacy objects', () => {
+        const full = getFullSettingsData()
+        const realm = accessibilitySettingsItems.find((item) => item.id === 'acc.goCharacterOnImport')
+        const cold = advancedSettingsItems.find((item) => item.id === 'adv.coldstorage')
+        expect(realm).toBeDefined()
+        expect(cold).toBeDefined()
+        expect(dataShellItems.find((item) => item.id === 'acc.goCharacterOnImport')).toBe(realm)
+        expect(dataShellItems.find((item) => item.id === 'adv.coldstorage')).toBe(cold)
+        expect(full.find((item) => item.id === 'acc.goCharacterOnImport')).toBe(realm)
+        expect(full.find((item) => item.id === 'adv.coldstorage')).toBe(cold)
     })
 })
