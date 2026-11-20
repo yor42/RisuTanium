@@ -13,8 +13,8 @@
     import { stopTTS } from '../../ts/process/tts'
     import { canChatSpeak } from '../../ts/process/ttsModes'
     import { findCharacterbyId } from '../../ts/util'
-    import { showHypaV2Alert, alertWait, alertNormal, alertError } from '../../ts/alert'
-    import { downloadNotice } from '../../ts/exportNotice'
+    import { showHypaV2Alert, alertError } from '../../ts/alert'
+    import { runChatScreenshot } from '../../ts/chatScreenshot'
     import { downloadFile } from '../../ts/globalApi.svelte'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
     import CheckIcon from '@lucide/svelte/icons/check'
@@ -201,32 +201,32 @@
             const { toCanvas } = await import('html-to-image')
             const rows = document.querySelectorAll('.default-chat-screen .risu-chat')
             if (rows.length === 0) throw new Error('No rendered chat rows')
-            alertWait(language.alerts.screenshotTaking)
-            const canvases: HTMLCanvasElement[] = []
-            for (const row of rows) {
-                canvases.push(await toCanvas(row as HTMLElement))
-                alertWait(`${language.alerts.screenshotTaking} ${canvases.length}/${rows.length}`)
-            }
-            canvases.reverse()
-            alertWait(language.alerts.screenshotMerging)
-            const merged = document.createElement('canvas')
-            merged.width = Math.max(1, ...canvases.map((canvas) => canvas.width))
-            merged.height = Math.max(1, canvases.reduce((height, canvas) => height + canvas.height, 0))
-            const context = merged.getContext('2d')
-            if (!context) throw new Error('Canvas unavailable')
-            const shellStyle = getComputedStyle(document.querySelector('.default-chat-screen') ?? document.body)
-            context.fillStyle = shellStyle.backgroundColor
-            context.fillRect(0, 0, merged.width, merged.height)
-            // Under a theme pack the shell is drawn as the pack canvas over its black base; the export draws the same two layers, so its backdrop equals the transcript backdrop, a translucent canvas included.
-            if (get(packBaseTone) !== null) {
-                context.fillStyle = shellStyle.getPropertyValue('--nexus-canvas').trim()
-                context.fillRect(0, 0, merged.width, merged.height)
-            }
-            let y = 0
-            for (const canvas of canvases) { context.drawImage(canvas, 0, y); y += canvas.height; canvas.remove() }
-            await downloadFile(`chat-${v4()}.png`, Buffer.from(merged.toDataURL('image/png').split(',').at(-1) ?? '', 'base64'))
-            merged.remove()
-            alertNormal(downloadNotice(language.screenshotSaved))
+            await runChatScreenshot<HTMLCanvasElement>({
+                rows,
+                capture: (row) => toCanvas(row as HTMLElement),
+                merge: (captured) => {
+                    const canvases = [...captured].reverse()
+                    const merged = document.createElement('canvas')
+                    merged.width = Math.max(1, ...canvases.map((canvas) => canvas.width))
+                    merged.height = Math.max(1, canvases.reduce((height, canvas) => height + canvas.height, 0))
+                    const context = merged.getContext('2d')
+                    if (!context) throw new Error('Canvas unavailable')
+                    const shellStyle = getComputedStyle(document.querySelector('.default-chat-screen') ?? document.body)
+                    context.fillStyle = shellStyle.backgroundColor
+                    context.fillRect(0, 0, merged.width, merged.height)
+                    // Under a theme pack the shell is drawn as the pack canvas over its black base; the export draws the same two layers, so its backdrop equals the transcript backdrop, a translucent canvas included.
+                    if (get(packBaseTone) !== null) {
+                        context.fillStyle = shellStyle.getPropertyValue('--nexus-canvas').trim()
+                        context.fillRect(0, 0, merged.width, merged.height)
+                    }
+                    let y = 0
+                    for (const canvas of canvases) { context.drawImage(canvas, 0, y); y += canvas.height; canvas.remove() }
+                    const png = Buffer.from(merged.toDataURL('image/png').split(',').at(-1) ?? '', 'base64')
+                    merged.remove()
+                    return png
+                },
+                save: (png, aroundPicker) => downloadFile(`chat-${v4()}.png`, png, { aroundPicker }),
+            })
         } catch (error) {
             console.error(error)
             alertError(language.errors.screenshotFailed)

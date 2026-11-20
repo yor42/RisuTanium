@@ -1,23 +1,27 @@
 import fs from 'node:fs'
-import { spawn } from 'node:child_process'
-import { adbExe, deviceConnect, devicePort, outDir, requireSerial, safeName, sleep } from './lib.mjs'
+import { deviceConnect, devicePort, guardLog, outDir, requireSerial, runGuardedAdb, safeName, sleep } from './lib.mjs'
 // Observer-free acquisition. usage:
-//   HARNESS_SERIAL=<adb serial> HARNESS_CDP=<forwarded port> [HARNESS_OUT=<dir outside the checkout>] [HARNESS_ADB=<adb>]
+//   HARNESS_SERIAL=<adb serial> HARNESS_CDP=<forwarded port> HARNESS_GUARD_LOG=<absolute guard log path> [HARNESS_OUT=<dir outside the checkout>]
 //   node obsfree.mjs <build> <trial> still <target>
 //   node obsfree.mjs <build> <trial> fling <startScrollTop> <y0> <y1> <durMs>
 // Page access = single Runtime.evaluate reads (+ the one scrollTop write: the jump, or the fling setup position).
 // No in-page logger: no rAF chain, ResizeObserver, accessor hooks, listeners or wrapped APIs.
-// Invariant: every argument, the serial, the port and the out dir are validated before a directory is made or a connection
-// opened; any failure prints the usage and exits 2.
+// Invariant: every argument, the serial, the guard log, the port and the out dir are validated before a directory is made or a
+// connection opened; any failure prints the usage and exits 2.
+// Invariant: the only adb call is the fling swipe, and it runs through the guard with --kit (lib.mjs runGuardedAdb). It starts at
+// swipeT without an await and is awaited only after the poll loop and the b500/b1000 reads, so it stays concurrent with the
+// observation. A swipe the guard refuses or that fails ends the run with exit 4 before frames and raw.json are written. Still
+// mode makes no adb call.
 const [build, trial, mode] = process.argv.slice(2, 5)
 const a = process.argv.slice(5).map(Number)
-const USAGE = 'usage: HARNESS_SERIAL=<serial> HARNESS_CDP=<port> node obsfree.mjs <build> <trial> still <target> | fling <startScrollTop> <y0> <y1> <durMs>'
-let SER, OUT
+const USAGE = 'usage: HARNESS_SERIAL=<serial> HARNESS_CDP=<port> HARNESS_GUARD_LOG=<absolute path> node obsfree.mjs <build> <trial> still <target> | fling <startScrollTop> <y0> <y1> <durMs>'
+let OUT
 try {
   safeName(build); safeName(trial)
   const want = mode === 'still' ? 1 : mode === 'fling' ? 4 : -1
   if (a.length !== want || !a.every(Number.isFinite)) throw new Error('bad mode or numbers: ' + [mode, ...process.argv.slice(5)].join(' '))
-  SER = requireSerial()
+  requireSerial()
+  guardLog()
   devicePort()
   OUT = `${outDir()}/${build}-${trial}`
 } catch (e) { console.error(String(e.message || e) + '\n' + USAGE); process.exit(2) }
@@ -93,13 +97,13 @@ await sleep(400)
 const ra = await c.ev(READ_A)
 const preMin = ra.mi
 const tA = Date.now()
-let jumpT = null, swipeT = null, swipeProc = null, ra2 = null
+let jumpT = null, swipeT = null, swipeRun = null, ra2 = null
 if (mode === 'still') {
   ra2 = await c.ev(JUMP_A2(a[0]))
   jumpT = Date.now()
 } else {
   swipeT = Date.now()
-  swipeProc = spawn(adbExe(), ['-s', SER, 'shell', 'input', 'swipe', '540', String(a[1]), '540', String(a[2]), String(a[3])], { stdio: 'ignore' })
+  swipeRun = runGuardedAdb(['shell', `input swipe 540 ${a[1]} 540 ${a[2]} ${a[3]}`], 10000)
 }
 // poll the mounted count / min index with single cheap reads
 const polls = []
@@ -124,6 +128,13 @@ if (detect) {
 await c.send('Page.stopScreencast')
 await sleep(300)
 await c.ev('(()=>{delete window.__obsfreeHeld;delete window.__obsfreeHeld2;return 1})()')
+if (swipeRun) {
+  const sw = await swipeRun
+  if (sw.code !== 0) {
+    console.error(`obsfree: guarded swipe exited ${sw.code} (${sw.adbgLine}; see ${guardLog()})`)
+    process.exit(4)
+  }
+}
 let i = 0
 const frameMeta = []
 for (const f of frames) {

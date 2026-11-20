@@ -11,6 +11,7 @@
         attachRow, formatPackSize, installFlowState, refusalText, removeThemePack, runThemePackInstall, selectThemePack,
     } from './themePackInstallFlow.svelte'
     import ThemePackTile from './ThemePackTile.svelte'
+    import BuiltinPackThumb, { hasBuiltinThumb } from './BuiltinPackThumb.svelte'
 
     const uid = $props.id()
     const groupName = `theme-pack-${uid}`
@@ -135,7 +136,13 @@
             <div class="min-w-0" data-part="theme-pack-entry" data-pack-id={pack.id}>
                 <label class={CARD_CLASS}>
                     <input class="sr-only peer" type="radio" name={groupName} value={pack.id} checked={activeId === pack.id} aria-label={pack.name} onchange={() => select(pack.id)} />
-                    <span class={FRAME_CLASS}><ThemePackTile spec={tileSpec({ seedKey: pack.id, name: pack.name, main: pack.mainColor, secondary: pack.secondaryColor })} /></span>
+                    <span class={FRAME_CLASS}>
+                        {#if hasBuiltinThumb(pack.slug)}
+                            <BuiltinPackThumb slug={pack.slug} />
+                        {:else}
+                            <ThemePackTile spec={tileSpec({ seedKey: pack.id, name: pack.name, main: pack.mainColor, secondary: pack.secondaryColor })} />
+                        {/if}
+                    </span>
                     <span class={BADGE_CLASS}><CheckIcon size={12} /></span>
                     <span id="{groupName}-b{index}" class={NAME_CLASS}>{pack.name}</span>
                     <span class="text-xs text-textcolor2">{language.themePackBuiltIn}</span>

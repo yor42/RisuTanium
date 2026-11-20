@@ -1,10 +1,13 @@
 // node Agents/Tools/chatshell-cdp/tests/device-kit.accept.mjs
 // Acceptance test of the observer-free device kit: the serial and the CDP port are mandatory, argument errors fail before
 // any directory, adb call or CDP connection, an output path inside the checkout is refused, and the run script fails closed
-// in its second phase (adb server, wake, app absent, a failed trial, forward removal). No device and no Chrome: adb and node
-// are stand-ins on PATH that log their arguments, and every child process talks to a closed port or a scratch folder.
+// in its second phase (adb server, wake, app absent, a failed trial, forward removal). No device and no Chrome: every adb call
+// runs through the real device guard, whose stand-in adb is a node script (ADBG_FAKE_ADB_SCRIPT); node on PATH is a stand-in that
+// logs its arguments and forwards only the guard's own runs; a bare adb on PATH is a sentinel that must stay unused. Every child
+// process talks to a closed port or a scratch folder.
 // Env: CHATSHELL_CDP_DIR (points the tests at another copy of the tool folder), CHATSHELL_REPO_ROOT (the checkout whose
-// node_modules and device/lib.ps1 apply), CHATSHELL_ACCEPT_SCRATCH (scratch folder; default: a new folder under the OS temp dir).
+// node_modules apply; device/lib.ps1 always comes from beside the tool folder under test), CHATSHELL_ACCEPT_SCRATCH (scratch
+// folder; default: a new folder under the OS temp dir). A tool folder copy keeps device/ and device-guard/ beside it.
 // Plain asserts print PASS/FAIL/SKIP; exit 0 only if every assert holds. Run with node, never through vitest.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -38,9 +41,12 @@ fs.mkdirSync(TMPHOME, { recursive: true })
 process.env.TEMP = TMPHOME; process.env.TMP = TMPHOME; process.env.TMPDIR = TMPHOME
 process.env.CHATSHELL_CDP_DIR = TOOL
 process.env.CHATSHELL_REPO_ROOT = REPO
-for (const k of ['HARNESS_OUT', 'HARNESS_CDP', 'HARNESS_SERIAL', 'HARNESS_ADB']) delete process.env[k]
+for (const k of ['HARNESS_OUT', 'HARNESS_CDP', 'HARNESS_SERIAL', 'HARNESS_ADB', 'HARNESS_GUARD_LOG', 'ADBG_FAKE_ADB_SCRIPT']) delete process.env[k]
 
-const FAKE_SERIAL = 'FAKE-0000'
+// One of the two spare Note 9 serials: the guard refuses a --kit call on any other serial.
+const FAKE_SERIAL = '2ac80128013f7ece'
+const EMULATOR_SERIAL = 'emulator-5580'
+const RESTRICTED_SERIAL = 'R5CT1234ABC'
 const listing = (dir) => {
   const rows = []
   const walk = (d) => {
@@ -77,8 +83,10 @@ const psq = (p) => "'" + p.replace(/'/g, "''") + "'"
 
 const TOOL_LISTING_AT_START = listing(TOOL)
 
-// Stand-ins for adb and node. The fake adb keeps a forward table in a state file, so the real forward helpers can run
-// against it. The fake node only logs; FAKE_NODE_FAIL names the script whose run exits nonzero.
+// Stand-ins for adb and node. The fake adb is the guard's stand-in adb (ADBG_FAKE_ADB_SCRIPT); it keeps a forward table in a
+// state file, so the real forward helpers can run against it. The fake node on PATH logs the node scripts' runs and forwards a run
+// of the guard (adbg.mjs) to the real node, logging the guard's arguments; FAKE_NODE_FAIL names the script whose run exits
+// nonzero. adb.cmd on PATH is a sentinel: a bare adb start is recorded in FAKE_ADB_SENTINEL and fails.
 const FAKE = path.join(SCRATCH, 'fake')
 fs.mkdirSync(FAKE, { recursive: true })
 fs.writeFileSync(path.join(FAKE, 'fake-adb.mjs'), [
@@ -91,6 +99,8 @@ fs.writeFileSync(path.join(FAKE, 'fake-adb.mjs'), [
   'const state = process.env.FAKE_ADB_STATE',
   "const rows = () => state && fs.existsSync(state) ? fs.readFileSync(state, 'utf8').split('\\n').filter(Boolean) : []",
   "const put = (r) => fs.writeFileSync(state, r.map((x) => x + '\\n').join(''))",
+  "if (mode.includes('hang')) setTimeout(() => process.exit(1), 3000); else main()",
+  'function main() {',
   "if (a[0] === 'start-server') process.exit(mode.includes('noserver') ? 1 : 0)",
   "if (a[0] === 'get-state') { console.log('device'); process.exit(0) }",
   "if (a[0] === 'shell' && /^input keyevent/.test(a[1] || '')) process.exit(mode.includes('wakefail') ? 1 : 0)",
@@ -99,21 +109,28 @@ fs.writeFileSync(path.join(FAKE, 'fake-adb.mjs'), [
   "if (a[0] === 'forward' && a[1] === '--no-rebind') { put([...rows(), serial + ' ' + a[2] + ' ' + a[3]]); process.exit(0) }",
   "if (a[0] === 'forward' && a[1] === '--remove') { put(rows().filter((r) => r.split(' ')[1] !== a[2])); process.exit(0) }",
   'process.exit(0)',
+  '}',
   ''
 ].join('\n'))
 fs.writeFileSync(path.join(FAKE, 'fake-node.mjs'), [
   "import fs from 'node:fs'",
   "import path from 'node:path'",
+  "import { spawnSync } from 'node:child_process'",
   'const a = process.argv.slice(2)',
-  "fs.appendFileSync(process.env.FAKE_NODE_LOG, JSON.stringify({ script: path.basename(a[0]), args: a.slice(1), serial: process.env.HARNESS_SERIAL, cdp: process.env.HARNESS_CDP, out: process.env.HARNESS_OUT, adb: process.env.HARNESS_ADB }) + '\\n')",
+  "if (path.basename(a[0]) === 'adbg.mjs') {",
+  "  if (process.env.FAKE_GUARD_ARGS) fs.appendFileSync(process.env.FAKE_GUARD_ARGS, JSON.stringify(a.slice(1)) + '\\n')",
+  "  const g = spawnSync(process.execPath, a, { stdio: 'inherit' })",
+  '  process.exit(g.status === null ? 1 : g.status)',
+  '}',
+  "fs.appendFileSync(process.env.FAKE_NODE_LOG, JSON.stringify({ script: path.basename(a[0]), args: a.slice(1), serial: process.env.HARNESS_SERIAL, cdp: process.env.HARNESS_CDP, out: process.env.HARNESS_OUT, guardLog: process.env.HARNESS_GUARD_LOG }) + '\\n')",
   "process.exit(process.env.FAKE_NODE_FAIL && path.basename(a[0]) === process.env.FAKE_NODE_FAIL ? 3 : 0)",
   ''
 ].join('\n'))
-const ADB_CMD = path.join(FAKE, 'adb.cmd')
-fs.writeFileSync(ADB_CMD, '@"%FAKE_REAL_NODE%" "%~dp0fake-adb.mjs" %*\r\n')
+fs.writeFileSync(path.join(FAKE, 'adb.cmd'), '@echo off\r\n>>"%FAKE_ADB_SENTINEL%" echo(%*\r\nexit /b 1\r\n')
 fs.writeFileSync(path.join(FAKE, 'node.cmd'), '@"%FAKE_REAL_NODE%" "%~dp0fake-node.mjs" %*\r\n')
+const FAKE_ADB_SCRIPT = path.join(FAKE, 'fake-adb.mjs')
 const pathKey = Object.keys(process.env).find((k) => k.toLowerCase() === 'path') || 'PATH'
-const fakeEnv = (extra = {}) => ({ [pathKey]: FAKE + path.delimiter + process.env[pathKey], FAKE_REAL_NODE: process.execPath, ...extra })
+const fakeEnv = (extra = {}) => ({ [pathKey]: FAKE + path.delimiter + process.env[pathKey], FAKE_REAL_NODE: process.execPath, ADBG_FAKE_ADB_SCRIPT: FAKE_ADB_SCRIPT, ...extra })
 
 const lib = await import(pathToFileURL(path.join(DEVICE, 'lib.mjs')).href).catch((e) => { check(false, 'device/lib.mjs imports', note(e)); return null })
 if (!lib) process.exit(1)
@@ -142,7 +159,45 @@ if (!lib) process.exit(1)
   check(throws(() => withEnv('HARNESS_SERIAL', undefined, () => lib.requireSerial())), 'T10 requireSerial has no default serial')
   for (const bad of ['', '-s', 'a b', 'a;b']) check(throws(() => withEnv('HARNESS_SERIAL', bad, () => lib.requireSerial())), 'T10 requireSerial rejects ' + JSON.stringify(bad))
   check(withEnv('HARNESS_SERIAL', FAKE_SERIAL, () => lib.requireSerial()) === FAKE_SERIAL, 'T10 requireSerial returns the serial')
-  check(withEnv('HARNESS_ADB', undefined, () => lib.adbExe()) === 'adb' && withEnv('HARNESS_ADB', 'x-adb', () => lib.adbExe()) === 'x-adb', 'T10 adbExe is HARNESS_ADB or adb')
+  check(lib.adbExe === undefined, 'T10 the device lib has no adbExe: no adb executable can be named')
+
+  // T10 guardedAdb and runGuardedAdb (AC-7): the one builder of a guard argument list, with the fixed guard beside the tool folder.
+  const withEnvMany = async (vars, fn) => {
+    const old = {}
+    for (const k of Object.keys(vars)) { old[k] = process.env[k]; if (vars[k] === undefined) delete process.env[k]; else process.env[k] = vars[k] }
+    try { return await fn() } finally { for (const k of Object.keys(vars)) { if (old[k] === undefined) delete process.env[k]; else process.env[k] = old[k] } }
+  }
+  check(typeof lib.guardedAdb === 'function' && typeof lib.runGuardedAdb === 'function', 'T10 the device lib exports guardedAdb and runGuardedAdb')
+  const guardApi = {
+    guardedAdb: lib.guardedAdb || (() => { throw new Error('guardedAdb is not exported') }),
+    runGuardedAdb: lib.runGuardedAdb || (async () => ({ code: -1, adbgLine: 'runGuardedAdb is not exported' }))
+  }
+  const t10Dir = path.join(SCRATCH, 't10-guard')
+  fs.mkdirSync(t10Dir, { recursive: true })
+  const t10Log = path.join(t10Dir, 'adb-commands.log')
+  const t10AdbLog = path.join(t10Dir, 'adb.log')
+  const adbgFile = path.resolve(TOOL, '..', 'device-guard', 'adbg.mjs')
+  const sameFile = (x, y) => path.resolve(x).toLowerCase() === path.resolve(y).toLowerCase()
+  check(fs.existsSync(adbgFile), 'T10 the guard sits beside the tool folder', adbgFile)
+  const built = await withEnvMany({ HARNESS_SERIAL: FAKE_SERIAL, HARNESS_GUARD_LOG: t10Log }, () => guardApi.guardedAdb(['get-state']))
+  check(built.file === process.execPath && sameFile(built.args[0], adbgFile) && JSON.stringify(built.args.slice(1)) === JSON.stringify(['--kit', '--serial', FAKE_SERIAL, '--log', t10Log, '--', 'get-state']), 'T10 guardedAdb runs node on the fixed guard with --kit first, then the serial, the log and the adb arguments', JSON.stringify(built))
+  check(built.args.indexOf('--kit') > 0 && built.args.indexOf('--kit') < built.args.indexOf('--'), 'T10 --kit sits before the -- that ends the guard options')
+  for (const bad of [undefined, '', 'relative\\adb-commands.log']) {
+    let threw = false
+    try { await withEnvMany({ HARNESS_SERIAL: FAKE_SERIAL, HARNESS_GUARD_LOG: bad }, () => guardApi.guardedAdb(['get-state'])) } catch { threw = true }
+    check(threw, 'T10 guardedAdb throws without an absolute HARNESS_GUARD_LOG: ' + JSON.stringify(bad))
+  }
+  const guarded = (serial, extra = {}) => ({ HARNESS_SERIAL: serial, HARNESS_GUARD_LOG: t10Log, ADBG_FAKE_ADB_SCRIPT: FAKE_ADB_SCRIPT, FAKE_ADB_LOG: t10AdbLog, ...extra })
+  const emu = await withEnvMany(guarded(EMULATOR_SERIAL), () => guardApi.runGuardedAdb(['get-state'], 20000))
+  check(emu.code === 97 && /^adbg: kit call refused/.test(emu.adbgLine) && readLines(t10AdbLog).length === 0, 'T10 runGuardedAdb on emulator-5580 resolves 97 with the guard line and sends nothing to adb', JSON.stringify(emu))
+  const n9 = await withEnvMany(guarded(FAKE_SERIAL), () => guardApi.runGuardedAdb(['get-state'], 20000))
+  check(n9.code === 0 && n9.adbgLine === '' && readLines(t10AdbLog).length === 1 && readLines(t10AdbLog)[0].serial === FAKE_SERIAL, 'T10 runGuardedAdb on a spare Note 9 resolves 0 and sends the call with that serial', JSON.stringify(n9))
+  const swipe = await withEnvMany(guarded(FAKE_SERIAL), () => guardApi.runGuardedAdb(['shell', 'input swipe 540 900 540 300 150'], 20000))
+  check(swipe.code === 0 && readLines(t10AdbLog).some((x) => x.args.join(' ') === 'shell input swipe 540 900 540 300 150'), 'T10 the fling swipe passes the guard on a spare Note 9', JSON.stringify(swipe))
+  const t10Log0 = fs.existsSync(t10Log) ? fs.readFileSync(t10Log, 'utf8') : ''
+  check(/REFUSED\/ERROR exit=97/.test(t10Log0) && /intent: adb -s 2ac80128013f7ece \["shell","input swipe 540 900 540 300 150"\]/.test(t10Log0), 'T10 the guard log holds the refusal and the swipe intent')
+  const slow = await withEnvMany(guarded(FAKE_SERIAL, { FAKE_ADB_MODE: 'hang' }), () => guardApi.runGuardedAdb(['get-state'], 400))
+  check(slow.code === null, 'T10 a call that outlives its bound resolves with a null code', JSON.stringify(slow))
 }
 
 // T13: sharp is found through the checkout (a transitive dependency, so not a plain require), and analyze.mjs runs on a
@@ -182,7 +237,7 @@ const closed = await freePort()
     check(r.status !== 0 && r.status !== null, 'T12 ' + s + ' against a closed port exits nonzero', `status=${r.status}`)
   }
   const out = path.join(SCRATCH, 't12-out')
-  const base = { HARNESS_CDP: String(closed), HARNESS_SERIAL: FAKE_SERIAL, HARNESS_OUT: out }
+  const base = { HARNESS_CDP: String(closed), HARNESS_SERIAL: FAKE_SERIAL, HARNESS_OUT: out, HARNESS_GUARD_LOG: path.join(SCRATCH, 't12-guard', 'adb-commands.log') }
   const r1 = await runNode(path.join(DEVICE, 'obsfree.mjs'), ['b', 't', 'still', '60'], base, 15000)
   check(r1.status !== 0 && r1.status !== 2 && r1.status !== null && !fs.existsSync(path.join(out, 'b-t')), 'T12 obsfree against a closed port fails after validation and leaves no trial folder', `status=${r1.status} err=${r1.stderr.slice(0, 160)}`)
   const r2 = await runNode(path.join(DEVICE, 'obsfree.mjs'), ['b', 't', 'still', '60'], { ...base, HARNESS_SERIAL: '', HARNESS_OUT: out + '-noserial' }, 15000)
@@ -191,6 +246,10 @@ const closed = await freePort()
   check(r3.status === 2 && !fs.existsSync(out + '-noport'), 'T12 obsfree with no CDP port exits 2 and creates nothing', `status=${r3.status}`)
   const r4 = await runNode(path.join(DEVICE, 'obsfree.mjs'), ['b', 't', 'still', '60'], { ...base, HARNESS_OUT: path.join(REPO, 'Agents') }, 15000)
   check(r4.status === 2, 'T12 obsfree with an out dir inside the checkout exits 2', `status=${r4.status}`)
+  for (const [label, value] of [['no guard log', ''], ['a relative guard log', 'adb-commands.log']]) {
+    const r5 = await runNode(path.join(DEVICE, 'obsfree.mjs'), ['b', 't', 'fling', '650', '600', '1500', '150'], { ...base, HARNESS_GUARD_LOG: value, HARNESS_OUT: out + '-noguardlog' }, 15000)
+    check(r5.status === 2 && /HARNESS_GUARD_LOG/.test(r5.stderr) && !fs.existsSync(out + '-noguardlog'), 'T12 obsfree with ' + label + ' exits 2 naming HARNESS_GUARD_LOG and creates nothing', `status=${r5.status} err=${r5.stderr.slice(0, 160)}`)
+  }
   const a1 = await runNode(path.join(DEVICE, 'analyze.mjs'), ['..', 't'], { HARNESS_OUT: out }, 15000)
   const a2 = await runNode(path.join(DEVICE, 'analyze.mjs'), ['b', 'a/b'], { HARNESS_OUT: out }, 15000)
   check(a1.status === 2 && a2.status === 2, 'T12 analyze rejects a build or trial name that escapes', `status=${a1.status},${a2.status}`)
@@ -200,7 +259,7 @@ const closed = await freePort()
 // T18: obsfree argument errors exit 2 before anything is created or connected, with a fake serial set.
 {
   const out = path.join(SCRATCH, 't18-out')
-  const env = { HARNESS_CDP: String(closed), HARNESS_SERIAL: FAKE_SERIAL, HARNESS_OUT: out }
+  const env = { HARNESS_CDP: String(closed), HARNESS_SERIAL: FAKE_SERIAL, HARNESS_OUT: out, HARNESS_GUARD_LOG: path.join(SCRATCH, 't18-guard', 'adb-commands.log') }
   const cases = [
     ['fling with one number', ['b', 't', 'fling', '650']],
     ['an unknown mode', ['b', 't', 'wobble', '1']],
@@ -223,36 +282,37 @@ if (!windows) {
   const mk = (name) => {
     const dir = path.join(SCRATCH, name)
     fs.mkdirSync(dir, { recursive: true })
-    return { dir, adbLog: path.join(dir, 'adb.log'), adbState: path.join(dir, 'adb.state'), nodeLog: path.join(dir, 'node.log') }
+    return { dir, adbLog: path.join(dir, 'adb.log'), adbState: path.join(dir, 'adb.state'), nodeLog: path.join(dir, 'node.log'), guardArgs: path.join(dir, 'guard-args.log'), sentinel: path.join(dir, 'sentinel.log') }
   }
-  const caseEnv = (c, extra = {}) => fakeEnv({ FAKE_ADB_LOG: c.adbLog, FAKE_ADB_STATE: c.adbState, FAKE_NODE_LOG: c.nodeLog, ...extra })
+  const caseEnv = (c, extra = {}) => fakeEnv({ FAKE_ADB_LOG: c.adbLog, FAKE_ADB_STATE: c.adbState, FAKE_NODE_LOG: c.nodeLog, FAKE_GUARD_ARGS: c.guardArgs, FAKE_ADB_SENTINEL: c.sentinel, ...extra })
   const quiet = (c) => readLines(c.adbLog).length === 0 && readLines(c.nodeLog).length === 0
+  const sentinelEmpty = (c) => !fs.existsSync(c.sentinel) || fs.readFileSync(c.sentinel, 'utf8').trim() === ''
 
   // T11: no serial means a nonzero exit that names Serial, and no out dir.
   {
     const c = mk('t11'); const out = path.join(c.dir, 'out')
-    const r = await runPwsh(RUN, ['-Build', 'x', '-OutDir', out, '-AdbExe', ADB_CMD], caseEnv(c), 60000)
+    const r = await runPwsh(RUN, ['-Build', 'x', '-OutDir', out], caseEnv(c), 60000)
     check(r.status !== 0 && /Serial/.test(both(r)) && !fs.existsSync(out) && quiet(c), 'T11 no -Serial exits nonzero naming Serial and creates nothing', `status=${r.status} ${both(r).slice(0, 200)}`)
   }
 
   // T15: an unknown trial is refused in the first phase: no out dir, no adb call.
   for (const trials of ['NOPE', 'T1,NOPE']) {
     const c = mk('t15-' + trials.replace(/\W/g, '_')); const out = path.join(c.dir, 'out')
-    const r = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'x', '-Trials', trials, '-OutDir', out, '-AdbExe', ADB_CMD], caseEnv(c), 60000)
+    const r = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'x', '-Trials', trials, '-OutDir', out], caseEnv(c), 60000)
     check(r.status !== 0 && /NOPE/.test(both(r)) && !fs.existsSync(out) && quiet(c), 'T15 -Trials ' + trials + ' exits nonzero naming NOPE, no out dir, no adb call', `status=${r.status} ${both(r).slice(0, 200)}`)
   }
 
   // T16: -PlanOnly under -File splits the comma list, prints the plan, exits 0 and creates nothing.
   {
     const c = mk('t16'); const out = path.join(c.dir, 'plan-out')
-    const r = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'smoke', '-Trials', 'T1,F1', '-OutDir', out, '-AdbExe', ADB_CMD, '-PlanOnly'], caseEnv(c), 60000)
+    const r = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'smoke', '-Trials', 'T1,F1', '-OutDir', out, '-PlanOnly'], caseEnv(c), 60000)
     let plan = null
     try { plan = JSON.parse(r.stdout.split(/\r?\n/).filter((l) => l.trim().startsWith('{')).pop()) } catch { plan = null }
     check(r.status === 0 && plan && JSON.stringify(plan.Trials) === '["T1","F1"]' && plan.Serial === FAKE_SERIAL && plan.Build === 'smoke', 'T16 -PlanOnly -Trials T1,F1 prints Trials ["T1","F1"] and exits 0', `status=${r.status} ${both(r).slice(0, 200)}`)
     check(plan && plan.PortMin === 9460 && plan.PortMax === 9469 && path.resolve(plan.OutDir) === path.resolve(out) && path.resolve(plan.AdbDir) === path.join(path.resolve(out), 'adb'), 'T16 the plan carries the default port range and the out dir', JSON.stringify(plan))
     check(!fs.existsSync(out) && quiet(c), 'T16 -PlanOnly creates no out dir and calls no adb (explicit scratch -OutDir)')
     const d = mk('t16-default')
-    const r2 = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'smoke', '-Trials', 'T1', '-AdbExe', ADB_CMD, '-PlanOnly'], caseEnv(d), 60000)
+    const r2 = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'smoke', '-Trials', 'T1', '-PlanOnly'], caseEnv(d), 60000)
     let plan2 = null
     try { plan2 = JSON.parse(r2.stdout.split(/\r?\n/).filter((l) => l.trim().startsWith('{')).pop()) } catch { plan2 = null }
     check(r2.status === 0 && plan2 && path.resolve(plan2.OutDir).toLowerCase().startsWith(path.resolve(TMPHOME).toLowerCase()) && !fs.existsSync(path.join(TMPHOME, 'chatshell-cdp')), 'T16 the default out dir is under the OS temp dir and -PlanOnly does not create it', JSON.stringify(plan2))
@@ -267,7 +327,7 @@ if (!windows) {
     ]
     for (const [label, extra, made] of refused) {
       const c = mk('t17-' + label.replace(/\W/g, '_'))
-      const args = ['-Serial', FAKE_SERIAL, '-Build', 'x', '-Trials', 'T1', '-OutDir', path.join(c.dir, 'out'), '-AdbExe', ADB_CMD]
+      const args = ['-Serial', FAKE_SERIAL, '-Build', 'x', '-Trials', 'T1', '-OutDir', path.join(c.dir, 'out')]
       for (let i = 0; i < extra.length; i += 2) { const k = args.indexOf(extra[i]); if (k >= 0) args[k + 1] = extra[i + 1]; else args.push(extra[i], extra[i + 1]) }
       // A path that exists before the run is not ours to judge or delete; one created by a broken guard is removed after the check.
       const pre = !!made && fs.existsSync(made)
@@ -284,7 +344,7 @@ if (!windows) {
     const c = mk(name)
     const port = await freePort()
     const out = path.join(c.dir, 'out')
-    const args = ['-Serial', FAKE_SERIAL, '-Build', 'smoke', '-OutDir', out, '-AdbExe', ADB_CMD, '-PortMin', String(port), '-PortMax', String(port), ...extraArgs]
+    const args = ['-Serial', FAKE_SERIAL, '-Build', 'smoke', '-OutDir', out, '-PortMin', String(port), '-PortMax', String(port), ...extraArgs]
     const r = await runPwsh(RUN, args, caseEnv(c, extraEnv), 120000)
     return { c, r, port, out, adb: readLines(c.adbLog), node: readLines(c.nodeLog), fwd: fs.existsSync(c.adbState) ? fs.readFileSync(c.adbState, 'utf8').trim() : '' }
   }
@@ -316,7 +376,11 @@ if (!windows) {
     const want = ['coldtap.mjs 30 45', 'coldtap.mjs 40 88', 'closeside.mjs ', 'obsfree.mjs smoke T4 still 0', 'analyze.mjs smoke T4', 'obsfree.mjs smoke F1 fling 650 600 1500 150', 'analyze.mjs smoke F1']
     check(b5.r.status === 0 && want.every((w) => scripts.includes(w)), 'B5 a two-trial series runs open, obsfree and analyze for each, with the table values', `status=${b5.r.status} ${both(b5.r).slice(0, 200)} scripts=${JSON.stringify(scripts)}`)
     const ob = b5.node.filter((x) => x.script === 'obsfree.mjs')
-    check(ob.length === 2 && ob.every((x) => x.serial === FAKE_SERIAL && x.cdp === String(b5.port) && path.resolve(x.out) === path.resolve(b5.out) && x.adb === ADB_CMD), 'B5 obsfree receives the serial, the forwarded port, the out dir and the adb path', JSON.stringify(ob))
+    check(ob.length === 2 && ob.every((x) => x.serial === FAKE_SERIAL && x.cdp === String(b5.port) && path.resolve(x.out) === path.resolve(b5.out) && path.resolve(x.guardLog) === path.join(path.resolve(b5.out), 'adb', 'adb-commands.log')), 'B5 obsfree receives the serial, the forwarded port, the out dir and the guard log', JSON.stringify(ob))
+    const guardRuns = readLines(b5.c.guardArgs)
+    check(guardRuns.length >= 5 && guardRuns.every((g) => g[0] === '--kit' && g[1] === '--serial' && g[2] === FAKE_SERIAL && g.indexOf('--kit') < g.indexOf('--')) && sentinelEmpty(b5.c), 'B5 every adb call of the series runs through the guard with --kit first and the serial, and no bare adb is started', JSON.stringify(guardRuns.slice(0, 2)))
+    const b5Guard = fs.existsSync(path.join(b5.out, 'adb', 'adb-commands.log')) ? fs.readFileSync(path.join(b5.out, 'adb', 'adb-commands.log'), 'utf8') : ''
+    check(b5Guard.split('\n').filter((l) => /intent: /.test(l)).length === b5.adb.length && !/REFUSED/.test(b5Guard), 'B5 every adb call the stand-in received has an intent line in the guard log and none is refused', `intents=${b5Guard.split('\n').filter((l) => /intent: /.test(l)).length} calls=${b5.adb.length}`)
     check(b5.fwd === '' && sub(b5.adb, 'forward --remove tcp:' + b5.port).length >= 1 && sub(b5.adb, '--no-rebind').every((x) => x.serial === FAKE_SERIAL), 'B5 the forward is removed at the end and every adb call carries the serial', `fwd=${b5.fwd}`)
     check(b5.adb.filter((x) => x.args[0] !== 'start-server').every((x) => x.serial === FAKE_SERIAL), 'B5 every device adb call names the serial')
   }
@@ -329,9 +393,9 @@ if (!windows) {
     const c = mk('b6')
     const script = [
       '$ErrorActionPreference = "Stop"',
-      `. ${psq(path.join(REPO, 'Agents', 'Tools', 'device', 'lib.ps1'))}`,
+      `. ${psq(path.join(TOOL, '..', 'device', 'lib.ps1'))}`,
       `. ${psq(path.join(DEVICE, 'open-fresh.ps1'))}`,
-      `$null = Initialize-Adb ${psq(path.join(c.dir, 'adb'))} ${psq(ADB_CMD)}`,
+      `$null = Initialize-AdbGuard -Dir ${psq(path.join(c.dir, 'adb'))} -Serial ${psq(FAKE_SERIAL)} -Log ${psq(path.join(c.dir, 'adb', 'adb-commands.log'))} -OwnPorts @(40000)`,
       '$env:HARNESS_CDP = "65000"',
       '$f = New-CdpForward "' + FAKE_SERIAL + '" "io.github.yor42.risutanium" 40000 40000',
       'try { Open-ObsFreeFreshChat -Serial "' + FAKE_SERIAL + '" -Fwd $f; "NOTHROW" } catch { "THREW" }',
@@ -341,6 +405,66 @@ if (!windows) {
     fs.writeFileSync(file, script + '\n')
     const r = await run('pwsh', ['-NoProfile', '-NonInteractive', '-File', file], caseEnv(c, { FAKE_ADB_MODE: 'noapp' }), 60000)
     check(/THREW/.test(r.stdout) && /CDP=\[\]/.test(r.stdout) && readLines(c.nodeLog).length === 0, 'B6 an absent app throws, leaves HARNESS_CDP empty and sends no tap', both(r).slice(0, 300))
+  }
+
+  // TB-RO and TB-RO-b: run-obsfree takes its lib and guard from its own tree. CHATSHELL_REPO_ROOT names another tree that holds
+  // (a) a decoy lib that writes a marker when loaded, or (b) an older checkout: the lib and the guard of this tree with the --kit
+  // rules taken out, so that an old tree would let a call on any serial through. Under the kit rule neither is ever loaded: on
+  // emulator-5580 and on a restricted serial the run ends at the adb start with the guard's refusal and no call reaches adb.
+  const toolsOf = (root) => path.join(root, 'Agents', 'Tools')
+  const decoyRoot = path.join(SCRATCH, 'decoy-tree')
+  fs.mkdirSync(path.join(toolsOf(decoyRoot), 'device'), { recursive: true })
+  fs.writeFileSync(path.join(toolsOf(decoyRoot), 'device', 'lib.ps1'), [
+    "Add-Content -LiteralPath $env:DECOY_MARKER -Value 'decoy lib loaded'",
+    'function Disable-StdHandleInherit { }',
+    'function Initialize-Adb { $true }',
+    'function Initialize-AdbGuard { $true }',
+    "function Get-AdbInitReason { '' }",
+    "function New-CdpForward { @{ Port = $null } }",
+    'function Remove-CdpForward { }',
+    "function Open-ObsFreeFreshChat { throw 'decoy lib was used' }",
+    ''
+  ].join('\n'))
+  const olderRoot = path.join(SCRATCH, 'older-tree')
+  fs.mkdirSync(path.join(toolsOf(olderRoot), 'device'), { recursive: true })
+  fs.mkdirSync(path.join(toolsOf(olderRoot), 'device-guard'), { recursive: true })
+  const takeOut = (file, from, to) => {
+    const text = fs.readFileSync(file, 'utf8')
+    if (!text.includes(from)) { check(false, 'TB-RO-b fixture: the text to take out is still in ' + path.basename(file), from); return text }
+    return text.replace(from, to)
+  }
+  fs.writeFileSync(path.join(toolsOf(olderRoot), 'device', 'lib.ps1'), takeOut(path.resolve(TOOL, '..', 'device', 'lib.ps1'), "$script:AdbGuard.Path, '--kit', '--serial'", "$script:AdbGuard.Path, '--serial'"))
+  fs.writeFileSync(path.join(toolsOf(olderRoot), 'device-guard', 'adbg.mjs'), takeOut(path.resolve(TOOL, '..', 'device-guard', 'adbg.mjs'), "const kit = opts.includes('--kit')", 'const kit = false'))
+  const tbRun = async (name, root, serial) => {
+    const c = mk(name)
+    const port = await freePort()
+    const out = path.join(c.dir, 'out')
+    const marker = path.join(c.dir, 'decoy-marker.txt')
+    const r = await runPwsh(RUN, ['-Serial', serial, '-Build', 'x', '-Trials', 'T1', '-OutDir', out, '-PortMin', String(port), '-PortMax', String(port)], caseEnv(c, { CHATSHELL_REPO_ROOT: root, DECOY_MARKER: marker }), 120000)
+    const guardFile = path.join(out, 'adb', 'adb-commands.log')
+    return { c, r, marker, guardText: fs.existsSync(guardFile) ? fs.readFileSync(guardFile, 'utf8') : '' }
+  }
+  for (const [label, root] of [['TB-RO', decoyRoot], ['TB-RO-b', olderRoot]]) {
+    for (const [serial, code, reason] of [[EMULATOR_SERIAL, 97, /adb did not start: adb start-server failed \(adbg exit 97: adbg: kit call refused[^)]*two spare Note 9s/], [RESTRICTED_SERIAL, 95, /adb did not start: adb start-server failed \(adbg exit 95: adbg: /]]) {
+      const t = await tbRun(label.toLowerCase() + '-' + serial, root, serial)
+      check(t.r.status !== 0 && reason.test(both(t.r)) && t.guardText.includes('REFUSED/ERROR exit=' + code) && !/^\S+ intent:/m.test(t.guardText), label + ' ' + serial + ': run-obsfree ends at the adb start with the guard refusal (exit ' + code + ')', `status=${t.r.status} ${both(t.r).slice(0, 300)}`)
+      check(!fs.existsSync(t.marker) && readLines(t.c.adbLog).length === 0 && readLines(t.c.nodeLog).length === 0 && sentinelEmpty(t.c), label + ' ' + serial + ': the lib of CHATSHELL_REPO_ROOT is never loaded and no call reaches adb', `marker=${fs.existsSync(t.marker)} adb=${JSON.stringify(readLines(t.c.adbLog).map((x) => x.args))}`)
+    }
+  }
+
+  // AC-6: no adb or guard override. A removed -AdbExe is refused at binding, and HARNESS_ADB, TB_GUARD and ADBG_PATH are read nowhere:
+  // the run still goes through the guard and the decoy adb never runs.
+  {
+    const c = mk('ac6')
+    const out = path.join(c.dir, 'out')
+    const decoyAdb = path.join(c.dir, 'decoy-adb.cmd')
+    const marker = path.join(c.dir, 'decoy-adb-marker.txt')
+    fs.writeFileSync(decoyAdb, `@echo off\r\n>>"${marker}" echo decoy adb ran\r\nexit /b 0\r\n`)
+    const refused = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'x', '-Trials', 'T1', '-OutDir', out, '-AdbExe', decoyAdb], caseEnv(c), 60000)
+    check(refused.status !== 0 && /AdbExe/.test(both(refused)) && !fs.existsSync(out) && quiet(c) && !fs.existsSync(marker), 'AC-6 run-obsfree has no -AdbExe: the argument is refused at binding and nothing runs', `status=${refused.status} ${both(refused).slice(0, 200)}`)
+    const port = await freePort()
+    const ran = await runPwsh(RUN, ['-Serial', FAKE_SERIAL, '-Build', 'x', '-Trials', 'T1', '-OutDir', out, '-PortMin', String(port), '-PortMax', String(port)], caseEnv(c, { HARNESS_ADB: decoyAdb, TB_GUARD: decoyAdb, ADBG_PATH: decoyAdb, FAKE_ADB_MODE: 'noapp' }), 120000)
+    check(!fs.existsSync(marker) && sentinelEmpty(c) && readLines(c.guardArgs).length >= 1 && readLines(c.adbLog).length >= 1, 'AC-6 HARNESS_ADB, TB_GUARD and ADBG_PATH are ignored: the calls run through the guard and no decoy adb runs', `status=${ran.status} ${both(ran).slice(0, 200)}`)
   }
 }
 

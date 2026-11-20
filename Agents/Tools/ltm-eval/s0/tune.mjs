@@ -7,7 +7,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { rng } from '../gen/lib.mjs';
-import { oracleRankHit, controlsRecord, controlTests, donorEntry, pickDonor } from './controls.mjs';
+import { oracleQueryHit, oracleRankHit, controlsRecord, controlTests, donorEntry, pickDonor } from './controls.mjs';
 import { C_GATE, TUNE_CHATS, selectSettings } from './select.mjs';
 import { SEEDS, drawWithReserve } from './corpus.mjs';
 import { loadCounter } from './counter.mjs';
@@ -25,9 +25,12 @@ export const PROCEDURE = {
     kinds: ['ORACLE-RANK', 'ORACLE-QUERY', 'NULL'],
     familywise: 0.05, alphaC: 'familywise / m with m = cells x styles x 3', bootstrapB: 20000, bothBoundsRequired: true,
     oracleFloor: 0.9, nullSlack: 0.05, randomShuffles: 20, randomSeedBase: 9101,
-    nullDonor: 'first same-category, same-style turn of the next cast-disjoint chat in cyclic order; fallback chat i+1, counted',
+    oracleQueryMerge: 'round-robin over per-span lists (MC-2653)',
+    nullDonor: 'first same-category, same-style turn of the next cast-disjoint chat in cyclic order, excluding the recipient\'s own fact key (MC-2653); fallback chat i+1, counted',
     sample: 'each cell\'s final sample, evaluated once after every cell stopped; no control-driven stopping',
   },
+  tuneEligibility: 'ORACLE-RANK and ORACLE-QUERY points >= 0.9; budget walk above the default if none at the default (MC-2654)',
+  verdictBuilder: 'fulltext (MC-2655); idf report-only',
   stop: STOP,
   seeds: { tune: SEEDS.TUNE, fulltext: { first: SEEDS.GATE, noiseRerun: SEEDS.GATE_R, defectRerun: 'same seed family' }, idf: { first: SEEDS.FALLBACK, noiseRerun: SEEDS.FALLBACK_R, defectRerun: 'same seed family' } },
   caps: { noiseReruns: 1, defectReruns: 2, attempts: 3 },
@@ -56,24 +59,33 @@ export function makeTuneEvaluator({ cells = GATE_CELLS, nChats, drawSeed, counte
     return turnMemo.get(key);
   };
   const ev = (settings, regime = 'POOL', lenMode = 'hist') => {
-    const recs = {}, oracle = {};
+    const recs = {}, oracle = {}, oracleQuery = {};
     for (const cell of cells) {
       const name = cellName(cell);
       const profile = profileOf(cell.corpus, profiles);
       const or = { ask: [0, 0], allude: [0, 0] };
+      const oq = { ask: [0, 0], allude: [0, 0] };
       recs[name] = chats[name].map((chat, k) => {
         const turns = turnsOf(cell, k, regime, lenMode);
         const rec = evalChatRecord(chat, counter, settings, { profile, regime, hooks, turns, nofact: settings.nofact === true });
         if (settings.oracle === true) {
           const sim = new ChatSim(chat, counter);
           const byId = new Map(chat.questions.map((q) => [q.id, q]));
-          for (const t of turns) if (t.kind === 'fact') { const h = oracleRankHit(sim, t, byId.get(t.qid), settings, hooks); if (h !== null) { or[t.style][0] += h; or[t.style][1]++; } }
+          for (const t of turns) {
+            if (t.kind !== 'fact') continue;
+            const q = byId.get(t.qid);
+            const h = oracleRankHit(sim, t, q, settings, hooks);
+            if (h !== null) { or[t.style][0] += h; or[t.style][1]++; }
+            const hq = oracleQueryHit(sim, t, q, settings, hooks);
+            if (hq !== null) { oq[t.style][0] += hq; oq[t.style][1]++; }
+          }
         }
         return rec;
       });
       oracle[name] = Object.fromEntries(STYLES.map((s) => [s, or[s][1] ? or[s][0] / or[s][1] : 1]));
+      oracleQuery[name] = Object.fromEntries(STYLES.map((s) => [s, oq[s][1] ? oq[s][0] / oq[s][1] : 1]));
     }
-    return { recs, oracle };
+    return { recs, oracle, oracleQuery };
   };
   return { ev, chats, turnsOf };
 }
@@ -133,7 +145,7 @@ export function summarizeControls(controls) {
 // The stdout lines of a summary, one per cell and one for the builder; they name controls, never values.
 export function controlSummaryLines(builder, summary) {
   const lines = Object.entries(summary.cells).map(([name, c]) => `D1 ${builder} ${name}: ${c.status}${c.status === 'INVALID' ? ' (' + c.controls.filter((x) => x.status === 'FAIL-CONFIRMED').map((x) => `${x.style} ${x.control}`).join(', ') + ' FAIL-CONFIRMED)' : ''}`);
-  lines.push(`D1 ${builder}: ${summary.status}, ${summary.failConfirmed} FAIL-CONFIRMED control(s)${summary.status === 'INVALID' ? '; the gate would be INVALID on this structure: do not run it, ask the maintainer' : ''}`);
+  lines.push(`D1 ${builder}: ${summary.status}, ${summary.failConfirmed} FAIL-CONFIRMED control(s)${summary.status === 'INVALID' ? (builder === 'idf' ? '; idf is report-only (MC-2655): no gate runs it' : '; the gate would be INVALID on this structure: do not run it, ask the maintainer') : ''}`);
   return lines;
 }
 
@@ -180,7 +192,7 @@ export async function runTune(opts) {
       const profile = profileOf(cell.corpus, opts.profiles);
       const turnsOf = chats[name].map((c) => buildTurns(c, { regime: 'POOL', profile }));
       const cands = chats[name].map((c, i) => donorEntry(c, turnsOf[i]));
-      cellCtl[name] = chats[name].map((c, i) => controlsRecord(c, opts.counter, s, turnsOf[i], (cat, st) => pickDonor(cands, i, cat, st), opts.hooks));
+      cellCtl[name] = chats[name].map((c, i) => controlsRecord(c, opts.counter, s, turnsOf[i], (cat, st, key) => pickDonor(cands, i, cat, st, key), opts.hooks));
     }
     const controls = controlTests(cellCtl, { B: 20000 });
     diagnostics[builder] = { controls, d1: summarizeControls(controls) };

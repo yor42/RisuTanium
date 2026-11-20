@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { controlDescription, controlName, controls, exposedIcons, paletteClasses, textColourTokens, unnamedControls } from './a11yNames.test-helpers'
+import { accessibleText, controlDescription, controlName, controls, exposedIcons, fieldControls, fieldNameProblems, paletteClasses, textColourTokens, toggleFor, unnamedControls } from './a11yNames.test-helpers'
 
 function mount(html: string){
     const root = document.createElement('div')
@@ -103,6 +103,137 @@ describe('controlName for a contenteditable role="textbox"', () => {
         expect(controls(root).length).toBe(1)
         expect(controls(root, { fields: true }).length).toBe(2)
         expect(unnamedControls(root, { fields: true }).length).toBe(1)
+    })
+})
+
+describe('controlName for value controls', () => {
+    it('names a select or a role="slider" only through aria-labelledby that aria-describedby also lists', () => {
+        const root = mount(`
+            <span id="nameSpan">Field name</span>
+            <select id="options"><option>Option text</option></select>
+            <select id="ariaOnly" aria-label="Only aria-label"><option>Option text</option></select>
+            <label>Wrapping text <select id="wrapped"><option>Option text</option></select></label>
+            <select id="labelledOnly" aria-labelledby="nameSpan"><option>Option text</option></select>
+            <select id="described" aria-labelledby="nameSpan" aria-describedby="nameSpan"><option>Option text</option></select>
+            <div role="slider" tabindex="0" id="sliderText">3 visible</div>
+            <div role="slider" tabindex="0" id="sliderAria" aria-label="Only aria-label"></div>
+            <div role="slider" tabindex="0" id="sliderNamed" aria-labelledby="nameSpan" aria-describedby="nameSpan"></div>
+        `)
+        const name = (id: string) => controlName(root.querySelector(`#${id}`)!)
+        expect(name('options')).toBe('')
+        expect(name('ariaOnly')).toBe('')
+        expect(name('wrapped')).toBe('')
+        expect(name('labelledOnly')).toBe('')
+        expect(name('described')).toBe('Field name')
+        expect(name('sliderText')).toBe('')
+        expect(name('sliderAria')).toBe('')
+        expect(name('sliderNamed')).toBe('Field name')
+    })
+
+    it('lists value controls only on request, composes with fields and skips aria-hidden subtrees', () => {
+        const root = mount(`
+            <select></select><div role="slider" tabindex="0"></div>
+            <input type="number"><input type="range"><input type="color"><input type="date">
+            <input type="text"><button>B</button>
+            <div aria-hidden="true"><select></select></div>
+        `)
+        expect(controls(root).length).toBe(1)
+        expect(controls(root, { values: true }).length).toBe(7)
+        expect(controls(root, { fields: true }).length).toBe(1 + 1)
+        expect(controls(root, { fields: true, values: true }).length).toBe(8)
+        expect(unnamedControls(root, { values: true }).length).toBe(6)
+    })
+})
+
+describe('accessibleText', () => {
+    it('includes a descendant aria-label, skips aria-hidden and hidden subtrees and reads alt and values', () => {
+        const root = mount(`
+            <span id="a">Name <button aria-label="Show help"><svg aria-hidden="true">X</svg></button></span>
+            <span id="b">Plain <span aria-hidden="true">Hidden</span><span hidden>Gone</span> <img alt="Pic"></span>
+            <span id="c">Value <input type="text" value="typed"></span>
+        `)
+        expect(accessibleText(root.querySelector('#a')!)).toBe('Name Show help')
+        expect(accessibleText(root.querySelector('#b')!)).toBe('Plain Pic')
+        expect(accessibleText(root.querySelector('#c')!)).toBe('Value typed')
+    })
+})
+
+describe('toggleFor and fieldControls', () => {
+    it('finds the checkbox before a lone field and none when the parent holds another field', () => {
+        const root = mount(`
+            <div id="lone"><label><input type="checkbox"></label><input type="number" id="loneField"></div>
+            <div id="shared"><label><input type="checkbox"></label><input type="number" id="a"><input type="number" id="b"></div>
+            <div id="after"><input type="number" id="early"><label><input type="checkbox"></label></div>
+        `)
+        expect(toggleFor(root.querySelector('#loneField')!)).toBe(root.querySelector('#lone input[type="checkbox"]'))
+        expect(toggleFor(root.querySelector('#a')!)).toBeNull()
+        expect(toggleFor(root.querySelector('#early')!)).toBeNull()
+    })
+
+    it('lists a text field only when it has a toggle', () => {
+        const root = mount(`
+            <input type="text" id="plain">
+            <div><input type="checkbox"><input type="text" id="toggled"></div>
+            <select id="select"></select>
+        `)
+        expect(fieldControls(root).map((el) => el.id)).toEqual(['toggled', 'select'])
+    })
+})
+
+describe('fieldNameProblems', () => {
+    const rules = (problems: string[]) => Array.from(new Set(problems.map((line) => /\sF(\d)\s/.exec(line)?.[1] ?? '?'))).sort()
+    const FIELD = (id: string, name: string, extra = '') => `<span id="${id}">${name}</span><input type="number" aria-labelledby="${id}" aria-describedby="${id}${extra}">`
+
+    it('accepts a named field, a field with help after the name and a toggled field', () => {
+        expect(fieldNameProblems(mount(FIELD('n', 'Name')), [{ name: 'Name' }])).toEqual([])
+        const withHelp = mount(`<span id="h">Hint</span>${FIELD('n', 'Name', ' h')}`)
+        expect(fieldNameProblems(withHelp, [{ name: 'Name', help: 'Hint' }])).toEqual([])
+        const toggled = mount(`<div><label><input type="checkbox" aria-label="Name"></label>${FIELD('n', 'Name')}</div>`)
+        expect(fieldNameProblems(toggled, [{ name: 'Name', toggle: true }])).toEqual([])
+    })
+
+    it('F1 reports an extra or a missing control', () => {
+        const root = mount(`${FIELD('a', 'A')}${FIELD('b', 'B')}`)
+        expect(rules(fieldNameProblems(root, [{ name: 'A' }]))).toContain('1')
+        expect(rules(fieldNameProblems(root, [{ name: 'A' }, { name: 'B' }, { name: 'C' }]))).toContain('1')
+    })
+
+    it('F2 reports a swapped or empty name', () => {
+        const root = mount(`${FIELD('a', 'A')}${FIELD('b', 'B')}`)
+        expect(rules(fieldNameProblems(root, [{ name: 'B' }, { name: 'A' }]))).toContain('2')
+        expect(rules(fieldNameProblems(mount('<input type="number">'), [{ name: 'A' }]))).toContain('2')
+    })
+
+    it('F3 reports a help id listed before the name', () => {
+        const root = mount(`<span id="h">Hint</span><span id="n">Name</span><input type="number" aria-labelledby="n" aria-describedby="h n">`)
+        expect(rules(fieldNameProblems(root, [{ name: 'Name', help: 'Hint' }]))).toContain('3')
+    })
+
+    it('F4 reports help text that was not announced as help', () => {
+        const root = mount(`<span id="h">Hint</span>${FIELD('n', 'Name', ' h')}`)
+        expect(rules(fieldNameProblems(root, [{ name: 'Name' }]))).toEqual(['4'])
+    })
+
+    it('F5 reports a Help-like button inside the naming element and a wrapping label', () => {
+        const withHelp = mount('<span id="n">Name <button aria-label="Show help"><svg aria-hidden="true"></svg></button></span><input type="number" aria-labelledby="n" aria-describedby="n">')
+        expect(rules(fieldNameProblems(withHelp, [{ name: 'Name Show help' }]))).toEqual(['5'])
+        const wrapping = mount('<label id="n">Name <input type="number" aria-labelledby="n" aria-describedby="n"></label>')
+        expect(rules(fieldNameProblems(wrapping, [{ name: 'Name' }]))).toContain('5')
+        const dangling = mount('<input type="number" aria-labelledby="gone" aria-describedby="gone">')
+        expect(rules(fieldNameProblems(dangling, [{ name: 'Name' }]))).toContain('5')
+    })
+
+    it('F6 reports one naming span shared by two controls even when both names match', () => {
+        const root = mount('<span id="n">Name</span><input type="number" aria-labelledby="n" aria-describedby="n"><input type="number" aria-labelledby="n" aria-describedby="n">')
+        expect(rules(fieldNameProblems(root, [{ name: 'Name' }, { name: 'Name' }]))).toEqual(['6'])
+    })
+
+    it('F7 reports a missing, an unexpected and a wrongly named toggle', () => {
+        const toggled = (aria: string) => mount(`<div><label><input type="checkbox"${aria}></label>${FIELD('n', 'Name')}</div>`)
+        expect(rules(fieldNameProblems(toggled(''), [{ name: 'Name', toggle: true }]))).toEqual(['7'])
+        expect(rules(fieldNameProblems(toggled(' aria-label="Name"'), [{ name: 'Name' }]))).toEqual(['7'])
+        expect(rules(fieldNameProblems(toggled(' aria-label="Other"'), [{ name: 'Name', toggle: true }]))).toEqual(['7'])
+        expect(rules(fieldNameProblems(mount(FIELD('n', 'Name')), [{ name: 'Name', toggle: true }]))).toEqual(['7'])
     })
 })
 

@@ -244,6 +244,8 @@ beforeEach(() => {
 afterEach(async () => {
     const acquire = await import('./storage/store2/moduleAcquire')
     acquire.unregisterModuleLoader()
+    // Each row re-imports the modules, so this reaches the task slot of the last row's `exportChat`.
+    ;(await import('./alertTask.svelte')).resetTaskHostForTests()
     vi.doUnmock('./process/moduleEnsure')
     vi.unstubAllGlobals()
     vi.restoreAllMocks()

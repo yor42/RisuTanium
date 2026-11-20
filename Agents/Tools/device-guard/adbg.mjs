@@ -9,7 +9,7 @@
 //   node adbg.mjs <common> -- <adb args...>          plain call, allowed only if it matches the allowlist:
 //     shell <one command string>, where the command is one of
 //       getprop [key] | date [+fmt] | pidof <pkg> | wm size|density [<n>] | settings get|put|delete <ns> <key> [v]
-//       am start ... (no -d/--data or scheme://; -n only for --own-package; r17 also narrows every am line to a closed character set) | am force-stop|kill <own package>
+//       am start ... (no -d/--data or scheme://; -n only for --own-package; r17 also narrows every am line to a closed character set; r20: on emulator-5580 only am start [-W] -n io.github.yor42.risutanium/<activity>) | am force-stop|kill <own package>
 //       pm clear <own package> | pm path <pkg> | input keyevent <navigation keys> | input text ... (typing chain, below) | svc wifi|data enable|disable expand-notifications|collapse | cat /proc/<pid>/oom_score_adj|cgroup|stat
 //       ps -A [-o cols] | grep <literal>   (a device-side filter is required; never a full list)
 //       screenrecord [--time-limit 1-30] [--size WxH] [--bit-rate n] <exact .mp4 path below>
@@ -32,11 +32,34 @@
 //   fail-closed: allowed are `reverse` and `forward` of an own port (forward only to
 //   localabstract:webview_devtools_remote_*) and their --remove, `exec-out screencap -p --out <png>`, `shell pidof|pm path
 //   <own package>`, `shell sha256sum` of the own package's installed base.apk, `shell getprop` of a few read-only
-//   model/boot keys, and the read-only subcommands locate-css, locate-shot and offset. Everything else (tap, pick,
+//   model/boot keys, and the read-only subcommands locate-css, locate-shot and offset (r19: screencap, input and plain tap are also
+//   gated on the system file picker, see the r19 paragraph below). Everything else (tap, pick,
 //   proc-tasks, input, am, pm clear/install, svc, settings, logcat, push, pull, rm, install ...) exits 95 naming the
 //   serial. The only way to widen is `--scope-file <json>` = {"serial","approvedBy":"maintainer","date","allow":[...]}
 //   with allow from tap|input-text|keyevent|am-start|install, honoured only for that exact serial; every call that
 //   reads it logs the file path and its sha256. The widened classes still pass the normal allowlist and typing chain.
+//
+//   r19 Stage B (2026-11-18; maintainer 2026-11-18 direct: OQ-2, OQ-8, OQ-10, OQ-11; MC IDs pending): picker-visible gates on EVERY
+//     restricted serial (the maintainer's Tab and every alias of it, wireless-debugging and qualifier serials included). The guard sends
+//     one fixed command of its own (no agent text, not an allowlisted plain call) that lists the pids of com.android.documentsui and
+//     com.google.android.documentsui and of our own app io.github.yor42.risutanium with their /proc/<pid>/oom_score_adj. The verdict is
+//     `unknown` unless adb exits 0, the output ends in exactly one ADBG-PROBE-END and every other line is a well-formed
+//     `ADBG-(PICKER|OWN) <pid up to 7 digits> [<adj>]` line. A picker is VISIBLE when any picker pid, under either package name, has an
+//     adj below 300 or none that could be read; our app is IN FRONT only at adj exactly 0, and that never overrides a visible picker.
+//     The log gets `intent: picker-probe ...` and `exit=<n>: picker-probe picker=<none|visible|unknown> adj=<numbers> own=<...>` lines.
+//       - screencap needs --own-package io.github.yor42.risutanium (else exit 95, no adb call), our app in front and no picker visible
+//         before the capture and again after it; the PNG is written only after the post-check, so no frame of a picker is ever
+//         written, and every refusal by the own-package pin or the picker probes, and every failed capture, leaves no usable previous capture for locate-shot;
+//       - every `input` (keyevent and text) is refused while a picker is visible (the maintainer cancels pickers by hand). For typing the
+//         probe runs after the chain checks, because its own log lines would end the chain;
+//       - a plain `tap` (tap scope) is refused while a picker is visible, before its locate is consumed.
+//     An unreadable probe exits 90 and nothing is captured or sent; a visible picker (or our app not in front for a screencap) exits 93.
+//     Full-access and playground serials never run the probe. Residuals, not guarded here (the run brief covers them): adj 0 is a proxy
+//     for "in front" (a process running a service callback also gets it); anything drawn over our app in a full frame (status bar,
+//     heads-up notifications, the keyboard's clipboard strip, the Edge panel, bubbles, toasts, a split-screen neighbour); the notification
+//     shade and the keyguard (our app can keep adj 0 beneath them, and WAKEUP and POWER are navigation keys); pickers other than
+//     DocumentsUI (the Android 14+ Photo Picker, the intent chooser), which the input gate does not see; a picker that appears and
+//     vanishes between the two probes; CDP input and page scripts inside our app, which are outside the guard.
 //
 //   Playground mode (2026-11-13, MC-1666): the two spare Note 9s, 29f3cde9193f7ece and 2ac80128013f7ece, hold only
 //   synthetic data. Those two serials, and no other, run in PLAYGROUND mode. Membership is the exact --serial string
@@ -70,7 +93,7 @@
 //   Danger zones, exit 89, the call is not sent (stop that line of work, never retry a variant). The scan is on lower-cased
 //   text with ${IFS} and $IFS read as a blank, then quotes and backslashes removed:
 //     DZ-1 contacts, call log, SMS/MMS, calendar, voicemail, blocked numbers, SIM phonebook; DZ-2 outbound calls and messages
-//     (call, endcall, dial, phone, tel:, smsto, mailto, sendto, emergency, and the decimal key codes 5, 6, 207, 208 of
+//     (call, endcall, dial, phone, tel:, sip:, sips:, scheme=tel|sip|sips|callto, smsto, mmsto, callto, mailto, sendto, emergency, and the decimal key codes 5, 6, 207, 208 of
 //     `input keyevent`); DZ-3 accounts and sync (also adb backup/restore); DZ-4 device
 //     admin, lock credentials, anything that cuts adb off (adb_enabled, svc usb, user restrictions, switch-user); DZ-5 wipe,
 //     recovery, reboot with a target, shutdown; DZ-6 pm/cmd package removal, disable, hide, suspend or clear of anything but
@@ -120,6 +143,26 @@
 //     r17 also refuses (exit 97), on every serial except the Note 9 profile (r3), any `am` shell line holding a character outside letters, digits, space and
 //     . _ : / % + = @ - (so no brace expansion, glob, quote, backslash, $ or backtick can rebuild a refused My Files name after the check).
 //     Also not enforced: the folder a c128-* name sits in, and which row Share acts on. Tightening these is a separate decision.
+//
+//   r20 (CHORE-848, link forms): (1) emulator-5580 (neither restricted nor a Note 9): an `am start` shell line passes only as
+//     `am start [-W] -n io.github.yor42.risutanium/<[A-Za-z0-9._]+>` (blanks collapse; the package is the constant PG_PACKAGE, and the
+//     r11 rule still needs --own-package to name it), else exit 97 and nothing is sent. Restricted serials keep their own rules, including
+//     the am-start scope class, which opens -n of whatever package --own-package names (named residual). (2) Note 9 profile: the danger-zone
+//     scan also runs once on the percent-decoded text (%XX, both hex cases, no +, malformed % left as written; shell, exec-out, push
+//     destination, pull source); the raw result stands and the decoded pass only adds a refusal. Double encoding (%2561) passes (named
+//     residual), and a harmless name that decodes to a zone word is refused. DZ-2 also names mmsto, callto, sip:, sips: and scheme=tel|sip|sips|callto.
+//     Tests: test/link-forms.test.ps1.
+//
+//   r21 (CHORE-834, kit forms and --kit): (1) the two Note 9 serials also accept exactly `forward --list`, `forward --no-rebind tcp:<own>
+//     localabstract:webview_devtools_remote_<1-7 digits>` and `reverse --no-rebind tcp:<own> tcp:<own>` (a reserved host end is 89 DZ-10 first,
+//     then both ends must be own ports, else 97); every near miss is 97. The forward host end has no DZ-10 check, as with plain forward.
+//     (2) `--kit` (before `--`) marks a plain adb call built by the device kit's own builders (lib.ps1 Get-GuardArgList, chatshell-cdp
+//     device lib.mjs guardedAdb). A `--kit` plain adb call on any serial outside PLAYGROUND_SERIALS is refused before anything is sent: 97 on
+//     emulator-5580, 95 on restricted and near-miss serials; `--kit` with any other verb is exit 2. On a Note 9 the flag changes nothing: the
+//     call takes exactly the path it takes without it. An agent's direct call without `--kit` is judged as before. The kit's guarantee holds for
+//     one unmodified checkout whose script, lib and guard are siblings; the residuals (the node and adb found on PATH, ADBG_FAKE_ADB_SCRIPT,
+//     child scripts the caller names, a modified tree) are listed in README.md.
+//     Tests: test/kit-forms.test.ps1, test/kit-flag.test.ps1.
 //
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
@@ -197,7 +240,7 @@
 //   commands (screencap, locate, reads) stay allowed. A restricted-serial refusal of the verb itself (exit 95)
 //   attempted no locate and sets no lock. A locate that fails without a valid --serial
 //   never reached a device and sets no lock; the lock is strictly per serial. This closes the 2026-11-12 cloud UI run breach (guard log line 409): a failed locate followed by
-//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front).
+//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front; r19: a system file picker visible), 90 picker probe unreadable (r19, restricted serials).
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -218,6 +261,10 @@ const ownPorts = (opt('--own-ports') ?? '').split(',').filter((p) => /^\d{2,5}$/
 const logLine = (text) => { if (log) appendFileSync(log, `${now()} ${text}\n`) }
 const die = (code, msg) => { logLine(`REFUSED/ERROR exit=${code}: ${JSON.stringify(msg)}`); console.error(`adbg: ${msg}`); process.exit(code) }
 if (!log) { console.error('adbg: --log is required'); process.exit(2) }
+// r21: --kit (before `--` only) marks a plain adb call built by the device kit. It can only refuse: the serial check sits in the plain adb path,
+// and every other verb rejects the flag here, before the locate-lock exit hook below is registered.
+const kit = opts.includes('--kit')
+if (kit && sub !== 'adb') die(2, '--kit belongs to plain adb calls (routed kit scripts use no other verb)')
 
 // Tests may set ADBG_FAKE_ADB_SCRIPT to a Node script that stands in for adb; the allowlist still applies.
 const spawnAdb = (args, options) => process.env.ADBG_FAKE_ADB_SCRIPT
@@ -521,6 +568,9 @@ const MYFILES_PACKAGE = 'com.sec.android.app.myfiles'
 // backslash, dollar or backtick, so the device shell cannot build a different word than the one the guard read.
 const AM_LINE_SAFE = /^[A-Za-z0-9 ._:\/%+=@-]*$/
 const MYFILES_START = `am start -n ${MYFILES_PACKAGE}/.external.ui.MainActivity`
+// r20: the only `am start` emulator-5580 accepts, compared on the blank-collapsed line: the app's own explicit component, with an optional -W.
+// The package is the constant, never --own-package, so no flag can name another app or an implicit (action or data) start.
+const EMULATOR_AM_START = new RegExp(`^am start (-W )?-n ${PG_PACKAGE.replace(/\./g, '\\.')}/[A-Za-z0-9._]+$`)
 const MYFILES_FILE = /^c128-[A-Za-z0-9._-]{1,72}$/
 const MYFILES_SHARE_TARGET = 'RisuTanium'
 // Download, Internal storage, Share and their Korean forms (literal UTF-8 in this file; Node reads .mjs as UTF-8).
@@ -573,7 +623,7 @@ const NOTE9_NET_OK = new RegExp(`^(settings get (global|secure|system) (${NOTE9_
 // DZ-1 .. DZ-9 and DZ-13 as text patterns (DZ-8 has a second entry for Settings components). The radio keys sit in DZ-8 and match anywhere, so `content insert ... wifi_on` is refused as well as `settings put`.
 const NOTE9_DZ = [
   ['DZ-1', 'personal-data providers and apps', new RegExp([dzPrefix('contact|call_?log|voicemail|blockednumber|calendar|telephony|phonebook'), dzWord('sms|mms|mmssms|icc|dialer|messaging')].join('|'))],
-  ['DZ-2', 'outbound calls and messages', new RegExp([dzWord('call|endcall|dial|phone|smsto|mailto|sendto|emergency|isms'), '(?<![a-z0-9])tel:'].join('|'))],
+  ['DZ-2', 'outbound calls and messages', new RegExp([dzWord('call|endcall|dial|phone|smsto|mmsto|mailto|sendto|emergency|isms|callto'), '(?<![a-z0-9])(tel|sips?):', 'scheme=(tel|sips?|callto)(?![a-z0-9])'].join('|'))],
   ['DZ-3', 'accounts and sync', new RegExp([dzPrefix('account'), dzWord('signin'), dzPrefix('auto_?sync|master_?sync|sync_?settings|sync_?adapter|requestsync')].join('|'))],
   ['DZ-4', 'device security and adb loss', new RegExp([dzWord('dpm|locksettings|lock_settings'), dzPrefix('device_?policy|device_?admin'), 'adb_enabled|adb_wifi|development_settings_enabled|svc usb|sys\\.usb\\.|service\\.adb\\.', dzWord('set-user-restriction|no_debugging_features|switch-user|stop-user')].join('|'))],
   ['DZ-5', 'reset, wipe, recovery and power', new RegExp([dzWord('recovery|wipe|uncrypt|fastboot|bootloader|sideload|reboot|powerctl|shutdown|vdc'), dzPrefix('factory|master_?clear'), '(?<![a-z0-9])sm (format|partition|forget)'].join('|'))],
@@ -621,9 +671,12 @@ function note9Dz11(n) {
 // DZ-6: a package operation passes only as the whole command, on a test app, in either option order.
 const NOTE9_PKG_OP = /(?<![a-z0-9])(pm|cmd package)\s+(uninstall|disable|disable-user|disable-until-used|hide|unhide|suspend|unsuspend|clear|default-state|uninstall-system-updates|remove-user|create-user|set-home-activity|reset-permissions)(?![a-z0-9-])/
 const NOTE9_PKG_OK = /^(pm|cmd package) (clear( --user 0)?|uninstall( --user 0| -k){0,2}) (?<pkg>[a-z0-9._]+)$/
-// Returns [id, what] for the first danger zone the text names, else null. First hit wins.
-function note9Danger(text) {
-  const n = note9Norm(text)
+// r20: one percent-decoding pass (both hex cases, no `+`, never throws), so c%61ll_log or t%65l: is scanned as written. The raw text is judged
+// first and the decoded text only adds a refusal; double encoding (%2561) is a named residual.
+const note9Decode = (s) => s.replace(/%([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+const note9Danger = (text) => note9DangerPass(note9Norm(text)) ?? note9DangerPass(note9Norm(note9Decode(text)))
+// Returns [id, what] for the first danger zone the normalised text names, else null. First hit wins.
+function note9DangerPass(n) {
   if (NOTE9_NET_OK.test(n)) return null
   for (const [id, what, re] of NOTE9_DZ) if (re.test(n)) return [id, what]
   const kv = note9NumericKeyevent(n)
@@ -752,6 +805,11 @@ function note9Refusal(a) {
     case 'logcat': return null
     case 'reverse': {
       if (a.length === 2 && a[1] === '--list') return null
+      // r21 kit form: the same two checks as the plain form, with --no-rebind (the host end is the last token).
+      if (a.length === 4 && a[1] === '--no-rebind' && /^tcp:\d+$/.test(a[2]) && /^tcp:\d+$/.test(a[3])) {
+        if (note9ReservedHostPort(a[3].slice(4))) return zone('DZ-10', 'host adb server or emulator port as the reverse host end')
+        return ownPort(a[2].slice(4)) && ownPort(a[3].slice(4)) ? null : shape('both reverse ends must be own ports')
+      }
       if (a.length === 3 && a[1] === '--remove') return /^tcp:\d+$/.test(a[2]) && ownPort(a[2].slice(4)) ? null : shape('--remove needs an own port')
       if (a.length === 3 && /^tcp:\d+$/.test(a[1]) && /^tcp:\d+$/.test(a[2])) {
         if (note9ReservedHostPort(a[2].slice(4))) return zone('DZ-10', 'host adb server or emulator port as the reverse host end')
@@ -759,7 +817,12 @@ function note9Refusal(a) {
       }
       return shape('reverse takes tcp:<own> tcp:<own>, --remove tcp:<own> or --list')
     }
-    case 'forward':
+    case 'forward': {
+      // r21 kit forms: the list, and the own-port forward that keeps an existing binding (the remote is a WebView devtools socket, digits only).
+      if (a.length === 2 && a[1] === '--list') return null
+      if (a.length === 4 && a[1] === '--no-rebind' && /^tcp:\d+$/.test(a[2]) && ownPort(a[2].slice(4)) && /^localabstract:webview_devtools_remote_\d{1,7}$/.test(a[3])) return null
+      return allowedPlain(a) ? null : shape('not an own-port forward, and get-state/start-server take no argument')
+    }
     case 'get-state':
     case 'start-server': return allowedPlain(a) ? null : shape('not an own-port forward, and get-state/start-server take no argument')
     default: return a.length === 1 ? null : shape('takes no argument') // wait-for-device, reboot
@@ -858,6 +921,54 @@ function restrictedAllows(a) {
   if (v === 'shell') return a.length === 2 && restrictedShell(a[1])
   return false
 }
+
+// ---- r19 picker gates on every restricted serial ----
+// One fixed, guard-internal device command (never agent text, never an allowlisted plain call) lists the pids of the two system
+// file picker packages and of our own app with their oom_score_adj. The device shell's echo makes one `ADBG-PICKER|OWN <pid> <adj>` line
+// per pid; ADBG-PROBE-END proves the loop ran to the end.
+const PICKER_PROBE = 'for p in $(pidof com.android.documentsui) $(pidof com.google.android.documentsui); do echo "ADBG-PICKER $p $(cat /proc/$p/oom_score_adj 2>/dev/null)"; done; '
+  + 'for p in $(pidof io.github.yor42.risutanium); do echo "ADBG-OWN $p $(cat /proc/$p/oom_score_adj 2>/dev/null)"; done; echo ADBG-PROBE-END'
+const PROBE_END = 'ADBG-PROBE-END'
+const PROBE_LINE = /^ADBG-(PICKER|OWN) (\d{1,7})(?: (-?\d{1,5}))?$/
+// A picker process at 300 or more is a cached, service or backup process. 0 is the focused app, 100-199 other visible activities and
+// 200-250 perceptible ones, so 300 keeps a margin above every band that can be on screen. An unreadable adj counts as visible.
+const PICKER_VISIBLE_BELOW = 300
+// The probe's verdict: unknown unless the adb call succeeded, the end marker appears exactly once as the last line, and every other
+// line is a well-formed pid line (lines are split on \r?\n and right-trimmed, so CRLF output and an empty adj parse). Every picker line
+// is judged, whatever its package or position; our own app counts as in front only at adj exactly 0, and never overrides a visible picker.
+function probePickers() {
+  logLine(`intent: picker-probe serial=${serial} (guard-internal, fixed command)`)
+  const r = spawnAdb(['-s', serial, 'shell', PICKER_PROBE], { encoding: 'utf8', windowsHide: true, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] })
+  const lines = String(r.stdout ?? '').split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.length > 0)
+  const body = lines.slice(0, -1)
+  const wellFormed = r.status === 0 && !r.error && lines.filter((l) => l === PROBE_END).length === 1 && lines[lines.length - 1] === PROBE_END && body.every((l) => PROBE_LINE.test(l))
+  let verdict = { unknown: true, pickerVisible: false, ownFront: false, adj: [] }
+  if (wellFormed) {
+    const parsed = body.map((l) => { const m = l.match(PROBE_LINE); return { kind: m[1], adj: m[3] === undefined ? null : Number(m[3]) } })
+    const pickers = parsed.filter((p) => p.kind === 'PICKER')
+    verdict = {
+      unknown: false,
+      pickerVisible: pickers.some((p) => p.adj === null || p.adj < PICKER_VISIBLE_BELOW),
+      ownFront: parsed.some((p) => p.kind === 'OWN' && p.adj === 0),
+      adj: pickers.filter((p) => p.adj !== null).map((p) => p.adj)
+    }
+  }
+  const status = r.status ?? (r.error?.code === 'ETIMEDOUT' ? 'timeout' : `signal ${r.signal}`)
+  // Only the verdict and the pickers' adj numbers are logged; no raw probe output ever reaches the log.
+  logLine(`exit=${status}: picker-probe picker=${verdict.unknown ? 'unknown' : verdict.pickerVisible ? 'visible' : 'none'} adj=${verdict.adj.join(',')} own=${verdict.unknown ? 'unknown' : verdict.ownFront ? 'front' : 'not-front'}`)
+  return verdict
+}
+// null when the call may go ahead, else the exit code and the reason. 90: the probe is unreadable, nothing is sent or captured.
+// 93: a picker is visible, or (needOwnFront) our own app is not in front.
+function pickerRefusal(needOwnFront) {
+  const p = probePickers()
+  if (p.unknown) return { code: 90, msg: 'picker probe unreadable on a restricted serial: nothing is sent or captured' }
+  if (p.pickerVisible) return { code: 93, msg: 'refused: a system file picker is visible on a restricted serial' }
+  if (needOwnFront && !p.ownFront) return { code: 93, msg: `refused: ${PG_PACKAGE} is not in front on a restricted serial` }
+  return null
+}
+const requireNoPicker = (needOwnFront) => { const f = pickerRefusal(needOwnFront); if (f) die(f.code, f.msg) }
+
 if (restricted) {
   if (sub === 'pick' || sub === 'proc-tasks' || sub === 'net-status') { needSerial(); refuseRestricted(sub) }
   if (sub === 'tap') { needSerial(); if (!scopeAllows('tap')) refuseRestricted('tap') }
@@ -878,6 +989,8 @@ if (myFiles) {
 if (sub === 'adb') {
   needSerial()
   if (rest.length === 0) die(2, 'missing -- <adb args>')
+  // r21: a kit call (--kit) is judged by the serial class before any allowlist or profile: only the two Note 9 serials may carry it.
+  if (kit && !playground) die(restricted ? 95 : 97, `kit call refused: routed kit scripts run only on the two spare Note 9s, not ${serial}`)
   if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
   // Note 9 profile (r3): reached only when `playground` is true, which only the exact --serial against PLAYGROUND_SERIALS decides. Every plain call
   // is judged by the danger-zone denylist; the exact screencap form falls through to the PNG path below. The r17 am pin and the allowlist
@@ -895,6 +1008,10 @@ if (sub === 'adb') {
   if (/^\s*am(\s|$)/.test(amLine) && !AM_LINE_SAFE.test(amLine)) die(97, `am line holds characters outside the safe set (shell expansion could rebuild a refused name): adb ${JSON.stringify(rest)}`)
   if (/^\s*am(\s|$)/.test(amLine) && /myfiles/i.test(amLine) && !(rest.length === 2 && serial === MYFILES_SERIAL && amLine.trim().replace(/ +/g, ' ') === MYFILES_START)) {
     die(97, `am naming My Files is allowed only as exactly "${MYFILES_START}" on ${MYFILES_SERIAL}: adb ${JSON.stringify(rest)}`)
+  }
+  // r20: on emulator-5580 (neither restricted nor a Note 9) every `am start` is the app's own explicit start, nothing else.
+  if (!restricted && !playground && /^\s*am\s+start(\s|$)/.test(amLine) && !EMULATOR_AM_START.test(amLine.trim().replace(/ +/g, ' '))) {
+    die(97, `emulator-5580 am start accepts only am start [-W] -n ${PG_PACKAGE}/<activity>: adb ${JSON.stringify(rest)}`)
   }
   const plainOk = allowedPlain(rest)
   if (!plainOk && !(playground && allowedPlayground(rest))) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
@@ -923,6 +1040,9 @@ if (sub === 'adb') {
     if (!(age >= 0 && age <= 30)) die(99, `typing refused: the tap on locate ${g.locate} is ${age.toFixed(1)} s old (max 30 s); locate and tap the field again`)
     const isText = /^input text /.test(rest[1].trim().replace(/ +/g, ' '))
     if (isText && g.textUsed) die(99, `typing refused: one input text per tap (locate ${g.locate} already typed into); locate and tap the field again`)
+    // r19: on a restricted serial no input goes out while a picker is visible. The probe runs only after the chain checks above, because
+    // its own intent and exit lines would otherwise become the previous action line and end every chain.
+    if (restricted) requireNoPicker(false)
     if (isText) g.textUsed = true
     g.chain = true
     saveState(s)
@@ -930,18 +1050,29 @@ if (sub === 'adb') {
     if (r.code !== 0) { const s2 = loadState(); s2.textGrant = null; saveState(s2) }
     process.exit(r.code)
   }
+  // r19: every other restricted input (a navigation key; typing was gated in its chain above) is refused while a picker is visible.
+  if (restricted && rest[0] === 'shell' && /^input /.test(rest[1].trim())) requireNoPicker(false)
   if (rest[0] === 'exec-out') {
     const outFile = opt('--out')
     if (!outFile) die(2, 'exec-out screencap needs --out <png file> (binary output is never piped through the shell)')
     // A capture in progress or failed invalidates the previous one for locate-shot.
     if (statePath) { const s0 = loadState(); s0.lastShot = null; saveState(s0) }
+    // r19: a restricted capture is pinned to our own app and needs it in front with no picker visible, before and after the capture
+    // (below), so no frame of a picker is ever written. The pin comes first and sends nothing to the device.
+    if (restricted) {
+      if (ownPackage !== PG_PACKAGE) die(95, `restricted serial ${serial}: screencap needs --own-package ${PG_PACKAGE} (a capture is only of our own app)`)
+      requireNoPicker(true)
+    }
     logLine(`intent: adb -s ${serial} ${JSON.stringify(rest)} > ${JSON.stringify(outFile)}`)
     const r = spawnAdb(['-s', serial, ...rest], { windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
     let code = r.status ?? 1, note = `${r.stdout?.length ?? 0} bytes`
     const isPng = (b) => b && b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
     if (r.status === 0 && !isPng(r.stdout)) { code = 5; note = `not a PNG (${r.stdout?.length ?? 0} bytes)` }
     else if (r.status === 0) {
-      try {
+      // r19: the post-capture probe runs before anything is written; on refusal the bytes are dropped and --out is never created.
+      const post = restricted ? pickerRefusal(true) : null
+      if (post) { code = post.code; note = `capture discarded: ${post.msg}` }
+      else try {
         writeFileSync(outFile, r.stdout)
         if (statePath) { const s = loadState(); s.lastShot = { path: outFile, time: Date.now(), serial }; saveState(s) }
       } catch (e) { code = 5; note = `write failed: ${e.message}` }
@@ -1269,6 +1400,8 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
       : `hold uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y} for ${durationMs} ms`)
     process.exit(runAdb(['shell', 'input', 'swipe', String(x), String(y), String(x2), String(y2), String(durationMs)], false).code)
   }
+  // r19: a plain tap on a restricted serial (tap scope) is refused while a picker is visible, before the locate is consumed.
+  if (restricted) requireNoPicker(false)
   loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
   logLine(`tap uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y}${chained ? ` (tap-home, delay ${delayMs} ms)` : ''}`)
   const tapStart = Date.now()

@@ -1,5 +1,5 @@
 # One settled memory snapshot, one JSON line on stdout. Numbers and the label only: no package, process or path name is printed.
-#   Phone:  pwsh -NoProfile -File meminfo-snapshot.ps1 -Serial <adb serial> -Label <text> [-Package <id>] [-AllowedSerials <a,b>] [-AdbExe <path>]
+#   Phone:  pwsh -NoProfile -File meminfo-snapshot.ps1 -Serial <adb serial> -Label <text> -GuardLog <guard log file> [-Package <id>] [-AllowedSerials <a,b>]
 #   PC:     pwsh -NoProfile -File meminfo-snapshot.ps1 -ChromePid <browser pid> -Label <text>
 # Phone line: {"label","mode":"device","complete","app":{...},"sandbox":{...},"missing":[...]}. Each of app and sandbox holds javaHeapKb,
 # nativeHeapKb, graphicsKb, privateOtherKb, systemKb, totalPssKb (App Summary rows) and glMtrackPssKb, glMtrackPrivateDirtyKb,
@@ -10,7 +10,12 @@
 #
 # Invariants:
 # - -Serial is mandatory in device mode: an empty or malformed value, or one outside -AllowedSerials when that list is given, exits 2
-#   before the first adb call. Every adb call is `adb -s <serial> ...`.
+#   before the first adb call. -GuardLog is mandatory in device mode too (exit 2): every adb call runs through device-guard/adbg.mjs
+#   with --kit (lib.ps1 Initialize-AdbGuard and Invoke-Adb), which sends only the two spare Note 9s' calls and logs each to -GuardLog.
+#   This script never starts adb itself and has no adb or guard path parameter. lib.ps1 and the guard are found beside this file.
+# - A call the guard refuses, a failed guard start and an adb call that times out end the run with exit 4 and one named line on
+#   stderr. They are never a DROP line: a refusal must not read as "app not running". An empty answer of a call the guard let
+#   through still gives the DROP lines below.
 # - The sandbox is the isolated pid whose uid tag in `dumpsys activity processes` belongs to the app's own uid tag (Get-OwnedSandboxPids
 #   of lib.ps1), never the first sandboxed_process header and never a pgrep match. Anything other than exactly one owned sandbox pid
 #   whose section is present in `dumpsys meminfo --package <Package>` gives a DROP line and exit 3, with no numbers.
@@ -18,7 +23,7 @@
 #   Private Dirty), never by fixed offsets; App Summary rows are matched by their exact labels.
 # - Chrome mode: exactly one --type=renderer child (not an --extension-process one) and exactly one --type=gpu-process child of the
 #   browser pid, otherwise a DROP line and exit 3. The renderer-minus-JS-heap difference is the caller's.
-# Exit codes: 0 snapshot written, 2 refused arguments, 3 DROP.
+# Exit codes: 0 snapshot written, 2 refused arguments, 3 DROP, 4 the guard refused a call, did not start, or an adb call timed out.
 # -ProcessListJson exists for the acceptance test: a JSON array of {ProcessId, ParentProcessId, CommandLine, PrivateBytes} replaces the
 # Windows process query.
 param(
@@ -27,13 +32,18 @@ param(
     [string]$Package = 'io.github.yor42.risutanium',
     [int]$ChromePid = 0,
     [string[]]$AllowedSerials = @(),
-    [string]$AdbExe = 'adb',
+    [string]$GuardLog = '',
     [string]$ProcessListJson = ''
 )
 
 function Stop-SnapshotRefused([string]$Reason) {
     [Console]::Error.WriteLine('meminfo-snapshot: ' + $Reason)
     exit 2
+}
+
+function Stop-SnapshotGuard([string]$Reason) {
+    [Console]::Error.WriteLine('meminfo-snapshot: ' + $Reason)
+    exit 4
 }
 
 function Write-SnapshotDrop([string]$Reason) {
@@ -48,6 +58,7 @@ if (-not $chromeMode) {
     if ([string]::IsNullOrWhiteSpace($Serial)) { Stop-SnapshotRefused '-Serial is required (or -ChromePid)' }
     if ($Serial -notmatch '^[A-Za-z0-9._:-]+$') { Stop-SnapshotRefused '-Serial has characters an adb serial does not have' }
     if ($AllowedSerials.Count -gt 0 -and ($AllowedSerials -notcontains $Serial)) { Stop-SnapshotRefused '-Serial is not in -AllowedSerials' }
+    if ([string]::IsNullOrWhiteSpace($GuardLog)) { Stop-SnapshotRefused '-GuardLog is required in device mode: the guard log file every adb call is recorded in' }
     if ($Package -notmatch '^[A-Za-z0-9._]+$') { Stop-SnapshotRefused '-Package is not a package id' }
 }
 
@@ -73,9 +84,23 @@ if ($chromeMode) {
 }
 
 . (Join-Path $PSScriptRoot 'lib.ps1')
+Disable-StdHandleInherit
+$GuardLog = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($GuardLog)
+# One folder per process for the start-server output files, so two runs sharing a log folder never share a file.
+$guardDir = Join-Path (Split-Path -Parent $GuardLog) ('adb-' + $PID)
+$guardReady = $false
+try { $guardReady = Initialize-AdbGuard -Dir $guardDir -Serial $Serial -Log $GuardLog } catch { Stop-SnapshotGuard $_.Exception.Message }
+if (-not $guardReady) { Stop-SnapshotGuard (Get-AdbInitReason) }
 
 function Invoke-SnapshotAdb([string[]]$AdbArgs) {
-    return @(& $AdbExe -s $Serial @AdbArgs 2>$null)
+    $res = Invoke-Adb -AdbArgs $AdbArgs -Serial $Serial -TimeoutSec 20
+    if ($res.TimedOut) { Stop-SnapshotGuard 'adb call timed out' }
+    if (Test-AdbGuardRefusal $res) {
+        $shown = (@($AdbArgs | ForEach-Object { if ($_ -eq $Package) { '<package>' } else { $_ } }) -join ' ')
+        Stop-SnapshotGuard ('guard refused ' + $shown + ' (exit ' + $res.ExitCode + '; see ' + $GuardLog + ')')
+    }
+    if ([string]::IsNullOrEmpty($res.Out)) { return @() }
+    return @($res.Out -split '\r?\n')
 }
 
 function ConvertTo-SnapshotNumber([string]$Text) {

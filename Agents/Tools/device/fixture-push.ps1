@@ -4,7 +4,8 @@
 # check (-CeilingBytes); a fixture above it is refused before any adb call unless -AllowLarge and -AllowLargeReason are given.
 # -Remove deletes the named fixture from the device instead of pushing. Fixtures go to /sdcard/Download only.
 # Every adb call runs through device-guard/adbg.mjs (allowlist plus an intent/exit log at <OutDir>\adb\adb-commands.log), and
-# the script never starts adb itself. The guard refuses a serial it does not know as a spare test device (exit 95).
+# the script never starts adb itself. Every call carries the guard's --kit flag, so the guard refuses any serial other than the
+# two spare Note 9s at the first call (exit 97 for an emulator, 95 for a restricted serial) and the script stops there.
 param(
     [string]$CheckId = 'fixture-push',
     [Parameter(Mandatory)][string]$OutDir,
@@ -60,7 +61,7 @@ try {
 
     $guardLog = Join-Path (Join-Path $OutDir 'adb') 'adb-commands.log'
     $r.evidence.log = $guardLog
-    if (-not (Initialize-AdbGuard -Dir (Join-Path $OutDir 'adb') -Serial $Serial -Log $guardLog)) { Finish 'fail' ('adb start-server failed (adbg refusals are logged in ' + $guardLog + ')') }
+    if (-not (Initialize-AdbGuard -Dir (Join-Path $OutDir 'adb') -Serial $Serial -Log $guardLog)) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
 

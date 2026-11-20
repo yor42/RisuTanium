@@ -15,8 +15,8 @@
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
-    import { downloadNotice } from "src/ts/exportNotice";
-    import { alertClear, alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
+    import { runChatScreenshot } from "src/ts/chatScreenshot";
+    import { alertError, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
     import { canChatSpeak } from "src/ts/process/ttsModes";
@@ -457,54 +457,44 @@
             await runWithFullWindow(chatWindowPolicyInstance, () => loadPages, (v) => { loadPages = v }, async () => {
                 const html2canvas = await import('html-to-image');
                 const chats = document.querySelectorAll('.default-chat-screen .risu-chat')
-                alertWait(language.alerts.screenshotTaking)
-                let canvases:HTMLCanvasElement[] = []
+                await runChatScreenshot<HTMLCanvasElement>({
+                    rows: chats,
+                    capture: (chat) => html2canvas.toCanvas(chat as HTMLElement),
+                    merge: (captured) => {
+                        const canvases = [...captured].reverse()
 
-                for(const chat of chats){
-                    const cnv = await html2canvas.toCanvas(chat as HTMLElement)
-                    alertWait(language.alerts.screenshotTaking+" "+canvases.length+"/"+chats.length)
-                    canvases.push(cnv)
-                }
+                        let mergedCanvas = document.createElement('canvas');
+                        mergedCanvas.width = 0;
+                        mergedCanvas.height = 0;
+                        let mergedCtx = mergedCanvas.getContext('2d');
 
-                canvases.reverse()
+                        let totalHeight = 0;
+                        let maxWidth = 0;
+                        for(let i = 0; i < canvases.length; i++) {
+                            let canvas = canvases[i];
+                            totalHeight += canvas.height;
+                            maxWidth = Math.max(maxWidth, canvas.width);
 
-                alertWait(language.alerts.screenshotMerging)
+                            mergedCanvas.width = maxWidth;
+                            mergedCanvas.height = totalHeight;
+                        }
 
-                let mergedCanvas = document.createElement('canvas');
-                mergedCanvas.width = 0;
-                mergedCanvas.height = 0;
-                let mergedCtx = mergedCanvas.getContext('2d');
+                        mergedCtx.fillStyle = 'var(--risu-theme-bgcolor)'
+                        mergedCtx.fillRect(0, 0, maxWidth, totalHeight);
+                        let indh = 0
+                        for(let i = 0; i < canvases.length; i++) {
+                            let canvas = canvases[i];
+                            indh += canvas.height
+                            mergedCtx.drawImage(canvas, 0, indh - canvas.height);
+                            canvases[i].remove();
+                        }
 
-                let totalHeight = 0;
-                let maxWidth = 0;
-                for(let i = 0; i < canvases.length; i++) {
-                    let canvas = canvases[i];
-                    totalHeight += canvas.height;
-                    maxWidth = Math.max(maxWidth, canvas.width);
-
-                    mergedCanvas.width = maxWidth;
-                    mergedCanvas.height = totalHeight;
-                }
-
-                mergedCtx.fillStyle = 'var(--risu-theme-bgcolor)'
-                mergedCtx.fillRect(0, 0, maxWidth, totalHeight);
-                let indh = 0
-                for(let i = 0; i < canvases.length; i++) {
-                    let canvas = canvases[i];
-                    indh += canvas.height
-                    mergedCtx.drawImage(canvas, 0, indh - canvas.height);
-                    canvases[i].remove();
-                }
-
-                if(mergedCanvas){
-                    const saved = await downloadFile(`chat-${v4()}.png`, Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64'))
-                    mergedCanvas.remove();
-                    if(!saved){
-                        alertClear()
-                        return
-                    }
-                }
-                alertNormal(downloadNotice(language.screenshotSaved))
+                        const png = Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64')
+                        mergedCanvas.remove();
+                        return png
+                    },
+                    save: (png, aroundPicker) => downloadFile(`chat-${v4()}.png`, png, { aroundPicker }),
+                })
             })
         } catch (error) {
             console.error(error)

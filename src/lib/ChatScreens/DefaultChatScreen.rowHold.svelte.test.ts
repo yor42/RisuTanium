@@ -85,6 +85,7 @@ vi.mock(import('src/ts/alert'), () => ({
     alertConfirm: vi.fn(async () => true),
     alertWait: vi.fn(),
     alertClear: vi.fn(),
+    waitUnreadNotice: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/alert'))
 
 vi.mock(import('src/ts/tokenizer'), () => ({
@@ -262,6 +263,10 @@ import { DBState, ScrollToMessageStore, selectedCharID, settingsOpen } from 'src
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { installChatSurface, resetChatSurfaceForTests } from './chatSurface.svelte'
 import { language } from 'src/lang'
+import { alertNormal, alertWait } from 'src/ts/alert'
+import { downloadFile } from 'src/ts/globalApi.svelte'
+import { downloadNotice } from 'src/ts/exportNotice'
+import { resetTaskHostForTests, setTaskClockForTests, taskHostView, taskShown } from 'src/ts/alertTask.svelte'
 
 const HOLD = 'data-risu-cv-hold'
 
@@ -370,6 +375,11 @@ beforeEach(() => {
     settingsOpen.set(false)
     resetChatSurfaceForTests()
     installChatSurface()
+    resetTaskHostForTests()
+    let tick = 0
+    setTaskClockForTests({ now: () => (tick += 1000), setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (timer) => clearTimeout(timer), hidden: () => false })
+    vi.mocked(alertNormal).mockClear()
+    vi.mocked(alertWait).mockClear()
 })
 
 afterEach(async () => {
@@ -434,6 +444,75 @@ describe('a screenshot', () => {
         expect(held()).toBe(true)
         runFrame()
         expect(held()).toBe(true)
+        runFrame()
+        expect(held()).toBe(false)
+    })
+})
+
+// ---- the task card (S6b): the Screenshot runs on one card through the shared seam
+
+/** Opens the legacy screen's menu and starts Screenshot with a canvas the merge can draw on. */
+async function startScreenshot(): Promise<void> {
+    const context = { fillStyle: '', fillRect: () => {}, drawImage: () => {} }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => context as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(() => 'data:image/png;base64,AAAA')
+    const target = await showScreen()
+    const rows = document.createElement('div')
+    rows.className = 'default-chat-screen'
+    const chat = document.createElement('div')
+    chat.className = 'risu-chat'
+    rows.append(chat)
+    document.body.append(rows)
+
+    const menuButton = [...target.querySelectorAll('button')].find((button) => button.querySelector('svg.lucide-menu'))
+    expect(menuButton).toBeDefined()
+    menuButton!.click()
+    flushSync()
+    await tick()
+    const item = [...target.querySelectorAll('div.cursor-pointer')].find((node) => node.textContent?.trim() === language.screenshot)
+    expect(item).toBeDefined()
+    ;(item as HTMLElement).click()
+}
+
+describe('the legacy screen Screenshot on the task card', () => {
+    test('AD3: it runs on one card without Cancel and ends done; no wait, no legacy notice, and the hold still ends two frames after', async () => {
+        const seen: Array<{ title: string | undefined, cancel: boolean | undefined }> = []
+        vi.mocked(downloadFile).mockImplementationOnce(async () => {
+            seen.push({ title: taskHostView()?.title, cancel: taskHostView()?.cancelOffered })
+            return true
+        })
+        await startScreenshot()
+        await settleMicrotasks()
+
+        expect(seen).toEqual([{ title: language.screenshotTaskTitle, cancel: false }])
+        expect(taskHostView()?.result?.headline).toBe(language.exportTaskDone)
+        expect(alertWait).not.toHaveBeenCalled()
+        expect(alertNormal).not.toHaveBeenCalled()
+        expect(held()).toBe(true)
+        runFrame()
+        runFrame()
+        expect(held()).toBe(false)
+    })
+
+    test('AD5: on the Android picker no card is up while it is open, a saved file posts the legacy notice, and the hold is released', async () => {
+        const inPicker: Array<{ title: string | undefined, shown: boolean }> = []
+        vi.mocked(downloadFile).mockImplementationOnce(async (_name, _data, options) => {
+            const openPicker = async (): Promise<string | null> => {
+                inPicker.push({ title: taskHostView()?.title, shown: taskShown() })
+                return '/picked/chat.png'
+            }
+            const picked = options?.aroundPicker ? await options.aroundPicker(openPicker) : await openPicker()
+            return picked !== null
+        })
+        await startScreenshot()
+        await settleMicrotasks()
+
+        expect(inPicker).toEqual([{ title: undefined, shown: false }])
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        expect(alertNormal).toHaveBeenCalledWith(downloadNotice(language.screenshotSaved))
+        expect(taskHostView()).toBeNull()
+        expect(alertWait).not.toHaveBeenCalled()
+        runFrame()
         runFrame()
         expect(held()).toBe(false)
     })
