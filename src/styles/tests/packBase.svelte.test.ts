@@ -188,6 +188,8 @@ const EMBEDDED = [
     'src/lib/Others/PluginDefinedIcon.svelte',
     'src/lib/SideBars/CharConfig.svelte',
     'src/lib/SideBars/DevTool.svelte',
+    // Enters through the TaskToastHarness test harness; it paints nothing (display: contents).
+    'src/lib/UI/GUI/AlertInertScope.svelte',
 ]
 
 const surfaceSvelte = SURFACE_DIRS.flatMap((d) => listFiles(d, '.svelte'))
