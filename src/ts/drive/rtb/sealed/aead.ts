@@ -5,7 +5,7 @@ import { gcm } from '@noble/ciphers/aes.js'
  * where `crypto.subtle` exists and @noble/ciphers where it does not (plain HTTP by LAN address).
  *
  * `open` resolves `null` only for an authentication failure, which is exactly: WebCrypto's
- * `decrypt` rejecting with a `DOMException` named `OperationError`, or @noble's tag-mismatch
+ * `decrypt` rejecting with an error named `OperationError`, or @noble's tag-mismatch
  * error. Every other error is rethrown, so a caller never reads an allocation failure or a type
  * error as "wrong password" or "damaged".
  */
@@ -44,6 +44,11 @@ function nobleKey(key: AeadKey): Uint8Array {
     return key
 }
 
+/** WebCrypto signals an authentication failure by an error named `OperationError`; the name is read, not the class, so no realm's `DOMException` matters. */
+export function isOperationError(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'OperationError'
+}
+
 export function webCryptoAead(subtle: SubtleCrypto = globalThis.crypto.subtle): AeadBackend {
     return {
         name: 'webcrypto',
@@ -59,7 +64,7 @@ export function webCryptoAead(subtle: SubtleCrypto = globalThis.crypto.subtle): 
                 const opened = await subtle.decrypt({ name: 'AES-GCM', iv: plain(nonce), additionalData: plain(aad), tagLength: 128 }, webKey(key), plain(sealed))
                 return new Uint8Array(opened)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'OperationError') {
+                if (isOperationError(error)) {
                     return null
                 }
                 throw error

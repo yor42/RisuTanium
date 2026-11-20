@@ -117,6 +117,17 @@ describe('authentication failure is recognised exactly', () => {
         const auth = new DOMException('bad tag', 'OperationError')
         expect(await failing(auth).open(real, ZERO_NONCE, new Uint8Array(32), NO_AAD)).toBeNull()
     })
+
+    test('webcrypto: an error named OperationError is null whatever its class, a TypeError and a nameless value still throw', async () => {
+        const failing = (error: unknown) => webCryptoAead({ decrypt: async () => { throw error } } as unknown as SubtleCrypto)
+        const real = await globalThis.crypto.subtle.importKey('raw', ZERO_KEY, 'AES-GCM', false, ['decrypt'])
+        // An error of another realm is not an instance of this realm's classes; only its name says what it is.
+        expect(await failing({ name: 'OperationError', message: 'foreign realm' }).open(real, ZERO_NONCE, new Uint8Array(32), NO_AAD)).toBeNull()
+        const type = new TypeError('not a tag problem')
+        await expect(failing(type).open(real, ZERO_NONCE, new Uint8Array(32), NO_AAD)).rejects.toBe(type)
+        await expect(failing(null).open(real, ZERO_NONCE, new Uint8Array(32), NO_AAD)).rejects.toBeNull()
+        await expect(failing('OperationError').open(real, ZERO_NONCE, new Uint8Array(32), NO_AAD)).rejects.toBe('OperationError')
+    })
 })
 
 describe('selectAead', () => {

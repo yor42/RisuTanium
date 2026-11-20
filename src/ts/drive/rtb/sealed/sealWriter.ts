@@ -33,6 +33,7 @@ export interface PreparedSeal {
     sealedSize(plaintextLen: number): number
     /** Chunks written for a plaintext length. */
     chunks(plaintextLen: number): number
+    /** Single use: a second call throws, because the first sink wipes the payload key when it ends. */
     sink(target: (chunk: Uint8Array) => Promise<void> | void): EncryptingSink
 }
 
@@ -81,6 +82,7 @@ export async function prepareSeal(passwordText: string, params: SealParams, deps
             wrappedKey: wrapped,
         })
         rawPayloadKey = payloadKey(master, context)
+        let sinkTaken = false
         const sealContext: SealContext = {
             header,
             chunkSize: params.chunkSize,
@@ -93,7 +95,13 @@ export async function prepareSeal(passwordText: string, params: SealParams, deps
             aead,
             sealedSize: (plaintextLen) => sealedFileSize(V1_HEADER_LEN, plaintextLen, params.chunkSize),
             chunks: (plaintextLen) => chunkCount(plaintextLen, params.chunkSize),
-            sink: (target) => new EncryptingSink(sealContext, target),
+            sink: (target) => {
+                if (sinkTaken) {
+                    throw new Error('a prepared seal gives out one sink')
+                }
+                sinkTaken = true
+                return new EncryptingSink(sealContext, target)
+            },
         }
     } finally {
         bytes.fill(0)

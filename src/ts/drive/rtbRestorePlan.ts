@@ -17,7 +17,7 @@ import { classifyCommitRead } from '../storage/store2/commitKey'
 import type { OmittedEntry as FileOmittedEntry, RtbManifest } from './rtb/manifest'
 import type { RtbNotice } from './rtb/rtbClassify'
 import type { SectionRow } from './rtb/sections'
-import { rangeSourceFrom, type RangeSource } from './rtb/rangeSource'
+import type { RangeSource } from './rtb/rangeSource'
 import type { ZipIndex } from './rtb/zip64Reader'
 import { planAssets, type AssetPlanDeps, type AssetsPlan, type CreatableRule, type InlaysPlan, type SizedListing } from './rtb/rtbAssetPlan'
 import { verifyRtb, type NewerItem, type RtbVerdict, type SidePlanItem, type Store2Plan, type VerifyOptions } from './rtb/rtbVerify'
@@ -27,6 +27,7 @@ import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { acquireRestoreHold, baseOfRead, type BaseRead, type HoldAcquire, type HoldOptions, type RestoreHold } from './rtbRestoreHold'
 import { askToClearForeignMarker, checkStore2Import, confirmImportScale, type ForeignMarkerQuestion, type Store2ImportCheck, type Store2ImportRefusal, type Store2ImportTarget } from './storeImport'
 import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
+import { askRtbPassword, openRestoreSource, sealedVerdict } from './rtbSealedOpen'
 
 /**
  * The page-target front half of a `.rtb` restore (CHORE-128 S11): the refusals before anything is written,
@@ -114,6 +115,8 @@ export interface RtbPrepareDeps {
     saveFirst(boundMs: number): Promise<void>
     acquireHold(busy: BusyHandle, options: HoldOptions): Promise<HoldAcquire>
     verify(source: RangeSource, options: VerifyOptions): Promise<RtbVerdict>
+    /** The password of a sealed file, or `null` when the person cancels. */
+    password(reason: 'first' | 'wrong' | 'unusable'): Promise<string | null>
     assetDeps(): AssetPlanDeps
     confirmScale(fileSize: number, entries: number, databaseBytes: number, unitBytes: number): Promise<boolean>
     confirm(text: string): Promise<boolean>
@@ -216,6 +219,7 @@ function realDeps(): RtbPrepareDeps {
         saveFirst,
         acquireHold: acquireRestoreHold,
         verify: verifyRtb,
+        password: askRtbPassword,
         assetDeps: realAssetDeps,
         confirmScale: confirmImportScale,
         confirm: alertConfirm,
@@ -255,13 +259,14 @@ export interface VerifiedRtb {
     notice: RestoreNoticeItems
 }
 
-export type RtbVerifyDeps = Pick<RtbPrepareDeps, 'verify' | 'assetDeps' | 'confirmScale' | 'confirm' | 'error' | 'wait'>
+export type RtbVerifyDeps = Pick<RtbPrepareDeps, 'verify' | 'password' | 'assetDeps' | 'confirmScale' | 'confirm' | 'error' | 'wait'>
 export type RtbVerifyEnd = { kind: 'ok', verified: VerifiedRtb } | RtbEnded
 
 /** The verification and prompt calls of the real page; the start-up restore uses the same ones. */
 export function realVerifyDeps(): RtbVerifyDeps {
     return {
         verify: verifyRtb,
+        password: askRtbPassword,
         assetDeps: realAssetDeps,
         confirmScale: confirmImportScale,
         confirm: alertConfirm,
@@ -282,8 +287,12 @@ export function realVerifyDeps(): RtbVerifyDeps {
 export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, options: { newerBase: BaseRead | null, sideCheckCapBytes?: number, beforeAssetPlan?: () => Promise<RtbEnded | null> }): Promise<RtbVerifyEnd> {
     // V: the file.
     let lastPercent = -1
-    const source = rangeSourceFrom(picked.source)
-    const verdict = await deps.verify(source, {
+    const opened = await openRestoreSource(picked, deps)
+    if (opened.kind === 'ended') {
+        return opened.end
+    }
+    const source = opened.source
+    const verdict = sealedVerdict(opened, await deps.verify(source, {
         sideCheckCapBytes: options.sideCheckCapBytes,
         onProgress: (percent) => {
             if (percent !== lastPercent) {
@@ -291,7 +300,7 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
                 deps.wait(language.rtbRestoreChecking(percent))
             }
         },
-    })
+    }))
     switch (verdict.kind) {
         case 'could-not-read':
             console.error(verdict.message)
@@ -300,9 +309,6 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
         case 'not-an-rtb':
             deps.error(language.rtbRestoreNotRtb)
             return ended('nothing-replaced', 'not-an-rtb')
-        case 'encrypted':
-            deps.error(language.rtbRestoreEncrypted)
-            return ended('nothing-replaced', 'encrypted')
         case 'damaged':
             console.error(verdict.reason)
             deps.error(language.rtbRestoreDamaged)

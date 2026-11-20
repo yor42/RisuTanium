@@ -251,6 +251,21 @@ describe('EncryptingSink state', () => {
         await expect(sink.finish()).rejects.toThrow()
     })
 
+    test('a prepared seal gives out one sink; a second call throws and writes nothing', async () => {
+        const seal = await prepareSeal(VECTOR_INPUT.password, PARAMS, { random: vectorRandom() })
+        const calls: number[] = []
+        const first = seal.sink((chunk) => {
+            calls.push(chunk.length)
+        })
+        await first.write(vectorPlaintext(10))
+        await first.finish()
+        const before = calls.length
+        expect(() => seal.sink((chunk) => {
+            calls.push(chunk.length)
+        })).toThrow()
+        expect(calls.length).toBe(before)
+    })
+
     test('overlapping calls are refused and poison the sink', async () => {
         let release: () => void = () => undefined
         const gate = new Promise<void>((resolve) => {

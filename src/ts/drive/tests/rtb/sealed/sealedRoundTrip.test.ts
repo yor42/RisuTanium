@@ -102,7 +102,6 @@ describe('backends', () => {
         const descriptor = Object.getOwnPropertyDescriptor(globalThis.crypto, 'subtle')
         const plaintext = seededBytes(300, 5)
         const seal = await prepareSeal(PASSWORD, { m: 8, t: 1, chunkSize: 64 })
-        const sink = seal.sink(() => undefined)
         const parts: Uint8Array[] = []
         const kept = seal.sink((chunk) => {
             parts.push(chunk.slice())
@@ -114,8 +113,6 @@ describe('backends', () => {
         }
         Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, value: undefined })
         try {
-            await sink.write(plaintext)
-            await sink.finish()
             await kept.write(plaintext)
             await kept.finish()
             expect(Buffer.from(await opened.source.read(0, plaintext.length)).equals(plaintext)).toBe(true)
