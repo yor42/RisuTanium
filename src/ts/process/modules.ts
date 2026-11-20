@@ -1,7 +1,7 @@
 import { language } from "src/lang"
 import { downloadNotice } from "src/ts/exportNotice"
 import { fillLang } from "src/lang/fill"
-import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
+import { alertClear, alertConfirm, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash"
@@ -18,8 +18,8 @@ import { moduleChangeNeedsReload, type ModuleReloadBase } from "./moduleReloadNe
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, exportOffersCancel, importCharacterFile, preflightCardExport } from "../characterCards"
 import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport, type ExportAssetEntry } from "../drive/exportPreflight"
-import { ExportCancelToken, ExportCancelledError, createExportWaitGate, type ExportWaitGate } from "../exportCancel"
-import { exportFileState, withFileIncompleteSentence } from "../exportWriters"
+import { ExportCancelToken } from "../exportCancel"
+import { createExportTask } from "../exportTask"
 import { isTauri } from "../platform"
 import { ASSET_RETAINED_KEY } from "../studio/assets/assetOwnerKeys"
 import { risumFileName, streamRisum } from "../risumStream"
@@ -78,37 +78,62 @@ async function writeModuleCard(module:RisuModule, arg:{
     alertEnd?:boolean
 }, busy:BusyHandle){
     const alertEnd = arg.alertEnd ?? true
-
-    const char = convertModuleToCharacter(module)
-    // Before the save dialog and before the stand-in icon is saved; the card export is told so and does not check again.
-    const checked = await preflightCardExport(char, 'charx', 'v3')
-    if(checked.kind !== 'ok'){
-        await refuseExport(checked)
-        return
+    // Created first and shared with the card export, so every ending of this run, a throw before the card included, goes through it.
+    const task = createExportTask({title: language.exportTaskModuleTitle, subtitle: module.name})
+    let writer: LocalWriter | undefined
+    try{
+        const char = convertModuleToCharacter(module)
+        // Before the save dialog and before the stand-in icon is saved; the card export is told so and does not check again.
+        const checked = await preflightCardExport(char, 'charx', 'v3')
+        if(checked.kind !== 'ok'){
+            await refuseExport(checked)
+            return
+        }
+        if(!char.image){
+            const res = await fetch('/none.webp')
+            const data = new Uint8Array(await res.arrayBuffer())
+            char.image = await saveAsset(data)
+            char.extentions ??= {}
+            char.extentions['moduleNoneImage'] = true
+        }
+        const cancel = exportOffersCancel({writer: undefined, type: 'charx', tauri: isTauri, largeAssetCount: checked.large.size})
+            ? new ExportCancelToken()
+            : null
+        task.useToken(cancel)
+        // On web the card opens here, with a Cancel, before the writer's open can stall; on desktop and Android after the save dialog.
+        if(!isTauri){
+            task.open()
+        }
+        const opened = new LocalWriter()
+        writer = opened
+        if(!(await openOutsideBusy(busy, () => opened.init(module.name + '.module', ['charx'], undefined, cancel ?? undefined)))){
+            //the person cancelled the save dialog
+            task.close()
+            return
+        }
+        task.open()
+        const exported = await exportCharacterCard(char, 'charx', {
+            spec: 'v3',
+            writer: opened,
+            checked,
+            progress: task
+        })
+        if(!exported){
+            //the export already ended the card with its error; a success notice would hide it
+            return
+        }
+        if(alertEnd){
+            task.done(downloadNotice(language.successExport))
+        }
+        else{
+            task.close()
+        }
     }
-    if(!char.image){
-        const res = await fetch('/none.webp')
-        const data = new Uint8Array(await res.arrayBuffer())
-        char.image = await saveAsset(data)
-        char.extentions ??= {}
-        char.extentions['moduleNoneImage'] = true
+    catch(e){
+        task.endOnError(e, writer)
     }
-    const writer = new LocalWriter()
-    if(!(await openOutsideBusy(busy, () => writer.init(module.name + '.module', ['charx'])))){
-        //the person cancelled the save dialog
-        return
-    }
-    const exported = await exportCharacterCard(char, 'charx', {
-        spec: 'v3',
-        writer,
-        checked
-    })
-    if(!exported){
-        //the export already showed its error; a success alert would hide it
-        return
-    }
-    if(alertEnd){
-        alertNormal(downloadNotice(language.successExport))
+    finally{
+        task.close()
     }
 }
 
@@ -198,67 +223,58 @@ async function encodeRisumRecordBody(key:string, showWait:() => void):Promise<Ui
  * writer falls back to a whole-file in-memory Blob, so that route does not bound memory.
  */
 async function writeRisumFile(snapshot:RisuModule, entries:ExportAssetEntry[], alertEnd:boolean, busy:BusyHandle):Promise<null>{
-    let cancel: ExportCancelToken | undefined
-    let gate: ExportWaitGate | undefined
+    // Created first: every ending of this run goes through it, a throw before the card opened included.
+    const task = createExportTask({title: language.exportTaskModuleTitle, subtitle: snapshot.name})
     let localWriter: LocalWriter | undefined
     try{
-        if(exportOffersCancel({writer: undefined, type: 'risum', tauri: isTauri, largeAssetCount: 0, assetCount: entries.length})){
-            cancel = new ExportCancelToken()
-            gate = createExportWaitGate(cancel, true)
-            // The picker or the writer's first writes can stall before any asset progress is shown.
-            gate.wait(language.alerts.writingPng)
+        const cancel = exportOffersCancel({writer: undefined, type: 'risum', tauri: isTauri, largeAssetCount: 0, assetCount: entries.length})
+            ? new ExportCancelToken()
+            : undefined
+        task.useToken(cancel ?? null)
+        // On web the card opens here, with a Cancel, before the writer's open can stall; on desktop and Android after the save dialog.
+        if(!isTauri){
+            task.open()
         }
         const writer = new LocalWriter()
         localWriter = writer
         if(!(await openOutsideBusy(busy, () => writer.init('RisuM File', ['risum'], risumFileName(snapshot.name), cancel)))){
             //the person dismissed the save dialog: nothing was exported, so nothing is said
-            gate?.clear()
+            task.close()
             return null
         }
-        const showWait = (index:number) => {
-            if(cancel && gate){
-                cancel.throwIfCancelled()
-                gate.wait(fillLang(language.alerts.addingAssets, { completed: index, total: entries.length }))
-            }
-            else{
-                showRisumAssetWait(index, entries.length)
-            }
+        task.open()
+        if(entries.length > 0){
+            task.step('assets')
+            task.count(0, entries.length)
         }
         await streamRisum(
             await encodeRisumMainBlock(snapshot),
             entries.length,
-            (index) => encodeRisumRecordBody(entries[index].key, () => showWait(entries[index].index)),
+            async (index) => {
+                const body = await encodeRisumRecordBody(entries[index].key, () => task.throwIfCancelled())
+                task.count(index + 1, entries.length)
+                return body
+            },
             (chunk) => writer.write(chunk),
         )
+        task.step('write')
         await writer.close()
         if(alertEnd){
             // A Tauri build writes to the location the person picked, so the default "download directory" text would be false.
-            alertNormal(isTauri ? language.successExportChosenLocation : downloadNotice(language.successExport))
+            task.done(isTauri ? language.successExportChosenLocation : downloadNotice(language.successExport))
         }
-        else if(gate){
-            //the Cancel dialog must not stay on screen after a finished export that posts no notice; nothing else is shown between the close and this line
-            alertClear()
+        else{
+            task.close()
         }
         return null
     }
     catch(e){
-        if(cancel && (cancel.cancelled || e instanceof ExportCancelledError)){
-            // The person's choice, not a failure. The notice is posted before this resolves so the caller's next dialog waits for it.
-            if(exportFileState(localWriter?.writer) === 'kept'){
-                alertNormal(language.exportCancelledFileIncomplete)
-            }
-            return null
-        }
-        if(localWriter){
-            //A failed export gives up on its file; the abort is not awaited because it may stay pending behind a write the browser never takes.
-            localWriter.abort(e)
-            if(exportFileState(localWriter.writer) === 'kept'){
-                alertError(withFileIncompleteSentence(e))
-                return null
-            }
-        }
-        alertError(e)
+        // The ending is posted before this resolves so the caller's next dialog waits for it.
+        task.endOnError(e, localWriter)
         return null
+    }
+    finally{
+        task.close()
     }
 }
 

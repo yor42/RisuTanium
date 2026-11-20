@@ -351,3 +351,43 @@ describe('the Utility send', () => {
         expect(sent?.body).not.toContain('response_format')
     })
 })
+
+describe('aux slot routing', () => {
+    /** The model a request in `mode` sends when no static model overrides the slot. */
+    async function slotModelOf(mode: string, extra: Arg = {}): Promise<unknown> {
+        const out = await requestChatDataMain({ formated: messages(), bias: {}, useStreaming: false, noMultiGen: true, tools: [], previewBody: true, ...extra }, mode, null)
+        expect(out.type).toBe('success')
+        const preview = JSON.parse(out.result) as { body: unknown }
+        const body = (typeof preview.body === 'string' ? JSON.parse(preview.body) : preview.body) as Record<string, unknown>
+        return body.model
+    }
+
+    const slots = { memory: 'gpt41', emotion: '', translate: '', otherAx: '' }
+
+    test('AR1: a filled slot routes its aux mode even though the saved flag is off', async () => {
+        installDb({ aiModel: 'gpt4o', subModel: 'gpt4o', seperateModelsForAxModels: false, seperateModels: slots })
+
+        expect(await slotModelOf('memory')).toBe('gpt-4.1')
+    })
+
+    test('AR1: a filled slot routes its aux mode when the saved flag is on', async () => {
+        installDb({ aiModel: 'gpt4o', subModel: 'gpt4o', seperateModelsForAxModels: true, seperateModels: slots })
+
+        expect(await slotModelOf('memory')).toBe('gpt-4.1')
+    })
+
+    test('guard AR2: an empty slot, a missing key and a missing object all fall back to the sub model without throwing', async () => {
+        for (const seperateModels of [{ memory: '', emotion: '', translate: '', otherAx: '' }, {}, undefined]) {
+            installDb({ aiModel: 'gpt41', subModel: 'gpt4o', seperateModels })
+
+            expect(await slotModelOf('memory')).toBe('gpt-4o')
+        }
+    })
+
+    test('guard AR3: the model mode ignores every slot and a static model beats a filled slot', async () => {
+        installDb({ aiModel: 'gpt4o', subModel: 'gpt4o', seperateModels: { model: 'gpt41', memory: 'gpt41', emotion: 'gpt41', translate: 'gpt41', otherAx: 'gpt41' } })
+
+        expect(await slotModelOf('model')).toBe('gpt-4o')
+        expect(await slotModelOf('memory', { staticModel: 'gpt4o' })).toBe('gpt-4o')
+    })
+})
