@@ -126,6 +126,14 @@ describe('ModuleSettings accessible names', () => {
         expect(exposedIcons(target)).toEqual([])
     })
 
+    test('regression reproducer: the search field is named by the search label', () => {
+        installDb()
+        const target = mountModules()
+        const search = target.querySelector('input[type="text"]') as HTMLInputElement
+        expect(controlName(search)).toBe(language.search)
+        expect(unnamedControls(target, { fields: true })).toEqual([])
+    })
+
     test('regression reproducer: the controls carry the meaning-bearing names', () => {
         installDb()
         const target = mountModules()

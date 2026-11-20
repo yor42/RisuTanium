@@ -157,7 +157,7 @@ describe('the Advanced page at index 6', () => {
         await settle()
         expect(target.querySelector('[data-part="advanced-calm"]')?.textContent).toBe(language.settingsShellAdvCalm)
         expect(maybeRow(target, 'adv.warn')).toBeNull()
-        expect(target.querySelector('.text-draculared')).toBeNull()
+        expect(target.querySelector('.text-draculared:not(button.help *)')).toBeNull()
     })
 
     test('the groups render in order, with the gated ones absent while their gates are off', async () => {

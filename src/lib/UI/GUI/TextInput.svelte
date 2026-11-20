@@ -1,6 +1,10 @@
 
 <!-- Svelte doesn't allow two-way binding on an input with a dynamic type, so the value is written back by hand. -->
 
+<!-- The screen-reader-only name goes before the input so the input stays the last sibling. -->
+{#if !labelId && label.trim()}
+    <span id={nameId} class="sr-only">{label}</span>
+{/if}
 <!-- One element for both states, so the caret and focus survive the masked/plain switch while typing. new-password disables autofill on the masked input. -->
 <input
     class={"border border-darkborderc peer focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200" + ((className) ? (' ' + className) : '')}
@@ -32,6 +36,8 @@
     disabled={disabled}
     onchange={onchange}
     list={list}
+    aria-labelledby={nameId}
+    aria-describedby={describedIds}
 />
 
 <script lang="ts">
@@ -58,6 +64,12 @@
         disabled?: boolean;
         hideText?: boolean;
         list?: string;
+        /** Id of an existing visible label element that names the field. */
+        labelId?: string;
+        /** Name text for a field with no visible label; rendered as a screen-reader-only span. */
+        label?: string;
+        /** Extra description ids, listed after the naming element. */
+        describedBy?: string;
     }
 
     let {
@@ -76,9 +88,18 @@
         className = '',
         disabled = false,
         hideText = false,
-        list = undefined
+        list = undefined,
+        labelId = undefined,
+        label = '',
+        describedBy = undefined
 
     }: Props = $props();
+
+    const uid = $props.id();
+
+    // TalkBack speaks only the description in the field's own stop, so the naming element is also the first description.
+    let nameId = $derived(labelId || (label.trim() ? `${uid}-label` : undefined));
+    let describedIds = $derived([nameId, describedBy].filter(Boolean).join(' ') || undefined);
 
     // A value that is wholly a ${NAME} reference holds no secret, so it is shown as typed.
     let masked = $derived(hideText && !isSecretRef(value));

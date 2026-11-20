@@ -27,6 +27,7 @@
     import { isModuleStub } from "src/ts/storage/moduleStub";
   import { v4 } from "uuid";
 
+    const uid = $props.id()
     let submenu = $state(0)
     interface Props {
         currentModule: RisuModule;
@@ -269,18 +270,18 @@
 </div>
 
 {#if submenu === 0}
-    <span>{language.name}</span>
-    <TextInput bind:value={currentModule.name} className="mt-1"/>
-    <span class="mt-4">{language.description}</span>
-    <TextInput bind:value={currentModule.description} className="mt-1" size="sm"/>
-    <span class="mt-4">{language.namespace} <Help key="namespace" /></span>
-    <TextInput bind:value={currentModule.namespace} className="mt-1" size="sm"/>
+    <span id="{uid}-name">{language.name}</span>
+    <TextInput labelId="{uid}-name" bind:value={currentModule.name} className="mt-1"/>
+    <span id="{uid}-description" class="mt-4">{language.description}</span>
+    <TextInput labelId="{uid}-description" bind:value={currentModule.description} className="mt-1" size="sm"/>
+    <span class="mt-4"><span id="{uid}-namespace">{language.namespace}</span> <Help key="namespace" /></span>
+    <TextInput labelId="{uid}-namespace" bind:value={currentModule.namespace} className="mt-1" size="sm"/>
     <div class="flex items-center mt-4">
         <Check bind:check={() => currentModule.hideIcon ?? false, (v) => currentModule.hideIcon = v} name={language.hideChatIcon}/>
     </div>
-    <span class="mt-4">{language.customPromptTemplateToggle} <Help key='customPromptTemplateToggle' /></span>
+    <span class="mt-4"><span id="{uid}-toggle">{language.customPromptTemplateToggle}</span> <Help key='customPromptTemplateToggle' /></span>
     <StudioToggleLink owner={{ type: 'module', moduleId: currentModule.id }} />
-    <TextAreaInput bind:value={currentModule.customModuleToggle}/>
+    <TextAreaInput labelId="{uid}-toggle" bind:value={currentModule.customModuleToggle}/>
 {/if}
 {#if submenu === 1 && (Array.isArray(currentModule.lorebook))}
     <LoreBookList externalLoreBooks={currentModule.lorebook} />
@@ -303,7 +304,7 @@
 {/if}
 
 {#if submenu === 2 && (Array.isArray(currentModule.regex))}
-    <TextAreaInput bind:value={currentModule.backgroundEmbedding} className="mt-2" placeholder={language.backgroundHTML} size="sm"/>
+    <TextAreaInput bind:value={currentModule.backgroundEmbedding} className="mt-2" placeholder={language.backgroundHTML} label={language.backgroundHTML} size="sm"/>
     <RegexList bind:value={currentModule.regex}/>
     <div class="text-textcolor2 mt-2 flex gap-2">
         <button class="font-medium cursor-pointer hover:text-textcolor" aria-label={language.add} onclick={() => {
@@ -386,7 +387,7 @@
                                     {/if}
                                 {/if}
                             {/if}
-                            <TextInput fullwidth size="sm" marginBottom bind:value={() => assets[0], (name) => renameAsset(i, name)} placeholder="..." />
+                            <TextInput label={language.name} fullwidth size="sm" marginBottom bind:value={() => assets[0], (name) => renameAsset(i, name)} placeholder="..." />
                         </td>
                         
                         <th class="font-medium cursor-pointer w-10">
