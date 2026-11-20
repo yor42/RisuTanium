@@ -1,5 +1,7 @@
 # Subscription-first campaign execution
 
+> **Partly superseded (governance v2, 2026-11-20).** The route order, external-first dispatch, paid fallback and two-worktree scheduling here are superseded by MC-2748 (native first), MC-2744 (approval matrix) and one session per ticket; see [routing](routing.md) and [gates](gates.md). Batch scope, critical-contract classification, durable acceptance and device stop conditions still apply until this file is folded into routing.md.
+
 The maintainer approved this overhaul in the 2026-11-03 workflow conversation after independent plan and fallback-amendment review, and authorized implementation once [lane A paused](../../Agents/Handoff-2026-11-02-laneA.md). This supplements MC-785, MC-888, MC-894, MC-895, MC-896, MC-899 and MC-912. Original MC entries remain append-only. The [policy table](../../.claude/workflow-policy.json) implements these decisions; [Workflow-State](../../Agents/Workflow-State.json) indexes receipts and remaining work without replacing evidence or campaign authorities. The [cutover record](2026-11-03-workflow-cutover.md) records actual verification and activation limits.
 
 The later [parallel-track and Haiku-records amendment](2026-11-03-parallel-tracks.md), scheduling ID `2026-11-03-parallel-records`, is additive to revision `2026-11-03.1`. Existing registered/running identities and accepted evidence remain.
