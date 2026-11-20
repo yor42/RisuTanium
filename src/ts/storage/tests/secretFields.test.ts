@@ -103,10 +103,14 @@ vi.mock('src/ts/rpack/rpack_js.js', () => ({
 
 import { DBState } from 'src/ts/stores.svelte'
 import { downloadFile } from 'src/ts/globalApi.svelte'
+import { alertNormal } from 'src/ts/alert'
+import { downloadNotice } from 'src/ts/exportNotice'
+import { language } from 'src/lang'
 import { changeToPreset, downloadPreset, getDatabase, importPreset, presetFromWorkingSettings, presetTemplate, setDatabase, type Database } from 'src/ts/storage/database.svelte'
-import { encode as encodeMsgpack } from 'msgpackr/index-no-eval'
+import { decode as decodeMsgpack, encode as encodeMsgpack } from 'msgpackr/index-no-eval'
 import * as fflate from 'fflate'
 import { SECRET_FIELDS, secretFieldPath, type SecretFieldEntry } from 'src/ts/secretFields'
+import { isNotCredential, missingSentinels, sentinelObject, sentinelsIn } from 'src/ts/storage/tests/shareStripFixture'
 
 const CREDENTIAL_LOOKING = /key|token|secret|password/i
 
@@ -489,5 +493,204 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
         expect(working().forceReplaceUrl).toBe('https://own.test/v1')
         expect(working().proxyKey).toBe('sk-own')
         expect(working().koboldURL).toBe('http://own-kobold.test/api/v1')
+    })
+})
+
+describe('share-safe preset export', () => {
+    type Loose = Record<string, unknown>
+    type Kind = 'json' | 'risupreset' | 'return'
+    const kinds: Kind[] = ['json', 'risupreset', 'return']
+
+    const USER_KOBOLD = 'http://user-kobold.invalid/api/v1'
+    const endpoints = {
+        koboldURL: 'http://sentinel-kobold.invalid/api/v1',
+        forceReplaceUrl: 'https://sentinel-proxy.invalid/v1',
+        forceReplaceUrl2: 'https://sentinel-proxy2.invalid/v1',
+        textgenWebUIStreamURL: 'wss://sentinel-ooba.invalid/api/',
+        textgenWebUIBlockingURL: 'https://sentinel-ooba.invalid/api/',
+    }
+    const preset = sentinelObject('botPreset')
+
+    // The working settings a preset is saved from.
+    function workingDb(extra: Loose = {}): Loose {
+        return {
+            botPresets: [], botPresetsId: -1, NAIsettings: {},
+            proxyKey: 'sk-user-proxy', forceReplaceUrl: 'https://user-proxy.invalid/v1',
+            google: { accessToken: 'user-gemini-key' }, mancerHeader: 'user-mancer-key',
+            textgenWebUIBlockingURL: 'https://user-ooba.invalid/api/', textgenWebUIStreamURL: 'wss://user-ooba.invalid/api/',
+            koboldURL: USER_KOBOLD, openAIKey: 'sk-user-openai',
+            additionalParams: [['header::Authorization', 'Bearer user-proxy-secret']],
+            ooba: {}, ainconfig: {}, reverseProxyOobaArgs: { mode: 'instruct' }, promptSettings: { assistantPrefill: '' },
+            customAPIFormat: 0, customFlags: [], seperateModels: { memory: '', emotion: '', translate: '', otherAx: '' },
+            fallbackModels: { memory: [], emotion: [], translate: [], otherAx: [], model: [] }, seperateParameters: null,
+            modelTools: [], presetRegex: [], promptTemplate: null, mainPrompt: 'm', jailbreak: 'j', formatingOrder: [], aiModel: 'gpt-x',
+            apiType: 'x', temperature: 80, maxContext: 4000, maxResponse: 300, frequencyPenalty: 70, PresensePenalty: 70,
+            ...extra,
+        }
+    }
+
+    // Saved through the real producer: `downloadPreset` saves the working settings into preset 0 first.
+    function producerDb(): Loose {
+        return workingDb({
+            botPresetsId: 0, botPresets: [{ name: 'Src' }], ...endpoints, ...preset.object,
+            ainconfig: { stoptokens: '</s>\n###' },
+        })
+    }
+
+    // A stored preset holding a value at every botPreset registry path; `botPresetsId` -1 keeps it as stored.
+    function directDb(): Loose {
+        return workingDb({
+            botPresetsId: -1,
+            botPresets: [{
+                ...presetFromWorkingSettings(workingDb() as unknown as Database, 'Direct', ''),
+                ...endpoints, ...preset.object,
+            }],
+        })
+    }
+
+    const working = () => DBState.db as unknown as Loose
+
+    async function exportAs(kind: Kind): Promise<Loose> {
+        vi.mocked(downloadFile).mockClear()
+        const result = await downloadPreset(0, kind)
+        if (kind === 'return') {
+            return JSON.parse(JSON.stringify(result.data)) as Loose
+        }
+        const bytes = vi.mocked(downloadFile).mock.calls[0][1] as Uint8Array
+        if (kind === 'json') {
+            return JSON.parse(Buffer.from(bytes).toString('utf-8')) as Loose
+        }
+        const wrapper = decodeMsgpack(fflate.decompressSync(bytes)) as { preset: Uint8Array }
+        return decodeMsgpack(wrapper.preset) as Loose
+    }
+
+    test.each(kinds)('R2 reproducer: a %s export carries no endpoint URL and no koboldURL key', async (kind) => {
+        DBState.db = producerDb() as unknown as typeof DBState.db
+        for (const url of Object.values(endpoints)) {
+            expect(JSON.stringify(DBState.db)).toContain(url)
+        }
+
+        const exported = await exportAs(kind)
+
+        expect('koboldURL' in exported).toBe(false)
+        for (const url of Object.values(endpoints)) {
+            expect(JSON.stringify(exported)).not.toContain(url)
+        }
+    })
+
+    test('G3 reproducer: selecting an exported preset keeps the importer koboldURL', async () => {
+        DBState.db = producerDb() as unknown as typeof DBState.db
+        const exported = await exportAs('return')
+
+        DBState.db = workingDb() as unknown as typeof DBState.db
+        DBState.db.botPresets.push(exported as unknown as (typeof DBState.db.botPresets)[number])
+        changeToPreset(0)
+
+        expect(working().koboldURL).toBe(USER_KOBOLD)
+    })
+
+    const fixtures: [string, () => Loose][] = [['producer', producerDb], ['direct', directDb]]
+
+    describe.each(fixtures)('%s fixture', (_label, build) => {
+        test.each(kinds)('R1 guard: a %s export holds no botPreset credential sentinel', async (kind) => {
+            DBState.db = build() as unknown as typeof DBState.db
+            expect(missingSentinels(DBState.db, preset.leaves)).toEqual([])
+
+            const exported = await exportAs(kind)
+
+            expect(sentinelsIn(exported, preset.leaves)).toEqual([])
+        })
+
+        test('G11 guard: the live database keeps its keys and URLs after an export', async () => {
+            DBState.db = build() as unknown as typeof DBState.db
+            await exportAs('return')
+
+            expect(missingSentinels(DBState.db, preset.leaves)).toEqual([])
+            for (const url of Object.values(endpoints)) {
+                expect(JSON.stringify(DBState.db)).toContain(url)
+            }
+        })
+    })
+
+    test.each(kinds)('G5 guard: a %s export keeps ainconfig.stoptokens', async (kind) => {
+        DBState.db = producerDb() as unknown as typeof DBState.db
+        const exported = await exportAs(kind)
+        expect((exported.ainconfig as Loose).stoptokens).toBe('</s>\n###')
+    })
+
+    test.each(kinds)('G6 guard: a %s export writes the keys and four URLs as blank own keys', async (kind) => {
+        DBState.db = producerDb() as unknown as typeof DBState.db
+        const exported = await exportAs(kind)
+        for (const field of ['openAIKey', 'proxyKey', 'forceReplaceUrl', 'forceReplaceUrl2', 'textgenWebUIStreamURL', 'textgenWebUIBlockingURL']) {
+            expect(Object.hasOwn(exported, field), field).toBe(true)
+            expect(exported[field], field).toBe('')
+        }
+    })
+
+    describe('the notice that keys and endpoint URLs were left out', () => {
+        const fileKinds: Kind[] = ['json', 'risupreset']
+
+        function lastAlert(): string {
+            const calls = vi.mocked(alertNormal).mock.calls
+            return calls[calls.length - 1][0]
+        }
+
+        test.each(fileKinds)('R4 regression reproducer: a saved %s export appends the notice to the success alert', async (kind) => {
+            const notice = language.shareExportKeysLeftOut
+            expect(typeof notice).toBe('string')
+            DBState.db = producerDb() as unknown as typeof DBState.db
+            vi.mocked(alertNormal).mockClear()
+            vi.mocked(downloadFile).mockResolvedValueOnce(true as never)
+
+            await downloadPreset(0, kind)
+
+            expect(vi.mocked(alertNormal)).toHaveBeenCalledTimes(1)
+            expect(lastAlert()).not.toBe(downloadNotice(language.successExport))
+            expect(lastAlert()).toBe(`${downloadNotice(language.successExport)}\n\n${notice}`)
+        })
+
+        test.each(fileKinds)('G7 guard: a dismissed %s save shows no alert and no notice', async (kind) => {
+            DBState.db = producerDb() as unknown as typeof DBState.db
+            vi.mocked(alertNormal).mockClear()
+            vi.mocked(downloadFile).mockResolvedValueOnce(false as never)
+
+            await downloadPreset(0, kind)
+
+            expect(vi.mocked(alertNormal)).not.toHaveBeenCalled()
+        })
+
+        test('guard: a return export shows no alert', async () => {
+            DBState.db = producerDb() as unknown as typeof DBState.db
+            vi.mocked(alertNormal).mockClear()
+
+            await downloadPreset(0, 'return')
+
+            expect(vi.mocked(alertNormal)).not.toHaveBeenCalled()
+        })
+    })
+
+    test('U3 diagnostic: every URL-looking string field of a preset is a share endpoint field', async () => {
+        const { SHARE_ENDPOINT_FIELDS } = await import('src/ts/shareStrip')
+        const listed = new Set<string>(SHARE_ENDPOINT_FIELDS.map((entry) => entry.field))
+        const produced = presetFromWorkingSettings(workingDb(endpoints) as unknown as Database, 'Probe', '')
+        const unlisted = [...walkStrings(presetTemplate, '', []), ...walkStrings(produced, '', [])]
+            .filter((leaf) => /url/i.test(leaf.path))
+            .map((leaf) => leaf.path.split(/[.[]/)[0])
+            .filter((field) => !listed.has(field))
+        expect([...new Set(unlisted)]).toEqual([])
+        expect(listed.has('koboldURL')).toBe(true)
+    })
+
+    test('registry flag: notCredential entries are exactly the look-alikes', () => {
+        const flagged = (SECRET_FIELDS as readonly SecretFieldEntry[]).filter(isNotCredential).map((entry) => `${entry.scope}:${secretFieldPath(entry)}`)
+        expect(flagged.sort()).toEqual([
+            'botPreset:ainconfig.stoptokens',
+            'database:ainconfig.stoptokens',
+            'database:authRefreshes[].tokenUrl',
+            'database:customTokenizer',
+            'database:hotkeys[].action',
+            'database:hotkeys[].key',
+            'database:vertexAccessTokenExpires',
+        ])
     })
 })
