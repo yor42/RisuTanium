@@ -22,7 +22,15 @@ export type TaskCloseAnswer =
     | { readonly kind: 'replaced' }
     | { readonly kind: 'closed' }
 
+/** How a preflight card ended: `confirm` is the only answer that lets the action start. */
+export type TaskConfirmAnswer = 'confirm' | 'declined' | 'replaced' | 'closed'
+
 export interface TaskHandle {
+    /**
+     * Settles exactly once: `confirm` when the user confirmed (at once for a task without a preflight), `declined` for
+     * Cancel, Escape or Back, `replaced` when a newer task took the slot, `closed` when the card was removed.
+     */
+    readonly confirmation: Promise<TaskConfirmAnswer>
     setStep(index: number): void
     setFile(index: number, total: number, name?: string): void
     readonly setCount: ProgressSink
@@ -32,7 +40,8 @@ export interface TaskHandle {
     /**
      * True when Cancel is now locked and no cancel was requested: only then may the caller write.
      * False means the user pressed Cancel (`cancelRequested` is true) or the caller already ended the task.
-     * A detached handle returns `!cancelRequested`, so a replacement never reads as a cancel.
+     * A detached handle returns `!cancelRequested`, so a replacement never reads as a cancel; one that left the slot
+     * before it was confirmed returns false, so a preflight that never started can never write.
      */
     lockCancel(reason?: string): boolean
     readonly cancelRequested: boolean
@@ -50,6 +59,9 @@ interface Entry {
     readonly opener: HTMLElement | null
     readonly closed: Promise<TaskCloseAnswer>
     resolveClosed(answer: TaskCloseAnswer): void
+    resolveConfirmation(answer: TaskConfirmAnswer): void
+    /** True from the start of a task with a preflight until it is confirmed. */
+    unconfirmed: boolean
     cancelRequested: boolean
     detached: boolean
     stopListening(): void
@@ -76,6 +88,8 @@ function clearEntry(target: Entry, answer: TaskCloseAnswer): void {
     }
     target.controller.dispose()
     target.stopListening()
+    // A pending confirmation settles too, so no path leaves the preflight's wait hanging.
+    if (target.unconfirmed) target.resolveConfirmation(answer.kind === 'replaced' ? 'replaced' : 'closed')
     target.resolveClosed(answer)
 }
 
@@ -99,6 +113,10 @@ export function alertTask(def: TaskDef): TaskHandle {
     const closed = new Promise<TaskCloseAnswer>((resolve) => {
         resolveClosed = resolve
     })
+    let resolveConfirmation: (answer: TaskConfirmAnswer) => void = () => { }
+    const confirmation = new Promise<TaskConfirmAnswer>((resolve) => {
+        resolveConfirmation = resolve
+    })
     // Assigned right after the controller exists; the cancel callback below runs only later, from a press.
     let self: Entry
     const onCancel = def.onCancel
@@ -117,6 +135,8 @@ export function alertTask(def: TaskDef): TaskHandle {
         opener,
         closed,
         resolveClosed,
+        resolveConfirmation,
+        unconfirmed: def.confirm !== undefined,
         cancelRequested: false,
         detached: false,
         stopListening: () => { },
@@ -132,14 +152,16 @@ export function alertTask(def: TaskDef): TaskHandle {
     }
     entry = self
     shownView = controller.view
+    if (def.confirm === undefined) resolveConfirmation('confirm')
 
     return {
+        confirmation,
         setStep: (index) => { if (!self.detached) controller.setStep(index) },
         setFile: (index, total, name) => { if (!self.detached) controller.setFile(index, total, name) },
         setCount: (done, total) => { if (!self.detached) controller.setCount(done, total) },
         setFound: (done, found) => { if (!self.detached) controller.setFound(done, found) },
         setBytes: (done, total) => { if (!self.detached) controller.setBytes(done, total) },
-        lockCancel: (reason) => (self.detached ? !self.cancelRequested : controller.lockCancel(reason)),
+        lockCancel: (reason) => (self.detached ? !self.unconfirmed && !self.cancelRequested : controller.lockCancel(reason)),
         get cancelRequested() {
             return self.cancelRequested
         },
@@ -188,6 +210,27 @@ export function taskResultRead(): Promise<void> {
     return entry.closed.then(() => undefined)
 }
 
+/** Whether the shown task is a preflight card waiting for its answer. */
+export function taskConfirmShowing(): boolean {
+    return shownView !== null && shownView.state === 'confirm'
+}
+
+/** The preflight's primary: starts the task. Only a task in `confirm` accepts. */
+export function confirmTask(): void {
+    if (entry === null || !taskConfirmShowing()) return
+    entry.unconfirmed = false
+    entry.controller.confirm()
+    entry.resolveConfirmation('confirm')
+}
+
+/** The preflight's Cancel, Escape or Back: the card leaves the slot and nothing has started. */
+export function declineTask(): void {
+    if (entry === null || !taskConfirmShowing()) return
+    const declined = entry
+    declined.resolveConfirmation('declined')
+    clearEntry(declined, { kind: 'closed' })
+}
+
 /** Asks the shown task to cancel; only a task that offers Cancel accepts. */
 export function requestTaskCancel(): void {
     entry?.controller.requestCancel()
@@ -200,12 +243,13 @@ export function answerTask(answer: { kind: 'ok' } | { kind: 'action', id: string
 }
 
 /**
- * One Back press: cancels when Cancel is offered, holds while the task cannot be stopped, dismisses a result. Returns true
- * whenever a task is shown, so Back is consumed as a held `progress` alert consumes it.
+ * One Back press: declines a preflight, cancels when Cancel is offered, holds while the task cannot be stopped, dismisses a
+ * result. Returns true whenever a task is shown, so Back is consumed as a held `progress` alert consumes it.
  */
 export function taskBackPress(): boolean {
     if (entry === null || shownView === null) return false
     if (isTaskTerminal(shownView.state)) answerTask({ kind: 'ok' })
+    else if (shownView.state === 'confirm') declineTask()
     else if (shownView.cancelOffered) requestTaskCancel()
     return true
 }

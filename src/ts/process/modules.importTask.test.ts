@@ -174,7 +174,7 @@ vi.mock('src/ts/process/moduleLoader', () => ({
 }))
 
 import { importModule } from 'src/ts/process/modules'
-import { answerTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import { answerTask, confirmTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskConfirmShowing, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskClock, TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { inFlightKinds } from 'src/ts/process/inFlightWork'
@@ -211,6 +211,7 @@ async function importToResult(): Promise<{ done: Promise<void>, view: TaskView |
     let ended = false
     void done.then(() => { ended = true })
     for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        if (taskConfirmShowing()) confirmTask()
         await new Promise((resolve) => setTimeout(resolve, 0))
     }
     return { done, view: taskResultShowing() ? taskHostView() : null }

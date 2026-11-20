@@ -152,7 +152,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({ readFile: vi.fn(async () => new Uint8A
 vi.mock('@tauri-apps/plugin-deep-link', () => ({ onOpenUrl: vi.fn(async () => vi.fn()) }))
 
 import { importCharacter } from 'src/ts/characterCards'
-import { answerTask, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import { answerTask, confirmTask, resetTaskHostForTests, setTaskClockForTests, taskConfirmShowing, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskClock } from 'src/lib/Nexus/pattern/taskProgress'
 import { alertConfirm } from 'src/ts/alert'
 import { language } from 'src/lang'
@@ -379,6 +379,7 @@ async function runImportRetryingOnce(): Promise<{ offeredRetry: boolean, retried
     let offeredRetry = false
     let retried = false
     for (let i = 0; i < 800 && !ended; i++) {
+        if (taskConfirmShowing()) confirmTask()
         if (taskResultShowing()) {
             const view = taskHostView()
             const actions = view?.result?.actions ?? view?.failure?.actions ?? []

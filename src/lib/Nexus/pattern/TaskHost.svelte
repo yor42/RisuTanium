@@ -2,7 +2,7 @@
     import { tick, untrack } from 'svelte'
     import PatternTask from './PatternTask.svelte'
     import { returnFocus } from './patternFocus'
-    import { answerTask, requestTaskCancel, taskHostView, taskOpener } from '../../../ts/alertTask.svelte'
+    import { answerTask, confirmTask, declineTask, requestTaskCancel, taskHostView, taskOpener } from '../../../ts/alertTask.svelte'
     import { motionPrefs } from '../../../ts/chatShell/motionPrefs.svelte'
 
     interface Props {
@@ -40,6 +40,6 @@
 
 {#if view && !yielded}
     {#key view.id}
-        <PatternTask {view} lowPower={motionPrefs.lowPower} oncancel={requestTaskCancel} onanswer={answerTask} />
+        <PatternTask {view} lowPower={motionPrefs.lowPower} oncancel={requestTaskCancel} onanswer={answerTask} onconfirm={confirmTask} ondecline={declineTask} />
     {/key}
 {/if}

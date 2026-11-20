@@ -131,7 +131,7 @@ import { importModule as importModuleOnCard, readModule } from 'src/ts/process/m
 import { ModuleImportStopped } from 'src/ts/process/moduleImportStop'
 import { charxLimits } from 'src/ts/process/processzip'
 import { isBusy } from 'src/ts/process/memory/busyActions'
-import { answerTask, resetTaskHostForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import { answerTask, confirmTask, resetTaskHostForTests, taskConfirmShowing, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskView } from 'src/lib/Nexus/pattern/taskProgress'
 import { language } from 'src/lang'
 
@@ -144,6 +144,7 @@ async function importModule() {
     let ended = false
     void done.then(() => { ended = true })
     for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        if (taskConfirmShowing()) confirmTask()
         await new Promise((resolve) => setTimeout(resolve, 0))
     }
     lastCard = taskResultShowing() ? taskHostView() : null

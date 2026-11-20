@@ -7,7 +7,8 @@
 import type { BrandStatus } from '../brand/brandStatus'
 import type { ProgressSink } from '../../../ts/progressSink'
 
-export type TaskState = 'running' | 'cancelling' | 'done' | 'done-with-skips' | 'failed'
+/** `confirm` is the preflight sheet: nothing has run, and the only move is on to `running`. */
+export type TaskState = 'confirm' | 'running' | 'cancelling' | 'done' | 'done-with-skips' | 'failed'
 export type TaskStepState = 'next' | 'now' | 'done' | 'failed'
 export type TaskDataState = 'same' | 'partial' | 'unknown'
 
@@ -43,6 +44,14 @@ export interface TaskFailure {
     readonly skipped?: readonly TaskSkip[]
     readonly actions?: readonly TaskResultAction[]
 }
+/** The preflight sheet's texts, all already translated. */
+export interface TaskConfirm {
+    readonly headline: string
+    /** The consequences, one line each; the sheet shows the first few. */
+    readonly consequences?: readonly string[]
+    readonly cancelLabel: string
+    readonly primaryLabel: string
+}
 export interface TaskDef {
     readonly title: string
     readonly subtitle?: string
@@ -50,6 +59,8 @@ export interface TaskDef {
     readonly steps: readonly TaskStepDef[]
     /** Cancel is offered only when this is set, and only until `lockCancel`. */
     readonly onCancel?: () => void
+    /** When set, the task starts in `confirm` and runs only after `confirm()`. */
+    readonly confirm?: TaskConfirm
 }
 export interface TaskSnapshot {
     readonly title: string
@@ -65,6 +76,7 @@ export interface TaskSnapshot {
     readonly cancelled: boolean
     readonly result?: TaskResult
     readonly failure?: TaskFailure
+    readonly confirm?: TaskConfirm
 }
 export interface TaskView extends TaskSnapshot {
     /** Unique per task; re-keys the card. */
@@ -128,6 +140,7 @@ export function taskDeterminate(s: TaskSnapshot): boolean {
 
 export function taskStepStates(s: TaskSnapshot): readonly TaskStepState[] {
     return s.steps.map((_, index): TaskStepState => {
+        if (s.state === 'confirm') return 'next'
         if (index < s.stepIndex) return 'done'
         if (index > s.stepIndex) return 'next'
         if (s.state === 'running' || s.state === 'cancelling') return 'now'
@@ -145,6 +158,9 @@ function resultSkipCount(s: TaskSnapshot): number {
  */
 export function taskAnnouncement(s: TaskSnapshot, labels: TaskLabels): string {
     switch (s.state) {
+        // The sheet speaks through its own label and description; the status region stays empty.
+        case 'confirm':
+            return ''
         case 'running': {
             const label = s.steps[s.stepIndex]?.label ?? ''
             return s.file ? `${labels.fileOf(s.file.index + 1, s.file.total)}: ${label}` : label
@@ -188,6 +204,7 @@ export function taskValueText(s: TaskSnapshot, labels: TaskLabels): string {
 
 export function taskMarkStatus(s: TaskSnapshot): BrandStatus {
     switch (s.state) {
+        case 'confirm': return 'idle'
         case 'running': return s.steps[s.stepIndex]?.mark ?? 'scanning'
         case 'cancelling': return 'finishing'
         case 'failed': return 'error'
@@ -197,6 +214,7 @@ export function taskMarkStatus(s: TaskSnapshot): BrandStatus {
 }
 
 export function canMoveTo(from: TaskState, to: TaskState): boolean {
+    if (from === 'confirm') return to === 'running'
     if (from === 'running') return to === 'cancelling' || to === 'done' || to === 'done-with-skips' || to === 'failed'
     if (from === 'cancelling') return to === 'done' || to === 'done-with-skips' || to === 'failed'
     return false
@@ -221,6 +239,8 @@ export interface TaskController {
     /** True when Cancel is now locked and no cancel was requested; only then may the caller write. */
     lockCancel(reason?: string): boolean
     requestCancel(): boolean
+    /** Moves a task in `confirm` on to `running` and starts its slow timer; false in any other state. */
+    confirm(): boolean
     settleCancel(summary?: readonly string[]): void
     finish(result: TaskResult): void
     fail(failure: TaskFailure): void
@@ -246,7 +266,7 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
     const id = nextTaskId++
     const listeners = new Set<(view: TaskView) => void>()
 
-    let state: TaskState = 'running'
+    let state: TaskState = def.confirm ? 'confirm' : 'running'
     let stepIndex = 0
     let file: TaskFile | undefined
     let count: TaskAmount | undefined
@@ -280,6 +300,7 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
             cancelled,
             result,
             failure,
+            confirm: def.confirm,
         }
     }
 
@@ -420,6 +441,13 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
             if (disposed || state !== 'running' || def.onCancel === undefined || locked) return false
             transition('cancelling')
             def.onCancel()
+            return true
+        },
+        confirm() {
+            if (disposed || state !== 'confirm') return false
+            state = 'running'
+            restartSlowTimer()
+            publish()
             return true
         },
         settleCancel(summary) {

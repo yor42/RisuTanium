@@ -114,10 +114,11 @@ async function addImportedCharacter(char:character, run:ImportArchiveRun|null, p
 }
 
 //Attempts every file through `runImportBatch` on one task card; a character that was added gets its order checked. Pushes the slots that were added onto `added`, in file order, each read when its file was added, and returns it.
-async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [], title:string = language.importTaskFilesTitle, outerBusy?:BusyHandle):Promise<(character|groupChat)[]> {
+async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [], title:string = language.importTaskFilesTitle, outerBusy?:BusyHandle, preflight?:true):Promise<(character|groupChat)[]> {
     await runImportBatch(items, {
         task: {title, steps: IMPORT_STEPS},
         outerBusy,
+        preflight,
         afterImported: (outcome) => {
             if(outcome.kind === 'imported' && outcome.index !== null){
                 const slot = DBState.db.characters[outcome.index]
@@ -269,11 +270,12 @@ export async function importCharacter():Promise<(character|groupChat)[]> {
         const run = newImportArchiveRun()
         await importFiles(Array.from(files, (f) => ({
             name: f.name,
+            size: f.size,
             run: (progress) => importCharacterFile({
                 name: f.name,
                 data: f
             }, run, progress)
-        })), added, language.importTaskCharactersTitle)
+        })), added, language.importTaskCharactersTitle, undefined, true)
     } catch (error) {
         alertError(error)
     }
