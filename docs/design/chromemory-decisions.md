@@ -1,4 +1,4 @@
-# Maintainer answers in the LTM spec session (MC-2588 to MC-2603)
+# Maintainer answers in the LTM spec session (MC-2588 to MC-2603, MC-2656 to MC-2658)
 
 All via AskUserQuestion, 2026-11-20. IDs assigned by lane A on 2026-11-20; drafts and reviews used placeholders MC-LTM-1 to MC-LTM-16 (MC-LTM-n = MC-(2587+n)).
 
@@ -27,3 +27,8 @@ Round 4 (after challenge r3 ACCEPT WITH CHANGES, 2026-11-20):
 Round 5 (final approval, 2026-11-20):
 - Spec r4 approved (maintainer's words): "Approve. add 'memory dashboard' menu where user can view detail of this chat's memory as a feature idea."
 - MC-2603, feature idea: a "Memory dashboard" menu showing the details of this chat's memory. Recorded in spec section 7 as an idea, not staged; needs its own sizing.
+
+Round 6 (API-first embeddings, 2026-11-20; MC-2814 relayed by lane A: "local embedding should serve as a fallback and free default. not full blown main engine."):
+- MC-2656, S3 order: "S3 API-first (Recommended)". S3 needs only S1 and an API embedding provider; S3a and CHORE-620 (MC-2136) decide only whether and which local fallback model phones are offered.
+- MC-2657, provider unreachable: "Keyword-only until back (Recommended)". Offline, no key, quota or provider error -> that send uses keyword search only, the Memory panel shows vectors paused; no second local index.
+- MC-2658, free default: "Keyword, local preselected (Recommended)". Keyword search stays the default (MC-2589 stands); turning vectors on without an API provider preselects the local model.

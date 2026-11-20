@@ -33,6 +33,7 @@
   - `.bin` export shows "no memory" plus a warning;
   - no hand-written pins;
   - an aggregate-only `.bin` length analyzer.
+- MC-2814, MC-2656 to MC-2658: API embedding providers are the primary vector path; a local model is the free default and fallback, not the main engine. S3 ships on API embeddings, an unreachable provider means keyword-only for that send, and keyword search stays the default.
 - MC-2599 to MC-2603: the name ChroMemory; a recalled-lore cap of 5,000 tokens by default, user-raisable; notes start from now with an on-request backfill; the spec lives in `docs/design/`; a Memory dashboard as a later feature idea.
 
 ## Labels
@@ -402,7 +403,10 @@ A test pins all four.
   - local models are allowed only if S3a passes (section 10);
   - otherwise mobile hybrid means remote embeddings only.
 - Choosing an English-only model for a Korean chat shows a warning.
-- CHORE-620 supplies the default model and must finish before S3.
+- The primary path is an API embedding provider (for example Voyage); a local model is the free fallback, and the design is not sized around local model quality. [D MC-2814, MC-2656]
+- If the provider cannot be reached (offline, no key, quota, provider error), that send uses keyword search only and the Memory panel shows vectors as paused. No second local index is kept. [D MC-2657]
+- Turning vectors on without an API provider preselects the local model; keyword search stays the default. [D MC-2589, MC-2658]
+- CHORE-620 supplies the local fallback model; S3 does not wait for it. [D MC-2656]
 
 ### 5.6 Packing
 
@@ -599,7 +603,7 @@ There is one "Memory" panel per chat:
 | Stage | Needs | Notes |
 |---|---|---|
 | S1 and S4, lexical | Nothing. | Offline, any device. |
-| S3, hybrid | An embedding model, local or API. | Korean needs a multilingual model: on M2 only the bge-m3 family worked. The ONNX runtime loads from the app bundle [C onnxRuntimeSource.ts]; weights download once. Phones get local models only if S3a passes. |
+| S3, hybrid | An API embedding provider (primary); a local model as the free fallback. [D MC-2656] | Korean needs a multilingual model: on M2 only the bge-m3 family worked. The ONNX runtime loads from the app bundle [C onnxRuntimeSource.ts]; weights download once. Phones get local models only if S3a passes. |
 | S5, notes | The existing sub-model route. | At least 8k context; JSON mode preferred. Which model classes get injection on by default is set by 6.6. |
 
 ---
@@ -643,8 +647,8 @@ P0's analyzer replaces these distributions with the maintainer's real aggregate 
 | P0 | (a) The M2 scripts and M4 generator, moved from `%TEMP%\risu-b715\ltm\` to a durable synthetic-only home (proposed `Agents/Tools/ltm-eval/`). (b) The aggregate-only `.bin` analyzer [D MC-2598]: it reads the maintainer's real `.bin` (path named by the maintainer) and writes one JSON with message-length histograms by role and by Hangul share, messages per chat, hidden-message share, lore entries per character and per module, lore content-length histogram, and decorator, selective and regex usage counts. It never prints or writes text, names, ids, keys or settings fields. It runs on the PC under the no-secret-fields rule. | none | (a) reproduces M2's BM25 table. (b) The output JSON passes a field allow-list check, and the maintainer approves its use. |
 | S0 | The BM25 tokeniser and scorer module, and the harness of 5.7. Outside the app's send path: no app code changes. [challenge r3 F3] | none | The go/no-go of 5.7. Outputs: budget, snippet share, unit split, query count, admission rule, history floor F. |
 | S1 | The shared memory-dispatch function (no behaviour change for legacy engines), engine registration (flag, dropdown, labels, `.bin` strip and naming), the send order of section 4, lexical retrieval, packing, trace, shadow mode, Last send and Index tabs. Sizing should split it; the natural first cut is dispatch function plus registration plus shadow-only, then injection and the tabs. | global fork-only setting | `opus-reviewer`. I1/I2 tests. Section 9 rows on a Note 9. Pack recall at or above S0's gate value minus 0.05. "Latest value present in pack" reported on the 28 update cases. |
-| S3a | Worker embedding spike on the Note 9 WebView. Needs nothing from S1; needs CHORE-620's model choice, or a Korean-capable model named at S3a sizing. | none | Pass requires, for one named Korean-capable model (from CHORE-620): no main-thread task over 50 ms from embedding; renderer peak at most 1.5 GB above baseline; no renderer loss; indexing at least 1 message per second. Pass enables local hybrid on phones; fail means remote-only. [D MC-2592] |
-| S3 | Hybrid: dense ranking with RRF, post-dispatch indexing, vector store decision. | possibly a vector store | Needs S1, S3a and CHORE-620. Gains in paraphrase pack recall. Section 9 rows met. |
+| S3a | Worker embedding spike on the Note 9 WebView. Needs nothing from S1; needs CHORE-620's model choice, or a Korean-capable model named at S3a sizing. | none | Pass requires, for one named Korean-capable model (from CHORE-620): no main-thread task over 50 ms from embedding; renderer peak at most 1.5 GB above baseline; no renderer loss; indexing at least 1 message per second. Pass enables the local fallback on phones; fail means API-only on phones. Not a prerequisite of S3. [D MC-2592, MC-2656] |
+| S3 | Hybrid on API embeddings: dense ranking with RRF, post-dispatch indexing, vector store decision, keyword-only on provider failure. | possibly a vector store | Needs S1 and an API embedding provider; tests use synthetic embedding fixtures, never a real provider. Gains in paraphrase pack recall. Section 9 rows met. |
 | S4 | Lore recall (5.4). | none | Parity test (four items). No recalled entry fails the static or dynamic rule. Usefulness gate: on synthetic lore with paraphrased triggers and no-relevant turns, recalled-lore precision and the no-evidence recall rate are reported; this decides the `searchLore` default. |
 | S5 | Notes (section 6), the Notes tab, `ltmData` v1, the backfill button. | `ltmData` v1 | `opus-reviewer`. Storage tests. The evidence gate of 6.6. Outputs: notes share, cap policy. |
 | S6 (gated) | Supersession, event notes, arc summaries that never overwrite messages; only if S5 data shows need. | as needed | Must beat S5 on the eval. |
@@ -655,7 +659,7 @@ P0's analyzer replaces these distributions with the maintainer's real aggregate 
 - P0 comes before S0, and S0 before S1.
 - S3a can start at any time once its model is named (CHORE-620, or a model named at S3a sizing).
 - After S1:
-  - S3 needs S1, S3a and CHORE-620;
+  - S3 needs S1 only; S3a and CHORE-620 gate the local fallback, not S3 [D MC-2656];
   - S4 needs S1;
   - S5 needs S1.
 - S3, S4 and S5 can run in parallel, subject to file ownership.
