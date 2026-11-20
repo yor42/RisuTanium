@@ -152,6 +152,14 @@ function stripImportant(v: string): string {
 const siteOf = (d: Decl): string => (d.ctx.at.length ? `${d.ctx.at.join(' ')} ${d.ctx.selector.trim()}` : d.ctx.selector.trim()).trim()
 const isPlainRoot = (d: Decl): boolean => d.ctx.selector.trim() === ':root' && d.ctx.at.length === 0
 
+// A bare `html` entry (0,0,1) loses to a plain :root value (0,1,0) whatever the at-rule; a list that also names :root
+// still applies its value through that entry, so only a list without :root loses.
+const htmlWithoutRoot = (selector: string): boolean => {
+    const entries = selector.split(',').map((s) => s.trim())
+    return entries.includes('html') && !entries.includes(':root')
+}
+const HTML_HELPER_WHY = 'a --pack-* helper set on bare html never applies, because its :root value outranks html; set the value on :root, or on html[data-input] or html[data-layout] for one input or layout (MC-2586)'
+
 interface TokenSite { value: string, plain: boolean }
 
 /** The token index the rules share: every pack declaration of each custom property, and the resolver R. */
@@ -386,6 +394,7 @@ export function valueRulesPass(canon: string, env: ValueEnv): ValueVerdict {
         if (custom) {
             if (d.prop === '--pack-') report(d, 'the bare name --pack- is not a helper token: add a name after the prefix, for example --pack-gap (DD-258)')
             else if (!d.prop.startsWith('--pack-') && !isPlainRoot(d)) report(d, `${d.prop} is set on ${siteOf(d)}: a pack may set tokens only on :root; for a value that changes with the input or layout, set a --pack-* helper there and point the token at it on :root (MC-1565)`)
+            else if (d.prop.startsWith('--pack-') && htmlWithoutRoot(d.ctx.selector) && sites.get(d.prop)?.some((s) => s.plain)) warn(d, HTML_HELPER_WHY)
             if (value.includes('!')) report(d, `"!" is not allowed in a token value (${d.prop}): the browser drops or reorders the declaration in a way the checks do not read (MC-1564)`)
             if (value === '') report(d, `${d.prop} may not be empty: the browser then uses a value the checks do not see; give it a value or remove the declaration (MC-1549)`)
             else if (CSS_WIDE.has(value)) report(d, `${d.prop} may not be ${value}: the browser then uses a value the checks do not see; write the value out (MC-1549)`)

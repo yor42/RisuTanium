@@ -1,5 +1,5 @@
 import { untrack } from 'svelte'
-import { packBaseTone } from '../gui/surfaceTone'
+import { packBaseTone, type SchemeTone } from '../gui/surfaceTone'
 
 /**
  * The surface gate: a theme pack's sheet may be on only while the screen it was judged against is shown, and at most
@@ -18,7 +18,7 @@ let installed = false
 let cover: () => boolean = () => false
 let stopRoot: (() => void) | null = null
 const declared: Record<GatedArea, number> = { chat: 0 }
-const registry = new Map<HTMLStyleElement, string>()
+const registry = new Map<HTMLStyleElement, { area: string, base: SchemeTone }>()
 // Declarations change this signal; the gate effect reads it. It is written under `untrack` so a caller that declares
 // from inside its own `$effect` never reads what it writes.
 let version = $state(0)
@@ -51,7 +51,10 @@ export function shownSurface(): GatedArea | null {
     return declared.chat > 0 ? 'chat' : null
 }
 
-/** The root attribute that selects the pack's fixed base. Present exactly while a registered element is on. */
+/**
+ * The root attribute that selects the pack's fixed base. Present exactly while a registered element is on; its value is
+ * empty for the dark base and `light` for the light base.
+ */
 const BASE_ATTRIBUTE = 'data-theme-pack-base'
 
 /**
@@ -61,17 +64,24 @@ const BASE_ATTRIBUTE = 'data-theme-pack-base'
 export function syncThemePackMedia(): void {
     const shown = shownSurface()
     let on = false
-    for (const [element, area] of registry) {
-        const wanted = area === shown ? 'all' : 'not all'
-        if (wanted === 'all') on = true
+    let base: SchemeTone = 'dark'
+    for (const [element, entry] of registry) {
+        const wanted = entry.area === shown ? 'all' : 'not all'
+        if (wanted === 'all') {
+            on = true
+            base = entry.base
+        }
         if (element.getAttribute('media') !== wanted) element.setAttribute('media', wanted)
     }
     const root = document.documentElement
-    if (root.hasAttribute(BASE_ATTRIBUTE) !== on) {
-        if (on) root.setAttribute(BASE_ATTRIBUTE, '')
-        else root.removeAttribute(BASE_ATTRIBUTE)
+    const value = base === 'light' ? 'light' : ''
+    if (on) {
+        if (root.getAttribute(BASE_ATTRIBUTE) !== value) root.setAttribute(BASE_ATTRIBUTE, value)
     }
-    packBaseTone.set(on ? 'dark' : null)
+    else if (root.hasAttribute(BASE_ATTRIBUTE)) {
+        root.removeAttribute(BASE_ATTRIBUTE)
+    }
+    packBaseTone.set(on ? base : null)
 }
 
 /** Installs the gate once; `coveredNow` is App's own cover predicate, read by the gate effect. */
@@ -87,8 +97,8 @@ export function installThemePackGate(coveredNow: () => boolean): void {
 }
 
 /** Registers a stylesheet element the apply code created; the returned function unregisters it on removal. */
-export function registerThemePackElement(element: HTMLStyleElement, area: string): () => void {
-    registry.set(element, area)
+export function registerThemePackElement(element: HTMLStyleElement, area: string, base: SchemeTone = 'dark'): () => void {
+    registry.set(element, { area, base })
     return () => { registry.delete(element) }
 }
 

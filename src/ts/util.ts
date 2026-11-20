@@ -14,7 +14,7 @@ import { isTauriDesktop } from "src/ts/tauriDesktop"
 import type { Attachment } from "svelte/attachments"
 import { mount, unmount, type Snippet } from "svelte"
 import PopupList from "src/lib/UI/PopupList.svelte"
-import { clearPickOpener, markPickReturned, rememberPickOpener } from "./pickOpener"
+import { markPickReturned, rememberPickOpener, returnFocusToPickOpener } from "./pickOpener"
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 export interface Messagec extends Message{
@@ -284,7 +284,13 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
         }
 
 
-        // Nothing picked (a closed chooser, or a confirmed empty selection) resolves [] once and removes the input.
+        // The chooser takes focus off the button that opened it. This picker keeps its own opener, so a late finish of an
+        // older picker never acts on a newer picker's remembered button.
+        const active = document.activeElement
+        const opener = active instanceof HTMLElement && active !== document.body ? active : null
+
+        // Nothing picked (a closed chooser, or a confirmed empty selection) resolves [] once, removes the input and gives
+        // focus back to the opener; a pick hands the opener to the card that follows.
         let settled = false
         const finish = (files: File[]) => {
             if (settled) {
@@ -295,7 +301,7 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
             if (files.length > 0) {
                 markPickReturned()
             } else {
-                clearPickOpener()
+                returnFocusToPickOpener(opener)
             }
             resolve(files)
         }
@@ -316,9 +322,7 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
         fileInput.addEventListener('cancel', () => finish([]));
 
         document.body.appendChild(fileInput);
-        // The chooser takes focus off the button that opened it; a card opened after the pick returns focus there.
-        const active = document.activeElement
-        rememberPickOpener(active instanceof HTMLElement && active !== document.body ? active : null)
+        rememberPickOpener(opener)
         fileInput.click();
         fileInput.style.display = 'none'; // Hide the file input element
     });

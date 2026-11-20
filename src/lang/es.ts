@@ -655,6 +655,19 @@ export const languageSpanish = {
     importTaskFailedOne: (name: string) => `No se pudo importar ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} omitidos por estar duplicados`,
     importTaskRetryFailed: (count: number) => count === 1 ? "Reintentar el 1 que falló" : `Reintentar los ${count} que fallaron`,
+    importTaskUndo: "Deshacer importación",
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed} movido${trashed === 1 ? '' : 's'} a la papelera`] : []),
+            ...(removed > 0 ? [`${removed} ${removed === 1 ? 'módulo eliminado' : 'módulos eliminados'}`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} no se ${missing === 1 ? 'pudo' : 'pudieron'} deshacer`
+        }
+        return done || 'Nada que deshacer'
+    },
+    importUndoRefused: "La importación no se puede deshacer ahora. Elimina los elementos de la biblioteca en su lugar.",
     importTaskCharactersTitle: "Importando personajes",
     importTaskFilesTitle: "Importando archivos",
     importTaskRealmTitle: "Importando desde Realm",

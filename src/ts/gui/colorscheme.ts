@@ -314,6 +314,7 @@ export function updateColorScheme(){
         document.documentElement.style.setProperty("--risu-theme-role-surface-toast", roles['surface-toast']);
         document.documentElement.style.setProperty("--risu-theme-role-color-scheme", roles['color-scheme']);
         document.documentElement.style.setProperty("--risu-theme-role-focus-ring", roles['focus-ring']);
+        document.documentElement.style.setProperty("--risu-theme-role-on-selected", roles['on-selected']);
         ColorSchemeTypeStore.set(colorScheme.type)
         // The colour applied above, after the lite override; also reached at boot.
         syncSystemBars(colorScheme.bgcolor)
@@ -391,8 +392,8 @@ export function updateTextThemeAndCSS(){
                 root.style.setProperty('--FontColorItalic', '#6b6c72');
                 root.style.setProperty('--FontColorBold', '#0f172a');
                 root.style.setProperty('--FontColorItalicBold', '#6b6c72');
-                root.style.setProperty('--FontColorQuote1', '#8BE9FD');
-                root.style.setProperty('--FontColorQuote2', '#FFB86C');
+                root.style.setProperty('--FontColorQuote1', '#0b5f7a');
+                root.style.setProperty('--FontColorQuote2', '#8a4200');
             }
             break
         }
@@ -407,11 +408,11 @@ export function updateTextThemeAndCSS(){
             }
             else{
                 root.style.setProperty('--FontColorStandard', '#0f172a');
-                root.style.setProperty('--FontColorItalic', '#F1FA8C');
-                root.style.setProperty('--FontColorBold', '#8BE9FD');
-                root.style.setProperty('--FontColorItalicBold', '#FFB86C');
-                root.style.setProperty('--FontColorQuote1', '#8BE9FD');
-                root.style.setProperty('--FontColorQuote2', '#FFB86C');
+                root.style.setProperty('--FontColorItalic', '#5c4a00');
+                root.style.setProperty('--FontColorBold', '#0b5f7a');
+                root.style.setProperty('--FontColorItalicBold', '#8a4200');
+                root.style.setProperty('--FontColorQuote1', '#0b5f7a');
+                root.style.setProperty('--FontColorQuote2', '#8a4200');
             }
             break
         }

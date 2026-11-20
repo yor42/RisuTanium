@@ -655,6 +655,19 @@ export const languageJapanese = {
     importTaskFailedOne: (name: string) => `${name}をインポートできませんでした`,
     importTaskDuplicatesLeftOut: (count: number) => `重複のため${count}件を除外しました`,
     importTaskRetryFailed: (count: number) => `失敗した${count}件を再試行`,
+    importTaskUndo: "インポートを元に戻す",
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed}件をゴミ箱に移動`] : []),
+            ...(removed > 0 ? [`モジュール${removed}件を削除`] : []),
+        ]
+        const done = parts.join('、')
+        if (missing > 0) {
+            return `${done}${done ? '、' : ''}${missing}件は元に戻せませんでした`
+        }
+        return done || '元に戻す項目はありません'
+    },
+    importUndoRefused: "現在、このインポートは元に戻せません。代わりにライブラリから項目を削除してください。",
     importTaskCharactersTitle: "キャラクターをインポート中",
     importTaskFilesTitle: "ファイルをインポート中",
     importTaskRealmTitle: "Realmからインポート中",
