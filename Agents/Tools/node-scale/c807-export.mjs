@@ -95,15 +95,29 @@ function langArrowLiteral(src, key) {
   return JSON.parse(m[1])
 }
 
-// The export path's session.gate.wait texts of backuplocal.ts writeLocalBackup (and its helpers); numeric parts match as patterns.
+/**
+ * A language value at four spaces of indent as an unanchored pattern: a plain string literal, or the template literal of an
+ * arrow (`(a: number, b: number) => \`...\``), whose `${...}` parts match any text.
+ */
+export function langTemplatePattern(src, key) {
+  const re = new RegExp('^    (?:"' + key + '"|' + key + '):\\s*(?:\\([^)\\n]*\\)\\s*=>\\s*)?(`(?:[^`\\\\\\n]|\\\\.)*`|"(?:[^"\\\\\\n]|\\\\.)*"|\'(?:[^\'\\\\\\n]|\\\\.)*\')\\s*,?\\s*$', 'm')
+  const m = re.exec(src)
+  if (m === null) throw new Error('language key not found as a literal: ' + key)
+  const lit = m[1]
+  if (!lit.startsWith('`')) return escapeRe(langLiteral(src, key).replace(/\s+/g, ' '))
+  return lit.slice(1, -1).split(/\$\{[^}]*\}/).map((part) => escapeRe(part.replace(/\\(.)/g, '$1').replace(/\s+/g, ' '))).join('.*?')
+}
+
+// The export path's session.gate.wait texts of backuplocal.ts writeLocalBackup (and its helpers), read from each language source;
+// interpolated parts match any text. The asset loop's line may carry the skipped-assets suffix on a second line.
 const EXPORT_PROGRESS_SOURCES = [
-  { re: 'Saving local backup\\.\\.\\.', note: 'writeLocalBackup, first wait' },
-  { re: 'Checking asset sizes\\.\\.\\. \\(\\d+ / \\d+\\)', note: 'upstreamOversizeNames onProgress' },
-  { re: 'Saving local Backup\\.\\.\\. downloading \\([^)]*\\)', note: 'serverExportOpener onProgress' },
-  { re: 'Saving local Backup\\.\\.\\. \\(\\d+ / \\d+\\)(?: \\(Skipping\\.\\.\\. .*\\))?', note: 'asset loop' },
-  { re: 'Saving local Backup Inlays\\.\\.\\. \\(\\d+ / \\d+\\)', note: 'writeInlaysToBackup onProgress' },
-  { re: 'Saving local Backup Cold data\\.\\.\\. \\(\\d+ / \\d+\\)', note: 'cold payloads, stub payloads, late payloads' },
-  { re: 'Saving local Backup\\.\\.\\. \\(Saving database\\)', note: 'before the database entry' },
+  { key: 'backupSaveWait', note: 'writeLocalBackup, first wait' },
+  { key: 'backupCheckingAssetSizes', note: 'upstreamOversizeNames onProgress' },
+  { key: 'backupSaveDownloading', note: 'serverExportOpener onProgress' },
+  { key: 'backupSaveProgress', suffix: '(?: .*)?', note: 'asset loop' },
+  { key: 'backupSaveInlays', note: 'writeInlaysToBackup onProgress' },
+  { key: 'backupSaveColdData', note: 'cold payloads, stub payloads, late payloads' },
+  { key: 'backupSaveDatabase', note: 'before the database entry' },
 ]
 export const EXPORT_PROGRESS_NOTES = EXPORT_PROGRESS_SOURCES.map((s) => s.note)
 
@@ -130,7 +144,7 @@ export function exportTable(sources, faults = FAULTS) {
     unconfirmedTexts: [],
     blockedTitles: [],
     detailsHeadings: [],
-    progress: EXPORT_PROGRESS_SOURCES.map((p) => new RegExp('^' + p.re + tail)),
+    progress: EXPORT_PROGRESS_SOURCES.flatMap((p) => each((s) => new RegExp('^' + langTemplatePattern(s, p.key) + (p.suffix ?? '') + tail))),
     notices: noticeTexts.map((t) => new RegExp('^' + escapeRe(t) + '(?: (?:' + okLabels.join('|') + '))?$')),
     noticeTexts,
     cancelLabels,

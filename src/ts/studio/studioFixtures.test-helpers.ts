@@ -1,6 +1,7 @@
 // Synthetic fixtures for the Studio owner model tests, shaped like the real producers: a module stub is
 // minted by `moduleStubOf` from an index entry as the encoder carries it, resident assets are an `AssetList`, and
 // the persona carries an `embeddedModule` the way a persona with an embedded module does.
+import { languageEnglish } from 'src/lang/en'
 import { toAssetList } from '../storage/assetList'
 import { moduleStubOf } from '../storage/store2/moduleStubMatch'
 import type { ModuleEntry } from '../storage/store2/format'
@@ -187,7 +188,8 @@ export function studioDbOf(input: OwnerModelInput) {
 
 /**
  * A stand-in for the locale object of component tests: strings answer with their own key, so assertions do not
- * depend on English, and the keys that take an argument answer with the key and the argument.
+ * depend on English, and the keys that take an argument answer with the key and the argument. Which top-level keys take an
+ * argument is read from the English locale, so a new function-valued key is a function here too instead of a string.
  */
 export function studioLanguageMock(): Record<string, unknown> {
     const withArgument = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
@@ -195,19 +197,11 @@ export function studioLanguageMock(): Record<string, unknown> {
         settingsPage: { back: 'Back' },
         sidebarUi: { notAllowed: 'notAllowed' },
     }
-    for (const key of [
-        'studioOwnerOtherModules', 'studioOwnerOtherPresets', 'studioMergedPartial', 'studioPluginRetired', 'studioItemCount',
-        'studioShowMore', 'studioTruncated', 'studioDeepKindFallback', 'studioDeepItemMissing', 'studioSearchMore', 'studioSearchUnloaded',
-        'studioLoreTestScope', 'studioLoreTestScopeNoMessage', 'studioLoreTestModulesSkipped', 'studioLoreTestBudget',
-        'studioLoreTestInactiveGroup', 'studioLoreTestOrder', 'studioLoreTestTokens', 'studioLoreTestChance',
-        'studioLoreTestMatchedMessage', 'studioLoreTestMatchedTyped', 'studioLoreTestMatchedEntry', 'studioLoreTestForced',
-        'studioLoreTestExcluded', 'studioLoreTestExcludedNoHit', 'studioLoreTestDecorator', 'studioLoreTestInvalidRegex',
-        'studioLoreTestMerged',
-        'ltFindCount', 'ltFindCapped', 'ltReplacedCount', 'sbWrites', 'sbMediaHidden', 'ltTokensVaries',
-        'ltCardHandle', 'ltCardMenu', 'ltCardMoved',
-        'ltPasteCount', 'ltPasteMore', 'ltPasteAdded',
-        'ltExCard', 'ltExCardHandle', 'ltExCardMenu', 'ltExTurns', 'ltExNotUsed',
-    ]) table[key] = withArgument(key)
+    for (const [key, value] of Object.entries(languageEnglish)) {
+        if (typeof value === 'function') {
+            table[key] = withArgument(key)
+        }
+    }
     return new Proxy(table, {
         get: (target, key) => typeof key === 'symbol' ? undefined : key in target ? target[key] : key,
     })
