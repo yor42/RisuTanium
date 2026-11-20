@@ -86,6 +86,59 @@ export function stripShareSecrets(target: object, scope: SecretFieldEntry['scope
     }
 }
 
+function collectAt(node: Container, tokens: readonly string[], out: string[]): void {
+    const [token, ...rest] = tokens
+    const record = node as { [key: string]: Node }
+    for (const key of keysFor(node, token)) {
+        if (!Object.hasOwn(record, key)) {
+            continue
+        }
+        const child = record[key]
+        if (rest.length === 0) {
+            if (typeof child === 'string') {
+                out.push(child)
+            }
+        } else if (isContainer(child)) {
+            collectAt(child, rest, out)
+        }
+    }
+}
+
+/**
+ * The string value of every credential leaf of `scope` present in `target`, walking the same
+ * registry paths as `stripShareSecrets` without mutating anything. Entries flagged `notCredential`
+ * are skipped, and `accept`, when given, narrows the walk to the entries it approves.
+ */
+export function secretFieldValues(
+    target: object,
+    scope: SecretFieldEntry['scope'],
+    accept?: (entry: SecretFieldEntry) => boolean,
+): string[] {
+    const root = target as { [key: string]: Node }
+    const out: string[] = []
+    for (const entry of SECRET_FIELDS as readonly SecretFieldEntry[]) {
+        if (entry.scope !== scope || ('notCredential' in entry && entry.notCredential === true)) {
+            continue
+        }
+        if (accept && !accept(entry)) {
+            continue
+        }
+        if (!Object.hasOwn(root, entry.field)) {
+            continue
+        }
+        const tokens = tokensOf(entry.sub ?? '')
+        const value = root[entry.field]
+        if (tokens.length === 0) {
+            if (typeof value === 'string') {
+                out.push(value)
+            }
+        } else if (isContainer(value)) {
+            collectAt(value, tokens, out)
+        }
+    }
+    return out
+}
+
 /** Strips credentials and destination URLs from a preset clone, in place. */
 export function shareSafePreset(preset: botPreset): botPreset {
     stripShareSecrets(preset, 'botPreset')

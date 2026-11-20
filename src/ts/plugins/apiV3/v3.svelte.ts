@@ -23,7 +23,7 @@ import { v4 } from "uuid";
 import { sleep } from "src/ts/util";
 import { alertConfirm, alertError, alertNormal } from "src/ts/alert";
 import { language } from "src/lang";
-import { checkCharOrder, getFetchLogs } from "src/ts/globalApi.svelte";
+import { checkCharOrder, fetchLogRedactor, getFetchLogs } from "src/ts/globalApi.svelte";
 import { keepOrderPlaceOnSwap } from "../characterSwapOrder";
 import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untrustedFetch";
 import { changeColorScheme, effectiveColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
@@ -1768,14 +1768,19 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             if(!conf){
                 return null;
             }
+            if (unsafeFetchLog.length === 0) {
+                return []
+            }
+            // Entries are redacted when captured; the plugin never receives one that was not.
+            const redact = fetchLogRedactor()
             return unsafeFetchLog.map(log => {
 
-                const url = new URL(log.url);
+                const url = new URL(redact('url', log.url));
                 return {
                     url: url.origin + url.pathname,
-                    body: log.body,
+                    body: redact('body', log.body),
                     status: log.status,
-                    response: log.response,
+                    response: redact('response', log.response),
                 }
             })
         },
