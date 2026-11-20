@@ -107,7 +107,7 @@
         <h2 data-part="chat-sheet-title">{language.chatShellChoosePersona}</h2>
         <button data-part="chat-sheet-item" data-kind="button" data-sheet-initial aria-pressed={!chat?.bindedPersona} onclick={() => choose(null)}>{@render row(DBState.db.username, 'user', DBState.db.userIcon ?? '', !chat?.bindedPersona, true)}</button>
         {#each DBState.db.personas ?? [] as persona, index (persona.id)}
-            {@const pressed = chat?.bindedPersona === persona.id || (!chat?.bindedPersona && DBState.db.personas?.[DBState.db.selectedPersona]?.id === persona.id)}
+            {@const pressed = chat?.bindedPersona === persona.id}
             <button data-part="chat-sheet-item" data-kind="button" aria-pressed={pressed} onclick={() => choose(persona.id)}>{@render row(persona.name, 'persona:' + index, persona.icon ?? '', pressed, false)}</button>
         {/each}
     </ShellSheet>

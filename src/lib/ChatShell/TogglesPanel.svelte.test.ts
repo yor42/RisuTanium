@@ -302,6 +302,17 @@ describe('icons (TC2-7)', () => {
         expect(glyphsIn(row(target, 'm'))).toEqual([])
         expect(glyphsIn(row(target, 'note'))).toEqual([])
     }, 120_000)
+
+    test('the search clear and the changed-only filter chip carry aria-hidden icons', async () => {
+        await import('@lucide/svelte')
+        install({ prompt: 'tone=Tone' })
+        const target = await show()
+        const clear = q(target, '[data-part="toggles-search-clear"]')!
+        const chip = q(target, '[data-part="toggles-filter-chip"]')!
+        const svgs = [...Array.from(clear.querySelectorAll('svg')), ...Array.from(chip.querySelectorAll('svg'))]
+        expect(svgs).toHaveLength(2)
+        expect(svgs.every((svg) => svg.getAttribute('aria-hidden') === 'true')).toBe(true)
+    }, 120_000)
 })
 
 describe('select rows', () => {
