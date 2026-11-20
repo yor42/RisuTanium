@@ -323,6 +323,10 @@ function analyse(sel: string, reg: Registry = CHAT_REGISTRY): Analysis {
     const control = tier === 'reach' && sp.length > 0 && sp.every((p) => reg.controls.has(p))
     return { why, ok: syntax && why.length === 0, tier, rootOnly, sp, control, pseudo: subj ? subj.pseudo : '' }
 }
+/** The tier the engine gives one selector in a registry (root, safe or reach), including the safe context of a user or system message. */
+export function selectorTier(sel: string, registry?: RegistryInput): 'root' | 'safe' | 'reach' | undefined {
+    return analyse(sel, effective(registry)).tier
+}
 // DD-243: a rule in a focus state (:focus-visible, :focus-within) may add to the indication but not take it away: no outline at all (see lintOnce), and no border or shadow that is none or fully transparent
 const colourWords = (v: string): Rgba[] => [...v.matchAll(/#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g)].map((m) => parseConcrete(m[0])).filter((c): c is Rgba => Boolean(c))
 function focusLoss(prop: string, value: string, T: TokenMap): string {
