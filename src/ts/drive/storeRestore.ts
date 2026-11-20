@@ -313,6 +313,8 @@ async function restoreChosen(row: RestorePointRow, committer: Committer, backend
                 alertError(language.store2RestoreListChanged)
                 return nothingReplaced()
             case 'bulk-marker':
+                // The question about a foreign marker is asked before the restore writes anything; at the commit the restore has
+                // already written, so a marker found here stays a refusal.
                 alertError(language.store2RestoreBulkMarker)
                 return nothingReplaced('marker-standing')
             case 'tree-incomplete':

@@ -25,7 +25,7 @@ import type { ImportSource } from '../importSource'
 import { nodePieceStore } from './assetPieces'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { acquireRestoreHold, baseOfRead, type BaseRead, type HoldAcquire, type HoldOptions, type RestoreHold } from './rtbRestoreHold'
-import { checkStore2Import, confirmImportScale, type Store2ImportCheck, type Store2ImportRefusal, type Store2ImportTarget } from './storeImport'
+import { askToClearForeignMarker, checkStore2Import, confirmImportScale, type ForeignMarkerQuestion, type Store2ImportCheck, type Store2ImportRefusal, type Store2ImportTarget } from './storeImport'
 import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
 
 /**
@@ -108,6 +108,8 @@ export interface RtbPrepareDeps {
     pageKind(): PageStorageMode['kind']
     /** Whether the restore holds its own bulk marker through the asset listing and the copy (a Node page). */
     heldMarker(): boolean
+    /** The Wait or Clear question about another operation's marker found while the restore opens its own. */
+    askForeignMarker: ForeignMarkerQuestion
     checkImport(): Promise<Store2ImportCheck>
     saveFirst(boundMs: number): Promise<void>
     acquireHold(busy: BusyHandle, options: HoldOptions): Promise<HoldAcquire>
@@ -208,6 +210,8 @@ function realDeps(): RtbPrepareDeps {
         refuseWhileBusy: (own) => refuseBackupLoadWhileBusy(own),
         pageKind: () => getPageStorageMode().kind,
         heldMarker: selectedStoreIsNode,
+        // Loaded when first asked: the peer UI's module graph is not needed by a restore that meets no foreign marker.
+        askForeignMarker: async (marker) => (await import('../storage/store2/ui/peerUi')).askForeignMarkerQuestion(marker),
         checkImport: checkStore2Import,
         saveFirst,
         acquireHold: acquireRestoreHold,
@@ -468,9 +472,17 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
             }
             const outcome = await clearAbandonedMarker(target.committer, leftover, null)
             if (outcome.marker !== null && !outcome.own) {
-                deps.error(language.store2RestoreBulkMarker)
-                return ended('nothing-replaced', 'foreign-marker')
-            }
+                // Another operation's marker: the person chooses Wait or Clear. Clear consents to exactly this marker, and the
+                // read below re-checks the base before the retry. Wait ends the restore; the question replaced the refusal text.
+                const answer = await askToClearForeignMarker(target.committer, leftover, outcome.marker, deps.askForeignMarker)
+                if (answer === 'waited') {
+                    return ended('nothing-replaced', 'foreign-marker')
+                }
+                if (answer === 'kept') {
+                    deps.error(language.store2RestoreBulkMarker)
+                    return ended('nothing-replaced', 'foreign-marker')
+                }
+            } else
             if (outcome.marker !== null && outcome.result?.status !== 'cleared' && outcome.result?.status !== 'nothing') {
                 console.error('The leftover bulk marker of this page was not cleared.', outcome.result)
             }

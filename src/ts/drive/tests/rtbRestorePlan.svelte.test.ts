@@ -898,13 +898,16 @@ describe('P.1b: the restore\'s own bulk marker (T-V2, T-R6, T-R12)', () => {
         expect(await writeLockIsFree(page)).toBe(true)
     })
 
-    test('a foreign marker ends foreign-marker with the marker text and leaves it standing (guard)', async () => {
+    test('a foreign marker is put to the person: Wait ends foreign-marker with no marker text, because the question replaced it, and leaves the marker standing (guard)', async () => {
         const page = await openPage()
         const log: string[] = []
         await plantMarker(page, 'p'.repeat(26))
-        const run = await prepare(page, await fileOf(), { deps: { ...target(page, spied(page, log)), heldMarker: () => true } })
+        const asked: Array<string | undefined> = []
+        const askForeignMarker = async (marker: { label?: string }): Promise<'wait' | 'clear'> => { asked.push(marker.label); return 'wait' }
+        const run = await prepare(page, await fileOf(), { deps: { ...target(page, spied(page, log)), heldMarker: () => true, askForeignMarker } })
         expect(ended(run)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'foreign-marker' })
-        expect(alertErrorTexts(page)).toContain(language.store2RestoreBulkMarker)
+        expect(asked).toEqual(['bulk'])
+        expect(alertErrorTexts(page)).not.toContain(language.store2RestoreBulkMarker)
         expect(log).toEqual(['openHeldBulk'])
         expect((await page.k.commitKey()).staging?.owner).toBe('p'.repeat(26))
         expect(await writeLockIsFree(page)).toBe(true)

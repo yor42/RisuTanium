@@ -196,6 +196,8 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
                 return keptStop('failed', 'abandoned', language.store2ImportAbandoned)
             case 'refused':
                 if (result.reason === 'marker-present') {
+                    // The question about a foreign marker is asked before the restore writes anything; at the commit the copy has
+                    // already written its assets, so a marker found here stays a refusal.
                     return keptStop('nothing-replaced', 'marker-standing', language.store2RestoreBulkMarker)
                 }
                 return result.reason === 'too-new'

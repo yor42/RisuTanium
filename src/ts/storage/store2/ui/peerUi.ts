@@ -87,6 +87,19 @@ async function untilClear(): Promise<void> {
     } while (holds(get(alertStore).type))
 }
 
+/**
+ * The foreign-marker question, Wait first. Only the Clear button gives 'clear'; an index with no button or any other
+ * key reads as 'wait'. Back and Escape press the Wait button. The caller has already waited for a clear screen.
+ */
+export async function askForeignMarkerQuestion(marker: Staging): Promise<'wait' | 'clear'> {
+    const question = foreignMarkerScreen(marker)
+    const buttons = question.model.buttons
+    const waitIndex = buttons.findIndex((button) => button.key === 'foreignWait')
+    const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`, { cancel: String(waitIndex) })
+    const pressed = buttons[Number(index)]
+    return pressed !== undefined && pressed.key === 'foreignClear' && question.answers[pressed.key] === 'clear' ? 'clear' : 'wait'
+}
+
 const SHOWN_NAMES_MAX = 5
 const SHOWN_NAME_LENGTH_MAX = 40
 
@@ -376,18 +389,10 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         }
     }
 
-    /**
-     * The existing foreign-marker question, Wait first. Only the Clear button gives 'clear'; an index with no button or
-     * any other key reads as 'wait'. Back and Escape press the Wait button.
-     */
+    /** The existing foreign-marker question, asked once no alert holds the screen. */
     async function askForeignMarker(marker: Staging): Promise<'wait' | 'clear'> {
         await untilClear()
-        const question = foreignMarkerScreen(marker)
-        const buttons = question.model.buttons
-        const waitIndex = buttons.findIndex((button) => button.key === 'foreignWait')
-        const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`, { cancel: String(waitIndex) })
-        const pressed = buttons[Number(index)]
-        return pressed !== undefined && pressed.key === 'foreignClear' && question.answers[pressed.key] === 'clear' ? 'clear' : 'wait'
+        return askForeignMarkerQuestion(marker)
     }
 
     return {

@@ -10,6 +10,7 @@ import { getStore2BootSession } from '../storage/store2/bootActive'
 import { Store2BulkAbortError, type AbandonResult, type Committer, type StreamContext, type StreamedCommitRequest } from '../storage/store2/commit'
 import { clearAbandonedMarker } from '../storage/store2/abandonedMarker'
 import { classifyCommitRead } from '../storage/store2/commitKey'
+import type { Staging } from '../storage/store2/owner'
 import { createListDerivation } from '../storage/store2/lists'
 import type { BaseContentIndex } from '../storage/store2/baseContent'
 import { importLegacyTree, indexOfCommitKey, type ImportHooks, type ImportOutcome, type ImportSource, type PrepareStop, type RepairSummary } from '../storage/store2/legacy/importTree'
@@ -125,12 +126,50 @@ export function noteImportPhase(phase: string): void {
     noteMeasurePhase(phase)
 }
 
+/** The question a person answers about a bulk marker of another operation: Wait leaves it, Clear consents to clearing exactly that marker. */
+export type ForeignMarkerQuestion = (marker: Staging) => Promise<'wait' | 'clear'>
+
+/** The real question, loaded when first asked: the peer UI's module graph is not needed by a page that never meets a foreign marker. */
+export const askForeignMarker: ForeignMarkerQuestion = async (marker) => (await import('../storage/store2/ui/peerUi')).askForeignMarkerQuestion(marker)
+
+/** Only these markers can be left by an import, a restore or a bulk save that a person can judge; the others belong to a boot step. */
+function askableMarker(marker: Staging): boolean {
+    return marker.label === 'import' || marker.label === 'restore' || marker.label === 'bulk'
+}
+
+/**
+ * Asks about the standing foreign `marker` and, on Clear, clears exactly that marker: the clear is `abandonClear`,
+ * which re-judges on a fresh read and refuses any other owner or prefix, so a marker that replaced the asked one in
+ * the meantime stays. `cleared` and `nothing` (the marker had already gone) are the marker being gone; `waited` is the
+ * person's answer, and `kept` is a Clear that left the marker standing (refused, failed or unknown) or a marker that
+ * is not asked about at all (`convert`, `seed`, `recovery`).
+ */
+export async function askToClearForeignMarker(
+    committer: Pick<Committer, 'owner' | 'abandonClear'>,
+    read: Store2Read,
+    marker: Staging,
+    ask: ForeignMarkerQuestion,
+): Promise<'cleared' | 'nothing' | 'waited' | 'kept'> {
+    if (!askableMarker(marker)) {
+        return 'kept'
+    }
+    if (await ask(marker) !== 'clear') {
+        return 'waited'
+    }
+    const outcome = await clearAbandonedMarker(committer, read, async (standing) =>
+        standing.owner === marker.owner && standing.prefix === marker.prefix ? 'gone' : 'unknown')
+    const status = outcome.result?.status
+    return status === 'cleared' || status === 'nothing' ? status : 'kept'
+}
+
 /**
  * The page's committer and backend, with every precondition knowable up front checked: a store2 session that can
  * write, a readable commit key that names a current manifest, and no bulk marker of another page standing. A marker of
- * this page load is not a refusal: the commit clears it the way the save loop does. A refusal has shown its message.
+ * this page load is not a refusal: the commit clears it the way the save loop does. A refusal has shown its message,
+ * except after Wait, where the question was the message. On a Node page a foreign import, restore or bulk marker is
+ * put to the person (`options.ask`) because no probe can prove its owner gone.
  */
-export async function checkStore2Import(): Promise<Store2ImportCheck> {
+export async function checkStore2Import(options: { ask?: ForeignMarkerQuestion } = {}): Promise<Store2ImportCheck> {
     const session = getStore2BootSession()
     const committer = session === null ? null : session.committer
     const backend = session === null ? null : session.backend
@@ -165,6 +204,17 @@ export async function checkStore2Import(): Promise<Store2ImportCheck> {
                 const outcome = await clearAbandonedMarker(committer, read, getActiveStore2Save()?.markerOwnerProbe ?? null)
                 const status = outcome.result?.status
                 if (status !== 'cleared' && status !== 'nothing') {
+                    // A Node page can prove nothing about a peer, so the person is asked about an import, restore or bulk marker.
+                    if (session !== null && session.kind === 'node') {
+                        const answer = await askToClearForeignMarker(committer, read, classified.value.staging, options.ask ?? askForeignMarker)
+                        if (answer === 'cleared' || answer === 'nothing') {
+                            return { kind: 'ready', target: { committer, backend } }
+                        }
+                        if (answer === 'waited') {
+                            // The question replaced the refusal text.
+                            return { kind: 'refused', cause: 'foreign-marker' }
+                        }
+                    }
                     alertError(language.store2RestoreBulkMarker)
                     return { kind: 'refused', cause: 'foreign-marker' }
                 }
@@ -761,6 +811,8 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 return refused('abandoned', language.store2ImportAbandoned)
             case 'refused':
                 if (outcome.reason === 'marker-present') {
+                    // The question is asked at the start of an import, not here: at commit time the import has already written
+                    // its assets and units, and this loop's retry handles the page's own marker. A foreign one stays a refusal.
                     if (attempt < IMPORT_ATTEMPTS && await clearOwnMarker(request.target.committer)) {
                         continue
                     }

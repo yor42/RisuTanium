@@ -59,11 +59,16 @@ vi.mock(import('src/ts/drive/backupWorkGuard'), () => new Proxy(h.permissive(), 
     get: (target, key) => (key === 'refuseBackupLoadWhileBusy' ? () => busyBox.refuse : target[key as string]),
     has: () => true,
 }) as unknown as typeof import('src/ts/drive/backupWorkGuard'))
-vi.mock(import('src/ts/drive/storeImport'), () => ({
-    UnsavedGuard: class { async check() { return true } },
-    checkStore2Import: vi.fn(),
-    confirmImportScale: vi.fn(async () => true),
-}) as unknown as typeof import('src/ts/drive/storeImport'))
+vi.mock(import('src/ts/drive/storeImport'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+        UnsavedGuard: class { async check() { return true } },
+        checkStore2Import: vi.fn(),
+        confirmImportScale: vi.fn(async () => true),
+        // The Wait or Clear helper is the product's: the tests exercise its consent rule against the real server.
+        askToClearForeignMarker: actual.askToClearForeignMarker,
+    } as unknown as typeof import('src/ts/drive/storeImport')
+})
 vi.mock(import('src/ts/drive/storeRestore'), () => ({ saveFirst: vi.fn(async () => { }), SAVE_FIRST_BOUND_MS: 1000 }) as unknown as typeof import('src/ts/drive/storeRestore'))
 vi.mock(import('src/ts/alert'), () => h.permissive() as unknown as typeof import('src/ts/alert'))
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
@@ -90,6 +95,7 @@ import { createCommitter, type Committer } from 'src/ts/storage/store2/commit'
 import { exportClosure } from 'src/ts/storage/store2/rtb/exportClosure'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import type { Database } from 'src/ts/storage/database.svelte'
+import type { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { parsedCommit, treeRequest } from 'src/ts/storage/tests/store2/commitFixtures'
@@ -331,5 +337,86 @@ describe('a marker this page load left behind (E6)', () => {
         expect((await stagingOf())?.label).toBe('restore')
         expect((await install(ready, page)).kind).toBe('landed')
         expect(await stagingOf()).toBeNull()
+    })
+})
+
+describe('another operation\'s marker met while the restore opens its own (Wait or Clear)', () => {
+    /** Another origin's bulk that opened its marker before the restore's open and has not ended. */
+    const peerMarkerBeforeOpen = async (): Promise<void> => {
+        const { peer } = node()
+        expect((await peer.openHeldBulk?.(await peer.readCommit(), { label: 'bulk' }))?.status).toBe('opened')
+    }
+
+    test('T-Q5: Clear clears exactly that marker, the retry opens over the re-checked base and the restore lands; Wait ends nothing-replaced foreign-marker with no error text and the marker stands (guard; MQ5 fails both)', async () => {
+        const cleared = openPage()
+        const asked: Array<string | undefined> = []
+        const ready = readyOf(await prepare(cleared, {
+            saveFirst: peerMarkerBeforeOpen,
+            askForeignMarker: async (marker) => { asked.push(marker.label); return 'clear' },
+        }))
+        expect(asked).toEqual(['bulk'])
+        expect((await stagingOf())?.owner).toBe(node().page.owner)
+        expect((await install(ready, cleared)).kind).toBe('landed')
+        expect(await stagingOf()).toBeNull()
+        expect(cleared.errors).toEqual([])
+
+        // The first run left the store as a restore does; a fresh bulk of the peer is the foreign marker for the Wait run.
+        const waited = openPage()
+        await peerMarkerBeforeOpen()
+        const standing = await stagingOf()
+        const end = await prepare(waited, { askForeignMarker: async () => 'wait' })
+        expect(end).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'foreign-marker' })
+        expect(waited.errors).toEqual([])
+        expect(await stagingOf()).toEqual(standing)
+        expect(waited.release).toHaveBeenCalledWith(false)
+    })
+
+    /** Origin 2's import check, which puts a foreign marker to the person and clears it on Clear. */
+    async function originTwoClears(): Promise<void> {
+        const { peer, backend } = node()
+        const { checkStore2Import } = await vi.importActual<typeof import('src/ts/drive/storeImport')>('src/ts/drive/storeImport')
+        const { setStore2BootSession } = await import('src/ts/storage/store2/bootActive')
+        setStore2BootSession({ kind: 'node', committer: peer, backend } as unknown as Store2Session)
+        try {
+            const asked: Array<string | undefined> = []
+            const check = await checkStore2Import({ ask: async (marker) => { asked.push(marker.label); return 'clear' } })
+            expect(check.kind).toBe('ready')
+            expect(asked).toEqual(['restore'])
+        } finally {
+            setStore2BootSession(null)
+        }
+    }
+
+    test('T-Q6 (diagnostic): another origin\'s Clear of a running restore\'s marker stops that restore base-moved before its commit, and its stopped end writes nothing to the commit key', async () => {
+        const page = openPage()
+        const ready = readyOf(await prepare(page))
+        expect((await stagingOf())?.label).toBe('restore')
+        await originTwoClears()
+        const afterClear = await parsedCommit(node().backend)
+        expect(afterClear.staging).toBeNull()
+        const end = await install(ready, page)
+        expect(end).toMatchObject({ kind: 'stopped', outcome: 'nothing-replaced', cause: 'base-moved' })
+        expect(await parsedCommit(node().backend)).toEqual(afterClear)
+        expect(page.release).toHaveBeenCalledWith(false)
+    })
+
+    test('T-Q6 (diagnostic, during the copy): a Clear that lands while the copy runs also ends base-moved, because the install re-checks the base after the copy; nothing is replaced and the stopped end writes nothing to the commit key', async () => {
+        const page = openPage()
+        const ready = readyOf(await prepare(page))
+        const { installRtbRestore } = await import('src/ts/drive/rtbRestoreInstall')
+        let afterClear: Awaited<ReturnType<typeof parsedCommit>> | null = null
+        const end = await installRtbRestore(ready.plan, page.hold, {
+            copy: async () => {
+                await originTwoClears()
+                afterClear = await parsedCommit(node().backend)
+                return { kind: 'copied', facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } } }
+            },
+            sideBackends: loggingSideBackends([]),
+            error: (text) => { page.errors.push(text) },
+            wait: () => { },
+        })
+        expect(afterClear).not.toBeNull()
+        expect(end).toMatchObject({ kind: 'stopped', outcome: 'nothing-replaced', cause: 'base-moved' })
+        expect(await parsedCommit(node().backend)).toEqual(afterClear)
     })
 })
