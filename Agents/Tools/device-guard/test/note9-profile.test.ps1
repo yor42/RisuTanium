@@ -304,7 +304,7 @@ foreach ($s in $pg) {
         @('push', (Join-Path $src 'x.txt'), 'rel/x'), @('push', '--bogus', (Join-Path $src 'x.txt'), '/sdcard/x'), @('push', (Join-Path $src 'x.txt')), @('pull', '/sdcard/a'),
         @('pull', '/sdcard/a', (Join-Path $testDir '..\x')), @('pull', '/sdcard/a', $existing), @('pull', '/sdcard/a', $log), @('pull', '/sdcard/a', (Join-Path $testDir 'con.txt')), @('pull', '/sdcard/a', 'rel.txt'), @('pull', '/a', '/b', (Join-Path $testDir 'x')),
         @('install', 'x.zip'), @('install', '-s', 'x.apk'), @('uninstall', 'a', 'b'), @('uninstall'), @('devices'), @('jdwp'), @('get-serialno'), @('wait-for-usb-device'),
-        @('forward', '--list'), @('forward', 'tcp:9999', 'tcp:1234'), @('reverse', '--remove-all'))
+        @('forward', 'tcp:9999', 'tcp:1234'), @('reverse', '--remove-all'))
     foreach ($a in $d1) { Test-NoteProfileRefused 'NP-D1' $s $a '97' }
 }
 
@@ -353,11 +353,11 @@ Test-NoteShellAllowed 'NP-H2' @('dumpsys meminfo', ('dumpsys meminfo ' + $app), 
 foreach ($s in $pg) { Test-NoteProfileAllowed 'NP-H2' $s @('shell', 'dumpsys', 'battery') }
 # NP-H3: user restrictions and user switching are danger zone DZ-4.
 Test-NoteShellRefused 'NP-H3' @('pm set-user-restriction no_debugging_features 1', 'cmd user set-user-restriction no_debugging_features 1', 'am switch-user 10', 'am stop-user 10') '89' 'DZ-4'
-# NP-H4: reverse --list is exactly that; forward --list and --remove-all stay refused; the Tab and the emulator do not get it.
+# NP-H4: reverse --list and forward --list (r21 kit form) are exactly that; --remove-all stays refused; the Tab and the emulator do not get reverse --list.
 foreach ($s in $pg) {
     Test-NoteProfileAllowed 'NP-H4' $s @('reverse', '--list')
     Test-NoteProfileRefused 'NP-H4' $s @('reverse', '--list', 'x') '97'
-    Test-NoteProfileRefused 'NP-H4' $s @('forward', '--list') '97'
+    Test-NoteProfileAllowed 'NP-H4' $s @('forward', '--list')
     Test-NoteProfileRefused 'NP-H4' $s @('reverse', '--remove-all') '97'
 }
 Test-NoteProfileRefused 'NP-H4' $tab @('reverse', '--list') '95'

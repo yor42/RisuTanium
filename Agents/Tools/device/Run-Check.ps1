@@ -18,7 +18,6 @@ param(
     [switch]$RequireApp,
     [int]$PollSeconds = 2,
     [string]$RepoRoot,
-    [string]$AdbExe,
     [switch]$KillLingering
 )
 $ErrorActionPreference = 'Stop'
@@ -40,7 +39,8 @@ $tracker = $null
 $verdict = 'running'
 try {
     if ($Serial) {
-        if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { throw 'adb start-server failed' }
+        $adbDir = Join-Path $OutDir 'adb'
+        if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log'))) { throw (Get-AdbInitReason) }
         $r.device = Get-DeviceInfo $Serial
     }
     foreach ($k in $Environment.Keys) {

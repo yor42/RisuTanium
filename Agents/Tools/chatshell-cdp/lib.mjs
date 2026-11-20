@@ -5,7 +5,7 @@
 //   dirties the repository. The refusal is lexical: a junction or an 8.3 short name that leads into the checkout is not seen.
 // - ws comes from the checkout's own node_modules, so the tool follows the checkout it lives in.
 // - hostRules() is the single source of the host blocking; launch-chrome passes it as one argument element, with no shell.
-// Env overrides: CHATSHELL_CDP_DIR / CHATSHELL_REPO_ROOT (point the tool at another copy of the tool folder or another checkout), HARNESS_OUT, HARNESS_CDP, HARNESS_APP.
+// Env overrides: CHATSHELL_CDP_DIR / CHATSHELL_REPO_ROOT (another tool folder or checkout for node_modules and the outside-checkout check; device runs always use the device lib and guard beside the run script), HARNESS_OUT, HARNESS_CDP, HARNESS_APP.
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import os from 'node:os'

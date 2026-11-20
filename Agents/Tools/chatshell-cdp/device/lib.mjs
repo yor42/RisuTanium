@@ -4,8 +4,13 @@
 // - devicePort() and requireSerial() throw when the environment does not name the port or the serial, so a run never
 //   drives a phone or a browser it was not pointed at.
 // - safeName() admits only a plain file name, so a build or trial name cannot leave the out dir.
-// Env: HARNESS_CDP (forwarded CDP port), HARNESS_SERIAL (adb serial), HARNESS_ADB (adb executable), HARNESS_OUT (out dir).
+// - Every adb call this kit makes is built by guardedAdb(): node running the guard beside this tool tree, with --kit first. The
+//   guard refuses a --kit call on any serial other than the two spare Note 9s before it sends anything. No environment variable
+//   or argument selects the guard or an adb executable.
+// Env: HARNESS_CDP (forwarded CDP port), HARNESS_SERIAL (adb serial), HARNESS_GUARD_LOG (absolute guard log path), HARNESS_OUT (out dir).
 import { createRequire } from 'node:module'
+import { spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 import { REPO_ROOT, connect, outDir, sleep } from '../lib.mjs'
@@ -26,7 +31,38 @@ export function requireSerial() {
   return v
 }
 
-export const adbExe = () => process.env.HARNESS_ADB || 'adb'
+const ADBG = fileURLToPath(new URL('../../device-guard/adbg.mjs', import.meta.url))
+
+export function guardLog() {
+  const v = process.env.HARNESS_GUARD_LOG
+  if (!v || !path.isAbsolute(v)) throw new Error('HARNESS_GUARD_LOG must name the absolute guard log path; there is no default')
+  return v
+}
+
+// The one place that builds a guard argument list for adb: --kit first, then the serial and the log, then the adb arguments.
+export function guardedAdb(args) {
+  return { file: process.execPath, args: [ADBG, '--kit', '--serial', requireSerial(), '--log', guardLog(), '--', ...args] }
+}
+
+// Runs one guarded adb call. Resolves to { code, adbgLine }: the exit code (null when the call outlived timeoutMs and was killed) and
+// the first stderr line that starts with "adbg: " (the guard's own refusal or error text), or '' when there is none.
+export function runGuardedAdb(args, timeoutMs) {
+  const { file, args: argv } = guardedAdb(args)
+  return new Promise((resolve) => {
+    const child = spawn(file, argv, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let err = ''
+    child.stderr.on('data', (d) => { err += d })
+    let timedOut = false
+    const timer = setTimeout(() => { timedOut = true; child.kill() }, timeoutMs)
+    const done = (code) => {
+      clearTimeout(timer)
+      const adbgLine = err.split(/\r?\n/).find((l) => l.startsWith('adbg: ')) || ''
+      resolve({ code: timedOut ? null : code, adbgLine })
+    }
+    child.on('error', () => done(1))
+    child.on('close', (code) => done(code))
+  })
+}
 
 export function safeName(s) {
   if (typeof s !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(s)) throw new Error('bad name (letters, digits, _ and - only, 1-40): ' + JSON.stringify(s))

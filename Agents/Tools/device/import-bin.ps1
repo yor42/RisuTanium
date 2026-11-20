@@ -57,8 +57,7 @@ param(
     [int]$PortMax = 6399,
     [int]$PollSeconds = 2,
     [string]$CdpScript,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
@@ -218,7 +217,8 @@ try {
     $haveLock = $true
 
     # ---- device ----
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $adbDir = Join-Path $OutDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log') -OwnPorts ($PortMin..$PortMax))) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
     $wv = Get-WebViewInfo $Serial
@@ -260,7 +260,6 @@ try {
         $ra = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'restore-snapshot.ps1'), '-OutDir', $rdir, '-Id', $SnapshotId, '-Profile', $Profile,
             '-SnapshotRoot', $SnapshotRoot, '-Serial', $Serial, '-AllowedSerials', $Serial, '-Package', $Package,
             '-MaxSeconds', [string][math]::Min(900, $left), '-RepoRoot', $RepoRoot)
-        if ($AdbExe) { $ra += @('-AdbExe', $AdbExe) }
         New-Item -ItemType Directory -Force -Path $rdir | Out-Null
         # The restore child takes the device lock itself, so this run lets go of it for the child's duration only and takes it
         # back at once; a process that slips in between makes the child's lock refusal or the take-back fail the run before launch.

@@ -17,8 +17,7 @@ param(
     [string[]]$AllowedSerials,
     [string]$Package,
     [ValidateRange(1, 1800)][int]$MaxSeconds = 1500,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
@@ -86,7 +85,8 @@ try {
     $haveLock = $true
 
     Start-Phase 'device-checks'
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $adbDir = Join-Path $OutDir 'adb'
+    if (-not (Initialize-AdbGuard -Dir $adbDir -Serial $Serial -Log (Join-Path $adbDir 'adb-commands.log'))) { Finish 'fail' (Get-AdbInitReason) }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
     $ident = Get-InstalledBuildInfo $Serial $Package
@@ -125,7 +125,7 @@ try {
     if ($push.TimedOut) { Finish 'timeout' 'adb push exceeded the cap' }
     if ($push.ExitCode -ne 0) { Finish 'fail' ('adb push failed: ' + $push.Out + ' ' + $push.Err) }
     $null = Invoke-Adb -AdbArgs @('shell', 'chmod', '644', $remote) -Serial $Serial -TimeoutSec 20
-    $hs = Invoke-AdbShell $Serial ('sha256sum ' + $remote) ([math]::Max(30, [math]::Min(600, (Get-Remaining))))
+    $hs = Invoke-AdbShell $Serial ('sha256sum ' + $remote) ([math]::Max(30, (Get-GuardCallCap (Get-Remaining))))
     if ($hs.TimedOut -or $hs.ExitCode -ne 0 -or $hs.Out -notmatch '^([0-9a-fA-F]{64})') { Finish 'fail' ('could not hash the pushed tar on the device: ' + $hs.Err) }
     if ($Matches[1].ToUpperInvariant() -ne $sha) { Finish 'fail' 'integrity: the tar changed in transfer (device hash differs); the app data was not touched' }
     $r.transfer = [ordered]@{ direction = 'pc-to-device'; bytes = $size; seconds = [math]::Round($pushSec, 2); mbPerSec = [math]::Round($size / 1MB / [math]::Max($pushSec, 0.001), 2) }
@@ -146,7 +146,7 @@ try {
     if ($left -le 0) { Finish 'timeout' 'cap reached before extraction; the data is in an undefined state, restore again' }
     # tar runs as the app uid; --no-same-owner keeps that uid for every extracted file, so a restore after an uninstall and
     # reinstall (a new app uid) does not fail on chown to the uid recorded in the archive.
-    $ex = Invoke-AdbShell $Serial ('run-as ' + $Package + ' tar --no-same-owner -xf ' + $remote) ([math]::Min(1200, $left))
+    $ex = Invoke-AdbShell $Serial ('run-as ' + $Package + ' tar --no-same-owner -xf ' + $remote) (Get-GuardCallCap $left)
     if ($ex.TimedOut) { Finish 'timeout' 'tar extraction exceeded the cap; the data is in an undefined state, restore again' }
     if ($ex.ExitCode -ne 0) { Finish 'fail' ('tar extraction failed: ' + $ex.Out + ' ' + $ex.Err + '; the data is in an undefined state, restore again') }
     End-Phase $null

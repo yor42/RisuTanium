@@ -117,7 +117,8 @@ Invoke-GuardCase 'scope am-start: own component plus extra refused' '95' ($ca + 
 Invoke-GuardCase 'full-access serial ignores scope: keyevent BACK still ok' '0' ($full + @('--scope-file', $scopeTap, '--', 'shell', 'input keyevent KEYCODE_BACK'))
 
 # Full-access serials behave as before.
-Invoke-GuardCase 'full am start' '0' ($full + @('--', 'shell', ('am start -n ' + $pkg + '/.Main')))
+Invoke-GuardCase 'full am start of the app id passes' '0' (@('--serial', 'emulator-5580', '--log', $log, '--own-ports', '9465,9466', '--own-package', 'io.github.yor42.risutanium', '--', 'shell', 'am start -n io.github.yor42.risutanium/.Main'))
+Invoke-GuardCase 'full am start of another own package is refused' '97' ($full + @('--', 'shell', ('am start -n ' + $pkg + '/.Main')))
 Invoke-GuardCase 'full pm clear own' '0' ($full + @('--', 'shell', ('pm clear ' + $pkg)))
 Invoke-GuardCase 'full svc wifi disable' '0' ($full + @('--', 'shell', 'svc wifi disable'))
 Invoke-GuardCase 'full logcat' '0' ($full + @('--', 'logcat', '--pid', '123', '-d'))
