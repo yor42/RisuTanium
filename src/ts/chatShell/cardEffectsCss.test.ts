@@ -71,7 +71,7 @@ describe('the adopted card effects sheet', () => {
         const rule = ruleWith('outline')
         expect(rule.selectors).toEqual([`${EFFECTS} .chattext .x-risu-button-default:focus`])
         const found = declarations(rule)
-        expect(found.get('outline')).toBe('2px solid var(--risu-theme-borderc) !important')
+        expect(found.get('outline')).toBe('2px solid var(--risu-theme-role-focus-ring, #6f7fc8) !important')
         expect(found.has('box-shadow')).toBe(false)
     })
 })

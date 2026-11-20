@@ -87,7 +87,7 @@ export interface ModelSheet {
 export interface ModelEnv {
     /** Matches `@media (prefers-reduced-motion: reduce)`. Every other environment query is false. */
     reducedMotion?: boolean
-    /** The element `:focus` and `:focus-visible` match. */
+    /** The element `:focus` and `:focus-visible` match; `:focus-within` matches it and every ancestor. */
     focused?: Element | null
 }
 
@@ -120,6 +120,7 @@ export interface RuleSet {
 }
 
 const FOCUS_ATTR = 'data-cm-focus'
+const FOCUS_WITHIN_ATTR = 'data-cm-focus-within'
 const IGNORED_AT_RULES = new Set(['keyframes', 'font-face', 'charset', 'import', 'namespace', 'counter-style', 'font-feature-values'])
 
 function specOf(selector: selectorParser.Selector): Spec {
@@ -172,6 +173,7 @@ function compileSelector(text: string, report: (what: string) => void): Compiled
         else if (v.startsWith('::') || v === ':host' || v === ':host-context') unsupported = true
         else if (v === ':where') n.value = ':is'
         else if (v === ':focus-visible' || v === ':focus') n.replaceWith(...selectorParser().astSync(`[${FOCUS_ATTR}]`).first.nodes)
+        else if (v === ':focus-within') n.replaceWith(...selectorParser().astSync(`[${FOCUS_WITHIN_ATTR}]`).first.nodes)
     })
     if (unsupported) {
         report(`selector ${text}`)
@@ -427,7 +429,9 @@ export class CascadeModel {
         this.env = env
         this.unmodelled = set.unmodelled
         for (const el of document.querySelectorAll(`[${FOCUS_ATTR}]`)) el.removeAttribute(FOCUS_ATTR)
+        for (const el of document.querySelectorAll(`[${FOCUS_WITHIN_ATTR}]`)) el.removeAttribute(FOCUS_WITHIN_ATTR)
         env.focused?.setAttribute(FOCUS_ATTR, '')
+        for (let el: Element | null | undefined = env.focused; el; el = el.parentElement) el.setAttribute(FOCUS_WITHIN_ATTR, '')
     }
 
     /** Constructs recorded while resolving, in addition to `unmodelled`. */

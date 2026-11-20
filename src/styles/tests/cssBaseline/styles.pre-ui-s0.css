@@ -390,7 +390,21 @@ body {
 }
 
 .x-risu-button-default {
-  @apply border text-textcolor rounded-md shadow-xs focus:outline-hidden focus:ring-2 transition-colors duration-200 border-darkborderc px-4 py-2 bg-darkbutton hover:bg-borderc focus:ring-borderc;
+  @apply border text-textcolor rounded-md shadow-xs transition-colors duration-200 border-darkborderc px-4 py-2 bg-darkbutton hover:bg-borderc;
+}
+
+/*
+ * The classic keyboard focus ring. Classic surfaces stay on the user's colour scheme even while a
+ * theme pack is on, so this reads the scheme role and never `--nexus-ring`. The ring is guaranteed
+ * on bgcolor, darkbg and darkbutton only. Width and offset stay inside the CHORE-738 ring limits.
+ * It is unlayered, so a caller's utility class cannot remove it.
+ */
+.risu-focus-ring:focus-visible,
+.x-risu-button-default:focus-visible,
+.risu-focus-ring-within:focus-within,
+.peer:focus-visible ~ .risu-focus-ring-peer {
+  outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
+  outline-offset: 0;
 }
 
 .loadmove {

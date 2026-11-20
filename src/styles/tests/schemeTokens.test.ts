@@ -182,7 +182,7 @@ describe('TB2: every preset meets its contrast floors on its own canvas and surf
 })
 
 describe('TB4b: token fallbacks equal the Default derivation', () => {
-    const FILES = ['src/styles/nexus-tokens.css', 'src/styles/chat-tokens.css', 'src/styles/pattern-tokens.css']
+    const FILES = ['src/styles/nexus-tokens.css', 'src/styles/chat-tokens.css', 'src/styles/pattern-tokens.css', 'src/styles.css', 'src/ts/chatShell/cardEffects.css']
 
     test('every role reference carries the role derived from the built-in Default as its fallback', async () => {
         const { deriveSchemeRoles } = await import('../../ts/gui/schemeRoles')
@@ -194,11 +194,20 @@ describe('TB4b: token fallbacks equal the Default derivation', () => {
                 expect(m[2].trim(), `${file} ${m[1]}`).toBe(roles[m[1]])
             }
         }
-        expect(found).toBeGreaterThanOrEqual(15)
+        expect(found).toBeGreaterThanOrEqual(17)
     })
 })
 
-describe('TB7: the derived roles are read only by the token files', () => {
+describe('TB5e: the classic focus ring and the new-screen ring are one colour', () => {
+    test.each(colorSchemeList)('%s: --nexus-ring equals the focus-ring role', (name) => {
+        const m = apply(name)
+        const role = document.documentElement.style.getPropertyValue('--risu-theme-role-focus-ring')
+        expect(role).not.toBe('')
+        expect(normaliseColours(m.custom(ROOT(), '--nexus-ring')!, '#000000ff')).toBe(normaliseColours(role, '#000000ff'))
+    })
+})
+
+describe('TB7: the derived roles are read only by the token files and the classic focus ring', () => {
     function walk(dir: string, out: string[]) {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
             const p = path.join(dir, e.name)
@@ -208,7 +217,7 @@ describe('TB7: the derived roles are read only by the token files', () => {
     }
 
     // pattern-tokens.css reads the roles only through --nexus-canvas, so it names none.
-    test('--risu-theme-role- appears only in the Nexus and chat token files, colorscheme.ts and schemeRoles.ts', () => {
+    test('--risu-theme-role- appears only in the Nexus and chat token files, the classic focus ring rules, colorscheme.ts and schemeRoles.ts', () => {
         const files: string[] = []
         walk(path.join(REPO_ROOT, 'src'), files)
         const users = files
@@ -216,8 +225,10 @@ describe('TB7: the derived roles are read only by the token files', () => {
             .map((f) => path.relative(REPO_ROOT, f).replace(/\\/g, '/'))
             .sort()
         expect(users).toEqual([
+            'src/styles.css',
             'src/styles/chat-tokens.css',
             'src/styles/nexus-tokens.css',
+            'src/ts/chatShell/cardEffects.css',
             'src/ts/gui/colorscheme.ts',
             'src/ts/gui/schemeRoles.ts',
         ])

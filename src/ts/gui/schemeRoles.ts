@@ -11,6 +11,8 @@ export interface SchemeRoles {
     'text-muted': string
     'accent': string
     'accent-rgb': string
+    /** The classic keyboard focus ring; it stays at least 3:1 on the scheme's page, panel and button colours. */
+    'focus-ring': string
     'field-border': string
     'danger': string
     'danger-rgb': string
@@ -88,6 +90,7 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
         'text-muted': tx2 ?? scheme.textcolor2,
         'accent': FALLBACK_ACCENT,
         'accent-rgb': FALLBACK_ACCENT_RGB,
+        'focus-ring': FALLBACK_ACCENT,
         'field-border': bc ?? scheme.borderc,
         'danger': red ?? scheme.draculared,
         'danger-rgb': FALLBACK_DANGER_RGB,
@@ -114,7 +117,9 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
             return cr(v, parseConcrete(bg)!) >= 4.5 && cr(v, parseConcrete(dbg)!) >= 4.5 && cr(v, parseConcrete(btn)!) >= 3
         })
         note('accent', accent)
+        note('focus-ring', accent)
         roles['accent'] = accent.c
+        roles['focus-ring'] = accent.c
         roles['accent-rgb'] = channels(accent.c)
     }
     if (tx !== null && bc !== null && bg !== null && dbg !== null) {

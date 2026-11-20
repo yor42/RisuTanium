@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 /** The presenter maps a task view to toast content and decides what is spoken; the host is a real one on a fake clock. */
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
 
 import { language } from '../../../lang'
 import { createToastHost, type ToastClock } from '../../../ts/toast/toastHost.svelte'
+import { ANNOUNCE_SETTLE_MS } from './patternFocus'
 import { createTaskToastPresenter } from './taskToastPresenter'
 import type { TaskView } from './taskProgress'
 
@@ -54,8 +55,14 @@ function setup() {
     return { clock, host, presenter, open, end, id }
 }
 
+// The deferral is one animation frame and then the settle; the fake timers cover both.
+const NOTICE_DELAY_MS = ANNOUNCE_SETTLE_MS + 20
+
+beforeEach(() => vi.useFakeTimers())
+afterEach(() => vi.useRealTimers())
+
 describe('task toast presenter', () => {
-    test('post shows the running toast and announces the backgrounding politely', () => {
+    test('post shows the running toast and announces the backgrounding politely, after a frame and the settle', () => {
         const { host, id } = setup()
         const [task] = host.tasks
         expect(task.id).toBe(id)
@@ -63,8 +70,44 @@ describe('task toast presenter', () => {
         expect(task.line).toBe('Read file')
         expect(task.phase).toBe('running')
         expect(task.openLabel).toBe(language.patternTaskToastOpen)
+        const seq = host.polite.seq
+        expect(host.polite.text).toBe('')
+        vi.advanceTimersByTime(ANNOUNCE_SETTLE_MS)
+        expect(host.polite.text).toBe('')
+        vi.advanceTimersByTime(20)
         expect(host.polite.text).toBe(language.patternTaskBackgrounded('Importing'))
+        expect(host.polite.seq).toBe(seq + 1)
         expect(host.assertive.text).toBe('')
+        vi.advanceTimersByTime(5000)
+        expect(host.polite.seq).toBe(seq + 1)
+    })
+
+    // R307-10
+    test('a task that finishes before the settle speaks only its done text, once', () => {
+        const { host, presenter, id } = setup()
+        const seq = host.polite.seq
+        presenter.update(id, view({ state: 'done', fraction: 1, result: { headline: 'Imported 2 items' } }))
+        expect(host.polite.text).toBe('Imported 2 items')
+        vi.advanceTimersByTime(NOTICE_DELAY_MS * 3)
+        expect(host.polite.text).toBe('Imported 2 items')
+        expect(host.polite.seq).toBe(seq + 1)
+    })
+
+    test('a task ended before the settle speaks no notice', () => {
+        const { host, presenter, id } = setup()
+        const seq = host.polite.seq
+        presenter.end(id, { returnFocus: false })
+        vi.advanceTimersByTime(NOTICE_DELAY_MS * 3)
+        expect(host.polite.text).toBe('')
+        expect(host.polite.seq).toBe(seq)
+    })
+
+    test('the notice shows the latest content, not the content at the post', () => {
+        const { host, presenter, id } = setup()
+        presenter.update(id, view({ stepIndex: 1 }))
+        vi.advanceTimersByTime(NOTICE_DELAY_MS)
+        expect(host.polite.text).toBe(language.patternTaskBackgrounded('Importing'))
+        expect(host.tasks[0].line).toBe('Add items')
     })
 
     test('updates within running announce nothing, whatever changes', () => {

@@ -196,7 +196,7 @@ describe('App mounts the task host', () => {
         await tick()
         expect(card()).not.toBeNull()
         expect(document.querySelector('[data-part="pattern-task-status"]')!.textContent).toBe('Add items')
-        expect(document.activeElement).toBe(shell())
+        expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-task-title"]'))
 
         void handle.finish({ headline: 'Imported' })
         flushSync()

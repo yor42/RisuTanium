@@ -45,7 +45,7 @@
     })))
 </script>
 
-<PatternDialog labelId={headingId} cancelSafe={true} oncancel={() => answer(null)} {trigger} {background}>
+<PatternDialog labelId={headingId} announce={language.settingsShellDataMakeBackup} cancelSafe={true} oncancel={() => answer(null)} {trigger} {background}>
     <div data-part="data-chooser-root">
         <h2 id={headingId} data-part="data-chooser-heading">{language.settingsShellDataMakeBackup}</h2>
 
