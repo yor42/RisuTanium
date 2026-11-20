@@ -96,13 +96,13 @@ function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
 
 describe('PatternTask card', () => {
     // The progress bar's value text names the amount (never a percentage) and the card is one labelled alertdialog group.
-    test('T10 an alertdialog holding a named group and a progressbar whose value text carries the count', () => {
+    test('T10 a dialog holding a named group and a progressbar whose value text carries the count', () => {
         const h = open()
         h.controller.setStep(1)
         h.controller.setCount(5, 10)
         h.tickTo(300)
         const dialog = part(h.target, 'pattern-dialog')!
-        expect(dialog.getAttribute('role')).toBe('alertdialog')
+        expect(dialog.getAttribute('role')).toBe('dialog')
         const group = dialog.querySelector('[data-part="pattern-task-root"]')!
         expect(group.getAttribute('role')).toBe('group')
         expect(group.getAttribute('aria-labelledby')).toBe(part(h.target, 'pattern-task-title')!.id)

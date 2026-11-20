@@ -872,14 +872,14 @@ export async function importModule(){
         return session
     }
     await runImportBatch(
-        files.map((file) => ({name: file.name, run: (progress:ImportProgress) => importModuleFile(
+        files.map((file) => ({name: file.name, size: file.size, run: (progress:ImportProgress) => importModuleFile(
             file,
             progress.round.count > 1,
             sessionOf(progress.round.number),
             progress.round.index < progress.round.count - 1,
             progress,
         )})),
-        {declinedReason: language.importDeclinedLowLevel, task: {title: language.importTaskModulesTitle, steps: IMPORT_STEPS}}
+        {declinedReason: language.importDeclinedLowLevel, task: {title: language.importTaskModulesTitle, steps: IMPORT_STEPS}, preflight: true}
     )
     if([...sessions.values()].some((session) => session.replaced)){
         bumpModuleGui()

@@ -104,6 +104,7 @@
   --d-tick: calc(min(var(--task-tick-dur), var(--pm-cap)) * var(--chat-motion, 1));
   --d-badge: calc(min(var(--task-badge-dur), var(--pm-cap)) * var(--chat-motion, 1));
   --d-result: calc(min(var(--task-result-enter-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-swapin: calc(min(var(--warning-swap-in-dur), var(--pm-cap)) * var(--chat-motion, 1));
   --l-step: calc(min(var(--i, 0) * var(--task-step-stagger), var(--task-step-stagger-max)) * var(--pm-stagger));
   --l-badge: calc(var(--task-badge-delay) * var(--pm-stagger));
   --m-step: calc(var(--task-step-enter-distance) * var(--pm-move));
@@ -114,6 +115,7 @@
 @keyframes pattern-rise-step { from { opacity: 0; transform: translateY(var(--m-step)); } to { opacity: 1; transform: none; } }
 @keyframes pattern-rise-result { from { opacity: 0; transform: translateY(var(--m-result)); } to { opacity: 1; transform: none; } }
 @keyframes pattern-badge { from { opacity: 0; transform: scale(var(--s-badge)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-swap-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pattern-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
 [data-part="pattern-task-step"] { animation: pattern-rise-step var(--d-step) var(--nexus-ease-out) var(--l-step) both; }
@@ -127,5 +129,7 @@
 [data-part="pattern-task-bar"][data-task-state="cancelling"] > [data-part="pattern-task-bar-sweep"] { opacity: 1; }
 [data-part="pattern-task-mark-badge"]:not([hidden]) { animation: pattern-badge var(--d-badge) var(--nexus-ease-out) var(--l-badge) both; }
 [data-part="pattern-task-result"] { animation: pattern-rise-result var(--d-result) var(--nexus-ease-out) both; }
+/* The card that follows a confirm sheet fades in; the sheet has no swap-out phase, so the state change stays synchronous. */
+[data-part="pattern-task-root"][data-swap="in"] > * { animation: pattern-swap-in var(--d-swapin) var(--nexus-ease-out) both; }
 /* The brand's error pose shakes once; in this card it does not. */
 [data-part="pattern-task-mark"] .nexus-mark[data-status="error"] .nm-body { animation: none; }
