@@ -5,6 +5,7 @@ import { advancedSettingsItems } from './advancedSettingsData'
 import { ADVANCED_NOT_OFFERED_IDS, advancedShellItems, advancedShellRowIds } from './advancedShellSettingsData'
 import { basicParameterItems, modelSpecificParameterItems, penaltyParameterItems, samplingParameterItems, seedSetting } from './botSettingsParamsData'
 import { chatFormatSettingsItems } from './chatFormatSettingsData'
+import { DATA_ACTION_ITEMS, dataShellItems, dataShellRowIds } from './dataShellSettingsData'
 import { displayShellItems, displayShellRowIds } from './displayShellSettingsData'
 import { displaySettingsItems } from './displaySettingsData.svelte'
 import { INPUT_NOT_OFFERED_IDS, inputShellItems, inputShellRowIds } from './inputShellSettingsData'
@@ -36,6 +37,7 @@ interface NativePage {
 
 function nativePages(): readonly NativePage[] {
     return [
+        { index: 0, rowIds: dataShellRowIds, items: dataShellItems, notOffered: new Set() },
         { index: 3, rowIds: displayShellRowIds, items: displayShellItems, notOffered: new Set() },
         { index: 11, rowIds: inputShellRowIds, items: inputShellItems, notOffered: INPUT_NOT_OFFERED_IDS },
         { index: 10, rowIds: languageShellRowIds, items: languageShellItems, notOffered: LANGUAGE_NOT_OFFERED_IDS },
@@ -60,6 +62,7 @@ export function legacyListTargets(): readonly LegacyListTarget[] {
         { name: 'modelSpecificParameters', items: modelSpecificParameterItems, index: 1, rows: false },
         { name: 'chatFormat', items: chatFormatSettingsItems, index: 1, rows: false },
         { name: 'display', items: pageItems(displaySettingsItems), index: 3, rows: true },
+        { name: 'data', items: DATA_ACTION_ITEMS, index: 0, rows: true },
     ]
 }
 

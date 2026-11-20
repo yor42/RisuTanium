@@ -57,6 +57,11 @@ export interface ImportProgress {
     beforeWrite(): void
     /** This file's library write happened; Retry never re-runs a file that fired it. */
     committed(): void
+    /**
+     * A module import's duplicate question was answered for this file and the file goes on (a skip is not reported).
+     * `replace` is true when the answer replaces an installed module. It is called before the file's first write.
+     */
+    decided(replace: boolean): void
     /** A success line: `alertNormal` without a card, kept for the result card with one. */
     notice(text: string): void
     /** The same gate, signal and marker, with no steps or sinks of its own, for a flow nested inside this one. */
@@ -80,6 +85,7 @@ export const NO_IMPORT_PROGRESS: ImportProgress = {
     throwIfCancelled: () => { },
     beforeWrite: () => { },
     committed: () => { },
+    decided: () => { },
     notice: (text) => alertNormal(text),
     nested: () => NO_IMPORT_PROGRESS,
     round: { number: 0, index: 0, count: 1 },
@@ -104,6 +110,7 @@ export interface ImportProgressContext {
     readonly found: ProgressSink
     onCommitted(): void
     onNotice(text: string): void
+    onDecided?(replace: boolean): void
 }
 
 /** The tally of one item: reports to `sink` as (saved, total); a total that was set is not set again. */
@@ -154,6 +161,7 @@ export function makeImportProgress(ctx: ImportProgressContext): ImportProgress {
         throwIfCancelled,
         beforeWrite: gate,
         committed: ctx.onCommitted,
+        decided: (replace) => ctx.onDecided?.(replace),
         notice: ctx.onNotice,
         nested: () => ({
             signal: ctx.signal,
@@ -165,6 +173,7 @@ export function makeImportProgress(ctx: ImportProgressContext): ImportProgress {
             throwIfCancelled,
             beforeWrite: gate,
             committed: ctx.onCommitted,
+            decided: (replace) => ctx.onDecided?.(replace),
             notice: ctx.onNotice,
             nested: () => progress.nested(),
             round: ctx.round,
