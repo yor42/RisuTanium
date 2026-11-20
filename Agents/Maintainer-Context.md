@@ -33626,7 +33626,7 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 - Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2783`, `MC-2784`, `MC-2809`.
 
-**What the maintainer chose.** Audit the built-in RisuRealm browser offline (the ui-audit skill, a fake hub, real Realm hosts blocked), then restyle it to the UI/UX contract with the frontend-design skill, in a new session. The upload iframe is out of scope. Delivered in three stages: #404, #409 and #413.
+**What the maintainer chose.** Audit the built-in RisuRealm browser offline (the ui-audit skill, a fake hub, real Realm hosts blocked), then restyle it to the UI/UX contract with the frontend-design skill, in a new session. The upload iframe is out of scope. Delivered in three stages: #404 (merged), then #409 and #413 (open at the time of this record).
 
 ### MC-2783 — The Realm restyle takes all four finding groups, 2026-11-20
 
