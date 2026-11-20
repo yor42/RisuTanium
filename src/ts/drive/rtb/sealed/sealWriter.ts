@@ -35,6 +35,11 @@ export interface PreparedSeal {
     chunks(plaintextLen: number): number
     /** Single use: a second call throws, because the first sink wipes the payload key when it ends. */
     sink(target: (chunk: Uint8Array) => Promise<void> | void): EncryptingSink
+    /**
+     * Zeroes the payload key when it is a byte array and abandons the sink if one was given out; after it `sink()`
+     * throws. Synchronous, idempotent, never throws. Every exit of an export that prepared a seal calls it.
+     */
+    abandon(): void
 }
 
 function systemRandom(length: number): Uint8Array {
@@ -82,7 +87,8 @@ export async function prepareSeal(passwordText: string, params: SealParams, deps
             wrappedKey: wrapped,
         })
         rawPayloadKey = payloadKey(master, context)
-        let sinkTaken = false
+        let given: EncryptingSink | null = null
+        let abandoned = false
         const sealContext: SealContext = {
             header,
             chunkSize: params.chunkSize,
@@ -96,11 +102,23 @@ export async function prepareSeal(passwordText: string, params: SealParams, deps
             sealedSize: (plaintextLen) => sealedFileSize(V1_HEADER_LEN, plaintextLen, params.chunkSize),
             chunks: (plaintextLen) => chunkCount(plaintextLen, params.chunkSize),
             sink: (target) => {
-                if (sinkTaken) {
+                if (abandoned) {
+                    throw new Error('the prepared seal was abandoned')
+                }
+                if (given !== null) {
                     throw new Error('a prepared seal gives out one sink')
                 }
-                sinkTaken = true
-                return new EncryptingSink(sealContext, target)
+                given = new EncryptingSink(sealContext, target)
+                return given
+            },
+            abandon: () => {
+                // The key wipe and the sink's abandon stay in one synchronous run: a busy sink call never sees a
+                // zeroed key before it is marked wiped.
+                abandoned = true
+                if (ArrayBuffer.isView(sealContext.payloadKey)) {
+                    sealContext.payloadKey.fill(0)
+                }
+                given?.abandon()
             },
         }
     } finally {
