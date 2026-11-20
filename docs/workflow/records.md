@@ -1,6 +1,13 @@
 # Item records and closeout
 
-An item is **COMPLETE only after applicable records are current**: relevant maintainer decisions, independent gate dispositions, Roadmap/status and current-state/remaining-work records. Technical acceptance and administrative closeout are separate. A reviewer may accept behavior while the item remains awaiting record closeout; do not describe that state as COMPLETE.
+An item is **COMPLETE** when (MC-2747):
+
+- its PR is merged on green CI (or, for a PR CI skips, merged with a matching diff under the [approval matrix](gates.md#approval-matrix-mc-2744));
+- its GitHub issue is closed with a link to the PR (normally by the PR's own `Closes #n` keyword, one keyword per issue);
+- its card on project board 1 has moved; and
+- every leftover is dispositioned: fixed, a known limitation in the PR body, a follow-up issue under the [follow-up policy](gates.md#follow-up-policy-mc-2745), or dropped with a reason.
+
+The PR body carries the gate dispositions, the decisions the session recorded (IDs from its own MC block, MC-2713) and its device rows. Technical acceptance alone is not COMPLETE. The items owed administrative closeout under the earlier record-heavy definition are bulk-closed in one sweep batch (MC-2747); no item is closed by reconstructing the old record set.
 
 ## Incremental closure
 
@@ -18,7 +25,7 @@ The record checker independently verifies the changed claims and pointers agains
 
 When an item that changes user-visible behaviour lands on `main`, the same records pass updates the "What's different from upstream" list and its known problems on the wiki page [`docs/wiki/Changes-from-upstream.md`](../wiki/Changes-from-upstream.md), and `doc-verifier` checks that change (MC-332, amended 2026-11-06: the list moved out of the README, which keeps only a pointer to that page).
 
-The item owner records final closure against the accepted snapshot and the changed records, distinguishing optional improvements and unresolved work. Commit/push remains subject to the maintainer's actual authorization. Existing 2026-10-08 handoff backlog stays pending until separately reconciled; adopting this rule does not declare that backlog complete.
+The item owner records final closure against the merged PR, distinguishing optional improvements and unresolved work. Commit, push and merge follow the [approval matrix](gates.md#approval-matrix-mc-2744). The untracked 2026-10-08 handoff backlog is archived out of the tree after any still-relevant item is copied into an existing issue (MC-2752).
 
 ## Separate records track
 
@@ -36,16 +43,27 @@ Records are batched per stage or batch where no maintainer decision is involved.
 
 Preserve useful context and use a fresh Sonnet parent at a coherent handoff or when size, contamination or scope warrants it; do not reset per ticket or solely because a provider/stage changed. Write a factual `/handoff` first and retain workflow state/acceptance/parked-check lineage. The next session first checks the handoff against `git status` and `git log` before relying on it.
 
-## Orphan sweep and leftover disposal (MC-2064)
+## Weekly sweep (MC-2745)
 
-Every records batch runs an orphan sweep. The sweep lists every open Roadmap row where either:
+Once a week lane A runs a sweep batch (it may be a dedicated low-cost session). The sweep:
 
-- the owner is not an active session and the row has had no log, git or Roadmap activity for 7 days; or
-- the row waits on a ticket ID or batch that is closed or already planned.
+- closes or parks open issues untouched for 14 days that have no trigger, each with a one-line reason;
+- merges duplicate issues into the oldest one;
+- reports the issues opened and closed that week and the open-issue trend;
+- runs the orphan sweep below over GitHub issues.
 
-Lane A gives each listed row a named owner with a trigger, or asks the maintainer to park it (AskUserQuestion, multiSelect).
+Closing an issue by hand is in the always-asked row of the approval matrix, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them.
 
-A merge, slice close, batch plan or lane retirement is not recorded until every leftover item has a named owner with a trigger, or a maintainer park. Device results go back to the affected Roadmap rows in the same records batch. A wait names a ticket ID, never a batch such as "owed to devbatchN".
+## Orphan sweep and leftover disposal (MC-2064, amended by MC-2745)
+
+The orphan sweep lists every open issue (and any open Roadmap row not yet mirrored to an issue) where either:
+
+- the owner is not an active session and it has had no issue, PR, git or log activity for 7 days; or
+- it waits on a ticket or batch that is closed or already planned.
+
+Lane A gives each listed item a named owner with a trigger, drops it with a reason, or asks the maintainer to park it (AskUserQuestion, multiSelect).
+
+A merge, slice close, batch plan or lane retirement is not recorded until every leftover item is dispositioned: a named owner with a trigger, a known limitation, dropped with a reason, or a maintainer park. Device results go back to the affected issue or PR in the same batch. A wait names a ticket (issue number), never a batch such as "owed to devbatchN".
 
 ## Canonical reports and selected evidence
 

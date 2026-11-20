@@ -5,7 +5,7 @@ description: Runs a read-only, screenshot-based UI audit against a fixed rubric 
 
 Audit the requested screens: $ARGUMENTS
 
-This is the check half of UI-S7 (MC-1699). It records defects; it changes no code. A finding becomes a backlog item or ticket that goes through the normal gates. Restyle work from reference images is a separate, gated stage.
+This is the check half of UI-S7 (MC-1699). It records defects; it changes no code. A finding becomes a backlog item or ticket that goes through the normal gates. Under the follow-up policy (MC-2745) the run's ticket candidates are batched into one issue per audit, at most 2 new issues in all, after checking open issues for duplicates; you never file issues yourself, the owning session does. Restyle work from reference images is a separate, gated stage.
 
 ## Hard limits
 
