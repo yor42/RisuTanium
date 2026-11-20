@@ -385,7 +385,10 @@ function reachAllowed(prop: string, value: string, T: TokenMap, ctl: boolean | u
         return /^[\d.]+$/.test(r.trim()) && (n < 1 || n > 3) ? 'a line height outside 1 to 3' : /px|rem|em/.test(r) && maxLen(v, T) < 11 ? 'a line height under 11 px' : ''
     }
     if (prop === 'letter-spacing') return maxLen(v, T) > 2 ? 'letter spacing beyond 2 px' : ''
-    if (/^(width|max-width)$/.test(prop)) return /^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%)$/.test(v) || (/^\d+(\.\d+)?%$/.test(v) && parseFloat(v) >= 50) ? '' : `a ${prop} that can collapse the surface`
+    // a max-width of 320 px or more (#316) is never narrower than the 50% already accepted on the 360 px phone the checks model
+    if (/^(width|max-width)$/.test(prop)) return /^(auto|none|fit-content|max-content|min-content|inherit|initial|unset|100%)$/.test(v) || (/^\d+(\.\d+)?%$/.test(v) && parseFloat(v) >= 50) || (prop === 'max-width' && /^\d+(\.\d+)?(px|rem)$/.test(v) && parseFloat(v) * (v.endsWith('rem') ? 16 : 1) >= 320) ? '' : `a ${prop} that can collapse the surface`
+    // these only size, place or tile the background inside the element's own box; every colour of the background is judged on its own (#315)
+    if (/^background-(size|position(-x|-y)?|repeat)$/.test(prop)) return ''
     if (/^(padding|margin)(-(top|right|bottom|left|inline|block)(-(start|end))?)?$|^(gap|row-gap|column-gap)$/.test(prop)) {
         const r = resolve(v, T)
         if (/(^|[\s(*\/])-\s*[\d.]|\*\s*-\s*[\d.]/.test(r)) return `negative ${prop} on a surface that can hold a protected element`
@@ -471,8 +474,9 @@ const VALUES: ValueSpace = (() => {
     const COLOUR_RE = /#[0-9a-f]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)|\b[a-z]+\b/g
     // every colour a value mentions (gradient stops included); words that are not colours (to, linear-gradient, 50%) are skipped; any other bare word that is not a colour is an undefined entry.
     // The scan splits a value into words, so a color-mix() in a declaration is never read as one colour: its words (color, mix, srgb) are unknown and the value is refused. Teaching this scan color-mix means judging the resolved mix as ONE colour, with the verdict of the same colour written as hex.
+    // A repeating gradient reads as the gradient it repeats, and repeat-x / repeat-y as one keyword; each is dropped whole, so the bare words repeating, x and y stay unknown.
     function coloursIn(v: string, T: TokenMap): (Rgba | undefined)[] {
-        const r = resolve(v, T).replace(/!important/, '')
+        const r = resolve(v, T).replace(/!important/, '').replace(/(^|[\s,(])repeating-(?=(?:linear|radial|conic)-gradient\()/g, '$1').replace(/(^|[\s,\/])repeat-[xy](?=[\s,]|$)/g, '$1')
         const out: (Rgba | undefined)[] = []
         for (const m of r.matchAll(COLOUR_RE)) {
             const w = m[0]
@@ -919,8 +923,8 @@ function lintOnce(css: string, name: string, reg: Registry, skipStructure: boole
                     continue
                 }
             }
-            // DD-242: a selector that names no part (a data-kind, data-state or data-fail attribute) can match a protected surface itself, so it may not paint a background
-            if (a.tier === 'reach' && !(a.sp || []).length && /^(background|background-color|background-image)$/.test(d.prop)) {
+            // DD-242: a selector that names no part (a data-kind, data-state or data-fail attribute) can match a protected surface itself, so it may not paint a background or size, place or tile the one the app gives it
+            if (a.tier === 'reach' && !(a.sp || []).length && /^(background|background-color|background-image|background-(size|position(-x|-y)?|repeat))$/.test(d.prop)) {
                 fail(sel, d.prop, 'a background on a selector that names no part can match a protected surface directly (DD-242): name a part instead')
                 continue
             }
