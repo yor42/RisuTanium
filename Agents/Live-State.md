@@ -8,7 +8,7 @@ Everything below "Current state" up to 2026-11-20 is archived verbatim in [Archi
 
 - **Tickets:** open issues and board 1 on yor42/RisuTanium (always `gh ... --repo yor42/RisuTanium`). Check issue, PR and `git log origin/main` state before offering a ticket.
 - **Lanes:** the latest lane handoffs (lane A and lane B handoffs of 2026-11-19 at the time of writing; they are untracked in the main checkout and kept by lane A) and lane A's decisions log. A session's own MC block and device rows are in its PR (MC-2713).
-- **Governance:** governance v2 (MC-2744 to MC-2753, rolled out 2026-11-20 as staged docs PRs): [AGENTS](../AGENTS.md), [CLAUDE](../CLAUDE.md), [gates](../docs/workflow/gates.md) (approval matrix, size tiers, follow-up policy, CI ownership), [records](../docs/workflow/records.md), [ownership](../docs/workflow/ownership.md), [routing](../docs/workflow/routing.md), [live checks](../docs/workflow/live-checks.md) (device checklist and row template).
+- **Governance:** governance v2 (MC-2744 to MC-2753 and MC-2775 to MC-2781, rolled out 2026-11-20 as staged docs PRs): [AGENTS](../AGENTS.md), [CLAUDE](../CLAUDE.md), [gates](../docs/workflow/gates.md) (approval matrix, size tiers, follow-up policy, CI ownership), [records](../docs/workflow/records.md), [ownership](../docs/workflow/ownership.md), [routing](../docs/workflow/routing.md), [live checks](../docs/workflow/live-checks.md) (device checklist and row template).
 
 ## Current state
 
@@ -21,4 +21,4 @@ Everything below "Current state" up to 2026-11-20 is archived verbatim in [Archi
 - #384: automatic self-revoking per-worktree write grants (MC-2750).
 - #387: native-first route order and Codex/agy opt-in in the workflow controller (MC-2748).
 - MC-2752 done 2026-11-20: the `Agents/Handoff-2026-10-08*` backlog moved out of the tree by lane A after its live items went to #280 (comment) and #391.
-- The MC-2747 bulk close of old owed administrative closeouts runs as one sweep batch (lane A).
+- The MC-2747 bulk close of old owed administrative closeouts runs as one sweep batch after the governance v2 PRs merge, with the list shown to the maintainer first (MC-2780; lane A).

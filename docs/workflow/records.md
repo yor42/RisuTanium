@@ -59,11 +59,11 @@ Once a week lane A runs a sweep batch (it may be a dedicated low-cost session). 
 - reports the issues opened and closed that week and the open-issue trend;
 - runs the orphan sweep below over GitHub issues.
 
-Derived reconciliation (not stated in either decision): MC-2745 has the sweep close stale issues while MC-2744 keeps issue closes in the always-asked list, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them.
+Derived reconciliation (not stated in either decision): MC-2745 has the sweep close stale issues while MC-2744 keeps issue closes in the always-asked list, so the sweep lists its proposed closes and asks the maintainer once per sweep (AskUserQuestion, multiSelect) before closing them. The one-time MC-2747 bulk close runs after the governance v2 PRs merge, with the list shown to the maintainer first (MC-2780).
 
-## Orphan sweep and leftover disposal (MC-2064, amended by MC-2745)
+## Orphan sweep and leftover disposal (MC-2064, amended by MC-2745 and MC-2777)
 
-The orphan sweep lists every open issue (and any open Roadmap row not yet mirrored to an issue) where either:
+The orphan sweep runs only inside the weekly sweep (MC-2777, amending MC-2064 item 1), not in every records batch. It lists every open issue (and any open Roadmap row not yet mirrored to an issue) where either:
 
 - the owner is not an active session and it has had no issue, PR, git or log activity for 7 days; or
 - it waits on a ticket or batch that is closed or already planned.
