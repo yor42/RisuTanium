@@ -33632,13 +33632,13 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 - Tag: decisions (maintainer answer relayed by the realm-restyle session). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2782`.
 
-**What the maintainer chose.** The restyle takes all four groups of the audit's findings: navigation and overlays; layout, states and wording; contrast and tokens; assistive-technology names and states.
+**What the maintainer chose.** The restyle takes all four groups of the audit's findings (R-01 to R-28): navigation and overlays; layout, states and wording; contrast and theme tokens; names and states for assistive technology. R-12 (the AlertComp terms-link colour) went to ui-lane. Audit and plan: `%TEMP%\risu-b715\ui-audit\realm-2782\` (`audit-realm-2782.md`, `plan-mc2782.md`).
 
 ### MC-2784 — The Realm restyle follows the realm mockup structure, 2026-11-20
 
 - Tag: decisions (maintainer answer relayed by the realm-restyle session). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2782`.
 
-**What the maintainer chose.** The restyled hub follows the structure of the realm mockup.
+**What the maintainer chose.** The hub, the detail view and the home card follow the realm mockup structure: a header with Back and the title, a visible toolbar, an auto-fill tile grid, and a dialog detail whose cover is the one bold element.
 
 ### MC-2793 — ChroMemory is tracked with one issue per stage, 2026-11-20
 
