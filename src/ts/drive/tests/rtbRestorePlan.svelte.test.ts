@@ -17,8 +17,10 @@ import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/st
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from 'src/ts/storage/tests/fakeWebLocks'
 import { language } from 'src/lang'
 import { encodeUnit, UNIT_TYPE, type CommitKey } from 'src/ts/storage/store2/format'
+import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import { importSourceOfBytes } from 'src/ts/importSource'
 import type { Committer } from 'src/ts/storage/store2/commit'
+import { Store2UnknownOutcomeError } from 'src/ts/storage/store2/backend/errors'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { AssetPlanDeps, SizedListing } from 'src/ts/drive/rtb/rtbAssetPlan'
@@ -624,18 +626,21 @@ describe('verification refusals reach the person (T2, the shell part)', () => {
         ['a file that is not an .rtb', 'not-an-rtb', language.rtbRestoreNotRtb],
         ['a damaged block', 'damaged', language.rtbRestoreDamaged],
         ['a file of a newer format', 'newer', language.rtbRestoreNewer('file format 2')],
-        ['a sealed file', 'encrypted', language.rtbRestoreEncrypted],
+        // The 80-byte stub has a zero aead_id: the sealed engine refuses the header as damaged before any password prompt.
+        ['a sealed file', 'damaged', language.rtbRestoreDamaged],
     ] as const)('%s ends with one message, writes nothing and releases the lock (guard)', async (name, cause, message) => {
         const page = await openPage()
+        const asked: string[] = []
         const sealed = new Uint8Array(80)
         sealed.set([0x52, 0x54, 0x42, 0x58, 0x0D, 0x0A, 0x1A, 0x0A, 1, 0])
         const bytes = name === 'a file that is not an .rtb' ? encoder.encode('plain text '.repeat(20))
             : name === 'a damaged block' ? await withBrokenCrc(await fileOf(), 'u/3/0.blk')
                 : name === 'a sealed file' ? sealed
                     : await repackRtb(await fileOf(), { manifest: (m) => { m.rtb = 2 } })
-        const run = await prepare(page, bytes)
+        const run = await prepare(page, bytes, { deps: { password: async (reason) => { asked.push(reason); return null } } })
         expect(ended(run)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause })
         expect(alertErrorTexts(page)).toEqual([message])
+        expect(asked).toEqual([])
         expect(run.granted).toBe(true)
         expect(run.writesAfterGrant).toBe(0)
         expect(run.storageChangedAfterGrant).toBe(false)
@@ -811,3 +816,159 @@ describe('the write spy (T22)', () => {
         expect(page.k.counted.writeCalls()).toBeGreaterThan(writes)
     })
 })
+
+describe('P.1b: the restore\'s own bulk marker (T-V2, T-R6, T-R12)', () => {
+    type OpenHeld = NonNullable<Committer['openHeldBulk']>
+
+    /** The page's committer with `openHeldBulk` logged to `log` and answered by `open` (the page's own when absent). */
+    function spied(page: Page, log: string[], open?: OpenHeld): Committer {
+        const own = page.k.committer.openHeldBulk
+        if (own === undefined) {
+            throw new Error('The page\'s committer has no openHeldBulk.')
+        }
+        return { ...page.k.committer, openHeldBulk: async (read, request) => { log.push('openHeldBulk'); return await (open ?? own)(read, request) } }
+    }
+
+    const target = (page: Page, committer: Committer): Partial<RtbPrepareDeps> => ({
+        checkImport: async () => ({ kind: 'ready', target: { committer, backend: page.k.counted.backend } }),
+    })
+
+    test('T-V2: on a Node page the hook runs once, between the newer-data question and the first asset listing, and the plan carries the held marker (guard; MR12 fails it)', async () => {
+        const page = await openPage()
+        const at = (await page.k.commitKey()).current?.at as number
+        const log: string[] = []
+        vi.mocked(page.alert.alertConfirm).mockImplementation(async (text) => {
+            log.push(typeof text === 'string' && text.includes('Test device') ? 'newer-question' : 'confirm')
+            return true
+        })
+        const run = await prepare(page, await fileOf({ createdAt: at - 5000 }), {
+            deps: {
+                ...target(page, spied(page, log)),
+                heldMarker: () => true,
+                assetDeps: assetDeps({ sizedListing: async () => { log.push('sizedListing'); return null } }),
+            },
+        })
+        expect(log).toEqual(['newer-question', 'openHeldBulk', 'sizedListing'])
+        expect(run.end.kind === 'ready' && run.end.plan.held).toBeTruthy()
+        expect((await page.k.commitKey()).staging?.label).toBe('restore')
+        await cleanup(run)
+    })
+
+    test('T-V2: the start-up path (verifyAndConfirm with no hook) opens no marker and makes no commit-key write; a hook that answers ends the run before the asset listing (guard; MR12 fails the second half)', async () => {
+        const page = await openPage()
+        const key = await page.k.commitKey()
+        const writes = page.k.counted.writeCalls()
+        const listing = vi.fn(async () => null)
+        const deps = { ...page.plan.realVerifyDeps(), assetDeps: assetDeps({ sizedListing: listing }), confirmScale: async () => true }
+        const bytes = await fileOf()
+        const plain = await page.plan.verifyAndConfirm(await pick(bytes), deps, { newerBase: null })
+        expect(plain.kind).toBe('ok')
+        expect(listing).toHaveBeenCalledTimes(1)
+        expect(page.k.counted.writeCalls()).toBe(writes)
+        expect((await page.k.commitKey()).seq).toBe(key.seq)
+
+        listing.mockClear()
+        const stopped = await page.plan.verifyAndConfirm(await pick(bytes), deps, { newerBase: null, beforeAssetPlan: async () => ({ kind: 'ended', outcome: 'nothing-replaced', cause: 'marker-standing' }) })
+        expect(stopped).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'marker-standing' })
+        expect(listing).not.toHaveBeenCalled()
+    })
+
+    test.each([['the web or desktop page', false], ['the Tauri page', true]] as const)('T-R6: %s opens no marker and writes nothing after the grant: the hook is not passed when heldMarker is false (compatibility guard; passes before and after; MR5 fails it)', async (_name, tauri) => {
+        const page = await openPage({ tauri })
+        const key = await page.k.commitKey()
+        const log: string[] = []
+        const run = await prepare(page, await fileOf(), { deps: target(page, spied(page, log)) })
+        expect(run.end.kind).toBe('ready')
+        expect(log).toEqual([])
+        expect(run.end.kind === 'ready' && run.end.plan.held).toBeFalsy()
+        expect(run.writesAfterGrant).toBe(0)
+        expect((await page.k.commitKey()).seq).toBe(key.seq)
+        await cleanup(run)
+    })
+
+    test('T-R12: a refusal that is not marker-present ends library-refused after one open, and a committer without the held calls ends the same way, each with the hold released (guard; MR14 fails it)', async () => {
+        const page = await openPage()
+        const log: string[] = []
+        const refusing: OpenHeld = async () => ({ status: 'refused', reason: 'damaged', detail: 'The commit key is damaged.' })
+        const first = await prepare(page, await fileOf(), { deps: { ...target(page, spied(page, log, refusing)), heldMarker: () => true } })
+        expect(ended(first)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'library-refused' })
+        expect(log).toEqual(['openHeldBulk'])
+        expect(alertErrorTexts(page)).toContain(language.store2ImportRefused)
+        expect(await writeLockIsFree(page)).toBe(true)
+
+        const bare: Committer = { ...page.k.committer, openHeldBulk: undefined, clearHeld: undefined }
+        const second = await prepare(page, await fileOf(), { deps: { ...target(page, bare), heldMarker: () => true } })
+        expect(ended(second)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'library-refused' })
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test.each([
+        ['conflict', 'nothing-replaced', 'base-moved'],
+        ['unknown', 'failed', 'commit-read-failed'],
+        ['failed', 'failed', 'commit-read-failed'],
+    ] as const)('T-R13: an openHeldBulk answer of %s ends %s / %s before any asset listing, with no marker, the hold released and nothing cleared (guard; a conflict that continues, or an answer mapped to another end, fails it)', async (status, outcome, cause) => {
+        const page = await openPage()
+        const log: string[] = []
+        const key = await page.k.commitKey()
+        const current = await page.k.committer.readCommit()
+        const error = new Store2UnknownOutcomeError('The marker write kept an unknown outcome.')
+        const answers: Record<typeof status, Awaited<ReturnType<OpenHeld>>> = {
+            conflict: { status: 'conflict', current, cleared: null },
+            unknown: { status: 'unknown', cause: error, cleared: null },
+            failed: { status: 'failed', cause: error, cleared: null },
+        }
+        const cleared = vi.fn(async () => ({ status: 'nothing' as const }))
+        const committer: Committer = { ...spied(page, log, async () => answers[status]), clearHeld: cleared as unknown as NonNullable<Committer['clearHeld']> }
+        const listing = vi.fn(async () => null)
+        vi.spyOn(console, 'error').mockImplementation(() => { })
+        const run = await prepare(page, await fileOf(), { deps: { ...target(page, committer), heldMarker: () => true, assetDeps: assetDeps({ sizedListing: listing }) } })
+        expect(ended(run)).toEqual({ kind: 'ended', outcome, cause })
+        expect(log).toEqual(['openHeldBulk'])
+        expect(listing).not.toHaveBeenCalled()
+        expect(cleared).not.toHaveBeenCalled()
+        expect(alertErrorTexts(page)).toContain(status === 'conflict' ? language.restoreNotHappenedNotice : language.store2ImportReadFailed)
+        const after = await page.k.commitKey()
+        expect(after.staging ?? null).toBeNull()
+        expect(after.seq).toBe(key.seq)
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test('a foreign marker is put to the person: Wait ends foreign-marker with no marker text, because the question replaced it, and leaves the marker standing (guard)', async () => {
+        const page = await openPage()
+        const log: string[] = []
+        await plantMarker(page, 'p'.repeat(26))
+        const asked: Array<string | undefined> = []
+        const askForeignMarker = async (marker: { label?: string }): Promise<'wait' | 'clear'> => { asked.push(marker.label); return 'wait' }
+        const run = await prepare(page, await fileOf(), { deps: { ...target(page, spied(page, log)), heldMarker: () => true, askForeignMarker } })
+        expect(ended(run)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'foreign-marker' })
+        expect(asked).toEqual(['bulk'])
+        expect(alertErrorTexts(page)).not.toContain(language.store2RestoreBulkMarker)
+        expect(log).toEqual(['openHeldBulk'])
+        expect((await page.k.commitKey()).staging?.owner).toBe('p'.repeat(26))
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test('an own marker is cleared once and the open retried once: a second marker-present ends marker-standing (guard)', async () => {
+        const page = await openPage()
+        const log: string[] = []
+        await plantMarker(page, page.k.committer.owner)
+        const standing: OpenHeld = async () => ({ status: 'refused', reason: 'marker-present', detail: 'A bulk marker already stands on the commit key.' })
+        const run = await prepare(page, await fileOf(), { deps: { ...target(page, spied(page, log, standing)), heldMarker: () => true } })
+        expect(ended(run)).toEqual({ kind: 'ended', outcome: 'nothing-replaced', cause: 'marker-standing' })
+        expect(alertErrorTexts(page)).toContain(language.store2RestoreBulkMarker)
+        expect(log).toEqual(['openHeldBulk', 'openHeldBulk'])
+        expect((await page.k.commitKey()).staging).toBeNull()
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+})
+
+/** Plants a bulk marker of `owner` on the page's commit key, as a page that is mid-bulk (or died mid-bulk) leaves it. */
+async function plantMarker(page: Page, owner: string): Promise<void> {
+    const read = await page.k.committer.readCommit()
+    const parsed = classifyCommitRead(read)
+    if (parsed.status !== 'parsed') {
+        throw new Error('The page\'s commit key does not parse.')
+    }
+    const next = nextCommitKey(parsed.value, { staging: { owner, prefix: 'store2/g-1111111111111111-', startedAt: 5, label: 'bulk' } }, page.k.context.env)
+    await page.k.counted.backend.casCommit(read.token, encodeUnit(UNIT_TYPE.commit, next))
+}

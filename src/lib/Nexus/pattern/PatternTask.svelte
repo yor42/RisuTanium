@@ -3,8 +3,9 @@
     import PatternDialog from './PatternDialog.svelte'
     import NexusStatusMark from '../brand/NexusStatusMark.svelte'
     import { language } from '../../../lang'
+    import { patternSurfaceTone } from '../../../ts/gui/surfaceTone'
     import { createArmGuard, type ArmGuard } from './armGuard'
-    import { armDelayMs, splitConsequences } from './patternWarning'
+    import { armDelayMs, splitConsequences, spokenOpening } from './patternWarning'
     import {
         TASK_SKIPS_SHOWN,
         isTaskTerminal,
@@ -117,6 +118,21 @@
         if (confirming) fromConfirm = true
     })
 
+    // The running card's title is its first-focus target, so a screen reader speaks the task's name. A card that mounts
+    // running takes it through the dialog's initial-focus marker; one that follows a confirm sheet takes it here, on the
+    // first render without the sheet, because the sheet's Cancel it was on is gone.
+    let titleElement = $state<HTMLElement>()
+    $effect(() => {
+        if (fromConfirm && !confirming && !terminal && titleElement) titleElement.focus()
+    })
+
+    // The preflight opening text, written once into the status region when the dialog's announce moment arrives. The
+    // region shows it only while the sheet is up, so no preflight text survives the swap to the running card.
+    let confirmSpoken = $state('')
+    function speakConfirm(): void {
+        if (confirming && view.confirm) confirmSpoken = spokenOpening(view.confirm.headline, confirmParts.shown[0])
+    }
+
     // The preflight's primary ignores input for the arm delay after the sheet mounts, by the click's own event time (see
     // armGuard). The guard starts again on every mount, so a card that yielded to an alert and came back is armed afresh.
     let primary = $state<HTMLButtonElement>()
@@ -176,13 +192,16 @@
         return () => clearTimeout(timer)
     })
 
-    // One guard serves the reopened result card's OK and action buttons.
+    // One guard serves the result card's OK and action buttons. It arms on a reopened card, and on a card whose action is
+    // `guarded` (Undo): the row can replace Cancel or return from a yield under the user's finger, so the first tap may be
+    // meant for the control that was there. A card whose actions are all unguarded keeps its immediate buttons.
     let resultActions = $state<HTMLElement>()
     let resultGuard: ArmGuard | null = null
+    const resultGuarded = $derived(armOnMount || actions.some((a) => a.guarded === true))
     $effect(() => {
         const element = resultActions
         resultGuard = null
-        if (!element || !armOnMount) return
+        if (!element || !resultGuarded) return
         const delay = armDelayMs(element)
         const guard = createArmGuard(performance.now(), delay)
         resultGuard = guard
@@ -219,6 +238,7 @@
     descriptionId={confirming ? (confirmParts.shown.length > 0 ? consequencesId : undefined) : (reasonShown ? reasonId : undefined)}
     cancelSafe={confirming || escapeActs}
     oncancel={confirming ? ondecline : onEscape}
+    onsettled={speakConfirm}
     {lowPower}
 >
     <section
@@ -234,7 +254,7 @@
             <div data-part="pattern-task-head">
                 <!-- No ring on the mark (MC-2353): it moves only as a sign of life, and the bar and count carry the progress. -->
                 <div data-part="pattern-task-mark" aria-hidden="true">
-                    <NexusStatusMark status={taskMarkStatus(view)} size={48} {lowPower} label={announcement} />
+                    <NexusStatusMark status={taskMarkStatus(view)} size={48} {lowPower} label={announcement} tone={$patternSurfaceTone} />
                     {#if view.state === 'done-with-skips'}
                         <span data-part="pattern-task-mark-badge">
                             <svg class="pattern-icon" data-part="pattern-task-mark-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v8M12 18h.01" /></svg>
@@ -242,7 +262,9 @@
                     {/if}
                 </div>
                 <div data-part="pattern-task-titles">
-                    <h2 id={titleId} data-part="pattern-task-title">{view.title}</h2>
+                    <!-- Only -1: the title takes script focus and is never in the Tab order. -->
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <h2 id={titleId} bind:this={titleElement} data-part="pattern-task-title" tabindex={terminal ? undefined : -1} data-pattern-initial={terminal ? undefined : ''}>{view.title}</h2>
                     {#if subtitle}
                         <p data-part="pattern-task-subtitle">{subtitle}</p>
                     {/if}
@@ -297,9 +319,9 @@
             {/if}
         {/if}
 
-        <!-- The one live region: its text changes only on a step, file or state change. It stays mounted through the
-             confirm swap and holds no text while the sheet is up. -->
-        <p data-part="pattern-task-status" role="status" aria-live="polite" class:sr-only={terminal || confirming}>{announcement}</p>
+        <!-- The one live region: its text changes only on a step, file or state change, plus the sheet's opening text
+             once. It stays mounted through the confirm swap. -->
+        <p data-part="pattern-task-status" role="status" aria-live="polite" class:sr-only={terminal || confirming}>{confirming ? confirmSpoken : announcement}</p>
 
         {#if confirming && view.confirm}
             <div data-part="pattern-warn-root" data-part-critical data-form="sheet" data-pattern-severity="confirm">

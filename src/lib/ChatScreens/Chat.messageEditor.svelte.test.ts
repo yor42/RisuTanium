@@ -633,7 +633,7 @@ describe('Chat.svelte main editor: BookmarkList repro -- typing on one row survi
         // causes `bookmarkedMessages` to recompute and mints a fresh item
         // object for A's surviving keyed block (same `chatId` key). This is a
         // survive-and-reuse event, not a destroy/remount.
-        const trashB = rows[1].querySelector<HTMLButtonElement>('.hover\\:text-red-500')!
+        const trashB = rows[1].querySelector<HTMLButtonElement>('.hover\\:text-draculared')!
         trashB.click()
         flushSync()
         await tick()

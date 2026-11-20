@@ -62,8 +62,8 @@
 </div>
 
 <style>
-    [data-part="chat-message-actions"] { display: flex; align-items: center; gap: var(--message-meta-gap); width: 100%; min-width: 0; color: var(--nexus-text-secondary); }
-    .spacer { flex: 1; }
+    [data-part="chat-message-actions"] { display: flex; align-items: center; justify-content: flex-end; gap: var(--message-meta-gap); flex: 1 1 auto; min-width: 0; color: var(--nexus-text-secondary); }
+    .spacer { flex: 1 1 0; }
     /* The row stays one line at phone width: the time never wraps and the model name gives way with an ellipsis. */
     .time { flex: none; white-space: nowrap; }
     .model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

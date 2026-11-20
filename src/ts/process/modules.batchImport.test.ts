@@ -201,7 +201,8 @@ describe('several picked files', () => {
         expect(names()).toEqual(['One', 'Two', 'Four', 'Five'])
         expect(lastCard?.result?.headline).toBe(language.importTaskImported(4))
         expect(lastCard?.result?.skipped).toEqual([{ name: 'f3.risum', reason: language.errors.noData }])
-        expect(lastCard?.result?.actions ?? []).toEqual([])
+        //Four modules were added, so the card offers Undo (and no Retry: the refused file is not retryable).
+        expect((lastCard?.result?.actions ?? []).map((a) => a.id)).toEqual(['undo'])
         expect(h.log).toEqual([])
     })
 

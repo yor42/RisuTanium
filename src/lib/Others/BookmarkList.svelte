@@ -157,19 +157,20 @@
         <div class="flex items-center text-textcolor mb-4">
             <h2 class="text-xl font-bold">{language.bookmarks}</h2>
             <div class="ml-auto flex items-center gap-2">
-                <button 
-                    class="text-textcolor2 hover:text-green-500" 
+                <button
+                    class="text-textcolor2 hover:text-textcolor"
                     onclick={toggleExpandAll}
                     title={expandAll ? language.collapseAll : language.expandAll}
+                    aria-label={expandAll ? language.collapseAll : language.expandAll}
                 >
                     {#if expandAll}
-                        <BookLockIcon size={20} />
+                        <BookLockIcon size={20} aria-hidden="true" />
                     {:else}
-                        <BookOpenCheckIcon size={20} />
-                    {/if}   
+                        <BookOpenCheckIcon size={20} aria-hidden="true" />
+                    {/if}
                 </button>
-                <button class="text-textcolor2 hover:text-green-500" onclick={close}>
-                    <XIcon size={24}/>
+                <button class="text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={close}>
+                    <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
         </div>
@@ -183,20 +184,27 @@
                         <div 
                             class="flex items-center p-3 cursor-pointer hover:bg-selected transition-colors"
                             onclick={() => toggleExpand(msg.chatId)}
-                            onkeydown={(e) => e.key === 'Enter' && toggleExpand(msg.chatId)}
+                            onkeydown={(e) => {
+                                if (e.target !== e.currentTarget) return;
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    toggleExpand(msg.chatId);
+                                }
+                            }}
                             role="button"
                             tabindex="0"
+                            aria-expanded={expandAll || expandedBookmarks.has(msg.chatId)}
                         >
                             <span class="grow text-left truncate">{chara.chats[chara.chatPage].bookmarkNames?.[msg.chatId] || msg.data.substring(0, 30) + '...'}</span>
                             <div class="shrink-0 flex items-center gap-2 ml-2">
-                                <button class="text-textcolor2 hover:text-blue-500" title={language.goToChat} onclick={(e) => { e.stopPropagation(); goToChat(msg.originalIndex); }}>
-                                    <ArrowRightIcon size={20} />
+                                <button class="text-textcolor2 hover:text-textcolor" title={language.goToChat} aria-label={language.goToChat} onclick={(e) => { e.stopPropagation(); goToChat(msg.originalIndex); }}>
+                                    <ArrowRightIcon size={20} aria-hidden="true" />
                                 </button>
-                                <button class="text-textcolor2 hover:text-green-500" onclick={(e) => { e.stopPropagation(); editName(msg.chatId); }}>
-                                    <PencilIcon size={16} />
+                                <button class="text-textcolor2 hover:text-textcolor" aria-label={language.chatShellRename} onclick={(e) => { e.stopPropagation(); editName(msg.chatId); }}>
+                                    <PencilIcon size={16} aria-hidden="true" />
                                 </button>
-                                <button class="text-textcolor2 hover:text-red-500" onclick={(e) => { e.stopPropagation(); removeBookmark(msg.chatId); }}>
-                                    <TrashIcon size={16} />
+                                <button class="text-textcolor2 hover:text-draculared" aria-label={language.remove} onclick={(e) => { e.stopPropagation(); removeBookmark(msg.chatId); }}>
+                                    <TrashIcon size={16} aria-hidden="true" />
                                 </button>
                             </div>
                         </div>

@@ -1,5 +1,5 @@
 <div 
-    class={"border border-darkborderc relative n-scroll focus-within:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus-within:ring-borderc focus-within:ring-2 focus-within:outline-hidden transition-colors duration-200 z-20 focus-within:z-40" + ((className) ? (' ' + className) : '')} 
+    class={"border border-darkborderc relative n-scroll focus-within:border-borderc rounded-md shadow-xs text-textcolor bg-transparent risu-focus-ring-within transition-colors duration-200 z-20 focus-within:z-40" + ((className) ? (' ' + className) : '')} 
     class:text-sm={size === 'sm' || (size === 'default' && $textAreaTextSize === 1)}
     class:text-md={size === 'md' || (size === 'default' && $textAreaTextSize === 2)}
     class:text-lg={size === 'lg' || (size === 'default' && $textAreaTextSize === 3)}
@@ -38,6 +38,9 @@
         hideAutoComplete()
     }}
 >
+    {#if !labelId && label.trim()}
+        <span id={nameId} class="sr-only">{label}</span>
+    {/if}
     {#if !highlight || $disableHighlight}
         <textarea
             class="w-full h-full bg-transparent focus-within:outline-hidden resize-none absolute top-0 left-0 z-50 overflow-y-auto"
@@ -46,6 +49,8 @@
             {autocomplete}
             {placeholder}
             id={id}
+            aria-labelledby={nameId}
+            aria-describedby={describedIds}
             bind:value={value}
             oninput={(e) => {
                 if(optimaizedInput){
@@ -117,6 +122,8 @@
             onInput()
         }}
         role="textbox"
+        aria-labelledby={nameId}
+        aria-describedby={describedIds}
         tabindex="0"
         oninput={(e) => {
             autoComplete()
@@ -130,7 +137,7 @@
 {/if}
     <div class="hidden absolute z-100 bg-bgcolor border border-darkborderc p-2 flex-col" bind:this={autoCompleteDom}>
         {#each autocompleteContents as content, i}
-            <button class="w-full text-left py-1 px-2 bg-bgcolor" class:text-blue-500={selectingAutoComplete === i} onclick={() => {
+            <button class="w-full text-left py-1 px-2" class:bg-bgcolor={selectingAutoComplete !== i} class:bg-selected={selectingAutoComplete === i} class:ring-1={selectingAutoComplete === i} class:ring-borderc={selectingAutoComplete === i} onclick={() => {
                 insertContent(content)
             }}>{content}</button>
         {/each}
@@ -161,6 +168,12 @@
         highlight?: boolean;
         onchange?: (e: { currentTarget: HTMLTextAreaElement|HTMLDivElement }) => void;
         popupLanguage?: string;
+        /** Id of an existing visible label element that names the field. */
+        labelId?: string;
+        /** Name text for a field with no visible label; rendered as a screen-reader-only span. */
+        label?: string;
+        /** Extra description ids, listed after the naming element. */
+        describedBy?: string;
     }
 
     let {
@@ -178,8 +191,17 @@
         optimaizedInput = true,
         highlight = false,
         onchange = () => {},
-        popupLanguage = 'markdown'
+        popupLanguage = 'markdown',
+        labelId = undefined,
+        label = '',
+        describedBy = undefined
     }: Props = $props();
+
+    const uid = $props.id();
+
+    // TalkBack speaks only the description in the field's own stop, so the naming element is also the first description.
+    let nameId = $derived(labelId || (label.trim() ? `${uid}-label` : undefined));
+    let describedIds = $derived([nameId, describedBy].filter(Boolean).join(' ') || undefined);
     let selectingAutoComplete = $state(0)
     // TODO: Review if highlight prop can change dynamically - if so, this needs to be reactive
     // svelte-ignore state_referenced_locally

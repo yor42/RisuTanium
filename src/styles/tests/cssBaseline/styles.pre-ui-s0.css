@@ -170,15 +170,15 @@ body {
   --FontColorQuote1: #8c8d93;
   --FontColorQuote2: #8c8d93;
   --risu-animation-speed: 0.2s;
-  --risu-theme-bgcolor: #282a36;
-  --risu-theme-darkbg: #21222c;
-  --risu-theme-borderc: #6272a4;
-  --risu-theme-selected: #44475a;
-  --risu-theme-draculared: #ff5555;
-  --risu-theme-textcolor: #f5f5f5;
-  --risu-theme-textcolor2: #64748b;
-  --risu-theme-darkborderc: #4b5563;
-  --risu-theme-darkbutton: #374151;
+  --risu-theme-bgcolor: #151836;
+  --risu-theme-darkbg: #0f112a;
+  --risu-theme-borderc: #6f7fc8;
+  --risu-theme-selected: #2f3670;
+  --risu-theme-draculared: #ff6b81;
+  --risu-theme-textcolor: #eef0ff;
+  --risu-theme-textcolor2: #a6b0d4;
+  --risu-theme-darkborderc: #3c4478;
+  --risu-theme-darkbutton: #242a52;
   --risu-height-size: 100%;
   --risu-font-family: Arial, sans-serif, serif;
 
@@ -390,7 +390,30 @@ body {
 }
 
 .x-risu-button-default {
-  @apply border text-textcolor rounded-md shadow-xs focus:outline-hidden focus:ring-2 transition-colors duration-200 border-darkborderc px-4 py-2 bg-darkbutton hover:bg-borderc focus:ring-borderc;
+  @apply border text-textcolor rounded-md shadow-xs transition-colors duration-200 border-darkborderc px-4 py-2 bg-darkbutton hover:bg-borderc;
+}
+
+/*
+ * The classic keyboard focus ring. Classic surfaces stay on the user's colour scheme even while a
+ * theme pack is on, so this reads the scheme role and never `--nexus-ring`. The ring is guaranteed
+ * on bgcolor, darkbg and darkbutton only. Width and offset stay inside the CHORE-738 ring limits.
+ * It is unlayered, so a caller's utility class cannot remove it.
+ */
+.risu-focus-ring:focus-visible,
+.x-risu-button-default:focus-visible,
+.risu-focus-ring-within:focus-within,
+.peer:focus-visible ~ .risu-focus-ring-peer {
+  outline: 2px solid var(--risu-theme-role-focus-ring, #6f7fc8);
+  outline-offset: 0;
+}
+
+/*
+ * The text on the selected primary Button fill. It comes from the scheme even while a theme pack is
+ * on, and the scheme derives it to stay readable on the selected colour. It is unlayered, so it wins
+ * over the button's own text utility.
+ */
+.risu-on-selected {
+  color: var(--risu-theme-role-on-selected, #eef0ff);
 }
 
 .loadmove {

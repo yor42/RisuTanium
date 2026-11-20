@@ -16,6 +16,7 @@
 
     let { close = (i:string) => {}, alertMode = false }: Props = $props();
     let moduleSearch = $state('')
+    const uid = $props.id()
 
     // Rows follow the order of db.modules; the search only filters.
     function filterModules(modules:RisuModule[], search:string){
@@ -34,17 +35,17 @@
         <div class="flex items-center text-textcolor">
             <h2 class="mt-0 mb-0 text-lg">{language.modules}</h2>
             <div class="grow flex justify-end">
-                <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer items-center" onclick={() => {
+                <button class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" aria-label={language.uiCommon.close} onclick={() => {
                     close('')
                 }}>
-                    <XIcon size={24}/>
+                    <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
         </div>
 
         <span class="text-sm text-textcolor2">{language.chatModulesInfo}</span>
 
-        <TextInput className="mt-4" placeholder={language.search} bind:value={moduleSearch} />
+        <TextInput className="mt-4" placeholder={language.search} label={language.search} bind:value={moduleSearch} />
 
         <div class="contain w-full max-w-full mt-4 flex flex-col border-selected border-1 rounded-md">
             {#if DBState.db.modules.length === 0}
@@ -56,7 +57,7 @@
                     {/if}
                     <div class="pl-3 py-3 text-left flex items-center">
                         {#if rmodule.mcp}
-                            <Waypoints size={18} class="mr-2" />
+                            <Waypoints size={18} class="mr-2" aria-hidden="true" />
                         {/if}
                         {#if !alertMode && DBState.db.enabledModules.includes(rmodule.id)}
                             <span class="text-textcolor2">{rmodule.name}</span>
@@ -66,23 +67,26 @@
                         <div class="grow flex justify-end">
 
                             {#if alertMode}
-                                <button class={"text-textcolor2 mr-2 cursor-pointer hover:text-blue-500 transition-colors"} onclick={async (e) => {
+                                <button class={"text-textcolor2 mr-2 cursor-pointer hover:text-textcolor transition-colors"} aria-label={language.select} onclick={async (e) => {
                                     e.stopPropagation()
 
                                     close(rmodule.id)
                                 }}>
-                                    <CircleCheckIcon size={18}/>
+                                    <CircleCheckIcon size={18} aria-hidden="true"/>
                                 </button>
                             {:else if DBState.db.enabledModules.includes(rmodule.id)}
-                                <button class="mr-2 text-textcolor2 cursor-not-allowed"aria-labelledby="disabled">
-                                </button>
+                                <span class="mr-2"></span>
                             {:else}
-                                <button class={(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules.includes(rmodule.id)) ?
-                                        "mr-2 cursor-pointer text-blue-500" :
-                                        (DBState.db.characters[$selectedCharID]?.modules?.includes(rmodule.id)) ?
-                                        "mr-2 cursor-pointer text-violet-500" :
-                                        "text-textcolor2 hover:text-blue-400 mr-2 cursor-pointer"
-                                } onclick={async (e) => {
+                                {@const inChat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules.includes(rmodule.id)}
+                                {@const forCharacter = !inChat && !!DBState.db.characters[$selectedCharID]?.modules?.includes(rmodule.id)}
+                                <button class={inChat ?
+                                        "mr-2 cursor-pointer rounded-sm bg-selected text-textcolor ring-1 ring-borderc" :
+                                        forCharacter ?
+                                        "mr-2 cursor-pointer rounded-sm text-violet-500 ring-1 ring-current" :
+                                        "text-textcolor2 hover:text-textcolor mr-2 cursor-pointer"
+                                } aria-label={language.moduleUseInChat} aria-pressed={inChat}
+                                aria-describedby={forCharacter ? `${uid}-char-${i}` : undefined}
+                                onclick={async (e) => {
                                     e.stopPropagation()
                                     if(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules.includes(rmodule.id)){
                                         DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules.splice(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules.indexOf(rmodule.id), 1)
@@ -110,8 +114,11 @@
                                     // Fork-specific: no pointer bump here; see the tap handler.
                                 }}>
 
-                                    <CircleCheckIcon size={18}/>
+                                    <CircleCheckIcon size={18} aria-hidden="true"/>
                                 </button>
+                                {#if forCharacter}
+                                    <span id="{uid}-char-{i}" hidden>{language.moduleOnForCharacter}</span>
+                                {/if}
                             {/if}
                         </div>
                     </div>

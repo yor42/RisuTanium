@@ -371,7 +371,7 @@ describe('reproducers: the store used /api/write and /api/read for every value',
         expect(sameBytes(read.bytes, bytes)).toBe(true)
     })
 
-    test('reproducer: saveAsset of a key that exists does not rewrite it, so the revision stays', async () => {
+    test('reproducer: saveAsset of a key that exists does not rewrite it, and moves its revision with one touch', async () => {
         const { store, spy } = await probedStore(main)
         injectAppStore(store, 'node')
         const bytes = patterned(60, 4)
@@ -382,7 +382,8 @@ describe('reproducers: the store used /api/write and /api/read for every value',
         expect(second).toBe(first)
         expect(first).toBe(`assets/${sha256Hex(bytes)}.png`)
         expect(spy.routes().filter((route) => route === '/api/write')).toHaveLength(1)
-        expect((await store.read(first)).version).toBe(1)
+        expect(spy.count('/api/touch')).toBe(2)
+        expect((await store.read(first)).version).toBe(2)
     })
 
     test('reproducer: saveAssetFromPieces on the Node store uploads the pieces, keeps an existing key and gives the key saveAsset gives', async () => {
@@ -396,10 +397,13 @@ describe('reproducers: the store used /api/write and /api/read for every value',
         expect(first).toBe(`assets/${sha256Hex(bytes)}.png`)
         expect(again).toBe(first)
         expect(spy.routes()).not.toContain('/api/write')
-        expect(spy.count('/api/upload/commit')).toBe(2)
+        // The first save commits the absent key (touch 404, then commit); the repeat save touches the stored key and discards its staged bytes.
+        expect(spy.count('/api/upload/commit')).toBe(1)
+        expect(spy.count('/api/touch')).toBe(2)
+        expect(spy.count('/api/upload/abort')).toBe(1)
         expect(spy.calls.filter((call) => call.route === '/api/upload/commit').every((call) => call.headers['upload-if-absent'] === '1')).toBe(true)
         expect(sameBytes(await onDisk(main, first), bytes)).toBe(true)
-        expect((await store.read(first)).version).toBe(1)
+        expect((await store.read(first)).version).toBe(2)
         expect(await stagingFiles(main)).toEqual([])
     })
 })
@@ -435,7 +439,7 @@ describe('the writer', () => {
         expect(sameBytes(await onDisk(main, key), patterned(150, 7))).toBe(true)
     })
 
-    test('new behaviour: finish(finalKey) over a key that holds a value keeps that value', async () => {
+    test('new behaviour: finish(finalKey) over a key that holds a value keeps that value and moves its version', async () => {
         const { store } = await probedStore(main)
         const key = assetKey('kept')
         await store.write(key, patterned(20, 8), 'unconditional')
@@ -444,7 +448,7 @@ describe('the writer', () => {
         await writer.finish(key)
 
         expect(sameBytes(await onDisk(main, key), patterned(20, 8))).toBe(true)
-        expect((await store.read(key)).version).toBe(1)
+        expect((await store.read(key)).version).toBe(2)
     })
 
     test('new behaviour: a commit whose reply is lost is re-sent once and the server answers it with the first outcome', async () => {
@@ -648,6 +652,94 @@ describe('the commit outcome', () => {
         await second.write(patterned(250, 28))
 
         await expect(second.finish(key)).resolves.toBeUndefined()
+    })
+})
+
+describe('the touch of a stored asset', () => {
+    const uploadAndTouchRoutes = (spy: Instrumented) => spy.routes().filter((route) => route.startsWith('/api/upload/') || route === '/api/touch')
+    const notFound = async (call: Call) => (call.route === '/api/touch' ? new Response('Not found', { status: 404 }) : undefined)
+
+    test('guard: a touch answered 404 without the server\'s code (an older server) writes whole bytes and commits pieces if-absent', async () => {
+        const { store, spy } = await probedStore(main, notFound)
+        injectAppStore(store, 'node')
+        const whole = patterned(60, 61)
+        const wholeKey = `assets/${sha256Hex(whole)}.png`
+        await bystander(main).write(wholeKey, whole, 'unconditional')
+        const pieced = patterned(450, 62)
+        const piecedKey = `assets/${sha256Hex(pieced)}.png`
+        await bystander(main).write(piecedKey, pieced, 'unconditional')
+
+        await saveAsset(whole)
+        expect(spy.count('/api/write')).toBe(1)
+        await saveAssetFromPieces(piecesOf(pieced, 70), { sizeBound: pieced.length, minPieceBytes: 1 })
+
+        expect(spy.count('/api/upload/commit')).toBe(1)
+        expect(spy.calls.find((call) => call.route === '/api/upload/commit')?.headers['upload-if-absent']).toBe('1')
+        expect(sameBytes(await onDisk(main, wholeKey), whole)).toBe(true)
+        expect(sameBytes(await onDisk(main, piecedKey), pieced)).toBe(true)
+    })
+
+    test('guard: upload mode over a stored key sends begin, the appends, the touch and an abort, and no commit', async () => {
+        const { store, spy } = await probedStore(main)
+        injectAppStore(store, 'node')
+        const bytes = patterned(450, 63)
+        const key = `assets/${sha256Hex(bytes)}.png`
+        await bystander(main).write(key, bytes, 'unconditional')
+        const before = (await store.read(key)).version as number
+
+        await saveAssetFromPieces(piecesOf(bytes, 70), { sizeBound: bytes.length, minPieceBytes: 1 })
+
+        const routes = uploadAndTouchRoutes(spy)
+        expect(routes[0]).toBe('/api/upload/begin')
+        expect(routes.slice(1, -2).every((route) => route === '/api/upload/append')).toBe(true)
+        expect(routes.slice(-2)).toEqual(['/api/touch', '/api/upload/abort'])
+        expect(routes).not.toContain('/api/upload/commit')
+        expect((await store.read(key)).version).toBe(before + 1)
+        expect(await stagingFiles(main)).toEqual([])
+    })
+
+    test('guard: a touch answered with the server\'s own failure is a NodeHttpError, sent once, and nothing is written', async () => {
+        const { store, spy } = await probedStore(main, async (call) => (call.route === '/api/touch'
+            ? new Response(JSON.stringify({ error: 'Failed to touch storage item', code: 'EIO' }), { status: 500, headers: { 'content-type': 'application/json' } })
+            : undefined))
+        injectAppStore(store, 'node')
+        const bytes = patterned(60, 64)
+        await bystander(main).write(`assets/${sha256Hex(bytes)}.png`, bytes, 'unconditional')
+
+        await expect(saveAsset(bytes)).rejects.toBeInstanceOf(NodeHttpError)
+
+        expect(spy.count('/api/touch')).toBe(1)
+        expect(spy.count('/api/write')).toBe(0)
+    })
+
+    test('guard: a touch answered 404 leaves the capability record alone, so a new writer still uploads', async () => {
+        const { store, spy } = await probedStore(main, notFound)
+        injectAppStore(store, 'node')
+        const first = patterned(450, 65)
+        const second = patterned(450, 66)
+
+        await saveAssetFromPieces(piecesOf(first, 70), { sizeBound: first.length, minPieceBytes: 1 })
+        await saveAssetFromPieces(piecesOf(second, 70), { sizeBound: second.length, minPieceBytes: 1 })
+
+        expect(spy.count('/api/upload/begin')).toBe(2)
+        expect(store.piecesRecorded?.()).toBe(true)
+    })
+
+    test('compatibility guard: finish() without a final key, write() and writeBlob() over a stored key send no touch and replace', async () => {
+        const { store, spy } = await probedStore(main)
+        const key = assetKey('replacing')
+        await store.write(key, patterned(5, 0), 'unconditional')
+        spy.calls.length = 0
+
+        const writer = store.openWriter!(key)
+        await writer.write(patterned(150, 67))
+        await writer.finish()
+        await store.write(key, patterned(150, 68), 'unconditional')
+        await store.writeBlob!(key, new Blob([patterned(150, 69) as Uint8Array<ArrayBuffer>]), 'unconditional')
+
+        expect(spy.count('/api/touch')).toBe(0)
+        expect(spy.calls.filter((call) => call.route === '/api/upload/commit').every((call) => call.headers['upload-if-absent'] === undefined)).toBe(true)
+        expect(sameBytes(await onDisk(main, key), patterned(150, 69))).toBe(true)
     })
 })
 

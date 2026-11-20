@@ -2,15 +2,18 @@
   interface Props {
     isDisabled?: boolean;
     onClick: () => void;
+    /** Accessible name for an icon-only button. */
+    label?: string;
     children?: import('svelte').Snippet;
   }
 
-  let { isDisabled = false, onClick, children }: Props = $props();
+  let { isDisabled = false, onClick, label = undefined, children }: Props = $props();
 </script>
 
 <button
   disabled={isDisabled}
   onclick={onClick}
+  aria-label={label}
   class="flex h-[56px] w-[56px] cursor-pointer select-none items-center justify-center
    transition-colors rounded-full
    border border-textcolor2 text-gray-300

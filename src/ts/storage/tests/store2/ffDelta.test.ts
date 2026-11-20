@@ -110,38 +110,165 @@ describe('guard (S0-1): statics', () => {
         expect(mergeStatics({ n: 10 }, { n: 7 }, { n: 15 })).toEqual({ kind: 'merge', value: { n: 12 } })
     })
 
-    test('random numeric counters follow theirs + (mine - base) per key', () => {
+    test('two equal numeric changes add: each side\'s change counts once', () => {
+        expect(mergeStatics({ n: 5 }, { n: 6 }, { n: 6 })).toEqual({ kind: 'merge', value: { n: 7 } })
+        expect(mergeStatics({}, { n: 1 }, { n: 1 })).toEqual({ kind: 'merge', value: { n: 2 } })
+        expect(mergeStatics({ s: 'a', n: 5 }, { s: 'b', n: 6 }, { s: 'a', n: 6 })).toEqual({ kind: 'merge', value: { s: 'b', n: 7 } })
+    })
+
+    test('a key both sides deleted stays deleted and nothing parks (compatibility guard)', () => {
+        expect(mergeStatics({ n: 5, k: 1 }, { k: 1 }, { k: 1 })).toEqual({ kind: 'keep' })
+        const decided = mergeStatics({ n: 5, k: 1 }, { k: 1 }, { k: 1, other: 2 })
+        expect(decided).toEqual({ kind: 'take', value: { k: 1, other: 2 } })
+    })
+
+    test('a deletion against a changed side adds, counting the absent value as 0 (compatibility guard)', () => {
+        expect(mergeStatics({ n: 5 }, {}, { n: 7 })).toEqual({ kind: 'merge', value: { n: 2 } })
+        expect(mergeStatics({ n: 5 }, { n: 6 }, {})).toEqual({ kind: 'merge', value: { n: 1 } })
+    })
+
+    test('both sides below the base (both reset) sum their own counts', () => {
+        expect(mergeStatics({ n: 5 }, { n: 1 }, { n: 1 })).toEqual({ kind: 'merge', value: { n: 2 } })
+        expect(mergeStatics({ n: 5 }, { n: 1 }, { n: 2 })).toEqual({ kind: 'merge', value: { n: 3 } })
+    })
+
+    test('a merged value is never negative', () => {
+        expect(mergeStatics({ n: 0 }, { n: -3 }, { n: 2 })).toEqual({ kind: 'merge', value: { n: 0 } })
+    })
+
+    test('residual of the both-below rule, pinned: both reset and one recorded at least the base afterwards (compatibility guard)', () => {
+        // Neither side is below the base, so the rule adds: 1 + (7 - 5). The history holds 8; the count is accepted as is.
+        expect(mergeStatics({ n: 5 }, { n: 7 }, { n: 1 })).toEqual({ kind: 'merge', value: { n: 3 } })
+    })
+
+    test('an equal non-numeric key both sides changed keeps this page\'s value (compatibility guard)', () => {
+        expect(mergeStatics({ s: 'a' }, { s: 'b' }, { s: 'b' })).toEqual({ kind: 'keep' })
+    })
+
+    /** The statics rule as written in the product text, one key: the value, or `park`. It uses nothing of `fastForward/`. */
+    function ruleOf(base: Value, mine: Value, theirs: Value): { value: Value } | 'park' {
+        const isCount = (item: Value): item is number | undefined => item === undefined || typeof item === 'number'
+        const count = (item: Value): number => typeof item === 'number' ? item : 0
+        if (canon(theirs) === canon(base)) {
+            return { value: mine }
+        }
+        if (canon(mine) === canon(base)) {
+            return { value: theirs }
+        }
+        if (isCount(base) && isCount(mine) && isCount(theirs)) {
+            if (mine === undefined && theirs === undefined) {
+                return { value: undefined }
+            }
+            const bothBelow = typeof base === 'number' && count(mine) < base && count(theirs) < base
+            const sum = bothBelow ? count(mine) + count(theirs) : count(theirs) + (count(mine) - count(base))
+            return { value: Math.max(0, sum) }
+        }
+        return canon(mine) === canon(theirs) ? { value: mine } : 'park'
+    }
+
+    function resultOf(decided: ReturnType<typeof mergeStatics>, mine: Value): Value {
+        return decided.kind === 'keep' ? mine : decided.kind === 'park' ? 'parked' : decided.value
+    }
+
+    function expectKindFor(decided: ReturnType<typeof mergeStatics>, expected: JsonObject, mine: JsonObject, theirs: JsonObject, label: string): void {
+        if (canon(expected) === canon(mine)) {
+            expect(decided.kind, label).toBe('keep')
+        } else if (canon(expected) === canon(theirs)) {
+            expect(decided.kind, label).toBe('take')
+        } else {
+            expect(decided.kind, label).toBe('merge')
+        }
+    }
+
+    test('random numeric counters follow the rule text, equal two-sided changes included', () => {
         const rng = mulberry32(21)
-        for (let round = 0; round < 200; round++) {
+        for (let round = 0; round < 300; round++) {
             const keys = ['a', 'b', 'c']
             const base = objectOf(keys.map(key => [key, rng() < 0.2 ? undefined : Math.floor(rng() * 20)]))
-            const mine = objectOf(keys.map(key => [key, rng() < 0.4 ? base[key] : Math.floor(rng() * 20)]))
-            const theirs = objectOf(keys.map(key => [key, rng() < 0.4 ? base[key] : Math.floor(rng() * 20)]))
+            const mine = objectOf(keys.map((key): [string, Value] => {
+                const draw = rng()
+                return [key, draw < 0.35 ? base[key] : draw < 0.45 ? undefined : Math.floor(rng() * 20)]
+            }))
+            const theirs = objectOf(keys.map((key): [string, Value] => {
+                const draw = rng()
+                return [key, draw < 0.35 ? base[key] : draw < 0.5 ? mine[key] : draw < 0.6 ? undefined : Math.floor(rng() * 20)]
+            }))
             const expected: JsonObject = {}
             for (const key of keys) {
-                const outcome = reference(base[key], mine[key], theirs[key])
-                let value: Value
-                if (outcome.kind === 'keep') {
-                    value = mine[key]
-                } else if (outcome.kind === 'take') {
-                    value = theirs[key]
-                } else {
-                    value = Number(theirs[key] ?? 0) + (Number(mine[key] ?? 0) - Number(base[key] ?? 0))
+                const rule = ruleOf(base[key], mine[key], theirs[key])
+                if (rule === 'park') {
+                    throw new Error('numeric keys never park')
                 }
-                if (value !== undefined) {
-                    expected[key] = value
+                if (rule.value !== undefined) {
+                    expected[key] = rule.value
                 }
             }
             const decided = mergeStatics(base, mine, theirs)
-            const result = decided.kind === 'keep' ? mine : decided.kind === 'park' ? null : decided.value
-            expect(canon(result as Value), `round ${round}`).toBe(canon(expected))
-            if (canon(expected) === canon(mine)) {
-                expect(decided.kind).toBe('keep')
-            } else if (canon(expected) === canon(theirs)) {
-                expect(decided.kind).toBe('take')
-            } else {
-                expect(decided.kind).toBe('merge')
+            expect(canon(resultOf(decided, mine)), `round ${round}`).toBe(canon(expected))
+            expectKindFor(decided, expected, mine, theirs, `round ${round} kind`)
+        }
+    })
+
+    test('random mixed keys: a non-numeric key follows the three-way rule beside additive numeric keys', () => {
+        const rng = mulberry32(22)
+        for (let round = 0; round < 300; round++) {
+            const keys = ['a', 'n1', 'n2']
+            const draws = (key: string, side: 'base' | 'mine' | 'theirs', prior: JsonObject): Value => {
+                if (key === 'a') {
+                    return side === 'base' ? pick(rng, POOL) : rng() < 0.4 ? prior.a : pick(rng, POOL)
+                }
+                return side === 'base' ? (rng() < 0.2 ? undefined : Math.floor(rng() * 20)) : rng() < 0.4 ? prior[key] : Math.floor(rng() * 20)
             }
+            const base = objectOf(keys.map((key): [string, Value] => [key, draws(key, 'base', {})]))
+            const mine = objectOf(keys.map((key): [string, Value] => [key, draws(key, 'mine', base)]))
+            const theirs = objectOf(keys.map((key): [string, Value] => [key, rng() < 0.2 ? mine[key] : draws(key, 'theirs', base)]))
+            const expected: JsonObject = {}
+            let parked: string | null = null
+            for (const key of keys) {
+                const rule = ruleOf(base[key], mine[key], theirs[key])
+                if (rule === 'park') {
+                    parked ??= `statics:${key}`
+                } else if (rule.value !== undefined) {
+                    expected[key] = rule.value
+                }
+            }
+            const decided = mergeStatics(base, mine, theirs)
+            if (parked !== null) {
+                expect(decided, `round ${round}`).toEqual({ kind: 'park', reason: parked })
+                continue
+            }
+            expect(canon(resultOf(decided, mine)), `round ${round}`).toBe(canon(expected))
+            expectKindFor(decided, expected, mine, theirs, `round ${round} kind`)
+        }
+    })
+
+    test('history model: the merge holds the true total of each side\'s records, resets included', () => {
+        const rng = mulberry32(23)
+        for (let round = 0; round < 300; round++) {
+            const keys = ['a', 'b', 'c']
+            const base: JsonObject = {}
+            const mine: JsonObject = {}
+            const theirs: JsonObject = {}
+            const expected: JsonObject = {}
+            for (const key of keys) {
+                const start = rng() < 0.2 ? undefined : 1 + Math.floor(rng() * 19)
+                let side: { reset: boolean, records: number }[]
+                do {
+                    side = [0, 1].map(() => ({ reset: start !== undefined && rng() < 0.3, records: Math.floor(rng() * 7) }))
+                } while (side[0].reset && side[1].reset && (side[0].records >= (start ?? 0) || side[1].records >= (start ?? 0)))
+                const values = side.map(({ reset, records }): Value => reset ? (records > 0 ? records : undefined) : (start ?? 0) + records === 0 ? undefined : (start ?? 0) + records)
+                const total = side.some(item => item.reset) ? side[0].records + side[1].records : (start ?? 0) + side[0].records + side[1].records
+                for (const [target, value] of [[base, start], [mine, values[0]], [theirs, values[1]]] as [JsonObject, Value][]) {
+                    if (value !== undefined) {
+                        target[key] = value
+                    }
+                }
+                if (total !== 0) {
+                    expected[key] = total
+                }
+            }
+            const decided = mergeStatics(base, mine, theirs)
+            expect(canon(resultOf(decided, mine)), `round ${round}`).toBe(canon(expected))
         }
     })
 

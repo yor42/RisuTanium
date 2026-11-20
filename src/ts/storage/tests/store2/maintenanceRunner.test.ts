@@ -634,11 +634,11 @@ describe('the clean-up pass after the old-data deletion', () => {
             return page.orphans.filter(key => read.get(key) !== null).length
         }
 
-        async function fireNode(page: NodePage, facts: Partial<AutoGcFacts>): Promise<void> {
+        async function fireNode(page: NodePage, facts: Partial<AutoGcFacts>, seams: MaintenanceSeams = {}): Promise<void> {
             const trigger = fakeTrigger()
             startStore2Maintenance(
                 { store: async () => page.store, listBackupTimes: async () => [] },
-                { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: { ...CLEAN, ownBase: () => page.base, ...facts } },
+                { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: { ...CLEAN, ownBase: () => page.base, ...facts }, ...seams },
             )
             trigger.fire()
             await vi.waitFor(() => expect(getStartupCleanup()).not.toBeNull())
@@ -655,6 +655,51 @@ describe('the clean-up pass after the old-data deletion', () => {
             expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=done deleted=6 batches=1 phase=swept candidates=6 /)])
             expect(await orphansLeftOn(page)).toBe(0)
             await expectInvariant(page.backend)
+        })
+
+        /** A hash-shaped asset stored through the page's store, and the revision the server lists it at. */
+        async function plantAsset(page: NodePage, name: string): Promise<number | null> {
+            await page.store.write(`assets/${name}`, new Uint8Array([1, 2, 3]), 'unconditional')
+            const listed = await page.store.listRevisions?.('assets/')
+            return listed?.find(row => row.key === `assets/${name}`)?.rev ?? null
+        }
+
+        test('reproducer RR2: a node page removes an orphan asset that a record from 25 hours ago names as seen before at its revision, and logs one sweep line', async () => {
+            const page = await openNode(0)
+            const name = 'a'.repeat(64) + '.png'
+            const rev = await plantAsset(page, name)
+            expect(rev).not.toBeNull()
+            await page.store.write(
+                'store2-sweep',
+                encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - DAY - 60 * 60 * 1000, items: [[name, rev, 1]] }),
+                'unconditional',
+            )
+            const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+            await fireNode(page, { peers: async () => 'unsupported' }, { sweepFacts: ACTIVE_SWEEP })
+
+            expect(await page.store.has(`assets/${name}`)).toBe(false)
+            const lines = sweepLines(info)
+            expect(lines).toHaveLength(1)
+            expect(lines[0]).toMatch(/^store2 asset sweep: status=done phase=swept candidates=1 deleted=1 failed=0 kept-live=0 batches=1 recorded=true$/)
+            expect(lines[0], 'counts only').not.toContain(name)
+        })
+
+        test('guard: a node page whose step is not quiet reads nothing for the sweep and logs a yielded line', async () => {
+            const page = await openNode(0)
+            const name = 'b'.repeat(64) + '.png'
+            const rev = await plantAsset(page, name)
+            await page.store.write(
+                'store2-sweep',
+                encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - DAY - 60 * 60 * 1000, items: [[name, rev, 1]] }),
+                'unconditional',
+            )
+            const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+            await fireNode(page, { peers: async () => 'unsupported' })
+
+            expect(await page.store.has(`assets/${name}`)).toBe(true)
+            expect(sweepLines(info)).toEqual([expect.stringMatching(/^store2 asset sweep: status=done phase=none candidates=0 deleted=0 .* recorded=false stopped=yielded$/)])
         })
 
         test('guard: a node page with another tab open (peers others) deletes nothing and writes no record', async () => {
@@ -860,17 +905,21 @@ describe('the asset sweep after the clean-up pass', () => {
         expect(order, 'the sweep is the last deleter of the step').toEqual(['clean-up', 'sweep'])
     })
 
-    test('guard D2: a node session lists nothing under assets and logs no sweep line', async () => {
+    test('guard D2: a node session over a store without the server clock ends the sweep no-server-time before it reads or lists anything', async () => {
         const { session } = await openSession('ready')
         const store = await plantedStore()
         store.lists.length = 0
+        store.reads.length = 0
+        store.writes.length = 0
         const info = vi.spyOn(console, 'info').mockImplementation(() => {})
         const asNode = Object.create(session, { kind: { value: 'node' } }) as Store2Session
 
         await fireSweep({ session: asNode }, store)
 
         expect(store.lists).toEqual([])
-        expect(sweepLines(info)).toEqual([])
+        expect(store.reads).toEqual([])
+        expect(store.writes).toEqual([])
+        expect(sweepLines(info)).toEqual(['store2 asset sweep: status=refused reason=no-server-time'])
         expect(store.files.has(`assets/${ORPHAN}`)).toBe(true)
     })
 

@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'vitest'
 import { SECRET_FIELDS, type SecretFieldEntry } from 'src/ts/secretFields'
 import { isNotCredential } from 'src/ts/storage/tests/shareStripFixture'
-import { SHARE_ENDPOINT_FIELDS, shareSafePreset, stripShareSecrets } from 'src/ts/shareStrip'
+import { SHARE_ENDPOINT_FIELDS, secretFieldValues, shareSafePreset, stripShareSecrets } from 'src/ts/shareStrip'
 import type { botPreset } from 'src/ts/storage/database.svelte'
 
 describe('stripShareSecrets', () => {
@@ -84,6 +84,36 @@ describe('stripShareSecrets', () => {
         expect(target).toEqual({ oaiTTSConfig: { apiKey: '' }, openAIKey: 'k', claudeAPIKey: 'c' })
         stripShareSecrets(target, 'botPreset')
         expect(target).toEqual({ oaiTTSConfig: { apiKey: '' }, openAIKey: '', claudeAPIKey: 'c' })
+    })
+})
+
+describe('secretFieldValues', () => {
+    test('U6 nested, [*] and [] leaves are collected; notCredential entries and non-strings are skipped; the target is not mutated', () => {
+        const db = {
+            claudeAPIKey: 'a',
+            novelai: { token: 'b', model: 'kept' },
+            OaiCompAPIKeys: { m1: 'c', m2: 'd' },
+            customModels: [{ key: 'e', id: 'i1' }, { key: 'f', id: 'i2' }, { id: 'no-key' }],
+            additionalParams: [['header::Authorization', 'g']],
+            hotkeys: [{ key: 'K', action: 'a' }],
+            customTokenizer: 'name',
+            openAIKey: 5,
+        }
+        const before = JSON.stringify(db)
+        expect(secretFieldValues(db, 'database').sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
+        expect(JSON.stringify(db)).toBe(before)
+    })
+
+    test('U6 accept narrows the walk to the entries it approves', () => {
+        const db = { claudeAPIKey: 'a', additionalParams: [['x', 'g']], vertexPrivateKey: 'pem' }
+        expect(secretFieldValues(db, 'database', (entry) => entry.field !== 'additionalParams' && entry.field !== 'vertexPrivateKey')).toEqual(['a'])
+    })
+
+    test('U6 other scopes, absent keys and wrong shapes yield nothing and never throw', () => {
+        expect(secretFieldValues({ oaiTTSConfig: { apiKey: 's' } }, 'database')).toEqual([])
+        expect(secretFieldValues({ oaiTTSConfig: { apiKey: 's' } }, 'character')).toEqual(['s'])
+        expect(secretFieldValues({}, 'database')).toEqual([])
+        expect(secretFieldValues({ novelai: null, customModels: { 0: { key: 'k' } }, additionalParams: 'text' }, 'database')).toEqual([])
     })
 })
 

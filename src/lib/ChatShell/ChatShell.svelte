@@ -2,6 +2,8 @@
     import { onMount, tick, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/chat-tokens.css'
+    import '../../styles/chat-pack-base.css'
+    import '../../styles/chat-light-base.css'
     import { get } from 'svelte/store'
     import { DBState, alertStore, selIdState, sideBarStore } from '../../ts/stores.svelte'
     import { language } from '../../lang'
@@ -55,6 +57,7 @@
     import { treeView } from '../../ts/process/chatTreeView'
     import { inputOf, layoutOf } from '../../ts/gui/rootAttributes'
     import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
+    import { packBaseTone } from '../../ts/gui/surfaceTone'
 
     interface Props {
         openChatList?: boolean
@@ -62,6 +65,9 @@
         customStyle?: string
     }
     let { openChatList = $bindable(false), openModuleList = $bindable(false), customStyle = '' }: Props = $props()
+
+    // While a theme pack is on, the parent's text-screen overlay is not applied: the transcript sits on the pack canvas, not under the user's overlay.
+    const overlayStyle = $derived($packBaseTone === null ? customStyle : '')
 
     let ShellHeader: typeof ShellHeaderComponent | null = $state(null)
     let ShellComposer: typeof ShellComposerComponent | null = $state(null)
@@ -1048,7 +1054,7 @@
 
 </script>
 
-<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} style={customStyle}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} style={overlayStyle}>
     <div bind:this={header} data-part="chat-header-host">
         {#if findOpen && FindBar && findState}<FindBar bind:this={findBar} query={findState.query} count={findState.hits.length} current={findState.current} complete={findState.complete} filters={findState.filters} characterName={character?.name ?? ''} onquery={onFindQuery} oncomposing={(on) => findCtx?.session.setComposing(on)} onstep={(direction) => findCtx?.session.step(direction)} onclose={() => void closeFind('user')} onclearfilters={onFindClearFilters} onfilters={openFindFilters} onseeall={openFindResults} />
         {:else if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
@@ -1084,6 +1090,8 @@
 
 <style>
     [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: transparent; color: var(--nexus-text); }
+    /* Under a theme pack the shell is the pack canvas and nothing behind it shows. A translucent canvas is drawn over the pack-immutable black base, the backdrop the install judge flattens it onto; the screenshot export draws the same two layers. */
+    :global(:root:where([data-theme-pack-base])) [data-part="chat-shell"] { background-color: var(--surface-pack-backdrop); background-image: linear-gradient(var(--nexus-canvas), var(--nexus-canvas)); }
     [data-part="chat-composer-host"] { flex: none; }
     .jump-host { display: contents; }
     [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }

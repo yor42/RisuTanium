@@ -109,6 +109,17 @@ describe('/api/list-prefix on the real server', () => {
         expect(await countOf(`?prefix=${hexOfKey('zz/')}`)).toBe(0)
     })
 
+    test('revisions=1 lists the same names as the plain route, and revisions=1 with count=1 counts the same', async () => {
+        await plantFile(hexOfKey('r/1'))
+        await plantFile(hexOfKey('r/2').toUpperCase())
+        await plantFile(`${hexOfKey('r/1')}.tmp-0123456789abcdef`)
+        const plain = await names(`?prefix=${hexOfKey('r/')}`)
+        const withRevisions = await (await route(`?prefix=${hexOfKey('r/')}&revisions=1`)).json() as { content: string[], revisions: unknown[] }
+        expect(withRevisions.content).toEqual(plain)
+        expect(withRevisions.revisions).toHaveLength(plain.length)
+        expect(await countOf(`?prefix=${hexOfKey('r/')}&revisions=1`)).toBe(plain.length)
+    })
+
     test.each(['?prefix=abc', '?prefix=zz', '?prefix=a/', '', '?prefix=aa&prefix=bb', '?prefix=%00'])('refuses the prefix query %j with 400', async (query) => {
         const response = await route(query)
         expect(response.status).toBe(400)

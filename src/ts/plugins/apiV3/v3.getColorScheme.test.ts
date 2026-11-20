@@ -221,7 +221,7 @@ describe('getColorScheme reports the painted scheme', () => {
         const result = makeApi().getColorScheme()
 
         expect(result.name).toBe('default')
-        expect(result.scheme.textcolor2).toBe('#94a3b8')
+        expect(result.scheme.textcolor2).toBe('#a6b0d4')
         expect(DBState.db.colorScheme.textcolor2).toBe('#64748b')
     })
 

@@ -115,8 +115,8 @@
         <div class="flex items-center text-textcolor mb-4">
             <h2 class="mt-0 mb-0">{language.presets}</h2>
             <div class="grow flex justify-end">
-                <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer items-center" onclick={close}>
-                    <XIcon size={24}/>
+                <button aria-label={language.uiCommon.close} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer items-center" onclick={close}>
+                    <XIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
         </div>
@@ -124,9 +124,11 @@
             <div class="w-full transition-all duration-200"
                 class:h-0.5={!isDragging || dragOverIndex !== i}
                 class:h-1={isDragging && dragOverIndex === i}
-                class:bg-blue-500={isDragging && dragOverIndex === i}
+                class:bg-selected={isDragging && dragOverIndex === i}
+                class:ring-1={isDragging && dragOverIndex === i}
+                class:ring-borderc={isDragging && dragOverIndex === i}
                 class:shadow-lg={isDragging && dragOverIndex === i}
-                class:hover:bg-gray-600={!isDragging}
+                class:hover:bg-selected={!isDragging}
                 role="listitem"
                 ondragover={(e) => {
                     if (!isPresetDrag(e)) {
@@ -200,7 +202,7 @@
                 dragOverIndex = -1
             }}>
                 {#if editMode}
-                    <TextInput bind:value={DBState.db.botPresets[i].name} placeholder={language.name} padding={false}/>
+                    <TextInput label={language.name} bind:value={DBState.db.botPresets[i].name} placeholder={language.name} padding={false}/>
                 {:else}
                     {#if slotBadgeFor(DBState.db.botPresets, i) !== undefined}
                         <span class="w-2 text-center mr-2 text-textcolor2">{slotBadgeFor(DBState.db.botPresets, i)}</span>
@@ -213,28 +215,32 @@
                 {/if}
                 <div class="grow flex justify-end">
                     {#if DBState.db.showPromptComparison}
-                        <div class="{selectedDiffPreset === i ? 'text-green-500' : 'text-textcolor2 hover:text-green-500'} cursor-pointer mr-2" role="button" tabindex="0" onclick={(e) => {
+                        <div class="{selectedDiffPreset === i ? 'text-textcolor bg-selected ring-1 ring-borderc rounded-sm' : 'text-textcolor2 hover:text-textcolor'} cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.comparePreset} aria-pressed={selectedDiffPreset === i} onclick={(e) => {
                             e.stopPropagation()
                             handleDiffMode(i)
                         }} onkeydown={(e) => {
-                            if(e.key === 'Enter' && e.currentTarget instanceof HTMLElement){
+                            if(e.target !== e.currentTarget) return
+                            if((e.key === 'Enter' || e.key === ' ') && e.currentTarget instanceof HTMLElement){
+                                e.preventDefault()
                                 e.currentTarget.click()
                             }
                         }}>
-                            <GitCompare size={18}/>
+                            <GitCompare size={18} aria-hidden="true"/>
                         </div>
                     {/if}
-                    <div class="text-textcolor2 hover:text-green-500 cursor-pointer mr-2" role="button" tabindex="0" onclick={(e) => {
+                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.copy} onclick={(e) => {
                         e.stopPropagation()
                         copyPreset(i)
                     }} onkeydown={(e) => {
-                        if(e.key === 'Enter' && e.currentTarget instanceof HTMLElement){
+                        if(e.target !== e.currentTarget) return
+                        if((e.key === 'Enter' || e.key === ' ') && e.currentTarget instanceof HTMLElement){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
                     }}>
-                        <CopyIcon size={18}/>
+                        <CopyIcon size={18} aria-hidden="true"/>
                     </div>
-                    <div class="text-textcolor2 hover:text-green-500 cursor-pointer mr-2" role="button" tabindex="0" onclick={async (e) => {
+                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.export} onclick={async (e) => {
                         e.stopPropagation()
                         const data = await alertCardExport('preset')
                         console.log(data.type)
@@ -245,14 +251,16 @@
                             await openRealmUpload(`preset:${i}`)
                         }
                     }} onkeydown={(e) => {
-                        if(e.key === 'Enter' && e.currentTarget instanceof HTMLElement){
+                        if(e.target !== e.currentTarget) return
+                        if((e.key === 'Enter' || e.key === ' ') && e.currentTarget instanceof HTMLElement){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
                     }}>
 
-                        <Share2Icon size={18} />
+                        <Share2Icon size={18} aria-hidden="true" />
                     </div>
-                    <div class="text-textcolor2 hover:text-green-500 cursor-pointer" role="button" tabindex="0" onclick={async (e) => {
+                    <div class="text-textcolor2 hover:text-textcolor cursor-pointer" role="button" tabindex="0" aria-label={language.remove} onclick={async (e) => {
                         e.stopPropagation()
                         const target = preset
                         if(DBState.db.botPresets.length === 1){
@@ -272,11 +280,13 @@
                             changeToPreset(0, false)
                         }
                     }} onkeydown={(e) => {
-                        if(e.key === 'Enter' && e.currentTarget instanceof HTMLElement){
+                        if(e.target !== e.currentTarget) return
+                        if((e.key === 'Enter' || e.key === ' ') && e.currentTarget instanceof HTMLElement){
+                            e.preventDefault()
                             e.currentTarget.click()
                         }
                     }}>
-                        <TrashIcon size={18}/>
+                        <TrashIcon size={18} aria-hidden="true"/>
                     </div>
                 </div>
             </button>
@@ -285,9 +295,11 @@
         <div class="w-full transition-all duration-200"
             class:h-0.5={!isDragging || dragOverIndex !== DBState.db.botPresets.length}
             class:h-1={isDragging && dragOverIndex === DBState.db.botPresets.length}
-            class:bg-blue-500={isDragging && dragOverIndex === DBState.db.botPresets.length}
+            class:bg-selected={isDragging && dragOverIndex === DBState.db.botPresets.length}
+            class:ring-1={isDragging && dragOverIndex === DBState.db.botPresets.length}
+            class:ring-borderc={isDragging && dragOverIndex === DBState.db.botPresets.length}
             class:shadow-lg={isDragging && dragOverIndex === DBState.db.botPresets.length}
-            class:hover:bg-gray-600={!isDragging}
+            class:hover:bg-selected={!isDragging}
             role="listitem"
             ondragover={(e) => {
                 if (!isPresetDrag(e)) {
@@ -308,7 +320,7 @@
         </div>
         
         <div class="flex mt-2 items-center">
-            <button class="text-textcolor2 hover:text-green-500 cursor-pointer mr-1" onclick={() => {
+            <button aria-label={language.add} class="text-textcolor2 hover:text-textcolor cursor-pointer mr-1" onclick={() => {
                 let botPresets = DBState.db.botPresets
                 let newPreset = safeStructuredClone(prebuiltPresets.OAI2)
                 newPreset.name = `New Preset`
@@ -316,17 +328,17 @@
 
                 DBState.db.botPresets = botPresets
             }}>
-                <PlusIcon/>
+                <PlusIcon aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" onclick={() => {
+            <button aria-label={language.import} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" onclick={() => {
                 importPreset()
             }}>
-                <HardDriveUploadIcon size={18}/>
+                <HardDriveUploadIcon size={18} aria-hidden="true"/>
             </button>
-            <button class="text-textcolor2 hover:text-green-500 cursor-pointer" onclick={() => {
+            <button aria-label={language.othersUi.editMode} aria-pressed={editMode} class="text-textcolor2 hover:text-textcolor cursor-pointer" onclick={() => {
                 editMode = !editMode
             }}>
-                <PencilIcon size={18}/>
+                <PencilIcon size={18} aria-hidden="true"/>
             </button>
         </div>
         <span class="text-textcolor2 text-sm">{language.quickPreset}</span>

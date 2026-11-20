@@ -75,6 +75,9 @@ import { decodeProxyJobWsChunk, formatProxyStreamErrorMessage, parseProxyJobWsEv
 import { getNodeServerProxyAuth, NodeStorage } from "./storage/nodeStorage";
 import { peerCommitWake, startNodePeerFeed, type NodePeerFeed } from "./storage/store2/nodePeerFeed";
 import { assertNoSecretRef, redactResolved } from "./secretRef";
+import { compileKnownSecrets, redactLogField, REVEAL_MIN_LENGTH, type FetchLogField, type KnownSecrets } from "./requestLogRedact";
+import { secretFieldValues } from "./shareStrip";
+import { splitKeys } from "./process/request/keyRing";
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
@@ -103,6 +106,63 @@ interface fetchLog {
 }
 
 let fetchLog: fetchLog[] = []
+
+const NO_KNOWN_SECRETS: KnownSecrets = compileKnownSecrets([])
+let knownSecretsSignature: string | null = null
+let knownSecretsMatcher: KnownSecrets = NO_KNOWN_SECRETS
+
+/**
+ * The matcher of the credentials configured in the database, rebuilt only when a key changes.
+ * Any failure yields an empty matcher: logging must never throw. `additionalParams` values are
+ * ordinary parameters and the Vertex PEM is never sent (it only signs the token request).
+ */
+function currentKnownSecrets(): KnownSecrets {
+    try {
+        const db = getDatabase()
+        if (typeof db !== 'object' || db === null) {
+            return NO_KNOWN_SECRETS
+        }
+        const values = new Set<string>()
+        const fields = secretFieldValues(db, 'database', (entry) => entry.field !== 'additionalParams' && entry.field !== 'vertexPrivateKey')
+        for (const field of fields) {
+            for (const line of splitKeys(field)) {
+                const trimmed = line.trim()
+                if (trimmed.length >= REVEAL_MIN_LENGTH) {
+                    values.add(trimmed)
+                }
+            }
+        }
+        const list = [...values]
+        const signature = list.join('\n')
+        if (signature !== knownSecretsSignature) {
+            knownSecretsMatcher = compileKnownSecrets(list)
+            knownSecretsSignature = signature
+        }
+        return knownSecretsMatcher
+    } catch {
+        return NO_KNOWN_SECRETS
+    }
+}
+
+/**
+ * A redactor for one log entry: resolved `${NAME}` labels first, then configured credential
+ * values, then the name rules of the field. The configured-value matcher is fetched once per
+ * entry. A non-string passes through, and an unexpected failure stores `[redacted]` rather than
+ * throwing, so the log can never leak a value or break a request.
+ */
+export function fetchLogRedactor(): (field: FetchLogField, text: string) => string {
+    const known = currentKnownSecrets()
+    return (field, text) => {
+        if (typeof text !== 'string') {
+            return text
+        }
+        try {
+            return redactLogField(field, redactResolved(text), known)
+        } catch {
+            return '[redacted]'
+        }
+    }
+}
 
 export { downloadFile } from "./downloadFile"
 
@@ -672,11 +732,16 @@ async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: str
         // after it failed, still leaves the key alone.
         await noteAndSettleAssetWrite(key)
         const store = await getAppStore()
-        // A name is a content hash, so an existing file holds these bytes already.
-        // Replacing it would rename over a file the web view may hold open, and
-        // on the Node server it would bump the key's revision. Only the desktop
-        // store and the Node server check a key without a scan or a read.
-        if ((isTauri || isNodeServer) && await store.has(key)) {
+        // A name is a content hash or a caller's fixed id, and an existing value is kept.
+        // On the Node server keeping it also moves its revision, so a sweep's delete at
+        // an earlier revision fails; an absent key is written. Replacing a present file
+        // would rename over a file the web view may hold open. Only the desktop store
+        // and the Node server check a key without a scan or a read.
+        if (isNodeServer) {
+            if (store.touch !== undefined && (await store.touch(key)).kept) {
+                return key
+            }
+        } else if (isTauri && await store.has(key)) {
             return key
         }
         try {
@@ -2090,14 +2155,15 @@ export function addFetchLog(arg: {
     chatId?: string,
     status?: number
 }): number {
+    const redact = fetchLogRedactor()
     fetchLog.unshift({
-        body: redactResolved(typeof (arg.body) === 'string' ? arg.body : JSON.stringify(arg.body, null, 2)),
-        header: redactResolved(JSON.stringify(arg.headers ?? {}, null, 2)),
-        response: redactResolved(typeof (arg.response) === 'string' ? arg.response : JSON.stringify(arg.response, null, 2)),
+        body: redact('body', typeof (arg.body) === 'string' ? arg.body : JSON.stringify(arg.body, null, 2)),
+        header: redact('header', JSON.stringify(arg.headers ?? {}, null, 2)),
+        response: redact('response', typeof (arg.response) === 'string' ? arg.response : JSON.stringify(arg.response, null, 2)),
         responseType: arg.resType ?? 'json',
         success: arg.success,
         date: (new Date()).toLocaleTimeString(),
-        url: redactResolved(arg.url),
+        url: redact('url', arg.url),
         chatId: arg.chatId,
         status: arg.status
     });
@@ -2203,26 +2269,27 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}, intern
  * @param {GlobalFetchArgs} arg - The arguments for the fetch request.
  */
 function addFetchLogInGlobalFetch(response: any, success: boolean, url: string, arg: GlobalFetchArgs, status?: number) {
+    const redact = fetchLogRedactor()
     try {
         fetchLog.unshift({
-            body: redactResolved(JSON.stringify(arg.body, null, 2)),
-            header: redactResolved(JSON.stringify(arg.headers ?? {}, null, 2)),
-            response: redactResolved(JSON.stringify(response, null, 2)),
+            body: redact('body', JSON.stringify(arg.body, null, 2)),
+            header: redact('header', JSON.stringify(arg.headers ?? {}, null, 2)),
+            response: redact('response', JSON.stringify(response, null, 2)),
             success: success,
             date: (new Date()).toLocaleTimeString(),
-            url: redactResolved(url),
+            url: redact('url', url),
             chatId: arg.chatId,
             status: status
         })
     }
     catch {
         fetchLog.unshift({
-            body: redactResolved(JSON.stringify(arg.body, null, 2)),
-            header: redactResolved(JSON.stringify(arg.headers ?? {}, null, 2)),
-            response: redactResolved(`${response}`),
+            body: redact('body', JSON.stringify(arg.body, null, 2)),
+            header: redact('header', JSON.stringify(arg.headers ?? {}, null, 2)),
+            response: redact('response', `${response}`),
             success: success,
             date: (new Date()).toLocaleTimeString(),
-            url: redactResolved(url),
+            url: redact('url', url),
             chatId: arg.chatId,
             status: status
         })
@@ -2684,9 +2751,11 @@ export function getRequestLog() {
     const b = '\n\`\`\`json\n'
     const bend = '\n\`\`\`\n'
 
+    // Entries are redacted when captured; the pass here covers an entry that was not.
+    const redact = fetchLogRedactor()
     for (const log of fetchLog) {
-        logString += `## ${log.date}\n\n* Request URL\n\n${b}${log.url}${bend}\n\n* Request Body\n\n${b}${log.body}${bend}\n\n* Request Header\n\n${b}${log.header}${bend}\n\n`
-            + `* Response Body\n\n${b}${log.response}${bend}\n\n* Response Success\n\n${b}${log.success}${bend}\n\n`
+        logString += `## ${log.date}\n\n* Request URL\n\n${b}${redact('url', log.url)}${bend}\n\n* Request Body\n\n${b}${redact('body', log.body)}${bend}\n\n* Request Header\n\n${b}${redact('header', log.header)}${bend}\n\n`
+            + `* Response Body\n\n${b}${redact('response', log.response)}${bend}\n\n* Response Success\n\n${b}${log.success}${bend}\n\n`
     }
     return logString
 }
@@ -3079,7 +3148,7 @@ const pipeFetchLog = (fetchLogIndex: number, readableStream: ReadableStream<Uint
         // A stream error already reaches the consumer through the other branch.
         const text = await (new Response(splited[0])).text().catch(() => null)
         if (text !== null && fetchLog[fetchLogIndex]) {
-            fetchLog[fetchLogIndex].response = redactResolved(text)
+            fetchLog[fetchLogIndex].response = fetchLogRedactor()('response', text)
         }
     })()
     
@@ -3546,7 +3615,7 @@ export async function fetchNative(url: string, arg: {
             delete nativeFetchData[fetchId]
             delete nativeFetchWake[fetchId]
             if (logEntry) {
-                logEntry.response = redactResolved(logText + logDecoder.decode())
+                logEntry.response = fetchLogRedactor()('response', logText + logDecoder.decode())
             }
         }
 

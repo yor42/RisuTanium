@@ -2,7 +2,8 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import PatternTask from './PatternTask.svelte'
-import { createTaskController, type TaskClock, type TaskConfirm, type TaskController, type TaskView } from './taskProgress'
+import { language } from '../../../lang'
+import { createTaskController, taskMiB, type TaskClock, type TaskConfirm, type TaskController, type TaskView } from './taskProgress'
 
 const steps = [{ label: 'Read file' }, { label: 'Add items' }]
 const confirm: TaskConfirm = {
@@ -174,7 +175,7 @@ describe('the confirm sheet of the task card', () => {
     })
 
     // R3-11
-    test('confirming turns the same dialog into the running card: dialog role, swap marker, shell focus, task Cancel', async () => {
+    test('confirming turns the same dialog into the running card: dialog role, swap marker, title focus, task Cancel', async () => {
         const h = open()
         const dialog = part(h.target, 'pattern-dialog')!
         expect(h.controller.confirm()).toBe(true)
@@ -185,8 +186,73 @@ describe('the confirm sheet of the task card', () => {
         expect(part(h.target, 'pattern-task-root')!.getAttribute('data-swap')).toBe('in')
         expect(part(h.target, 'pattern-warn-root')).toBeNull()
         expect(dialog.getAttribute('aria-labelledby')).toBe(part(h.target, 'pattern-task-title')!.id)
-        expect(document.activeElement).toBe(dialog)
+        expect(document.activeElement).toBe(part(h.target, 'pattern-task-title'))
         expect(part(h.target, 'pattern-task-cancel')).not.toBeNull()
+    })
+
+    // R307-1
+    test('the status region is empty at mount and holds the opening text once after a frame plus the settle', async () => {
+        const items = [{ name: 'a', size: 10 * 1024 * 1024 }, { name: 'b', size: 12.5 * 1024 * 1024 }]
+        const real: TaskConfirm = {
+            headline: language.importPreflightHeadline(items.length),
+            consequences: [language.importPreflightSize(taskMiB(items.reduce((sum, item) => sum + item.size, 0))), language.importPreflightAdds],
+            cancelLabel: language.cancel,
+            primaryLabel: language.importPreflightStart,
+        }
+        const controller = createTaskController({ title: 'Import', steps, onCancel: () => { }, confirm: real }, clock)
+        const props = $state({ view: controller.view as TaskView, lowPower: false, oncancel: () => { }, onanswer: () => { } })
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mounted.push({ target, app: mount(PatternTask, { target, props }) })
+        flushSync()
+        const status = part(target, 'pattern-task-status')!
+        expect(target.querySelectorAll('[aria-live], [role="status"]')).toHaveLength(1)
+        expect(status.textContent).toBe('')
+        let writes = 0
+        const observer = new MutationObserver((records) => { writes += records.length })
+        observer.observe(status, { childList: true, characterData: true, subtree: true })
+        vi.advanceTimersByTime(150)
+        await Promise.resolve()
+        expect(status.textContent).toBe('')
+        vi.advanceTimersByTime(100)
+        flushSync()
+        await Promise.resolve()
+        expect(status.textContent).toBe(`${language.importPreflightHeadline(2)}. ${language.importPreflightSize('22.5 MiB')}`)
+        vi.advanceTimersByTime(5000)
+        await Promise.resolve()
+        expect(writes).toBe(1)
+        expect(target.querySelectorAll('[aria-live], [role="status"]')).toHaveLength(1)
+        observer.disconnect()
+    })
+
+    // R307-4
+    test('after the swap focus is on the title, no preflight text remains in the dialog, and the status shows the running step', async () => {
+        const h = open()
+        vi.advanceTimersByTime(300)
+        flushSync()
+        const status = part(h.target, 'pattern-task-status')!
+        expect(status.textContent).toContain('Import 2 files')
+        h.controller.confirm()
+        flushSync()
+        await settleFocus()
+        expect(document.activeElement).toBe(part(h.target, 'pattern-task-title'))
+        const dialog = part(h.target, 'pattern-dialog')!
+        expect(dialog.textContent).not.toContain('Import 2 files. 3.0 MiB in total')
+        expect(status.textContent).not.toContain('Import 2 files')
+        expect(status.textContent).not.toBe('')
+    })
+
+    // R307-5 (fresh card), R307-6 (guard: confirm first focus stays on Cancel; it passes before and after)
+    test('a running card without a confirm focuses its title; the confirm sheet focuses Cancel', () => {
+        const h = open()
+        expect(document.activeElement).toBe(part(h.target, 'pattern-warn-cancel'))
+        const controller = createTaskController({ title: 'Import', steps, onCancel: () => { } }, clock)
+        const props = $state({ view: controller.view as TaskView, lowPower: false, oncancel: () => { }, onanswer: () => { } })
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mounted.push({ target, app: mount(PatternTask, { target, props }) })
+        flushSync()
+        expect(document.activeElement).toBe(part(target, 'pattern-task-title'))
     })
 
     test('a card that never showed a confirm carries no swap marker', () => {

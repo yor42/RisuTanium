@@ -11,10 +11,13 @@ import { isAssetBatchReadAvailable, listAssetsSized } from '../storage/tauriAsse
 import { transportKind } from '../storage/tauriByteTransport'
 import { inlayAttachmentLimit } from '../process/files/inlayStore'
 import type { Store2Read } from '../storage/store2/backend/types'
+import { clearAbandonedMarker } from '../storage/store2/abandonedMarker'
+import type { AbandonResult, Committer, HeldBulk } from '../storage/store2/commit'
+import { classifyCommitRead } from '../storage/store2/commitKey'
 import type { OmittedEntry as FileOmittedEntry, RtbManifest } from './rtb/manifest'
 import type { RtbNotice } from './rtb/rtbClassify'
 import type { SectionRow } from './rtb/sections'
-import { rangeSourceFrom, type RangeSource } from './rtb/rangeSource'
+import type { RangeSource } from './rtb/rangeSource'
 import type { ZipIndex } from './rtb/zip64Reader'
 import { planAssets, type AssetPlanDeps, type AssetsPlan, type CreatableRule, type InlaysPlan, type SizedListing } from './rtb/rtbAssetPlan'
 import { verifyRtb, type NewerItem, type RtbVerdict, type SidePlanItem, type Store2Plan, type VerifyOptions } from './rtb/rtbVerify'
@@ -22,8 +25,9 @@ import type { ImportSource } from '../importSource'
 import { nodePieceStore } from './assetPieces'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { acquireRestoreHold, baseOfRead, type BaseRead, type HoldAcquire, type HoldOptions, type RestoreHold } from './rtbRestoreHold'
-import { checkStore2Import, confirmImportScale, type Store2ImportCheck, type Store2ImportRefusal, type Store2ImportTarget } from './storeImport'
+import { askToClearForeignMarker, checkStore2Import, confirmImportScale, type ForeignMarkerQuestion, type Store2ImportCheck, type Store2ImportRefusal, type Store2ImportTarget } from './storeImport'
 import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
+import { askRtbPassword, openRestoreSource, sealedVerdict } from './rtbSealedOpen'
 
 /**
  * The page-target front half of a `.rtb` restore (CHORE-128 S11): the refusals before anything is written,
@@ -78,6 +82,8 @@ export interface RestorePlan {
     rows: readonly SectionRow[]
     target: Store2ImportTarget
     base: BaseRead
+    /** The bulk marker a Node restore holds from before the asset listing until its final write; null elsewhere. */
+    held?: HeldBulk | null
     store2: Store2Plan
     assets: AssetsPlan
     inlays: InlaysPlan
@@ -90,7 +96,7 @@ export interface RestorePlan {
 
 export type RtbPrepareCause =
     | 'busy' | 'read-only' | 'not-store2' | 'other-tab' | 'declined' | Store2ImportRefusal
-    | 'not-an-rtb' | 'encrypted' | 'damaged' | 'newer' | 'could-not-read' | 'unexpected'
+    | 'not-an-rtb' | 'encrypted' | 'damaged' | 'newer' | 'could-not-read' | 'unexpected' | 'base-moved'
 
 export type RtbPrepareEnd =
     | { kind: 'ready', plan: RestorePlan, hold: RestoreHold }
@@ -101,10 +107,16 @@ export interface RtbPrepareDeps {
     refuseOnReadOnlyPage(): Promise<boolean>
     refuseWhileBusy(own: BusyHandle): boolean
     pageKind(): PageStorageMode['kind']
+    /** Whether the restore holds its own bulk marker through the asset listing and the copy (a Node page). */
+    heldMarker(): boolean
+    /** The Wait or Clear question about another operation's marker found while the restore opens its own. */
+    askForeignMarker: ForeignMarkerQuestion
     checkImport(): Promise<Store2ImportCheck>
     saveFirst(boundMs: number): Promise<void>
     acquireHold(busy: BusyHandle, options: HoldOptions): Promise<HoldAcquire>
     verify(source: RangeSource, options: VerifyOptions): Promise<RtbVerdict>
+    /** The password of a sealed file, or `null` when the person cancels. */
+    password(reason: 'first' | 'wrong' | 'unusable'): Promise<string | null>
     assetDeps(): AssetPlanDeps
     confirmScale(fileSize: number, entries: number, databaseBytes: number, unitBytes: number): Promise<boolean>
     confirm(text: string): Promise<boolean>
@@ -200,10 +212,14 @@ function realDeps(): RtbPrepareDeps {
         refuseOnReadOnlyPage,
         refuseWhileBusy: (own) => refuseBackupLoadWhileBusy(own),
         pageKind: () => getPageStorageMode().kind,
+        heldMarker: selectedStoreIsNode,
+        // Loaded when first asked: the peer UI's module graph is not needed by a restore that meets no foreign marker.
+        askForeignMarker: async (marker) => (await import('../storage/store2/ui/peerUi')).askForeignMarkerQuestion(marker),
         checkImport: checkStore2Import,
         saveFirst,
         acquireHold: acquireRestoreHold,
         verify: verifyRtb,
+        password: askRtbPassword,
         assetDeps: realAssetDeps,
         confirmScale: confirmImportScale,
         confirm: alertConfirm,
@@ -243,13 +259,14 @@ export interface VerifiedRtb {
     notice: RestoreNoticeItems
 }
 
-export type RtbVerifyDeps = Pick<RtbPrepareDeps, 'verify' | 'assetDeps' | 'confirmScale' | 'confirm' | 'error' | 'wait'>
+export type RtbVerifyDeps = Pick<RtbPrepareDeps, 'verify' | 'password' | 'assetDeps' | 'confirmScale' | 'confirm' | 'error' | 'wait'>
 export type RtbVerifyEnd = { kind: 'ok', verified: VerifiedRtb } | RtbEnded
 
 /** The verification and prompt calls of the real page; the start-up restore uses the same ones. */
 export function realVerifyDeps(): RtbVerifyDeps {
     return {
         verify: verifyRtb,
+        password: askRtbPassword,
         assetDeps: realAssetDeps,
         confirmScale: confirmImportScale,
         confirm: alertConfirm,
@@ -267,11 +284,15 @@ export function realVerifyDeps(): RtbVerifyDeps {
  * Any decryption of the file belongs inside this function (in `verifyRtb` or here, carried by `VerifiedRtb.source`), never
  * in `prepareRtbRestore` or in the restore run: the start-up restore shares this middle and would otherwise need a second copy.
  */
-export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, options: { newerBase: BaseRead | null, sideCheckCapBytes?: number }): Promise<RtbVerifyEnd> {
+export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, options: { newerBase: BaseRead | null, sideCheckCapBytes?: number, beforeAssetPlan?: () => Promise<RtbEnded | null> }): Promise<RtbVerifyEnd> {
     // V: the file.
     let lastPercent = -1
-    const source = rangeSourceFrom(picked.source)
-    const verdict = await deps.verify(source, {
+    const opened = await openRestoreSource(picked, deps)
+    if (opened.kind === 'ended') {
+        return opened.end
+    }
+    const source = opened.source
+    const verdict = sealedVerdict(opened, await deps.verify(source, {
         sideCheckCapBytes: options.sideCheckCapBytes,
         onProgress: (percent) => {
             if (percent !== lastPercent) {
@@ -279,7 +300,7 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
                 deps.wait(language.rtbRestoreChecking(percent))
             }
         },
-    })
+    }))
     switch (verdict.kind) {
         case 'could-not-read':
             console.error(verdict.message)
@@ -288,9 +309,6 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
         case 'not-an-rtb':
             deps.error(language.rtbRestoreNotRtb)
             return ended('nothing-replaced', 'not-an-rtb')
-        case 'encrypted':
-            deps.error(language.rtbRestoreEncrypted)
-            return ended('nothing-replaced', 'encrypted')
         case 'damaged':
             console.error(verdict.reason)
             deps.error(language.rtbRestoreDamaged)
@@ -322,6 +340,14 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
             return ended('canceled', 'declined')
         }
         newer = { targetAt, backupAt, exportedAt, deviceLabel }
+    }
+
+    // P.1b: the caller's step between the newer-data question and the asset listing; an answer ends the run.
+    if (options.beforeAssetPlan !== undefined) {
+        const stopped = await options.beforeAssetPlan()
+        if (stopped !== null) {
+            return stopped
+        }
     }
 
     // P.2: what is copied, skipped, oversize and uncreatable. Read-only.
@@ -378,6 +404,8 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
     const deps: RtbPrepareDeps = { ...realDeps(), ...options.deps }
     let hold: RestoreHold | null = null
     let ready = false
+    /** The marker P.1b wrote and the committer that holds it; set by the P.1b closure, read by `finally`. */
+    const standing: { held: HeldBulk | null, committer: Committer | null } = { held: null, committer: null }
     try {
         // R0.1: the refusals that need nothing held.
         if (await deps.refuseOnReadOnlyPage()) {
@@ -428,17 +456,117 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
             deps.error(language.store2ImportRefused)
             return ended('nothing-replaced', based.kind)
         }
-        const base = based.base
+        let base = based.base
+
+        // P.1b (a Node page): the restore's own bulk marker, between the newer-data question and the asset listing, so no
+        // Node deleter can remove an asset the listing is about to count as present. The marker moves `seq` and nothing
+        // else, so the plan's base becomes the read-back.
+        const readFresh = async (): Promise<Store2Read | RtbEnded> => {
+            try {
+                return await target.committer.readCommit()
+            } catch (error) {
+                console.error(error)
+                deps.error(language.store2ImportReadFailed)
+                return ended('nothing-replaced', 'commit-read-failed')
+            }
+        }
+        /** Clears the marker a failed bulk of this page load left, and answers the fresh read the retry opens over. */
+        const clearOwnLeftover = async (): Promise<Store2Read | RtbEnded> => {
+            const leftover = await readFresh()
+            if ('kind' in leftover) {
+                return leftover
+            }
+            const outcome = await clearAbandonedMarker(target.committer, leftover, null)
+            if (outcome.marker !== null && !outcome.own) {
+                // Another operation's marker: the person chooses Wait or Clear. Clear consents to exactly this marker, and the
+                // read below re-checks the base before the retry. Wait ends the restore; the question replaced the refusal text.
+                const answer = await askToClearForeignMarker(target.committer, leftover, outcome.marker, deps.askForeignMarker)
+                if (answer === 'waited') {
+                    return ended('nothing-replaced', 'foreign-marker')
+                }
+                if (answer === 'kept') {
+                    deps.error(language.store2RestoreBulkMarker)
+                    return ended('nothing-replaced', 'foreign-marker')
+                }
+            } else
+            if (outcome.marker !== null && outcome.result?.status !== 'cleared' && outcome.result?.status !== 'nothing') {
+                console.error('The leftover bulk marker of this page was not cleared.', outcome.result)
+            }
+            const after = await readFresh()
+            if ('kind' in after) {
+                return after
+            }
+            // The page's own earlier bulk is the only thing the clear may have moved: any other change to `current` is a peer's.
+            const classified = classifyCommitRead(after)
+            if (classified.status !== 'parsed' || classified.value.staging !== null || classified.value.current?.key !== base.currentKey) {
+                deps.error(language.restoreNotHappenedNotice)
+                return ended('nothing-replaced', 'base-moved')
+            }
+            return after
+        }
+        const holdMarker = async (): Promise<RtbEnded | null> => {
+            const committer = target.committer
+            if (committer.openHeldBulk === undefined || committer.clearHeld === undefined) {
+                deps.error(language.store2ImportRefused)
+                return ended('nothing-replaced', 'library-refused')
+            }
+            let from = read
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const opened = await committer.openHeldBulk(from, { label: 'restore' })
+                switch (opened.status) {
+                    case 'opened': {
+                        standing.held = opened.held
+                        standing.committer = committer
+                        const advanced = baseOfRead(opened.read)
+                        if (advanced.kind !== 'ok') {
+                            deps.error(language.store2ImportRefused)
+                            return ended('nothing-replaced', advanced.kind)
+                        }
+                        base = advanced.base
+                        return null
+                    }
+                    case 'conflict':
+                        // The call has cleared its own marker; a clear that did not complete leaves it standing.
+                        logUncleared(opened.cleared)
+                        deps.error(language.restoreNotHappenedNotice)
+                        return ended('nothing-replaced', 'base-moved')
+                    case 'failed':
+                    case 'unknown':
+                        logUncleared(opened.cleared)
+                        console.error(opened.cause)
+                        deps.error(language.store2ImportReadFailed)
+                        return ended('failed', 'commit-read-failed')
+                    case 'refused': {
+                        if (opened.reason !== 'marker-present') {
+                            deps.error(language.store2ImportRefused)
+                            return ended('nothing-replaced', 'library-refused')
+                        }
+                        if (attempt === 1) {
+                            deps.error(language.store2RestoreBulkMarker)
+                            return ended('nothing-replaced', 'marker-standing')
+                        }
+                        const next = await clearOwnLeftover()
+                        if ('kind' in next) {
+                            return next
+                        }
+                        from = next
+                        break
+                    }
+                }
+            }
+            return ended('nothing-replaced', 'marker-standing')
+        }
 
         // V and P.1-P.5: the file and the prompts, shared with the start-up restore.
         const verifiedEnd = await verifyAndConfirm(picked, deps, {
             newerBase: options.firstRun === true ? null : base,
             sideCheckCapBytes: options.sideCheckCapBytes,
+            beforeAssetPlan: deps.heldMarker() ? holdMarker : undefined,
         })
         if (verifiedEnd.kind === 'ended') {
             return verifiedEnd
         }
-        const plan: RestorePlan = { kind: 'rtb-page', ...verifiedEnd.verified, target, base }
+        const plan: RestorePlan = { kind: 'rtb-page', ...verifiedEnd.verified, target, base, held: standing.held }
         ready = true
         return { kind: 'ready', plan, hold }
     } catch (error) {
@@ -446,12 +574,29 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
         deps.error(language.store2ImportReadFailed)
         return ended('failed', 'unexpected')
     } finally {
-        if (!ready && hold !== null) {
-            try {
-                await hold.release(false)
-            } catch (error) {
-                console.error(error)
+        if (!ready) {
+            // The marker is cleared while the locks are still held, and a clear that throws never keeps the release from running.
+            if (standing.held !== null && standing.committer !== null && standing.committer.clearHeld !== undefined) {
+                try {
+                    logUncleared(await standing.committer.clearHeld(standing.held))
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+            if (hold !== null) {
+                try {
+                    await hold.release(false)
+                } catch (error) {
+                    console.error(error)
+                }
             }
         }
+    }
+}
+
+/** What a marker clear came to: anything but `cleared` or `nothing` means the marker may still stand. */
+function logUncleared(result: AbandonResult | null): void {
+    if (result === null || (result.status !== 'cleared' && result.status !== 'nothing')) {
+        console.error('The restore marker may still stand.', result)
     }
 }

@@ -121,7 +121,7 @@ describe('a V2.1 plugin row', () => {
         const target = await render('2.1', false)
 
         expect(target.textContent).toContain(versionWarning)
-        expect(target.querySelector('button.text-yellow-400')).toBeNull()
+        expect(target.querySelector('button.text-draculared')).toBeNull()
         expect(target.querySelectorAll('button[disabled]').length).toBe(1)
     })
 
@@ -143,7 +143,7 @@ describe('a V2.1 plugin row', () => {
     test('guard: a version 2 row keeps its warning triangle', async () => {
         const target = await render(2, false)
 
-        expect(target.querySelector('button.text-yellow-400')).not.toBeNull()
+        expect(target.querySelector('button.text-draculared')).not.toBeNull()
     })
 
     // happy-dom does not reproduce the browser's select write-back (`option:checked` answers null there), so this

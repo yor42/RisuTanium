@@ -185,7 +185,9 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
 vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
     archiveCharacterNow: vi.fn(async () => {
         h.note('archiveCharacterNow')
-        return { ok: true, index: 0 }
+        //The producer's shape: the placed stub rides along with its unit keys (coldCharacterArchive's success result).
+        const stub = { chaId: 'archived-chaid', name: 'archived', coldstorage: 'unit-1' }
+        return { ok: true, index: 0, chaId: stub.chaId, stub, unitKey: 'unit-1', previousUnitKey: null }
     }),
 }) as unknown as typeof import('src/ts/process/coldCharacterArchive'))
 
@@ -790,7 +792,8 @@ describe('Retry after a character was added', () => {
             expect(h.characters).toHaveLength(archive ? 0 : 1)
             expect(cards).toHaveLength(1)
             expect(cards[0].failure?.dataState).toBe('unknown')
-            expect(cards[0].failure?.actions ?? []).toEqual([])
+            //The late failure follows the commit, so the action's record holds the character: the card offers Undo, not Retry.
+            expect((cards[0].failure?.actions ?? []).map((a) => a.id)).toEqual(['undo'])
         } finally {
             Object.defineProperty(language, 'importedCharacter', original)
         }

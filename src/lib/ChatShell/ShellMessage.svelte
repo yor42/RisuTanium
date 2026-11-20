@@ -57,7 +57,7 @@
     import { draftIdentityKey } from '../../ts/draftContents'
     import { chatWindowKey } from '../../ts/chatWindowPolicy'
     import { DBState, selIdState, HideIconStore } from '../../ts/stores.svelte'
-    import { ColorSchemeTypeStore } from '../../ts/gui/colorscheme'
+    import { patternSurfaceTone } from '../../ts/gui/surfaceTone'
     import { aiLawApplies, changeChatTo, foldChatToMessage } from '../../ts/globalApi.svelte'
     import { createMessageEditorController } from '../../ts/process/messageEditorController.svelte'
     import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
@@ -841,7 +841,7 @@
                 {#if peek.text}<span data-part="chat-swipe-peek-text">{peek.text}</span>{/if}
             </div>
         {/if}
-        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" use:cardAnimationHold class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={(event) => { if (event.target === event.currentTarget) commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" use:cardAnimationHold class:prose-invert={$patternSurfaceTone === 'dark'} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={(event) => { if (event.target === event.currentTarget) commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
             {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
             {:else if message.isComment}
                 {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
@@ -893,8 +893,9 @@
 <style>
     [data-part="chat-message"] { width: 100%; padding: var(--space-8) var(--space-12); color: var(--nexus-text); }
     [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
-    [data-part="chat-message-meta"] { display: flex; align-items: center; gap: var(--message-meta-gap); color: var(--nexus-text-secondary); }
-    [data-part="chat-message-name"] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The name keeps its content width; the action cluster takes the rest of the row and wraps below the name, end-aligned, when both do not fit. */
+    [data-part="chat-message-meta"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--message-meta-gap); color: var(--nexus-text-secondary); }
+    [data-part="chat-message-name"] { flex: 0 1 auto; min-inline-size: min(12ch, 100%); max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-name"][data-name-hidden] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     [data-part="chat-message-generation-info"] { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
@@ -905,6 +906,7 @@
     [data-part="chat-message-body"][data-commit="forward"] { animation: commit-in-forward var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-message-body"][data-commit="back"] { animation: commit-in-back var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-swipe-arm"], [data-part="chat-generate-reply"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
+    [data-part="chat-generate-reply"] { flex: none; white-space: nowrap; min-inline-size: max-content; min-block-size: var(--size-12); }
     @keyframes commit-in-forward { from { transform: translateX(var(--swipe-nudge)); opacity: var(--opacity-half); } }
     @keyframes commit-in-back { from { transform: translateX(calc(-1 * var(--swipe-nudge))); opacity: var(--opacity-half); } }
     @keyframes commit-fade { from { opacity: var(--opacity-half); } }
@@ -950,4 +952,35 @@
     [data-part="chat-message-divider"][data-kind="disabled"] { border-top-color: var(--color-accent); }
     [data-part="chat-message-memory-limit"] { border-top-style: solid; border-top-color: var(--color-accent); }
     button { color: var(--nexus-text-secondary); }
+    /* Under a theme pack the message text is the message element's own colour: --nexus-text, or the colour the pack's own rule
+       sets for the message, both of which the pack's judgement covers. The text theme's colours and the prose colours are
+       not judged, so every text role reads currentColor instead; the rules and borders carry no text and use the edge
+       token. Nothing here paints a background behind the transcript. */
+    :global(:root[data-theme-pack-base]) [data-part="chat-message-body"] {
+        --FontColorStandard: currentColor;
+        --FontColorBold: currentColor;
+        --FontColorItalic: currentColor;
+        --FontColorItalicBold: currentColor;
+        --FontColorQuote1: currentColor;
+        --FontColorQuote2: currentColor;
+        --tw-prose-body: currentColor;
+        --tw-prose-headings: currentColor;
+        --tw-prose-lead: currentColor;
+        --tw-prose-links: currentColor;
+        --tw-prose-bold: currentColor;
+        --tw-prose-counters: currentColor;
+        --tw-prose-bullets: currentColor;
+        --tw-prose-quotes: currentColor;
+        --tw-prose-captions: currentColor;
+        --tw-prose-kbd: currentColor;
+        --tw-prose-code: currentColor;
+        --tw-prose-pre-code: currentColor;
+        --tw-prose-hr: var(--nexus-edge-strong);
+        --tw-prose-quote-borders: var(--nexus-edge-strong);
+        --tw-prose-th-borders: var(--nexus-edge-strong);
+        --tw-prose-td-borders: var(--nexus-edge-strong);
+        --tw-prose-pre-bg: transparent;
+        --tw-prose-kbd-shadows: var(--nexus-overlay-rgb);
+    }
+    :global(:root[data-theme-pack-base]) [data-part="chat-message-body"] :global(mark[risu-mark^="blockquote"]) { background-color: transparent; }
 </style>

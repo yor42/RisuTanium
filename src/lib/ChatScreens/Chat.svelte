@@ -706,7 +706,7 @@
         <span class="text chat-width chattext prose minw-0"
             use:cardAnimationHold
             class:hidden={editor.editTranslationMode}
-            class:prose-invert={$ColorSchemeTypeStore && !markerOnLightSurface}
+            class:prose-invert={$ColorSchemeTypeStore === 'dark' && !markerOnLightSurface}
             bind:this={bodyRoot}
             onclick={() => {
             if(DBState.db.clickToEdit && idx > -1 && !isOptimizedStreamingMessage){

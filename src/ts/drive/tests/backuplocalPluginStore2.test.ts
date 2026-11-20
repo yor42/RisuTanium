@@ -514,7 +514,7 @@ describe.each(writers)('plugin storage in the .bin of $label', ({ run }) => {
         // The first collection has settled and is writing its payloads: map a new slot before the late stage encodes.
         let mapped = false
         vi.mocked(alertWait).mockImplementation((message: string) => {
-            if (!mapped && message.includes('Cold data')) {
+            if (!mapped && message.includes('cold data')) {
                 mapped = true
                 const storage = page.db.pluginCustomStorage as Record<string, unknown> & { _coldplugin: Record<string, string> }
                 storage._coldplugin.late = PID2

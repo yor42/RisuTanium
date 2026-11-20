@@ -7,8 +7,8 @@
  *
  * What is real: the server process, `createNodeHttpStore`, the boot dispatch with the production wiring of
  * `src/main.ts` (`loadBackupAtBoot` as the import), `commitStore2Import` for the page import, the encoder and committer
- * core of the save loop, `startStore2Maintenance` (old-data deletion, then the clean-up pass, then the asset-sweep
- * no-op, in the production order), the residency, `SaveLocalBackup`. Fork-format `blocks/` files sit on the store before
+ * core of the save loop, `startStore2Maintenance` (old-data deletion, then the clean-up pass, then the asset sweep,
+ * which ends before it reads the store, in the production order), the residency, `SaveLocalBackup`. Fork-format `blocks/` files sit on the store before
  * the first boot, so the boot import plants a deletion snapshot that the first step really deletes.
  *
  * What is a stand-in: the quiet trigger is a double the test fires; the clean-up facts name the test's own base because
@@ -704,7 +704,7 @@ interface StepResult {
 
 /**
  * One page load's maintenance step through the real `startStore2Maintenance`: the old-data deletion, then the clean-up
- * pass, then the asset-sweep no-op. The trigger is a double the test fires, the deletion is a pass-through recorder, and
+ * pass, then the asset sweep, which ends before it reads the store. The trigger is a double the test fires, the deletion is a pass-through recorder, and
  * the clean-up facts name the test's own base.
  */
 async function runStep(): Promise<StepResult> {

@@ -132,7 +132,7 @@
                     <CharacterNameRow chaId={c.chaId} name={entry.name} />
                     <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
                         <span class="mr-1">{chats}</span>
-                        <MessageSquareIcon size={14} />
+                        <MessageSquareIcon size={14} aria-hidden="true" />
                         <span class="mr-1 ml-1">|</span>
                         <span>{agoText}</span>
                     </div>
@@ -150,7 +150,7 @@
                     title={language.studioOpenInNamed(entry.name)}
                     onclick={(event) => studio?.open(index, event.currentTarget)}
                 >
-                    <LayoutPanelLeftIcon size={18} />
+                    <LayoutPanelLeftIcon size={18} aria-hidden="true" />
                 </button>
             </div>
         {:else}
@@ -162,8 +162,8 @@
     <CharacterWindow class="w-full flex-1 min-h-0" {rows} fallbackHeight={SIMPLE_ROW_FALLBACK_PX} resetToken={found.query} {card} />
 </div>
 
-<button class="p-4 rounded-full absolute bottom-2 right-2 bg-borderc" onclick={() => {
+<button class="p-4 rounded-full absolute bottom-2 right-2 bg-borderc" aria-label={language.addCharacter} onclick={() => {
     addCharacter()
 }}>
-    <PlusIcon size={24} />
+    <PlusIcon size={24} aria-hidden="true" />
 </button>

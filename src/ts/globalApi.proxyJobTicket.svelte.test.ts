@@ -197,7 +197,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     getColdStorageItem: vi.fn(),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-import { fetchNative } from 'src/ts/globalApi.svelte'
+import { fetchNative, getFetchLogs } from 'src/ts/globalApi.svelte'
 
 const sockets: string[] = []
 
@@ -246,5 +246,40 @@ describe('the stream job WebSocket of a Node server', () => {
         expect(sockets[0]).not.toContain('GENERAL-TOKEN')
         controller.abort()
         await pending
+    })
+
+    test('R4b token fields of a streamed job response are stored redacted in the fetch log', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => (
+            new Response(JSON.stringify({ jobId: 'job-1', wsTicket: 'ticket-1', heartbeatSec: 15 }), { status: 200 })
+        )))
+        const reachable: FakeWebSocket[] = []
+        class ReachableWebSocket extends FakeWebSocket {
+            constructor(url: string) {
+                super(url)
+                reachable.push(this)
+            }
+        }
+        vi.stubGlobal('WebSocket', ReachableWebSocket)
+        getFetchLogs().length = 0
+
+        const pending = fetchNative('http://127.0.0.1:1234/v1/chat/completions', {
+            body: '{}',
+            method: 'POST',
+            interceptor: 'openai_streaming',
+            networkRoute: 'local_network',
+        })
+        await vi.waitFor(() => expect(reachable).toHaveLength(1))
+        const ws = reachable[0]
+        const chunk = '{"access_token":"ya29.SYNTHETIC0000mnop","expires_in":3599}'
+        ws.onmessage?.({ data: JSON.stringify({ type: 'upstream_headers', status: 200, headers: {} }) })
+        ws.onmessage?.({ data: JSON.stringify({ type: 'chunk', dataBase64: Buffer.from(chunk).toString('base64') }) })
+        ws.onmessage?.({ data: JSON.stringify({ type: 'done' }) })
+        const response = await pending
+        expect(await response.text()).toBe(chunk)
+
+        await vi.waitFor(() => expect(getFetchLogs()[0].response).toContain('expires_in'))
+        const stored = getFetchLogs()[0].response
+        expect(stored).not.toContain('ya29.SYNTHETIC0000mnop')
+        expect(JSON.parse(stored)).toEqual({ access_token: '[redacted …mnop]', expires_in: 3599 })
     })
 })

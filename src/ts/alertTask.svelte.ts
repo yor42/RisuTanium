@@ -1,4 +1,5 @@
 import type { ProgressSink } from './progressSink'
+import { clearPickOpener, takePickOpener } from './pickOpener'
 import {
     createTaskController,
     isTaskTerminal,
@@ -7,6 +8,7 @@ import {
     type TaskDef,
     type TaskFailure,
     type TaskResult,
+    type TaskResultAction,
     type TaskView,
 } from '../lib/Nexus/pattern/taskProgress'
 
@@ -57,7 +59,7 @@ export interface TaskHandle {
     offerBackground(): void
     /** Removes the background button for good; ignored on a detached handle. */
     withdrawBackground(): void
-    settleCancel(summary?: readonly string[]): Promise<TaskCloseAnswer>
+    settleCancel(summary?: readonly string[], actions?: readonly TaskResultAction[]): Promise<TaskCloseAnswer>
     finish(result: TaskResult): Promise<TaskCloseAnswer>
     fail(failure: TaskFailure): Promise<TaskCloseAnswer>
     /** Removes the card at once, whatever its state (the task counterpart of alertClear); resolves `closed`. */
@@ -134,7 +136,12 @@ function clearEntry(target: Entry, answer: TaskCloseAnswer): void {
 function currentOpener(): HTMLElement | null {
     if (typeof document === 'undefined') return null
     const active = document.activeElement
-    return active instanceof HTMLElement && active !== document.body ? active : null
+    if (active instanceof HTMLElement && active !== document.body) {
+        // Focus that is somewhere real beats the picker's button, and that button is spent either way.
+        clearPickOpener()
+        return active
+    }
+    return takePickOpener()
 }
 
 /** Opens a task card. A task already shown is replaced: it resolves `replaced` and its handle detaches. */
@@ -219,8 +226,8 @@ export function alertTask(def: TaskDef): TaskHandle {
         },
         offerBackground: () => { if (!self.detached) controller.offerBackground() },
         withdrawBackground: () => { if (!self.detached) controller.withdrawBackground() },
-        settleCancel: (summary) => {
-            if (!self.detached) controller.settleCancel(summary)
+        settleCancel: (summary, actions) => {
+            if (!self.detached) controller.settleCancel(summary, actions)
             return self.closed
         },
         finish: (result) => {

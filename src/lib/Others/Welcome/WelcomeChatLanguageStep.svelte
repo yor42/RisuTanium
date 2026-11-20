@@ -5,6 +5,8 @@
 
     let { flow }: { flow: WelcomeFlow } = $props()
 
+    const uid = $props.id()
+
     const options = $derived<{ value: ChatLanguageChoice, label: string, description: string }[]>([
         { value: 'english', label: language.setup.chooseChatTypeOption1, description: language.setup.chooseChatTypeOption1Desc },
         { value: 'englishProcessing', label: language.setup.chooseChatTypeOption2, description: language.setup.chooseChatTypeOption2Desc },
@@ -26,11 +28,13 @@
                     name="welcome-chat-language"
                     value={option.value}
                     checked={flow.chatLanguage === option.value}
+                    aria-label={option.label}
+                    aria-describedby="{uid}-{option.value}-desc"
                     onchange={() => { flow.chatLanguage = option.value }}
                 />
                 <span class="flex flex-col">
                     <span class="font-bold">{option.label}</span>
-                    <span class="text-sm text-textcolor2">{option.description}</span>
+                    <span id="{uid}-{option.value}-desc" class="text-sm text-textcolor2">{option.description}</span>
                 </span>
             </label>
         {/each}

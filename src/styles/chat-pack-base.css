@@ -1,0 +1,10 @@
+/* The chat names a theme pack's fixed base restores (the gate sets the attribute while a pack sheet is on). This file is
+   imported by ChatShell right after chat-tokens.css, so at the same specificity it comes later and wins over the scheme
+   mapping there. It is separate because chat-tokens.css must declare each chat-owned name exactly once. The pack's own
+   :root is later in the document and still wins, except for --surface-pack-backdrop: that name is outside every list a pack
+   may declare, so the black base under the pack canvas cannot be changed by a pack. */
+:root:where([data-theme-pack-base]) {
+  --color-scheme: dark;
+  --color-surface-bar: #14153a;
+  --surface-pack-backdrop: #000;
+}
