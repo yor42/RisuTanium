@@ -100,7 +100,7 @@ export const languageKorean = {
     chatShellEnterNewline: "줄바꿈",
     chatShellStickers: "스티커",
     chatShellUtility: "유틸리티",
-    asPersona: (name: string) => `${name}(으)로`,
+    asPersona: (name: string) => `페르소나: ${name}`,
     chatShellFlipRefusedGenerating: "채팅 화면을 전환하려면 답변이 끝나기를 기다리거나 답변을 중지하세요.",
     chatShellFlipRefusedWorking: "이 채팅에서 트리거 또는 버튼 동작이 아직 실행 중입니다. 끝난 후 다시 시도하세요.",
     chatShellFlipRefusedEditing: "채팅 화면을 전환하기 전에 편집 중인 메시지를 저장하거나 취소하세요.",
