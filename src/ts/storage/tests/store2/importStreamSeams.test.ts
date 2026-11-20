@@ -32,7 +32,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 import type { Database } from 'src/ts/storage/database.svelte'
 import { chaIdRepairNeeded, repairCharacterIds, repairDatabaseIds } from 'src/ts/process/chatIds'
 import {
-    CodecError, createStreamedEncode, encodeScoped, UnitSink, unitsToWrite, type EncodedTree, type EncodeOptions, type EncodeScope,
+    CodecError, createStreamedEncode, encodeScoped, planScopedEncode, UnitSink, unitsToWrite,
+    type ContentIndex, type EncodedTree, type EncodeOptions, type EncodeScope, type ReusableUnit,
 } from 'src/ts/storage/store2/codec'
 import { carryManifest } from 'src/ts/storage/store2/codec/manifest'
 import { createKeyMint, type BuildContext, type BuiltCommit } from 'src/ts/storage/store2/commit'
@@ -347,15 +348,29 @@ function scopedOptions(): EncodeOptions {
     return { env: seededEnv(5), lists: fakeLists, seq: 2, createdAt: NOW, previous: null, keys: createKeyMint(seededEnv(99), null).mint }
 }
 
-async function streamedOver(db: Database, context?: BuildContext): Promise<{ units: BuiltUnits, manifest: Manifest, count: number, handed: BuiltUnits[] }> {
-    const encode = createStreamedEncode(seededEnv(5), fakeLists, undefined, context)
+async function streamedOver(
+    db: Database, context?: BuildContext, content?: ContentIndex,
+): Promise<{ units: BuiltUnits, manifest: Manifest, count: number, reused: number, handed: BuiltUnits[] }> {
+    const encode = createStreamedEncode(seededEnv(5), fakeLists, undefined, context, content)
     const handed: BuiltUnits[] = []
     const source = db.characters as unknown[]
     for (let index = 0; index < source.length; index++) {
         handed.push(await encode.character(source[index], index))
     }
     const finished = await encode.finish({ ...db, characters: [] } as Database)
-    return { units: [...handed.flat(), ...finished.built.units], manifest: finished.built.manifest.body, count: finished.count, handed }
+    return { units: [...handed.flat(), ...finished.built.units], manifest: finished.built.manifest.body, count: finished.count, reused: finished.reused, handed }
+}
+
+/** An index over every unit of `tree` an import may take (never the manifest, shards or `order`). */
+function contentOf(tree: EncodedTree): ContentIndex {
+    const units = new Map<string, ReusableUnit[]>()
+    for (const unit of tree.units) {
+        if (unit.type === UNIT_TYPE.manifest || unit.type === UNIT_TYPE.shard || unit.type === UNIT_TYPE.order) {
+            continue
+        }
+        units.set(unit.digest, [...(units.get(unit.digest) ?? []), { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest }])
+    }
+    return { units }
 }
 
 function scopedPicture(tree: EncodedTree): { units: string[], manifest: string } {
@@ -401,6 +416,49 @@ describe('createStreamedEncode: characters first, the root last, is encodeScoped
 
         expect(streamed.count).toBe(tree.units.length)
         expect(pictureOf(streamed.units, streamed.manifest)).toEqual(scopedPicture(tree))
+    })
+})
+
+describe('createStreamedEncode over a content index makes the plan\'s decisions (new seam)', () => {
+    async function baseIndex(): Promise<{ content: ContentIndex, base: EncodedTree }> {
+        const base = await encodeScoped(buildSmall(6), { ...scopedOptions(), env: seededEnv(1), seq: 1, keys: createKeyMint(seededEnv(50), null).mint }, EVERYTHING)
+        return { content: contentOf(base), base }
+    }
+
+    test('every unit is written or reused, none twice; the leaves are all reused and only the parents the plan also writes (and a parent whose claim order differs) are written', async () => {
+        const { content } = await baseIndex()
+        const plan = await planScopedEncode(buildSmall(6), { ...scopedOptions(), content }, EVERYTHING)
+
+        const streamed = await streamedOver(buildSmall(6), undefined, content)
+
+        expect(plan.carried.units).toBeGreaterThan(0)
+        expect(streamed.reused).toBeGreaterThan(0)
+        // Without the index nothing is reused and every unit is written: reuse only moves a unit from one count to the other.
+        const bare = await streamedOver(buildSmall(6))
+        expect(bare.reused).toBe(0)
+        expect(streamed.count + streamed.reused).toBe(bare.count)
+        expect(plan.newUnits + plan.carried.units).toBe(bare.count)
+        // The streamed encode puts the characters before the modules, the plan the other way round. Equal units (an empty
+        // asset list of a module and of a character) therefore claim the stored copies in another order, and a parent that
+        // names them can differ: the streamed encode writes at least what the plan writes, and only parents more.
+        const writtenTypes = new Set(streamed.units.map(unit => (decodeFrame(unit.bytes) as { type: number }).type))
+        for (const type of writtenTypes) {
+            expect([UNIT_TYPE.order, UNIT_TYPE.shard, UNIT_TYPE.moduleBucket, UNIT_TYPE.moduleIndex, UNIT_TYPE.pluginStorageBucket]).toContain(type)
+        }
+        expect(streamed.count).toBeGreaterThanOrEqual(plan.newUnits)
+    })
+
+    test('a dry pass under placeholder keys and the attempt\'s pass under real keys decide alike over one index', async () => {
+        const { content } = await baseIndex()
+        const dry = await streamedOver(buildSmall(6), undefined, content)
+        const real = await streamedOver(buildSmall(6), { mint: createKeyMint(seededEnv(7), null).mint, seq: 2, now: NOW }, content)
+
+        expect([real.count, real.reused]).toEqual([dry.count, dry.reused])
+        const baseKeys = new Set((await baseIndex()).base.units.map(unit => unit.key))
+        // Every unit this pass hands out is new: a reused unit is in no frame list, and its key is the base's.
+        for (const unit of real.units) {
+            expect(baseKeys.has(unit.key)).toBe(false)
+        }
     })
 })
 

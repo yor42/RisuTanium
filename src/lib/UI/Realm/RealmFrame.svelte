@@ -14,6 +14,7 @@
     import { isUpstreamAccepted } from "src/ts/upstreamAgreement";
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+    import { postToast } from "src/ts/toast/toastHost.svelte";
 
     // Read once, before the first render: a flag that started `true` and
     // was corrected in `onMount` would still mount the `<iframe>` (and start
@@ -164,6 +165,9 @@
                 type: 'filedata',
                 buf: [data.data, data.name]
             }, realmOrigin, [data.data, data.name])
+            if($ShowRealmFrameStore.startsWith('preset')){
+                postToast({ kind: 'info', text: language.shareExportKeysLeftOut })
+            }
         }
     })
 

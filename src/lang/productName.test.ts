@@ -100,7 +100,10 @@ const UPSTREAM_NAMING_KEYS = [
     'backupFileNotRecognized',
 ]
 
-const MENTION_ALLOW_LIST = [...UPSTREAM_NAMING_KEYS, ...UPSTREAM_WORDING_KEYS].sort()
+// Keys that name the upstream app as the product that restores a .bin file.
+const UPSTREAM_FORMAT_KEYS = ['settingsShellDataFormatBin', 'settingsShellDataFormatBinHint']
+
+const MENTION_ALLOW_LIST = [...UPSTREAM_NAMING_KEYS, ...UPSTREAM_WORDING_KEYS, ...UPSTREAM_FORMAT_KEYS].sort()
 
 // Locales held to the rule. Non-English locales join once their text is converted.
 const LOCALES: Record<string, unknown> = {
@@ -120,6 +123,7 @@ describe('English product name', () => {
 
     test('no key outside the allow-list mentions the product under another name', () => {
         const offenders = [...texts]
+            .filter(([key]) => !UPSTREAM_FORMAT_KEYS.includes(key))
             .filter(([key, text]) => hasMention(stripAllowed(text)))
             .map(([key]) => key)
         expect(offenders).toEqual([])
@@ -139,6 +143,13 @@ describe('English product name', () => {
         expect(text).not.toContain('RisuTanium')
         const marker = key === 'saveMainFileLeftNotice' ? 'An upstream version of RisuAI' : 'upstream RisuAI'
         expect(text).toContain(marker)
+    })
+
+    test.each(UPSTREAM_FORMAT_KEYS)('%s names upstream RisuAI and not RisuTanium', (key) => {
+        const text = texts.get(key) as string
+        expect(text).toBeDefined()
+        expect(text).toMatch(/RisuAI/i)
+        expect(text).not.toContain('RisuTanium')
     })
 
     test('exactly the allow-listed keys still contain a product-name mention', () => {

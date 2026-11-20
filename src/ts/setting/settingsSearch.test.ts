@@ -404,13 +404,20 @@ describe('source lists and view targets (T-A5)', () => {
     test('every legacy list opens its explicit view, and the lists of a native page name rows', () => {
         const indexOfList: Record<string, number> = {
             accessibility: 11, advanced: 6, language: 10, basicParameters: 1, seed: 1,
-            samplingParameters: 1, penaltyParameters: 1, modelSpecificParameters: 1, chatFormat: 1, display: 3,
+            samplingParameters: 1, penaltyParameters: 1, modelSpecificParameters: 1, chatFormat: 1, display: 3, data: 0,
         }
         const lists = legacyListTargets()
         expect(lists.map((list) => list.name).sort()).toEqual(Object.keys(indexOfList).sort())
         for (const list of lists) {
             expect(list.index, list.name).toBe(indexOfList[list.name])
-            expect(list.rows, list.name).toBe(['display', 'accessibility', 'language', 'advanced'].includes(list.name))
+            expect(list.rows, list.name).toBe(['display', 'accessibility', 'language', 'advanced', 'data'].includes(list.name))
+        }
+    })
+
+    test('S1-R4: the four Data action rows are searchable and open the Data page at their row', () => {
+        const byId = new Map(everything.map((source) => [source.id, source]))
+        for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset']) {
+            expect(byId.get(id)?.target, id).toEqual({ index: 0, rowId: id })
         }
     })
 

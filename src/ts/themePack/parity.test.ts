@@ -265,7 +265,7 @@ const NAMED_REFUSALS: readonly string[] = [
 ]
 // Rule SCOPE (MC-1586, MC-1608): a chat or Studio stylesheet may name only its own screen's parts and tokens, so the corpus inputs written for
 // another screen (Home and Studio rules judged as chat, chat rules judged as Studio, and so on) are refused there. The list is the census of
-// the corpus (T0a-8): 49 (input, area) pairs of 38 inputs, every one a sheet for another area or a hostile input; no own-area benign pair is in it.
+// the corpus (T0a-8): 51 (input, area) pairs of 39 inputs, every one a sheet for another area or a hostile input; no own-area benign pair is in it.
 const SCOPE_REFUSALS: readonly string[] = [
     'BENIGN: B1 bubble fill|studio',
     'BENIGN: B2 tail corner on run starts|studio',
@@ -310,6 +310,8 @@ const SCOPE_REFUSALS: readonly string[] = [
     'values ACCEPT: padding-24|chat',
     'values ACCEPT: padding-24|studio',
     'values ACCEPT: part-colour-dark-on-light|chat',
+    'values ACCEPT: safe-width-100|chat',
+    'values ACCEPT: safe-width-100|studio',
     'values ACCEPT: shell-gap|chat',
     'values ACCEPT: shell-gap|studio',
     'values ACCEPT: width-wide|chat',
@@ -368,11 +370,11 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
     })
 
-    // T0a-8: the census of Rule SCOPE over the corpus. It refuses 49 (input, area) pairs of 38 inputs, every one an input written for
+    // T0a-8: the census of Rule SCOPE over the corpus. It refuses 51 (input, area) pairs of 39 inputs, every one an input written for
     // another area or a hostile input, each for the scope reasons alone; no shipped pack and no benign input of the area itself.
-    it('the Rule SCOPE census: 49 pairs of 38 inputs, none an own-area benign pair', { timeout: 120_000 }, () => {
-        expect(SCOPE_REFUSALS).toHaveLength(49)
-        expect(new Set(SCOPE_REFUSALS.map((e) => e.split('|')[0])).size).toBe(38)
+    it('the Rule SCOPE census: 51 pairs of 39 inputs, none an own-area benign pair', { timeout: 120_000 }, () => {
+        expect(SCOPE_REFUSALS).toHaveLength(51)
+        expect(new Set(SCOPE_REFUSALS.map((e) => e.split('|')[0])).size).toBe(39)
         for (const entry of SCOPE_REFUSALS) {
             const [label, area] = entry.split('|')
             const input = inputs.find((i) => i.label === label)

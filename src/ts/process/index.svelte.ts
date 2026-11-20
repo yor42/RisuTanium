@@ -67,7 +67,7 @@ import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginW
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
-import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
+import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
 
 export interface OpenAIChat{
@@ -775,10 +775,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         noteUnitFailure(abortSignal)
         // An error with a place to fix it is always the alert, so its link stays reachable.
         if(link){
+            noteUnitAlerted(abortSignal)
             alertError(error, {link})
             return
         }
         if(!DBState?.db?.inlayErrorResponse){
+            noteUnitAlerted(abortSignal)
             alertError(error)
             return
         }
@@ -786,6 +788,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         try{
             const ctx = subject.resolve()
             if(!ctx || !Array.isArray(ctx.chat.message)){
+                noteUnitAlerted(abortSignal)
                 alertError(error)
                 return
             }
@@ -829,6 +832,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         catch(e){
             console.error(e)
+            noteUnitAlerted(abortSignal)
             alertError(error)
             return
         }
