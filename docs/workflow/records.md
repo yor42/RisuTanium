@@ -39,7 +39,7 @@ Earlier record failures included a forbidden AGENTS.md dependency and native Edi
 
 ## IDs and PR-written records (MC-2713)
 
-- **MC ID blocks.** Each session takes MC IDs from its own block of 10, granted by lane A, and asks lane A for a new block when it runs out. Never guess an ID outside a granted block. CHORE IDs follow the same block rule where a ticket still needs one; new work is normally just its GitHub issue number.
+- **MC ID blocks.** Each session self-assigns MC IDs from its own block of 10 (lane A records the blocks and the entries in batches) and asks lane A for a new block when it runs out. Never guess an ID outside a granted block. CHORE IDs follow the same block rule where a ticket still needs one; new work is normally just its GitHub issue number.
 - **What the PR records.** The PR's own session writes, in its PR: the decisions it asked the maintainer (as MC entries from its block, appended to `Agents/Maintainer-Context.md` with the Decision-Index regenerated), the gate dispositions, known limitations and follow-ups, and its device-row steps written from the actual diff and checked against code. Lane A only routes device rows; it does not write them.
 - **What goes through lane A.** Governance files (AGENTS.md, CLAUDE.md, `docs/workflow/**`, `.claude/**`), `Agents/Live-State.md`, the latest lane handoffs and lane A's own decisions log. Device-affecting rulings are asked in lane B's own session, not relayed (MC-2713).
 - **Index.** When two PRs both append MC entries, the second to merge regenerates `Agents/Decision-Index.md` after merging main (`pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1`, then `-Check`).
