@@ -33579,3 +33579,27 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2744` (destructive cleanup).
 
 **What the maintainer chose.** The 21 leftover `Agents/Workflow-State.json.*.tmp` files in the main checkout are moved, not deleted, to `%TEMP%\risu-b715\archive\workflow-state-tmp\`. Lane A moved them on 2026-11-20.
+
+### MC-2794 — MC-2747 bulk close: 74 merged items close as complete, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A after its independent check, workflow wf_32e32d0b-78e and a re-run of every cited sha against origin/main 7c80c5e4d). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list (`%TEMP%\risu-b715\b61\bulk-close\list.md`). Related: `MC-2747`, `MC-2780`, `MC-1306`, `MC-2149`, `MC-2150`.
+
+**What the maintainer chose.** Close all 74 items: the 70 close-as-complete rows of groups 1 to 11 (all except CHORE-153), plus CHORE-351, CHORE-712, CHORE-715 and CHORE-787. CHORE-712: merged as 36be674e7; DV-A, DV-B and DV-C accepted as PASS and trial58 PASS (MC-1306); DV-D is an unobserved diagnostic, not a gate. CHORE-715 merged via 12e6e5556 and CHORE-787 via 77122f12b. CHORE-351: PR #45 merged, all 57 call sites audited (MC-2149, MC-2150).
+
+### MC-2795 — CHORE-153 closes with the Q-C debounce cap as an accepted drop, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`, `MC-2794`.
+
+**What the maintainer chose.** The Q-C debounce cap on CHORE-153 is dropped, and CHORE-153 closes. An earlier doc-verifier closeout had failed it for exactly that leftover; this decision dispositions it.
+
+### MC-2796 — UI-S6, UI-S1 and CHORE-688 close as delivered, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`, `#325`.
+
+**What the maintainer chose.** UI-S6, UI-S1 and CHORE-688 close as delivered. CHORE-688's A2 and A5 leftovers and its wiki note are dropped. Later chat-shell work lives in UI-S7, and later theme-pack work in the validator PRs and #325.
+
+### MC-2797 — The 25 already-closed items get closed Roadmap records, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`.
+
+**What the maintainer chose.** The 25 items already closed on GitHub or in an earlier record get their Roadmap rows updated to closed. The 10 keep-open rows (CHORE-128, 478, 555, 557, 587, 667, 714, 722, 823 and UI-S3) stay unchanged.
