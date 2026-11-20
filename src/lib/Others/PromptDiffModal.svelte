@@ -278,7 +278,10 @@
 // Style helpers (classnames)
 // -----------------------------------------------------------------------------
     const pillBase = 'px-2 py-1 text-xs cursor-pointer select-none'
-    const pillActive = 'bg-selected text-textcolor ring-1 ring-borderc'
+    // The pill group clips overflow to keep its rounded border, so both rings are drawn inset: an outer
+    // ring or outline on a pill would be cut off. The focus ring shows on keyboard focus only.
+    const pillActive = 'bg-selected text-textcolor ring-1 ring-inset ring-borderc'
+    const pillFocus = 'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-(--risu-theme-role-focus-ring)'
     const pillInactive = 'text-textcolor2 bg-transparent'
     const diffLineBase = 'whitespace-pre-wrap'
     const diffLineCommon = 'border-l-4 rounded-sm pl-2'
@@ -1247,7 +1250,7 @@
     <div class="flex rounded-md border border-darkborderc overflow-hidden">
       {#each options as opt (opt.value)}
         <label
-          class={`${pillBase} risu-focus-ring-within ${value === opt.value ? pillActive : pillInactive} ${
+          class={`${pillBase} ${pillFocus} ${value === opt.value ? pillActive : pillInactive} ${
                   disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
           }`}
         >

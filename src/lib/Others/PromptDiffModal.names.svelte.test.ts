@@ -103,10 +103,16 @@ describe('PromptDiffModal accessible names', { timeout: 60_000 }, () => {
             expect(radio.hasAttribute('aria-labelledby')).toBe(false)
             // A display:none radio (Tailwind `hidden`) is dropped from the accessibility tree and the tab
             // order, so its name never reaches a screen reader; it stays visually hidden with `sr-only`
-            // and its pill shows the focus ring instead.
+            // and its pill shows the focus ring instead. The group clips overflow, so the ring is inset
+            // (an outline outside the pill is cut off) and shows on keyboard focus only.
             expect(radio.classList.contains('hidden')).toBe(false)
             expect(radio.classList.contains('sr-only')).toBe(true)
-            expect(radio.parentElement!.classList.contains('risu-focus-ring-within')).toBe(true)
+            const pill = radio.parentElement!.classList
+            expect(pill.contains('has-[:focus-visible]:ring-2')).toBe(true)
+            expect(pill.contains('has-[:focus-visible]:ring-inset')).toBe(true)
+            expect(pill.contains('has-[:focus-visible]:ring-(--risu-theme-role-focus-ring)')).toBe(true)
+            expect(pill.contains('risu-focus-ring-within')).toBe(false)
+            if (radio.checked) expect(pill.contains('ring-inset')).toBe(true)
         }
         const boxes = Array.from(target.querySelectorAll('input[type=checkbox]')) as HTMLInputElement[]
         expect(boxes).toHaveLength(3)
