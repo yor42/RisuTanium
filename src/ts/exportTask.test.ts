@@ -15,6 +15,7 @@ import { language } from 'src/lang'
 const spies = vi.hoisted(() => ({
     alertError: vi.fn(),
     alertNormal: vi.fn(),
+    waitUnreadNotice: vi.fn(async () => { }),
 }))
 
 vi.mock('src/ts/alert', () => ({
@@ -22,6 +23,7 @@ vi.mock('src/ts/alert', () => ({
     alertWait: vi.fn(),
     alertError: spies.alertError,
     alertNormal: spies.alertNormal,
+    waitUnreadNotice: spies.waitUnreadNotice,
     alertNormalWait: vi.fn(async () => { }),
 }))
 
@@ -37,7 +39,7 @@ vi.mock('src/ts/platform', () => ({
 
 vi.mock('src/ts/vendor/streamSaver', () => ({ default: { useBlobFallback: false, mitm: '', createWriteStream: undefined } }))
 
-import { createExportTask, EXPORT_STEPS, type ExportTarget } from 'src/ts/exportTask'
+import { createExportTask, EXPORT_STEPS, pickerAside, type ExportTarget, type ExportTaskStepDef } from 'src/ts/exportTask'
 import { ExportCancelledError, ExportCancelToken } from 'src/ts/exportCancel'
 import { BlobDownloadWriter, exportErrorText, withFileIncompleteSentence, type ExportByteWriter } from 'src/ts/exportWriters'
 import {
@@ -438,5 +440,281 @@ describe('a run that never opened a card ends as the legacy notice did', () => {
         closed.close()
         closed.open()
         expect(taskShown()).toBe(false)
+    })
+})
+
+type ChatStep = 'messages' | 'write'
+const CHAT_STEPS: readonly ExportTaskStepDef<ChatStep>[] = [
+    { id: 'messages', label: 'Prepare messages', noun: 'Messages' },
+    { id: 'write', label: 'Write file', mark: 'transfer_out' },
+]
+const CHAT_DEF = { title: 'Exporting chat', subtitle: 'Synthetic', steps: CHAT_STEPS }
+
+function deferred() {
+    let resolve: () => void = () => { }
+    const promise = new Promise<void>((done) => { resolve = done })
+    return { promise, resolve }
+}
+
+describe('a def with its own steps and headlines', () => {
+    test('E16: the card shows the def\'s labels, nouns and marks', () => {
+        const task = createExportTask(CHAT_DEF)
+        task.useToken(null)
+        task.open()
+
+        const steps = taskHostView()?.steps
+        expect(steps?.map((step) => step.label)).toEqual(['Prepare messages', 'Write file'])
+        expect(steps?.[0].noun).toBe('Messages')
+        expect(steps?.[1].mark).toBe('transfer_out')
+    })
+
+    test('E17: step moves to the def\'s index and never back', () => {
+        useSteppingClock()
+        const task = createExportTask(CHAT_DEF)
+        task.useToken(null)
+        task.open()
+        task.step('write')
+        expect(taskHostView()?.stepIndex).toBe(1)
+        task.step('messages')
+        expect(taskHostView()?.stepIndex).toBe(1)
+    })
+
+    test('E18: doneHeadline and failedHeadline replace the headlines; the idle and replaced columns are unchanged', () => {
+        const def = { ...CHAT_DEF, doneHeadline: 'Copied it', failedHeadline: 'Could not copy' }
+        const done = createExportTask(def)
+        done.open()
+        done.done('S')
+        expect(taskHostView()?.result?.headline).toBe('Copied it')
+
+        resetTaskHostForTests()
+        const failed = createExportTask(def)
+        failed.open()
+        failed.failed(new Error('disk'), false)
+        expect(taskHostView()?.failure?.headline).toBe('Could not copy')
+        expect(taskHostView()?.failure?.detail).toBe('disk')
+
+        resetTaskHostForTests()
+        spies.alertError.mockClear()
+        spies.alertNormal.mockClear()
+        createExportTask(def).done('Idle')
+        expect(spies.alertNormal).toHaveBeenCalledWith('Idle')
+        const replaced = createExportTask(def)
+        replaced.open()
+        replaceWithNewerTask()
+        replaced.failed(new Error('late'), false)
+        expect(spies.alertError).not.toHaveBeenCalled()
+    })
+
+    test('E19: omitted options keep the export labels, ids and headlines (compatibility guard: passes before and after)', () => {
+        const task = createExportTask(DEF)
+        task.open()
+        expect(taskHostView()?.steps.map((step) => step.label)).toEqual([language.exportStepPrepare, language.exportStepAssets, language.exportStepWrite])
+        task.done('S')
+        expect(taskHostView()?.result?.headline).toBe(language.exportTaskDone)
+
+        resetTaskHostForTests()
+        const failed = createExportTask(DEF)
+        failed.open()
+        failed.failed(new Error('disk'), false)
+        expect(taskHostView()?.failure?.headline).toBe(language.exportTaskFailed)
+    })
+})
+
+describe('stepAside', () => {
+    test('E20: a shown card steps aside at once without ending the run, and done then posts the legacy notice', () => {
+        const task = createExportTask(DEF)
+        task.open()
+        task.stepAside()
+
+        expect(taskHostView()).toBeNull()
+        expect(taskShown()).toBe(false)
+        expect(task.ended).toBe(false)
+        task.done('S')
+        expect(spies.alertNormal).toHaveBeenCalledTimes(1)
+        expect(spies.alertNormal).toHaveBeenCalledWith('S')
+        expect(taskHostView()).toBeNull()
+    })
+
+    test('E21: after a step-aside, failed, endOnError and close end as the legacy calls', () => {
+        const error = new Error('disk')
+        const failed = createExportTask(DEF)
+        failed.open()
+        failed.stepAside()
+        failed.failed(error, false)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError.mock.calls[0][0]).toBe(error)
+
+        spies.alertError.mockClear()
+        const ended = createExportTask(DEF)
+        ended.useToken(null)
+        ended.open()
+        ended.stepAside()
+        ended.endOnError(error, undefined)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+
+        spies.alertError.mockClear()
+        const closed = createExportTask(DEF)
+        closed.open()
+        closed.stepAside()
+        closed.close()
+        expect(spies.alertError).not.toHaveBeenCalled()
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+    })
+
+    test('E22: after a step-aside open, step and count show no card, and a second stepAside does nothing', () => {
+        useSteppingClock()
+        const task = createExportTask(CHAT_DEF)
+        task.open()
+        task.stepAside()
+        task.open()
+        task.step('write')
+        task.count(1, 2)
+
+        expect(taskHostView()).toBeNull()
+        expect(taskShown()).toBe(false)
+        task.stepAside()
+        expect(taskHostView()).toBeNull()
+        expect(task.ended).toBe(false)
+    })
+
+    test.each([false, true])('E23: a card a newer task replaced stays silent through stepAside and every ending (legacyErrorText %s)', (withText) => {
+        const def = withText ? { ...DEF, legacyErrorText: 'L' } : DEF
+        const error = new Error('disk')
+        const runs = [
+            (task: ReturnType<typeof createExportTask>) => task.done('S'),
+            (task: ReturnType<typeof createExportTask>) => task.failed(error, false),
+            (task: ReturnType<typeof createExportTask>) => { task.useToken(null); task.endOnError(error, undefined) },
+        ]
+        for (const run of runs) {
+            resetTaskHostForTests()
+            vi.mocked(console.error).mockClear()
+            spies.alertError.mockClear()
+            spies.alertNormal.mockClear()
+            const task = createExportTask(def)
+            task.open()
+            replaceWithNewerTask()
+            const before = taskHostView()
+            task.stepAside()
+            expect(taskHostView()).toEqual(before)
+            expect(taskShown()).toBe(true)
+            run(task)
+
+            expect(spies.alertNormal).not.toHaveBeenCalled()
+            expect(spies.alertError).not.toHaveBeenCalled()
+            expect(taskHostView()?.title).toBe('Newer task')
+        }
+        expect(console.error).toHaveBeenCalledWith(error)
+    })
+
+    test('E24: a run that never opened a card is unaffected by stepAside (compatibility guard: passes before and after)', () => {
+        const task = createExportTask(DEF)
+        try { task.stepAside() } catch { /* the base has no stepAside; the guard is about the endings */ }
+        const error = new Error('disk')
+        task.failed(error, false)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError.mock.calls[0][0]).toBe(error)
+        expect(taskShown()).toBe(false)
+    })
+
+    test('E27: only a card taken down counts as a step-aside: never opened, stepAside, then open shows the card', () => {
+        const task = createExportTask(DEF)
+        task.stepAside()
+        task.open()
+        expect(taskShown()).toBe(true)
+        task.done('S')
+
+        expect(taskHostView()?.result?.headline).toBe(language.exportTaskDone)
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+    })
+
+    test('E28: a step-aside is final: a newer task card after it does not silence the legacy ending', () => {
+        const done = createExportTask(DEF)
+        done.open()
+        done.stepAside()
+        const newer = alertTask({ title: 'Newer task', steps: [{ label: 'Step' }] })
+        const before = taskHostView()
+        done.done('S')
+        expect(spies.alertNormal).toHaveBeenCalledTimes(1)
+        expect(spies.alertNormal).toHaveBeenCalledWith('S')
+        expect(newer.detached).toBe(false)
+        expect(taskHostView()).toEqual(before)
+
+        resetTaskHostForTests()
+        spies.alertError.mockClear()
+        const error = new Error('disk')
+        const failed = createExportTask(DEF)
+        failed.open()
+        failed.stepAside()
+        alertTask({ title: 'Newer task', steps: [{ label: 'Step' }] })
+        failed.failed(error, false)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError.mock.calls[0][0]).toBe(error)
+    })
+})
+
+describe('pickerAside', () => {
+    test('E25: the card steps aside before the unread-notice wait, the picker waits for it, and the value passes through', async () => {
+        const gate = deferred()
+        const seen: string[] = []
+        spies.waitUnreadNotice.mockImplementation(async () => {
+            seen.push(taskShown() ? 'wait-with-card' : 'wait-without-card')
+            await gate.promise
+        })
+        const task = createExportTask(DEF)
+        task.open()
+        const open = vi.fn(async () => 7)
+        const run = pickerAside(task)(open)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(seen).toEqual(['wait-without-card'])
+        expect(open).not.toHaveBeenCalled()
+        gate.resolve()
+        expect(await run).toBe(7)
+        expect(open).toHaveBeenCalledTimes(1)
+        spies.waitUnreadNotice.mockImplementation(async () => { })
+    })
+})
+
+describe('legacyErrorText', () => {
+    const error = new Error('disk')
+
+    test('E26 (a): a stepped-aside run posts the text, not the error, and logs the error', () => {
+        const task = createExportTask({ ...DEF, legacyErrorText: 'L' })
+        task.open()
+        task.stepAside()
+        task.failed(error, false)
+
+        expect(console.error).toHaveBeenCalledWith(error)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError).toHaveBeenCalledWith('L')
+    })
+
+    test('E26 (b): a shown card keeps the headline and the error text as detail and posts no alert', () => {
+        const task = createExportTask({ ...DEF, failedHeadline: 'Screenshot failed', legacyErrorText: 'L' })
+        task.open()
+        task.failed(error, false)
+
+        expect(taskHostView()?.failure?.headline).toBe('Screenshot failed')
+        expect(taskHostView()?.failure?.detail).toBe('disk')
+        expect(spies.alertError).not.toHaveBeenCalled()
+    })
+
+    test('E26 (c): a run that never showed a card posts the text once', () => {
+        createExportTask({ ...DEF, legacyErrorText: 'L' }).failed(error, false)
+
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError).toHaveBeenCalledWith('L')
+    })
+
+    test('E26 (d): after a step-aside a kept incomplete file still posts the incomplete-file sentence', () => {
+        const task = createExportTask({ ...DEF, legacyErrorText: 'L' })
+        task.open()
+        task.stepAside()
+        task.failed(error, true)
+
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        const posted = spies.alertError.mock.calls[0][0] as Error
+        expect(posted).toBeInstanceOf(Error)
+        expect(posted.message).toBe(withFileIncompleteSentence(error).message)
     })
 })

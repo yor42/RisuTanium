@@ -319,6 +319,9 @@ let files = freshFiles()
 const realFetch = globalThis.fetch
 const hooks = { onClose: null as null | (() => void), onWrite: null as null | (() => void), ready: null as null | Promise<void> }
 const stalledWriters: Array<(error: Error) => void> = []
+/** Runs started against a helper that never answers, and the release for that helper; the cleanup settles them so a failed wait cannot leak a run into the next test. */
+const unansweredRuns: Array<Promise<unknown>> = []
+let answerHelper: () => void = () => { }
 
 beforeEach(() => {
     platformBox.isTauri = false
@@ -378,21 +381,33 @@ beforeEach(() => {
     shown = []
     unsubscribe = alertStore.subscribe((value) => { shown.push(value as alertData) })
     vi.spyOn(console, 'error').mockImplementation(() => { })
-    return () => {
+    return async () => {
+        vi.useRealTimers()
+        requestTaskCancel()
+        answerHelper()
+        await Promise.allSettled(unansweredRuns.splice(0))
         unsubscribe()
         resetTaskHostForTests()
-        vi.useRealTimers()
         vi.mocked(sleep).mockImplementation(async () => { })
         globalThis.fetch = realFetch
         vi.restoreAllMocks()
     }
 })
 
-/** Lets real asynchronous work (the preflight's dynamic imports) run while only setTimeout is faked, until the card offers Cancel. */
+/** Lets real asynchronous work (the preflight's dynamic imports) run while only setTimeout is faked, until the card offers Cancel. It waits on wall time, so a loaded machine cannot fail the wait. */
 async function settleUntilCardOffersCancel(): Promise<void> {
-    for (let i = 0; i < 400 && taskHostView()?.cancelOffered !== true; i++) {
+    const deadline = performance.now() + 10_000
+    while (taskHostView()?.cancelOffered !== true && performance.now() < deadline) {
         await new Promise<void>((resolve) => setImmediate(resolve))
     }
+}
+
+/** Starts a run whose helper never answers; the cleanup releases and settles it. */
+function startAgainstUnansweredHelper(start: () => Promise<unknown>): Promise<unknown> {
+    hooks.ready = new Promise<void>((resolve) => { answerHelper = resolve })
+    const run = start()
+    unansweredRuns.push(run)
+    return run
 }
 
 function setFailAfter(count: number): void {
@@ -484,9 +499,8 @@ describe('a module .charx export on the task card', () => {
 
     test('M8: a Cancel while the helper has not answered ends cancelled with no failure, no notice and no logged error', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-        hooks.ready = new Promise<void>(() => { })
         const initSpy = vi.spyOn(LocalWriter.prototype, 'init')
-        const done = exportModule(syntheticModule(2))
+        const done = startAgainstUnansweredHelper(() => exportModule(syntheticModule(2)))
         await settleUntilCardOffersCancel()
         expect(taskHostView()?.cancelOffered).toBe(true)
         requestTaskCancel()
@@ -602,8 +616,7 @@ describe('a module .risum export on the task card', () => {
 
     test('M14: a Cancel while the helper has not answered ends cancelled with no summary, no failure and no logged error', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-        hooks.ready = new Promise<void>(() => { })
-        const done = exportModuleLegacy(syntheticModule(2))
+        const done = startAgainstUnansweredHelper(() => exportModuleLegacy(syntheticModule(2)))
         await settleUntilCardOffersCancel()
         expect(taskHostView()?.cancelOffered).toBe(true)
         requestTaskCancel()

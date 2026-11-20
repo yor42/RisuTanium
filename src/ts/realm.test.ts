@@ -1,12 +1,13 @@
 /**
- * `shareRealmCardData` in `src/ts/realm.ts` hands the Realm frame a complete card, or `null` with the export's own
- * error left on screen.
+ * `shareRealmCardData` in `src/ts/realm.ts` hands the Realm frame a complete card, or `null` after a failure: the
+ * export's fail card stays up, and a failure before the card opens posts the error notice.
  *
  * The real `realm.ts`, `characterCards.ts`, `pngChunk.ts` and the real `VirtualWriter` run against a synthetic
  * character. The writer is wrapped so a write can be made to fail, which is how a failure inside the export `try`
  * reaches the caller in production. MOCKED: alerts, the database, the image store and every other import of
- * `characterCards.ts`. Titles beginning "guard:" pass before and after the change; titles beginning "regression
- * reproducer:" fail against a version that returns the partial buffer and clears the alert store after a failed export.
+ * `characterCards.ts`. The real `exportTask` and `alertTask` run, so the card is read through `taskHostView`. Titles
+ * containing "guard" pass before and after the change; titles containing "regression reproducer" fail against a version
+ * that runs on the legacy alert progress, clears the alert store and lets a rejection escape.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -17,6 +18,11 @@ const h = vi.hoisted(() => ({
     alerts: [] as Array<{ type: string, msg: string }>,
     png: new Uint8Array() as Uint8Array,
     failWrite: false,
+    failImage: false,
+    refuse: false,
+    refusals: [] as string[],
+    refusalCards: [] as unknown[],
+    cards: [] as unknown[],
 }))
 
 vi.mock('uuid', () => ({
@@ -27,6 +33,20 @@ vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
     isNodeServer: false,
 }) as unknown as typeof import('src/ts/platform'))
+
+vi.mock(import('src/ts/drive/exportPreflight'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return {
+        ...actual,
+        preflightExport: async (...args: Parameters<typeof actual.preflightExport>) =>
+            h.refuse ? { kind: 'refuse-large', names: ['Big Video'] } as const : actual.preflightExport(...args),
+        refuseExport: async (...args: Parameters<typeof actual.refuseExport>) => {
+            h.refusals.push(args[0].kind)
+            h.refusalCards.push(taskHostView())
+            return actual.refuseExport(...args)
+        },
+    }
+})
 
 vi.mock(import('src/ts/upstreamAgreement'), () => ({
     askUpstreamAgreement: vi.fn(async () => true),
@@ -92,6 +112,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     const { AppendableBuffer, VirtualWriter: RealVirtualWriter } = await import('src/ts/byteBuffer')
     class VirtualWriter extends RealVirtualWriter {
         write(data: Uint8Array): void {
+            h.cards.push(taskHostView())
             if (h.failWrite) {
                 throw new Error('synthetic write failure')
             }
@@ -107,7 +128,12 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         downloadFile: vi.fn(async () => { }),
         loadAsset: vi.fn(async () => new Uint8Array()),
         openURL: vi.fn(),
-        readImage: vi.fn(async () => h.png),
+        readImage: vi.fn(async () => {
+            if (h.failImage) {
+                throw new Error('synthetic image failure')
+            }
+            return h.png
+        }),
         saveAsset: vi.fn(async () => 'saved'),
     } as unknown as typeof import('src/ts/globalApi.svelte')
 })
@@ -151,6 +177,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { shareRealmCardData } from 'src/ts/realm'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 
 function syntheticPng(): Uint8Array {
     const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -160,29 +187,78 @@ function syntheticPng(): Uint8Array {
 }
 
 beforeEach(() => {
+    resetTaskHostForTests()
     globalThis.safeStructuredClone = structuredClone
     h.errors.length = 0
     h.alerts.length = 0
+    h.refusals.length = 0
+    h.refusalCards.length = 0
+    h.cards.length = 0
     h.failWrite = false
+    h.failImage = false
+    h.refuse = false
     h.png = syntheticPng()
+    vi.spyOn(console, 'error').mockImplementation(() => { })
+    return () => {
+        resetTaskHostForTests()
+        vi.restoreAllMocks()
+    }
 })
 
 describe('shareRealmCardData', () => {
-    test('guard: a completed export returns the card bytes and clears the progress alert', async () => {
+    test('RL1 regression reproducer: a completed export returns the card bytes, shows a card without Cancel while it runs and leaves none', async () => {
         const shared = await shareRealmCardData()
         expect(shared).not.toBeNull()
         expect(new TextDecoder().decode(shared!.name)).toBe('Synthetic.png')
         expect(shared!.data.byteLength).toBeGreaterThan(h.png.byteLength)
         expect(h.errors).toEqual([])
-        expect(h.alerts[h.alerts.length - 1]).toEqual({ type: 'none', msg: '' })
+        expect(h.cards.length).toBeGreaterThan(0)
+        for (const card of h.cards as Array<ReturnType<typeof taskHostView>>) {
+            expect(card?.title).toBe('Preparing the Realm upload')
+            expect(card?.subtitle).toBe('Synthetic')
+            expect(card?.cancelOffered).toBe(false)
+        }
+        expect(taskHostView()).toBeNull()
+        expect(h.alerts.filter((alert) => ['progress', 'wait', 'none'].includes(alert.type))).toEqual([])
     })
 
-    test('regression reproducer: a write failure inside the export returns null and leaves the error alert', async () => {
+    test('RL2 regression reproducer: a write failure inside the export returns null and ends as a fail card, not an alert', async () => {
         h.failWrite = true
         const shared = await shareRealmCardData()
         expect(shared).toBeNull()
-        expect(h.errors).toEqual(['synthetic write failure'])
-        expect(h.alerts[h.alerts.length - 1]).toEqual({ type: 'error', msg: 'synthetic write failure' })
-        expect(h.alerts.some((alert) => alert.type === 'none')).toBe(false)
+        expect(h.errors).toEqual([])
+        expect(taskHostView()?.state).toBe('failed')
+        expect(taskHostView()?.failure?.detail).toBe('synthetic write failure')
+    })
+
+    test('RL3 regression reproducer: an image that cannot be read resolves null with a fail card, not a rejection', async () => {
+        h.failImage = true
+        const outcome = await shareRealmCardData().then(() => 'resolved', () => 'rejected')
+        expect(outcome).toBe('resolved')
+        expect(taskHostView()?.state).toBe('failed')
+        expect(taskHostView()?.failure?.detail).toBe('synthetic image failure')
+        expect(h.errors).toEqual([])
+    })
+
+    test('RL4 regression reproducer: a preflight that throws resolves null with the error notice and no card', async () => {
+        globalThis.safeStructuredClone = (v) => {
+            const copy = structuredClone(v) as object
+            Object.defineProperty(copy, 'globalLore', { get() { throw new Error('synthetic preflight failure') }, enumerable: true })
+            return copy as typeof v
+        }
+        const outcome = await shareRealmCardData().then((shared) => shared, () => 'rejected' as const)
+        expect(outcome).toBeNull()
+        expect(h.errors).toEqual(['synthetic preflight failure'])
+        expect(taskHostView()).toBeNull()
+    })
+
+    test('RL5 guard: a refused preflight returns null with the refusal notice and never shows a card', async () => {
+        h.refuse = true
+        const shared = await shareRealmCardData()
+        expect(shared).toBeNull()
+        expect(h.refusals).toEqual(['refuse-large'])
+        expect(h.refusalCards).toEqual([null])
+        expect(h.cards).toEqual([])
+        expect(taskHostView()).toBeNull()
     })
 })

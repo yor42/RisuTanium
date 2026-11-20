@@ -2219,7 +2219,7 @@ export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'c
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
     checked?:PreflightOk
-    /** The card of a module export that opened this run's writer: this run shares it and never opens, ends or closes it. */
+    /** The card of a module export or a Realm share that opened this run's writer: this run shares it and never opens, ends or closes it. */
     progress?:ExportTask
 } = {}):Promise<boolean> {
     return withBusy('export', (busy) => writeCharacterCard(char, type, arg, busy))

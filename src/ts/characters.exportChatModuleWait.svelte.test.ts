@@ -215,6 +215,8 @@ beforeEach(() => {
 afterEach(async () => {
     const acquire = await import('./storage/store2/moduleAcquire')
     acquire.unregisterModuleLoader()
+    // Each row re-imports the modules, so this reaches the task slot of the last row's `exportChat`.
+    ;(await import('./alertTask.svelte')).resetTaskHostForTests()
     vi.doUnmock('./process/moduleEnsure')
     vi.unstubAllGlobals()
     if(clipboardBefore){ Object.defineProperty(navigator, 'clipboard', clipboardBefore) }
@@ -234,7 +236,7 @@ describe('exportChat module wait', () => {
         expect(output()).toContain('Question+MOD')
         expect(output()).toContain('Answer+MOD')
         expect(output()).toContain('Hi+MOD')
-        expect(h.notices).toHaveLength(1)
+        expect(h.notices).toHaveLength(0)
     })
 
     test('post-fix T2 failed load alerts once and leaves no cover or output', async () => {
@@ -268,7 +270,7 @@ describe('exportChat module wait', () => {
         expect(h.clipboard).toHaveLength(1)
         expect(await h.clipboardHtml[0].text()).toContain('Question+MOD')
         expect(h.translated).toHaveLength(3)
-        expect(h.notices).toHaveLength(1)
+        expect(h.notices).toHaveLength(0)
     })
 
     test('post-fix T4b failed clipboard load writes nothing', async () => {

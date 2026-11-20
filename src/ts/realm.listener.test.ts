@@ -20,6 +20,10 @@ vi.mock(import('src/ts/drive/exportPreflight'), () => ({
     refuseExport: vi.fn(),
 }) as unknown as typeof import('src/ts/drive/exportPreflight'))
 
+vi.mock(import('src/ts/exportTask'), () => ({
+    createExportTask: vi.fn(),
+}) as unknown as typeof import('src/ts/exportTask'))
+
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     VirtualWriter: class {},
 }) as unknown as typeof import('src/ts/globalApi.svelte'))

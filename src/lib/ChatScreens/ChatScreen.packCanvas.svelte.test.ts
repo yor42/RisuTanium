@@ -84,6 +84,8 @@ vi.mock('../../lang', () => ({ language: {
     modules: 'Modules', reroll: 'Reroll', chatShellUtility: 'Utility', chatShellTogglesTitle: 'Toggles',
     alerts: { screenshotTaking: 'Taking screenshot', screenshotMerging: 'Merging' },
     screenshotSaved: 'Saved', errors: { screenshotFailed: 'Screenshot failed' },
+    screenshotTaskTitle: 'Taking a screenshot', screenshotStepCapture: 'Capture messages', screenshotStepMerge: 'Merge images', screenshotStepSave: 'Save image',
+    exportTaskDone: 'Exported', exportTaskFailed: 'Could not export',
 } }))
 vi.mock('../ChatShell/ShellHeader.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/ShellComposer.svelte', () => ({ default: () => ({}) }))
@@ -131,7 +133,7 @@ vi.mock('../../ts/media/charImageLookups', () => ({ useCharImageLookups: () => (
 vi.mock('../UI/GUI/SideBarArrow.svelte', () => ({ default: () => ({}) }))
 vi.mock('../Others/ChatList.svelte', () => ({ default: () => ({}) }))
 vi.mock('../Setting/Pages/Module/ModuleChatMenu.svelte', () => ({ default: () => ({}) }))
-vi.mock('../../ts/alert', () => ({ alertError: vi.fn(), alertWait: vi.fn(), alertNormal: vi.fn(), showHypaV2Alert: vi.fn() }))
+vi.mock('../../ts/alert', () => ({ alertError: vi.fn(), alertWait: vi.fn(), alertNormal: vi.fn(), showHypaV2Alert: vi.fn(), alertClear: vi.fn(), waitUnreadNotice: vi.fn(async () => {}) }))
 vi.mock('../../ts/globalApi.svelte', () => ({
     downloadFile: h.downloadFile,
     getFileSrc: vi.fn(),
@@ -173,6 +175,8 @@ import { judgeAreaSheet } from '../../ts/themePack/index'
 import { installThemePackGate, resetThemePackGateForTests, syncThemePackMedia } from '../../ts/themePack/surfaceGate.svelte'
 import { setShellEnabled } from '../../ts/chatShell/shellSwitch.svelte'
 import PlusSheet from '../ChatShell/PlusSheet.svelte'
+import { alertError, alertNormal, alertWait } from '../../ts/alert'
+import { resetTaskHostForTests, setTaskClockForTests, taskHostView, taskShown } from '../../ts/alertTask.svelte'
 
 // ---- the fixtures
 
@@ -214,6 +218,12 @@ beforeEach(() => {
     moduleBackgroundEmbedding.set('')
     h.classicStyles.length = 0
     h.downloadFile.mockClear()
+    resetTaskHostForTests()
+    let tick = 0
+    setTaskClockForTests({ now: () => (tick += 1000), setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (timer) => clearTimeout(timer), hidden: () => false })
+    vi.mocked(alertError).mockClear()
+    vi.mocked(alertNormal).mockClear()
+    vi.mocked(alertWait).mockClear()
     vi.mocked(setDatabase).mockClear()
     document.documentElement.removeAttribute('style')
     document.head.innerHTML = ''
@@ -652,5 +662,87 @@ describe('G8: without a pack the export is unchanged', () => {
         expect(context.fills).toHaveLength(1)
         expect(context.pixel[3]).toBeCloseTo(0.8, 2)
         expectRgba([context.pixel[0], context.pixel[1], context.pixel[2], 0.8], [0, 0, 0, 0.8])
+    })
+})
+
+// ---- the task card (S6b): the Screenshot runs on one card through the shared seam
+
+/** Starts the Screenshot item with the recording world installed; `withRow: false` leaves no rendered row. */
+async function startScreenshot(withRow = true): Promise<void> {
+    setScheme('light')
+    await mountChat()
+    installExportWorld()
+    if (withRow) {
+        const row = document.createElement('div')
+        row.className = 'risu-chat'
+        transcriptOf().appendChild(row)
+    }
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const props = $state({ open: true, opener: null, background: [], onclose: () => { props.open = false }, onstickers: vi.fn(), onchatlist: vi.fn(), onmodules: vi.fn() })
+    mounted.push({ instance: mount(PlusSheet, { target, props }), target })
+    flushSync()
+    const item = [...target.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === 'Screenshot')
+    expect(item).toBeDefined()
+    item!.click()
+}
+
+/** The Android save picker as `downloadFile` runs it: the hook wraps only the picker, and a null path resolves false. */
+function androidPicker(path: string | null, inPicker: Array<{ title: string | undefined, shown: boolean }>): void {
+    h.downloadFile.mockImplementationOnce(async (_name: string, _data: Uint8Array, options?: { aroundPicker?: <T>(open: () => Promise<T>) => Promise<T> }) => {
+        const openPicker = async (): Promise<string | null> => {
+            inPicker.push({ title: taskHostView()?.title, shown: taskShown() })
+            return path
+        }
+        const picked = options?.aroundPicker ? await options.aroundPicker(openPicker) : await openPicker()
+        return picked !== null
+    })
+}
+
+describe('AD: the PlusSheet Screenshot on the task card', () => {
+    test('AD1: it runs on one card without Cancel and ends done; no wait and no legacy notice', async () => {
+        const seen: Array<{ title: string | undefined, cancel: boolean | undefined, steps: string[] | undefined }> = []
+        h.downloadFile.mockImplementationOnce(async () => {
+            const view = taskHostView()
+            seen.push({ title: view?.title, cancel: view?.cancelOffered, steps: view?.steps.map((step) => step.label) })
+            return true
+        })
+        await startScreenshot()
+        await vi.waitFor(() => expect(taskHostView()?.result?.headline).toBe('Exported'))
+
+        expect(seen).toEqual([{ title: 'Taking a screenshot', cancel: false, steps: ['Capture messages', 'Merge images', 'Save image'] }])
+        expect(alertWait).not.toHaveBeenCalled()
+        expect(alertNormal).not.toHaveBeenCalled()
+    })
+
+    test('AD2a: a dismissed picker result (false) ends silently with no card and no saved notice', async () => {
+        h.downloadFile.mockResolvedValueOnce(false)
+        await startScreenshot()
+        await vi.waitFor(() => expect(h.downloadFile).toHaveBeenCalledTimes(1))
+        await settle()
+
+        expect(taskHostView()).toBeNull()
+        expect(alertNormal).not.toHaveBeenCalled()
+        expect(alertError).not.toHaveBeenCalled()
+    })
+
+    test('AD2b: no rendered rows keeps today\'s error notice and opens no card (compatibility guard: passes before and after)', async () => {
+        await startScreenshot(false)
+        await vi.waitFor(() => expect(alertError).toHaveBeenCalledWith('Screenshot failed'))
+
+        expect(taskHostView()).toBeNull()
+        expect(h.downloadFile).not.toHaveBeenCalled()
+    })
+
+    test('AD4: on the Android picker no card is up while it is open, and a saved file posts the legacy notice', async () => {
+        const inPicker: Array<{ title: string | undefined, shown: boolean }> = []
+        androidPicker('/picked/chat.png', inPicker)
+        await startScreenshot()
+        await vi.waitFor(() => expect(alertNormal).toHaveBeenCalledWith('Saved'))
+
+        expect(inPicker).toEqual([{ title: undefined, shown: false }])
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        expect(taskHostView()).toBeNull()
+        expect(alertWait).not.toHaveBeenCalled()
     })
 })
