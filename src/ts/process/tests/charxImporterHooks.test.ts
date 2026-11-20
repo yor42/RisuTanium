@@ -56,6 +56,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         h.pieceCalls += 1
         let total = 0
         for await (const piece of pieces) total += piece.length
+        if (h.hold) await h.hold
         return `piece-${h.pieceCalls}-${total}`
     }),
     saveAsset: vi.fn(async (data: Uint8Array) => {
@@ -168,6 +169,40 @@ describe('CharXImporter progress hooks', () => {
         expect(importer.savedCount).toBe(ASSET_COUNT)
         expect(importer.queuedCount).toBe(ASSET_COUNT)
         expect(Object.keys(importer.assets)).toHaveLength(ASSET_COUNT)
+    })
+
+    test('new rule: saveProgress reports each asset as (saved, found) when it is enqueued, before any save resolves', async () => {
+        let release: () => void = () => {}
+        h.hold = new Promise<void>((resolve) => { release = resolve })
+        const data = await archive()
+        const importer = new CharXImporter()
+        const reports: Array<[number, number]> = []
+        importer.saveProgress = (done, total) => { reports.push([done, total]) }
+        await importer.parse(data)
+        // Every save is still held, so what was reported came from the enqueues alone.
+        expect(h.saveCalls).toBeGreaterThan(0)
+        expect(reports.length).toBe(ASSET_COUNT)
+        expect(reports).toEqual(Array.from({ length: ASSET_COUNT }, (_, i): [number, number] => [0, i + 1]))
+        release()
+        await importer.done()
+        expect(reports.at(-1)).toEqual([ASSET_COUNT, ASSET_COUNT])
+    })
+
+    test('new rule: an entry saved from pieces is also reported when it is enqueued, before its save ends', async () => {
+        h.pieceMode = true
+        charxLimits.streamAfterBytes = 1024
+        let release: () => void = () => {}
+        h.hold = new Promise<void>((resolve) => { release = resolve })
+        const data = await archive()
+        const importer = new CharXImporter()
+        const reports: Array<[number, number]> = []
+        importer.saveProgress = (done, total) => { reports.push([done, total]) }
+        await importer.parse(data)
+        expect(h.pieceCalls).toBeGreaterThan(0)
+        expect(reports).toEqual(Array.from({ length: ASSET_COUNT }, (_, i): [number, number] => [0, i + 1]))
+        release()
+        await importer.done()
+        expect(reports.at(-1)).toEqual([ASSET_COUNT, ASSET_COUNT])
     })
 
     test('guard: an importer with no hooks imports as before', async () => {

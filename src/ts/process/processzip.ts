@@ -1974,6 +1974,7 @@ export class CharXImporter{
         this.#receiving.set(fileName, queue)
         this.#saving.add(queue)
         this.totalEnqueued += 1
+        this.#reportSaves()
         queue.push(held)
         void this.#saveStreamed(fileName, queue)
     }
@@ -2023,6 +2024,8 @@ export class CharXImporter{
      */
     async #processAssetQueue(asset:{id:string, data:Uint8Array}){
         this.totalEnqueued += 1
+        // A found asset is reported before its save starts, so a reader sees it even while every save is still in flight.
+        this.#reportSaves()
         const byteLength = asset.data.byteLength
         this.#pendingBytes += byteLength
         let acquired = false

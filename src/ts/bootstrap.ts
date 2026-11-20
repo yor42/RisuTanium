@@ -5,6 +5,7 @@ import localforage from "localforage"
 import { v4 as uuidv4 } from 'uuid';
 import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
+import { applyUsageRetention } from "./usage/usageRetention";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -477,6 +478,13 @@ export async function loadData() {
             registerModelDynamic()
             if (getPageStorageMode().kind !== 'read-only') {
                 saveDb()
+                // A read-only legacy page saves nothing, so it does not prune at start; a writable page applies the retention
+                // setting once at start (the record path applies it again when the local month changes).
+                try {
+                    applyUsageRetention(getDatabase(), new Date(), { force: true })
+                } catch (error) {
+                    console.error(error)
+                }
                 // After saving has started: the reconcile appends replies the native side received while this page
                 // could not see them, and their saves are waited for through the commits saveDb makes.
                 startNativeReply()

@@ -19,15 +19,18 @@ vi.mock(import('../../../ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('../../../ts/stores.svelte')
 })
+vi.mock(import('../../../ts/alert'), () => ({ alertConfirm: vi.fn() }) as unknown as typeof import('../../../ts/alert'))
 const workingModelList = vi.hoisted(() => () => ({ getModelInfo: (id: string) => ({ id, internalID: id, provider: 0 }) }))
 vi.mock('../../../ts/model/modellist', workingModelList)
 
 import { language } from '../../../lang'
+import { alertConfirm } from '../../../ts/alert'
 import { parseLiteLLMDataset } from '../../../ts/model/modelData/litellmData'
 import { resetModelDataForTests, seedLiteLLMForTests } from '../../../ts/model/modelData/modelDataService.svelte'
 import { DBState } from '../../../ts/stores.svelte'
 import { recordUsage } from '../../../ts/usage/usageLedger'
 import type { UsageEntry } from '../../../ts/usage/usageTypes'
+import SelectInput from '../../UI/GUI/SelectInput.svelte'
 import UsageStatisticsPage from './UsageStatisticsPage.svelte'
 
 const text = language.usageStats
@@ -90,7 +93,10 @@ function type(target: HTMLElement, id: string, value: string): void {
     flushSync()
 }
 
+const confirmMock = vi.mocked(alertConfirm)
+
 beforeEach(() => {
+    confirmMock.mockReset()
     resetModelDataForTests()
     seedLiteLLMForTests(parseLiteLLMDataset({
         'gpt-priced': { litellm_provider: 'openai', mode: 'chat', max_input_tokens: 1000, input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
@@ -316,5 +322,204 @@ describe('price override editor (G)', () => {
         openEditor(target)
         press(target, text.priceClear)
         expect(DBState.db.usagePriceOverrides).toEqual({ other: { input: '1' } })
+    })
+})
+
+describe('clear and retention controls (G)', () => {
+    const settle = async (): Promise<void> => {
+        for (let i = 0; i < 4; i++) {
+            await Promise.resolve()
+            await tick()
+            flushSync()
+        }
+    }
+
+    /** Sets a select to `value` and fires its change event like a person choosing the option. */
+    async function choose(select: HTMLSelectElement, value: string): Promise<void> {
+        select.value = value
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+        await settle()
+    }
+
+    const retentionSelect = (target: HTMLElement): HTMLSelectElement => rowOf(target, '[data-part="usage-manage"] select') as HTMLSelectElement
+    const clearSelect = (target: HTMLElement): HTMLSelectElement => rowOf(target, '[data-part="usage-clear"] select') as HTMLSelectElement
+    const statics = (): Record<string, unknown> => DBState.db.statics as unknown as Record<string, unknown>
+    const hasMonth = (month: string): boolean => Object.keys(statics()).some((key) => key.startsWith(`u1|${month}|`))
+
+    /** Every old month holds 3 models x 2 purposes x several counters, so its key count is far above its month count. */
+    function oldMonths(): [UsageEntry, Date][] {
+        const records: [UsageEntry, Date][] = []
+        for (const when of [new Date(2026, 0, 5), new Date(2026, 1, 5)]) {
+            for (const model of ['m1', 'm2', 'm3']) {
+                for (const purpose of ['chat', 'utility'] as const) {
+                    records.push([entry(model, purpose, 4, 2, 1), when])
+                }
+            }
+        }
+        return records
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date(2026, 7, 20, 12, 0, 0))
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    test('T-P1 clear all on yes removes the statistics, keeps messages, imports and prices, shows the empty page and focuses the notice', async () => {
+        setLedger([entry('gpt-priced', 'chat', 1, 1), JUNE], [entry('gpt-priced', 'chat', 1, 1), JULY])
+        statics()['u1|ovf|n'] = 4
+        DBState.db.usagePriceOverrides = { 'gpt-priced': { input: '1' } }
+        statics().messages = 7
+        statics().imports = 2
+        confirmMock.mockResolvedValue(true)
+        const target = await render()
+
+        press(target, text.clearButton)
+        await settle()
+
+        expect(Object.keys(statics()).filter((key) => key.startsWith('u1|'))).toEqual([])
+        expect(statics().messages).toBe(7)
+        expect(statics().imports).toBe(2)
+        expect(DBState.db.usagePriceOverrides).toEqual({ 'gpt-priced': { input: '1' } })
+        expect(target.querySelector('[data-part="usage-empty"]')).not.toBeNull()
+        const notice = rowOf(target, '[data-part="usage-cleared"]')
+        expect(notice.textContent).toBe(text.clearedNotice)
+        expect(document.activeElement).toBe(notice)
+    })
+
+    test('T-P2 clear all on no changes nothing and asks once with the all-months text', async () => {
+        setLedger([entry('gpt-priced', 'chat', 1, 1), JUNE])
+        DBState.db.usagePriceOverrides = { 'gpt-priced': { input: '1' } }
+        const before = structuredClone($state.snapshot(DBState.db.statics))
+        confirmMock.mockResolvedValue(false)
+        const target = await render()
+
+        press(target, text.clearButton)
+        await settle()
+
+        expect(confirmMock).toHaveBeenCalledTimes(1)
+        expect(confirmMock).toHaveBeenCalledWith(text.clearConfirmAll)
+        expect($state.snapshot(DBState.db.statics)).toEqual(before)
+        expect(DBState.db.usagePriceOverrides).toEqual({ 'gpt-priced': { input: '1' } })
+        expect(target.querySelector('[data-part="usage-cleared"]')).toBeNull()
+    })
+
+    test('T-P3 clear before July removes June, keeps July, August and the overflow row, and does not offer the oldest month', async () => {
+        const august = new Date(2026, 7, 3)
+        setLedger([entry('gpt-priced', 'chat', 1, 1), JUNE], [entry('gpt-priced', 'chat', 1, 1), JULY], [entry('gpt-priced', 'chat', 1, 1), august])
+        statics()['u1|ovf|n'] = 4
+        confirmMock.mockResolvedValue(true)
+        const target = await render()
+        const select = clearSelect(target)
+        expect([...select.options].map((option) => option.value)).toEqual(['all', 'before:2026-08', 'before:2026-07'])
+
+        await choose(select, 'before:2026-07')
+        press(target, text.clearButton)
+        await settle()
+
+        expect(confirmMock).toHaveBeenCalledWith(text.clearConfirmBefore('2026-07'))
+        expect(hasMonth('2026-06')).toBe(false)
+        expect(hasMonth('2026-07')).toBe(true)
+        expect(hasMonth('2026-08')).toBe(true)
+        expect(target.querySelector('[data-part="usage-overflow"]')).not.toBeNull()
+    })
+
+    test('T-P4 a period with no old month stores the number without asking; Off removes the field without asking; the select is labelled and shown on an empty page', async () => {
+        setLedger()
+        const target = await render()
+        const select = retentionSelect(target)
+        expect(select.closest('label')?.textContent).toContain(text.retentionLabel)
+        expect(target.querySelector('[data-part="usage-clear"]')).toBeNull()
+
+        await choose(select, '6')
+        expect(DBState.db.usageRetentionMonths).toBe(6)
+        await choose(select, 'off')
+        expect('usageRetentionMonths' in DBState.db).toBe(false)
+        expect(confirmMock).not.toHaveBeenCalled()
+    })
+
+    test('T-P5 a period that deletes months asks with the month count; decline keeps the setting and the select; accept stores it and prunes', async () => {
+        setLedger(...oldMonths(), [entry('m1', 'chat', 1, 1), JULY], [entry('m1', 'chat', 1, 1), new Date(2026, 7, 3)])
+        const keysBefore = Object.keys(statics()).length
+        expect(keysBefore).toBeGreaterThan(20)
+        const target = await render()
+        const select = retentionSelect(target)
+
+        confirmMock.mockResolvedValueOnce(false)
+        await choose(select, '3')
+        expect(confirmMock).toHaveBeenCalledTimes(1)
+        expect(confirmMock).toHaveBeenCalledWith(text.retentionConfirm(3, 2))
+        expect('usageRetentionMonths' in DBState.db).toBe(false)
+        expect(Object.keys(statics())).toHaveLength(keysBefore)
+        expect(select.value).toBe('off')
+
+        confirmMock.mockResolvedValueOnce(true)
+        await choose(select, '3')
+        expect(DBState.db.usageRetentionMonths).toBe(3)
+        expect(hasMonth('2026-01')).toBe(false)
+        expect(hasMonth('2026-02')).toBe(false)
+        expect(hasMonth('2026-07')).toBe(true)
+        expect(hasMonth('2026-08')).toBe(true)
+        expect(select.value).toBe('3')
+    })
+
+    test('T-P5b declining a shorter period keeps the stored period on the select and in the setting', async () => {
+        setLedger(...oldMonths(), [entry('m1', 'chat', 1, 1), new Date(2026, 7, 3)])
+        DBState.db.usageRetentionMonths = 12
+        const target = await render()
+        const select = retentionSelect(target)
+        expect(select.value).toBe('12')
+
+        confirmMock.mockResolvedValueOnce(false)
+        await choose(select, '3')
+
+        expect(DBState.db.usageRetentionMonths).toBe(12)
+        expect(select.value).toBe('12')
+        expect(hasMonth('2026-01')).toBe(true)
+    })
+
+    test('T-P5c a setting changed elsewhere while the page is open (peer fast-forward, import) shows on the select', async () => {
+        setLedger([entry('m1', 'chat', 1, 1), new Date(2026, 7, 3)])
+        const target = await render()
+        const select = retentionSelect(target)
+        expect(select.value).toBe('off')
+
+        DBState.db.usageRetentionMonths = 12
+        flushSync()
+
+        expect(select.value).toBe('12')
+    })
+
+    test('T-P6 lengthening a period, and overflow alone, never ask', async () => {
+        setLedger([entry('m1', 'chat', 1, 1), new Date(2026, 7, 3)])
+        statics()['u1|ovf|n'] = 5
+        DBState.db.usageRetentionMonths = 3
+        const target = await render()
+        const select = retentionSelect(target)
+
+        await choose(select, '12')
+
+        expect(DBState.db.usageRetentionMonths).toBe(12)
+        expect(confirmMock).not.toHaveBeenCalled()
+        expect(statics()['u1|ovf|n']).toBe(5)
+    })
+
+    test('T-P7 the retention select is described by its help text; a select without the prop has no aria-describedby', async () => {
+        setLedger([entry('m1', 'chat', 1, 1), JUNE])
+        const target = await render()
+        const select = retentionSelect(target)
+        const described = select.getAttribute('aria-describedby')
+        expect(described).toBe('usage-retention-help')
+        expect(target.querySelector(`#${described}`)?.textContent).toBe(text.retentionHelp)
+
+        const plain = document.createElement('div')
+        document.body.appendChild(plain)
+        mounted.push(mount(SelectInput, { target: plain, props: { value: 'a' } }))
+        flushSync()
+        expect(plain.querySelector('select')?.hasAttribute('aria-describedby')).toBe(false)
     })
 })

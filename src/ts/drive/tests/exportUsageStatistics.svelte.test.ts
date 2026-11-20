@@ -326,6 +326,7 @@ const USAGE_PROMPT = 'usage statistics'
 interface PageFields {
     statics?: Record<string, number>
     usagePriceOverrides?: unknown
+    usageRetentionMonths?: number
     taskPresets?: unknown
     themePacks?: unknown
 }
@@ -463,6 +464,18 @@ describe.each([
         const written = await decodedDatabase()
         expect(written.statics).toEqual({ messages: 7, imports: 2 })
         expect(Object.hasOwn(written, 'usagePriceOverrides')).toBe(false)
+    }, 120_000)
+
+    test('T-E1 reproducer: the retention period is a fork-only device preference, left out of the file silently, and the page keeps it', async () => {
+        const db = page({ statics: { messages: 7, imports: 2 }, usageRetentionMonths: 6 })
+
+        const outcome = await run()
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(usagePrompts()).toEqual([])
+        const written = await decodedDatabase()
+        expect(Object.hasOwn(written, 'usageRetentionMonths')).toBe(false)
+        expect((db as unknown as { usageRetentionMonths: unknown }).usageRetentionMonths).toBe(6)
     }, 120_000)
 
     test('T11 reproducer: the usage prompt comes after the task preset and theme pack prompts, and each prompt asks once', async () => {

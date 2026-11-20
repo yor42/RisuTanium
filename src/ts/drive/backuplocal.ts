@@ -264,6 +264,8 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
         plain.statics = withoutUsageKeys(db.statics)
     }
     delete plain.usagePriceOverrides
+    // The statistics retention period is a fork-only device preference: left out silently, so an import ends with it off.
+    delete plain.usageRetentionMonths
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {

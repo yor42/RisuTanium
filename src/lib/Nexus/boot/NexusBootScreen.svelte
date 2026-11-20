@@ -75,7 +75,7 @@
     </div>
 {/snippet}
 
-<div class="nexus-canvas flex h-full w-full flex-col items-center justify-center gap-7 px-4" class:nexus-low-power={lowPower}>
+<div class="nexus-canvas nexus-boot-scheme flex h-full w-full flex-col items-center justify-center gap-7 px-4" class:nexus-low-power={lowPower}>
     <div class="flex flex-col items-center gap-4">
         <NexusStatusMark status={bootMarkStatus(shownProgress)} label={announcement} size={112} {lowPower} />
         <span class="text-2xl font-semibold tracking-wide text-nexus-text" aria-hidden="true">RisuTanium</span>

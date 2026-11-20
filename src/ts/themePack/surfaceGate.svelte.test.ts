@@ -4,7 +4,9 @@
  * REAL: surfaceGate.svelte.ts. The probe elements are plain `style` elements; the cover is a rune object the test drives.
  */
 import { flushSync } from 'svelte'
+import { get } from 'svelte/store'
 import { afterEach, describe, expect, test } from 'vitest'
+import { packBaseTone } from '../gui/surfaceTone'
 import {
     declareSurface,
     installThemePackGate,
@@ -206,5 +208,101 @@ describe('the registered elements follow the gate after each flush', () => {
         flushSync()
         syncThemePackMedia()
         expect(element.getAttribute('media')).toBe('not all')
+    })
+})
+
+describe('the pack base: the root attribute and the base tone follow the sheet that is on', () => {
+    // New behaviour: before the base existed neither was written. Every assertion runs synchronously after a sync, so a
+    // deferred write would fail.
+    const ATTRIBUTE = 'data-theme-pack-base'
+
+    function expectBase(on: boolean): void {
+        expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(on)
+        expect(document.body.hasAttribute(ATTRIBUTE)).toBe(false)
+        expect(get(packBaseTone)).toBe(on ? 'dark' : null)
+    }
+
+    test('present while a registered chat element is on, absent when released', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        const release = declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        release()
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('absent while the cover is up and present again when it lifts', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        cover.on = true
+        syncThemePackMedia()
+        expectBase(false)
+        cover.on = false
+        syncThemePackMedia()
+        expectBase(true)
+    })
+
+    test('the gate effect writes them too, without a direct sync', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        declareSurface('chat')
+        flushSync()
+        expectBase(true)
+        cover.on = true
+        flushSync()
+        expectBase(false)
+    })
+
+    test('absent with chat shown and nothing registered', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('unregistering the element clears them at the next sync', () => {
+        installThemePackGate(() => cover.on)
+        const element = probe('chat')
+        const registered = registerThemePackElement(element, 'chat')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        registered()
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('a studio-only registration with chat shown leaves them absent', () => {
+        installThemePackGate(() => cover.on)
+        probe('studio')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('a foreign unregistered style[data-theme-pack] that is on never sets them', () => {
+        installThemePackGate(() => cover.on)
+        const foreign = document.createElement('style')
+        foreign.setAttribute('data-theme-pack', 'chat')
+        foreign.setAttribute('media', 'all')
+        document.head.appendChild(foreign)
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(false)
+    })
+
+    test('reset clears the attribute and the tone', () => {
+        installThemePackGate(() => cover.on)
+        probe('chat')
+        declareSurface('chat')
+        syncThemePackMedia()
+        expectBase(true)
+        resetThemePackGateForTests()
+        expectBase(false)
     })
 })

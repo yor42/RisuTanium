@@ -10,13 +10,41 @@
   inside :where()), so source order alone decides. The order is base, waiting, still (low power,
   then reduced motion), failed, then forced colours. A later tier wins over an earlier one; do not
   raise specificity or add :not() to change that, move the rule instead.
+
+  The boot screen always paints the built-in Default scheme, whatever scheme the app has applied:
+  .nexus-boot-scheme on its root pins every scheme-dependent name the subtree reads. The values equal
+  the Default derivation, and the Tailwind theme indirections are redeclared there so they resolve
+  against the pinned names (a theme variable is computed once at the root otherwise). A new colour
+  the boot reads must be pinned here.
 */
+.nexus-boot-scheme {
+  --nexus-canvas: #151836;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface-raised: #242a52;
+  --nexus-edge: #3c4478;
+  --nexus-text: #eef0ff;
+  --nexus-text-secondary: #bfc6e3;
+  --nexus-text-muted: #a6b0d4;
+  --nexus-accent: #6f7fc8;
+  --nexus-accent-rgb: 111 127 200;
+  --nexus-ring: #6f7fc8;
+  --nexus-core-from: #6f7fc8;
+  --nexus-danger: #ff6b81;
+  --nexus-danger-rgb: 255 107 129;
+  --nexus-overlay-rgb: 238 240 255;
+  --color-nexus-text: var(--nexus-text);
+  --color-nexus-text-secondary: var(--nexus-text-secondary);
+  --color-nexus-text-muted: var(--nexus-text-muted);
+  --color-nexus-danger: var(--nexus-danger);
+}
+
 .nexus-boot-bar {
   position: relative;
   height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgb(255 255 255 / 0.08);
+  background: rgb(var(--nexus-overlay-rgb) / 0.08);
   box-shadow: inset 0 0 0 1px var(--nexus-edge);
 }
 
@@ -56,7 +84,7 @@
 }
 
 :where(.nexus-boot-bar[data-state='failed']) .nexus-boot-fill {
-  background: #ff6b81;
+  background: var(--nexus-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -74,7 +102,7 @@
   position: absolute;
   inset: 0;
   opacity: 1;
-  background: linear-gradient(90deg, transparent, rgb(127 233 255 / 0.75), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--nexus-accent-rgb) / 0.75), transparent);
   transform: translateX(-100%);
   animation: nexus-boot-sweep 1.4s var(--nexus-ease) infinite;
 }
@@ -86,7 +114,7 @@
 /* Tier 2, waiting: the share pulses in place. */
 :where(.nexus-boot-bar[data-state='waiting']) .nexus-boot-sweep::before {
   transform: none;
-  background: rgb(127 233 255 / 0.4);
+  background: rgb(var(--nexus-accent-rgb) / 0.4);
   animation: nexus-boot-hold 1.6s var(--nexus-ease) infinite alternate;
 }
 
@@ -100,7 +128,7 @@
   animation: none;
   transform: none;
   opacity: 1;
-  background: rgb(127 233 255 / 0.5);
+  background: rgb(var(--nexus-accent-rgb) / 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -108,14 +136,14 @@
     animation: none;
     transform: none;
     opacity: 1;
-    background: rgb(127 233 255 / 0.5);
+    background: rgb(var(--nexus-accent-rgb) / 0.5);
   }
 }
 :root.rm .nexus-boot-sweep::before {
   animation: none;
   transform: none;
   opacity: 1;
-  background: rgb(127 233 255 / 0.5);
+  background: rgb(var(--nexus-accent-rgb) / 0.5);
 }
 
 /* Tier 4, failed: the step it stopped at turns red, visible even at the first step where nothing is filled. */
@@ -123,7 +151,7 @@
   animation: none;
   transform: none;
   opacity: 1;
-  background: rgb(255 107 129 / 0.6);
+  background: rgb(var(--nexus-danger-rgb) / 0.6);
 }
 
 /* Tier 5, forced colours, last. forced-color-adjust: none keeps these system colours and gradients

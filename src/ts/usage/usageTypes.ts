@@ -51,6 +51,9 @@ export type PriceSource = 'catalog' | 'override'
 
 export type DecimalString = string
 
+/** Months of usage statistics kept by the retention setting; an absent setting keeps every month. */
+export type UsageRetentionMonths = 3 | 6 | 12 | 24
+
 export interface CostResult {
     status: 'priced' | 'partial' | 'unpriced'
     /** Exact USD amount; absent when unpriced. For `partial` it covers only the priced kinds. */

@@ -622,13 +622,13 @@ describe('duplicates, the commit marker and the module screens', () => {
         expect(h.selectLog).toEqual([6, 3])
     })
 
-    test('the module screens are told to reload once, after the result card is answered', async () => {
+    test('the module screens are told to reload once, when the replacing round ends and before the result card is answered', async () => {
         h.modules = [installed('ida', 'D')]
         h.files = [json('d.json', 'D')]
         h.selectAnswer = '0'
         const { done, view } = await importToResult()
         expect(view?.result?.headline).toBe(language.importTaskImported(1))
-        expect(h.bumps).toEqual([])
+        expect(h.bumps).toEqual([false])
         await answerOk(done)
         expect(h.bumps).toEqual([false])
     })
