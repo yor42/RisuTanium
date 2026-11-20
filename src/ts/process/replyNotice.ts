@@ -178,6 +178,10 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
     }
     const sub = names.chat || undefined
     if (announcement.outcome === 'failed') {
+        // The error dialog already tells the person, with the detail; a second, untimed toast would only linger behind it.
+        if (announcement.dialogRaised) {
+            return
+        }
         postToast({ kind: 'error', text: fillLang(language.replyFailedElsewhere, { name: names.owner }), sub })
         return
     }
