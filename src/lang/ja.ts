@@ -1116,6 +1116,7 @@ export const languageJapanese = {
         searchModels: "モデルを検索…",
         selectModel: "モデルを選択…",
         loraUrlOptional: "LoRA {index} URL（省略可能）",
+        loraWeightIndexed: "LoRA {index} ウェイト",
         loraFileSupport: ".safetensorsファイルのみサポートされています。owner/model-name (Hugging Face)形式または直接URL (Civitai)を使用してください。",
         loraNotSupported: "モデルがLoRAをサポートしていません。または、モデルリストを更新してモデルの状態を反映してください。",
         useCharacterImage: "キャラクター画像を使用",
