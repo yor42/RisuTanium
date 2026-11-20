@@ -33530,3 +33530,10 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Applies to the untracked `Agents/Handoff-2026-10-08.md` and `Agents/Handoff-2026-10-08/` (96 files) in the main checkout only.
 
 **What the maintainer chose.** "Archive (Recommended)": copy any still-relevant item into an existing GitHub issue first, then move the files out of the repository tree to an archive outside git. Nothing from them is committed.
+
+### MC-2753 — workflow-policy.json takes the maintainer's implementation cap of 10, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the governance v2 session, "Fold in your 10 (Recommended)"). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2748`, `#387`.
+- Applied in governance v2 Stage 5: `maxImplementationTracks` 2 -> 10 and the authority string; the route order and the policy revision stay unchanged (the controller tests encode the order, and a revision change without a matching Agents/Workflow-State.json update freezes every dispatch). The native-first route order is follow-up #387.
+
+**What the maintainer chose.** The governance PR folds the maintainer's uncommitted main-checkout edit (`maxImplementationTracks` 2 -> 10) into `.claude/workflow-policy.json`. After it merges, lane A drops the now-identical local edit in the main checkout so the fast-forward works.

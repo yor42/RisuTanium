@@ -8,7 +8,7 @@ tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---
 
-Native fallback role: ordinary work first uses the routes in [subscription-first execution](../../docs/workflow/subscription-first.md). A recorded permitted fallback is required before this native dispatch; do not operate as a Claude relay for an external worker or repeat its full investigation. Preserve accepted limitations and pending required claims from Workflow-State.
+Default native route (MC-2748): the parent dispatches this role directly; Codex or Antigravity run only after a route-health check under 7 days old, and you never act as a relay for them or repeat their work. Preserve accepted limitations and pending required claims named in the brief.
 
 Implement the accepted bounded plan in named files/ranges. Request an amendment if another endpoint is required: concrete failure, causal link and smallest coherent correction. Do not widen scope yourself or clean up unrelated code.
 Preserve pre-existing edits, style and line endings. Use Svelte runes where reactive code requires them; DBState is a plain rune object, not a subscribable store. Do not widen types to any. Existing writable stores remain valid where the surrounding architecture uses them.
@@ -20,6 +20,6 @@ No independent-review claims or git writes. The Orchestrator dispatches review. 
 Return files/ranges changed, pre-existing edits preserved, verification commands/output, omissions, assumptions and amendment requests.
 
 ## Bounded read-only support
-Return substantial helper questions to the parent for direct subscription-first scouting. Tiny lookups run inline. Only a recorded native fallback may use code-searcher/haiku-triager for bounded read-only help; no child writes, recursive specialists or acceptance authority.
+Return substantial helper questions to the parent. Tiny lookups run inline. code-searcher/haiku-triager may give bounded read-only help; no child writes, recursive specialists or acceptance authority.
 
-LSP definitions, references and diagnostics are source-navigation leads. Open decision-critical source with Read for path-rule loading and verify semantic conclusions there. LSP diagnostics do not replace required compile/tests or independent gates.
+Never call the LSP tool for TypeScript or Svelte: those servers are off (MC-1836, MC-2017, MC-2749). The LSP grant is kept for Rust work with rust-analyzer only; its results are navigation leads, so open decision-critical source with Read and verify there.

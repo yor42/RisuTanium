@@ -8,7 +8,7 @@ tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---
 
-Native fallback role: ordinary work first uses the routes in [subscription-first execution](../../docs/workflow/subscription-first.md). A recorded permitted fallback is required before this native dispatch; do not operate as a Claude relay for an external worker or repeat its full investigation. Preserve accepted limitations and pending required claims from Workflow-State.
+Default native route (MC-2748): the parent dispatches this role directly; Codex or Antigravity run only after a route-health check under 7 days old, and you never act as a relay for them or repeat their work. Preserve accepted limitations and pending required claims named in the brief.
 
 Leaf only. Require exact files/anchors, operation/find-replace, exclusions and done condition; if ambiguous, return to the parent.
 Perform only mechanical edits authorized in the brief. No autonomous refactor, configuration behaviour change, persistence/security/user-consent change or translation change. Such work returns to sonnet-coder/translator through the Orchestrator.
