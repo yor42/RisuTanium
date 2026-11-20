@@ -1,4 +1,7 @@
+import { get } from 'svelte/store'
 import { language } from 'src/lang'
+import { isLite } from 'src/ts/lite'
+import { readSettingsShellStoredChoice } from 'src/ts/settingsShell/settingsShellStoredChoice'
 import { parseStore2Key } from '../format'
 import type { StagingLabel } from '../format/types'
 import type { Staging } from '../owner'
@@ -792,6 +795,15 @@ export function recoveryBlockedBeforeWriteScreen(blocked: { reason: BlockedReaso
 //#region notices
 
 /**
+ * The page that holds the cold-storage switch: the Data page on a device that chose the new Settings screen, the
+ * Advanced page otherwise. Lite is read as the build constant it is. The Beta Mobile GUI fallback to the legacy
+ * screen is not: it is a runtime store the boot cannot reach, so a stored choice there still names the Data page.
+ */
+function archiveSwitchPageLabel(): string {
+    return readSettingsShellStoredChoice() && !get(isLite) ? language.settingsShellPageData : language.advancedSettings
+}
+
+/**
  * The text of a notice the page posts once the database (and so its language) is installed. `too-new` is shown at once as
  * a terminal screen, never as a notice; it has no text here.
  */
@@ -818,7 +830,7 @@ export function noticeText(notice: Store2BootNotice): string | null {
             return text.noticeBackendUnavailable
         case 'archive-enabled':
             // The text the block store's boot pass has always shown when it turns the setting on.
-            return language.archiveCharactersNotice(language.settings, language.advancedSettings, language.coldStorage)
+            return language.archiveCharactersNotice(language.settings, archiveSwitchPageLabel(), language.coldStorage)
         case 'too-new':
             return null
     }

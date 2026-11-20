@@ -7,7 +7,6 @@
     import { arrivalInFlight } from '../../ts/settingsShell/settingsArrival'
     import { pageEntry, pageForIndex, settingsLabel } from '../../ts/settingsShell/settingsPages'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
-    import UserSettings from '../Setting/Pages/UserSettings.svelte'
     import BotSettings from '../Setting/Pages/BotSettings.svelte'
     import OtherBotSettings from '../Setting/Pages/OtherBotSettings.svelte'
     import PersonasShellPage from './PersonasShellPage.svelte'
@@ -16,6 +15,8 @@
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
     import UsageStatisticsPage from '../Setting/Pages/UsageStatisticsPage.svelte'
     import AdvancedShellPage from './AdvancedShellPage.svelte'
+    import DataShellPage from './DataShellPage.svelte'
+    import DataSheetHost from './data/DataSheetHost.svelte'
     import DisplayShellPage from './DisplayShellPage.svelte'
     import InputShellPage from './InputShellPage.svelte'
     import LanguageShellPage from './LanguageShellPage.svelte'
@@ -93,10 +94,11 @@
     let inputPage = $state<ReturnType<typeof InputShellPage>>()
     let languagePage = $state<ReturnType<typeof LanguageShellPage>>()
     let advancedPage = $state<ReturnType<typeof AdvancedShellPage>>()
+    let dataPage = $state<ReturnType<typeof DataShellPage>>()
 
     /** Opens whatever hides the row and returns its element; null when the shown view has no such row. */
     export async function reveal(rowId: string): Promise<HTMLElement | null> {
-        const native = current === 3 ? displayPage : current === 11 ? inputPage : current === 10 ? languagePage : current === 6 ? advancedPage : undefined
+        const native = current === 3 ? displayPage : current === 11 ? inputPage : current === 10 ? languagePage : current === 6 ? advancedPage : current === 0 ? dataPage : undefined
         return native ? native.reveal(rowId) : null
     }
 </script>
@@ -128,7 +130,7 @@
         {#key current}
             <div class="settings-shell-view flex flex-col" data-part="settings-view">
                 {#if current === 0}
-                    <UserSettings />
+                    <DataShellPage bind:this={dataPage} />
                 {:else if current === 1}
                     <BotSettings goPromptTemplate={() => { SettingsMenuIndex.set(13) }} />
                 {:else if current === 2}
@@ -178,6 +180,9 @@
     </div>
     {#if showAllAsk}
         <ModeVisibilityConfirm hidden={showAllAsk.hidden} trigger={showAllAsk.trigger} background={[headBlock, scroller].filter((el): el is HTMLElement => el !== undefined)} onanswer={answerShowAll} />
+    {/if}
+    {#if current === 0}
+        <DataSheetHost background={[headBlock, scroller].filter((el): el is HTMLElement => el !== undefined)} />
     {/if}
 </main>
 
