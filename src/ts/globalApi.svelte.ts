@@ -672,11 +672,16 @@ async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: str
         // after it failed, still leaves the key alone.
         await noteAndSettleAssetWrite(key)
         const store = await getAppStore()
-        // A name is a content hash, so an existing file holds these bytes already.
-        // Replacing it would rename over a file the web view may hold open, and
-        // on the Node server it would bump the key's revision. Only the desktop
-        // store and the Node server check a key without a scan or a read.
-        if ((isTauri || isNodeServer) && await store.has(key)) {
+        // A name is a content hash or a caller's fixed id, and an existing value is kept.
+        // On the Node server keeping it also moves its revision, so a sweep's delete at
+        // an earlier revision fails; an absent key is written. Replacing a present file
+        // would rename over a file the web view may hold open. Only the desktop store
+        // and the Node server check a key without a scan or a read.
+        if (isNodeServer) {
+            if (store.touch !== undefined && (await store.touch(key)).kept) {
+                return key
+            }
+        } else if (isTauri && await store.has(key)) {
             return key
         }
         try {

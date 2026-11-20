@@ -1,4 +1,4 @@
-import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedCapabilities, GuardedOperations, PieceSource, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
+import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedCapabilities, GuardedOperations, PieceSource, PieceWriter, ReadResult, StoreCondition, StoreVersion, WriteResult } from './contract'
 import {
     ServerLacksCapabilityError,
     StoreCheckListTooLongError,
@@ -865,6 +865,40 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         return reply.kind === 'network' || (reply.status >= 500 && !isServerFailureBody(reply.body) && !(reply.status === 503 && codeOfBody(reply.body) === 'upload-capacity'))
     }
 
+    /**
+     * Moves the revision of an existing asset on the server. A 404 (the key is
+     * absent, or the server has no such route) keeps nothing and leaves the
+     * capability record alone. A touch whose answer was lost is re-sent once:
+     * an applied touch only raises the revision of a present key, so applying it
+     * twice is harmless. A second lost answer is an unknown outcome and no write
+     * follows.
+     */
+    async function touchKey(key: string): Promise<{ kept: true, version: StoreVersion } | { kept: false }> {
+        if (nodeAddressableViolation(key) !== null || nodeAssetRouteViolation(key) !== null || !key.startsWith('assets/')) {
+            return { kept: false }
+        }
+        let cause: unknown = null
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            const reply = await uploadRequest('/api/touch', { 'file-path': hexOf(key) })
+            if (reply.kind === 'answer' && reply.status === 200) {
+                const revision = countField(reply.body, 'revision')
+                if (revision === null) {
+                    throw new StoreError('The Node server did not report the new revision of the key.')
+                }
+                return { kept: true, version: revision }
+            }
+            if (reply.kind === 'answer' && reply.status === 404) {
+                return { kept: false }
+            }
+            if (isResendable(reply)) {
+                cause = reply.kind === 'network' ? reply.error : uploadAnswerError(reply, 'asset-touch')
+                continue
+            }
+            throw uploadAnswerError(reply as { status: number, body: unknown }, 'asset-touch')
+        }
+        throw new StoreOutcomeUnknownError('asset touch', cause)
+    }
+
     /** What a piece writer does with the value it is handed: send chunks to the upload routes, or collect it for one single-body write. */
     interface ValueWriter {
         write(data: Uint8Array): Promise<void>
@@ -1108,13 +1142,21 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                             throw new StoreInvalidKeyError(target, routeReason)
                         }
                         if (await drainPending(true) && (uploadId !== null || await ensureBegun())) {
-                            result = await commitUpload(target, finalKey !== undefined)
+                            // A present key keeps its value and moves its revision; the staged bytes are discarded and nothing is committed.
+                            const touched = finalKey !== undefined ? await touchKey(target) : { kept: false as const }
+                            if (touched.kept) {
+                                await sendAbort()
+                                result = { version: touched.version }
+                            } else {
+                                result = await commitUpload(target, finalKey !== undefined)
+                            }
                         }
                     }
                     if (result === null) {
                         // Collecting: by choice, or because the server has no upload routes.
-                        if (finalKey !== undefined && await store.has(target)) {
-                            result = { version: null }
+                        const touched = finalKey !== undefined ? await touchKey(target) : { kept: false as const }
+                        if (touched.kept) {
+                            result = { version: touched.version }
                         } else {
                             result = await store.write(target, collected.length === 0 ? new Uint8Array(0) : joinPieces(collected), 'unconditional')
                         }
@@ -1472,6 +1514,10 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         async has(key: string): Promise<boolean> {
             checkAddressable(key)
             return (await readState(key, 'HEAD')).exists
+        },
+
+        async touch(key: string): Promise<{ kept: true, version: StoreVersion } | { kept: false }> {
+            return await touchKey(key)
         },
     }
 

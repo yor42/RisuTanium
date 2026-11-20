@@ -2997,6 +2997,43 @@ app.post('/api/upload/commit', storageRouteLimiter, asyncRoute(async (req, res) 
     }
 }))
 
+// Moves the revision of an existing asset without changing its bytes, under the key's write lock. A remove conditioned on an earlier revision then fails. An absent key answers 404 and nothing changes. Never renames: the file may be open for streaming.
+app.post('/api/touch', storageRouteLimiter, asyncRoute(async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    const rawPath = req.headers['file-path']
+    const key = typeof rawPath === 'string' ? assetKeyFromHex(rawPath) : null
+    if(key === null || !key.startsWith('assets/')){
+        res.status(400).send({ error: 'Invaild Path' })
+        return
+    }
+    const name = rawPath.toLowerCase()
+    const filePath = path.join(savePath, name)
+    res.setHeader('Cache-Control', 'no-store')
+    try {
+        const answer = await withFileWriteLock(name, async () => {
+            const existing = await fs.stat(filePath).catch(() => null)
+            if(existing === null || !existing.isFile()){
+                return null
+            }
+            return await bumpRevisionForUpload(name)
+        })
+        if(answer === null){
+            res.status(404).send({ error: 'Not Found', code: 'absent' })
+            return
+        }
+        res.send({ success: true, revision: answer })
+    } catch (error) {
+        const errorCode = typeof error?.code === 'string' ? error.code : 'TOUCH_FAILED'
+        console.error('[Storage] Failed to touch item:', { code: errorCode })
+        res.status(errorCode === 'ENOSPC' || errorCode === 'EDQUOT' ? 507 : 500).send({
+            error: 'Failed to touch storage item',
+            code: errorCode,
+        })
+    }
+}))
+
 app.post('/api/upload/abort', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
