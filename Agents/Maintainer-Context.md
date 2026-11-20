@@ -33603,3 +33603,75 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer answer relayed by lane A). Date: 2026-11-20. Exact times: UNKNOWN. Sweep ref: the MC-2747 bulk-close list. Related: `MC-2747`.
 
 **What the maintainer chose.** The 25 items already closed on GitHub or in an earlier record get their Roadmap rows updated to closed. The 10 keep-open rows (CHORE-128, 478, 555, 557, 587, 667, 714, 722, 823 and UI-S3) stay unchanged.
+
+### MC-2762 — Build a leftover-process reaper, report-only first, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2763`, `MC-1918`.
+
+**What the maintainer chose.** Subagents and sessions sometimes leave shell processes running, which blocks session archival. A harness, not a written rule alone, stops them: an owned-launch wrapper that records what an agent starts, a reaper on finish, SubagentStop and SessionEnd, and a path-scoped fallback sweep. Processes are never matched by image name. The first version only reports what it would stop. The build session brief is in lane A scratch (`b61/proc-reaper-brief.md`); the session start was refused under Remote Control, so the maintainer starts it.
+
+### MC-2763 — Lane B stops its own leftover processes, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2762`.
+
+**What the maintainer chose.** The leftover processes found that day (a vite server, Chrome instances, `netlog.mjs` and `server.cjs` from lane B runs) are stopped by lane B, which owns them, not by lane A. Lane B confirmed them gone.
+
+### MC-2764 — Exports on non-secure pages build in memory instead of the StreamSaver helper, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#167`, `#393`, `#394`.
+
+**What the maintainer chose.** On a non-secure page (plain-HTTP LAN), export skips the StreamSaver external helper page and its popup, and builds the file in memory with a notice. Delivered by #394 (fixes #393); lane B's unstubbed LAN check passed.
+
+### MC-2782 — RisuRealm browser offline UX audit, then restyle, in a new session, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2783`, `MC-2784`, `MC-2809`.
+
+**What the maintainer chose.** Audit the built-in RisuRealm browser offline (the ui-audit skill, a fake hub, real Realm hosts blocked), then restyle it to the UI/UX contract with the frontend-design skill, in a new session. The upload iframe is out of scope. Delivered in three stages: #404, #409 and #413.
+
+### MC-2783 — The Realm restyle takes all four finding groups, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by the realm-restyle session). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2782`.
+
+**What the maintainer chose.** The restyle takes all four groups of the audit's findings: navigation and overlays; layout, states and wording; contrast and tokens; assistive-technology names and states.
+
+### MC-2784 — The Realm restyle follows the realm mockup structure, 2026-11-20
+
+- Tag: decisions (maintainer answer relayed by the realm-restyle session). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2782`.
+
+**What the maintainer chose.** The restyled hub follows the structure of the realm mockup.
+
+### MC-2793 — ChroMemory is tracked with one issue per stage, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#400`, `#401`, `#402`.
+
+**What the maintainer chose.** Each ChroMemory stage gets its own GitHub issue and board card when it starts. Filed: #401 (S0 go/no-go verdict; the harness merged in #400) and #402 (S1, blocked on S0).
+
+### MC-2798 — #312 closes by hand on the carried-over Note 9 rows, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#312`, `#382`, `MC-2775`.
+
+**What the maintainer chose.** Close #312 by hand. Note 9 rows N10 and N11 passed on 70b4410ec, and lane A confirmed the four tested surfaces and their direct imports are unchanged on the merged c357da689, so the result carries over. Remainders: #333, #334, #247 and stage F (recorded in #382); follow-ups #395 and #396.
+
+### MC-2809 — The language switch hides when text has only one language, app-wide, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2782`, `#413`.
+
+**What the maintainer chose.** `MultiLangDisplay` shows its language buttons only when two or more languages would show. Single-language text, including a lone unknown-language (`xx`) value, shows the text alone. This applies everywhere the component is used (CreatorQuote and RealmPopUp), not only in Realm; upstream shows a lone "Unknown Language" button. Delivered in #413.
+
+### MC-2810 — #276 closes; its owed .rtb device rows move to tracker #349, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#276`, `#349`, `MC-2811`, `MC-2812`.
+
+**What the maintainer chose.** Close the CHORE-128 umbrella #276: every scheduled code stage is merged (S0 to S4, S1c, S6 to S15, #376 and #399; S14b as #110). The owed phone and PC rows for S8, S9 and S11 to S14b move to a new section of device-row tracker #349, run by lane B as one APK batch. #276 had first been closed in error on a question that described only its encryption part, and was reopened before this decision.
+
+### MC-2811 — The .rtb sync folder gets its own deferred ticket, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2037`, `MC-1100`, `#410`.
+
+**What the maintainer chose.** Folder mode (S16/S17: a sync folder, snapshots, keep-last-N, biometrics) stays deferred under MC-2037 and gets its own parked issue, #410. No work is scheduled.
+
+### MC-2812 — Re-run the DV-S8-2 truncated-export step on current main, 2026-11-20
+
+- Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2810`, `#53`.
+
+**What the maintainer chose.** Before the size check in #53, the phone reported a successful export of a file that came out 7.8 MB short. Lane B repeats that step on current main in the .rtb batch, to confirm a target deleted mid-export now fails.
