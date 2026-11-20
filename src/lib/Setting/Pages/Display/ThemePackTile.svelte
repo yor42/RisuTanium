@@ -91,7 +91,8 @@
 <svg viewBox="0 0 64 64" class={iconUrl === null ? 'w-full h-full block' : 'hidden'} aria-hidden="true" style="forced-color-adjust:none" data-part="theme-pack-tile">
     {#if spec === null || geometry === null}
         <rect width="64" height="64" class="fill-bgcolor" data-part="tile-ground" />
-        <line x1="10" y1="54" x2="54" y2="10" class="stroke-borderc" stroke-width="3" stroke-linecap="round" data-part="tile-none-mark" />
+        <rect x="9" y="9" width="46" height="46" rx="5" fill="none" class="stroke-darkborderc" stroke-width="1.5" stroke-dasharray="4 3" data-part="tile-none-frame" />
+        <line x1="16" y1="48" x2="48" y2="16" class="stroke-borderc" stroke-width="2.5" stroke-linecap="round" data-part="tile-none-mark" />
     {:else}
         {#if paint === null}
             <rect width="64" height="64" class="fill-darkbg" data-part="tile-ground" />
