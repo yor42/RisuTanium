@@ -31,12 +31,19 @@ The item owner records final closure against the merged PR, distinguishing optio
 
 One workClass records / mode implement Haiku drafter may run beside the ticket sessions and device runs. Freeze its source/facts packet: exact quotations/reserved IDs, target anchors/schema, accepted gate/test provenance and limitations. Later code changes do not alter that historical batch's claims. Records completion is not a prerequisite for unrelated authorized code work.
 
-The guard remains unchanged. Ordinary explicitly granted Markdown may be edited. Maintainer-Context/governance/Decision-Index/state changes return as a scratch draft/patch packet for verified parent application through existing helpers. No shell workaround, unconfirmed ID allocation, confidence upgrade, invented decision or self-acceptance. Parent application is integration, not a second whole-batch rewrite.
+The guard remains unchanged. Ordinary explicitly granted Markdown may be edited. A clerk's Maintainer-Context/governance/Decision-Index/state changes return as a scratch draft/patch packet for its session to apply through existing helpers. No shell workaround, unconfirmed ID allocation, confidence upgrade, invented decision or self-acceptance. Parent application is integration, not a second whole-batch rewrite.
 
 Missing/contradictory facts return in one exception packet with TODO(evidence). Substantive ambiguity goes to the responsible role. Haiku unavailability/exhaustion is reported or parked for an explicit parent fallback decision; no hidden stronger-model upgrade. Correctly scoped independent review still consumes consequential changed claims once.
 
 Earlier record failures included a forbidden AGENTS.md dependency and native Edit-tool/real-checkout instructions sent to an isolated CLI. These are packet/tool-contract mismatches, not proof that all external models are incapable of records work. Primary Haiku is the maintainer's chosen simpler clerical path.
 
+## IDs and PR-written records (MC-2713)
+
+- **MC ID blocks.** Each session self-assigns MC IDs from its own block of 10 (lane A records the blocks and the entries in batches) and asks lane A for a new block when it runs out. Never guess an ID outside a granted block. CHORE IDs follow the same block rule where a ticket still needs one; new work is normally just its GitHub issue number.
+- **What the PR records.** The PR's own session writes, in its PR: the decisions it asked the maintainer (as MC entries from its block, appended to `Agents/Maintainer-Context.md` with the Decision-Index regenerated), the gate dispositions, known limitations and follow-ups, and its device-row steps written from the actual diff and checked against code. Lane A only routes device rows; it does not write them.
+- **What goes through lane A.** Governance files (AGENTS.md, CLAUDE.md, `docs/workflow/**`, `.claude/**`), `Agents/Live-State.md`, the latest lane handoffs and lane A's own decisions log. Device-affecting rulings are asked in lane B's own session, not relayed (MC-2713).
+- **Index.** When two PRs both append MC entries, the second to merge regenerates `Agents/Decision-Index.md` after merging main (`pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1`, then `-Check`).
+- **Ticket authority.** The GitHub issue on yor42/RisuTanium and its card on project board 1 are the ticket's status. `Agents/Roadmap.md` is scope history keyed to issue numbers; where the two disagree, the issue wins.
 ## Batching and session discipline
 
 Records are batched per stage or batch where no maintainer decision is involved. MC entries are still recorded when the maintainer answers (MC-321 4). Live-State holds only current state plus a link to the current step handoff; superseded update paragraphs move to `Agents/Archive/`.
