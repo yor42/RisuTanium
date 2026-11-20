@@ -45,8 +45,12 @@ export function trapTab(event: KeyboardEvent, root: HTMLElement): boolean {
     const first = items[0]
     const last = items[items.length - 1]
     const outside = !active || !root.contains(active)
+    // A focused element that Tab never reaches (a heading with tabindex -1) and that sits before the first control
+    // stands where the root does: Shift+Tab from it wraps to the last control.
+    const beforeFirst = !outside && !items.includes(active as HTMLElement)
+        && (first.compareDocumentPosition(active as Node) & Node.DOCUMENT_POSITION_PRECEDING) !== 0
     if (event.shiftKey) {
-        if (outside || active === first || active === root) {
+        if (outside || active === first || active === root || beforeFirst) {
             event.preventDefault()
             last.focus()
             return true
@@ -57,6 +61,32 @@ export function trapTab(event: KeyboardEvent, root: HTMLElement): boolean {
         return true
     }
     return false
+}
+
+/** Wait after the frame before an opening text is written, so the dialog's own focus speech has finished first. */
+export const ANNOUNCE_SETTLE_MS = 200
+
+/** The same wait after a sheet opened over a returning file picker: past the window's state changes. */
+export const PICK_REFOCUS_SETTLE_MS = 300
+
+/**
+ * Runs `callback` once, one animation frame and then `ms` after the call. The returned function cancels it, before or
+ * after the frame.
+ */
+export function afterFrameSettle(callback: () => void, ms: number = ANNOUNCE_SETTLE_MS): () => void {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancelled = false
+    const frame = requestAnimationFrame(() => {
+        if (cancelled) return
+        timer = setTimeout(() => {
+            if (!cancelled) callback()
+        }, ms)
+    })
+    return () => {
+        cancelled = true
+        cancelAnimationFrame(frame)
+        if (timer !== undefined) clearTimeout(timer)
+    }
 }
 
 /** How many layers hold an element inert, and whether it was inert before the first of them. */

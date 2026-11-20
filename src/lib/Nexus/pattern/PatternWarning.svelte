@@ -2,7 +2,7 @@
     import { untrack } from 'svelte'
     import PatternDialog from './PatternDialog.svelte'
     import { language } from '../../../lang'
-    import { armDelayMs, assertWarningActions, firstFocusAction, splitConsequences, type PatternAnswer, type PatternWarningDef } from './patternWarning'
+    import { armDelayMs, assertWarningActions, firstFocusAction, splitConsequences, spokenOpening, type PatternAnswer, type PatternWarningDef } from './patternWarning'
 
     interface Props {
         def: PatternWarningDef
@@ -80,6 +80,7 @@
 <PatternDialog
     labelId={headlineId}
     descriptionId={parts.shown.length > 0 ? consequencesId : undefined}
+    announce={spokenOpening(def.headline, parts.shown[0])}
     cancelSafe={!!def.actions.cancel}
     oncancel={() => answer('cancel')}
     {trigger}

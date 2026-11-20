@@ -27,6 +27,7 @@ import {
 } from '../../../ts/alertTask.svelte'
 import { createToastHost, type ToastClock, type ToastHost } from '../../../ts/toast/toastHost.svelte'
 import { holdModalLayer } from './modalLayers.svelte'
+import { ANNOUNCE_SETTLE_MS } from './patternFocus'
 import TaskToastHarness from './TaskToastHarness.svelte'
 import type { TaskClock, TaskDef } from './taskProgress'
 
@@ -194,8 +195,14 @@ describe('pressing the button', () => {
 
     test('it announces once politely and a later step change speaks nothing', async () => {
         const handle = openTask()
+        const before = host.polite.seq
         await background()
+        // R307-9: the notice waits for the focus return's own speech to pass, so it is absent right after the press.
+        expect(host.polite.text).toBe('')
+        expect(host.polite.seq).toBe(before)
+        advance(ANNOUNCE_SETTLE_MS + 20)
         expect(host.polite.text).toBe(language.patternTaskBackgrounded('Importing cards'))
+        expect(host.polite.seq).toBe(before + 1)
         const seq = host.polite.seq
         handle.setStep(1)
         advance(300)
@@ -326,7 +333,7 @@ describe('Open on the toast', () => {
         expect(document.querySelector('[data-part="pattern-task-result-action"]')!.textContent).toBe('Retry')
     })
 
-    test('a running task reopens as the same card with focus on the shell and returns focus to the opener after OK', async () => {
+    test('a running task reopens as the same card with focus on its title and returns focus to the opener after OK', async () => {
         const handle = openTask()
         const id = taskHostView()!.id
         await background()
@@ -335,7 +342,7 @@ describe('Open on the toast', () => {
         await settle()
         expect(taskHostView()?.id).toBe(id)
         expect(document.querySelector('[data-part="pattern-task-root"]')!.getAttribute('data-task-state')).toBe('running')
-        expect(document.activeElement).toBe(dialog())
+        expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-task-title"]'))
         const closed = handle.finish({ headline: 'Imported' })
         flushSync()
         await settle()

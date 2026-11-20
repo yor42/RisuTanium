@@ -222,6 +222,6 @@ describe('TaskHost yields to a covering alert', () => {
         await settle()
         expect(await answer).toBe(true)
         expect(document.querySelector('[data-part="pattern-task-root"]'), 'the card after the answer').not.toBeNull()
-        expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-dialog"]'))
+        expect(document.activeElement).toBe(document.querySelector('[data-part="pattern-task-title"]'))
     })
 })
