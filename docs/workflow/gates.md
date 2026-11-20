@@ -1,8 +1,20 @@
 # Review gates and evidence
 
-Every AI-authored application-code change gets a fresh independent post-implementation review. Nontrivial work also gets a plan gate before writing: features, architecture, risky/wide changes and save/persistence, reactive database, assets or Tauri platform configuration. A clearly small low-risk fix may skip the plan gate; uncertain scope/risk uses it. An implementer never self-approves.
+Every AI-authored application-code change gets a fresh independent post-implementation review. How much planning and plan review a change gets follows its size tier below: Tier 2 gets the designer and an independent Gate 1, Tier 1 a short in-session plan, Tier 0 no plan gate; uncertain scope or risk takes the higher tier. An implementer never self-approves.
 
 The [subscription-first contract](subscription-first.md), approved 2026-11-03, still defines batch scope, critical-contract classification, durable acceptance and device stop conditions; its route order is superseded by MC-2748 (native first). One combined plan/Gate 1/Gate 2 covers a coherent nontrivial batch. Per-ticket commits, stage contexts and provider changes do not create additional gates.
+
+## Size tiers (MC-2746)
+
+The session sizes each ticket into one tier before planning and states the tier in the PR body. When in doubt, take the higher tier.
+
+| Tier | Scope | Gates |
+|---|---|---|
+| 0 | Copy, style, locale, test-only or mechanical change | One independent review, then CI. No plan gate. |
+| 1 | Contained logic or UI | A short plan in the session (no designer), one Gate 2, then CI. |
+| 2 | Persisted format, on-device data, migration, security, signing or build pipeline, or otherwise expensive to reverse | Designer plan, grilling (MC-778), Gate 1, opus-reviewer for the changed critical contract, senior-advisor challenge before implementation, Gate 2, then CI. |
+
+Tier 0 and Tier 1 replace the old undefined "tiny low-risk carve-out". Derived from the governance v2 proposal, not MC-2746 (they yield to any maintainer decision): "expensive to reverse" also covers a public API or schema; doc-verifier checks only claims that feed a decision, not every sentence of a routine document; and at the second substantive `[REJECT]`, besides reconsidering the mechanism (below), the session offers the maintainer a product simplification of the edge case that keeps failing.
 
 ## Gate sequence
 
@@ -18,7 +30,22 @@ Routing is native first (MC-2748): a fresh native Sonnet reviewer or coder by de
 
 - `[REJECT]`: substantive design, logic, data-safety or test correction required.
 - `[EDITORIAL]`: behavior accepted but false/misleading comments, titles, documentation or commit claims require correction.
-- `[APPROVE]`: stated acceptance scenarios hold, important invariants are evidenced and no substantiated blocker remains. Non-blocking improvements are listed separately.
+- `[APPROVE]`: stated acceptance scenarios hold, important invariants are evidenced and no substantiated blocker remains. Non-blocking improvements are listed separately, each classified under the follow-up policy below.
+
+## Follow-up policy (MC-2745)
+
+1. The reviewer gives every finding one class:
+   - **blocks-merge**: data loss, security, OS break or softlock, or a failed acceptance row;
+   - **fix-in-this-PR**: small, or adjacent to the touched code;
+   - **known-limitation**: one line in the PR body.
+2. Reviewers never file issues. The owning session decides what becomes an issue.
+3. Before filing, the session searches open issues on the same file or area and comments on a match instead of filing. Derived: a session that touches a file closes or updates the trivial open issues on it in the same PR (fold in when touching).
+4. A session files at most **2 new issues per PR**. Each uses the follow-up issue template and names an owner, a trigger ("when X is next touched" or a date) and a severity, with the `follow-up` label. More than 2 needs the maintainer's yes or folds into an existing issue.
+5. "Drop with reason" is a valid leftover disposition (amends MC-2064): the PR body names the finding and why it is not worth doing.
+6. A gap that a reviewer finds is not automatically a blocking gate: weigh risk reduction, test effectiveness, execution cost and blocked work, and prefer fast deterministic tests over long real-time runs (MC-2469). A non-critical gap is normally a known limitation, not a new ticket.
+7. Derived: ui-audit runs batch their ticket candidates into one issue per audit, with the same cap. The template's S1-S3 severity scale is also derived.
+
+The weekly sweep in [records](records.md#weekly-sweep-mc-2745) keeps the backlog bounded. Derived: when the closed/opened ratio falls, lane A pauses new filing in favour of sweep-and-close batches. Items marked "derived" come from the governance v2 proposal, not from MC-2745, and yield to any maintainer decision.
 
 Consolidate remediation into one brief: each finding, affected requirement, change boundary and needed verification; separate optional improvements. Who revises. A Gate 1 `[REJECT]` goes back to the designer for the plan and required tests, one fresh instance per revision. `[EDITORIAL]` findings and non-blocking amendments on an `[APPROVE]` are carried by the Orchestrator as numbered items in the MC-329 implementation checklist; the plan is not rewritten. A Gate 2 `[REJECT]` is remediated by one fresh routine-code worker seeded with the consolidated verdict, actual diff and acceptance requirements under the accepted plan (MC-894); every Gate 2 `[REJECT]` finding states plan-level: yes/no with the plan section. The designer is re-engaged when the reviewer says yes or the implementer's hand-back says AMENDMENT REQUESTED; plan-level means a changed shared contract or invariant, a materially different design, contradicted evidence, invalidated acceptance, or a missing or wrong entry in the required-tests list, and the affected Gate 1 reopens at the affected breadth as the table below requires. After the third substantive reject the designer revises under the senior-advisor's direction; after a maintainer-approved rewrite a fresh designer writes the rewrite plan and the reject streak resets (MC-697 point 4). Review every executable remediation's affected behavior. Reopen a broader gate for a changed shared contract/invariant, materially different design, contradicted evidence or invalidated acceptance.
 
@@ -117,15 +144,15 @@ The orchestrator arbitrates findings and commits under the [approval matrix](#ap
 
 For substantial work, obtain a targeted sizing/mechanism packet before planning: the actual trigger and load-bearing evidence, affected subsystems/endpoints, smallest coherent boundary and viable stages, and user-visible error behavior. Decide relevant skip/repair/refuse/pause branches before the affected plan gate. A decision-critical unresolved product question blocks that part of the plan and its implementation; continue independent work that does not depend on it.
 
-Delegate ordinary mechanism investigation rather than asking the maintainer to design code. Ask the maintainer only for missing product trade-offs, not facts source/runtime evidence can settle. Size the shared cause instead of forcing endpoint patches to preserve an old file list. Keep the packet selective; do not inventory every speculative edge case or require a full investigation for a trivial task. The existing small, obviously low-risk plan-gate carve-out remains.
+Delegate ordinary mechanism investigation rather than asking the maintainer to design code. Ask the maintainer only for missing product trade-offs, not facts source/runtime evidence can settle. Size the shared cause instead of forcing endpoint patches to preserve an old file list. Keep the packet selective; do not inventory every speculative edge case or require a full investigation for a trivial task. Tier 0 and Tier 1 work needs no separate sizing packet.
 
-**Grilling step (`MC-778`).** For work that needs a Gate 1 plan review, after sizing and before Gate 1 an independent agent (not the designer) reads the sizing and the draft plan and lists every product or error-behaviour ambiguity, each with a recommended option. The orchestrator drops what existing MCs already settle and asks the maintainer the rest with AskUserQuestion (recommended option first); the designer finalises the plan with the answers and then it goes to Gate 1. This formalises the settle-decision-critical-behaviour step above. If Gate 1 still raises a product question the grilling missed, the orchestrator asks the maintainer; that missed question alone is not a substantive `[REJECT]` and does not count toward the three-reject escalation. Plan defects count as before. The tiny low-risk carve-out stays. A session records the decisions it asked itself, with IDs from its own MC block; device-affecting rulings are asked in lane B's session directly (MC-2713).
+**Grilling step (`MC-778`).** For Tier 2 work, after sizing and before Gate 1 an independent agent (not the designer) reads the sizing and the draft plan and lists every product or error-behaviour ambiguity, each with a recommended option. The orchestrator drops what existing MCs already settle and asks the maintainer the rest with AskUserQuestion (recommended option first); the designer finalises the plan with the answers and then it goes to Gate 1. This formalises the settle-decision-critical-behaviour step above. If Gate 1 still raises a product question the grilling missed, the orchestrator asks the maintainer; that missed question alone is not a substantive `[REJECT]` and does not count toward the three-reject escalation. Plan defects count as before. A session records the decisions it asked itself, with IDs from its own MC block; device-affecting rulings are asked in lane B's session directly (MC-2713).
 
 The Gate 1 owner checks that required product decisions and load-bearing premises are resolved, stages are coherent, and verification targets the actual runtimes and failure branches. Evidence uncertainty is disclosed; a label or guessed mechanism cannot substitute for the observation needed to proceed.
 
 ## Technical acceptance and administrative closeout
 
-A review verdict accepts the technical evidence at its stated scope. It does not make an item COMPLETE while applicable decisions, gate dispositions, Roadmap/status or current-state/remaining-work records are missing. Follow [item records](records.md) for proportionate closeout. Changed record claims receive independent verification; missing records alone do not restart Gate 2 or rerun application tests. Reopen affected technical analysis only when closeout exposes a substantive defect, contradicted evidence or invalidated acceptance.
+A review verdict accepts the technical evidence at its stated scope. An item is COMPLETE when its PR is merged on green CI, its issue is closed with a link to the PR, its board card has moved, and every leftover is dispositioned (MC-2747; see [item records](records.md)). Changed record claims receive independent verification; missing records alone do not restart Gate 2 or rerun application tests. Reopen affected technical analysis only when closeout exposes a substantive defect, contradicted evidence or invalidated acceptance.
 
 ## Approval matrix (MC-2744)
 

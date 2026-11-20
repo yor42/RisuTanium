@@ -1,0 +1,76 @@
+name: Follow-up (from a PR)
+description: A leftover from a merged or open PR. At most 2 per PR; search open issues on the same area first and comment there instead when one matches.
+labels:
+  - follow-up
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Source PR
+      description: The PR this came from, as #number.
+      placeholder: '#123'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - android
+        - characters
+        - chat
+        - desktop
+        - device-tools
+        - import-export
+        - node-server
+        - performance
+        - settings
+        - statistics
+        - storage
+        - studio
+        - tests
+        - theme-packs
+        - tooling
+        - translation
+        - ui
+        - utility-mode
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: blocks-merge findings are fixed in their PR, not filed here.
+      options:
+        - 'S1: data loss, security, OS break or softlock found after merge'
+        - 'S2: wrong behaviour with a workaround'
+        - 'S3: polish, cleanup or minor gap'
+    validations:
+      required: true
+
+  - type: input
+    id: trigger
+    attributes:
+      label: Trigger
+      description: When this gets picked up, for example "when src/ts/storage/x.ts is next touched" or a date. Issues with no trigger and no activity for 14 days are closed or parked by the weekly sweep.
+    validations:
+      required: true
+
+  - type: input
+    id: owner
+    attributes:
+      label: Owner
+      description: The session or lane that owns it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What is left
+      description: The finding, the evidence (file, test or observation) and why it was not fixed in the source PR.
+    validations:
+      required: true
