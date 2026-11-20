@@ -550,3 +550,44 @@ describe('the Android picker', () => {
         expect(taskHostView()?.title).toBe('Newer task')
     })
 })
+
+describe('the card paints its count during a long export', () => {
+    /** Each clock read advances `stepMs`; a macrotask armed before the export marks every parse it has already run before. */
+    async function countsSeenByParses(selections: string[], stepMs: number) {
+        let clock = 0
+        vi.spyOn(performance, 'now').mockImplementation(() => (clock += stepMs))
+        let macrotaskRan = false
+        setTimeout(() => { macrotaskRan = true }, 0)
+        const seen: Array<{ macrotaskRan: boolean, done: number | undefined }> = []
+        h.translate.mockImplementation(async (v: string) => {
+            seen.push({ macrotaskRan, done: taskHostView()?.count?.done })
+            return v
+        })
+        await run(selections)
+        return seen
+    }
+
+    it('CH12: a slow HTML file export reaches a real macrotask boundary before the last message', async () => {
+        const seen = await countsSeenByParses(['2', '0', '0'], 60)
+
+        // One parse per message, then the first message of the template.
+        expect(seen).toHaveLength(MESSAGES + 1)
+        // Only a macrotask yield lets a timer armed before the export run while messages are still being counted.
+        expect(seen.some((entry) => entry.macrotaskRan && entry.done !== undefined && entry.done < MESSAGES)).toBe(true)
+    })
+
+    it('CH13: a slow HTML embed export reaches a real macrotask boundary before the last message', async () => {
+        const seen = await countsSeenByParses(['3', '0', '0'], 60)
+
+        expect(seen).toHaveLength(MESSAGES + 1)
+        expect(seen.some((entry) => entry.macrotaskRan && entry.done !== undefined && entry.done < MESSAGES)).toBe(true)
+    })
+
+    it('CH14 (guard): a fast export does not yield per message and finishes in one turn', async () => {
+        const seen = await countsSeenByParses(['2', '0', '0'], 0.001)
+
+        expect(seen).toHaveLength(MESSAGES + 1)
+        expect(seen.some((entry) => entry.macrotaskRan)).toBe(false)
+        expect(taskHostView()?.state).toBe('done')
+    })
+})

@@ -358,6 +358,25 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 }
 
 
+const PAINT_YIELD_INTERVAL_MS = 50
+
+/**
+ * The export card must be able to paint its message count during a long export. Message parsing resolves through
+ * microtasks only, so the loop hands the browser a real task boundary once `PAINT_YIELD_INTERVAL_MS` of wall time has
+ * passed since the last one; a fast export never yields.
+ */
+function createPaintYield(): () => Promise<void> {
+    let last = performance.now()
+    return async () => {
+        const now = performance.now()
+        if(now - last < PAINT_YIELD_INTERVAL_MS){
+            return
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        last = performance.now()
+    }
+}
+
 export async function exportChat(page:number){
     // The card of the HTML modes only: instant modes and every stop before the render never create it.
     let task: ExportTask<'messages' | 'write'> | null = null
@@ -481,6 +500,7 @@ export async function exportChat(page:number){
             if(total > 0){
                 card.count(0, total)
             }
+            const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
@@ -490,6 +510,7 @@ export async function exportChat(page:number){
                     <div>${parsed}</div>
                 </div>`
                 card.count(++i, total)
+                await paintYield()
             }
 
             const doc = `
@@ -576,6 +597,7 @@ export async function exportChat(page:number){
             if(total > 0){
                 card.count(0, total)
             }
+            const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
@@ -585,6 +607,7 @@ export async function exportChat(page:number){
                     <td>${parsed}</td>
                 </tr>`
                 card.count(++i, total)
+                await paintYield()
             }
 
             const template = `
