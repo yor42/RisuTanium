@@ -3936,9 +3936,13 @@ export const languageGerman = {
         `RisuTanium kann das Preset ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Presets werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Presets bleiben erhalten. Wird die Seite zuvor neu geladen, bleiben Ihre aktuellen Einstellungen als neues Preset erhalten.`,
     "saveTaskPresetsHeldNotice": (name: string) =>
         `RisuTanium kann das Preset ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Presets werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Presets bleiben erhalten.`,
+    "saveLoadoutsHeldNotice": (name: string) =>
+        `RisuTanium kann das Loadout ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Loadouts werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Loadouts bleiben erhalten.`,
     "saveItemModuleLabel": (name: string) => `das Modul „${name}“`,
     "saveItemSettingLabel": (field: string) => `die Einstellung „${field}“`,
     "saveItemPluginDataLabel": (key: string) => `die Plugin-Daten „${key}“`,
+    "saveItemStaticsLabel": "die Nutzungsstatistik",
+    "saveItemCharacterOrderLabel": "die Reihenfolge der Charaktere",
     "personasRepairedNotice": (count: number) =>
         `RisuTanium hat ${count} ${count === 1 ? 'Persona' : 'Personas'} ausgelassen, deren Daten ungültig waren. Möglicherweise hat ein Plugin sie geschrieben.`,
     "personaListEmptyNotice": `In der Persona-Liste war keine verwendbare Persona mehr vorhanden, daher hat RisuTanium aus Ihrem Benutzernamen und Symbol eine hinzugefügt und ausgewählt.`,

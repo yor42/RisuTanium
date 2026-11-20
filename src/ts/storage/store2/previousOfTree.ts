@@ -193,7 +193,7 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     register('al:config', UNIT_TYPE.assetList, fixed.configAl)
     register('il:config', UNIT_TYPE.inlayList, fixed.il)
     const staticsBytes = register('statics', UNIT_TYPE.statics, fixed.statics)
-    register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
+    const loadoutsBytes = register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
     const presetBytes = fixed.presets.map((ref, index) => register(`preset:${index}`, UNIT_TYPE.preset, ref))
     fixed.taskPresets?.forEach((ref, index) => register(`taskPreset:${index}`, UNIT_TYPE.taskPreset, ref))
 
@@ -245,6 +245,14 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     const statics = staticsBytes === undefined ? null : readUnit(staticsBytes, UNIT_TYPE.statics)
     if (statics !== null && (statics.status === 'ok' || statics.status === 'stale')) {
         objects.statics = statics.value.body as ContentBody
+    }
+    // The loadouts stay an optional unit for the boot: a body that is missing or does not parse leaves them unknown, and a later loadouts fault then fails the pass.
+    const loadouts = loadoutsBytes === undefined ? null : readUnit(loadoutsBytes, UNIT_TYPE.loadouts)
+    if (loadouts !== null && (loadouts.status === 'ok' || loadouts.status === 'stale')) {
+        const items = (loadouts.value.body as ContentBody).items
+        if (Array.isArray(items)) {
+            objects.loadouts = items
+        }
     }
     const presets: JsonObject[] = []
     for (const bytes of presetBytes) {

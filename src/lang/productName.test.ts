@@ -74,6 +74,7 @@ const OWN_PRODUCT_KEYS = [
     'saveModulesHeldNotice',
     'savePresetsHeldNotice',
     'saveTaskPresetsHeldNotice',
+    'saveLoadoutsHeldNotice',
     'saveLeftoverNotice',
     'saveReadFailed',
     'saveRepairedEntriesNotice',

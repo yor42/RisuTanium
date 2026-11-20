@@ -1262,7 +1262,7 @@ let requestSaveNowImpl: (() => void) | null = null
 let unsavableCharacterCount = 0
 /** Which characters those are, replaced whole at each store2 pass; empty on a page without a store2 loop. */
 let unsavableCharacterIds: ReadonlySet<string> = new Set()
-/** How many modules, preset lists, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
+/** How many modules, preset lists, loadouts, statics, character order, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
 let unsavableItemCount = 0
 
 /** True while the store2 loop reports the character as unsavable; always false on a page without a store2 loop. */
@@ -1687,11 +1687,18 @@ function unsavableItemNotice(item: SkippedItem): string {
         if (item.scope === 'moduleSet') {
             return language.saveModulesHeldNotice(item.label)
         }
+        if (item.scope === 'loadouts') {
+            return language.saveLoadoutsHeldNotice(item.label)
+        }
         const what = item.scope === 'module'
             ? language.saveItemModuleLabel(item.label.slice(1, -1))
             : item.scope === 'settings'
                 ? language.saveItemSettingLabel(item.key)
-                : language.saveItemPluginDataLabel(item.key)
+                : item.scope === 'statics'
+                    ? language.saveItemStaticsLabel
+                    : item.scope === 'characterOrder'
+                        ? language.saveItemCharacterOrderLabel
+                        : language.saveItemPluginDataLabel(item.key)
         return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
     } catch {
         return item.saved ? language.saveItemUnsavedNotice(`"${item.key}"`) : language.saveItemNeverSavedNotice(`"${item.key}"`)
