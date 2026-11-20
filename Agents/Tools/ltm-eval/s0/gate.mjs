@@ -44,7 +44,12 @@ export const resolveLedgerPath = (argv) => arg(argv, '--ledger') ?? defaultLedge
 // Request-level refusals (before the ledger is consulted): the tune seed is never a gate seed, a gate seed belongs to
 // its builder's family, and settings must come from the tune draw. An OVERRIDE run takes a fresh seed instead of a
 // family seed: never a protected seed, and disjoint from every protected family's chat seeds.
+export function assertGateBuilder(builder) {
+  if (builder === 'idf') throw new Error('the idf builder is report-only and carries no S0 verdict (MC-2655): no gate attempt or settings record for it');
+}
+
 export function checkGateArgs({ drawSeed, builder, settings, kind }) {
+  assertGateBuilder(builder);
   if (drawSeed === SEEDS.TUNE) throw new Error('the gate refuses the TUNE draw seed');
   if (kind === 'OVERRIDE') {
     if (!FAMILIES[builder]) throw new Error('unknown builder ' + builder);
@@ -176,7 +181,7 @@ export async function runGateAttempt(opts) {
     const cands = s.chats.map((c, i) => donorEntry(c, turnsOf[i]));
     const recs = s.chats.map((c, i) => {
       const memo = new Map();
-      const donorOf = (category, style) => { const k = category + '|' + style; if (!memo.has(k)) memo.set(k, pickDonor(cands, i, category, style)); return memo.get(k); };
+      const donorOf = (category, style, key) => { const k = category + '|' + style + '|' + key; if (!memo.has(k)) memo.set(k, pickDonor(cands, i, category, style, key)); return memo.get(k); };
       return controlsRecord(c, counter, settings, turnsOf[i], donorOf, hooks);
     });
     controlCells[n] = recs;
@@ -251,6 +256,7 @@ async function main(argv) {
   if (cmd === 'record-settings') {
     const builder = arg(argv, '--builder');
     const s = JSON.parse(fs.readFileSync(arg(argv, '--settings'), 'utf8'));
+    assertGateBuilder(builder);
     if (s.sha256 !== settingsDigest(s) || s.builder !== builder) throw new Error('settings do not match their sha256 or builder');
     saveLedger(ledgerPath, recordSettings(loadLedger(ledgerPath), builder, s.sha256));
     console.log('recorded', builder, s.sha256);

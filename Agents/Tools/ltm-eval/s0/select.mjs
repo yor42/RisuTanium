@@ -29,7 +29,8 @@ export function objective(r) {
   for (const cell of cellsOf(r)) for (const s of STYLES) o = Math.min(o, iv(r.recs[cell], s, 'e').boot.lo);
   return o;
 }
-const oracleOk = (r) => cellsOf(r).every((cell) => STYLES.every((s) => (r.oracle?.[cell]?.[s] ?? 1) >= ORACLE_FLOOR));
+// Eligible only when both ceilings reach the floor (MC-2653): ORACLE-RANK for the packing, ORACLE-QUERY for the scorer.
+const oracleOk = (r) => cellsOf(r).every((cell) => STYLES.every((s) => (r.oracle?.[cell]?.[s] ?? 1) >= ORACLE_FLOOR && (r.oracleQuery?.[cell]?.[s] ?? 1) >= ORACLE_FLOOR));
 
 // delta: the smallest half-width of the tune 95% CI of recall at the default point.
 export function deltaOf(r) {
@@ -70,7 +71,7 @@ export function selectSettings(ev, { builder, C = C_GATE, procedure = {}, tuneDr
   const pickGrid = (budget) => {
     const cands = [];
     for (const L of G.L) for (const k of builder === 'idf' ? G.K : [K_DEFAULT]) {
-      const st = { ...base, L, k, budget, oracle: true }; // oracle: the evaluator also measures ORACLE-RANK here
+      const st = { ...base, L, k, budget, oracle: true }; // oracle: the evaluator also measures ORACLE-RANK and ORACLE-QUERY here
       const r = run(st);
       cands.push({ L, k, O: objective(r), ok: oracleOk(r) });
     }
@@ -79,15 +80,26 @@ export function selectSettings(ev, { builder, C = C_GATE, procedure = {}, tuneDr
     const best = Math.max(...pool.map((c) => c.O));
     const near = pool.filter((c) => c.O >= best - delta);
     near.sort((a, b) => b.L - a.L || Math.abs(a.k - K_DEFAULT) - Math.abs(b.k - K_DEFAULT));
-    return { pick: near[0], cands };
+    return { pick: near[0], cands, eligible: ok.length > 0 };
   };
+  const cap = capOf(C);
   let g = pickGrid(BUDGET_DEFAULT_);
+  // A bigger budget is allowed wherever no candidate passes both oracle checks at the default (MC-2654); the first
+  // budget above the default, within the cap, with an eligible candidate becomes the grid budget.
+  let gridBudget = BUDGET_DEFAULT_;
+  if (!g.eligible) {
+    for (const b of G.budgets.filter((x) => x > BUDGET_DEFAULT_ && x <= cap)) {
+      const h = pickGrid(b);
+      if (h.eligible) { g = h; gridBudget = b; break; }
+    }
+    if (!g.eligible) evidence.oracleFlag = 'no oracle-eligible L/budget';
+  }
   let L = g.pick.L, k = g.pick.k;
   evidence.grid = g.cands;
+  evidence.gridBudget = gridBudget;
 
-  // 2. budget: clear the floor by the lower bound, then the cheapest within delta of 1200.
-  const cap = capOf(C);
-  const budgets = G.budgets.filter((b) => b <= cap);
+  // 2. budget: clear the floor by the lower bound, then the cheapest within delta of 1200; never below the grid budget.
+  const budgets = G.budgets.filter((b) => b <= cap && (gridBudget === BUDGET_DEFAULT_ || b >= gridBudget));
   const E = budgets.filter((b) => clears(run({ ...base, L, k, budget: b })));
   let budget, flag = null;
   if (E.includes(BUDGET_DEFAULT_)) {
@@ -97,7 +109,7 @@ export function selectSettings(ev, { builder, C = C_GATE, procedure = {}, tuneDr
   else { budget = BUDGET_DEFAULT_; flag = 'tune predicts FAIL'; }
   evidence.budgetClears = E;
   evidence.budgetFlag = flag;
-  if (budget !== BUDGET_DEFAULT_) { // L and k are rechecked once at the chosen budget
+  if (budget !== gridBudget) { // L and k are rechecked once at the chosen budget
     g = pickGrid(budget);
     evidence.recheck = { L: g.pick.L, k: g.pick.k, changed: g.pick.L !== L || g.pick.k !== k };
     L = g.pick.L; k = g.pick.k;
