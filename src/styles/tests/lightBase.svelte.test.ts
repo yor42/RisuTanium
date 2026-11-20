@@ -309,10 +309,16 @@ describe('TD7b: the light block restores every name the dark base restores, and 
     }
 
     test('every dark-base name is declared by the light block, and the light block adds only chat statics', () => {
-        const darkNames = ['src/styles/nexus-tokens.css', 'src/styles/pattern-tokens.css', 'src/styles/chat-pack-base.css']
+        // The black backdrop under the pack canvas is the same for every base: it is what the install judge
+        // flattens a translucent canvas over, so the light block must leave it alone rather than restate it.
+        const PACK_BACKDROP = '--surface-pack-backdrop'
+        const baseNames = ['src/styles/nexus-tokens.css', 'src/styles/pattern-tokens.css', 'src/styles/chat-pack-base.css']
             .flatMap((file) => declared(readRepoFile(file), DARK_SELECTOR).map(([name]) => name))
+        expect(baseNames).toContain(PACK_BACKDROP)
+        const darkNames = baseNames.filter((name) => name !== PACK_BACKDROP)
         expect(darkNames).toHaveLength(29)
         const lightNames = declared(readRepoFile('src/styles/chat-light-base.css'), LIGHT_SELECTOR).map(([name]) => name)
+        expect(lightNames).not.toContain(PACK_BACKDROP)
         expect(lightNames.filter((name) => darkNames.includes(name)).sort()).toEqual([...darkNames].sort())
         expect(lightNames).toHaveLength(new Set(lightNames).size)
         expect(lightNames.length - darkNames.length).toBe(26)
