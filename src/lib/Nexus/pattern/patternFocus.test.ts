@@ -25,6 +25,31 @@ describe('tabbables', () => {
         const root = build('<button id="a">a</button><button disabled>b</button><div hidden><button>c</button></div><button tabindex="-1">d</button><div inert><button>e</button></div><input id="f">')
         expect(tabbables(root).map((element) => element.id)).toEqual(['a', 'f'])
     })
+
+    test('keeps only the checked radio of a named group, as the browser visits it', () => {
+        const root = build('<button id="a">a</button><input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2" checked><input type="radio" name="g" id="r3"><button id="z">z</button>')
+        expect(tabbables(root).map((element) => element.id)).toEqual(['a', 'r2', 'z'])
+    })
+
+    test('keeps the first radio of a named group when none is checked', () => {
+        const root = build('<input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2"><button id="z">z</button>')
+        expect(tabbables(root).map((element) => element.id)).toEqual(['r1', 'z'])
+    })
+
+    test('keeps every unnamed radio and one stop per distinct group', () => {
+        const root = build('<input type="radio" id="u1"><input type="radio" id="u2"><input type="radio" name="g" id="g1"><input type="radio" name="g" id="g2" checked><input type="radio" name="h" id="h1" checked><input type="radio" name="h" id="h2">')
+        expect(tabbables(root).map((element) => element.id)).toEqual(['u1', 'u2', 'g2', 'h1'])
+    })
+
+    test('radios of one name in different forms are separate groups', () => {
+        const root = build('<form><input type="radio" name="g" id="f1a" checked><input type="radio" name="g" id="f1b"></form><form><input type="radio" name="g" id="f2a"><input type="radio" name="g" id="f2b" checked></form>')
+        expect(tabbables(root).map((element) => element.id)).toEqual(['f1a', 'f2b'])
+    })
+
+    test('a disabled checked radio does not hide the group from Tab', () => {
+        const root = build('<input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2" checked disabled><button id="z">z</button>')
+        expect(tabbables(root).map((element) => element.id)).toEqual(['r1', 'z'])
+    })
 })
 
 describe('trapTab', () => {
@@ -65,6 +90,35 @@ describe('trapTab', () => {
         expect(trapTab(event, root)).toBe(true)
         expect(event.defaultPrevented).toBe(true)
         expect(document.activeElement?.id).toBe('b')
+    })
+
+    test('Shift+Tab from the checked radio of a leading named group wraps to the last control', () => {
+        const root = build('<input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2" checked><input type="radio" name="g" id="r3"><button id="z">z</button>')
+        document.getElementById('r2')!.focus()
+        const event = tab(true)
+        expect(trapTab(event, root)).toBe(true)
+        expect(event.defaultPrevented).toBe(true)
+        expect(document.activeElement?.id).toBe('z')
+    })
+
+    test('Shift+Tab from a leading named group with none checked wraps to the last control', () => {
+        const root = build('<input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2"><button id="z">z</button>')
+        document.getElementById('r1')!.focus()
+        expect(trapTab(tab(true), root)).toBe(true)
+        expect(document.activeElement?.id).toBe('z')
+    })
+
+    test('Tab from the last control wraps forward onto the checked radio of the leading group', () => {
+        const root = build('<input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2" checked><button id="z">z</button>')
+        document.getElementById('z')!.focus()
+        expect(trapTab(tab(), root)).toBe(true)
+        expect(document.activeElement?.id).toBe('r2')
+    })
+
+    test('Shift+Tab from a trailing checked radio is left to the browser', () => {
+        const root = build('<button id="a">a</button><input type="radio" name="g" id="r1"><input type="radio" name="g" id="r2" checked>')
+        document.getElementById('r2')!.focus()
+        expect(trapTab(tab(true), root)).toBe(false)
     })
 
     test('Shift+Tab from a non-tabbable element after the first control is left to the browser', () => {
