@@ -65,7 +65,7 @@ describe('production compile of the media components', () => {
     const components = [
         'src/lib/SideBars/SidebarAvatar.svelte',
         'src/lib/SideBars/BarIcon.svelte',
-        'src/lib/SideBars/CharConfig.svelte',
+        'src/lib/SideBars/CharConfigPanel.svelte',
         'src/lib/Setting/Pages/PersonaSettings.svelte',
         'src/lib/Setting/Pages/OtherBotSettings.svelte',
         'src/lib/SettingsShell/PersonasShellPage.svelte',
