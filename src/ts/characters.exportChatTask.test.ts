@@ -590,4 +590,35 @@ describe('the card paints its count during a long export', () => {
         expect(seen.some((entry) => entry.macrotaskRan)).toBe(false)
         expect(taskHostView()?.state).toBe('done')
     })
+
+    it('CH15: yields that cost far more than the interval stay a small fraction of the export', async () => {
+        const total = 100
+        const chat = {
+            fmIndex: -1,
+            message: Array.from({ length: total }, (_, i) => ({ role: i % 2 === 0 ? 'user' : 'char', data: `Message ${i}` })),
+        }
+        h.chat = chat
+        h.char = { type: 'character', name: 'Aria', firstMessage: 'Hello there', chatPage: 0, chats: [chat], defaultVariables: '' }
+        h.db = { characters: [h.char], globalChatVariables: {}, templateDefaultVariables: '', translatorType: 'llm' }
+
+        const realSetTimeout = globalThis.setTimeout
+        const yieldMs = 1000
+        let clock = 0
+        let yields = 0
+        vi.spyOn(performance, 'now').mockImplementation(() => (clock += 60))
+        vi.spyOn(globalThis, 'setTimeout').mockImplementation(((handler: TimerHandler, timeout?: number) => {
+            if (timeout === 0) {
+                yields++
+                clock += yieldMs
+            }
+            return realSetTimeout(handler, timeout)
+        }) as typeof setTimeout)
+
+        await run(['2', '0', '0'])
+
+        const loopMs = clock - yields * yieldMs
+        expect(yields).toBeGreaterThan(0)
+        expect(yields).toBeLessThanOrEqual(loopMs / (4 * yieldMs) + 2)
+        expect(taskHostView()?.state).toBe('done')
+    })
 })

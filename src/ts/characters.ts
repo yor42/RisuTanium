@@ -359,21 +359,27 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 
 
 const PAINT_YIELD_INTERVAL_MS = 50
+const PAINT_YIELD_COST_FACTOR = 4
 
 /**
  * The export card must be able to paint its message count during a long export. Message parsing resolves through
- * microtasks only, so the loop hands the browser a real task boundary once `PAINT_YIELD_INTERVAL_MS` of wall time has
- * passed since the last one; a fast export never yields.
+ * microtasks only, so the loop hands the browser a real task boundary once enough wall time has passed since the
+ * last one resumed; a fast export never yields. The wait is at least `PAINT_YIELD_INTERVAL_MS` and at least
+ * `PAINT_YIELD_COST_FACTOR` times the last yield's duration, so a yield that pays for a heavy render is not repeated
+ * every message and yields cost at most about 1/(1+factor) of the loop time.
  */
 function createPaintYield(): () => Promise<void> {
     let last = performance.now()
+    let lastYieldMs = 0
     return async () => {
         const now = performance.now()
-        if(now - last < PAINT_YIELD_INTERVAL_MS){
+        if(now - last < Math.max(PAINT_YIELD_INTERVAL_MS, PAINT_YIELD_COST_FACTOR * lastYieldMs)){
             return
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 0))
-        last = performance.now()
+        const resumed = performance.now()
+        lastYieldMs = resumed - now
+        last = resumed
     }
 }
 
