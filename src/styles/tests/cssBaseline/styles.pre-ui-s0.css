@@ -449,6 +449,41 @@ body {
   }
 }
 
+/*
+ * The text on the danger fills (rest, selected and hover). It comes from the scheme even while a theme
+ * pack is on, and the scheme derives it to stay readable on all three red fills. It is unlayered, so it
+ * wins over the button's own text utility.
+ */
+.risu-on-danger {
+  color: var(--risu-theme-role-on-danger, #ffffff);
+}
+
+/*
+ * Prose list markers paint the list item's own text colour on every scheme and every prose surface. The
+ * typography plugin's grey marker colours fall below 3:1 on all built-in schemes. It is unlayered, so it
+ * wins over the plugin's utilities-layer declarations.
+ */
+.prose {
+  --tw-prose-bullets: currentColor;
+  --tw-prose-counters: currentColor;
+}
+
+/*
+ * The inline link of a classic dialog. It reads the scheme accent, which the scheme derives to stay at
+ * least 4.5:1 on its page and panel colours, and hover or focus moves to the scheme text colour under
+ * the same hover-capable media query Tailwind uses, so a touch device gets no sticky hover colour.
+ */
+.risu-link {
+  color: var(--risu-theme-role-accent, #6f7fc8);
+}
+
+@media (hover: hover) {
+  .risu-link:hover,
+  .risu-link:focus-visible {
+    color: var(--color-textcolor);
+  }
+}
+
 .loadmove {
   animation: spin 1s steps(8) infinite;
   border-radius: 50%;

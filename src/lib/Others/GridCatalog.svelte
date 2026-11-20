@@ -1833,7 +1833,7 @@
                         </button>
                         {#if rowForms.iconTrash}
                             <button
-                                class="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-red-600 bg-red-700 text-textcolor hover:bg-red-500 focus:outline-hidden focus:ring-2 focus:ring-red-600 shadow-xs transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                class="shrink-0 flex items-center justify-center h-8 w-8 rounded-md border border-red-600 bg-red-700 text-textcolor risu-on-danger hover:bg-red-600 focus:outline-hidden focus:ring-2 focus:ring-red-600 shadow-xs transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 aria-label={language.othersUi.editMoveToTrash}
                                 title={language.othersUi.editMoveToTrash}
                                 disabled={picks.size === 0 || trashing}

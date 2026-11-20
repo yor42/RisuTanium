@@ -145,6 +145,31 @@ describe('cascade order', () => {
         expect(model(css, { hovered: a }).painted(a).color).toBe('#111111ff')
         expect(model(css, { hoverMedia: true }).painted(a).color).toBe('#111111ff')
     })
+
+    // CM-M: `::marker` is a pseudo-element node of its own, like `::before`.
+    test('CM-M: li::marker applies only to the marker node and the marker is not reported as unmodelled', () => {
+        mount('<ul><li id="e" class="x">item</li></ul>')
+        const rules = compileRules([{ name: 'test', css: '.x { color: #111111 } li::marker { color: #aa0000 } .x::before { color: #0000bb; content: "" }' }])
+        expect(rules.unmodelled).toEqual([])
+        const m = new CascadeModel(rules, {})
+        const li = document.getElementById('e')!
+        expect(m.painted(li).color).toBe('#111111ff')
+        expect(m.painted(li, '::marker').color).toBe('#aa0000ff')
+        expect(m.painted(li, '::before').color).toBe('#0000bbff')
+    })
+
+    test('CM-M: a nested rule shaped like the typography output matches the marker', () => {
+        mount('<div class="prose"><ul><li id="e">item</li></ul><ol><li id="o">item</li></ol></div>')
+        const m = model('.prose { --tw-prose-bullets: #aa0000; :where(ul > li)::marker { color: var(--tw-prose-bullets) } :where(ol > li)::marker { color: #00aa00 } }')
+        expect(m.painted(document.getElementById('e')!, '::marker').color).toBe('#aa0000ff')
+        expect(m.painted(document.getElementById('o')!, '::marker').color).toBe('#00aa00ff')
+    })
+
+    test('CM-M: currentColor on a marker is the colour of its list item', () => {
+        mount('<div class="prose" style="color: #123456"><ul><li id="e">item</li></ul></div>')
+        const m = model('.prose { --tw-prose-bullets: currentColor } .prose li::marker { color: var(--tw-prose-bullets) } .prose li { color: #654321 }')
+        expect(m.painted(document.getElementById('e')!, '::marker').color).toBe('#654321ff')
+    })
 })
 
 describe('the pack element and the root attribute', () => {

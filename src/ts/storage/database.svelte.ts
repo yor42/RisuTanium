@@ -561,8 +561,8 @@ export function setDatabase(data:Database){
     data.hypaAllocatedTokens ??= 3000
     data.hypaChunkSize ??= 3000
     data.dallEQuality ??= 'standard'
-    data.customTextTheme.FontColorQuote1 ??= '#8BE9FD'
-    data.customTextTheme.FontColorQuote2 ??= '#FFB86C'
+    data.customTextTheme.FontColorQuote1 ??= null
+    data.customTextTheme.FontColorQuote2 ??= null
     data.font ??= 'default'
     data.customFont ??= ''
     data.lineHeight ??= 1.25
@@ -942,8 +942,8 @@ export interface Database{
         FontColorBold : string,
         FontColorItalic : string,
         FontColorItalicBold : string,
-        FontColorQuote1 : string,
-        FontColorQuote2 : string
+        FontColorQuote1 : string | null,
+        FontColorQuote2 : string | null
     }
     requestRetrys:number
     localNetworkMode:boolean

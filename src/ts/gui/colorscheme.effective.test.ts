@@ -159,7 +159,7 @@ describe('standard text theme italics follow the effective scheme', () => {
         updateTextThemeAndCSS()
 
         expect(get(ColorSchemeTypeStore)).toBe('light')
-        expect(italics()).toEqual({ italic: '#6b6c72', italicBold: '#6b6c72' })
+        expect(italics()).toEqual({ italic: '#5f6066', italicBold: '#5f6066' })
     })
 
     test('T4-6 CG: lite mode keeps the dark italic colour', () => {
@@ -169,6 +169,54 @@ describe('standard text theme italics follow the effective scheme', () => {
         updateTextThemeAndCSS()
 
         expect(italics()).toEqual({ italic: '#9a9ba1', italicBold: '#9a9ba1' })
+    })
+})
+
+describe('Custom text theme quotes follow the effective scheme', () => {
+    const customTheme = (quote1: string | null, quote2: string | null) => ({
+        FontColorStandard: '#111111',
+        FontColorItalic: '#222222',
+        FontColorBold: '#333333',
+        FontColorItalicBold: '#444444',
+        FontColorQuote1: quote1,
+        FontColorQuote2: quote2,
+    })
+    const quotes = () => ({
+        quote1: document.documentElement.style.getPropertyValue('--FontColorQuote1').toLowerCase(),
+        quote2: document.documentElement.style.getPropertyValue('--FontColorQuote2').toLowerCase(),
+    })
+
+    test('LC-3b: a null quote under a light built-in with a stale dark copy paints the light quotes', () => {
+        h.db.textTheme = 'custom'
+        h.db.customTextTheme = customTheme(null, null)
+        h.db.colorSchemeName = 'light'
+        h.db.colorScheme = structuredClone(OLD_COPY)
+
+        updateColorScheme()
+        updateTextThemeAndCSS()
+
+        expect(quotes()).toEqual({ quote1: '#0b5f7a', quote2: '#8a4200' })
+    })
+
+    test('LC-3b CG: a null quote under a dark built-in paints the dark quotes', () => {
+        h.db.textTheme = 'custom'
+        h.db.customTextTheme = customTheme(null, null)
+
+        updateColorScheme()
+        updateTextThemeAndCSS()
+
+        expect(quotes()).toEqual({ quote1: '#8be9fd', quote2: '#ffb86c' })
+    })
+
+    test('LC-3b CG: a stored quote is painted verbatim on a light scheme and an absent one follows the scheme', () => {
+        h.db.textTheme = 'custom'
+        h.db.customTextTheme = customTheme('#123456', null)
+        h.db.colorSchemeName = 'light'
+
+        updateColorScheme()
+        updateTextThemeAndCSS()
+
+        expect(quotes()).toEqual({ quote1: '#123456', quote2: '#8a4200' })
     })
 })
 
