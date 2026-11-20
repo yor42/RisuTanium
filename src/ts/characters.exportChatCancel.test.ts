@@ -113,6 +113,7 @@ vi.mock(import('./media'), () => ({} as unknown as typeof import('./media')))
 
 import { exportChat } from './characters'
 import { ALERT_SELECT_CANCEL } from './alertCancel'
+import { resetTaskHostForTests, taskHostView } from './alertTask.svelte'
 
 // Mode '0' is JSON, '1' text and '2' an HTML file, which also asks the translate and persona questions.
 const exportMode = async (selections: string[]) => {
@@ -121,6 +122,7 @@ const exportMode = async (selections: string[]) => {
 }
 
 beforeEach(() => {
+  resetTaskHostForTests()
   h.download.mockReset()
   h.normal.mockReset()
   h.clear.mockReset()
@@ -168,16 +170,16 @@ describe('exportChat prompts offer a cancel that exports nothing', () => {
 })
 
 describe('exportChat cancelled picker', () => {
-  it('regression reproducer: the HTML mode clears its wait dialog and shows no success notice', async () => {
+  it('regression reproducer: the HTML mode with a dismissed picker leaves no card, shows no wait and no success notice', async () => {
     h.download.mockResolvedValue(false)
 
     await exportMode(['2', '1', '0'])
 
     expect(h.download).toHaveBeenCalledTimes(1)
-    expect(h.wait.mock.invocationCallOrder.length).toBeGreaterThan(0)
-    expect(h.clear).toHaveBeenCalledTimes(1)
-    expect(h.clear.mock.invocationCallOrder[0]).toBeGreaterThan(Math.max(...h.wait.mock.invocationCallOrder))
+    expect(h.wait).not.toHaveBeenCalled()
+    expect(h.clear).not.toHaveBeenCalled()
     expect(h.normal).not.toHaveBeenCalled()
+    expect(taskHostView()).toBeNull()
   })
 
   it('regression reproducer: the JSON and text modes show no success notice', async () => {
@@ -191,12 +193,13 @@ describe('exportChat cancelled picker', () => {
     expect(h.normal).not.toHaveBeenCalled()
   })
 
-  it('guard: a saved HTML export shows the success notice once and does not clear', async () => {
+  it('regression reproducer: a saved HTML export ends on a done card and posts no legacy notice', async () => {
     h.download.mockResolvedValue(true)
 
     await exportMode(['2', '1', '0'])
 
-    expect(h.normal).toHaveBeenCalledTimes(1)
+    expect(h.normal).not.toHaveBeenCalled()
     expect(h.clear).not.toHaveBeenCalled()
+    expect(taskHostView()?.state).toBe('done')
   })
 })

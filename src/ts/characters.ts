@@ -1,9 +1,10 @@
 import { get, writable } from "svelte/store";
 import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCurrentChat, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
-import { alertAddCharacter, alertClear, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
+import { alertAddCharacter, alertClear, alertConfirm, alertError, alertNormal, alertSelect, alertStore } from "./alert";
 import { ALERT_SELECT_CANCEL } from "./alertCancel";
 import { language } from "../lang";
 import { downloadNotice } from "./exportNotice";
+import { createExportTask, pickerAside, type ExportTask } from "./exportTask";
 import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, readPickedFileBytes, selectMultipleFileObjects, selectSingleFile, selectSingleFileObject } from "./util";
 import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "./storage/pickedAssetLimit";
 import { v4 as uuidv4, v4 } from 'uuid';
@@ -358,6 +359,8 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 
 
 export async function exportChat(page:number){
+    // The card of the HTML modes only: instant modes and every stop before the render never create it.
+    let task: ExportTask<'messages' | 'write'> | null = null
     try {
 
         const mode = await alertSelect([language.alerts.exportAsJson, language.alerts.exportAsTxt, language.alerts.exportAsHtmlFile, language.alerts.exportAsHtmlEmbed], undefined, { cancel: ALERT_SELECT_CANCEL })
@@ -463,14 +466,30 @@ export async function exportChat(page:number){
 
             let chatContentHTML = ''
 
+            const card = createExportTask<'messages' | 'write'>({
+                title: language.chatExportTaskTitle,
+                subtitle: char.name,
+                steps: [
+                    { id: 'messages', label: language.chatExportStepMessages, noun: language.chatShellMessages },
+                    { id: 'write', label: language.exportStepWrite },
+                ],
+            })
+            task = card
+            card.useToken(null)
+            card.open()
+            const total = chat.message.length
+            if(total > 0){
+                card.count(0, total)
+            }
             let i = 0
             for(const v of chat.message){
-                alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
+                const parsed = await htmlChatParse(v.data)
                 chatContentHTML += `<div class="chat">
                     <h2>${escapeHtmlText(name)}</h2>
-                    <div>${await htmlChatParse(v.data)}</div>
+                    <div>${parsed}</div>
                 </div>`
+                card.count(++i, total)
             }
 
             const doc = `
@@ -528,24 +547,44 @@ export async function exportChat(page:number){
             `
 
 
-            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.html', Buffer.from(doc, 'utf-8'))
+            card.step('write')
+            // On Android the card steps aside right before the system picker opens, so no card covers it.
+            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.html', Buffer.from(doc, 'utf-8'), { aroundPicker: pickerAside(card) })
             if(!saved){
-                alertClear()
+                card.close()
                 return
             }
+            card.done(downloadNotice(language.successExport))
+            return
         }
         else if(mode === '3'){
             //create a html table
             let chatContentHTML = ''
 
+            const card = createExportTask<'messages' | 'write'>({
+                title: language.chatCopyTaskTitle,
+                subtitle: char.name,
+                steps: [
+                    { id: 'messages', label: language.chatExportStepMessages, noun: language.chatShellMessages },
+                    { id: 'write', label: language.chatCopyStepCopy },
+                ],
+            })
+            task = card
+            card.useToken(null)
+            card.open()
+            const total = chat.message.length
+            if(total > 0){
+                card.count(0, total)
+            }
             let i = 0
             for(const v of chat.message){
-                alertWait(`${language.translating} ${i++}/${chat.message.length}`)
                 const name = v.saying ? findCharacterbyId(v.saying).name : v.role === 'char' ? char.name : anonymous ? '×××' : getUserName()
+                const parsed = await htmlChatParse(v.data)
                 chatContentHTML += `<tr>
                     <td>${escapeHtmlText(name)}</td>
-                    <td>${await htmlChatParse(v.data)}</td>
+                    <td>${parsed}</td>
                 </tr>`
+                card.count(++i, total)
             }
 
             const template = `
@@ -565,13 +604,14 @@ export async function exportChat(page:number){
 
             //copy to clipboard
 
+            card.step('write')
             const item = new ClipboardItem({
                 'text/html': new Blob([template], { type: 'text/html' }),
                 'text/plain': new Blob([template], { type: 'text/plain' })
             })
             await navigator.clipboard.write([item])
 
-            alertNormal(language.clipboardSuccess)
+            card.done(language.clipboardSuccess)
             return
 
         }
@@ -599,7 +639,14 @@ export async function exportChat(page:number){
         }
         alertNormal(downloadNotice(language.successExport))
     } catch (error) {
-        alertError(error)
+        if(task){
+            task.endOnError(error, undefined)
+        }
+        else{
+            alertError(error)
+        }
+    } finally {
+        task?.close()
     }
 }
 
