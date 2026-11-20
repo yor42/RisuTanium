@@ -1,16 +1,20 @@
 // Validity controls of the S0 gate. A control shows that the experiment can discriminate; a confirmed failure makes
 // the attempt an INVALID EXPERIMENT and the verdict is never computed.
 //   ORACLE-RANK   packing ceiling: gold units first, then the ranker's order. Must reach 0.9.
-//   ORACLE-QUERY  scorer, tokeniser and corpus ceiling: one query per gold plant sentence through the scorer, fused by RRF.
-//   NULL          each fact turn's cue replaced by a same-category donor cue, filler unchanged. Its recall must not
+//   ORACLE-QUERY  scorer, tokeniser and corpus ceiling: one query per gold plant sentence through the scorer, merged
+//                 round-robin (MC-2653): rank 0 of every span's list, then rank 1, and so on. A fused (RRF) merge lets a
+//                 unit that is second in every list outrank each list's own gold unit, so it measures the merge, not the ceiling.
+//   NULL          each fact turn's cue replaced by a same-category donor cue of another fact key (MC-2653), filler
+//                 unchanged. Its recall must not
 //                 exceed max(baseline units, RANDOM) by more than 0.05.
 //   RANDOM        per turn the mean recall of 20 uniform shuffles of the D0 units (streams 9101 + j).
 // Each control is a one-sided Bonferroni interval test on the cell's final sample, per cell and style; a control is
 // FAIL-CONFIRMED only when both the chat-cluster bootstrap bound and the cluster-t bound exclude its threshold.
 import { rng } from '../gen/lib.mjs';
-import { rrf, tokenize } from './lexical.ts';
+import { tokenize } from './lexical.ts';
 import { ChatSim, goldUnitIdx, orderFor, packFor, recallOf } from './sim.mjs';
 import { B_CONTROL, STYLES, clusterSE, kthLargest, kthSmallest, ratioOf, resampleRatios, tQuantile } from './stats.mjs';
+import { allKey } from './turns.mjs';
 
 export const ORACLE_FLOOR = 0.9;
 export const NULL_SLACK = 0.05;
@@ -19,20 +23,22 @@ export const RANDOM_SHUFFLES = 20;
 export const RANDOM_SEED = 9101;
 
 // ---- NULL donor ----
-// cands: [{ castTokens: Set, cue(category, style) -> string | null }], i the recipient's position in the cell.
-// The donor is the first same-category turn, in cyclic order i+1, i+2, ... (never chat i), of a chat whose cast-name
-// tokens are disjoint from chat i's. If no chat qualifies, chat i+1's turn is used and counted as a fallback.
-export function pickDonor(cands, i, category, style) {
+// cands: [{ castTokens: Set, cue(category, style, excludeKey) -> string | null }], i the recipient's position in the
+// cell, key the recipient turn's fact key. The donor is the first same-category turn, in cyclic order i+1, i+2, ... (never
+// chat i), of a chat whose cast-name tokens are disjoint from chat i's, and never one that asks the recipient's own fact
+// key (MC-2653): such a donor would carry the recipient's answer and make NULL measure the cue, not its absence. If no
+// chat qualifies, chat i+1's turn is used and counted as a fallback.
+export function pickDonor(cands, i, category, style, key) {
   const n = cands.length;
   const mine = cands[i].castTokens;
   for (let d = 1; d < n; d++) {
     const j = (i + d) % n;
-    const c = cands[j].cue(category, style);
+    const c = cands[j].cue(category, style, key);
     if (c !== null && [...cands[j].castTokens].every((t) => !mine.has(t))) return { j, cue: c, fallback: false };
   }
   for (let d = 1; d < n; d++) {
     const j = (i + d) % n;
-    const c = cands[j].cue(category, style);
+    const c = cands[j].cue(category, style, key);
     if (c !== null) return { j, cue: c, fallback: true };
   }
   return null;
@@ -40,11 +46,44 @@ export function pickDonor(cands, i, category, style) {
 
 export const castTokensOf = (chat) => new Set(tokenize((chat.nf?.cast ?? []).join(' ')));
 
-// A cell context entry for a chat: its cast tokens and the first cue per category and style among its fact turns.
+// A cell context entry for a chat: its cast tokens and, per category and style, its fact turns' cues in order with their
+// fact key. cue() returns the first cue whose key differs from excludeKey.
 export function donorEntry(chat, turns) {
+  const byId = new Map(chat.questions.map((q) => [q.id, q]));
   const cues = new Map();
-  for (const t of turns) if (t.kind === 'fact') { const k = t.category + '|' + t.style; if (!cues.has(k)) cues.set(k, t); }
-  return { castTokens: castTokensOf(chat), cue: (category, style) => cues.get(category + '|' + style)?.cue ?? null };
+  for (const t of turns) {
+    if (t.kind !== 'fact') continue;
+    const k = t.category + '|' + t.style;
+    const q = byId.get(t.qid);
+    if (!cues.has(k)) cues.set(k, []);
+    cues.get(k).push({ key: q ? allKey(q) : null, cue: t.cue });
+  }
+  return { castTokens: castTokensOf(chat), cue: (category, style, excludeKey) => (cues.get(category + '|' + style) ?? []).find((e) => e.key !== excludeKey)?.cue ?? null };
+}
+
+// Round-robin merge of ranked id lists: rank 0 of every list in list order, then rank 1, and so on, skipping ids taken.
+export function roundRobin(lists) {
+  const seen = new Set();
+  const out = [];
+  const depth = lists.reduce((m, l) => Math.max(m, l.length), 0);
+  for (let r = 0; r < depth; r++) for (const l of lists) if (r < l.length && !seen.has(l[r])) { seen.add(l[r]); out.push(l[r]); }
+  return out;
+}
+
+// The ORACLE-QUERY unit order: one query per gold plant sentence in D0 through the scorer, merged round-robin in span
+// order, then every unit the queries did not hit, newest first. The ranker is never read.
+export function oracleQueryOrder(sim, q, d0, first, hooks) {
+  const scorer = hooks?.scorer ?? ((index, tokens) => index.scoreTokens(tokens));
+  const all = d0.units.map((_, i) => i);
+  const lists = [];
+  for (const sp of q.goldSpans) {
+    if (sp.msg >= first) continue;
+    const s = scorer(d0.index, tokenize(sim.chat.messages[sp.msg].text.slice(sp.start, sp.end)));
+    lists.push(all.filter((i) => s[i] > 0).sort((a, b) => s[b] - s[a] || b - a));
+  }
+  const merged = roundRobin(lists);
+  const seen = new Set(merged);
+  return merged.concat(all.filter((i) => !seen.has(i)).reverse());
 }
 
 // ORACLE-RANK alone, for the tune eligibility rule; null for a gold-kept turn.
@@ -56,6 +95,15 @@ export function oracleRankHit(sim, turn, q, settings, hooks) {
   const goldSet = new Set(gold);
   const fill = orderFor(sim, turn, q, d0, settings, hooks).filter((i) => !goldSet.has(i));
   return +recallOf(q, d0.units, new Set(packFor(sim, [...gold, ...fill].map((i) => d0.units[i]), settings.budget).picks), t.first).hit;
+}
+
+// ORACLE-QUERY alone, for the tune eligibility rule; null for a gold-kept turn.
+export function oracleQueryHit(sim, turn, q, settings, hooks) {
+  const t = sim.trim(turn, settings.C);
+  const d0 = sim.d0(t.first, settings.L ?? null);
+  if (recallOf(q, d0.units, new Set(), t.first).kept) return null;
+  const order = oracleQueryOrder(sim, q, d0, t.first, hooks);
+  return +recallOf(q, d0.units, new Set(packFor(sim, order.map((i) => d0.units[i]), settings.budget).picks), t.first).hit;
 }
 
 // ---- per-turn control arms ----
@@ -72,18 +120,8 @@ export function controlArms(sim, turn, q, settings, hooks, donorCue) {
   const goldSet = new Set(gold);
   const fill = orderFor(sim, turn, q, d0, settings, hooks).filter((i) => !goldSet.has(i));
   const oracleRank = hit([...gold, ...fill]);
-  // ORACLE-QUERY: the scorer directly, one query per gold plant sentence in D0, fused by RRF; the ranker is never read
-  const scorer = hooks?.scorer ?? ((index, tokens) => index.scoreTokens(tokens));
-  const lists = [];
-  for (const sp of q.goldSpans) {
-    if (sp.msg >= t.first) continue;
-    const s = scorer(d0.index, tokenize(sim.chat.messages[sp.msg].text.slice(sp.start, sp.end)));
-    const ids = all.filter((i) => s[i] > 0).sort((a, b) => s[b] - s[a] || b - a);
-    lists.push(ids);
-  }
-  const fused = rrf(lists);
-  const seen = new Set(fused);
-  const oracleQuery = hit(fused.concat(all.filter((i) => !seen.has(i)).reverse()));
+  // ORACLE-QUERY: the scorer directly, one query per gold plant sentence in D0, merged round-robin; the ranker is never read
+  const oracleQuery = hit(oracleQueryOrder(sim, q, d0, t.first, hooks));
   // NULL: the donor cue in place of the cue, filler unchanged, the same ranker as the engine arm
   const nt = { ...turn, cue: donorCue, text: [turn.prefix, donorCue, turn.suffix].filter(Boolean).join(' ') };
   const nul = hit(orderFor(sim, nt, q, d0, settings, hooks));
@@ -103,7 +141,7 @@ export function controlsRecord(chat, counter, settings, turns, donorOf, hooks) {
   for (const s of STYLES) out[s] = { n: 0, or: 0, oq: 0, nl: 0, bu: 0, rd: 0, fallback: 0 };
   for (const turn of turns) {
     if (turn.kind !== 'fact') continue;
-    const donor = donorOf(turn.category, turn.style);
+    const donor = donorOf(turn.category, turn.style, allKey(byId.get(turn.qid)));
     if (!donor) continue;
     const a = controlArms(sim, turn, byId.get(turn.qid), settings, hooks, donor.cue);
     if (!a) continue;

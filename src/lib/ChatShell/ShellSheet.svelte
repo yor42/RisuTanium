@@ -191,7 +191,7 @@
         openedAt = performance.now()
         const savedOpener = untrack(() => opener)
         const restoreInert = makeInert(untrack(() => inertOutside ? outsideLayer(shell) : background))
-        const unregisterShell = registerShell(token)
+        const unregisterShell = registerShell(token, shell)
         const unregisterBack = registerBackHandler(backCloseHandler({
             isOpen: () => open && !closing,
             snapshot: () => open && !closing,
@@ -199,6 +199,11 @@
         }))
         const initial = shell.querySelector<HTMLElement>('[data-sheet-initial]') ?? shell
         initial.focus()
+        // An overlay sidebar that closes because this shell opened releases its inert after this effect, so the focus call
+        // above can land in a page that is still inert; once the update is committed focus is placed again.
+        void afterFlush().then(() => {
+            if (open && shell.isConnected && !shell.contains(document.activeElement)) initial.focus()
+        })
         const stopWatching = watchFocus(shell, shell, () => isTopmostShell(token))
         const onKeyDown = (event: KeyboardEvent) => {
             if (!isTopmostShell(token)) return
