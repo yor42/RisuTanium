@@ -208,6 +208,107 @@ describe('the backup chooser', () => {
         expect(engines.liveConfirm).not.toHaveBeenCalled()
         expect(engines.saveBin).not.toHaveBeenCalled()
         expect(engines.savePartial).not.toHaveBeenCalled()
+        // A plain .rtb carries no password.
+        expect((engines.startRtb.mock.calls[0][1] as { password?: string }).password).toBeUndefined()
+    })
+
+    const tickBox = () => document.querySelector<HTMLInputElement>('[data-part="data-chooser-encrypt-toggle"]')!
+    const password1 = () => document.querySelector<HTMLInputElement>('[data-part="data-chooser-password"]')!
+    const password2 = () => document.querySelector<HTMLInputElement>('[data-part="data-chooser-password-again"]')!
+
+    async function typePassword(text: string): Promise<void> {
+        for (const field of [password1(), password2()]) {
+            field.value = text
+            field.dispatchEvent(new Event('input', { bubbles: true }))
+        }
+        await settle()
+    }
+
+    async function openAndTick(): Promise<void> {
+        await openChooser()
+        tickBox().click()
+        await settle()
+    }
+
+    test('T-S2-11: ticked with the same password twice, Start hands the .rtb export that password, with the yes-confirm', async () => {
+        show()
+        await openAndTick()
+        await typePassword('page-pass 한')
+        start().click()
+        await settle()
+        expect(engines.startRtb).toHaveBeenCalledTimes(1)
+        expect(engines.startRtb.mock.calls[0][1]).toEqual({ password: 'page-pass 한' })
+        const deps = engines.startRtb.mock.calls[0][0] as { confirm: (message: string) => Promise<boolean> }
+        expect(await deps.confirm('anything')).toBe(true)
+        expect(dialog()).toBeNull()
+    })
+
+    test('T-S2-12: the password is in no sheet state, storage or console output, while the chooser is open or after the run', async () => {
+        const TOKEN = 'c128-T0k3n-한'
+        const logged: unknown[][] = []
+        for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+            vi.spyOn(console, method).mockImplementation((...args: unknown[]) => { logged.push(args) })
+        }
+        const everything = (): string => JSON.stringify([
+            dataSheetState,
+            Object.keys(localStorage).map((key) => localStorage.getItem(key)),
+            logged.map((args) => args.map(serialize)),
+        ])
+        // Control 1: the serialiser finds the token in a logged choice object.
+        expect(serialize({ choice: { password: TOKEN } })).toContain(TOKEN)
+        show()
+        await openAndTick()
+        await typePassword(TOKEN)
+        expect(password1().value).toBe(TOKEN)
+        expect(everything()).not.toContain(TOKEN)
+        start().click()
+        await settle()
+        // Control 2: the token reached the run.
+        expect((engines.startRtb.mock.calls[0][1] as { password: string }).password).toBe(TOKEN)
+        expect(everything()).not.toContain(TOKEN)
+    })
+
+    function serialize(value: unknown): string {
+        if (typeof value === 'string') return value
+        if (value instanceof Error) return `${value.message}\n${value.stack ?? ''}`
+        try {
+            return JSON.stringify(value) ?? String(value)
+        } catch {
+            return String(value)
+        }
+    }
+
+    test('T-S2-13: Cancel, Escape and Back with a password typed start nothing; Start then runs the export once', async () => {
+        const TOKEN = 'c128-T0k3n-한'
+        show()
+        await openAndTick()
+        await typePassword(TOKEN)
+        document.querySelector<HTMLButtonElement>('[data-part="data-chooser-cancel"]')!.click()
+        await settle()
+        expect(dialog()).toBeNull()
+        expect(engines.startRtb).not.toHaveBeenCalled()
+
+        await openAndTick()
+        await typePassword(TOKEN)
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+        await settle()
+        expect(dialog()).toBeNull()
+        expect(engines.startRtb).not.toHaveBeenCalled()
+
+        await openAndTick()
+        await typePassword(TOKEN)
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(dialog()).toBeNull()
+        expect(engines.startRtb).not.toHaveBeenCalled()
+
+        // Control in the same page fixture: the same typing and Start run the export once.
+        await openAndTick()
+        await typePassword(TOKEN)
+        start().click()
+        await settle()
+        expect(engines.startRtb).toHaveBeenCalledTimes(1)
+        expect(engines.startRtb.mock.calls[0][1]).toEqual({ password: TOKEN })
     })
 
     function expectNothingStarted(): void {
