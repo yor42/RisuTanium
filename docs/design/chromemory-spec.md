@@ -2,15 +2,15 @@
 
 ## Status
 
-- r4, 2026-11-20, written by the LTM spec session. **Approved by the maintainer as final on 2026-11-20**, with one feature idea added (MC-LTM-16, section 7).
-- Round 3 of the independent challenge returned ACCEPT WITH CHANGES (`challenge-r3.md`). This version applies every change it listed (F1 to F9) and the maintainer's round-4 answers (MC-LTM-12 to MC-LTM-15).
-- The engine is named ChroMemory [D MC-LTM-12]. Where the text below says `<ENGINE>`, read ChroMemory.
+- r4, 2026-11-20, written by the LTM spec session. **Approved by the maintainer as final on 2026-11-20**, with one feature idea added (MC-2603, section 7).
+- Round 3 of the independent challenge returned ACCEPT WITH CHANGES (`challenge-r3.md`). This version applies every change it listed (F1 to F9) and the maintainer's round-4 answers (MC-2599 to MC-2602).
+- The engine is named ChroMemory [D MC-2599]. Where the text below says `<ENGINE>`, read ChroMemory.
 - Two independent senior-advisor challenges rejected the earlier drafts:
   - r1 was rejected (`challenge-r1.md`).
   - r2 was rejected (`challenge-r2.md`). That rejection was narrower: the direction was accepted.
 - This draft simplifies the product to close the loop. Hand-written pins are cut, recalled lore stays inside the lore budget, and note supersession is cut.
 - Section 14 maps every r2 finding to its fix; section 15 maps every r3 finding.
-- MC IDs are placeholders (`MC-LTM-n`) until lane A assigns real ones; the maintainer's answers are in `chromemory-decisions.md`.
+- MC IDs were assigned by lane A on 2026-11-20 (MC-2588 to MC-2603; earlier drafts and reviews call them MC-LTM-1 to MC-LTM-16, MC-LTM-n = MC-(2587+n)); the maintainer's answers are in `chromemory-decisions.md`.
 - The comparison of the three source proposals, the citation check, the code map and the three challenge verdicts (`challenge-r1.md` to `challenge-r3.md`) are session scratch outside the repository; this spec carries every conclusion they produced.
 
 ## Decisions this spec obeys
@@ -23,7 +23,7 @@
   - no existing engine is retired.
 - MC-774, MC-175 and MC-223: the `.bin` rules.
 - MC-350: Android data is read in place.
-- MC-LTM-1 to MC-LTM-11, recorded in `chromemory-decisions.md`:
+- MC-2588 to MC-2598, recorded in `chromemory-decisions.md`:
   - search, plus optional notes;
   - keyword search by default, vectors opt-in;
   - search chat and lore, recalling keyword misses only, within the unused lore budget;
@@ -33,7 +33,7 @@
   - `.bin` export shows "no memory" plus a warning;
   - no hand-written pins;
   - an aggregate-only `.bin` length analyzer.
-- MC-LTM-12 to MC-LTM-16: the name ChroMemory; a recalled-lore cap of 5,000 tokens by default, user-raisable; notes start from now with an on-request backfill; the spec lives in `docs/design/`; a Memory dashboard as a later feature idea.
+- MC-2599 to MC-2603: the name ChroMemory; a recalled-lore cap of 5,000 tokens by default, user-raisable; notes start from now with an on-request backfill; the spec lives in `docs/design/`; a Memory dashboard as a later feature idea.
 
 ## Labels
 
@@ -49,20 +49,20 @@
 
 ### Goals
 
-1. Recall old chat that has left the context window. [D MC-LTM-1, MC-LTM-2]
+1. Recall old chat that has left the context window. [D MC-2588, MC-2589]
    - The recalled text is the processed text the request pipeline produced.
    - Recall works on a Note 9 with no download and no network, in Korean and English.
 2. The chat log on the active branch is the only retrieval source. Nothing derived from it replaces it. [M M3]
-3. Optionally keep a list of short, user-visible notes. [D MC-LTM-1]
+3. Optionally keep a list of short, user-visible notes. [D MC-2588]
    - Notes are extracted from chat that has left the window.
    - Each note carries its source turn and is ordered by recency.
-4. Recall lorebook entries whose primary keyword missed. [D MC-LTM-3, MC-LTM-7, MC-LTM-10]
+4. Recall lorebook entries whose primary keyword missed. [D MC-2590, MC-2594, MC-2597]
    - Recall uses only the lore budget the keyword scan left unused.
    - Lore activation is unchanged.
 5. The user can always see what memory holds and why each item was injected, and can edit or delete notes. Review is never required. [D MC-902]
 6. **Invariant I1.** With the engine on and nothing injected, the prompt equals the engine-off prompt.
 7. **Invariant I2.** A send that fits with the engine off never fails with the engine on.
-8. Default mode has no LLM call on the send path and a bounded added latency (section 9). [D MC-LTM-5; M M1]
+8. Default mode has no LLM call on the send path and a bounded added latency (section 9). [D MC-2592; M M1]
    - On phones, local vectors are allowed only after the Worker prerequisite passes.
    - Otherwise, phones use vectors through an API.
 9. The engine coexists with Supa, HypaV2, HypaV3 and Hanurai, and touches none of their data. [D MC-902]
@@ -74,14 +74,14 @@
   - no new fields on lore entries or cards;
   - no change to which entries activate;
   - no recall beyond the user's lore budget.
-- Hand-written pins. Users already have always-active chat-lore entries and the author's note. [D MC-LTM-9]
+- Hand-written pins. Users already have always-active chat-lore entries and the author's note. [D MC-2596]
 - Note supersession links, in-story time fields, confirmed statuses and hand-added notes. M3 measured supersession marking as failing; this belongs to stage S6.
 - A knowledge graph, entity graph or multi-hop retrieval (stage S7).
-- Who-knows-what tracking. [D MC-LTM-4]
+- Who-knows-what tracking. [D MC-2591]
 - LLM query rewriting, LLM routing or LLM reranking.
 - Self-editing memory driven by agent tool calls.
 - Character-claim and authority statuses. This is a deliberate cut: M3's main error was attributing a fact to the wrong speaker. The proxy instead is each note source's message role.
-- Block trimming and prompt-cache optimisation. [D MC-LTM-6]
+- Block trimming and prompt-cache optimisation. [D MC-2593]
 - Making the engine's data readable by upstream. [D MC-774]
 
 ---
@@ -118,9 +118,9 @@
 One global object with these fields:
 
 - `budgetTokens`: default `min(1200, 15% of max context)` [E: S0 output].
-- `retrieval: 'lexical' | 'hybrid'`, default `lexical`. [D MC-LTM-2]
+- `retrieval: 'lexical' | 'hybrid'`, default `lexical`. [D MC-2589]
 - `searchLore: boolean`. Its default is set by the S4 usefulness gate.
-- `loreRecallCap`: default 5,000 tokens; the user may raise it. [D MC-LTM-13]
+- `loreRecallCap`: default 5,000 tokens; the user may raise it. [D MC-2600]
 - `notesEnabled: boolean`, default `false`.
 - `shadow: boolean`.
 - S1 persists only the fields S1 reads. Later stages add theirs under the unknown-keys rule.
@@ -138,11 +138,11 @@ Its rules:
 **`.bin` export**
 
 - `exportCopyOf` removes the flag and `ltmSettings`.
-- A new leave-out summary kind names the engine on both consent paths. [D MC-774, MC-LTM-8; C binLeaveOut.ts, backuplocal.ts:811-835]
+- A new leave-out summary kind names the engine on both consent paths. [D MC-774, MC-2595; C binLeaveOut.ts, backuplocal.ts:811-835]
 
 ### 3.2 Per-chat stored data: none before stage S5
 
-- Stages S0 to S4 store nothing per chat. [D MC-LTM-9]
+- Stages S0 to S4 store nothing per chat. [D MC-2596]
 - S5 introduces one optional chat field. It is stored in the store2 chat core, which passes unknown keys through, so no codec change is needed. [C chat.ts:45-51] It is written only when a note pass commits or the user edits or deletes a note.
 
 ```ts
@@ -227,7 +227,7 @@ These rules come in with S5, when the first per-chat data exists.
 - **Forward growth:**
   - Readers keep unknown keys on the `ltmData` top level, on notes and on sources.
   - Writers change items in place and never rebuild them from known fields only.
-  - This rule is also what reserves room for MC-LTM-4.
+  - This rule is also what reserves room for MC-2591.
 - **Later format changes** follow "the reader accepts old and new; the writer emits new". Frozen-fixture tests pin them. [C codecChatUnseenReply.test.ts precedent]
 
 **Reviewer requirement.** Every stage that adds or changes a persisted field or an export strip uses `opus-reviewer` at both gates. That is S1 (global setting and strip) and S5 (per-chat format).
@@ -310,13 +310,13 @@ The added send latency is measured as a delta against a no-engine send on the sa
 
 ### 5.4 Lore recall (stage S4, at the lore stage)
 
-[D MC-LTM-3, MC-LTM-7, MC-LTM-10; challenge r2 N5, N6]
+[D MC-2590, MC-2594, MC-2597; challenge r2 N5, N6]
 
 **When it runs**
 
 - A post-scan step at the existing scan call. [C index.svelte.ts:1201]
 - It runs only when the engine is selected, `searchLore` is on, and the scan cut no entry for budget this turn.
-- Its budget is `min(U, loreRecallCap)` [D MC-LTM-10, MC-LTM-13]:
+- Its budget is `min(U, loreRecallCap)` [D MC-2597, MC-2600]:
   - U is the lore budget the scan left unused (`loreToken` minus the activated entries' tokens).
   - `loreRecallCap` defaults to 5,000 tokens and the user may raise it.
   - Unused budget is a ceiling, not a target: only admitted entries are packed.
@@ -392,7 +392,7 @@ A test pins all four.
 
 ### 5.5 Dense scoring (stage S3, `retrieval: 'hybrid'`)
 
-[M M2; D MC-LTM-5]
+[M M2; D MC-2592]
 
 - Uses the existing embedding path and recipes.
 - Lexical and dense rankings are fused with RRF, k = 60.
@@ -487,7 +487,7 @@ The trace is kept in shadow mode too.
 - A pass covers consecutive dropped message records after the last `covered` id on the active path. "Last" means by path position, not by time.
 - A window holds at most 20 messages or 3,000 tokens, whichever comes first [E], counting the passed-in notes. A "full window" is one that reached either limit.
 - It never includes kept (in-window) chats.
-- **Start point** [D MC-LTM-14]. When notes are turned on in a chat, `covered` starts at the trim boundary of the next send: older dropped chats are not covered. The backlog never starts at the oldest message on its own.
+- **Start point** [D MC-2601]. When notes are turned on in a chat, `covered` starts at the trim boundary of the next send: older dropped chats are not covered. The backlog never starts at the oldest message on its own.
 - **Backfill** is only by a "Backfill notes" button. Before running, it shows the number of model calls the uncovered windows need. It then runs those windows oldest first, one at a time, each committed separately, and can be stopped.
 - When a pass runs:
   - after a reply settles, at most one window per settled reply, when a full window of uncovered dropped chats exists;
@@ -586,7 +586,7 @@ There is one "Memory" panel per chat:
 - New strings ship in English plus 7 locales in the same change.
 - UI stages follow the theme tokens and the frontend-design rules.
 
-**Feature idea: Memory dashboard** [D MC-LTM-16, idea only, not staged]
+**Feature idea: Memory dashboard** [D MC-2603, idea only, not staged]
 
 - The maintainer approved the spec with this idea: a "Memory dashboard" menu where the user can view the details of this chat's memory.
 - It would build on the Memory panel. Possible contents: what is indexed and how much, what was recalled on recent sends and why (snippets, lore, notes), token cost per send, note coverage, and index or vector status.
@@ -613,7 +613,7 @@ All budgets are [E] stage-gate targets unless marked otherwise. Two synthetic pr
 - **short-reply:** median 220 characters, p90 900, max 4,000;
 - **long-reply:** median 1,000 characters, p90 3,000, max 8,000.
 
-P0's analyzer replaces these distributions with the maintainer's real aggregate distribution, if available (MC-LTM-11). Module lore is sized from the analyzer too (default 300 entries).
+P0's analyzer replaces these distributions with the maintainer's real aggregate distribution, if available (MC-2598). Module lore is sized from the analyzer too (default 300 entries).
 
 **Where to measure.** Rows that depend on Android run on a Note 9 release build; all other rows run on the PC.
 
@@ -640,15 +640,15 @@ P0's analyzer replaces these distributions with the maintainer's real aggregate 
 
 | Stage | Delivers | Stored change | Exit gate |
 |---|---|---|---|
-| P0 | (a) The M2 scripts and M4 generator, moved from `%TEMP%\risu-b715\ltm\` to a durable synthetic-only home (proposed `Agents/Tools/ltm-eval/`). (b) The aggregate-only `.bin` analyzer [D MC-LTM-11]: it reads the maintainer's real `.bin` (path named by the maintainer) and writes one JSON with message-length histograms by role and by Hangul share, messages per chat, hidden-message share, lore entries per character and per module, lore content-length histogram, and decorator, selective and regex usage counts. It never prints or writes text, names, ids, keys or settings fields. It runs on the PC under the no-secret-fields rule. | none | (a) reproduces M2's BM25 table. (b) The output JSON passes a field allow-list check, and the maintainer approves its use. |
+| P0 | (a) The M2 scripts and M4 generator, moved from `%TEMP%\risu-b715\ltm\` to a durable synthetic-only home (proposed `Agents/Tools/ltm-eval/`). (b) The aggregate-only `.bin` analyzer [D MC-2598]: it reads the maintainer's real `.bin` (path named by the maintainer) and writes one JSON with message-length histograms by role and by Hangul share, messages per chat, hidden-message share, lore entries per character and per module, lore content-length histogram, and decorator, selective and regex usage counts. It never prints or writes text, names, ids, keys or settings fields. It runs on the PC under the no-secret-fields rule. | none | (a) reproduces M2's BM25 table. (b) The output JSON passes a field allow-list check, and the maintainer approves its use. |
 | S0 | The BM25 tokeniser and scorer module, and the harness of 5.7. Outside the app's send path: no app code changes. [challenge r3 F3] | none | The go/no-go of 5.7. Outputs: budget, snippet share, unit split, query count, admission rule, history floor F. |
 | S1 | The shared memory-dispatch function (no behaviour change for legacy engines), engine registration (flag, dropdown, labels, `.bin` strip and naming), the send order of section 4, lexical retrieval, packing, trace, shadow mode, Last send and Index tabs. Sizing should split it; the natural first cut is dispatch function plus registration plus shadow-only, then injection and the tabs. | global fork-only setting | `opus-reviewer`. I1/I2 tests. Section 9 rows on a Note 9. Pack recall at or above S0's gate value minus 0.05. "Latest value present in pack" reported on the 28 update cases. |
-| S3a | Worker embedding spike on the Note 9 WebView. Needs nothing from S1; needs CHORE-620's model choice, or a Korean-capable model named at S3a sizing. | none | Pass requires, for one named Korean-capable model (from CHORE-620): no main-thread task over 50 ms from embedding; renderer peak at most 1.5 GB above baseline; no renderer loss; indexing at least 1 message per second. Pass enables local hybrid on phones; fail means remote-only. [D MC-LTM-5] |
+| S3a | Worker embedding spike on the Note 9 WebView. Needs nothing from S1; needs CHORE-620's model choice, or a Korean-capable model named at S3a sizing. | none | Pass requires, for one named Korean-capable model (from CHORE-620): no main-thread task over 50 ms from embedding; renderer peak at most 1.5 GB above baseline; no renderer loss; indexing at least 1 message per second. Pass enables local hybrid on phones; fail means remote-only. [D MC-2592] |
 | S3 | Hybrid: dense ranking with RRF, post-dispatch indexing, vector store decision. | possibly a vector store | Needs S1, S3a and CHORE-620. Gains in paraphrase pack recall. Section 9 rows met. |
 | S4 | Lore recall (5.4). | none | Parity test (four items). No recalled entry fails the static or dynamic rule. Usefulness gate: on synthetic lore with paraphrased triggers and no-relevant turns, recalled-lore precision and the no-evidence recall rate are reported; this decides the `searchLore` default. |
 | S5 | Notes (section 6), the Notes tab, `ltmData` v1, the backfill button. | `ltmData` v1 | `opus-reviewer`. Storage tests. The evidence gate of 6.6. Outputs: notes share, cap policy. |
 | S6 (gated) | Supersession, event notes, arc summaries that never overwrite messages; only if S5 data shows need. | as needed | Must beat S5 on the eval. |
-| S7 (gated) | Who-knows-what and entity lookup. [D MC-LTM-4] | new fields, kept under the unknown-keys rule | A stronger-model test, then a maintainer decision. |
+| S7 (gated) | Who-knows-what and entity lookup. [D MC-2591] | new fields, kept under the unknown-keys rule | A stronger-model test, then a maintainer decision. |
 
 **Dependencies**
 
@@ -660,7 +660,7 @@ P0's analyzer replaces these distributions with the maintainer's real aggregate 
   - S5 needs S1.
 - S3, S4 and S5 can run in parallel, subject to file ownership.
 
-**Note on MC-LTM-1.** MC-LTM-1's text says "stage 1 ships hybrid search". Under MC-LTM-2 (keyword default), S1 is lexical and the vector half arrives at S3.
+**Note on MC-2588.** MC-2588's text says "stage 1 ships hybrid search". Under MC-2589 (keyword default), S1 is lexical and the vector half arrives at S3.
 
 ---
 
@@ -754,8 +754,8 @@ P0's analyzer replaces these distributions with the maintainer's real aggregate 
 
 **Product (maintainer)**
 
-1. Resolved: the name is ChroMemory [D MC-LTM-12].
-2. Resolved: the spec lives in `docs/design/`; committing needs its own confirmation [D MC-LTM-15].
+1. Resolved: the name is ChroMemory [D MC-2599].
+2. Resolved: the spec lives in `docs/design/`; committing needs its own confirmation [D MC-2602].
 3. Deferred until measured: if the first-send index build exceeds 0.5 s on the Note 9, should the first send after opening a chat wait for it, or go out with partial memory?
 
 **Technical (resolved at the named stage)**
@@ -770,7 +770,7 @@ P0's analyzer replaces these distributions with the maintainer's real aggregate 
 
 ## 13. Name
 
-**ChroMemory**, chosen by the maintainer [D MC-LTM-12]: a play on chromium (the element) and chronicle, matching the xxMemory naming of the existing engines.
+**ChroMemory**, chosen by the maintainer [D MC-2599]: a play on chromium (the element) and chronicle, matching the xxMemory naming of the existing engines.
 
 Candidates offered before that choice, for the record: Chronicle, Ledger, Gieok (기억), TaniMem, Archivist.
 
@@ -784,10 +784,10 @@ Code identifiers stay neutral (`ltmEngine`, `ltmSettings`, `ltmData`), so a late
 |---|---|
 | N1 Blocker: reserve not released | Invariants I1 and I2. The engine-off trim runs first; retrieval only over its dropped set; room is made by exactly T, with `fits: false` shrinking P to empty. Shadow mode is defined. The trim returns the dropped chats (an additive change). (Section 1, 4, 11.) |
 | N2 Dropped built chat | Message-record side record. Domain is message chats plus `#first`; examples and marker never. Role and name come from the message. Pre-named content is handled. (Section 2, 5.1.) |
-| N3 Budget starves snippets | Pins cut [D MC-LTM-9]. Lore moved to the unused lore budget [D MC-LTM-10]. Snippet floor 50%. All shares, budget and the unit split are S0 outputs. Long-reply profile plus the real aggregate analyzer [D MC-LTM-11]. (5.6, 9, 10.) |
+| N3 Budget starves snippets | Pins cut [D MC-2596]. Lore moved to the unused lore budget [D MC-2597]. Snippet floor 50%. All shares, budget and the unit split are S0 outputs. Long-reply profile plus the real aggregate analyzer [D MC-2598]. (5.6, 9, 10.) |
 | N4 S0 no go/no-go | Named-filler corpus; turn-shaped queries with and without a relevant fact; recency baseline; pre-stated +0.15 margin; stop-or-change rule. S1 floor taken from S0. (5.7, 10.) |
 | N5 Lore rule unreadable | Static exclusions (including selective and `additional_keys`) plus a drift guard. The dynamic part uses the scan's own final-pass primary-key result. Parity covers four items. (5.4.) |
-| N6 Lore over budget | [D MC-LTM-10]: unused lore budget only; none when the scan cut; usefulness gate sets the default. Packing reads the live entry. (5.4.) |
+| N6 Lore over budget | [D MC-2597]: unused lore budget only; none when the scan cut; usefulness gate sets the default. Packing reads the live entry. (5.4.) |
 | N7 Derived note state | Windows come from dropped chats only. Active means in the sent set. Duplicates are dropped, not merged. `h` hashes raw data. The source-deleted state is defined. Coverage is resolved by path position. 400-note cap. (3.2, 6.) |
 | N8 Time box, churn | Box only if the build is over 300 ms; partial index plus post-dispatch build; D3 deferred to measurement. Raw-hash keys remove CBS churn. Churn is traced. The p95 row excludes first sends. (3.3, 9.) |
 | N9 Pins / loreExclude | Pins dropped [D]; `loreExclude` cut; former S2 removed; the per-chat format arrives only at S5. |
@@ -795,18 +795,18 @@ Code identifiers stay neutral (`ltmEngine`, `ltmSettings`, `ltmData`), so a late
 | N11 S3a criteria | Named model, a 50 ms task limit, a memory bound, no renderer loss, a rate floor. Needs nothing from S1. (10.) |
 | N12 Failing note parts | Cut: `supersedes`, `storyTime`, `confirmed`, hand-added notes, three settings. A send aborts a running pass. Cap added. (6.) |
 | N13 Section 4/5 details | Counters that vary (step 7); `lastMemory` stamp order; the dedup step is gone (candidates are dropped chats only); query for Continue and group turns plus the tail cap; box and p95 relation. (4, 5.2, 9.) |
-| N14 Editorial | "exact" removed; S1 baseline named; drift-guard wording; the MC-LTM-1 line. |
+| N14 Editorial | "exact" removed; S1 baseline named; drift-guard wording; the MC-2588 line. |
 
 ## 15. How r4 answers challenge r3
 
 | r3 finding | Resolution in r4 |
 |---|---|
-| F1 Lore recall uncapped | Recall at most `min(U, loreRecallCap)`, default 5,000 tokens and user-raisable [D MC-LTM-13], and at most N entries ([E] S4). The 5.6 admission rule applies to lore. (5.4.) |
+| F1 Lore recall uncapped | Recall at most `min(U, loreRecallCap)`, default 5,000 tokens and user-raisable [D MC-2600], and at most N entries ([E] S4). The 5.6 admission rule applies to lore. (5.4.) |
 | F2 Lore query, shadow, errors | Query is the newest sent message's raw `data` from `splitSentMessages`, 500-character tail. Lore recall is lexical only, so the single dense query stays with snippets. Shadow places none; errors place none and are traced; index built off the send path, nothing recalled until ready. (4 step 8, 5.4.) |
 | F3 Go/no-go at the noise floor | Absolute floor 0.5 plus margin 0.15, both stated before the run; tune on one seed, gate on a fresh one; n raised until the 95% interval is narrower than the margin; no-fact packed share reported; FYI that the floor is the stop rule. Dispatch function moved to S1; S0 has no app code. (5.7, 10.) |
 | F4 Make-room details | Counts handed back with the dropped chats; varying-counter path uses the non-destructive form; history floor F (S0 output, at least 2) with recalled lore and P shrinking first; T is the assembled memory message count; evicted tokens traced; "newly dropped" wording. (4.) |
 | F5 Memory switch | Engine and lore recall run only with the flag and `effectiveMemory`; switched-off case in I1 tests. (3.1, 11.) |
 | F6 Record text and name | `text` is the content before the group or `sendName` wrap; `name` always filled; snippet format always `[#index] name: text`; rank on index text, pack from this send's record. (2, 5.1.) |
-| F7 Note backlog | One window per settled reply; start from the trim boundary on enabling [D MC-LTM-14]; backfill only by a button that shows the call count first; cap policy an [E] S5 output; buttons use the last send's records and are disabled before the first send; no builder outside a send; no retry before the next settle; "full window" defined. (6.1, 6.4.) |
+| F7 Note backlog | One window per settled reply; start from the trim boundary on enabling [D MC-2601]; backfill only by a button that shows the call count first; cap policy an [E] S5 output; buttons use the last send's records and are disabled before the first send; no builder outside a send; no retry before the next settle; "full window" defined. (6.1, 6.4.) |
 | F8 Static list and identity | `end` and `scan_depth` excluded; neutral list written; the live entry is this scan's own entry; shared identities skip both. (5.4.) |
 | F9 Consistency | Notes share is an S5 output; S3a model dependency stated; reader diagnostic cut; "first send" is per chat open, partial index covers newest dropped chats first; `ltmSettings` defaults are a pure reader and S1 persists only its own fields; S1 split suggested. (3.1, 5.6, 9, 10.) |
