@@ -2,7 +2,7 @@ import { alertError, alertWait } from '../alert'
 import { language } from 'src/lang'
 import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
-import { IMPORT_REPLACES_BASE, type CommitResult, type Committer } from '../storage/store2/commit'
+import { IMPORT_REPLACES_BASE, type CommitRequest, type CommitResult, type Committer } from '../storage/store2/commit'
 import { isKnownUnitType } from '../storage/store2/format'
 import { baseManifestOf, type BaseManifest } from '../storage/store2/legacy/importTree'
 import { omittedTailsOf, planRestore, RtbRestoreError, type RestorePlanInput, type RestoreRequest } from '../storage/store2/rtb/restoreBuild'
@@ -28,7 +28,10 @@ import type { Store2ImportRefusal } from './storeImport'
  * Invariants:
  * - Once `commit()` was called, no path reaches `release(false)` except a busy abort thrown by the flip's guard and a
  *   result the committer reported as not written.
- * - The commit goes through `rtbGuardedCommitter(...).commit`, never `commitStreamed`, so the busy check at the flip runs.
+ * - The commit goes through `rtbGuardedCommitter(...).commit`, or `.commitHeld` on a Node page that holds its marker,
+ *   never `commitStreamed`, so the busy check at the flip runs.
+ * - A held marker is cleared on every end but `landed` (whose final write cleared it), before the hold is released, and
+ *   a clear that throws never keeps the release from running.
  * - The plugin grants are cleared after the guard and the plan, immediately before the commit, and not before.
  * - Every stop after the copy began names what the copy left on this device, unless its message already says so.
  */
@@ -50,7 +53,7 @@ export type RtbInstallEnd =
     | { kind: 'stopped', outcome: 'nothing-replaced' | 'failed', cause: RtbInstallCause, facts: RtbInstallFacts }
 
 /** The part of the plan this stage reads. */
-export type RtbInstallPlan = RtbCopyPlan & Pick<RestorePlan, 'store2' | 'manifest' | 'target' | 'base' | 'side'>
+export type RtbInstallPlan = RtbCopyPlan & Pick<RestorePlan, 'store2' | 'manifest' | 'target' | 'base' | 'side' | 'held'>
 
 /** The calls the install makes outside the file; tests replace them to observe order and to keep the page out of it. */
 export interface RtbInstallDeps {
@@ -268,7 +271,10 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
         commitStarted = true
         let result: CommitResult
         try {
-            result = await guarded.commit(read, { newUnits: request.newUnits, build: request.build, label: 'import', force: true, carry: IMPORT_REPLACES_BASE })
+            const commitRequest: CommitRequest = { newUnits: request.newUnits, build: request.build, label: 'import', force: true, carry: IMPORT_REPLACES_BASE }
+            result = plan.held != null && guarded.commitHeld !== undefined
+                ? await guarded.commitHeld(plan.held, read, commitRequest)
+                : await guarded.commit(read, commitRequest)
         } catch (error) {
             console.error(error)
             if (isRtbBusyAbort(error)) {
@@ -283,6 +289,16 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
         return decided.end ?? fallback()
     } finally {
         const end = decided.end ?? fallback()
+        if (end.kind !== 'landed' && plan.held != null) {
+            try {
+                const cleared = await plan.target.committer.clearHeld?.(plan.held)
+                if (cleared !== undefined && cleared !== null && cleared.status !== 'cleared' && cleared.status !== 'nothing') {
+                    console.error('The restore marker may still stand.', cleared)
+                }
+            } catch (error) {
+                console.error(error)
+            }
+        }
         try {
             if (end.kind === 'stopped') {
                 await hold.release(false)
