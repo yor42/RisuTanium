@@ -1,6 +1,5 @@
 <script lang="ts">
     import { BookIcon, ImageIcon, SmileIcon } from "@lucide/svelte";
-    import { alertNormal } from "src/ts/alert";
     import { language } from "src/lang";
     import { hubURL, type hubType } from "src/ts/characterCards";
     import { DBState } from "src/ts/stores.svelte";
@@ -16,47 +15,42 @@
 </script>
 
 
-<button class="bg-darkbg rounded-lg p-4 flex flex-col hover:bg-selected transition-colors relative lg:w-96 w-full items-start" onclick={onClick}>
-    <div class="flex gap-2 w-full">
+<button type="button" class="risu-focus-ring flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl bg-darkbg text-start text-textcolor hover:bg-selected/50" onclick={onClick}>
     {#if DBState.db.hideAllImages}
-        <div class="w-20 min-w-20 h-20 sm:h-28 sm:w-28 rounded-md bg-darkbutton flex items-center justify-center text-textcolor2">
+        <div class="flex aspect-video w-full sm:aspect-[4/3] items-center justify-center bg-darkbutton text-textcolor2">
             <span class="text-4xl">?</span>
         </div>
     {:else}
-        <img class="w-20 min-w-20 h-20 sm:h-28 sm:w-28 rounded-md object-top object-cover" alt={chara.name} src={`${hubURL}/resource/` + chara.img}>
+        <img class="aspect-video w-full sm:aspect-[4/3] object-cover object-top" alt="" src={`${hubURL}/resource/` + chara.img}>
     {/if}
-    <div class="flex flex-col grow min-w-0">
-        <span class="text-textcolor text-lg min-w-0 max-w-full text-ellipsis whitespace-nowrap overflow-hidden text-start">{chara.name}</span>
-        <span class="text-textcolor2 text-xs min-w-0 max-w-full text-ellipsis wrap-break-word max-h-8 whitespace-nowrap overflow-hidden text-start">{parseMultilangString(chara.desc)[DBState.db.language] ?? parseMultilangString(chara.desc).en ?? parseMultilangString(chara.desc).xx}</span>
-        <div class="flex flex-wrap">
+    <div class="flex w-full min-w-0 grow flex-col gap-1 p-3">
+        <span class="line-clamp-2 text-lg wrap-anywhere">{chara.name}</span>
+        {#if chara.creatorName ?? chara.authorname}
+            <span class="truncate text-xs text-textcolor2">{chara.creatorName ?? chara.authorname}</span>
+        {/if}
+        <span class="line-clamp-2 text-xs text-textcolor2 wrap-anywhere">{parseMultilangString(chara.desc)[DBState.db.language] ?? parseMultilangString(chara.desc).en ?? parseMultilangString(chara.desc).xx}</span>
+        <div class="flex flex-wrap gap-1">
             {#each chara.tags as tag, i}
                 {#if i < 4}
-                    <div class="text-xs p-1 text-blue-400">{tag}</div>
+                    <span class="rounded-full border border-darkborderc px-2 text-xs text-textcolor2 wrap-anywhere">{tag}</span>
                 {:else if i === 4}
-                    <div class="text-xs p-1 text-blue-400">...</div>
+                    <span class="rounded-full border border-darkborderc px-2 text-xs text-textcolor2">...</span>
                 {/if}
             {/each}
         </div>
         <div class="grow"></div>
-        <div class="flex flex-wrap w-full flex-row-reverse gap-1">
-            {#if chara.hasEmotion}
-                <div class="text-textcolor2 hover:text-green-500 transition-colors" role="button" tabindex="0" onclick={((e) => {
-                    e.stopPropagation()
-                    alertNormal(language.alerts.characterHasEmotion)
-                })} onkeydown={(e) => {}}><SmileIcon /></div>
-            {/if}
-            {#if chara.hasAsset}
-                <div class="text-textcolor2 hover:text-green-500 transition-colors" role="button" tabindex="0" onclick={((e) => {
-                    e.stopPropagation()
-                    alertNormal(language.alerts.characterHasAssets)
-                })} onkeydown={(e) => {}}><ImageIcon /></div>
-            {/if}
-            {#if chara.hasLore}
-                <div class="text-textcolor2 hover:text-green-500 transition-colors" role="button" tabindex="0" onclick={((e) => {
-                    e.stopPropagation()
-                    alertNormal(language.alerts.characterHasLore)
-                })} onkeydown={(e) => {}}><BookIcon /></div>
-            {/if}
-        </div>
+        {#if chara.hasEmotion || chara.hasAsset || chara.hasLore}
+            <div class="flex flex-wrap gap-2 text-xs text-textcolor2">
+                {#if chara.hasEmotion}
+                    <span class="flex items-center gap-1"><SmileIcon size={14} />{language.realmBadgeEmotion}</span>
+                {/if}
+                {#if chara.hasAsset}
+                    <span class="flex items-center gap-1"><ImageIcon size={14} />{language.realmBadgeAssets}</span>
+                {/if}
+                {#if chara.hasLore}
+                    <span class="flex items-center gap-1"><BookIcon size={14} />{language.realmBadgeLore}</span>
+                {/if}
+            </div>
+        {/if}
     </div>
-</div></button>
+</button>
