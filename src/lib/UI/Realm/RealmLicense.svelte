@@ -13,26 +13,18 @@
 </script>
 
 {#if Object.keys(CCLicenseData).includes(license)}
-    <div class="w-full flex flex-row">
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div role="button" tabindex="0" class="flex flex-wrap flex-row gap-1 mt-2 items-center cursor-pointer" use:tooltip={fillLang(language.uiCommon.licenseTooltip, { name: CCLicenseData[license][1] })} onclick={((e) => {
-            e.stopPropagation();
-            openURL(`https://creativecommons.org/licenses/${CCLicenseData[license][0]}/4.0/`)
-        })}>
-            <img alt={language.uiCommon.creativeCommons} class="cc" src="https://i.creativecommons.org/l/{CCLicenseData[license][0]}/4.0/88x31.png" />
-            <span class="text-textcolor2">
-                {fillLang(language.uiCommon.licensedWith, { license: CCLicenseData[license][2] })}
-            </span>
-    
-        </div>
-    </div>
+    <section class="flex min-w-0 flex-col gap-1">
+        <h2 class="text-lg font-bold">{language.realmLicenseHeading}</h2>
+        <button
+            type="button"
+            class="risu-focus-ring min-h-11 self-start rounded-md border border-darkborderc px-3 text-start text-textcolor2 wrap-anywhere hover:bg-selected/50"
+            use:tooltip={fillLang(language.uiCommon.licenseTooltip, { name: CCLicenseData[license][1] })}
+            onclick={((e) => {
+                e.stopPropagation();
+                openURL(`https://creativecommons.org/licenses/${CCLicenseData[license][0]}/4.0/`)
+            })}
+        >
+            {fillLang(language.uiCommon.licensedWith, { license: CCLicenseData[license][2] })}
+        </button>
+    </section>
 {/if}
-
-
-<style>
-    .cc{
-        width: 88px;
-        height: 31px;
-        border-width: 0;
-    }
-</style>
