@@ -96,7 +96,8 @@ describe('GUI rendering without a browser session', () => {
 
         expect(primaryButton.textContent?.trim()).toBe('Save')
         expect(primaryButton.classList.contains('px-6')).toBe(true)
-        expect(primaryButton.classList.contains('bg-bg-selected')).toBe(true)
+        expect(primaryButton.classList.contains('bg-selected')).toBe(true)
+        expect(primaryButton.classList.contains('bg-bg-selected')).toBe(false)
 
         expect(disabledButton.textContent?.trim()).toBe('Delete')
         expect(disabledButton.disabled).toBe(true)
@@ -260,8 +261,9 @@ describe('GUI rendering without a browser session', () => {
 
             expect(input.classList.contains('peer'), `peer (reverse=${reverse})`).toBe(true)
             expect(box?.getAttribute('aria-hidden')).toBe('true')
-            expect(box?.classList.contains('peer-focus-visible:ring-2')).toBe(true)
-            expect(box?.classList.contains('peer-focus-visible:ring-textcolor2')).toBe(true)
+            expect(box?.classList.contains('risu-focus-ring-peer')).toBe(true)
+            expect(box?.classList.contains('peer-focus-visible:ring-2')).toBe(false)
+            expect(box?.classList.contains('peer-focus-visible:ring-textcolor2')).toBe(false)
 
             input.click()
             await tick()

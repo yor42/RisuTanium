@@ -5,7 +5,7 @@
  * output, and the raw-input fallbacks for colours that cannot be read. No role is ever stored.
  */
 import { describe, expect, test, vi } from 'vitest'
-import { cr, parseConcrete } from '../themePack/colour'
+import { bestExtreme, cr, parseConcrete, toHex } from '../themePack/colour'
 
 vi.mock(import('src/ts/alert'), () => ({
     alertError: vi.fn(),
@@ -74,7 +74,25 @@ describe('deriveSchemeRoles', () => {
             'text-secondary': '#bfc6e3', 'text-muted': '#a6b0d4', 'accent': '#6f7fc8', 'accent-rgb': '111 127 200',
             'focus-ring': '#6f7fc8', 'field-border': '#6f7fc8', 'danger': '#ff6b81', 'danger-rgb': '255 107 129', 'warning-rgb': '255 209 102',
             'overlay-rgb': '238 240 255', 'switch-off-alpha': '0.36', 'surface-toast': '#2f3670', 'color-scheme': 'dark',
+            'on-selected': '#eef0ff',
         })
+    })
+
+    test.each(SCHEMES)('%s: on-selected is the text colour where it reaches 4.5:1 on selected, else black or white', (_name, s) => {
+        const role = deriveSchemeRoles(s)['on-selected']
+        const sel = c(s.selected)
+        expect(cr(c(role), sel)).toBeGreaterThanOrEqual(4.5)
+        if (cr(c(s.textcolor), sel) >= 4.5) expect(role).toBe(toHex(c(s.textcolor)))
+        else expect(role).toBe(toHex(bestExtreme(sel)))
+    })
+
+    test.each([['cherry', '#000000'], ['galaxy', '#ffffff'], ['nature', '#000000']])('%s: on-selected falls to the extreme %s', (name, extreme) => {
+        expect(deriveSchemeRoles(colorSchemePresets[name])['on-selected']).toBe(extreme)
+    })
+
+    test('an unreadable selected colour keeps the text colour', () => {
+        const s: ColorScheme = { ...defaultColorScheme, selected: 'nonsense' }
+        expect(deriveSchemeRoles(s)['on-selected']).toBe('#eef0ff')
     })
 
     test('is deterministic and idempotent', () => {

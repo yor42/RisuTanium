@@ -407,6 +407,15 @@ body {
   outline-offset: 0;
 }
 
+/*
+ * The text on the selected primary Button fill. It comes from the scheme even while a theme pack is
+ * on, and the scheme derives it to stay readable on the selected colour. It is unlayered, so it wins
+ * over the button's own text utility.
+ */
+.risu-on-selected {
+  color: var(--risu-theme-role-on-selected, #eef0ff);
+}
+
 .loadmove {
   animation: spin 1s steps(8) infinite;
   border-radius: 50%;

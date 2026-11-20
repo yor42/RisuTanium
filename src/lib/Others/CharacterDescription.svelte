@@ -77,7 +77,7 @@
 <div data-description class="text-textcolor2 leading-6 wrap-break-word" class:max-h-18={clamped} class:overflow-hidden={clamped}
     bind:this={measured} use:clampOverflow={{ text: measureKey, onChange: needsMeasure ? onMeasured : undefined }}>
     {#if html !== null}
-        <div class="prose prose-sm max-w-none leading-6 wrap-break-word prose-p:my-0 prose-p:leading-6 prose-headings:my-0 prose-headings:text-base prose-headings:leading-6 prose-ul:my-0 prose-ol:my-0 prose-li:my-0 prose-pre:my-0 prose-blockquote:my-0 [--tw-prose-body:var(--risu-theme-textcolor2)] [--tw-prose-invert-body:var(--risu-theme-textcolor2)] [--tw-prose-headings:var(--risu-theme-textcolor)] [--tw-prose-invert-headings:var(--risu-theme-textcolor)] [--tw-prose-bold:var(--risu-theme-textcolor)] [--tw-prose-invert-bold:var(--risu-theme-textcolor)] [--tw-prose-links:var(--risu-theme-textcolor)] [--tw-prose-invert-links:var(--risu-theme-textcolor)]" class:prose-invert={$ColorSchemeTypeStore}>
+        <div class="prose prose-sm max-w-none leading-6 wrap-break-word prose-p:my-0 prose-p:leading-6 prose-headings:my-0 prose-headings:text-base prose-headings:leading-6 prose-ul:my-0 prose-ol:my-0 prose-li:my-0 prose-pre:my-0 prose-blockquote:my-0 [--tw-prose-body:var(--risu-theme-textcolor2)] [--tw-prose-invert-body:var(--risu-theme-textcolor2)] [--tw-prose-headings:var(--risu-theme-textcolor)] [--tw-prose-invert-headings:var(--risu-theme-textcolor)] [--tw-prose-bold:var(--risu-theme-textcolor)] [--tw-prose-invert-bold:var(--risu-theme-textcolor)] [--tw-prose-links:var(--risu-theme-textcolor)] [--tw-prose-invert-links:var(--risu-theme-textcolor)]" class:prose-invert={$ColorSchemeTypeStore === 'dark'}>
             {@html html}
         </div>
     {:else}
