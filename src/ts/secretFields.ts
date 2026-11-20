@@ -8,6 +8,10 @@ import type { Database, botPreset, character } from 'src/ts/storage/database.sve
  *   rollout stage in which that reader is migrated).
  * - `excluded`: a reference is never resolved there; `reason` says why.
  *
+ * Every entry is also a credential that share exports (presets, the settings
+ * bug report) blank, unless it is flagged `notCredential`: a look-alike whose
+ * path merely resembles one. An unflagged new entry is stripped.
+ *
  * `field` is checked against the owning type, so a renamed or removed
  * field breaks the build. `sub` is the path below it; `[]` stands for any
  * array index and `[*]` for any object key.
@@ -23,7 +27,7 @@ export type SecretFieldEntry = SecretFieldOwner & {
     sub?: string
 } & (
     | { class: 'resolved', stage: 1 | 2, reader: string }
-    | { class: 'excluded', reason: string }
+    | { class: 'excluded', reason: string, notCredential?: true }
 )
 
 export const SECRET_FIELDS = [
@@ -70,13 +74,14 @@ export const SECRET_FIELDS = [
     { scope: 'database', field: 'authRefreshes', sub: '[].refreshToken', class: 'excluded', reason: 'OAuth credential minted and rotated by the app, not typed by the user' },
     { scope: 'database', field: 'authRefreshes', sub: '[].clientSecret', class: 'excluded', reason: 'OAuth credential minted and rotated by the app, not typed by the user' },
     { scope: 'database', field: 'vertexAccessToken', class: 'excluded', reason: 'derived cache of the minted Vertex access token' },
-    { scope: 'database', field: 'vertexAccessTokenExpires', class: 'excluded', reason: 'derived cache expiry of the minted Vertex access token' },
-    { scope: 'database', field: 'authRefreshes', sub: '[].tokenUrl', class: 'excluded', reason: 'an endpoint URL, not a credential' },
-    { scope: 'database', field: 'customTokenizer', class: 'excluded', reason: 'a tokenizer name, not a credential' },
-    { scope: 'database', field: 'ainconfig', sub: '.stoptokens', class: 'excluded', reason: 'stop sequences, not a credential' },
-    { scope: 'botPreset', field: 'ainconfig', sub: '.stoptokens', class: 'excluded', reason: 'stop sequences, not a credential' },
-    { scope: 'database', field: 'hotkeys', sub: '[].key', class: 'excluded', reason: 'a keyboard shortcut, not a credential' },
-    { scope: 'database', field: 'hotkeys', sub: '[].action', class: 'excluded', reason: 'a shortcut action name; the word hotkeys is in its path' },
+    { scope: 'database', field: 'vertexAccessTokenExpires', class: 'excluded', reason: 'derived cache expiry of the minted Vertex access token', notCredential: true },
+    { scope: 'database', field: 'authRefreshes', sub: '[].tokenUrl', class: 'excluded', reason: 'an endpoint URL, not a credential', notCredential: true },
+    { scope: 'database', field: 'customTokenizer', class: 'excluded', reason: 'a tokenizer name, not a credential', notCredential: true },
+    { scope: 'database', field: 'ainconfig', sub: '.stoptokens', class: 'excluded', reason: 'stop sequences, not a credential', notCredential: true },
+    { scope: 'botPreset', field: 'ainconfig', sub: '.stoptokens', class: 'excluded', reason: 'stop sequences, not a credential', notCredential: true },
+    { scope: 'database', field: 'hotkeys', sub: '[].key', class: 'excluded', reason: 'a keyboard shortcut, not a credential', notCredential: true },
+    { scope: 'database', field: 'hotkeys', sub: '[].action', class: 'excluded', reason: 'a shortcut action name; the word hotkeys is in its path', notCredential: true },
+    { scope: 'database', field: 'additionalParams', sub: '[][1]', class: 'excluded', reason: 'header and body parameter values; a header:: entry can carry an Authorization value; a reference there is never resolved' },
     //#endregion
 ] as const satisfies readonly SecretFieldEntry[]
 

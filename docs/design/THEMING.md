@@ -16,10 +16,20 @@ The mockups here are **Deep Nexus**, the baseline look that theme packs are defi
 
 - **Origin Navy:** tokens only, no part CSS. A nod to upstream's navy look. If the screen can't be recoloured without editing it, a token is missing.
 - **Banana Cocoa:** the chat screen as a messenger layout (yellow bubbles on blue, own messages on the right). Part CSS may rearrange layout. If the parts can't be rearranged, the structure is too rigid.
+- **Scratch White** (`scratch-white`, light only): a school notebook. Paper `#fdfdfa`, graphite text, a blue-ink accent, a red margin line down the chat transcript, one faint blue rule under every chat message and dashed perforations on the chat header and composer. Studio, Settings and Home get the same palette with rules under cards and rows. The built-in names no font, so message text keeps the user's own font. The downloadable pack can add Nanum Pen Script, bundled with its OFL text; it has no paper texture yet, because the validator refuses an image on any chat surface that can hold a protected element.
+- **Office Sheet** (`office-sheet`, light only): a classic document, a nod to word processors in general with no product name, logo or trade dress. Grey chrome, the chat transcript as a white page with a hairline edge and a 1 px shadow, a ruler of tick marks along the bottom of the chat header, a toolbar-style composer and the platform serif (`ui-serif, serif`) for message text. The ruler ticks are decoration, not a UI component.
 
-These are rough probes of the contract, not finished packs. Put them under `<area>/themes/` as an override stylesheet loaded by `?theme=origin-navy|banana-cocoa`, plus stills at 360 and 1280. Record every token or part name the screen had to gain.
+These are rough probes of the contract, not finished packs. Put them under `<area>/themes/` as an override stylesheet loaded by `?theme=origin-navy|banana-cocoa|scratch-white|office-sheet`, plus stills at 360 and 1280. Record every token or part name the screen had to gain.
 
-Out of scope for now: finished packs, fonts, images, pack loading and the theme picker. Other acceptance packs (Office Sheet, Terran Eclipse, Scratch White) are tested later by Lane A.
+Walls the two light packs were drawn around (the validator refuses these, so the looks use plain colours, borders and one non-repeating gradient instead):
+- No `repeating-linear-gradient`, `background-size`, `background-position` or `background-repeat` on a reach part (`chat-transcript`, `chat-message`, `chat-message-list`, `chat-header`, `chat-composer`), so there is no full-page ruling or tiled texture.
+- No image on any surface that can hold a protected element, so no paper texture. Only small safe leaf parts accept one.
+- No `mask`, `clip-path`, `border-image` or pseudo-element, so there is no torn edge.
+- A chat shadow reaches at most 2 px, so the Office Sheet page shadow is short, not soft.
+- No `max-width` on the message list, so the Office Sheet page spans the transcript minus its desk margins instead of sitting centred like a print page.
+- A built-in sheet names only generic font families (`ui-serif`, `serif`, `sans-serif`); a named font needs a bundled `@font-face` in a downloadable pack.
+
+Out of scope for now: finished packs, fonts, images, pack loading and the theme picker. Another acceptance pack (Terran Eclipse) is tested later by Lane A.
 
 ## Contract refinements (2026-10-27)
 

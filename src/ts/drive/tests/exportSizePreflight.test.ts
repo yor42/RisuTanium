@@ -770,4 +770,32 @@ describe.each([
 
         expect(oversizePrompts()).toEqual([])
     })
+
+    // Compatibility guard. It fails on a base without the `askLeaveOut` hook only because the hook is never called.
+    test('S2-G4 guard: the oversize question is answered before the leave-out question, which still comes before the writer opens', async () => {
+        const page = await pageOf()
+        const sizes = await stubEntrySizes()
+        ;(page.db as unknown as { taskPresets: unknown[] }).taskPresets = [{ id: 'task-0', name: 'Summarize', instructions: 'x', model: 'm' }]
+        const log: string[] = []
+        let openedAtLeaveOut = -1
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            if (message.includes(OVERSIZE_PROMPT)) {
+                log.push('oversize')
+            }
+            return true
+        })
+        const askLeaveOut = vi.fn(async () => {
+            log.push('leaveOut')
+            openedAtLeaveOut = backupSink.opened
+            return true
+        })
+
+        const outcome = await run({ mode: 'stub', limitBytes: Math.min(...sizes), askLeaveOut })
+
+        expect(oversizePrompts()).toHaveLength(1)
+        expect(askLeaveOut).toHaveBeenCalledTimes(1)
+        expect(log).toEqual(['oversize', 'leaveOut'])
+        expect(openedAtLeaveOut).toBe(0)
+        expect(outcome.status).toBe('saved')
+    })
 })

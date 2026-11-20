@@ -1,0 +1,84 @@
+/* OFFICE SHEET for Studio (MC-2520, MC-2523, MC-2524): the document palette on Studio. Grey chrome, white panels with hairline edges, near-square corners, document blue for the
+   accent and the selected row. Tokens first; part CSS only on safe leaf parts; no protected surface is named. Light only. */
+:root {
+  color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #e3e5e8;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.7);
+  --nexus-surface-raised: rgb(26 85 186 / 0.08);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(31 35 40 / 0.16);
+  --nexus-edge-strong: rgb(31 35 40 / 0.55);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #ffffff;
+  --alpha-switch-off: 0.55;
+
+  /* text */
+  --nexus-text: #1f2328;
+  --nexus-text-secondary: #474d55;
+  --nexus-text-muted: #50565f;
+
+  /* accent, warm, danger */
+  --nexus-accent-rgb: 26 85 186;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #1a55ba;
+  --nexus-core-from: #1a55ba;
+  --nexus-core-to: #154696;
+  --nexus-warm: #7a4a12;
+  --nexus-warm-from: #fdf0d5;
+  --nexus-warm-to: #f6dca6;
+  --nexus-danger-rgb: 160 30 20;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-overlay-rgb: 0 0 0;
+  --nexus-shade-rgb: 0 0 0;
+  --radius-sheet: 4px;
+
+  /* Studio-only channels, on-colours, editor wells and syntax, dark-on-light */
+  --nexus-warning-rgb: 122 79 0;
+  --studio-ok-rgb: 21 101 55;
+  --studio-info-rgb: 26 85 186;
+  --studio-ring-rgb: 26 85 186;
+  --studio-warm-rgb: 122 74 18;
+  --studio-canvas-rgb: 255 255 255;
+  --studio-sheet-rgb: 255 255 255;
+  --studio-muted-rgb: 80 86 95;
+  --studio-well-rgb: 255 255 255;
+  --studio-on-accent: #ffffff;
+  --studio-on-danger: #ffffff;
+  --studio-on-warning: #ffffff;
+  --studio-knob: #ffffff;
+  --studio-lt-bg: #ffffff;
+  --studio-gutter-bg: #f3f4f6;
+  --studio-tgb-gutter-bg: #f3f4f6;
+  --studio-popup-bg: #ffffff;
+  --studio-strip-bg: #e8effb;
+  --studio-syn-keyword: #5b3fa0;
+  --studio-syn-argument: #1b5e8a;
+  --studio-syn-string: #7a5200;
+  --studio-diff-del: #9b1c1c;
+  --studio-diff-add: #0b6b3a;
+  --studio-lt-hl-1: #3f4fb0;
+  --studio-lt-hl-4: #7a3fa0;
+  --studio-lt-hl-5: #50565f;
+  --studio-lt-hl-6: #0b6b3a;
+  --studio-lt-hl-9: #7a5200;
+  --studio-lt-hl-10: #1b5e8a;
+  --studio-lt-hl-7: #8a5a00;
+  --studio-lt-hl-8: #1e50aa;
+  --studio-syn-operator: #8a4b00;
+  --studio-syn-macro: #7a4a12;
+  --studio-syn-decorator: #0b6b3a;
+
+  --studio-radius-row: 2px;
+  --studio-radius-card: 3px;
+}
+
+/* white panels with hairline edges on the grey chrome */
+[data-part="studio-kind-row"], [data-part="studio-lt-card"], [data-part="studio-tgb-row"] { background: #ffffff; border: 1px solid #c4c8ce; }
+[data-part="studio-history-step"] { border: 1px solid #c4c8ce; }
+[data-part="studio-history-step"][data-future] { border-style: dashed; }

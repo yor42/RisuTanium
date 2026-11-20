@@ -472,6 +472,7 @@ describe('GridCatalog hero selection closes the screen', { timeout: 60_000 }, ()
         DBState.db = buildDb(emptyLibrary())
         importCharacterSpy.mockImplementation(async () => {
             DBState.db.characters.push(makeCharacter('imp-id', 'Imported'))
+            return DBState.db.characters.slice(-1)
         })
         changeCharSpy.mockResolvedValue('selected')
 
@@ -487,7 +488,7 @@ describe('GridCatalog hero selection closes the screen', { timeout: 60_000 }, ()
 
     test('an import that is cancelled or adds nothing leaves the screen open', async () => {
         DBState.db = buildDb(emptyLibrary())
-        importCharacterSpy.mockResolvedValue(undefined)
+        importCharacterSpy.mockResolvedValue([])
         changeCharSpy.mockResolvedValue('selected')
 
         await withMounted(async (target, endGrid) => {
@@ -504,6 +505,7 @@ describe('GridCatalog hero selection closes the screen', { timeout: 60_000 }, ()
         DBState.db = buildDb(emptyLibrary())
         importCharacterSpy.mockImplementation(async () => {
             DBState.db.characters.push(makeCharacter('imp-id', 'Imported'))
+            return DBState.db.characters.slice(-1)
         })
         changeCharSpy.mockResolvedValue('busy')
 

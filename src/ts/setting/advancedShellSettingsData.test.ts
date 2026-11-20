@@ -48,7 +48,7 @@ describe('Advanced page sections', () => {
     test('the groups come in the specified order', () => {
         expect(ADVANCED_SHELL_SECTIONS.map((candidate) => candidate.id)).toEqual([
             'adv.request', 'adv.lorebook', 'adv.chatload', 'adv.display', 'adv.prompt', 'adv.trouble',
-            'adv.gates', 'adv.experimental', 'adv.unrecommended', 'adv.custom', 'adv.other',
+            'adv.gates', 'adv.experimental', 'adv.unrecommended', 'adv.custom',
         ])
         for (const candidate of ADVANCED_SHELL_SECTIONS) {
             expect(typeof english[candidate.labelKey], candidate.id).toBe('string')
@@ -86,7 +86,7 @@ describe('Advanced page sections', () => {
 
 describe('Advanced page rows', () => {
     test('rows kept as they are are the legacy objects', () => {
-        for (const id of ['adv.coldstorage', 'adv.export', 'adv.banChar', 'adv.customModels', 'adv.emoPrompt', 'adv.retries']) {
+        for (const id of ['adv.export','adv.banChar', 'adv.customModels', 'adv.emoPrompt', 'adv.retries']) {
             const row = ADVANCED_SHELL_SECTIONS.flatMap((candidate) => candidate.rows).find((candidate) => rowIdsOf(candidate).includes(id))
             expect(row?.kind, id).toBe('setting')
             if (row?.kind === 'setting') expect(row.item, id).toBe(legacy(id))

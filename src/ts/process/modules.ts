@@ -702,11 +702,17 @@ async function placeModule(module:RisuModule, file:File, session:DuplicateSessio
     if(decision.choice === 'skip'){
         return {kind: 'skipped'}
     }
+    reportDecision(progress, decision)
     progress.step('add')
     //The first write of a module that has no assets: the stub load below and the placement.
     progress.beforeWrite()
     await loadReplaceTarget(decision)
     return importedOutcome(commitModule(module, decision, session, progress))
+}
+
+//Tells the card that the file goes on, before its first write: a Replace keeps the background offer away for the round.
+function reportDecision(progress:ImportProgress, decision:DuplicateDecision):void {
+    progress.decided(decision.choice === 'replace')
 }
 
 function importedOutcome(notes:string[]):ImportOutcome {
@@ -756,6 +762,7 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
                     if(decision.choice === 'skip'){
                         throw new ModuleImportStopped('skipped')
                     }
+                    reportDecision(progress, decision)
                 }})
                 progress.step('add')
                 //Dominates the stub load and the placement; for a module with assets the gate in readModule has already fired.
@@ -879,11 +886,19 @@ export async function importModule(){
             progress.round.index < progress.round.count - 1,
             progress,
         )})),
-        {declinedReason: language.importDeclinedLowLevel, task: {title: language.importTaskModulesTitle, steps: IMPORT_STEPS}, preflight: true}
+        {
+            declinedReason: language.importDeclinedLowLevel,
+            task: {title: language.importTaskModulesTitle, steps: IMPORT_STEPS, background: true, backgroundHeld: true},
+            preflight: true,
+            mayReplace: true,
+            //The module screens learn of a replace when its round ends, not when the result is answered: a backgrounded result can wait.
+            afterRound: (round) => {
+                if(sessions.get(round)?.replaced){
+                    bumpModuleGui()
+                }
+            },
+        }
     )
-    if([...sessions.values()].some((session) => session.replaced)){
-        bumpModuleGui()
-    }
 }
 
 function getModuleById(id:string){

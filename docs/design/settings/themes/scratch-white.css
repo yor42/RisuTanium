@@ -1,0 +1,71 @@
+/* SCRATCH WHITE for Settings (MC-2520, MC-2522, MC-2524): the notebook palette on Settings. Paper canvas, white cards, graphite text, blue-ink accent; every row sits on a faint
+   blue rule and the section titles are underlined in red, like a heading in a notebook. Tokens first; part CSS only on the allowlist; no critical part is named. Light only. */
+:root {
+  --color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #fdfdfa;
+  --nexus-canvas-bloom: #fdfdfa;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.8);
+  --nexus-surface-raised: rgb(31 74 168 / 0.08);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(43 46 52 / 0.14);
+  --nexus-edge-strong: rgb(43 46 52 / 0.55);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --panel: #fdfdfa;
+  --settings-canvas-rgb: 253 253 250;
+  --settings-scrim-rgb: 43 46 52;
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #fffef5;
+  --color-surface-menu: #ffffff;
+  --color-surface-drag: #ffffff;
+  --color-surface-selbar: #eef3fb;
+  --color-surface-demo: #ffffff;
+  --color-chip-hover: #e3ebf7;
+  --color-option-bg: #ffffff;
+  --color-option-text: #2b2e34;
+  --settings-surface-opaque: #ffffff;
+  --settings-surface-raised-opaque: #eef3fb;
+
+  /* text */
+  --nexus-text: #2b2e34;
+  --nexus-text-secondary: #464b54;
+  --nexus-text-muted: #545a64;
+  --color-placeholder: #545a64;
+  --color-link: #1f4aa8;
+
+  /* channels */
+  --nexus-accent-rgb: 31 74 168;
+  --nexus-danger-rgb: 179 38 30;
+  --nexus-overlay-rgb: 43 46 52;
+  --nexus-shade-rgb: 43 46 52;
+  --nexus-ring: #1f4aa8;
+  --nexus-core-from: #1f4aa8;
+  --nexus-core-to: #173a86;
+  --nexus-warm: #8a3a1a;
+  --nexus-warm-from: #fde9d9;
+  --nexus-warm-to: #f8cfb0;
+  --color-on-avatar: #2b2e34;
+  --color-on-accent: #ffffff;
+  --color-warning: #8a5a00;
+  --nexus-warning-rgb: 138 90 0;
+  --pattern-on-accent: #ffffff;
+  --pattern-on-danger: #ffffff;
+  --color-success: #176b3a;
+  --alpha-switch-off: 0.6;
+  --color-accent-tint-mark-soft: rgb(255 236 120 / 0.5);
+  --color-accent-tint-mark: rgb(255 236 120 / 0.75);
+
+  /* corners */
+  --radius-control: 6px;
+  --radius-field: 6px;
+  --radius-card: 8px;
+  --radius-sheet: 10px;
+  --radius-search: 6px;
+}
+
+/* rows on a faint blue rule; section titles underlined in red */
+[data-part="settings-row"], [data-part="settings-toggle-row"] { border-bottom: 1px solid #b9cfe9; }
+[data-part="settings-section-title"] { border-bottom: 2px solid #f0a8a6; }
+[data-part="settings-header"] { border-bottom: 2px dashed var(--nexus-edge-strong); }

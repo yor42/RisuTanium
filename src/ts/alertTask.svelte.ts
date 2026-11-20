@@ -21,6 +21,8 @@ export type TaskCloseAnswer =
     | { readonly kind: 'action', readonly id: string }
     | { readonly kind: 'replaced' }
     | { readonly kind: 'closed' }
+    /** A backgrounded result that was dismissed from its toast or hidden by the toast's hold. */
+    | { readonly kind: 'dismissed' }
 
 /** How a preflight card ended: `confirm` is the only answer that lets the action start. */
 export type TaskConfirmAnswer = 'confirm' | 'declined' | 'replaced' | 'closed'
@@ -47,11 +49,30 @@ export interface TaskHandle {
     readonly cancelRequested: boolean
     /** True once the entry has left the slot: replaced by a newer task, closed or answered. */
     readonly detached: boolean
+    /** True while the task runs or shows its result as a toast, off the screen. */
+    readonly inBackground: boolean
+    /** True once the task was sent to the background at any time, even if its card was reopened since. */
+    readonly backgrounded: boolean
+    /** Shows the background button of a task opened with `backgroundHeld`; ignored once withdrawn. */
+    offerBackground(): void
+    /** Removes the background button for good; ignored on a detached handle. */
+    withdrawBackground(): void
     settleCancel(summary?: readonly string[]): Promise<TaskCloseAnswer>
     finish(result: TaskResult): Promise<TaskCloseAnswer>
     fail(failure: TaskFailure): Promise<TaskCloseAnswer>
     /** Removes the card at once, whatever its state (the task counterpart of alertClear); resolves `closed`. */
     close(): void
+}
+
+/**
+ * Where a backgrounded task is shown. The slot knows no toast host: the host that mounts the cards registers the
+ * presenter, so this module still imports no language, store or alert module.
+ */
+export interface TaskToastPresenter {
+    /** Shows the toast for a task that just left the slot; `on.open` reopens the card, `on.end` ends a finished task. */
+    post(view: TaskView, on: { open(): void, end(): void }): number
+    update(id: number, view: TaskView): void
+    end(id: number, opts: { returnFocus: boolean }): void
 }
 
 interface Entry {
@@ -64,12 +85,22 @@ interface Entry {
     unconfirmed: boolean
     cancelRequested: boolean
     detached: boolean
+    inBackground: boolean
+    everBackgrounded: boolean
+    toastId: number | null
     stopListening(): void
 }
 
 let entry: Entry | null = null
 let shownView = $state.raw<TaskView | null>(null)
 let clockOverride: TaskClock | null = null
+let presenter: TaskToastPresenter | null = null
+// Entries whose card is off the screen; plain, because no reader needs to react to the list itself.
+let backgroundEntries: Entry[] = []
+// Set and cleared with `entry`: true while the shown card is one that `reopenEntry` brought back from a toast.
+let reopenedShown = $state(false)
+// Modules rounds that may still answer Replace, counted from the round's start until it ends; reactive, so a card hides its button.
+let detachedModulesRounds = $state(0)
 
 const defaultClock: TaskClock = {
     now: () => performance.now(),
@@ -85,6 +116,13 @@ function clearEntry(target: Entry, answer: TaskCloseAnswer): void {
     if (entry === target) {
         entry = null
         shownView = null
+        reopenedShown = false
+    }
+    if (target.inBackground) {
+        target.inBackground = false
+        backgroundEntries = backgroundEntries.filter((candidate) => candidate !== target)
+        if (target.toastId !== null) presenter?.end(target.toastId, { returnFocus: true })
+        target.toastId = null
     }
     target.controller.dispose()
     target.stopListening()
@@ -139,10 +177,14 @@ export function alertTask(def: TaskDef): TaskHandle {
         unconfirmed: def.confirm !== undefined,
         cancelRequested: false,
         detached: false,
+        inBackground: false,
+        everBackgrounded: false,
+        toastId: null,
         stopListening: () => { },
     }
     const stopView = controller.subscribe((view) => {
         if (entry === self) shownView = view
+        else if (self.inBackground && self.toastId !== null) presenter?.update(self.toastId, view)
     })
     const onVisibility = () => controller.flush()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility)
@@ -152,6 +194,7 @@ export function alertTask(def: TaskDef): TaskHandle {
     }
     entry = self
     shownView = controller.view
+    reopenedShown = false
     if (def.confirm === undefined) resolveConfirmation('confirm')
 
     return {
@@ -168,6 +211,14 @@ export function alertTask(def: TaskDef): TaskHandle {
         get detached() {
             return self.detached
         },
+        get inBackground() {
+            return self.inBackground
+        },
+        get backgrounded() {
+            return self.everBackgrounded
+        },
+        offerBackground: () => { if (!self.detached) controller.offerBackground() },
+        withdrawBackground: () => { if (!self.detached) controller.withdrawBackground() },
         settleCancel: (summary) => {
             if (!self.detached) controller.settleCancel(summary)
             return self.closed
@@ -182,6 +233,84 @@ export function alertTask(def: TaskDef): TaskHandle {
         },
         close: () => clearEntry(self, { kind: 'closed' }),
     }
+}
+
+/** Registers the toast presenter of the mounted task host; null detaches it and ends every backgrounded task as `closed`. */
+export function setTaskToastPresenter(next: TaskToastPresenter | null): void {
+    if (next === null) {
+        for (const background of [...backgroundEntries]) clearEntry(background, { kind: 'closed' })
+        backgroundEntries = []
+    }
+    presenter = next
+}
+
+/**
+ * Registers a Modules round that may still answer Replace, from the round's start; the returned end is idempotent.
+ * A round in front holds its own button anyway, so the count matters once another card is shown.
+ */
+export function registerDetachedModulesRound(): () => void {
+    detachedModulesRounds += 1
+    let ended = false
+    return () => {
+        if (ended) return
+        ended = true
+        detachedModulesRounds = Math.max(0, detachedModulesRounds - 1)
+    }
+}
+
+/**
+ * Whether a task card may offer "Keep going in the background". It is false while a registered Modules round that may
+ * still answer Replace is running: the page must stay covered until that round can no longer replace a module under an
+ * open editor.
+ */
+export function backgroundOffered(): boolean {
+    return detachedModulesRounds === 0
+}
+
+/** Sends the shown running task to the background; false and no change unless every rule below holds. */
+export function backgroundTask(): boolean {
+    const target = entry
+    if (target === null || presenter === null || shownView === null) return false
+    if (shownView.state !== 'running' || shownView.background !== true || !backgroundOffered()) return false
+    entry = null
+    shownView = null
+    reopenedShown = false
+    target.inBackground = true
+    target.everBackgrounded = true
+    backgroundEntries.push(target)
+    target.toastId = presenter.post(target.controller.view, {
+        open: () => reopenEntry(target),
+        end: () => endBackground(target),
+    })
+    return true
+}
+
+/** Whether the shown card is one that came back from its toast. */
+export function taskReopened(): boolean {
+    return reopenedShown
+}
+
+/** The number of tasks running or waiting as toasts; a test seam. */
+export function backgroundTaskCount(): number {
+    return backgroundEntries.length
+}
+
+/** The toast's Open: the same controller returns to the slot, only while no card is shown. */
+function reopenEntry(target: Entry): void {
+    if (entry !== null || !target.inBackground) return
+    backgroundEntries = backgroundEntries.filter((candidate) => candidate !== target)
+    target.inBackground = false
+    if (target.toastId !== null) presenter?.end(target.toastId, { returnFocus: false })
+    target.toastId = null
+    entry = target
+    shownView = target.controller.view
+    reopenedShown = true
+}
+
+/** The toast of a finished task was dismissed or its hold ran out: the action ends like an OK. */
+function endBackground(target: Entry): void {
+    if (!target.inBackground || !isTaskTerminal(target.controller.view.state)) return
+    clearEntry(target, { kind: 'dismissed' })
 }
 
 /** The view of the shown task, or null. Reactive: it changes with each published view. */
@@ -281,8 +410,13 @@ export function setTaskClockForTests(clock: TaskClock | null): void {
 
 export function resetTaskHostForTests(): void {
     if (entry) clearEntry(entry, { kind: 'closed' })
+    for (const background of [...backgroundEntries]) clearEntry(background, { kind: 'closed' })
+    backgroundEntries = []
     entry = null
     shownView = null
+    reopenedShown = false
+    detachedModulesRounds = 0
+    presenter = null
     clockOverride = null
     pendingActions.clear()
 }
