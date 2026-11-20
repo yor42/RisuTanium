@@ -48,7 +48,7 @@ import { applyFolderOps, createFolder, folderOf, moveManyToFolder, readFolderDoc
 import { ASSET_FOLDER_KEY } from '../../../ts/studio/assets/assetOwnerKeys'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey } from '../../../ts/studio/history/ownerPhase'
-import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../../ts/studio/history/studioHistoryService.svelte'
+import { resetStudioHistoryAccessorForTests, setStudioHistoryLoaderForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks } from '../../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../../ts/studio/history/tests/studioStoreDoubles'
 import { assetRow } from '../../../ts/studio/assets/assetFixtures.test-helpers'
@@ -256,14 +256,67 @@ describe('committing a name', () => {
         expect(live().additionalAssets[0][0]).toBe('ㅎㅐ')
     })
 
-    test('an emptied field goes back to the row\'s name without asking the service', async () => {
+    test('an emptied field goes back to the row\'s name, says why, and does not ask the service', async () => {
         await show()
         const rename = vi.spyOn(service, 'assetRename')
-        type(nameField(0), '  ')
+        for (const blank of ['', '   ']) {
+            type(nameField(0), blank)
+            nameField(0).blur()
+            await settle()
+            expect(rename).not.toHaveBeenCalled()
+            expect(nameField(0).value).toBe('smile')
+            expect(parts('studio-asset-refusal')).toHaveLength(1)
+            expect(parts('studio-asset-refusal')[0].textContent).toBe('studioEmotionNameBlank')
+        }
+        expect(service.view(A).done).toHaveLength(0)
+    })
+
+    test('a valid rename after a blank one clears the message', async () => {
+        await show()
+        type(nameField(0), ' ')
         nameField(0).blur()
         await settle()
-        expect(rename).not.toHaveBeenCalled()
+        expect(parts('studio-asset-refusal')).toHaveLength(1)
+        type(nameField(0), 'happy')
+        nameField(0).blur()
+        await settle()
+        expect(parts('studio-asset-refusal')).toHaveLength(0)
+        expect(live().additionalAssets[0][0]).toBe('happy')
+    })
+
+    test('a delete after a blank rename clears the message', async () => {
+        await show()
+        type(nameField(0), '')
+        nameField(0).blur()
+        await settle()
+        expect(parts('studio-asset-refusal')).toHaveLength(1)
+        parts('studio-asset-row-more')[1].click()
+        await settle()
+        parts('studio-asset-menu-delete')[0].click()
+        await settle()
+        expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile'])
+        expect(parts('studio-asset-refusal')).toHaveLength(0)
+    })
+
+    test('an emptied field says nothing while no history service exists', async () => {
+        // The loader never settles: the list stays without a service for the whole test.
+        setStudioHistoryServiceForTests(null)
+        setStudioHistoryLoaderForTests(() => new Promise(() => {}))
+        await show()
+        type(nameField(0), '')
+        nameField(0).blur()
+        await settle()
+        expect(parts('studio-asset-refusal')).toHaveLength(0)
         expect(nameField(0).value).toBe('smile')
+    })
+
+    test('the blur of a removed row\'s emptied field shows no message', async () => {
+        await show()
+        type(nameField(0), '')
+        db.db.characters[0].additionalAssets = [assetRow('grin', 'assets/grin.png')]
+        nameField(0).blur()
+        await settle()
+        expect(parts('studio-asset-refusal')).toHaveLength(0)
     })
 
     test('a refused rename shows its refusal and puts the name back', async () => {

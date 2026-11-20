@@ -2426,7 +2426,6 @@ export const languageChinese = {
     "studioAssetModuleSharedId": "此模块与另一个模块使用相同的 ID，因此资源更改已关闭",
     "studioAssetFileGone": (name: string) => `${name} 的文件已不存在，因此未恢复此行`,
     "studioAssetFileUnchecked": (name: string) => `无法检查 ${name} 的文件，因此未做任何更改。请重试。`,
-    "studioAssetUseKeptFile": "使用相同的已保留文件",
     "studioAssetToastUseHistory": "请使用历史记录面板撤销此操作",
     "studioAssetUndone": "已撤销",
     "studioAssetUndoFailed": "无法撤销此操作。",

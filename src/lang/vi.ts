@@ -2426,7 +2426,6 @@ export const languageVietnamese = {
     "studioAssetModuleSharedId": "Mô-đun này có cùng ID với một mô-đun khác nên các thay đổi tài nguyên đã bị tắt",
     studioAssetFileGone: (name: string) => `Tệp của ${name} không còn nữa nên hàng này không được khôi phục`,
     studioAssetFileUnchecked: (name: string) => `Không thể kiểm tra tệp của ${name} nên không có gì được thay đổi. Hãy thử lại.`,
-    "studioAssetUseKeptFile": "Dùng tệp giống hệt đã được giữ lại",
     "studioAssetToastUseHistory": "Hãy dùng bảng lịch sử để hoàn tác việc này",
     "studioAssetUndone": "Đã hoàn tác",
     "studioAssetUndoFailed": "Không thể hoàn tác việc này.",

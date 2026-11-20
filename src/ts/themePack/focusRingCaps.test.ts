@@ -1,7 +1,8 @@
 // @vitest-environment node
 // CHORE-738 stage 5 (MC-2320, MC-2321, MC-2322, MC-2323): the install judge's per-token limits on the focus rings. Chat --focus-ring-w and --focus-ring-w-forced
 // are at most 4 px; --focus-ring-offset-inset and --focus-ring-offset-wide run from -6 to 6 px; in Settings only, --pattern-focus-width is at most 4 px and
-// --pattern-focus-offset runs from -6 to 6 px. Each row is labelled REPRO (refused now, accepted before the limits) or GUARD (accepted or equal before and after).
+// --pattern-focus-offset runs from -6 to 6 px. The nexus ring pair, shared by every area, is 1 to 4 px wide with an offset from -4 to 6 px, and
+// --pattern-focus-width has a 1 px floor (MC-2489, MC-2490). Each row is labelled REPRO (refused now, accepted before the limits) or GUARD (accepted or equal before and after).
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -98,7 +99,26 @@ describe('R10 Settings agrees with the reference on the limited names (GUARD, pa
 describe('R11 Settings reads --focus-ring-w through --nexus-focus-ring-width (MC-2338)', () => {
     it('settings refuses a nexus width of 5px through the alias (REPRO)', () => has('settings', ':root{--nexus-focus-ring-width:5px}', maxWhy('--focus-ring-w', '5', '4px')))
     it('settings accepts a nexus width of 4px (GUARD)', () => accepted('settings', ':root{--nexus-focus-ring-width:4px}'))
-    it.each(['chat', 'studio', 'home'] as const)('%s accepts a nexus width of 8px (GUARD)', (area) => accepted(area, ':root{--nexus-focus-ring-width:8px}'))
+})
+
+describe('R12 the nexus ring pair is capped at 4 px wide and 6 px out in every area (MC-2489)', () => {
+    const others = ['chat', 'studio', 'home'] as const
+    it.each(others.flatMap((area) => ['4.01', '5', '8'].map((px) => [area, px] as const)))('%s refuses a nexus width of %spx (REPRO)', (area, px) => {
+        has(area, `:root{--nexus-focus-ring-width:${px}px}`, maxWhy('--nexus-focus-ring-width', px, '4px'))
+    })
+    it.each(others)('%s accepts a nexus width of 4px (GUARD)', (area) => accepted(area, ':root{--nexus-focus-ring-width:4px}'))
+    it.each(AREAS.flatMap((area) => ['6.01', '7', '8'].map((px) => [area, px] as const)))('%s refuses a nexus offset of %spx (REPRO)', (area, px) => {
+        has(area, `:root{--nexus-focus-ring-offset:${px}px}`, maxWhy('--nexus-focus-ring-offset', px, '6px'))
+    })
+    it.each(AREAS.flatMap((area) => ['6px', '-4px'].map((value) => [area, value] as const)))('%s accepts a nexus offset of %s (GUARD)', (area, value) => {
+        accepted(area, `:root{--nexus-focus-ring-offset:${value}}`)
+    })
+    it.each(AREAS)('%s refuses a nexus offset of -5px (GUARD, floor unchanged)', (area) => has(area, ':root{--nexus-focus-ring-offset:-5px}', minWhy('--nexus-focus-ring-offset', '-5', '-4px')))
+})
+
+describe('R14 the Settings pattern ring width has a 1 px floor (MC-2490)', () => {
+    it.each(['0', '0.5'])('--pattern-focus-width:%spx is refused (REPRO)', (px) => has('settings', `:root{--pattern-focus-width:${px}px}`, minWhy('--pattern-focus-width', px, '1px')))
+    it('--pattern-focus-width:1px stays accepted (GUARD)', () => accepted('settings', ':root{--pattern-focus-width:1px}'))
 })
 
 describe('R13 an offset that cannot be measured is refused (REPRO)', () => {

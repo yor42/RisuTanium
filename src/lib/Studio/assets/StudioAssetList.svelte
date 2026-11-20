@@ -546,8 +546,12 @@
         // the rows are already recomputed but the row's field still shows the old one.
         const current = rows[row.index]
         if (current === undefined || current.key !== row.key || current.name !== row.name) return row.name
-        // An empty name names nothing: the field goes back to the row's own.
-        if (!service || value.trim() === '') return row.name
+        if (!service) return row.name
+        // An empty name names nothing: the field goes back to the row's own, and the list says so.
+        if (value.trim() === '') {
+            refusal = language.studioEmotionNameBlank
+            return row.name
+        }
         // A name that already has rows in a folder takes this row into it; read before the write changes the rows.
         const pooled = rows.find((other) => other.index !== row.index && assetPoolKey(other.name) === assetPoolKey(value))
         const joins = pooled?.folder != null && pooled.folder !== row.folder ? pooled.folder : null

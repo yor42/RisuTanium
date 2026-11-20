@@ -2428,7 +2428,6 @@ export const languageSpanish = {
     studioAssetModuleSharedId: "Este módulo comparte su ID con otro módulo; los cambios de recursos están desactivados",
     studioAssetFileGone: (name: string) => `El archivo de ${name} ya no existe, por lo que esta fila no se restauró`,
     studioAssetFileUnchecked: (name: string) => `No se pudo comprobar el archivo de ${name}, por lo que no se cambió nada. Inténtalo de nuevo.`,
-    studioAssetUseKeptFile: "Usar el archivo idéntico conservado",
     studioAssetToastUseHistory: "Usa el panel de historial para deshacer esto",
     studioAssetUndone: "Deshecho",
     studioAssetUndoFailed: "No se pudo deshacer esto.",

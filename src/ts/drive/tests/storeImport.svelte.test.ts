@@ -20,7 +20,8 @@ import { bootThroughDispatch, commitActivePass, startStore2, store2Boot, type St
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import { language } from 'src/lang'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
-import { encodeUnit, REQ_MODULE_BUCKETS, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { decodeFrame, encodeUnit, REQ_MODULE_BUCKETS, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { unitDigest } from 'src/ts/storage/store2/codec'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { assembleDatabase } from 'src/ts/storage/store2/codec'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
@@ -31,7 +32,10 @@ import { toPlainJson } from 'src/ts/storage/store2/codec/normalize'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { BACKUP_ENCRYPTION_MARKER_NAME, indexBackupEntries } from 'src/ts/drive/backupContainer'
-import { loadGolden } from 'src/ts/storage/tests/store2/legacyFixtures'
+import { loadGolden, readerOver } from 'src/ts/storage/tests/store2/legacyFixtures'
+import { readBaseContentIndex } from 'src/ts/storage/store2/baseContent'
+import { importLegacyTree } from 'src/ts/storage/store2/legacy/importTree'
+import { createListDerivation } from 'src/ts/storage/store2/lists'
 import { breakDataChecksum } from 'src/ts/storage/tests/risuSaveBlockFile'
 
 vi.setConfig({ testTimeout: 60_000 })
@@ -627,7 +631,7 @@ armed('task presets over the .bin import of a store2 page', () => {
         return binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await blockFileBytes(page, source)))
     }
 
-    test('regression reproducer: the page\'s presets, an unknown key and an unsaved edit included, are kept under fresh unit keys; the file\'s own list adds nothing', async () => {
+    test('regression reproducer: the page\'s presets, an unknown key and an unsaved edit included, are kept; an unchanged one keeps its unit key and an edited one gets a new key; the file\'s own list adds nothing', async () => {
         const page = await openPage()
         await nextCommit(page.w, () => {
             page.db.taskPresets = [
@@ -649,9 +653,9 @@ armed('task presets over the .bin import of a store2 page', () => {
         expect(kept[1].name).toBe('Unsaved edit')
         const keysAfter = await committedTaskPresetKeys(page, await currentKey(page) as string)
         expect(keysAfter).toHaveLength(2)
-        for (const key of keysAfter) {
-            expect(keysBefore).not.toContain(key)
-        }
+        // Content reuse on both arms: the unchanged preset keeps its stored unit, the edited one is written anew.
+        expect(keysAfter[0]).toBe(keysBefore[0])
+        expect(keysBefore).not.toContain(keysAfter[1])
         expect(alertErrorTexts(page)).toEqual([])
     })
 
@@ -903,6 +907,78 @@ armed('the commit and its outcomes', () => {
         expect(await writeLockIsFree(page)).toBe(false)
     })
 
+    // Regression reproducer (red before the retry: one commit call and the refusal text): another writer dropped the base the
+    // content index was read from, so the import is rebuilt once over a fresh read without a word.
+    test('a base-unnamed refusal is answered by one quiet rebuild, which lands', async () => {
+        const page = await openPage()
+        const calls = committingWith(page, async (real, read, request, call) => {
+            if (call === 1) {
+                return { status: 'refused', reason: 'base-unnamed', detail: 'The commit key no longer names the base.' }
+            }
+            return await real.commit(await real.readCommit(), request)
+        })
+
+        await loadBin(page, golden('upstream-full.bin'))
+
+        expect(calls).toHaveLength(2)
+        expect(page.reloads.count).toBe(1)
+        expect(alertErrorTexts(page)).toEqual([])
+    })
+
+    // Regression reproducer (red before the retry: one call): the retry is one, from the conflict's budget; the second
+    // refusal shows the library refusal and the page reloads nothing.
+    test('a base-unnamed refusal that repeats is retried once and then shown as the library refusal', async () => {
+        const page = await openPage()
+        const calls = committingWith(page, async () => ({ status: 'refused', reason: 'base-unnamed', detail: 'again' }))
+
+        await loadBin(page, golden('upstream-full.bin'))
+
+        expect(calls).toHaveLength(2)
+        expect(alertErrorTexts(page)).toEqual([language.store2ImportRefused])
+        expect(page.reloads.count).toBe(0)
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test('a conflict and then a base-unnamed refusal share one budget: two commits, then the library refusal', async () => {
+        const page = await openPage()
+        const calls = committingWith(page, async (_real, read, _request, call) => call === 1
+            ? { status: 'conflict', current: read }
+            : { status: 'refused', reason: 'base-unnamed', detail: 'after the conflict' })
+
+        await loadBin(page, golden('upstream-full.bin'))
+
+        expect(calls).toHaveLength(2)
+        expect(alertErrorTexts(page)).toEqual([language.store2ImportRefused])
+        expect(page.reloads.count).toBe(0)
+    })
+
+    // A refusal after the bulk marker whose own-marker clear did not succeed is not retried: the rebuild would meet this
+    // page's own marker.
+    test.each([
+        ['the clear failed', { status: 'failed', cause: new Error('disk') }],
+        ['the clear is unknown', null],
+    ] as const)('a base-unnamed refusal whose marker may still stand is not retried (%s)', async (_name, cleared) => {
+        const page = await openPage()
+        const calls = committingWith(page, async () => ({ status: 'refused', reason: 'base-unnamed', detail: 'marker', cleared } as unknown as CommitResult))
+
+        await loadBin(page, golden('upstream-full.bin'))
+
+        expect(calls).toHaveLength(1)
+        expect(alertErrorTexts(page)).toEqual([language.store2ImportRefused])
+    })
+
+    test('a base-unnamed refusal whose marker is gone (nothing stood to clear) is retried', async () => {
+        const page = await openPage()
+        const calls = committingWith(page, async (real, _read, request, call) => call === 1
+            ? { status: 'refused', reason: 'base-unnamed', detail: 'marker', cleared: { status: 'nothing' } } as unknown as CommitResult
+            : await real.commit(await real.readCommit(), request))
+
+        await loadBin(page, golden('upstream-full.bin'))
+
+        expect(calls).toHaveLength(2)
+        expect(page.reloads.count).toBe(1)
+    })
+
     test('a landed import the device did not confirm is told to the person and reloads once', async () => {
         const page = await openPage()
         committingWith(page, async (real, read, request) => {
@@ -932,6 +1008,39 @@ armed('the commit and its outcomes', () => {
         expect(page.reloads.count).toBe(0)
         expect(await writeLockIsFree(page)).toBe(true)
         expect(page.busy.isBusy()).toBe(false)
+    })
+})
+
+armed('re-importing one file reuses what the page already stores', () => {
+    // Regression reproducer: before the content index every unit of the second load was written again under a new key.
+    test('the second load of the same .bin adds no unit whose content is already stored', async () => {
+        const page = await openPage()
+        const bytes = golden('upstream-full.bin')
+        // The first import is made through the library over the page's store: a landed page import keeps the write lock closed for its reload.
+        const first = await loadGolden('upstream-full.bin')
+        const landed = await importLegacyTree(
+            { source: { tree: first.tree }, reader: readerOver(first.units), committer: page.k.committer, backend: page.k.memory, lists: createListDerivation() },
+            { async confirmIncomplete() { return true } },
+        )
+        expect(landed.status).toBe('committed')
+        const stored = page.k.memory.snapshot()
+        // What the current tree names: a unit only an older manifest names is not a candidate.
+        const known = new Set((await readBaseContentIndex(page.k.memory, await page.k.memory.readCommit())).units.keys())
+        const keep = new Set<number>([UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.order])
+
+        await loadBin(page, bytes)
+
+        const after = page.k.memory.snapshot()
+        const duplicates = [...after.entries()]
+            .filter(([key]) => !stored.has(key))
+            .filter(([, unit]) => {
+                const frame = decodeFrame(unit)
+                return frame.status === 'ok' && !keep.has(frame.type) && known.has(unitDigest(unit))
+            })
+            .map(([key]) => key)
+        expect(duplicates).toEqual([])
+        expect(page.reloads.count).toBe(1)
+        expect(alertErrorTexts(page)).toEqual([])
     })
 })
 
