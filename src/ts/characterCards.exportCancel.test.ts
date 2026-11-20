@@ -247,6 +247,15 @@ import { readImage } from 'src/ts/globalApi.svelte'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { alertData } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
+import type { TaskView } from 'src/lib/Nexus/pattern/taskProgress'
+import { sleep } from 'src/ts/util'
+
+/** The card's own Cancel: offered by the view, then pressed. */
+function pressCancel(): void {
+    expect(taskHostView()?.cancelOffered).toBe(true)
+    requestTaskCancel()
+}
 
 function syntheticPng(idatChunks = 0): Uint8Array {
     const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -314,10 +323,12 @@ beforeEach(() => {
         },
     }))
     alertStore.set({ type: 'none', msg: '' })
+    resetTaskHostForTests()
     shown = []
     unsubscribe = alertStore.subscribe((value) => { shown.push(value as alertData) })
     return () => {
         unsubscribe()
+        resetTaskHostForTests()
         vi.restoreAllMocks()
     }
 })
@@ -334,13 +345,11 @@ describe('a card export stalled mid-write', () => {
     test('(R) the dialog on screen at the stall carries a Cancel, and pressing it ends the export without an error', async () => {
         const { result } = await stalledCardExport(2)
 
-        const dialog = get(alertStore) as alertData
-        expect(dialog.onCancel).toBeTypeOf('function')
-        expect(dialog.type).toBe('wait')
-        dialog.onCancel?.()
+        pressCancel()
 
         expect(await result).toBe(false)
         expect(world.errors).toEqual([])
+        expect(taskHostView()?.cancelled).toBe(true)
     })
 
     test('(R) a stall inside the image chunks, before any progress, still shows a Cancel that ends the export and tells of the cut-off file', async () => {
@@ -348,43 +357,48 @@ describe('a card export stalled mid-write', () => {
         world.png = syntheticPng(3)
         const { result } = await stalledCardExport(3)
 
-        const dialog = get(alertStore) as alertData
-        expect(dialog.type).toBe('wait')
-        expect(dialog.onCancel).toBeTypeOf('function')
-        expect(shown.filter((value) => value.msg.startsWith(language.alerts.addingCardAssets))).toEqual([])
-        dialog.onCancel?.()
+        expect(taskHostView()?.count).toBeUndefined()
+        pressCancel()
 
         expect(await result).toBe(false)
         expect(world.errors).toEqual([])
         expect(busyKinds()).not.toContain('export')
-        const notice = get(alertStore) as alertData
-        expect(notice.type).toBe('normal')
-        expect(notice.msg).toBe(language.exportCancelledFileIncomplete)
+        const view = taskHostView()
+        expect(view?.cancelled).toBe(true)
+        expect(view?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+        expect((get(alertStore) as alertData).type).not.toBe('normal')
         expect(world.aborts).toBe(1)
     })
 
-    test('(N) the progress shows the percentage as text in a cancellable wait, not as a bar', async () => {
-        const { result } = await stalledCardExport(2)
+    test('(N) the progress shows counts on the card, with no percentage and no wait or progress alert', async () => {
+        let tick = 0
+        setTaskClockForTests({ now: () => (tick += 1000), setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (timer) => clearTimeout(timer), hidden: () => false })
+        let beforeWrite: TaskView | null = null
+        vi.mocked(sleep).mockImplementation(async () => { beforeWrite ??= taskHostView() })
+        try {
+            expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(true)
+        }
+        finally {
+            vi.mocked(sleep).mockImplementation(async () => { })
+        }
 
-        const progress = shown.filter((value) => value.msg.startsWith(language.alerts.addingCardAssets))
-        expect(progress.length).toBeGreaterThan(0)
-        expect(progress.every((value) => value.type === 'wait' && value.onCancel !== undefined && /\(\d+\.\d\d%\)$/.test(value.msg))).toBe(true)
-        expect(shown.filter((value) => value.type === 'progress')).toEqual([])
-
-        ;(get(alertStore) as alertData).onCancel?.()
-        await result
+        const view = beforeWrite as TaskView | null
+        expect(view?.count).toEqual({ done: 3, total: 3 })
+        expect(view?.cancelOffered).toBe(true)
+        expect(JSON.stringify(view)).not.toMatch(/%/)
+        expect(shown.filter((value) => value.type === 'progress' || value.type === 'wait')).toEqual([])
     })
 
     test('(N) a cancel after the stream opened says any saved file is incomplete, once; nothing is closed or reported as success', async () => {
         const { result } = await stalledCardExport(2)
 
-        ;(get(alertStore) as alertData).onCancel?.()
+        pressCancel()
         await result
 
-        const notice = get(alertStore) as alertData
-        expect(notice.type).toBe('normal')
-        expect(notice.msg).toBe(language.exportCancelledFileIncomplete)
-        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
+        const view = taskHostView()
+        expect(view?.cancelled).toBe(true)
+        expect(view?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toEqual([])
         expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
         expect(world.aborts).toBe(1)
         expect(world.closes).toBe(0)
@@ -393,7 +407,7 @@ describe('a card export stalled mid-write', () => {
 
     test('(N) a write that settles after the cancel posts nothing and closes nothing', async () => {
         const { result } = await stalledCardExport(2)
-        ;(get(alertStore) as alertData).onCancel?.()
+        pressCancel()
         await result
         const seen = shown.length
 
@@ -411,9 +425,7 @@ describe('a card export stalled mid-write', () => {
     test('(R) a CharX export is cancellable at its stall too', async () => {
         const { result } = await stalledCardExport(1, 'charx')
 
-        const dialog = get(alertStore) as alertData
-        expect(dialog.onCancel).toBeTypeOf('function')
-        dialog.onCancel?.()
+        pressCancel()
 
         expect(await result).toBe(false)
         expect(world.errors).toEqual([])
@@ -421,34 +433,45 @@ describe('a card export stalled mid-write', () => {
 })
 
 describe('guards', () => {
-    test('(G) a normal export is unchanged: it closes the file and reports success', async () => {
+    test('(G) a normal export is unchanged: it closes the file and reports success on the card', async () => {
         expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(true)
 
         expect(world.closes).toBe(1)
         expect(world.aborts).toBe(0)
-        expect(shown.filter((value) => value.msg === language.exportDownloadStarted)).toHaveLength(1)
+        expect(taskResultShowing()).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportDownloadStarted])
         expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
     })
 
-    test('(N) a web JSON card export offers Cancel in its waits, closes the file and reports the download once', async () => {
-        expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(true)
+    test('(N) a web JSON card export offers Cancel on its card, closes the file and reports the download once', async () => {
+        let cancelOffered = false
+        vi.mocked(readImage).mockImplementation(async () => {
+            cancelOffered ||= taskHostView()?.cancelOffered === true
+            return world.png
+        })
+        try {
+            expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(true)
+        }
+        finally {
+            vi.mocked(readImage).mockImplementation(async () => world.png)
+        }
 
-        expect(shown.filter((value) => value.onCancel !== undefined).length).toBeGreaterThan(0)
-        expect(shown.filter((value) => value.type === 'progress')).toEqual([])
+        expect(cancelOffered).toBe(true)
+        expect(shown.filter((value) => value.type === 'progress' || value.type === 'wait')).toEqual([])
         expect(world.closes).toBe(1)
         expect(world.aborts).toBe(0)
-        expect(shown.filter((value) => value.msg === language.exportDownloadStarted)).toHaveLength(1)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportDownloadStarted])
         expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
     })
 
     test('(R) cancelling a web JSON card export during the second asset read reads no further asset, aborts once and tells of the cut-off file', async () => {
         const reads: string[] = []
-        let cancelOffered = ''
+        let cancelOffered = false
         vi.mocked(readImage).mockImplementation(async (key: string) => {
             reads.push(key)
             if (key === 'assets/a2') {
-                cancelOffered = typeof (get(alertStore) as alertData).onCancel
-                ;(get(alertStore) as alertData).onCancel?.()
+                cancelOffered = taskHostView()?.cancelOffered === true
+                requestTaskCancel()
             }
             return world.png
         })
@@ -460,32 +483,48 @@ describe('guards', () => {
             vi.mocked(readImage).mockImplementation(async () => world.png)
         }
 
-        expect(cancelOffered).toBe('function')
+        expect(cancelOffered).toBe(true)
         expect(result).toBe(false)
         expect(reads.filter((key) => key.startsWith('assets/'))).toEqual(['assets/a1', 'assets/a2'])
         expect(world.errors).toEqual([])
         expect(world.aborts).toBe(1)
         expect(world.closes).toBe(0)
-        expect((get(alertStore) as alertData).msg).toBe(language.exportCancelledFileIncomplete)
-        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toEqual([])
         expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
     })
 
-    test('(R) a failure after the stream opened aborts the stream once and adds the incomplete-file sentence to the one error', async () => {
+    test('(R) a failure after the stream opened aborts the stream once and shows one detail with the incomplete-file sentence', async () => {
         world.failAfter = 2
         expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(false)
 
-        expect(world.errors).toEqual(['synthetic stream failure\n' + language.exportFailedFileIncomplete])
+        const view = taskHostView()
+        expect(view?.state).toBe('failed')
+        expect(view?.failure?.headline).toBe(language.exportTaskFailed)
+        expect(view?.failure?.detail).toBe('synthetic stream failure\n' + language.exportFailedFileIncomplete)
+        expect(world.errors).toEqual([])
         expect(world.aborts).toBe(1)
         expect(world.closes).toBe(0)
         expect(busyKinds()).not.toContain('export')
     })
 
-    test('(G) a desktop card export keeps its progress bar and offers no Cancel', async () => {
+    test('(N) a desktop card export shows a card without Cancel and no progress alert', async () => {
         platformBox.isTauri = true
-        expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(true)
+        let offered: boolean | undefined
+        vi.mocked(readImage).mockImplementation(async () => {
+            offered ??= taskHostView()?.cancelOffered
+            return world.png
+        })
+        try {
+            expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(true)
+        }
+        finally {
+            vi.mocked(readImage).mockImplementation(async () => world.png)
+        }
 
+        expect(offered).toBe(false)
         expect(shown.filter((value) => value.onCancel !== undefined)).toEqual([])
-        expect(shown.filter((value) => value.type === 'progress').length).toBeGreaterThan(0)
+        expect(shown.filter((value) => value.type === 'progress' || value.type === 'wait')).toEqual([])
     })
 })

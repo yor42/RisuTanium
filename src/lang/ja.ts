@@ -342,6 +342,11 @@ export const languageJapanese = {
     settingsShellDataScopePartialHint: "データ、プロフィール画像、ユーザーとペルソナのアイコン、背景、フォルダーとプリセットの画像を保存します。感情画像、追加アセット、音声ファイル、チャット画像、その他のメディアは保存されません。",
     settingsShellDataScopeBinOnly: "キャラクターアセットを除外できるのは .bin バックアップのみです。",
     settingsShellDataStart: "開始",
+    settingsShellDataEncrypt: "パスワードで暗号化する",
+    settingsShellDataEncryptAgain: "パスワードをもう一度入力してください",
+    settingsShellDataEncryptWarning: "このパスワードを忘れると、このバックアップは開けなくなります。誰にも復元できません。",
+    settingsShellDataEncryptMismatch: "2つのパスワードが一致しません。",
+    settingsShellDataEncryptSlow: "この接続では暗号化が遅くなります。大きなバックアップは数分かかることがあります。",
     settingsShellDataLeaveOutTitle: "この .bin には、このアプリだけが使うデータが含まれません",
     settingsShellDataLeaveOutStays: "そのデータはこのアプリに残ります。まだ何も書き込まれていません。",
     settingsShellDataLeaveOutAlternatives: (count: number, branchChats: number) => branchChats > 0 ? `${count} 件のチャットの代替の返信：${branchChats} 件は追加の「(Branch)」チャットとして保存され、残りは含まれません` : `${count} 件のチャットの代替の返信`,
@@ -679,6 +684,13 @@ export const languageJapanese = {
     importPreflightStart: "インポート",
     importStepDownload: "ダウンロード",
     importNounAssets: "アセット",
+    exportTaskCharacterTitle: "キャラクターをエクスポート中",
+    exportTaskModuleTitle: "モジュールをエクスポート中",
+    exportStepPrepare: "ファイルを準備",
+    exportStepAssets: "アセットを追加",
+    exportStepWrite: "ファイルを書き込む",
+    exportTaskDone: "エクスポートしました",
+    exportTaskFailed: "エクスポートできませんでした",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}件保存済み、これまでに${found}件見つかりました` : `${done}件保存済み、これまでに${found}件見つかりました`,
     chatShellTranslationClose: "翻訳エディターを閉じる",
     formating: {
@@ -1951,6 +1963,10 @@ export const languageJapanese = {
     emptyTrashCannotUndo: "この操作は取り消せません。",
     backupLoadWorkInProgress: "現在実行中の処理（チャット応答、インポートまたはエクスポート、画像やアセットの追加、クリーンアップ、プラグインリクエスト）があるため、バックアップは読み込まれませんでした。処理が完了するのを待つか停止してから、もう一度お試しください。ページを再読み込みしてもすべての処理が終了します。",
     backupLoadRefusedLine: "別のバックアップは読み込まれませんでした：他の処理がまだ実行中です。",
+    backupRestoreLoading: "バックアップを読み込み中...",
+    backupRestoreReadingDatabase: "バックアップ内のデータベースを読み込み中...",
+    backupRestoreFinishingFiles: "ファイルのコピーを仕上げています...",
+    backupRestoreFailed: "失敗しました。ファイルが破損していませんか？",
     insertOrder: "挿入順序",
     activationKeys: "発動キー",
     activationKeysInfo: "カンマ区切り",
@@ -3493,7 +3509,7 @@ export const languageJapanese = {
     duplicatePluginFoundUpdateIt: "重複するプラグインが見つかりました。既存のプラグインを更新しますか？",
     pluginUpdateFoundInstallIt: "プラグインのアップデートが見つかりました。アップデートをインストールしますか？",
     pluginBatchReview: (added: string, updated: string, failed: string) =>
-        'これらのプラグインファイルを確認してください。確認すると、新しいプラグインは有効な状態でインストールされ、インストール済みのプラグインは保存された設定を保持したまま更新されます。失敗したファイルはインストールされません。'
+        'これらのプラグインファイルを確認してください。「はい」を押すと、新しいプラグインは有効な状態でインストールされ、インストール済みのプラグインは保存された設定を保持したまま更新されます。失敗したファイルはインストールされません。'
         + (added ? `\n\n新規:\n${added}` : '')
         + (updated ? `\n\n更新（設定を保持）:\n${updated}` : '')
         + (failed ? `\n\n失敗:\n${failed}` : ''),

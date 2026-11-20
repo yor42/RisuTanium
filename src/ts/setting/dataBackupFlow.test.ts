@@ -35,7 +35,7 @@ function deps(choice: BackupChoice | null, setup: Setup = {}) {
     const spies = {
         saveBin: vi.fn(run),
         savePartialBin: vi.fn(async (options: BackupExportOptions, _entry: { assetsExplained: boolean }) => await run(options)),
-        startRtb: vi.fn(async () => null),
+        startRtb: vi.fn(async (_password?: string) => null),
         askLeaveOut: vi.fn(async (_summary: readonly BinLeaveOutEntry[]) => setup.answer ?? null),
         setLeftOut: vi.fn((_text: string | null) => {}),
     }
@@ -70,6 +70,17 @@ describe('runDataBackup', () => {
             expect(spies.savePartialBin).not.toHaveBeenCalled()
             expect(spies.askLeaveOut).not.toHaveBeenCalled()
         }
+    })
+
+    test('T-S2-9: .rtb hands the export exactly the chooser\'s password, and undefined when there is none', async () => {
+        const sealed = deps({ format: 'rtb', scope: 'full', password: ' Pẃ 한 ' })
+        await runDataBackup(sealed.live)
+        expect(sealed.spies.startRtb).toHaveBeenCalledTimes(1)
+        expect(sealed.spies.startRtb).toHaveBeenCalledWith(' Pẃ 한 ')
+        const plain = deps({ format: 'rtb', scope: 'full' })
+        await runDataBackup(plain.live)
+        expect(plain.spies.startRtb).toHaveBeenCalledTimes(1)
+        expect(plain.spies.startRtb.mock.calls[0][0]).toBeUndefined()
     })
 
     test('S1-U1: .bin in full saves once, handing the export the leave-out question', async () => {
@@ -110,6 +121,8 @@ describe('runDataBackup leave-out answers', () => {
         const { live, spies } = deps(BIN, { asks: SUMMARY, answer: 'rtb', outcome: { status: 'declined', cause: 'incomplete-data-declined' } })
         await runDataBackup(live)
         expect(spies.startRtb).toHaveBeenCalledTimes(1)
+        // The instead path is a plain .rtb: it passes no password argument at all.
+        expect(spies.startRtb).toHaveBeenCalledWith()
         expect(spies.setLeftOut).toHaveBeenLastCalledWith(null)
     })
 

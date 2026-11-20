@@ -34,7 +34,7 @@ import ModuleChatMenu from './ModuleChatMenu.svelte'
 
 //#region helpers
 
-const ALLOWED = [/^bg-black\/50$/, /^text-violet-500$/]
+const ALLOWED = [/^bg-black\/50$/]
 
 function makeModule(name: string, extra: Partial<RisuModule> = {}): RisuModule {
     return { name, description: '', id: 'id-' + name, ...extra } as RisuModule
@@ -130,7 +130,7 @@ describe('ModuleChatMenu state and colour', () => {
         }
         const characterOn = rowOf(target, 'B').querySelector('button') as HTMLButtonElement
         expect(characterOn.getAttribute('aria-pressed')).toBe('false')
-        expect(characterOn.classList.contains('text-violet-500')).toBe(true)
+        expect(characterOn.classList.contains('risu-state-violet')).toBe(true)
         expect(characterOn.classList.contains('ring-current')).toBe(true)
         expect(controlDescription(characterOn)).toBe(language.moduleOnForCharacter)
         const off = rowOf(target, 'D').querySelector('button') as HTMLButtonElement

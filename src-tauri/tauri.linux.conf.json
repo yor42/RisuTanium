@@ -1,11 +1,14 @@
 {
   "bundle": {
+    "linux": {
+      "deb": {"files": {"/usr/share/mime/packages/risutanium.xml": "risutanium-mime.xml"}},
+      "rpm": {"files": {"/usr/share/mime/packages/risutanium.xml": "risutanium-mime.xml"}}
+    },
     "fileAssociations": [
-      {
-        "ext": [
-          "risum", "risup", "charx", "byaf"
-        ]
-      },
+      {"ext": ["risum"], "mimeType": "application/x-risutanium-module"},
+      {"ext": ["risup"], "mimeType": "application/x-risutanium-preset"},
+      {"ext": ["charx"], "mimeType": "application/x-risutanium-charx"},
+      {"ext": ["byaf"], "mimeType": "application/x-risutanium-byaf"},
       {
         "ext": ["png"],
         "role": "Viewer",

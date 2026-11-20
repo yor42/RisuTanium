@@ -1,6 +1,7 @@
 <script lang="ts">
     import './pattern-dialog.css'
     import { flushSync, untrack, type Snippet } from 'svelte'
+    import { isImeComposing } from '../../../ts/ime/compositionGuard'
     import { takePickReturn } from '../../../ts/pickOpener'
     import { ANNOUNCE_SETTLE_MS, PICK_REFOCUS_SETTLE_MS, afterFrameSettle, isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from './patternFocus'
 
@@ -90,7 +91,7 @@
                 // would read the alert as idle and close an open settings panel.
                 event.preventDefault()
                 event.stopPropagation()
-                if (!event.repeat && !event.isComposing) cancel()
+                if (!event.repeat && !isImeComposing(event)) cancel()
                 return
             }
             trapTab(event, shell)

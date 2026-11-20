@@ -95,7 +95,6 @@ export const ADVANCED_SHELL_SECTIONS: readonly ShellSection[] = [
             relabelled('adv.newOai', 'settingsShellAdvNewOai'),
             relabelled('adv.sayNothing', 'settingsShellAdvSayNothing'),
             relabelled('adv.tokCache', 'settingsShellAdvTokCache'),
-            relabelled('adv.auxModelUnderModelSettings', 'settingsShellAdvAuxModel'),
             relabelled('adv.disableSeperateParameterChangeOnPresetChange', 'settingsShellAdvDisableSeparate'),
             relabelled('adv.dynamicModelRegistry', 'settingsShellAdvDynamicModelRegistry'),
             relabelled('adv.noWaitTrans', 'settingsShellAdvNoWaitTrans'),

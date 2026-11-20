@@ -15,6 +15,7 @@ import type { Attachment } from "svelte/attachments"
 import { mount, unmount, type Snippet } from "svelte"
 import PopupList from "src/lib/UI/PopupList.svelte"
 import { markPickReturned, rememberPickOpener, returnFocusToPickOpener } from "./pickOpener"
+import { openKeypairStoreDB } from "./storage/nodeKey"
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 export interface Messagec extends Message{
@@ -1063,22 +1064,6 @@ export class Semaphore {
             this.available += 1
         }
     }
-}
-
-export function openKeypairStoreDB(name:string):Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open("DPoPDB", 1);
-
-        request.onupgradeneeded = (event) => {
-            const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains(name || "DPoPStore")) {
-                db.createObjectStore(name || "DPoPStore");
-            }
-        };
-
-        request.onsuccess = (event) => resolve((event.target as IDBOpenDBRequest).result);
-        request.onerror = (event) => reject((event.target as IDBOpenDBRequest).error);
-    });
 }
 
 export async function saveKeypairStore(name:string, keyPair: CryptoKeyPair) {

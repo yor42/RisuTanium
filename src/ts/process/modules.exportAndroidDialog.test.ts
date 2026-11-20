@@ -273,6 +273,9 @@ import { refuseBackupLoadWhileBusy } from 'src/ts/drive/backupWorkGuard'
 import { alertStore } from 'src/ts/stores.svelte'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import { alertError } from 'src/ts/alert'
+import { resetTaskHostForTests, taskHostView, taskShown } from 'src/ts/alertTask.svelte'
+import { language } from 'src/lang'
 
 function syntheticPng(): Uint8Array {
     const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -308,6 +311,8 @@ beforeEach(() => {
     world.png = syntheticPng()
     resetBusyActionsForTest()
     vi.mocked(save).mockClear()
+    vi.mocked(alertError).mockClear()
+    resetTaskHostForTests()
     noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -351,6 +356,41 @@ describe('a module export waiting on the save dialog', () => {
         expect(atFirstWrite[0].kinds).toEqual(Array<string>(entriesAtFirstWrite).fill('export'))
         expect(isBusy()).toBe(false)
         expect(inFlightKinds()).not.toContain('busy')
+    })
+
+    // AD2: the card opens only after the picker answered.
+    test.each(exportsUnderTest)('(R) $name: no card while the Android save dialog is pending; after the path is delivered the module card runs', async ({ run }) => {
+        const dialog = holdSaveDialog()
+        let titleAtFirstCall: string | undefined
+        world.onFirstCall = () => { titleAtFirstCall = taskHostView()?.title }
+        const exporting = run()
+        await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+
+        expect(taskShown()).toBe(false)
+
+        dialog.deliver('content://documents/1')
+        await exporting
+
+        expect(titleAtFirstCall).toBe(language.exportTaskModuleTitle)
+        expect(taskShown()).toBe(false)
+    })
+
+    // AD4: a failure before the card was opened ends as today: the legacy error, never a card; the export resolves.
+    test.each(exportsUnderTest)('(G) $name: a rejected save dialog call resolves with the legacy error and never shows a card', async ({ run }) => {
+        vi.mocked(save).mockRejectedValueOnce(new Error('dialog plugin failed'))
+        let cardSeen = false
+        const stop = alertStore.subscribe(() => { cardSeen ||= taskShown() })
+        world.onFirstCall = () => { cardSeen ||= taskShown() }
+
+        const outcome = await run().then(() => 'resolved', () => 'rejected')
+        stop()
+
+        expect(outcome).toBe('resolved')
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(world.errors).toEqual(['dialog plugin failed'])
+        expect(cardSeen).toBe(false)
+        expect(taskShown()).toBe(false)
+        expect(isBusy()).toBe(false)
     })
 
     // Compatibility guard (G5): a desktop dialog is modal and keeps refusing a Load.

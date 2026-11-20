@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-risutanium-module">
+    <comment>RisuAI module</comment>
+    <glob pattern="*.risum"/>
+  </mime-type>
+  <mime-type type="application/x-risutanium-preset">
+    <comment>RisuAI preset</comment>
+    <glob pattern="*.risup"/>
+  </mime-type>
+  <mime-type type="application/x-risutanium-charx">
+    <comment>RisuAI character card</comment>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.charx"/>
+  </mime-type>
+  <mime-type type="application/x-risutanium-byaf">
+    <comment>Backyard AI character archive</comment>
+    <sub-class-of type="application/zip"/>
+    <glob pattern="*.byaf"/>
+  </mime-type>
+</mime-info>

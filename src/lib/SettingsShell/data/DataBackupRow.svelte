@@ -22,9 +22,9 @@
             askLeaveOut: (summary) => askLeaveOutAnswer(summary, trigger),
             setLeftOut: (text) => { dataSheetState.lastBinLeftOut = text },
             // The chooser is the confirmation of the `.rtb` export, so its own confirm step answers yes.
-            startRtb: async () => {
+            startRtb: async (password) => {
                 const entry = await import('../../../ts/drive/rtbExportEntry')
-                return entry.startRtbExport({ ...entry.liveRtbEntryDeps(), confirm: async () => true })
+                return entry.startRtbExport({ ...entry.liveRtbEntryDeps(), confirm: async () => true }, { password })
             },
         }))
     }
