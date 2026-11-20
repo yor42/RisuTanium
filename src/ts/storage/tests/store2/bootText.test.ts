@@ -5,8 +5,9 @@
  * builders are pure, so nothing here needs a DOM. Labels: new behaviour. The mutants named in each test were run by hand
  * and the test goes red against them.
  */
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { changeLanguage, language } from 'src/lang'
+import { isLite } from 'src/ts/lite'
 import { languageEnglish } from 'src/lang/en'
 import { BLOCKED_REASONS, type BlockedReason, type Store2BootNotice } from 'src/ts/storage/store2/bootActive'
 import type { Staging } from 'src/ts/storage/store2/owner'
@@ -25,6 +26,17 @@ import {
 
 beforeEach(() => {
     changeLanguage('en')
+})
+
+// unstubAllGlobals would also drop the global the vitest setup stubs, so only localStorage is put back.
+const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+
+afterEach(() => {
+    if (originalLocalStorage) {
+        Object.defineProperty(globalThis, 'localStorage', originalLocalStorage)
+    } else {
+        Reflect.deleteProperty(globalThis, 'localStorage')
+    }
 })
 
 function keysOf(question: BootQuestion<unknown>): string[] {
@@ -388,7 +400,26 @@ describe('terminal screens and notices', () => {
     })
 
     test('the archiving notice is the text the block store\'s boot pass has always shown, with no string of its own', () => {
+        // Guard: passes before and after; a device that never chose the new Settings screen still names Advanced.
+        vi.stubGlobal('localStorage', { getItem: () => null })
         expect(noticeText({ name: 'archive-enabled' })).toBe(language.archiveCharactersNotice(language.settings, language.advancedSettings, language.coldStorage))
+        vi.stubGlobal('localStorage', { getItem: (key: string) => (key === 'risuSettings.enabled' ? '0' : null) })
+        expect(noticeText({ name: 'archive-enabled' })).toBe(language.archiveCharactersNotice(language.settings, language.advancedSettings, language.coldStorage))
+    })
+
+    test('the archiving notice names the Data page on a device that stored the new Settings screen choice', () => {
+        vi.stubGlobal('localStorage', { getItem: (key: string) => (key === 'risuSettings.enabled' ? '1' : null) })
+        expect(noticeText({ name: 'archive-enabled' })).toBe(language.archiveCharactersNotice(language.settings, language.settingsShellPageData, language.coldStorage))
+    })
+
+    test('the archiving notice reads Lite as the legacy screen even with the choice stored', () => {
+        vi.stubGlobal('localStorage', { getItem: () => '1' })
+        isLite.set(true)
+        try {
+            expect(noticeText({ name: 'archive-enabled' })).toBe(language.archiveCharactersNotice(language.settings, language.advancedSettings, language.coldStorage))
+        } finally {
+            isLite.set(false)
+        }
     })
 
     test('the seeded notice tells the person an empty profile was created (W3-Q4)', () => {

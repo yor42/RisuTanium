@@ -1,0 +1,85 @@
+/* SCRATCH WHITE for Studio (MC-2520, MC-2522, MC-2524): the notebook palette on Studio. Paper canvas, white panels, graphite text, blue-ink accent and selection; dashed edges on
+   the history steps that were undone. Tokens first; part CSS only on safe leaf parts; no protected surface is named. Light only. */
+:root {
+  color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #fdfdfa;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(43 46 52 / 0.04);
+  --nexus-surface-raised: rgb(31 74 168 / 0.1);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(43 46 52 / 0.14);
+  --nexus-edge-strong: rgb(43 46 52 / 0.55);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #fffef5;
+  --alpha-switch-off: 0.55;
+
+  /* text */
+  --nexus-text: #2b2e34;
+  --nexus-text-secondary: #464b54;
+  --nexus-text-muted: #545a64;
+
+  /* accent, warm, danger */
+  --nexus-accent-rgb: 31 74 168;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #1f4aa8;
+  --nexus-core-from: #1f4aa8;
+  --nexus-core-to: #173a86;
+  --nexus-warm: #8a3a1a;
+  --nexus-warm-from: #fde9d9;
+  --nexus-warm-to: #f8cfb0;
+  --nexus-danger-rgb: 179 38 30;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-overlay-rgb: 0 0 0;
+  --nexus-shade-rgb: 0 0 0;
+  --radius-sheet: 10px;
+
+  /* Studio-only channels, on-colours, editor wells and syntax, dark-on-light */
+  --nexus-warning-rgb: 138 90 0;
+  --studio-ok-rgb: 23 107 58;
+  --studio-info-rgb: 31 74 168;
+  --studio-ring-rgb: 31 74 168;
+  --studio-warm-rgb: 138 58 26;
+  --studio-canvas-rgb: 253 253 250;
+  --studio-sheet-rgb: 255 255 255;
+  --studio-muted-rgb: 84 90 100;
+  --studio-well-rgb: 255 255 255;
+  --studio-on-accent: #ffffff;
+  --studio-on-danger: #ffffff;
+  --studio-on-warning: #ffffff;
+  --studio-knob: #ffffff;
+  --studio-lt-bg: #fdfdfa;
+  --studio-gutter-bg: #f1f4f9;
+  --studio-tgb-gutter-bg: #f1f4f9;
+  --studio-popup-bg: #ffffff;
+  --studio-strip-bg: #eef3fb;
+  --studio-syn-keyword: #5b3fa0;
+  --studio-syn-argument: #1b5e8a;
+  --studio-syn-string: #7a5200;
+  --studio-diff-del: #9b1c1c;
+  --studio-diff-add: #0b6b3a;
+  --studio-lt-hl-1: #3f4fb0;
+  --studio-lt-hl-4: #7a3fa0;
+  --studio-lt-hl-5: #545a64;
+  --studio-lt-hl-6: #0b6b3a;
+  --studio-lt-hl-9: #7a5200;
+  --studio-lt-hl-10: #1b5e8a;
+  --studio-lt-hl-7: #8a5a00;
+  --studio-lt-hl-8: #1e50aa;
+  --studio-syn-operator: #8a4b00;
+  --studio-syn-macro: #8a3a1a;
+  --studio-syn-decorator: #0b6b3a;
+
+  --studio-radius-row: 6px;
+  --studio-radius-card: 8px;
+}
+
+/* the history: steps that were undone have a dashed edge, like crossed-out notes */
+[data-part="studio-history-step"] { border: 1px solid var(--nexus-edge); }
+[data-part="studio-history-step"][data-future] { border-style: dashed; }
+/* cards and rows: white index cards on the paper */
+[data-part="studio-kind-row"], [data-part="studio-lt-card"], [data-part="studio-tgb-row"] { background: #ffffff; border-bottom: 1px solid #b9cfe9; }

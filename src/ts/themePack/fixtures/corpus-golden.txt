@@ -742,7 +742,7 @@
 "values ACCEPT: shell-gap" 3929915b8aadebbc chat:d8772d27d7d4f784 settings:31751d8a5b0c2f4a studio:ea9d51188a866f15 home:31751d8a5b0c2f4a
 "values ACCEPT: header-colour" 2d5a865fb561350f chat:57c8bc0673a3724a settings:077317de6493da4c studio:57c8bc0673a3724a home:ba9fa72de5b95c17
 "values ACCEPT: safe-opacity" 43fdb258d2a38d72 chat:a4b7bd8001a52df7 settings:a4b7bd8001a52df7 studio:a4b7bd8001a52df7 home:a4b7bd8001a52df7
-"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:d1202f0e9e8fd8e0 settings:8799e4236ac278e8 studio:d1202f0e9e8fd8e0 home:d1202f0e9e8fd8e0
+"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:56fae739fc0614fd settings:8799e4236ac278e8 studio:a5f9828df6087d90 home:8799e4236ac278e8
 "values ACCEPT: safe-relative" 7802ff5c6cc361d3 chat:ea5516877e285190 settings:ea5516877e285190 studio:ea5516877e285190 home:ea5516877e285190
 "values ACCEPT: dur-300" ab6b5267a899163e chat:c280c7f275e76575 settings:c280c7f275e76575 studio:c280c7f275e76575 home:c280c7f275e76575
 "values ACCEPT: dur-zero" 3cd1986c6eabaf9d chat:9155d063b41ad9a9 settings:9155d063b41ad9a9 studio:9155d063b41ad9a9 home:9155d063b41ad9a9

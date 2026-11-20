@@ -18,6 +18,8 @@ export type ReplyOutcome = 'reply' | 'failed' | 'stopped' | 'none'
 export interface ReplyAnnouncement {
     origin: Origin
     outcome: Exclude<ReplyOutcome, 'none'>
+    /** A failed send whose error dialog is already waiting for the person: the failure toast would repeat it. */
+    dialogRaised?: boolean
 }
 
 /** The mark the chat shows: its value when it is one this build knows, else none. */
@@ -55,6 +57,14 @@ const failedUnits = new WeakSet<AbortSignal>()
 /** Records that the unit with this signal alerted an error. */
 export function noteUnitFailure(signal: AbortSignal): void {
     failedUnits.add(signal)
+}
+
+// The units that raised the error dialog for their failure. A failure written into the chat (inlay error) raises none.
+const alertedUnits = new WeakSet<AbortSignal>()
+
+/** Records that the unit with this signal raised the error dialog for its failure. */
+export function noteUnitAlerted(signal: AbortSignal): void {
+    alertedUnits.add(signal)
 }
 
 export interface ReplyFacts {
@@ -120,7 +130,8 @@ export function recordReplyOutcome(call: ReplyCall, facts: ReplyFacts, isOnScree
         } catch (error) {
             console.error('The reply mark could not be written', error)
         }
-        return { origin: call.origin, outcome }
+        const dialogRaised = outcome === 'failed' && (facts.modulesFailed || alertedUnits.has(facts.signal))
+        return dialogRaised ? { origin: call.origin, outcome, dialogRaised } : { origin: call.origin, outcome }
     } catch (error) {
         console.error('The reply outcome could not be recorded', error)
         return null
