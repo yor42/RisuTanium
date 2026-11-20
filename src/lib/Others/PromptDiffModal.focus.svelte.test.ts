@@ -37,6 +37,7 @@ vi.mock('src/ts/backHandlers', () => ({
 }))
 
 import PromptDiffModal from './PromptDiffModal.svelte'
+import { tabbables } from 'src/lib/Nexus/pattern/patternFocus'
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 async function settle(): Promise<void> {
@@ -127,8 +128,7 @@ describe('PromptDiffModal dialog behaviour', { timeout: 60_000 }, () => {
         const dialog = dialogOf(host)
         expect(dialog.contains(document.activeElement)).toBe(true)
 
-        const tabbable = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
-            .filter((el) => el.tabIndex >= 0 && !(el as HTMLInputElement).disabled)
+        const tabbable = tabbables(dialog)
         expect(tabbable.length).toBeGreaterThan(1)
         const first = tabbable[0]
         const last = tabbable[tabbable.length - 1]
@@ -145,6 +145,20 @@ describe('PromptDiffModal dialog behaviour', { timeout: 60_000 }, () => {
 
         background.focus()
         expect(dialog.contains(document.activeElement)).toBe(true)
+    })
+
+    test('regression reproducer: Shift+Tab from the checked view-mode radio wraps instead of leaving the dialog', async () => {
+        const { host } = await openModal()
+        const dialog = dialogOf(host)
+        const checked = dialog.querySelector<HTMLInputElement>('input[type="radio"]:checked')!
+        expect(checked).not.toBeNull()
+        const stops = tabbables(dialog)
+        expect(stops[0]).toBe(checked)
+
+        checked.focus()
+        const event = press('Tab', { shiftKey: true })
+        expect(event.defaultPrevented).toBe(true)
+        expect(document.activeElement).toBe(stops[stops.length - 1])
     })
 
     test('regression reproducer: Escape closes once with the X path, and closing returns focus and releases the page', async () => {
