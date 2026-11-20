@@ -93,6 +93,7 @@ import { resetTogglePanelSession } from '../../ts/chatShell/togglePanel'
 import { FAVOURITES_KEY, type FavouriteRef } from '../../ts/chatShell/toggleFavourites'
 import { syncFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 type Owner = { chaId: string, name: string, type: 'character', chatPage: number, chats: Chat[], customModuleToggle?: string }
 
@@ -283,6 +284,29 @@ describe('favourite chips in the + menu', () => {
         expect(chipOf('tone')!.getAttribute('aria-checked')).toBe('false')
         expect(target.querySelector('[data-part="plus-live"]')?.textContent).toBe('off:Tone')
     })
+
+    // TC2-6 (regression reproducer): the chip mark, the select and edit affordances, More, and the picked option were text glyphs.
+    test('chip marks and affordances are aria-hidden icons: a check mark only on an on chip, chevron, pencil, More chevron, picked check', async () => {
+        await import('@lucide/svelte')
+        const toggles = Array.from({ length: 11 }, (_, index) => `k${index}=Toggle ${index}`).join('\n') + '\nmood=Mood=select=Calm,Bold\nnote=Note=text'
+        install({ prompt: toggles })
+        seed([ref('prompt', 'k0'), ref('prompt', 'k1'), ref('prompt', 'mood'), ref('prompt', 'note'), ...Array.from({ length: 7 }, (_, index) => ref('prompt', `k${index + 2}`))])
+        sharedValues().toggle_k0 = '1'
+        await show()
+        const iconsOf = (node: Element) => lucideNames(node)
+        expect(iconsOf(chipOf('k0')!)).toEqual(['lucide-check'])
+        expect(iconsOf(chipOf('k1')!)).toEqual([])
+        expect(iconsOf(chipOf('mood')!)).toEqual(['lucide-chevron-down'])
+        expect(iconsOf(chipOf('note')!)).toEqual(['lucide-pencil'])
+        expect(iconsOf(target.querySelector('[data-part="plus-chip-more"]')!)).toEqual(['lucide-chevron-right'])
+        expect(iconsIn(target.querySelector('[data-part="plus-chips"]')!).every((svg) => svg.getAttribute('aria-hidden') === 'true')).toBe(true)
+        expect(glyphsIn(target.querySelector('[data-part="plus-chips"]')!)).toEqual([])
+        chipOf('mood')!.click()
+        await settle()
+        const picked = Array.from(target.querySelectorAll<HTMLElement>('[role="menuitemradio"]'))
+        expect(picked.map((option) => iconsOf(option))).toEqual([['lucide-check'], []])
+        expect(glyphsIn(target)).toEqual([])
+    }, 120_000)
 
     test('chips follow the chat scope: a chat-only switch writes the chat and not the shared value', async () => {
         seed([ref('prompt', 'tone')])

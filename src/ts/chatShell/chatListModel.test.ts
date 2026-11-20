@@ -121,6 +121,42 @@ describe('previewLine and rowTime', () => {
         expect(previewLine(c)).toBe('visible')
     })
 
+    test('TC3-1: the preview drops emphasis, code, link, heading, quote, list and fence markup but keeps plain text that only looks like markup', () => {
+        const c = chat('p', { times: [1] })
+        const preview = (data: string): string => { c.message[0].data = data; return previewLine(c) }
+        expect(preview('**fjord** reply 29, *alpha* and `cob`')).toBe('fjord reply 29, alpha and cob')
+        expect(preview('__bold__ and _soft_ and ~~gone~~')).toBe('bold and soft and gone')
+        expect(preview('see [the docs](https://example.test/a_b) and ![a cat](cat.png)')).toBe('see the docs and a cat')
+        expect(preview('# Title\n> quoted\n- item one\n1. item two\n* star item')).toBe('Title quoted item one item two star item')
+        expect(preview('```js\nlet x = 1\n```\nafter')).toBe('let x = 1 after')
+        expect(preview('snake_case_name and 5 * 3 and {{char}} and <b>tag</b>')).toBe('snake_case_name and 5 * 3 and {{char}} and tag')
+    })
+
+    test('TC3-1: a {{...}} macro stays verbatim and emphasis never pairs across it', () => {
+        const c = chat('p', { times: [1] })
+        const preview = (data: string): string => { c.message[0].data = data; return previewLine(c) }
+        expect(preview('{{getvar::_tmp_}} ok')).toBe('{{getvar::_tmp_}} ok')
+        expect(preview('{{calc::2*3*4}}')).toBe('{{calc::2*3*4}}')
+        expect(preview('{{? 2*3}} he said *hi*')).toBe('{{? 2*3}} he said hi')
+        expect(preview('**{{user}}** and {{char}}')).toBe('{{user}} and {{char}}')
+    })
+
+    test('TC3-1: long runs of emphasis characters are cheap to preview', () => {
+        const c = chat('p', { times: [1] })
+        const started = Date.now()
+        for (const data of ['*'.repeat(5000), '*a'.repeat(2500), '_ a'.repeat(1700), '{{'.repeat(1000)]) {
+            c.message[0].data = data
+            previewLine(c)
+        }
+        expect(Date.now() - started).toBeLessThan(1000)
+    })
+
+    test('TC3-1: the 200 character cap applies to the text left after the markup is removed', () => {
+        const c = chat('p', { times: [1] })
+        c.message[0].data = '**' + 'a'.repeat(250) + '**'
+        expect(previewLine(c)).toBe('a'.repeat(200))
+    })
+
     test('TC2: rowTime shows a time for today, a date for another day, nothing for an empty chat', () => {
         const now = new Date(2026, 5, 15, 18, 0, 0).getTime()
         const today = new Date(2026, 5, 15, 9, 5, 0).getTime()

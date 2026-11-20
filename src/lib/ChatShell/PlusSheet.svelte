@@ -17,6 +17,10 @@
     import { downloadNotice } from '../../ts/exportNotice'
     import { downloadFile } from '../../ts/globalApi.svelte'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
+    import CheckIcon from '@lucide/svelte/icons/check'
+    import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
+    import ChevronRightIcon from '@lucide/svelte/icons/chevron-right'
+    import PencilIcon from '@lucide/svelte/icons/pencil'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { buildPanelModel, isOn, selectedIndex, toggleVarKey, valueRowsOf } from '../../ts/chatShell/togglePanel'
     import { favouriteRows, type FavouriteRef, type FavouriteRow } from '../../ts/chatShell/toggleFavourites'
@@ -241,7 +245,7 @@
                 <p data-part="plus-chip-options-head">{picker.row.label}</p>
                 {#each picker.row.options as option, index (index)}
                     {@const checked = index === selectedIndex(chipValue(picker), picker.row.options)}
-                    <button data-part="chat-sheet-item" data-kind="button" role="menuitemradio" aria-checked={checked} onclick={() => pickOption(index)}><span>{option}</span>{#if checked}<span aria-hidden="true">✓</span>{/if}</button>
+                    <button data-part="chat-sheet-item" data-kind="button" role="menuitemradio" aria-checked={checked} onclick={() => pickOption(index)}><span>{option}</span>{#if checked}<CheckIcon aria-hidden="true" />{/if}</button>
                 {/each}
             </div>
         {:else}
@@ -253,15 +257,15 @@
                     {#each shownChips as entry (entry.row.uid)}
                         {#if entry.row.kind === 'check'}
                             {@const on = isOn('check', chipValue(entry))}
-                            <button data-part="plus-chip" data-kind="check" data-uid={entry.row.uid} data-key={entry.row.key} data-on={on} role="menuitemcheckbox" aria-checked={on} aria-label={on ? language.chatShellTogglesOnA11y(entry.row.label) : language.chatShellTogglesOffA11y(entry.row.label)} onclick={() => flipChip(entry)}><span data-part="plus-chip-mark" aria-hidden="true">{#if on}✓{/if}</span><span data-part="plus-chip-label">{entry.row.label}</span></button>
+                            <button data-part="plus-chip" data-kind="check" data-uid={entry.row.uid} data-key={entry.row.key} data-on={on} role="menuitemcheckbox" aria-checked={on} aria-label={on ? language.chatShellTogglesOnA11y(entry.row.label) : language.chatShellTogglesOffA11y(entry.row.label)} onclick={() => flipChip(entry)}><span data-part="plus-chip-mark" aria-hidden="true">{#if on}<CheckIcon aria-hidden="true" />{/if}</span><span data-part="plus-chip-label">{entry.row.label}</span></button>
                         {:else if entry.row.kind === 'select'}
-                            <button data-part="plus-chip" data-kind="select" data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="menu" onclick={() => { void openPicker(entry) }}><span data-part="plus-chip-label">{entry.row.label}: {entry.row.options[selectedIndex(chipValue(entry), entry.row.options)] ?? ''}</span><span aria-hidden="true">▾</span></button>
+                            <button data-part="plus-chip" data-kind="select" data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="menu" onclick={() => { void openPicker(entry) }}><span data-part="plus-chip-label">{entry.row.label}: {entry.row.options[selectedIndex(chipValue(entry), entry.row.options)] ?? ''}</span><ChevronDownIcon aria-hidden="true" /></button>
                         {:else}
-                            <button data-part="plus-chip" data-kind={entry.row.kind} data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="dialog" onclick={() => { if (ontoggles) activate(() => ontoggles({ s: entry.ref.s, k: entry.ref.k })) }}><span data-part="plus-chip-label">{entry.row.label}</span><span aria-hidden="true">✎</span></button>
+                            <button data-part="plus-chip" data-kind={entry.row.kind} data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="dialog" onclick={() => { if (ontoggles) activate(() => ontoggles({ s: entry.ref.s, k: entry.ref.k })) }}><span data-part="plus-chip-label">{entry.row.label}</span><PencilIcon aria-hidden="true" /></button>
                         {/if}
                     {/each}
                     {#if chipRows.length > MAX_CHIPS}
-                        <button data-part="plus-chip-more" role="menuitem" onclick={() => { if (ontoggles) activate(() => ontoggles()) }}><span data-part="plus-chip-label">{language.chatShellTogglesMore}</span><span aria-hidden="true">›</span></button>
+                        <button data-part="plus-chip-more" role="menuitem" onclick={() => { if (ontoggles) activate(() => ontoggles()) }}><span data-part="plus-chip-label">{language.chatShellTogglesMore}</span><ChevronRightIcon aria-hidden="true" /></button>
                     {/if}
                 </div>
             </div>
@@ -321,7 +325,10 @@
     [data-part="plus-chip-row"] { display: flex; flex-wrap: wrap; gap: var(--space-5); }
     [data-part="chat-sheet-body"] button[data-part="plus-chip"], [data-part="chat-sheet-body"] button[data-part="plus-chip-more"] { display: inline-flex; align-items: center; gap: var(--space-5); width: auto; max-width: 100%; padding: 0 var(--space-10); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-pill); font-size: var(--font-size-sm); }
     [data-part="chat-sheet-body"] button[data-part="plus-chip"][data-on="true"] { border-color: var(--nexus-accent); background: var(--color-accent-tint-strong); }
-    [data-part="plus-chip-mark"] { display: inline-flex; width: var(--size-7); justify-content: center; color: var(--nexus-accent); }
+    [data-part="chat-sheet-body"] button :global(svg) { flex: none; width: calc(var(--icon-size-md) * var(--icon-scale)); height: calc(var(--icon-size-md) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
+    [data-part="chat-sheet-body"] button[data-part="plus-chip"] :global(svg), [data-part="chat-sheet-body"] button[data-part="plus-chip-more"] :global(svg) { width: calc(var(--icon-size-sm) * var(--icon-scale)); height: calc(var(--icon-size-sm) * var(--icon-scale)); }
+    [data-part="chat-sheet-body"] button[data-part="plus-chip-more"]:dir(rtl) :global(svg) { transform: scaleX(-1); }
+    [data-part="plus-chip-mark"] { display: inline-flex; align-items: center; width: var(--size-7); justify-content: center; color: var(--nexus-accent); }
     [data-part="plus-chip-mark"]:empty { display: none; }
     [data-part="plus-chip-label"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: var(--size-rel-18); }
     [data-part="chat-sheet-body"] button[role="menuitemradio"] { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); width: 100%; }

@@ -2297,3 +2297,7 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2779](Maintainer-Context.md#mc-2779--the-follow-up-label-is-created-2026-11-20) | The follow-up label is created, 2026-11-20 |
 | [MC-2780](Maintainer-Context.md#mc-2780--the-mc-2747-bulk-close-sweep-runs-after-the-governance-stack-merges-2026-11-20) | The MC-2747 bulk-close sweep runs after the governance stack merges, 2026-11-20 |
 | [MC-2781](Maintainer-Context.md#mc-2781--the-leftover-workflow-state-temp-files-are-archived-not-deleted-2026-11-20) | The leftover Workflow-State temp files are archived, not deleted, 2026-11-20 |
+| [MC-2794](Maintainer-Context.md#mc-2794--mc-2747-bulk-close-74-merged-items-close-as-complete-2026-11-20) | MC-2747 bulk close: 74 merged items close as complete, 2026-11-20 |
+| [MC-2795](Maintainer-Context.md#mc-2795--chore-153-closes-with-the-q-c-debounce-cap-as-an-accepted-drop-2026-11-20) | CHORE-153 closes with the Q-C debounce cap as an accepted drop, 2026-11-20 |
+| [MC-2796](Maintainer-Context.md#mc-2796--ui-s6-ui-s1-and-chore-688-close-as-delivered-2026-11-20) | UI-S6, UI-S1 and CHORE-688 close as delivered, 2026-11-20 |
+| [MC-2797](Maintainer-Context.md#mc-2797--the-25-already-closed-items-get-closed-roadmap-records-2026-11-20) | The 25 already-closed items get closed Roadmap records, 2026-11-20 |

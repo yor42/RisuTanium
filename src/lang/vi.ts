@@ -4,6 +4,7 @@ export const languageVietnamese = {
     chatShellBack: "Quay lại",
     chatShellChoosePersona: "Chọn Persona",
     chatShellPersonaSettings: "Cài đặt Persona",
+    chatShellPersonaDefault: "Persona mặc định",
     chatShellMoreActions: "Thêm thao tác",
     chatShellReadAloud: "Đọc to",
     chatShellBranch: "Tạo nhánh từ đây",

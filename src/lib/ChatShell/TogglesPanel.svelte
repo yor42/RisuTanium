@@ -499,7 +499,7 @@
             <div data-part="toggles-titlebar">
                 <h2 tabindex="-1" data-sheet-initial={openedAt === null ? '' : undefined} data-part="toggles-title">{language.chatShellTogglesTitle}</h2>
                 <span data-part="toggles-scope">{scopeOn ? language.chatShellThisChat : language.chatShellScopeAll}</span>
-                <button type="button" data-part="toggles-close" aria-label={language.chatShellTogglesClose} onclick={onclose}>×</button>
+                <button type="button" data-part="toggles-close" aria-label={language.chatShellTogglesClose} onclick={onclose}><XIcon aria-hidden="true" /></button>
             </div>
             <p role="status" data-part="toggles-flash">{flash}</p>
             <p role="status" aria-live="polite" data-part="toggles-announce">{announce}</p>
@@ -609,7 +609,8 @@
     [data-part="toggles-title"] { flex: 1; min-width: 0; margin: 0; font-size: var(--font-size-xl); }
     [data-part="toggles-title"]:focus-visible { outline: var(--stroke-bold) solid var(--nexus-text); }
     [data-part="toggles-scope"] { padding: 0 var(--space-5); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); border: 1px solid var(--nexus-edge); border-radius: var(--radius-pill); }
-    [data-part="toggles-close"] { flex: none; min-width: var(--size-touch); min-height: var(--size-touch); color: var(--nexus-text); }
+    [data-part="toggles-close"] { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: var(--size-touch); min-height: var(--size-touch); color: var(--nexus-text); }
+    [data-part="toggles-close"] :global(svg) { flex: none; width: calc(var(--icon-size-md) * var(--icon-scale)); height: calc(var(--icon-size-md) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
     [data-part="toggles-flash"], [data-part="toggles-announce"], [data-part="toggles-total"], [data-part="toggles-none-help"] { margin: 0; font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
     [data-part="toggles-flash"] { min-height: var(--space-12); }
     [data-part="toggles-announce"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

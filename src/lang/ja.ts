@@ -4,6 +4,7 @@ export const languageJapanese = {
     chatShellBack: "戻る",
     chatShellChoosePersona: "ペルソナを選択",
     chatShellPersonaSettings: "ペルソナ設定",
+    chatShellPersonaDefault: "デフォルトのペルソナ",
     chatShellMoreActions: "その他の操作",
     chatShellReadAloud: "読み上げ",
     chatShellBranch: "ここから分岐",

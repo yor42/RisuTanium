@@ -38,10 +38,28 @@ node Agents/Tools/ltm-eval/run-real.mjs
 ```
 
 - The launcher runs vitest as a child process with all stdio discarded and prints one line, `ltm-eval real run: exit <code>`. It reads no output file.
+- The launcher resolves `LTM_ROOT`, `LTM_BIN` and `LTM_OUT` to absolute paths once (against its own working directory), checks them, removes any stale `ltm-status.json` and `ltm-aggregates.json` from `LTM_OUT`, and passes the same absolute paths to the child. A refused layout therefore spawns nothing and writes nothing.
+- Exit codes are the launcher's own; the child's status is mapped, never passed through:
+
+  | code | meaning |
+  |---|---|
+  | 0 | the analysis completed |
+  | 1 | the test failed or the worker crashed; `ltm-status.json` says how far it got |
+  | 2 | a required variable is missing |
+  | 3 | the path guard refused the layout; nothing was spawned or written |
+  | 4 | launcher-side failure: a signal on POSIX, a spawn failure or timeout, or an exception in the launcher (for example a stale status file that cannot be removed). On Windows a killed child reports status 1, not a signal, so a killed run reads as exit 1 (with a marker if it got that far) |
+  | 5 | the child ended with any status other than 0, 1 or 134; it can come with no status file (for example `LTM_HEAP_MIB` too small for the child to start) |
+  | 134 | the child's main process aborted, typically out of memory |
+
+- Reading a failure: with a passed launcher guard, exit 1, 5 or 134 and **no** `ltm-status.json` means the child died before it wrote its marker (vitest or application module load, an out-of-memory during import, or the child's own path guard). A marker means the run reached the analysis: `phase` is the last step reached (-1 before the file is opened, then 0 index, 1 scan, 2 readDatabase, 3 decode, 4 resolve, 5 aggregate, 6 stream), `started 1, completed 0` is a run that did not finish, and `failedStep`/`errorClass` are set only when a step failed cleanly. `phase` and the peaks are the last written values; inside a long phase they are lower bounds. Because the launcher removes stale outputs, "no file" is reliable only through the launcher.
+- Status fields beyond the original ones: `started`, `phase`, `streamed` (-1 not decided, 0 whole-tree path, 1 streamed path), `declineReason` (index into `DECLINE_REASONS` in `analyzer/status.ts`, -1 when the stream did not decline), `peakHeapMiB` (largest sampled used heap, a lower bound), `maxRssMiB`, `heapLimitMiB`. The status file's `schemaVersion` is 2; the aggregates file stays at 1.
+- Two paths read the database entry. The streamed path (`streamBinDatabase`, the application's own reader) resolves and aggregates one character at a time and never holds the character list. When the reader declines a layout it cannot reproduce (remote or root-component blocks, a second root, zlib, and so on), the analyzer discards everything the attempt collected and runs the whole-tree path from a fresh state; `declineReason` then names why. Both paths produce the same aggregates and counts for every file the whole path can read.
+- Heap: the default heap (about 4 GB) was enough on every synthetic shape measured, including a 30 GiB file; the streamed path needed 160-224 MiB of old space on the heaviest one, the whole-tree path 768-1024 MiB. These figures are from synthetic files; the real `.bin` was never measured. Leave `LTM_HEAP_MIB` unset. If a run crashes with `declineReason >= 0` (the whole-tree path ran), set `LTM_HEAP_MIB=2048`; never 24576.
+- The tests do not prove a memory bound: `H1` shows only that the analyzer keeps no owner list while the streamed path runs. The bound is shown by running the launcher at a small `LTM_HEAP_MIB` on a large synthetic file.
 - Inside the child, `withSealedOutput` replaces every console method, `process.stdout.write`, `process.stderr.write` and `process.emitWarning` with counting no-ops while the analysis runs. The application logs block names and error messages on the import path; the seal works on channels, so it does not depend on listing those log sites.
-- Output is two files in `LTM_OUT`, each written only after a shape check: `ltm-aggregates.json` (numbers and arrays of numbers; no string value anywhere; every label is a key of the fixed shape) and `ltm-status.json` (numbers only: step index, error-class index, call counts, `degraded`).
+- Output is two files in `LTM_OUT`, each written only after a shape check: `ltm-aggregates.json` (numbers and arrays of numbers; no string value anywhere; every label is a key of the fixed shape) and `ltm-status.json` (numbers only: progress and peak figures, step index, error-class index, call counts, `degraded`).
 - Errors leave a step only as a fixed message plus two indices. The analyzer reads only `omitted.size` of the reader's omitted-block map, because its values carry block names and error messages.
-- A failed run leaves only the status file. To debug, reproduce with a synthetic file.
+- A failed run leaves only the status file (a stale aggregates file is removed by the launcher). To debug, reproduce with a synthetic file.
 - The `.bin`, the out folder and the run root must lie outside the repository, and the `.bin` and the out folder under the run root.
 - `degraded: 1` means a cold unit could not be read or a block was left out of the database. The reader then puts one placeholder message into each incomplete chat unit, so the message histograms overcount by one placeholder per incomplete unit; such an output is not a usable profile without a re-export.
 - Decorator counts come from the real `CCardLib.decorator.parse` with a callback that mirrors the return values of the application's lorebook callback in `src/ts/process/lorebook.svelte.ts` (the `false` returns decide whether a `@@@` fallback line runs). That callback is the source of the table in `analyzer/decorators.ts`; when it changes, the table must follow.
