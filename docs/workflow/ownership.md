@@ -48,7 +48,7 @@ Read-only work and draft-only returns proceed normally. Before the first actual 
 
 Only ordinary main-thread calls with both agent identity keys genuinely absent retain normal authorization without a worker grant. A named `--agent` main session uses its actual role and the `main` agent-ID sentinel. Unknown or malformed worker identity cannot use that exemption. Read-only roles cannot receive repository-write grants; repository writes still need exact grants. Writer and scratch roles may write external targets under TEMP outside every repository without a manifest; read-only roles may not. doc-writer and record-clerk repository targets must be Markdown (record-clerk additionally excludes governance), while their external TEMP scratch may use any extension. Scratch roles are investigator, deep-investigator, designer, perf-analyzer, adversarial-reviewer, opus-reviewer, code-searcher, haiku-triager, doc-verifier and senior-advisor (MC-785); they never receive repository grants. code-reader remains read-only. The parent revokes completed assignments during closeout.
 
-**Grants for worktree sessions (MC-2750).** The hooks read the registries of the checkout named by `CLAUDE_PROJECT_DIR`, which is normally the main checkout `C:\Projects\RisuAI` even when the session works in a worktree. So a worktree session registers through the main checkout's tools: write grants with `C:\Projects\RisuAI\.claude\scripts\register-write-scope.ps1`, naming the worktree's absolute file paths, and dispatches with `node C:\Projects\RisuAI\.claude\scripts\workflow-control.mjs register` run from the main checkout, with `"repoRoot"` in the dispatch JSON set to the worktree. A grant registered only through the worktree's own copy of the scripts was refused on 2026-11-20; do not start a separately rooted session to work around it. Revoke through the same main-checkout script after the agent has handed back. Automatic, self-revoking per-worktree grants are the tooling ticket #384 (MC-2750). A foreign-checkout write is denied instead of silently inheriting the original grant.
+**Grants for worktree sessions (MC-2750).** The hooks read the registries of the checkout named by `CLAUDE_PROJECT_DIR`, which may be the main checkout `C:\Projects\RisuAI` even when the session works in a worktree (it was on 2026-11-20); check `$env:CLAUDE_PROJECT_DIR` first. So a worktree session registers through the main checkout's tools: write grants with `C:\Projects\RisuAI\.claude\scripts\register-write-scope.ps1`, naming the worktree's absolute file paths, and dispatches with `node C:\Projects\RisuAI\.claude\scripts\workflow-control.mjs register` run from the main checkout, with `"repoRoot"` in the dispatch JSON set to the worktree. Observed by sessions on 2026-11-20 (not part of MC-2750): a grant registered only through the worktree's own copy of the scripts was refused; do not start a separately rooted session to work around it. Revoke through the same main-checkout script after the agent has handed back. Automatic, self-revoking per-worktree grants are the tooling ticket #384 (MC-2750). A foreign-checkout write is denied instead of silently inheriting the original grant.
 
 When the script runs, denial and internal validation errors exit 2 with a concise stderr reason; success exits 0 without granting extra permission. The active cutover settings request blocking failure behavior for governed hooks where the installed runtime supports it. Verify native smoke results in the cutover record; disabled hooks, alternate channels and unsupported runtime behavior cannot be treated as enforcement. These limits and shell/alternate-channel exclusions prevent treating the hook as universal enforcement. Hook commands must propagate the script's exit code (`; exit $LASTEXITCODE`), because PowerShell `-Command` otherwise reports exit 1, which Claude Code treats as non-blocking. Synthetic tests of the scripts do not prove native hook loading; that remains a separate observation.
 
@@ -60,6 +60,8 @@ A session removes its own worktree and branch once they are clean and merged int
 
 ## Shared environment
 
+Derived standing practice from past incidents, not numbered decisions, except where an MC is cited.
+
 The worktrees share the main checkout's `node_modules` through a junction. Rules:
 
 - Never run `pnpm install` through a junction, and never run pnpm in a scratch copy that lacks `pnpm-workspace.yaml`: both have rewritten the shared install's state.
@@ -70,7 +72,7 @@ The worktrees share the main checkout's `node_modules` through a junction. Rules
 
 ## Shell and guard pitfalls
 
-These are standing brief rules because each has caused damage:
+These are derived standing brief rules (not numbered decisions), kept because each has caused damage:
 
 - The write guard covers the Write and Edit tools only. Shell writes bypass it, so briefs forbid temporary repository edits through any shell (including "edit, run, restore" mutant tricks).
 - Mutants run in scratch copies or through in-memory module substitution, never by editing repository files.

@@ -53,8 +53,8 @@ RisuTanium is an Android-first product fork of RisuAI: an MVP on the maintainer'
 
 - The GitHub issue on yor42/RisuTanium and its project board 1 card are the ticket authority; `Agents/Roadmap.md` is scope history, and the issue wins where they disagree. Check the issue's and any PR's state (and `git log origin/main`) before offering or starting a ticket.
 - Always pass `--repo yor42/RisuTanium` to `gh`: its default is the upstream repository.
-- One ticket, one session, one worktree, one `claude/<ticket>` branch, one PR. Turn Auto-fix on when the PR opens. Close each issue with its own keyword in the PR body (`Closes #a, closes #b`).
-- A PR that adds `en.ts` keys carries all 7 locales and passes the localeParity test in the same PR (MC-058: the translator role writes the non-English strings).
+- One ticket, one session, one worktree, one `claude/<ticket>` branch, one PR. Practice (derived, not an MC): turn Auto-fix on when the PR opens, and close each issue with its own keyword in the PR body (`Closes #a, closes #b`), since a shared keyword left an issue open.
+- A PR that adds `en.ts` keys carries all 7 non-English locales and passes the localeParity test in the same PR (MC-058: the translator role writes the non-English strings).
 - CI skips Markdown, `docs/**` (except `docs/design/**`) and `Agents/**`. Before merging a PR with no CI run, check that no CI-covered file imports what it changed (`src` imports `docs/design` through `?raw`).
 - Size tiers, the approval matrix and the follow-up policy are in [gates](docs/workflow/gates.md).
 ## Commands and navigation
