@@ -169,7 +169,7 @@ beforeEach(() => {
     createCharacterFromHomeSpy.mockReset()
     createNewCharacterSpy.mockImplementation(pushLiveSlot)
     changeCharSpy.mockResolvedValue(undefined)
-    importCharacterSpy.mockResolvedValue(undefined)
+    importCharacterSpy.mockResolvedValue([])
     SettingsMenuIndex.set(-1)
     settingsOpen.set(false)
     resetDb([slot('§playground'), slot('a', { trashTime: 5 })])
@@ -268,9 +268,7 @@ describe('Home persona chip and empty hero', () => {
         expect(changeCharSpy).not.toHaveBeenCalled()
         expect(heroOf(root)).not.toBeNull()
 
-        importCharacterSpy.mockImplementation(async () => {
-            pushLiveSlot()
-        })
+        importCharacterSpy.mockImplementation(async () => [db().characters[pushLiveSlot()]])
         importButton(root).click()
         await vi.waitFor(() => expect(changeCharSpy).toHaveBeenCalledTimes(1))
         expect(changeCharSpy).toHaveBeenCalledWith(db().characters.length - 1)
