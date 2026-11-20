@@ -16,19 +16,24 @@ export async function createCharacterFromHome(): Promise<boolean> {
 }
 
 /**
- * Runs the import picker and selects the new last slot only when a character was added. A cancelled
- * picker or a preset or module file adds none, and selecting then would open a trashed or hidden slot.
- * The length is read before the first await, so it is the length the user saw.
+ * Runs the import picker and selects the slot it added, found again by identity because the list can change
+ * during an import (another import may push after it). A cancelled picker or a preset or module file adds none,
+ * and selecting then would open a trashed or hidden slot. An import that was sent to the background selects
+ * nothing when it ends.
  */
 export async function importCharacterFromHome(): Promise<boolean> {
-    const before = DBState.db.characters.length
     const { importCharacter } = await import('src/ts/characterCards')
-    await importCharacter()
-    if (DBState.db.characters.length > before) {
-        const { changeChar } = await import('src/ts/characters')
-        return (await changeChar(DBState.db.characters.length - 1)) === 'selected'
+    const report: { backgrounded?: boolean } = {}
+    const added = (await importCharacter(report)).at(-1)
+    if (!added || report.backgrounded) {
+        return false
     }
-    return false
+    const index = DBState.db.characters.indexOf(added)
+    if (index === -1) {
+        return false
+    }
+    const { changeChar } = await import('src/ts/characters')
+    return (await changeChar(index)) === 'selected'
 }
 
 /**
