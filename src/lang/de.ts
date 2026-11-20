@@ -678,6 +678,13 @@ export const languageGerman = {
     "importPreflightStart": "Importieren",
     "importStepDownload": "Herunterladen",
     "importNounAssets": "Assets",
+    "exportTaskCharacterTitle": "Charakter wird exportiert",
+    "exportTaskModuleTitle": "Modul wird exportiert",
+    "exportStepPrepare": "Datei vorbereiten",
+    "exportStepAssets": "Assets hinzufügen",
+    "exportStepWrite": "Datei schreiben",
+    "exportTaskDone": "Exportiert",
+    "exportTaskFailed": "Export nicht möglich",
     "patternTaskCountFound": (noun: string, done: number, found: number) => noun ? `${noun} ${done} gespeichert, bisher ${found} gefunden` : `${done} gespeichert, bisher ${found} gefunden`,
     "chatShellTranslationClose": "Übersetzungseditor schließen",
     "formating": {

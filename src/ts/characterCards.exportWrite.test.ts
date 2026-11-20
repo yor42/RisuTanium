@@ -195,6 +195,7 @@ import { cardExportFileName, exportCharacterCard } from 'src/ts/characterCards'
 import { LocalWriter, readImage } from 'src/ts/globalApi.svelte'
 import type { character } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
+import { resetTaskHostForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 
 // The failing call has already reached the file system, so the desktop file counts as kept and the notice says so.
 const failedWithFileKept = 'synthetic write failure\n' + language.exportFailedFileIncomplete
@@ -244,13 +245,15 @@ beforeEach(() => {
     h.android = false
     h.invoked.length = 0
     h.png = syntheticPng()
+    resetTaskHostForTests()
 })
 
 describe('PNG export onto a TauriWriter', () => {
     test('(G) the file written is the concatenation of the bytes the exporter produced, and success is reported', async () => {
         await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
         expect(h.errors).toEqual([])
-        expect(h.log).toContain('normal:' + language.successExport)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
+        expect(h.log.filter(entry => entry.startsWith('normal:'))).toEqual([])
         const file = h.files.get('synthetic/out')!
         expect(file.byteLength).toBeGreaterThan(h.png.byteLength)
         expect(Buffer.from(file).equals(Buffer.from(concat(h.recorded)))).toBe(true)
@@ -260,7 +263,9 @@ describe('PNG export onto a TauriWriter', () => {
     test('(R) a failing final flush shows the error and never the success message', async () => {
         h.failCall = () => true
         await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
-        expect(h.errors).toEqual([failedWithFileKept])
+        expect(taskHostView()?.failure?.detail).toBe(failedWithFileKept)
+        expect(h.errors).toEqual([])
+        expect(taskHostView()?.result).toBeUndefined()
         expect(h.log).not.toContain('normal:' + language.successExport)
     })
 })
@@ -286,7 +291,8 @@ describe('Export portrait: placeholder only for an absent image', () => {
         await exportCharacterCard(char, 'png', { spec: 'v3' })
         expect(fetchMock).toHaveBeenCalledWith('/none.webp')
         expect(h.errors).toEqual([])
-        expect(h.log).toContain('normal:' + language.successExport)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
+        expect(h.log.filter(entry => entry.startsWith('normal:'))).toEqual([])
     })
 
     test('(G) an image missing from storage exports with the placeholder', async () => {
@@ -295,7 +301,8 @@ describe('Export portrait: placeholder only for an absent image', () => {
         await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
         expect(fetchMock).toHaveBeenCalledWith('/none.webp')
         expect(h.errors).toEqual([])
-        expect(h.log).toContain('normal:' + language.successExport)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
+        expect(h.log.filter(entry => entry.startsWith('normal:'))).toEqual([])
     })
 
     test('(R) an I/O error while reading the image rejects the export and writes nothing', async () => {
@@ -341,9 +348,11 @@ describe('exportCharacterCard result for a caller that supplies its own writer',
 
     test('(R) a completed json export resolves true for both card specs', async () => {
         expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v2' })).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
         expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
         expect(h.errors).toEqual([])
-        expect(h.log).toEqual(['normal:' + language.successExport, 'normal:' + language.successExport])
+        expect(h.log).toEqual([])
         expect(h.cleared).toBe(0)
     })
 
@@ -394,7 +403,8 @@ describe('JSON export onto a LocalWriter', () => {
         for (const event of h.events.filter(entry => entry.startsWith('write:'))) {
             expect([0, 1, 2].filter(index => event.includes(base64Of(index))).length).toBeLessThanOrEqual(1)
         }
-        expect(h.events.slice(-2)).toEqual(['close', 'notice'])
+        expect(h.events[h.events.length - 1]).toBe('close')
+        expect(taskResultShowing()).toBe(true)
         expect(h.download).not.toHaveBeenCalled()
         const card = JSON.parse(Buffer.concat(h.recorded).toString('utf-8'))
         expect(card.data.assets.map((asset: { uri: string }) => asset.uri)).toEqual([0, 1, 2].map(index => 'data:application/octet-stream;base64,' + base64Of(index)))
@@ -403,7 +413,8 @@ describe('JSON export onto a LocalWriter', () => {
     test('(G) a v2 JSON card is written as one piece and then closed', async () => {
         expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v2' })).toBe(true)
         expect(h.events.filter(event => event.startsWith('write:'))).toHaveLength(1)
-        expect(h.events.slice(-2)).toEqual(['close', 'notice'])
+        expect(h.events[h.events.length - 1]).toBe('close')
+        expect(taskResultShowing()).toBe(true)
         expect(h.download).not.toHaveBeenCalled()
     })
 
@@ -422,8 +433,9 @@ describe('JSON export onto a LocalWriter', () => {
         installReads()
         h.failCall = () => true
         expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v3' })).toBe(false)
-        expect(h.errors).toEqual([failedWithFileKept])
-        expect(h.log).toEqual(['error:' + failedWithFileKept])
+        expect(taskHostView()?.failure?.detail).toBe(failedWithFileKept)
+        expect(h.errors).toEqual([])
+        expect(h.log).toEqual([])
     })
 
     test('(G) a read failure on an Android document gives the incomplete-file sentence, since the document exists already', async () => {
@@ -431,7 +443,8 @@ describe('JSON export onto a LocalWriter', () => {
         h.path = 'content://synthetic/document'
         h.android = true
         expect(await exportCharacterCard(characterWithAssets(3), 'json', { spec: 'v3' })).toBe(false)
-        expect(h.errors).toEqual(['synthetic read failure\n' + language.exportFailedFileIncomplete])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic read failure\n' + language.exportFailedFileIncomplete)
+        expect(h.errors).toEqual([])
         expect(h.events).not.toContain('read:synthetic-asset/a2')
         expect(h.events).not.toContain('close')
     })
@@ -439,20 +452,22 @@ describe('JSON export onto a LocalWriter', () => {
     test('(G) a read failure on desktop before any flush gives the plain error', async () => {
         installReads('synthetic-asset/a1')
         expect(await exportCharacterCard(characterWithAssets(3), 'json', { spec: 'v3' })).toBe(false)
-        expect(h.errors).toEqual(['synthetic read failure'])
-        expect(h.log).toEqual(['error:synthetic read failure'])
+        expect(taskHostView()?.failure?.detail).toBe('synthetic read failure')
+        expect(h.errors).toEqual([])
+        expect(h.log).toEqual([])
     })
 
     test('(G) the success notice names the saved file on desktop and the chosen location on Android, once, after the close', async () => {
         installReads()
         expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v3' })).toBe(true)
-        expect(h.log).toEqual(['normal:' + language.successExport])
-        expect(h.events.slice(-2)).toEqual(['close', 'notice'])
-        h.log.length = 0
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
+        expect(h.log).toEqual([])
+        expect(h.events[h.events.length - 1]).toBe('close')
         h.path = 'content://synthetic/document'
         h.android = true
         expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v3' })).toBe(true)
-        expect(h.log).toEqual(['normal:' + language.successExportChosenLocation])
+        expect(taskHostView()?.result?.summary).toEqual([language.successExportChosenLocation])
+        expect(h.log).toEqual([])
         expect(h.invoked.length).toBeGreaterThan(0)
         expect(h.invoked[h.invoked.length - 1].last).toBe(true)
     })
@@ -549,7 +564,8 @@ describe('CharX export onto a TauriWriter', () => {
     test('(G) the file written is the concatenation of the bytes the exporter produced, and success is reported', async () => {
         await exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3' })
         expect(h.errors).toEqual([])
-        expect(h.log).toContain('normal:' + language.successExport)
+        expect(taskHostView()?.result?.summary).toEqual([language.successExport])
+        expect(h.log.filter(entry => entry.startsWith('normal:'))).toEqual([])
         const file = h.files.get('synthetic/out')!
         expect(file.byteLength).toBeGreaterThan(0)
         expect(Buffer.from(file).equals(Buffer.from(concat(h.recorded)))).toBe(true)
@@ -559,7 +575,9 @@ describe('CharX export onto a TauriWriter', () => {
     test('(G) a failing final flush shows the error and never the success message', async () => {
         h.failCall = () => true
         await exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3' })
-        expect(h.errors).toEqual([failedWithFileKept])
+        expect(taskHostView()?.failure?.detail).toBe(failedWithFileKept)
+        expect(h.errors).toEqual([])
+        expect(taskHostView()?.result).toBeUndefined()
         expect(h.log).not.toContain('normal:' + language.successExport)
     })
 })

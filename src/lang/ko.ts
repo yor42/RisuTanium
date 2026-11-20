@@ -678,6 +678,13 @@ export const languageKorean = {
     importPreflightStart: "가져오기",
     importStepDownload: "다운로드",
     importNounAssets: "에셋",
+    exportTaskCharacterTitle: "캐릭터 내보내는 중",
+    exportTaskModuleTitle: "모듈 내보내는 중",
+    exportStepPrepare: "파일 준비",
+    exportStepAssets: "에셋 추가",
+    exportStepWrite: "파일 쓰기",
+    exportTaskDone: "내보냈습니다",
+    exportTaskFailed: "내보내지 못했습니다",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}개 저장됨, 지금까지 ${found}개 발견` : `${done}개 저장됨, 지금까지 ${found}개 발견`,
     chatShellTranslationClose: "번역 편집기 닫기",
     "formating": {

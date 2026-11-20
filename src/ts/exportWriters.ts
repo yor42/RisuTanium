@@ -411,8 +411,8 @@ export class TauriWriter {
     }
 }
 
-/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
-export function withFileIncompleteSentence(e: unknown): Error {
+/** The failure's own text as `alertError` would show it: a string or an `Error`'s message as is, anything else as JSON, trimmed. */
+export function exportErrorText(e: unknown): string {
     let text: string
     if (typeof e === 'string') {
         text = e
@@ -428,7 +428,12 @@ export function withFileIncompleteSentence(e: unknown): Error {
             text = `${e}`
         }
     }
-    const result = new Error(`${text.trim()}\n${language.exportFailedFileIncomplete}`)
+    return text.trim()
+}
+
+/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
+export function withFileIncompleteSentence(e: unknown): Error {
+    const result = new Error(`${exportErrorText(e)}\n${language.exportFailedFileIncomplete}`)
     if (e instanceof Error) {
         result.stack = e.stack
     }

@@ -678,6 +678,13 @@ export const languageJapanese = {
     importPreflightStart: "インポート",
     importStepDownload: "ダウンロード",
     importNounAssets: "アセット",
+    exportTaskCharacterTitle: "キャラクターをエクスポート中",
+    exportTaskModuleTitle: "モジュールをエクスポート中",
+    exportStepPrepare: "ファイルを準備",
+    exportStepAssets: "アセットを追加",
+    exportStepWrite: "ファイルを書き込む",
+    exportTaskDone: "エクスポートしました",
+    exportTaskFailed: "エクスポートできませんでした",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}件保存済み、これまでに${found}件見つかりました` : `${done}件保存済み、これまでに${found}件見つかりました`,
     chatShellTranslationClose: "翻訳エディターを閉じる",
     formating: {

@@ -678,6 +678,13 @@ export const languageChineseTraditional = {
     "importPreflightStart": "匯入",
     "importStepDownload": "下載",
     "importNounAssets": "資源",
+    "exportTaskCharacterTitle": "正在匯出角色",
+    "exportTaskModuleTitle": "正在匯出模組",
+    "exportStepPrepare": "準備檔案",
+    "exportStepAssets": "新增資源",
+    "exportStepWrite": "寫入檔案",
+    "exportTaskDone": "已匯出",
+    "exportTaskFailed": "無法匯出",
     "patternTaskCountFound": (noun: string, done: number, found: number) => noun ? `${noun} 已儲存 ${done} 項，目前已發現 ${found} 項` : `已儲存 ${done} 項，目前已發現 ${found} 項`,
     "chatShellTranslationClose": "關閉翻譯編輯器",
     "formating": {

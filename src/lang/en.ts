@@ -678,6 +678,13 @@ export const languageEnglish = {
     importPreflightStart: 'Import',
     importStepDownload: 'Download',
     importNounAssets: 'Assets',
+    exportTaskCharacterTitle: 'Exporting character',
+    exportTaskModuleTitle: 'Exporting module',
+    exportStepPrepare: 'Prepare file',
+    exportStepAssets: 'Add assets',
+    exportStepWrite: 'Write file',
+    exportTaskDone: 'Exported',
+    exportTaskFailed: "Couldn't export",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done} saved, ${found} found so far` : `${done} saved, ${found} found so far`,
     formating: {
         main: "Main Prompt",

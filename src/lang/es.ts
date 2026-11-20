@@ -678,6 +678,13 @@ export const languageSpanish = {
     importPreflightStart: "Importar",
     importStepDownload: "Descargar",
     importNounAssets: "Recursos",
+    exportTaskCharacterTitle: "Exportando personaje",
+    exportTaskModuleTitle: "Exportando módulo",
+    exportStepPrepare: "Preparar archivo",
+    exportStepAssets: "Añadir recursos",
+    exportStepWrite: "Escribir archivo",
+    exportTaskDone: "Exportado",
+    exportTaskFailed: "No se pudo exportar",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done} guardados, ${found} encontrados hasta ahora` : `${done} guardados, ${found} encontrados hasta ahora`,
     chatShellTranslationClose: "Cerrar el editor de traducción",
     "formating": {
