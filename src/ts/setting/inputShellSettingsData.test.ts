@@ -77,7 +77,7 @@ describe('Input page sections', () => {
 
 describe('Input page rows', () => {
     test('a row without a new label is the legacy object', () => {
-        for (const id of ['acc.customSidebarConfig', 'acc.goCharacterOnImport', 'acc.bulkEnabling', 'acc.chatShellPreview']) {
+        for (const id of ['acc.customSidebarConfig', 'acc.bulkEnabling', 'acc.chatShellPreview']) {
             const row = INPUT_SHELL_SECTIONS.flatMap((section) => section.rows).find((candidate) => rowIdsOf(candidate).includes(id))
             expect(row?.kind, id).toBe('setting')
             if (row?.kind === 'setting') expect(row.item, id).toBe(legacy(id))

@@ -89,7 +89,7 @@ export function rtbSavedNotice(report: RtbExportReport, isTauriPage: boolean): s
     return parts.join('\n\n')
 }
 
-function liveRtbEntryDeps(): RtbEntryDeps {
+export function liveRtbEntryDeps(): RtbEntryDeps {
     return {
         refusal: () => rtbExportRefusal(),
         confirm: alertConfirm,

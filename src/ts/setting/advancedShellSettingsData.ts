@@ -217,14 +217,13 @@ export const ADVANCED_SHELL_SECTIONS: readonly ShellSection[] = [
         collapsed: false,
         rows: [plain('adv.banChar'), plain('adv.customModels')],
     },
-    {
-        // A row that belongs on another page until that page takes it over.
-        id: 'adv.other',
-        labelKey: 'settingsShellOtherSettings',
-        collapsed: false,
-        rows: [plain('adv.coldstorage')],
-    },
 ];
+
+/**
+ * Legacy Advanced ids that live on the Data page instead. They stay searchable (a result opens the Data page at
+ * the row), so they are deliberately not in `ADVANCED_NOT_OFFERED_IDS`.
+ */
+export const ADVANCED_MOVED_OUT_IDS: ReadonlySet<string> = new Set(['adv.coldstorage']);
 
 /** Every setting item the page renders through the registry, including the overrides. */
 export const advancedShellItems: readonly SettingItem[] = settingItemsOf(ADVANCED_SHELL_SECTIONS);
@@ -241,5 +240,6 @@ export function advancedSectionOfRow(rowId: string): string | null {
 
 /** Legacy ids that are neither on the page nor deliberately left off it. Empty when the page is complete. */
 export function unplacedLegacyAdvancedIds(): string[] {
-    return unplacedIds(advancedSettingsItems.map((item) => item.id), advancedShellRowIds(), ADVANCED_NOT_OFFERED_IDS);
+    const excluded = new Set([...ADVANCED_NOT_OFFERED_IDS, ...ADVANCED_MOVED_OUT_IDS]);
+    return unplacedIds(advancedSettingsItems.map((item) => item.id), advancedShellRowIds(), excluded);
 }
