@@ -32,12 +32,14 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import {
     createMemoryBackend, Store2BackendFailureError, Store2UnknownOutcomeError, type MemoryBackend,
 } from 'src/ts/storage/store2/backend'
-import { assembleDatabase, planScopedEncode } from 'src/ts/storage/store2/codec'
+import { assembleDatabase, planScopedEncode, unitDigest } from 'src/ts/storage/store2/codec'
+import { readBaseContentIndex, type BaseContentIndex } from 'src/ts/storage/store2/baseContent'
+import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import type { Committer, CommitRequest } from 'src/ts/storage/store2/commit'
 import { createKeyMint, IMPORT_REPLACES_BASE } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import {
-    canonicalJson, encodeUnit, keyOfRef, newManifestKey, readUnit, refOfFrame, REQ_MODULE_BUCKETS, UNIT_TYPE, type LegacyList, type Manifest,
+    canonicalJson, decodeFrame, encodeUnit, keyOfRef, newManifestKey, readUnit, refOfFrame, REQ_MODULE_BUCKETS, UNIT_TYPE, type LegacyList, type Manifest,
 } from 'src/ts/storage/store2/format'
 import { LegacyListBuilder } from 'src/ts/storage/store2/lists/legacyList'
 import {
@@ -65,6 +67,8 @@ const BULK_GOLDENS: ReadonlySet<string> = new Set(['upstream-full.bin'])
 
 /** A full golden that stays an ordinary commit, for the tests that hook `commitOrdinary`. */
 const ORDINARY_GOLDEN = 'fork-full.bin'
+
+const EMPTY_INDEX: BaseContentIndex = { from: null, units: new Map(), stats: { units: 0, bytes: 0, skipped: 0, backendError: false } }
 
 interface Rig {
     memory: MemoryBackend
@@ -188,7 +192,10 @@ describe('guard: a golden imports and assembles back to what the resolver gave',
         if (withUnknown) {
             marked.characters[plain].futureCharacterField = { n: 1 }
         }
-        const outcome = committedOf(await importLegacyTree(test.request(golden), accept))
+        // A bulk golden is imported with no base index: over the rig's base, content reuse would bring its written units
+        // under the bulk threshold, and this test covers the bulk commit of a whole golden.
+        const noIndex = BULK_GOLDENS.has(name) ? { baseContent: async () => EMPTY_INDEX } : {}
+        const outcome = committedOf(await importLegacyTree(test.request(golden, noIndex), accept))
         expect(outcome.mode).toBe(BULK_GOLDENS.has(name) ? 'bulk' : 'ordinary')
 
         const expectedSource = await loadGolden(name)
@@ -453,7 +460,7 @@ describe('new behaviour: the replaced manifest\'s keep set travels with the impo
     })
 })
 
-describe('new behaviour: the plan reuses nothing from the profile it replaces', () => {
+describe('new behaviour: the plan takes no entity id of the profile it replaces', () => {
     test('imported characters take fresh entity ids, none of the replaced profile\'s', async () => {
         const test = await rig()
         const first = await loadGolden('upstream-full.bin')
@@ -481,6 +488,246 @@ describe('new behaviour: the plan reuses nothing from the profile it replaces', 
         const after = await idsOf()
         expect(after).toHaveLength(before.length)
         expect(after.filter(id => before.includes(id))).toEqual([])
+    })
+
+    test('guard: the shard and order units of a second import of the same file are all under new keys', async () => {
+        const { test, before, first } = await importedTwiceSetup()
+        const second = committedOf(await importLegacyTree(test.request(await loadStable(), { env: testEnv(test.clock, 301), resolve: stableOptions() }), accept))
+        const manifest = await currentManifest(test.memory)
+        const own = [...manifest.shards, manifest.fixed.order].map(keyOfRef)
+        expect(own.length).toBeGreaterThan(1)
+        for (const key of own) {
+            expect(before.has(key), key).toBe(false)
+        }
+        expect(second.manifestKey).not.toBe(first.manifestKey)
+    })
+})
+
+const GOLDEN_BIN = 'upstream-full.bin'
+
+/** The golden with an id on every chat that has none: the repair mints a random id otherwise, and two imports would never hold equal chat cores. */
+async function loadStable(): Promise<Golden> {
+    const golden = await loadGolden(GOLDEN_BIN)
+    let n = 0
+    for (const slot of (golden.tree as unknown as { characters: { chats?: { id?: unknown }[] }[] }).characters) {
+        for (const chat of slot.chats ?? []) {
+            if (typeof chat.id !== 'string' || chat.id === '') {
+                chat.id = `golden-chat-${++n}`
+            }
+        }
+    }
+    return golden
+}
+
+/** Resolve options whose minted ids repeat from run to run, so two imports of one file produce equal leaves. */
+function stableOptions(): typeof OPTIONS & { newUnitId: () => string } {
+    let n = 0
+    return { ...OPTIONS, newUnitId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}` }
+}
+
+/** The first import of the golden over the rig's base, committed; `before` is what the store held afterwards. */
+async function importedTwiceSetup(hooks?: Hooks) {
+    const test = await rig(hooks)
+    const first = committedOf(await importLegacyTree(test.request(await loadStable(), { resolve: stableOptions() }), accept))
+    const before = test.memory.snapshot()
+    test.clock.advance(1000)
+    return { test, first, before }
+}
+
+/** The unit types an import writes again whatever the base holds: the manifest, and the units that carry an entity id. */
+const ALWAYS_NEW: ReadonlySet<number> = new Set([UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.order])
+
+function typeOfStored(bytes: Uint8Array): number {
+    const frame = decodeFrame(bytes)
+    if (frame.status !== 'ok') {
+        throw new Error('A stored unit does not decode.')
+    }
+    return frame.type
+}
+
+/** The keys `after` holds and `before` did not. */
+function addedKeys(before: ReadonlyMap<string, Uint8Array>, after: ReadonlyMap<string, Uint8Array>): string[] {
+    return [...after.keys()].filter(key => !before.has(key))
+}
+
+/** The new keys, other than the always-new types, whose content equals a unit stored before: what content reuse must leave empty. */
+function duplicatesOf(before: ReadonlyMap<string, Uint8Array>, after: ReadonlyMap<string, Uint8Array>): string[] {
+    const known = new Set([...before.values()].map(bytes => unitDigest(bytes)))
+    return addedKeys(before, after).filter(key => {
+        const bytes = after.get(key) as Uint8Array
+        return !ALWAYS_NEW.has(typeOfStored(bytes)) && known.has(unitDigest(bytes))
+    })
+}
+
+/** The base units the current tree names: its indexed keys that were stored before `before`. */
+async function namedFrom(memory: MemoryBackend, before: ReadonlyMap<string, Uint8Array>): Promise<string[]> {
+    const index = await readBaseContentIndex(memory, await memory.readCommit())
+    return [...index.units.values()].flat().map(unit => unit.key).filter(key => before.has(key))
+}
+
+describe('regression: re-importing the same file stores no unit whose content is already stored', () => {
+    test('regression reproducer (IT1): the second import of one golden adds only a manifest, shards, an order unit and at most one parent whose equal-content children took stored keys in another order', async () => {
+        const { test, before } = await importedTwiceSetup()
+
+        committedOf(await importLegacyTree(test.request(await loadStable(), { env: testEnv(test.clock, 301), resolve: stableOptions() }), accept))
+
+        const after = test.memory.snapshot()
+        expect(duplicatesOf(before, after)).toEqual([])
+        // A parent written again is one that names an equal-content unit under another stored key (empty asset lists repeat,
+        // and equal units take the base keys in encode order); it is never a leaf.
+        const types = new Set(addedKeys(before, after).map(key => typeOfStored(after.get(key) as Uint8Array)))
+        expect([...types].filter(type => !ALWAYS_NEW.has(type) && type !== UNIT_TYPE.moduleBucket)).toEqual([])
+        expect(addedKeys(before, after).filter(key => typeOfStored(after.get(key) as Uint8Array) === UNIT_TYPE.moduleBucket).length).toBeLessThanOrEqual(1)
+        await expectInvariant(test.memory)
+    })
+
+    test('guard (IT3): the commit carries the first import\'s manifest and the count of base units the new tree names', async () => {
+        const { test, first, before } = await importedTwiceSetup()
+        const carries: CommitRequest['carry'][] = []
+        const spy: Committer = { ...test.committer, commit: async (read, request) => { carries.push(request.carry); return test.committer.commit(read, request) } }
+
+        committedOf(await importLegacyTree(test.request(await loadStable(), { committer: spy, env: testEnv(test.clock, 301), resolve: stableOptions() }), accept))
+
+        const named = await namedFrom(test.memory, before)
+        expect(named.length).toBeGreaterThan(0)
+        expect(carries).toEqual([{ from: first.manifestKey, units: named.length }])
+    })
+
+    test('guard (IT3): an import that names no unit of the base replaces it', async () => {
+        const test = await rig()
+        const before = test.memory.snapshot()
+        const carries: CommitRequest['carry'][] = []
+        const spy: Committer = { ...test.committer, commit: async (read, request) => { carries.push(request.carry); return test.committer.commit(read, request) } }
+
+        committedOf(await importLegacyTree(test.request({ tree: dbWithCharacters([{ chaId: 'solo-1', name: 'Solo only', type: 'character', chats: [] }]), units: new Map() }, { committer: spy }), accept))
+
+        const named = await namedFrom(test.memory, before)
+        expect(carries).toEqual([named.length === 0 ? IMPORT_REPLACES_BASE : { from: test.m0, units: named.length }])
+    })
+
+    test('guard (IT4, ordinary): when the commit key stops naming the manifest the index was read from, the import is refused base-unnamed and nothing lands', async () => {
+        const hooks: Hooks = {}
+        const { test, first } = await importedTwiceSetup(hooks)
+        const unrelated = test.m0
+        let reads = 0
+        hooks.before = async (call) => {
+            // The first read of the commit key is the index's; the second is the one the commit is made over.
+            if (call === 'readCommit' && ++reads === 2) {
+                const key = await parsedCommit(test.memory)
+                await plantKey(test.memory, { ...key, seq: key.seq + 1, epoch: 'e'.repeat(key.epoch.length), current: { key: unrelated, at: 5 }, retained: [], pins: [] })
+            }
+        }
+        const stored = test.memory.snapshot()
+
+        const outcome = await importLegacyTree(test.request(await loadStable(), { env: testEnv(test.clock, 301), resolve: stableOptions() }), accept)
+
+        expect(first.manifestKey).not.toBe(unrelated)
+        expect(outcome.status === 'refused' && outcome.reason).toBe('base-unnamed')
+        expect((await parsedCommit(test.memory)).current?.key).toBe(unrelated)
+        expect(addedKeys(stored, test.memory.snapshot())).toEqual([])
+    })
+
+    test('guard (IT4/IT9, bulk): a peer that drops the base under the marker refuses the import base-unnamed, the marker is cleared, and a second import lands', async () => {
+        const hooks: Hooks = {}
+        const test = await rig(hooks)
+        const small = (): { tree: Database, units: Map<string, StoredUnit> } => ({ tree: buildSmall(30), units: new Map() })
+        const first = committedOf(await importLegacyTree(test.request(small(), { resolve: stableOptions() }), accept))
+        test.clock.advance(1000)
+        let planted = false
+        hooks.before = async (call) => {
+            // The commit key under this import's own standing marker, rewritten by a peer that does not name the base.
+            if (call === 'casCommit' && !planted && (await parsedCommit(test.memory)).staging !== null) {
+                planted = true
+                const key = await parsedCommit(test.memory)
+                expect(key.staging).not.toBeNull()
+                await plantKey(test.memory, { ...key, seq: key.seq + 1, epoch: 'g'.repeat(key.epoch.length), current: { key: test.m0, at: 5 }, retained: [], pins: [] })
+            }
+        }
+        const tree = (): { tree: Database, units: Map<string, StoredUnit> } => ({ tree: buildSmall(90), units: new Map() })
+
+        const outcome = await importLegacyTree(test.request(tree(), { env: testEnv(test.clock, 301), resolve: stableOptions() }), accept)
+
+        expect(planted).toBe(true)
+        expect(outcome.status === 'refused' && outcome.reason).toBe('base-unnamed')
+        expect(outcome.status === 'refused' && outcome.cleared?.status).toBe('cleared')
+        expect((await parsedCommit(test.memory)).staging).toBeNull()
+        expect(first.manifestKey).not.toBe(test.m0)
+        // Nothing the refused import staged or named is reachable from the store's manifests, and the sweep keeps every named unit.
+        const removed = await gcPass({ backend: test.memory, kind: 'tauri', idleReason: () => null })
+        expect(removed.status).toBe('done')
+        await expectInvariant(test.memory)
+
+        hooks.before = undefined
+        const again = committedOf(await importLegacyTree(test.request(tree(), { env: testEnv(test.clock, 302), resolve: stableOptions() }), accept))
+        expect(again.manifestKey).toBe((await parsedCommit(test.memory)).current?.key)
+        await expectInvariant(test.memory)
+    })
+
+    test('guard (IT5): a peer commit that keeps the base retained lands the import, carrying the index\'s manifest and the keep of the peer\'s', async () => {
+        const hooks: Hooks = {}
+        const { test, first } = await importedTwiceSetup(hooks)
+        const peerList = listOf(['database/dbbackup-555.bin', 'unreadable'])
+        let seen: string[] = []
+        let reads = 0
+        hooks.before = async (call) => {
+            // After the index read and before the commit read: a peer replaces the profile and keeps the first import's manifest retained.
+            if (call === 'readCommit' && ++reads === 2) {
+                const peerRead = await test.peer.readCommit()
+                expect((await test.peer.commit(peerRead, { ...keepingRequest(peerList, 'peer'), force: true })).status).toBe('committed')
+                seen = (await parsedCommit(test.memory)).retained.map(entry => entry.key)
+                expect(seen).toContain(first.manifestKey)
+            }
+        }
+        const carries: CommitRequest['carry'][] = []
+        const spy: Committer = { ...test.committer, commit: async (read, request) => { carries.push(request.carry); return test.committer.commit(read, request) } }
+
+        const outcome = committedOf(await importLegacyTree(test.request(await loadStable(), { committer: spy, env: testEnv(test.clock, 301), resolve: stableOptions() }), accept))
+
+        expect(seen).toContain(first.manifestKey)
+        expect(carries).toHaveLength(1)
+        expect(carries[0]).toMatchObject({ from: first.manifestKey })
+        expect((carries[0] as { units: number }).units).toBeGreaterThan(0)
+        const imported = await currentManifest(test.memory)
+        expect(outcome.manifestKey).toBe((await parsedCommit(test.memory)).current?.key)
+        expect(imported.fixed.legacyKeep?.files.map(file => file.key)).toEqual(['database/dbbackup-555.bin'])
+        await expectInvariant(test.memory)
+    })
+
+    test('guard (IT6): a base leaf that is absent, and one overwritten by another unit, only lose their own reuse; the import lands', async () => {
+        const { test, before } = await importedTwiceSetup()
+        const index = await readBaseContentIndex(test.memory, await test.memory.readCommit())
+        // Units whose content no other base unit repeats, so a lost one cannot be replaced by an equal candidate.
+        const leaves = [...index.units.values()].filter(candidates => candidates.length === 1).map(candidates => candidates[0])
+        expect(leaves.length).toBeGreaterThan(3)
+        const gone = leaves[0]
+        const swapped = leaves[1]
+        test.memory.poke(gone.key, null)
+        test.memory.poke(swapped.key, before.get(leaves[2].key) as Uint8Array)
+
+        committedOf(await importLegacyTree(test.request(await loadStable(), { env: testEnv(test.clock, 301), resolve: stableOptions() }), accept))
+
+        const after = test.memory.snapshot()
+        const added = addedKeys(before, after)
+        const addedDigests = new Set(added.map(key => unitDigest(after.get(key) as Uint8Array)))
+        expect(addedDigests.has(gone.digest)).toBe(true)
+        expect(addedDigests.has(swapped.digest)).toBe(true)
+        // Most of the base is still reused: the units written are the two lost contents and the parents that name them.
+        const other = added.filter(key => !ALWAYS_NEW.has(typeOfStored(after.get(key) as Uint8Array)))
+        expect(other.length).toBeLessThan(leaves.length / 2)
+    })
+})
+
+describe('guard (IT7): over the synthetic base the replaced state is still kept, and the commit mode follows the units written', () => {
+    test('a tree whose units the base already holds commits as ordinary, a new one as bulk', async () => {
+        const test = await rig()
+        const big = committedOf(await importLegacyTree(test.request({ tree: buildSmall(40), units: new Map() }, { resolve: stableOptions() }), accept))
+        expect(big.mode).toBe('bulk')
+        test.clock.advance(1000)
+
+        const again = committedOf(await importLegacyTree(test.request({ tree: buildSmall(40), units: new Map() }, { env: testEnv(test.clock, 301), resolve: stableOptions() }), accept))
+
+        expect(again.mode).toBe('ordinary')
+        expect((await parsedCommit(test.memory)).retained[0].key).toBe(big.manifestKey)
     })
 })
 
@@ -569,7 +816,8 @@ describe('new behaviour: the commit outcomes are typed', () => {
             if (call === 'commitOrdinary') {
                 throw new Store2UnknownOutcomeError('Injected lost response.')
             }
-            if (call === 'readCommit' && count === 2) {
+            // The reads are the content index's, the commit's own, and the read-back after the lost response.
+            if (call === 'readCommit' && count === 3) {
                 throw new Store2BackendFailureError('Injected read failure.')
             }
         }

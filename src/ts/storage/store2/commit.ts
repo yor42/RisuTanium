@@ -141,7 +141,12 @@ export interface BuiltCommit {
 export type Carry = { from: string, units: number }
 
 /**
- * The claim of a request that replaces its base. Accepted limitation (bulk import window): an import carries the base's
+ * The claim of a request that replaces its base: an import that names no unit of the base. An import that reuses base
+ * units by content carries `{ from, units }` instead, `from` being the manifest its content index was read from. When
+ * `from` is also the current of the commit read the import is made over, the carry judge protects the carried keep as
+ * well; otherwise the keep stays under the limitation below.
+ *
+ * Accepted limitation (bulk import window): an import carries the base's
  * legacy keep by value and the bulk path does not judge this claim, so the final write can land a manifest that names a
  * keep unit the garbage collector deleted while the marker stood. That needs a garbage collection pass, a peer commit
  * landing over the base during the marker, and a writer that releases the keep: a null-setting commit, `Committer.restore`
@@ -173,7 +178,10 @@ function plannedCarry(request: Pick<CommitRequest, 'carry'>): Carry | null {
 }
 
 export interface CommitRequest {
-    /** How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists. */
+    /**
+     * How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists.
+     * An existing unit the build names by key (reused or carried) is not a new unit.
+     */
     newUnits: number
     /**
      * Builds the commit's units. An ordinary commit trusts this build: every pre-existing unit the new manifest
@@ -192,7 +200,7 @@ export interface CommitRequest {
     keepPrevious?: boolean
     /**
      * Required; any other value throws a TypeError. Either a `Carry`, when the build was planned over an acknowledged
-     * manifest: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
+     * manifest, or, for an import, the manifest whose units the build names by content: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
      * writing them, the legacy keep excluded because it travels by value. A commit that carries from `from` is refused
      * unless the commit key it compares against still names `from`, because garbage collection may have deleted what it
      * would carry; the ordinary path skips the check at `units` 0, the bulk path judges any carry. Or

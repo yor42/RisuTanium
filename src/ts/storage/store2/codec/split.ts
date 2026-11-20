@@ -219,6 +219,7 @@ export class Encoder {
         this.sink = new UnitSink(options.env, previous, options.keys, {
             ...(MEASURE && split !== undefined ? { split } : {}),
             ...(options.chunkMemo !== undefined ? { chunkMemo: options.chunkMemo } : {}),
+            ...(options.content !== undefined ? { content: options.content } : {}),
         })
     }
 
