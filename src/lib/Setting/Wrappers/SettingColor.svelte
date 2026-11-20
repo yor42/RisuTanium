@@ -11,6 +11,8 @@
 
     let { item, ctx }: Props = $props();
 
+    const uid = $props.id();
+
     let localValue: any = $state(untrack(() => getSettingValue(item, ctx)));
 
     // Sync: DB → local (one-way read)
@@ -31,6 +33,6 @@
 </script>
 
 <div class="flex items-center {item.classes ?? 'mt-2'}">
-    <ColorInput bind:value={localValue} nullable={item.options?.nullable ?? false} />
-    <span class="ml-2">{getLabel(item)}</span>
+    <ColorInput bind:value={localValue} nullable={item.options?.nullable ?? false} labelId="{uid}-label" />
+    <span id="{uid}-label" class="ml-2">{getLabel(item)}</span>
 </div>

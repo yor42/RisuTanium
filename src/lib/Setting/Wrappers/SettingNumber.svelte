@@ -13,6 +13,8 @@
 
     let { item, ctx }: Props = $props();
 
+    const uid = $props.id();
+
     let localValue: any = $state(untrack(() => getSettingValue(item, ctx)));
 
     // Only a finite positive figure counts as a known maximum; anything else renders as if the option were absent.
@@ -39,13 +41,14 @@
 </script>
 
 <span class="text-textcolor {item.classes ?? ''}">
-    {getLabel(item)}
+    <span id="{uid}-label">{getLabel(item)}</span>
     {#if item.helpKey}<Help key={item.helpKey as any}/>{/if}
     {#if actual !== undefined && typeof localValue === 'number'}
         <span data-testid="setting-actual-max" class="text-textcolor2 text-xs ml-2">{formatTokenCount(localValue)} / {formatTokenCount(actual)}</span>
     {/if}
 </span>
 <NumberInput
+    labelId="{uid}-label"
     marginBottom={true}
     size="sm"
     min={item.options?.min}

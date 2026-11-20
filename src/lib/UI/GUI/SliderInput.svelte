@@ -10,10 +10,13 @@
 > -->
 
 <div class="w-full flex" class:mb-4={marginBottom}>
+  {#if ids.srOnly}
+    <span id={ids.nameId} class="sr-only">{label}</span>
+  {/if}
   {#if disableable}
 
     <div class="relative h-8 border-darkborderc border rounded-full cursor-pointer rounded-r-none border-r-0 flex justify-center items-center pl-2">
-      <CheckInput check={value !== -1000 && value !== undefined} margin={false} onChange={(c) => {
+      <CheckInput check={value !== -1000 && value !== undefined} margin={false} {label} onChange={(c) => {
         onchange?.()
         if(c) {
           value = min;
@@ -26,6 +29,8 @@
   <div 
     role="slider"
     tabindex="0"
+    aria-labelledby={ids.nameId}
+    aria-describedby={ids.describedIds}
     aria-valuemin={min}
     aria-valuemax={max}
     aria-valuenow={sliderValue}
@@ -74,6 +79,7 @@
 <script lang="ts">
   import { language } from "src/lang";
   import CheckInput from "./CheckInput.svelte";
+  import { fieldNameIds } from "./fieldNameIds";
 
     let slider: HTMLDivElement = $state()
     let mouseDown = $state(false)
@@ -88,6 +94,12 @@
     disableable?: boolean;
     customText?: string|undefined;
     onchange?: Function;
+    /** Id of an existing visible label element that names the slider. */
+    labelId?: string;
+    /** Field label text: the checkbox name of a disableable slider, and the slider's own screen-reader-only name when no labelId is given. */
+    label?: string;
+    /** Extra description ids, listed after the naming element. */
+    describedBy?: string;
   }
 
   let {
@@ -100,8 +112,16 @@
     multiple = 1,
     disableable = false,
     customText = undefined,
-    onchange
+    onchange,
+    labelId = undefined,
+    label = '',
+    describedBy = undefined
   }: Props = $props();
+
+  const uid = $props.id();
+
+  // TalkBack speaks only the description in the slider's own stop, so the naming element is also the first description.
+  let ids = $derived(fieldNameIds(uid, labelId, label, describedBy));
 
   let isDisabledValue = $derived(value === -1000 || value === undefined);
   let sliderValue = $derived(isDisabledValue ? min : value);
