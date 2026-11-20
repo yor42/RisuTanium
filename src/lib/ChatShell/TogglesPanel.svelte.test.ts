@@ -68,6 +68,7 @@ import TogglesPanel from './TogglesPanel.svelte'
 import { resetTogglePanelSession } from '../../ts/chatShell/togglePanel'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../ts/storage/moduleStub'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
+import { glyphsIn, iconsIn, lucideNames } from './tests/glyphFree'
 
 type Owner = { chaId: string, name: string, type: 'character', chatPage: number, chats: Chat[], customModuleToggle?: string }
 
@@ -281,6 +282,26 @@ describe('check rows (S7)', () => {
         target = await show()
         expect(q(target, '[data-part="toggles-scope"]')!.textContent).toBe('chatShellThisChat')
     })
+})
+
+describe('icons (TC2-7)', () => {
+    // Regression reproducer: the close control, the row menu, the list select and the text control were text glyphs × ⋯ ▾ ✎.
+    test('close, row menu, list select and text control are aria-hidden icons with no glyph text', async () => {
+        await import('@lucide/svelte')
+        install({ prompt: 'tone=Tone\nm=Mode=select=One,Two,Three,Four\nnote=Note=text' })
+        const target = await show()
+        const close = q(target, '[data-part="toggles-close"]')!
+        expect(lucideNames(close)).toEqual(['lucide-x'])
+        expect(lucideNames(q(row(target, 'tone'), '[data-part="toggle-menu-button"]')!)).toEqual(['lucide-ellipsis'])
+        expect(lucideNames(q(row(target, 'm'), '[data-part="toggle-select-list"]')!)).toEqual(['lucide-chevron-down'])
+        expect(lucideNames(q(row(target, 'note'), '[data-part="toggle-text-button"]')!)).toEqual(['lucide-pencil'])
+        const decorative = [close, ...all(target, '[data-part="toggle-menu-button"], [data-part="toggle-select-list"], [data-part="toggle-text-button"]')].flatMap((node) => iconsIn(node))
+        expect(decorative.every((svg) => svg.getAttribute('aria-hidden') === 'true')).toBe(true)
+        expect(glyphsIn(close)).toEqual([])
+        expect(glyphsIn(row(target, 'tone'))).toEqual([])
+        expect(glyphsIn(row(target, 'm'))).toEqual([])
+        expect(glyphsIn(row(target, 'note'))).toEqual([])
+    }, 120_000)
 })
 
 describe('select rows', () => {

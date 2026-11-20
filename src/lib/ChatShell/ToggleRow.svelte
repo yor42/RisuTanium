@@ -1,6 +1,6 @@
 <script lang="ts">
     import { afterFlush } from '../../ts/afterFlush'
-    import { StarIcon } from '@lucide/svelte'
+    import { ChevronDownIcon, EllipsisIcon, PencilIcon, StarIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { isImeComposing } from '../../ts/ime/compositionGuard'
     import { isOn, selectControl, selectedIndex, shownText, type DuplicateBadge, type PanelValueRow } from '../../ts/chatShell/togglePanel'
@@ -107,13 +107,13 @@
                     </div>
                 {:else if row.kind === 'select' && control === 'list'}
                     <button type="button" data-part="toggle-select-list" data-row-control aria-haspopup="dialog" aria-labelledby="toggle-label-{row.uid}" onclick={(event) => onpick(event.currentTarget)}>
-                        <span>{row.options[chosen] ?? ''}</span><span aria-hidden="true">▾</span>
+                        <span>{row.options[chosen] ?? ''}</span><ChevronDownIcon aria-hidden="true" />
                     </button>
                 {:else if row.kind === 'text' && editing}
                     <input bind:this={inputEl} data-part="toggle-text-input" aria-labelledby="toggle-label-{row.uid}" value={draft} oninput={(event) => ondraft(event.currentTarget.value)} onkeydown={onInputKey} onblur={oncommit} />
                 {:else if row.kind === 'text' || row.kind === 'textarea'}
                     <button type="button" data-part="toggle-text-button" data-row-control data-sheet-initial={openedAt ? '' : undefined} data-textarea={row.kind === 'textarea' ? '' : undefined} aria-haspopup={row.kind === 'textarea' ? 'dialog' : undefined} aria-labelledby="toggle-label-{row.uid}" onclick={(event) => onedit(event.currentTarget)}>
-                        <span data-part="toggle-preview" data-empty={preview === '' ? '' : undefined}>{preview === '' ? language.chatShellTogglesEmpty : preview}</span><span aria-hidden="true">✎</span>
+                        <span data-part="toggle-preview" data-empty={preview === '' ? '' : undefined}>{preview === '' ? language.chatShellTogglesEmpty : preview}</span><PencilIcon aria-hidden="true" />
                     </button>
                 {/if}
             </div>
@@ -125,7 +125,7 @@
                 </div>
             {/if}
         {/if}
-        <button type="button" data-part="toggle-menu-button" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={language.chatShellTogglesMenu(row.label)} onclick={openMenu}>⋯</button>
+        <button type="button" data-part="toggle-menu-button" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={language.chatShellTogglesMenu(row.label)} onclick={openMenu}><EllipsisIcon aria-hidden="true" /></button>
     </div>
     {#if chatOnly || badges.length > 0}
         <div data-part="toggle-tags">
@@ -173,6 +173,8 @@
     [data-part="toggle-preview"][data-empty] { color: var(--nexus-text-secondary); }
     [data-part="toggle-text-input"] { flex: 1; min-width: 0; min-height: var(--size-touch); padding: 0 var(--space-7); color: var(--nexus-text); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--radius-control); }
     [data-part="toggle-menu-button"] { flex: none; min-width: var(--size-touch); border-color: transparent; }
+    [data-part="toggle-select-list"] :global(svg), [data-part="toggle-text-button"] :global(svg), [data-part="toggle-menu-button"] :global(svg) { flex: none; width: calc(var(--icon-size-md) * var(--icon-scale)); height: calc(var(--icon-size-md) * var(--icon-scale)); stroke-width: var(--icon-stroke); }
+    [data-part="toggle-menu-button"] { display: inline-flex; align-items: center; justify-content: center; }
     [data-part="toggle-move-up"]:disabled, [data-part="toggle-move-down"]:disabled { opacity: 0.4; }
     [data-part="toggle-star-mark"] { display: inline-flex; flex: none; color: var(--nexus-accent); }
     [data-part="toggle-tags"] { display: flex; flex-wrap: wrap; gap: var(--space-3); }

@@ -4,6 +4,7 @@ export const languageKorean = {
     chatShellBack: "뒤로",
     chatShellChoosePersona: "페르소나 선택",
     chatShellPersonaSettings: "페르소나 설정",
+    chatShellPersonaDefault: "기본 페르소나",
     chatShellMoreActions: "더 보기",
     chatShellReadAloud: "소리 내어 읽기",
     chatShellBranch: "여기서 분기",

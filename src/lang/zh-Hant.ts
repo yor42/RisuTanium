@@ -4,6 +4,7 @@ export const languageChineseTraditional = {
     "chatShellBack": "返回",
     "chatShellChoosePersona": "選擇人設",
     "chatShellPersonaSettings": "人設設定",
+    "chatShellPersonaDefault": "預設人設",
     "chatShellMoreActions": "更多操作",
     "chatShellReadAloud": "朗讀",
     "chatShellBranch": "從此處建立分支",

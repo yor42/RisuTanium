@@ -4,6 +4,7 @@ export const languageSpanish = {
     chatShellBack: "Atrás",
     chatShellChoosePersona: "Elegir persona",
     chatShellPersonaSettings: "Ajustes de persona",
+    chatShellPersonaDefault: "Persona predeterminada",
     chatShellMoreActions: "Más acciones",
     chatShellReadAloud: "Leer en voz alta",
     chatShellBranch: "Ramificar desde aquí",

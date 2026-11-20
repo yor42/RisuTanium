@@ -4,6 +4,7 @@ export const languageGerman = {
     "chatShellBack": "Zurück",
     "chatShellChoosePersona": "Persona wählen",
     "chatShellPersonaSettings": "Persona-Einstellungen",
+    "chatShellPersonaDefault": "Standard-Persona",
     "chatShellMoreActions": "Weitere Aktionen",
     "chatShellReadAloud": "Vorlesen",
     "chatShellBranch": "Ab hier verzweigen",
