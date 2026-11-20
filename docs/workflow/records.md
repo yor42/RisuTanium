@@ -22,7 +22,7 @@ The item owner records final closure against the accepted snapshot and the chang
 
 ## Separate records track
 
-One workClass records / mode implement Haiku drafter may run beside two disjoint code worktrees and one device run. Freeze its source/facts packet: exact quotations/reserved IDs, target anchors/schema, accepted gate/test provenance and limitations. Later code changes do not alter that historical batch's claims. Records completion is not a prerequisite for unrelated authorized code work.
+One workClass records / mode implement Haiku drafter may run beside the ticket sessions and device runs. Freeze its source/facts packet: exact quotations/reserved IDs, target anchors/schema, accepted gate/test provenance and limitations. Later code changes do not alter that historical batch's claims. Records completion is not a prerequisite for unrelated authorized code work.
 
 The guard remains unchanged. Ordinary explicitly granted Markdown may be edited. Maintainer-Context/governance/Decision-Index/state changes return as a scratch draft/patch packet for verified parent application through existing helpers. No shell workaround, unconfirmed ID allocation, confidence upgrade, invented decision or self-acceptance. Parent application is integration, not a second whole-batch rewrite.
 
