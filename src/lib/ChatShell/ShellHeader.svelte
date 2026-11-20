@@ -32,7 +32,7 @@
     }
 </script>
 
-<header data-part="chat-header" data-toggle-inset="" style:padding-left="calc(var(--size-touch-lg) + var(--space-7))" data-hidden={concealed ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
+<header data-part="chat-header" data-hidden={concealed ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
     <button data-part="chat-header-back" data-kind="icon-button" aria-label={language.chatShellBack} onclick={back}>‹</button>
     <span data-part="chat-header-heading"><span data-part="chat-header-title">{name}</span>{#if chatName}<span data-part="chat-header-chat">{chatName}</span>{/if}</span>
     <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellThisChat} title={language.chatShellThisChat} aria-haspopup="dialog" onclick={(event) => onthischat(event.currentTarget)}>⋮</button>

@@ -893,8 +893,9 @@
 <style>
     [data-part="chat-message"] { width: 100%; padding: var(--space-8) var(--space-12); color: var(--nexus-text); }
     [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
-    [data-part="chat-message-meta"] { display: flex; align-items: center; gap: var(--message-meta-gap); color: var(--nexus-text-secondary); }
-    [data-part="chat-message-name"] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The name keeps its content width; the action cluster takes the rest of the row and wraps below the name, end-aligned, when both do not fit. */
+    [data-part="chat-message-meta"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--message-meta-gap); color: var(--nexus-text-secondary); }
+    [data-part="chat-message-name"] { flex: 0 1 auto; min-inline-size: min(12ch, 100%); max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-name"][data-name-hidden] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     [data-part="chat-message-generation-info"] { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
@@ -905,6 +906,7 @@
     [data-part="chat-message-body"][data-commit="forward"] { animation: commit-in-forward var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-message-body"][data-commit="back"] { animation: commit-in-back var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-swipe-arm"], [data-part="chat-generate-reply"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
+    [data-part="chat-generate-reply"] { flex: none; white-space: nowrap; min-inline-size: max-content; min-block-size: var(--size-12); }
     @keyframes commit-in-forward { from { transform: translateX(var(--swipe-nudge)); opacity: var(--opacity-half); } }
     @keyframes commit-in-back { from { transform: translateX(calc(-1 * var(--swipe-nudge))); opacity: var(--opacity-half); } }
     @keyframes commit-fade { from { opacity: var(--opacity-half); } }
