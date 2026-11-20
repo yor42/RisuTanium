@@ -46,9 +46,17 @@ RisuTanium is an Android-first product fork of RisuAI: an MVP on the maintainer'
 - An item is COMPLETE only after applicable decisions, gates, status and remaining-work records are current; record closeout uses incremental verification, not an automatic Gate 2 restart. See [records](docs/workflow/records.md).
 - For required native high-risk review, resume a finished reviewer only within about 5 minutes; otherwise use a fresh same-role reviewer. Routine remediation uses the independent-review route (MC-895/899, amended 2026-11-03), seeded with verdict, diff, acceptance and accepted limitations. The round count continues.
 - One session per ticket, each with its own worktree, branch and PR. Numeric caps (implementation sessions, device tracks) belong in `.claude/workflow-policy.json`, and a later maintainer decision wins where it disagrees; RAM run slots and quota are the practical limits. Device waits and administrative closeout block only actual dependent scope. Lane A starts ready tickets for idle lanes without a separate ask (MC-1676 item 3, MC-1677, made permanent by MC-2744).
-- Routine supplied-evidence records use the dedicated native Haiku `record-clerk` first, without external preflight. Authoritative decisions/governance/index/state changes return as a scratch packet for parent application under the existing guard. The retired Haiku verification pilot stays retired; one independent consequential-claim check remains. [Write ownership](docs/workflow/ownership.md) keeps one app-code writer per checkout and exact named document ownership.
+- Each PR's session writes its own records in the PR: decisions it asked (MC IDs from its own block of 10), gate dispositions, leftovers and device rows written from the actual diff. Only governance, Live-State and lane handoffs go through lane A; device rulings are asked in lane B directly (MC-2713). Routine supplied-evidence drafting may use the Haiku `record-clerk`. See [records](docs/workflow/records.md). The retired Haiku verification pilot stays retired; one independent consequential-claim check remains. [Write ownership](docs/workflow/ownership.md) keeps one app-code writer per checkout and exact named document ownership.
 - Budgets prompt reassessment, never acceptance of incomplete work. Preserve useful context; reset only when size, contamination or scope warrants it. Do not invent token costs or unmeasured savings.
 
+## Tickets and PRs
+
+- The GitHub issue on yor42/RisuTanium and its project board 1 card are the ticket authority; `Agents/Roadmap.md` is scope history, and the issue wins where they disagree. Check the issue's and any PR's state (and `git log origin/main`) before offering or starting a ticket.
+- Always pass `--repo yor42/RisuTanium` to `gh`: its default is the upstream repository.
+- One ticket, one session, one worktree, one `claude/<ticket>` branch, one PR. Turn Auto-fix on when the PR opens. Close each issue with its own keyword in the PR body (`Closes #a, closes #b`).
+- A PR that adds `en.ts` keys carries all 7 locales and passes the localeParity test in the same PR (MC-058: the translator role writes the non-English strings).
+- CI skips Markdown, `docs/**` (except `docs/design/**`) and `Agents/**`. Before merging a PR with no CI run, check that no CI-covered file imports what it changed (`src` imports `docs/design` through `?raw`).
+- Size tiers, the approval matrix and the follow-up policy are in [gates](docs/workflow/gates.md).
 ## Commands and navigation
 
 | Need | Command / source |
