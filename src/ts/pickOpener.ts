@@ -40,6 +40,18 @@ export function clearPickOpener(): void {
 }
 
 /**
+ * For a picker that returned nothing: forgets the remembered element and puts focus back on `opener`, the element that
+ * had focus when that picker opened. Focus moves only while `opener` is still in the page and focus is on nowhere or
+ * the body; a user who moved focus elsewhere keeps it.
+ */
+export function returnFocusToPickOpener(opener: HTMLElement | null): void {
+    clearPickOpener()
+    if (opener === null || !opener.isConnected) return
+    const active = document.activeElement
+    if (active === null || active === document.body) opener.focus()
+}
+
+/**
  * The remembered element, once: only after the files came back, within the time limit and while it is still in the page.
  * Any call clears it.
  */
