@@ -2,6 +2,7 @@ import { language } from "src/lang"
 import { alertError, alertInput, waitAlert } from "../alert"
 import { base64url, getKeypairStore, saveKeypairStore } from "../util"
 import { createAssetTokenSource } from "./nodeAssetToken"
+import { getPageSoftwareNodeKey, webCryptoAvailable, webCryptoNodeKey, type NodeKey } from "./nodeKey"
 import { retryTransientRequest } from "./store/nodeHttpStore"
 
 /**
@@ -86,7 +87,7 @@ export class NodeStorage{
     }
 
     async createAuth(){
-        const keyPair = await this.getKeyPair()
+        const key = await this.getNodeKey()
         const date = Math.floor(Date.now() / 1000)
         
         const header = {
@@ -96,19 +97,14 @@ export class NodeStorage{
         const payload = {
             iat: date,
             exp: date + 5 * 60, //5 minutes expiration
-            pub: await crypto.subtle.exportKey('jwk', keyPair.publicKey)
+            pub: await key.publicJwk()
         }
-        const sig = await crypto.subtle.sign(
-            {
-                name: "ECDSA",
-                hash: "SHA-256"
-            },
-            keyPair.privateKey,
+        const sig = await key.sign(
             Buffer.from(
                 this.JSONStringlifyAndbase64Url(header) + "." + this.JSONStringlifyAndbase64Url(payload)
             )
         )
-        const sigString = base64url(new Uint8Array(sig))
+        const sigString = base64url(sig)
         return this.JSONStringlifyAndbase64Url(header) + "." + this.JSONStringlifyAndbase64Url(payload) + "." + sigString
     }
 
@@ -137,10 +133,19 @@ export class NodeStorage{
     async assetReadToken(): Promise<string> {
         await this.checkAuth()
         this.assetTokenSource ??= createAssetTokenSource({
-            getKeyPair: () => this.getKeyPair(),
+            getKey: () => this.getNodeKey(),
             storage: typeof localStorage === 'undefined' ? null : localStorage,
         })
         return await this.assetTokenSource()
+    }
+
+    /**
+     * The page's signer: the WebCrypto key pair when the page has `crypto.subtle`,
+     * otherwise the software key. A WebCrypto failure is never answered with a
+     * software key.
+     */
+    private async getNodeKey(): Promise<NodeKey> {
+        return webCryptoAvailable() ? webCryptoNodeKey(await this.getKeyPair()) : await getPageSoftwareNodeKey()
     }
 
     async getKeyPair():Promise<CryptoKeyPair>{
@@ -356,8 +361,7 @@ export class NodeStorage{
 
     /** Registers this browser's key pair with the server under the password digest; a refusal is shown to the user and thrown. */
     private async login(digest: string){
-        const keypair = await this.getKeyPair()
-        const publicKey = await crypto.subtle.exportKey('jwk', keypair.publicKey)
+        const publicKey = await (await this.getNodeKey()).publicJwk()
         const s = await fetch('/api/login',{
             method: "POST",
             body: JSON.stringify({
