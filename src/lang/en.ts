@@ -2589,7 +2589,6 @@ export const languageEnglish = {
     studioAssetModuleSharedId: "This module shares its id with another module; asset changes are off",
     studioAssetFileGone: (name: string) => `The file for ${name} is gone, so this row was not restored`,
     studioAssetFileUnchecked: (name: string) => `Couldn't check the file for ${name}, so nothing was changed. Try again.`,
-    studioAssetUseKeptFile: "Use the identical kept file",
     studioAssetToastUseHistory: "Use the history panel to undo this",
     studioAssetUndone: "Undone",
     studioAssetUndoFailed: "Couldn't undo this.",

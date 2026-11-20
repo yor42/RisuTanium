@@ -7,7 +7,8 @@ import { repairCharacterTree, summarizeRepair, type RepairRefusal } from '../../
 import { completeRestoredTree } from '../../treeToBlockSet'
 import { Store2BackendError } from '../backend/errors'
 import type { Store2Backend, Store2Read } from '../backend/types'
-import { IMPORT_REPLACES_BASE, type BuildContext, type BuiltCommit, type Committer, type CommitResult } from '../commit'
+import { readBaseContentIndex, type BaseContentIndex, type BaseContentOptions } from '../baseContent'
+import { IMPORT_REPLACES_BASE, type BuildContext, type BuiltCommit, type Carry, type Committer, type CommitResult } from '../commit'
 import { classifyCommitRead } from '../commitKey'
 import { builtCommitOf, planScopedEncode, type ScopedPlan } from '../codec/scoped'
 import { carryManifest } from '../codec/manifest'
@@ -30,8 +31,9 @@ import {
  *      injected reader and never through the device store;
  *   2. `resolveLegacyTree` through the same reader; what it could not bring in goes to `hooks.confirmIncomplete`,
  *      and a decline writes nothing;
- *   3. `planScopedEncode` of the whole resolved tree with no `previous`: nothing is reused from the profile being
- *      replaced, so no imported character can take over a unit or an entity id of the current one;
+ *   3. `planScopedEncode` of the whole resolved tree with no `previous`, so every entity id is new and no imported
+ *      character takes over an identity of the current profile. A unit whose type, framed length, CRC and digest equal a
+ *      unit of the base index takes that unit's key instead of a new one, each base key at most once per encode;
  *   4. one `commit()` over a fresh read of the commit key, `label: 'import'` and `force: true`, so the replaced
  *      `current` always enters `retained`.
  *
@@ -43,6 +45,10 @@ import {
  *    `req` union. The manifest it is carried from is the one named by `current` of the very read handed to
  *    `commit()`; with a different read the new manifest could name a keep-list unit only an older manifest names,
  *    which an ordinary commit must not do. A base that cannot be read stops the import.
+ *  - A commit that names any unit of the base index carries `{ from, units }`, `from` being the manifest the index was
+ *    read from, so it lands only while the commit key still names `from`. A commit that names none replaces its base
+ *    (`IMPORT_REPLACES_BASE`). The base index is read before the plan; the manifest whose keep is carried is still the
+ *    one named by the read handed to `commit()`. An index that cannot be read, or is partial, only removes candidates.
  *  - The decoded tree is released (`ImportSource.tree` set to null) as soon as it is resolved; the plan holds the
  *    encoded units, not the tree, so the commit's build needs nothing of it.
  *
@@ -96,6 +102,12 @@ export interface ImportRequest {
      * The tree's own `usagePriceOverrides` key is removed either way.
      */
     usagePriceOverrides?: JsonObject
+    /**
+     * The content index of the base the import is built over, read before the plan. `importLegacyTree` reads one from the
+     * commit key when absent, so a page import always reuses by content; the boot installer never passes one (it judges no
+     * carry), so a boot import writes every unit under a fresh key.
+     */
+    baseContent?: () => Promise<BaseContentIndex>
 }
 
 export interface ImportHooks {
@@ -269,7 +281,7 @@ export async function confirmImportIncomplete(incomplete: readonly IncompleteIte
 }
 
 async function planResolved(
-    hold: { resolved: ResolvedLegacyTree | null }, options: { lists: ListDerivation, env: KeyEnv },
+    hold: { resolved: ResolvedLegacyTree | null }, options: { lists: ListDerivation, env: KeyEnv, content: BaseContentIndex | null },
 ): Promise<ScopedPlan | { status: 'unsavable', detail: string }> {
     const database = hold.resolved?.database
     hold.resolved = null
@@ -279,7 +291,7 @@ async function planResolved(
     try {
         return await planScopedEncode(
             database,
-            { env: options.env, lists: options.lists, seq: 0, createdAt: options.env.now() },
+            { env: options.env, lists: options.lists, seq: 0, createdAt: options.env.now(), ...(options.content === null ? {} : { content: options.content }) },
             { modules: true, characters: 'all' },
         )
     } catch (error) {
@@ -329,6 +341,8 @@ export async function baseManifestOf(backend: Store2Backend, read: Store2Read): 
 export interface PreparedImport {
     plan: ScopedPlan
     repair: RepairSummary
+    /** The base index the plan reused from; null when the request passed none. */
+    content: BaseContentIndex | null
 }
 
 /** What `prepareImport` ends in before any write: everything of `ImportOutcome` that is decided without the commit key. */
@@ -347,7 +361,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * repair would replace.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'baseContent'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
@@ -381,20 +395,55 @@ export async function prepareImport(
         return { status: 'declined' }
     }
     const env: KeyEnv = request.env ?? defaultKeyEnv
-    const plan = await planResolved(hold, { lists: request.lists, env })
+    let content: BaseContentIndex | null = null
+    if (request.baseContent !== undefined) {
+        notePhase(hooks, 'import base index start')
+        content = await request.baseContent()
+        notePhase(hooks, `import base indexed, ${content.stats.units} units, ${content.stats.bytes} bytes, ${content.stats.skipped} skipped`)
+    }
+    const plan = await planResolved(hold, { lists: request.lists, env, content })
     if ('status' in plan) {
         return plan
     }
     notePhase(hooks, `import planned, ${plan.newUnits} units`)
-    return { plan, repair }
+    return { plan, repair, content }
+}
+
+/**
+ * The carry of an import commit: the base units the new tree names (`reused`, counted by the plan or the streamed
+ * encode) under the manifest the index was read from, or the sentinel when it names none. A count above zero without a
+ * manifest to carry from cannot arise (an index with no `from` is empty) and is a programming error.
+ */
+export function importCarry(content: BaseContentIndex | null, reused: number): Carry | typeof IMPORT_REPLACES_BASE {
+    if (reused === 0) {
+        return IMPORT_REPLACES_BASE
+    }
+    if (content === null || content.from === null) {
+        throw new TypeError('An import reused base units without a base index to carry from.')
+    }
+    return { from: content.from, units: reused }
+}
+
+/** The index of the commit key `committer` holds now. A commit key that cannot be read gives an empty index: no candidates, never a refusal. */
+export async function indexOfCommitKey(request: Pick<ImportRequest, 'committer' | 'backend'>, options?: BaseContentOptions): Promise<BaseContentIndex> {
+    let read: Store2Read
+    try {
+        read = await request.committer.readCommit()
+    } catch (error) {
+        if (error instanceof Store2BackendError) {
+            return { from: null, units: new Map(), stats: { units: 0, bytes: 0, skipped: 0, backendError: true } }
+        }
+        throw error
+    }
+    return readBaseContentIndex(request.backend, read, options)
 }
 
 export async function importLegacyTree(request: ImportRequest, hooks: ImportHooks): Promise<ImportOutcome> {
-    const prepared = await prepareImport(request, hooks)
+    const prepared = await prepareImport({ ...request, baseContent: request.baseContent ?? (() => indexOfCommitKey(request)) }, hooks)
     if ('status' in prepared) {
         return prepared
     }
-    const { plan, repair } = prepared
+    const { plan, repair, content } = prepared
 
     // The base is read from the very commit-key read the commit is made over.
     let read: Store2Read
@@ -416,6 +465,6 @@ export async function importLegacyTree(request: ImportRequest, hooks: ImportHook
     }
     const built = buildImport(plan, { base: base.status === 'ok' ? base.manifest : undefined, list: request.legacyKeep })
     notePhase(hooks, 'import commit start')
-    const result = await request.committer.commit(read, { newUnits: built.newUnits, build: built.build, label: 'import', force: true, carry: IMPORT_REPLACES_BASE })
+    const result = await request.committer.commit(read, { newUnits: built.newUnits, build: built.build, label: 'import', force: true, carry: importCarry(content, plan.carried.units) })
     return result.status === 'committed' ? { ...result, repair } : result
 }

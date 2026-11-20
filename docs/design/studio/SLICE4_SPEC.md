@@ -212,7 +212,7 @@ MC-1195, MC-1215, MC-1208, MC-1209, MC-1216.
 
 - Each asset step has a named line in the Studio history panel, reachable with Ctrl+Z after a reload: "Deleted {name}" / "Deleted {n} assets"; "Removed {n} extra copies of {name}"; "Merged {old} into {kept}"; "Renamed {old} to {new}"; "Moved {n} assets to {folder}"; "Renamed folder {a} to {b}" / "Deleted folder {a}".
 - Removed assets do not appear in the History deleted list; use Undo or the step line.
-- If an undo, or a redo that inserts a row, finds its kept file gone: "The file for {name} is gone, so this row was not restored". It is never silently relinked; "Use the identical kept file" is offered only with a confirmed survivor.
+- If an undo, or a redo that inserts a row, finds its kept file gone: "The file for {name} is gone, so this row was not restored". It is never silently relinked (MC-2508: no relink action is offered).
 - "Undo ends" means no step in memory, in the last acknowledged history save or in a save not yet acknowledged names the file; after that a clean-up may delete it. If the app stops between the removal and the history save, that removal has no history line (MC-1203).
 - When every change of the top step is already in the state Undo (or Redo) would produce, nothing is written and the step moves to the other list: "That step was already undone, so Undo moved past it." / "That step was already redone, so Redo moved past it." (copy proposed).
 - When the only changes that did not apply are ones whose deleted item is gone, or an older first-message change that cannot be checked, plus ones already in place, Undo drops the step: "Undo moved past a step that can no longer be undone here."
@@ -380,7 +380,7 @@ KO first. Terms follow chat slice 3 and Studio slice 3 (say "첫 메시지", nev
 | Refusals | Cannot keep undo right now / Open this character in one tab to remove assets / Open this module in one tab to remove assets / This module shares its id with another module; asset changes are off |
 | Duplicates | Same file / Possible duplicate / Size unknown, use Check bytes / Same file, different names / Same name, different file / File missing or unreadable / {k} files could not be read / Check bytes / {x} of {y} MB / Remove extras / Removed {n} extra copies of {name} / Older messages may show a different picture from this name |
 | Merge | Merge / Already shows {kept}; unchanged / Out of date / {n} chats still mention {old} / {k} archived chats not checked / {n} characters use this name; their text is not changed / {k} archived characters not checked / Not finished; at least {n} characters / These characters may show a lookalike picture: a missing name falls back to the closest name. / Merge anyway / Merged {old} into {kept} |
-| History | Deleted {name} / Deleted {n} assets / Renamed {old} to {new} / Moved {n} assets to {folder} / Renamed folder {a} to {b} / Deleted folder {a} / The file for {name} is gone, so this row was not restored / Use the identical kept file / {j} places not restored |
+| History | Deleted {name} / Deleted {n} assets / Renamed {old} to {new} / Moved {n} assets to {folder} / Renamed folder {a} to {b} / Deleted folder {a} / The file for {name} is gone, so this row was not restored / {j} places not restored |
 
 ## 14. Check plan: new `st4` suite
 

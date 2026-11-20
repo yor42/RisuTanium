@@ -7,7 +7,7 @@ import type { KeyMint } from '../commit'
 import type { ChunkMemo } from './chunkMemo'
 import {
     CodecError, isWrittenUnit,
-    type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit, type SplitRecorder, type WrittenUnit,
+    type ContentIndex, type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit, type SplitRecorder, type WrittenUnit,
 } from './types'
 
 /** Which key shape a new unit gets. */
@@ -91,6 +91,13 @@ export interface UnitSinkOptions {
      * is the remembered one and whose previous unit carries the remembered digest. Absent, every chunk is framed.
      */
     chunkMemo?: ChunkMemo
+    /**
+     * Stored units an import takes by content: a unit with no identity match (`put` and `putReusing` only, never
+     * `putFresh` or `reuseAt`) takes the key of the first candidate of its digest that this encode has not handed out
+     * and that is the same unit (type, framed length, CRC, digest). An import-only rule, so it is refused together
+     * with a previous encoding, `reuseOnly` or `collect`.
+     */
+    content?: ContentIndex
 }
 
 /**
@@ -100,6 +107,10 @@ export interface UnitSinkOptions {
  * a chunk put through `putReusing` may also take the key of an unchanged
  * prior unit of its family at another position, each prior key at most once
  * per encode; every other unit gets a fresh key.
+ *
+ * With a content index, a unit that is not the previous encoding's may take the key of a stored unit of equal content.
+ * One key is handed out at most once per encode across both sources (identity and content), so equal units of the
+ * import take distinct keys: the first ones reuse the stored copies, the rest get fresh keys.
  */
 export class UnitSink {
     readonly units: EncodedUnit[] = []
@@ -117,6 +128,9 @@ export class UnitSink {
     readonly diverged = new Set<string>()
     private declare readonly split: SplitRecorder | undefined
     private readonly chunkMemo: ChunkMemo | undefined
+    private readonly content: ContentIndex | undefined
+    /** How many units of this encode took a stored key (identity or content). */
+    reused = 0
 
     constructor(
         private readonly env: KeyEnv,
@@ -127,6 +141,10 @@ export class UnitSink {
         this.reuseOnly = options.reuseOnly === true
         this.collect = options.collect === true
         this.chunkMemo = options.chunkMemo
+        if (options.content !== undefined && (previous !== null || this.reuseOnly || this.collect)) {
+            throw new TypeError('A content index is an import rule: it cannot accompany a previous encoding, reuseOnly or collect.')
+        }
+        this.content = options.content
         if (MEASURE && options.split !== undefined) {
             this.split = options.split
         }
@@ -162,11 +180,32 @@ export class UnitSink {
         if (prior !== undefined && !this.claimedKeys.has(prior.key) && isSameUnit(prior, type, bytes, digest)) {
             return this.record(identity, type, prior.key, bytes, digest, true)
         }
+        const stored = this.reuseByContent(identity, type, bytes, digest)
+        if (stored !== null) {
+            return stored
+        }
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
         this.noteDiverged(identity)
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
+    }
+
+    /**
+     * The unit as a reused one under the key of the first stored candidate of its digest whose key this encode has not
+     * handed out (`keys` holds claimed and fresh keys alike) and which is the same unit. Null when there is none.
+     */
+    private reuseByContent(identity: string, type: UnitType, bytes: Uint8Array, digest: string): EncodedUnit | null {
+        const candidates = this.content?.units.get(digest)
+        if (candidates === undefined) {
+            return null
+        }
+        for (const candidate of candidates) {
+            if (!this.keys.has(candidate.key) && isSameUnit(candidate, type, bytes, digest)) {
+                return this.record(identity, type, candidate.key, bytes, digest, true)
+            }
+        }
+        return null
     }
 
     /** A collecting sink lists the identity of a unit it is about to give a fresh key. */
@@ -220,6 +259,10 @@ export class UnitSink {
                     return this.record(identity, type, candidate.key, bytes, digest, true)
                 }
             }
+        }
+        const stored = this.reuseByContent(identity, type, bytes, digest)
+        if (stored !== null) {
+            return stored
         }
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
@@ -299,6 +342,7 @@ export class UnitSink {
         this.keys.add(key)
         if (reused) {
             this.claimedKeys.add(key)
+            this.reused++
         }
         // A reused unit drops the frame here: the tree outlives the pass's `put` calls and must not pin it.
         const unit: EncodedUnit = reused

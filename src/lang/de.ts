@@ -2456,7 +2456,6 @@ export const languageGerman = {
     "studioAssetModuleSharedId": "Dieses Modul hat dieselbe ID wie ein anderes Modul; Asset-Änderungen sind deaktiviert",
     "studioAssetFileGone": (name: string) => `Die Datei für ${name} ist nicht mehr vorhanden, daher wurde diese Zeile nicht wiederhergestellt`,
     "studioAssetFileUnchecked": (name: string) => `Die Datei für ${name} konnte nicht geprüft werden, daher wurde nichts geändert. Versuche es noch einmal.`,
-    "studioAssetUseKeptFile": "Die identische aufbewahrte Datei verwenden",
     "studioAssetToastUseHistory": "Verwende dafür das Verlaufspanel, um dies rückgängig zu machen",
     "studioAssetUndone": "Rückgängig gemacht",
     "studioAssetUndoFailed": "Das konnte nicht rückgängig gemacht werden.",

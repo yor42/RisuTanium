@@ -581,7 +581,7 @@
 "NEW_HOSTILE all: animation speed" e1a9e5dbc15ddc60 chat:650cf1d016ed8fb4 settings:650cf1d016ed8fb4 studio:650cf1d016ed8fb4 home:650cf1d016ed8fb4
 "NEW_HOSTILE all: private variable" 78f7d6e3b3b18cc9 chat:9b5c4344d2f40bd8 settings:9b5c4344d2f40bd8 studio:9b5c4344d2f40bd8 home:9b5c4344d2f40bd8
 "NEW_HOSTILE all: focus ring width 0" daf9acaef903e16c chat:b86a79bf6a42d8b8 settings:7ff734973b451667 studio:b86a79bf6a42d8b8 home:3782c285884aae33
-"NEW_HOSTILE all: focus ring offset 99" eda3061c0c8ecf09 chat:de05642bb9f21e8f settings:de05642bb9f21e8f studio:de05642bb9f21e8f home:ae8361441ea7bbdd
+"NEW_HOSTILE all: focus ring offset 99" eda3061c0c8ecf09 chat:a3ab4d76a327acf3 settings:a3ab4d76a327acf3 studio:a3ab4d76a327acf3 home:f09b671a42997fbd
 "NEW_HOSTILE all: touch size 10" 3099a25a3437763e chat:e72f94aa177c814b settings:3527afecbeb850c9 studio:e72f94aa177c814b home:b2409d95dd686135
 "NEW_HOSTILE all: duration 60s" 48e1e5df19c843c2 chat:0e62fa88577bd878 settings:0e62fa88577bd878 studio:0e62fa88577bd878 home:0e62fa88577bd878
 "NEW_HOSTILE all: outline on any part" 119fed5a473033f9 chat:7e93252c3eee3827 settings:7e93252c3eee3827 studio:7e93252c3eee3827 home:7e93252c3eee3827
