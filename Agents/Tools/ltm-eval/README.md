@@ -1,9 +1,10 @@
 # ltm-eval
 
-Tooling for the ChroMemory (long-term memory) work. No application code is touched. It has two parts that share no files.
+Tooling for the ChroMemory (long-term memory) work. No application code is touched. It has three parts; the S0 harness (3) reads the generator's builder (`gen/build.mjs`) and shares nothing else with the other two.
 
 1. **Generator and BM25 eval.** A deterministic synthetic roleplay dataset (`gen/`) and a port of the BM25 half of the M2 retrieval analysis (`bm25.mjs`, `eval-bm25.mjs`). The tokenisers are the M2 versions, unchanged (lowercase without NFKC, Hangul as code-point bigrams or whole words, Latin stemmed). They are not the spec 5.3 tokeniser.
 2. **`.bin` analyzer** (`analyzer/`). It reads a `.bin` through the application's own import reader and writes numbers only.
+3. **S0 harness** (`s0/`). The spec 5.3 tokeniser and BM25 scorer, corpora, turn-shaped queries, the engine simulation and the go/no-go gate of spec 5.7. See "S0 harness" below.
 
 ## Commands
 
@@ -12,6 +13,7 @@ Run from the repository root, naming one harness file at a time (never a folder)
 ```powershell
 node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/vitest.ltm.config.ts Agents/Tools/ltm-eval/eval.harness.ts
 node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/vitest.ltm.config.ts Agents/Tools/ltm-eval/bin-analyzer.harness.ts
+node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/vitest.ltm.config.ts Agents/Tools/ltm-eval/s0/s0.harness.ts
 ```
 
 `*.harness.ts` files are never collected by `pnpm test`.
@@ -88,3 +90,39 @@ Known limits: template-generated, so sentence structure repeats; question wordin
 ## Mocks
 
 The analyzer imports the application's storage modules, which reach stores, alerts and platform code. `bin-analyzer.harness.ts` mocks those in that one file (the same set as the CHORE-807 census harness). Keep all mocks in that file.
+
+## S0 harness
+
+S0 decides whether ChroMemory proceeds (spec 5.7). It produces outputs for S1 only through a tune run and one gate attempt per builder; both run outside the test suite and write only to a folder under the temp directory.
+
+Files (`s0/`): `lexical.ts` (tokeniser, BM25, RRF, top-IDF terms, admission; no imports, erasable TypeScript, so S1 can move it into `src`), `counter.mjs` (llama3 app counter, o200k sensitivity, stub), `profile.mjs`, `corpus.mjs` (M4 and the named-filler corpora, seeds), `turns*.mjs` (turn-shaped queries, overlap), `sim.mjs` (trim, units, rank, pack, baselines, make-room, recall), `stats.mjs` (cluster bootstrap, cluster-t, stop rule, verdict), `controls.mjs` (validity controls), `select.mjs` (output selection), `attempts.mjs` (the ledger and the INVALID procedure), `tune.mjs`, `gate.mjs`, `report.mjs`. `gen/build.mjs` holds the chat builder; `gen/gen.mjs` is its CLI and its output is byte-identical to the original generator (the `eval.harness.ts` sha256 test pins that).
+
+Decisions it carries: gate cells M4 and NF-real, each in EN and KO, all four must pass (MC-2627); gate context 32768 tokens of chat history, with 16384, 65536 and 131072 reported (MC-2628); the baseline is the engine's split units newest-first, with whole messages reported (MC-2629); a budget above 1200 up to the 15% cap is allowed and its per-send cost reported (MC-2630); INCONCLUSIVE is not a pass (MC-2631); the query tail stays at 500 characters with the loss by cue position reported (MC-2632); real-derived numbers stay in the temp folder (MC-2633); the pass rule applies to ask turns and allude turns separately in every cell (MC-2642, fixed in code).
+
+Seeds: TUNE 510001, GATE 610001, GATE-R 620001 (full-text noise rerun), FALLBACK 710001, FALLBACK-R 720001 (IDF noise rerun). The chat seed is `(drawSeed * 1009 + corpusIdx * 101 + langIdx * 17 + i)`. `tune.mjs` accepts only TUNE. `gate.mjs` accepts a builder's own GATE or FALLBACK family, refuses settings whose `tuneDrawSeed` is not TUNE and settings whose sha256 does not match their content. The full-text builder runs first; the IDF builder runs only after a recorded GATE FAIL.
+
+Commands (run from the repository root; the aggregates and every output path must lie outside both checkouts, and real quantiles are never printed):
+
+```powershell
+node Agents/Tools/ltm-eval/s0/tune.mjs --real-agg <aggregates.json> <outDir>
+node Agents/Tools/ltm-eval/s0/gate.mjs record-settings --builder fulltext --settings <outDir>/settings-fulltext.json
+node Agents/Tools/ltm-eval/s0/gate.mjs record-settings --builder idf --settings <outDir>/settings-idf.json
+node Agents/Tools/ltm-eval/s0/gate.mjs --draw 610001 --settings <outDir>/settings-fulltext.json --real-agg <aggregates.json> <outDir>
+node Agents/Tools/ltm-eval/s0/gate.mjs verdict --builder fulltext
+```
+
+Read the D1 lines `tune.mjs` prints (`D1 <builder> <cell>: PASS` or `INVALID (<style> <control> FAIL-CONFIRMED)`, then one `D1 <builder>:` line; the same data is `diagnostics.<builder>.d1` in `tune-report.json`) before spending a gate seed. If a builder's line says INVALID, the gate would be INVALID on the same structure: do not run it, ask the maintainer.
+
+The ledger is `--ledger <file>`, else one fixed file, `<temp dir>/ltm-s0/gate-attempts.json`, never a path derived from the out dir; use the same ledger for every command of a run (a different file has no recorded settings and refuses every attempt). The maintainer's larger run after an INCONCLUSIVE stop (or a MAINTAINER REPORT stop) is two commands: `gate.mjs record-override --builder <b> --settings <new settings file> --draw <fresh seed> --cap <chats above 48> --ref <MC id>` records a new epoch (the new settings must be a new tune output with a new sha256, the seed must not be a protected seed), then `gate.mjs --kind OVERRIDE --draw <that seed> --settings <new settings file> --real-agg <aggregates.json> <outDir>` runs it with the recorded cap.
+
+After a VALID verdict is issued and its ledger entry saved, the gate also reports NF-specLong and NF-specShort (EN and KO, 12 chats each, no stop rule) under their own heading; they are reported only (MC-2627) and never affect the verdict, the controls or the ledger. An INVALID attempt reports none.
+
+Validity and the attempt ledger: after every cell has stopped, three controls (ORACLE-RANK and ORACLE-QUERY must reach 0.9, NULL must not exceed max(baseline, RANDOM) by more than 0.05) are tested on each cell's final sample, per style, by a one-sided Bonferroni interval over the attempt's control tests (alpha = 0.05 / (cells x styles x 3)). A control fails only when the chat-cluster bootstrap bound and the cluster-t bound both exclude its threshold. A confirmed failure makes the attempt an INVALID EXPERIMENT: the verdict is not computed and no engine-arm statistic is written, printed or recorded. The ledger (`gate-attempts.json`, append-only) refuses a rerun unless it follows the pre-registered procedure: a DEFECT rerun on the same seed family needs a recorded defect (a reproducer test and a Gate 2 verdict path) and unchanged settings; without a defect the failure counts as noise and gets one rerun on the fresh R seed with the same settings hash; at most two DEFECT reruns, one NOISE rerun and three attempts per builder; the first valid attempt is final. A stop ends in MAINTAINER REPORT. INCONCLUSIVE is a valid, final attempt; a larger run the maintainer authorises is an override entry with a new settings hash, a fresh seed and a larger cap (`record-override`), not a NOISE rerun.
+
+Estimates: the false-INVALID bound (about 0.05 familywise) and the power figures (a control detects an oracle below about 0.76 or a NULL delta above about 0.15 at 12 chats) are reasoning estimates. The D2 diagnostic in `tune.mjs` measures only the per-test false-INVALID rate.
+
+KO overlap rule (pre-stated): an allude cue may share at most one unit with its plant span. For Korean the unit is a whitespace word; a word counts 1 if at least one of its bigrams is in the span, not in the cast or entity names and not a function bigram (a bigram found in at least 5% of the chat's messages). A word that starts with a cast name or an entity counts 0. The English unit is the spec token (words; the spec tokeniser does not stem).
+
+Tokeniser corner cases (kept; S1 states which reading it keeps): a mixed Han plus Hangul or Han plus Kana run forms bigrams across the script boundary; a combining mark after a Hangul syllable becomes its own token; NFKC maps compatibility jamo and half-width kana before the split.
+
+Tests: `s0/s0.harness.ts` runs the guards (tokeniser, scorer, generator options, merge, turns, overlap, trim, pack, make-room, recall, counter, statistics, controls, ledger, selection, a tiny tune and gate). It never runs `tune.mjs` or `gate.mjs` on the TUNE, GATE, GATE-R, FALLBACK or FALLBACK-R seeds. Scratch mutants run against a copy of this folder named by `LTM_S0_DIR` (the S0 modules) and `LTM_EVAL_DIR` (the generator).
