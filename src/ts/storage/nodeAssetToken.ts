@@ -9,6 +9,7 @@
  * a new token. A token never contains `___`, the separator of a bgm control
  * string that carries the URL.
  */
+import { base64UrlOf, type NodeKey } from './nodeKey'
 
 /** The `localStorage` key that holds the asset-read token and the public key it was minted for. */
 export const ASSET_READ_TOKEN_STORAGE_KEY = 'risu-asset-read-token'
@@ -26,11 +27,11 @@ export interface AssetTokenFlags {
 }
 
 export interface AssetTokenSourceOptions {
-    getKeyPair(): Promise<CryptoKeyPair>
+    getKey(): Promise<NodeKey>
     /** Where the token is kept between page loads; `null` keeps it for the life of the page only. */
     storage: AssetTokenFlags | null
-    /** Makes a fresh token over `keyPair`; defaults to the real signer. */
-    mintToken?: (keyPair: CryptoKeyPair) => Promise<string>
+    /** Makes a fresh token over `key`; defaults to the real signer. */
+    mintToken?: (key: NodeKey) => Promise<string>
 }
 
 interface StoredToken {
@@ -40,34 +41,26 @@ interface StoredToken {
 
 const textEncoder = new TextEncoder()
 
-function base64UrlOf(bytes: Uint8Array): string {
-    let binary = ''
-    for (const byte of bytes) {
-        binary += String.fromCharCode(byte)
-    }
-    return btoa(binary).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
-}
-
 function encodedJson(value: object): string {
     return base64UrlOf(textEncoder.encode(JSON.stringify(value)))
 }
 
-/** Signs a fresh asset-read token with the key pair's private key. */
-export async function mintAssetReadToken(keyPair: CryptoKeyPair): Promise<string> {
+/** Signs a fresh asset-read token with the key's private part. */
+export async function mintAssetReadToken(key: NodeKey): Promise<string> {
     const header = { alg: 'ES256', typ: 'JWT' }
     const payload = {
         iat: Math.floor(Date.now() / 1000),
         aud: ASSET_READ_AUDIENCE,
-        pub: await crypto.subtle.exportKey('jwk', keyPair.publicKey),
+        pub: await key.publicJwk(),
     }
     const signed = `${encodedJson(header)}.${encodedJson(payload)}`
-    const signature = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, keyPair.privateKey, textEncoder.encode(signed))
-    return `${signed}.${base64UrlOf(new Uint8Array(signature))}`
+    const signature = await key.sign(textEncoder.encode(signed))
+    return `${signed}.${base64UrlOf(signature)}`
 }
 
-/** Names the public key of `keyPair`; two key pairs never share the answer. */
-async function fingerprintOf(keyPair: CryptoKeyPair): Promise<string> {
-    const jwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
+/** Names the public key of `key`; two keys never share the answer. */
+async function fingerprintOf(key: NodeKey): Promise<string> {
+    const jwk = await key.publicJwk()
     return `${jwk.x ?? ''}.${jwk.y ?? ''}`
 }
 
@@ -89,7 +82,7 @@ function readStored(storage: AssetTokenFlags | null): StoredToken | null {
 
 /**
  * The page's asset-read token source. Concurrent first calls share one mint; a
- * later call returns the same token. A call that fails (no key pair, no signer)
+ * later call returns the same token. A call that fails (no key, no signer)
  * rejects every caller waiting on it and the next call starts again.
  */
 export function createAssetTokenSource(options: AssetTokenSourceOptions): () => Promise<string> {
@@ -98,14 +91,14 @@ export function createAssetTokenSource(options: AssetTokenSourceOptions): () => 
     let pending: Promise<string> | null = null
 
     async function resolveToken(): Promise<string> {
-        const keyPair = await options.getKeyPair()
-        const pub = await fingerprintOf(keyPair)
+        const key = await options.getKey()
+        const pub = await fingerprintOf(key)
         const stored = readStored(options.storage)
         if (stored !== null && stored.pub === pub && stored.token !== '' && !stored.token.includes('___')) {
             return stored.token
         }
         for (let attempt = 0; attempt < MAX_MINT_ATTEMPTS; attempt++) {
-            const token = await mint(keyPair)
+            const token = await mint(key)
             if (token === '' || token.includes('___')) {
                 continue
             }
