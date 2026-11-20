@@ -84,8 +84,8 @@ const buttons = (target: HTMLElement) => Array.from(target.querySelectorAll('but
 describe('RealmPopUp accessible names and colours', () => {
     test('regression reproducer: the icon buttons carry their meaning as the name', () => {
         const target = mountPopUp()
-        // The second button is MultiLangDisplay's own language switch, named by its text and not part of this component.
-        const names = buttons(target).map(controlName).filter((_, index) => index !== 1)
+        // The single-language description renders no language switch (MC-2809), so every button is this component's own.
+        const names = buttons(target).map(controlName)
         expect(names).toEqual([
             language.uiCommon.forked,
             language.alerts.characterHasEmotion,

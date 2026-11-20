@@ -17,6 +17,9 @@
     let defaultLang = $derived.by(() => {
         if(valueObject[userLang] !== undefined) return userLang
         if(valueObject["en"] !== undefined) return "en"
+        // With the switch hidden for a single tagged language, that language must be the one shown.
+        const tagged = Object.keys(valueObject).filter(k => k !== "xx")
+        if(tagged.length === 1) return tagged[0]
         return "xx"
     })
 
@@ -34,9 +37,18 @@
             rest: keys.filter(k => k !== prioritized)
         }
     })
+
+    // The untagged 'xx' text gets a button only when it is the sole entry. The switch shows only
+    // when it offers a real choice (MC-2809): one language, or 'xx' beside one language, shows the
+    // text with no buttons; two or more languages keep the switch.
+    let switchLangCount = $derived.by(() => {
+        const keys = Object.keys(valueObject)
+        return keys.length === 1 ? 1 : keys.filter(k => k !== 'xx').length
+    })
 </script>
 
 <div class="flex flex-col">
+    {#if switchLangCount > 1}
     <div class="flex flex-wrap max-w-fit p-1 gap-2 items-center">
         {#if sortedLangs.priority}
             {#if sortedLangs.priority !== 'xx' || Object.keys(valueObject).length === 1}
@@ -58,6 +70,7 @@
             {/if}
         {/each}
     </div>
+    {/if}
     {#if markdown}
         <div class="ml-2 max-w-full wrap-break-word text chat chattext prose" class:prose-invert={$ColorSchemeTypeStore === 'dark'}>
             {#await ParseMarkdown(valueObject[selectedLang]) then md} 
