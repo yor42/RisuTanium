@@ -4,8 +4,9 @@ param([Parameter(Mandatory = $true)][string]$GuardPath)
 $testDir = Join-Path ([IO.Path]::GetTempPath()) ('adbg-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testDir | Out-Null
 $fake = Join-Path $testDir 'fake-restricted.mjs'
-# Prints a PNG signature for screencap so the guard accepts the capture; otherwise exits with FAKE_EXIT.
-Set-Content $fake 'if (process.argv.includes(''screencap'')) process.stdout.write(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0])); process.exit(Number(process.env.FAKE_EXIT || 0))'
+# Prints a PNG signature for screencap so the guard accepts the capture. It answers the guard's picker probe (r19) with our own app in
+# front and no picker; otherwise exits with FAKE_EXIT.
+Set-Content $fake 'if (process.argv.includes(''screencap'')) process.stdout.write(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0])); if (process.argv.some((x) => String(x).includes(''ADBG-PROBE-END''))) process.stdout.write(''ADBG-OWN 3001 0\nADBG-PROBE-END\n''); process.exit(Number(process.env.FAKE_EXIT || 0))'
 $env:ADBG_FAKE_ADB_SCRIPT = $fake
 $env:FAKE_EXIT = '0'
 $runId = [guid]::NewGuid().ToString('N')
@@ -31,6 +32,7 @@ $personal = 'R5CT1234ABC'
 $pkg = 'io.example.app'
 $apk = '/data/app/~~abc123==/io.example.app-xyz789==/base.apk'
 $c = @('--serial', $personal, '--log', $log, '--own-ports', '9465,9466', '--own-package', $pkg)
+$cOwn = @('--serial', $personal, '--log', $log, '--own-ports', '9465,9466', '--own-package', 'io.github.yor42.risutanium')
 $full = @('--serial', 'emulator-5580', '--log', $log, '--own-ports', '9465,9466', '--own-package', $pkg)
 
 # Restricted serial, allowed.
@@ -42,7 +44,9 @@ Invoke-GuardCase 'restricted forward devtools' '0' ($c + @('--', 'forward', 'tcp
 Invoke-GuardCase 'restricted forward remove' '0' ($c + @('--', 'forward', '--remove', 'tcp:9466'))
 Invoke-GuardCase 'restricted forward other socket' '95' ($c + @('--', 'forward', 'tcp:9466', 'localabstract:other_socket'))
 Invoke-GuardCase 'restricted forward tcp target' '95' ($c + @('--', 'forward', 'tcp:9466', 'tcp:9467'))
-Invoke-GuardCase 'restricted screencap' '0' ($c + @('--state', $st, '--out', $shot, '--', 'exec-out', 'screencap', '-p'))
+# r19: a restricted screencap is pinned to our own app's id. The refused row comes first because it clears lastShot; the next row writes the PNG that locate-shot uses.
+Invoke-GuardCase 'restricted screencap' '95' ($c + @('--state', $st, '--out', $shot, '--', 'exec-out', 'screencap', '-p'))
+Invoke-GuardCase 'restricted screencap own app' '0' ($cOwn + @('--state', $st, '--out', $shot, '--', 'exec-out', 'screencap', '-p'))
 Invoke-GuardCase 'restricted pidof own' '0' ($c + @('--', 'shell', ('pidof ' + $pkg)))
 Invoke-GuardCase 'restricted pidof other' '95' ($c + @('--', 'shell', 'pidof com.other.app'))
 Invoke-GuardCase 'restricted pm path own' '0' ($c + @('--', 'shell', ('pm path ' + $pkg)))
