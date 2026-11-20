@@ -69,6 +69,12 @@ vi.mock(import('src/ts/util'), () => ({
     sleep: sleepSpy,
 }) as unknown as typeof import('src/ts/util'))
 
+const postToastSpy = vi.hoisted(() => vi.fn())
+
+vi.mock(import('src/ts/toast/toastHost.svelte'), () => ({
+    postToast: postToastSpy,
+}) as unknown as typeof import('src/ts/toast/toastHost.svelte'))
+
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: { characters: [] } as unknown as Record<string, unknown> })
     return {
@@ -599,5 +605,103 @@ describe('RealmFrame.svelte: an unanswered handshake is bounded and stops with t
         expect(sentTypes(frame).filter((t) => t === 'filedata')).toHaveLength(1)
         expect(alertErrorSpy).not.toHaveBeenCalled()
         expect(get(ShowRealmFrameStore)).toBe('character')
+    })
+})
+
+describe('RealmFrame.svelte: the keys-left-out notice follows a Realm preset upload only', () => {
+    const REALM_ORIGIN = 'https://realm.risuai.net'
+
+    type FrameStub = { postMessage: ReturnType<typeof vi.fn> }
+
+    function acceptUpstream(): void {
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+    }
+
+    async function settleLong() {
+        for (let i = 0; i < 10; i++) {
+            await Promise.resolve()
+        }
+        flushSync()
+    }
+
+    async function drain(): Promise<void> {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        flushSync()
+    }
+
+    function mountWithStub(): FrameStub {
+        acceptUpstream()
+        const target = mountRealmFrame()
+        const stub = stubIframeContentWindow(target)
+        if (!stub) {
+            throw new Error('iframe missing')
+        }
+        return stub
+    }
+
+    // Mounts the frame for `store`, lets the first ping go out, answers it, and lets the file post.
+    async function uploadAnswered(store: string): Promise<FrameStub> {
+        ShowRealmFrameStore.set(store)
+        let release = (): void => {}
+        sleepSpy.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+        const frame = mountWithStub()
+        await settleLong()
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'pong' },
+            origin: REALM_ORIGIN,
+            source: frame as unknown as Window,
+        }))
+        release()
+        await settleLong()
+        return frame
+    }
+
+    function postedTypes(frame: FrameStub): string[] {
+        return frame.postMessage.mock.calls.map((c) => (c[0] as { type: string }).type)
+    }
+
+    afterEach(() => {
+        sleepSpy.mockImplementation(() => new Promise<void>(() => {}))
+    })
+
+    test('R5 regression reproducer: a preset upload posts the info toast once, after the file data', async () => {
+        const notice = languageEnglish.shareExportKeysLeftOut
+        expect(typeof notice).toBe('string')
+
+        const frame = await uploadAnswered('preset:0')
+
+        const fileIndex = postedTypes(frame).indexOf('filedata')
+        expect(fileIndex).toBeGreaterThanOrEqual(0)
+        expect(postToastSpy).toHaveBeenCalledTimes(1)
+        expect(postToastSpy).toHaveBeenCalledWith({ kind: 'info', text: notice })
+        expect(postToastSpy.mock.invocationCallOrder[0]).toBeGreaterThan(frame.postMessage.mock.invocationCallOrder[fileIndex])
+    })
+
+    test('G8 guard: a preset handshake that gives up posts no notice', async () => {
+        ShowRealmFrameStore.set('preset:0')
+        sleepSpy.mockImplementation(() => Promise.resolve())
+        const frame = mountWithStub()
+        await drain()
+
+        expect(postedTypes(frame)).not.toContain('filedata')
+        expect(alertErrorSpy).toHaveBeenCalledTimes(1)
+        expect(postToastSpy).not.toHaveBeenCalled()
+    })
+
+    test('G8 guard: a card share posts its file and no notice', async () => {
+        const frame = await uploadAnswered('character')
+
+        expect(postedTypes(frame)).toContain('filedata')
+        expect(postToastSpy).not.toHaveBeenCalled()
+    })
+
+    test('G8 guard: a module share posts its file and no notice', async () => {
+        realmModuleJsonSpy.mockResolvedValueOnce({ json: '{}', name: 'module' })
+
+        const frame = await uploadAnswered('module:0')
+
+        expect(postedTypes(frame)).toContain('filedata')
+        expect(postToastSpy).not.toHaveBeenCalled()
     })
 })
