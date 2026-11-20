@@ -2,7 +2,7 @@
 
 /**
  * The classic keyboard focus ring is one colour from the colour scheme. The fixtures are the real
- * producers: the classic primitives and the Home persona chip mounted from source, the CBS card
+ * producers: the classic primitives (text, text area and check inputs included) and the Home persona chip mounted from source, the CBS card
  * button through the real sanitizer, the Tailwind output of `src/styles.css` compiled for those
  * sources, `cardEffects.css`, the real `updateColorScheme`, and the real theme pack apply path,
  * all resolved per element by the cascade model.
@@ -49,7 +49,18 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 vi.mock(import('src/ts/util'), () => ({
     selectSingleFile: vi.fn(),
     BufferToText: (buf: Uint8Array) => new TextDecoder().decode(buf),
+    sleep: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/util'))
+vi.mock(import('src/ts/gui/guisize'), () => ({
+    textAreaSize: writable(0),
+    textAreaTextSize: writable(1),
+}) as unknown as typeof import('src/ts/gui/guisize'))
+vi.mock(import('src/ts/gui/highlight'), () => ({
+    highlighter: vi.fn(),
+    getNewHighlightId: vi.fn(() => 1),
+    removeHighlight: vi.fn(),
+    AllCBS: [] as string[],
+}) as unknown as typeof import('src/ts/gui/highlight'))
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: h.db },
     selIdState: { selId: 0 },
@@ -61,6 +72,8 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     createSimpleCharacter: vi.fn(() => null),
     CustomCSSStore: { subscribe: vi.fn(), set: vi.fn() },
     SafeModeStore: { subscribe: vi.fn(), set: vi.fn() },
+    disableHighlight: writable(false),
+    popUpEditorStore: { open: false, value: '', mode: 'default', language: 'markdown' },
 }) as unknown as typeof import('src/ts/stores.svelte'))
 vi.mock(import('src/ts/gui/systemBars'), () => ({
     syncSystemBars: vi.fn(),
@@ -82,6 +95,9 @@ import Button from './Button.svelte'
 import NumberInput from './NumberInput.svelte'
 import SelectInput from './SelectInput.svelte'
 import KeyListInput from './KeyListInput.svelte'
+import TextInput from './TextInput.svelte'
+import TextAreaInput from './TextAreaInput.svelte'
+import CheckInput from './CheckInput.svelte'
 import HomePersonaChip from 'src/lib/UI/Home/HomePersonaChip.svelte'
 
 const COMPONENT_SOURCES = [
@@ -89,6 +105,9 @@ const COMPONENT_SOURCES = [
     'src/lib/UI/GUI/NumberInput.svelte',
     'src/lib/UI/GUI/SelectInput.svelte',
     'src/lib/UI/GUI/KeyListInput.svelte',
+    'src/lib/UI/GUI/TextInput.svelte',
+    'src/lib/UI/GUI/TextAreaInput.svelte',
+    'src/lib/UI/GUI/CheckInput.svelte',
     'src/lib/UI/Home/HomePersonaChip.svelte',
 ]
 const EFFECTS_CSS = 'src/ts/chatShell/cardEffects.css'
@@ -96,16 +115,32 @@ const EFFECTS_CSS = 'src/ts/chatShell/cardEffects.css'
 let tailwind: ModelSheet
 let effects: ModelSheet
 let rules: RuleSet
-const controls = new Map<string, HTMLElement>()
+/** `focus` is the element that takes focus; `paint` is the element whose focus indicator is read (they differ for the focus-within wrapper and the peer box). */
+type Control = { focus: HTMLElement, paint: HTMLElement }
+const controls = new Map<string, Control>()
 const instances: unknown[] = []
 let cardButton: HTMLElement
 
-function mountInto(label: string, component: Parameters<typeof mount>[0], props: Record<string, unknown>, find: (root: HTMLElement) => HTMLElement): void {
+function mountInto(label: string, component: Parameters<typeof mount>[0], props: Record<string, unknown>, find: (root: HTMLElement) => HTMLElement, paintOf: (focus: HTMLElement) => HTMLElement = (focus) => focus): void {
     const target = document.createElement('div')
     document.body.appendChild(target)
     instances.push(mount(component, { target, props }))
     flushSync()
-    controls.set(label, find(target))
+    const focus = find(target)
+    controls.set(label, { focus, paint: paintOf(focus) })
+}
+
+const nextSibling = (focus: HTMLElement): HTMLElement => {
+    const sibling = focus.nextElementSibling
+    if (!(sibling instanceof HTMLElement)) throw new Error('no next sibling')
+    return sibling
+}
+
+/** The focus-within wrapper is the editor's parent; TextAreaInput mounts it as its root element. */
+const wrapperOf = (focus: HTMLElement): HTMLElement => {
+    const root = focus.parentElement
+    if (root === null) throw new Error('no wrapper')
+    return root
 }
 
 const first = (selector: string) => (root: HTMLElement): HTMLElement => {
@@ -126,6 +161,10 @@ beforeAll(async () => {
     mountInto('NumberInput', NumberInput, { value: 0 }, first('input'))
     mountInto('SelectInput', SelectInput, { value: '' }, first('select'))
     mountInto('KeyListInput', KeyListInput, { value: '' }, first('input'))
+    mountInto('TextInput', TextInput, { value: '' }, first('input'))
+    mountInto('TextAreaInput', TextAreaInput, { value: '' }, first('textarea'), wrapperOf)
+    mountInto('TextAreaInput highlight', TextAreaInput, { value: '', highlight: true }, first('div[role="textbox"]'), wrapperOf)
+    mountInto('CheckInput', CheckInput, { check: false, name: 'Check' }, first('input[type="checkbox"]'), nextSibling)
     mountInto('HomePersonaChip', HomePersonaChip, {}, first('button'))
 
     const chat = document.createElement('div')
@@ -133,7 +172,7 @@ beforeAll(async () => {
     chat.innerHTML = trimMarkdown('<button class="button-default">Go</button>')
     document.body.appendChild(chat)
     cardButton = first('button')(chat)
-    controls.set('CBS card button', cardButton)
+    controls.set('CBS card button', { focus: cardButton, paint: cardButton })
 }, 120000)
 
 afterEach(() => {
@@ -221,14 +260,14 @@ function indicators(painted: Record<string, string>): string[] {
 
 const rgbOf = (hex: string) => parseConcrete(hex.slice(0, 7))!
 
-function focusedIndicators(el: HTMLElement, set: RuleSet): { colours: string[] } {
-    const m = new CascadeModel(set, { focused: el })
-    return { colours: indicators(m.painted(el)) }
+function focusedIndicators(control: Control, set: RuleSet): { colours: string[] } {
+    const m = new CascadeModel(set, { focused: control.focus })
+    return { colours: indicators(m.painted(control.paint)) }
 }
 
-function contrastFailures(name: string, label: string, el: HTMLElement, set: RuleSet): string[] {
+function contrastFailures(name: string, label: string, control: Control, set: RuleSet): string[] {
     const scheme = colorSchemePresets[name]
-    const { colours } = focusedIndicators(el, set)
+    const { colours } = focusedIndicators(control, set)
     const failures: string[] = []
     if (colours.length === 0) {
         failures.push(`${name} ${label}: no focus indicator`)
@@ -244,7 +283,7 @@ function contrastFailures(name: string, label: string, el: HTMLElement, set: Rul
 
 describe('TB5: every classic control paints a focus indicator of at least 3:1 on the scheme page and panel colours', () => {
     test('the compiled sheet is live: the primitives and the chip carry classes that exist', () => {
-        expect(controls.size).toBe(8)
+        expect(controls.size).toBe(12)
         expect(tailwind.css).toContain('.risu-focus-ring')
     })
 
@@ -258,7 +297,7 @@ describe('TB5: every classic control paints a focus indicator of at least 3:1 on
     test.each(colorSchemeList)('%s: the card button keeps a 3:1 outline while card effects are off', (name) => {
         applyScheme(name)
         document.documentElement.setAttribute('data-card-effects-off', '')
-        expect(contrastFailures(name, 'CBS card button, effects off', cardButton, rules)).toEqual([])
+        expect(contrastFailures(name, 'CBS card button, effects off', { focus: cardButton, paint: cardButton }, rules)).toEqual([])
     })
 
     test.each(colorSchemeList)('%s: every control paints the focus-ring role', (name) => {
@@ -343,7 +382,7 @@ describe('TB5f: a theme pack does not move the classic ring', () => {
 
         applyScheme('light')
         const set = compileRules(withPackElement([tailwind, effects], document.querySelector<HTMLStyleElement>('style[data-theme-pack]')))
-        const button = controls.get('Button primary')!
+        const button = controls.get('Button primary')!.focus
         const m = new CascadeModel(set, { focused: button })
         const role = document.documentElement.style.getPropertyValue('--risu-theme-role-focus-ring')
         expect(normaliseColours(role, '#000000ff')).toBe('#0f172aff')
