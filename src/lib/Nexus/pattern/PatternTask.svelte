@@ -192,13 +192,16 @@
         return () => clearTimeout(timer)
     })
 
-    // One guard serves the reopened result card's OK and action buttons.
+    // One guard serves the result card's OK and action buttons. It arms on a reopened card, and on a card whose action is
+    // `guarded` (Undo): the row can replace Cancel or return from a yield under the user's finger, so the first tap may be
+    // meant for the control that was there. A card whose actions are all unguarded keeps its immediate buttons.
     let resultActions = $state<HTMLElement>()
     let resultGuard: ArmGuard | null = null
+    const resultGuarded = $derived(armOnMount || actions.some((a) => a.guarded === true))
     $effect(() => {
         const element = resultActions
         resultGuard = null
-        if (!element || !armOnMount) return
+        if (!element || !resultGuarded) return
         const delay = armDelayMs(element)
         const guard = createArmGuard(performance.now(), delay)
         resultGuard = guard

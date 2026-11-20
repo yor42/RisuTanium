@@ -655,6 +655,19 @@ export const languageGerman = {
     "importTaskFailedOne": (name: string) => `${name} konnte nicht importiert werden`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} als Duplikate ausgelassen`,
     "importTaskRetryFailed": (count: number) => count === 1 ? "Das 1 fehlgeschlagene Element wiederholen" : `Die ${count} fehlgeschlagenen Elemente wiederholen`,
+    "importTaskUndo": "Import rückgängig machen",
+    "importUndoDone": (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`${trashed} in den Papierkorb verschoben`] : []),
+            ...(removed > 0 ? [`${removed} ${removed === 1 ? 'Modul' : 'Module'} entfernt`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} ${missing === 1 ? 'konnte' : 'konnten'} nicht rückgängig gemacht werden`
+        }
+        return done || 'Nichts rückgängig zu machen'
+    },
+    "importUndoRefused": "Der Import kann jetzt nicht rückgängig gemacht werden. Entfernen Sie die Elemente stattdessen aus der Bibliothek.",
     "importTaskCharactersTitle": "Charaktere werden importiert",
     "importTaskFilesTitle": "Dateien werden importiert",
     "importTaskRealmTitle": "Import aus Realm läuft",

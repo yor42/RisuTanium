@@ -8,6 +8,7 @@ import {
     type TaskDef,
     type TaskFailure,
     type TaskResult,
+    type TaskResultAction,
     type TaskView,
 } from '../lib/Nexus/pattern/taskProgress'
 
@@ -58,7 +59,7 @@ export interface TaskHandle {
     offerBackground(): void
     /** Removes the background button for good; ignored on a detached handle. */
     withdrawBackground(): void
-    settleCancel(summary?: readonly string[]): Promise<TaskCloseAnswer>
+    settleCancel(summary?: readonly string[], actions?: readonly TaskResultAction[]): Promise<TaskCloseAnswer>
     finish(result: TaskResult): Promise<TaskCloseAnswer>
     fail(failure: TaskFailure): Promise<TaskCloseAnswer>
     /** Removes the card at once, whatever its state (the task counterpart of alertClear); resolves `closed`. */
@@ -225,8 +226,8 @@ export function alertTask(def: TaskDef): TaskHandle {
         },
         offerBackground: () => { if (!self.detached) controller.offerBackground() },
         withdrawBackground: () => { if (!self.detached) controller.withdrawBackground() },
-        settleCancel: (summary) => {
-            if (!self.detached) controller.settleCancel(summary)
+        settleCancel: (summary, actions) => {
+            if (!self.detached) controller.settleCancel(summary, actions)
             return self.closed
         },
         finish: (result) => {

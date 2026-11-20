@@ -26,7 +26,12 @@ export interface TaskAmount { readonly done: number, readonly total: number, rea
 export interface TaskFile { readonly index: number, readonly total: number, readonly name?: string }
 /** Both fields already translated. */
 export interface TaskSkip { readonly name: string, readonly reason: string }
-export interface TaskResultAction { readonly id: string, readonly label: string }
+export interface TaskResultAction {
+    readonly id: string
+    readonly label: string
+    /** The result row ignores input for the arm delay after each mount, so a tap meant for the control it replaced cannot land here. */
+    readonly guarded?: true
+}
 export interface TaskResult {
     readonly headline: string
     /** Counts by kind, already translated ("12 characters, 3 modules"). */
@@ -313,7 +318,8 @@ export interface TaskController {
     requestCancel(): boolean
     /** Moves a task in `confirm` on to `running` and starts its slow timer; false in any other state. */
     confirm(): boolean
-    settleCancel(summary?: readonly string[]): void
+    /** `actions` are shown on the cancelled card, before OK; without them the card is the plain cancelled card. */
+    settleCancel(summary?: readonly string[], actions?: readonly TaskResultAction[]): void
     finish(result: TaskResult): void
     fail(failure: TaskFailure): void
     flush(): void
@@ -535,10 +541,10 @@ export function createTaskController(def: TaskDef, clock: TaskClock): TaskContro
             publish()
             return true
         },
-        settleCancel(summary) {
+        settleCancel(summary, actions) {
             if (disposed || !canMoveTo(state, 'done')) return
             cancelled = true
-            result = { headline: '', summary }
+            result = { headline: '', summary, ...(actions ? { actions } : {}) }
             transition('done')
         },
         finish(finished) {

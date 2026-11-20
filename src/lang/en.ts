@@ -655,6 +655,19 @@ export const languageEnglish = {
     importTaskFailedOne: (name: string) => `Couldn't import ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} left out as duplicates`,
     importTaskRetryFailed: (count: number) => count === 1 ? 'Retry the 1 that failed' : `Retry the ${count} that failed`,
+    importTaskUndo: 'Undo import',
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`Moved ${trashed} to the Trash`] : []),
+            ...(removed > 0 ? [`${trashed > 0 ? 'removed' : 'Removed'} ${removed} ${removed === 1 ? 'module' : 'modules'}`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} could not be undone`
+        }
+        return done || 'Nothing to undo'
+    },
+    importUndoRefused: "The import can't be undone now. Remove the items from the library instead.",
     importTaskCharactersTitle: 'Importing characters',
     importTaskFilesTitle: 'Importing files',
     importTaskRealmTitle: 'Importing from Realm',

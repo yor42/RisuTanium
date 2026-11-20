@@ -655,6 +655,19 @@ export const languageChinese = {
     "importTaskFailedOne": (name: string) => `无法导入 ${name}`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} 项因重复被排除`,
     "importTaskRetryFailed": (count: number) => `重试失败的 ${count} 项`,
+    "importTaskUndo": "撤销导入",
+    "importUndoDone": (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`已将 ${trashed} 个移至垃圾桶`] : []),
+            ...(removed > 0 ? [`已移除 ${removed} 个模块`] : []),
+        ]
+        const done = parts.join('，')
+        if (missing > 0) {
+            return `${done}${done ? '，' : ''}${missing} 个无法撤销`
+        }
+        return done || '没有可撤销的内容'
+    },
+    "importUndoRefused": "现在无法撤销此次导入。请改为从库中移除这些项目。",
     "importTaskCharactersTitle": "正在导入角色",
     "importTaskFilesTitle": "正在导入文件",
     "importTaskRealmTitle": "正在从 Realm 导入",

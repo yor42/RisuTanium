@@ -655,6 +655,19 @@ export const languageVietnamese = {
     importTaskFailedOne: (name: string) => `Không thể nhập ${name}`,
     importTaskDuplicatesLeftOut: (count: number) => `${count} mục bị bỏ qua do trùng lặp`,
     importTaskRetryFailed: (count: number) => `Thử lại ${count} mục bị lỗi`,
+    importTaskUndo: "Hoàn tác nhập",
+    importUndoDone: (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`Đã chuyển ${trashed} vào thùng rác`] : []),
+            ...(removed > 0 ? [`${trashed > 0 ? 'đã xóa' : 'Đã xóa'} ${removed} mô-đun`] : []),
+        ]
+        const done = parts.join(', ')
+        if (missing > 0) {
+            return `${done}${done ? ', ' : ''}${missing} không thể hoàn tác`
+        }
+        return done || 'Không có gì để hoàn tác'
+    },
+    importUndoRefused: "Hiện không thể hoàn tác lần nhập này. Thay vào đó, hãy xóa các mục khỏi thư viện.",
     importTaskCharactersTitle: "Đang nhập nhân vật",
     importTaskFilesTitle: "Đang nhập tệp",
     importTaskRealmTitle: "Đang nhập từ Realm",

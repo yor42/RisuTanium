@@ -655,6 +655,19 @@ export const languageChineseTraditional = {
     "importTaskFailedOne": (name: string) => `無法匯入 ${name}`,
     "importTaskDuplicatesLeftOut": (count: number) => `${count} 項因重複而被排除`,
     "importTaskRetryFailed": (count: number) => `重試失敗的 ${count} 項`,
+    "importTaskUndo": "復原匯入",
+    "importUndoDone": (trashed: number, removed: number, missing: number) => {
+        const parts = [
+            ...(trashed > 0 ? [`已將 ${trashed} 個移至垃圾桶`] : []),
+            ...(removed > 0 ? [`已移除 ${removed} 個模組`] : []),
+        ]
+        const done = parts.join('，')
+        if (missing > 0) {
+            return `${done}${done ? '，' : ''}${missing} 個無法復原`
+        }
+        return done || '沒有可復原的內容'
+    },
+    "importUndoRefused": "目前無法復原此次匯入。請改為從資料庫中移除這些項目。",
     "importTaskCharactersTitle": "正在匯入角色",
     "importTaskFilesTitle": "正在匯入檔案",
     "importTaskRealmTitle": "正在從 Realm 匯入",
