@@ -44,4 +44,32 @@ describe('BackupChooserSheet form control names', () => {
         }
         expect(unnamedControls(target, { fields: true })).toEqual([])
     })
+
+    test('the encrypt and show-password checkboxes carry aria-label equal to their visible text', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(BackupChooserSheet, { target, props: { background: [], onanswer: () => { } } })
+        flushSync()
+        const encrypt = target.querySelector<HTMLInputElement>('[data-part="data-chooser-encrypt-toggle"]')!
+        expect(encrypt.getAttribute('aria-label')).toBe(language.settingsShellDataEncrypt)
+        encrypt.click()
+        flushSync()
+        const show = target.querySelector<HTMLInputElement>('[data-part="data-chooser-password-show"]')!
+        expect(show.getAttribute('aria-label')).toBe(language.rtbRestorePasswordShow)
+        for (const box of [encrypt, show]) {
+            expect(box.hasAttribute('aria-labelledby')).toBe(false)
+            expect(controlName(box)).toBe(box.closest('label')!.textContent!.trim())
+        }
+        const fields = [
+            [target.querySelector<HTMLInputElement>('[data-part="data-chooser-password"]')!, language.rtbRestorePasswordLabel],
+            [target.querySelector<HTMLInputElement>('[data-part="data-chooser-password-again"]')!, language.settingsShellDataEncryptAgain],
+        ] as const
+        for (const [field, label] of fields) {
+            const labelId = field.getAttribute('aria-labelledby')!
+            expect(document.getElementById(labelId)!.textContent).toBe(label)
+            expect(field.getAttribute('aria-describedby')!.split(' ')[0]).toBe(labelId)
+            expect(controlName(field)).toBe(label)
+        }
+        expect(unnamedControls(target, { fields: true })).toEqual([])
+    })
 })
