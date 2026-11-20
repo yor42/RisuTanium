@@ -32,11 +32,34 @@
 //   fail-closed: allowed are `reverse` and `forward` of an own port (forward only to
 //   localabstract:webview_devtools_remote_*) and their --remove, `exec-out screencap -p --out <png>`, `shell pidof|pm path
 //   <own package>`, `shell sha256sum` of the own package's installed base.apk, `shell getprop` of a few read-only
-//   model/boot keys, and the read-only subcommands locate-css, locate-shot and offset. Everything else (tap, pick,
+//   model/boot keys, and the read-only subcommands locate-css, locate-shot and offset (r19: screencap, input and plain tap are also
+//   gated on the system file picker, see the r19 paragraph below). Everything else (tap, pick,
 //   proc-tasks, input, am, pm clear/install, svc, settings, logcat, push, pull, rm, install ...) exits 95 naming the
 //   serial. The only way to widen is `--scope-file <json>` = {"serial","approvedBy":"maintainer","date","allow":[...]}
 //   with allow from tap|input-text|keyevent|am-start|install, honoured only for that exact serial; every call that
 //   reads it logs the file path and its sha256. The widened classes still pass the normal allowlist and typing chain.
+//
+//   r19 Stage B (2026-11-18; maintainer 2026-11-18 direct: OQ-2, OQ-8, OQ-10, OQ-11; MC IDs pending): picker-visible gates on EVERY
+//     restricted serial (the maintainer's Tab and every alias of it, wireless-debugging and qualifier serials included). The guard sends
+//     one fixed command of its own (no agent text, not an allowlisted plain call) that lists the pids of com.android.documentsui and
+//     com.google.android.documentsui and of our own app io.github.yor42.risutanium with their /proc/<pid>/oom_score_adj. The verdict is
+//     `unknown` unless adb exits 0, the output ends in exactly one ADBG-PROBE-END and every other line is a well-formed
+//     `ADBG-(PICKER|OWN) <pid up to 7 digits> [<adj>]` line. A picker is VISIBLE when any picker pid, under either package name, has an
+//     adj below 300 or none that could be read; our app is IN FRONT only at adj exactly 0, and that never overrides a visible picker.
+//     The log gets `intent: picker-probe ...` and `exit=<n>: picker-probe picker=<none|visible|unknown> adj=<numbers> own=<...>` lines.
+//       - screencap needs --own-package io.github.yor42.risutanium (else exit 95, no adb call), our app in front and no picker visible
+//         before the capture and again after it; the PNG is written only after the post-check, so no frame of a picker is ever
+//         written, and every refusal by the own-package pin or the picker probes, and every failed capture, leaves no usable previous capture for locate-shot;
+//       - every `input` (keyevent and text) is refused while a picker is visible (the maintainer cancels pickers by hand). For typing the
+//         probe runs after the chain checks, because its own log lines would end the chain;
+//       - a plain `tap` (tap scope) is refused while a picker is visible, before its locate is consumed.
+//     An unreadable probe exits 90 and nothing is captured or sent; a visible picker (or our app not in front for a screencap) exits 93.
+//     Full-access and playground serials never run the probe. Residuals, not guarded here (the run brief covers them): adj 0 is a proxy
+//     for "in front" (a process running a service callback also gets it); anything drawn over our app in a full frame (status bar,
+//     heads-up notifications, the keyboard's clipboard strip, the Edge panel, bubbles, toasts, a split-screen neighbour); the notification
+//     shade and the keyguard (our app can keep adj 0 beneath them, and WAKEUP and POWER are navigation keys); pickers other than
+//     DocumentsUI (the Android 14+ Photo Picker, the intent chooser), which the input gate does not see; a picker that appears and
+//     vanishes between the two probes; CDP input and page scripts inside our app, which are outside the guard.
 //
 //   Playground mode (2026-11-13, MC-1666): the two spare Note 9s, 29f3cde9193f7ece and 2ac80128013f7ece, hold only
 //   synthetic data. Those two serials, and no other, run in PLAYGROUND mode. Membership is the exact --serial string
@@ -217,7 +240,7 @@
 //   commands (screencap, locate, reads) stay allowed. A restricted-serial refusal of the verb itself (exit 95)
 //   attempted no locate and sets no lock. A locate that fails without a valid --serial
 //   never reached a device and sets no lock; the lock is strictly per serial. This closes the 2026-11-12 cloud UI run breach (guard log line 409): a failed locate followed by
-//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front).
+//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front; r19: a system file picker visible), 90 picker probe unreadable (r19, restricted serials).
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -898,6 +921,54 @@ function restrictedAllows(a) {
   if (v === 'shell') return a.length === 2 && restrictedShell(a[1])
   return false
 }
+
+// ---- r19 picker gates on every restricted serial ----
+// One fixed, guard-internal device command (never agent text, never an allowlisted plain call) lists the pids of the two system
+// file picker packages and of our own app with their oom_score_adj. The device shell's echo makes one `ADBG-PICKER|OWN <pid> <adj>` line
+// per pid; ADBG-PROBE-END proves the loop ran to the end.
+const PICKER_PROBE = 'for p in $(pidof com.android.documentsui) $(pidof com.google.android.documentsui); do echo "ADBG-PICKER $p $(cat /proc/$p/oom_score_adj 2>/dev/null)"; done; '
+  + 'for p in $(pidof io.github.yor42.risutanium); do echo "ADBG-OWN $p $(cat /proc/$p/oom_score_adj 2>/dev/null)"; done; echo ADBG-PROBE-END'
+const PROBE_END = 'ADBG-PROBE-END'
+const PROBE_LINE = /^ADBG-(PICKER|OWN) (\d{1,7})(?: (-?\d{1,5}))?$/
+// A picker process at 300 or more is a cached, service or backup process. 0 is the focused app, 100-199 other visible activities and
+// 200-250 perceptible ones, so 300 keeps a margin above every band that can be on screen. An unreadable adj counts as visible.
+const PICKER_VISIBLE_BELOW = 300
+// The probe's verdict: unknown unless the adb call succeeded, the end marker appears exactly once as the last line, and every other
+// line is a well-formed pid line (lines are split on \r?\n and right-trimmed, so CRLF output and an empty adj parse). Every picker line
+// is judged, whatever its package or position; our own app counts as in front only at adj exactly 0, and never overrides a visible picker.
+function probePickers() {
+  logLine(`intent: picker-probe serial=${serial} (guard-internal, fixed command)`)
+  const r = spawnAdb(['-s', serial, 'shell', PICKER_PROBE], { encoding: 'utf8', windowsHide: true, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] })
+  const lines = String(r.stdout ?? '').split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.length > 0)
+  const body = lines.slice(0, -1)
+  const wellFormed = r.status === 0 && !r.error && lines.filter((l) => l === PROBE_END).length === 1 && lines[lines.length - 1] === PROBE_END && body.every((l) => PROBE_LINE.test(l))
+  let verdict = { unknown: true, pickerVisible: false, ownFront: false, adj: [] }
+  if (wellFormed) {
+    const parsed = body.map((l) => { const m = l.match(PROBE_LINE); return { kind: m[1], adj: m[3] === undefined ? null : Number(m[3]) } })
+    const pickers = parsed.filter((p) => p.kind === 'PICKER')
+    verdict = {
+      unknown: false,
+      pickerVisible: pickers.some((p) => p.adj === null || p.adj < PICKER_VISIBLE_BELOW),
+      ownFront: parsed.some((p) => p.kind === 'OWN' && p.adj === 0),
+      adj: pickers.filter((p) => p.adj !== null).map((p) => p.adj)
+    }
+  }
+  const status = r.status ?? (r.error?.code === 'ETIMEDOUT' ? 'timeout' : `signal ${r.signal}`)
+  // Only the verdict and the pickers' adj numbers are logged; no raw probe output ever reaches the log.
+  logLine(`exit=${status}: picker-probe picker=${verdict.unknown ? 'unknown' : verdict.pickerVisible ? 'visible' : 'none'} adj=${verdict.adj.join(',')} own=${verdict.unknown ? 'unknown' : verdict.ownFront ? 'front' : 'not-front'}`)
+  return verdict
+}
+// null when the call may go ahead, else the exit code and the reason. 90: the probe is unreadable, nothing is sent or captured.
+// 93: a picker is visible, or (needOwnFront) our own app is not in front.
+function pickerRefusal(needOwnFront) {
+  const p = probePickers()
+  if (p.unknown) return { code: 90, msg: 'picker probe unreadable on a restricted serial: nothing is sent or captured' }
+  if (p.pickerVisible) return { code: 93, msg: 'refused: a system file picker is visible on a restricted serial' }
+  if (needOwnFront && !p.ownFront) return { code: 93, msg: `refused: ${PG_PACKAGE} is not in front on a restricted serial` }
+  return null
+}
+const requireNoPicker = (needOwnFront) => { const f = pickerRefusal(needOwnFront); if (f) die(f.code, f.msg) }
+
 if (restricted) {
   if (sub === 'pick' || sub === 'proc-tasks' || sub === 'net-status') { needSerial(); refuseRestricted(sub) }
   if (sub === 'tap') { needSerial(); if (!scopeAllows('tap')) refuseRestricted('tap') }
@@ -969,6 +1040,9 @@ if (sub === 'adb') {
     if (!(age >= 0 && age <= 30)) die(99, `typing refused: the tap on locate ${g.locate} is ${age.toFixed(1)} s old (max 30 s); locate and tap the field again`)
     const isText = /^input text /.test(rest[1].trim().replace(/ +/g, ' '))
     if (isText && g.textUsed) die(99, `typing refused: one input text per tap (locate ${g.locate} already typed into); locate and tap the field again`)
+    // r19: on a restricted serial no input goes out while a picker is visible. The probe runs only after the chain checks above, because
+    // its own intent and exit lines would otherwise become the previous action line and end every chain.
+    if (restricted) requireNoPicker(false)
     if (isText) g.textUsed = true
     g.chain = true
     saveState(s)
@@ -976,18 +1050,29 @@ if (sub === 'adb') {
     if (r.code !== 0) { const s2 = loadState(); s2.textGrant = null; saveState(s2) }
     process.exit(r.code)
   }
+  // r19: every other restricted input (a navigation key; typing was gated in its chain above) is refused while a picker is visible.
+  if (restricted && rest[0] === 'shell' && /^input /.test(rest[1].trim())) requireNoPicker(false)
   if (rest[0] === 'exec-out') {
     const outFile = opt('--out')
     if (!outFile) die(2, 'exec-out screencap needs --out <png file> (binary output is never piped through the shell)')
     // A capture in progress or failed invalidates the previous one for locate-shot.
     if (statePath) { const s0 = loadState(); s0.lastShot = null; saveState(s0) }
+    // r19: a restricted capture is pinned to our own app and needs it in front with no picker visible, before and after the capture
+    // (below), so no frame of a picker is ever written. The pin comes first and sends nothing to the device.
+    if (restricted) {
+      if (ownPackage !== PG_PACKAGE) die(95, `restricted serial ${serial}: screencap needs --own-package ${PG_PACKAGE} (a capture is only of our own app)`)
+      requireNoPicker(true)
+    }
     logLine(`intent: adb -s ${serial} ${JSON.stringify(rest)} > ${JSON.stringify(outFile)}`)
     const r = spawnAdb(['-s', serial, ...rest], { windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
     let code = r.status ?? 1, note = `${r.stdout?.length ?? 0} bytes`
     const isPng = (b) => b && b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
     if (r.status === 0 && !isPng(r.stdout)) { code = 5; note = `not a PNG (${r.stdout?.length ?? 0} bytes)` }
     else if (r.status === 0) {
-      try {
+      // r19: the post-capture probe runs before anything is written; on refusal the bytes are dropped and --out is never created.
+      const post = restricted ? pickerRefusal(true) : null
+      if (post) { code = post.code; note = `capture discarded: ${post.msg}` }
+      else try {
         writeFileSync(outFile, r.stdout)
         if (statePath) { const s = loadState(); s.lastShot = { path: outFile, time: Date.now(), serial }; saveState(s) }
       } catch (e) { code = 5; note = `write failed: ${e.message}` }
@@ -1315,6 +1400,8 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
       : `hold uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y} for ${durationMs} ms`)
     process.exit(runAdb(['shell', 'input', 'swipe', String(x), String(y), String(x2), String(y2), String(durationMs)], false).code)
   }
+  // r19: a plain tap on a restricted serial (tap scope) is refused while a picker is visible, before the locate is consumed.
+  if (restricted) requireNoPicker(false)
   loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
   logLine(`tap uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y}${chained ? ` (tap-home, delay ${delayMs} ms)` : ''}`)
   const tapStart = Date.now()
