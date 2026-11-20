@@ -32,10 +32,11 @@ export type UnitRecordRead =
 /** The outcome of a record write: written, refused by a version check (on which key), or not known. */
 export type UnitRecordWrite = 'written' | { conflict: 'record' | 'commit' | 'fence' } | 'unknown'
 
-export async function readUnitAgeRecord(store: ByteStore): Promise<UnitRecordRead> {
+/** `key` names the record: the unit pass's (the default) or another sweep record of the same type, such as the asset sweep's. */
+export async function readUnitAgeRecord(store: ByteStore, key: string = GC_AGE_KEY): Promise<UnitRecordRead> {
     let read: Awaited<ReturnType<ByteStore['read']>>
     try {
-        read = await store.read(GC_AGE_KEY)
+        read = await store.read(key)
     } catch {
         return { status: 'io-failed' }
     }
@@ -65,10 +66,11 @@ export async function readUnitAgeRecord(store: ByteStore): Promise<UnitRecordRea
  */
 export async function writeUnitAgeRecord(
     guarded: GuardedOperations, record: SweepRecord, readVersion: number, commitRevision: number, fenceRevision: number,
+    key: string = GC_AGE_KEY,
 ): Promise<UnitRecordWrite> {
     try {
         await guarded.writeChecked(
-            GC_AGE_KEY,
+            key,
             encodeUnit(UNIT_TYPE.sweepRecord, record),
             { ifVersion: readVersion },
             [{ key: COMMIT_KEY, version: commitRevision }, { key: FENCE_KEY, version: fenceRevision }],

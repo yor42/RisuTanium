@@ -350,7 +350,8 @@ describe('what ends the pass before any delete', () => {
         expect(world.store.writes).toEqual([])
     })
 
-    test.each([['node'], ['opfs-transitional']] as const)('C12: a %s page reads, lists, writes and deletes nothing and never opens the gate', async (kind) => {
+    // A Node page runs the sweep (sweepRunNode.test.ts); only the transitional OPFS page still skips it.
+    test.each([['opfs-transitional']] as const)('C12: a %s page reads, lists, writes and deletes nothing and never opens the gate', async (kind) => {
         const world = await libraryWorld(['orphan.png'], kind)
         const openGate = vi.fn(world.openGate)
         world.openGate = openGate

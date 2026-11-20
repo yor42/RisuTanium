@@ -7,8 +7,14 @@
  * busy answer the test flips); the copy stage is replaced by an empty one, because the file carries no assets here. A pass
  * says nothing about a browser, the Web Locks of several origins or the Tauri store.
  *
- * Labels: every test is a guard of the held-marker contract (no pre-fix base: the Node restore opened no marker); each
- * names the scratch mutant it turns red on.
+ * The last block runs the real Node asset sweep (`runAssetSweep` over the same server) against a restore that holds its
+ * marker: the asset X is stored under its hash name through the page's store, the file carries the same bytes under the
+ * same name, so the asset plan skips it outright (a literal name would be copied under a CRC compare and hide the order).
+ *
+ * Labels: every test of the first blocks is a guard of the held-marker contract (no pre-fix base: the Node restore
+ * opened no marker); each names the scratch mutant it turns red on. RR5 and RR5c are regression reproducers: on a copy
+ * whose `commit.ts`, `rtbRestoreHold.ts`, `rtbRestorePlan.ts` and `rtbRestoreInstall.ts` are as before the held marker,
+ * the sweep deletes X and the `has(X)` assertion fails.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
@@ -87,20 +93,31 @@ vi.mock('@tauri-apps/plugin-os', () => h.permissive())
 vi.mock('@tauri-apps/plugin-fs', () => h.permissive())
 vi.mock('@tauri-apps/plugin-dialog', () => h.permissive())
 
+import { createHash } from 'node:crypto'
 import { language } from 'src/lang'
 import { importSourceOfBytes } from 'src/ts/importSource'
-import { createNodeBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
+import { holdAssetDeletion } from 'src/ts/storage/assetDeleteHold'
+import { createMemoryBackend, createNodeBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
+import { openDeleterGate } from 'src/ts/storage/store2/boot'
+import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
 import { createCommitter, type Committer } from 'src/ts/storage/store2/commit'
+import { encodeUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { gcPass } from 'src/ts/storage/store2/gc/pass'
+import { buildNodeGcAge } from 'src/ts/storage/store2/gc/unitAge'
+import { createListDerivation } from 'src/ts/storage/store2/lists'
 import { exportClosure } from 'src/ts/storage/store2/rtb/exportClosure'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
+import { SWEEP_MIN_AGE_MS, runAssetSweep, type AssetSweepEnv } from 'src/ts/storage/store2/sweep'
+import { createBackendClosureReader } from 'src/ts/storage/store2/sweep/backendReader'
+import { buildClosureAssetKeepSet } from 'src/ts/storage/store2/sweep/keepSet'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { parsedCommit, treeRequest } from 'src/ts/storage/tests/store2/commitFixtures'
 import { startNodeServer, type NodeServerFixture } from 'src/ts/storage/tests/nodeServerFixture'
-import type { AssetPlanDeps } from 'src/ts/drive/rtb/rtbAssetPlan'
+import type { AssetPlanDeps, SizedListing } from 'src/ts/drive/rtb/rtbAssetPlan'
 import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
 import type { RtbPrepareDeps, RtbPrepareEnd } from 'src/ts/drive/rtbRestorePlan'
 import type { RtbInstallEnd } from 'src/ts/drive/rtbRestoreInstall'
@@ -112,6 +129,8 @@ vi.setConfig({ testTimeout: 90_000, hookTimeout: 60_000 })
 
 interface NodeWorld {
     fixture: NodeServerFixture
+    /** The page's byte store over the server: the assets and the sweep's record. */
+    store: ByteStore
     backend: Store2Backend
     /** The restoring page's committer. */
     page: Committer
@@ -135,6 +154,7 @@ beforeEach(async () => {
     const file = await writeRtbFile({ world: { store: units, manifestKey: closure.manifestKey, refsByRow: new Map(closure.refRows.map((row) => [row, []])) } })
     world = {
         fixture,
+        store,
         backend,
         page: createCommitter(backend, { owner: freshOwnerId(testEnv(clock, 1)), env: testEnv(clock, 777) }),
         peer: createCommitter(backend, { owner: freshOwnerId(testEnv(clock, 2)), env: testEnv(clock, 888) }),
@@ -230,6 +250,22 @@ async function install(ready: ReturnType<typeof readyOf>, page: Page): Promise<R
         error: (text) => { page.errors.push(text) },
         wait: () => { },
     })
+}
+
+/** Origin 2's import check, which puts a foreign marker to the person and clears it on Clear. */
+async function originTwoClears(): Promise<void> {
+    const { peer, backend } = node()
+    const { checkStore2Import } = await vi.importActual<typeof import('src/ts/drive/storeImport')>('src/ts/drive/storeImport')
+    const { setStore2BootSession } = await import('src/ts/storage/store2/bootActive')
+    setStore2BootSession({ kind: 'node', committer: peer, backend } as unknown as Store2Session)
+    try {
+        const asked: Array<string | undefined> = []
+        const check = await checkStore2Import({ ask: async (marker) => { asked.push(marker.label); return 'clear' } })
+        expect(check.kind).toBe('ready')
+        expect(asked).toEqual(['restore'])
+    } finally {
+        setStore2BootSession(null)
+    }
 }
 
 describe('the marker stands through the preparation and never outlives a restore that did not land', () => {
@@ -371,22 +407,6 @@ describe('another operation\'s marker met while the restore opens its own (Wait 
         expect(waited.release).toHaveBeenCalledWith(false)
     })
 
-    /** Origin 2's import check, which puts a foreign marker to the person and clears it on Clear. */
-    async function originTwoClears(): Promise<void> {
-        const { peer, backend } = node()
-        const { checkStore2Import } = await vi.importActual<typeof import('src/ts/drive/storeImport')>('src/ts/drive/storeImport')
-        const { setStore2BootSession } = await import('src/ts/storage/store2/bootActive')
-        setStore2BootSession({ kind: 'node', committer: peer, backend } as unknown as Store2Session)
-        try {
-            const asked: Array<string | undefined> = []
-            const check = await checkStore2Import({ ask: async (marker) => { asked.push(marker.label); return 'clear' } })
-            expect(check.kind).toBe('ready')
-            expect(asked).toEqual(['restore'])
-        } finally {
-            setStore2BootSession(null)
-        }
-    }
-
     test('T-Q6 (diagnostic): another origin\'s Clear of a running restore\'s marker stops that restore base-moved before its commit, and its stopped end writes nothing to the commit key', async () => {
         const page = openPage()
         const ready = readyOf(await prepare(page))
@@ -418,5 +438,183 @@ describe('another operation\'s marker met while the restore opens its own (Wait 
         expect(afterClear).not.toBeNull()
         expect(end).toMatchObject({ kind: 'stopped', outcome: 'nothing-replaced', cause: 'base-moved' })
         expect(await parsedCommit(node().backend)).toEqual(afterClear)
+    })
+})
+
+describe('the Node asset sweep against a restore that holds its marker', () => {
+    const HOUR = 60 * 60 * 1000
+    /** An asset of a hash name: its content is its name, so the restore's asset plan skips it outright, never by CRC. */
+    const X_BYTES = new Uint8Array([9, 8, 7, 6, 5, 4, 3, 2])
+    const X = `${createHash('sha256').update(X_BYTES).digest('hex')}.png`
+
+    const deferred = () => {
+        let resolve!: () => void
+        const promise = new Promise<void>((done) => { resolve = done })
+        return { promise, resolve }
+    }
+
+    /** A file of the real writer whose tree names X in a character's additional assets and which carries X's bytes. */
+    async function fileNamingX(): Promise<Uint8Array> {
+        const memory = createMemoryBackend()
+        const db = makeDb('restored', ['gamma'])
+        const characters = db.characters as Record<string, unknown>[]
+        characters[0].additionalAssets = [['x', `assets/${X}`]]
+        await seedTree(memory, db as unknown as Database, testEnv(createClock(), 5151), createListDerivation())
+        const units = new Map<string, Uint8Array>()
+        const closure = await exportClosure(memory, { onUnits: async (batch) => { for (const unit of batch) { units.set(unit.key, unit.bytes) } } })
+        const file = await writeRtbFile({
+            world: { store: units, manifestKey: closure.manifestKey, refsByRow: new Map(closure.refRows.map((row) => [row, []])) },
+            assets: { [X]: X_BYTES },
+        })
+        return file.bytes
+    }
+
+    /** X on the server, referred to by nothing, and a record that names it as seen before at its revision, 25 hours old. */
+    async function plantDeletableOrphan(): Promise<void> {
+        const { store } = node()
+        await store.write(`assets/${X}`, X_BYTES, 'unconditional')
+        const rev = (await store.listRevisions?.('assets/'))?.find((row) => row.key === `assets/${X}`)?.rev ?? null
+        expect(rev).not.toBeNull()
+        await store.write(
+            'store2-sweep',
+            encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - SWEEP_MIN_AGE_MS - HOUR, items: [[X, rev, 1]] }),
+            'unconditional',
+        )
+    }
+
+    function sweepEnv(over: Partial<AssetSweepEnv> = {}): AssetSweepEnv {
+        const { store, backend } = node()
+        return {
+            session: { kind: 'node', backend, idleReason: null, openGate: (deleter) => openDeleterGate(backend, deleter) },
+            store,
+            residentRefs: () => [],
+            writtenCount: () => 0,
+            writtenThisPage: () => [],
+            peers: async () => 'alone',
+            shouldStop: () => false,
+            release: () => { },
+            hold: (remove) => holdAssetDeletion(remove),
+            sampleClock: buildNodeGcAge(store)?.sampleClock,
+            ...over,
+        }
+    }
+
+    /** The target's real sized listing, as the page's own asset plan reads it. */
+    const realListing = async (): Promise<SizedListing | null> => ({ kind: 'node-sized', items: await node().store.listSized?.('assets/', 0) ?? [] })
+
+    const hasX = (): Promise<boolean> => node().store.has(`assets/${X}`)
+
+    /** Whether the manifests the commit key now names keep X. */
+    async function treeKeepsX(): Promise<boolean> {
+        const { backend } = node()
+        const keep = await buildClosureAssetKeepSet({
+            commitKey: await parsedCommit(backend), reader: createBackendClosureReader(backend), residentRefs: [], writtenThisPage: [],
+        })
+        return keep.status !== 'incomplete' && keep.keep.holds(X)
+    }
+
+    test('RR5: after the preparation a sweep pass refuses staging and the asset survives; the landed tree names it (reproducer: without the held marker the pass deletes it and the restore lands a tree naming a missing asset)', async () => {
+        node().rtb = await fileNamingX()
+        await plantDeletableOrphan()
+        const page = openPage()
+        const ready = readyOf(await prepare(page, { assetDeps: assetDeps({ sizedListing: realListing }) }))
+        expect(ready.plan.assets.present, 'the asset plan skips X outright').toBe(1)
+
+        const swept = await runAssetSweep(sweepEnv())
+        const end = await install(ready, page)
+
+        expect(end.kind).toBe('landed')
+        expect(await hasX()).toBe(true)
+        expect(await treeKeepsX()).toBe(true)
+        expect(swept).toEqual({ status: 'refused', reason: 'staging' })
+    })
+
+    test('RR5c: a sweep round that has decided to delete X and waits at its delete when the asset listing of the restore returns X present: the marker, opened before that listing, conflicts the delete, the next round refuses staging and X survives the landed restore (reproducer; MR1 fails it)', async () => {
+        node().rtb = await fileNamingX()
+        await plantDeletableOrphan()
+        const reached = deferred()
+        const latch = deferred()
+        const sweeping = runAssetSweep(sweepEnv({
+            hold: async (remove) => {
+                reached.resolve()
+                await latch.promise
+                await holdAssetDeletion(remove)
+            },
+        }))
+        await reached.promise
+        const page = openPage()
+        const ready = readyOf(await prepare(page, {
+            assetDeps: assetDeps({
+                sizedListing: async () => {
+                    const listing = await realListing()
+                    // The listing has answered X present; only now may the sweep's delete go out.
+                    latch.resolve()
+                    await sweeping
+                    return listing
+                },
+            }),
+        }))
+        expect(ready.plan.assets.present).toBe(1)
+        const end = await install(ready, page)
+
+        expect(end.kind).toBe('landed')
+        expect(await hasX()).toBe(true)
+        expect(await treeKeepsX()).toBe(true)
+        expect(await sweeping).toEqual({ status: 'refused', reason: 'staging' })
+    })
+
+    test('RR5b: a sweep round whose gate was read before the marker: the marker conflicts its delete when it goes out right after the restore opened the marker, the rebuild refuses staging and X is present (guard; MR1 fails it)', async () => {
+        node().rtb = await fileNamingX()
+        await plantDeletableOrphan()
+        const reached = deferred()
+        const latch = deferred()
+        const sweeping = runAssetSweep(sweepEnv({
+            hold: async (remove) => {
+                reached.resolve()
+                await latch.promise
+                await holdAssetDeletion(remove)
+            },
+        }))
+        await reached.promise
+        const page = openPage()
+        const ready = readyOf(await prepare(page, {
+            assetDeps: assetDeps({
+                sizedListing: async () => {
+                    // The first call of P.2: the marker already stands, and the delete goes out before the listing is read.
+                    expect((await stagingOf())?.label).toBe('restore')
+                    latch.resolve()
+                    const swept = await sweeping
+                    expect(swept).toEqual({ status: 'refused', reason: 'staging' })
+                    return await realListing()
+                },
+            }),
+        }))
+        expect(ready.plan.assets.present).toBe(1)
+
+        expect((await install(ready, page)).kind).toBe('landed')
+        expect(await hasX()).toBe(true)
+    })
+
+    test('T-R5 (diagnostic): a restore abandoned after its marker without a clear leaves a restore marker that a fresh owner sees; the Node sweep and the unit pass both refuse staging, and Clear at a Node import removes it', async () => {
+        node().rtb = await fileNamingX()
+        const page = openPage()
+        readyOf(await prepare(page))
+        // The page goes away here: nothing installs and nothing clears.
+        const standing = await stagingOf()
+        expect(standing?.label).toBe('restore')
+        expect(standing?.owner).not.toBe(node().peer.owner)
+
+        expect(await runAssetSweep(sweepEnv())).toEqual({ status: 'refused', reason: 'staging' })
+        const { store, backend } = node()
+        const age = buildNodeGcAge(store)
+        expect(age).not.toBeNull()
+        const unitPass = await gcPass({
+            backend, kind: 'node', idleReason: () => null, probe: () => (store.guarded as NonNullable<ByteStore['guarded']>).probe(), age: age ?? undefined,
+        })
+        expect(unitPass).toMatchObject({ status: 'refused', reason: 'staging' })
+        expect(await stagingOf()).toEqual(standing)
+
+        await originTwoClears()
+        expect(await stagingOf()).toBeNull()
     })
 })
