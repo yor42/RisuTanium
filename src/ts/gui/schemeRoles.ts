@@ -21,6 +21,8 @@ export interface SchemeRoles {
     'state-amber': string
     /** As `state-amber`, for the other categorical module state. */
     'state-violet': string
+    /** The text on the danger fills; it stays at least 4.5:1 on the rest, selected and hover fills of the danger button. */
+    'on-danger': string
     'field-border': string
     'danger': string
     'danger-rgb': string
@@ -42,6 +44,9 @@ const FALLBACK_WARNING_RGB = '255 209 102'
 // Tailwind's amber-500 and violet-500 clipped to sRGB: the categorical state hues, kept wherever they already pass.
 const STATE_AMBER_SEED = '#fe9a00'
 const STATE_VIOLET_SEED = '#8e51ff'
+// Tailwind's red-700, red-800 and red-600 clipped to sRGB: the rest, selected and hover fills of the danger Button
+// and of GridCatalog's icon trash button. The contrast tests pin them against the compiled sheet.
+const DANGER_FILLS = ['#c10007', '#9f0712', '#e7000b'] as const
 const FALLBACK_OVERLAY_RGB = '255 255 255'
 const FALLBACK_SWITCH_OFF = '0.36'
 
@@ -106,6 +111,7 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
         'on-borderc': tx ?? scheme.textcolor,
         'state-amber': STATE_AMBER_SEED,
         'state-violet': STATE_VIOLET_SEED,
+        'on-danger': tx ?? scheme.textcolor,
         'field-border': bc ?? scheme.borderc,
         'danger': red ?? scheme.draculared,
         'danger-rgb': FALLBACK_DANGER_RGB,
@@ -184,6 +190,11 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
     }
     if (tx !== null && bc !== null) {
         roles['on-borderc'] = cr(parseConcrete(tx)!, parseConcrete(bc)!) >= 4.5 ? tx : toHex(bestExtreme(parseConcrete(bc)!))
+    }
+    if (tx !== null) {
+        // White is at least 4.77:1 on every danger fill, so the role never falls short.
+        const txv = parseConcrete(tx)!
+        roles['on-danger'] = DANGER_FILLS.every((f) => cr(txv, parseConcrete(f)!) >= 4.5) ? tx : '#ffffff'
     }
     return { roles, short }
 }

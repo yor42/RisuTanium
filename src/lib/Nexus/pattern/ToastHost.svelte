@@ -173,7 +173,7 @@
                     <!-- The pointer handlers only feed the hold derivation; the buttons are the controls. -->
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div
-                        class="toast pointer-events-auto flex items-center gap-2 rounded-md border p-3 text-textcolor shadow-lg {task.mark === 'error' ? 'border-draculared' : 'border-darkborderc'}"
+                        class="toast pointer-events-auto flex items-center gap-2 rounded-md border p-3 text-nexus-text shadow-lg {task.mark === 'error' ? 'border-draculared' : 'border-darkborderc'}"
                         data-part="task-toast"
                         role="group"
                         aria-label={task.title}
@@ -193,14 +193,14 @@
                         </div>
                         <div class="min-w-0 flex-1 break-words">
                             <p class="m-0" data-part="task-toast-title">{task.title}</p>
-                            <p class="m-0 text-sm text-textcolor2" data-part="task-toast-line" aria-hidden="true">{task.line}</p>
+                            <p class="m-0 text-sm text-nexus-text-muted" data-part="task-toast-line" aria-hidden="true">{task.line}</p>
                             <div data-part="task-toast-bar" aria-hidden="true" style:--p-fill={task.fraction}>
                                 <div data-part="task-toast-bar-fill"></div>
                             </div>
                         </div>
                         <button
                             type="button"
-                            class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 hover:bg-selected"
+                            class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 text-textcolor hover:bg-selected"
                             data-part="task-toast-open"
                             aria-disabled={modalLayerOpen() ? 'true' : undefined}
                             onclick={() => { if (!modalLayerOpen()) host.openTask(task.id) }}
@@ -208,7 +208,7 @@
                         {#if task.phase !== 'running'}
                             <button
                                 type="button"
-                                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-textcolor2 hover:bg-selected"
+                                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-nexus-text-muted hover:bg-selected hover:text-textcolor"
                                 data-part="task-toast-dismiss"
                                 aria-label={language.uiCommon.close}
                                 onclick={() => host.dismissTask(task.id)}

@@ -122,9 +122,9 @@ describe('light scheme text theme', () => {
             paint(name, 'standard')
             expect(fonts()).toEqual({
                 Standard: '#0f172a',
-                Italic: '#6b6c72',
+                Italic: '#5f6066',
                 Bold: '#0f172a',
-                ItalicBold: '#6b6c72',
+                ItalicBold: '#5f6066',
                 Quote1: '#0b5f7a',
                 Quote2: '#8a4200',
             })
@@ -166,15 +166,15 @@ describe('dark, custom and lite text themes are unchanged', () => {
         })
     })
 
-    test.each(lightPresets)('T9 CG (passes before and after): custom theme on light %s ignores the preset', (name) => {
+    test.each(lightPresets)('T9 pin: custom theme on light %s keeps its colours and follows the scheme for absent quotes', (name) => {
         paint(name, 'custom')
         expect(fonts()).toEqual({
             Standard: '#111111',
             Italic: '#222222',
             Bold: '#333333',
             ItalicBold: '#444444',
-            Quote1: '#8be9fd',
-            Quote2: '#ffb86c',
+            Quote1: '#0b5f7a',
+            Quote2: '#8a4200',
         })
     })
 

@@ -26,7 +26,7 @@ import { language } from "src/lang";
 import { checkCharOrder, fetchLogRedactor, getFetchLogs } from "src/ts/globalApi.svelte";
 import { keepOrderPlaceOnSwap } from "../characterSwapOrder";
 import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untrustedFetch";
-import { changeColorScheme, effectiveColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
+import { changeColorScheme, effectiveColorScheme, paintedCustomQuote, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
 import { isNodeServer, isTauri } from "src/ts/platform";
 import { get } from "svelte/store";
 import { registerMCPModule, registeredCustomPluginMCPs, unregisterMCPModule } from "src/ts/process/mcp/pluginmcp";
@@ -1285,7 +1285,11 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             const db = DBState.db
             return {
                 name: db.textTheme,
-                customTheme: $state.snapshot(db.customTextTheme)
+                customTheme: {
+                    ...$state.snapshot(db.customTextTheme),
+                    FontColorQuote1: paintedCustomQuote(db, 'FontColorQuote1'),
+                    FontColorQuote2: paintedCustomQuote(db, 'FontColorQuote2'),
+                }
             }
         },
 
