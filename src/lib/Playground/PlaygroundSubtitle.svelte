@@ -55,6 +55,7 @@
 
     let selLang = $state(DBState.db.language)
     let prompt = $state(LLMModePrompt)
+    const uid = $props.id()
     let modelInfo = $derived(getModelInfo(DBState.db.aiModel))
     let outputText = $state('')
     let fileB64 = $state('')
@@ -479,11 +480,11 @@
 {/if}
 
 
-<span class="text-textcolor text-lg mt-4">{language.destinationLanguage}</span>
-<TextInput bind:value={selLang} />
+<span id="{uid}-language" class="text-textcolor text-lg mt-4">{language.destinationLanguage}</span>
+<TextInput labelId="{uid}-language" bind:value={selLang} />
 
-<span class="text-textcolor text-lg mt-4">{language.prompt}</span>
-<TextAreaInput bind:value={prompt} />
+<span id="{uid}-prompt" class="text-textcolor text-lg mt-4">{language.prompt}</span>
+<TextAreaInput labelId="{uid}-prompt" bind:value={prompt} />
 
 <span class="text-textcolor text-lg mt-4">{language.type}</span>
 <SelectInput bind:value={mode} onchange={(e) => {

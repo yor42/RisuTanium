@@ -34,6 +34,7 @@
     }
 
     let { chara = $bindable(), noContainer }: Props = $props();
+    const uid = $props.id()
 
     const jailbreakToggleToken = '{{jbtoggled}}'
     const usesJailbreakToggle = (value?: string) =>
@@ -216,16 +217,17 @@
     {/if}
 {/snippet}
 
-{#snippet getToggleDisplayName(toggle: sidebarToggle)}
-    {toggle.value}{@render localToggle(toggle)}
+{#snippet getToggleDisplayName(toggle: sidebarToggle, nameId?: string)}
+    <span id={nameId}>{toggle.value}</span>{@render localToggle(toggle)}
 {/snippet}
 
-{#snippet toggles(items: sidebarToggle[], reverse: boolean = false)}
+<!-- `path` numbers the group nesting, so a field's label id stays unique across groups. -->
+{#snippet toggles(items: sidebarToggle[], reverse: boolean = false, path: string = '')}
     {#each items as toggle, index}
         {#if toggle.type === 'group' && toggle.children.length > 0}
             <div class="w-full">
                 <Accordion styled name={toggle.value}>
-                    {@render toggles((toggle as sidebarToggleGroup).children, reverse)}
+                    {@render toggles((toggle as sidebarToggleGroup).children, reverse, path + index + '-')}
                 </Accordion>
             </div>
         {:else if toggle.type === 'select'}
@@ -241,15 +243,15 @@
             </div>
         {:else if toggle.type === 'text'}
             <div class="w-full flex gap-2 mt-2 items-center">
-                <span>{@render getToggleDisplayName(toggle)}</span>
-                <TextInput className="w-32" value={getGlobalChatVarNH(`toggle_${toggle.key}`)} onchange={(e) => {
+                <span>{@render getToggleDisplayName(toggle, `${uid}-toggle-${path}${index}`)}</span>
+                <TextInput className="w-32" labelId="{uid}-toggle-{path}{index}" value={getGlobalChatVarNH(`toggle_${toggle.key}`)} onchange={(e) => {
                     setGlobalChatVar(`toggle_${toggle.key}`, e.currentTarget.value)
                 }} />
             </div>
         {:else if toggle.type === 'textarea'}
             <div class="w-full flex gap-2 mt-2 items-start">
-                <span class="mt-1.5">{@render getToggleDisplayName(toggle)}</span>
-                <TextAreaInput className="w-32" height='20' value={getGlobalChatVarNH(`toggle_${toggle.key}`)} onchange={(e) => {
+                <span class="mt-1.5">{@render getToggleDisplayName(toggle, `${uid}-toggle-${path}${index}`)}</span>
+                <TextAreaInput className="w-32" height='20' labelId="{uid}-toggle-{path}{index}" value={getGlobalChatVarNH(`toggle_${toggle.key}`)} onchange={(e) => {
                     //check is div
                     if(e.currentTarget instanceof HTMLDivElement){
                         setGlobalChatVar(`toggle_${toggle.key}`, e.currentTarget.innerText)

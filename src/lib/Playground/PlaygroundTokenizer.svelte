@@ -5,6 +5,7 @@
     import { language } from 'src/lang';
 
     let input = $state("");
+    const uid = $props.id();
     let output = $state("");
     let outputLength = $state(0);
     let time = $state(0);
@@ -40,13 +41,13 @@
     {/each}
 </SelectInput>
 
-<span class="text-textcolor text-lg">{language.input}</span>
+<span id="{uid}-input" class="text-textcolor text-lg">{language.input}</span>
 
-<TextAreaInput onInput={onInput} bind:value={input} optimaizedInput={false} />
+<TextAreaInput labelId="{uid}-input" onInput={onInput} bind:value={input} optimaizedInput={false} />
 
-<span class="text-textcolor text-lg">{language.playground.result}</span>
+<span id="{uid}-result" class="text-textcolor text-lg">{language.playground.result}</span>
 
-<TextAreaInput value={output} />
+<TextAreaInput labelId="{uid}-result" value={output} />
 
 <span class="text-textcolor2 text-lg">{outputLength} {language.tokens}</span>
 <span class="text-textcolor2 text-lg">{time} ms</span>

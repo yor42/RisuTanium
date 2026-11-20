@@ -7,9 +7,12 @@
         value: string;
         className?: string;
         onInput?: any;
+        // Names the field: the id of a visible label element, or the name text when there is none.
+        labelId?: string;
+        label?: string;
     }
 
-    let { value = $bindable(), className = "", onInput = () => {} }: Props = $props();
+    let { value = $bindable(), className = "", onInput = () => {}, labelId, label }: Props = $props();
     let parsed = parseMultilangString(value)
     if(parsed["en"] === undefined){
         parsed["en"] = parsed["xx"]
@@ -61,7 +64,7 @@
         {/each}
     </div>
 {/if}
-<TextAreaInput autocomplete="off" bind:value={valueObject[selectedLang]} onInput={() => {
+<TextAreaInput autocomplete="off" {labelId} {label} bind:value={valueObject[selectedLang]} onInput={() => {
     updateValue()
     onInput()
 }} className={className} />

@@ -45,7 +45,7 @@
                 <span class="text-borderc">{fillLang(language.uiCommon.madeBy, { name: openedData.authorname })}</span>
             {/if}
             {#if openedData.original}
-                <button class="text-blue-400 text-start" onclick={() => {
+                <button class="text-textcolor2 hover:text-textcolor text-start" onclick={() => {
                     const original = openedData.original
                     openedData = null
                     getRealmInfo(original)
@@ -65,7 +65,7 @@
 
             <div class="flex justify-start gap-2  mt-2">
                 {#each openedData.tags as tag, i}
-                    <div class="text-xs p-1 text-blue-400">{tag}</div>
+                    <div class="text-xs p-1 text-textcolor2">{tag}</div>
                 {/each}
             </div>
             <div class="flex flex-wrap w-full flex-row gap-1 mt-2">
@@ -75,19 +75,19 @@
                 
                 <div class="border-l-selected border-l ml-1 mr-1"></div>
                 {#if openedData.hasEmotion}
-                    <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
+                    <button class="text-textcolor2 hover:text-textcolor transition-colors" aria-label={language.alerts.characterHasEmotion} onclick={((e) => {
                         alertNormal(language.alerts.characterHasEmotion)
-                    })}><SmileIcon /></button>
+                    })}><SmileIcon aria-hidden="true" /></button>
                 {/if}
                 {#if openedData.hasAsset}
-                    <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
+                    <button class="text-textcolor2 hover:text-textcolor transition-colors" aria-label={language.alerts.characterHasAssets} onclick={((e) => {
                         alertNormal(language.alerts.characterHasAssets)
-                    })}><ImageIcon /></button>
+                    })}><ImageIcon aria-hidden="true" /></button>
                 {/if}
                 {#if openedData.hasLore}
-                    <button class="text-textcolor2 hover:text-green-500 transition-colors" onclick={((e) => {
+                    <button class="text-textcolor2 hover:text-textcolor transition-colors" aria-label={language.alerts.characterHasLore} onclick={((e) => {
                         alertNormal(language.alerts.characterHasLore)
-                    })}><BookIcon /></button>
+                    })}><BookIcon aria-hidden="true" /></button>
                 {/if}
             </div>
 
@@ -95,7 +95,7 @@
 
         <div class="flex flex-row-reverse gap-2">
             {#if openedData.creator}
-                <button class="text-textcolor2 hover:text-red-500" use:tooltip={language.blockRealmCreator} onclick={async (e) => {
+                <button class="text-textcolor2 hover:text-draculared" aria-label={language.blockRealmCreator} use:tooltip={language.blockRealmCreator} onclick={async (e) => {
                     e.stopPropagation()
                     const creatorId = openedData.creator
                     if(!creatorId){
@@ -114,10 +114,10 @@
                     openedData = null
                     alertNormal(language.realmCreatorBlockedSuccess)
                 }}>
-                    <BanIcon />
+                    <BanIcon aria-hidden="true" />
                 </button>
             {/if}
-            <button class="text-textcolor2 hover:text-red-500" onclick={(async (e) => {
+            <button class="text-textcolor2 hover:text-draculared" aria-label={language.realmReport} onclick={(async (e) => {
                 e.stopPropagation()
                 const conf = await alertConfirm(language.alerts.realmReportConfirm)
                 if(conf){
@@ -138,14 +138,14 @@
                     alertNormal(await da.text())
                 }
             })}>
-                <FlagIcon />
+                <FlagIcon aria-hidden="true" />
             </button>
-            <button class="text-textcolor2 hover:text-green-500" onclick={(async (e) => {
+            <button class="text-textcolor2 hover:text-textcolor" aria-label={language.realmCopyLink} onclick={(async (e) => {
                 e.stopPropagation()
                 await navigator.clipboard.writeText(`https://realm.risuai.net/character/${openedData.id}`)
                 alertNormal(language.clipboardSuccess)
             })}>
-                <PaperclipIcon />
+                <PaperclipIcon aria-hidden="true" />
             </button>
             <button class="bg-selected hover:ring-3 grow p-2 font-bold rounded-md mr-2" onclick={() => {
                 downloadRisuHub(openedData.id, { creator: openedData.creator })

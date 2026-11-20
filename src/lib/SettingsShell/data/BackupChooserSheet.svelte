@@ -52,12 +52,12 @@
         <fieldset data-part="data-chooser-format">
             <legend>{language.settingsShellDataFormat}</legend>
             <label>
-                <input type="radio" name="{uid}-format" value="rtb" data-pattern-initial bind:group={format} />
+                <input type="radio" name="{uid}-format" value="rtb" aria-label={language.settingsShellDataFormatRtb} data-pattern-initial bind:group={format} />
                 <span>{language.settingsShellDataFormatRtb}</span>
             </label>
             <p>{language.settingsShellDataFormatRtbHint}</p>
             <label>
-                <input type="radio" name="{uid}-format" value="bin" bind:group={format} />
+                <input type="radio" name="{uid}-format" value="bin" aria-label={language.settingsShellDataFormatBin} bind:group={format} />
                 <span>{language.settingsShellDataFormatBin}</span>
             </label>
             <p>{language.settingsShellDataFormatBinHint}</p>
@@ -66,11 +66,11 @@
         <fieldset data-part="data-chooser-scope" disabled={!scopeEnabled}>
             <legend>{language.settingsShellDataScope}</legend>
             <label>
-                <input type="radio" name="{uid}-scope" value="full" disabled={!scopeEnabled} bind:group={scope} />
+                <input type="radio" name="{uid}-scope" value="full" aria-label={language.settingsShellDataScopeFull} disabled={!scopeEnabled} bind:group={scope} />
                 <span>{language.settingsShellDataScopeFull}</span>
             </label>
             <label>
-                <input type="radio" name="{uid}-scope" value="partial" disabled={!scopeEnabled} bind:group={scope} />
+                <input type="radio" name="{uid}-scope" value="partial" aria-label={language.settingsShellDataScopePartial} disabled={!scopeEnabled} bind:group={scope} />
                 <span>{language.settingsShellDataScopePartial}</span>
             </label>
             {#if !scopeEnabled}

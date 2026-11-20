@@ -5,7 +5,7 @@
 
 <div class="flex items-center mt-2 gap-2">
     <label class="flex items-center gap-2">
-        <input type="checkbox" data-setting="settings-shell-preview" checked={settingsShellSwitch.enabled} onchange={(event) => setSettingsShellEnabled(event.currentTarget.checked)} />
+        <input type="checkbox" aria-label={language.settingsShellPreviewLabel} data-setting="settings-shell-preview" checked={settingsShellSwitch.enabled} onchange={(event) => setSettingsShellEnabled(event.currentTarget.checked)} />
         <span>{language.settingsShellPreviewLabel}</span>
     </label>
     <span>{language.chatShellOnThisDevice}</span>

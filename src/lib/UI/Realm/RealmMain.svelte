@@ -38,6 +38,8 @@
     // write below -- pending, success and failure alike.
     let hubGeneration = 0
 
+    const uid = $props.id()
+
     // The single guarded load entry point: every explicit control (search, sort, NSFW, paging,
     // Retry, the online listener) calls this directly, and it is inert while this view still
     // believes the upstream-services agreement needs confirming (MC-086, MC-087 #3) -- nothing
@@ -129,7 +131,8 @@
 </script>
 <div class="w-full flex justify-center mt-4 mb-2">
     <div class="flex items-stretch w-2xl max-w-full">
-        <input bind:value={search} class="peer focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full">
+        <span id="{uid}-search" class="sr-only">{language.search}</span>
+        <input bind:value={search} aria-labelledby="{uid}-search" aria-describedby="{uid}-search" class="peer focus:border-textcolor transition-colors outline-hidden text-textcolor p-2 min-w-0 border border-r-0 bg-transparent rounded-md rounded-r-none input-text text-xl grow ml-4 border-darkborderc resize-none overflow-y-hidden overflow-x-hidden max-w-full">
             <button
             onclick={() => {
                 if(sort === 'random' || sort === 'recommended'){
@@ -138,17 +141,19 @@
                 page = 0
                 getHub()
             }}
-                class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-blue-500 hover:text-white transition-colors"
+                class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-borderc hover:text-textcolor transition-colors"
+                aria-label={language.search}
         >
-            <SearchIcon />
+            <SearchIcon aria-hidden="true" />
         </button>
         <button
             onclick={(e) => {
                 menuOpen = true
             }}
-                class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-blue-500 hover:text-white transition-colors"
+                class="peer-focus:border-textcolor mr-2 flex border-y border-r border-darkborderc justify-center items-center text-textcolor p-3 rounded-r-md hover:bg-borderc hover:text-textcolor transition-colors"
+                aria-label={language.menu}
         >
-            <MenuIcon />
+            <MenuIcon aria-hidden="true" />
         </button>
     </div>
 </div>
@@ -224,22 +229,22 @@
 {#if sort !== 'random' && sort !== 'recommended'}
     <div class="w-full flex justify-center">
         <div class="flex">
-            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg flex justify-center items-center hover:ring-3 transition-shadow" onclick={() => {
+            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg flex justify-center items-center hover:ring-3 transition-shadow" aria-label={language.realmPrevPage} onclick={() => {
                 if(page > 0){
                     page -= 1
                     getHub()
                 }
             }}>
-                <ArrowLeft />
+                <ArrowLeft aria-hidden="true" />
             </button>
             <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg ml-2 flex justify-center items-center transition-shadow">
                 <span>{page + 1}</span>
             </button>
-            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg ml-2 flex justify-center items-center hover:ring-3 transition-shadow" onclick={() => {
+            <button class="bg-darkbg h-14 w-14 min-w-14 rounded-lg ml-2 flex justify-center items-center hover:ring-3 transition-shadow" aria-label={language.realmNextPage} onclick={() => {
                 page += 1
                 getHub()
             }}>
-                <ArrowRight />
+                <ArrowRight aria-hidden="true" />
             </button>
         </div>
     </div>
@@ -271,8 +276,8 @@
                 <span>
                     {language.menu}
                 </span>
-                <button class="float-right text-textcolor2 hover:text-green-500" onclick={() => {menuOpen = false}}>
-                    <XIcon />
+                <button class="float-right text-textcolor2 hover:text-textcolor" aria-label={language.uiCommon.close} onclick={() => {menuOpen = false}}>
+                    <XIcon aria-hidden="true" />
                 </button>
             </h1>
             <div class=" mt-2 w-full border-t-2 border-t-bgcolor"></div>

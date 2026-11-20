@@ -365,7 +365,7 @@ async function settleAll(): Promise<void> {
 function countIn(cells: HTMLElement[]): { images: number, boxes: number } {
     return {
         images: cells.reduce((sum, cell) => sum + cell.querySelectorAll('img').length, 0),
-        boxes: cells.reduce((sum, cell) => sum + cell.querySelectorAll('div.bg-slate-500').length, 0),
+        boxes: cells.reduce((sum, cell) => sum + cell.querySelectorAll('[data-part="asset-name-box"]').length, 0),
     }
 }
 
@@ -416,7 +416,7 @@ describe('the whole-read budget of the additional-assets list on Android', () =>
         const cells = Array.from(document.querySelectorAll('table td.font-medium')) as HTMLElement[]
 
         expect(cells[1].querySelector('img')).toBeNull()
-        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+        expect(cells[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(1)
     })
 
     test('reproducer: turning the preview off supersedes the runs before it', async () => {
@@ -442,7 +442,7 @@ describe('the whole-read budget of the additional-assets list on Android', () =>
 
         // Row 1 waits for its own run; the late URL of the run before the preview was turned off is not shown.
         expect(cells[1].querySelector('img')).toBeNull()
-        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(0)
+        expect(cells[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(0)
     })
 })
 
@@ -491,9 +491,9 @@ describe('the whole-read budget of the emotion image table on Android', () => {
 
         expect(cells).toHaveLength(2)
         expect(cells[0].querySelector('img')).toBeNull()
-        expect(cells[0].querySelectorAll('div.bg-slate-500').length).toBe(0)
+        expect(cells[0].querySelectorAll('[data-part="asset-name-box"]').length).toBe(0)
         expect(cells[1].querySelector('img')).toBeNull()
-        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+        expect(cells[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(1)
         expect(cells[1].textContent).toContain('too big')
     })
 
@@ -527,6 +527,6 @@ describe('the whole-read budget of the emotion image table on Android', () => {
         const cells = Array.from(document.querySelectorAll('table td.w-1\\/3')) as HTMLElement[]
 
         expect(cells[1].querySelector('img')).toBeNull()
-        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+        expect(cells[1].querySelectorAll('[data-part="asset-name-box"]').length).toBe(1)
     })
 })

@@ -104,12 +104,14 @@
                     </div>
                 {/if}
 
-                <label class="text-textcolor2" for="task-preset-name">{language.utility.editor.name}</label>
-                <TextInput id="task-preset-name" fullwidth bind:value={preset.name} />
+                <label id="task-preset-name-label" class="text-textcolor2" for="task-preset-name">{language.utility.editor.name}</label>
+                <TextInput id="task-preset-name" labelId="task-preset-name-label" fullwidth bind:value={preset.name} />
 
-                <label class="text-textcolor2" for="task-preset-instructions">{language.utility.editor.instructions}</label>
+                <label id="task-preset-instructions-label" class="text-textcolor2" for="task-preset-instructions">{language.utility.editor.instructions}</label>
                 <textarea
                     id="task-preset-instructions"
+                    aria-labelledby="task-preset-instructions-label"
+                    aria-describedby="task-preset-instructions-label"
                     class="min-h-40 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden focus:ring-2 focus:ring-borderc"
                     bind:value={preset.instructions}
                 ></textarea>

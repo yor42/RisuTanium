@@ -153,6 +153,7 @@
             <input
                 type="checkbox"
                 data-part="studio-form-hide-icon"
+                aria-label={language.hideChatIcon}
                 disabled={!editable}
                 aria-busy={editable ? undefined : 'true'}
                 checked={live.hideChatIcon === true}
@@ -164,6 +165,7 @@
             <input
                 type="checkbox"
                 data-part="studio-form-render-when-complete"
+                aria-label={language.studioFormRenderWhenComplete}
                 disabled={!editable}
                 aria-busy={editable ? undefined : 'true'}
                 aria-describedby="studio-form-render-when-complete-hint"

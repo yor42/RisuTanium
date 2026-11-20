@@ -92,7 +92,7 @@
                 {#if on}<span data-part="toggle-dot" aria-hidden="true"></span>{/if}
                 <span data-part="toggle-label" title={row.label}>{row.label}</span>
                 {#if starred && !inFavourites}<span data-part="toggle-star-mark" aria-hidden="true"><StarIcon size={12} fill="currentColor" /></span>{/if}
-                <input type="checkbox" role="switch" data-part="toggle-switch" data-row-control checked={on} onchange={() => onset(on ? '0' : '1')} />
+                <input type="checkbox" role="switch" aria-label={row.label} data-part="toggle-switch" data-row-control checked={on} onchange={() => onset(on ? '0' : '1')} />
             </label>
         {:else}
             <div data-part="toggle-row-main">
