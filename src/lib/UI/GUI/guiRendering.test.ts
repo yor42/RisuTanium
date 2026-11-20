@@ -241,14 +241,14 @@ describe('GUI rendering without a browser session', () => {
         }
     })
 
-    it('names a hidden-name checkbox through aria-label and adds none otherwise', () => {
+    it('names a checkbox through aria-label, visible name included, and adds none without a name', () => {
         const named = renderGui(CheckInput, { check: false, hiddenName: true, name: 'Toggle X' })
         const unnamed = renderGui(CheckInput, { check: false, hiddenName: true })
         const visible = renderGui(CheckInput, { check: false, name: 'Shown name' })
 
         expect(named.getBySelector('input').getAttribute('aria-label')).toBe('Toggle X')
         expect(unnamed.getBySelector('input').hasAttribute('aria-label')).toBe(false)
-        expect(visible.getBySelector('input').hasAttribute('aria-label')).toBe(false)
+        expect(visible.getBySelector('input').getAttribute('aria-label')).toBe('Shown name')
     })
 
     it('puts the peer input right before the ring-bearing box in both layouts and fires onChange once', async () => {

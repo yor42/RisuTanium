@@ -44,6 +44,7 @@
     const lookups = useCharImageLookups();
 
     let submenu = $state(DBState.db.useLegacyGUI ? -1 : 0);
+    const uid = $props.id()
 
     // Only text that parses as JSON replaces the stored workflow; anything else
     // keeps the current workflow and shows an error.
@@ -327,8 +328,8 @@
             {#if !isTauri}
                 <span class="text-draculared text-xs mb-2">{language.settingsPage.webuiTunnelNotice}</span>
             {/if}
-            <span class="text-textcolor mt-2">WebUI {language.providerURL}</span>
-            <TextInput size="sm" marginBottom placeholder="https://..." bind:value={DBState.db.webUiUrl}/>
+            <span class="text-textcolor mt-2" id="{uid}-f1">WebUI {language.providerURL}</span>
+            <TextInput labelId="{uid}-f1" size="sm" marginBottom placeholder="https://..." bind:value={DBState.db.webUiUrl}/>
             <span class="text-textcolor">Steps</span>
             <NumberInput size="sm" marginBottom min={0} max={100} bind:value={DBState.db.sdSteps}/>
 
@@ -339,8 +340,8 @@
             <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
             <span class="text-textcolor">{language.settingsPage.height}</span>
             <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.height}/>
-            <span class="text-textcolor">Sampler</span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.sdConfig.sampler_name}/>
+            <span class="text-textcolor" id="{uid}-f2">Sampler</span>
+            <TextInput labelId="{uid}-f2" size="sm" marginBottom bind:value={DBState.db.sdConfig.sampler_name}/>
 
             <div class="flex items-center mt-2">
                 <Check bind:check={DBState.db.sdConfig.enable_hr} name={fillLang(language.settingsPage.enableName, { name: 'Hires' })}/>
@@ -350,16 +351,16 @@
                 <NumberInput size="sm" marginBottom  min={0} max={10} bind:value={DBState.db.sdConfig.denoising_strength}/>
                 <span class="text-textcolor">hr_scale</span>
                 <NumberInput size="sm" marginBottom  min={0} max={10} bind:value={DBState.db.sdConfig.hr_scale}/>
-                <span class="text-textcolor">Upscaler</span>
-                <TextInput size="sm" marginBottom bind:value={DBState.db.sdConfig.hr_upscaler}/>
+                <span class="text-textcolor" id="{uid}-f3">Upscaler</span>
+                <TextInput labelId="{uid}-f3" size="sm" marginBottom bind:value={DBState.db.sdConfig.hr_upscaler}/>
             {/if}
         {/if}
 
         {#if DBState.db.sdProvider === 'novelai'}
-            <span class="text-textcolor mt-2">Novel AI {language.providerURL}</span>
-            <TextInput size="sm" marginBottom placeholder="https://image.novelai.net" bind:value={DBState.db.NAIImgUrl}/>
-            <span class="text-textcolor">{language.apiKey}</span>
-            <TextInput size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
+            <span class="text-textcolor mt-2" id="{uid}-f4">Novel AI {language.providerURL}</span>
+            <TextInput labelId="{uid}-f4" size="sm" marginBottom placeholder="https://image.novelai.net" bind:value={DBState.db.NAIImgUrl}/>
+            <span class="text-textcolor" id="{uid}-f5">{language.apiKey}</span>
+            <TextInput labelId="{uid}-f5" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
 
             <span class="text-textcolor">{language.model}</span>
             <SelectInput className="mb-4" bind:value={DBState.db.NAIImgModel} >
@@ -482,11 +483,11 @@
                     }
                 }}>
                     {#if !DBState.db.NAIImgConfig.vibe_data || !DBState.db.NAIImgConfig.vibe_data.thumbnail}
-                        <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                        <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                             <span class="text-sm">{language.settingsPage.uploadVibe}</span>
                         </div>
                     {:else}
-                        <img src={DBState.db.NAIImgConfig.vibe_data.thumbnail} alt={language.settingsPage.vibePreviewAlt} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" />
+                        <img src={DBState.db.NAIImgConfig.vibe_data.thumbnail} alt={language.settingsPage.vibePreviewAlt} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" />
                     {/if}
                 </button>
 
@@ -496,7 +497,7 @@
                             DBState.db.NAIImgConfig.vibe_data = undefined;
                             DBState.db.NAIImgConfig.vibe_model_selection = undefined;
                         }}
-                        class="absolute top-2 right-2 bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-sm"
+                        class="absolute top-2 right-2 bg-bgcolor border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor font-bold py-1 px-2 rounded-sm"
                     >
                         {language.settingsPage.deleteButton}
                     </button>
@@ -580,18 +581,18 @@
                         console.log('Character image set:', DBState.db.NAIImgConfig.character_image)
                     }}>
                         {#if !DBState.db.NAIImgConfig.character_image || DBState.db.NAIImgConfig.character_image === ''}
-                            <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                            <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                                 <span class="text-sm">{language.settingsPage.uploadImage}</span>
                             </div>
                         {:else}
                             {#await warnOnReject('OtherBotSettings: NAI character image rejected', lookups.get('naiCharacter', DBState.db.NAIImgConfig.character_image, 'plain'))}
-                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                 </div>
                             {:then im}
-                                <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" alt={language.settingsPage.basePreviewAlt}/>
+                                <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" alt={language.settingsPage.basePreviewAlt}/>
                             {:catch}
-                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center"></div>
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center"></div>
                             {/await}
                         {/if}
                     </button>
@@ -602,7 +603,7 @@
                                 DBState.db.NAIImgConfig.character_image = undefined;
                                 DBState.db.NAIImgConfig.character_base64image = undefined;
                             }}
-                            class="absolute top-2 right-2 bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-sm"
+                            class="absolute top-2 right-2 bg-bgcolor border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor font-bold py-1 px-2 rounded-sm"
                         >
                             {language.settingsPage.deleteButton}
                         </button>
@@ -672,18 +673,18 @@
                         }
                     }}>
                         {#if !DBState.db.NAIImgConfig.image || DBState.db.NAIImgConfig.image === ''}
-                            <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                            <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                                 <span class="text-sm">{language.settingsPage.uploadImage}</span>
                             </div>
                         {:else}
                             {#await warnOnReject('OtherBotSettings: NAI base image rejected', lookups.get('naiBase', DBState.db.NAIImgConfig.image, 'plain'))}
-                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                 </div>
                             {:then im}
-                                <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" alt={language.settingsPage.basePreviewAlt}/>
+                                <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" alt={language.settingsPage.basePreviewAlt}/>
                             {:catch}
-                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center"></div>
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center"></div>
                             {/await}
                         {/if}
                     </button>
@@ -694,7 +695,7 @@
                                 DBState.db.NAIImgConfig.image = undefined;
                                 DBState.db.NAIImgConfig.base64image = undefined;
                             }}
-                            class="absolute top-2 right-2 bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-sm"
+                            class="absolute top-2 right-2 bg-bgcolor border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor font-bold py-1 px-2 rounded-sm"
                         >
                             {language.settingsPage.deleteButton}
                         </button>
@@ -727,8 +728,8 @@
         {/if}
 
         {#if DBState.db.sdProvider === 'stability'}
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'Stability' })}</span>
-            <TextInput size="sm" marginBottom placeholder="..." bind:value={DBState.db.stabilityKey}/>
+            <span class="text-textcolor" id="{uid}-f6">{fillLang(language.settingsPage.nameApiKey, { name: 'Stability' })}</span>
+            <TextInput labelId="{uid}-f6" size="sm" marginBottom placeholder="..." bind:value={DBState.db.stabilityKey}/>
 
             <span class="text-textcolor">{fillLang(language.settingsPage.nameModel, { name: 'Stability' })}</span>
             <SelectInput className="mt-2 mb-4" bind:value={DBState.db.stabilityModel}>
@@ -764,15 +765,15 @@
         {/if}
 
         {#if DBState.db.sdProvider === 'comfyui'}
-            <span class="text-textcolor mt-2">ComfyUI {language.providerURL}</span>
-            <TextInput size="sm" marginBottom placeholder="http://127.0.0.1:8188" bind:value={DBState.db.comfyUiUrl}/>
+            <span class="text-textcolor mt-2" id="{uid}-f7">ComfyUI {language.providerURL}</span>
+            <TextInput labelId="{uid}-f7" size="sm" marginBottom placeholder="http://127.0.0.1:8188" bind:value={DBState.db.comfyUiUrl}/>
 
-            <span class="text-textcolor">{language.comfyWorkflow} <Help key="comfyWorkflow" /></span>
-            <TextAreaInput size="sm" fullwidth height="32" bind:value={DBState.db.comfyConfig.workflow}/>
+            <span class="text-textcolor"><span id="{uid}-f8">{language.comfyWorkflow}</span> <Help key="comfyWorkflow" /></span>
+            <TextAreaInput labelId="{uid}-f8" size="sm" fullwidth height="32" bind:value={DBState.db.comfyConfig.workflow}/>
             <div class="mt-2 mb-4 flex items-center">
-                <button class="text-textcolor2 hover:text-green-500 cursor-pointer" title={language.import} aria-label={language.import} onclick={() => {
+                <button class="text-textcolor2 hover:text-textcolor cursor-pointer" title={language.import} aria-label={language.import} onclick={() => {
                     Promise.resolve(warnOnReject('OtherBotSettings: ComfyUI workflow import failed', importComfyWorkflow())).catch(() => {})
-                }}><HardDriveUploadIcon size={24}/></button>
+                }}><HardDriveUploadIcon size={24} aria-hidden="true"/></button>
             </div>
 
             <span class="text-textcolor">{language.settingsPage.timeoutSec}</span>
@@ -784,26 +785,26 @@
             {#if !isTauri}
                 <span class="text-draculared text-xs mb-2">{language.settingsPage.comfyCorsNotice}</span>
             {/if}
-            <span class="text-textcolor mt-2">ComfyUI {language.providerURL}</span>
-            <TextInput size="sm" marginBottom placeholder="http://127.0.0.1:8188" bind:value={DBState.db.comfyUiUrl}/>
-            <span class="text-textcolor">{language.settingsPage.workflow}</span>
-            <TextInput size="sm" marginBottom placeholder={language.settingsPage.comfyWorkflowPlaceholder} bind:value={DBState.db.comfyConfig.workflow}/>
+            <span class="text-textcolor mt-2" id="{uid}-f9">ComfyUI {language.providerURL}</span>
+            <TextInput labelId="{uid}-f9" size="sm" marginBottom placeholder="http://127.0.0.1:8188" bind:value={DBState.db.comfyUiUrl}/>
+            <span class="text-textcolor" id="{uid}-f10">{language.settingsPage.workflow}</span>
+            <TextInput labelId="{uid}-f10" size="sm" marginBottom placeholder={language.settingsPage.comfyWorkflowPlaceholder} bind:value={DBState.db.comfyConfig.workflow}/>
 
-            <span class="text-textcolor">{language.settingsPage.positiveNodeId}</span>
-            <TextInput size="sm" marginBottom placeholder={language.settingsPage.nodeIdExample} bind:value={DBState.db.comfyConfig.posNodeID}/>
-            <span class="text-textcolor">{language.settingsPage.positiveNodeField}</span>
-            <TextInput size="sm" marginBottom placeholder={language.settingsPage.nodeFieldExample} bind:value={DBState.db.comfyConfig.posInputName}/>
-            <span class="text-textcolor">{language.settingsPage.negativeNodeId}</span>
-            <TextInput size="sm" marginBottom placeholder={language.settingsPage.nodeIdExample} bind:value={DBState.db.comfyConfig.negNodeID}/>
-            <span class="text-textcolor">{language.settingsPage.positiveNodeField}</span>
-            <TextInput size="sm" marginBottom placeholder={language.settingsPage.nodeFieldExample} bind:value={DBState.db.comfyConfig.negInputName}/>
+            <span class="text-textcolor" id="{uid}-f11">{language.settingsPage.positiveNodeId}</span>
+            <TextInput labelId="{uid}-f11" size="sm" marginBottom placeholder={language.settingsPage.nodeIdExample} bind:value={DBState.db.comfyConfig.posNodeID}/>
+            <span class="text-textcolor" id="{uid}-f12">{language.settingsPage.positiveNodeField}</span>
+            <TextInput labelId="{uid}-f12" size="sm" marginBottom placeholder={language.settingsPage.nodeFieldExample} bind:value={DBState.db.comfyConfig.posInputName}/>
+            <span class="text-textcolor" id="{uid}-f13">{language.settingsPage.negativeNodeId}</span>
+            <TextInput labelId="{uid}-f13" size="sm" marginBottom placeholder={language.settingsPage.nodeIdExample} bind:value={DBState.db.comfyConfig.negNodeID}/>
+            <span class="text-textcolor" id="{uid}-f14">{language.settingsPage.positiveNodeField}</span>
+            <TextInput labelId="{uid}-f14" size="sm" marginBottom placeholder={language.settingsPage.nodeFieldExample} bind:value={DBState.db.comfyConfig.negInputName}/>
             <span class="text-textcolor">{language.settingsPage.timeoutSec}</span>
             <NumberInput size="sm" marginBottom bind:value={DBState.db.comfyConfig.timeout} min={1} max={120} />
         {/if}
 
         {#if DBState.db.sdProvider === 'fal'}
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'Fal.ai' })}</span>
-            <TextInput size="sm" marginBottom placeholder="..." bind:value={DBState.db.falToken}/>
+            <span class="text-textcolor" id="{uid}-f15">{fillLang(language.settingsPage.nameApiKey, { name: 'Fal.ai' })}</span>
+            <TextInput labelId="{uid}-f15" size="sm" marginBottom placeholder="..." bind:value={DBState.db.falToken}/>
 
             <span class="text-textcolor mt-4">{language.settingsPage.width}</span>
             <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
@@ -819,8 +820,8 @@
             </SelectInput>
 
             {#if DBState.db.falModel === 'fal-ai/flux-lora'}
-                <span class="text-textcolor mt-4">{language.settingsPage.loraModelUrl} <Help key="urllora" /></span>
-                <TextInput size="sm" marginBottom bind:value={DBState.db.falLora}/>
+                <span class="text-textcolor mt-4"><span id="{uid}-f16">{language.settingsPage.loraModelUrl}</span> <Help key="urllora" /></span>
+                <TextInput labelId="{uid}-f16" size="sm" marginBottom bind:value={DBState.db.falLora}/>
 
                 <span class="text-textcolor mt-4">{language.settingsPage.loraWeight}</span>
                 <SliderInput fixed={2} min={0}  max={2} step={0.01} bind:value={DBState.db.falLoraScale}/>
@@ -867,14 +868,14 @@
         {/if}
 
         {#if DBState.db.sdProvider === 'openai-compat'}
-            <span class="text-textcolor mt-2">API URL</span>
-            <TextInput size="sm" marginBottom placeholder="https://api.example.com/v1/images/generations" bind:value={DBState.db.openaiCompatImage.url}/>
+            <span class="text-textcolor mt-2" id="{uid}-f17">API URL</span>
+            <TextInput labelId="{uid}-f17" size="sm" marginBottom placeholder="https://api.example.com/v1/images/generations" bind:value={DBState.db.openaiCompatImage.url}/>
 
-            <span class="text-textcolor">{language.apiKey}</span>
-            <TextInput size="sm" marginBottom placeholder="sk-..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.openaiCompatImage.key}/>
+            <span class="text-textcolor" id="{uid}-f18">{language.apiKey}</span>
+            <TextInput labelId="{uid}-f18" size="sm" marginBottom placeholder="sk-..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.openaiCompatImage.key}/>
 
-            <span class="text-textcolor">{language.model}</span>
-            <TextInput size="sm" marginBottom placeholder="dall-e-3" bind:value={DBState.db.openaiCompatImage.model}/>
+            <span class="text-textcolor" id="{uid}-f19">{language.model}</span>
+            <TextInput labelId="{uid}-f19" size="sm" marginBottom placeholder="dall-e-3" bind:value={DBState.db.openaiCompatImage.model}/>
 
             <span class="text-textcolor">{language.settingsPage.imageSize}</span>
             <SelectInput className="mb-4" bind:value={DBState.db.openaiCompatImage.size}>
@@ -895,8 +896,8 @@
         {/if}
 
         {#if DBState.db.sdProvider === 'wavespeed'}
-            <span class="text-textcolor">{language.apiKey}</span>
-            <TextInput size="sm" marginBottom placeholder="sk-..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.wavespeedImage.key}/>
+            <span class="text-textcolor" id="{uid}-f20">{language.apiKey}</span>
+            <TextInput labelId="{uid}-f20" size="sm" marginBottom placeholder="sk-..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.wavespeedImage.key}/>
 
             <span class="text-textcolor">{language.model}</span>
             <button
@@ -907,6 +908,7 @@
                 {isWavespeedLoading ? language.loadingEllipsis : language.settingsPage.refreshModels}
             </button>
             <TextInput
+              label={language.settingsPage.searchModels}
               bind:value={wavespeedSearchQuery}
               placeholder={language.settingsPage.searchModels}
               size="sm"
@@ -929,6 +931,7 @@
             {#if wavespeedModels.find(m => m.model_id === DBState.db.wavespeedImage.model)?.supportsLoras}
                 {#each wavespeedLoras as lora, index}
                     <TextInput
+                      label={fillLang(language.settingsPage.loraUrlOptional, { index: index + 1 })}
                       size="sm"
                       marginBottom
                       marginTop
@@ -992,18 +995,18 @@
                             console.log('Character image set:', DBState.db.wavespeedImage.reference_image)
                         }}>
                             {#if !DBState.db.wavespeedImage.reference_image || DBState.db.wavespeedImage.reference_image === ''}
-                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                                <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadImage}</span>
                                 </div>
                             {:else}
                                 {#await warnOnReject('OtherBotSettings: wavespeed reference image rejected', lookups.get('wavespeedReference', DBState.db.wavespeedImage.reference_image, 'plain'))}
-                                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
+                                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center">
                                         <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                     </div>
                                 {:then im}
-                                    <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" alt={language.settingsPage.basePreviewAlt}/>
+                                    <img src={im} class="rounded-md h-40 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor" alt={language.settingsPage.basePreviewAlt}/>
                                 {:catch}
-                                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center"></div>
+                                    <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-textcolor flex items-center justify-center"></div>
                                 {/await}
                             {/if}
                         </button>
@@ -1014,7 +1017,7 @@
                                     DBState.db.wavespeedImage.reference_image = undefined;
                                     DBState.db.wavespeedImage.reference_base64image = undefined;
                                 }}
-                              class="absolute top-2 right-2 bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-sm"
+                              class="absolute top-2 right-2 bg-bgcolor border border-draculared text-draculared hover:bg-draculared hover:text-bgcolor font-bold py-1 px-2 rounded-sm"
                             >
                                 {language.settingsPage.deleteButton}
                             </button>
@@ -1037,23 +1040,23 @@
 <Accordion name="TTS" styled disabled={submenu !== -1}>
     <CheckInput bind:check={DBState.db.ttsAutoSpeech} name={language.settingsPage.autoSpeech} className="mt-2"/>
 
-    <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'ElevenLabs' })}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.elevenLabKey}/>
+    <span class="text-textcolor mt-2" id="{uid}-f21">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'ElevenLabs' })}</span>
+    <TextInput labelId="{uid}-f21" size="sm" marginBottom bind:value={DBState.db.elevenLabKey}/>
 
-    <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameUrl, { name: 'VOICEVOX' })}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
+    <span class="text-textcolor mt-2" id="{uid}-f22">{fillLang(language.settingsPage.nameUrl, { name: 'VOICEVOX' })}</span>
+    <TextInput labelId="{uid}-f22" size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
 
     <span class="text-textcolor">{fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })}</span>
     <KeyListInput size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
 
-    <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
-    <TextInput size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
+    <span class="text-textcolor mt-2" id="{uid}-f23">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
+    <TextInput labelId="{uid}-f23" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
 
-    <span class="text-textcolor">{fillLang(language.settingsPage.nameKey, { name: 'Huggingface' })}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.huggingfaceKey} placeholder="hf_..."/>
+    <span class="text-textcolor" id="{uid}-f24">{fillLang(language.settingsPage.nameKey, { name: 'Huggingface' })}</span>
+    <TextInput labelId="{uid}-f24" size="sm" marginBottom bind:value={DBState.db.huggingfaceKey} placeholder="hf_..."/>
 
-    <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'fish-speech' })}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.fishSpeechKey}/>
+    <span class="text-textcolor" id="{uid}-f25">{fillLang(language.settingsPage.nameApiKey, { name: 'fish-speech' })}</span>
+    <TextInput labelId="{uid}-f25" size="sm" marginBottom bind:value={DBState.db.fishSpeechKey}/>
 
 </Accordion>
 {/if}
@@ -1101,11 +1104,11 @@
                 <OptionInput value="subModel">{language.submodel}</OptionInput>
             </SelectInput>
             {#if DBState.db.supaModelType === 'davinci' || DBState.db.supaModelType === 'curie' || DBState.db.supaModelType === 'instruct35'}
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
+            <span class="text-textcolor" id="{uid}-f26">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
+            <TextInput labelId="{uid}-f26" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
             {/if}
-            <span class="text-textcolor">{language.summarizationPrompt} <Help key="summarizationPrompt" /></span>
-            <TextAreaInput size="sm" bind:value={DBState.db.supaMemoryPrompt} placeholder={language.settingsPage.leaveBlankDefault}/>
+            <span class="text-textcolor"><span id="{uid}-f27">{language.summarizationPrompt}</span> <Help key="summarizationPrompt" /></span>
+            <TextAreaInput labelId="{uid}-f27" size="sm" bind:value={DBState.db.supaMemoryPrompt} placeholder={language.settingsPage.leaveBlankDefault}/>
             <span class="text-textcolor">{language.hypaChunkSize}</span>
             <NumberInput size="sm" marginBottom bind:value={DBState.db.hypaChunkSize} min={100} />
             <span class="text-textcolor">{language.hypaAllocatedTokens}</span>
@@ -1122,7 +1125,7 @@
             </select>
 
             <div class="flex items-center mb-8">
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async () => {
+                <button aria-label={language.add} class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={async () => {
                     const newName = await alertInput(language.hypaV3Settings.newPresetNamePrompt, [], '', { cancel: '' })
 
                     if (!newName) return
@@ -1131,10 +1134,10 @@
                         alertError(language.hypaV3Settings.blankPresetNameError)
                     }
                 }}>
-                    <PlusIcon size={24}/>
+                    <PlusIcon size={24} aria-hidden="true"/>
                 </button>
 
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async () => {
+                <button aria-label={language.edit} class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={async () => {
                     const presets = DBState.db.hypaV3Presets
 
                     if(presets.length === 0){
@@ -1153,10 +1156,10 @@
 
                     renameHypaV3Preset(DBState.db, id, newName)
                 }}>
-                    <PencilIcon size={24}/>
+                    <PencilIcon size={24} aria-hidden="true"/>
                 </button>
 
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async (e) => {
+                <button aria-label={language.remove} class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={async (e) => {
                     const presets = DBState.db.hypaV3Presets
 
                     if(presets.length <= 1){
@@ -1175,12 +1178,12 @@
 
                     deleteHypaV3Preset(DBState.db, id)
                 }}>
-                    <TrashIcon size={24}/>
+                    <TrashIcon size={24} aria-hidden="true"/>
                 </button>
 
                 <div class="ml-2 mr-4 w-px h-full bg-darkborderc"></div>
 
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async() => {
+                <button aria-label={language.export} class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={async() => {
                     try {
                         const presets = DBState.db.hypaV3Presets
                         
@@ -1201,14 +1204,14 @@
                         alertError(`${error}`)
                     }
                 }}>
-                    <DownloadIcon size={24}/>
+                    <DownloadIcon size={24} aria-hidden="true"/>
                 </button>
 
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={importHypaV3PresetFile}>
-                    <HardDriveUploadIcon size={24}/>
+                <button aria-label={language.import} class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={importHypaV3PresetFile}>
+                    <HardDriveUploadIcon size={24} aria-hidden="true"/>
                 </button>
 
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" title={language.hypaV3Settings.duplicatePresetLabel} aria-label={language.hypaV3Settings.duplicatePresetLabel} onclick={async () => {
+                <button class="mr-2 text-textcolor2 hover:text-textcolor cursor-pointer" title={language.hypaV3Settings.duplicatePresetLabel} aria-label={language.hypaV3Settings.duplicatePresetLabel} onclick={async () => {
                     const preset = DBState.db.hypaV3Presets[DBState.db.hypaV3PresetId]
 
                     if (!preset) return
@@ -1227,7 +1230,7 @@
                         alertError(language.hypaV3Settings.blankPresetNameError)
                     }
                 }}>
-                    <CopyIcon size={24}/>
+                    <CopyIcon size={24} aria-hidden="true"/>
                 </button>
             </div>
 
@@ -1243,19 +1246,19 @@
                         <OptionInput value="Qwen3-8B-q4f32_1-MLC">Qwen3 8B (GPU)</OptionInput>
                     {/if}
                 </SelectInput>
-                <span class="text-textcolor">{language.summarizationPrompt} <Help key="summarizationPrompt"/></span>
+                <span class="text-textcolor"><span id="{uid}-f28">{language.summarizationPrompt}</span> <Help key="summarizationPrompt"/></span>
                 <div class="mb-4">
-                    <TextAreaInput size="sm" placeholder={language.hypaV3Settings.supaMemoryPromptPlaceHolder} bind:value={settings.summarizationPrompt} />
+                    <TextAreaInput labelId="{uid}-f28" size="sm" placeholder={language.hypaV3Settings.supaMemoryPromptPlaceHolder} bind:value={settings.summarizationPrompt} />
                 </div>
-                <span class="text-textcolor">{language.reSummarizationPrompt} <Help key="reSummarizationPrompt"/></span>
+                <span class="text-textcolor"><span id="{uid}-f29">{language.reSummarizationPrompt}</span> <Help key="reSummarizationPrompt"/></span>
                 <div class="mb-4">
-                    <TextAreaInput size="sm" placeholder={language.hypaV3Settings.supaMemoryPromptPlaceHolder} bind:value={settings.reSummarizationPrompt} />
+                    <TextAreaInput labelId="{uid}-f29" size="sm" placeholder={language.hypaV3Settings.supaMemoryPromptPlaceHolder} bind:value={settings.reSummarizationPrompt} />
                 </div>
                 {#await getMaxMemoryRatio() then maxMemoryRatio}
                 <span class="text-textcolor">{language.hypaV3Settings.maxMemoryTokensRatioLabel}</span>
                 <NumberInput marginBottom disabled size="sm" value={maxMemoryRatio} />
                 {:catch error}
-                <span class="mb-4 text-red-400">{language.hypaV3Settings.maxMemoryTokensRatioError}</span>
+                <span class="mb-4 text-draculared">{language.hypaV3Settings.maxMemoryTokensRatioError}</span>
                 {/await}
                 <span class="text-textcolor">{language.hypaV3Settings.memoryTokensRatioLabel} <Help key="hypaV3MemoryTokensRatio"/></span>
                 <SliderInput marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.memoryTokensRatio} />
@@ -1265,8 +1268,8 @@
                 <NumberInput marginBottom size="sm" min={1} bind:value={settings.maxChatsPerSummary} />
                 <span class="text-textcolor">{language.hypaV3Settings.queryChatCountLabel} <Help key="hypaV3QueryChatCount"/></span>
                 <NumberInput marginBottom size="sm" min={1} max={20} bind:value={settings.queryChatCount} />
-                <span class="text-textcolor">{language.hypaV3Settings.summaryChunkSeparatorLabel} <Help key="hypaV3SummaryChunkSeparator"/></span>
-                <TextInput marginBottom size="sm" bind:value={settings.summaryChunkSeparator} />
+                <span class="text-textcolor"><span id="{uid}-f30">{language.hypaV3Settings.summaryChunkSeparatorLabel}</span> <Help key="hypaV3SummaryChunkSeparator"/></span>
+                <TextInput labelId="{uid}-f30" marginBottom size="sm" bind:value={settings.summaryChunkSeparator} />
                 <span class="text-textcolor">{language.hypaV3Settings.recentMemoryRatioLabel} <Help key="hypaV3RecentMemoryRatio"/></span>
                 <SliderInput marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.recentMemoryRatio} />
                 <span class="text-textcolor">{language.hypaV3Settings.similarMemoryRatioLabel} <Help key="hypaV3SimilarMemoryRatio"/></span>
@@ -1332,12 +1335,12 @@
             <span class="text-textcolor">{language.maxSupaChunkSize}</span>
             <NumberInput size="sm" marginBottom bind:value={DBState.db.maxSupaChunkSize} min={100} />
             {#if DBState.db.supaModelType === 'davinci' || DBState.db.supaModelType === 'curie' || DBState.db.supaModelType === 'instruct35'}
-                <span class="text-textcolor">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
-                <TextInput size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
+                <span class="text-textcolor" id="{uid}-f31">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
+                <TextInput labelId="{uid}-f31" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
             {/if}
             {#if DBState.db.supaModelType !== 'none'}
-                <span class="text-textcolor">{fillLang(language.settingsPage.namePrompt, { name: language.SuperMemory })}</span>
-                <TextInput size="sm" marginBottom bind:value={DBState.db.supaMemoryPrompt} placeholder={language.settingsPage.leaveBlankDefault}/>
+                <span class="text-textcolor" id="{uid}-f32">{fillLang(language.settingsPage.namePrompt, { name: language.SuperMemory })}</span>
+                <TextInput labelId="{uid}-f32" size="sm" marginBottom bind:value={DBState.db.supaMemoryPrompt} placeholder={language.settingsPage.leaveBlankDefault}/>
             {/if}
             <div class="flex mb-4">
                 <Check bind:check={DBState.db.hypaMemory} name={language.enable + ' ' + language.HypaMemory}/>
@@ -1369,22 +1372,22 @@
         </SelectInput>
 
         {#if DBState.db.hypaModel === 'openai3small' || DBState.db.hypaModel === 'openai3large' || DBState.db.hypaModel === 'ada'}
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
+            <span class="text-textcolor" id="{uid}-f33">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
+            <TextInput labelId="{uid}-f33" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
         {/if}
 
         {#if DBState.db.hypaModel === 'custom'}
-            <span class="text-textcolor">URL</span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.url}/>
-            <span class="text-textcolor">{language.proxyAPIKey}</span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.key}/>
-            <span class="text-textcolor">{language.proxyRequestModel}</span>
-            <TextInput size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
+            <span class="text-textcolor" id="{uid}-f34">URL</span>
+            <TextInput labelId="{uid}-f34" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.url}/>
+            <span class="text-textcolor" id="{uid}-f35">{language.proxyAPIKey}</span>
+            <TextInput labelId="{uid}-f35" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.key}/>
+            <span class="text-textcolor" id="{uid}-f36">{language.proxyRequestModel}</span>
+            <TextInput labelId="{uid}-f36" size="sm" marginBottom bind:value={DBState.db.hypaCustomSettings.model}/>
         {/if}
 
         {#if DBState.db.hypaModel === 'voyageContext3'}
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'Voyage' })}</span>
-            <TextInput size="sm" marginBottom hideText={DBState.db.hideApiKey} bind:value={DBState.db.voyageApiKey}/>
+            <span class="text-textcolor" id="{uid}-f37">{fillLang(language.settingsPage.nameApiKey, { name: 'Voyage' })}</span>
+            <TextInput labelId="{uid}-f37" size="sm" marginBottom hideText={DBState.db.hideApiKey} bind:value={DBState.db.voyageApiKey}/>
         {/if}
 
     </Accordion>

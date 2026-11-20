@@ -52,17 +52,17 @@
         {/each}
 
         <div class="grow flex justify-end">
-            <button
-                class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer"
+            <button aria-label={language.export}
+                class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer"
                 onclick={() => exportColorScheme()}
             >
-                <DownloadIcon size={18} />
+                <DownloadIcon size={18} aria-hidden="true" />
             </button>
-            <button
-                class="text-textcolor2 hover:text-green-500 cursor-pointer"
+            <button aria-label={language.import}
+                class="text-textcolor2 hover:text-textcolor cursor-pointer"
                 onclick={() => importColorScheme()}
             >
-                <HardDriveUploadIcon size={18} />
+                <HardDriveUploadIcon size={18} aria-hidden="true" />
             </button>
         </div>
     </div>

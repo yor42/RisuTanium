@@ -18,6 +18,7 @@
     import { downloadPluginStarter } from "src/ts/setting/pluginStarterDownload";
 
     let showParams = $state([])
+    const uid = $props.id()
 </script>
 
 <h2 class="mb-2 text-2xl font-bold mt-2">{language.plugin}</h2>
@@ -48,16 +49,16 @@
                     {plugin.displayName ?? plugin.name}
                 </span>
                 {#if hotReloading.includes(plugin.name)}
-                    <span class="text-sm rounded bg-amber-700 ml-2 px-2 py-1 text-white">
+                    <span class="text-sm rounded-sm bg-darkbutton ml-2 px-2 py-1 text-textcolor">
                         {language.settingsPage.hotBadge}
                     </span>
                 {/if}
             </div>
             {#if plugin.version === 2}
-                <button class="text-yellow-400 hover:gray-200 cursor-pointer" onclick={() => {
+                <button aria-label={language.settingsPage.warning} class="text-draculared hover:text-textcolor cursor-pointer" onclick={() => {
                     alertMd(language.pluginV2Warning);
                 }} >
-                    <TriangleAlert />
+                    <TriangleAlert aria-hidden="true" />
                 </button>
             {/if}
 
@@ -70,8 +71,9 @@
                             rel="nofollow noopener noreferrer"
                             class="text-textcolor2 hover:text-textcolor cursor-pointer"
                             title={link.hoverText}
+                            aria-label={link.hoverText || link.link}
                         >
-                            <LinkIcon></LinkIcon>
+                            <LinkIcon aria-hidden="true"></LinkIcon>
                         </a>
                     {/if}
                 {/each}
@@ -81,7 +83,8 @@
                 {#await checkPluginUpdate(plugin) then updateInfo}
                     {#if updateInfo}
                         <button
-                            class="text-green-400 hover:gray-200 cursor-pointer"
+                            aria-label={language.pluginInstallUpdate}
+                            class="text-textcolor hover:text-textcolor2 cursor-pointer"
                             onclick={async () => {
                                 const v = await alertConfirm(
                                     language.pluginUpdateFoundInstallIt
@@ -91,14 +94,14 @@
                                 }
                             }}
                         >
-                            <PlusIcon />
+                            <PlusIcon aria-hidden="true" />
                         </button>
                     {/if}
                 {/await}
             {/if}
 
             <button
-                class="textcolor2 hover:gray-200 cursor-pointer"
+                class="text-textcolor2 hover:text-textcolor cursor-pointer"
                 aria-label={language.export}
                 title={language.export}
                 onclick={async () => {
@@ -107,12 +110,12 @@
                     await downloadFile(file.fileName, file.content)
                 }}
             >
-                <DownloadIcon />
+                <DownloadIcon aria-hidden="true" />
             </button>
 
             {#if plugin.version !== 1 && plugin.version !== '2.1' && Object.keys(plugin.arguments ?? {}).some((k) => !k.startsWith('hidden_'))}
                 <button
-                    class="textcolor2 hover:gray-200 cursor-pointer"
+                    class="text-textcolor2 hover:text-textcolor cursor-pointer"
                     aria-label={language.pluginSettingsFile.button}
                     title={language.pluginSettingsFile.button}
                     onclick={async () => {
@@ -133,12 +136,14 @@
                         })
                     }}
                 >
-                    <Settings2Icon />
+                    <Settings2Icon aria-hidden="true" />
                 </button>
             {/if}
 
             <button
-                class="textcolor2 hover:gray-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                class="text-textcolor2 hover:text-textcolor cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={language.enable}
+                aria-pressed={!!plugin.enabled}
                 disabled={plugin.version === '2.1'}
                 onclick={async (e) => {
                     if (plugin.version === '2.1') {
@@ -150,15 +155,16 @@
                 }}
             >
                 {#if plugin.enabled}
-                    <PowerIcon />
+                    <PowerIcon aria-hidden="true" />
                 {:else}
-                    <PowerOffIcon />
+                    <PowerOffIcon aria-hidden="true" />
                 {/if}
             </button>
 
             <!--Also, remove button.-->
             <button
-                class="textcolor2 hover:gray-200 cursor-pointer"
+                class="text-textcolor2 hover:text-textcolor cursor-pointer"
+                aria-label={language.remove}
                 onclick={async () => {
                     const target = plugin;
                     const v = await alertConfirm(
@@ -180,7 +186,7 @@
                     }
                 }}
             >
-                <TrashIcon />
+                <TrashIcon aria-hidden="true" />
             </button>
         </div>
         {#if plugin.version === 1 || plugin.version === '2.1'}
@@ -192,7 +198,7 @@
             <!--List up args-->
         {:else if Object.keys(plugin.arguments).filter((i) => !i.startsWith("hidden_")).length > 0 && showParams.includes(i)}
             <div class="flex flex-col mt-2 bg-dark-900/50 p-3">
-                {#each Object.keys(plugin.arguments) as arg}
+                {#each Object.keys(plugin.arguments) as arg, argIndex}
                     {#if !arg.startsWith("hidden_")}
                         {#if typeof(plugin?.argMeta?.[arg]?.divider) === 'string'}
                             {#if plugin?.argMeta?.[arg]?.divider}
@@ -207,7 +213,7 @@
                                 <div aria-hidden="true" class="w-full border-t border-darkborderc mt-6"></div>
                             {/if}
                         {/if}
-                        <span class="mb-2 mt-6">{plugin?.argMeta?.[arg]?.name || arg}</span>
+                        <span class="mb-2 mt-6" id="{uid}-arg-{i}-{argIndex}">{plugin?.argMeta?.[arg]?.name || arg}</span>
                         {#if plugin?.argMeta?.[arg]?.description}
                             <span class="mb-2 text-sm text-textcolor2">{plugin?.argMeta?.[arg]?.description}</span>
                         {/if}
@@ -226,6 +232,7 @@
 
                             {#if plugin?.argMeta?.[arg]?.textarea}
                                 <TextAreaInput
+                                    labelId="{uid}-arg-{i}-{argIndex}"
                                     bind:value={
                                         DBState.db.plugins[i].realArg[arg] as string
                                     }
@@ -246,6 +253,7 @@
                                 {/each}
                             {:else}
                                 <TextInput
+                                    labelId="{uid}-arg-{i}-{argIndex}"
                                     bind:value={
                                         DBState.db.plugins[i].realArg[arg] as string
                                     }
@@ -297,9 +305,10 @@
         onclick={() => {
             importPlugin()
         }}
+        aria-label={language.pluginsPage.add}
         class="hover:text-textcolor cursor-pointer"
     >
-        <PlusIcon />
+        <PlusIcon aria-hidden="true" />
     </button>
 
     <button
@@ -325,8 +334,9 @@
                     break;
             }
         }}
+        aria-label={language.pluginsPage.devTools}
         class="hover:text-textcolor cursor-pointer"
     >
-        <CodeXmlIcon />
+        <CodeXmlIcon aria-hidden="true" />
     </button>
 </div>
