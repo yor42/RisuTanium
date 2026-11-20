@@ -141,7 +141,7 @@ describe('the pack element and the root attribute', () => {
     })
 
     test('H3: the ChatShell CSS imports are read in source order, chat-tokens first', () => {
-        expect(chatShellCssImports()).toEqual(['src/styles/chat-tokens.css', 'src/styles/chat-pack-base.css'])
+        expect(chatShellCssImports()).toEqual(['src/styles/chat-tokens.css', 'src/styles/chat-pack-base.css', 'src/styles/chat-light-base.css'])
     })
 })
 

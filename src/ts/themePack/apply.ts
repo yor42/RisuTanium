@@ -8,10 +8,12 @@
 import { sha256Hex } from '../assetHash'
 import { rangeSourceFrom } from '../drive/rtb/rangeSource'
 import { getAppStore } from '../storage/store/appStore'
+import type { SchemeTone } from '../gui/surfaceTone'
 import type { BuiltinPack } from './builtins'
 import type { AreaSheetJudgement } from './index'
 import { intakePack, readVerifiedFile, type IntakeRefusal, type PackJudge } from './intake'
 import { readJudgement } from './judgeClient'
+import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
 import { PACK_ARCHIVE_KEY } from './packRefs'
 import { registerThemePackElement, syncThemePackMedia } from './surfaceGate.svelte'
 
@@ -21,7 +23,7 @@ export const BLOB_URL_PATTERN = /^blob:[A-Za-z0-9:/._\-\[\]]+$/
 export type BrokenReason = 'files' | 'refused' | 'unreadable' | 'couldNotCheck'
 export type ApplySource = { kind: 'builtin'; pack: BuiltinPack } | { kind: 'archive'; key: string }
 export type Prepared =
-    | { ok: true; text: string | null; blobs: readonly string[]; skippedAreas: readonly string[] }
+    | { ok: true; text: string | null; blobs: readonly string[]; skippedAreas: readonly string[]; base: SchemeTone }
     | { ok: false; reason: BrokenReason; refusals?: readonly IntakeRefusal[] }
 type Stale = { ok: false; stale: true }
 
@@ -78,6 +80,30 @@ function textOrNull(text: string): string | null {
     return /^\s*$/.test(text) ? null : text
 }
 
+/**
+ * The base the pack sits on. A light-only pack gets the light base only when the light base placed before the pack's
+ * canonical sheet passes the same judgement: the tokens the judge never reads then take light values only for a pack whose
+ * judged colours are compatible with them. Any other label, a throw, a refusal or an unanswered judgement keeps the dark
+ * base. The prefix goes first so the pack's own values are the later ones, as in the applied cascade.
+ */
+async function chooseBase(modes: readonly string[], chat: AreaSheetJudgement, judge: PackJudge, isCurrent: () => boolean): Promise<SchemeTone | Stale> {
+    if (!wantsLightBase(modes)) {
+        return 'dark'
+    }
+    let judged: Awaited<ReturnType<PackJudge>> | null = null
+    try {
+        judged = await judge({ chat: `${LIGHT_BASE_JUDGE_PREFIX}\n${chat.canonical}` })
+    } catch (error) {
+        if (import.meta.env.DEV) {
+            console.error('theme pack light base judge failed', error)
+        }
+    }
+    if (!isCurrent()) {
+        return STALE
+    }
+    return judged?.areas?.chat?.result?.ok === true ? 'light' : 'dark'
+}
+
 async function prepareBuiltin(pack: BuiltinPack, judge: PackJudge, isCurrent: () => boolean): Promise<Prepared | Stale> {
     let judged: Awaited<ReturnType<PackJudge>> | null = null
     try {
@@ -101,7 +127,11 @@ async function prepareBuiltin(pack: BuiltinPack, judge: PackJudge, isCurrent: ()
         return failure('refused')
     }
     const text = buildAppliedText(chat, () => '')
-    return { ok: true, text: textOrNull(text), blobs: [], skippedAreas: [] }
+    const base = await chooseBase(pack.modes, chat, judge, isCurrent)
+    if (typeof base !== 'string') {
+        return base
+    }
+    return { ok: true, text: textOrNull(text), blobs: [], skippedAreas: [], base }
 }
 
 async function prepareArchive(key: string, judge: PackJudge, isCurrent: () => boolean, minted: string[]): Promise<Prepared | Stale> {
@@ -168,7 +198,11 @@ async function prepareArchive(key: string, judge: PackJudge, isCurrent: () => bo
         urlOfRaw.set(span.raw, url)
     }
     const text = buildAppliedText(chat, (raw) => urlOfRaw.get(raw) ?? '')
-    return { ok: true, text: textOrNull(text), blobs: [...minted], skippedAreas: pack.skippedAreas }
+    const base = await chooseBase(pack.manifest.modes, chat, judge, isCurrent)
+    if (typeof base !== 'string') {
+        return base
+    }
+    return { ok: true, text: textOrNull(text), blobs: [...minted], skippedAreas: pack.skippedAreas, base }
 }
 
 /**
@@ -200,7 +234,7 @@ export async function preparePackSheet(source: ApplySource, judge: PackJudge, is
  * and unregister the previous one and revoke its blobs, then sync the gate. A missing `#customcss` inserts nothing and
  * leaves the previous element for the caller to remove.
  */
-export function commitPackSheet(next: { text: string; blobs: readonly string[] } | null): { ok: true } | { ok: false; reason: 'couldNotCheck' } {
+export function commitPackSheet(next: { text: string; blobs: readonly string[]; base?: SchemeTone } | null):{ ok: true } | { ok: false; reason: 'couldNotCheck' } {
     const previous = current
     let created: CurrentElement | null = null
     if (next !== null) {
@@ -214,7 +248,7 @@ export function commitPackSheet(next: { text: string; blobs: readonly string[] }
         el.setAttribute('data-theme-pack', 'chat')
         el.textContent = next.text
         anchor.before(el)
-        created = { el, unregister: registerThemePackElement(el, 'chat'), blobs: next.blobs }
+        created = { el, unregister: registerThemePackElement(el, 'chat', next.base ?? 'dark'), blobs: next.blobs }
     }
     if (previous !== null) {
         previous.unregister()
