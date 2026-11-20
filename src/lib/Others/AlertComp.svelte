@@ -287,7 +287,7 @@
             {/if}
             {#if a.type === 'markdown'}
                 <div class="overflow-y-auto">
-                    <span class="text-gray-300 chattext prose chattext2" class:prose-invert={$ColorSchemeTypeStore}>
+                    <span class="text-textcolor chattext prose chattext2" class:prose-invert={$ColorSchemeTypeStore === 'dark'}>
                         {#await ParseMarkdown(a.msg) then msg}
                             {@html msg}                        
                         {/await}

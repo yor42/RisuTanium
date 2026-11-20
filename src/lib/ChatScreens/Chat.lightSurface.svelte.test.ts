@@ -222,12 +222,23 @@ describe('light surfaces: mobilechat bubble and cardboard card', () => {
     }
 
     for (const scheme of SCHEMES) {
-        test(`the default theme with the store at ${scheme} has no fixed colour wrapper and keeps prose-invert`, () => {
+        test(`the default theme with the store at ${scheme} has no fixed colour wrapper`, () => {
             const target = setup('default', scheme)
             expect(lightSurfaceOf(chattext(target))).toBeNull()
-            expect(chattext(target).classList.contains('prose-invert')).toBe(true)
         })
     }
+
+    // Reproducer: a light scheme on the default theme must not get the pale inverted prose colours.
+    test('the default theme with the store at light does not invert the message text', () => {
+        const target = setup('default', 'light')
+        expect(chattext(target).classList.contains('prose-invert')).toBe(false)
+    })
+
+    // Guard (passes before and after): a dark scheme on the default theme keeps prose-invert.
+    test('the default theme with the store at dark keeps prose-invert', () => {
+        const target = setup('default', 'dark')
+        expect(chattext(target).classList.contains('prose-invert')).toBe(true)
+    })
 
     test('the mobilechat timestamp uses the fixed gray text, not the theme colour', () => {
         const target = setup('mobilechat', 'light')

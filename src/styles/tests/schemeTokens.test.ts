@@ -194,7 +194,7 @@ describe('TB4b: token fallbacks equal the Default derivation', () => {
                 expect(m[2].trim(), `${file} ${m[1]}`).toBe(roles[m[1]])
             }
         }
-        expect(found).toBeGreaterThanOrEqual(17)
+        expect(found).toBeGreaterThanOrEqual(18)
     })
 })
 
