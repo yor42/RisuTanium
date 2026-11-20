@@ -1,4 +1,4 @@
-import { cr, over, parseConcrete, toHex, type Rgba } from "../themePack/colour";
+import { bestExtreme, cr, over, parseConcrete, toHex, type Rgba } from "../themePack/colour";
 import type { ColorScheme } from "./colorscheme";
 
 /**
@@ -13,6 +13,8 @@ export interface SchemeRoles {
     'accent-rgb': string
     /** The classic keyboard focus ring; it stays at least 3:1 on the scheme's page, panel and button colours. */
     'focus-ring': string
+    /** The text on the selected primary button fill; it stays at least 4.5:1 on `selected`. */
+    'on-selected': string
     'field-border': string
     'danger': string
     'danger-rgb': string
@@ -91,6 +93,7 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
         'accent': FALLBACK_ACCENT,
         'accent-rgb': FALLBACK_ACCENT_RGB,
         'focus-ring': FALLBACK_ACCENT,
+        'on-selected': tx ?? scheme.textcolor,
         'field-border': bc ?? scheme.borderc,
         'danger': red ?? scheme.draculared,
         'danger-rgb': FALLBACK_DANGER_RGB,
@@ -155,6 +158,10 @@ export function deriveSchemeRolesChecked(scheme: ColorScheme): DerivedSchemeRole
     }
     if (tx !== null && sel !== null && btn !== null) {
         roles['surface-toast'] = cr(parseConcrete(tx)!, parseConcrete(sel)!) >= 4.5 ? sel : btn
+    }
+    if (tx !== null && sel !== null) {
+        // Black or white always reaches about 4.58:1 on any fill, so the role never falls short.
+        roles['on-selected'] = cr(parseConcrete(tx)!, parseConcrete(sel)!) >= 4.5 ? tx : toHex(bestExtreme(parseConcrete(sel)!))
     }
     return { roles, short }
 }
