@@ -237,6 +237,10 @@ describe('T3W-5 malformed answers', () => {
         ['a font-face block without text', () => craft((j) => { (j.areas.chat as { fontFaceBlocks: unknown }).fontFaceBlocks = [{ start: 0, end: 1 }] })],
         ['errors not an array', () => craft((j) => { (j.areas.chat.result as { errors: unknown }).errors = 'none' })],
         ['an error that is not a string triple', () => craft((j) => { (j.areas.chat.result as { errors: unknown }).errors = [{ selector: 'a', prop: 'b' }] })],
+        ['warnings missing', () => craft((j) => { delete (j.areas.chat as { warnings?: unknown }).warnings })],
+        ['warnings null', () => craft((j) => { (j.areas.chat as { warnings: unknown }).warnings = null })],
+        ['warnings not an array', () => craft((j) => { (j.areas.chat as { warnings: unknown }).warnings = 'none' })],
+        ['a warning that is not a string triple', () => craft((j) => { (j.areas.chat as { warnings: unknown }).warnings = [{ selector: 'a', prop: 'b' }] })],
         ['overall ok not a boolean', () => craft((j) => { (j as { ok: unknown }).ok = 1 })],
         ['areas not an object', () => craft((j) => { (j as { areas: unknown }).areas = [] })],
         ['a judgement that is not an object', () => 'accepted'],
@@ -262,6 +266,31 @@ describe('T3W-5 malformed answers', () => {
         expect(chat?.result.ok).toBe(true)
         expect(chat?.resources.map((span) => span.form)).toEqual(['url-token', 'string', 'url-token'])
         expect(readJudgement(structuredClone(judged))).toEqual(judged)
+    })
+
+    it('readJudgement keeps the warnings of a sheet as fresh objects', () => {
+        const copy = structuredClone(realJudgement) as PackSheetsJudgement & { areas: { chat: NonNullable<PackSheetsJudgement['areas']['chat']> } }
+        const warnings = [
+            { selector: '.a', prop: 'font-family', why: 'first note' },
+            { selector: '.b', prop: 'font-family', why: 'second note' },
+        ]
+        copy.areas.chat.warnings = warnings
+        const read = readJudgement(copy)
+        expect(read).toEqual(copy)
+        expect(read?.areas.chat?.warnings).not.toBe(warnings)
+        expect(read?.areas.chat?.warnings[0]).not.toBe(warnings[0])
+    })
+
+    it('V-T9: a real unbundled family reaches intake as a warning on the verified sheet (MC-2542)', async () => {
+        const sheet = '[data-part="chat-message-text"]{font-family:"pack-missing", serif}'
+        const judged = judgePackSheets({ chat: sheet })
+        expect(judged.areas.chat?.warnings).toHaveLength(1)
+        expect(readJudgement(structuredClone(judged))).toEqual(judged)
+        const result = await intakePackBytes(zipPack(validPackFiles({ 'chat.css': sheet })), createJudgeClient({ spawn: () => new FakeJudgeWorker('real') }))
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        expect(result.pack.sheets.chat.warnings).toHaveLength(1)
+        expect(result.pack.sheets.chat.warnings[0].why).toMatch(/^font family "pack-missing" is not bundled with the pack: /)
     })
 
     it('readJudgement accepts a refused sheet with its errors and no locations', () => {

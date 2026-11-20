@@ -3507,6 +3507,7 @@ export const languageGerman = {
     "themePackInstalled": (name: string) => `„${name}“ wurde installiert.`,
     "themePackSkippedAreas": (files: string) =>
         `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm; diese Teile werden mit dem Paket aufbewahrt.`,
+    "themePackInstalledWithWarnings": (sheet: string) => `Mit Warnungen installiert (${sheet}):`,
     "themePackRefusedHeader": "Diese Datei wurde nicht installiert:",
     "themePackBusy": "Eine andere Aufgabe läuft gerade (ein Speichern, eine Wiederherstellung oder die Installation eines anderen Design-Pakets). Versuchen Sie es erneut, wenn sie beendet ist.",
     "themePackInstallFailedFiles": "Das Design-Paket wurde nach dem Speichern nicht korrekt zurückgelesen und daher nicht installiert. Versuchen Sie es erneut.",

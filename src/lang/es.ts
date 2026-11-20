@@ -3505,6 +3505,7 @@ export const languageSpanish = {
     "themePackReplaceConfirm": (name: string) => `¿Reemplazar el paquete de tema instalado "${name}" por este archivo?`,
     "themePackInstalled": (name: string) => `Se instaló "${name}".`,
     "themePackSkippedAreas": (files: string) => `Este paquete también incluye ${files}. Esta versión solo aplica el tema a la nueva pantalla de chat; esas partes se conservan junto con el paquete.`,
+    "themePackInstalledWithWarnings": (sheet: string) => `Instalado con advertencias (${sheet}):`,
     "themePackRefusedHeader": "Este archivo no se instaló:",
     "themePackBusy": "Hay otra tarea en curso (un guardado, una restauración u otra instalación de paquete de tema). Inténtalo de nuevo cuando termine.",
     "themePackInstallFailedFiles": "El paquete de tema no se leyó correctamente tras guardarlo, así que no se instaló. Inténtalo de nuevo.",

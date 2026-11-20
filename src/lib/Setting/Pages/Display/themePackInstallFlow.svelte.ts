@@ -8,8 +8,9 @@ import { restoreInProgress } from 'src/ts/drive/restoreInProgress'
 import { requestSaveNow } from 'src/ts/globalApi.svelte'
 import { isBusy } from 'src/ts/process/memory/busyActions'
 import { DBState } from 'src/ts/stores.svelte'
+import type { LintError } from 'src/ts/themePack'
 import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type PackTileColours, type PackVerifyIcon } from 'src/ts/themePack/install'
-import { intakePackBytes, type IntakeRefusal, type IntakeResult } from 'src/ts/themePack/intake'
+import { APPLIED_AREAS, intakePackBytes, type IntakeRefusal, type IntakeResult, type VerifiedPack } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
 import type { PackTile } from 'src/ts/themePack/manifest'
 import { checkPackIcon } from 'src/ts/themePack/packIcon'
@@ -144,11 +145,36 @@ function errorMessage(...lines: string[]): RowMessage {
     return { tone: 'error', lines }
 }
 
-function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: readonly string[]): RowMessage | null {
+/** The notes the validator gave one accepted stylesheet. */
+interface SheetWarnings {
+    sheet: string
+    warnings: readonly LintError[]
+}
+
+/** The accepted sheets that carry warnings, in area order. A judgement without the field throws, which the install reports as a failure before any write. */
+function sheetWarningsOf(pack: VerifiedPack): SheetWarnings[] {
+    const out: SheetWarnings[] = []
+    for (const area of APPLIED_AREAS) {
+        const { warnings } = pack.sheets[area]
+        if (warnings.length > 0) {
+            out.push({ sheet: `${area}.css`, warnings })
+        }
+    }
+    return out
+}
+
+/** `sheetWarnings` shows only on an installed pack; every other outcome ignores it, so a failure after verify never shows notes about a pack that was not stored. */
+function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: readonly string[], sheetWarnings: readonly SheetWarnings[]): RowMessage | null {
     if (outcome.ok === true) {
         const lines = [language.themePackInstalled(outcome.record.name)]
         if (skippedAreas.length > 0) {
             lines.push(language.themePackSkippedAreas(skippedAreas.map((area) => `${area}.css`).join(', ')))
+        }
+        for (const { sheet, warnings } of sheetWarnings) {
+            lines.push(language.themePackInstalledWithWarnings(sheet))
+            for (const w of warnings) {
+                lines.push(language.themePackLintLine(w.selector, w.prop, w.why))
+            }
         }
         return { tone: 'info', lines }
     }
@@ -237,7 +263,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
             ok: false,
             kind: 'refused',
             refusal: { kind: 'intake', refusals: [{ code: 'packTooLarge', limitBytes: PACK_MAX_UNPACKED_BYTES }] },
-        }, []), d.notify)
+        }, [], []), d.notify)
         return
     }
     installFlowState.pending = true
@@ -245,6 +271,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
     try {
         const bytes = await d.readFile(file)
         let skippedAreas: readonly string[] = []
+        let sheetWarnings: readonly SheetWarnings[] = []
         const outcome = await d.install<InstallRefusal>({
             bytes,
             verify: async (verifiedBytes) => {
@@ -272,11 +299,12 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
                     return { ok: false, refusal: { kind: 'declinedLarge' } }
                 }
                 skippedAreas = pack.skippedAreas
+                sheetWarnings = sheetWarningsOf(pack)
                 return icon === undefined ? { ok: true, manifest: pack.manifest, tile } : { ok: true, manifest: pack.manifest, tile, icon }
             },
             confirmReplace: (existing) => d.confirm(language.themePackReplaceConfirm(existing.name)),
         })
-        publish(mapOutcome(outcome, skippedAreas), d.notify)
+        publish(mapOutcome(outcome, skippedAreas, sheetWarnings), d.notify)
     } catch {
         publish(errorMessage(language.themePackInstallFailed), d.notify)
     } finally {
