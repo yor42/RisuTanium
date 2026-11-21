@@ -1,9 +1,49 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { Connection } from '../connections'
 import { connectionKeyHint, maskKeyHint } from '../connectionHint'
+import { installVaultHost, resetVaultStoreForTest, type VaultPlatform } from '../keyVaultStore.svelte'
 
 const conn = (key: string, provider: Connection['provider'] = 'openai'): Connection =>
     ({ id: 'conn-1', name: 'n', provider, key })
+
+function installPlatform(platform: VaultPlatform): void {
+    installVaultHost({
+        platform,
+        findConnection: () => undefined,
+        listConnections: () => [],
+        requestSaveNow: () => {},
+        markBootWrite: () => {},
+        isReadOnlyPage: () => false,
+        notify: { keepPlain: () => {}, wrapped: () => {}, reentry: () => {} },
+        messages: { keyUnavailable: () => 'unavailable' },
+    })
+}
+
+afterEach(resetVaultStoreForTest)
+
+describe('connectionKeyHint vault states', () => {
+    const wrapped: Connection = { id: 'conn-1', name: 'n', provider: 'openai', key: '', keyWrapped: 'SYNTH-ENVELOPE' }
+
+    it('a wrapped key not readable yet is unavailable, never none', () => {
+        installPlatform('vault')
+        expect(connectionKeyHint(wrapped)).toEqual({ kind: 'unavailable' })
+    })
+
+    it('a wrapped key this page can never read is reentry, never none', () => {
+        installPlatform('none')
+        expect(connectionKeyHint(wrapped)).toEqual({ kind: 'reentry' })
+    })
+
+    it('neither state carries any part of the envelope', () => {
+        installPlatform('vault')
+        expect(JSON.stringify(connectionKeyHint(wrapped))).not.toContain('SYNTH')
+    })
+
+    it('a plain key keeps its masked hint on a vault platform', () => {
+        installPlatform('vault')
+        expect(connectionKeyHint(conn('sk-SYNTH-abcd'))).toEqual({ kind: 'masked', tail: 'abcd' })
+    })
+})
 
 describe('connectionKeyHint', () => {
     it('T1: a long key shows only its last four characters', () => {

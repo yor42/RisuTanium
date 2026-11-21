@@ -21,10 +21,18 @@
 
     /** What the key chip shows: only a tail, a whole `${NAME}` reference or a bare mask; empty for no key. */
     export function hintChipText(hint: KeyHint): string {
-        if (hint.kind === 'none') return ''
+        if (hint.kind === 'none' || hint.kind === 'unavailable' || hint.kind === 'reentry') return ''
         const base = hint.kind === 'ref' ? hint.text : `••••${hint.tail === '' ? '' : ' ' + hint.tail}`
         const count = hint.count ?? 1
         return count > 1 ? `${base} · ${fillLang(language.connectionsKeyCount, { n: count })}` : base
+    }
+
+    /** The alert line of a key that is not shown as a chip; `missing` is what a blank key says. Empty when the chip speaks. */
+    export function keyStateText(hint: KeyHint, needsKey: boolean, missing: string): string {
+        if (needsKey) return language.connectionsKeyAgain
+        if (hint.kind === 'unavailable') return language.vaultKeyTemporarilyUnavailableHint
+        if (hint.kind === 'reentry') return language.vaultNeedsReentryLabel
+        return hint.kind === 'none' ? missing : ''
     }
 
     /** The used-by line; empty when nothing countable is known (a provider in use). */
@@ -62,7 +70,7 @@
     const Icon = $derived(providerIconOf(conn))
     const usedLine = $derived(usedByText(conn, users))
     const chip = $derived(hintChipText(hint))
-    const reason = $derived(needsKey ? language.connectionsKeyAgain : hint.kind === 'none' ? language.connectionsKeyMissingReason : '')
+    const reason = $derived(keyStateText(hint, needsKey, language.connectionsKeyMissingReason))
 </script>
 
 <li class="rounded-md border border-darkborderc bg-darkbg min-w-0" data-part="connection-card">

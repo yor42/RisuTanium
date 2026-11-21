@@ -270,6 +270,15 @@ describe('deleteConnection', () => {
         expect(json).not.toContain('sk-test-LEAK')
     })
 
+    it('T9: a connection holding a Keystore envelope leaves it out of the snapshot', () => {
+        const db = migratedDb()
+        const sealed: Connection = { id: 'conn-51', name: 'Sealed', provider: 'mistral', key: '', keyWrapped: 'SYNTH-ENVELOPE' }
+        db.connections = [...storedConnections(db), sealed]
+        const removed = deleteConnection(db, 'conn-51')!
+        expect(removed.snapshot).toStrictEqual({ id: 'conn-51', name: 'Sealed', provider: 'mistral' })
+        expect(JSON.stringify(removed)).not.toContain('SYNTH-ENVELOPE')
+    })
+
     it('returns null for an unknown id or a malformed store; a delete drops a stale needsKey entry', () => {
         const db = migratedDb()
         expect(deleteConnection(db, 'conn-404')).toBeNull()
@@ -305,6 +314,18 @@ describe('restoreConnection', () => {
         } as RemovedConnection
         expect(restoreConnection(db, tainted)).toBe('restored')
         expect(storedConnections(db)[removed.index]).toEqual({
+            id: removed.snapshot.id, name: removed.snapshot.name, provider: 'reverse_proxy', key: '', url: 'https://p.invalid/v1',
+        })
+    })
+
+    it('T10: a record carrying an envelope does not store it', () => {
+        const { db, removed } = deletedProxy()
+        const tainted = {
+            ...removed,
+            snapshot: { ...removed.snapshot, keyWrapped: 'SYNTH-ENVELOPE' },
+        } as RemovedConnection
+        expect(restoreConnection(db, tainted)).toBe('restored')
+        expect(storedConnections(db)[removed.index]).toStrictEqual({
             id: removed.snapshot.id, name: removed.snapshot.name, provider: 'reverse_proxy', key: '', url: 'https://p.invalid/v1',
         })
     })

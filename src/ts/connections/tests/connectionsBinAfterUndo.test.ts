@@ -1,7 +1,8 @@
 /**
  * T24: no deleted key comes back through the `.bin` path after delete and Undo. Compatibility
- * guard: it passes before and after the V2 page, and it fails if a restore ever carries a key (or a
- * wrapped field) into the stored connections that `writeLegacyFromConnections` translates.
+ * guard: it passes before and after the V2 page, and it fails if a restore ever carries a plain key
+ * into the stored connections that `writeLegacyFromConnections` translates. Wrapped envelopes are
+ * covered by the editor and undo snapshot tests, not here.
  * Synthetic keys only.
  */
 import { describe, expect, it } from 'vitest'
@@ -11,6 +12,9 @@ import { keyStateOf, writeLegacyFromConnections } from '../binTranslate'
 import { migrateConnections } from '../migrate'
 import { storedConnections } from '../connections'
 import { deleteConnection, restoreConnection } from '../connectionEditor'
+
+/** The reader of a database whose connections hold plain keys only. */
+const plainKeys = { keyOf: (conn: { key: string }) => conn.key, late: () => [] as string[] }
 
 function producerPreset(url: string, key: string, name: string, id: string): botPreset {
     const db = { botPresets: [{ name }], botPresetsId: 0, forceReplaceUrl: url, proxyKey: key, openAIKey: '' } as unknown as StoredDatabase
@@ -31,7 +35,7 @@ function legacy(): StoredDatabase {
 }
 
 describe('T24 .bin after delete and Undo', () => {
-    it('no deleted key reaches the store or the translated legacy fields', async () => {
+    it('no deleted key reaches the store or the translated legacy fields', () => {
         const db = legacy()
         expect(migrateConnections(db)).toBe('applied')
         const live = db as unknown as Database
@@ -44,7 +48,7 @@ describe('T24 .bin after delete and Undo', () => {
         const plain = structuredClone(db)
         const state = keyStateOf(plain)
         migrateConnections(state)
-        await writeLegacyFromConnections(state, plain)
+        writeLegacyFromConnections(state, plain, plainKeys)
         expect(JSON.stringify(plain)).not.toContain('sk-SYNTH')
         expect(plain.openAIKey).toBe('')
         expect(plain.proxyKey).toBe('')

@@ -9,7 +9,7 @@
     import { catalogEntry } from '../../../ts/connections/providerCatalog'
     import KeyListInput from '../../UI/GUI/KeyListInput.svelte'
     import TextInput from '../../UI/GUI/TextInput.svelte'
-    import { hintChipText, usedByText } from './ConnectionCard.svelte'
+    import { hintChipText, keyStateText, usedByText } from './ConnectionCard.svelte'
 
     /** How many users the used-by list names before it folds the rest into "and n more". */
     const LISTED_USERS = 5
@@ -38,7 +38,9 @@
 
     let draft = $state(untrack(() => conn.name))
     let nameNote = $state('')
-    let replacing = $state(untrack(() => needsKey || hint.kind === 'none'))
+    // A blank or never-readable key opens straight into Change key; a temporarily unavailable one
+    // is not empty, so it waits for an explicit Change key and offers no Clear.
+    let replacing = $state(untrack(() => needsKey || hint.kind === 'none' || hint.kind === 'reentry'))
     let newKey = $state('')
     let root = $state<HTMLElement>()
     let keyField = $state<HTMLElement>()
@@ -118,7 +120,7 @@
         {:else}
             <span class="flex items-center gap-1 text-sm text-draculared" data-part="connection-alert">
                 <CircleAlertIcon class="shrink-0" size={14} aria-hidden="true" />
-                <span>{needsKey ? language.connectionsKeyAgain : language.connectionsKeyMissing}</span>
+                <span>{keyStateText(hint, needsKey, language.connectionsKeyMissing)}</span>
             </span>
         {/if}
         {#if replacing}
@@ -156,7 +158,7 @@
                     disabled={pending}
                     onclick={openReplace}
                 >{language.connectionsChangeKey}</button>
-                {#if hint.kind !== 'none'}
+                {#if hint.kind !== 'none' && hint.kind !== 'unavailable'}
                     <button
                         type="button"
                         class="min-h-11 px-4 rounded-md bg-darkbutton text-draculared hover:bg-selected disabled:opacity-50 risu-focus-ring"

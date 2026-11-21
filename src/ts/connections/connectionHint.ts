@@ -1,14 +1,18 @@
 import { isSecretRef } from 'src/ts/secretRefPattern'
 import { splitKeys } from 'src/ts/process/request/keyRing'
 import type { Connection, ConnectionProvider } from './connections'
-import { connectionKeyForUi } from './keyAccess'
+import { connectionKeyForUi, connectionKeyTemporarilyUnavailable, connectionNeedsReentry } from './keyAccess'
 
 /**
  * What a page may show of a key: nothing, a whole `${NAME}` reference, or at most the last four
- * characters of a long enough first line. The raw value never leaves this module.
+ * characters of a long enough first line. The raw value never leaves this module. `unavailable`
+ * (a wrapped key not readable yet) and `reentry` (a wrapped key that can never be read here) are
+ * not blank: a page must never present them as "no key".
  */
 export type KeyHint =
     | { kind: 'none' }
+    | { kind: 'unavailable' }
+    | { kind: 'reentry' }
     | { kind: 'ref', text: string, count?: number }
     | { kind: 'masked', tail: string, count?: number }
 
@@ -39,5 +43,11 @@ export function maskKeyHint(plain: string, provider: ConnectionProvider): KeyHin
 
 /** The hint of a stored connection; the only display read of its key. */
 export function connectionKeyHint(conn: Connection): KeyHint {
+    if (connectionKeyTemporarilyUnavailable(conn)) {
+        return { kind: 'unavailable' }
+    }
+    if (connectionNeedsReentry(conn)) {
+        return { kind: 'reentry' }
+    }
     return maskKeyHint(connectionKeyForUi(conn), conn.provider)
 }

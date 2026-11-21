@@ -80,6 +80,21 @@ describe('connectionUndoAction', () => {
         expect(h.holder.db.botPresets?.find((preset) => preset.id === 'p1')?.proxyConnectionId).toBe('conn-2')
     })
 
+    it('a deleted connection that held an envelope comes back without it', () => {
+        h.holder.db.connections = [
+            ...storedConnections(h.holder.db),
+            { id: 'conn-3', name: 'Sealed', provider: 'mistral', key: '', keyWrapped: 'SYNTH-ENVELOPE' },
+        ]
+        const removed = deleteConnection(h.holder.db, 'conn-3')!
+        expect(JSON.stringify(removed)).not.toContain('SYNTH-ENVELOPE')
+        const action = connectionUndoAction(removed, texts)
+        Object.assign(removed.snapshot, { keyWrapped: 'SYNTH-ENVELOPE' })
+        expect(action.run()).toEqual({ ok: true, text: 'restored' })
+        const restored = storedConnections(h.holder.db).find((conn) => conn.id === 'conn-3')
+        expect(restored).toStrictEqual({ id: 'conn-3', name: 'Sealed', provider: 'mistral', key: '' })
+        expect(JSON.stringify(h.holder.db)).not.toContain('SYNTH-ENVELOPE')
+    })
+
     it('reports the failed text for a malformed store', () => {
         const removed = deleteConnection(h.holder.db, 'conn-2')!
         const action = connectionUndoAction(removed, texts)

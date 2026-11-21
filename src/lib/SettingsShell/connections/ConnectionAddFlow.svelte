@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick } from 'svelte'
+    import { onDestroy, tick } from 'svelte'
     import { language } from '../../../lang'
     import { addConnection } from '../../../ts/connections/connectionEditor'
     import { addPrefillName, addableProviders, type ProviderEntry, type ProviderGroup } from '../../../ts/connections/providerCatalog'
@@ -26,6 +26,10 @@
     let pending = $state(false)
     let error = $state('')
     let nameField = $state<HTMLInputElement>()
+    // Back can close this flow while the key write is in flight; the finished add must not then close
+    // whatever the page shows by that time.
+    let alive = true
+    onDestroy(() => { alive = false })
 
     const offered = $derived(addableProviders(DBState.db))
     const onlyProxy = $derived(offered.every((entry) => entry.provider === 'reverse_proxy'))
@@ -66,7 +70,7 @@
                 return
             }
             key = ''
-            onclose()
+            if (alive) onclose()
         } finally {
             pending = false
         }
