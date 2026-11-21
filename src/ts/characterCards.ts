@@ -190,10 +190,14 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, p
             progress.beforeWrite()
             //Every import write in this file that adds a character, module or preset announces itself first: one that lands before the change effects exist is unsaved work the effects cannot see.
             markBootWrite()
-            await importPreset({
+            const result = await importPreset({
                 name: file.name,
                 data: bytes
             })
+            //A bundle preview the person cancelled imported nothing: settings stay closed and the card ends quietly.
+            if(typeof result === 'object' && result !== null && result.cancelled){
+                return {kind: 'declined'}
+            }
             progress.committed({kind: 'notUndoable', why: 'preset'})
             SettingsMenuIndex.set(1)
             settingsOpen.set(true)
@@ -1259,17 +1263,21 @@ export async function characterURLImport() {
             const importData =Buffer.from(decodeURIComponent(data), 'base64')
             if(await alertConfirm(language.importPresetLinkConfirm)){
                 const busy = beginBusy('import')
+                let cancelled = false
                 try {
                     markBootWrite()
-                    await importPreset({
+                    const result = await importPreset({
                         name: 'imported.risupreset',
                         data: importData
                     })
+                    cancelled = typeof result === 'object' && result !== null && result.cancelled
                 } finally {
                     busy.end()
                 }
-                SettingsMenuIndex.set(1)
-                settingsOpen.set(true)
+                if(!cancelled){
+                    SettingsMenuIndex.set(1)
+                    settingsOpen.set(true)
+                }
             }
         } catch (error) {
             alertError(error)

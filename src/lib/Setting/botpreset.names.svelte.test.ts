@@ -156,14 +156,14 @@ describe('botpreset accessible names', () => {
                 language.comparePreset, language.copy, language.export, language.remove,
             ])
         }
-        expect(toolbar(target).map(controlName)).toEqual([language.add, language.import, language.othersUi.editMode])
+        expect(toolbar(target).map(controlName)).toEqual([language.add, language.import, language.presetBundleSelect, language.othersUi.editMode])
         expect(unnamedControls(target)).toEqual([])
         expect(exposedIcons(target)).toEqual([])
     })
 
     test('regression reproducer: the edit-mode name field is named', () => {
         const target = mountPresets()
-        toolbar(target)[2].click()
+        toolbar(target)[3].click()
         flushSync()
         expect(unnamedControls(target, { fields: true })).toEqual([])
         const fields = Array.from(target.querySelectorAll('input[type="text"]'))
@@ -180,7 +180,7 @@ describe('botpreset state and keyboard', () => {
         flushSync()
         expect(diff.getAttribute('aria-pressed')).toBe('true')
         expect(diff.classList.contains('ring-1')).toBe(true)
-        const edit = toolbar(target)[2]
+        const edit = toolbar(target)[3]
         expect(edit.getAttribute('aria-pressed')).toBe('false')
         edit.click()
         flushSync()
