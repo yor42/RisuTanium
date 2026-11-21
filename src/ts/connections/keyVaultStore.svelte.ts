@@ -75,6 +75,10 @@ const pumps = new Set<Promise<void>>()
 /** Restored keys whose plain this boot holds and still has to wrap once the store is loaded. */
 const stagedWraps: Array<{ envelope: string, plain: string }> = []
 let seqCounter = 0
+/** How long typing must pause before the keep-plain notice may open and take focus. */
+export const KEEP_PLAIN_DEFER_MS = 1500
+let keepPlainTimer: ReturnType<typeof setTimeout> | undefined
+let keepPlainHost: VaultHost | undefined
 let breaker = false
 let bootOpen = false
 /** Starts resolved, so a page that never runs `vaultBoot` never waits. */
@@ -97,6 +101,25 @@ function matches(conn: Connection, expect: Expect): boolean {
     return conn.key === expect.key && wrappedOf(conn) === expect.keyWrapped
 }
 
+function clearKeepPlainTimer(): void {
+    if (keepPlainTimer !== undefined) {
+        clearTimeout(keepPlainTimer)
+        keepPlainTimer = undefined
+        keepPlainHost = undefined
+    }
+}
+
+/** Runs the keep-plain notice once typing has paused; every call restarts the wait, so one timer serves all connections. */
+function armKeepPlain(active: VaultHost): void {
+    clearKeepPlainTimer()
+    keepPlainHost = active
+    keepPlainTimer = setTimeout(() => {
+        keepPlainTimer = undefined
+        keepPlainHost = undefined
+        active.notify.keepPlain()
+    }, KEEP_PLAIN_DEFER_MS)
+}
+
 function pendingFor(conn: Connection): Pending | undefined {
     const entry = pending.get(conn.id)
     return entry !== undefined && matches(conn, entry.expect) ? entry : undefined
@@ -113,6 +136,7 @@ function envelopeNeedsReentry(envelope: string): boolean {
 
 /** Installs the app side once per page; the store acts as uninstalled until then. Bumps, because every reader's answer can change. */
 export function installVaultHost(next: VaultHost): void {
+    clearKeepPlainTimer()
     host = next
     bump()
 }
@@ -286,6 +310,18 @@ function removeWrapped(conn: Connection): void {
  */
 export function writeConnectionKey(conn: Connection, value: string, plainOnly: boolean): Promise<void> {
     const id = conn.id
+    if (value !== '') {
+        // A pending entry whose precondition no longer holds will be dropped at settle, so it never
+        // makes a write redundant.
+        const queued = pending.get(id)
+        const envelope = wrappedOf(conn)
+        const unchanged = queued !== undefined
+            ? queued.plain === value && matches(conn, queued.expect)
+            : conn.key === '' && envelope !== undefined && readable.get(envelope) === value
+        if (unchanged) {
+            return Promise.resolve()
+        }
+    }
     const hadPending = pending.delete(id)
     if (value === '') {
         conn.key = ''
@@ -296,11 +332,14 @@ export function writeConnectionKey(conn: Connection, value: string, plainOnly: b
         return Promise.resolve()
     }
     const active = host
+    if (active !== undefined && keepPlainTimer !== undefined) {
+        armKeepPlain(active)
+    }
     if (plainOnly || active === undefined || active.platform !== 'vault') {
         conn.key = value
         removeWrapped(conn)
         if (active?.platform === 'android-legacy' && !plainOnly) {
-            active.notify.keepPlain()
+            armKeepPlain(active)
         }
         if (hadPending) {
             bump()
@@ -365,6 +404,7 @@ function settle(active: VaultHost, id: string, entry: Pending, outcome: VaultRes
         conn.key = ''
         conn.keyWrapped = outcome.value
         bump()
+        clearKeepPlainTimer()
         active.notify.wrapped()
         active.markBootWrite()
         return
@@ -372,7 +412,7 @@ function settle(active: VaultHost, id: string, entry: Pending, outcome: VaultRes
     conn.key = entry.plain
     removeWrapped(conn)
     bump()
-    active.notify.keepPlain()
+    armKeepPlain(active)
 }
 
 /**
@@ -385,6 +425,11 @@ export function vaultLeaveFlush(): void {
     const active = host
     if (active === undefined) {
         return
+    }
+    if (keepPlainTimer !== undefined && keepPlainHost !== undefined) {
+        const waiting = keepPlainHost
+        clearKeepPlainTimer()
+        waiting.notify.keepPlain()
     }
     let wrote = false
     for (const [id, entry] of pending) {
@@ -730,6 +775,7 @@ async function wrapStagedKeys(active: VaultHost): Promise<void> {
 
 /** Resets every piece of state; tests only. */
 export function resetVaultStoreForTest(): void {
+    clearKeepPlainTimer()
     host = undefined
     pending.clear()
     readable.clear()

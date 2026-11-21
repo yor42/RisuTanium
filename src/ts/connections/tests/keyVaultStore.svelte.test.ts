@@ -13,7 +13,7 @@ import {
     connectionNeedsReentry, setConnectionKey,
 } from '../keyAccess'
 import {
-    beginVaultBoot, installVaultHost, resetVaultStoreForTest, unwrapAllForBoot, vaultKnownPlaintexts,
+    beginVaultBoot, installVaultHost, KEEP_PLAIN_DEFER_MS, resetVaultStoreForTest, unwrapAllForBoot, vaultKnownPlaintexts,
     vaultLeaveFlush, VaultKeyUnavailableError, whenVaultReady, wrapPlainKeysAfterLoad,
     type VaultHost, type VaultPlatform,
 } from '../keyVaultStore.svelte'
@@ -166,11 +166,13 @@ describe('T10 write rule on the vault platform', () => {
     })
 
     it('T11 a failed wrap or a mismatched verify writes the plain key once and notifies', async () => {
+        vi.useFakeTimers()
         install('vault')
         fake.s.wrapCode = 'other'
         await setConnectionKey(db.connections[0], 'SYNTH-KEY-1234')
         expect(db.connections[0]).toMatchObject({ key: 'SYNTH-KEY-1234' })
         expect(db.connections[0].keyWrapped).toBeUndefined()
+        await vi.advanceTimersByTimeAsync(KEEP_PLAIN_DEFER_MS)
         expect(calls.keepPlain).toBe(1)
         fake.s.wrapCode = null
         fake.s.mismatch = true
@@ -560,5 +562,144 @@ describe('redaction feed', () => {
         expect(vaultKnownPlaintexts().sort()).toEqual(['SYNTH-READABLE', 'SYNTH-TYPED-KEY'])
         await releaseHeld()
         await releaseHeld()
+    })
+})
+
+describe('same-value write is a no-op (#495 D1)', () => {
+    it('(a) a readable wrapped connection written with its own plain is not wrapped again', async () => {
+        const envelope = envelopeOf('SYNTH-KEY-1234')
+        useDb([mkConn({ keyWrapped: envelope })])
+        install('vault')
+        await unwrapAllForBoot()
+        const conn = db.connections[0]
+        const before = fake.s.wraps.length
+        await setConnectionKey(conn, 'SYNTH-KEY-1234')
+        await tick()
+        expect(fake.s.wraps.length).toBe(before)
+        expect(conn.keyWrapped).toBe(envelope)
+        expect(conn.key).toBe('')
+        expect(calls.boot).toBe(0)
+        expect(calls.wrapped).toBe(0)
+    })
+
+    it('(b) the same plain written during a pending wrap wraps once and the swap still lands', async () => {
+        install('vault')
+        fake.s.hold = true
+        const conn = db.connections[0]
+        const first = setConnectionKey(conn, 'SYNTH-KEY-1234')
+        const second = setConnectionKey(conn, 'SYNTH-KEY-1234')
+        await tick()
+        await releaseHeld()
+        await releaseHeld()
+        await first
+        await second
+        expect(fake.s.wraps).toEqual(['SYNTH-KEY-1234'])
+        expect(conn.key).toBe('')
+        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-KEY-1234')
+    })
+
+    it('(c) a plain-kept key on vault written with the same plain still wraps', async () => {
+        useDb([mkConn({ key: 'SYNTH-KEY-1234' })])
+        install('vault')
+        const conn = db.connections[0]
+        await setConnectionKey(conn, 'SYNTH-KEY-1234')
+        expect(fake.s.wraps).toEqual(['SYNTH-KEY-1234'])
+        expect(conn.key).toBe('')
+        expect(typeof conn.keyWrapped).toBe('string')
+    })
+
+    it('(d) a different value still wraps again', async () => {
+        const envelope = envelopeOf('SYNTH-KEY-1234')
+        useDb([mkConn({ keyWrapped: envelope })])
+        install('vault')
+        await unwrapAllForBoot()
+        const conn = db.connections[0]
+        await setConnectionKey(conn, 'SYNTH-KEY-5678')
+        expect(fake.s.wraps).toEqual(['SYNTH-KEY-5678'])
+        expect(conn.keyWrapped).not.toBe(envelope)
+        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-KEY-5678')
+    })
+
+    it('guard: a pending entry whose precondition broke does not make a same-value write redundant', async () => {
+        useDb([mkConn({ key: 'SYNTH-OLD-PLAIN' })])
+        install('vault')
+        fake.s.hold = true
+        const conn = db.connections[0]
+        void setConnectionKey(conn, 'SYNTH-TYPED-NEW')
+        await tick()
+        // Boot step 3 swaps the old plain under the pending entry, so that entry can no longer settle.
+        const boot = wrapPlainKeysAfterLoad(() => false)
+        await tick()
+        expect(fake.s.held.length).toBe(2)
+        fake.s.held.splice(1, 1)[0]()
+        await tick()
+        expect(fake.s.held.length).toBe(2)
+        fake.s.held.splice(1, 1)[0]()
+        await tick()
+        await boot
+        expect(conn.key).toBe('')
+        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-OLD-PLAIN')
+        void setConnectionKey(conn, 'SYNTH-TYPED-NEW')
+        await releaseHeld()
+        await tick()
+        await tick()
+        expect(fake.dec(conn.keyWrapped as string)).toBe('SYNTH-TYPED-NEW')
+    })
+})
+
+describe('keep-plain notice waits for typing to pause (#495 D4)', () => {
+    it('(e) legacy host: keepPlain runs once, KEEP_PLAIN_DEFER_MS after the last write', async () => {
+        vi.useFakeTimers()
+        install('android-legacy')
+        const conn = db.connections[0]
+        for (const value of ['S', 'SY', 'SYN']) {
+            await setConnectionKey(conn, value)
+            await vi.advanceTimersByTimeAsync(KEEP_PLAIN_DEFER_MS - 1)
+        }
+        expect(calls.keepPlain).toBe(0)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(calls.keepPlain).toBe(1)
+        await vi.advanceTimersByTimeAsync(KEEP_PLAIN_DEFER_MS * 2)
+        expect(calls.keepPlain).toBe(1)
+        expect(conn.key).toBe('SYN')
+    })
+
+    it('(f) vault host whose wrap fails: the notice is deferred the same way', async () => {
+        vi.useFakeTimers()
+        install('vault')
+        fake.s.wrapCode = 'other'
+        const conn = db.connections[0]
+        await setConnectionKey(conn, 'SYNTH-KEY-1234')
+        expect(conn.key).toBe('SYNTH-KEY-1234')
+        expect(calls.keepPlain).toBe(0)
+        await vi.advanceTimersByTimeAsync(KEEP_PLAIN_DEFER_MS - 1)
+        expect(calls.keepPlain).toBe(0)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(calls.keepPlain).toBe(1)
+    })
+
+    it('(g) a failure then a successful swap within the window never notifies', async () => {
+        vi.useFakeTimers()
+        install('vault')
+        fake.s.wrapCode = 'other'
+        const conn = db.connections[0]
+        await setConnectionKey(conn, 'SYNTH-KEY-1234')
+        fake.s.wrapCode = null
+        await setConnectionKey(conn, 'SYNTH-KEY-5678')
+        expect(typeof conn.keyWrapped).toBe('string')
+        await vi.advanceTimersByTimeAsync(KEEP_PLAIN_DEFER_MS * 2)
+        expect(calls.keepPlain).toBe(0)
+        expect(calls.wrapped).toBe(1)
+    })
+
+    it('(h) a pending notice runs at once on the leave flush and not again when the timer would fire', async () => {
+        vi.useFakeTimers()
+        install('android-legacy')
+        await setConnectionKey(db.connections[0], 'SYNTH-KEY-1234')
+        expect(calls.keepPlain).toBe(0)
+        vaultLeaveFlush()
+        expect(calls.keepPlain).toBe(1)
+        await vi.advanceTimersByTimeAsync(KEEP_PLAIN_DEFER_MS * 2)
+        expect(calls.keepPlain).toBe(1)
     })
 })
