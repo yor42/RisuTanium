@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
 import { BLOCK_TYPE_CHARACTER_WITH_CHAT, FILE_HEADER_V1, frameBlock } from 'src/ts/storage/blockFrame'
-import { decideMainFileRename, fingerprintMainFile, isPreBlocksKey, matchesConvertedFrom, preBlocksKey } from 'src/ts/storage/mainFileFingerprint'
+import { PRE_BLOCKS_PREFIX } from 'src/ts/storage/blockKeys'
+import { fingerprintMainFile, isPreBlocksKey } from 'src/ts/storage/mainFileFingerprint'
 import { assemble, breakDataChecksum, parseBlocks } from './risuSaveBlockFile'
 
 function blockFile(contents: string[]): Uint8Array {
@@ -60,53 +61,12 @@ describe('the conversion fingerprint (invariant M, pure part)', () => {
         expect(print).toMatch(/^c1:/)
         expect(fingerprintMainFile(cut.slice())).toBe(print)
     })
-
-    test('matchesConvertedFrom compares against a recorded value', () => {
-        const file = blockFile(['one'])
-        expect(matchesConvertedFrom(file, fingerprintMainFile(file))).toBe(true)
-        expect(matchesConvertedFrom(blockFile(['two']), fingerprintMainFile(file))).toBe(false)
-    })
 })
 
-describe('the rename decision (invariant M, pure part)', () => {
-    const converted = blockFile(['converted'])
-    const print = fingerprintMainFile(converted)
-
-    test('no main file: nothing to do', () => {
-        expect(decideMainFileRename(null, [], print)).toEqual({ action: 'leave' })
-    })
-
-    test('a main file matching convertedFrom is copied to the first pre-blocks name, then deleted', () => {
-        expect(decideMainFileRename(converted, [], print)).toEqual({ action: 'copy-then-delete', target: preBlocksKey(0) })
-    })
-
-    test('after a completed rename, a new main file written by something else is left alone', () => {
-        const upstreamWrote = blockFile(['written later by upstream'])
-        expect(decideMainFileRename(upstreamWrote, [{ key: preBlocksKey(0), bytes: converted }], print)).toEqual({ action: 'leave' })
-    })
-
-    test('a crash after the copy and before the delete: the next boot deletes the main file', () => {
-        expect(decideMainFileRename(converted, [{ key: preBlocksKey(0), bytes: converted.slice() }], print)).toEqual({ action: 'delete-main' })
-    })
-
-    test('a pre-blocks file with different bytes is never overwritten: the copy takes a numbered variant', () => {
-        const other = blockFile(['older conversion'])
-        expect(decideMainFileRename(converted, [{ key: preBlocksKey(0), bytes: other }], print)).toEqual({ action: 'copy-then-delete', target: preBlocksKey(1) })
-        expect(decideMainFileRename(converted, [{ key: preBlocksKey(0), bytes: other }, { key: preBlocksKey(1), bytes: other }], print))
-            .toEqual({ action: 'copy-then-delete', target: preBlocksKey(2) })
-    })
-
-    test('a head without convertedFrom never touches a main file that is not already a copy', () => {
-        expect(decideMainFileRename(converted, [], null)).toEqual({ action: 'leave' })
-    })
-
-    test('a main file equal to a numbered variant is deleted', () => {
-        expect(decideMainFileRename(converted, [{ key: preBlocksKey(1), bytes: converted }], null)).toEqual({ action: 'delete-main' })
-    })
-
+describe('the pre-blocks copy names', () => {
     test('pre-blocks names are recognised', () => {
-        expect(isPreBlocksKey(preBlocksKey(0))).toBe(true)
-        expect(isPreBlocksKey(preBlocksKey(3))).toBe(true)
+        expect(isPreBlocksKey(`${PRE_BLOCKS_PREFIX}.bin`)).toBe(true)
+        expect(isPreBlocksKey(`${PRE_BLOCKS_PREFIX}-3.bin`)).toBe(true)
         expect(isPreBlocksKey('database/database.bin')).toBe(false)
         expect(isPreBlocksKey('database/database.pre-blocksX.bin')).toBe(false)
     })

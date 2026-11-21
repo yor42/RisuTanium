@@ -14,7 +14,6 @@ import { createNodeHttpStore } from './nodeHttpStore'
 import { createOpfsTransitionalStore } from './opfsTransitionalStore'
 import { createTauriFilesStore } from './tauriFilesStore'
 import { noteSelectedStore } from '../assetLimit'
-import { noteMainFileRead, resetMainFileOutcomeForTests } from '../mainFileOutcome'
 
 /**
  * The one byte store the app's main file, numbered backups, snapshots and
@@ -35,20 +34,18 @@ import { noteMainFileRead, resetMainFileOutcomeForTests } from '../mainFileOutco
  *   is still OPFS-main) and nothing is read or written. A copy that
  *   cannot finish leaves the page on a transitional store over OPFS, with a
  *   notice for the user and the next start trying again; that page must not
- *   write new data into OPFS beyond what it already keeps there, which the
- *   boot archive pass respects through `pageStoreIsIndexedDb`.
+ *   write new data into OPFS beyond what it already keeps there, which
+ *   writers check through `pageStoreIsIndexedDb`.
  *
  * A caller gets the store from `getAppStore`; none builds its own.
  *
- * The save of a profile is the block store, and the application's saves never
- * write `database/database.bin`. The one writer of that key is the copy-back in
- * `opfsCopyBack.ts`, which puts an OPFS main file into IndexedDB when the
- * `migrated` marker exists, whether or not the profile holds a block head. Everything else
- * only reads the main file (the boot of a profile with no head, and the
- * older-copy sources of the manual clean-up), moves it aside or deletes it. A
- * main-file read at boot goes through `readMainFile`, which reports to
- * `mainFileOutcome.ts` synchronously and without any I/O when it returns; the
- * manual clean-up uses the store's own `read`, which does not report.
+ * A profile's saves go through store2 and never write `database/database.bin`.
+ * The one writer of that key is the copy-back in `opfsCopyBack.ts`, which puts
+ * an OPFS main file into IndexedDB when the `migrated` marker exists. Everything
+ * else only reads the main file (the boot import of old data, and the
+ * older-copy sources of the manual clean-up), moves it aside or deletes it.
+ * A main-file read at boot goes through `readMainFile`; the manual clean-up
+ * uses the store's own `read`.
  */
 
 export const MAIN_FILE_KEY = 'database/database.bin'
@@ -242,20 +239,16 @@ export function getAppStore(): Promise<ByteStore> {
  * file is a value.
  */
 export async function readMainFile(): Promise<ReadResult> {
-    const result = await (await getAppStore()).read(MAIN_FILE_KEY)
-    noteMainFileRead()
-    return result
+    return (await getAppStore()).read(MAIN_FILE_KEY)
 }
 
 /**
  * Test seam: makes `store` the page's store (of the given `kind`, which
- * `getAppStoreKind` reports) and forgets the outcome of earlier main-file
- * reads. `null` restores the real selection.
+ * `getAppStoreKind` reports). `null` restores the real selection.
  */
 export function injectAppStore(store: ByteStore | null, kind: AppStoreKind | null = null): void {
     injected = store
     selection = null
-    resetMainFileOutcomeForTests()
     selectedKind = store === null ? null : kind
     noteSelectedStore(selectedKind, store)
     fallbackNotice = null
