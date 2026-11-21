@@ -551,15 +551,47 @@ describe('the Android picker', () => {
     })
 })
 
+describe('the card paints before the first message is parsed', () => {
+    /** A macrotask armed before the export marks the first parse when a real task boundary came before it. */
+    async function firstParse(selections: string[]) {
+        vi.spyOn(performance, 'now').mockImplementation(() => 0)
+        let macrotaskRan = false
+        setTimeout(() => { macrotaskRan = true }, 0)
+        let first: { macrotaskRan: boolean, title: string | undefined, state: string | undefined, count: { done: number, total: number } | undefined } | null = null
+        h.translate.mockImplementation(async (v: string) => {
+            const view = taskHostView()
+            first ??= { macrotaskRan, title: view?.title, state: view?.state, count: view?.count }
+            return v
+        })
+        await run(selections)
+        return first
+    }
+
+    it('CH16: an HTML file export opens the card at 0 / n and reaches a task boundary before the first parse', async () => {
+        expect(await firstParse(['2', '0', '0'])).toEqual({ macrotaskRan: true, title: 'Exporting chat', state: 'running', count: { done: 0, total: MESSAGES } })
+    })
+
+    it('CH17: an HTML embed export opens the card at 0 / n and reaches a task boundary before the first parse', async () => {
+        expect(await firstParse(['3', '0', '0'])).toEqual({ macrotaskRan: true, title: 'Copying chat', state: 'running', count: { done: 0, total: MESSAGES } })
+    })
+})
+
 describe('the card paints its count during a long export', () => {
-    /** Each clock read advances `stepMs`; a macrotask armed before the export marks every parse it has already run before. */
+    /**
+     * Each clock read advances `stepMs`; a macrotask armed during the first parse marks every later parse it has already
+     * run before, so only a yield inside the message loop counts, not the one before it.
+     */
     async function countsSeenByParses(selections: string[], stepMs: number) {
         let clock = 0
         vi.spyOn(performance, 'now').mockImplementation(() => (clock += stepMs))
         let macrotaskRan = false
-        setTimeout(() => { macrotaskRan = true }, 0)
+        let armed = false
         const seen: Array<{ macrotaskRan: boolean, done: number | undefined }> = []
         h.translate.mockImplementation(async (v: string) => {
+            if (!armed) {
+                armed = true
+                setTimeout(() => { macrotaskRan = true }, 0)
+            }
             seen.push({ macrotaskRan, done: taskHostView()?.count?.done })
             return v
         })
@@ -572,7 +604,7 @@ describe('the card paints its count during a long export', () => {
 
         // One parse per message, then the first message of the template.
         expect(seen).toHaveLength(MESSAGES + 1)
-        // Only a macrotask yield lets a timer armed before the export run while messages are still being counted.
+        // Only a macrotask yield in the loop lets a timer armed at the first parse run while messages are still being counted.
         expect(seen.some((entry) => entry.macrotaskRan && entry.done !== undefined && entry.done < MESSAGES)).toBe(true)
     })
 
@@ -583,7 +615,7 @@ describe('the card paints its count during a long export', () => {
         expect(seen.some((entry) => entry.macrotaskRan && entry.done !== undefined && entry.done < MESSAGES)).toBe(true)
     })
 
-    it('CH14 (guard): a fast export does not yield per message and finishes in one turn', async () => {
+    it('CH14 (guard): a fast export does not yield inside the message loop', async () => {
         const seen = await countsSeenByParses(['2', '0', '0'], 0.001)
 
         expect(seen).toHaveLength(MESSAGES + 1)
