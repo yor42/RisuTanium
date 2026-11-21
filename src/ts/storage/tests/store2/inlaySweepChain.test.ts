@@ -7,7 +7,7 @@
  * library: the current manifest names A (and an asset-path inlay S by its hash stem), a retained manifest names R, and
  * O is named by nothing. A mocked backend and store say nothing about a native one.
  *
- * Reproducers RR1 (web) and RR2 (Tauri) are red on the tree before the wiring: nothing deletes store2 inlays there and the
+ * Reproducer RR2 (Tauri) is red on the tree before the wiring: nothing deletes store2 inlays there and the
  * unknown seam `inlayFacts` is ignored, so O's metadata is still stored. G2 and G3 pin what the wiring must not break and
  * the step's log order.
  */
@@ -96,7 +96,6 @@ const BUSY_GC: AutoGcFacts = {
 
 /** The facts of a quiet page that is the sole tab, with an empty resident database. */
 const ACTIVE_INLAYS: InlayPageFacts = {
-    peers: async () => 'alone',
     shouldStop: () => false,
     saveMarks: () => 0,
     writtenThisPage: () => false,
@@ -179,15 +178,15 @@ async function put(store: MemoryByteStore, id: string): Promise<{ meta: string, 
 }
 
 /**
- * A session of `kind` over the seeded tree, then the commit key is replaced by one whose current manifest names A and the
+ * A tauri session over the seeded tree, then the commit key is replaced by one whose current manifest names A and the
  * asset-path S and whose retained manifest names R. A holds, R and S are stored with their bodies, and so is O.
  */
-async function chain(kind: 'indexeddb' | 'tauri'): Promise<Chain> {
+async function chain(): Promise<Chain> {
     const memory = createMemoryBackend()
     await seedTree(memory, SEED_DB as unknown as Database, env)
     const over = flushConfirming(memory)
     const session = await Store2Session.open(createMemoryByteStore(), {
-        kind, backend: kind === 'tauri' ? over.backend : memory, upstreamMainFile: async () => false,
+        kind: 'tauri', backend: over.backend, upstreamMainFile: async () => false,
     })
     expect(session.decision).toMatchObject({ row: 5, mode: 'normal' })
     expect(session.idleReason).toBeNull()
@@ -259,8 +258,8 @@ afterEach(() => {
 })
 
 describe('the inlay sweep as the fourth deleter of the step', () => {
-    test('reproducer RR1 (web): the step deletes the unreferenced inlay with its body; the current and the retained manifest keep theirs', async () => {
-        const page = await chain('indexeddb')
+    test('reproducer RR2 (Tauri): the step deletes the unreferenced inlay with its body, and the current and the retained manifest keep theirs', async () => {
+        const page = await chain()
 
         await runStep(page)
 
@@ -271,22 +270,8 @@ describe('the inlay sweep as the fourth deleter of the step', () => {
         }
     })
 
-    test('reproducer RR2 (Tauri): the same through a Tauri session, whose proof is the commit-key probe and not the tab check', async () => {
-        const page = await chain('tauri')
-        const peers = vi.fn(async () => 'others' as const)
-
-        await runStep(page, { inlayFacts: { ...ACTIVE_INLAYS, peers } })
-
-        expect(await page.store.has(inlayMetaKey(O)!)).toBe(false)
-        expect(page.store.files.has(page.o.body)).toBe(false)
-        for (const key of page.kept) {
-            expect(page.store.files.has(key), key).toBe(true)
-        }
-        expect(peers, 'a Tauri page never asks the tab check').not.toHaveBeenCalled()
-    })
-
     test('guard G2: an inlay a list names by uuid, one a retained manifest names and an asset-path inlay named by a hash stem are kept (passes before and after: nothing deleted them)', async () => {
-        const page = await chain('indexeddb')
+        const page = await chain()
 
         await runStep(page)
 
@@ -296,7 +281,7 @@ describe('the inlay sweep as the fourth deleter of the step', () => {
     })
 
     test('guard G3: the step logs exactly the clean-up line, the asset sweep line and then the inlay sweep line, with counts and no id', async () => {
-        const page = await chain('indexeddb')
+        const page = await chain()
 
         const lines = await runStep(page)
 
@@ -309,7 +294,7 @@ describe('the inlay sweep as the fourth deleter of the step', () => {
     })
 
     test('guard: a thrown inlay pass is logged and swallowed, and the registered promise still settles', async () => {
-        const page = await chain('indexeddb')
+        const page = await chain()
         const error = vi.spyOn(console, 'error').mockImplementation(() => { })
         const failure = new Error('The legacy listing broke.')
         const broken: InlayPageFacts = { ...ACTIVE_INLAYS, residentInlays: async () => { throw failure } }

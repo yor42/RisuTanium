@@ -4,7 +4,7 @@
  * runner. The action exists only in a measurement build: with `MEASURE` false the runner installs nothing and loads nothing.
  *
  * What is a stand-in: `MEASURE` is a mocked module constant (a real normal build folds it at build time; the build output is
- * checked separately by `util/checkReleaseDist.mjs`), the session is a real `Store2Session.open` over a memory backend, and the
+ * checked separately by `util/checkReleaseDist.mjs`), the session is a real `tauri` `Store2Session.open` over a flush-confirming memory backend, and the
  * live resident sources are a double. The module does not exist on the red base (the W5b commit), so a file here fails at
  * import there, which proves nothing by itself; a "reproducer" is red under the mutant named in the hand-back.
  */
@@ -29,6 +29,7 @@ import { resetMaintenanceForTests, startStore2Maintenance, type MaintenanceEnv }
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { installSweepDryRunMeasure, type ResidentSources } from 'src/ts/storage/store2/sweep/dryRunMeasure'
 import { createClock, seedStore, testEnv } from './commitFixtures'
+import { flushConfirming } from './flushConfirmBackend'
 
 const clock = createClock()
 const env = testEnv(clock, 5)
@@ -49,7 +50,8 @@ async function openReadySession() {
     const backend = createMemoryBackend()
     await seedStore(backend, env)
     const store = createMemoryByteStore()
-    const session = await Store2Session.open(store, { kind: 'indexeddb', backend, upstreamMainFile: async () => false })
+    const session = await Store2Session.open(store, { kind: 'tauri', backend: flushConfirming(backend).backend, upstreamMainFile: async () => false })
+    expect(session.idleReason, 'a flush-confirming tauri session is not idle').toBeNull()
     return { session, store, backend }
 }
 
@@ -168,7 +170,7 @@ describe('the orphan measurement action', () => {
 
         const report = await handle.orphans()
 
-        expect(report.status === 'done' ? report.storeKind : 'refused').toBe('indexeddb')
+        expect(report.status === 'done' ? report.storeKind : 'refused').toBe('tauri')
     })
 })
 
@@ -212,7 +214,7 @@ describe('the install point is compiled out when MEASURE is false', () => {
         const key = firstCommitKey({ current: null, staging: null, manifests: [] }, env)
         await backend.casCommit((await backend.readCommit()).token, encodeUnit(UNIT_TYPE.commit, key))
         const store = createMemoryByteStore()
-        const session = await Store2Session.open(store, { kind: 'indexeddb', backend, upstreamMainFile: async () => false })
+        const session = await Store2Session.open(store, { kind: 'tauri', backend: flushConfirming(backend).backend, upstreamMainFile: async () => false })
         vi.spyOn(console, 'log').mockImplementation(() => {})
 
         startStore2Maintenance({ store: async () => store, listBackupTimes: async () => [] }, { session: () => session, startTrigger: neverTrigger })

@@ -532,7 +532,7 @@ export interface DispatchedBoot {
  * raises. The dispatch loads in the caller's own module graph on first use. Backups, the main file and the legacy cold
  * units are all absent. Mocked storage here says nothing about a native backend.
  */
-export async function bootThroughDispatch(backend: Store2Backend, options: { lists?: ListDerivation, env?: KeyEnv, kind?: AppStoreKind, flagged?: 'continue' | 'decline', markerOwnerProbe?: (kind: AppStoreKind) => MarkerOwnerProbe | null, maxRounds?: number } = {}): Promise<DispatchedBoot> {
+export async function bootThroughDispatch(backend: Store2Backend, options: { lists?: ListDerivation, env?: KeyEnv, kind?: AppStoreKind, flagged?: 'continue' | 'decline', markerOwnerProbe?: (kind: AppStoreKind) => MarkerOwnerProbe | null, maxRounds?: number, expectReadOnly?: boolean } = {}): Promise<DispatchedBoot> {
     const { dispatchStore2Boot } = await import('src/ts/storage/store2/bootDispatch')
     const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
     const notices: Store2BootNotice[] = []
@@ -555,12 +555,21 @@ export async function bootThroughDispatch(backend: Store2Backend, options: { lis
         recovery: async () => { },
         peer,
     }
+    const kind = options.kind ?? 'node'
+    // A Node page's dispatch probes the byte store's guarded operations, which the kit's memory byte store does not have.
+    const store = kind === 'node' ? (await import('src/ts/storage/tests/store2/replay/nodeSemanticStore')).createNodeSemanticStore().store : createMemoryByteStore()
     const result = await dispatchStore2Boot({
-        store: createMemoryByteStore(),
+        store,
         upstreamMainFile: async () => false,
         readColdStorageItem: async () => ({ status: 'missing' }),
         listBackupTimes: async () => [],
-    }, { ui, kind: options.kind ?? 'indexeddb', backend: async () => backend, keyEnv: options.env, lists: options.lists ?? fakeLists, markerOwnerProbe: options.markerOwnerProbe, maxRounds: options.maxRounds })
+    }, { ui, kind, backend: async () => backend, keyEnv: options.env, lists: options.lists ?? fakeLists, markerOwnerProbe: options.markerOwnerProbe, maxRounds: options.maxRounds })
+    // A fixture world is a writable page: a read-only boot would silently turn every save assertion into a no-op, so a test
+    // whose subject is a read-only boot says so with `expectReadOnly`.
+    const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+    if (options.expectReadOnly !== true && (result.kind === 'legacy-readonly' || getPageStorageMode().kind === 'read-only')) {
+        throw new Error(`The fixture boot came to a read-only page (${result.kind}).`)
+    }
     return { result, notices, peer, foreignMarkerAsked }
 }
 

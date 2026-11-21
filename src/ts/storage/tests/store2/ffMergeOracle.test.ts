@@ -91,7 +91,7 @@ describe.each(FF_HOSTS)('the oracle (O1, O1b, O3) (%s host)', (mode) => {
         const { memory, page, b, frame } = await manual()
         hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
         const { applyVerified } = await import('src/ts/storage/store2/fastForward/apply')
-        const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv, apply: steps => applyVerified(steps.slice(1)) })
+        const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv, apply: steps => applyVerified(steps.slice(1)) })
         await page.commitEdit((db) => { chars(db)[3].personality = 'peer card' })
         const before = snapshotOf(b)
         const manifest = b.context.encoder.manifestKey
@@ -106,7 +106,7 @@ describe.each(FF_HOSTS)('the oracle (O1, O1b, O3) (%s host)', (mode) => {
         hostHandle.host.state.selected = 3
         let detection: PreviousEncoding | null = null
         const fastForward = createFastForward({
-            backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv,
+            backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv,
             freshEntry: (slot, options) => {
                 detection ??= options.previous
                 if (options.previous !== detection) {
@@ -134,7 +134,7 @@ describe.each(FF_HOSTS)('the oracle (O1, O1b, O3) (%s host)', (mode) => {
         hostHandle.host.state.selected = 3
         let detection: PreviousEncoding | null = null
         const fastForward = createFastForward({
-            backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv,
+            backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv,
             freshEntry: (slot, options) => {
                 detection ??= options.previous
                 return options.previous === detection ? freshEntry(slot, options) : 'unknown'
@@ -163,7 +163,7 @@ describe.each(FF_HOSTS)('the oracle (O1, O1b, O3) (%s host)', (mode) => {
         hostHandle.host.state.selected = 3
         let detection: PreviousEncoding | null = null
         const fastForward = createFastForward({
-            backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv,
+            backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv,
             freshEntry: (slot, options) => {
                 detection ??= options.previous
                 return options.previous === detection ? freshEntry(slot, options) : 'unknown'
@@ -197,7 +197,7 @@ describe.each(FF_HOSTS)('after hooks (O4) (%s host)', (mode) => {
         host.forgetLoaded = () => { throw forgetError }
         state.selected = 2
         setFastForwardHostForTest(host)
-        const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         const edited = await page.commitEdit(db => remove(db, 0))
         const kept = chaIdOf(b.db, 2)
         expect(await fastForward.run(await frame())).toEqual({ kind: 'applied' })

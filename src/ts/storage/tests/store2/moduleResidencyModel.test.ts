@@ -541,7 +541,7 @@ async function sweep(model: Model, label: string): Promise<void> {
     const orphan = newUnitKey(testEnv(createClock(), 9))
     await model.kit.memory.putUnit(orphan, encodeUnit(UNIT_TYPE.inlayList, deriveInlayList([{ id: 'orphan' }])))
     expect(model.kit.memory.snapshot().has(orphan)).toBe(true)
-    const result = await gcPass({ backend: model.kit.memory, kind: 'indexeddb', idleReason: () => null })
+    const result = await gcPass({ backend: model.kit.memory, kind: 'tauri', idleReason: () => null })
     expect(result.status).toBe('done')
     expect(result.status === 'done' ? result.stopped : 'refused', `the sweep ran to its end: ${model.trace.join(' > ')}`).toBeUndefined()
     expect(model.kit.memory.snapshot().has(orphan), 'the sweep removed the planted orphan').toBe(false)

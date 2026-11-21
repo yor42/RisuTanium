@@ -5,8 +5,8 @@
  *
  * What is a stand-in: `MEASURE` is a mocked module constant (a real normal build folds it at build time; the build output is
  * checked separately by `util/checkReleaseDist.mjs`), the page facts (page mode, the save loop's parked state, Web Locks)
- * are a double, the session is a literal over a memory backend or the Node semantic store, and the busy registry is the
- * real one. The module does not exist on the red base (the W6a commit), so a file here fails at import there, which
+ * are a double, the session is a literal over one Node world (the Node semantic store, the backend over it, and the same
+ * store handed to the run) or, for the Tauri guard, over a memory backend, and the busy registry is the real one. The module does not exist on the red base (the W6a commit), so a file here fails at import there, which
  * proves nothing by itself; a "reproducer" is red under the mutant named in the hand-back.
  */
 import { spawnSync } from 'node:child_process'
@@ -129,17 +129,27 @@ afterEach(() => {
     delete (globalThis as Record<string, unknown>)[NAME]
 })
 
-async function indexedDbRig(page: PageDouble = pageOf()) {
-    const backend = createMemoryBackend()
+/** One Node world: the semantic store of the server and the backend over that same store. */
+function nodeWorldOf() {
+    const semantic = createNodeSemanticStore()
+    return { semantic, backend: createNodeBackend(semantic.store) }
+}
+
+/** The injected sleep stands in for the Node floor between batches, so a real pass adds no wait. */
+const noSleep = async (): Promise<void> => { }
+
+async function nodeRig(page: PageDouble = pageOf()) {
+    const { semantic, backend } = nodeWorldOf()
     await seedStore(backend, env)
     const watched = hooked(backend)
     const loaded = vi.fn(async () => page.facts)
     const target = {}
     const handle = installGcMeasure({
-        session: sessionOf('indexeddb', watched.backend),
-        store: async () => createMemoryByteStore(),
+        session: sessionOf('node', watched.backend),
+        store: async () => semantic.store,
         deletionActive: () => false,
         loadPage: loaded,
+        sleep: noSleep,
     }, target)
     return { backend, watched, handle, target, loaded, page }
 }
@@ -150,7 +160,7 @@ describe('the action refuses to start without confirm', () => {
         ['an empty object', {}],
         ['confirm false', { confirm: false }],
     ] as const)('%s: nothing is loaded, registered or deleted', async (_label, options) => {
-        const rig = await indexedDbRig()
+        const rig = await nodeRig()
         const junk = await orphan(rig.backend)
 
         const report = await rig.handle.run(options)
@@ -165,7 +175,7 @@ describe('the action refuses to start without confirm', () => {
 
 describe('the action runs one real pass', () => {
     test('reproducer: with confirm it deletes the garbage, keeps the current tree and logs the report once', async () => {
-        const rig = await indexedDbRig()
+        const rig = await nodeRig()
         const before = await rig.backend.listStore2()
         const junk = [await orphan(rig.backend), await orphan(rig.backend)]
 
@@ -181,7 +191,7 @@ describe('the action runs one real pass', () => {
     })
 
     test('guard: the pointed snapshot unit survives the pass at the action level and an unnamed orphan beside it does not', async () => {
-        const rig = await indexedDbRig()
+        const rig = await nodeRig()
         const stagingId = newStagingId(env)
         const unitKey = newStagedKey(stagingId, 'u', env)
         await rig.backend.putUnit(unitKey, encodeUnit(UNIT_TYPE.preset, { v: 1, snapshot: 'old-data-key-list' }))
@@ -196,7 +206,7 @@ describe('the action runs one real pass', () => {
     })
 
     test('the idle reason is read live at the pass, so an unflushed session refuses and deletes nothing', async () => {
-        const backend = createMemoryBackend()
+        const { semantic, backend } = nodeWorldOf()
         await seedStore(backend, env)
         const junk = await orphan(backend)
         // The reason turns on only after the run began and the mark was read, so only a read at the gate sees it.
@@ -207,10 +217,11 @@ describe('the action runs one real pass', () => {
             }
         } })
         const handle = installGcMeasure({
-            session: sessionOf('indexeddb', watched.backend, idle),
-            store: async () => createMemoryByteStore(),
+            session: sessionOf('node', watched.backend, idle),
+            store: async () => semantic.store,
             deletionActive: () => false,
             loadPage: async () => pageOf().facts,
+            sleep: noSleep,
         }, {})
 
         const report = await handle.run({ confirm: true })
@@ -221,7 +232,7 @@ describe('the action runs one real pass', () => {
 })
 
 describe('each refusal deletes nothing and leaves nothing registered', () => {
-    async function expectRefusal(report: GcMeasureReport, reason: string, rig: Awaited<ReturnType<typeof indexedDbRig>>, junk: string): Promise<void> {
+    async function expectRefusal(report: GcMeasureReport, reason: string, rig: Awaited<ReturnType<typeof nodeRig>>, junk: string): Promise<void> {
         expect(report).toMatchObject({ status: 'refused', reason })
         expect(rig.watched.log.filter(call => call === 'removeBatch')).toEqual([])
         expect(await exists(rig.backend, junk)).toBe(true)
@@ -229,14 +240,14 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     }
 
     test('the page is not a store2 page', async () => {
-        const rig = await indexedDbRig(pageOf({ mode: 'unset' }))
+        const rig = await nodeRig(pageOf({ mode: 'unset' }))
         const junk = await orphan(rig.backend)
         await expectRefusal(await rig.handle.run({ confirm: true }), 'not-store2', rig, junk)
     })
 
     test('the session has no backend', async () => {
         const handle = installGcMeasure({
-            session: sessionOf('indexeddb', null),
+            session: sessionOf('node', null),
             store: async () => createMemoryByteStore(),
             deletionActive: () => false,
             loadPage: async () => pageOf().facts,
@@ -245,7 +256,7 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     })
 
     test('a data action is registered (an export in progress)', async () => {
-        const rig = await indexedDbRig()
+        const rig = await nodeRig()
         const junk = await orphan(rig.backend)
         const exporting = beginBusy('export')
 
@@ -259,17 +270,17 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     })
 
     test('the save loop is parked', async () => {
-        const rig = await indexedDbRig(pageOf({ parked: true }))
+        const rig = await nodeRig(pageOf({ parked: true }))
         const junk = await orphan(rig.backend)
         await expectRefusal(await rig.handle.run({ confirm: true }), 'save-loop-parked', rig, junk)
     })
 
     // New behaviour: a tab stopped on a too-large body holds unsaved edits in memory only, like a parked one.
     test('new behaviour: the save loop has stopped on a body the server refuses as too large', async () => {
-        const rig = await indexedDbRig()
+        const rig = await nodeRig()
         const junk = await orphan(rig.backend)
         const handle = installGcMeasure({
-            session: sessionOf('indexeddb', rig.watched.backend),
+            session: sessionOf('node', rig.watched.backend),
             store: async () => createMemoryByteStore(),
             deletionActive: () => false,
             loadPage: async () => rig.page.facts,
@@ -279,10 +290,10 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     })
 
     test('the old-data deletion step is active', async () => {
-        const rig = await indexedDbRig()
+        const rig = await nodeRig()
         const junk = await orphan(rig.backend)
         const handle = installGcMeasure({
-            session: sessionOf('indexeddb', rig.watched.backend),
+            session: sessionOf('node', rig.watched.backend),
             store: async () => createMemoryByteStore(),
             deletionActive: () => true,
             loadPage: async () => rig.page.facts,
@@ -291,7 +302,7 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     })
 
     test('a browser page without Web Locks cannot rule out another tab', async () => {
-        const rig = await indexedDbRig(pageOf({ supported: false }))
+        const rig = await nodeRig(pageOf({ supported: false }))
         const junk = await orphan(rig.backend)
         const report = await rig.handle.run({ confirm: true })
         await expectRefusal(report, 'no-web-locks', rig, junk)
@@ -299,7 +310,7 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
     })
 
     test('another tab holds the presence lock: the busy entry ends and the pass never starts', async () => {
-        const rig = await indexedDbRig(pageOf({ otherTab: true }))
+        const rig = await nodeRig(pageOf({ otherTab: true }))
         const junk = await orphan(rig.backend)
         const report = await rig.handle.run({ confirm: true })
         await expectRefusal(report, 'other-tab', rig, junk)
@@ -339,7 +350,7 @@ describe('Web Locks availability', () => {
 
 describe('the run is registered as a data action and holds the lock for its length', () => {
     test('reproducer: while the pass is in its removal, an export is refused and a second run is refused; both clear after', async () => {
-        const backend = createMemoryBackend()
+        const { semantic, backend } = nodeWorldOf()
         await seedStore(backend, env)
         await orphan(backend)
         let entered!: () => void
@@ -354,10 +365,11 @@ describe('the run is registered as a data action and holds the lock for its leng
         } })
         const page = pageOf()
         const handle = installGcMeasure({
-            session: sessionOf('indexeddb', watched.backend),
-            store: async () => createMemoryByteStore(),
+            session: sessionOf('node', watched.backend),
+            store: async () => semantic.store,
             deletionActive: () => false,
             loadPage: async () => page.facts,
+            sleep: noSleep,
         }, {})
 
         const first = handle.run({ confirm: true })
@@ -376,7 +388,7 @@ describe('the run is registered as a data action and holds the lock for its leng
     })
 
     test('the registration and the lock are given back when the pass throws', async () => {
-        const backend = createMemoryBackend()
+        const { semantic, backend } = nodeWorldOf()
         await seedStore(backend, env)
         const watched = hooked(backend, { before: call => {
             if (call === 'readCommit') {
@@ -385,10 +397,11 @@ describe('the run is registered as a data action and holds the lock for its leng
         } })
         const page = pageOf()
         const handle = installGcMeasure({
-            session: sessionOf('indexeddb', watched.backend),
-            store: async () => createMemoryByteStore(),
+            session: sessionOf('node', watched.backend),
+            store: async () => semantic.store,
             deletionActive: () => false,
             loadPage: async () => page.facts,
+            sleep: noSleep,
         }, {})
 
         await expect(handle.run({ confirm: true })).rejects.toThrow('Injected.')
@@ -401,7 +414,6 @@ describe('the run is registered as a data action and holds the lock for its leng
 describe('pacing', () => {
     test('the Node floor between removal batches is pinned at 100 ms, and other kinds only yield', () => {
         expect(NODE_BATCH_PACE_MS).toBe(100)
-        expect(batchPaceOf('indexeddb')).toBe(yieldToEventLoop)
         expect(batchPaceOf('tauri')).toBe(yieldToEventLoop)
         expect(batchPaceOf('node')).not.toBe(yieldToEventLoop)
     })
@@ -464,10 +476,11 @@ describe('the install point is compiled out when MEASURE is false', () => {
     const neverTrigger = () => ({ arm: () => {}, stop: () => {} })
 
     async function openReadySession() {
-        const backend = createMemoryBackend()
+        const { semantic, backend } = nodeWorldOf()
         await seedStore(backend, env)
-        const store = createMemoryByteStore()
-        return await Store2Session.open(store, { kind: 'indexeddb', backend, upstreamMainFile: async () => false })
+        const session = await Store2Session.open(semantic.store, { kind: 'node', backend, upstreamMainFile: async () => false })
+        expect(session.decision, 'the Node page boots normally on its seeded profile').toMatchObject({ row: 5, mode: 'normal' })
+        return session
     }
 
     test('reproducer: with MEASURE true a store2 page gets the action', async () => {
@@ -514,7 +527,7 @@ describe('the build output check names the global', () => {
 
     test('reproducer: an output that carries the installed global name fails the check', async () => {
         const target = {}
-        installGcMeasure({ session: sessionOf('indexeddb', null), store: async () => createMemoryByteStore(), deletionActive: () => false }, target)
+        installGcMeasure({ session: sessionOf('node', null), store: async () => createMemoryByteStore(), deletionActive: () => false }, target)
         const installed = Object.keys(target)
         expect(installed).toHaveLength(1)
 

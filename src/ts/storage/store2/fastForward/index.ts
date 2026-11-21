@@ -26,7 +26,7 @@ export type { FastForwardHost } from './prepare'
  * The fast-forward: when a peer committed a delta over the tree this page acknowledged, the page takes the peer's
  * changes into its live database and moves its acknowledged encoding to the peer's tree, instead of parking. It runs
  * only inside a save pass, under the write lock, after the loop's judge proved descent (`context.lineage`); everything
- * it cannot take parks with today's prompts. Indexeddb and node sessions only.
+ * it cannot take parks with today's prompts. Node sessions only.
  */
 
 /** What the loop gives the fast-forward: the page's own state and one effect, never the whole port. */
@@ -213,7 +213,7 @@ export function createFastForward(options: FastForwardOptions): FastForward {
 
     async function run(frame: FastForwardFrame): Promise<FastForwardOutcome> {
         const { encoder, port } = frame
-        if (options.kind !== 'indexeddb' && options.kind !== 'node') {
+        if (options.kind !== 'node') {
             return { kind: 'park', reason: 'kind' }
         }
         const targetKey = frame.key.current?.key

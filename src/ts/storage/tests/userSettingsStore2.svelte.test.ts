@@ -5,7 +5,7 @@
  * page storage mode (store2, read-only, unset, legacy, block). The buttons the store2 page keeps (save, partial save,
  * load, internal load, dataset) stay. The two backstops behind the removed button are in `exportAsDatasetStore2.test.ts`,
  * which runs the real functions. The manual "Clean Up Unused Files" button is shown only on a store2 page whose boot session is
- * a tauri, indexeddb or node one.
+ * a tauri or node one.
  *
  * MOCKED: every module the component calls into (backup, restore, dataset, alerts), the platform and the
  * `stores.svelte` state. `src/lang`, `Button.svelte` and the page storage mode store are real.
@@ -138,7 +138,7 @@ describe('UserSettings "Backup & Files" has no service-worker cache panel', () =
 describe('UserSettings "Backup & Files" Clean Up Unused Files button', () => {
     const bootSession = (kind: Store2Session['kind']): Store2Session => ({ kind }) as Store2Session
 
-    test.each(['tauri', 'indexeddb', 'node'] as const)('regression reproducer (AS9): a store2 page with a %s boot session shows the button', (kind) => {
+    test.each(['tauri', 'node'] as const)('regression reproducer (AS9): a store2 page with a %s boot session shows the button', (kind) => {
         setPageStorageMode({ kind: 'store2' })
         setStore2BootSession(bootSession(kind))
 

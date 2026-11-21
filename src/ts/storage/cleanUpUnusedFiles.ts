@@ -17,7 +17,7 @@ export function cleanUpOfferedFor(mode: PageStorageMode): boolean {
         return false
     }
     const kind = getStore2BootSession()?.kind
-    return kind === 'tauri' || kind === 'indexeddb' || kind === 'node'
+    return kind === 'tauri' || kind === 'node'
 }
 
 /** The message for an outcome, or null when the person already answered it (a No needs no further notice). */

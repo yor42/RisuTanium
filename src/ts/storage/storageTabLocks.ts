@@ -54,8 +54,7 @@
  * it, other tabs cannot see this document, and only the void claim and the
  * closed write lock protect them. A save that already holds the write lock, or
  * is queued for it ahead of this request, still runs; store2 commits are
- * compare-and-write and atomic in IndexedDB, so only a legacy or block-mode
- * page is exposed.
+ * compare-and-write, so only a legacy or block-mode page is exposed.
  */
 
 import { markAppInitiatedReload } from "../reloadGuard"

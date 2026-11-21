@@ -8,7 +8,7 @@
  * (`keys`, `getItem`, `setItem`, `removeItem`, `clear`) over a map, and every write to it is counted.
  *
  * Inlays are written through the real `writeAppInlay` into a memory byte store, and the closure is the seeded tree of a
- * real `indexeddb` session (an inlay list with no ids). A mocked store says nothing about a native one.
+ * real `tauri` session (an inlay list with no ids). A mocked store says nothing about a native one.
  *
  * RR3 is a reproducer: before the wiring nothing deletes store2 inlays, so O's metadata is still stored. T23 is a guard
  * (new rule) killed by the mutant that wires the legacy listing as empty.
@@ -80,6 +80,7 @@ import { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
+import { flushConfirming } from './flushConfirmBackend'
 
 const COMPLETED: OldDataDeletionResult = { status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }
 const O = '0a1b2c3d-1111-4222-8333-000000000003'
@@ -132,14 +133,17 @@ afterEach(() => {
     resetMaintenanceForTests()
 })
 
-async function openIndexedDbSession(): Promise<Store2Session> {
+/** A `tauri` session over the seeded tree; the backend confirms its flushes, so the session is not idle. */
+async function openTauriSession(): Promise<Store2Session> {
     const backend = createMemoryBackend()
     const db = {
         formatversion: 5, botPresetsId: 0, botPresets: [{ name: 'test-preset' }], modules: [], loadouts: [], plugins: [],
         pluginCustomStorage: {}, mainPrompt: 'chain', characters: [],
     }
     await seedTree(backend, db as unknown as Database, testEnv(createClock(), 3))
-    return Store2Session.open(createMemoryByteStore(), { kind: 'indexeddb', backend, upstreamMainFile: async () => false })
+    const session = await Store2Session.open(createMemoryByteStore(), { kind: 'tauri', backend: flushConfirming(backend).backend, upstreamMainFile: async () => false })
+    expect(session.idleReason, 'a flush-confirming tauri session is not idle').toBeNull()
+    return session
 }
 
 /** A page store holding O, written by the real writer and then forgotten by the page's written set. */
@@ -155,7 +159,7 @@ async function storeWithO(keepWritten = false): Promise<{ store: MemoryByteStore
 
 /** Runs the step once with the live facts and returns the inlay sweep's log lines and whether the step logged an error. */
 async function runStep(store: MemoryByteStore): Promise<{ lines: string[], errors: unknown[][] }> {
-    const session = await openIndexedDbSession()
+    const session = await openTauriSession()
     const info = vi.spyOn(console, 'info').mockImplementation(() => { })
     const error = vi.spyOn(console, 'error').mockImplementation(() => { })
     info.mockClear()
@@ -271,16 +275,13 @@ describe('the live facts of the inlay sweep', () => {
         expect(await store.has(inlayMetaKey(O)!)).toBe(true)
     })
 
-    test('guard: a page with another tab open refuses before it lists anything', async () => {
+    test('guard: a tauri page never asks for the sole-tab proof: other tabs open do not stop its pass', async () => {
         const { store, body } = await storeWithO()
         page.holders = 2
-        store.lists.length = 0
 
         const { lines } = await runStep(store)
 
-        expect(lines).toEqual(['store2 inlay sweep: status=refused reason=other-tab'])
-        expect(store.lists.filter(prefix => prefix === 'inlays/')).toEqual([])
-        expect(store.files.has(body)).toBe(true)
-        expect(legacy.keys).not.toHaveBeenCalled()
+        expect(lines).toEqual(['store2 inlay sweep: status=done candidates=1 deleted=1 bodies=1 failed=0 kept-live=0 kept-legacy=0 batches=1'])
+        expect(store.files.has(body)).toBe(false)
     })
 })

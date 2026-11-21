@@ -331,7 +331,7 @@ describe('Node store errors and refused names (U6)', () => {
         expect(facts.inlays.skipped).toContainEqual({ label: INLAY_A, reason: 'tooLarge', limit: 32 })
         expect(store.files.has(`assets/${ABSENT}`)).toBe(false)
 
-        const dot = copiedOf((await run(file, { planOptions: { rule: { kind: 'indexeddb', platform: 'posix' } } })).end)
+        const dot = copiedOf((await run(file, { planOptions: { rule: { kind: 'tauri', platform: 'posix' } } })).end)
         expect(dot.facts.skippedAssets).toContainEqual({ name: IDB_DOT, reason: 'invalidName' })
     })
 })

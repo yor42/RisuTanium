@@ -5,7 +5,7 @@
  * `oldDataDeleteReplay.test.ts`.
  *
  * What is a stand-in: the page store is a memory byte store whose `deleteMany` records its calls and can fail a key the
- * way the three stores do (IndexedDB and Tauri go on after a failed key and throw at the end, Node stops at the first
+ * way the two stores do (Tauri goes on after a failed key and throws at the end, Node stops at the first
  * failed request); the protocol backend is the memory backend. Neither says anything about a real store.
  *
  * Labels. The engine does not exist on the red base (the W5a commit), so a test file here fails at import there, which
@@ -50,7 +50,7 @@ interface StoreFaults {
     failKeys: Set<string>
     /** Keys the store refuses before any I/O. */
     invalidKeys: Set<string>
-    /** `continue`: IndexedDB and Tauri, every key is tried and the call throws at the end. `stop`: Node, the call stops at the first failed key. */
+    /** `continue`: Tauri, every key is tried and the call throws at the end. `stop`: Node, the call stops at the first failed key. */
     mode: 'continue' | 'stop'
     before: ((call: number, keys: string[]) => Promise<void> | void) | null
     after: ((call: number, keys: string[]) => Promise<void> | void) | null
@@ -222,29 +222,18 @@ describe('a snapshot is deleted in order and the pointer is dropped', () => {
         expect((await parsedCommit(world.backend)).snapshot).toBeUndefined()
     })
 
-    test('reproducer: a long list goes in batches of 20 on Node and Tauri, each batch inside one phase, and the head is alone in the last call', async () => {
+    test.each(['node', 'tauri'] as const)('reproducer: a long list goes in batches of 20 on a %s page, each batch inside one phase, and the head is alone in the last call', async kind => {
+        const paged = await newWorld(kind)
         const blocks = manyBlocks(45)
-        putFiles(world, [...blocks, HEAD])
-        await plant(world, bodyOf('fork-format-only', [HEAD, ...blocks], { main: true, backups: [] }))
+        putFiles(paged, [...blocks, HEAD])
+        await plant(paged, bodyOf('fork-format-only', [HEAD, ...blocks], { main: true, backups: [] }))
 
-        const result = await run(world)
+        const result = await run(paged)
 
         expect(result).toMatchObject({ status: 'completed', deleted: 46 })
-        expect(world.calls.map(call => call.length)).toEqual([20, 20, 5, 1])
-        expect(world.calls[3]).toEqual([HEAD])
-        expect(world.store.files.size).toBe(0)
-    })
-
-    test('reproducer: an IndexedDB page deletes in batches of 100', async () => {
-        const indexed = await newWorld('indexeddb')
-        const blocks = manyBlocks(150)
-        putFiles(indexed, [...blocks, HEAD])
-        await plant(indexed, bodyOf('fork-format-only', [HEAD, ...blocks], { main: true, backups: [] }))
-
-        const result = await run(indexed)
-
-        expect(result).toMatchObject({ status: 'completed', deleted: 151 })
-        expect(indexed.calls.map(call => call.length)).toEqual([100, 50, 1])
+        expect(paged.calls.map(call => call.length)).toEqual([20, 20, 5, 1])
+        expect(paged.calls[3]).toEqual([HEAD])
+        expect(paged.store.files.size).toBe(0)
     })
 
     test('reproducer: a peer\'s ordinary commit between two batches does not stop the run, and the drop keeps what the peer wrote', async () => {
@@ -568,7 +557,7 @@ describe('the upstream files are observed again before the cold units go', () =>
 
 describe('a failed phase ends the run before the next phase', () => {
     test.each([
-        ['IndexedDB and Tauri (every key is tried, the call throws at the end)', 'continue' as const],
+        ['Tauri (every key is tried, the call throws at the end)', 'continue' as const],
         ['Node (the call stops at the failed key)', 'stop' as const],
     ])('reproducer: %s: one cold unit fails inside a batch and no blocks key is deleted in that run, the pointer is kept', async (_name, mode) => {
         putFiles(world, [COLD_A, COLD_B, PRE, BLOCK_1, BLOCK_2, HEAD])

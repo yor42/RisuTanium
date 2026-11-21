@@ -25,6 +25,7 @@ import { Store2Session } from 'src/ts/storage/store2/session'
 import { measureAssetOrphans, type AssetOrphanEnv } from 'src/ts/storage/store2/sweep/orphanMeasure'
 import { startStore2, testEnv, type Store2Kit } from '../store2SaveKit'
 import { buildSmall, type Obj } from './codecFixtures'
+import { flushConfirming } from './flushConfirmBackend'
 
 const MODULE_ID = 'mod-with-assets'
 
@@ -102,9 +103,10 @@ async function chain() {
 }
 
 async function measure(kit: Store2Kit, store: ReturnType<typeof createMemoryByteStore>, over: Partial<AssetOrphanEnv> = {}) {
-    const session = await Store2Session.open(store, { kind: 'indexeddb', backend: kit.memory, upstreamMainFile: async () => false })
+    const session = await Store2Session.open(store, { kind: 'tauri', backend: flushConfirming(kit.memory).backend, upstreamMainFile: async () => false })
+    expect(session.idleReason, 'a flush-confirming tauri session is not idle').toBeNull()
     const before = { files: new Map(store.files), backend: new Map(kit.memory.snapshot()) }
-    const report = await measureAssetOrphans({ session, store, residentRefs: () => [], writtenThisPage: () => [], storeKind: 'indexeddb', ...over })
+    const report = await measureAssetOrphans({ session, store, residentRefs: () => [], writtenThisPage: () => [], storeKind: 'tauri', ...over })
     return { report, before }
 }
 

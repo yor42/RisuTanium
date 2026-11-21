@@ -101,7 +101,6 @@ const MIB = 1024 * 1024
 let appStore: MemoryByteStore
 let flags: Map<string, string>
 let env: InlayCopyEnvironment
-let estimate: { quota?: number, usage?: number } | undefined
 
 function legacyImage(text: string, extra: Record<string, unknown> = {}): InlayAsset {
     return { name: `${text}.png`, ext: 'png', type: 'image', width: 2, height: 2, data: new Blob([text], { type: 'image/png' }), ...extra } as InlayAsset
@@ -123,10 +122,8 @@ beforeEach(() => {
     appStore = createMemoryByteStore()
     injectAppStore(appStore)
     flags = new Map()
-    estimate = undefined
     env = {
         flags: { getItem: (key) => flags.get(key) ?? null, setItem: (key, value) => { flags.set(key, value) } },
-        estimate: async () => estimate,
         withTabLock: async (work) => { await work(); return true },
     }
 })
@@ -395,8 +392,8 @@ describe('residue and settled starts', () => {
         }
     })
 
-    describe('on the browser IndexedDB store, where the limit is 1 GiB', () => {
-        // A string whose UTF-8 upper bound (3 bytes a character) is just above the 200 MiB a whole value has on that store.
+    describe('on a store that keeps Blobs, where the limit is 1 GiB', () => {
+        // A length whose UTF-8 upper bound (3 bytes a character) is above 200 MiB.
         const WHOLE_STRING_LENGTH = 70_000_000
 
         /** A Blob that reports `size` bytes and holds none, so no test allocates 200 MiB. */
@@ -412,19 +409,7 @@ describe('residue and settled starts', () => {
 
         beforeEach(() => {
             appStore = createMemoryByteStore({ blobs: true })
-            injectAppStore(appStore, 'indexeddb')
-        })
-
-        test('guard: a legacy string between 200 MiB and 1 GiB stays residue, never encoded whole, and is not lost', async () => {
-            h.legacy.set('text', legacyImage('t', { data: 'x'.repeat(WHOLE_STRING_LENGTH) }))
-            h.legacy.set('small', legacyImage('s'))
-
-            await expect(runInlayCopy(env)).resolves.toBe('done')
-
-            expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual(['text'])
-            expect(await readAppInlay('text')).toBeNull()
-            expect(await readAppInlay('small')).not.toBeNull()
-            expect(await getInlayAsset('text')).not.toBeNull()
+            injectAppStore(appStore, 'tauri')
         })
 
         test('reproducer: a legacy Blob of that size is copied by its Blob, not held back', async () => {
@@ -499,31 +484,6 @@ describe('storage pressure and page state', () => {
         await appStore.write('database/other.bin', new Uint8Array([1]), 'unconditional')
         expect(await snapshot('a')).not.toBeNull()
         expect(await snapshot('b')).not.toBeNull()
-    })
-
-    test('too little free space on the web ends the start before anything is written', async () => {
-        injectAppStore(appStore, 'indexeddb')
-        h.legacy.set('a', legacyImage('a'))
-        estimate = { quota: 1000 * MIB, usage: 990 * MIB }
-        await expect(runInlayCopy(env)).resolves.toBe('stopped')
-        expect(appStore.writes).toEqual([])
-        expect(flags.has('inlayCopyDone')).toBe(false)
-    })
-
-    test('enough free space on the web copies', async () => {
-        injectAppStore(appStore, 'indexeddb')
-        h.legacy.set('a', legacyImage('a'))
-        estimate = { quota: 1000 * MIB, usage: 100 * MIB }
-        await expect(runInlayCopy(env)).resolves.toBe('done')
-        expect(await readAppInlay('a')).not.toBeNull()
-    })
-
-    test('the storage estimate is not asked on a page whose store is not the browser database', async () => {
-        injectAppStore(appStore, 'node')
-        h.legacy.set('a', legacyImage('a'))
-        const asked = vi.fn(async () => ({ quota: 1, usage: 1 }))
-        await expect(runInlayCopy({ ...env, estimate: asked })).resolves.toBe('done')
-        expect(asked).not.toHaveBeenCalled()
     })
 
     test('reproducer: a page the boot made read-only runs no copy and writes nothing', async () => {
@@ -667,7 +627,7 @@ describe('the cleanup of the old store', () => {
 
         beforeEach(() => {
             blobStore = createMemoryByteStore({ blobs: true })
-            injectAppStore(blobStore, 'indexeddb')
+            injectAppStore(blobStore, 'tauri')
         })
 
         test('reproducer: an entry whose stored Blob has the right size but cannot be read stays, is recorded, and keeps rendering', async () => {

@@ -191,7 +191,7 @@ async function restore(bytes: Uint8Array): Promise<void> {
 
 describe('the .bin restore on a read-only page', () => {
     test('is refused with the read-only notice before it takes a lock or writes an asset, a unit, the restored profile or the page', async () => {
-        injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'indexeddb')
+        injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
         setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
 
         await restore(backupBytes())
@@ -204,7 +204,7 @@ describe('the .bin restore on a read-only page', () => {
     })
 
     test('guard: the same restore on any other page goes on to write the asset', async () => {
-        useStore2RestorePage(createForageBackedStore(forageStorage as unknown as ForageLike), 'indexeddb')
+        useStore2RestorePage(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
 
         await restore(backupBytes())
 

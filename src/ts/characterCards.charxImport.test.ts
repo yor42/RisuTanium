@@ -235,8 +235,8 @@ import { language } from 'src/lang'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 
-/** The asset limit follows the store the page selected: a Node store without recorded pieces takes 100 MiB, the browser store 1 GiB. */
-function selectStoreKind(kind: 'node' | 'indexeddb'): void {
+/** The asset limit follows the store the page selected: a Node store without recorded pieces takes 100 MiB, the Tauri store 1 GiB. */
+function selectStoreKind(kind: 'node' | 'tauri'): void {
     noteSelectedStore(kind, createMemoryByteStore())
 }
 
@@ -424,7 +424,7 @@ function reset() {
     h.latePushThrow = false
     h.maxEntryBytes = 0
     h.node = false
-    selectStoreKind('indexeddb')
+    selectStoreKind('tauri')
     vi.mocked(changeChar).mockClear()
     vi.mocked(checkCharOrder).mockClear()
     Object.assign(charxLimits, defaultLimits)

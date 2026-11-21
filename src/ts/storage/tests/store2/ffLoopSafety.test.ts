@@ -136,7 +136,7 @@ describe('deferral', () => {
         try {
             const { memory, page } = await ffWorld()
             const b = await bootB(memory)
-            const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+            const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
             await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
             const port = (): FastForwardPort => ({ getDatabase: () => b.db, now: () => Date.now() })
             const frame = async (): Promise<FastForwardFrame> => ({
@@ -223,7 +223,7 @@ describe('gates', () => {
         const { memory, page } = await ffWorld()
         const b = await bootB(memory)
         await page.commitEdit((db) => { db.temperature = 31 })
-        const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         const frame = await frameOver(b, memory, { encoder: Object.create(b.context.encoder, { pendingKey: { value: 'pending-attempt' } }) })
         expect(await fastForward.run(frame)).toEqual({ kind: 'park', reason: 'pending' })
     })
@@ -232,7 +232,7 @@ describe('gates', () => {
         const { memory, page } = await ffWorld()
         const b = await bootB(memory)
         await page.commitEdit((db) => { db.temperature = 31 })
-        const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         const frame = await frameOver(b, memory, { baseKey: 'another-manifest' })
         expect(await fastForward.run(frame)).toEqual({ kind: 'park', reason: 'base-moved' })
         expect(b.db.temperature).not.toBe(31)
@@ -255,7 +255,7 @@ describe('gates', () => {
                 return memory.readCommit()
             },
         }
-        const fastForward = createFastForward({ backend, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         expect(await fastForward.run(await frameOver(b, memory))).toEqual({ kind: 'applied' })
     })
 
@@ -265,7 +265,7 @@ describe('gates', () => {
         await page.commitEdit((db) => { Reflect.set(db, 'selectedPersona', 1) ; Reflect.set(db, 'personas', [{ name: 'A' }, { name: 'B' }]) })
         let unitReads = 0
         const backend: Store2Backend = { ...memory, readUnits: async (keys) => { unitReads += 1; return memory.readUnits(keys) }, readCommit: () => memory.readCommit() }
-        const fastForward = createFastForward({ backend, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         hostHandle.host.state.sending = true
         const frame = await frameOver(b, memory)
         expect((await fastForward.run(frame)).kind).toBe('deferred')
@@ -278,7 +278,7 @@ describe('gates', () => {
         const { memory, page } = await ffWorld()
         const b = await bootB(memory)
         await page.commitEdit((db) => { Reflect.set(db, 'selectedPersona', 1) ; Reflect.set(db, 'personas', [{ name: 'A' }, { name: 'B' }]) })
-        const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         let owners: ReadonlySet<string> = new Set(['someone'])
         const outcome = await fastForward.run(await frameOver(b, memory, {}, () => owners))
         expect(outcome.kind).toBe('deferred')
@@ -292,7 +292,7 @@ describe('gates', () => {
         owners = new Set()
         await outcome.settled
     })
-    test('G6 a page that is not indexeddb or node never fast-forwards', async () => {
+    test('G6 a page that is not a node page never fast-forwards', async () => {
         const fastForward = createFastForward({ backend: (await ffWorld()).memory, kind: 'tauri', lists: fakeLists, env: defaultKeyEnv })
         const outcome = await fastForward.run({} as never)
         expect(outcome).toEqual({ kind: 'park', reason: 'kind' })
@@ -300,35 +300,9 @@ describe('gates', () => {
 })
 
 describe('guard B and the ff-revert park', () => {
-    test('G10 a plan that writes back a taken value parks once with Save mine, and Save mine commits without a second question', async () => {
-        const { memory, page } = await ffWorld()
-        const b = await bootB(memory)
-        const loop = runLoopOver(b.context, b.db)
-        const original = b.db.temperature
-        await page.commitEdit((db) => { db.temperature = 123 })
-        signal(loop)
-        await caughtUp(b, memory)
-        expect(b.db.temperature).toBe(123)
-        b.peer.answer = 'save-mine'
-        b.db.temperature = original
-        loop.mark(chaIdOf(b.db, 0))
-        await until(() => b.peer.asked.length >= 1, 'the ff-revert question', 4000)
-        expect(b.peer.asked[0]).toMatchObject({ reason: 'ff-revert', unsaved: true })
-        expect(b.peer.asked[0].offers).toEqual(['reload', 'save-mine'])
-        await until(() => loop.state.saved >= 1, 'the Save mine commit', 4000)
-        expect(b.peer.asked.length).toBe(1)
-        await page.commitEdit((db) => { chars(db)[2].personality = 'a later peer edit' })
-        signal(loop)
-        await caughtUp(b, memory)
-        expect(b.peer.asked.length).toBe(1)
-        expect(loop.crashed).toEqual([])
-    })
-
     test('G11 a Node page offers Reload and Export this tab first on an ff-revert park', async () => {
         const { memory, page } = await ffWorld()
         const b = await bootB(memory)
-        // The dispatch boots a memory store as an indexeddb page; the prompt reads the session kind, so it is set to Node here.
-        b.context.session = { kind: 'node', committer: b.context.session.committer }
         const loop = runLoopOver(b.context, b.db)
         const original = b.db.temperature
         await page.commitEdit((db) => { db.temperature = 123 })

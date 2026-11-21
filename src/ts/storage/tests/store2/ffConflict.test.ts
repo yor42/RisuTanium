@@ -129,7 +129,7 @@ describe('one dialog for every record both sides changed (P1, P2, P7)', () => {
         await takenBy(b, w.memory)
     })
 
-    test('P8 conflicts together with an uncovered park (characterOrder changed on both sides): the park wins, with today\'s question and Save mine, and no dialog', async () => {
+    test('P8 conflicts together with an uncovered park (characterOrder changed on both sides): the park wins, with today\'s question and the Node offers, and no dialog', async () => {
         const w = await mergeWorld()
         const { b } = w
         const held = resolver(w, () => undefined)
@@ -144,7 +144,8 @@ describe('one dialog for every record both sides changed (P1, P2, P7)', () => {
         })
         expect(outcome).toEqual({ kind: 'park', reason: 'character-order' })
         await until(() => b.peer.asked.length === 1, 'the old question', 8000)
-        expect(b.peer.asked[0].offers).toContain('save-mine')
+        expect(b.peer.asked[0]).toMatchObject({ saveMineUnavailable: 'node' })
+        expect(b.peer.asked[0].offers).toEqual(['reload', 'export-first'])
         expect(held.calls).toEqual([])
     })
 
