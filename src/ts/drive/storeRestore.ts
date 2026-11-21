@@ -56,12 +56,16 @@ const SAVE_FIRST_REQUESTS = 2
  * `requestSaveNow` would mark the tab dirty and raise the peer prompt, and a
  * parked loop cannot commit anyway. A stopped loop (a body the server refuses as too large) cannot commit either and
  * would only run out the bound, so it is left alone too.
+ * `quiet` only leaves out the wait dialog, for a caller that shows its own progress; the save requests and the bound are
+ * the same.
  */
-export async function saveFirst(boundMs: number): Promise<void> {
+export async function saveFirst(boundMs: number, options?: { quiet?: true }): Promise<void> {
     if (isSaveLoopParked() || isSaveLoopStopped() || isSaveClean()) {
         return
     }
-    alertWait(language.store2RestoreSaving)
+    if (options?.quiet !== true) {
+        alertWait(language.store2RestoreSaving)
+    }
     const deadline = Date.now() + boundMs
     for (let request = 0; request < SAVE_FIRST_REQUESTS; request++) {
         const remaining = deadline - Date.now()

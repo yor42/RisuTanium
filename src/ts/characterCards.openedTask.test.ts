@@ -188,7 +188,7 @@ describe('opened sources on the card', () => {
         let results = 0
         let ended = false
         void done.then(() => { ended = true })
-        for (let i = 0; i < 400 && !ended; i++) {
+        for (const deadline = performance.now() + 10_000; !ended && performance.now() < deadline;) {
             if (taskResultShowing()) {
                 results++
                 answerTask({ kind: 'ok' })

@@ -421,7 +421,7 @@ describe('the Characters picker', () => {
         const done = importCharacter(report)
         let slots: Awaited<typeof done> = []
         void done.then((added) => { slots = added })
-        for (let i = 0; i < 400 && slots.length === 0; i++) {
+        for (const deadline = performance.now() + 10_000; slots.length === 0 && performance.now() < deadline;) {
             ends[0]?.end()
             if (!pressed && taskResultShowing()) answerTask({ kind: 'ok' })
             await new Promise((resolve) => setTimeout(resolve, 0))

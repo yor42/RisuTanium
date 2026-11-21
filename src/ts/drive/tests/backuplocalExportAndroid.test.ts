@@ -363,6 +363,7 @@ import { refuseBackupLoadWhileBusy } from 'src/ts/drive/backupWorkGuard'
 import { save } from '@tauri-apps/plugin-dialog'
 import { alertClear, alertWait } from 'src/ts/alert'
 import { alertStore } from 'src/ts/stores.svelte'
+import { resetTaskHostForTests, taskBackPress, taskHostView, taskShown } from 'src/ts/alertTask.svelte'
 import { get } from 'svelte/store'
 import type { ImportPhaseRingHandle } from 'src/ts/drive/importPhaseRing'
 import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
@@ -454,6 +455,7 @@ function ring(): ImportPhaseRingHandle | undefined {
 let dbWriteLockSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = true
     osBox.os = 'android'
     backupSink.writes.length = 0
@@ -1089,7 +1091,7 @@ describe('a .bin export waiting on the save dialog', () => {
 
     // Regression reproducer: a dismissed save dialog (a Cancel, or an app relaunch that cancels the picker) is the
     // person's decline, as it is for a `.rtb`: the export's own wait comes off the screen and no error is reported.
-    test.each(entries)('$name: a dismissed save dialog clears the export\'s wait and reports no error', async ({ run }) => {
+    test.each(entries)('$name: a dismissed save dialog leaves no export wait or card and reports no error', async ({ name, run }) => {
         vi.mocked(alertWait).mockImplementation((msg: string, onCancel?: () => void) => {
             const posted = { type: 'wait' as const, msg, ...(onCancel ? { onCancel } : {}) }
             alertStore.set(posted as never)
@@ -1097,11 +1099,18 @@ describe('a .bin export waiting on the save dialog', () => {
         })
         vi.mocked(alertClear).mockImplementation(() => { alertStore.set({ type: 'none', msg: '' } as never) })
         alertErrorMock.mockClear()
+        // The two routes with a task card show no wait; the card-less peer route keeps its wait up to the dismissal.
+        const onCard = name !== 'exportThisTabBackup'
         try {
             const dialog = holdSaveDialog()
             const exporting = run()
             await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
-            expect(get(alertStore)).toMatchObject({ type: 'wait' })
+            if (onCard) {
+                expect(taskShown()).toBe(false)
+                expect(get(alertStore)).toMatchObject({ type: 'none' })
+            } else {
+                expect(get(alertStore)).toMatchObject({ type: 'wait' })
+            }
 
             dialog.deliver(null)
             const outcome = await exporting
@@ -1109,6 +1118,8 @@ describe('a .bin export waiting on the save dialog', () => {
             expect(outcome).toMatchObject({ status: 'declined', cause: 'save-dialog-cancelled' })
             expect(alertErrorMock).not.toHaveBeenCalled()
             expect(get(alertStore)).toMatchObject({ type: 'none' })
+            // A dismissed dialog never brings the card back.
+            expect(taskShown()).toBe(false)
         } finally {
             vi.mocked(alertWait).mockReset()
             vi.mocked(alertClear).mockReset()
@@ -1145,9 +1156,9 @@ describe('a .bin export waiting on the save dialog', () => {
         expect((await exporting).status).toBe('saved')
     })
 
-    // Compatibility guard (G16 a): the export's own wait stays on screen at the dialog, with no cancel callback, and
-    // nothing replaced or cleared it. Pins what the user can reach, so a later change of that is noticed.
-    test('the alert store still holds the export\'s own wait, without a cancel, while the dialog is pending', async () => {
+    // No card and no export wait at the dialog (the card steps aside for a native dialog): nothing covers the page, so the
+    // page stays usable if the picker is lost, and Back is not swallowed by a task. The card is back once a path is chosen.
+    test('no task card and no export wait stand over the page while the dialog is pending, and the card returns with a path', async () => {
         vi.mocked(alertWait).mockImplementation((msg: string, onCancel?: () => void) => {
             const posted = { type: 'wait' as const, msg, ...(onCancel ? { onCancel } : {}) }
             alertStore.set(posted as never)
@@ -1159,15 +1170,14 @@ describe('a .bin export waiting on the save dialog', () => {
             const exporting = SaveLocalBackup()
             await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
 
-            const calls = vi.mocked(alertWait).mock.calls
-            const last = vi.mocked(alertWait).mock.results.at(-1)?.value
-            expect(calls.at(-1)).toHaveLength(1)
-            expect(get(alertStore)).toBe(last)
-            expect(get(alertStore)).not.toHaveProperty('onCancel')
-            expect(alertClear).not.toHaveBeenCalled()
+            expect(taskShown()).toBe(false)
+            expect(taskBackPress()).toBe(false)
+            expect(alertWait).not.toHaveBeenCalled()
+            expect(get(alertStore)).toMatchObject({ type: 'none' })
 
             dialog.deliver(BACKUP_PATH)
             await exporting
+            expect(taskHostView()?.state).toBe('done')
         } finally {
             vi.mocked(alertWait).mockReset()
             vi.mocked(alertClear).mockReset()

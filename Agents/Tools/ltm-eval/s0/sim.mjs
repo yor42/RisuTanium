@@ -2,7 +2,7 @@
 // Two injection points exist for tests; everything else stays real:
 //   scorer(index, tokens) -> one score per unit        (BM25 over the built query tokens)
 //   ranker(turn, d0, scorer, settings) -> unit order   (best first; the engine arm and the NULL arm use it)
-import { Bm25Index, admits, rrf, tokenize, topIdfTerms } from './lexical.ts';
+import { Bm25Index, admits, rareTerms, rrf, tokenize, topIdfTerms } from './lexical.ts';
 import { chatCost } from './counter.mjs';
 import { buildTurns, tailOf } from './turns.mjs';
 
@@ -171,11 +171,14 @@ export class ChatSim {
     return d;
   }
   // Query 1 is the turn's tail; queries 2 and 3 are the tails of the two newest messages before it. The tail length is
-  // 500 code points (MC-2632); settings.tailChars exists only for the whole-turn diagnostic.
-  queryTexts(turn, queries, tailChars) {
+  // 500 code points (MC-2632); settings.tailChars exists only for the whole-turn diagnostic of the tail builders. The
+  // rare builder (MC-2661) reads the whole turn as query 1 and ignores tailChars for every query: its queries 2 and 3
+  // stay the last 500 code points of the earlier messages.
+  queryTexts(turn, queries, tailChars, builder) {
     const m = this.chat.messages;
-    const n = tailChars ?? 500;
-    const qs = [tailOf(turn.text, n)];
+    const rare = builder === 'rare';
+    const n = rare ? 500 : tailChars ?? 500;
+    const qs = [rare ? turn.text : tailOf(turn.text, n)];
     if (queries === 3) for (const j of [1, 2]) if (m.length - j >= 0) qs.push(tailOf(m[m.length - j].text, n));
     return qs;
   }
@@ -187,8 +190,9 @@ export function engineRanker(sim, turn, d0, scorer, settings) {
   const { index, units } = d0;
   const rankings = [];
   const qTokens = new Set();
-  for (const q of sim.queryTexts(turn, settings.queries ?? 1, settings.tailChars)) {
-    const toks = settings.builder === 'idf' ? topIdfTerms(index, q, settings.k ?? 8) : tokenize(q);
+  if (settings.builder === 'rare' && !Number.isFinite(settings.rareShare)) throw new Error('the rare builder needs a pre-registered rareShare (MC-2661)');
+  for (const q of sim.queryTexts(turn, settings.queries ?? 1, settings.tailChars, settings.builder)) {
+    const toks = settings.builder === 'rare' ? rareTerms(index, q, settings.rareShare) : settings.builder === 'idf' ? topIdfTerms(index, q, settings.k ?? 8) : tokenize(q);
     for (const t of toks) qTokens.add(t);
     const s = scorer(index, toks);
     const ids = [];

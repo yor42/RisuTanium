@@ -318,6 +318,7 @@ import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { LocalWriter, dbWriteLock, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { alertWait } from 'src/ts/alert'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
@@ -538,6 +539,7 @@ function withPrefix(record: Record<string, string>): Record<string, string> {
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     osBox.os = 'other'
     backupSink.writes.length = 0
@@ -700,7 +702,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: a full backup on Tauri 
         expect(writtenEntries().map((e) => e.name)).toContain('database.risudat')
         const report = alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')
         expect(report).not.toContain('dangling.mp3')
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(taskHostView()?.result?.summary).toEqual(['Success'])
     })
 
     test('guard: a directory that is not a symlink is never read while a symlink beside it is', async () => {
@@ -744,7 +746,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: a full backup on Tauri 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'c.png'])))
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(taskHostView()?.result?.summary).toEqual(['Success'])
     })
 
     test('guard: an asset with an unusual name that the store can list is kept under its bare name', async () => {
@@ -1123,6 +1125,7 @@ describe('an entry too large for the 32-bit length field fails the backup loudly
         const reported = outcome !== null
             || alertErrorMock.mock.calls.length > 0
             || alertMdMock.mock.calls.some((c) => String(c[0]).includes('big.png'))
+            || taskHostView()?.state === 'failed'
         expect(reported).toBe(true)
     })
 })
@@ -1357,7 +1360,7 @@ describe('a full backup carries the inlays of both stores and restores them', ()
         expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
 
         expect(inlayEntries()).toHaveLength(0)
-        expect(alertNormalMock).toHaveBeenCalledWith(expect.stringContaining(language.partialBackupInlaysNotIncluded))
+        expect(taskHostView()?.result?.summary).toContain(language.partialBackupInlaysNotIncluded)
     })
 
     test('acceptance: an id with no store key is exported and named when it cannot be restored', async () => {

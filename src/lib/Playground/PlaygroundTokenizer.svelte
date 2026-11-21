@@ -33,9 +33,9 @@
 
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.tokenizer}</h2>
 
-<span class="text-textcolor text-lg">{language.tokenizer}</span>
+<span id="{uid}-tokenizer" class="text-textcolor text-lg">{language.tokenizer}</span>
 
-<SelectInput bind:value={selectedTokenizer} onchange={onTokenizerChange}>
+<SelectInput labelId="{uid}-tokenizer" bind:value={selectedTokenizer} onchange={onTokenizerChange}>
     {#each tokenizerList as [value, label]}
         <option {value} class="bg-bgcolor">{label}</option>
     {/each}

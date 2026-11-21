@@ -40,6 +40,8 @@ export function assertOutsideRepo(p, what, roots = repoRoots()) {
 }
 
 const f3 = (x) => (typeof x === 'number' ? x.toFixed(3) : String(x));
+// Allude turns never gate the verdict (MC-2661); their rows and validity rows say so.
+const REPORT_ONLY_LABEL = ' (report-only, MC-2661; carried to S3)';
 
 // Markdown of a gate result. An INVALID result carries no engine-arm statistic, so none can be printed.
 export function renderReport(r) {
@@ -50,7 +52,7 @@ export function renderReport(r) {
   L.push('## Validity block');
   if (r.validity) {
     L.push(`- m = ${r.validity.m}, alpha_c = ${r.validity.alpha}, bootstrap B = ${r.validity.B}, rank ${r.validity.rank}`);
-    for (const t of r.validity.tests) L.push(`- ${t.cell} ${t.style} ${t.control}: point ${f3(t.point)}, bootstrap bound ${f3(t.boot)}, t bound ${f3(t.t)}, threshold ${t.threshold}${t.failConfirmed ? ' FAIL-CONFIRMED' : t.notConfirmed ? ' NOT CONFIRMED' : ''}`);
+    for (const t of r.validity.tests) L.push(`- ${t.cell} ${t.style} ${t.control}: point ${f3(t.point)}, bootstrap bound ${f3(t.boot)}, t bound ${f3(t.t)}, threshold ${t.threshold}${t.failConfirmed ? ' FAIL-CONFIRMED' : t.notConfirmed ? ' NOT CONFIRMED' : ''}${t.style === 'allude' ? REPORT_ONLY_LABEL : ''}`);
     L.push(`- NULL donor fallback share: ${Object.entries(r.fallbackShare ?? {}).map(([k, v]) => `${k} ${f3(v)}`).join(', ')}`);
     L.push('- Estimates, not measurements: the familywise false-INVALID bound of about 0.05 and the power figures (a control detects an oracle recall below about 0.76 or a NULL delta above about 0.15 at 12 chats, design effect assumed 1.3) are reasoning estimates. The D2 diagnostic measures only the per-test false-INVALID rate.');
   } else L.push('- generator check only');
@@ -58,7 +60,7 @@ export function renderReport(r) {
   L.push('## Cell chat counts', ...Object.entries(r.cellChats ?? {}).map(([k, v]) => `- ${k}: ${v} chats, replacements ${r.replacements?.[k] ?? 0}, floor/extension ${JSON.stringify(r.generator?.[k] ?? {})}`), '');
   if (r.status === 'VALID') {
     L.push('## 3. Cells (pack recall; d = engine minus the units baseline; both interval methods)');
-    for (const row of r.rows) L.push(`- ${row.cell} ${row.style}: n ${row.n}, recall ${f3(row.recall)} [boot ${f3(row.recallCI.lo)}, ${f3(row.recallCI.hi)}; t ${f3(row.recallT.lo)}, ${f3(row.recallT.hi)}], d ${f3(row.d)} [boot ${f3(row.dCI.lo)}, ${f3(row.dCI.hi)}; t ${f3(row.dT.lo)}, ${f3(row.dT.hi)}], floor/margin ${row.ok ? 'met' : 'NOT met'}${row.borderline ? ' (BORDERLINE)' : ''}`);
+    for (const row of r.rows) L.push(`- ${row.cell} ${row.style}: n ${row.n}, recall ${f3(row.recall)} [boot ${f3(row.recallCI.lo)}, ${f3(row.recallCI.hi)}; t ${f3(row.recallT.lo)}, ${f3(row.recallT.hi)}], d ${f3(row.d)} [boot ${f3(row.dCI.lo)}, ${f3(row.dCI.hi)}; t ${f3(row.dT.lo)}, ${f3(row.dT.hi)}], floor/margin ${row.ok ? 'met' : 'NOT met'}${row.borderline ? ' (BORDERLINE)' : ''}${row.reportOnly ? REPORT_ONLY_LABEL : ''}`);
     if (r.reportOnly) {
       L.push('', '## Report-only cells (MC-2627: reported, never gated; not part of the verdict, the controls or the ledger)');
       for (const [name, c] of Object.entries(r.reportOnly)) if (c.error) L.push(`- ${name}: failed: ${c.error}`); else for (const [style, s] of Object.entries(c.styles)) L.push(`- ${name} ${style}: ${c.chats} chats, n ${s.n}, recall ${f3(s.recall)} [boot ${f3(s.recallCI.lo)}, ${f3(s.recallCI.hi)}], d ${f3(s.d)} [boot ${f3(s.dCI.lo)}, ${f3(s.dCI.hi)}]`);

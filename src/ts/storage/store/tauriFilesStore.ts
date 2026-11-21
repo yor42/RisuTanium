@@ -42,8 +42,8 @@ function isFrozenSafeKey(key: string): boolean {
  * call, and the missing-file rule below applies to their errors too.
  *
  * Writes go through `writeFileAtomic`, so a failed write keeps the old file.
- * Block-store keys (`blocks/`), numbered backups and cold-storage units go
- * through `writeFileDurable` instead, which also flushes the bytes to the file
+ * The keys `isDurableKey` names (numbered backups, cold-storage units and the
+ * pre-store2 block and pre-blocks keys) go through `writeFileDurable` instead, which also flushes the bytes to the file
  * system before it resolves and reports in `WriteResult.flushed` whether the
  * directory flush after the rename succeeded. The granted file system surface has no `stat` and no exclusive rename, so
  * this store cannot enforce `ifVersion` and reports `conditionalWrites: false`.

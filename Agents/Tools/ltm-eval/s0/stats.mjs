@@ -6,6 +6,8 @@
 import { rng } from '../gen/lib.mjs';
 
 export const STYLES = ['ask', 'allude'];
+// MC-2661: ask turns gate; allude turns are computed and reported only, and carried to S3.
+export const GATING_STYLES = ['ask'];
 export const BOOT_SEED = 9001;
 export const B_VERDICT = 4000;
 export const B_CONTROL = 20000; // its first B_VERDICT resamples are the verdict interval's resamples
@@ -125,12 +127,13 @@ export function cellStats(cellChats, B = B_VERDICT) {
   return out;
 }
 
-// The stop rule may fire only with at least minChats chats and at least minTurns fact turns in each style, and when
-// the recall width and the d width of each style, by both methods, are below `width`. It never reads the pass state.
+// The stop rule may fire only with at least minChats chats and at least minTurns fact turns in each gating style, and
+// when the recall width and the d width of each gating style, by both methods, are below `width`. It never reads the
+// pass state and never reads allude (MC-2661).
 export function stopRuleMet(cellChats, p = STOP, B = B_VERDICT) {
   if (cellChats.length < p.minChats) return false;
   const st = cellStats(cellChats, B);
-  for (const style of STYLES) {
+  for (const style of GATING_STYLES) {
     if (st[style].n < p.minTurns) return false;
     for (const k of ['recall', 'd']) if (!(st[style][k].boot.width < p.width && st[style][k].t.width < p.width)) return false;
   }
@@ -160,19 +163,21 @@ export function outcomeOf(grown, B = B_VERDICT) {
 }
 
 // Verdict over stopped cells (never called while any cell is CAP or any control is FAIL-CONFIRMED).
-// A cell passes when, in each style, the point recall is at least 0.5 and the point d at least 0.15.
+// A cell passes when, in each gating style (ask, MC-2661), the point recall is at least 0.5 and the point d at least
+// 0.15. Allude rows are computed and listed with reportOnly: true; they never set pass or borderline.
 export function verdictOf(cells, B = B_VERDICT) {
   const rows = [];
   let pass = true, borderline = false;
   for (const [name, chats] of Object.entries(cells)) {
     const st = cellStats(chats, B);
     for (const style of STYLES) {
+      const gating = GATING_STYLES.includes(style);
       const rc = st[style].recall.point, d = st[style].d.point;
       const ok = rc >= 0.5 && d >= 0.15;
       const border = ok && (st[style].recall.boot.lo < 0.5 || st[style].d.boot.lo < 0.15);
-      if (!ok) pass = false;
-      if (border) borderline = true;
-      rows.push({ cell: name, style, recall: rc, d, n: st[style].n, ok, borderline: border, recallCI: st[style].recall.boot, dCI: st[style].d.boot, recallT: st[style].recall.t, dT: st[style].d.t });
+      if (gating && !ok) pass = false;
+      if (gating && border) borderline = true;
+      rows.push({ cell: name, style, recall: rc, d, n: st[style].n, ok, borderline: border, recallCI: st[style].recall.boot, dCI: st[style].d.boot, recallT: st[style].recall.t, dT: st[style].d.t, ...(gating ? {} : { reportOnly: true }) });
     }
   }
   return { verdict: pass ? (borderline ? 'PASS (BORDERLINE)' : 'PASS') : 'FAIL', rows };

@@ -46,8 +46,9 @@
         {/each}
     </div>
     {#if mode === 'custom'}
-        <span class="text-textcolor" data-part="asset-width-custom">{language.settingsShellAssetMaxWidth}</span>
+        <span class="text-textcolor" data-part="asset-width-custom" id="{group}-max-width">{language.settingsShellAssetMaxWidth}</span>
         <SliderInput
+            labelId="{group}-max-width"
             marginBottom={true}
             min={1}
             max={40}

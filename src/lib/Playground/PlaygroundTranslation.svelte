@@ -31,7 +31,7 @@
 
 
 <span id="{uid}-source">{language.sourceLanguage}</span>
-<SelectInput bind:value={sourceLang}>
+<SelectInput label={language.sourceLanguage} bind:value={sourceLang}>
     {#each getLanguageCodes() as lang}
         <OptionInput value={lang.code}>{lang.name}</OptionInput>
     {/each}
@@ -39,7 +39,7 @@
 <TextAreaInput labelId="{uid}-source" bind:value={r} />
 
 <span id="{uid}-target">{language.translatorLanguage}</span>
-<SelectInput bind:value={outputLang}>
+<SelectInput label={language.translatorLanguage} bind:value={outputLang}>
     {#each getLanguageCodes() as lang}
         <OptionInput value={lang.code}>{lang.name}</OptionInput>
     {/each}

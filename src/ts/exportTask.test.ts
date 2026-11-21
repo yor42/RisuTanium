@@ -13,6 +13,7 @@ import { writable } from 'svelte/store'
 import { language } from 'src/lang'
 
 const spies = vi.hoisted(() => ({
+    cardsOpened: vi.fn(),
     alertError: vi.fn(),
     alertNormal: vi.fn(),
     waitUnreadNotice: vi.fn(async () => { }),
@@ -27,6 +28,11 @@ vi.mock('src/ts/alert', () => ({
     alertNormalWait: vi.fn(async () => { }),
 }))
 
+vi.mock('src/ts/alertTask.svelte', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/alertTask.svelte')>()
+    return { ...actual, alertTask: (def: Parameters<typeof actual.alertTask>[0]) => (spies.cardsOpened(), actual.alertTask(def)) }
+})
+
 vi.mock('src/ts/stores.svelte', () => ({
     alertStore: writable({ type: 'none', msg: '' }),
 }))
@@ -39,7 +45,7 @@ vi.mock('src/ts/platform', () => ({
 
 vi.mock('src/ts/vendor/streamSaver', () => ({ default: { useBlobFallback: false, mitm: '', createWriteStream: undefined } }))
 
-import { createExportTask, EXPORT_STEPS, pickerAside, type ExportTarget, type ExportTaskStepDef } from 'src/ts/exportTask'
+import { createExportTask, EXPORT_STEPS, pickerAside, type ExportTarget, type ExportTask, type ExportTaskDef, type ExportTaskStepDef } from 'src/ts/exportTask'
 import { ExportCancelledError, ExportCancelToken } from 'src/ts/exportCancel'
 import { BlobDownloadWriter, exportErrorText, withFileIncompleteSentence, type ExportByteWriter } from 'src/ts/exportWriters'
 import {
@@ -716,5 +722,301 @@ describe('legacyErrorText', () => {
         const posted = spies.alertError.mock.calls[0][0] as Error
         expect(posted).toBeInstanceOf(Error)
         expect(posted.message).toBe(withFileIncompleteSentence(error).message)
+    })
+})
+
+describe('holdAside and the card that comes back', () => {
+    const STEPS = [
+        { id: 'collect', label: 'Collect' },
+        { id: 'assets', label: 'Assets', noun: 'assets' },
+        { id: 'database', label: 'Database' },
+    ] as const satisfies readonly ExportTaskStepDef<string>[]
+    type StepId = (typeof STEPS)[number]['id']
+    const STEPPED = { ...DEF, steps: STEPS }
+
+    /** A run with Cancel, its card shown at `assets` and then held aside; the clock steps so every report is published. */
+    async function heldAtAssets(def: ExportTaskDef<StepId> & { readonly steps: readonly ExportTaskStepDef<StepId>[] } = STEPPED) {
+        useSteppingClock()
+        const task = createExportTask<StepId>(def)
+        const token = new ExportCancelToken()
+        task.useToken(token)
+        task.open()
+        task.step('assets')
+        await task.holdAside(async () => undefined)
+        return { task, token }
+    }
+
+    test('E29: a held card is out of the slot during and after ask, and the next report brings it back at its step', async () => {
+        useSteppingClock()
+        const task = createExportTask<StepId>(STEPPED)
+        task.useToken(new ExportCancelToken())
+        task.open()
+        task.step('assets')
+        const inside: Array<{ shown: boolean, view: ReturnType<typeof taskHostView> }> = []
+        const result = await task.holdAside(async () => {
+            inside.push({ shown: taskShown(), view: taskHostView() })
+            return 7
+        })
+
+        expect(result).toBe(7)
+        expect(inside).toEqual([{ shown: false, view: null }])
+        expect(taskShown()).toBe(false)
+        task.count(1, 3)
+        const view = taskHostView()
+        expect(view?.title).toBe('Exporting')
+        expect(view?.cancelOffered).toBe(true)
+        expect(view?.stepIndex).toBe(1)
+        expect(view?.count).toEqual({ done: 1, total: 3 })
+    })
+
+    test('E30: two holds in a row open no card between them', async () => {
+        const { task } = await heldAtAssets()
+        const seen: boolean[] = []
+        await task.holdAside(async () => {
+            seen.push(taskShown())
+        })
+
+        expect(seen).toEqual([false])
+        expect(taskShown()).toBe(false)
+    })
+
+    test('E31: step after a hold reopens at the new step; count after a hold reopens at the held step', async () => {
+        const first = await heldAtAssets()
+        first.task.step('database')
+        expect(taskHostView()?.stepIndex).toBe(2)
+
+        resetTaskHostForTests()
+        const second = await heldAtAssets()
+        second.task.count(1, 2)
+        expect(taskHostView()?.stepIndex).toBe(1)
+    })
+
+    test('E32: every ending after a hold lands on the returned card', async () => {
+        const failed = await heldAtAssets()
+        failed.task.failedWith('T', false)
+        expect(taskHostView()?.state).toBe('failed')
+        expect(taskHostView()?.failure?.detail).toBe('T')
+
+        resetTaskHostForTests()
+        const thrown = await heldAtAssets()
+        thrown.task.failed(new Error('disk'), false)
+        expect(taskHostView()?.state).toBe('failed')
+        expect(taskHostView()?.failure?.detail).toBe('disk')
+
+        resetTaskHostForTests()
+        const cancelled = await heldAtAssets()
+        cancelled.task.cancelled(true)
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+
+        resetTaskHostForTests()
+        const done = await heldAtAssets()
+        done.task.done(['S'])
+        expect(taskHostView()?.state).toBe('done')
+        expect(taskHostView()?.result?.summary).toEqual(['S'])
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+        expect(spies.alertError).not.toHaveBeenCalled()
+    })
+
+    test('E33: close after a hold never shows the card again', async () => {
+        const { task } = await heldAtAssets()
+        task.open()
+        expect(taskShown()).toBe(false)
+        const opened = spies.cardsOpened.mock.calls.length
+        task.close()
+        task.count(1, 3)
+        task.step('database')
+
+        expect(task.ended).toBe(true)
+        expect(taskShown()).toBe(false)
+        expect(spies.cardsOpened.mock.calls.length).toBe(opened)
+    })
+
+    test('E34: a card held while a newer task takes the slot is not brought back over it, and the run is a replaced one', async () => {
+        async function displaced(): Promise<ExportTask<StepId>> {
+            resetTaskHostForTests()
+            spies.alertError.mockClear()
+            spies.alertNormal.mockClear()
+            const held = await heldAtAssets({ ...STEPPED, cancelledFileKeptNotice: 'KEPT' })
+            return held.task
+        }
+        const newer = (): ReturnType<typeof alertTask> => alertTask({ title: 'Newer task', steps: [{ label: 'Step' }] })
+
+        const counting = await displaced()
+        const handle = newer()
+        counting.count(1, 3)
+        expect(taskHostView()?.title).toBe('Newer task')
+        expect(handle.detached).toBe(false)
+
+        const silent = await displaced()
+        const silentNewer = newer()
+        silent.done('S')
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+        expect(silentNewer.detached).toBe(false)
+
+        const keptFail = await displaced()
+        newer()
+        keptFail.failedWith('T', true)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError).toHaveBeenCalledWith('T')
+        expect(taskHostView()?.title).toBe('Newer task')
+
+        const unkeptFail = await displaced()
+        newer()
+        unkeptFail.failedWith('T', false)
+        expect(spies.alertError).not.toHaveBeenCalled()
+
+        const keptCancel = await displaced()
+        newer()
+        keptCancel.cancelled(true)
+        expect(spies.alertNormal).toHaveBeenCalledTimes(1)
+        expect(spies.alertNormal).toHaveBeenCalledWith('KEPT')
+    })
+
+    test('E35: holdAside on a never-opened, ended or replaced run only runs ask and opens no card', async () => {
+        useSteppingClock()
+        const never = createExportTask(DEF)
+        const askNever = vi.fn(async () => 1)
+        expect(await never.holdAside(askNever)).toBe(1)
+        never.count(1, 2)
+        expect(askNever).toHaveBeenCalledTimes(1)
+        expect(taskShown()).toBe(false)
+
+        const ended = createExportTask(DEF)
+        ended.open()
+        ended.done('S')
+        resetTaskHostForTests()
+        const askEnded = vi.fn(async () => 2)
+        expect(await ended.holdAside(askEnded)).toBe(2)
+        ended.count(1, 2)
+        expect(askEnded).toHaveBeenCalledTimes(1)
+        expect(taskShown()).toBe(false)
+
+        const replacedRun = createExportTask(DEF)
+        replacedRun.open()
+        replaceWithNewerTask()
+        const askReplaced = vi.fn(async () => 3)
+        expect(await replacedRun.holdAside(askReplaced)).toBe(3)
+        replacedRun.count(1, 2)
+        expect(askReplaced).toHaveBeenCalledTimes(1)
+        expect(taskHostView()?.title).toBe('Newer task')
+    })
+
+    test('E39 (diagnostic): a cancel requested before the hold stays requested and the returned card starts running with Cancel offered', async () => {
+        const { task, token } = await heldAtAssets()
+        token.cancel()
+        await task.holdAside(async () => undefined)
+        task.count(1, 3)
+
+        expect(token.cancelled).toBe(true)
+        expect(taskHostView()?.state).toBe('running')
+        expect(taskHostView()?.cancelOffered).toBe(true)
+        task.cancelled(false)
+        expect(taskHostView()?.cancelled).toBe(true)
+    })
+})
+
+describe('failedWith, cancelledFileKeptNotice and a done list', () => {
+    test('E36: failedWith ends each column with its text exactly', () => {
+        const shownRun = createExportTask({ ...DEF, failedHeadline: 'Backup failed' })
+        shownRun.open()
+        shownRun.failedWith('T', true)
+        expect(taskHostView()?.failure?.headline).toBe('Backup failed')
+        expect(taskHostView()?.failure?.detail).toBe('T')
+        expect(console.error).not.toHaveBeenCalled()
+        expect(spies.alertError).not.toHaveBeenCalled()
+
+        resetTaskHostForTests()
+        const keptReplaced = createExportTask(DEF)
+        keptReplaced.open()
+        replaceWithNewerTask()
+        keptReplaced.failedWith('T', true)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError).toHaveBeenCalledWith('T')
+
+        spies.alertError.mockClear()
+        resetTaskHostForTests()
+        const unkeptReplaced = createExportTask(DEF)
+        unkeptReplaced.open()
+        replaceWithNewerTask()
+        unkeptReplaced.failedWith('T', false)
+        expect(spies.alertError).not.toHaveBeenCalled()
+
+        resetTaskHostForTests()
+        createExportTask(DEF).failedWith('T', false)
+        expect(spies.alertError).toHaveBeenCalledTimes(1)
+        expect(spies.alertError).toHaveBeenCalledWith('T')
+        expect(console.error).not.toHaveBeenCalled()
+    })
+
+    test('E36b: failedWith never passes the text through the file-incomplete sentence and the first ending wins', () => {
+        const task = createExportTask(DEF)
+        task.open()
+        task.failedWith('T', true)
+        task.failedWith('U', true)
+        task.done('S')
+
+        expect(taskHostView()?.failure?.detail).toBe('T')
+        expect(taskHostView()?.failure?.detail).not.toContain(language.exportFailedFileIncomplete)
+    })
+
+    test('E37: a kept cancel with no shown card posts the def notice; the card column is unchanged', () => {
+        const neverOpened = createExportTask({ ...DEF, cancelledFileKeptNotice: 'B' })
+        neverOpened.cancelled(true)
+        expect(spies.alertNormal).toHaveBeenCalledTimes(1)
+        expect(spies.alertNormal).toHaveBeenCalledWith('B')
+
+        spies.alertNormal.mockClear()
+        const replacedRun = createExportTask({ ...DEF, cancelledFileKeptNotice: 'B' })
+        replacedRun.open()
+        replaceWithNewerTask()
+        replacedRun.cancelled(true)
+        expect(spies.alertNormal).toHaveBeenCalledWith('B')
+
+        spies.alertNormal.mockClear()
+        resetTaskHostForTests()
+        const shownRun = createExportTask({ ...DEF, cancelledFileKeptNotice: 'B' })
+        shownRun.open()
+        shownRun.cancelled(true)
+        expect(taskHostView()?.result?.summary).toEqual([language.exportFailedFileIncomplete])
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+
+        createExportTask(DEF).cancelled(true)
+        expect(spies.alertNormal).toHaveBeenCalledWith(language.exportCancelledFileIncomplete)
+    })
+
+    test('E38: done with a list shows each entry on the card and joins with a blank line without one', () => {
+        const shownRun = createExportTask(DEF)
+        shownRun.open()
+        shownRun.done(['A', 'B'])
+        expect(taskHostView()?.result?.summary).toEqual(['A', 'B'])
+        expect(spies.alertNormal).not.toHaveBeenCalled()
+
+        createExportTask(DEF).done(['A', 'B'])
+        expect(spies.alertNormal).toHaveBeenCalledTimes(1)
+        expect(spies.alertNormal).toHaveBeenCalledWith('A\n\nB')
+
+        spies.alertNormal.mockClear()
+        createExportTask(DEF).done('S')
+        expect(spies.alertNormal).toHaveBeenCalledWith('S')
+    })
+})
+
+describe('without the new fields or calls', () => {
+    test('E40 (guard): stepAside stays final and the legacy columns keep today\'s texts', () => {
+        useSteppingClock()
+        const task = createExportTask(DEF)
+        task.open()
+        task.stepAside()
+        task.count(1, 2)
+        task.step('assets')
+        expect(taskShown()).toBe(false)
+        task.cancelled(true)
+        expect(spies.alertNormal).toHaveBeenCalledWith(language.exportCancelledFileIncomplete)
+
+        const error = new Error('disk')
+        const failing = createExportTask(DEF)
+        failing.failed(error, false)
+        expect(spies.alertError).toHaveBeenCalledWith(error)
     })
 })
