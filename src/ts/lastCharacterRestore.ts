@@ -6,6 +6,7 @@ import { getDatabase } from './storage/database.svelte'
 import { getPageStorageMode } from './storage/pageStorageMode'
 import { botMakerMode, CustomGUISettingMenuStore, OpenRealmStore, PlaygroundStore, selectedCharID, settingsOpen, alertStore } from './stores.svelte'
 import { studioOpen } from './studio/studioOpen'
+import { charGridOpen } from './charGridOpen'
 import { busyKinds } from './process/memory/busyActions'
 import { changeCharGeneration, supersedeChangeChar, type ChangeCharOutcome } from './characters'
 import { changeCharOrAlert } from './characterPick'
@@ -48,7 +49,9 @@ export interface RestoreDeps {
     playground: Readable<number>
     utilityOpen: Readable<boolean>
     realmStore: Readable<boolean>
-    /** The Home library: `isOpen` is the plain answer, `watch` the readable that follows it. */
+    /** The App-level character grid the Sidebar rail opens, which replaces the sidebar without a selection change. */
+    charGrid: Readable<boolean>
+    /** The Home library engaged this visit (opened, requested or touched): `isOpen` is the plain answer, `watch` the readable that follows it. */
     library: { isOpen(): boolean, watch(): Readable<boolean> }
     restoreInProgress(): boolean
     busyKinds(): readonly string[]
@@ -91,10 +94,11 @@ function productionDeps(): RestoreDeps {
         get playground() { return PlaygroundStore },
         get utilityOpen() { return utilityOpen },
         get realmStore() { return OpenRealmStore },
+        get charGrid() { return charGridOpen },
         library: {
-            isOpen: () => homeView.view === 'library',
+            isOpen: () => homeView.libraryEngaged,
             // `homeView` is rune state, not a store: the readable follows it through a microtask flush.
-            watch: () => toStore(() => homeView.view === 'library'),
+            watch: () => toStore(() => homeView.libraryEngaged),
         },
         restoreInProgress: () => restoreInProgress(),
         busyKinds: () => busyKinds(),
@@ -140,6 +144,7 @@ function guardHolds(deps: RestoreDeps, launch?: RestoreLaunch): boolean {
         && !deps.realmLinkInUrl()
         && !get(deps.utilityOpen)
         && !get(deps.realmStore)
+        && !get(deps.charGrid)
         && !deps.library.isOpen()
 }
 
@@ -184,6 +189,7 @@ function armWatchers(deps: RestoreDeps, ownGeneration: number): () => void {
         watch(deps.playground, (value) => value !== 0)
         watch(deps.utilityOpen, isTrue)
         watch(deps.realmStore, isTrue)
+        watch(deps.charGrid, isTrue)
         watch(deps.library.watch(), isTrue)
     } catch (error) {
         stopAll()

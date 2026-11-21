@@ -279,7 +279,7 @@ describe('a rail row whose changeChar throws', () => {
 
         expect(changeCharSpy).toHaveBeenCalledTimes(1)
         expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('B'))
         expect(recordErrorSpy).toHaveBeenCalledWith('rail.pick', error)
         await nextMacrotask()
         expect(unhandled).toEqual([])
@@ -294,7 +294,7 @@ describe('a rail row whose changeChar throws', () => {
 
         expect(changeCharSpy).toHaveBeenCalledTimes(1)
         expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('B'))
         expect(recordErrorSpy).toHaveBeenCalledWith('rail.pick', error)
         await nextMacrotask()
         expect(unhandled).toEqual([])
@@ -310,7 +310,7 @@ describe('a rail row whose changeChar throws', () => {
         expect(changeCharSpy).toHaveBeenCalledTimes(1)
         expect(changeCharSpy.mock.calls[0][0]).toBe(LETTERS.indexOf('X'))
         expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('X'))
         expect(recordErrorSpy).toHaveBeenCalledWith('rail.pick', error)
         await nextMacrotask()
         expect(unhandled).toEqual([])

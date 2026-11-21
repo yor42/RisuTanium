@@ -236,6 +236,9 @@ function describeWriteMeasure(): string {
     }
 }
 
+/** The fork-only scheme name of a theme pack's own colours; PACK_SCHEME_NAME in gui/colorscheme.ts is the same literal (pinned by a test). */
+const THEME_PACK_SCHEME_NAME = 'theme-pack'
+
 /**
  * The database an export encodes: `db` without its account, with the character
  * list made one a reader can load. A list with nothing wrong is exported as it
@@ -259,6 +262,16 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // A `.bin` carries no theme pack, so it carries the scheme that turning the pack off would restore, never the fork-only
+    // name or the snapshot. The page's own fields are never changed; `customColorScheme` is carried as it is.
+    if (plain.colorSchemeName === THEME_PACK_SCHEME_NAME) {
+        // Loaded only here: most tests of the export mock the colour scheme module with a narrow factory.
+        const { schemeWithoutPack } = await import("../gui/colorscheme")
+        const own = schemeWithoutPack(db)
+        plain.colorSchemeName = own.colorSchemeName
+        plain.colorScheme = own.colorScheme
+    }
+    delete plain.themePackSchemeSnapshot
     // Usage statistics (the `statics` ledger keys) and price overrides are fork-only and have no place in a `.bin` (the export
     // confirm names them first). A `statics` without usage keys keeps the page's own object; the page's values are never changed.
     if (hasUsageKeys(db.statics)) {
@@ -1237,7 +1250,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
     }
-    session.progress.done([downloadNotice('Success')])
+    session.progress.done([downloadNotice(language.rtbExportSaved)])
     return { status: 'saved', notices: [], omitted, inlays: inlayResult }
 }
 
@@ -1534,7 +1547,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: null, suggestedName }
     }
-    session.progress.done([downloadNotice('Success'), language.partialBackupInlaysNotIncluded])
+    session.progress.done([downloadNotice(language.rtbExportSaved), language.partialBackupInlaysNotIncluded])
     return { status: 'saved', notices: [], omitted, inlays: null, suggestedName }
 }
 
@@ -2041,8 +2054,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 const walk = await indexBackupEntries(file, {
                     oversizeBodyBytes: assetLimit ?? undefined,
                     onProgress: (scanned, total) => {
-                        const percent = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
-                        const progressText = `Checking local backup... (${percent}%)`;
+                        const percent = total > 0 ? Math.floor((scanned / total) * 100) : 100
+                        const progressText = language.rtbRestoreChecking(percent);
                         const changed = progressText !== lastWalkProgressText;
                         lastWalkProgressText = progressText;
                         progress.bytes('check', scanned, total, changed ? progressText : null);
@@ -2305,7 +2318,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             noteImportPhase(`copy ${visitedEntries} of ${backupEntries.length} entries`);
                         }
                         const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
-                        const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
+                        const progressText = language.rtbRestoreCopying(Math.floor((entryEnd / file.size) * 100));
                         const textChanged = progressText !== lastProgressText;
                         lastProgressText = progressText;
                         progress.bytes('copy', copyDone, file.size, textChanged ? progressText : null);

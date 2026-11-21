@@ -563,7 +563,7 @@ describe('restoreOpenedBackup', () => {
         const view = taskHostView()
         expect(view?.steps[view.stepIndex]?.label).toBe(language.restoreStepCleanup)
         expect(view?.cancelOffered).toBe(true)
-        expect(alertWaitMock).not.toHaveBeenCalledWith(language.internalBackupWaitingForCleanup, expect.any(Function))
+        expect(alertWaitMock).not.toHaveBeenCalled()
         expect(openSourceMock).not.toHaveBeenCalled()
 
         finish()

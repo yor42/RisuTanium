@@ -266,9 +266,9 @@ const macrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 describe('a character switch hotkey whose changeChar throws', () => {
     test.each([
-        ['next', fireNextChar, BOB, CHARLIE, 'hotkey.next'],
-        ['prev', firePrevChar, CHARLIE, BOB, 'hotkey.prev'],
-    ])('regression reproducer: %s is reported once, translated, and leaves the selection and panels alone', async (_dir, fire, start, target, site) => {
+        ['next', fireNextChar, BOB, CHARLIE, 'hotkey.next', 'Charlie'],
+        ['prev', firePrevChar, CHARLIE, BOB, 'hotkey.prev', 'Bob'],
+    ])('regression reproducer: %s is reported once, translated, and leaves the selection and panels alone', async (_dir, fire, start, target, site, name) => {
         const failure = new TypeError('boom')
         selectedCharID.set(start)
         PlaygroundStore.set(1)
@@ -281,7 +281,7 @@ describe('a character switch hotkey whose changeChar throws', () => {
         expect(thrown).toBeNull()
         expect(unhandled).toEqual([])
         expect(vi.mocked(changeChar)).toHaveBeenCalledWith(target)
-        expect(vi.mocked(alertError).mock.calls).toEqual([[language.errors.coldStorageRestoreUnreadable]])
+        expect(vi.mocked(alertError).mock.calls).toEqual([[language.errors.coldStorageNamedRestoreUnreadable(name)]])
         expect(vi.mocked(recordCaughtError)).toHaveBeenCalledWith(site, failure)
         expect(get(selectedCharID)).toBe(start)
         expect(get(PlaygroundStore)).toBe(1)
@@ -298,7 +298,7 @@ describe('a character switch hotkey whose changeChar throws', () => {
 
         expect(thrown).toBeNull()
         expect(unhandled).toEqual([])
-        expect(vi.mocked(alertError).mock.calls).toEqual([[language.errors.coldStorageRestoreUnreadable]])
+        expect(vi.mocked(alertError).mock.calls).toEqual([[language.errors.coldStorageNamedRestoreUnreadable('Charlie')]])
         expect(vi.mocked(recordCaughtError)).toHaveBeenCalledWith('hotkey.next', failure)
     })
 

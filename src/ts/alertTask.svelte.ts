@@ -1,5 +1,6 @@
 import type { ProgressSink } from './progressSink'
 import { clearPickOpener, takePickOpener } from './pickOpener'
+import { pageOpener } from './alertOpener'
 import {
     createTaskController,
     isTaskTerminal,
@@ -136,12 +137,14 @@ function clearEntry(target: Entry, answer: TaskCloseAnswer): void {
 function currentOpener(): HTMLElement | null {
     if (typeof document === 'undefined') return null
     const active = document.activeElement
-    if (active instanceof HTMLElement && active !== document.body) {
+    const opener = pageOpener(active)
+    if (opener !== null && opener === active) {
         // Focus that is somewhere real beats the picker's button, and that button is spent either way.
         clearPickOpener()
-        return active
+        return opener
     }
-    return takePickOpener()
+    // Focus is on the body or inside an alert that is closing: the picker's button, then the alert's opener.
+    return takePickOpener() ?? opener
 }
 
 /** Opens a task card. A task already shown is replaced: it resolves `replaced` and its handle detaches. */

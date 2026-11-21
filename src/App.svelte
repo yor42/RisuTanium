@@ -13,6 +13,7 @@
     import { installSettingsOrigin } from './ts/settingsShell/settingsOrigin';
     import { releaseSystemBarsAfterPaint } from './ts/gui/systemBars';
     import { studioOpen } from './ts/studio/studioOpen';
+    import { charGridOpen } from './ts/charGridOpen';
     import { leaveStudio } from './ts/studio/studioBack.svelte';
     import { backCloseHandler, registerBackHandler } from './ts/backHandlers';
     import { get } from 'svelte/store';
@@ -47,6 +48,7 @@
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
     import TaskHost from './lib/Nexus/pattern/TaskHost.svelte';
     import { coversPage } from './ts/alertEscape';
+    import { installAlertFocusReturn } from './ts/alertFocusReturn';
     import NexusBootScreen from './lib/Nexus/boot/NexusBootScreen.svelte';
     import { createLegacyBootTracker } from './lib/Nexus/boot/bootProgress';
 
@@ -63,7 +65,8 @@
 
   
     let didFirstSetup: boolean  = $derived(DBState.db?.didFirstSetup)
-    let gridOpen = $state(false)
+    // The grid flag outlives App, so each mount starts with the grid closed.
+    charGridOpen.set(false)
     // Settings and Studio each replace the sidebar and grid and hide the still-mounted chat surface.
     const covered = $derived($settingsOpen || $studioOpen)
     // A theme pack's chat sheet is on only while the chat shell is declared and this cover is off.
@@ -116,6 +119,9 @@
             close: leaveStudio,
         }))
     })
+
+    // A covering alert hands focus back to the control that was focused when it opened, once it is gone.
+    $effect(() => installAlertFocusReturn())
 
     // The bars keep the boot canvas colour until the app has replaced the boot screen.
     $effect(() => {
@@ -269,18 +275,18 @@
                 <!-- loadStudioScreen has already closed Studio and reported the failure. -->
             {/await}
         {/if}
-        {#if gridOpen}
+        {#if $charGridOpen}
             {#if !covered}
-                <GridChars endGrid={() => {gridOpen = false}} />
+                <GridChars endGrid={() => {charGridOpen.set(false)}} />
             {/if}
         {:else}
             {#if !covered}
                 {#if (!$DynamicGUI)}
-                    <Sidebar openGrid={() => {gridOpen = true}} hidden={!$sideBarStore} />
+                    <Sidebar openGrid={() => {charGridOpen.set(true)}} hidden={!$sideBarStore} />
                 {:else}
                     <div class="top-0 w-full h-full left-0 z-30 flex flex-row items-center" class:fixed={$sideBarStore} class:hidden={!$sideBarStore} >
                         <!-- svelte-ignore a11y_click_events_have_key_events -->
-                        <Sidebar openGrid={() => {gridOpen = true}}  hidden={false} />
+                        <Sidebar openGrid={() => {charGridOpen.set(true)}}  hidden={false} />
 
 
 

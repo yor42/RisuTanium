@@ -509,7 +509,7 @@ describe('HomeLibrary: a throw while the unit is read (accepted limitation, one 
             await land('b', throwingUnit)
 
             expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('Bob'))
             expect(get(studioOpen)).toBe(false)
             expect(get(selectedCharID)).toBe(-1)
         })
@@ -524,8 +524,8 @@ describe('HomeLibrary: a throw while the unit is read (accepted limitation, one 
 
             expect(alertErrorSpy).toHaveBeenCalledTimes(2)
             expect(alertErrorSpy.mock.calls.map((call) => call[0])).toEqual([
-                language.errors.coldStorageRestoreUnreadable,
-                language.errors.coldStorageRestoreUnreadable,
+                language.errors.coldStorageNamedRestoreUnreadable('Bob'),
+                language.errors.coldStorageNamedRestoreUnreadable('Bob'),
             ])
             expect(get(studioOpen)).toBe(false)
             expect(get(selectedCharID)).toBe(-1)

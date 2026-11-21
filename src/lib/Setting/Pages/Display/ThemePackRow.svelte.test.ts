@@ -71,7 +71,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 })
 vi.mock(import('src/ts/themePack/activePack.svelte'), () => {
     const status: ThemePackApplyState = $state({ activeId: undefined, phase: 'none' })
-    return { themePackApplyState: () => status } as unknown as typeof import('src/ts/themePack/activePack.svelte')
+    return { themePackApplyState: () => status, requestPackScheme: vi.fn(), cancelPackSchemeRequest: vi.fn() } as unknown as typeof import('src/ts/themePack/activePack.svelte')
 })
 vi.mock(import('src/ts/themePack/judgeClient'), async () => {
     const { judgePackSheets } = await import('src/ts/themePack')
@@ -106,6 +106,8 @@ vi.mock(import('src/ts/themePack/install'), async (importOriginal) => {
 })
 
 //#endregion
+
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 import { DBState } from 'src/ts/stores.svelte'
 import { themePackApplyState } from 'src/ts/themePack/activePack.svelte'

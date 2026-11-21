@@ -2,7 +2,8 @@
 // Sanitizer tests run in a DOM where DOMPurify visits every node; see
 // sanitizerMultiRemoval.test.ts for why happy-dom is not one.
 //
-// A Blob-valued asset is shown through a `blob:` object URL (getFileSrc), so the
+// A `blob:` object URL can reach chat markup (getFileSrc no longer makes one; the
+// parser's `blob:` handling is retired in CHORE-557 stage 5), so the
 // sanitizer must keep that scheme on the media elements the chat renders it in,
 // and must still strip what makes markup unsafe. The second half of each test is
 // what an identity sanitizer fails: it would keep the event handler and the script.

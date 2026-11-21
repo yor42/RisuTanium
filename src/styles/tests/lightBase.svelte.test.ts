@@ -117,7 +117,7 @@ import { declareSurface, installThemePackGate, resetThemePackGateForTests } from
 
 const ATTRIBUTE = 'data-theme-pack-base'
 const SHELL_MESSAGE = 'src/lib/ChatShell/ShellMessage.svelte'
-const SCHEMES = ['default', 'light', 'nexus'] as const
+const SCHEMES = ['theme-pack'] as const
 const TEXT_THEMES = ['standard', 'highcontrast'] as const
 
 const ROOT = (): HTMLElement => document.documentElement
@@ -176,6 +176,7 @@ async function until(done: () => boolean, what: string): Promise<void> {
 
 /** Applies a built-in pack through the real driver and waits until it is on. */
 async function applyBuiltinThroughDriver(id: string): Promise<void> {
+    h.db.colorSchemeName = 'theme-pack'
     h.db.activeThemePack = id
     startThemePackApply()
     await until(() => themePackApplyState().phase === 'applied', `${id} applied`)
@@ -197,6 +198,7 @@ async function applyArchiveThroughDriver(modes: readonly string[], chat: string)
         v: 1, id: 'archive-pack', name: 'Archive', version: '1.0.0', license: 'MIT', attribution: 'Test author', modes,
         fonts: [], archive, bytes: bytes.length, installedAt: 1,
     }]
+    h.db.colorSchemeName = 'theme-pack'
     h.db.activeThemePack = 'archive-pack'
     startThemePackApply()
     await until(() => themePackApplyState().phase === 'applied', 'the archive applied')
@@ -355,6 +357,22 @@ describe('TD4: a light-only built-in applied through the real driver sits on the
     })
 })
 
+describe('TD4c: under the user\'s own schemes the pack is in shape mode and carries no base', () => {
+    // The pack's fixed base now holds only under the theme-pack scheme, so the rows above run under it; this row pins that the
+    // schemes they no longer iterate (default, light, nexus) leave the base attribute and the base tone absent while the
+    // shape sheet is on.
+    const COMBOS = ['builtin:scratch-white', 'builtin:origin-navy'].flatMap((id) => (['default', 'light', 'nexus'] as const).map((scheme) => [id, scheme] as const))
+    test.each(COMBOS)('%s under %s', async (id, scheme) => {
+        h.db.colorSchemeName = scheme
+        h.db.activeThemePack = id
+        startThemePackApply()
+        await until(() => themePackApplyState().phase === 'applied', `${id} applied`)
+        flushSync()
+        expect(ROOT().hasAttribute(ATTRIBUTE)).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
+        expect(packElement()?.getAttribute('media')).toBe('all')
+    })
+})
 describe('TD4b: a dark pack keeps the dark base values under every scheme', () => {
     test('Origin Navy: attribute empty, tone dark, the dark reference for names it does not set', async () => {
         await applyBuiltinThroughDriver('builtin:origin-navy')
@@ -435,7 +453,7 @@ describe('TD3: the prose colours are the message colour whatever the tone class 
     })
 
     test('a light archive that fell back to the dark base (tone dark, prose-invert on)', async () => {
-        const MID = ':root { --nexus-canvas: #969fae; --color-surface-sheet: #ffffff; --color-surface-toast: #ffffff; --nexus-text: #000000; --nexus-text-secondary: #1a1d24; --nexus-text-muted: #2a2d34; --nexus-ring: #102a60; --nexus-accent-rgb: 16 42 96; --nexus-accent: rgb(var(--nexus-accent-rgb)); --nexus-danger-rgb: 138 0 24; --nexus-danger: rgb(var(--nexus-danger-rgb)); --color-on-accent: #ffffff; --danger: #6a0012; --color-scheme: light; }\n'
+        const MID = ':root { --nexus-canvas: #969fae; --nexus-surface: #ffffff; --color-surface-sheet: #ffffff; --color-surface-toast: #ffffff; --nexus-text: #000000; --nexus-text-secondary: #1a1d24; --nexus-text-muted: #2a2d34; --nexus-ring: #102a60; --nexus-accent-rgb: 16 42 96; --nexus-accent: rgb(var(--nexus-accent-rgb)); --nexus-danger-rgb: 138 0 24; --nexus-danger: rgb(var(--nexus-danger-rgb)); --color-on-accent: #ffffff; --danger: #6a0012; --color-scheme: light; }\n'
         await applyArchiveThroughDriver(['light'], MID)
         expect(ROOT().getAttribute(ATTRIBUTE)).toBe('')
         const shown = await showMessage('char')

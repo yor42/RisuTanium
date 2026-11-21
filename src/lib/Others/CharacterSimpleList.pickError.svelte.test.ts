@@ -283,7 +283,7 @@ describe('CharacterSimpleList: a row tap whose changeChar throws', { timeout: 60
             expect(changeCharSpy.mock.calls).toEqual([[INDEX_OF.Bob]])
             expect(endGrid).toHaveBeenCalledTimes(1)
             expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('Bob'))
             expect(recordErrorSpy).toHaveBeenCalledWith('list.pick', error)
             await nextMacrotask()
             expect(unhandled).toEqual([])
