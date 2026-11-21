@@ -1,0 +1,104 @@
+/*
+  Seasonal scene: valentine. Every class is rt-vl-*. Default rules = start pose; .rt-vl-final = final pose. Tone: the host
+  stamps [data-rt-sw-tone] on the mark slot, stage and root, so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-vl-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.rt-vl-blush {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* A small glow around the mark; it fades out within 30 px of its centre (12 px right of the mark centre), so
+     it never meets the stage's left edge, which is the brand slot's left edge. */
+  background: radial-gradient(ellipse 30px 26px at calc(var(--rt-vl-mx, -100px) + 12px) var(--rt-vl-my, -100px),
+    rgb(255 107 129 / 0.28) 0, rgb(255 150 160 / 0.1) 55%, rgb(255 150 160 / 0) 100%);
+}
+.rt-vl-trailhost { position: absolute; inset: 0; }
+.rt-vl-trail { position: absolute; left: 0; top: 0; overflow: visible; opacity: 0; }
+.rt-vl-line { fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; opacity: 0.75; }
+.rt-vl-star { transform-box: fill-box; transform-origin: center; opacity: 0; }
+.rt-vl-comet { opacity: 0; }
+.rt-vl-comethalo { fill: rgb(255 179 138 / 0.32); }
+.rt-vl-cometcore { fill: #fff4f0; }
+.rt-vl-t0 { stop-color: #ff6b81; }
+.rt-vl-t1 { stop-color: #ffb38a; }
+.rt-vl-sky.rt-vl-final { display: none; }
+
+[data-rt-sw-tone="light"] .rt-vl-blush {
+  background: radial-gradient(ellipse 30px 26px at calc(var(--rt-vl-mx, -100px) + 12px) var(--rt-vl-my, -100px),
+    rgb(244 63 94 / 0.16) 0, rgb(244 63 94 / 0.06) 55%, rgb(244 63 94 / 0) 100%);
+}
+[data-rt-sw-tone="light"] .rt-vl-t0 { stop-color: #d6335a; }
+[data-rt-sw-tone="light"] .rt-vl-t1 { stop-color: #dd6b35; }
+[data-rt-sw-tone="light"] .rt-vl-comethalo { fill: rgb(225 29 72 / 0.18); }
+[data-rt-sw-tone="light"] .rt-vl-cometcore { fill: #e11d48; }
+
+/* ---------- Mark slot ---------- */
+.rt-vl-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-vl-ink { fill: #fff; }
+.rt-vl-r0 { stop-color: #ff6b81; }
+.rt-vl-r1 { stop-color: #ffb38a; }
+.rt-vl-every-inner, .rt-vl-table, .rt-vl-heart, .rt-vl-facet, .rt-vl-glint, .rt-vl-sparkle { transform-box: fill-box; transform-origin: center; }
+.rt-vl-roseframe { opacity: 0; }
+.rt-vl-facet { stroke: rgb(255 255 255 / 0.55); stroke-width: 0.7; stroke-linejoin: round; opacity: 0; }
+.rt-vl-table { opacity: 0; }
+.rt-vl-tablefacet { stroke: rgb(255 255 255 / 0.7); stroke-width: 0.7; stroke-linejoin: round; }
+.rt-vl-outline { fill: none; stroke: rgb(255 214 224 / 0.9); stroke-width: 1.2; stroke-linejoin: round; opacity: 0; }
+.rt-vl-glint { fill: #fff; opacity: 0; }
+.rt-vl-sparkle { fill: #fff; opacity: 0; }
+
+[data-rt-sw-tone="light"] .rt-vl-ink { fill: #0f172a; }
+[data-rt-sw-tone="light"] .rt-vl-r0 { stop-color: #d6335a; }
+[data-rt-sw-tone="light"] .rt-vl-r1 { stop-color: #dd6b35; }
+[data-rt-sw-tone="light"] .rt-vl-facet { stroke: rgb(190 18 60 / 0.35); }
+[data-rt-sw-tone="light"] .rt-vl-outline { stroke: #be123c; stroke-width: 1.6; }
+[data-rt-sw-tone="light"] .rt-vl-sparkle { fill: #fff; stroke: #be123c; stroke-width: 0.12; }
+
+.rt-vl-mark.rt-vl-final .rt-vl-every { opacity: 0; }
+.rt-vl-mark.rt-vl-final .rt-vl-roseframe,
+.rt-vl-mark.rt-vl-final .rt-vl-table,
+.rt-vl-mark.rt-vl-final .rt-vl-facet,
+.rt-vl-mark.rt-vl-final .rt-vl-outline,
+.rt-vl-mark.rt-vl-final .rt-vl-sparkle { opacity: 1; transform: none; }
+
+/* ---------- Word: a heart over the first "i" dot (NanumSquare Neo dot: 0.82-0.99em x, 0.08-0.25em y) ---------- */
+.rt-vl-word { position: relative; }
+.rt-vl-dot {
+  position: absolute;
+  left: calc(var(--rt-vl-ix, 0.906em) - 0.21em);
+  top: -0.019em;
+  width: 0.42em;
+  height: 0.378em;
+  pointer-events: none;
+  z-index: 2;
+}
+.rt-vl-dotpop { position: absolute; inset: 0; opacity: 0; transform-origin: 50% 60%; }
+.rt-vl-dotsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-vl-d0 { stop-color: #ff6b81; }
+.rt-vl-d1 { stop-color: #ff9a8a; }
+.rt-vl-dotheart { stroke: rgb(255 228 234 / 0.9); stroke-width: 0.9; }
+.rt-vl-dotshine { fill: none; stroke: rgb(255 255 255 / 0.85); stroke-width: 1.4; stroke-linecap: round; }
+.rt-vl-halo {
+  position: absolute;
+  left: -0.19em;
+  top: -0.21em;
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 107 129 / 0.5) 0, rgb(255 107 129 / 0.18) 45%, rgb(255 107 129 / 0) 70%);
+  opacity: 0;
+}
+.rt-vl-twinkle { position: absolute; left: 0.34em; top: -0.2em; width: 0.26em; height: 0.26em; opacity: 0; }
+.rt-vl-twinklesvg { display: block; width: 100%; height: 100%; fill: #ffd2c0; }
+
+[data-rt-sw-tone="light"] .rt-vl-d0 { stop-color: #e11d48; }
+[data-rt-sw-tone="light"] .rt-vl-d1 { stop-color: #f43f5e; }
+[data-rt-sw-tone="light"] .rt-vl-dotheart { stroke: #fff; }
+[data-rt-sw-tone="light"] .rt-vl-halo {
+  background: radial-gradient(circle, rgb(225 29 72 / 0.22) 0, rgb(225 29 72 / 0.08) 45%, rgb(225 29 72 / 0) 70%);
+}
+[data-rt-sw-tone="light"] .rt-vl-twinklesvg { fill: #ea580c; }
+
+.rt-vl-word.rt-vl-final .rt-vl-dotpop { opacity: 1; transform: none; }
+.rt-vl-word.rt-vl-final .rt-vl-halo { opacity: 0.75; transform: none; }
