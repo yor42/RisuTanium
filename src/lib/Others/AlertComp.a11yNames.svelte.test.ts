@@ -132,10 +132,14 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
     }
 })
 
+vi.mock(import('src/ts/gui/branches'), () => ({
+    getChatBranches: vi.fn(() => []),
+}) as unknown as typeof import('src/ts/gui/branches'))
+
 //#endregion
 
 import { alertStore, DBState } from '../../ts/stores.svelte'
-import { alertGenerationInfoStore } from '../../ts/alert'
+import { alertGenerationInfoStore, alertRequestLogs } from '../../ts/alert'
 import { language } from 'src/lang'
 import { unnamedControls } from 'src/lib/a11yNames.test-helpers'
 import AlertComp from './AlertComp.svelte'
@@ -246,6 +250,23 @@ describe('AlertComp accessible names', () => {
         alertStore.set({ type: 'requestdata', msg: 'g' } as never)
         flushSync()
         expect(exportTarget.querySelector(`button[aria-label="${language.uiCommon.close}"]`)).not.toBeNull()
+    })
+
+    // Guards: both close buttons were named before this suite pinned them, so these pass with or without a code change.
+    test('guard: the branches close button is named and holds the X icon', () => {
+        DBState.db = { characters: [] } as unknown as Database
+        alertStore.set({ type: 'branches', msg: '' } as never)
+        const target = mountAlertComp()
+        flushSync()
+        expect(target.querySelector(`button[aria-label="${language.uiCommon.close}"] svg`)).not.toBeNull()
+    })
+
+    test('guard: the request logs close button is named and holds the X icon', () => {
+        DBState.db = { characters: [] } as unknown as Database
+        alertRequestLogs()
+        const target = mountAlertComp()
+        flushSync()
+        expect(target.querySelector(`button[aria-label="${language.uiCommon.close}"] svg`)).not.toBeNull()
     })
 })
 

@@ -460,7 +460,7 @@ describe('restoreOpenedBackup on the task card', () => {
         const view = taskHostView()
         expect(view?.steps[view.stepIndex]?.label).toBe(language.restoreStepCleanup)
         expect(view?.cancelOffered).toBe(true)
-        expect(alertWaitMock).not.toHaveBeenCalledWith(language.internalBackupWaitingForCleanup, expect.any(Function))
+        expect(alertWaitMock).not.toHaveBeenCalled()
 
         requestTaskCancel()
         await expect(running).resolves.toBe('pageLive')

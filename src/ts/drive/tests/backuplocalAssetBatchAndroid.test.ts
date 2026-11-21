@@ -408,6 +408,7 @@ vi.mock('src/ts/drive/restoreProgress', async (importOriginal) => {
 //#endregion
 
 import { injectRestoreStore } from './restoreSupport'
+import { isRestoreCopyText, restoreCopyPercent } from './restoreWaitText'
 import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup, LoadPickedLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
@@ -1083,7 +1084,6 @@ describe('a restore on an Android page with several large-entry streams at once'
 
 describe('the message while the copies finish on an Android page', () => {
     const FINISHING = 'Finishing copying files...'
-    const PROGRESS = 'Loading local Backup...'
     const LARGE_SIZE = MIB + MIB / 2
 
     function waitTexts(): string[] {
@@ -1091,9 +1091,8 @@ describe('the message while the copies finish on an Android page', () => {
     }
 
     function lastProgressPercent(): number {
-        const texts = waitTexts().filter((text) => text.startsWith(PROGRESS))
-        const match = /\((\d+\.\d+)%\)/.exec(texts[texts.length - 1] ?? '')
-        return match === null ? Number.NaN : Number(match[1])
+        const texts = waitTexts().filter(isRestoreCopyText)
+        return restoreCopyPercent(texts[texts.length - 1] ?? '') ?? Number.NaN
     }
 
     function lastIndexWhere(texts: string[], matches: (text: string) => boolean): number {
@@ -1128,7 +1127,9 @@ describe('the message while the copies finish on an Android page', () => {
             expect(held[held.length - 1]).toBe(FINISHING)
             expect(held.filter((text) => text === FINISHING)).toHaveLength(1)
             // After the last entry was shown, not inside the loop.
-            expect(held.indexOf(FINISHING)).toBeGreaterThan(lastIndexWhere(held, (text) => text.startsWith(PROGRESS)))
+            const lastProgress = lastIndexWhere(held, isRestoreCopyText)
+            expect(lastProgress).toBeGreaterThanOrEqual(0)
+            expect(held.indexOf(FINISHING)).toBeGreaterThan(lastProgress)
             expect(shell.commits).toHaveLength(0)
             release.release()
             await restoring

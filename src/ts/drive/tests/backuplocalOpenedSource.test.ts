@@ -275,6 +275,7 @@ import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
+import { armTrigger, expectEveryTriggerFired, isRestoreCopyText } from './restoreWaitText'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
@@ -457,11 +458,13 @@ function restoreOpened(source: ImportSource): Promise<LocalBackupEnd> {
 /** Where the restore is: `copy` once the pass over the entries has begun. */
 const phase = { value: 'walk' as 'walk' | 'copy' | 'commit' }
 
-function trackPhase(onCommit?: () => void): void {
+function trackPhase(onCommit?: () => void, opts?: { expect?: 'fires' | 'never' }): void {
     phase.value = 'walk'
+    const trigger = armTrigger('copy phase', opts)
     vi.mocked(alertWait).mockImplementation((text: string) => {
-        if (text.startsWith('Loading local Backup...')) {
+        if (isRestoreCopyText(text)) {
             phase.value = 'copy'
+            trigger.hit()
         }
         if (text === 'Loading backup...') {
             phase.value = 'commit'
@@ -536,6 +539,8 @@ beforeEach(() => {
         return el
     })
 })
+
+afterEach(expectEveryTriggerFired)
 
 afterEach(() => {
     resetBusyActionsForTest()
@@ -637,7 +642,8 @@ describe('a restore from an opened source on an Android page', () => {
                 ['big.bin', patterned(MIB + 9, 3)],
                 ...fixture.entries,
             ])
-            trackPhase()
+            // A fault in the walk ends the restore before the copy pass shows its first text, so that case never reaches the copy phase.
+            trackPhase(undefined, picked.label === 'the walk' ? { expect: 'never' } : undefined)
             const probe = probeSource(built.bytes, { fault: (read, index) => picked.pick(built, fixture, read, index) ? mode : null })
 
             const end = await restoreOpened(probe.source)

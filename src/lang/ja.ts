@@ -195,6 +195,7 @@ export const languageJapanese = {
         "slate-light": "スレート ライト",
         "lite": "Lite",
         "nexus": "Nexus",
+        "theme-pack": "テーマパック",
     },
     settingsShellStepNames: {
         "tiniest": "最小",
@@ -3923,7 +3924,6 @@ export const languageJapanese = {
     internalBackupUnreadable: "このバックアップは破損しているか不完全なため、読み込まれませんでした。現在のデータは変更されていません。",
     internalBackupWriteFailed: "バックアップを保存できませんでした。現在のデータは変更されていません。",
     internalBackupListFailed: "バックアップ一覧を読み取ることができませんでした。何も変更されていません。",
-    internalBackupWaitingForCleanup: "バックアップを読み込む前に、起動時のクリーンアップを完了しています…",
     internalBackupPartialConfirm: "このバックアップは一部が破損しています。破損していない部分のみ読み込むことができ、以下の項目は除外されます：",
     internalBackupPartialConfirmKeep: "現在のデータはまず最新の内部バックアップとして保持されるため、同じ一覧からいつでも復元できます。破損していない部分を読み込みますか？",
     internalBackupLeftOutPresets: "すべてのプリセット（代わりにデフォルトのプリセットが使用されます）",

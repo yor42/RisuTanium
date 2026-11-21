@@ -195,6 +195,7 @@ export const languageEnglish = {
         'slate-light': 'Slate Light',
         lite: 'Lite',
         nexus: 'Nexus',
+        'theme-pack': 'Theme pack',
     },
     settingsShellStepNames: {
         tiniest: 'Tiniest',
@@ -3922,7 +3923,6 @@ export const languageEnglish = {
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
     internalBackupWriteFailed: "The backup could not be saved. Your current data was not changed.",
     internalBackupListFailed: "The backup list could not be read. Nothing was changed.",
-    internalBackupWaitingForCleanup: "Finishing startup clean-up before loading the backup...",
     internalBackupPartialConfirm: "This backup is partly damaged. Only the parts that are still intact can be loaded, and the following will be left out:",
     internalBackupPartialConfirmKeep: "Your current data will be kept as the newest internal backup first, so you can go back to it from the same list. Load the intact parts?",
     internalBackupLeftOutPresets: "All presets (the default preset is used instead)",

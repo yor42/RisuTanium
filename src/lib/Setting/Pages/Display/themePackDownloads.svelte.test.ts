@@ -56,6 +56,8 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
 })
 
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
+
 //#endregion
 
 import { DBState } from 'src/ts/stores.svelte'
