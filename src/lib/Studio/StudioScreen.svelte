@@ -18,6 +18,7 @@
     import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, setStudioNotRestoredNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
+    import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
     import StudioHeader from './StudioHeader.svelte'
     import StudioDetail from './StudioDetail.svelte'
     import StudioHistoryPanel from './StudioHistoryPanel.svelte'
@@ -46,6 +47,9 @@
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => toastHost) })
 
     installStudioBack()
+
+    // A theme pack's studio sheet is on only while this screen is mounted and App's mask for it is off.
+    $effect(() => declareSurface('studio'))
 
     // The panes below read this one model, so a phone pane swap does not build another.
     provideOwnerSource(() => studioScreen.chaId)

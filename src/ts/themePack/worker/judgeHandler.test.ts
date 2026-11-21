@@ -11,7 +11,7 @@ vi.mock('../index', async (importOriginal) => {
     return { ...actual, judgeAreaSheet: vi.fn(actual.judgeAreaSheet) }
 })
 
-const STUDIO_SHEET = '[data-studio-part]{padding-inline:60px}'
+const STUDIO_SHEET = '[data-part="studio-asset-row"]{opacity:1}'
 const HOME_SHEET = '[data-home-part]{padding-inline:60px}'
 
 function chatJob(label: string, text = PLAIN_CHAT_SHEET): { label: string; area: string; text: string } {
@@ -39,7 +39,7 @@ describe('T3W-6 the judge worker handler', () => {
         expect(vi.mocked(judgeAreaSheet)).toHaveBeenCalledTimes(2)
     })
 
-    it('S0-C1: a job of a non-applied area is dropped and never judged', () => {
+    it('S0-C1: a job of a non-applied area is dropped and never judged; the studio job is judged in its own area', () => {
         vi.mocked(judgeAreaSheet).mockClear()
         const answer = handleJudgeRequest({
             id: 8,
@@ -52,8 +52,12 @@ describe('T3W-6 the judge worker handler', () => {
             ],
         })
         if (answer.ok === false) throw new Error('expected an answer')
-        expect(Object.keys(answer.results)).toEqual(['chat'])
-        expect(vi.mocked(judgeAreaSheet).mock.calls).toEqual([['chat', PLAIN_CHAT_SHEET, undefined, 'chat']])
+        expect(Object.keys(answer.results)).toEqual(['chat', 'studio'])
+        expect(answer.results.studio).toEqual(judgeAreaSheet('studio', STUDIO_SHEET, undefined, 'studio'))
+        expect(vi.mocked(judgeAreaSheet).mock.calls.slice(0, 2)).toEqual([
+            ['chat', PLAIN_CHAT_SHEET, undefined, 'chat'],
+            ['studio', STUDIO_SHEET, undefined, 'studio'],
+        ])
     })
 
     it('S0-C1: an empty job list is a valid request with no results', () => {

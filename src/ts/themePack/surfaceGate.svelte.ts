@@ -3,21 +3,24 @@ import { packBaseTone, type SchemeTone } from '../gui/surfaceTone'
 
 /**
  * The surface gate: a theme pack's sheet may be on only while the screen it was judged against is shown, and at most
- * one sheet is ever on. A screen declares itself while mounted (`declareSurface`); App masks the declaration with its
- * own cover. The gate switches only the `media` attribute of the elements the apply code registered, never a document
+ * one sheet is ever on. A screen declares itself while mounted (`declareSurface`); App masks the declaration per area with its
+ * own cover (`screenMasked`). The gate switches only the `media` attribute of the elements the apply code registered, never a document
  * query, so a `style[data-theme-pack]` rendered by card or model HTML is never touched. While a registered sheet is on,
  * the gate also marks the document root (`data-theme-pack-base`) and sets the base tone, in the same call as the media,
  * so the tokens the pack does not set resolve to the base it was judged against instead of the user's colour scheme.
  */
 
 /** The areas a sheet can be gated to. Registered elements of any other area are never switched on. */
-export type GatedArea = 'chat'
+export type GatedArea = 'chat' | 'studio'
+
+/** The screens in the order they win when more than one is declared and unmasked: settings > studio > chat > home. */
+const PRECEDENCE: readonly GatedArea[] = ['studio', 'chat']
 
 let generation = 0
 let installed = false
-let cover: () => boolean = () => false
+let masked: (area: GatedArea) => boolean = () => false
 let stopRoot: (() => void) | null = null
-const declared: Record<GatedArea, number> = { chat: 0 }
+const declared: Record<GatedArea, number> = { chat: 0, studio: 0 }
 // A null base marks shape mode: the element is on, but no fixed base applies.
 const registry = new Map<HTMLStyleElement, { area: string, base: SchemeTone | null }>()
 // Declarations change this signal; the gate effect reads it. It is written under `untrack` so a caller that declares
@@ -44,12 +47,24 @@ export function declareSurface(area: GatedArea): () => void {
     }
 }
 
-/** The area whose surface is shown now, or null (no gate installed, nothing declared, or covered). */
-export function shownSurface(): GatedArea | null {
+/**
+ * Whether App's current screen state hides `area`'s sheet. Chat sits under Settings and Studio. Studio is hidden while
+ * Settings is open or Studio is closed, so the chat and studio masks are exclusive: exactly one of `studioOpen` and
+ * `!studioOpen` holds, and a late release of a closing Studio can never turn its sheet on.
+ */
+export function screenMasked(area: GatedArea, open: { settingsOpen: boolean, studioOpen: boolean }): boolean {
+    if (area === 'studio') return open.settingsOpen || !open.studioOpen
+    return open.settingsOpen || open.studioOpen
+}
+
+/** The highest-precedence screen that is declared and not masked, or null (no gate installed, nothing declared, or all masked). At most one sheet is on. */
+export function shownScreen(): GatedArea | null {
     void version
     if (!installed) return null
-    if (cover()) return null
-    return declared.chat > 0 ? 'chat' : null
+    for (const area of PRECEDENCE) {
+        if (declared[area] > 0 && !masked(area)) return area
+    }
+    return null
 }
 
 /**
@@ -64,7 +79,7 @@ const BASE_ATTRIBUTE = 'data-theme-pack-base'
  * base tone while one is on. The registry decides, never a document query.
  */
 export function syncThemePackMedia(): void {
-    const shown = shownSurface()
+    const shown = shownScreen()
     let on = false
     let base: SchemeTone = 'dark'
     for (const [element, entry] of registry) {
@@ -86,11 +101,11 @@ export function syncThemePackMedia(): void {
     packBaseTone.set(on ? base : null)
 }
 
-/** Installs the gate once; `coveredNow` is App's own cover predicate, read by the gate effect. */
-export function installThemePackGate(coveredNow: () => boolean): void {
+/** Installs the gate once; `maskedNow` is App's per-area mask, read by the gate effect. */
+export function installThemePackGate(maskedNow: (area: GatedArea) => boolean): void {
     if (installed) return
     installed = true
-    cover = coveredNow
+    masked = maskedNow
     stopRoot = $effect.root(() => {
         $effect(() => {
             syncThemePackMedia()
@@ -117,8 +132,9 @@ export function resetThemePackGateForTests(): void {
     stopRoot?.()
     stopRoot = null
     installed = false
-    cover = () => false
+    masked = () => false
     declared.chat = 0
+    declared.studio = 0
     registry.clear()
     document.documentElement.removeAttribute(BASE_ATTRIBUTE)
     packBaseTone.set(null)

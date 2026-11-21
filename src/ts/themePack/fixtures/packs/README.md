@@ -10,6 +10,8 @@ Three small packs written by ordinary archive tools on the development PC (Windo
 
 Each command ran from the folder holding the content, and the `.zip` result was renamed to `.risutheme`.
 
+A fourth pack, `chat-studio-compress-archive.risutheme`, holds the same entries plus `studio.css` (an `@font-face` for the same bundled font, and `[data-part="studio-asset-row"]{background-image:url(images/x.png)}`), so chat and Studio are both judged and share the font and the image. It was written on PowerShell 7.6.10 with Microsoft.PowerShell.Archive 1.2.7 by `Compress-Archive -Path manifest.json,chat.css,studio.css,fonts,images -DestinationPath chat-studio.zip`, renamed to `.risutheme`, and is accepted by `intake.test.ts` (I6).
+
 What each tool wrote (read with `7z l -slt`):
 
 | tool | separators | directory entries | extra blocks | data descriptors | ZIP64 |

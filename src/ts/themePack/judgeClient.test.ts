@@ -306,6 +306,31 @@ describe('T3W-5 malformed answers', () => {
     })
 })
 
+describe('J1 the client reads every applied area', () => {
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:1}'
+
+    it('a {chat, studio} request over the real handler resolves with both verdicts, each judged in its own area', async () => {
+        const worker = new FakeJudgeWorker()
+        const judgement = await clientOver(worker)({ chat: PLAIN_CHAT_SHEET, studio: STUDIO_LEAF })
+        expect(worker.posts[0].message.jobs.map((entry) => [entry.label, entry.area])).toEqual([['chat', 'chat'], ['studio', 'studio']])
+        expect(judgement.areas.chat).toEqual(judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat'))
+        expect(judgement.areas.studio).toEqual(judgeAreaSheet('studio', STUDIO_LEAF, undefined, 'studio'))
+        expect(judgement.areas.studio?.result.ok).toBe(true)
+    })
+
+    it('a studio-only request carries one studio job', async () => {
+        const worker = new FakeJudgeWorker()
+        const judgement = await clientOver(worker)({ studio: STUDIO_LEAF })
+        expect(worker.posts[0].message.jobs.map((entry) => entry.label)).toEqual(['studio'])
+        expect(Object.keys(judgement.areas)).toEqual(['studio'])
+    })
+
+    it('readJudgement keeps the studio area of a pack judgement', () => {
+        const judged = judgePackSheets({ chat: PLAIN_CHAT_SHEET, studio: STUDIO_LEAF })
+        expect(readJudgement(structuredClone(judged))).toEqual(judged)
+    })
+})
+
 describe('W the session: one worker for every request', () => {
     const SHEET_B = '[data-part="chat-message-avatar"]{opacity:0.25}'
     const job = (label: string, text: string): JudgeJob => ({ label, area: 'chat', text })
@@ -399,7 +424,7 @@ describe('W the session: one worker for every request', () => {
         ['a duplicate label', [job('a', PLAIN_CHAT_SHEET), job('a', SHEET_B)]],
         ['an empty label', [job('', PLAIN_CHAT_SHEET)]],
         ['more than the cap', Array.from({ length: MAX_JUDGE_JOBS + 1 }, (_, index) => job(`j${index}`, PLAIN_CHAT_SHEET))],
-        ['an area that is not applied', [{ label: 'a', area: 'studio', text: PLAIN_CHAT_SHEET } as unknown as JudgeJob]],
+        ['an area that is not applied', [{ label: 'a', area: 'home', text: PLAIN_CHAT_SHEET } as unknown as JudgeJob]],
         ['text that is not a string', [{ label: 'a', area: 'chat', text: 5 } as unknown as JudgeJob]],
     ])('E7: rejects %s at once, without spawning or posting, and closes the session', async (_name, list) => {
         const { opened, workers } = session()
