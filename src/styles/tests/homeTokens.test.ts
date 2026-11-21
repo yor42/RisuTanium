@@ -190,6 +190,27 @@ describe('a pack value reaches the landing (S1-G5)', () => {
         expect(app.get(':root')?.get('--home-card-pad-lg')).toBe('var(--home-space-10)')
     })
 
+    test('(h) S3b-G1: the story shelf tokens resolve per band and language on a landing child', () => {
+        const expected = {
+            wide: { '--home-text-quote': '19px', '--home-avatar-lg': '72px', '--home-lead-portrait': '168px' },
+            mid: { '--home-text-quote': '19px', '--home-avatar-lg': '72px', '--home-lead-portrait': '168px' },
+            phone: { '--home-text-quote': '16px', '--home-avatar-lg': '56px', '--home-lead-portrait-phone': '88px' },
+        } as const
+        for (const [band, values] of Object.entries(expected)) {
+            document.body.innerHTML = `<div class="home-root" data-layout="${band}"><section></section></div>`
+            const section = document.querySelector('section')!
+            const model = modelWith('')
+            for (const [name, value] of Object.entries(values)) expect(model.custom(section, name), `${band} ${name}`).toBe(value)
+        }
+        expect(app.get(':root')?.get('--home-leading-quote')).toBe('1.55')
+        expect(app.get(':root')?.get('--home-card-radius')).toBe('var(--home-radius-7)')
+        document.documentElement.setAttribute('lang', 'ko')
+        document.body.innerHTML = '<div class="home-root" data-layout="wide"><section></section></div>'
+        const ko = modelWith('')
+        expect(ko.unmodelled.filter((entry) => entry.includes(':lang'))).toEqual([])
+        expect(ko.custom(document.querySelector('section')!, '--home-leading-quote')).toBe('1.7')
+    })
+
     test('(e) the Korean block outranks a pack plain :root value', () => {
         const h1 = h1Under('wide', 'ko')
         const model = modelWith(':root{--home-tracking-h1:0.05em}')
