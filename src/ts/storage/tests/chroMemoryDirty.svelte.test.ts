@@ -21,6 +21,7 @@ import type { toSaveType } from '../risuSave'
 import { registerDbChangeEffects } from '../dbChangeEffects.svelte'
 import { installDbWriteHook } from '../dbWriteHook'
 import { setStateWriteHook } from '../svelteStatePatch'
+import { writeLtmSettings } from '../../process/memory/chroMemory/settings'
 
 // The stand-in of `stores.svelte.ts` the change effects read: a reactive state without the write hook.
 vi.mock(import('../../stores.svelte'), () => {
@@ -87,6 +88,19 @@ describe('the generic top-level change effect alone (no write hook)', () => {
         flushSync()
         expect(markChanged).toHaveBeenCalledWith(true)
     })
+
+    test('DT1 guard: the ltmSettings writer marks the page dirty and the state holds the merged object', () => {
+        const markChanged = startEffects()
+        dbFields().ltmSettings = { budgetTokens: 900, future: { x: 1 } }
+        flushSync()
+        markChanged.mockClear()
+
+        writeLtmSettings(DBState.db, { shadow: true })
+        flushSync()
+
+        expect(markChanged).toHaveBeenCalledWith(true)
+        expect(dbFields().ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, shadow: true })
+    })
 })
 
 describe('the explicit write hook alone', () => {
@@ -122,5 +136,16 @@ describe('the explicit write hook alone', () => {
         state.db.ltmSettings = { budgetTokens: 1800 }
 
         expect(marks).toContainEqual({ kind: 'setting', key: 'ltmSettings' })
+    })
+
+    test('DT1 guard: the ltmSettings writer reaches the sink as a setting mark and the state holds the merged object', async () => {
+        const { state, marks } = await hookedState()
+        state.db.ltmSettings = { budgetTokens: 900, future: { x: 1 } }
+        marks.length = 0
+
+        writeLtmSettings(state.db as unknown as Database, { shadow: true })
+
+        expect(marks).toContainEqual({ kind: 'setting', key: 'ltmSettings' })
+        expect(state.db.ltmSettings).toEqual({ budgetTokens: 900, future: { x: 1 }, shadow: true })
     })
 })

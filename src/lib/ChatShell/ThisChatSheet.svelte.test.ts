@@ -328,12 +328,23 @@ describe('jailbreak and memory switches', () => {
         expect(owner.supaMemory).toBe(false)
     })
 
-    test('reproducer: ChroMemory over V3 flags and the menu setting offers no memory view', async () => {
+    test('UI1 reproducer: ChroMemory with the menu setting on shows the ChroMemory row, and a click closes the sheet and opens the modal flag', async () => {
         install({ ltmEngine: true, hypaV3: true, showMenuHypaMemoryModal: true })
         await show()
         expect(part('memory')).not.toBeNull()
-        expect(part('memory-view')).toBeNull()
+        expect(part('memory-view')!.textContent).toBe('chroMemoryModal')
         expect(get(hypaV3ModalOpen)).toBe(false)
+        part('memory-view')!.click()
+        await tick()
+        expect(get(hypaV3ModalOpen)).toBe(true)
+        expect(h.order[0]).toBe('close')
+    })
+
+    test('UI1 reproducer: ChroMemory with the menu setting off shows no memory view row (MC-3205)', async () => {
+        install({ ltmEngine: true, showMenuHypaMemoryModal: false })
+        await show()
+        expect(part('memory')).not.toBeNull()
+        expect(part('memory-view')).toBeNull()
     })
 
     test('with the older memory the view row creates the chat\'s data and opens the old view', async () => {

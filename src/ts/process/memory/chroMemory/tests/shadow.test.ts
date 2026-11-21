@@ -7,7 +7,7 @@ import {
     getLastChroMemoryTrace,
     resetChroMemoryShadowForTests,
     runChroMemoryShadow,
-    runShadowSafely,
+    runChroMemorySafely,
     shadowLineCacheSizeForTests,
     type ShadowDeps,
     type ShadowInput,
@@ -31,7 +31,7 @@ interface World {
 
 function world(texts: string[]): World {
     const chats: OpenAIChat[] = texts.map((t, i) => ({ role: i % 2 ? 'assistant' : 'user', content: t }))
-    const refs: CapturedMessage[] = texts.map((t, i) => ({ msg: { chatId: `c${i}`, role: i % 2 ? 'char' : 'user', data: t }, chatIndex: i, name: 'Bot', preWrap: t }))
+    const refs: CapturedMessage[] = texts.map((t, i) => ({ msg: { chatId: `c${i}`, role: i % 2 ? 'char' : 'user', data: t }, chatIndex: i, name: 'Bot', preWrap: t, data: t }))
     const capture = createSendCapture()
     chats.forEach((c, i) => capture.add(c, refs[i]))
     return { chats, refs, capture }
@@ -246,13 +246,13 @@ describe('runChroMemoryShadow overlap', () => {
 
         const gateA = deferred()
         const gateB = deferred()
-        const dA = deps({ countText: (t) => (t === HEADER ? gateA.promise : Promise.resolve(len(t))) })
-        const dB = deps({ countText: (t) => (t === HEADER ? gateB.promise : Promise.resolve(len(t))) })
+        const dA = deps({ countBlock: (b) => (b === HEADER ? gateA.promise : Promise.resolve(len(b) + 3)) })
+        const dB = deps({ countBlock: (b) => (b === HEADER ? gateB.promise : Promise.resolve(len(b) + 3)) })
         const pA = runChroMemoryShadow(inputOf(wA, 5, { chatKey: 'a:1' }), dA.d)
         const pB = runChroMemoryShadow(inputOf(wB, 5, { chatKey: 'b:1' }), dB.d)
-        gateB.resolve(len(HEADER))
+        gateB.resolve(len(HEADER) + 3)
         const tB = await pB
-        gateA.resolve(len(HEADER))
+        gateA.resolve(len(HEADER) + 3)
         const tA = await pA
         expect(strip(tA)).toEqual(soloA)
         expect(strip(tB)).toEqual(soloB)
@@ -264,10 +264,10 @@ describe('runChroMemoryShadow overlap', () => {
         const soloT = await runChroMemoryShadow(inputOf(w, 5), deps().d)
         resetChroMemoryShadowForTests()
         const gate = deferred()
-        const slow = deps({ countText: (t) => (t === HEADER ? gate.promise : Promise.resolve(len(t))) })
+        const slow = deps({ countBlock: (b) => (b === HEADER ? gate.promise : Promise.resolve(len(b) + 3)) })
         const first = runChroMemoryShadow(inputOf(w, 5), slow.d)
         const second = await runChroMemoryShadow(inputOf(w, 5), deps().d)
-        gate.resolve(len(HEADER))
+        gate.resolve(len(HEADER) + 3)
         const firstT = await first
         expect(firstT.items).toEqual(soloT.items)
         expect(firstT.outcome).toBe(soloT.outcome)
@@ -276,7 +276,7 @@ describe('runChroMemoryShadow overlap', () => {
     })
 })
 
-describe('runShadowSafely', () => {
+describe('runChroMemorySafely', () => {
     function sendArgs(w: World, over: Record<string, unknown> = {}) {
         return {
             capture: w.capture,
@@ -291,15 +291,16 @@ describe('runShadowSafely', () => {
             maxContextTokens: 8192,
             countVaries: false,
             tokenizerKey: () => 'tk',
+            inject: null,
             ...over,
         }
     }
 
-    test('new rule: resolves with an error trace when userName, a msg.data getter or tokenizerKey throws', async () => {
+    test('new rule: resolves with an error trace when userName, a captured data getter or tokenizerKey throws', async () => {
         for (const make of [
             (w: World) => sendArgs(w, { userName: () => { throw new Error('user boom') } }),
             (w: World) => {
-                Object.defineProperty(w.refs[1].msg, 'data', { get: () => { throw new Error('data boom') } })
+                Object.defineProperty(w.refs[1], 'data', { get: () => { throw new Error('data boom') } })
                 return sendArgs(w)
             },
             (w: World) => sendArgs(w, { tokenizerKey: () => { throw new Error('key boom') } }),
@@ -308,7 +309,7 @@ describe('runShadowSafely', () => {
             const w = world(TEXTS)
             const args = make(w)
             const beforeRef = [...args.before]
-            await expect(runShadowSafely(args, deps().d)).resolves.toBeUndefined()
+            await expect(runChroMemorySafely(args, deps().d)).resolves.toBeNull()
             const trace = getLastChroMemoryTrace()
             expect(trace?.outcome).toBe('error')
             expect(trace?.error).toMatch(/boom/)
@@ -322,7 +323,7 @@ describe('runShadowSafely', () => {
         const firstChat: OpenAIChat = { role: 'assistant', content: 'Bot: Hello!' }
         const example: OpenAIChat = { role: 'assistant', content: 'example' }
         const before = [firstChat, example, ...w.chats]
-        await runShadowSafely(
+        await runChroMemorySafely(
             sendArgs(w, {
                 before,
                 kept: w.chats.slice(5),
@@ -342,7 +343,7 @@ describe('runShadowSafely', () => {
 
     test('new rule: the default budget follows the context size', async () => {
         const w = world(TEXTS)
-        await runShadowSafely(sendArgs(w, { maxContextTokens: 8192 }), deps().d)
+        await runChroMemorySafely(sendArgs(w, { maxContextTokens: 8192 }), deps().d)
         expect(getLastChroMemoryTrace()?.budgetTokens).toBe(1228)
     })
 })

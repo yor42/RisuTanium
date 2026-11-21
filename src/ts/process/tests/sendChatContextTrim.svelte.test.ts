@@ -51,6 +51,8 @@ const h = vi.hoisted(() => ({
     tokenCalls: [] as string[],
     /** A chat whose content holds this text is counted as NaN by the tokenizer stand-in. */
     nanMarker: null as null | string,
+    /** Answers a chat's count for a test that needs a count to change between two calls; undefined falls through. */
+    countOverride: null as null | ((content: string) => number | undefined),
     /** Fields the model-info stand-in returns on top of its placeholder model. */
     modelInfo: {} as Record<string, unknown>,
     /** Runs inside every model-info lookup (the send looks the model up once before the prompt loop, and once per message that holds an inlay). */
@@ -162,6 +164,10 @@ vi.mock(import('../../tokenizer'), () => ({
         constructor(extra: number, _mode: string) { this.extra = extra }
         async tokenizeChat(chat: { content: string, multimodals?: unknown[] }) {
             h.tokenCalls.push(chat.content)
+            const overridden = h.countOverride?.(chat.content)
+            if (overridden !== undefined) {
+                return overridden
+            }
             if (h.nanMarker !== null && chat.content.includes(h.nanMarker)) {
                 return NaN
             }
@@ -520,6 +526,7 @@ beforeEach(() => {
     h.onAddInfo = null
     h.tokenCalls.length = 0
     h.nanMarker = null
+    h.countOverride = null
     h.modelInfo = {}
     h.onModelInfo = null
     h.android = false
@@ -564,6 +571,7 @@ afterEach(() => {
     selectedCharID.set(-1)
     h.onAddInfo = null
     h.nanMarker = null
+    h.countOverride = null
     h.modelInfo = {}
     h.onModelInfo = null
 })
@@ -1577,7 +1585,7 @@ describe('guard: the request the trim produces is the one the base produced', ()
 
         const isShadowText = (call: unknown[]): boolean => {
             const text = String(call[0])
-            return text.startsWith(header) || text.startsWith('[#')
+            return text.startsWith(header) || text.startsWith('[#') || text.startsWith('<Previous Conversation>')
         }
 
         const forms: Array<[string, Record<string, unknown>, () => void]> = [
@@ -1614,7 +1622,7 @@ describe('guard: the request the trim produces is the one the base produced', ()
                 await runScripted({}, { supaMemory: true })
                 const noEngine = facts()
                 h.request.mockReset()
-                await runScripted({ ...flags, ltmEngine: true }, { supaMemory: true })
+                await runScripted({ ...flags, ltmEngine: true, ltmSettings: { shadow: true } }, { supaMemory: true })
                 expect(mock()).not.toHaveBeenCalled()
                 expect(memoryRecords).toEqual([])
                 expect(facts()).toEqual(noEngine)
@@ -1627,7 +1635,7 @@ describe('guard: the request the trim produces is the one the base produced', ()
                 const off = await sendScripted({ ...formDb }, { supaMemory: true })
                 expect(shadow.getLastChroMemoryTrace()).toBeNull()
                 h.request.mockReset()
-                const on = await sendScripted({ ...formDb, ltmEngine: true }, { supaMemory: true })
+                const on = await sendScripted({ ...formDb, ltmEngine: true, ltmSettings: { shadow: true } }, { supaMemory: true })
 
                 expect(on.facts).toEqual(off.facts)
                 expect(on.lastMemoryAt).toBe(off.lastMemoryAt)
@@ -1654,13 +1662,13 @@ describe('guard: the request the trim produces is the one the base produced', ()
                 const off = await sendScripted({ ...formDb }, { supaMemory: true })
                 h.request.mockReset()
                 tokenizeMock.mockImplementation(async (s: string) => {
-                    if (String(s).startsWith(header)) {
+                    if (String(s).startsWith(header) || String(s).startsWith('<Previous Conversation>')) {
                         throw new Error('count failed')
                     }
                     return countByLength(s)
                 })
                 try {
-                    const on = await sendScripted({ ...formDb, ltmEngine: true }, { supaMemory: true })
+                    const on = await sendScripted({ ...formDb, ltmEngine: true, ltmSettings: { shadow: true } }, { supaMemory: true })
                     expect(on.facts).toEqual(off.facts)
                     expect(on.lastMemoryAt).toBe(off.lastMemoryAt)
                     expect(on.trace?.outcome).toBe('error')
@@ -1669,6 +1677,31 @@ describe('guard: the request the trim produces is the one the base produced', ()
                 }
             })
         }
+
+        test('SL5C guard (passes on the shadow base): a continue send queries the newest captured message and D0 ends at the last dropped one', async () => {
+            const messages = Array.from({ length: COUNT + 1 }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', body100(i)))
+            const A = makeChar('char-A', 'Alice', [makeChat('chat-A', messages)], { supaMemory: true })
+            installDb([A], { maxContext: SCRIPTED_MAX_CONTEXT, ltmEngine: true, ltmSettings: { shadow: true } })
+            selectedCharID.set(0)
+            const result = await sendOnce(A, A.chats[0], { continue: true })
+            expect(result instanceof Error ? `threw: ${result.message}` : result).toBe(true)
+            const chat = sentChat()
+            const first = keptNumbers()[0]
+            expect(first).toBeGreaterThan(4)
+            const trace = shadow.getLastChroMemoryTrace()!
+            // The continued message itself is not in the message loop's capture: the query is the newest message before it.
+            const queried = (lastBody()?.formated ?? []).find((e) => (e as { memo?: string }).memo === trace.query?.chatId)
+            expect(queried?.content).toContain(`[M${String(COUNT).padStart(4, '0')}]`)
+            expect(trace.d0.records).toBe(first + 1)
+            expect(trace.d0.lastChatId).toBe(chat.message[first - 1].chatId)
+        })
+
+        test('BT1 guard: ltmSettings.budgetTokens bounds the block and is the traced budget', async () => {
+            const on = await sendScripted({ ltmEngine: true, ltmSettings: { shadow: true, budgetTokens: 300 } }, { supaMemory: true })
+            const trace = on.trace!
+            expect(trace.budgetTokens).toBe(300)
+            expect(trace.T).toBeLessThanOrEqual(300)
+        })
 
         test('guard: ltmEngine with the character memory off runs no shadow and the send is the no-engine send', async () => {
             const off = await sendScripted({}, { supaMemory: false })
@@ -1694,7 +1727,7 @@ describe('guard: the request the trim produces is the one the base produced', ()
             }
             const off = await run({})
             h.request.mockReset()
-            const on = await run({ ltmEngine: true })
+            const on = await run({ ltmEngine: true, ltmSettings: { shadow: true } })
             expect(on.facts).toEqual(off.facts)
             const first = keptNumbers()[0]
             expect(first).toBeGreaterThan(4)
@@ -1725,7 +1758,7 @@ describe('guard: the request the trim produces is the one the base produced', ()
             }
             const off = await send({}, { supaMemory: true })
             expect(shadow.getLastChroMemoryTrace()).toBeNull()
-            const on = await send({ ltmEngine: true }, { supaMemory: true })
+            const on = await send({ ltmEngine: true, ltmSettings: { shadow: true } }, { supaMemory: true })
             const trace = shadow.getLastChroMemoryTrace()!
             expect(trace.d0.units).toBeGreaterThanOrEqual(2000)
             expect(trace.countCapped).toBe(true)
@@ -1735,6 +1768,317 @@ describe('guard: the request the trim produces is the one the base produced', ()
             expect(on.chatCalls).toBe(off.chatCalls)
             expect(on.kept).toEqual(off.kept)
             expect(on.facts).toEqual(off.facts)
+        })
+
+        // The injection: with ChroMemory on and `shadow` not set, a send that recalls
+        // something carries one memory message and evicts only what it needs.
+        describe('the injection', () => {
+            const EXTRA = 5
+            const ceil4 = async (s: string) => Math.ceil((s?.length ?? 0) / 4)
+            const isMemory = (e: PromptEntry) => (e as { memo?: string }).memo === 'supaMemory'
+
+            beforeEach(() => tokenizeMock.mockImplementation(ceil4))
+            afterEach(() => tokenizeMock.mockImplementation(countByLength))
+
+            const entries = () => lastBody()?.formated ?? []
+            const memoryEntries = () => entries().filter(isMemory)
+            const keptMessages = () => entries().filter((e) => !isMemory(e)).flatMap((e) => [...e.content.matchAll(/\[M(\d{4})\]/g)].map((m) => Number(m[1])))
+            const requestTokens = () => entries().reduce((sum, e) => sum + Math.ceil(e.content.length / 4) + EXTRA, 0)
+
+            /** Messages whose oldest and newest share a planted rare term, so the newest query recalls the oldest. */
+            function zebraMessages(count: number = COUNT): Message[] {
+                return Array.from({ length: count }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', body100(i) + (i === 2 || i === count - 1 ? ' zebrafish' : '')))
+            }
+
+            async function sendWith(db: Record<string, unknown>, charExtra: Record<string, unknown> = {}, messages: Message[] = zebraMessages()) {
+                const A = makeChar('char-A', 'Alice', [makeChat('chat-A', messages)], { supaMemory: true, ...charExtra })
+                installDb([A], { maxContext: SCRIPTED_MAX_CONTEXT, ...db })
+                selectedCharID.set(0)
+                h.request.mockReset()
+                shadow.resetChroMemoryShadowForTests()
+                const result = await sendOnce(A, A.chats[0])
+                const chat = sentChat()
+                return {
+                    ok: result === true,
+                    result,
+                    chat,
+                    trace: shadow.getLastChroMemoryTrace(),
+                    kept: keptMessages(),
+                    facts: requestFacts(),
+                    lastMemoryAt: lastMemoryPosition(chat),
+                    memory: memoryEntries(),
+                }
+            }
+            const on = { ltmEngine: true }
+
+            test('INJ1 regression reproducer: one system memory message with the wrapped block, before the first kept message, and only evicted chats differ from the no-engine request', async () => {
+                const off = await sendWith({})
+                expect(off.ok).toBe(true)
+                expect(off.memory).toEqual([])
+                const inj = await sendWith(on)
+                expect(inj.ok).toBe(true)
+                expect(inj.trace!.outcome).toBe('injected')
+                expect(inj.memory).toHaveLength(1)
+                const [entry] = inj.memory
+                expect(entry.role).toBe('system')
+                expect(entry.content.startsWith('<Previous Conversation>Earlier in this chat\n[#')).toBe(true)
+                expect(entry.content.endsWith('</Previous Conversation>')).toBe(true)
+                expect(entry.content).toContain('zebrafish')
+                expect((entry as { removable?: boolean }).removable).not.toBe(true)
+                const firstKept = entries().findIndex((e) => !isMemory(e) && /\[M\d{4}\]/.test(e.content))
+                expect(entries().indexOf(entry)).toBeLessThan(firstKept)
+                const evicted = inj.trace!.makeRoom!.evictedChats
+                expect(evicted).toBeGreaterThan(0)
+                expect(inj.kept).toEqual(off.kept.slice(evicted))
+            })
+
+            test('T1 regression reproducer: the traced T is the recount of the memory entry, with the wrap and with a template memory card', async () => {
+                const plain = await sendWith(on)
+                const [entry] = plain.memory
+                expect(plain.trace!.T).toBe(Math.ceil(entry.content.length / 4) + EXTRA)
+
+                const cards = [
+                    { type: 'plain', type2: 'main', text: 'TEMPLATE-MAIN', role: 'system' },
+                    { type: 'memory', innerFormat: 'MEMORY-CARD[ {{slot}} ]', role2: 'user' },
+                    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                ]
+                const templated = await sendWith({ ...on, promptTemplate: cards, promptSettings: {} })
+                expect(templated.ok).toBe(true)
+                expect(templated.trace!.outcome).toBe('injected')
+                const [card] = templated.memory
+                expect(card.role).toBe('user')
+                expect(card.content.startsWith('MEMORY-CARD[ Earlier in this chat')).toBe(true)
+                expect(templated.trace!.T).toBe(Math.ceil(card.content.length / 4) + EXTRA)
+            })
+
+            test('T1 new rule: two identical memory cards count both entries and tokenize their shape once', async () => {
+                const cards = [
+                    { type: 'plain', type2: 'main', text: 'TEMPLATE-MAIN', role: 'system' },
+                    { type: 'memory', innerFormat: '', role2: 'user' },
+                    { type: 'memory', innerFormat: '', role2: 'user' },
+                    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                ]
+                const two = await sendWith({ ...on, promptTemplate: cards, promptSettings: {} })
+                expect(two.ok).toBe(true)
+                expect(two.trace!.outcome).toBe('injected')
+                expect(two.memory).toHaveLength(2)
+                const recount = two.memory.reduce((sum, e) => sum + Math.ceil(e.content.length / 4) + EXTRA, 0)
+                expect(two.trace!.T).toBe(recount)
+                // The head count tokenizes the shape of two identical cards once.
+                expect(tokenizeMock.mock.calls.filter((c) => c[0] === header)).toHaveLength(1)
+            })
+
+            test('MR1 regression reproducer: a budget above the room is bounded by the room and the request fits the context', async () => {
+                const inj = await sendWith({ ...on, ltmSettings: { budgetTokens: 2000 } })
+                const trace = inj.trace!
+                expect(trace.outcome).toBe('injected')
+                const m = trace.makeRoom!
+                expect(m.room).toBeLessThan(2000)
+                expect(trace.T).toBeLessThanOrEqual(m.room)
+                expect(m.limit + trace.T).toBeGreaterThan(0)
+                expect(requestTokens()).toBeLessThanOrEqual(SCRIPTED_MAX_CONTEXT)
+                expect(inj.kept.length).toBeGreaterThanOrEqual(4)
+            })
+
+            test('LM1 regression reproducer: lastMemory is the first kept message, later than the no-engine one, never the memory message', async () => {
+                const off = await sendWith({})
+                const inj = await sendWith(on)
+                expect(inj.trace!.outcome).toBe('injected')
+                expect(inj.chat.lastMemory).not.toBe('supaMemory')
+                expect(inj.lastMemoryAt).toBe(inj.kept[0])
+                expect(inj.lastMemoryAt).toBeGreaterThan(off.lastMemoryAt)
+            })
+
+            describe('I1: nothing injected sends the no-engine request', () => {
+                const cases: Array<[string, Record<string, unknown>, number]> = [
+                    ['budget below one line', { ltmSettings: { budgetTokens: 1 } }, 61],
+                    ['everything fits (empty D0)', { maxContext: 999999 }, 61],
+                ]
+                for (const [label, db, count] of cases) {
+                    test(`I1 guard (passes on the shadow base): ${label}`, async () => {
+                        const off = await sendWith({ ...db }, {}, zebraMessages(count))
+                        const inj = await sendWith({ ...db, ...on }, {}, zebraMessages(count))
+                        expect(inj.facts).toEqual(off.facts)
+                        expect(inj.kept).toEqual(off.kept)
+                        expect(inj.memory).toEqual([])
+                        expect(inj.lastMemoryAt).toBe(off.lastMemoryAt)
+                    })
+                }
+
+                test('I1 guard: a throwing block count is an error trace and the no-engine request', async () => {
+                    const off = await sendWith({})
+                    tokenizeMock.mockImplementation(async (s: string) => {
+                        if (String(s).startsWith('<Previous Conversation>')) throw new Error('count failed')
+                        return ceil4(s)
+                    })
+                    const inj = await sendWith(on)
+                    expect(inj.trace!.outcome).toBe('error')
+                    expect(inj.facts).toEqual(off.facts)
+                    expect(inj.memory).toEqual([])
+                    expect(inj.lastMemoryAt).toBe(off.lastMemoryAt)
+                })
+
+                test('I1 guard: shadow mode injects nothing and equals the no-engine request', async () => {
+                    const off = await sendWith({})
+                    const inj = await sendWith({ ...on, ltmSettings: { shadow: true } })
+                    expect(inj.trace!.mode).toBe('shadow')
+                    expect(inj.facts).toEqual(off.facts)
+                    expect(inj.memory).toEqual([])
+                })
+            })
+
+            test('VC1 regression reproducer and VC2 guard: a varying counter injects within 12 counts, and injects nothing as the no-engine request', async () => {
+                providerOptions.set('plug', { tokenizer: 'custom' })
+                const varying = { aiModel: 'custom', currentPluginProvider: 'plug' }
+                const off = await sendWith({ ...varying })
+                tokenizeMock.mockClear()
+                const inj = await sendWith({ ...varying, ...on })
+                expect(inj.trace!.outcome).toBe('injected')
+                expect(inj.memory).toHaveLength(1)
+                expect(inj.trace!.counted).toBeLessThanOrEqual(12)
+                expect(tokenizeMock.mock.calls.length).toBeLessThanOrEqual(12)
+                expect(inj.kept).toEqual(off.kept.slice(inj.trace!.makeRoom!.evictedChats))
+
+                const none = await sendWith({ ...varying, ...on, ltmSettings: { budgetTokens: 1 } })
+                expect(none.kept).toEqual(off.kept)
+                expect(none.facts).toEqual(off.facts)
+            })
+
+            test('INJ2 regression reproducer: a group record line has the member name without the wrapper, and a sendName first message is not named twice', async () => {
+                const group = makeGroup('group-1', ['member-a', 'member-b'], [makeChat('chat-G', Array.from({ length: COUNT }, (_, i) => {
+                    return msg(i % 2 === 0 ? 'user' : 'char', body100(i) + (i === 2 || i === COUNT - 1 ? ' zebrafish' : ''), { saying: i % 2 === 0 ? undefined : (i % 4 === 1 ? 'member-a' : 'member-b') })
+                }))], { supaMemory: true })
+                installDb([group, makeChar('member-a', 'Ann', [makeChat('chat-a', [])]), makeChar('member-b', 'Bob', [makeChat('chat-b', [])])], { maxContext: SCRIPTED_MAX_CONTEXT, ltmEngine: true, ltmSettings: { budgetTokens: 600 } })
+                selectedCharID.set(0)
+                h.request.mockReset()
+                expect(await sendOnce(group, group.chats[0])).toBe(true)
+                const [entry] = memoryEntries()
+                expect(entry.content).toMatch(/\[#\d+\] (Ann|Bob): \[M\d{4}\]/)
+                expect(entry.content).not.toContain("'s Message>")
+                expect(entry.content).not.toMatch(/(Ann|Bob): (Ann|Bob):/)
+
+                const cards = [
+                    { type: 'plain', type2: 'main', text: 'TEMPLATE-MAIN', role: 'system' },
+                    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                ]
+                const FIRST = 'Greetings traveler zebrafish'
+                const named = await sendWith({ ...on, promptTemplate: cards, promptSettings: { sendName: true } }, { firstMessage: FIRST })
+                expect(named.ok).toBe(true)
+                expect(named.trace!.outcome).toBe('injected')
+                expect(named.memory).toHaveLength(1)
+                const [firstLine] = named.memory
+                expect(firstLine.content).toContain(`[#first] Alice: ${FIRST}`)
+                expect(firstLine.content).not.toMatch(/Alice: Alice:/)
+                expect(firstLine.content).not.toContain('<Alice\'s Message>')
+            })
+
+            test('I2a guard on the shadow base: sweeping the context, every size the no-engine send fits also fits with the engine, plain and with a depth prompt and a memory card', async () => {
+                const variants: Array<[Record<string, unknown>, Record<string, unknown>]> = [
+                    [{}, {}],
+                    [{ promptTemplate: [
+                        { type: 'plain', type2: 'main', text: 'M'.repeat(1200), role: 'system' },
+                        { type: 'memory', innerFormat: 'CARD[ {{slot}} ]', role2: 'user' },
+                        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                    ], promptSettings: {} }, { depth_prompt: { prompt: 'D'.repeat(400), depth: 1 } }],
+                ]
+                let fitted = 0
+                for (const [db, charExtra] of variants) {
+                    for (let step = 0; step < 60; step++) {
+                        const maxContext = 400 + step * 40
+                        const off = await sendWith({ ...db, maxContext, maxResponse: 100 }, charExtra)
+                        if (!off.ok) continue
+                        fitted++
+                        const inj = await sendWith({ ...db, ...on, maxContext, maxResponse: 100 }, charExtra)
+                        expect({ maxContext, ok: inj.ok }).toEqual({ maxContext, ok: true })
+                    }
+                }
+                expect(fitted).toBeGreaterThan(30)
+            })
+
+            test('RK4 diagnostic (wiring): overlapping chat cards double the memory entry, so a tight send drops it at the recheck instead of failing', async () => {
+                const cards = (size: number) => [
+                    { type: 'plain', type2: 'main', text: 'P'.repeat(size), role: 'system' },
+                    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+                ]
+                const outcomes: Record<string, number> = {}
+                for (let size = 2800; size <= 5600; size += 100) {
+                    const db = { promptTemplate: cards(size), promptSettings: {}, maxResponse: 100, ltmSettings: { budgetTokens: 400 } }
+                    const off = await sendWith({ ...db })
+                    const inj = await sendWith({ ...db, ...on })
+                    if (off.ok) {
+                        expect({ size, ok: inj.ok }).toEqual({ size, ok: true })
+                    }
+                    const key = inj.ok ? inj.trace!.outcome : 'failed'
+                    outcomes[key] = (outcomes[key] ?? 0) + 1
+                    if (inj.ok && inj.trace!.outcome === 'dropped-at-recheck') {
+                        expect(entries().some((e) => e.content.includes('<Previous Conversation>'))).toBe(false)
+                        expect(shadow.getLastChroMemoryTrace()!.outcome).toBe('dropped-at-recheck')
+                    }
+                }
+                expect(outcomes['dropped-at-recheck']).toBeGreaterThan(0)
+            })
+
+            test('F7 mutant-evidenced: a last resort that still does not fit throws too-much-token and the trace is not marked dropped-at-recheck', async () => {
+                // The depth prompt counts 10 when make-room reserves it and far more at the recheck,
+                // as a prompt that changes between its two parses would.
+                let seen = 0
+                h.countOverride = (content) => (content.startsWith('DEPTH-MARK') ? (seen++ === 0 ? 10 : 100000) : undefined)
+                alertErrorMock.mockClear()
+                const failed = await sendWith({ ...on, maxContext: 2000, maxResponse: 50 }, { depth_prompt: { prompt: 'DEPTH-MARK text', depth: 1 } }, zebraMessages(130))
+                expect(failed.ok).toBe(false)
+                expect(h.request).not.toHaveBeenCalled()
+                expect(alertedErrors().some((e) => e.includes(languageEnglish.errors.toomuchtoken))).toBe(true)
+                expect(failed.trace!.outcome).toBe('injected')
+                expect(seen).toBeGreaterThan(1)
+            })
+            describe('guard: a send whose recheck is exhausted still throws too-much-token', () => {
+                const DEPTH = { prompt: 'd'.repeat(40000), depth: 1 }
+                const cases: Array<[string, Record<string, unknown>]> = [
+                    ['no engine', {}],
+                    ['legacy engine', { supaModelType: 'distilbart' }],
+                ]
+                for (const [label, db] of cases) {
+                    test(`guard (passes on the base): ${label}`, async () => {
+                        alertErrorMock.mockClear()
+                        const result = await sendWith({ ...db }, { depth_prompt: DEPTH })
+                        expect(result.ok).toBe(false)
+                        expect(h.request).not.toHaveBeenCalled()
+                        expect(alertedErrors().some((e) => e.includes(languageEnglish.errors.toomuchtoken))).toBe(true)
+                    })
+                }
+
+                // A legacy summary is a non-removable supaMemory entry; it must never be dropped
+                // quietly to save a send the way a placed ChroMemory block may be.
+                test('guard (passes on the base): a legacy summary entry is not dropped to save the send', async () => {
+                    supaMemoryMock.mockImplementation(async (chats: Array<{ content: string }>, currentTokens: number) => ({
+                        currentTokens,
+                        chats: [{ role: 'system', content: 'S'.repeat(8000), memo: 'supaMemory' }, ...chats],
+                    }))
+                    alertErrorMock.mockClear()
+                    const result = await sendWith({ supaModelType: 'distilbart' }, {})
+                    expect(supaMemoryMock).toHaveBeenCalledTimes(1)
+                    expect(result.ok).toBe(false)
+                    expect(h.request).not.toHaveBeenCalled()
+                    expect(alertedErrors().some((e) => e.includes(languageEnglish.errors.toomuchtoken))).toBe(true)
+                })
+            })
+            test('I2D (I2 property is a guard on the shadow base; the injected and reserved assertions are the mutant-evidenced reproducer): a character depth prompt bigger than the floor is reserved and the send succeeds with the memory entry', async () => {
+                const DEPTH = 'd'.repeat(2400)
+                const depthTokens = Math.ceil(DEPTH.length / 4) + EXTRA
+                const messages = zebraMessages(130)
+                const db = { maxContext: 2000, maxResponse: 50, ltmSettings: { budgetTokens: 1700 } }
+                const charExtra = { depth_prompt: { prompt: DEPTH, depth: 1 } }
+                const off = await sendWith({ ...db }, charExtra, messages)
+                expect(off.ok).toBe(true)
+                alertErrorMock.mockClear()
+                const inj = await sendWith({ ...db, ...on }, charExtra, messages)
+                expect({ ok: inj.ok, alerts: alertedErrors().map((a) => a.slice(0, 40)) }).toEqual({ ok: true, alerts: [] })
+                expect(inj.trace!.outcome).toBe('injected')
+                expect(inj.trace!.makeRoom!.reserved).toBe(depthTokens)
+                expect(inj.memory).toHaveLength(1)
+                expect(requestTokens()).toBeLessThanOrEqual(2000)
+            })
         })
     })
 })

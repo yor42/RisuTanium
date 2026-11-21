@@ -313,7 +313,7 @@ vi.mock('../Playground/PlaygroundMenu.svelte', () => ({
 
 //#endregion
 
-import { DBState, selectedCharID, chatPanelStore } from 'src/ts/stores.svelte'
+import { DBState, selectedCharID, chatPanelStore, hypaV3ModalOpen } from 'src/ts/stores.svelte'
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { language } from 'src/lang'
 
@@ -430,7 +430,18 @@ describe('the HypaMemory menu row against the memory engine choice', () => {
         expect(await openMenuText({})).toContain(language.hypaMemoryV3Modal)
     })
 
-    test('reproducer: ChroMemory over V3 flags shows no V3 modal row', async () => {
-        expect(await openMenuText({ ltmEngine: true })).not.toContain(language.hypaMemoryV3Modal)
+    test('UI1 reproducer: ChroMemory over V3 flags shows the ChroMemory row, not the V3 row, and a click opens the modal flag', async () => {
+        hypaV3ModalOpen.set(false)
+        const text = await openMenuText({ ltmEngine: true })
+        expect(text).not.toContain(language.hypaMemoryV3Modal)
+        expect(text).toContain(language.chroMemoryModal)
+        const row = Array.from(document.querySelectorAll<HTMLElement>('div.cursor-pointer')).find((el) => el.textContent?.includes(language.chroMemoryModal))!
+        row.click()
+        flushSync()
+        expect(get(hypaV3ModalOpen)).toBe(true)
+    })
+
+    test('UI1 reproducer: ChroMemory with the menu setting off shows no memory row (MC-3205)', async () => {
+        expect(await openMenuText({ ltmEngine: true, showMenuHypaMemoryModal: false })).not.toContain(language.chroMemoryModal)
     })
 })
