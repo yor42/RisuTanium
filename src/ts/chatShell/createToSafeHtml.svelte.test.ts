@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { COLD_TRANSFORM_HOOK_MS } from '../tests/coldTransform.test-helpers'
 
 const law = vi.hoisted(() => ({ applies: false }))
-const mutant = vi.hoisted(() => ({ identitySanitize: false, dropWatermark: false, throwDisplay: false }))
+const mutant = vi.hoisted(() => ({ identitySanitize: false, dropWatermark: false, throwDisplay: false, depth: false }))
 const calls = vi.hoisted(() => ({ markdown: [] as unknown[][], display: [] as unknown[][] }))
 
 vi.mock('src/ts/stores.svelte', async () => {
@@ -53,6 +53,12 @@ vi.mock('../process/scripts', () => ({
     risuChatParser: (text: string, options: unknown) => {
         calls.display.push([text, options])
         if (mutant.throwDisplay) throw new Error('display parse failed')
+        if (mutant.depth) {
+            // The real parser counts its call depth on the options object and answers with an error text above 20.
+            const counted = options as { callStack?: number }
+            counted.callStack = (counted.callStack ?? 0) + 1
+            if (counted.callStack > 20) return 'ERROR: Call stack limit reached'
+        }
         return text.replace('{{user}}', 'Ari')
     },
 }))
@@ -67,6 +73,7 @@ afterEach(() => {
     mutant.identitySanitize = false
     mutant.dropWatermark = false
     mutant.throwDisplay = false
+    mutant.depth = false
     calls.markdown = []
     calls.display = []
 })
@@ -135,5 +142,17 @@ describe('createToSafeHtml production wiring (MC-239)', () => {
         expect(html).toContain('plain words')
         const recorded = (window.__risuTaniumErrors ?? []).filter((record) => record.site === 'chat.parse' && record.message === 'display parse failed')
         expect(recorded.length).toBeGreaterThan(0)
+    })
+
+    // Regression reproducer (T-CS1): the parser counts its call depth on the options it is given, so a factory that
+    // hands every conversion the same object makes a long reply fail with the depth error.
+    test('T-CS1 every conversion starts with a depth count of zero', async () => {
+        mutant.depth = true
+        const displayOptions = { chara: 'Ari', chatID: 7, rmVar: true, visualize: true }
+        const convert = await createToSafeHtml('model', null, { chatID: 7, displayOptions })
+        const outputs: string[] = []
+        for (let i = 0; i < 25; i++) outputs.push(await convert(`paragraph ${i} {{user}}`))
+        expect(outputs.filter((html) => html.includes('Call stack limit reached'))).toEqual([])
+        expect((displayOptions as { callStack?: number }).callStack).toBeUndefined()
     })
 })

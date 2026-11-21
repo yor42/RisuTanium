@@ -7,9 +7,11 @@
  * import is unsaved work nothing asks to save.
  *
  * The real `characterCards.ts` and `bootWindow.ts` run on a page with a registered residency and a closed boot window;
- * the database, asset storage, alerts and the module reader are replaced by recorders. Every test is a compatibility
- * guard (it passes before and after the legacy boot removal) that fails when its own call site's `markBootWrite` is
- * removed: the `markUnsaved` count stays at zero.
+ * the database, asset storage, alerts and the module reader are replaced by recorders. Every test in the first
+ * describe is a compatibility guard (it passes before and after the legacy boot removal) that fails when its own call
+ * site's `markBootWrite` is removed: the `markUnsaved` count stays at zero. The second describe (a cancelled bundle
+ * preview) holds reproducers for the cancel paths of each import entry point and a settings-open guard; they are not
+ * about `markBootWrite`.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -20,6 +22,8 @@ const h = vi.hoisted(() => ({
     characters: [] as Array<Record<string, unknown>>,
     modules: [] as Array<Record<string, unknown>>,
     presets: [] as Array<{ name: string }>,
+    /** What the mocked importPreset resolves with: undefined means imported, {cancelled: true} a cancelled bundle preview. */
+    presetResult: undefined as undefined | { cancelled: true },
     tauriFiles: {} as Record<string, Uint8Array>,
     uuid: 0,
 }))
@@ -53,7 +57,7 @@ vi.mock(import('src/ts/alert'), () => ({
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
     defaultSdDataFunc: vi.fn(() => ({})),
     setDatabase: vi.fn(),
-    importPreset: vi.fn(async (f: { name: string }) => { h.presets.push(f) }),
+    importPreset: vi.fn(async (f: { name: string }) => { h.presets.push(f); return h.presetResult }),
     setCurrentCharacter: vi.fn(),
     getCurrentCharacter: vi.fn(),
     getDatabase: vi.fn(() => ({ statics: { imports: 0 }, characters: h.characters, goCharacterOnImport: false })),
@@ -142,6 +146,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 //#endregion
 
 import { characterURLImport, importOpenedFiles } from 'src/ts/characterCards'
+import { settingsOpen } from 'src/ts/stores.svelte'
 import { openBootWindow, resetBootWindowForTest } from 'src/ts/bootWindow'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import type { Residency } from 'src/ts/storage/store2/residency'
@@ -158,6 +163,7 @@ beforeEach(() => {
     h.characters = []
     h.modules = []
     h.presets = []
+    h.presetResult = undefined
     h.tauriFiles = {}
     h.uuid = 0
     resetBootWindowForTest()
@@ -223,5 +229,38 @@ describe('an import on a store2 page marks a boot write at each call site', () =
 
         expect(h.presets).toHaveLength(1)
         expect(markUnsaved).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('a preset bundle preview the person cancelled', () => {
+    // reproducer vs M17 (the cancelled result ignored): settings would open as after an import
+    test('T-DECL: an opened file imports nothing further and leaves settings closed', async () => {
+        h.tauriFiles['/docs/bundle.risup'] = enc.encode('{"name":"p"}')
+        h.presetResult = { cancelled: true }
+        vi.mocked(settingsOpen.set).mockClear()
+
+        await answerImportCard(() => importOpenedFiles(['/docs/bundle.risup']))
+
+        expect(h.presets).toHaveLength(1)
+        expect(settingsOpen.set).not.toHaveBeenCalled()
+    })
+
+    test('T-DECL: a share link leaves settings closed', async () => {
+        h.presetResult = { cancelled: true }
+        vi.mocked(settingsOpen.set).mockClear()
+        setUrl(link('import_preset', '{"name":"inline"}'))
+
+        await characterURLImport()
+
+        expect(settingsOpen.set).not.toHaveBeenCalled()
+    })
+
+    test('compatibility guard: an imported preset still opens settings', async () => {
+        h.tauriFiles['/docs/a.risup'] = enc.encode('{"name":"p"}')
+        vi.mocked(settingsOpen.set).mockClear()
+
+        await answerImportCard(() => importOpenedFiles(['/docs/a.risup']))
+
+        expect(settingsOpen.set).toHaveBeenCalledWith(true)
     })
 })
