@@ -142,13 +142,19 @@ describe('placement of the legacy Display ids (T-B5)', () => {
 
     test('the page only names ids the legacy list has, besides the quote boxes and the device motion rows', () => {
         const legacy = new Set(displaySettingsItems.map((candidate) => candidate.id))
-        const own = new Set(['display.quoteBoxes', ...DEVICE_MOTION_ROW_IDS])
+        const own = new Set(['display.quoteBoxes', 'display.seasonalLogo', ...DEVICE_MOTION_ROW_IDS])
         expect(displayShellRowIds().filter((id) => !legacy.has(id) && !own.has(id))).toEqual([])
     })
 
     test('the motion section starts with the device rows (low power, reduce card effects, reduced motion), then the animation speed (MC-1529, CHORE-818)', () => {
         expect(rowIdsOf('display.motion')).toEqual(['display.lowPower', 'display.reduceCardEffects', 'display.reducedMotion', 'display.animationSpeed'])
         expect(DEVICE_MOTION_ROW_IDS).toEqual(['display.lowPower', 'display.reduceCardEffects', 'display.reducedMotion'])
+    })
+
+    test('the device seasonal logo switch sits in the theme and color section as a shell row', () => {
+        expect(displaySectionOfRow('display.seasonalLogo')).toBe('display.themeColor')
+        const row = DISPLAY_SHELL_SECTIONS.flatMap((section) => section.rows).find((candidate) => candidate.kind === 'shell' && candidate.id === 'display.seasonalLogo')
+        expect(row).toMatchObject({ kind: 'shell', component: 'SeasonalLogoRow' })
     })
 
     test('the animation speed dims under low power or reduced motion with the reason that applies', () => {
