@@ -3647,6 +3647,7 @@ export const languageChinese = {
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此备份中有 ${count} 个项目大于 100 MiB。上游 RisuAI Node 服务器无法恢复如此大的项目，因此在那里恢复此备份时会跳过它们；本应用和其他平台则可以恢复。是否创建包含这些项目的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupSizesUncheckedConfirm": '无法检查此备份中资源的大小。大于 100 MiB 的项目无法由上游 RisuAI Node 服务器恢复，但这类项目可能在未被列出名称的情况下被包含进来；而达到或超过 4 GiB 的项目会使备份在中途停止。是否仍要创建备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 个任务预设仅保存在此设备上，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
