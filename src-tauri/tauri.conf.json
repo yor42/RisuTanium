@@ -47,6 +47,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVEMUQ2M0ZFREQ5QjYwMEYKUldRUFlKdmQvbU1kN1ZGTStYa2J3OFY2T01KbUh3Smh5U0hLRW1LNGpuQlpqYXhlU3JTYmY5cmMK",
       "endpoints": ["https://github.com/yor42/RisuTanium/releases/latest/download/latest.json"],
+      "requireSignedVersion": true,
       "windows": {
         "installMode": "passive"
       }
