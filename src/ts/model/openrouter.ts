@@ -36,7 +36,7 @@ export async function getOpenRouterProviders(): Promise<{ name: string, slug: st
     try {
         const db = getDatabase()
         const headers = {
-            "Authorization": "Bearer " + await resolveSecret(currentKey('openrouterKey', db)),
+            "Authorization": "Bearer " + await resolveSecret(await currentKey('openrouterKey', db)),
             "Content-Type": "application/json"
         }
 
@@ -54,7 +54,7 @@ export async function getOpenRouterModels(): Promise<OpenRouterModelInfo[]> {
     try {
         const db = getDatabase()
         const headers = {
-            "Authorization": "Bearer " + await resolveSecret(currentKey('openrouterKey', db)),
+            "Authorization": "Bearer " + await resolveSecret(await currentKey('openrouterKey', db)),
             "Content-Type": "application/json"
         }
 

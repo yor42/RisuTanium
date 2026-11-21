@@ -44,6 +44,7 @@ vi.mock(import('src/ts/platform'), () => ({
 
 vi.mock(import('src/ts/process/request/secretKey'), () => ({
     currentKey: vi.fn(() => ''),
+    currentKeyForUi: vi.fn(() => ''),
 }) as unknown as typeof import('src/ts/process/request/secretKey'))
 
 vi.mock(import('src/ts/util'), () => ({

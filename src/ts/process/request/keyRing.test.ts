@@ -10,9 +10,6 @@ const B = 'sk-test-B'
 const C = 'sk-test-C'
 const LIST = `${A}\n${B}\n${C}`
 
-/** The field as it is read when a limit arrives. */
-const reading = (value: string) => () => value
-
 beforeEach(() => {
     resetKeyRings()
 })
@@ -46,7 +43,7 @@ describe('pickLine and afterLimit', () => {
     test('K2: the ring resets when the field is edited', () => {
         const rotation = newKeyRotation()
         expect(pickLine(rotation, 'openAIKey', LIST)).toBe(A)
-        afterLimit(rotation, 'openAIKey', reading(LIST))
+        afterLimit(rotation, 'openAIKey', LIST)
         clearLease(rotation)
         expect(pickLine(rotation, 'openAIKey', LIST)).toBe(B)
         expect(pickLine(undefined, 'openAIKey', `${C}\n${A}`)).toBe(C)
@@ -56,7 +53,7 @@ describe('pickLine and afterLimit', () => {
         const first = newKeyRotation()
         const second = newKeyRotation()
         expect(pickLine(first, 'openAIKey', LIST)).toBe(A)
-        afterLimit(first, 'openAIKey', reading(LIST))
+        afterLimit(first, 'openAIKey', LIST)
         expect(pickLine(first, 'openAIKey', LIST)).toBe(A)
         clearLease(first)
         expect(pickLine(first, 'openAIKey', LIST)).toBe(B)
@@ -67,7 +64,7 @@ describe('pickLine and afterLimit', () => {
     test('K4: a foreign lease moves the cursor back but the next lease of this rotation still skips a tried line', () => {
         const rotation = newKeyRotation()
         pickLine(rotation, 'openAIKey', LIST)
-        afterLimit(rotation, 'openAIKey', reading(LIST))
+        afterLimit(rotation, 'openAIKey', LIST)
         clearLease(rotation)
         expect(pickLine(rotation, 'openAIKey', LIST)).toBe(B)
         clearLease(rotation)
@@ -87,7 +84,7 @@ describe('pickLine and afterLimit', () => {
         pickLine(rotation, 'openAIKey', `${A}\n${B}`)
         // The edit reorders the lines, so a tried line must be recognised by its text, not its position.
         const edited = `${C}\n${A}\n${B}`
-        expect(afterLimit(rotation, 'openAIKey', reading(edited))).toBe('next')
+        expect(afterLimit(rotation, 'openAIKey', edited)).toBe('next')
         clearLease(rotation)
         expect(pickLine(rotation, 'openAIKey', edited)).toBe(C)
     })
@@ -95,7 +92,7 @@ describe('pickLine and afterLimit', () => {
     test('K6: fields are independent and a pick without a rotation never moves the cursor', () => {
         const rotation = newKeyRotation()
         pickLine(rotation, 'openAIKey', LIST)
-        afterLimit(rotation, 'openAIKey', reading(LIST))
+        afterLimit(rotation, 'openAIKey', LIST)
         clearLease(rotation)
         expect(pickLine(rotation, 'proxyKey', LIST)).toBe(A)
         expect(pickLine(undefined, 'openAIKey', LIST)).toBe(A)
@@ -104,27 +101,27 @@ describe('pickLine and afterLimit', () => {
 
     test('K7: no lease and under two lines are single; then next; then exhausted, including after an edit', () => {
         const rotation = newKeyRotation()
-        expect(afterLimit(rotation, 'openAIKey', reading(A))).toBe('single')
+        expect(afterLimit(rotation, 'openAIKey', A)).toBe('single')
 
         pickLine(rotation, 'openAIKey', `${A}\n${B}`)
-        expect(afterLimit(rotation, 'openAIKey', reading(A))).toBe('single')
+        expect(afterLimit(rotation, 'openAIKey', A)).toBe('single')
         clearLease(rotation)
 
         const fresh = newKeyRotation()
         pickLine(fresh, 'openAIKey', `${A}\n${B}`)
-        expect(afterLimit(fresh, 'openAIKey', reading(`${A}\n${B}`))).toBe('next')
+        expect(afterLimit(fresh, 'openAIKey', `${A}\n${B}`)).toBe('next')
         clearLease(fresh)
         pickLine(fresh, 'openAIKey', `${A}\n${B}`)
-        expect(afterLimit(fresh, 'openAIKey', reading(`${A}\n${B}`))).toBe('exhausted')
+        expect(afterLimit(fresh, 'openAIKey', `${A}\n${B}`)).toBe('exhausted')
 
         // An edit that removes the only untried line leaves nothing to send.
         resetKeyRings()
         const edited = newKeyRotation()
         pickLine(edited, 'openAIKey', `${A}\n${B}\n${C}`)
-        expect(afterLimit(edited, 'openAIKey', reading(`${A}\n${B}`))).toBe('next')
+        expect(afterLimit(edited, 'openAIKey', `${A}\n${B}`)).toBe('next')
         clearLease(edited)
         expect(pickLine(edited, 'openAIKey', `${A}\n${B}`)).toBe(B)
-        expect(afterLimit(edited, 'openAIKey', reading(`${A}\n${B}`))).toBe('exhausted')
+        expect(afterLimit(edited, 'openAIKey', `${A}\n${B}`)).toBe('exhausted')
     })
 
     test('K8: only the field the request sent is marked and judged; an unleased field is single and marks nothing', () => {
@@ -134,9 +131,9 @@ describe('pickLine and afterLimit', () => {
         pickLine(rotation, 'proxyKey', x)
         pickLine(rotation, 'openAIKey', y)
 
-        expect(afterLimit(rotation, 'openAIKey', reading(y))).toBe('next')
+        expect(afterLimit(rotation, 'openAIKey', y)).toBe('next')
         expect(rotation.tried.has('proxyKey')).toBe(false)
-        expect(afterLimit(rotation, 'claudeAPIKey', reading(y))).toBe('single')
+        expect(afterLimit(rotation, 'claudeAPIKey', y)).toBe('single')
         expect(rotation.tried.has('claudeAPIKey')).toBe(false)
     })
 
@@ -146,7 +143,7 @@ describe('pickLine and afterLimit', () => {
         const value = `${A}\n${A}\n${B}`
         for (let i = 0; i < 3; i++) {
             seen.push(pickLine(rotation, 'openAIKey', value))
-            const verdict = afterLimit(rotation, 'openAIKey', reading(value))
+            const verdict = afterLimit(rotation, 'openAIKey', value)
             clearLease(rotation)
             if (verdict === 'exhausted') {
                 break
