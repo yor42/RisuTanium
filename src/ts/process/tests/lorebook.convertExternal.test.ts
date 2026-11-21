@@ -203,3 +203,25 @@ describe('convertExternalLorebook: combined and plain entries', () => {
             expected({ insertorder: 5, comment: 'C', alwaysActive: true, secondkey: 's', selective: true }))
     })
 })
+
+describe('convertExternalLorebook: Agnai weight', () => {
+    test('reproducer: weight is the insertion order and a differing priority becomes @@priority', () => {
+        expect(convertOne({ keywords: ['k'], entry: 'X', name: 'N', priority: 5, weight: 20, enabled: true })).toEqual(
+            expected({ insertorder: 20, comment: 'N', content: '@@priority 5\nX' }))
+    })
+
+    test('reproducer: a disabled Agnai entry keeps @@priority before the dont_activate marker', () => {
+        expect(convertOne({ keywords: ['k'], entry: 'X', priority: 1, weight: 0, enabled: false })).toEqual(
+            expected({ insertorder: 0, content: '@@priority 1\n@@dont_activate\nX' }))
+    })
+
+    test('guard (passes before and after): an Agnai entry whose weight equals its priority writes no line', () => {
+        expect(convertOne({ keywords: ['k'], entry: 'X', priority: 7, weight: 7 })).toEqual(
+            expected({ insertorder: 7 }))
+    })
+
+    test('guard (passes before and after): a NovelAI entry is still ordered by budgetPriority', () => {
+        expect(convertOne({ keys: ['k'], text: 'X', displayName: 'D', contextConfig: { budgetPriority: 400, prefix: '', suffix: '' } })).toEqual(
+            expected({ insertorder: 400, comment: 'D' }))
+    })
+})

@@ -447,14 +447,6 @@ describe('the web pass: sole-tab proof and own base', () => {
         expect(ownBase).not.toHaveBeenCalled()
     })
 
-    test('compatibility guard: an opfs-transitional session runs nothing, not even a read (passes before and after)', async () => {
-        const page = await openWeb(30)
-        const session = Object.create(page.session, { kind: { value: 'opfs-transitional' } }) as Store2Session
-
-        expect(await runAutoGc(session, webFacts(page))).toBeNull()
-        expect(page.over.calls).toEqual([])
-    })
-
     test('guard: a node session without a byte store, or with a store lacking the guarded routes or the server clock, is refused capability-missing before any store2 read', async () => {
         const page = await openWeb(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})

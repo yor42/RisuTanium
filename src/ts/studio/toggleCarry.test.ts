@@ -107,6 +107,16 @@ describe('planCarry basics', () => {
         expect(textOf(after)).toBe(afterText)
     })
 
+    it('T4.9: adding, changing or removing only the 5th field plans no carry', () => {
+        expect(plan('a=A', 'a=A===1')).toEqual([])
+        expect(plan('a=A===1', 'a=A')).toEqual([])
+        expect(plan('a=A===1', 'a=A===0')).toEqual([])
+        expect(plan('m=M=select=x,y', 'm=M=select=x,y=y')).toEqual([])
+        expect(plan('m=M=select=x,y=x', 'm=M=select=x,y=y')).toEqual([])
+        expect(plan('m=M=select=x,y=y', 'm=M=select=x,y')).toEqual([])
+        expect(plan('a=A\r\nm=M=select=x,y\r\n', 'a=A===1\r\nm=M=select=x,y=y\r\n')).toEqual([])
+    })
+
     it('P-9: keys are exact, with no trim and no case folding', () => {
         expect(plan('combat=A', 'combat =A')).toEqual([rename('combat', 'combat ')])
         expect(plan('combat=A', 'Combat=A')).toEqual([rename('combat', 'Combat')])

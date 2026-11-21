@@ -70,12 +70,13 @@ vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 
 import { DBState } from 'src/ts/stores.svelte'
 import OtherBotSettings from './OtherBotSettings.svelte'
+import { language } from 'src/lang'
 
 //#region helpers
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-function installDb(flags: Partial<Record<'hypaV3' | 'hypav2' | 'hanuraiEnable', boolean>> & { supaModelType?: string }): void {
+function installDb(flags: Partial<Record<'hypaV3' | 'hypav2' | 'hanuraiEnable' | 'ltmEngine', boolean>> & { supaModelType?: string }): void {
     DBState.db = {
         hypaV3: false,
         hypav2: false,
@@ -173,6 +174,34 @@ describe('the memory Type dropdown follows the request path precedence', () => {
     test('guard: no memory system shows none', async () => {
         installDb({})
         expect(await selectedType()).toBe('none')
+    })
+})
+
+describe('ChroMemory in the memory Type dropdown', () => {
+    const bodyText = () => document.body.textContent ?? ''
+
+    test('reproducer: ChroMemory over V3 flags shows the ChroMemory value, option and preview, and no V3 panel', async () => {
+        installDb({ ltmEngine: true, hypaV3: true })
+        const select = await typeSelect()
+        expect(select.value).toBe('chroMemory')
+        expect(Array.from(select.options).some((o) => o.value === 'chroMemory')).toBe(true)
+        expect(bodyText()).toContain(language.chroMemoryPreviewDesc)
+        expect(bodyText()).not.toContain(language.hypaV3Settings.descriptionLabel)
+    })
+
+    test('guard: a V3 database without ChroMemory shows no preview line and its V3 panel', async () => {
+        installDb({ hypaV3: true })
+        await typeSelect()
+        expect(bodyText()).not.toContain(language.chroMemoryPreviewDesc)
+        expect(bodyText()).toContain(language.hypaV3Settings.descriptionLabel)
+    })
+
+    test('reproducer: choosing chroMemory writes the ChroMemory table from every flag set', async () => {
+        installDb({ hypaV3: true, hypav2: true, hanuraiEnable: true, supaModelType: 'subModel' })
+        DBState.db.memoryAlgorithmType = 'hypaMemoryV3'
+        await choose(await typeSelect(), 'chroMemory')
+        expect(memoryFields()).toEqual({ supaModelType: 'none', memoryAlgorithmType: 'none', hypav2: false, hanuraiEnable: false, hypaV3: false })
+        expect(DBState.db.ltmEngine).toBe(true)
     })
 })
 

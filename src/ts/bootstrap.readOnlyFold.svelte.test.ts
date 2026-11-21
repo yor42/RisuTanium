@@ -177,12 +177,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
-    takeStorageFallbackNotice: () => null,
-}))
-
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         staleAccountProfile: false,
@@ -307,7 +301,7 @@ interface Run {
     store: MemoryByteStore
 }
 
-type ReadOnlyKind = 'node' | 'tauri' | 'opfs-transitional'
+type ReadOnlyKind = 'node' | 'tauri'
 
 /** Injects `store` as the page store of `kind`, registers the real dispatch and imports a fresh `loadData`. */
 async function boot(kind: ReadOnlyKind, store: MemoryByteStore): Promise<Run> {
@@ -440,7 +434,7 @@ describe('loadData(): the Tauri read-only boot reads the legacy profile and writ
 })
 
 describe('loadData(): the web read-only boot reads the legacy profile and writes nothing (T2-P3, T2-P4)', () => {
-    const kinds: ReadOnlyKind[] = ['node', 'opfs-transitional']
+    const kinds: ReadOnlyKind[] = ['node']
     const variants: [string, (store: MemoryByteStore) => Promise<void>][] = [
         ['a stored value that is not bytes', async (store) => {
             // The class of the boot's own module graph, so the boot's `instanceof` test sees it.
@@ -476,9 +470,8 @@ describe('loadData(): the web read-only boot reads the legacy profile and writes
             await settle()
 
             expect(get(run.loadedStore)).toBe(true)
-            const first = kind === 'node' ? language.store2Boot.noticeBackendUnavailable : language.opfsReadOnlyNotice
             expect(run.notices).toHaveLength(2)
-            expect(run.notices[0]).toBe(first)
+            expect(run.notices[0]).toBe(language.store2Boot.noticeBackendUnavailable)
             expect(run.notices[1]).toBe(language.legacyBackupNotice(new Date(MIDDLE * 100).toLocaleString(), []))
             expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         })
@@ -510,23 +503,6 @@ describe('loadData(): the web read-only boot reads the legacy profile and writes
             expect(setDatabaseMock).not.toHaveBeenCalled()
             expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         })
-    })
-
-    test('T2-P4 guard: an absent main file on an OPFS page installs an empty profile, never writes it, and keeps the OPFS leftovers', async () => {
-        const store = legacyStore({ main: null })
-        const run = await boot('opfs-transitional', store)
-
-        await run.loadData()
-        await settle()
-
-        expect(get(run.loadedStore)).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalled()
-        expect(errors(run)).toEqual([])
-        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        expect(store.files.has(MAIN_KEY)).toBe(false)
-        // The seeded empty profile decodes strictly: no partial notice and no fact.
-        const { language } = await import('src/lang')
-        expect(run.notices).toEqual([language.opfsReadOnlyNotice])
     })
 })
 
@@ -766,7 +742,7 @@ describe('loadData(): a legacy profile boots read-only whichever way its main fi
         ['a main file that does not decode (the backup route)', async () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
     ] as const)('T2-G2 guard: %s: the profile installs and nothing is written', async (_label, build) => {
         const store = legacyStore({ main: await build(), backups: [[OLDEST, encodeRisuSaveLegacy(baseDb({ mainPrompt: 'from-oldest-backup' }))]] })
-        const run = await boot('opfs-transitional', store)
+        const run = await boot('node', store)
 
         await run.loadData()
         await settle()
@@ -775,14 +751,14 @@ describe('loadData(): a legacy profile boots read-only whichever way its main fi
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
     })
 
-    test('T2-G2 guard: the OPFS read-only notice is posted once, after the install', async () => {
+    test('T2-G2 guard: the read-only notice is posted once, after the install', async () => {
         const store = legacyStore()
-        const run = await boot('opfs-transitional', store)
+        const run = await boot('node', store)
         const { language } = await import('src/lang')
 
         await run.loadData()
         await settle()
 
-        expect(run.notices).toEqual([language.opfsReadOnlyNotice])
+        expect(run.notices).toEqual([language.store2Boot.noticeBackendUnavailable])
     })
 })

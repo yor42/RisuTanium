@@ -5,6 +5,7 @@
     import { language } from '../../lang'
     import type { Chat } from '../../ts/storage/database.svelte'
     import { chatToggleValue } from '../../ts/parser/chatToggleScope'
+    import { toggleDefaultsOf } from '../../ts/parser/toggleDefaults'
     import { buildPanelModel, toggleVarKey, uniqueCounts, type Counts, type SourceInput } from '../../ts/chatShell/togglePanel'
 
     /** What the panel needs of an owner: who it is and the toggle text the character itself contributes. */
@@ -35,8 +36,10 @@
 
     /** Distinct toggles and how many are on, for the summary rows of the This-chat sheet and the + menu. */
     export function toggleSummary(owner: ToggleOwner, chat: Chat): Counts {
-        const model = buildPanelModel(toggleSourcesOf(owner))
-        return uniqueCounts(model, (key) => chatToggleValue(chat, toggleVarKey(key)))
+        const inputs = toggleSourcesOf(owner)
+        const model = buildPanelModel(inputs)
+        const defaults = toggleDefaultsOf(inputs.map((input) => input.text))
+        return uniqueCounts(model, (key) => chatToggleValue(chat, toggleVarKey(key), defaults))
     }
 </script>
 
@@ -46,7 +49,7 @@
     import { ChevronDownIcon, FileTextIcon, FunnelIcon, PuzzleIcon, SearchIcon, StarIcon, UserIcon, XIcon } from '@lucide/svelte'
     import { ReloadGUIPointer } from '../../ts/stores.svelte'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
-    import { useSharedToggleValue, writeChatToggle } from '../../ts/parser/chatToggleScope'
+    import { clearChatToggle, sharedToggleValue, useSharedToggleValue, writeChatToggle } from '../../ts/parser/chatToggleScope'
     import {
         defaultOpenSections,
         duplicateBadges,
@@ -117,11 +120,14 @@
     let searchField = $state<HTMLInputElement>()
     let searchTimer: ReturnType<typeof setTimeout> | undefined
 
-    let model = $derived.by(() => {
+    let inputs = $derived.by((): SourceInput[] => {
         // A module loaded into its stub's slot keeps its id, so the content change comes through the pointer.
         void $ReloadGUIPointer
-        return session ? buildPanelModel(toggleSourcesOf(session.owner)) : { sources: [] }
+        return session ? toggleSourcesOf(session.owner) : []
     })
+    let model = $derived(session ? buildPanelModel(inputs) : { sources: [] })
+    // Tracked, never computed untracked at opening: a definition edit or module change while the panel is open must reach every row.
+    let defaults = $derived(toggleDefaultsOf(inputs.map((input) => input.text)))
     let sources = $derived(model.sources.filter((source) => valueRowsOf(source).length > 0))
     let totals = $derived(uniqueCounts({ sources }, valueOf))
     let scopeOn = $derived.by(() => {
@@ -131,17 +137,17 @@
 
     function valueOf(key: string): string {
         void edits
-        return session ? chatToggleValue(session.chat, toggleVarKey(key)) : 'null'
+        return session ? chatToggleValue(session.chat, toggleVarKey(key), defaults) : 'null'
     }
 
-    // The chat holds its own value for the key and it differs from the shared one (the "This chat" tag and the revert entry).
+    // The chat holds its own value for the key and it differs from what the other chats read (the "This chat" tag and the revert entry).
     function chatOnlyOf(key: string): boolean {
         void edits
         const chat = session?.chat
         if (!chat || chat.useLocallySetGlobalVariables !== true) return false
         const own = chat.GLGlobalVariables?.[toggleVarKey(key)]
         if (own === undefined || own === '' || own === 'null') return false
-        return own !== (DBState.db.globalChatVariables[toggleVarKey(key)] ?? 'null')
+        return own !== sharedToggleValue(toggleVarKey(key), defaults)
     }
 
     let searching = $derived(applied.trim() !== '')
@@ -334,7 +340,17 @@
 
     function reset(row: PanelValueRow): void {
         menuUid = null
-        write(row, resetValue(row.kind))
+        const value = resetValue(row.kind)
+        if (value === null) {
+            // A check or select Reset removes the stored value; the same two steps as write() make the rows refresh and the saved flash show.
+            if (session) {
+                clearChatToggle(session.owner, session.chat, toggleVarKey(row.key))
+                edits++
+                noteSaved()
+            }
+        } else {
+            write(row, value)
+        }
         announce = language.chatShellTogglesResetDone(row.label)
         void refocus(row.uid, '[data-part="toggle-menu-button"]')
     }

@@ -1,0 +1,100 @@
+/*
+  Seasonal scene: newYear. Classes are prefixed rt-ny-. Poses: [data-rt-pose="pre" | "play" | "final"] on the mark svg
+  and the stage layer. Tone: the host stamps [data-rt-sw-tone] on the mark slot, stage and root (the word sits inside
+  the root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Mark (in ctx.markSlot) ---------- */
+.rt-ny-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-ny-mark * { transform-box: view-box; transform-origin: 0 0; }
+.rt-ny-mark .rt-ny-ink { fill: #fff; stroke: #fff; stroke-width: 0.5; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-ink { fill: #0f172a; stroke: #0f172a; }
+
+/* Mountain: violet dusk rock under a white cap; the core keeps the brand gradient. */
+.rt-ny-mark .rt-ny-m0 { stop-color: #c4b5fd; }
+.rt-ny-mark .rt-ny-m1 { stop-color: #6d28d9; }
+.rt-ny-mark .rt-ny-mtn-frame { stroke: #3b0f7a; stroke-width: 0.8; stroke-linejoin: round; }
+.rt-ny-mark .rt-ny-mtn-hole { fill: #3b1d7a; }
+.rt-ny-mark .rt-ny-mtn-mid { fill: #ede9fe; }
+.rt-ny-mark .rt-ny-mtn-snow { fill: #ffffff; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-m0 { stop-color: #8b5cf6; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-m1 { stop-color: #4c1d95; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-mtn-frame { stroke: #2e1065; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-mtn-hole { fill: #ede9fe; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-mtn-mid { fill: #5b21b6; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-mtn-snow { fill: #ffffff; stroke: #2e1065; stroke-width: 1; stroke-linejoin: round; }
+
+.rt-ny-mark .rt-ny-sun-disc { stroke: #e2671b; stroke-width: 1; }
+.rt-ny-mark .rt-ny-rays { fill: #ffb347; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-rays { fill: #ea7a12; }
+.rt-ny-mark .rt-ny-glow0 { stop-color: #ffb38a; stop-opacity: 0.38; }
+.rt-ny-mark .rt-ny-glow1 { stop-color: #ffb38a; stop-opacity: 0; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-glow0 { stop-color: #fb923c; stop-opacity: 0.28; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-glow1 { stop-color: #fb923c; stop-opacity: 0; }
+
+/* Poses: pre/play show the idle mark, the timeline brings the rest in; final is static. */
+.rt-ny-mark .rt-ny-glint path { fill: none; stroke: #ffc04d; stroke-width: 4; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-ny-mark .rt-ny-glint path { stroke: #ea7a12; }
+.rt-ny-mark .rt-ny-mtn, .rt-ny-mark .rt-ny-glow, .rt-ny-mark .rt-ny-rays, .rt-ny-mark .rt-ny-glint { opacity: 0; }
+.rt-ny-mark .rt-ny-sun { transform: translate(0, 100px); }   /* fully below the horizon clip */
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-flip { transform: scale(1, -1); }
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-brand { opacity: 0; }
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-mtn,
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-glow,
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-rays,
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-glint { opacity: 1; }
+.rt-ny-mark[data-rt-pose="final"] .rt-ny-sun { transform: none; }
+
+/* ---------- Stage: dawn glow and greeting ---------- */
+.rt-ny-stage { position: absolute; inset: 0; pointer-events: none; }
+.rt-ny-stage[data-rt-pose="pre"], .rt-ny-stage[data-rt-pose="final"] { display: none; }
+.rt-ny-dawn {
+  position: absolute; inset: 0; opacity: 0;
+  /* Static masks soften the stage's left and right edges and its bottom over main, so no hard cut shows. */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 56px), transparent), linear-gradient(to bottom, #000 58%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 56px), transparent), linear-gradient(to bottom, #000 58%, transparent);
+  mask-composite: intersect;
+  /* A static gradient (no filter); only opacity moves. It fades to transparent before the stage's edges,
+     so the 32 px over main never shows a hard cut. */
+  background: radial-gradient(150px 62px at var(--rt-ny-x, 16px) var(--rt-ny-y, 40px), rgb(255 170 120 / 0.34), rgb(255 154 122 / 0.14) 48%, transparent 100%),
+              radial-gradient(360px 46px at var(--rt-ny-x, 16px) var(--rt-ny-y, 40px), rgb(255 197 143 / 0.12), transparent 100%);
+}
+[data-rt-sw-tone="light"] .rt-ny-dawn {
+  background: radial-gradient(150px 62px at var(--rt-ny-x, 16px) var(--rt-ny-y, 40px), rgb(251 146 60 / 0.24), rgb(255 154 122 / 0.1) 48%, transparent 100%),
+              radial-gradient(360px 46px at var(--rt-ny-x, 16px) var(--rt-ny-y, 40px), rgb(253 186 116 / 0.12), transparent 100%);
+}
+.rt-ny-text {
+  position: absolute; left: 0; top: 0; opacity: 0;
+  white-space: nowrap; font-weight: 900; letter-spacing: 0;
+  color: rgb(255 255 255 / 0.92);
+  transform-origin: 0 50%;
+  font-synthesis: none;
+}
+[data-rt-sw-tone="light"] .rt-ny-text { color: #0f172a; }
+.rt-ny-text { line-height: 1.1; }
+.rt-ny-text > span { display: inline-block; vertical-align: baseline; }
+.rt-ny-text--2 > span { display: block; }
+
+/* The year rides a small swirl cloud tucked under its baseline (sizes in em of the year). */
+.rt-ny-ride { position: relative; margin-left: 0.3em; }
+.rt-ny-text--2 .rt-ny-ride { margin-left: 0; width: max-content; }
+.rt-ny-year {
+  position: relative; z-index: 1;
+  background-image: linear-gradient(to right, #ff9a7a, #ffc58f);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+[data-rt-sw-tone="light"] .rt-ny-year { background-image: linear-gradient(to right, #c2410c, #ea580c); }
+.rt-ny-ride-cloud { position: absolute; left: -0.12em; right: -0.42em; bottom: -0.5em; height: 0.52em; display: block; color: rgb(255 226 207 / 0.85); }
+[data-rt-sw-tone="light"] .rt-ny-ride-cloud { color: #94a3b8; }
+.rt-ny-ride-cloud svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+/* ---------- Final wordmark edge ----------
+   "Tanium" gets a thin warm stroke painted under its glyphs (paint-order: stroke fill), so the fill never thins.
+   "Risu" is left untouched: with background-clip: text the stroke would be painted with the gradient's clip and
+   dull it. No glow, shadow or filter. Light: a soft orange edge on the ink. */
+.rt-ny-warm .rt-ny-tanium {
+  -webkit-text-stroke: 0.06em rgb(255 179 138 / 0.42);
+  paint-order: stroke fill;
+}
+[data-rt-sw-tone="light"] .rt-ny-warm .rt-ny-tanium { -webkit-text-stroke-color: rgb(234 88 12 / 0.32); }

@@ -13,6 +13,7 @@ import { workingPresetsOf } from './itemText'
 import {
     convertDraft,
     dropsOptions,
+    followDefault,
     moveOutOfGroup,
     moveStep,
     moveToGroup,
@@ -728,8 +729,30 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
             if (draft === null || draft.kind !== 'select') {
                 return { ok: true }
             }
-            const outcome = setDraft(id, { ...draft, options: nextOptions }, mode)
+            const followed = followDefault(draft.options, nextOptions, draft.default)
+            const { default: _previous, ...rest } = draft
+            const outcome = setDraft(id, followed === undefined ? { ...rest, options: nextOptions } : { ...rest, options: nextOptions, default: followed }, mode)
             if (outcome.ok && mode === 'single') {
+                checkpoint()
+            }
+            return outcome
+        },
+        /** The checkbox's start-on flag (`'1'`) or the select's starting option text; null clears it. Other rows have none. */
+        setDefault(id: LineId, value: string | null): EditOutcome {
+            const draft = draftFor(id)
+            if (draft === null || (draft.kind !== 'check' && draft.kind !== 'select')) {
+                return { ok: true }
+            }
+            let next: RowDraft
+            if (draft.kind === 'check') {
+                const { default: _previous, ...rest } = draft
+                next = value === '1' ? { ...rest, default: '1' } : rest
+            } else {
+                const { default: _previous, ...rest } = draft
+                next = value === null ? rest : { ...rest, default: value }
+            }
+            const outcome = setDraft(id, next, 'single')
+            if (outcome.ok) {
                 checkpoint()
             }
             return outcome

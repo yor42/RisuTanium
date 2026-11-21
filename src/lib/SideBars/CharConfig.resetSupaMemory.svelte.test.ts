@@ -274,3 +274,49 @@ describe.each(['character', 'group'] as const)('reset SupaMemory button of a %s'
         expect(chatAt(1).supaMemoryData).toBe(SEEDED)
     })
 })
+
+describe('the HypaMemory modal buttons against the memory engine choice', () => {
+    function buttonTexts(target: HTMLElement): string[] {
+        return Array.from(target.querySelectorAll('button')).map((b) => b.textContent?.trim() ?? '')
+    }
+
+    test('guard: V3 and V2 databases show their modal buttons (passes before and after)', () => {
+        installWorld('character')
+        DBState.db.hypaV3 = true
+        let texts = buttonTexts(mountConfig())
+        expect(texts).toContain(language.hypaMemoryV3Modal)
+        unmount(mounted!.instance as never)
+        mounted!.target.remove()
+        mounted = undefined
+        installWorld('character')
+        DBState.db.supaModelType = 'distilbart'
+        DBState.db.hypav2 = true
+        texts = buttonTexts(mountConfig())
+        expect(texts).toContain(language.hypaMemoryV2Modal)
+    })
+
+    test('reproducer: ChroMemory over V3 flags shows no V3 button', () => {
+        installWorld('character')
+        DBState.db.hypaV3 = true
+        DBState.db.ltmEngine = true
+        const texts = buttonTexts(mountConfig())
+        expect(texts).not.toContain(language.hypaMemoryV3Modal)
+    })
+
+    test('reproducer: ChroMemory over V2 flags shows no V2 button', () => {
+        installWorld('character')
+        DBState.db.supaModelType = 'distilbart'
+        DBState.db.hypav2 = true
+        DBState.db.ltmEngine = true
+        const texts = buttonTexts(mountConfig())
+        expect(texts).not.toContain(language.hypaMemoryV2Modal)
+    })
+
+    test('guard: ChroMemory with every legacy engine off keeps the SupaMemory data branch as with no engine (expected in S1a)', () => {
+        installWorld('character')
+        DBState.db.characters[0].supaMemory = true
+        DBState.db.ltmEngine = true
+        const texts = buttonTexts(mountConfig())
+        expect(texts).toContain(language.resetSupaMemory)
+    })
+})

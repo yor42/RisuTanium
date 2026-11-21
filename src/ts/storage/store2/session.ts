@@ -96,7 +96,7 @@ export async function reflushTopLevel(backend: Store2Backend, attempts: number =
 
 // ---- Session ----
 
-export type SessionReadOnlyReason = 'opfs-transitional' | 'backend-unavailable' | 'server-capability'
+export type SessionReadOnlyReason = 'backend-unavailable' | 'server-capability'
 
 /** A boot decision, or the read-only state of a page whose store2 backend is not available. */
 export type SessionDecision =
@@ -113,7 +113,7 @@ export interface Store2SessionOptions {
     /** The page store's kind; defaults to `getAppStoreKind()`. */
     kind?: AppStoreKind
     /**
-     * Replaces the backend built for `kind` (the tests' seam); never consulted for `opfs-transitional`.
+     * Replaces the backend built for `kind` (the tests' seam).
      * A Tauri backend arrives already registered with the generation gate (`createTauriBackend` registers it): the
      * caller owns that, and `open` registers nothing for an injected backend.
      */
@@ -179,8 +179,6 @@ async function createBackend(kind: AppStoreKind, store: ByteStore): Promise<Stor
             }
         case 'indexeddb':
             return createIndexedDbBackend()
-        case 'opfs-transitional':
-            return { unavailable: 'The page runs from the transitional OPFS store.' }
     }
 }
 
@@ -258,9 +256,6 @@ async function open(store: ByteStore, options: Store2SessionOptions): Promise<St
     const owner = await ownerOf(kind, options, env)
 
     let backend: Store2Backend
-    if (kind === 'opfs-transitional') {
-        return readOnlySession(kind, 'opfs-transitional', 'The page runs from the transitional OPFS store.', owner)
-    }
     if (options.backend !== undefined) {
         backend = options.backend
     } else {

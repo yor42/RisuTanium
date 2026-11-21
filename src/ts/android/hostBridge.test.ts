@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createHostChannelFake } from './hostChannelFake'
-import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostIme, keepAliveHost, openedFilesTake, replyNotificationsHost, systemBarsHost } from './hostBridge'
+import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostChannelPresent, hostIme, hostRequest, keepAliveHost, openedFilesTake, replyNotificationsHost, systemBarsHost } from './hostBridge'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -504,5 +504,111 @@ describe('without the channel the separate host objects are used as they are', (
         expect(systemBarsHost()).not.toBe(bars)
         delete window.__risuTaniumHost
         expect(systemBarsHost()).toBe(bars)
+    })
+})
+
+describe('the first request id of a fresh page load', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals()
+        vi.resetModules()
+    })
+
+    const firstTakeIdWithRandom = async (random: number): Promise<number> => {
+        vi.resetModules()
+        vi.stubGlobal('crypto', { getRandomValues: (values: Uint32Array) => { values[0] = random; return values } })
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const fresh = await import('./hostBridge')
+        void fresh.openedFilesTake()
+        const id = fake.postedTo('openedFiles', 'take')[0].id as number
+        delete window.__risuTaniumHost
+        fresh.connectHostBridge()
+        return id
+    }
+
+    test('two page loads with different random draws post different first ids, so a reply to an earlier document never matches', async () => {
+        const first = await firstTakeIdWithRandom(5)
+        const second = await firstTakeIdWithRandom(900)
+        expect(first).toBe(1 + 5)
+        expect(second).toBe(1 + 900)
+    })
+
+    test('the random part is limited to 30 bits so the counter has room to count', async () => {
+        expect(await firstTakeIdWithRandom(0xffffffff)).toBe(1 + 0x3fffffff)
+    })
+})
+
+describe('requests to the host that name their method in the reply', () => {
+    const requestId = (fake: ReturnType<typeof createHostChannelFake>, n: number) => fake.postedTo('keyVault', 'wrap')[n].id as number
+    const reply = (id: number, extra: Record<string, unknown> = {}) => JSON.stringify({ id, method: 'keyVault.wrap', vault: 'ok', value: 'v', ...extra })
+
+    test('a take and a request that are pending together both settle when their replies arrive out of order', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const take = openedFilesTake()!
+        const request = hostRequest('keyVault', 'wrap', ['SYNTH-KEY-1234'])!
+        expect(requestId(fake, 0)).not.toBe(fake.postedTo('openedFiles', 'take')[0].id)
+        fake.deliver(reply(requestId(fake, 0)))
+        fake.deliver(JSON.stringify({ id: fake.postedTo('openedFiles', 'take')[0].id, result: [], through: 0 }))
+        expect(await request.reply).toMatchObject({ vault: 'ok', value: 'v' })
+        expect((await take).held).toBe(true)
+        expect(fake.postedTo('keyVault', 'wrap')[0].args).toEqual(['SYNTH-KEY-1234'])
+    })
+
+    test('a reply that names another method is ignored and the request stays pending', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const request = hostRequest('keyVault', 'wrap', ['k'])!
+        let settled = false
+        void request.reply.then(() => { settled = true })
+        fake.deliver(reply(requestId(fake, 0), { method: 'keyVault.unwrap' }))
+        fake.deliver(JSON.stringify({ id: requestId(fake, 0), vault: 'ok', value: 'no method' }))
+        await settle()
+        expect(settled).toBe(false)
+        fake.deliver(reply(requestId(fake, 0)))
+        expect(await request.reply).toMatchObject({ value: 'v' })
+    })
+
+    test('a reply carrying a method and a take\'s id leaves the take pending', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        let settled = false
+        void openedFilesTake()!.then(() => { settled = true })
+        const takeId = fake.postedTo('openedFiles', 'take')[0].id as number
+        fake.deliver(JSON.stringify({ id: takeId, method: 'keyVault.wrap', vault: 'ok', value: 'v', result: [], through: 3 }))
+        await settle()
+        expect(settled).toBe(false)
+    })
+
+    test('cancel forgets the request, so its late reply settles nothing', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const request = hostRequest('keyVault', 'wrap', ['k'])!
+        let settled = false
+        void request.reply.then(() => { settled = true })
+        request.cancel()
+        fake.deliver(reply(requestId(fake, 0)))
+        await settle()
+        expect(settled).toBe(false)
+    })
+
+    test('without a channel there is no request, and the channel is reported absent; releasing settles a pending request with null', async () => {
+        expect(hostChannelPresent()).toBe(false)
+        expect(hostRequest('keyVault', 'wrap', ['k'])).toBeUndefined()
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        expect(hostChannelPresent()).toBe(true)
+        const request = hostRequest('keyVault', 'wrap', ['k'])!
+        delete window.__risuTaniumHost
+        connectHostBridge()
+        expect(await request.reply).toBeNull()
+    })
+
+    test('a request whose message cannot be sent rejects and leaves nothing waiting', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        connectHostBridge()
+        fake.channel.postMessage.mockImplementationOnce(() => { throw new Error('host failed') })
+        await expect(hostRequest('keyVault', 'wrap', ['k'])!.reply).rejects.toThrow('host failed')
     })
 })

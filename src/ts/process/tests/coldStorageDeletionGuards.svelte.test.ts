@@ -19,8 +19,8 @@
  * Every other module reachable from those is mocked below. Only the
  * STORAGE BACKEND underneath `getColdStorageItem` is faked (Tauri
  * `@tauri-apps/plugin-fs` under the real desktop store, and the key/value
- * store behind `forageStorage` as the web page store, beside an OPFS
- * `navigator.storage` stand-in for the legacy unit files) --
+ * store behind `forageStorage` as the web page store, beside a
+ * `navigator.storage` stand-in that fails if it is ever called) --
  * `getColdStorageItem` itself is never mocked directly, so a read failure
  * has to go through its own real try/catch-swallows-errors path, exactly as
  * it does in production.
@@ -363,80 +363,28 @@ function tauriFsHas(path: string): boolean {
 //#endregion
 
 //#region web unit storage: the key/value store behind `forageStorage` (page
-// store, `coldstorage/<key>`) and the legacy OPFS unit files (navigator.storage),
-// which no test here writes.
-
-const opfsStore = new Map<string, Uint8Array>()
-
-function opfsFilename(key: string): string {
-    return 'coldstorage_' + key + '.json'
-}
+// store, `coldstorage/<key>`) and a `navigator.storage` stand-in that must stay uncalled.
 
 /** The next read of unit `key` from the web page store fails once. */
-function armTransientOpfsFailure(key: string): void {
+function armTransientStoreFailure(key: string): void {
     storeHooks.throwOnce.add('coldstorage/' + key)
 }
 
-class MockNotFoundError extends Error {
-    name = 'NotFoundError'
-}
-
-// Used only by the CHORE-07 stage 7c-1 `classifyOpfsColdRead` group, far
-// below -- declared here (module scope) alongside `MockNotFoundError` to
-// avoid Svelte's "nested class" perf warning.
-class FakeTypeMismatchError extends Error {
-    name = 'TypeMismatchError'
-}
-
-const mockDirectoryHandle = {
-    async getFileHandle(name: string) {
-        if (!opfsStore.has(name)) {
-            throw new MockNotFoundError(`not found: ${name}`)
-        }
-        return {
-            async getFile() {
-                const bytes = opfsStore.get(name)!
-                return {
-                    async arrayBuffer() {
-                        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-                    },
-                }
-            },
-        }
-    },
-    async removeEntry(name: string) {
-        if (!opfsStore.has(name)) {
-            throw new MockNotFoundError(`not found: ${name}`)
-        }
-        opfsStore.delete(name)
-    },
-    entries() {
-        const iter = opfsStore.keys()
-        return {
-            [Symbol.asyncIterator]() {
-                return {
-                    async next() {
-                        const r = iter.next()
-                        if (r.done) {
-                            return { done: true as const, value: undefined }
-                        }
-                        return { done: false as const, value: [r.value, {}] as [string, unknown] }
-                    },
-                }
-            },
-        }
-    },
-}
+// A cold unit is never read from or deleted in the browser's private file system: any call
+// to `getDirectory` here is a regression.
+const getDirectoryMock = vi.fn(async () => {
+    throw new Error('the browser private file system must not be touched')
+})
 
 Object.defineProperty(globalThis.navigator, 'storage', {
     configurable: true,
     value: {
-        getDirectory: async () => mockDirectoryHandle,
+        getDirectory: getDirectoryMock,
     },
 })
 
-function resetOpfs(): void {
-    opfsStore.clear()
+function resetColdUnits(): void {
+    getDirectoryMock.mockClear()
     storeHooks.throwOnce.clear()
     storeHooks.onRead = null
     for (const key of Array.from(forageMem.keys())) {
@@ -458,7 +406,6 @@ import {
     collectColdStorageBackupPayloads,
     coldStorageHeader,
     readColdStorageItem,
-    classifyOpfsColdRead,
     retryLegacyColdChatLoad,
 } from '../coldstorage.svelte'
 import { isColdChat, formatColdStorageLoadError, mergeRetriedColdChatSideFields } from '../coldstorageData'
@@ -570,7 +517,7 @@ function makeRetryDb(chaId: string, chat: unknown): Database {
 describe('CHORE-07 stage 7a: the backup collector keeps the units that cold-storage text names', () => {
     test("a9: collectColdStorageBackupPayloads carries the unit a live chat's legacy error text names", async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         // Real unit ids are UUIDs, the only names a restore places.
         const REAL_KEY = '00000000-0000-4000-8000-0000000000a1'
@@ -630,9 +577,9 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
         selectedCharID.set(-1)
     })
 
-    test('R1: a transient OPFS read failure leaves the chat untouched and resolves "error"', async () => {
+    test('R1: a transient store read failure leaves the chat untouched and resolves "error"', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'r1-cold-key'
         await setColdStorageItem(coldKey, {
@@ -666,10 +613,10 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
         const localLoreBefore = chat.localLore
         const lastDateBefore = chat.lastDate
 
-        armTransientOpfsFailure(coldKey)
+        armTransientStoreFailure(coldKey)
         const result = await preLoadChat(0, 0)
 
-        // A transient OPFS read failure must resolve 'error' without ever
+        // A transient store read failure must resolve 'error' without ever
         // overwriting `chat.message` with the error text.
         expect(result).toBe('error')
         expect(chat.message).toEqual(messageBefore)
@@ -682,7 +629,7 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
 
     test('R2a: a blob shaped {message: string} resolves "damaged" with no mutation', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'r2a-string-message-key'
         await setColdStorageItem(coldKey, { message: 'not-an-array' })
@@ -706,7 +653,7 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
 
     test('R2b: a blob shaped {character: {...}} (no message array) resolves "damaged" with no mutation', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'r2b-character-only-key'
         await setColdStorageItem(coldKey, {
@@ -732,7 +679,7 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
 
     test('R4: a pointer replaced during the read is left as the newer value, resolving "none"', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'r4-cold-key'
         await setColdStorageItem(coldKey, {
@@ -770,7 +717,7 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
 
     test('R5: a message pushed during the read is preserved after the restored messages', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'r5-cold-key'
         await setColdStorageItem(coldKey, {
@@ -810,7 +757,7 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
 
     test('C1 CHAR: a legacy array cold blob restores messages only, leaving side fields untouched', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'c1-cold-key'
         const legacyMessages = [{ time: 1, data: 'legacy restored message', role: 'user' }]
@@ -846,7 +793,7 @@ describe('CHORE-07 stage 7b: preLoadChat must not reject and must not mutate a c
 
     test('C2 CHAR: an object cold blob restores messages and every side field', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'c2-cold-key'
         const payload = {
@@ -916,52 +863,14 @@ describe('CHORE-07 stage 7b: isColdChat', () => {
 })
 
 /**
- * CHORE-07 stage 7c-1 -- the classification seam of the legacy OPFS unit
- * files (`classifyOpfsColdRead`), Agents/Reports/13-chore07-cold-read-failure-plan.md.
- * It classifies a raw read outcome as `missing` (the file genuinely doesn't
- * exist) or `error` (anything else -- permission, corruption, an unrelated
- * error), so a caller can tell a transient or ambiguous failure apart from a
- * confirmed absence. No platform mocking is needed for these -- every
- * dependency is a plain injected function. The page store's own absent/error
+ * `readColdStorageItem` end to end on the web page store (same mock as the
+ * `preLoadChat` and collector groups above). The page store's own absent/error
  * classification is pinned in `coldUnitsThroughStore.test.ts`.
  */
-describe('CHORE-07 stage 7c-1: classifyOpfsColdRead', () => {
-    test('a NotFoundError from getFileHandle() is missing', async () => {
-        const getDirectoryFn = vi.fn(async () => ({
-            getFileHandle: vi.fn(async () => { throw new MockNotFoundError('not found') }),
-        }))
-        const result = await classifyOpfsColdRead(getDirectoryFn as never, 'coldstorage_x.json')
-        expect(result).toEqual({ status: 'missing' })
-    })
-
-    test('a TypeMismatchError from getFileHandle() is error, not missing', async () => {
-        const getDirectoryFn = vi.fn(async () => ({
-            getFileHandle: vi.fn(async () => { throw new FakeTypeMismatchError('type mismatch') }),
-        }))
-        const result = await classifyOpfsColdRead(getDirectoryFn as never, 'coldstorage_x.json')
-        expect(result.status).toBe('error')
-    })
-
-    test('a NotFoundError from getDirectory() is error, not missing', async () => {
-        // A NotFoundError here is about OPFS's root directory, not about
-        // `filename` -- it must never be conflated with "this file doesn't
-        // exist". Distinguishing the two error sites is the whole point of
-        // this seam having a separate try/catch around `getDirectoryFn()`.
-        const getDirectoryFn = vi.fn(async () => { throw new MockNotFoundError('directory not found') })
-        const result = await classifyOpfsColdRead(getDirectoryFn as never, 'coldstorage_x.json')
-        expect(result.status).toBe('error')
-        expect(getDirectoryFn).toHaveBeenCalledTimes(1)
-    })
-})
-
-/**
- * CHORE-07 stage 7c-1 -- `readColdStorageItem` end to end, real OPFS
- * backend (same mock as the `preLoadChat` and collector groups above).
- */
-describe('CHORE-07 stage 7c-1: readColdStorageItem (OPFS backend)', () => {
+describe('CHORE-07 stage 7c-1: readColdStorageItem (web page store)', () => {
     test('a stored null value is ok, not missing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const key = 'reader-7c1-null-key'
         const writeOk = await setColdStorageItem(key, null)
@@ -973,7 +882,7 @@ describe('CHORE-07 stage 7c-1: readColdStorageItem (OPFS backend)', () => {
 
     test('a {character} blob is ok', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const key = 'reader-7c1-character-key'
         const payload = { character: { chaId: 'reader-7c1-char', name: 'Reader', type: 'character', chatPage: 0, chats: [] } }
@@ -985,10 +894,20 @@ describe('CHORE-07 stage 7c-1: readColdStorageItem (OPFS backend)', () => {
 
     test('a never-stored key is missing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const result = await readColdStorageItem('reader-7c1-never-stored-key')
         expect(result).toEqual({ status: 'missing' })
+    })
+
+    test('4b-G1: an absent unit reads missing without any getDirectory call, and a stored unit does not touch it either', async () => {
+        platformState.isTauri = false
+        resetColdUnits()
+
+        expect(await readColdStorageItem('reader-4b-absent-key')).toEqual({ status: 'missing' })
+        await setColdStorageItem('reader-4b-stored-key', { message: [] })
+        expect(await readColdStorageItem('reader-4b-stored-key')).toEqual({ status: 'ok', value: { message: [] } })
+        expect(getDirectoryMock).not.toHaveBeenCalled()
     })
 })
 
@@ -1006,7 +925,7 @@ describe('CHORE-07 stage 7c-1: preLoadChat missing result and the character-swit
 
     test('a positively missing blob resolves "missing" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'missing-7c1-key' // deliberately never written
         DBState.db = makeDb([{
@@ -1031,7 +950,7 @@ describe('CHORE-07 stage 7c-1: preLoadChat missing result and the character-swit
 
     test('switching the selected character during the read resolves "none" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'race-7c1-key'
         await setColdStorageItem(coldKey, {
@@ -1206,7 +1125,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL1: ok with an object blob gives the restored messages followed by the tail, and empty live side fields take the blob\'s', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl1-cold-key'
         const blobPayload = {
@@ -1251,7 +1170,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL2: ok keeps non-empty live side fields when the blob\'s are the cold-storage reset state', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl2-cold-key'
         await setColdStorageItem(coldKey, {
@@ -1305,7 +1224,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL3: ok with a legacy array blob restores messages only, leaving every live side field untouched', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl3-cold-key'
         const legacyMessages = [{ time: 1, data: 'legacy restored message', role: 'user' }]
@@ -1347,7 +1266,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL4: a positively missing blob resolves "missing" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl4-missing-key' // deliberately never written
         const errorChat = makeErrorTextChat('rl4-chat-0', coldKey)
@@ -1363,11 +1282,11 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL5: an ambiguous read failure resolves "error" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl5-error-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
-        armTransientOpfsFailure(coldKey)
+        armTransientStoreFailure(coldKey)
         const errorChat = makeErrorTextChat('rl5-chat-0', coldKey)
         DBState.db = makeRetryDb('rl5-char', errorChat)
         const chat = DBState.db.characters[0].chats[0] as unknown as { message: { data: string }[] }
@@ -1381,7 +1300,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL6: "busy" when a reply is already being written into this chat before the read starts', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl6-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1398,7 +1317,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL6b (T16): a reply being written into another chat does not hold the retry', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl6b-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1415,7 +1334,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL7: "busy" when the chat\'s own isStreaming is set before the read starts', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl7-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1429,7 +1348,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL8: "busy" when a reply starts in this chat during the read', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl8-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1451,7 +1370,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
     // 'none', so this test alone cannot fail against such a stub.
     test('RL9 Guard: switching the selected character during the read resolves "none" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl9-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1490,7 +1409,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
     // Same caveat as RL9 above.
     test('RL10 Guard: message[0] changing during the read (a double retry) resolves "none" and mutates nothing further', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl10-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1510,7 +1429,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL11: an ok read with a shape this function does not recognize resolves "damaged" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl11-bad-shape-key'
         await setColdStorageItem(coldKey, { message: 'not-an-array' })
@@ -1527,7 +1446,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL12 Guard: a chat with ordinary text resolves "none"', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const errorChat = { message: [{ time: 1, data: 'ordinary text', role: 'char' }], note: '', name: '', localLore: [] }
         DBState.db = makeRetryDb('rl12-char', errorChat)
@@ -1539,7 +1458,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL13 Guard: a near-miss error-text string resolves "none"', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const errorChat = {
             message: [{
@@ -1559,7 +1478,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
     // Same caveat as RL9 above.
     test('RL14: a chat reordered to a different index during the read resolves "none" and mutates nothing', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl14-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1590,7 +1509,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
     // Same caveat as RL9 above.
     test('RL15: the character being replaced (same chaId, a new chats array) during the read resolves "none"', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl15-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
@@ -1615,7 +1534,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL16: the tail is kept by identity, chatId included', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl16-cold-key'
         await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'restored', role: 'user' }] })
@@ -1643,7 +1562,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL17: the error message\'s chatId is stripped from a live summary\'s chatMemos during retry', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl17-cold-key'
         await setColdStorageItem(coldKey, {
@@ -1677,7 +1596,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
 
     test('RL18: a malformed side field in the blob resolves "error" and leaves the chat completely untouched', async () => {
         platformState.isTauri = false
-        resetOpfs()
+        resetColdUnits()
 
         const coldKey = 'rl18-malformed-key'
         await setColdStorageItem(coldKey, {

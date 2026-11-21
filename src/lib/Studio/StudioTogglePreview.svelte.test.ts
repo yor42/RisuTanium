@@ -535,3 +535,47 @@ describe('the joined scope', () => {
         expect(part('studio-tg-preview-not-in-chat')).toBeNull()
     })
 })
+
+describe('T5.4 the sheet starts at the author defaults', () => {
+    const DEFAULTS = 'c=Check===1\nn=Plain\ns=Pick=select=x,y=y\n'
+    const radios = (key: string) => Array.from(previewRow(key)!.querySelectorAll<HTMLElement>('[role="radio"]')).map((radio) => radio.getAttribute('aria-checked'))
+
+    test('regression reproducer: the owner scope shows a default-on check on and a default option selected; a sheet value wins', async () => {
+        setText(DEFAULTS)
+        makeRig()
+        mountBuilder()
+        await settle()
+        await openSheet()
+        expect(previewRow('c')!.hasAttribute('data-on')).toBe(true)
+        expect(previewRow('n')!.hasAttribute('data-on')).toBe(false)
+        expect(radios('s')).toEqual(['false', 'true'])
+        previewRow('c')!.querySelector<HTMLInputElement>('[role="switch"]')!.click()
+        previewRow('s')!.querySelectorAll<HTMLElement>('[role="radio"]')[0].click()
+        flushSync()
+        expect(previewRow('c')!.hasAttribute('data-on')).toBe(false)
+        expect(radios('s')).toEqual(['true', 'false'])
+    })
+
+    test('regression reproducer: the joined scope starts at the same defaults', async () => {
+        setText(DEFAULTS)
+        makeRig()
+        mountBuilder()
+        await settle()
+        await openSheet()
+        part('studio-tg-preview-scope-all')?.click()
+        flushSync()
+        expect(previewRow('c')!.hasAttribute('data-on')).toBe(true)
+        expect(radios('s')).toEqual(['false', 'true'])
+    })
+
+    test('regression reproducer: editing the default in the text moves the sheet after the quiet period', async () => {
+        setText(DEFAULTS)
+        makeRig()
+        mountBuilder()
+        await settle()
+        await openSheet()
+        setText('c=Check\nn=Plain\ns=Pick=select=x,y=x\n')
+        await vi.waitFor(() => expect(previewRow('c')!.hasAttribute('data-on')).toBe(false))
+        expect(radios('s')).toEqual(['true', 'false'])
+    })
+})

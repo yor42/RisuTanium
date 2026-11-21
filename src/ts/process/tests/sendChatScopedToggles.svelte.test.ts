@@ -801,4 +801,46 @@ describe('the reply\'s stored toggles read the chat-only values (C-T15)', () => 
     })
 })
 
+describe('the reply\'s stored toggles read the author defaults (CHORE-570a)', () => {
+    const DEFINITIONS = 'a=Alpha toggle===1\nmood=Mood=select=calm,angry=angry\nplain=Plain\n'
+
+    // regression reproducer: the base lists no ON entry and no Mood value for toggles nothing stored
+    test('T2.10 an unset default-on check is listed ON and an unset select lists its default option', async () => {
+        const { A } = world({
+            db: templateDb({ mainPrompt: `MAIN[${TAGS}]`, customPromptTemplateToggle: DEFINITIONS, globalChatVariables: {} }),
+        })
+
+        const r = await sendWith(A, A.chats[0], 0)
+
+        expect(r.outcome).toBe(true)
+        expect(r.replyPromptInfo?.promptToggles).toContainEqual({ key: 'Alpha toggle', value: 'ON' })
+        expect(r.replyPromptInfo?.promptToggles).toContainEqual({ key: 'Mood', value: 'angry' })
+        expect(r.replyPromptInfo?.promptToggles?.some((entry) => entry.key === 'Plain')).toBe(false)
+    })
+
+    // compatibility guard: a stored 0 still wins over the default
+    test('a stored 0 keeps the check off and a stored index keeps the select', async () => {
+        const { A } = world({
+            db: templateDb({ mainPrompt: `MAIN[${TAGS}]`, customPromptTemplateToggle: DEFINITIONS, globalChatVariables: { toggle_a: '0', toggle_mood: '0' } }),
+        })
+
+        const r = await sendWith(A, A.chats[0], 0)
+
+        expect(r.replyPromptInfo?.promptToggles).not.toContainEqual({ key: 'Alpha toggle', value: 'ON' })
+        expect(r.replyPromptInfo?.promptToggles).toContainEqual({ key: 'Mood', value: 'calm' })
+    })
+
+    // compatibility guard: the same send with the selection elsewhere reads the same definitions
+    test('a send of a chat that is not selected lists the defaults too', async () => {
+        const { A } = world({
+            db: templateDb({ mainPrompt: `MAIN[${TAGS}]`, customPromptTemplateToggle: DEFINITIONS, globalChatVariables: {} }),
+        })
+
+        const r = await sendWith(A, A.chats[0], 1)
+
+        expect(r.replyPromptInfo?.promptToggles).toContainEqual({ key: 'Alpha toggle', value: 'ON' })
+        expect(r.replyPromptInfo?.promptToggles).toContainEqual({ key: 'Mood', value: 'angry' })
+    })
+})
+
 //#endregion

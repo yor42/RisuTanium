@@ -1553,6 +1553,190 @@ describe('guard: the request the trim produces is the one the base produced', ()
             })
         })
     }
+
+    // ChroMemory's shadow runs on the send, after the engine-off trim, and only
+    // counts and records: the sent prompt, the chats and lastMemory are those of
+    // the same send with no engine.
+    describe('the ChroMemory shadow on the send path', () => {
+        let tokenizeMock: ReturnType<typeof vi.fn>
+        let shadow: typeof import('../memory/chroMemory/shadow')
+        let header: string
+        const countByLength = async (s: string) => (s?.length ?? 0)
+
+        beforeAll(async () => {
+            tokenizeMock = (await import('../../tokenizer')).tokenize as unknown as ReturnType<typeof vi.fn>
+            shadow = await import('../memory/chroMemory/shadow')
+            header = (await import('../memory/chroMemory/pack')).HEADER
+        })
+
+        beforeEach(() => {
+            shadow.resetChroMemoryShadowForTests()
+            tokenizeMock.mockClear()
+            tokenizeMock.mockImplementation(countByLength)
+        })
+
+        const isShadowText = (call: unknown[]): boolean => {
+            const text = String(call[0])
+            return text.startsWith(header) || text.startsWith('[#')
+        }
+
+        const forms: Array<[string, Record<string, unknown>, () => void]> = [
+            ['the default counter', {}, () => {}],
+            ['a plugin tokenizer with varying counts', { aiModel: 'custom', currentPluginProvider: 'plug' }, () => {
+                providerOptions.set('plug', { tokenizer: 'custom' })
+            }],
+        ]
+
+        /** The sent chat as the send mutates it, read through DBState. */
+        function sentChat(): Chat {
+            return (DBState.db.characters[0] as character).chats[0]
+        }
+
+        function lastMemoryPosition(chat: Chat): number {
+            return chat.message.findIndex((m) => m.chatId === chat.lastMemory)
+        }
+
+        async function sendScripted(db: Record<string, unknown>, charExtra: Record<string, unknown>) {
+            await runScripted(db, charExtra)
+            const chat = sentChat()
+            return {
+                facts: facts(),
+                kept: keptNumbers(),
+                helloSent: (lastBody()?.formated ?? []).some((e) => e.content.includes('Hello!')),
+                lastMemoryAt: lastMemoryPosition(chat),
+                chat,
+                trace: shadow.getLastChroMemoryTrace(),
+            }
+        }
+
+        for (const [name, flags, mock] of modes) {
+            test(`reproducer: ltmEngine takes the chats from memory mode ${name}, which is not called, and the request is the no-engine one`, async () => {
+                await runScripted({}, { supaMemory: true })
+                const noEngine = facts()
+                h.request.mockReset()
+                await runScripted({ ...flags, ltmEngine: true }, { supaMemory: true })
+                expect(mock()).not.toHaveBeenCalled()
+                expect(memoryRecords).toEqual([])
+                expect(facts()).toEqual(noEngine)
+            })
+        }
+
+        for (const [label, formDb, setup] of forms) {
+            test(`ltmEngine shadow with ${label}: the send is the no-engine send and the trace holds the dropped chats`, async () => {
+                setup()
+                const off = await sendScripted({ ...formDb }, { supaMemory: true })
+                expect(shadow.getLastChroMemoryTrace()).toBeNull()
+                h.request.mockReset()
+                const on = await sendScripted({ ...formDb, ltmEngine: true }, { supaMemory: true })
+
+                expect(on.facts).toEqual(off.facts)
+                expect(on.lastMemoryAt).toBe(off.lastMemoryAt)
+                expect(on.lastMemoryAt).toBeGreaterThan(-1)
+
+                const first = on.kept[0]
+                expect(first).toBeGreaterThan(4)
+                expect(on.helloSent).toBe(false)
+                const trace = on.trace!
+                expect(trace).not.toBeNull()
+                expect(['packed', 'nothing-packed']).toContain(trace.outcome)
+                expect(trace.d0.records).toBe(first + 1)
+                expect(trace.d0.firstChatId).toBe('#first')
+                expect(trace.d0.lastChatId).toBe(on.chat.message[first - 1].chatId)
+                expect(trace.query?.chatId).toBe(on.chat.message[COUNT - 1].chatId)
+                if (formDb.aiModel) {
+                    expect(trace.counted).toBeLessThanOrEqual(12)
+                    expect(trace.countCap).toBe(12)
+                }
+            })
+
+            test(`ltmEngine shadow with ${label}: a throwing count is traced as error and the send is the no-engine send`, async () => {
+                setup()
+                const off = await sendScripted({ ...formDb }, { supaMemory: true })
+                h.request.mockReset()
+                tokenizeMock.mockImplementation(async (s: string) => {
+                    if (String(s).startsWith(header)) {
+                        throw new Error('count failed')
+                    }
+                    return countByLength(s)
+                })
+                try {
+                    const on = await sendScripted({ ...formDb, ltmEngine: true }, { supaMemory: true })
+                    expect(on.facts).toEqual(off.facts)
+                    expect(on.lastMemoryAt).toBe(off.lastMemoryAt)
+                    expect(on.trace?.outcome).toBe('error')
+                } finally {
+                    tokenizeMock.mockImplementation(countByLength)
+                }
+            })
+        }
+
+        test('guard: ltmEngine with the character memory off runs no shadow and the send is the no-engine send', async () => {
+            const off = await sendScripted({}, { supaMemory: false })
+            h.request.mockReset()
+            tokenizeMock.mockClear()
+            const on = await sendScripted({ ltmEngine: true }, { supaMemory: false })
+            expect(on.facts).toEqual(off.facts)
+            expect(shadow.getLastChroMemoryTrace()).toBeNull()
+            expect(tokenizeMock.mock.calls.filter(isShadowText)).toEqual([])
+        })
+
+        test('ltmEngine shadow on a group chat: the query is the newest message and D0 ends at the last dropped one', async () => {
+            const build = () => makeGroup('group-1', ['member-a', 'member-b'], [makeChat('chat-G', Array.from({ length: COUNT }, (_, i) => {
+                return msg(i % 2 === 0 ? 'user' : 'char', body100(i), { saying: i % 2 === 0 ? undefined : (i % 4 === 1 ? 'member-a' : 'member-b') })
+            }))], { supaMemory: true })
+            const run = async (extra: Record<string, unknown>) => {
+                const group = build()
+                installDb([group, makeChar('member-a', 'Ann', [makeChat('chat-a', [])]), makeChar('member-b', 'Bob', [makeChat('chat-b', [])])], { maxContext: SCRIPTED_MAX_CONTEXT, ...extra })
+                selectedCharID.set(0)
+                const result = await sendOnce(group, group.chats[0])
+                expect(result instanceof Error ? `threw: ${result.message}` : result).toBe(true)
+                return { facts: facts(), chat: (DBState.db.characters[0] as unknown as groupChat).chats[0] }
+            }
+            const off = await run({})
+            h.request.mockReset()
+            const on = await run({ ltmEngine: true })
+            expect(on.facts).toEqual(off.facts)
+            const first = keptNumbers()[0]
+            expect(first).toBeGreaterThan(4)
+            const trace = shadow.getLastChroMemoryTrace()!
+            expect(['packed', 'nothing-packed']).toContain(trace.outcome)
+            expect(trace.d0.lastChatId).toBe(on.chat.message[first - 1].chatId)
+            expect(trace.query?.chatId).toBe(on.chat.message[COUNT - 1].chatId)
+        })
+
+        test('a 3,000-message chat: the shadow counts at most 64 texts, adds no chat count, and the send is unchanged', async () => {
+            const send = async (extraDb: Record<string, unknown>, charExtra: Record<string, unknown>) => {
+                const messages = Array.from({ length: 3000 }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', body500(i)))
+                const A = makeChar('char-A', 'Alice', [makeChat('chat-A', messages)], charExtra)
+                installDb([A], { maxContext: LONG_MAX_CONTEXT, ...extraDb })
+                selectedCharID.set(0)
+                h.tokenCalls.length = 0
+                tokenizeMock.mockClear()
+                h.request.mockReset()
+                const result = await sendOnce(A, A.chats[0])
+                expect(result instanceof Error ? `threw: ${result.message}` : result).toBe(true)
+                return {
+                    chatCalls: h.tokenCalls.length,
+                    tokenizeCalls: tokenizeMock.mock.calls.length,
+                    shadowCalls: tokenizeMock.mock.calls.filter(isShadowText).length,
+                    kept: keptNumbers(),
+                    facts: requestFacts(),
+                }
+            }
+            const off = await send({}, { supaMemory: true })
+            expect(shadow.getLastChroMemoryTrace()).toBeNull()
+            const on = await send({ ltmEngine: true }, { supaMemory: true })
+            const trace = shadow.getLastChroMemoryTrace()!
+            expect(trace.d0.units).toBeGreaterThanOrEqual(2000)
+            expect(trace.countCapped).toBe(true)
+            expect(trace.counted).toBeLessThanOrEqual(64)
+            expect(on.shadowCalls).toBeLessThanOrEqual(64)
+            expect(on.tokenizeCalls - on.shadowCalls).toBe(off.tokenizeCalls)
+            expect(on.chatCalls).toBe(off.chatCalls)
+            expect(on.kept).toEqual(off.kept)
+            expect(on.facts).toEqual(off.facts)
+        })
+    })
 })
 
 describe('guard: the trim over the other inputs the context takes', () => {

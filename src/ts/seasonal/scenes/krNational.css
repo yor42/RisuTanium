@@ -1,0 +1,101 @@
+/*
+  Seasonal scene: krNational (Mar 1 and Aug 15). Classes are prefixed rt-kn-; the sky carries the variant class
+  rt-kn-samiljeol or rt-kn-gwangbokjeol. Final pose = the static .rt-kn-final state on the sky, the mark and the word.
+  Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root), so
+  every light rule keys on that ancestor attribute.
+  Colours: flag red #cd2e3a and blue #0047a0 (Taegeuk, with an ivory hole edge on the dark canvas); ribbons in the
+  NEXUS crimson #ff6b81 and sapphire #38d9ff; ink ivory #f3eee2 on dark, #1c1917 on light.
+  samiljeol: a quiet ink-slate wash. gwangbokjeol: a dawn wash with a warm light at the bottom (light restored).
+*/
+
+/* ---------- Families ---------- */
+.rt-kn-ebs {
+  font-family: 'EBS Hunminjeongeum', 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 400;
+  font-size: calc(var(--rt-kn-fs, 24px) * 1.1);
+  font-synthesis: none;
+}
+.rt-kn-fb {
+  font-family: 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--rt-kn-fs, 24px) * 0.92);
+  font-synthesis: none;
+}
+
+/* ---------- Stage ---------- */
+.rt-kn-sky { position: absolute; inset: 0; pointer-events: none; --rt-kn-ink: #f3eee2; --rt-kn-ink-edge: #0b1024; }
+[data-rt-sw-tone="light"] .rt-kn-sky { --rt-kn-ink: #1c1917; --rt-kn-ink-edge: #fbf8f1; }
+.rt-kn-wash {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--rt-kn-wash-h, 72px);
+  background: linear-gradient(to bottom, #0f1630 0%, #1c2440 100%);
+  opacity: 0;
+  --rt-kn-hole: radial-gradient(circle at var(--rt-kn-mx, -100px) var(--rt-kn-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 86%, transparent 100%), linear-gradient(to bottom, #000 66%, transparent 100%), var(--rt-kn-hole);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 86%, transparent 100%), linear-gradient(to bottom, #000 66%, transparent 100%), var(--rt-kn-hole);
+  mask-composite: intersect;
+}
+.rt-kn-gwangbokjeol .rt-kn-wash { background: linear-gradient(to bottom, #0f1a44 0%, #24366e 55%, #a88a52 100%); }
+[data-rt-sw-tone="light"] .rt-kn-wash { background: linear-gradient(to bottom, #f1ede4 0%, #e6e0d2 100%); }
+[data-rt-sw-tone="light"] .rt-kn-gwangbokjeol .rt-kn-wash { background: linear-gradient(to bottom, #eef2fb 0%, #fbf1dc 60%, #ffe2ad 100%); }
+
+.rt-kn-ribbons { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.rt-kn-rib, .rt-kn-rib-dry { fill: none; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.rt-kn-rib { stroke-width: 6; }
+.rt-kn-rib-dry { stroke-width: 1.6; opacity: 0.55; }
+.rt-kn-rib-red { stroke: #ff6b81; }
+.rt-kn-rib-blue { stroke: #38d9ff; }
+[data-rt-sw-tone="light"] .rt-kn-rib-red { stroke: #cd2e3a; }
+[data-rt-sw-tone="light"] .rt-kn-rib-blue { stroke: #0047a0; }
+/* Mar 1, a day of remembrance: one muted ink ribbon, no crimson/sapphire pair. */
+.rt-kn-samiljeol .rt-kn-rib { stroke-width: 4.4; }
+.rt-kn-samiljeol .rt-kn-rib-red { stroke: #bdb6a8; }
+.rt-kn-samiljeol .rt-kn-rib-dry { opacity: 0.45; }
+.rt-kn-samiljeol .rt-kn-rib-blue { display: none; }
+[data-rt-sw-tone="light"] .rt-kn-samiljeol .rt-kn-rib-red { stroke: #4a4d57; }
+
+.rt-kn-block { position: absolute; }
+.rt-kn-tri { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.rt-kn-trigram { fill: var(--rt-kn-ink); opacity: 0; }
+.rt-kn-greetbox { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; }
+.rt-kn-greet {
+  display: inline-block;
+  color: var(--rt-kn-ink);
+  -webkit-text-stroke: 0.06em var(--rt-kn-ink-edge);
+  paint-order: stroke fill;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+
+.rt-kn-sky.rt-kn-final { display: none; }
+
+/* ---------- Mark slot: brushed frame with the Taegeuk in the hole ---------- */
+.rt-kn-mark { display: block; width: 100%; height: 100%; overflow: visible; --rt-kn-every: #ffffff; --rt-kn-brush: #f3eee2; --rt-kn-edge: #f3eee2; }
+[data-rt-sw-tone="light"] .rt-kn-mark { --rt-kn-every: #0f172a; --rt-kn-brush: #1c1917; --rt-kn-edge: #1c1917; }
+.rt-kn-every { transform-box: view-box; transform-origin: 50% 45.2%; }
+.rt-kn-every-ink { fill: var(--rt-kn-every); }
+.rt-kn-reveal { fill: none; stroke: #fff; stroke-width: 22; stroke-linecap: round; stroke-dasharray: 1 2; stroke-dashoffset: 1; }
+.rt-kn-brush { fill: var(--rt-kn-brush); }
+.rt-kn-red { fill: #cd2e3a; opacity: 0; }
+.rt-kn-blue { fill: #0047a0; opacity: 0; }
+.rt-kn-corners { fill: var(--rt-kn-brush); opacity: 0; }
+
+.rt-kn-mark.rt-kn-final .rt-kn-every { opacity: 0; }
+.rt-kn-mark.rt-kn-final .rt-kn-reveal { stroke-dashoffset: 0; }
+.rt-kn-mark.rt-kn-final .rt-kn-red,
+.rt-kn-mark.rt-kn-final .rt-kn-blue,
+.rt-kn-mark.rt-kn-final .rt-kn-corners { opacity: 1; transform: none; }
+
+/* ---------- Word: a rose of Sharon on the "u" (x measured from the glyph, --rt-kn-ux) ---------- */
+.rt-kn-flower {
+  position: absolute; left: calc(var(--rt-kn-ux, 1.81em) - 0.2em); top: -0.13em; width: 0.4em; height: 0.4em;
+  pointer-events: none;
+}
+.rt-kn-flower-svg { display: block; width: 100%; height: 100%; overflow: visible; opacity: 0; transform-origin: 50% 50%; }
+.rt-kn-mg-petal { fill: #f6d3e1; stroke: #b5517b; stroke-width: 0.7; }
+.rt-kn-mg-heart { fill: #c0183a; }
+.rt-kn-mg-stamen { fill: none; stroke: #fff2c2; stroke-width: 1.1; stroke-linecap: round; }
+.rt-kn-mg-pollen { fill: #ffd84a; }
+[data-rt-sw-tone="light"] .rt-kn-mg-petal { fill: #fbe3ec; stroke: #a3355f; }
+[data-rt-sw-tone="light"] .rt-kn-mg-stamen { stroke: #c9a227; }
+.rt-kn-word.rt-kn-final .rt-kn-flower-svg { opacity: 1; transform: none; }

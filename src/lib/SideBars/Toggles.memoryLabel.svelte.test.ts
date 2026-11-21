@@ -101,6 +101,16 @@ describe.each([
     test('guard: Hanurai alone shows the Hanurai label', () => {
         expect(labelFor({ hanuraiEnable: true }, toggleCount)).toContain('hanuraiMemory')
     })
+
+    test('reproducer: ChroMemory with every legacy engine off shows the toggle named ChroMemory', () => {
+        expect(labelFor({ ltmEngine: true }, toggleCount)).toContain('chroMemory')
+    })
+
+    test('reproducer: ChroMemory over imported legacy flags shows the ChroMemory label', () => {
+        const label = labelFor({ ltmEngine: true, hypaV3: true }, toggleCount)
+        expect(label).toContain('chroMemory')
+        expect(label).not.toContain('ToggleHypaMemory')
+    })
 })
 
 test('guard: more than four toggles render the scrolling container, four or fewer do not', () => {

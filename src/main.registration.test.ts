@@ -96,7 +96,6 @@ describe('new behaviour: the entry module registers the store2 boot', () => {
         const marker = { owner: 'other-page', prefix: 'bulk-prefix', startedAt: 1, label: 'bulk' } as Parameters<MarkerOwnerProbe>[0]
         expect(navigator.locks).toBeUndefined()
         expect(deps.markerOwnerProbe('tauri')).toBeNull()
-        expect(deps.markerOwnerProbe('opfs-transitional')).toBeNull()
         const web = deps.markerOwnerProbe('indexeddb')
         expect(web).not.toBeNull()
         expect(await web?.(marker)).toBe('unknown')

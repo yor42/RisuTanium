@@ -1,0 +1,71 @@
+/*
+  Seasonal scene: anniversary. Classes are prefixed rt-an-. Poses: [data-rt-pose="pre" | "play" | "final"] on the mark
+  svg and the stage layer. Tone: the host stamps [data-rt-sw-tone] on the mark slot and stage, so every light rule keys
+  on that ancestor attribute. The greeting button (.rt-sw-greet) is host-owned and styled by the host.
+*/
+
+/* ---------- Mark (in ctx.markSlot) ---------- */
+.rt-an-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-an-mark * { transform-box: view-box; transform-origin: 0 0; }
+.rt-an-mark .rt-an-ink { fill: #fff; stroke: #fff; stroke-width: 0.5; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-ink { fill: #0f172a; stroke: #0f172a; }
+
+/* Cake palette: warm coral top tier, sponge middle tier, bottom tier = the mark with its hole filled by the brand core gradient. */
+.rt-an-mark .rt-an-w0 { stop-color: #ff9a7a; }
+.rt-an-mark .rt-an-w1 { stop-color: #ffc58f; }
+.rt-an-mark .rt-an-s0 { stop-color: #ffe2cf; }
+.rt-an-mark .rt-an-s1 { stop-color: #ffb38a; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-w0 { stop-color: #f97362; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-w1 { stop-color: #fb9f5a; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-s0 { stop-color: #ffd9c2; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-s1 { stop-color: #ff9a7a; }
+.rt-an-mark .rt-an-frost-a { fill: #fffaf3; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-frost-a { fill: #ffffff; stroke: #0f172a; stroke-width: 0.9; stroke-linejoin: round; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-mid-cake,
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-top-cake { stroke: #0f172a; stroke-width: 0.3; }
+
+.rt-an-mark .rt-an-candle rect { stroke-width: 0.6; }
+.rt-an-mark .rt-an-candle-0 rect { fill: #38d9ff; stroke: #0b5e73; }
+.rt-an-mark .rt-an-candle-1 rect { fill: #fff4e8; stroke: #8a3d1c; }
+.rt-an-mark .rt-an-candle-2 rect { fill: #a78bfa; stroke: #3b0f7a; }
+.rt-an-mark .rt-an-candle-stripe { fill: rgb(255 255 255 / 0.55); }
+.rt-an-mark .rt-an-candle-1 .rt-an-candle-stripe { fill: #ff9a7a; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-candle-0 rect { fill: #0891b2; }
+[data-rt-sw-tone="light"] .rt-an-mark .rt-an-candle-2 rect { fill: #7c3aed; }
+.rt-an-mark .rt-an-flame-o { fill: #ffb347; stroke: #e2671b; stroke-width: 0.7; stroke-linejoin: round; }
+.rt-an-mark .rt-an-flame-i { fill: #fff4cf; }
+
+/* Poses. pre/play: the idle mark; the timeline brings the rest in. final: static cake. */
+.rt-an-mark .rt-an-hole,
+.rt-an-mark .rt-an-mid-cake,
+.rt-an-mark .rt-an-top-cake,
+.rt-an-mark .rt-an-frost-a,
+.rt-an-mark .rt-an-candle,
+.rt-an-mark .rt-an-flame { opacity: 0; }
+.rt-an-mark[data-rt-pose="final"] .rt-an-all { transform: translate(0, 8px); }
+.rt-an-mark[data-rt-pose="final"] .rt-an-mid { transform: translate(0, -25.11px) scale(4.3); }
+.rt-an-mark[data-rt-pose="final"] .rt-an-top { transform: translate(0, -52.54px) scale(4.31); }
+.rt-an-mark[data-rt-pose="final"] .rt-an-mid-idle,
+.rt-an-mark[data-rt-pose="final"] .rt-an-top-idle { opacity: 0; }
+.rt-an-mark[data-rt-pose="final"] .rt-an-hole,
+.rt-an-mark[data-rt-pose="final"] .rt-an-mid-cake,
+.rt-an-mark[data-rt-pose="final"] .rt-an-top-cake,
+.rt-an-mark[data-rt-pose="final"] .rt-an-frost-a,
+.rt-an-mark[data-rt-pose="final"] .rt-an-candle,
+.rt-an-mark[data-rt-pose="final"] .rt-an-flame { opacity: 1; }
+
+/* ---------- Confetti (in ctx.stage) ---------- */
+.rt-an-stage { position: absolute; inset: 0; pointer-events: none; }
+.rt-an-stage[data-rt-pose="pre"], .rt-an-stage[data-rt-pose="final"] { display: none; }
+.rt-an-bit { position: absolute; left: 0; top: 0; display: block; width: 3px; height: 6px; margin: -3px 0 0 -1.5px; border-radius: 1px; opacity: 0; will-change: transform, opacity; }
+.rt-an-bit.rt-an-dot { width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; }
+.rt-an-bit-0 { background: #38d9ff; }
+.rt-an-bit-1 { background: #ffb38a; }
+.rt-an-bit-2 { background: #ffd166; }
+.rt-an-bit-3 { background: #a78bfa; }
+.rt-an-bit-4 { background: #f6f7fb; }
+[data-rt-sw-tone="light"] .rt-an-bit-0 { background: #0891b2; }
+[data-rt-sw-tone="light"] .rt-an-bit-1 { background: #ea580c; }
+[data-rt-sw-tone="light"] .rt-an-bit-2 { background: #d97706; }
+[data-rt-sw-tone="light"] .rt-an-bit-3 { background: #7c3aed; }
+[data-rt-sw-tone="light"] .rt-an-bit-4 { background: #e11d48; }

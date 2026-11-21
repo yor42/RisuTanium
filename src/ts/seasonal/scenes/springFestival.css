@@ -1,0 +1,114 @@
+/*
+  Spring Festival scene styles. Classes are prefixed rt-sf-. Final pose = the static .rt-sf-final state on the sky, the mark
+  and the word. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the
+  root), so every light rule keys on that ancestor attribute.
+  Palette (own picks): dusk #3a0d1e > #8a2a1c > #d98a2b; lacquer #d62b33 with a gold #f2c14e edge; lantern light
+  #fff3b8 > #ffc25a > #ff8a3a; hoa mai #ffd23f with #e08a00 edge; word #ff6a5a > #ffb547 (light #b3122a > #b45309).
+*/
+
+/* ---------- Families (system only) ---------- */
+.rt-sf-hans { font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Noto Sans SC", sans-serif; font-weight: 700; font-size: calc(var(--rt-sf-fs, 24px) * 1.0); }
+.rt-sf-hant { font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Source Han Sans TC", "Noto Sans TC", sans-serif; font-weight: 700; font-size: calc(var(--rt-sf-fs, 24px) * 1.0); }
+.rt-sf-latin { font-family: "Segoe UI", "Noto Sans", "Helvetica Neue", Roboto, Arial, system-ui, sans-serif; font-weight: 700; font-size: calc(var(--rt-sf-fs, 24px) * 0.86); letter-spacing: 0.005em; }
+
+/* ---------- Stage ---------- */
+.rt-sf-sky { position: absolute; inset: 0; pointer-events: none; }
+.rt-sf-wash {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--rt-sf-wash-h, 72px);
+  background: linear-gradient(to bottom, #3a0d1e 0%, #7e2420 55%, #c9782a 100%);
+  opacity: 0;
+  --rt-sf-hole: radial-gradient(circle at var(--rt-sf-mx, -100px) var(--rt-sf-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 88%, transparent 100%), linear-gradient(to bottom, #000 68%, transparent 100%), var(--rt-sf-hole);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 88%, transparent 100%), linear-gradient(to bottom, #000 68%, transparent 100%), var(--rt-sf-hole);
+  mask-composite: intersect;
+}
+[data-rt-sw-tone="light"] .rt-sf-wash { background: linear-gradient(to bottom, #ffe9d6 0%, #ffd9b0 60%, #ffc98a 100%); }
+
+.rt-sf-rise, .rt-sf-fall { position: absolute; top: 0; height: 100%; opacity: 0; }
+.rt-sf-sl { display: block; width: 100%; overflow: visible; transform-origin: 50% 0; }
+.rt-sf-sl-rib { fill: none; stroke: #e0782c; stroke-width: 0.7; opacity: 0.7; }
+.rt-sf-sl-rim { fill: none; stroke: #b5481a; stroke-width: 1; stroke-linecap: round; }
+.rt-sf-sl-flame { fill: #fff6c8; }
+.rt-sf-petal { display: block; width: 100%; overflow: visible; }
+
+.rt-sf-branch { position: absolute; top: 0; transform-origin: 100% 0; opacity: 0; }
+.rt-sf-branch-svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 100% 0; }
+.rt-sf-mai-wood { fill: #5a3a28; }
+.rt-sf-mai-twig { fill: none; stroke: #5a3a28; stroke-width: 1.3; stroke-linecap: round; }
+.rt-sf-mai-petal { fill: #ffd23f; stroke: #e08a00; stroke-width: 0.6; }
+.rt-sf-mai-eye { fill: #e0601a; }
+.rt-sf-mai-bud { fill: #f5b800; stroke: #b56a00; stroke-width: 0.5; }
+[data-rt-sw-tone="light"] .rt-sf-mai-wood, [data-rt-sw-tone="light"] .rt-sf-mai-twig { fill: #4a2c1c; stroke: #4a2c1c; }
+[data-rt-sw-tone="light"] .rt-sf-mai-twig { fill: none; }
+
+.rt-sf-greetbox { position: absolute; display: flex; align-items: center; white-space: nowrap; }
+.rt-sf-greet {
+  display: inline-block;
+  color: #ffd98a;
+  -webkit-text-stroke: 0.07em #4a0f16;
+  paint-order: stroke fill;
+  transform-origin: 0 50%;
+  opacity: 0;
+  font-synthesis: none;
+}
+[data-rt-sw-tone="light"] .rt-sf-greet { color: #a3161f; -webkit-text-stroke: 0.06em #fff6ea; }
+
+.rt-sf-sky.rt-sf-squeezed .rt-sf-rise, .rt-sf-sky.rt-sf-squeezed .rt-sf-fall, .rt-sf-sky.rt-sf-squeezed .rt-sf-branch { visibility: hidden; }   /* mid-play shrink */
+.rt-sf-sky.rt-sf-final { display: none; }
+
+/* ---------- Mark slot ---------- */
+.rt-sf-mark { display: block; width: 100%; height: 100%; overflow: visible; --rt-sf-every: #ffffff; --rt-sf-gold: #f2c14e; }
+[data-rt-sw-tone="light"] .rt-sf-mark { --rt-sf-every: #0f172a; --rt-sf-gold: #c98a12; }
+.rt-sf-every, .rt-sf-new, .rt-sf-lattice, .rt-sf-fu, .rt-sf-bloom, .rt-sf-p { transform-box: view-box; transform-origin: 50% 45.2%; }
+.rt-sf-tassel { transform-box: view-box; transform-origin: 50% 89.4%; }      /* the lower apex (0, 64.49) */
+.rt-sf-every-ink { fill: var(--rt-sf-every); }
+.rt-sf-new, .rt-sf-tassel { opacity: 0; }
+.rt-sf-holefill { fill: #8a1420; }
+.rt-sf-holefill-vi { fill: #9c1226; }
+.rt-sf-glow { opacity: 0; }
+.rt-sf-lattice { fill: none; stroke: #b5122a; stroke-width: 3.4; stroke-linecap: square; opacity: 0; }
+.rt-sf-frame { fill: #d62b33; stroke: var(--rt-sf-gold); stroke-width: 3.2; stroke-linejoin: round; }
+.rt-sf-cap { fill: var(--rt-sf-gold); stroke: #7a4a08; stroke-width: 1; }
+.rt-sf-ring { fill: none; stroke: var(--rt-sf-gold); stroke-width: 2.4; }
+.rt-sf-mid { fill: #d62b33; stroke: var(--rt-sf-gold); stroke-width: 2.6; stroke-linejoin: round; }
+.rt-sf-core { fill: var(--rt-sf-gold); }
+.rt-sf-core-vi { fill: #d62b33; stroke: #fff1b0; stroke-width: 1.6; stroke-linejoin: round; }
+.rt-sf-fu { opacity: 0; }
+.rt-sf-t-knot { fill: var(--rt-sf-gold); stroke: #7a4a08; stroke-width: 0.8; }
+.rt-sf-t-strand { fill: none; stroke: #e2453c; stroke-width: 1.8; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-sf-t-strand { stroke: #b3122a; }
+.rt-sf-mark-petal { stroke-width: 1.4; }
+
+.rt-sf-mark.rt-sf-final .rt-sf-every { opacity: 0; }
+.rt-sf-mark.rt-sf-final .rt-sf-new,
+.rt-sf-mark.rt-sf-final .rt-sf-glow,
+.rt-sf-mark.rt-sf-final .rt-sf-lattice,
+.rt-sf-mark.rt-sf-final .rt-sf-fu,
+.rt-sf-mark.rt-sf-final .rt-sf-tassel { opacity: 1; transform: none; }
+
+/* ---------- Word: crimson-to-amber copy and the motif on "m" ---------- */
+.rt-sf-word { --rt-sf-from: #ff6a5a; --rt-sf-to: #ffb547; }
+[data-rt-sw-tone="light"] .rt-sf-word { --rt-sf-from: #b3122a; --rt-sf-to: #b45309; }
+.rt-sf-warm {
+  position: absolute; left: 0; top: 0; height: 1.2em; white-space: nowrap; pointer-events: none; opacity: 0;
+  background-image: linear-gradient(to right, var(--rt-sf-from), var(--rt-sf-to));
+  background-size: 6.21em 1.2em; background-repeat: no-repeat;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.rt-sf-warm > span { display: inline-block; height: 1.2em; vertical-align: top; }
+/* Knot: hangs from the top-right corner of the final "m" (in em of the word). */
+.rt-sf-motif { position: absolute; right: -0.34em; top: -0.3em; width: 0.4em; height: 0.62em; pointer-events: none; }
+.rt-sf-motif-vi { right: -0.26em; top: -0.32em; width: 0.46em; height: 0.46em; }
+.rt-sf-motif-svg { display: block; width: 100%; height: 100%; overflow: visible; opacity: 0; transform-origin: 50% 0; }
+.rt-sf-motif-vi .rt-sf-motif-svg { transform-origin: 50% 50%; }
+.rt-sf-k-cord { fill: none; stroke: var(--rt-sf-to); stroke-width: 1.4; stroke-linecap: round; }
+.rt-sf-k-loop { fill: none; stroke: #e2453c; stroke-width: 2; stroke-linecap: round; }
+.rt-sf-k-body { fill: #e2453c; stroke: #ffd98a; stroke-width: 1; stroke-linejoin: round; }
+.rt-sf-k-tassel { fill: none; stroke: #e2453c; stroke-width: 1.3; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-sf-k-loop, [data-rt-sw-tone="light"] .rt-sf-k-tassel { stroke: #b3122a; }
+[data-rt-sw-tone="light"] .rt-sf-k-body { fill: #b3122a; stroke: #f2c14e; }
+
+.rt-sf-word.rt-sf-final .rt-sw-text { visibility: hidden; opacity: 0; }
+.rt-sf-word.rt-sf-final .rt-sf-warm,
+.rt-sf-word.rt-sf-final .rt-sf-motif-svg { opacity: 1; transform: none; }

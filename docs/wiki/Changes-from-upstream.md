@@ -147,7 +147,7 @@ The file format has limits.
 
 ### Chat alternatives (rerolls and candidate replies)
 
-The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. SillyTavern swipes import into the tree. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
+The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. Swipes from SillyTavern, Ooba, Agnai, Kobold Lite and Character.AI chat files import into the tree. For Agnai and Kobold Lite branches, only the first message where a branch differs is kept. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
 
 ### Chats stay separate
 
@@ -197,6 +197,7 @@ On Android, an image in a chat that is larger than 64 MiB shows as a box with it
 - **Keys and models:** `${NAME}` references to environment variables for keys (see [[API Keys from Environment Variables]]). A button to refresh model data. Context and pricing from OpenRouter. Deprecated models are tagged. Claude 5 Opus with adaptive thinking.
 - **Languages:** Spanish and Japanese. A machine drafted the Japanese, and no native speaker reviewed it.
 - **Utility mode:** A first slice (task presets and a run screen), shown on desktop only. It is early.
+- **Toggle defaults:** A toggle can start on, or on a chosen option, through a fifth field such as `key=Label===1` (see [[Modules]]). Upstream RisuAI ignores the fifth field, so the same card starts with the toggle off there and builds a different prompt until you change the toggle. Every upstream merge re-checks the destructuring line of upstream `parseToggleSyntax`; if upstream reads a 5th field, open a reconciliation ticket before the merge counts as ported.
 
 ### Model list
 

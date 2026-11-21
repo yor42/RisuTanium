@@ -163,7 +163,7 @@ const passThroughEngine: PreviewEngine = {
     copiedChatValues: () => null,
     runPreview: (text) => ({ ok: true, text, writes: [], varies: false }),
     sandboxKeysOf: () => ({ chat: [], toggles: [] }),
-    sandboxSourceOf: (live) => ({ name: live.name, defaultVariables: '', alternateGreetings: [], texts: {}, bindedPersona: null, modules: [], chatModules: [] }),
+    sandboxSourceOf: (live) => ({ name: live.name, defaultVariables: '', alternateGreetings: [], texts: {}, bindedPersona: null, modules: [], chatModules: [], customModuleToggle: '' }),
     sandboxUserName: () => 'User',
     variesIn: () => false,
     VARIES_NAMES: [],

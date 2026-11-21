@@ -35,6 +35,15 @@ class HostMessageListener(
   private val mainHandler = Handler(Looper.getMainLooper())
   private val takeWorker: ExecutorService = Executors.newSingleThreadExecutor()
 
+  // The vault's policy and worker are shared by every listener of the process; only the reply
+  // goes back through this listener's main handler.
+  private val vault = VaultRequestRunner(
+    VaultService.shared,
+    VaultService.shared.worker,
+    { mainHandler.post(it) },
+    { Log.w(TAG, it) }
+  )
+
   // Main thread only. The latest main-frame channel that subscribed to the inset, and the last
   // value sent on it.
   private var insetReplyProxy: JavaScriptReplyProxy? = null
@@ -56,7 +65,8 @@ class HostMessageListener(
     try {
       dispatch(message, replyProxy)
     } catch (error: Exception) {
-      Log.w(TAG, "host message dropped", error)
+      // The class name only: the exception text can quote the message, which may hold a key.
+      Log.w(TAG, droppedMessageLog(error))
     }
   }
 
@@ -150,6 +160,10 @@ class HostMessageListener(
       is BridgeCommand.OpenedFilesConfirm -> openedFiles.confirm(command.through)
       is BridgeCommand.OpenedFilesMalformedTake -> reply(replyProxy, encodeTakeReply(command.id, "[]", 0))
       is BridgeCommand.OpenedFilesTake -> take(command.id, replyProxy)
+      is BridgeCommand.VaultAvailable -> vault.run(command) { reply(replyProxy, it) }
+      is BridgeCommand.VaultWrap -> vault.run(command) { reply(replyProxy, it) }
+      is BridgeCommand.VaultUnwrap -> vault.run(command) { reply(replyProxy, it) }
+      is BridgeCommand.KeyVaultMalformed -> vault.run(command) { reply(replyProxy, it) }
     }
   }
 
@@ -171,7 +185,7 @@ class HostMessageListener(
     try {
       replyProxy.postMessage(answer)
     } catch (error: Exception) {
-      Log.w(TAG, "host reply failed", error)
+      Log.w(TAG, "host reply failed: ${error.javaClass.name}")
     }
   }
 
