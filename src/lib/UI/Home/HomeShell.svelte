@@ -1,16 +1,18 @@
 <script lang="ts">
-    import type { Component } from 'svelte'
+    import { untrack, type Component } from 'svelte'
     import { LayoutGridIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import MainMenu from '../MainMenu.svelte'
     import HomeEmptyHero from './HomeEmptyHero.svelte'
     import HomeGreeting from './HomeGreeting.svelte'
     import '../../../styles/home-tokens.css'
-    import { OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
+    import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
     import HomeDrawer from './HomeDrawer.svelte'
+    import HomeStoryShelf from './HomeStoryShelf.svelte'
     import HomeTopBar from './HomeTopBar.svelte'
     import { homeChrome } from './homeChrome.svelte'
     import { homeBand } from './homeLayout'
+    import { freezeStories, resolveFrozen } from './homeStories'
     import { homeView, openHomeLibrary, showHomeLanding, startHomeView } from './homeView.svelte'
 
     // Every creation starts at the landing: a selection change, the language remount and a return
@@ -18,6 +20,12 @@
     // survives them. The one exception is the return from a Home-opened Studio visit, which starts
     // at the library.
     startHomeView()
+
+    // The story shelf's order, chat labels and last lines are taken once per shell, here and not in the
+    // shelf: the shelf unmounts when the Realm view opens, and a freeze there would re-sort on every
+    // close. Removals, names, pictures, times and the archived state stay live through `resolveFrozen`.
+    const frozenStories = untrack(() => freezeStories(DBState.db.characters ?? [], language.settingsPage.unnamed))
+    const stories = $derived(resolveFrozen(frozenStories, DBState.db.characters ?? []))
 
     // Home's width band is read here and nowhere else; the chat shell keeps its own bands.
     let viewportWidth = $state(window.innerWidth)
@@ -92,6 +100,10 @@
     <HomeEmptyHero />
 {/snippet}
 
+{#snippet homeStage()}
+    <HomeStoryShelf {stories} {band} />
+{/snippet}
+
 {#if homeView.view === 'library' && LibraryScreen}
     <LibraryScreen />
 {:else}
@@ -108,7 +120,7 @@
             />
         {/if}
         <div class="min-h-0 flex-1">
-            <MainMenu header={homeHeader} />
+            <MainMenu header={homeHeader} stage={stories.length > 0 ? homeStage : undefined} />
         </div>
         {#if drawerOpen && phoneLanding}
             <HomeDrawer
