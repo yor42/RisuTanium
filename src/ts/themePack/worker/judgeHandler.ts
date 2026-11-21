@@ -4,9 +4,21 @@
 import { judgeAreaSheet, type AreaSheetJudgement } from '../index'
 import { APPLIED_AREAS, type AppliedArea } from '../intake'
 
+/** One job's worker-side cost. `cold` marks the first job of its area in this worker, the one that pays any one-time set-up. */
+export interface JudgeJobTiming {
+    readonly ms: number
+    readonly cold: boolean
+}
+
 export type JudgeResponse =
-    | { id: number; ok: true; results: Record<string, AreaSheetJudgement> }
+    | { id: number; ok: true; results: Record<string, AreaSheetJudgement>; timing: Record<string, JudgeJobTiming>; readyAt: number }
     | { id: number; ok: false; error: string }
+
+/** The epoch time at which this module finished evaluating, that is after the validator graph it imports has loaded. */
+const readyAt = performance.timeOrigin + performance.now()
+
+/** The areas this worker has judged; one worker serves one session, so a first job of an area is a cold one. */
+const judgedAreas = new Set<AppliedArea>()
 
 /** The most jobs one request may carry. */
 export const MAX_JUDGE_JOBS = 16
@@ -63,13 +75,18 @@ export function handleJudgeRequest(message: unknown): JudgeResponse {
     }
     try {
         const entries: Array<[string, AreaSheetJudgement]> = []
+        const timings: Array<[string, JudgeJobTiming]> = []
         for (const job of request.jobs) {
             if (isAppliedArea(job.area)) {
+                const cold = !judgedAreas.has(job.area)
+                judgedAreas.add(job.area)
+                const start = performance.now()
                 entries.push([job.label, judgeAreaSheet(job.area, job.text, undefined, job.area)])
+                timings.push([job.label, { ms: performance.now() - start, cold }])
             }
         }
         // `fromEntries` defines each label as an own data property, so no label can reach a prototype.
-        return { id: request.id, ok: true, results: Object.fromEntries(entries) }
+        return { id: request.id, ok: true, results: Object.fromEntries(entries), timing: Object.fromEntries(timings), readyAt }
     } catch (error) {
         if (import.meta.env.DEV) {
             console.error('theme pack judge failed', error)

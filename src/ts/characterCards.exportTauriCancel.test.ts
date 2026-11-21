@@ -270,10 +270,6 @@ vi.mock('src/ts/globalApi.svelte', async (importOriginal) => ({
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: vi.fn(async () => ({
         read: vi.fn(async () => ({ bytes: null })),
-        readValue: vi.fn(async (name: string) => {
-            const size = world.sizes.get(name)
-            return size === undefined ? null : new SizedBlob(size)
-        }),
     })),
     getAppStoreKind: vi.fn(async () => 'tauri'),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
@@ -319,12 +315,6 @@ import { requestTaskCancel, resetTaskHostForTests, taskHostView } from 'src/ts/a
 function pressCancel(): void {
     expect(taskHostView()?.cancelOffered).toBe(true)
     requestTaskCancel()
-}
-
-/** A Blob that reports a size and holds no bytes. */
-class SizedBlob extends Blob {
-    constructor(private readonly reported: number) { super([]) }
-    get size() { return this.reported }
 }
 
 const MIB = 1024 * 1024
@@ -374,7 +364,7 @@ beforeEach(() => {
     world.failRead.clear()
     world.sizes.clear()
     world.served.clear()
-    noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
+    noteSelectedStore('tauri', { read: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
     resetTaskHostForTests()
     shown = []

@@ -41,6 +41,7 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     addchar: { kind: 'answer', message: 'cancel' },
     chatOptions: { kind: 'answer', message: 'cancel' },
     parkedReply: { kind: 'answer', message: 'later' },
+    presetBundle: { kind: 'answer', message: 'cancel' },
     patternSelect: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     patternInput: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     normal: CLOSE,

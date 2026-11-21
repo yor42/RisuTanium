@@ -1,6 +1,6 @@
 /**
- * Guard: while a store2 asset deletion is pending, the three same-page asset save paths (`saveAsset`, the streaming
- * `saveAssetFromPieces`, the Blob-keeping `saveAssetFromBlob`) do not look at, write or finish the key they are about to
+ * Guard: while a store2 asset deletion is pending, the two same-page asset save paths (`saveAsset`, the streaming
+ * `saveAssetFromPieces`) do not look at, write or finish the key they are about to
  * name; once the delete settles the write happens. A save that notes its key and waits can never lose its file to a
  * delete that was already in flight. The store is a recording stand-in; nothing here proves native behaviour or the
  * sweep itself: the hold is taken by a stand-in remover, not by the sweep in `store2/sweep/run.ts`, so every test is a
@@ -60,14 +60,13 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async (importOriginal) => (
     getColdStorageItem: vi.fn(async () => null),
 }))
 
-import { saveAsset, saveAssetFromBlob, saveAssetFromPieces, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { saveAsset, saveAssetFromPieces, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/assetDeleteHold'
 
 interface Calls {
     has: string[]
     write: string[]
-    writeBlob: string[]
     finish: string[]
 }
 
@@ -81,8 +80,7 @@ const BYTES = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8])
 
 /** A recording store: `has` is false everywhere, as a Tauri store answers once the sweep removed the asset. */
 function rig(): Rig {
-    const calls: Calls = { has: [], write: [], writeBlob: [], finish: [] }
-    const blobs = new Map<string, Blob>()
+    const calls: Calls = { has: [], write: [], finish: [] }
     const store = {
         capabilities: CAPABILITIES,
         has: async (key: string) => {
@@ -94,12 +92,6 @@ function rig(): Rig {
             return { version: null }
         },
         delete: async () => undefined,
-        writeBlob: async (key: string, blob: Blob) => {
-            calls.writeBlob.push(key)
-            blobs.set(key, blob)
-            return { version: null }
-        },
-        readBlob: async (key: string) => blobs.get(key) ?? null,
         openWriter: (): PieceWriter => ({
             write: async () => undefined,
             finish: async (finalKey?: string) => {
@@ -150,12 +142,6 @@ const PATHS: Path[] = [
         kind: 'tauri',
         start: () => saveAssetFromPieces(pieces(), { fileName: 'a.png', sizeBound: BYTES.length, minPieceBytes: 1 }),
         finalCalls: (calls) => calls.finish.filter((key) => FINAL_KEY.test(key)),
-    },
-    {
-        name: 'saveAssetFromBlob (saveAssetBlobKept)',
-        kind: 'tauri',
-        start: () => saveAssetFromBlob(new Blob([BYTES as unknown as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 }),
-        finalCalls: (calls) => [...calls.has, ...calls.writeBlob].filter((key) => FINAL_KEY.test(key)),
     },
 ]
 

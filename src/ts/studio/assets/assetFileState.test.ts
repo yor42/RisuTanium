@@ -1,6 +1,5 @@
 // The reader of file states over each store: the app's files store (answered by a size stat and the store's own absence
-// rule), the Node server (its first piece), the browser store (`readValue`, or `read` for a key it cannot create) and a
-// store with no piece source (`read`). Only a file the store itself says is absent reads `gone`; every failure and every
+// rule), the Node server (its first piece) and a store with no piece source (`read`). Only a file the store itself says is absent reads `gone`; every failure and every
 // doubt reads `unknown`.
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExportAssetSource } from 'src/ts/drive/assetPieces'
@@ -107,35 +106,6 @@ describe('the reader of file states', () => {
             const reader = await tauriReader(async () => { throw new Error('Permission denied (os error 13)') })
             expect(await reader.stateOf(PATH)).toBe('unknown')
             expect(h.exists).not.toHaveBeenCalled()
-        })
-    })
-
-    describe('on the browser store', () => {
-        function webReader(readValue: ByteStore['readValue'], read: ByteStore['read'] = async () => ({ bytes: null, version: null })) {
-            const store = storeWith({ readValue, read })
-            return openAssetFileReader(depsFor(sourceOf('web', store), store))
-        }
-
-        test.each([
-            ['no value is gone', async () => null, 'gone'],
-            ['bytes are present', async () => new Uint8Array(2), 'present'],
-            ['a Blob is present', async () => new Blob(['x']), 'present'],
-            ['a read that throws is unknown', async () => { throw new Error('idb failed') }, 'unknown'],
-        ] as const)('a key it can address: %s', async (_name, readValue, expected) => {
-            const reader = await webReader(readValue)
-            expect(reader.concurrency).toBe(1)
-            expect(await reader.stateOf(PATH)).toBe(expected)
-        })
-
-        test('a key it cannot create is read whole, never through readValue', async () => {
-            const readValue = vi.fn(async () => new Uint8Array(1))
-            const read = vi.fn(async () => ({ bytes: null, version: null }))
-            const reader = await webReader(readValue, read)
-            expect(await reader.stateOf('legacy/kept.png')).toBe('gone')
-            expect(read).toHaveBeenCalledWith('legacy/kept.png')
-            expect(readValue).not.toHaveBeenCalled()
-            read.mockResolvedValueOnce({ bytes: new Uint8Array(1), version: null })
-            expect(await reader.stateOf('legacy/kept.png')).toBe('present')
         })
     })
 

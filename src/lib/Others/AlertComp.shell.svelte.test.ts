@@ -259,6 +259,7 @@ const SHARED_BOX: Array<[alertData['type'], alertData, Severity, Role]> = [
     ['peerConflicts', { type: 'peerConflicts', msg: 'Conflicts', peerConflicts: [] }, 'caution', 'dialog'],
     ['parkedReply', { type: 'parkedReply', msg: 'A reply', parkedReply: { name: 'Alice', text: 'text' } }, 'caution', 'dialog'],
     ['updateOffer', { type: 'updateOffer', msg: '', cancelAnswer: 'later', updateOffer: { currentVersion: '0.1.0', version: '0.2.0', notes: 'Notes' } }, 'confirm', 'dialog'],
+    ['presetBundle', { type: 'presetBundle', msg: '', presetBundle: { rows: [{ name: 'Alpha', folder: null, aiModel: 'm' }], existingNames: [] } }, 'confirm', 'dialog'],
     ['wait', { type: 'wait', msg: 'Loading...' }, 'notice', 'dialog'],
     ['wait2', { type: 'wait2', msg: 'Stopped' }, 'notice', 'dialog'],
     ['progress', { type: 'progress', msg: 'Saving', submsg: '10' }, 'notice', 'dialog'],
@@ -346,7 +347,7 @@ describe('AlertComp.svelte: the shared box is the pattern dialog', () => {
             await unmount(mountedInstances.pop() as never)
             target.remove()
         }
-        expect(wide.sort()).toEqual(['addchar', 'chatOptions', 'hypaV2', 'markdown', 'parkedReply', 'peerConflicts', 'requestdata', 'selectChar', 'updateOffer'])
+        expect(wide.sort()).toEqual(['addchar', 'chatOptions', 'hypaV2', 'markdown', 'parkedReply', 'peerConflicts', 'presetBundle', 'requestdata', 'selectChar', 'updateOffer'])
     })
 
     test('an update offer is named by its heading and described by the version list, the only element with the message id', async () => {
