@@ -192,6 +192,7 @@ vi.mock(import('src/ts/util'), async (importOriginal) => {
 
 import { alertStore, DBState, bookmarkListOpen } from '../../ts/stores.svelte'
 import AlertComp from './AlertComp.svelte'
+import { setWindowGeometryForTests } from '../../ts/windowing/windowHost.svelte'
 import BookmarkList from './BookmarkList.svelte'
 import { androidWholeReadQueue, resetAndroidWholeReadQueueForTest, resetAssetUrlGateForTest } from 'src/ts/storage/assetUrlGate'
 import { heldQueuedWholeReadsForTest, resetQueuedWholeReadsForTest } from 'src/ts/media/queuedWholeRead'
@@ -412,6 +413,60 @@ describe('AlertComp character picker on Android', () => {
         await drainReads()
         expect(styleOfRow(again, 0)).toContain(urlOf('assets/dupA.webp'))
         expect(loadedSources()).not.toContain(urlOf('assets/dupB.webp'))
+    })
+
+    test('(R) tiles the windowed grid unmounts while their reads wait give the entries back without an Image, the dialog still open', async () => {
+        let frames: (() => void)[] = []
+        let scrolled = 0
+        const runFrames = (): void => {
+            const pending = frames
+            frames = []
+            for (const frame of pending) frame()
+            flushSync()
+        }
+        // A 600 px band whose list top follows `scrolled`, as a scrolled-away list does.
+        setWindowGeometryForTests({
+            rectOf: (element) => (element.getAttribute('role') === 'list' ? { top: -scrolled, height: 600 } : { top: 0, height: 600 }),
+            viewport: () => 600,
+            scrollBy: () => {},
+            schedule: (callback) => {
+                frames.push(callback)
+                return () => { frames = frames.filter((frame) => frame !== callback) }
+            },
+        })
+        try {
+            const images = Array.from({ length: 200 }, (_, i) => `assets/w${i}.webp`)
+            installPickerDb(images.map((image, i) => ({ chaId: `cha-${i}`, image })))
+            seedSizes(images, 20)
+            const grant = await holdBudget()
+            const target = showPicker()
+            await settleReads()
+            runFrames()
+            const firstTiles = h.pickerRows.slice(0, 4)
+            expect(firstTiles).toHaveLength(4)
+            for (const tile of firstTiles) {
+                tile.onChange(true, tile.node)
+            }
+            flushSync()
+            await settleReads()
+
+            // Far past the first rows: 120 px per unmeasured row of four tiles.
+            scrolled = 40 * 120
+            window.dispatchEvent(new Event('scroll'))
+            await settleReads()
+            runFrames()
+            await settleReads()
+            expect(firstTiles.every((tile) => !tile.node.isConnected)).toBe(true)
+            expect(target.querySelector('[data-part="pattern-alert-chars"]')).not.toBeNull()
+
+            grant.release()
+            await settleReads()
+            for (const image of images.slice(0, 4)) {
+                expect(loadedSources()).not.toContain(urlOf(image))
+            }
+        } finally {
+            setWindowGeometryForTests(undefined)
+        }
     })
 
     test('(G) T17 off Android the visible rows paint at once with two-argument calls and no Image', async () => {
