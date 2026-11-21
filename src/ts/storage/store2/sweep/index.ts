@@ -18,8 +18,8 @@ export {
 export { decideAutoSweep, type AssetCount, type AutoSweepDecision } from './limit'
 export { readSweepRecord, writeSweepRecord, type SweepRecordRead } from './record'
 export {
-    runAssetSweep,
-    type AssetSweepEnv, type AssetSweepResult, type AssetSweepSession, type SweepPeers, type SweepRefusalReason, type SweepStopReason,
+    peersAllow, runAssetSweep,
+    type AssetSweepEnv, type AssetSweepResult, type AssetSweepSession, type ManualSweep, type SweepPeers, type SweepRefusalReason, type SweepStopReason,
 } from './run'
 export {
     planNodeRemoval,

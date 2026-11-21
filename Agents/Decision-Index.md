@@ -2341,3 +2341,10 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |
 | [MC-2975](Maintainer-Context.md#mc-2975--upstream-7ee467abc6db4b681f-dispositions-2026-11-21) | Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21 |
 | [MC-2976](Maintainer-Context.md#mc-2976--upstream-6db4b681f-sync-flow-port-pr-then-a--s-ours-merge-pr-2026-11-21) | Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21 |
+| [MC-2858](Maintainer-Context.md#mc-2858--163-manual-clean-up-app-and-web-delete-at-once-node-keeps-its-age-rule-2026-11-21) | #163 manual clean-up: app and web delete at once, Node keeps its age rule, 2026-11-21 |
+| [MC-2859](Maintainer-Context.md#mc-2859--342-plain-http-node-the-confirm-is-the-no-other-tab-attestation-2026-11-21) | #342 plain-HTTP Node: the confirm is the no-other-tab attestation, 2026-11-21 |
+| [MC-2860](Maintainer-Context.md#mc-2860--165-store2-inlays-are-deleted-at-once-under-strict-checks-no-new-record-2026-11-21) | #165 store2 inlays are deleted at once under strict checks, no new record, 2026-11-21 |
+| [MC-2861](Maintainer-Context.md#mc-2861--163-165-and-342-ship-as-two-prs-2026-11-21) | #163, #165 and #342 ship as two PRs, 2026-11-21 |
+| [MC-2862](Maintainer-Context.md#mc-2862--manual-clean-up-refuses-after-a-boot-that-installed-the-profile-2026-11-21) | manual clean-up refuses after a boot that installed the profile, 2026-11-21 |
+| [MC-2863](Maintainer-Context.md#mc-2863--manual-clean-up-shows-size-unknown-when-size-cannot-be-measured-2026-11-21) | manual clean-up shows "size unknown" when size cannot be measured, 2026-11-21 |
+| [MC-2864](Maintainer-Context.md#mc-2864--the-drafted-clean-up-strings-are-accepted-2026-11-21) | the drafted clean-up strings are accepted, 2026-11-21 |
