@@ -1,0 +1,45 @@
+/* Home tokens: the runtime binding of the registry names the landing reads (docs/design/home/home-tokens.css).
+   Every name here is a registry name, declared at :root so a pack's plain :root value reaches Home. Non-colour
+   values equal the registry's; the colour roles alias the app's scheme-derived roles instead of the registry's
+   raw scheme formulas. No shared name (the nexus, colour, pattern or scheme names) is redefined, and
+   this file is imported by HomeShell only, never by styles.css.
+   Band and language blocks restate the registry's own blocks of the same name. Home's bands are 768/1280, so
+   the band block sits on the landing element rather than on html[data-layout]. */
+:root {
+  /* type */
+  --home-text-sm: 13px;
+  --home-text-xl: 22px;
+  --home-text-2xl: 30px;
+  --home-weight-regular: 400;
+  --home-weight-strong: 700;
+  --home-leading-body: 1.5;
+  --home-leading-tight: 1.25;
+  --home-tracking-eyebrow: 0.02em;
+  --home-tracking-h1: -0.015em;
+  --home-eyebrow-transform: none;
+  --home-h1-size: var(--home-text-2xl);
+  --home-h1-sm-size: var(--home-text-xl);
+
+  /* colour roles */
+  --home-ink: var(--nexus-text);
+  --home-ink-2: var(--nexus-text-secondary);
+  --home-ink-3: var(--nexus-text-muted);
+  --home-accent-solid: var(--nexus-accent);
+  --home-accent-fill: var(--color-accent-tint-strong);
+  --home-danger-solid: var(--nexus-danger);
+}
+
+:root:lang(ko) {
+  --home-tracking-eyebrow: 0;
+  --home-tracking-h1: 0;
+  --home-leading-body: 1.6;
+}
+
+.home-root[data-layout="phone"] {
+  --home-h1-size: 24px;
+}
+
+.home-root {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}

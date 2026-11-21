@@ -4,6 +4,8 @@
     import { language } from 'src/lang'
     import MainMenu from '../MainMenu.svelte'
     import HomeEmptyHero from './HomeEmptyHero.svelte'
+    import HomeGreeting from './HomeGreeting.svelte'
+    import '../../../styles/home-tokens.css'
     import { OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
     import HomeDrawer from './HomeDrawer.svelte'
     import HomeTopBar from './HomeTopBar.svelte'
@@ -75,6 +77,7 @@
 <svelte:window bind:innerWidth={viewportWidth} />
 
 {#snippet homeHeader()}
+    <HomeGreeting />
     <!-- On the phone the drawer carries the Characters entry. -->
     {#if band !== 'phone'}
         <button
@@ -92,7 +95,7 @@
 {#if homeView.view === 'library' && LibraryScreen}
     <LibraryScreen />
 {:else}
-    <div data-part="home-landing" data-layout={band} class="relative flex h-full w-full flex-col">
+    <div data-part="home-landing" data-layout={band} class="home-root relative flex h-full w-full flex-col">
         {#if !$OpenRealmStore}
             <HomeTopBar
                 {band}

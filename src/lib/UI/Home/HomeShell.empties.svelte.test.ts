@@ -335,16 +335,22 @@ describe('Home persona chip and empty hero', () => {
         expect(heroOf(root)!.querySelectorAll('a').length).toBe(0)
     })
 
-    test('B11: the chip comes first, then the hero, then the cards', () => {
+    test('B11: the chip comes first, then the eyebrow, the greeting and the hero, then the cards', () => {
         const root = mountShell()
         const chip = chipOf(root)!
         const hero = heroOf(root)!
-        expect(chip.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        const eyebrow = root.querySelector('[data-part="home-eyebrow"]')
+        const greeting = root.querySelector('[data-part="home-greeting"] h1')
+        expect(eyebrow).not.toBeNull()
+        expect(greeting).not.toBeNull()
+        const follows = (a: Element, b: Element) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+        expect(follows(chip, eyebrow!)).toBe(true)
+        expect(follows(eyebrow!, greeting!)).toBe(true)
+        expect(follows(greeting!, hero)).toBe(true)
 
-        // The card headings are the h2s after the version h3 that sit outside the hero.
-        const version = root.querySelector('h3')!
+        // The card headings are the h2s that follow the hero and sit outside it.
         const cardHeadings = Array.from(root.querySelectorAll('h2')).filter(
-            (h) => !hero.contains(h) && (version.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+            (h) => !hero.contains(h) && follows(hero, h),
         )
         expect(cardHeadings.length).toBeGreaterThan(0)
         for (const heading of cardHeadings) {
