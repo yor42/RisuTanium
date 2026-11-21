@@ -3949,7 +3949,7 @@ export const languageChineseTraditional = {
     "applyAdditionalParamsToAll": "將額外參數套用至所有模型",
     "localToggles": "本機開關",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     "staleAccountProfileNotice":
         "此瀏覽器的使用者資料使用了此應用程式不支援的 RisuAccount 同步功能。\n\n您現在看到的是開啟同步之前，此瀏覽器儲存的資料。在那之後，其他瀏覽器或裝置可能已經變更了您的資料。您帳號的資料仍保留在 RisuAccount 上。\n\n如果您現在看到的資料中，可能含有您帳號裡沒有的內容，請在匯入任何內容之前，先為其建立本機備份。\n\n若要將帳號的資料帶到這裡，請在上游 RisuAI 上登入，建立本機備份（.bin），然後在此處匯入。若是自架或本機部署的上游版本，請先前往進階設定，開啟「顯示不建議使用的設定」，然後取消勾選「Web Sync 時略過儲存資源」，否則圖片會被遺漏。在 risuai.xyz 上，登入狀態下建立的完整備份無法在此處匯入；匯入畫面會列出可用的替代方案。詳情請參閱遷移指南。\n\n點擊「OK」將重新載入應用程式。",
     "keiImageProviderUnavailable": "此應用程式不支援「Kei」圖像提供商。請在設定中選擇其他圖像提供商。",
@@ -3966,7 +3966,6 @@ export const languageChineseTraditional = {
     "forkTermsOfService": "服務條款",
     "forkPrivacyPolicy": "隱私政策",
     "forkLegalLinksLabel": "法律文件",
-    "opfsCopyBackProgress": (done: number, total: number) => `正在將您的資料移至瀏覽器儲存空間... (${done} / ${total})。請在完成前保持此分頁開啟。`,
     "saveReadFailed": "RisuTanium 無法從儲存空間讀取您儲存的資料，因此沒有開啟任何內容，也沒有變更任何內容。請重新載入頁面後再試一次。若問題持續發生，請檢查資料所在的磁碟或伺服器是否可以連線。",
     "saveDamageItem": (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '指向目前存檔的指標'
@@ -4009,7 +4008,6 @@ export const languageChineseTraditional = {
     "saveLeftoverNotice": "RisuTanium 發現了因儲存或還原被中斷而遺留的未使用存檔資料。這些資料無害，您可以在設定中的清理裡將其移除。",
     "saveMainFileLeftNotice": "您的資料已遷移到新格式，但舊的存檔檔案過大，此伺服器無法將其移開。開啟同一份資料的上游版本 RisuAI 可能會開啟那個舊檔案。在您將其刪除之前，設定中的清理會妥善保留它。",
     "staticBuildUnsupported": "RisuTanium 不再支援從一般網頁主機執行。請使用 Android 應用程式或桌面應用程式，或使用 RisuTanium Node 伺服器提供的頁面。",
-    "opfsReadOnlyNotice": "RisuTanium 這次是在您資料的暫時副本上執行，因此不會儲存變更，也無法還原備份或清理儲存空間。您的資料沒有遺失。請關閉此應用程式的其他分頁並重新啟動，以便將資料遷移到瀏覽器儲存空間。",
     "legacyPartialCharacters": (count: number) => count === 1 ? "1 個角色" : `${count} 個角色`,
     "legacyPartialUnreadable": (count: number) => count === 1 ? "另外 1 個此版本無法讀取的部分" : `另外 ${count} 個此版本無法讀取的部分`,
     "legacyPartialNotice": (items: string[]) =>

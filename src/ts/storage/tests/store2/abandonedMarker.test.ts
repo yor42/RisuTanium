@@ -306,7 +306,7 @@ describe('markerOwnerProbeFor', () => {
         expect(holdsOwnPresence).not.toHaveBeenCalled()
     })
 
-    test.each(['tauri', 'opfs-transitional'] as const)('%s gets no probe', (kind) => {
+    test.each(['tauri'] as const)('%s gets no probe', (kind) => {
         expect(markerOwnerProbeFor(kind, { query: undefined, holdsOwnPresence: () => true })).toBeNull()
     })
 })

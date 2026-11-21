@@ -3905,7 +3905,7 @@ export const languageChinese = {
     "applyAdditionalParamsToAll": "将附加参数应用于所有模型",
     "localToggles": "本地开关",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     "staleAccountProfileNotice":
         "此浏览器的用户资料使用了本应用不支持的 RisuAccount 同步功能。\n\n您现在看到的是同步开启之前，此浏览器保存的数据。此后，其他浏览器或设备可能已经更改了您的数据。您账号中的数据仍保留在 RisuAccount 上。\n\n如果您现在看到的数据中，可能包含您账号里没有的内容，请在导入任何内容之前，先为它做一次本地备份。\n\n要将账号中的数据带到这里，请在上游 RisuAI 上登录，制作一份本地备份（.bin），然后在此处导入。若是自托管或本地部署的上游版本，请先前往高级设置，开启“显示不建议的设置”，然后取消勾选“Skip Saving Assets on Web Sync”，否则图片会被遗漏。在 risuai.xyz 上，登录状态下制作的完整备份无法在此处导入；导入界面会列出可用的替代方案。详情请参阅迁移指南。\n\n点击“OK”将重新加载应用程序。",
     "keiImageProviderUnavailable": "此应用不支持“Kei”图像提供者。请在设置中选择其他图像提供者。",
@@ -3922,7 +3922,6 @@ export const languageChinese = {
     "forkTermsOfService": "服务条款",
     "forkPrivacyPolicy": "隐私政策",
     "forkLegalLinksLabel": "法律文件",
-    "opfsCopyBackProgress": (done: number, total: number) => `正在将您的数据移至浏览器存储... (${done} / ${total})。请在完成前保持此标签页打开。`,
     "saveReadFailed": "RisuTanium 无法从存储中读取您保存的数据，因此没有打开任何内容，也没有更改任何内容。请重新加载页面后重试。如果问题持续出现，请检查数据所在的磁盘或服务器是否可以访问。",
     "saveDamageItem": (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '指向当前存档的指针'
@@ -3965,7 +3964,6 @@ export const languageChinese = {
     "saveLeftoverNotice": "RisuTanium 发现了因保存或恢复被中断而遗留的未使用存档数据。这些数据无害，您可以在设置中的清理里将其删除。",
     "saveMainFileLeftNotice": "您的数据已迁移到新格式，但旧的存档文件过大，此服务器无法将其移开。打开同一份数据的上游版本 RisuAI 可能会打开那个旧文件。在您将其删除之前，设置中的清理会妥善保留它。",
     "staticBuildUnsupported": "RisuTanium 不再支持从普通网页主机运行。请使用 Android 应用或桌面应用，或使用 RisuTanium Node 服务器提供的页面。",
-    "opfsReadOnlyNotice": "RisuTanium 这次是在您数据的临时副本上运行，因此不会保存更改，也无法恢复备份或清理存储。您的数据没有丢失。请关闭此应用的其他标签页并重新启动，以便将数据迁移到浏览器存储。",
     "legacyPartialCharacters": (count: number) => count === 1 ? "1 个角色" : `${count} 个角色`,
     "legacyPartialUnreadable": (count: number) => count === 1 ? "另外 1 个此版本无法读取的部分" : `另外 ${count} 个此版本无法读取的部分`,
     "legacyPartialNotice": (items: string[]) =>

@@ -1,6 +1,6 @@
 import { getPageStorageMode } from '../../storage/pageStorageMode'
 import type { ReadResult } from '../../storage/store/contract'
-import { getAppStore, pageStoreIsOpfsTransitional } from '../../storage/store/appStore'
+import { getAppStore } from '../../storage/store/appStore'
 import { ADDED_FAMILIES, type AddedFamily } from './addedModelsData'
 import { createModelDataService, type ModelDataOutcome, type TaskOutcome } from './modelDataService.svelte'
 import {
@@ -18,11 +18,10 @@ import {
  * clock. This is the only module that reaches `appStore`; the reactive getters
  * never do.
  *
- * Nothing is written on a page that runs from the transitional OPFS store or
- * in read-only mode.
+ * Nothing is written in read-only mode.
  */
 async function canWrite(): Promise<boolean> {
-    return !(await pageStoreIsOpfsTransitional()) && getPageStorageMode().kind !== 'read-only'
+    return getPageStorageMode().kind !== 'read-only'
 }
 
 const service = createModelDataService({

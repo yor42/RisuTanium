@@ -1431,7 +1431,6 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
     test.each([
         ['tauri', 'tauri' as const, GIB],
         ['indexeddb', 'indexeddb' as const, GIB],
-        ['opfs-transitional', 'opfs-transitional' as const, 200 * MIB],
     ])('regression reproducer: on %s a file one byte above the limit is refused with its name and never sliced or read', async (_label, kind, limit) => {
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
@@ -1477,10 +1476,10 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
         // Past the guard the save reaches the store's writer, which stops the test there.
-        appStore.injectAppStore({ ...handle.store, openWriter: () => { throw new Error('reached the writer') } }, 'opfs-transitional')
+        appStore.injectAppStore({ ...handle.store, openWriter: () => { throw new Error('reached the writer') } }, 'tauri')
 
-        await expect(api.saveAssetFromBlob(fileReporting('exact.mp4', 200 * MIB).file)).rejects.toThrow('reached the writer')
-        await refusalOf(api.saveAssetFromBlob(fileReporting('over.mp4', 200 * MIB + 1).file))
+        await expect(api.saveAssetFromBlob(fileReporting('exact.mp4', GIB).file)).rejects.toThrow('reached the writer')
+        await refusalOf(api.saveAssetFromBlob(fileReporting('over.mp4', GIB + 1).file))
     })
 
     test('guard (passes without the limit too; mutant M13 is its failing evidence): a Node page whose pieces are not yet recorded probes first, so a 150 MiB file is accepted', async () => {
@@ -1521,7 +1520,7 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
         const bytes = randomBytes(300, 7)
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
-        appStore.injectAppStore(handle.store, 'opfs-transitional')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png')
 

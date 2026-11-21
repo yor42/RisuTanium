@@ -591,7 +591,7 @@ describe('CharX import cap', () => {
     })
 
     test('(R) the page store limit is the cap when it is lower than 1 GiB', async () => {
-        noteSelectedStore('opfs-transitional', env.store as ByteStore)
+        noteSelectedStore('node', env.store as ByteStore)
         env.sizes.set(BIG, 201 * MIB)
         expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(false)
         expectNothingOpened()

@@ -114,10 +114,6 @@ vi.mock('../storage/tauriByteTransport', async (importOriginal) => {
 
 import { __avatarThumbTestHooks, THUMB_SHORT_SIDE, THUMB_VERSION, getAvatarThumbSrc, planEmbeddedDraw, sweepAvatarThumbs } from './avatarThumb'
 import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, androidWholeReadQueue, resetAssetUrlGateForTest } from '../storage/assetUrlGate'
-import { OpfsStorage } from '../storage/opfsStorage'
-import { createOpfsTransitionalStore } from '../storage/store/opfsTransitionalStore'
-import { hexName } from '../storage/tests/fakeOpfsRoot'
-import { SliceableFakeOpfsRoot } from '../storage/tests/sliceableFakeOpfsRoot'
 
 const LIMIT = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
 const OVER = LIMIT + 1
@@ -1071,104 +1067,6 @@ describe('web store: sizes come from the stored value, never from a whole read',
 
         expect(readImageMock).not.toHaveBeenCalled()
         expect(store.setItem).not.toHaveBeenCalled()
-    })
-})
-
-describe('OPFS-transitional store: a lazy Blob gives sizes and slices without a whole read', () => {
-    let root: SliceableFakeOpfsRoot
-
-    /** The page's store is the real OPFS-transitional store over a sliceable in-memory root. */
-    function opfsHolding(loc: string, bytes: Uint8Array, declaredSize?: number): void {
-        root = new SliceableFakeOpfsRoot()
-        const opfs = new OpfsStorage()
-        opfs.opfs = root as unknown as FileSystemDirectoryHandle
-        root.files.set(hexName(loc), bytes.slice())
-        if (declaredSize !== undefined) {
-            root.declareSize(loc, declaredSize)
-        }
-        appState.store = { ...createOpfsTransitionalStore(opfs) }
-    }
-
-    test('reproducer: an OPFS JPEG over the limit gives the embedded thumbnail from a slice, with no readImage', async () => {
-        opfsHolding('assets/cam.jpg', exifJpeg(), OVER)
-
-        expect(await getAvatarThumbSrc('assets/cam.jpg')).toBe('thumb:embedded')
-
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(root.wholeReads).toBe(0)
-        expect(renderedKinds()).toEqual(['embedded'])
-    })
-
-    test('reproducer: an OPFS PNG over the limit gets one decode from an object URL that is revoked, with no whole read', async () => {
-        opfsHolding('assets/huge.png', stillPng(), OVER)
-        const created: string[] = []
-        const revoked: string[] = []
-        const originalCreate = URL.createObjectURL
-        const originalRevoke = URL.revokeObjectURL
-        URL.createObjectURL = ((value: Blob) => {
-            const url = originalCreate(value)
-            created.push(url)
-            return url
-        }) as typeof URL.createObjectURL
-        URL.revokeObjectURL = ((url: string) => {
-            revoked.push(url)
-            originalRevoke(url)
-        }) as typeof URL.revokeObjectURL
-        try {
-            expect(await getAvatarThumbSrc('assets/huge.png')).toBe('thumb:url')
-        } finally {
-            URL.createObjectURL = originalCreate
-            URL.revokeObjectURL = originalRevoke
-        }
-
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(root.wholeReads).toBe(0)
-        expect(renderedKinds()).toEqual(['url'])
-        expect((renderMock.mock.calls[0][0] as { url: string }).url.startsWith('blob:')).toBe(true)
-        expect(created.length).toBe(1)
-        expect(revoked).toEqual(created)
-    })
-
-    test('reproducer: an OPFS PNG over the limit whose object-URL decode rejects gives null, is not stored and is not decoded again in the page load', async () => {
-        opfsHolding('assets/huge.png', stillPng(), OVER)
-        renderMock.mockImplementation(async () => {
-            throw new Error('the url image failed to decode')
-        })
-
-        expect(await getAvatarThumbSrc('assets/huge.png')).toBeNull()
-        expect(await getAvatarThumbSrc('assets/huge.png')).toBeNull()
-
-        expect(renderedKinds()).toEqual(['url'])
-        expect(store.setItem).not.toHaveBeenCalled()
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(root.wholeReads).toBe(0)
-    })
-
-    test('guard: an OPFS avatar within the limit is decoded from bytes as before (passes before and after)', async () => {
-        opfsHolding('assets/a.png', stillPng())
-        addFile('assets/a.png', stillPng())
-
-        expect(await getAvatarThumbSrc('assets/a.png')).toBe('thumb:bytes')
-
-        expect(readImageMock).toHaveBeenCalledTimes(1)
-    })
-
-    test('guard: a file that vanishes before its slice is read gives null with nothing stored and no whole read', async () => {
-        opfsHolding('assets/cam.jpg', exifJpeg(), OVER)
-        const real = appState.store as { readLazyBlob(key: string): Promise<Blob | null> }
-        appState.store = {
-            readLazyBlob: async (key: string) => {
-                const blob = await real.readLazyBlob(key)
-                root.files.delete(hexName(key))
-                return blob
-            },
-        }
-
-        expect(await getAvatarThumbSrc('assets/cam.jpg')).toBeNull()
-
-        expect(store.setItem).not.toHaveBeenCalled()
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(root.wholeReads).toBe(0)
     })
 })
 

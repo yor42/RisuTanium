@@ -2,14 +2,15 @@
  * Cold-storage units on the web build go through the page's byte store: the
  * real `readColdStorageItem`, `setColdStorageItem` and `deleteColdStorageUnits`
  * run over the real IndexedDB
- * store (`fake-indexeddb`) with an in-memory OPFS root for the units that older
- * builds kept as `coldstorage_<key>.json` files. A pass here says nothing about
- * a real browser's IndexedDB or OPFS. `fake-indexeddb/auto` is imported first
+ * store (`fake-indexeddb`) with a `navigator.storage.getDirectory` that fails if
+ * it is ever called: the browser's private file system is neither read nor
+ * written nor deleted. A pass here says nothing about a real browser's
+ * IndexedDB. `fake-indexeddb/auto` is imported first
  * because LocalForage captures `indexedDB` once when it loads.
  *
  * Every test is labelled in its title:
- * - "new behaviour": asserts what only units-through-the-store does (the store
- *   is read first, the legacy file only on absence, a delete removes both);
+ * - "new behaviour" and "4b-G1": assert what only units-through-the-store does
+ *   (reads, writes and deletes reach the store and no getDirectory call is made);
  * - "guard": holds before and after, and protects behaviour that must stay.
  */
 import 'fake-indexeddb/auto'
@@ -17,7 +18,6 @@ import localforage from 'localforage'
 import { compressSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
-import { FakeOpfsRoot, hexName } from 'src/ts/storage/tests/fakeOpfsRoot'
 
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
@@ -75,7 +75,6 @@ type LocationModule = typeof import('src/ts/process/coldUnitLocation')
 let cold: ColdModule
 let app: AppStoreModule
 let location: LocationModule
-let root: FakeOpfsRoot
 let getDirectory: ReturnType<typeof vi.fn>
 
 /** The `risuai` LocalForage database the IndexedDB store and upstream's own code share. */
@@ -88,17 +87,9 @@ function encodeUnit(value: unknown): Uint8Array {
     return compressSync(new TextEncoder().encode(JSON.stringify(value)))
 }
 
-function legacyName(key: string): string {
-    return 'coldstorage_' + key + '.json'
-}
-
 /** Puts a unit in IndexedDB exactly where the store keeps it, bypassing the code under test. */
 async function putInStore(key: string, value: unknown): Promise<void> {
     await profile.setItem('coldstorage/' + key, encodeUnit(value))
-}
-
-function putLegacy(key: string, value: unknown): void {
-    root.files.set(legacyName(key), encodeUnit(value))
 }
 
 async function storeHas(key: string): Promise<boolean> {
@@ -117,7 +108,7 @@ async function storeUnits(): Promise<string[]> {
     return keys
 }
 
-function installOpfs(navigatorStorage: unknown): void {
+function installNavigatorStorage(navigatorStorage: unknown): void {
     Object.defineProperty(navigator, 'storage', { configurable: true, value: navigatorStorage })
 }
 
@@ -126,9 +117,8 @@ beforeEach(async () => {
     h.platform.isNodeServer = false
     h.forage.Init = async () => { }
     h.forage.realStorage = undefined
-    root = new FakeOpfsRoot()
-    getDirectory = vi.fn(async () => root)
-    installOpfs({ getDirectory })
+    getDirectory = vi.fn(async () => { throw new Error('the browser private file system must not be touched') })
+    installNavigatorStorage({ getDirectory })
     await profile.clear()
     vi.resetModules()
     cold = await import('src/ts/process/coldstorage.svelte')
@@ -140,15 +130,13 @@ beforeEach(async () => {
 
 afterEach(() => {
     Reflect.deleteProperty(navigator, 'storage')
-    localStorage.removeItem('opfs_flag!')
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
 })
 
-describe('reading a unit: the page store first, the legacy OPFS file only when the store holds none', () => {
-    test('new behaviour: a unit in the store is read from the store even when a different legacy file exists', async () => {
+describe('reading a unit: the page store only', () => {
+    test('new behaviour: a unit in the store is read from the store', async () => {
         await putInStore(UUID, { message: [{ time: 1, data: 'store value', role: 'user' }] })
-        putLegacy(UUID, { message: [{ time: 1, data: 'older legacy value', role: 'user' }] })
 
         const result = await cold.readColdStorageItem(UUID)
 
@@ -156,21 +144,13 @@ describe('reading a unit: the page store first, the legacy OPFS file only when t
         expect(getDirectory).not.toHaveBeenCalled()
     })
 
-    test('new behaviour: a unit absent from the store is read from the legacy OPFS file', async () => {
-        putLegacy(UUID, { message: [{ time: 1, data: 'legacy value', role: 'user' }] })
-
-        const result = await cold.readColdStorageItem(UUID)
-
-        expect(result).toEqual({ status: 'ok', value: { message: [{ time: 1, data: 'legacy value', role: 'user' }] } })
-    })
-
-    test('guard: a unit absent from the store and from OPFS is missing', async () => {
+    test('4b-G1: a unit absent from the store is missing without any getDirectory call', async () => {
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'missing' })
         expect(await cold.getColdStorageItem(UUID)).toBeNull()
+        expect(getDirectory).not.toHaveBeenCalled()
     })
 
-    test('new behaviour: a failing store read is an error with no kind and the legacy file is not consulted', async () => {
-        putLegacy(UUID, { message: [] })
+    test('new behaviour: a failing store read is an error with no kind and the private file system is not consulted', async () => {
         const real = await app.getAppStore()
         app.injectAppStore({ ...real, read: async () => { throw new Error('IndexedDB read failed') } })
 
@@ -182,18 +162,8 @@ describe('reading a unit: the page store first, the legacy OPFS file only when t
         expect(await cold.getColdStorageItem(UUID)).toBeNull()
     })
 
-    test('guard: a getDirectory that rejects, with the unit absent from the store, is an error with no kind', async () => {
-        getDirectory.mockRejectedValue(Object.assign(new Error('insecure'), { name: 'SecurityError' }))
-
-        const result = await cold.readColdStorageItem(UUID)
-
-        expect(result.status).toBe('error')
-        expect((result as { kind?: unknown }).kind).toBeUndefined()
-    })
-
-    test('new behaviour: a zero-length unit in the store is a value that does not decode, so it is damaged and the legacy file is not consulted', async () => {
+    test('new behaviour: a zero-length unit in the store is a value that does not decode, so it is damaged', async () => {
         await profile.setItem('coldstorage/' + UUID, new Uint8Array(0))
-        putLegacy(UUID, { message: [] })
 
         const result = await cold.readColdStorageItem(UUID)
 
@@ -202,29 +172,23 @@ describe('reading a unit: the page store first, the legacy OPFS file only when t
     })
 })
 
-describe('writing a unit: the page store only, never OPFS', () => {
-    test('new behaviour: a write lands in IndexedDB under coldstorage/<key> and leaves the OPFS root untouched', async () => {
-        const callsBefore = root.calls
-
+describe('writing a unit: the page store only, never the private file system', () => {
+    test('new behaviour: a write lands in IndexedDB under coldstorage/<key> and never calls getDirectory', async () => {
         expect(await cold.setColdStorageItem(UUID, { message: [{ time: 1, data: 'x', role: 'user' }] })).toBe(true)
 
         expect(await storeHas(UUID)).toBe(true)
-        expect(root.files.size).toBe(0)
-        expect(root.calls).toBe(callsBefore)
+        expect(getDirectory).not.toHaveBeenCalled()
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { message: [{ time: 1, data: 'x', role: 'user' }] } })
     })
 
-    test('new behaviour: a plugin slot rewritten over a legacy file reads the new value, and no older value is ever readable again after the unit is deleted', async () => {
-        putLegacy(UUID, { slot: 'old' })
-
+    test('new behaviour: a plugin slot rewritten reads the new value, and no older value is readable after the unit is deleted', async () => {
+        expect(await cold.setColdStorageItem(UUID, { slot: 'old' })).toBe(true)
         expect(await cold.setColdStorageItem(UUID, { slot: 'new' })).toBe(true)
 
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { slot: 'new' } })
-        expect(root.files.has(legacyName(UUID))).toBe(true)
 
         expect(await cold.deleteColdStorageUnits([UUID])).toEqual([])
 
-        expect(root.files.has(legacyName(UUID))).toBe(false)
         expect(await storeHas(UUID)).toBe(false)
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'missing' })
     })
@@ -241,9 +205,7 @@ describe('writing a unit: the page store only, never OPFS', () => {
         expect(await storeUnits()).toEqual([])
     })
 
-    test('new behaviour: a key the cold-key rule accepts but the store refuses (a leading dot) reads damaged, writes false and touches neither store nor OPFS', async () => {
-        const callsBefore = root.calls
-
+    test('new behaviour: a key the cold-key rule accepts but the store refuses (a leading dot) reads damaged, writes false and touches neither store nor getDirectory', async () => {
         const read = await cold.readColdStorageItem('.hidden')
         const written = await cold.setColdStorageItem('.hidden', { message: [] })
 
@@ -251,94 +213,67 @@ describe('writing a unit: the page store only, never OPFS', () => {
         expect((read as { kind?: unknown }).kind).toBe('damaged')
         expect(written).toBe(false)
         expect(await profile.keys()).toEqual([])
-        expect(root.calls).toBe(callsBefore)
+        expect(getDirectory).not.toHaveBeenCalled()
     })
 })
 
-describe('deleting units: the legacy file first, then the store entry', () => {
-    test('new behaviour: a unit held by the store and by OPFS is removed from both, reads missing and is not listed', async () => {
+describe('deleting units: the store entry only', () => {
+    test('4b-G1: a unit held by the store is removed through the store without any getDirectory call, reads missing and is not listed', async () => {
         await putInStore(UUID, { message: [] })
-        putLegacy(UUID, { message: [] })
 
         const failed = await cold.deleteColdStorageUnits([UUID])
 
         expect(failed).toEqual([])
+        expect(await storeHas(UUID)).toBe(false)
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'missing' })
         expect(await storeUnits()).toEqual([])
-        expect(root.files.has(legacyName(UUID))).toBe(false)
+        expect(getDirectory).not.toHaveBeenCalled()
     })
 
-    test('new behaviour: a legacy file that cannot be removed leaves the store entry, is reported not deleted, and the newer value stays readable', async () => {
-        await putInStore(UUID, { slot: 'new' })
-        putLegacy(UUID, { slot: 'old' })
-        root.failRemoval.add(legacyName(UUID))
-
-        const failed = await cold.deleteColdStorageUnits([UUID])
-
-        expect(failed.map((entry) => entry.key)).toEqual([UUID])
-        expect(await storeHas(UUID)).toBe(true)
-        expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { slot: 'new' } })
-    })
-
-    test('new behaviour: a failure of one unit does not stop the others and only that unit is reported', async () => {
+    test('new behaviour: a store delete that throws reports every unit as not deleted and leaves them in the store', async () => {
         await putInStore(UUID, { n: 1 })
         await putInStore(OTHER, { n: 2 })
-        putLegacy(UUID, { n: 0 })
-        putLegacy(OTHER, { n: 0 })
-        root.failRemoval.add(legacyName(UUID))
+        const real = await app.getAppStore()
+        app.injectAppStore({ ...real, deleteMany: async () => { throw new Error('delete refused') } })
 
         const failed = await cold.deleteColdStorageUnits([UUID, OTHER])
 
-        expect(failed.map((entry) => entry.key)).toEqual([UUID])
-        expect(await storeHas(OTHER)).toBe(false)
-        expect(root.files.has(legacyName(OTHER))).toBe(false)
-    })
-
-    test('new behaviour: a getDirectory that rejects reports every unit as not deleted and leaves the store alone', async () => {
-        await putInStore(UUID, { n: 1 })
-        getDirectory.mockRejectedValue(new Error('no root'))
-
-        const failed = await cold.deleteColdStorageUnits([UUID])
-
-        expect(failed.map((entry) => entry.key)).toEqual([UUID])
+        expect(failed.map((entry) => entry.key)).toEqual([UUID, OTHER])
         expect(await storeHas(UUID)).toBe(true)
+        expect(await storeHas(OTHER)).toBe(true)
     })
 
-    test('new behaviour: a unit that exists only in OPFS, in the upstream _accessMeta shape, is deleted', async () => {
-        putLegacy(UUID + '_accessMeta', { meta: true })
+    test('new behaviour: a unit in the upstream _accessMeta shape is deleted from the store', async () => {
+        await putInStore(UUID + '_accessMeta', { meta: true })
 
         expect(await cold.deleteColdStorageUnits([UUID + '_accessMeta'])).toEqual([])
-        expect(root.files.size).toBe(0)
+        expect(await storeHas(UUID + '_accessMeta')).toBe(false)
     })
 })
 
-describe('the backup carries units from both places', () => {
-    test('new behaviour: the collector carries a unit that only the store holds and one that only a legacy file holds, as the same JSON text either way', async () => {
+describe('the backup carries the units the store holds', () => {
+    test('new behaviour: the collector carries a unit the store holds as JSON text and reports one it does not hold as missing', async () => {
         await putInStore(UUID, { slot: 'store' })
-        putLegacy(OTHER, { slot: 'legacy' })
         const db = { characters: [], pluginCustomStorage: { _coldplugin: { a: UUID, b: OTHER } } } as unknown as Parameters<ColdModule['collectColdStorageBackupPayloads']>[0]
 
         const collected = await cold.collectColdStorageBackupPayloads(db)
 
-        expect(collected.missingKeys).toEqual([])
+        expect(collected.missingKeys).toEqual([OTHER])
         expect(collected.invalidKeys).toEqual([])
         const texts = new Map(collected.payloads.map((payload) => [payload.key, new TextDecoder().decode(payload.encoded)]))
         expect(texts.get(UUID)).toBe(JSON.stringify({ slot: 'store' }))
-        expect(texts.get(OTHER)).toBe(JSON.stringify({ slot: 'legacy' }))
+        expect(getDirectory).not.toHaveBeenCalled()
     })
 
     test('new behaviour: a unit restored from a backup is written to the store only', async () => {
-        const callsBefore = root.calls
-
         expect(await cold.setColdStorageItem(UUID, { slot: 'restored' })).toBe(true)
 
         expect(await storeHas(UUID)).toBe(true)
-        expect(root.files.size).toBe(0)
-        expect(root.calls).toBe(callsBefore)
+        expect(getDirectory).not.toHaveBeenCalled()
     })
 })
 
-describe('a browser without OPFS', () => {
+describe('a browser without a private file system', () => {
     beforeEach(() => {
         Reflect.deleteProperty(navigator, 'storage')
     })
@@ -354,22 +289,5 @@ describe('a browser without OPFS', () => {
         expect(await cold.deleteColdStorageUnits([UUID])).toEqual([])
         expect(await storeHas(UUID)).toBe(false)
         expect(await storeUnits()).toEqual([])
-    })
-})
-
-describe('a page that fell back to the OPFS main store keeps its units in that store', () => {
-    test('new behaviour: a unit written by such a page is stored as the hex file of coldstorage/<key>, is read and listed back, and no coldstorage_ file is written', async () => {
-        // An OPFS-main profile whose copy back is refused the exclusive lock runs from OPFS.
-        root.files.set(hexName('database/database.bin'), new Uint8Array([1]))
-        localStorage.setItem('opfs_flag!', 'able')
-        vi.stubGlobal('FileSystemFileHandle', class { createWritable() { } })
-
-        expect(await cold.setColdStorageItem(UUID, { message: [] })).toBe(true)
-
-        expect(root.files.has(hexName('coldstorage/' + UUID))).toBe(true)
-        expect(root.files.has(legacyName(UUID))).toBe(false)
-        expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { message: [] } })
-        expect(await storeUnits()).toEqual([UUID])
-        expect(await profile.keys()).toEqual([])
     })
 })

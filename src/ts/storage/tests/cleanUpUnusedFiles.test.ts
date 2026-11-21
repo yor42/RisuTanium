@@ -88,9 +88,7 @@ describe('cleanUpOfferedFor', () => {
         expect(cleanUpOfferedFor({ kind: 'store2' })).toBe(true)
     })
 
-    test('an opfs-transitional session and no session are not offered', () => {
-        setStore2BootSession(session('opfs-transitional'))
-        expect(cleanUpOfferedFor({ kind: 'store2' })).toBe(false)
+    test('no session is not offered', () => {
         setStore2BootSession(null)
         expect(cleanUpOfferedFor({ kind: 'store2' })).toBe(false)
     })
@@ -98,7 +96,7 @@ describe('cleanUpOfferedFor', () => {
     test('a page that is not store2 is never offered, whatever the session', () => {
         setStore2BootSession(session('node'))
         expect(cleanUpOfferedFor({ kind: 'unset' })).toBe(false)
-        expect(cleanUpOfferedFor({ kind: 'read-only', reason: 'opfs-transitional' })).toBe(false)
+        expect(cleanUpOfferedFor({ kind: 'read-only', reason: 'backend-unavailable' })).toBe(false)
     })
 })
 

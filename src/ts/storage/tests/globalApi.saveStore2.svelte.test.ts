@@ -185,7 +185,7 @@ describe('saveDb: read-only returns first, an active save runs, every other page
     })
 
     test('guard: a read-only page resolves at once and writes nothing, whatever the active save', async () => {
-        const page = await pageWithoutActiveSave({ kind: 'read-only', reason: 'opfs-transitional' })
+        const page = await pageWithoutActiveSave({ kind: 'read-only', reason: 'backend-unavailable' })
         expect(await outcomeOfSaveDb(page.w)).toBe('resolved')
         expectNoWrite(page)
     })
@@ -627,7 +627,7 @@ describe('new behaviour: the page hide saves an unsaved edit with no chat in fli
 
     test('guard: a read-only page never reports unsaved edits', async () => {
         h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld({ kind: 'opfs-transitional' })
+        const w = await worlds.startWorld({ legacyReadOnly: true })
         h.db!.mainPrompt = 'edited'
         w.marks.markCharacterForSave('alpha')
         expect(w.api.hasUnsavedSaveMarks()).toBe(false)

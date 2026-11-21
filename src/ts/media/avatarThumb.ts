@@ -1014,7 +1014,7 @@ async function resolveSizedSource(loc: string, scope: TaskScope): Promise<SizedS
         if (assetOrInlayBodyKeyViolation(loc) !== null) {
             return NO_SIZE_SOURCE
         }
-        // The OPFS-transitional store offers a lazy Blob instead: its size is the
+        // A store that offers a lazy Blob instead: its size is the
         // stored size and a slice reads only that slice.
         if (store.readValue === undefined && store.readLazyBlob !== undefined) {
             const lazy = await store.readLazyBlob(loc)

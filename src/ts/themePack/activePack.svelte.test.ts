@@ -42,7 +42,6 @@ vi.mock('../storage/store/appStore', () => ({
             return { bytes: world.files.get(key) ?? null, version: null }
         },
     }),
-    pageStoreIsOpfsTransitional: async () => false,
 }))
 vi.mock('../globalApi.svelte', () => ({
     getFileSrc: vi.fn(),

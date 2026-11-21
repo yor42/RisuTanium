@@ -14,7 +14,6 @@ import { buildNodeGcAge } from './unitAge'
  * old-data deletion settled (`maintenance.ts` calls it, inside the step's own try/catch).
  *
  * - It runs on the app (`tauri` sessions), on the web (`indexeddb` sessions) and on a Node server (`node` sessions). A
- *   transitional OPFS session runs nothing, not even a read.
  * - A Node page runs the aged pass (`pass.ts`, `unitAge.ts`): a server cannot prove that no reader still holds an older
  *   base, so a unit is retired only on its third sighting, each at least a day after the previous record in the earlier of
  *   the server's and the page's clock. The pass needs the guarded routes and the server's clock and otherwise refuses

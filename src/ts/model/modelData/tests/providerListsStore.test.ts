@@ -34,7 +34,6 @@ vi.mock('../../../storage/store/appStore', () => ({
         }
         return pageStore.injected
     },
-    pageStoreIsOpfsTransitional: async () => pageStore.kind === 'opfs-transitional',
 }))
 
 const T = 1_800_000_000_000
@@ -202,11 +201,8 @@ describe('saveProviderLists: when it writes', () => {
         expect(store.reads).toBe(0)
     })
 
-    test('(F) a page on the transitional OPFS store or in read-only mode writes nothing', async () => {
-        pageStore.kind = 'opfs-transitional'
-        await saveProviderLists('openai', plist(T, 'gpt-9'))
-        pageStore.kind = null
-        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
+    test('(F) a page in read-only mode writes nothing', async () => {
+        setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
         await saveProviderLists('openai', plist(T, 'gpt-9'))
         expect(store.writes).toHaveLength(0)
         expect(store.reads).toBe(0)

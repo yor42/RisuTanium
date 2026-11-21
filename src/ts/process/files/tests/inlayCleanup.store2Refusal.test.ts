@@ -139,7 +139,7 @@ describe('no page mode deletes an inlay', () => {
     })
 
     test.each<[string, PageStorageMode]>([
-        ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
+        ['read-only', { kind: 'read-only', reason: 'backend-unavailable' }],
         ['unset', { kind: 'unset' }],
     ])('reproducer: a %s page with no residency deletes nothing', async (_label, mode) => {
         setPageStorageMode(mode)

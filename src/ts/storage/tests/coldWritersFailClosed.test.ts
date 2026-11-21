@@ -2,10 +2,11 @@
  * The legacy cold-unit writers on a store2 page fail closed: with a residency registered,
  * `writeColdStorageUnit` answers `'failed'` (and `setColdStorageItem` `false`) and
  * `deleteColdStorageUnits` reports every key as not deleted, each with a console error, and neither
- * reaches the page's store or the legacy OPFS directory. Without a residency both behave as before.
+ * reaches the page's store or the browser's private file system. Without a residency both behave as before.
  *
- * Runs the real writers over the real IndexedDB store (`fake-indexeddb`) with an in-memory OPFS
- * root; a pass here says nothing about a real browser's IndexedDB or OPFS.
+ * Runs the real writers over the real IndexedDB store (`fake-indexeddb`) with a
+ * `navigator.storage.getDirectory` that records its calls; a pass here says nothing about a real
+ * browser's IndexedDB.
  *
  * Labels: "fail closed" tests are regression reproducers (they fail on the writers that ignore the
  * residency); "legacy page" tests are compatibility guards that pass before and after.
@@ -15,7 +16,6 @@ import localforage from 'localforage'
 import { compressSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
-import { FakeOpfsRoot } from 'src/ts/storage/tests/fakeOpfsRoot'
 import type { Residency } from 'src/ts/storage/store2/residency'
 
 const h = vi.hoisted(() => ({
@@ -70,7 +70,6 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'linux' }))
 type ColdModule = typeof import('src/ts/process/coldstorage.svelte')
 
 let cold: ColdModule
-let root: FakeOpfsRoot
 let getDirectory: ReturnType<typeof vi.fn>
 let errors: ReturnType<typeof vi.spyOn>
 
@@ -100,8 +99,7 @@ async function registerStore2Page(): Promise<void> {
 beforeEach(async () => {
     h.platform.isTauri = false
     h.platform.isNodeServer = false
-    root = new FakeOpfsRoot()
-    getDirectory = vi.fn(async () => root)
+    getDirectory = vi.fn(async () => { throw new Error('the browser private file system must not be touched') })
     Object.defineProperty(navigator, 'storage', { configurable: true, value: { getDirectory } })
     await profile.clear()
     vi.resetModules()
@@ -122,7 +120,7 @@ describe('on a store2 page the legacy cold-unit writers fail closed', () => {
         expect(await cold.writeColdStorageUnit(UUID, { a: 1 })).toBe('failed')
 
         expect(await storeHas(UUID)).toBe(false)
-        expect(root.files.size).toBe(0)
+        expect(getDirectory).not.toHaveBeenCalled()
         expect(errors).toHaveBeenCalled()
     })
 
