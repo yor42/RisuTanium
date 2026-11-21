@@ -122,6 +122,26 @@ afterEach(() => {
 //#endregion
 
 describe('host bridge', () => {
+    /**
+     * U4 regression reproducer: a plain-HTTP origin has no `crypto.randomUUID`. `uuid` captures the native function when
+     * it is first evaluated, so this proves `SandboxHost` no longer calls `crypto.randomUUID`; it does not prove the
+     * library's own `getRandomValues` fallback.
+     */
+    test('U4: a host built without crypto.randomUUID uses one v4 nonce in the CSP and the script tag', () => {
+        Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined })
+        try {
+            const rig = makeHostRig({})
+            const srcdoc = rig.iframe.srcdoc
+            const scriptNonce = /<script nonce="([^"]+)"/.exec(srcdoc)?.[1]
+
+            expect(scriptNonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+            expect(srcdoc).toContain(`script-src 'nonce-${scriptNonce}'`)
+            expect(rig.iframe.getAttribute('csp')).toContain(`'nonce-${scriptNonce}'`)
+        } finally {
+            delete (crypto as { randomUUID?: unknown }).randomUUID
+        }
+    })
+
     test('R3: remote references get distinct ids even when Math.random is constant', async () => {
         vi.spyOn(Math, 'random').mockReturnValue(0.5)
         let n = 0

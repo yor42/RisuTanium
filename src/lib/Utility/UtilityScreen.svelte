@@ -29,6 +29,7 @@
     import { ArrowLeft } from '@lucide/svelte'
     import { fillLang } from 'src/lang/fill'
     import { alertConfirm } from 'src/ts/alert'
+    import { copyPlainText } from 'src/ts/chatCopy'
     import { downloadFile } from 'src/ts/globalApi.svelte'
     import { validateTaskPreset } from 'src/ts/process/utility/taskPreset'
     import {
@@ -73,14 +74,10 @@
         return utilityMarkdown(utilityConversation.presetName ?? chosen?.name ?? null, utilityConversation.turns)
     }
 
-    async function copyMarkdown() {
-        try {
-            await navigator.clipboard.writeText(markdown())
-            notice = language.utility.copied
-        }
-        catch {
-            notice = language.utility.copyFailed
-        }
+    function copyMarkdown() {
+        copyPlainText(markdown(), (outcome) => {
+            notice = outcome.ok ? language.utility.copied : language.utility.copyFailed
+        })
     }
 
     async function saveMarkdown() {
