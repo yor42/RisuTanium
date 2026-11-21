@@ -16,7 +16,10 @@ import { KNOWN_REQ, UNIT_TYPE } from '../../storage/store2/format/versions'
 /** The rows the closure walk never reports: the three commit rows and the legacy keep set. */
 const WALK_SKIPS: ReadonlySet<string> = new Set<string>([`${UNIT_TYPE.manifest}:fixed.legacyKeep.unit`])
 
-/** The strings a version 1 closure walk can list: 28 of the 32 table rows. */
+/**
+ * The strings a version 1 closure walk can list: 30 of the 34 table rows. A reader built before the workspace rows
+ * (`2:fixed.workspaces[]`, `28:files[].ref`) takes a file that lists them as newer, which is the intended fail-safe.
+ */
 export const V1_REF_STRINGS: readonly string[] = REFS_TABLE
     .filter((row) => row.type !== UNIT_TYPE.commit)
     .map((row) => `${row.type}:${row.path}`)

@@ -3,10 +3,10 @@ import type { Database } from '../../database.svelte'
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
     type ChatAltUnit, type ChatChunk, type ChatCore, type ChatEntry, type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard,
-    type ShardEntry, type UnitBody, type UnitType,
+    type ShardEntry, type UnitBody, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
-    ENTRY_MOVED_FIELDS, PLUGIN_LISTS, readAbsentList, readListField, readObjectField, readStringListField,
+    ENTRY_MOVED_FIELDS, PLUGIN_LISTS, readAbsentList, readListField, readObjectField, readStringField, readStringListField,
     type PluginList,
 } from './bodies'
 import { assembleChat } from './chat'
@@ -223,6 +223,33 @@ function assemblePluginStorage(manifest: Manifest, source: UnitSource): JsonObje
     return storage
 }
 
+/**
+ * The workspaces the manifest names, each record with its files' text read back in: a record field this build does not
+ * know and a file field it does not know come back with it. Strict: a missing or damaged record or file throws.
+ */
+function assembleWorkspaces(manifest: Manifest, source: UnitSource): JsonObject[] {
+    return (manifest.fixed.workspaces ?? []).map((ref, index) => {
+        const where = `workspace ${index}`
+        const record = readChecked(source, ref, UNIT_TYPE.workspace, where) as WorkspaceRecord
+        const files = record.files.map((entry, fileIndex) => {
+            const fileWhere = `${where} file ${fileIndex}`
+            const text = readStringField(readContent(source, entry.ref, UNIT_TYPE.workspaceFile, fileWhere), 'text', fileWhere)
+            const file: JsonObject = {}
+            for (const [key, value] of Object.entries(entry)) {
+                if (key !== 'ref') {
+                    defineOwn(file, key, value as JsonValue)
+                }
+            }
+            defineOwn(file, 'text', text)
+            return file
+        })
+        const workspace: JsonObject = {}
+        copyInto(workspace, record.ws)
+        defineOwn(workspace, 'files', files)
+        return workspace
+    })
+}
+
 export interface AssembleOptions {
     /** Builds one entity in place of `assembleCharacter`; called once per entity, in `order` order. Absent: `assembleCharacter`. */
     character?: (entry: ShardEntry, source: UnitSource) => JsonObject
@@ -256,6 +283,11 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
     })
     if (taskPresets.length > 0) {
         defineOwn(database, 'taskPresets', taskPresets)
+    }
+    // Defined only when the manifest names a workspace, like the task presets above.
+    const workspaces = assembleWorkspaces(manifest, source)
+    if (workspaces.length > 0) {
+        defineOwn(database, 'utilityWorkspaces', workspaces)
     }
     const plugins = assemblePlugins(manifest, source)
     defineOwn(database, 'plugins', plugins.plugins)

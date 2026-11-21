@@ -99,11 +99,14 @@ const names = () => DBState.db.modules.map((m) => m.name)
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountModules(): HTMLElement {
+async function mountModules(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ModuleSettings, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    // The window host reads the list's geometry in a microtask after mount; rows mount after that read.
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -147,7 +150,7 @@ const four = () => [makeModule('Ma'), makeModule('Mb'), makeModule('Mc'), makeMo
 describe('a module remove', () => {
     test('guard: with nothing else changing, the confirmed module is removed and no other', async () => {
         installDb(four())
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mb')
         await answer(true)
         expect(names()).toEqual(['Ma', 'Mc', 'Md'])
@@ -155,7 +158,7 @@ describe('a module remove', () => {
 
     test('guard: the removed module\'s id leaves enabledModules and the others stay', async () => {
         installDb(four(), ['id-Mb', 'id-Mc'])
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mb')
         await answer(true)
         expect(DBState.db.enabledModules).toEqual(['id-Mc'])
@@ -163,7 +166,7 @@ describe('a module remove', () => {
 
     test('guard: refusing the confirmation removes nothing', async () => {
         installDb(four(), ['id-Mb'])
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mb')
         await answer(false)
         expect(names()).toEqual(['Ma', 'Mb', 'Mc', 'Md'])
@@ -172,7 +175,7 @@ describe('a module remove', () => {
 
     test('a module removed above it while the confirmation is open does not change which module is removed', async () => {
         installDb(four(), ['id-Mc'])
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mc')
         DBState.db.modules.splice(0, 1)
         flushSync()
@@ -183,7 +186,7 @@ describe('a module remove', () => {
 
     test('a module inserted above it while the confirmation is open does not change which module is removed', async () => {
         installDb(four())
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mc')
         DBState.db.modules.unshift(makeModule('A-new'))
         flushSync()
@@ -193,7 +196,7 @@ describe('a module remove', () => {
 
     test('two pending removes of the same module remove it once', async () => {
         installDb(four())
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mb')
         await clickRemove(target, 'Mb')
         expect(confirms.pending.length).toBe(2)
@@ -204,7 +207,7 @@ describe('a module remove', () => {
 
     test('a module removed by something else while its confirmation is open leaves every other module and the enabled list alone', async () => {
         installDb(four(), ['id-Mb', 'id-Mc'])
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Mb')
         DBState.db.modules.splice(1, 1)
         flushSync()
@@ -215,7 +218,7 @@ describe('a module remove', () => {
 
     test('the last row, removed by something else while its confirmation is open, takes no other module with it', async () => {
         installDb(four())
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Md')
         DBState.db.modules.splice(3, 1)
         flushSync()
@@ -225,7 +228,7 @@ describe('a module remove', () => {
 
     test('a module id shared with a module that stays remains in enabledModules', async () => {
         installDb([makeModule('Ma', 'shared'), makeModule('Mb', 'shared'), makeModule('Mc')], ['shared'])
-        const target = mountModules()
+        const target = await mountModules()
         await clickRemove(target, 'Ma')
         await answer(true)
         expect(names()).toEqual(['Mb', 'Mc'])

@@ -229,7 +229,7 @@ describe('every walk row is rewritten (T4-3, guard)', () => {
         const held = rowsOf(plain1.world).has(id) ? plain1 : plain2
         expect(rowsOf(held.world).has(id), `no world populates ${id}`).toBe(true)
         const table = FIXTURE_WALK_TABLE.filter(row => `${row.type}:${row.path}` !== id)
-        expect(table).toHaveLength(27)
+        expect(table).toHaveLength(29)
         const { built, issued } = buildOf(planRestore(inputOf(held.cap, { table })))
         expect(foreignRefs(built, issued).map(ref => ref.row), `dropping ${id} goes unnoticed`).toContain(id)
     })

@@ -110,6 +110,36 @@ describe('the sealed answer (T-S2-3)', () => {
     })
 })
 
+describe('the settings-only scope with a password (R1)', () => {
+    test('a sealed settings-only .rtb answers scope settings with the typed password; a plain one answers none', async () => {
+        const sealed = mountSheet()
+        click(radio('scope', 'settings'))
+        click(tick())
+        typeBoth(NFD)
+        click(startButton())
+        expect(sealed.onanswer).toHaveBeenCalledWith({ format: 'rtb', scope: 'settings', password: NFD })
+
+        await sealed.unmountSheet()
+        const plain = mountSheet()
+        click(radio('scope', 'settings'))
+        click(startButton())
+        expect(plain.onanswer).toHaveBeenCalledTimes(1)
+        expect(plain.onanswer.mock.calls[0][0]).toEqual({ format: 'rtb', scope: 'settings' })
+        expect(Object.hasOwn(plain.onanswer.mock.calls[0][0]!, 'password')).toBe(false)
+    })
+
+    test('a settings-only .rtb with a bad password keeps the sheet open', () => {
+        const { onanswer } = mountSheet()
+        click(radio('scope', 'settings'))
+        click(tick())
+        type(field1()!, 'a')
+        type(field2()!, 'b')
+        click(startButton())
+        expect(onanswer).not.toHaveBeenCalled()
+        expect(problemLine()?.textContent).toBe(language.settingsShellDataEncryptMismatch)
+    })
+})
+
 describe('Start with a problem (T-S2-4)', () => {
     test('A2: an empty first field, a lone surrogate and a mismatch each keep the sheet open and say why', () => {
         const { onanswer } = mountSheet()

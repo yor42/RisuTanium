@@ -105,6 +105,8 @@ vi.mock('../../stores.svelte', () => {
     }
 })
 
+vi.mock('../mcp/toolApproval', () => ({ TOOL_SUMMARY_LIMIT: 800, askToolApproval: vi.fn(async () => 'once') }))
+
 vi.mock('../../alert', () => ({
     alertError: vi.fn(), alertToast: vi.fn(), alertInput: vi.fn(async () => ''), alertNormal: vi.fn(), alertSelect: vi.fn(async () => ''),
     alertConfirm: vi.fn(async (message: string) => {
@@ -556,15 +558,15 @@ describe('what is advertised, or has no tools, is unchanged', () => {
         expect(resultsOf(1)[0].content[0].text).toBe('tool-out')
     })
 
-    test('guard: S1-G2 an advertised tool without a client URL is found by the search', async () => {
+    test('S1-G2 an advertised tool without a client URL is refused and starts no client', async () => {
         install(['mU'], [mod('mU', 'Mod U', U)])
         h.script.push(reply(toolUse('toolu_1', 'tool')), reply(text('done')))
 
         const result = await direct([TOOL])
 
         expect(result.type).toBe('success')
-        expect(f.calls).toEqual([`${U}#tool`])
-        expect(resultsOf(1)[0].content[0].text).toBe('tool-out')
+        expect(f.calls).toEqual([])
+        expect(resultsOf(1)[0].content[0].text).toContain('without a server')
     })
 
     test('guard: S1-G3 a plain reply, and a chain without a signal, complete', async () => {

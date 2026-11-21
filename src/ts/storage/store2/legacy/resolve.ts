@@ -493,6 +493,9 @@ export async function resolveLegacyRoot(
     // Task presets are not part of a legacy tree or a `.bin`: a key of that name there (a hand edit, or a field a later
     // upstream adds) must never become type 26 units. A caller that keeps the page's own list sets it after the resolve.
     delete database.taskPresets
+    // Utility workspaces are fork-only the same way: a file's key of that name must never become type 28 and 29 units,
+    // and the page's own workspaces are set by the caller after the resolve.
+    delete database.utilityWorkspaces
     return database
 }
 

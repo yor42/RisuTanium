@@ -22,8 +22,8 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
  * is carried and never compared, as `previousOfTree` does for a unit the boot did not read. A body that the old
  * encoding's objects hold is taken from them when its key is unchanged, and read from the source when it changed.
  *
- * The modules, the plugins and the plugin storage are not handled: the fast-forward parks a peer change to them, so
- * an `advancePrevious` over a changed one throws a `CodecAssembleError` and the caller parks with nothing written.
+ * The modules, the plugins, the plugin storage and the utility workspaces are not handled: the fast-forward parks a peer
+ * change to them, so an `advancePrevious` over a changed one throws a `CodecAssembleError` and the caller parks with nothing written.
  * Everything that is missing (a body to read, the old objects) throws the same way.
  */
 export function advancePrevious(old: PreviousEncoding, target: StoredTree, options: PreviousOfTreeOptions = {}): PreviousEncoding {
@@ -93,6 +93,9 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
         || !sameKeys(fixed.pluginStorage.refs, fixedBefore.pluginStorage.refs)) {
         throw new CodecAssembleError('The plugins or their storage changed; the fast-forward does not take them.')
     }
+    if (!sameKeys(fixed.workspaces, fixedBefore.workspaces)) {
+        throw new CodecAssembleError('The utility workspaces changed; the fast-forward does not take them.')
+    }
 
     const orderBytes = register('order', UNIT_TYPE.order, fixed.order)
     const order = unchanged('order', UNIT_TYPE.order, fixed.order) !== undefined
@@ -147,9 +150,10 @@ export function advancePrevious(old: PreviousEncoding, target: StoredTree, optio
     })
     fixed.taskPresets?.forEach((ref, index) => register(`taskPreset:${index}`, UNIT_TYPE.taskPreset, ref))
 
-    // The plugin and plugin-storage units are those of the old encoding, which the checks above proved unchanged.
+    // The plugin, plugin-storage and workspace units are those of the old encoding, which the checks above proved unchanged.
     for (const [identity, unit] of old.units) {
-        if (unit.type === UNIT_TYPE.plugin || unit.type === UNIT_TYPE.pluginStorageBucket || unit.type === UNIT_TYPE.pluginStorageValue) {
+        if (unit.type === UNIT_TYPE.plugin || unit.type === UNIT_TYPE.pluginStorageBucket || unit.type === UNIT_TYPE.pluginStorageValue
+            || unit.type === UNIT_TYPE.workspace || unit.type === UNIT_TYPE.workspaceFile) {
             units.set(identity, { ...unit })
         }
     }

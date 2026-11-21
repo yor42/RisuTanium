@@ -16,6 +16,14 @@ export const STORE2_ID = 'store2'
 export const ASSETS_ID = 'assets'
 export const INLAYS_ID = 'inlays'
 
+/**
+ * The reserved row id of a settings-only file. A file with this row holds no store2, assets or inlays row, so a
+ * reader that does not know it refuses the file at the section table.
+ */
+export const SETTINGS_ID = 'settings'
+export const SETTINGS_PREFIX = 'settings/'
+export const SETTINGS_DATA_ENTRY = 'settings/data.jsonl'
+
 /** The three required rows and the prefix each owns at `v` 1. */
 export const RESERVED_ROW_PREFIX: Readonly<Record<string, string>> = {
     [STORE2_ID]: 'u/',
@@ -116,6 +124,9 @@ export function checkKnownEntryName(rowId: string, name: string): string | null 
     }
     if (rowId === INLAYS_ID) {
         return parseInlayEntryName(name) === null ? 'the name is not i/<enc>.meta or i/<enc>.body' : null
+    }
+    if (rowId === SETTINGS_ID) {
+        return name === SETTINGS_DATA_ENTRY ? null : `the name is not ${SETTINGS_DATA_ENTRY}`
     }
     const data = sideDataName(rowId)
     if (data !== null) {

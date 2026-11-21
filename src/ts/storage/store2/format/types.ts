@@ -71,6 +71,8 @@ export interface Manifest {
         taskPresets?: Ref[]
         plugins: Ref[]
         pluginStorage: { buckets: number, refs: Ref[] }
+        /** Type 28 units, one per utility workspace. Present only when non-empty: an empty list is written as no field and read as none. */
+        workspaces?: Ref[]
         legacyKeep: null | { unit: Ref, v: number, files: LegacyKeepFile[] }
     }
 }
@@ -261,7 +263,18 @@ export interface PluginBucket {
     entries: { k: string, ref: Ref }[]
 }
 
-/** Types 4, 5, 6, 9, 11, 12, 13, 14, 16, 17, 18: frame level only, the contents belong to the unit codec. */
+/**
+ * Type 28, one utility workspace: `ws` is the record's own fields (`id`, `name`, `createdAt` and whatever else it holds),
+ * `files` lists its type 29 units, each by the file's own `id`, `path`, `size`, `mtime` and a Ref to the text unit.
+ * Every object is open: a field this build does not know travels untouched.
+ */
+export interface WorkspaceRecord {
+    v: 1
+    ws: JsonObject
+    files: { id: string, path: string, size: number, mtime: number, ref: Ref }[]
+}
+
+/** Types 4, 5, 6, 9, 11, 12, 13, 14, 16, 17, 18, 29: frame level only, the contents belong to the unit codec. */
 export interface ContentBody {
     v: number
     [field: string]: JsonValue
@@ -269,4 +282,4 @@ export interface ContentBody {
 
 export type UnitBody =
     | CommitKey | Manifest | Shard | ChatCore | ChatChunk | ChatAltUnit | ModuleIndexRoot | ModuleBucket | AssetList
-    | LegacyList | InlayList | SweepRecord | FenceRecord | DeletionSnapshot | PluginBucket | ContentBody
+    | LegacyList | InlayList | SweepRecord | FenceRecord | DeletionSnapshot | PluginBucket | WorkspaceRecord | ContentBody

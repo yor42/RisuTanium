@@ -92,6 +92,11 @@ export interface UnitSinkOptions {
      */
     chunkMemo?: ChunkMemo
     /**
+     * The saved text of workspace files (see `putText`), a second memo beside `chunkMemo` so the save encoder can prune it
+     * to the units of each adopted encoding.
+     */
+    workspaceMemo?: ChunkMemo
+    /**
      * Stored units an import takes by content: a unit with no identity match (`put` and `putReusing` only, never
      * `putFresh` or `reuseAt`) takes the key of the first candidate of its digest that this encode has not handed out
      * and that is the same unit (type, framed length, CRC, digest). An import-only rule, so it is refused together
@@ -128,6 +133,7 @@ export class UnitSink {
     readonly diverged = new Set<string>()
     private declare readonly split: SplitRecorder | undefined
     private readonly chunkMemo: ChunkMemo | undefined
+    private readonly workspaceMemo: ChunkMemo | undefined
     private readonly content: ContentIndex | undefined
     /** How many units of this encode took a stored key (identity or content). */
     reused = 0
@@ -141,6 +147,7 @@ export class UnitSink {
         this.reuseOnly = options.reuseOnly === true
         this.collect = options.collect === true
         this.chunkMemo = options.chunkMemo
+        this.workspaceMemo = options.workspaceMemo
         if (options.content !== undefined && (previous !== null || this.reuseOnly || this.collect)) {
             throw new TypeError('A content index is an import rule: it cannot accompany a previous encoding, reuseOnly or collect.')
         }
@@ -269,6 +276,30 @@ export class UnitSink {
         }
         this.noteDiverged(identity)
         return this.record(identity, type, this.freshKey('unit'), bytes, digest, false)
+    }
+
+    /**
+     * `put` for a unit whose whole payload is `text` (body `{ v: 1, text }`): the frame is a pure function of the type and
+     * the text, so a remembered text has a known digest. The previous unit is taken without framing only when the memo's
+     * digest for exactly this text equals the previous encoding's digest at the identity (`reuseAt` still checks the
+     * prior's type, digest, bytes and claim); anything else is `put`, and the digest it produced is remembered. Without a
+     * workspace memo this is `put`.
+     */
+    putText(identity: string, type: UnitType, text: string, body: object): EncodedUnit {
+        const memo = this.workspaceMemo
+        if (memo === undefined) {
+            return this.put(identity, type, body)
+        }
+        const remembered = memo.digestOf(identity, type, text)
+        if (remembered !== undefined && remembered === this.previous?.units.get(identity)?.digest) {
+            const reused = this.reuseAt(identity, type)
+            if (reused !== null) {
+                return reused
+            }
+        }
+        const unit = this.put(identity, type, body)
+        memo.remember(identity, type, text, unit.digest)
+        return unit
     }
 
     /**

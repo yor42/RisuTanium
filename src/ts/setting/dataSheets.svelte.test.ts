@@ -71,6 +71,13 @@ describe('askBackupChoice', () => {
         expect(dataSheetState.pending).toBeNull()
     })
 
+    test('R1: a settings-only sealed .rtb answer reaches the asker unchanged', async () => {
+        unregisters.push(registerDataSheetHost())
+        const asked = askBackupChoice()
+        answerBackupChoice({ format: 'rtb', scope: 'settings', password: 'pw 한' })
+        expect(await asked).toEqual({ format: 'rtb', scope: 'settings', password: 'pw 한' })
+    })
+
     test('S1-U2: a second request while one is pending resolves null and leaves the first waiting', async () => {
         unregisters.push(registerDataSheetHost())
         const first = askBackupChoice()

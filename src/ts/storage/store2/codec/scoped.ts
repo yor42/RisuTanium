@@ -695,7 +695,7 @@ export interface ScopedPlan {
     modulesEncoded: boolean
     /**
      * The identity and digest of every unit the commit writes that holds no Ref of another unit (not the manifest, a
-     * shard, a module index or bucket, or a plugin-storage bucket). Such a unit's bytes do not depend on the keys of
+     * shard, a module index or bucket, a plugin-storage bucket or a workspace record). Such a unit's bytes do not depend on the keys of
      * the attempt, so each digest equals the digest of the same identity in every `finalize` tree.
      */
     written: ReadonlyMap<string, string>

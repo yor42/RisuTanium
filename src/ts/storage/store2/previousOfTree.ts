@@ -1,6 +1,6 @@
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from './format'
 import type { JsonObject } from '../blockFrame'
 import {
@@ -127,6 +127,44 @@ export function hydrateModuleDigests(previous: PreviousEncoding, entry: ModuleEn
     registerModuleUnits(entry, handle, digestHydrator(previous, source))
 }
 
+/** The identity prefixes of a workspace record and of a workspace file unit. */
+export const IDENTITY_WORKSPACE = 'ws:'
+export const IDENTITY_WORKSPACE_FILE = 'wsf:'
+
+/** An id that names a workspace unit identity: a non-empty string without `:`, so `ws:<id>` and `wsf:<id>:<id>` split one way. */
+function workspaceIdentityPart(value: unknown, where: string): string {
+    if (typeof value !== 'string' || value === '' || value.includes(':')) {
+        throw new CodecAssembleError(`${where} has no id that can name a unit.`)
+    }
+    return value
+}
+
+/**
+ * Every unit one workspace record names, as `register` takes it: the record under `ws:<id>` and each file under
+ * `wsf:<id>:<fileId>`, the identities the encoder gives them. `record` is the record's parsed body, which names the
+ * ids; a record that is missing or has no usable id is refused. A file's Ref is registered as it is, with no digest when
+ * its bytes did not read (a flagged file's bytes leave the source), so a later carry finds the key and Ref and never
+ * compares a digest.
+ */
+export function registerWorkspaceUnits(
+    ref: Ref, record: WorkspaceRecord | undefined, register: (identity: string, type: UnitType, ref: Ref) => unknown,
+): void {
+    if (record === undefined) {
+        throw new CodecAssembleError(`The workspace record ${keyOfRef(ref)} was not read.`)
+    }
+    const id = workspaceIdentityPart(record.ws.id, `The workspace record ${keyOfRef(ref)}`)
+    register(`${IDENTITY_WORKSPACE}${id}`, UNIT_TYPE.workspace, ref)
+    const seen = new Set<string>()
+    for (const file of record.files) {
+        const fileId = workspaceIdentityPart(file.id, `A file of workspace ${id}`)
+        if (seen.has(fileId)) {
+            throw new CodecAssembleError(`Workspace ${id} repeats the file id ${fileId}.`)
+        }
+        seen.add(fileId)
+        register(`${IDENTITY_WORKSPACE_FILE}${id}:${fileId}`, UNIT_TYPE.workspaceFile, file.ref)
+    }
+}
+
 /** The handle of a character is its id and its occurrence among the holders of that id, in `characters` order; its value is the entity id `u`. */
 export function entityIdsOf(order: ContentBody, entries: ReadonlyMap<string, ShardEntry>): Map<string, string> {
     const entities = new Map<string, string>()
@@ -223,6 +261,15 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
             register(`psv:${entry.k}`, UNIT_TYPE.pluginStorageValue, entry.ref)
         }
     })
+
+    // A workspace record is a parent like a plugin-storage bucket: one that was not read or does not parse is refused, and its
+    // files are registered under the ids it names, each with a digest only when its bytes read and match its Ref.
+    for (const ref of fixed.workspaces ?? []) {
+        const bytes = checkedBytes(source, ref)
+        const parsed = bytes === undefined ? null : readUnit(bytes, UNIT_TYPE.workspace)
+        const record = parsed !== null && (parsed.status === 'ok' || parsed.status === 'stale') ? parsed.value.body as WorkspaceRecord : undefined
+        registerWorkspaceUnits(ref, record, register)
+    }
 
     const handles = moduleHandles(moduleIndex)
     moduleIndex.entries.forEach((entry, position) => registerModuleUnits(entry, handles[position], register))

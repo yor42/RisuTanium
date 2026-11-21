@@ -1,4 +1,4 @@
-import { REFS_TABLE, UNIT_TYPE, type RefRow, type UnitType } from '../format'
+import { PARENT_UNIT_TYPES, REFS_TABLE, UNIT_TYPE, type RefRow, type UnitType } from '../format'
 
 /**
  * The reference positions a `.rtb` export walks and a restore rewrites.
@@ -31,6 +31,4 @@ export const O3_ROWS: readonly string[] = [
 ]
 
 /** The unit types whose bodies name further units: a walk parses these and descends, and copies every other type as bytes. */
-export const WALK_PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([
-    UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket,
-])
+export const WALK_PARENT_TYPES: ReadonlySet<UnitType> = PARENT_UNIT_TYPES

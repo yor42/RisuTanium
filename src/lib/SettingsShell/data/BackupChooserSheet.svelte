@@ -6,10 +6,11 @@
     import PatternDialog from '../../Nexus/pattern/PatternDialog.svelte'
 
     /**
-     * The chooser of "Make a backup": a format group and, for `.bin`, a scope group. It answers once with the choice,
-     * or `null` for Cancel, Escape and Back. Back answers through its own handler, because the dialog shell registers
-     * none; Escape is the dialog shell's. A partial scope shows what it saves and what it does not, which replaces the
-     * two explanation confirms of the legacy button. A `.rtb` can be sealed with a password typed twice here; the
+     * The chooser of "Make a backup": a format group and a scope group (`.rtb`: everything or settings only; `.bin`:
+     * everything or without character assets). It answers once with the choice, or `null` for Cancel, Escape and Back.
+     * Back answers through its own handler, because the dialog shell registers none; Escape is the dialog shell's. A
+     * partial or settings scope shows what it saves and what it does not, which replaces the two explanation confirms of
+     * the legacy button. A `.rtb`, whatever its scope, can be sealed with a password typed twice here; the
      * password lives only in this component's runes and in the answer, and Enter in its fields does nothing.
      */
     interface Props {
@@ -38,8 +39,11 @@
     const passwordLabelId = `${uid}-password-label`
     const passwordAgainLabelId = `${uid}-password-again-label`
 
-    // Scope applies to `.bin` only; a stale partial pick is dropped from the answer when `.rtb` is chosen.
-    const scopeEnabled = $derived(format === 'bin')
+    // Each format offers its own second scope; a pick the chosen format does not offer falls back to `full`, so the
+    // answer never carries a scope its format cannot make.
+    $effect.pre(() => {
+        if (scope !== 'full' && scope !== (format === 'rtb' ? 'settings' : 'partial')) scope = 'full'
+    })
 
     function answer(choice: BackupChoice | null): void {
         if (answered) return
@@ -51,16 +55,17 @@
     // text stays.
     function start(): void {
         if (format === 'bin') {
-            answer({ format: 'bin', scope })
+            answer({ format: 'bin', scope: scope === 'partial' ? 'partial' : 'full' })
             return
         }
+        const rtbScope = scope === 'settings' ? 'settings' : 'full'
         if (!encrypt) {
-            answer({ format: 'rtb', scope: 'full' })
+            answer({ format: 'rtb', scope: rtbScope })
             return
         }
         problem = backupPasswordProblem(first, second)
         if (problem === null) {
-            answer({ format: 'rtb', scope: 'full', password: first })
+            answer({ format: 'rtb', scope: rtbScope, password: first })
         } else {
             (problem === 'unusable' ? firstField : secondField)?.focus()
         }
@@ -142,20 +147,29 @@
             <p>{language.settingsShellDataFormatBinHint}</p>
         </fieldset>
 
-        <fieldset data-part="data-chooser-scope" disabled={!scopeEnabled}>
+        <fieldset data-part="data-chooser-scope">
             <legend>{language.settingsShellDataScope}</legend>
             <label>
-                <input type="radio" name="{uid}-scope" value="full" aria-label={language.settingsShellDataScopeFull} disabled={!scopeEnabled} bind:group={scope} />
+                <input type="radio" name="{uid}-scope" value="full" aria-label={language.settingsShellDataScopeFull} bind:group={scope} />
                 <span>{language.settingsShellDataScopeFull}</span>
             </label>
-            <label>
-                <input type="radio" name="{uid}-scope" value="partial" aria-label={language.settingsShellDataScopePartial} disabled={!scopeEnabled} bind:group={scope} />
-                <span>{language.settingsShellDataScopePartial}</span>
-            </label>
-            {#if !scopeEnabled}
-                <p data-part="data-chooser-scope-note">{language.settingsShellDataScopeBinOnly}</p>
-            {:else if scope === 'partial'}
-                <p data-part="data-chooser-scope-note">{language.settingsShellDataScopePartialHint}</p>
+            {#if format === 'rtb'}
+                <label>
+                    <input type="radio" name="{uid}-scope" value="settings" aria-label={language.settingsShellDataScopeSettings} bind:group={scope} />
+                    <span>{language.settingsShellDataScopeSettings}</span>
+                </label>
+                {#if scope === 'settings'}
+                    <p data-part="data-chooser-scope-note">{language.settingsShellDataScopeSettingsHint}</p>
+                {/if}
+            {:else}
+                <label>
+                    <input type="radio" name="{uid}-scope" value="partial" aria-label={language.settingsShellDataScopePartial} bind:group={scope} />
+                    <span>{language.settingsShellDataScopePartial}</span>
+                </label>
+                {#if scope === 'partial'}
+                    <p data-part="data-chooser-scope-note">{language.settingsShellDataScopePartialHint}</p>
+                {/if}
+                <p data-part="data-chooser-scope-note">{language.settingsShellDataScopeRtbOnly}</p>
             {/if}
         </fieldset>
 
