@@ -239,6 +239,19 @@ function pressBack(): boolean {
     return handled
 }
 
+// The request counter's value at the last check: a library request is a rise of exactly one since then.
+let requestsSeen = 0
+
+function expectRequested(): void {
+    expect(homeView.libraryRequest).toBe(requestsSeen + 1)
+    requestsSeen += 1
+    expect(homeView.libraryEngaged).toBe(true)
+}
+
+function expectNotRequested(): void {
+    expect(homeView.libraryRequest).toBe(requestsSeen)
+}
+
 beforeEach(() => {
     vi.mocked(changeChar).mockClear()
     recordCaughtErrorSpy.mockClear()
@@ -252,7 +265,8 @@ beforeEach(() => {
     MobileGUI.set(false)
     settingsOpen.set(false)
     selectedCharID.set(-1)
-    showHomeLanding()
+    startHomeView()
+    requestsSeen = homeView.libraryRequest
     installDb([warmCharacter('zero'), warmCharacter('one'), warmCharacter('two')])
     stopBackLayers = $effect.root(() => {
         installStudioBack()
@@ -309,7 +323,7 @@ describe('opening', () => {
         expect(studioScreen.chaId).toBe('one')
         expect(pressBack()).toBe(true)
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
+        expectRequested()
 
         showHomeLanding()
         openStudioFromHome(2, opener())
@@ -317,7 +331,7 @@ describe('opening', () => {
         expect(get(selectedCharID)).toBe(2)
         expect(pressBack()).toBe(true)
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 
     test('F T21b: a second open while the first visit is still open belongs to the second slot', () => {
@@ -329,7 +343,7 @@ describe('opening', () => {
 
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 
     test('F T9: a refused open (Settings is open) leaves no selection, no Studio, and the library shown', () => {
@@ -339,7 +353,7 @@ describe('opening', () => {
 
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 
     test('F T22: called from inside a store subscriber run, the queued selection is not there yet: refused and restored', () => {
@@ -356,7 +370,7 @@ describe('opening', () => {
         expect(result).toBe(false)
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 
     test('F T23: a rejected pick is logged once and never unhandled; the open is refused with the library shown', async () => {
@@ -372,7 +386,7 @@ describe('opening', () => {
         expect(recordCaughtErrorSpy.mock.calls[0][0]).toBe('home.studio')
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 })
 
@@ -438,7 +452,7 @@ describe('availability', () => {
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
         expect(vi.mocked(changeChar)).not.toHaveBeenCalled()
-        expect(homeView.view).toBe('landing')
+        expectNotRequested()
     })
 })
 
@@ -450,7 +464,7 @@ describe('the end of a visit', () => {
 
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 
     test('F T6: a character trashed during the visit closes Studio onto the library, and the intent expires after the tick', async () => {
@@ -462,11 +476,11 @@ describe('the end of a visit', () => {
 
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
+        expectRequested()
 
         await tick()
-        expect(startHomeView()).toBe('landing')
-        expect(homeView.view).toBe('landing')
+        expect(startHomeView()).toBe(false)
+        expect(homeView.libraryEngaged).toBe(false)
     })
 
     test('F T10: a selection moved to another character during the visit is not undone at its end', () => {
@@ -478,12 +492,13 @@ describe('the end of a visit', () => {
 
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(2)
-        expect(homeView.view).toBe('landing')
+        expectNotRequested()
     })
 
     test('F T7: a chat-origin visit on the same slot after a Home visit sees no Home behaviour', () => {
         expect(openStudioFromHome(1, opener())).toBe(true)
         expect(pressBack()).toBe(true)
+        expectRequested()
         showHomeLanding()
 
         selectedCharID.set(1)
@@ -492,7 +507,7 @@ describe('the end of a visit', () => {
 
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(1)
-        expect(homeView.view).toBe('landing')
+        expectNotRequested()
     })
 })
 
@@ -505,7 +520,7 @@ describe('character link-out (K2)', () => {
         expect(get(studioOpen)).toBe(false)
         expect(get(selectedCharID)).toBe(1)
         expect(get(CharConfigSubMenu)).toBe(3)
-        expect(homeView.view).toBe('landing')
+        expectNotRequested()
 
         selectedCharID.set(-1)
         showHomeLanding()
@@ -517,7 +532,7 @@ describe('character link-out (K2)', () => {
         expect(get(selectedCharID)).toBe(-1)
         expect(get(settingsOpen)).toBe(true)
         expect(get(SettingsMenuIndex)).toBe(14)
-        expect(homeView.view).toBe('library')
+        expectRequested()
     })
 })
 
@@ -580,7 +595,7 @@ describe('closeStudio of a visit not opened from Home', () => {
         closeStudio()
 
         expect(get(selectedCharID)).toBe(0)
-        expect(homeView.view).toBe('landing')
+        expectNotRequested()
     })
 })
 
@@ -637,7 +652,7 @@ describe('the return-focus request of a visit end (G2)', () => {
         expect(pressBack()).toBe(true)
         // The tick clears the pending library intent, so the next creation starts at the landing.
         await tick()
-        expect(startHomeView()).toBe('landing')
+        expect(startHomeView()).toBe(false)
         expect(takeHomeReturnFocus()).toBeNull()
 
         expect(openStudioFromHome(1, opener())).toBe(true)

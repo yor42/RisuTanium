@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 
 /**
- * `HomeShell.svelte`: Home's landing (the real `MainMenu` with the Library button in its header)
- * and the full-screen library view. Every creation starts at the landing; the Library button shows the
- * view at once, since the library is a static import. The landing's embedded library is a separate
- * stand-in instance (`data-embedded="true"`) that these rows ignore, and the button needs library
- * content, so the fixture holds one character.
+ * `HomeShell.svelte`: Home's landing (the real `MainMenu` with the Characters button in its header). There is
+ * no separate library view: every entry reveals the library embedded in the landing, which stays rendered.
+ * Every creation starts at the top, disengaged; the creation that ends a Home-opened Studio visit reveals once.
+ * The button needs library content, so the default fixture holds three live characters.
  *
  * MOCKED: the module set of `MainMenu.hubStates.svelte.test.ts` (`src/lib/UI`). `HomeLibrary` is a
  * marker stand-in (its own behaviour is tested in `HomeLibrary.svelte.test.ts`), and `alertError` is
- * the only export of a stand-in alert module.
+ * the only export of a stand-in alert module. jsdom has no `scrollIntoView`, so a spy stands in.
  */
 
 import { flushSync, mount, onDestroy, tick, unmount } from 'svelte'
@@ -63,10 +62,9 @@ vi.mock('src/ts/characters', () => ({
 }))
 vi.mock('src/ts/characterPick', () => ({ changeCharOrAlert: vi.fn() }))
 
-const libraryStub = vi.hoisted(() => (anchor: Comment, props?: { embedded?: boolean }) => {
+const libraryStub = vi.hoisted(() => (anchor: Comment) => {
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'library-stub')
-    marker.setAttribute('data-embedded', String(props?.embedded === true))
     anchor.parentNode!.insertBefore(marker, anchor)
     // The stand-in sits at the block's own anchor, so the block would not remove it; remove it with the component.
     onDestroy(() => marker.remove())
@@ -76,11 +74,32 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: libraryStub }))
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
-import { homeView, requestHomeLibrary, showHomeLanding } from './homeView.svelte'
-import { OpenRealmStore } from 'src/ts/stores.svelte'
+import { homeView, openHomeLibrary, requestHomeLibrary, showHomeLanding, startHomeView } from './homeView.svelte'
+import { DBState, OpenRealmStore } from 'src/ts/stores.svelte'
+
+type Slot = Record<string, unknown>
 
 const mountedInstances: unknown[] = []
 const mountedTargets: HTMLElement[] = []
+const scrollSpy = vi.fn()
+const originalInnerWidth = window.innerWidth
+
+function liveSlot(name: string): Slot {
+    return { type: 'character', chaId: name, name, image: '', chats: [], chatPage: 0 }
+}
+
+function setCharacters(characters: Slot[]): void {
+    DBState.db = {
+        hideRealm: false,
+        realmDirectOpen: false,
+        hideAllImages: false,
+        characters,
+    } as unknown as typeof DBState.db
+}
+
+function setWidth(width: number): void {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+}
 
 function mountShell(): HTMLElement {
     const target = document.createElement('div')
@@ -91,8 +110,9 @@ function mountShell(): HTMLElement {
     return target
 }
 
-const libraryShown = (root: HTMLElement): boolean => root.querySelector('[data-testid="library-stub"][data-embedded="false"]') !== null
-const landingShown = (root: HTMLElement): boolean => root.textContent?.includes('test-version') === true
+const landingOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-landing"]')
+const sectionOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-library"]')
+const stubsOf = (root: HTMLElement) => root.querySelectorAll('[data-testid="library-stub"]')
 
 function libraryButton(root: HTMLElement): HTMLButtonElement {
     const button = Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.character)
@@ -107,7 +127,11 @@ beforeEach(() => {
     resetUpstreamAgreementForTests()
     resetBackHandlersForTests()
     alertErrorSpy.mockClear()
-    showHomeLanding()
+    scrollSpy.mockClear()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollSpy })
+    setWidth(1280)
+    setCharacters([liveSlot('a'), liveSlot('b'), liveSlot('c')])
+    startHomeView()
 })
 
 afterEach(async () => {
@@ -117,34 +141,68 @@ afterEach(async () => {
     }
     mountedTargets.splice(0).forEach((t) => t.remove())
     document.body.replaceChildren()
+    document.documentElement.classList.remove('rm')
     resetBackHandlersForTests()
-    showHomeLanding()
+    startHomeView()
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    setWidth(originalInnerWidth)
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
 })
 
 describe('HomeShell', () => {
-    test('the Library button opens the full view at once (the library is a static import)', () => {
+    test('S4b-R1 the Characters button reveals the library inside the landing: scroll to the section, focus its heading, engage', async () => {
         const root = mountShell()
-        expect(landingShown(root)).toBe(true)
-        expect(libraryShown(root)).toBe(false)
+        expect(landingOf(root)).not.toBeNull()
+        expect(homeView.libraryEngaged).toBe(false)
 
         libraryButton(root).click()
         flushSync()
-        expect(homeView.view).toBe('library')
-        expect(libraryShown(root)).toBe(true)
-        expect(landingShown(root)).toBe(false)
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(landingOf(root)).not.toBeNull()
+        const section = sectionOf(root)!
+        expect(scrollSpy.mock.contexts[0]).toBe(section)
+        expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' })
+        expect(document.activeElement).toBe(section.querySelector('h2'))
+        expect(section.querySelector('h2')!.textContent).toBe(language.homeLibraryHeading)
+        expect(homeView.libraryEngaged).toBe(true)
+        expect(stubsOf(root)).toHaveLength(1)
     })
 
-    test('showHomeLanding brings the landing back from the library', async () => {
+    test('S4b-R1 with reduced motion on the root the scroll is instant', async () => {
+        document.documentElement.classList.add('rm')
         const root = mountShell()
         libraryButton(root).click()
-        await vi.waitFor(() => expect(libraryShown(root)).toBe(true), { timeout: 5000 })
-
-        showHomeLanding()
         flushSync()
-        expect(libraryShown(root)).toBe(false)
-        expect(landingShown(root)).toBe(true)
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' })
+    })
+
+    test('S4b-R1 every character trashed: the library wins over the visible hero, scrolled and focused', async () => {
+        setCharacters([{ ...liveSlot('a'), trashTime: 3 }, { ...liveSlot('b'), trashTime: 3 }])
+        const root = mountShell()
+        expect(root.querySelectorAll('[data-part="home-empty-hero"]')).toHaveLength(1)
+
+        libraryButton(root).click()
+        flushSync()
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        const section = sectionOf(root)!
+        expect(scrollSpy.mock.contexts[0]).toBe(section)
+        expect(document.activeElement).toBe(section.querySelector('[data-jump-target="library"]'))
+        expect(document.activeElement).not.toBe(root.querySelector('[data-jump-target="home-hero"]'))
+    })
+
+    test('S4b-R1 the library is mounted before the scroll, so the section is already its full height when scrolled', async () => {
+        const root = mountShell()
+        expect(stubsOf(root)).toHaveLength(0)
+        let stubsAtScroll = -1
+        scrollSpy.mockImplementationOnce(() => {
+            stubsAtScroll = stubsOf(root).length
+        })
+        openHomeLibrary()
+        flushSync()
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(stubsAtScroll).toBe(1)
     })
 
     test('the mode switcher sits in the landing header and is hidden while the Realm view is open', () => {
@@ -163,44 +221,61 @@ describe('HomeShell', () => {
         expect(root.querySelector('fieldset')).not.toBeNull()
     })
 
-    test('every creation starts at the landing, even when the library was left open', async () => {
+    test('showHomeLanding changes nothing on screen: the landing is the only branch', () => {
+        const root = mountShell()
+        libraryButton(root).click()
+        flushSync()
+        showHomeLanding()
+        flushSync()
+        expect(landingOf(root)).not.toBeNull()
+        expect(sectionOf(root)).not.toBeNull()
+    })
+
+    test('every creation starts at the top and disengaged, even when the library was used', async () => {
         const first = mountShell()
         libraryButton(first).click()
-        await vi.waitFor(() => expect(libraryShown(first)).toBe(true), { timeout: 5000 })
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(homeView.libraryEngaged).toBe(true)
 
         await unmount(mountedInstances.pop() as never)
         mountedTargets.pop()!.remove()
-        expect(homeView.view).toBe('library')
+        scrollSpy.mockClear()
 
         const second = mountShell()
-        expect(homeView.view).toBe('landing')
-        expect(landingShown(second)).toBe(true)
-        expect(libraryShown(second)).toBe(false)
+        expect(homeView.libraryEngaged).toBe(false)
+        expect(landingOf(second)).not.toBeNull()
+        await tick()
+        expect(scrollSpy).not.toHaveBeenCalled()
     })
 
-    test('F T13b: a requested library is shown by the creation in the same tick and consumed by it', async () => {
+    test('F T13b: a requested library is revealed by the creation in the same tick and consumed by it', async () => {
         requestHomeLibrary()
         const first = mountShell()
-        expect(homeView.view).toBe('library')
-        await vi.waitFor(() => expect(libraryShown(first)).toBe(true), { timeout: 5000 })
+        expect(homeView.libraryEngaged).toBe(true)
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(scrollSpy.mock.contexts[0]).toBe(sectionOf(first))
 
         await unmount(mountedInstances.pop() as never)
         mountedTargets.pop()!.remove()
+        scrollSpy.mockClear()
         const second = mountShell()
-        expect(homeView.view).toBe('landing')
-        expect(landingShown(second)).toBe(true)
-        expect(libraryShown(second)).toBe(false)
+        expect(homeView.libraryEngaged).toBe(false)
+        expect(landingOf(second)).not.toBeNull()
         await tick()
+        expect(scrollSpy).not.toHaveBeenCalled()
     })
 
-    test('G T13b: a request not used by a creation expires after the tick, so a later creation starts at the landing', async () => {
+    test('G T13b: a request not used by a creation expires after the tick, so a later creation starts at the top', async () => {
         requestHomeLibrary()
         await tick()
         await tick()
+        scrollSpy.mockClear()
 
         const root = mountShell()
-        expect(homeView.view).toBe('landing')
-        expect(landingShown(root)).toBe(true)
-        expect(libraryShown(root)).toBe(false)
+        expect(homeView.libraryEngaged).toBe(false)
+        expect(landingOf(root)).not.toBeNull()
+        await tick()
+        expect(scrollSpy).not.toHaveBeenCalled()
+        expect(document.activeElement).toBe(document.body)
     })
 })

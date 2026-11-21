@@ -68,7 +68,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
-import { openHomeLibrary, showHomeLanding } from './homeView.svelte'
+import { openHomeLibrary, startHomeView } from './homeView.svelte'
 import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
 
 const mountedInstances: unknown[] = []
@@ -119,7 +119,9 @@ beforeEach(() => {
     localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
     resetUpstreamAgreementForTests()
     resetBackHandlersForTests()
-    showHomeLanding()
+    startHomeView()
+    // jsdom has no `scrollIntoView`; the library reveal calls it.
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: vi.fn() })
 })
 
 afterEach(async () => {
@@ -132,7 +134,8 @@ afterEach(async () => {
     document.body.replaceChildren()
     setViewportWidth(originalInnerWidth)
     resetBackHandlersForTests()
-    showHomeLanding()
+    startHomeView()
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
 })
@@ -475,7 +478,7 @@ describe('HomeShell top bar centring and wordmark', () => {
 })
 
 describe('HomeShell phone chrome', () => {
-    test('T-B12: the flag is true on the phone landing and false at mid, in the library, with Realm open and after unmount', async () => {
+    test('T-B12: the flag is true on the phone landing and false at mid, with Realm open and after unmount; a library request leaves it true', async () => {
         const chrome = await loadHomeChrome()
         const root = mountShellAt(360)
         expect(menuButtonOf(root)).not.toBeNull()
@@ -496,28 +499,21 @@ describe('HomeShell phone chrome', () => {
         expect(homeChrome.phoneDrawer).toBe(true)
 
         openHomeLibrary()
-        await vi.waitFor(() => expect(landingOf(root)).toBeNull())
         flushSync()
-        expect(homeChrome.phoneDrawer).toBe(false)
-        showHomeLanding()
-        flushSync()
+        expect(landingOf(root)).not.toBeNull()
         expect(homeChrome.phoneDrawer).toBe(true)
 
         await unmount(mountedInstances.pop() as never)
         expect(homeChrome.phoneDrawer).toBe(false)
     })
 
-    test('T-B12c: the top bar shows on the landing only: absent once the library branch shows, present again on return', async () => {
+    test('T-B12c: the top bar stays on the landing when the library is requested', async () => {
         const root = mountShellAt(360)
         expect(topBarOf(root)).not.toBeNull()
 
         openHomeLibrary()
-        await vi.waitFor(() => expect(landingOf(root)).toBeNull())
         flushSync()
-        expect(topBarOf(root)).toBeNull()
-
-        showHomeLanding()
-        flushSync()
+        expect(landingOf(root)).not.toBeNull()
         expect(topBarOf(root)).not.toBeNull()
     })
 

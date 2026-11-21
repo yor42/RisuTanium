@@ -74,18 +74,17 @@ vi.mock('../Realm/RealmMain.svelte', () => ({
 vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
 
 vi.mock('./HomeLibrary.svelte', () => ({
-    default: (anchor: Comment, props: { embedded?: boolean } | undefined) => {
+    default: (anchor: Comment) => {
         const root = document.createElement('div')
         root.setAttribute('data-testid', 'library-stub')
-        root.setAttribute('data-embedded', String(props?.embedded === true))
-        anchor.parentNode!.insertBefore(root, anchor)
+                anchor.parentNode!.insertBefore(root, anchor)
     },
 }))
 
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
-import { homeView, openHomeLibrary, showHomeLanding, startHomeView } from './homeView.svelte'
+import { openHomeLibrary, showHomeLanding, startHomeView } from './homeView.svelte'
 import { DBState, OpenRealmStore } from 'src/ts/stores.svelte'
 
 type Slot = Record<string, unknown>
@@ -117,6 +116,7 @@ let idleCallback: (() => void) | null = null
 let requestIdle = vi.fn()
 let cancelIdle = vi.fn()
 let cancelFrame = vi.fn()
+const scrollSpy = vi.fn()
 
 function installSchedulers(): void {
     frames = new Map()
@@ -185,6 +185,8 @@ beforeEach(() => {
     resetBackHandlersForTests()
     showHomeLanding()
     installSchedulers()
+    scrollSpy.mockReset()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollSpy })
     setCharacters([warm('a'), warm('b'), warm('c')])
 })
 
@@ -198,6 +200,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     showHomeLanding()
     startHomeView()
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
     vi.unstubAllGlobals()
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
@@ -216,7 +219,6 @@ describe('the deferred library mount', () => {
 
         fireIdle()
         expect(stubs(root)).toHaveLength(1)
-        expect(stubs(root)[0].getAttribute('data-embedded')).toBe('true')
         expect(placeholderOf(root)).toBeNull()
     })
 
@@ -254,23 +256,28 @@ describe('the deferred library mount', () => {
         expect(stubs(root)).toHaveLength(1)
     })
 
-    test('S4a-D1 (v): an explicit library request mounts the library, which stays for the return to the landing', () => {
+    test('S4a-D1 (v): an explicit library request mounts the library, then scrolls to the section and focuses its heading', async () => {
         const root = mountShell()
         runFrame()
         runFrame()
         expect(stubs(root)).toHaveLength(0)
+        let stubsAtScroll = -1
+        scrollSpy.mockImplementationOnce(() => {
+            stubsAtScroll = stubs(root).length
+        })
 
         openHomeLibrary()
         flushSync()
-        expect(homeView.view).toBe('library')
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(stubs(root)).toHaveLength(1)
-        expect(stubs(root)[0].getAttribute('data-embedded')).toBe('false')
+        // The reveal waits for the mount: the section was already full height when it was scrolled.
+        expect(stubsAtScroll).toBe(1)
+        const section = root.querySelector<HTMLElement>('[data-part="home-library"]')!
+        expect(scrollSpy.mock.contexts[0]).toBe(section)
+        expect(document.activeElement).toBe(section.querySelector('h2'))
 
-        showHomeLanding()
-        flushSync()
         expect(placeholderOf(root)).toBeNull()
-        // The stand-in leaves its node behind when the full view unmounts, so only the embedded one is counted.
-        expect(root.querySelectorAll('[data-testid="library-stub"][data-embedded="true"]')).toHaveLength(1)
+        expect(root.querySelectorAll('[data-testid="library-stub"]')).toHaveLength(1)
         expect(idleCallback).not.toBeNull()
     })
 
@@ -288,7 +295,6 @@ describe('the deferred library mount', () => {
         flushSync()
         expect(placeholderOf(root)).toBeNull()
         expect(stubs(root)).toHaveLength(1)
-        expect(stubs(root)[0].getAttribute('data-embedded')).toBe('true')
     })
 
     test('S4a-D1 (vii): every trigger is torn down after the mount', () => {
