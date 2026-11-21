@@ -26,7 +26,10 @@ afterEach(() => {
 describe('T3W-6 the judge worker handler', () => {
     it('S0-C1: answers a valid chat job with exactly the validator verdict of that sheet, under its label', () => {
         const answer = handleJudgeRequest({ id: 7, jobs: [chatJob('chat')] })
-        expect(answer).toEqual({ id: 7, ok: true, results: { chat: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat') } })
+        expect(answer).toEqual({
+            id: 7, ok: true, results: { chat: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat') },
+            timing: { chat: { ms: expect.any(Number), cold: expect.any(Boolean) } }, readyAt: expect.any(Number),
+        })
         if (answer.ok === false) throw new Error('expected an answer')
         expect(answer.results.chat.result.ok).toBe(true)
         expect(vi.mocked(judgeAreaSheet).mock.calls.at(0)).toEqual(['chat', PLAIN_CHAT_SHEET, undefined, 'chat'])
@@ -61,7 +64,7 @@ describe('T3W-6 the judge worker handler', () => {
     })
 
     it('S0-C1: an empty job list is a valid request with no results', () => {
-        expect(handleJudgeRequest({ id: 2, jobs: [] })).toEqual({ id: 2, ok: true, results: {} })
+        expect(handleJudgeRequest({ id: 2, jobs: [] })).toEqual({ id: 2, ok: true, results: {}, timing: {}, readyAt: expect.any(Number) })
     })
 
     it('S0-C1: a label such as __proto__ is an own result, never a prototype write', () => {
@@ -104,6 +107,31 @@ describe('T3W-6 the judge worker handler', () => {
         expect(answer.id).toBe(-1)
         expect(answer.ok).toBe(false)
         expect(vi.mocked(judgeAreaSheet)).not.toHaveBeenCalled()
+    })
+
+    // T1-W: per-job timing; `cold` is the first job of an area in one worker module.
+    it('T1-W: times every answered job, cold for the first job of each area only, and a second request is warm in both areas', async () => {
+        vi.resetModules()
+        const fresh = await import('./judgeHandler')
+        const first = fresh.handleJudgeRequest({
+            id: 1,
+            jobs: [{ label: 'studio', area: 'studio', text: STUDIO_SHEET }, { label: 'studio#2', area: 'studio', text: STUDIO_SHEET }, chatJob('chat'), { label: 'home', area: 'home', text: HOME_SHEET }],
+        })
+        if (first.ok === false) throw new Error('expected an answer')
+        expect(Object.keys(first.results)).toEqual(['studio', 'studio#2', 'chat'])
+        expect(Object.keys(first.timing)).toEqual(['studio', 'studio#2', 'chat'])
+        expect(first.timing.studio.cold).toBe(true)
+        expect(first.timing['studio#2'].cold).toBe(false)
+        expect(first.timing.chat.cold).toBe(true)
+        for (const timing of Object.values(first.timing)) {
+            expect(Number.isFinite(timing.ms) && timing.ms >= 0).toBe(true)
+        }
+        expect(Number.isFinite(first.readyAt)).toBe(true)
+        const second = fresh.handleJudgeRequest({ id: 2, jobs: [chatJob('chat'), { label: 'studio', area: 'studio', text: STUDIO_SHEET }] })
+        if (second.ok === false) throw new Error('expected an answer')
+        expect(second.timing.chat.cold).toBe(false)
+        expect(second.timing.studio.cold).toBe(false)
+        expect(second.readyAt).toBe(first.readyAt)
     })
 
     it('answers a validator throw with ok:false and its text, logging once in development', () => {

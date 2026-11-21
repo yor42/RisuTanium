@@ -6,7 +6,7 @@
 // The two name lists below are generated data: appThemeNames.test.ts recomputes them from src/styles.css, the stylesheets it
 // imports and the installed tailwindcss/theme.css, and prints the expected constant on a mismatch. They are constants rather
 // than `?raw` imports so the validator needs no Tailwind-processed stylesheet at run time or in the worker bundle.
-import { effective, isPackSettable } from './engine'
+import { effective, packSettableTest } from './engine'
 import type { ScopedArea } from './areaParts'
 import { STUDIO_REGISTRY } from './registries/studio'
 import { tokenFile, type TokenFile } from './tokens'
@@ -146,7 +146,8 @@ export function allowedTokenNames(area: ScopedArea): ReadonlySet<string> {
         const registry = area === 'studio' ? STUDIO_REGISTRY : undefined
         const bounded = effective(registry)
         const candidates = [...declaredTokenNames(area), ...Object.keys(bounded.minimums), ...Object.keys(bounded.maximums)]
-        names = new Set(candidates.filter((name) => isPackSettable(name, registry) && !reservedNameReason(name)))
+        const isSettable = packSettableTest(registry)
+        names = new Set(candidates.filter((name) => isSettable(name) && !reservedNameReason(name)))
         allowedCache.set(area, names)
     }
     return names
