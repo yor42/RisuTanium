@@ -49,7 +49,7 @@ import { assembleDatabase, characterMatchesAcknowledged, previousFrom, stubFromE
 import { createKeyMint, type BuildContext } from '../../store2/commit'
 import type { ShardEntry } from '../../store2/format'
 import { createSaveEncoder, type SaveEncoder } from '../../store2/saveEncoder'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import type { character, Database } from '../../database.svelte'
 import { asDatabase, buildSmall, encodeWith, fakeLists, seededEnv, type Obj } from './codecFixtures'
 

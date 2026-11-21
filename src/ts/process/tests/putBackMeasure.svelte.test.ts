@@ -64,7 +64,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { restoreColdCharacter, findChaIdHolders } from 'src/ts/process/coldCharacterRestore'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { resetRetainedForTest, retainedCount, retainedRecordOf, retainOnLoad } from 'src/ts/process/coldRetained'
 import { resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
 import { beginBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'

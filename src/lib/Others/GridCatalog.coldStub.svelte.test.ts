@@ -159,7 +159,7 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 
 import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
-import { buildColdStub } from '../../ts/process/coldCharacter'
+import { buildColdStub } from '../../ts/process/tests/coldStubFixture'
 import GridCatalog from './GridCatalog.svelte'
 import CharacterSimpleList from './CharacterSimpleList.svelte'
 import AlertComp from './AlertComp.svelte'

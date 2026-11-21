@@ -210,7 +210,7 @@ import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { copyCharactersWithoutAlt } from '../pluginCopy.svelte'
 import { withoutAltIn } from '../../chatAltBridge'
 import { DBState, selectedCharID } from '../../../stores.svelte'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 
 //#region fixtures
 

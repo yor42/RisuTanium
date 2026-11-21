@@ -4,7 +4,8 @@ import {
     type EncodedTree,
 } from '../../store2/codec'
 import { coldStorageHeader } from '../../../process/coldstorageData'
-import { buildColdStub, COLD_STUB_VERSION } from '../../../process/coldCharacter'
+import { COLD_STUB_VERSION } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import type { character } from '../../database.svelte'
 import type { ShardEntry } from '../../store2/format'
 import {

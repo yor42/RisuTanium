@@ -89,7 +89,7 @@ vi.mock(import('../index.svelte'), () => ({
 }) as unknown as typeof import('../index.svelte'))
 
 import { addGroupChar } from '../group'
-import { buildColdStub } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { language } from '../../../lang'
 import { characterFormatUpdate } from '../../characters'
