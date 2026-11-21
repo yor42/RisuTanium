@@ -8,6 +8,7 @@ import type { RunSubject } from '../process/chatOrigin'
 vi.mock(import('../stores.svelte'), () => ({
     DBState: { db: { characters: [], globalChatVariables: {}, templateDefaultVariables: '' } },
     selectedCharID: writable(0),
+    selIdState: { selId: 0 },
 }) as unknown as typeof import('../stores.svelte'))
 
 vi.mock(import('../storage/database.svelte'), () => ({

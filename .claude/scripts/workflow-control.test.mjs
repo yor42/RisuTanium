@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { registerDispatch, validateDispatch, selectRoute, finishDispatch, loadState, mutateState, hook, checkDevice, lockOptions, canonicalRoot, fsOps, breakStaleLock } from './workflow-control.mjs';
+import { registerDispatch, validateDispatch, selectRoute, finishDispatch, loadState, mutateState, hook, checkDevice, lockOptions, canonicalRoot, fsOps, breakStaleLock, adoptRevision } from './workflow-control.mjs';
+// The committed state snapshot is not the live state and may lag a policy revision; fixtures take the revision from the policy.
+const policyRevision = () => JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).revision;
 
 let currentFixture;
 function fixture(t) {
@@ -14,18 +16,71 @@ function fixture(t) {
   fs.copyFileSync(new URL('../workflow-policy.json', import.meta.url), path.join(root, '.claude/workflow-policy.json'));
   const state = JSON.parse(fs.readFileSync(new URL('../../Agents/Workflow-State.json', import.meta.url)));
   // The queue is pinned so no assertion depends on the live queue text of the repository state.
-  Object.assign(state, { generation: 0, activation: 'active', activeRevision: state.policyRevision, queue: ['SR2 fixture queue entry'], jobs: {}, dispatches: {}, routeHealth: {}, parkedChecks: [], deviceAttempts: {} });
+  Object.assign(state, { generation: 0, activation: 'active', policyRevision: policyRevision(), activeRevision: policyRevision(), queue: ['SR2 fixture queue entry'], jobs: {}, dispatches: {}, routeHealth: {}, parkedChecks: [], deviceAttempts: {} });
   fs.writeFileSync(path.join(root, 'Agents/Workflow-State.json'), JSON.stringify(state));
   fs.writeFileSync(path.join(root, 'host.manifest.json'), '{}'); currentFixture = root; return root;
 }
 const job = (extra = {}) => ({ id: 'd1', logicalJobId: 'j1', mode: 'implement', question: 'Fix bounded fixture', acceptance: ['Fixture holds'], owner: 'worker-context-1', inputIdentity: 'fixture-snapshot', workdir: path.join(currentFixture, 'isolated-fixture'), promptFile: path.join(currentFixture, 'prompt.md'), outFile: path.join(currentFixture, 'result.json'), manifestFile: path.join(currentFixture, 'host.manifest.json'), readScope: ['src/a.ts'], allowedWrites: ['src/a.ts'], ...extra });
-test('subscription first; observed quota is cached through fallback until reset', async t => {
-  const root = fixture(t); assert.equal((await selectRoute({ root, jobId: 's', mode: 'scout' })).provider, 'agy');
-  const d = await registerDispatch(job(), { root });
-  finishDispatch({ root, id: d.id, status: 'failed', reason: 'quota', evidence: 'host log' });
-  const next = await selectRoute({ root, jobId: 'j1', mode: 'implement' }); assert.equal(next.provider, 'claude'); assert.match(next.blocked.join(), /Paid activation disabled/);
-  const native = await registerDispatch(job({ id: 'd2' }), { root }); assert.equal(native.role, 'sonnet-coder');
-  assert.equal((await validateDispatch(native, { root })).id, 'd2');
+test('native first: ordinary dispatches take the native role and external routes are opt-in only', async t => {
+  const root = fixture(t); const scout = await selectRoute({ root, jobId: 's', mode: 'scout' });
+  assert.deepEqual([scout.provider, scout.role], ['claude', 'investigator']); assert.match(scout.blocked.join(), /agy: opt-in only/);
+  const native = await registerDispatch(job(), { root }); assert.deepEqual([native.provider, native.role], ['claude', 'sonnet-coder']);
+  assert.equal((await validateDispatch(native, { root })).id, 'd1');
+  await assert.rejects(registerDispatch(job({ id: 'd2', logicalJobId: 'j2', provider: 'codex' }), { root }), /eligible/);
+});
+test('an opt-in route needs a passed route-health check younger than seven days; the probe records it', async t => {
+  const root = fixture(t); const day = 24 * 60 * 60 * 1000;
+  // A marker without a reset time is what the shared state holds for codex today; the probe must still run.
+  mutateState(root, null, s => { s.routeHealth.codex = { reason: 'quota', resetAt: null, observedAt: new Date().toISOString() }; });
+  await assert.rejects(registerDispatch(job({ optIn: 'codex' }), { root }), /route-health check younger than 7 days/);
+  await assert.rejects(selectRoute({ root, jobId: 'x', mode: 'implement', optIn: 'openrouter' }), /Codex or Antigravity only/);
+  await assert.rejects(selectRoute({ root, jobId: 'x', mode: 'implement', optIn: 'agy', healthCheck: true }), /read-only/);
+  await assert.rejects(selectRoute({ root, jobId: 'x', mode: 'review', healthCheck: true }), /names its provider/);
+  await assert.rejects(selectRoute({ root, jobId: 'x', mode: 'review', optIn: 'codex', changedContracts: ['dirty-dependencies'] }), /No codex route/);
+  const probe = await registerDispatch(job({ id: 'probe', logicalJobId: 'probe', mode: 'review', allowedWrites: [], optIn: 'codex', healthCheck: true }), { root });
+  assert.equal(probe.provider, 'codex');
+  await validateDispatch(probe, { root, claim: true });
+  assert.throws(() => finishDispatch({ root, id: 'probe', status: 'completed' }), /needs its evidence/);
+  finishDispatch({ root, id: 'probe', status: 'completed', evidence: 'probe.out.json.host.json' });
+  const health = loadState(root).routeHealth.codex; assert.equal(health.reason, 'passed'); assert.equal(health.dispatch, 'probe');
+  const checked = Date.parse(health.checkedAt);
+  assert.equal((await selectRoute({ root, jobId: 'j1', mode: 'implement', optIn: 'codex', now: checked + 7 * day - 1 })).provider, 'codex');
+  await assert.rejects(selectRoute({ root, jobId: 'j1', mode: 'implement', optIn: 'codex', now: checked + 7 * day }), /younger than 7 days/);
+  assert.equal((await selectRoute({ root, jobId: 'j1', mode: 'implement', now: checked + day })).provider, 'claude');
+  const opted = await registerDispatch(job({ optIn: 'codex' }), { root }); assert.equal(opted.provider, 'codex');
+  finishDispatch({ root, id: 'd1', status: 'failed', reason: 'failed', evidence: 'fixture' });
+  await assert.rejects(registerDispatch(job({ id: 'd2', correction: true }), { root }), /opt-in route/);
+});
+test('a failed probe marks the route unavailable; a marker without a reset time expires after seven days', async t => {
+  const root = fixture(t); const day = 24 * 60 * 60 * 1000;
+  await registerDispatch(job({ id: 'probe', logicalJobId: 'probe', mode: 'scout', allowedWrites: [], optIn: 'agy', healthCheck: true }), { root });
+  finishDispatch({ root, id: 'probe', status: 'failed', reason: 'failed', evidence: 'probe log' });
+  const health = loadState(root).routeHealth.agy; assert.deepEqual([health.reason, health.resetAt], ['unavailable', null]);
+  await assert.rejects(selectRoute({ root, jobId: 'x', mode: 'scout', optIn: 'agy' }), /route-health check/);
+  const observed = Date.now();
+  mutateState(root, null, s => { s.routeHealth.claude = { reason: 'quota', resetAt: null, observedAt: new Date(observed).toISOString() }; });
+  assert.equal((await selectRoute({ root, jobId: 'x', mode: 'implement', now: observed + 7 * day - 1 })).status, 'parked');
+  assert.equal((await selectRoute({ root, jobId: 'x', mode: 'implement', now: observed + 7 * day })).provider, 'claude');
+  // A future provider-observed reset holds even a probe back.
+  mutateState(root, null, s => { s.routeHealth.codex = { reason: 'quota', resetAt: new Date(observed + day).toISOString(), observedAt: new Date(observed).toISOString() }; });
+  assert.equal((await selectRoute({ root, jobId: 'p2', mode: 'review', optIn: 'codex', healthCheck: true, now: observed })).status, 'parked');
+});
+test('adopt-revision moves the state from the named predecessor only, once, and old receipts stay claimable', async t => {
+  const root = fixture(t); const file = path.join(root, 'Agents/Workflow-State.json');
+  const policy = JSON.parse(fs.readFileSync(path.join(root, '.claude/workflow-policy.json'), 'utf8'));
+  assert.ok(policy.previousRevision && policy.previousRevision !== policy.revision);
+  const old = JSON.parse(fs.readFileSync(file, 'utf8')); old.policyRevision = old.activeRevision = policy.previousRevision; fs.writeFileSync(file, JSON.stringify(old));
+  assert.throws(() => loadState(root), /revision mismatch/);
+  assert.throws(() => adoptRevision({ root, from: 'not-the-predecessor' }), /predecessor/);
+  const result = adoptRevision({ root, from: policy.previousRevision });
+  assert.deepEqual([result.adopted, result.revision, result.activeRevision, result.generation], [true, policy.revision, policy.revision, 1]);
+  assert.equal(loadState(root).generation, 1);
+  assert.equal(adoptRevision({ root, from: policy.previousRevision }).adopted, false); assert.equal(loadState(root).generation, 1);
+  // A frozen state keeps its old activeRevision, so adoption never unfreezes it.
+  const frozen = JSON.parse(fs.readFileSync(file, 'utf8')); frozen.policyRevision = policy.previousRevision; frozen.activeRevision = 'frozen-at-cutover'; fs.writeFileSync(file, JSON.stringify(frozen));
+  assert.equal(adoptRevision({ root, from: policy.previousRevision }).activeRevision, 'frozen-at-cutover');
+  const stranger = JSON.parse(fs.readFileSync(file, 'utf8')); stranger.policyRevision = 'some-other'; fs.writeFileSync(file, JSON.stringify(stranger));
+  assert.throws(() => adoptRevision({ root, from: policy.previousRevision }), /not at the named predecessor/);
 });
 test('no parallel duplicate or changed dispatch, execution claim consumed once', async t => {
   const root = fixture(t); const d = await registerDispatch(job(), { root });
@@ -33,18 +88,17 @@ test('no parallel duplicate or changed dispatch, execution claim consumed once',
   await assert.rejects(validateDispatch({ ...d, model: 'gpt-6.1-sol' }, { root }), /changed/);
   await validateDispatch(d, { root, claim: true }); await assert.rejects(validateDispatch(d, { root, claim: true }), /consumed/);
 });
-test('one correction persists across failure, context and provider fallback', async t => {
+test('one correction persists across failure and context; an exhausted native route parks the job', async t => {
   const root = fixture(t); await registerDispatch(job(), { root }); finishDispatch({ root, id: 'd1', status: 'failed', reason: 'failed' });
   await assert.rejects(registerDispatch(job({ id: 'd2' }), { root }), /correction/);
   await registerDispatch(job({ id: 'd2', correction: true }), { root }); finishDispatch({ root, id: 'd2', status: 'failed', reason: 'failed' });
-  const native = await registerDispatch(job({ id: 'd3' }), { root }); assert.equal(native.provider, 'claude');
-  finishDispatch({ root, id: 'd3', status: 'failed', reason: 'failed' });
+  await assert.rejects(registerDispatch(job({ id: 'd3' }), { root }), /No eligible route/);
   assert.equal((await selectRoute({ root, jobId: 'j1', mode: 'implement' })).status, 'parked');
 });
 test('ordinary native duplicate denied; actual critical-contract review uses Opus', async t => {
   const root = fixture(t);
   await assert.rejects(hook({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'sonnet-coder', prompt: 'Do it' } }, { root }), /Register/);
-  await assert.rejects(registerDispatch(job({ provider: 'claude', model: 'sonnet' }), { root }), /eligible/);
+  await assert.rejects(registerDispatch(job({ provider: 'claude', model: 'opus' }), { root }), /eligible/);
   const d = await registerDispatch(job({ mode: 'review', changedContracts: ['dirty-dependencies'], allowedWrites: [], owner: 'fresh-reviewer' }), { root });
   assert.equal(d.model, 'opus');
   await hook({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'opus-reviewer', prompt: '[workflow-dispatch:d1]' } }, { root });
@@ -159,7 +213,7 @@ test('native specialist fallback retains role, ordinary Opus bypass is denied, p
   const review = await registerDispatch(job({ id: 'review', logicalJobId: 'review', mode: 'review', role: 'opus-reviewer', allowedWrites: [], changedContracts: ['dirty-dependencies'], gate: 'Gate2', effort: 'xhigh' }), { root }); assert.equal(review.effort, 'xhigh');
 });
 test('low-tier scout effort and native subscription exhaustion park correctly', async t => {
-  const root = fixture(t); const route = await selectRoute({ root, jobId: 'scout-low', mode: 'scout', scoutEffort: 'low' }); assert.equal(route.model, 'gemini-3.8-flash-low');
+  const root = fixture(t); const route = await selectRoute({ root, jobId: 'scout-low', mode: 'scout', scoutEffort: 'low', optIn: 'agy', healthCheck: true }); assert.equal(route.model, 'gemini-3.8-flash-low');
   mutateState(root, null, s => { for (const provider of ['agy', 'codex', 'claude']) s.routeHealth[provider] = { reason: 'quota', resetAt: null }; });
   assert.equal((await selectRoute({ root, jobId: 'all-empty', mode: 'implement' })).status, 'parked');
 });
@@ -169,7 +223,7 @@ test('device class routes straight to the native device primary without a Codex 
   assert.equal(route.provider, 'claude'); assert.equal(route.role, 'sonnet-coder'); assert.equal(route.model, 'sonnet');
   await assert.rejects(selectRoute({ root, jobId: 'dev-2', mode: 'implement', workClass: 'device', role: 'designer' }), /Device primary/);
   await assert.rejects(selectRoute({ root, jobId: 'dev-3', mode: 'implement', workClass: 'device', changedContracts: ['dirty-dependencies'] }), /Device primary/);
-  assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'codex');
+  assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'claude');
 });
 test('test-only dispatches route straight to the native test primary; non-test writes and critical contracts are refused', async t => {
   const root = fixture(t);
@@ -180,5 +234,5 @@ test('test-only dispatches route straight to the native test primary; non-test w
   await assert.rejects(registerDispatch(job({ id: 't-bad', logicalJobId: 'tst-4', testOnly: true, allowedWrites: ['src/ts/characters.ts'] }), { root }), /every write is a test file/);
   const ok = await registerDispatch(job({ id: 't-ok', logicalJobId: 'tst-5', testOnly: true, allowedWrites: ['src/ts/tests/example.test.ts'] }), { root });
   assert.equal(ok.provider, 'claude'); assert.equal(ok.role, 'test-warrior');
-  assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'codex');
+  assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'claude');
 });

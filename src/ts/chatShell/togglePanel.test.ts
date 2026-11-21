@@ -162,9 +162,9 @@ describe('what "on" means (DD-083)', () => {
         expect(isOn(kind, value)).toBe(expected)
     })
 
-    test('reset writes off, the first option, or empty', () => {
-        expect(resetValue('check')).toBe('0')
-        expect(resetValue('select')).toBe('0')
+    test('reset removes a check or select value (null) and writes empty for a text', () => {
+        expect(resetValue('check')).toBeNull()
+        expect(resetValue('select')).toBeNull()
         expect(resetValue('text')).toBe('')
         expect(resetValue('textarea')).toBe('')
     })

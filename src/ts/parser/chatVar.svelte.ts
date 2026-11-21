@@ -3,6 +3,8 @@ import { DBState, selectedCharID } from '../stores.svelte'
 import { parseKeyValue } from '../util'
 import { getCurrentCharacter, getCurrentChat } from '../storage/database.svelte'
 import type { RunSubject } from '../process/chatOrigin'
+import { effectiveGlobalValue } from './toggleDefaults'
+import { engineToggleDefault } from './toggleDefaultsLive.svelte'
 
 // Every read/write below takes an optional `subject`. With none, the
 // selection (`selectedCharID`/`getCurrentChat()`) is read or written. With
@@ -107,12 +109,15 @@ export function setGLChatVar(key:string, value:string, subject?: RunSubject) {
 // A chat-local value that is empty or 'null' means "inherit": the shared value is read instead, whatever the chat's
 // useLocallySetGlobalVariables flag says. The chat-only toggle scope (parser/chatToggleScope.ts) relies on this, so
 // a cleared chat-only text shows the shared value again; do not treat an empty local value as a deliberate override.
+// An unset toggle (absent, '' or 'null' in both places) reads as its author default when the definitions give one; the value
+// rule is the one 'chatToggleValue' (parser/chatToggleScope.ts) uses. Defaults apply only to unset 'toggle_' keys: other keys
+// and set values never reach the lookup, so they cost nothing extra.
 export function getGlobalChatVar(key:string, subject?: RunSubject): string {
-    const vt = getGLChatVar(key, subject)
-    if(vt !== 'null' && vt){
-        return vt
-    }
-    return (subject?.sharedGlobals ?? DBState.db.globalChatVariables)[key] ?? 'null'
+    return effectiveGlobalValue(
+        getGLChatVar(key, subject),
+        (subject?.sharedGlobals ?? DBState.db.globalChatVariables)[key],
+        () => key.startsWith('toggle_') ? engineToggleDefault(key, subject) : undefined,
+    )
 }
 
 export function setGlobalChatVar(key:string, value:string, subject?: RunSubject) {

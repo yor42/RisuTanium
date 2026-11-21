@@ -162,7 +162,7 @@ function Assert-GuardTarget([string]$Role, [string]$Path) {
         $base = Get-GuardBase $Path
         if ($Role -in @('doc-writer', 'record-clerk') -and [IO.Path]::GetExtension($Path) -ine '.md') { throw 'Documentation writers require Markdown repository targets.' }
         if ($Role -eq 'record-clerk') {
-            foreach ($relative in @('.claude', '.github', 'docs/workflow')) {
+            foreach ($relative in @('.claude', '.github', 'docs/workflow', 'Agents/mc')) {
                 if (Test-GuardWithin $Path ([IO.Path]::GetFullPath((Join-Path $base $relative)))) { throw 'Record clerk cannot edit governance.' }
             }
             foreach ($relative in @('AGENTS.md', 'CLAUDE.md', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md')) {
@@ -190,7 +190,7 @@ $GuardWorktreeRoles = @('sonnet-coder', 'haiku-editor', 'translator', 'doc-write
 # Never covered by the automatic grant: the guard and hook configuration, workflow policy and state,
 # governance and agent instructions, and the maintainer-protected legal and branding paths. An exact grant
 # can still name them when the task is authorized.
-$GuardWorktreeExcludedTrees = @('.claude', '.github', '.gemini', '.antigravity', 'docs/workflow', 'docs/branding')
+$GuardWorktreeExcludedTrees = @('.claude', '.github', '.gemini', '.antigravity', 'docs/workflow', 'docs/branding', 'Agents/mc')
 $GuardWorktreeExcludedFiles = @('AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'Agents/Workflow-State.json', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md', 'docs/Terms-of-Services.md', 'docs/Privacy-Policy.md', 'src/lib/Others/Legal.svelte')
 function Test-GuardWorktreeGrant([string]$Role, [object]$Cwd, [string]$Path) {
     # MC-2750: an implementing writer role may write ordinary files inside the linked worktree its session's

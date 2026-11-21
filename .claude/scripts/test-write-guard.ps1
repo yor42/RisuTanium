@@ -166,6 +166,7 @@ Test-FixtureRegistrationDenial 'record-clerk repository non-Markdown registratio
 Test-FixtureRegistrationDenial 'case-variant repository non-Markdown registration' (Join-Path $fixture 'REPOSITORY/DOCS/NOTES.TXT') 'doc-writer'
 Test-FixtureRegistrationDenial 'ignored scratch directory in the repository registration' (Join-Path $repo '.claude/scratch/notes.txt') 'doc-writer'
 Test-FixtureRegistrationDenial 'directory named like Markdown registration' (Join-Path $repo 'docs/x.md/notes.txt') 'doc-writer'
+Test-FixtureRegistrationDenial 'record-clerk per-PR MC record file registration' (Join-Path $repo 'Agents/mc/481.md') 'record-clerk'
 Test-FixtureRegistrationDenial 'double extension ending outside Markdown registration' (Join-Path $repo 'Agents/notes.md.txt') 'record-clerk'
 Register-Fixture (Join-Path $repo 'docs/NOTES.MD') -Role 'doc-writer' -AgentId 'upper-md-doc'
 $passed++
@@ -332,14 +333,14 @@ foreach ($secret in @('.env', '.git', '.git/config', 'certs/server.pem', 'src-ta
 # Guard, governance and maintainer-protected paths are never covered by the automatic grant (exact grants still work).
 $excludedTargets = @('.claude/scripts/guard-write.ps1', '.claude/scripts/write-guard-common.ps1', '.claude/settings.json', '.claude/workflow-policy.json', '.claude/launch.json',
     '.claude/agents/sonnet-coder.md', '.github/workflows/ci.yml', '.gemini/GEMINI.md', 'docs/workflow/gates.md', 'docs/branding/logo.svg', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md',
-    'Agents/Workflow-State.json', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md', 'docs/Terms-of-Services.md', 'docs/Privacy-Policy.md', 'src/lib/Others/Legal.svelte')
+    'Agents/Workflow-State.json', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md', 'Agents/mc/384.md', 'docs/Terms-of-Services.md', 'docs/Privacy-Policy.md', 'src/lib/Others/Legal.svelte')
 foreach ($excluded in $excludedTargets) { Test-FixtureHook "own worktree excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) -Cwd $wt) }
 foreach ($excluded in @('AGENTS.md', 'docs/workflow/gates.md', 'docs/Terms-of-Services.md', '.claude/agents/x.md')) { Test-FixtureHook "own worktree doc-writer excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) 'doc-writer' $wt) }
 Test-FixtureHook 'own worktree near-miss name is ordinary' (New-WorktreePayload (Join-Path $wt 'src/AGENTS.md.ts') -Cwd $wt) 0
 $wtGuard = Join-Path $wt '.claude/scripts/guard-write.ps1'; Register-Fixture $wtGuard -AgentId 'wt-guard-coder'
 Test-FixtureHook 'own worktree excluded path with an exact grant' (New-WorktreePayload $wtGuard 'sonnet-coder' $wt 'wt-guard-coder') 0
 Test-FixtureHook 'own worktree record-clerk record' (New-WorktreePayload (Join-Path $wt 'Agents/Roadmap.md') 'record-clerk' $wt) 0
-foreach ($governance in @('.claude/agents/x.md', 'AGENTS.md', 'CLAUDE.md', 'docs/workflow/x.md', '.github/x.md', 'Agents/Maintainer-Context.md', 'Agents/notes.txt')) {
+foreach ($governance in @('.claude/agents/x.md', 'Agents/mc/384.md', 'AGENTS.md', 'CLAUDE.md', 'docs/workflow/x.md', '.github/x.md', 'Agents/Maintainer-Context.md', 'Agents/notes.txt')) {
     Test-FixtureHook "own worktree record-clerk refused $governance" (New-WorktreePayload (Join-Path $wt $governance) 'record-clerk' $wt)
 }
 foreach ($locale in @('ja', 'ko', 'cn', 'zh-Hant', 'vi', 'de', 'es')) { Test-FixtureHook "own worktree translator $locale" (New-WorktreePayload (Join-Path $wt "src/lang/$locale.ts") 'translator' $wt) 0 }

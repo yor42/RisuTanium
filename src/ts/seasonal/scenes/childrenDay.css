@@ -1,0 +1,124 @@
+/*
+  Seasonal scene: childrenDay. Every class is rt-kid-*. Default rules = start pose; .rt-kid-final = final pose.
+  Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root, so every light rule keys on that ancestor
+  attribute. .rt-kid-ko = pinwheel variant (ko and fallback), .rt-kid-ja = kabuto and koinobori variant.
+*/
+
+/* ---------- Stage ---------- */
+.rt-kid-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+.rt-kid-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, rgb(116 192 252 / 0.22) 0%, rgb(77 171 247 / 0.10) 62%, rgb(77 171 247 / 0) 100%);
+  --rt-kid-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 56px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%),
+    radial-gradient(circle at var(--rt-kid-mx, -100px) var(--rt-kid-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: var(--rt-kid-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-kid-mask);
+  mask-composite: intersect;
+}
+.rt-kid-windsvg { position: absolute; left: 0; top: 0; width: 100%; height: 64px; overflow: visible; }
+.rt-kid-wrapped .rt-kid-windsvg { height: 100%; }
+.rt-kid-wind {
+  fill: none;
+  stroke: rgb(208 235 255 / 0.6);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-dasharray: 12 100;
+  stroke-dashoffset: 12;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+}
+.rt-kid-ribbon, .rt-kid-carp { position: absolute; opacity: 0; will-change: transform, opacity; }
+.rt-kid-ribbon { width: 14px; height: 8px; }
+.rt-kid-flutter { display: block; width: 100%; height: 100%; }
+.rt-kid-ribbonsvg, .rt-kid-carpsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-kid-ribbonsvg path { fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
+
+.rt-kid-tail { transform-box: view-box; transform-origin: 13.6px 11px; }
+.rt-kid-carp path, .rt-kid-carp ellipse { stroke-linejoin: round; }
+.rt-kid-carp-scales { fill: none; stroke: rgb(255 255 255 / 0.55); stroke-width: 1.3; stroke-linecap: round; }
+.rt-kid-carp-mouth { fill: none; stroke: #f1f3f5; stroke-width: 1.4; }
+.rt-kid-carp-eye { fill: #fff; }
+.rt-kid-carp-pupil { fill: #111827; }
+/* The black carp (真鯉): a slate body with a light edge so it reads on the dark canvas. */
+.rt-kid-carp-black .rt-kid-carp-body, .rt-kid-carp-black .rt-kid-tail path { fill: #3d4a66; stroke: #c5d0e6; stroke-width: 0.9; }
+.rt-kid-carp-red .rt-kid-carp-body, .rt-kid-carp-red .rt-kid-tail path { fill: #f03e3e; stroke: #ffc9c9; stroke-width: 0.9; }
+.rt-kid-carp-blue .rt-kid-carp-body, .rt-kid-carp-blue .rt-kid-tail path { fill: #339af0; stroke: #d0ebff; stroke-width: 0.9; }
+
+.rt-kid-sky.rt-kid-final { display: none; }
+
+/* Light tone: a paler sky, darker wind lines and carp edges so the art holds on white. */
+[data-rt-sw-tone="light"] .rt-kid-wash {
+  background: linear-gradient(180deg, rgb(116 192 252 / 0.24) 0%, rgb(165 216 255 / 0.12) 62%, rgb(165 216 255 / 0) 100%);
+}
+[data-rt-sw-tone="light"] .rt-kid-wind { stroke: rgb(28 126 214 / 0.55); }
+[data-rt-sw-tone="light"] .rt-kid-carp-black .rt-kid-carp-body,
+[data-rt-sw-tone="light"] .rt-kid-carp-black .rt-kid-tail path { fill: #1f2937; stroke: #111827; }
+[data-rt-sw-tone="light"] .rt-kid-carp-red .rt-kid-carp-body,
+[data-rt-sw-tone="light"] .rt-kid-carp-red .rt-kid-tail path { stroke: #a51111; }
+[data-rt-sw-tone="light"] .rt-kid-carp-blue .rt-kid-carp-body,
+[data-rt-sw-tone="light"] .rt-kid-carp-blue .rt-kid-tail path { stroke: #1864ab; }
+[data-rt-sw-tone="light"] .rt-kid-carp-mouth { stroke: #fff; }
+[data-rt-sw-tone="light"] .rt-kid-ribbonsvg path { stroke-width: 2.8; }
+
+/* ---------- Mark slot (shared) ---------- */
+.rt-kid-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* Transforms pivot on the user-space origin (the triangle's centroid) unless a rule below says otherwise. */
+.rt-kid-mark g, .rt-kid-mark path { transform-box: view-box; transform-origin: 0 0; }
+.rt-kid-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-kid-ink { fill: #0f172a; }
+
+/* ---------- ko: pinwheel ---------- */
+.rt-kid-stick { fill: #c99a5b; stroke: #7a5426; stroke-width: 1.5; opacity: 0; }
+.rt-kid-unfold { opacity: 0; }
+.rt-kid-vl, .rt-kid-vd { stroke: rgb(255 255 255 / 0.7); stroke-width: 1.6; stroke-linejoin: round; }
+.rt-kid-vane-red .rt-kid-vl { fill: #ff8787; } .rt-kid-vane-red .rt-kid-vd { fill: #e03131; }
+.rt-kid-vane-yellow .rt-kid-vl { fill: #ffe066; } .rt-kid-vane-yellow .rt-kid-vd { fill: #f59f00; }
+.rt-kid-vane-blue .rt-kid-vl { fill: #74c0fc; } .rt-kid-vane-blue .rt-kid-vd { fill: #1c7ed6; }
+.rt-kid-vane-green .rt-kid-vl { fill: #8ce99a; } .rt-kid-vane-green .rt-kid-vd { fill: #2f9e44; }
+/* The hub is the everyday mark at half size; a dark outline keeps its white frame legible over the vanes. */
+.rt-kid-ko .rt-kid-every .rt-kid-ink { stroke: #00011c; stroke-width: 7; stroke-linejoin: round; paint-order: stroke; }
+[data-rt-sw-tone="light"] .rt-kid-vl,
+[data-rt-sw-tone="light"] .rt-kid-vd { stroke: rgb(15 23 42 / 0.55); }
+[data-rt-sw-tone="light"] .rt-kid-ko .rt-kid-every .rt-kid-ink { stroke: #fff; }
+
+.rt-kid-ko.rt-kid-final .rt-kid-hub { transform: scale(0.54); }
+.rt-kid-ko.rt-kid-final .rt-kid-stick,
+.rt-kid-ko.rt-kid-final .rt-kid-unfold { opacity: 1; transform: none; }
+.rt-kid-ko.rt-kid-final .rt-kid-spin { transform: none; }
+
+/* ---------- ja: origami kabuto ---------- */
+.rt-kid-crown, .rt-kid-brim, .rt-kid-horn, .rt-kid-glint { opacity: 0; }
+.rt-kid-crown { opacity: 1; transform: scaleY(0); }
+.rt-kid-brim { transform-origin: 0 21px; }
+.rt-kid-horn-l { transform-origin: -35px 22px; }
+.rt-kid-horn-r { transform-origin: 35px 22px; }
+.rt-kid-crown-l { fill: #5c7cfa; }
+.rt-kid-crown-r { fill: #3b5bdb; }
+.rt-kid-crown-l, .rt-kid-crown-r { stroke: #bac8ff; stroke-width: 2; stroke-linejoin: round; }
+.rt-kid-crown-hole { fill: #1c2a6b; }
+.rt-kid-crease { fill: none; stroke: #dbe4ff; stroke-width: 1.6; stroke-linecap: round; opacity: 0.85; }
+.rt-kid-crown-mid { fill: #fff; }
+.rt-kid-brim path:first-child { fill: #2f44ad; stroke: #bac8ff; stroke-width: 2; stroke-linejoin: round; }
+.rt-kid-brim-edge { fill: none; stroke: #ffd43b; stroke-width: 2.2; stroke-linecap: round; }
+.rt-kid-gold { fill: #ffd43b; stroke: #e67700; stroke-width: 2; stroke-linejoin: round; }
+.rt-kid-glint { fill: none; stroke: #fff9db; stroke-width: 2.4; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-kid-crown-l,
+[data-rt-sw-tone="light"] .rt-kid-crown-r,
+[data-rt-sw-tone="light"] .rt-kid-brim path:first-child { stroke: #1c2a6b; }
+[data-rt-sw-tone="light"] .rt-kid-gold { stroke: #b35900; }
+
+.rt-kid-ja.rt-kid-final .rt-kid-flipout { opacity: 0; }
+.rt-kid-ja.rt-kid-final .rt-kid-crown,
+.rt-kid-ja.rt-kid-final .rt-kid-brim,
+.rt-kid-ja.rt-kid-final .rt-kid-horn { opacity: 1; transform: none; }
+.rt-kid-ja.rt-kid-final .rt-kid-glint { opacity: 0.55; }

@@ -1,7 +1,8 @@
 {
   "version": 1,
-  "revision": "2026-11-03.1",
-  "authority": "MC-1036; cap MC-2753",
+  "revision": "2026-11-21.1",
+  "previousRevision": "2026-11-03.1",
+  "authority": "MC-1036; cap MC-2753; native-first routes and opt-in MC-2748",
   "parentModel": "sonnet",
   "maxCorrectionAttempts": 1,
   "maxImplementationTracks": 10,
@@ -15,22 +16,24 @@
     "testPrimary": { "provider": "claude", "role": "test-warrior", "model": "sonnet", "effort": "medium" }
   },
   "timeouts": { "scout": 8, "implement": 20, "review": 12, "maximum": 30 },
+  "routeHealthMaxAgeDays": 7,
+  "optInProviders": ["codex", "agy"],
   "routes": {
     "scout": [
+      { "provider": "claude", "model": "sonnet", "role": "investigator", "effort": "medium" },
       { "provider": "agy", "model": "gemini-3.8-flash-medium", "effort": "medium" },
       { "provider": "codex", "model": "gpt-6-luna", "effort": "medium" },
-      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" },
-      { "provider": "claude", "model": "sonnet", "role": "investigator", "effort": "medium" }
+      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" }
     ],
     "implement": [
+      { "provider": "claude", "model": "sonnet", "role": "sonnet-coder", "effort": "medium" },
       { "provider": "codex", "model": "gpt-6-sol", "effort": "medium" },
-      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" },
-      { "provider": "claude", "model": "sonnet", "role": "sonnet-coder", "effort": "medium" }
+      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" }
     ],
     "review": [
+      { "provider": "claude", "model": "sonnet", "role": "adversarial-reviewer", "effort": "medium" },
       { "provider": "codex", "model": "gpt-6-sol", "effort": "medium" },
-      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" },
-      { "provider": "claude", "model": "sonnet", "role": "adversarial-reviewer", "effort": "medium" }
+      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" }
     ]
   },
   "criticalContracts": ["save-format", "durability-commit-order", "dirty-dependencies", "persisted-read-write-gc", "asset-lifecycle", "migration", "security-boundary"],

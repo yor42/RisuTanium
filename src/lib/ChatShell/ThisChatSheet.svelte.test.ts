@@ -307,6 +307,35 @@ describe('jailbreak and memory switches', () => {
         expect(part('memory-view')).toBeNull()
     })
 
+    test('reproducer: ChroMemory shows the memory row; unscoped it writes the owner, scoped the chat', async () => {
+        install({ ltmEngine: true }, { supaMemory: false })
+        await show()
+        ;(part('memory') as HTMLInputElement).click()
+        flushSync()
+        expect(owner.supaMemory).toBe(true)
+        expect(chat.scopedMemory).toBeUndefined()
+        await unmount(mounted!)
+        mounted = undefined
+        document.body.innerHTML = ''
+        opener = document.createElement('button')
+        document.body.appendChild(opener)
+        install({ ltmEngine: true }, { supaMemory: false }, { useLocallySetGlobalVariables: true, scopedMemory: false })
+        view.open = true
+        await show()
+        ;(part('memory') as HTMLInputElement).click()
+        flushSync()
+        expect(chat.scopedMemory).toBe(true)
+        expect(owner.supaMemory).toBe(false)
+    })
+
+    test('reproducer: ChroMemory over V3 flags and the menu setting offers no memory view', async () => {
+        install({ ltmEngine: true, hypaV3: true, showMenuHypaMemoryModal: true })
+        await show()
+        expect(part('memory')).not.toBeNull()
+        expect(part('memory-view')).toBeNull()
+        expect(get(hypaV3ModalOpen)).toBe(false)
+    })
+
     test('with the older memory the view row creates the chat\'s data and opens the old view', async () => {
         install({ hypav2: true, supaModelType: 'distilbart', showMenuHypaMemoryModal: true })
         await show()
