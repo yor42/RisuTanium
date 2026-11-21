@@ -148,6 +148,11 @@ async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined
                 client = new DiceClient();
                 break;
             }
+            case 'internal:workspace':{
+                const { WorkspaceClient } = await import('./workspaceclient');
+                client = new WorkspaceClient();
+                break;
+            }
             default:
                 throw new Error(`Unknown internal MCP: ${mcp}`);
         }

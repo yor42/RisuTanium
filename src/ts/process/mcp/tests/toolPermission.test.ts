@@ -33,7 +33,10 @@ async function realClients(): Promise<Record<string, ToolSource>> {
     const { GoogleSearchClient } = await import('../googlesearchclient')
     const { GraphMemClient } = await import('../graphmem')
     const { DiceClient } = await import('../dice')
+    const { WORKSPACE_TOOLS } = await import('../workspaceclient')
     return {
+        // The workspace client lists no tools itself; the run advertises this constant.
+        'internal:workspace': { getToolList: async () => [...WORKSPACE_TOOLS] },
         'internal:risuai': new RisuAccessClient(),
         'internal:fs': new FileSystemClient(),
         'internal:aiaccess': new AIAccessClient(),
@@ -88,6 +91,15 @@ describe('the tool classification table', () => {
         }
         expect(classifyTool('internal:graphmem', 'writeMemory')).toBe('mutating')
         expect(classifyTool('internal:graphmem', 'readMemory')).toBe('read')
+    })
+
+    test('the workspace reads are read and every workspace writer is mutating', () => {
+        for(const name of ['list_files', 'read_file', 'search_files']) {
+            expect(classifyTool('internal:workspace', name)).toBe('read')
+        }
+        for(const name of ['write_file', 'edit_file', 'delete_file', 'move_file']) {
+            expect(classifyTool('internal:workspace', name)).toBe('mutating')
+        }
     })
 
     test('runLLM, search and dice are free; reads are read', () => {
