@@ -52,7 +52,7 @@ vi.mock('src/ts/model/modellist', () => ({ getModelInfo: () => ({ flags: [] }), 
 vi.mock('src/ts/process/stableDiff', () => ({ generateAIImage: vi.fn() }))
 vi.mock('src/ts/characters', () => ({ createBlankChar: vi.fn() }))
 vi.mock('src/ts/process/mcp/mcp', () => ({
-    initializeMCPs: vi.fn(), getMCPMeta: vi.fn(async () => ({})), getMCPTools: vi.fn(async () => []), callMCPTool: vi.fn(),
+    initializeMCPs: vi.fn(), getMCPMeta: vi.fn(async () => ({})), getMCPTools: vi.fn(async () => []), callMCPToolByUser: vi.fn(),
 }))
 vi.mock('src/ts/process/memory/hypamemory', () => ({ HypaProcesser: class {} }))
 vi.mock('src/ts/process/memory/embeddingModels', () => ({ DEFAULT_HYPA_MODEL: 'MiniLM' }))

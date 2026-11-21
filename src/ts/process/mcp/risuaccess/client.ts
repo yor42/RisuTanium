@@ -91,10 +91,12 @@ backgroundEmbedding is an HTML string mainly for custom styling. It can, and mos
     // Fork-specific internal API (CHORE-01): per-call context,
     // not a module-level one, so overlapping calls touching different
     // characters can't clear each other's marks. Marking must happen AFTER
-    // the handler settles (success or throw), not before the mutation --
-    // every mutating handler's write follows an awaited promptAccess(), so a
-    // save could otherwise encode the pre-mutation state and the trim would
-    // then drop the id.
+    // the handler settles (success or throw), not before the mutation: a
+    // handler can await a cold-stub load before it writes, so a save could
+    // otherwise encode the pre-mutation state and the trim would then drop
+    // the id. The user's approval is asked by the gate in callMCPTool before
+    // this method runs, so no handler prompts and the busy span covers only
+    // the write.
     const ctx: MCPToolCallContext = { touched: new Set(), subject: callCtx?.subject }
     const busy = beginBusy('mcpWrite')
     try {

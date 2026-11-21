@@ -7,6 +7,7 @@
 <script lang="ts">
     import { onDestroy, untrack } from "svelte"
     import isEqual from "lodash/isEqual"
+    import "../../styles/scene-break.css"
     import { DBState, selectedCharID } from 'src/ts/stores.svelte'
     import { sleep } from "src/ts/util"
     import { alertError } from "../../ts/alert"

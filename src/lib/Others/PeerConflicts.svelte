@@ -1,20 +1,21 @@
 <script lang="ts">
     import { language } from 'src/lang'
     import type { PeerConflictRowView } from 'src/ts/alert'
-    import Button from '../UI/GUI/Button.svelte'
 
     /**
      * The per-record conflict dialog: one row per record both tabs changed, each with its choices, every row preselected,
      * a "same choice for all" control and Apply. It is not closable: only Apply answers, with the JSON of
-     * `{ [row id]: choice }`. Every text is a text binding; a name never becomes markup.
+     * `{ [row id]: choice }`. Every text is a text binding; a name never becomes markup. The title carries `titleId`, so the
+     * host dialog is named by the title alone and not by the whole body.
      */
     interface Props {
         rows: readonly PeerConflictRowView[]
         title: string
+        titleId?: string
         onanswer: (message: string) => void
     }
 
-    let { rows, title, onanswer }: Props = $props()
+    let { rows, title, titleId, onanswer }: Props = $props()
 
     const text = language.store2Boot
     const labelOf = { mine: text.peerKeepMine, theirs: text.peerKeepTheirs, both: text.peerKeepBoth } as const
@@ -44,30 +45,30 @@
     }
 </script>
 
-<div class="flex flex-col gap-3 max-w-2xl" data-peer-conflicts>
-    <div class="text-textcolor">{title}</div>
-    <div class="flex flex-wrap items-center gap-2">
-        <span class="text-textcolor2 text-sm">{text.peerSameForAll}</span>
+<div data-part="pattern-alert-stack" data-peer-conflicts>
+    <p id={titleId} data-part="pattern-alert-title">{title}</p>
+    <div data-part="pattern-alert-bulk">
+        <span>{text.peerSameForAll}</span>
         {#each ALL_CHOICES as choice}
-            <Button size="sm" styled="outlined" onclick={() => setAll(choice)}>{labelOf[choice]}</Button>
+            <button type="button" class="pattern-button" onclick={() => setAll(choice)}>{labelOf[choice]}</button>
         {/each}
     </div>
     {#each rows as row (row.id)}
-        <fieldset class="flex flex-col gap-1 border border-darkborderc rounded-md p-2" data-conflict-row={row.id}>
-            <legend class="text-textcolor px-1">{row.label}</legend>
-            <div class="flex flex-wrap gap-4">
-                {#each row.choices as choice}
-                    <label class="flex items-center gap-1 text-textcolor cursor-pointer">
-                        <input type="radio" name={`peer-conflict-${row.id}`} value={choice} aria-label={labelOf[choice]} checked={choiceOf(row) === choice}
-                            onchange={() => { chosen = { ...chosen, [row.id]: choice } }} />
-                        <span>{labelOf[choice]}</span>
-                    </label>
-                {/each}
-            </div>
+        <fieldset data-part="pattern-alert-conflict" data-conflict-row={row.id}>
+            <legend>{row.label}</legend>
+            {#each row.choices as choice}
+                <label data-part="pattern-alert-choice">
+                    <input type="radio" name={`peer-conflict-${row.id}`} value={choice} aria-label={labelOf[choice]} checked={choiceOf(row) === choice}
+                        onchange={() => { chosen = { ...chosen, [row.id]: choice } }} />
+                    <span>{labelOf[choice]}</span>
+                </label>
+            {/each}
             {#if row.note !== null}
-                <div class="text-textcolor2 text-sm" data-conflict-note>{row.note}</div>
+                <p data-part="pattern-alert-note" data-conflict-note>{row.note}</p>
             {/if}
         </fieldset>
     {/each}
-    <Button className="mt-2" onclick={apply}>{text.peerConflictApply}</Button>
+</div>
+<div data-part="pattern-warn-actions" data-count="1">
+    <button type="button" class="pattern-button" data-variant="confirm" onclick={apply}>{text.peerConflictApply}</button>
 </div>

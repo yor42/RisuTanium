@@ -27,6 +27,7 @@ function search(left: string[], branch: ChatBranch, chatId:number){
 function getMaxChildren(branch: ChatBranch){
     let max = 0
     if(branch.children.size === 0){
+        branch.maxChildren = 1
         return 1
     }
 

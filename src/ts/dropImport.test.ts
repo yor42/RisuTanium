@@ -75,7 +75,10 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
     importPreset: vi.fn(async (f: { name: string }) => {
-        await h.importPreset?.()
+        const result = await h.importPreset?.()
+        if (typeof result === 'object' && result !== null) {
+            return result as { cancelled: true }
+        }
         h.presets.push(f.name)
     }),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
@@ -182,6 +185,16 @@ describe('a dropped file that imports (compatibility guard)', () => {
         const card = await drop('p.risup')
         expect(h.presets).toEqual(['p.risup'])
         expect(card?.result?.summary).toEqual([language.successImport])
+        expect(h.log).toEqual([])
+    })
+
+    // reproducer vs M17 (the cancelled result ignored): the card would end as an imported file
+    test('T-DECL: a preset bundle the person cancelled imports nothing and ends the card without a result or failure', async () => {
+        h.importPreset = async () => ({ cancelled: true })
+        const card = await drop('bundle.risup')
+        expect(h.presets).toEqual([])
+        expect(card?.result).toBeUndefined()
+        expect(card?.failure).toBeUndefined()
         expect(h.log).toEqual([])
     })
 

@@ -2,6 +2,7 @@ import DOMPurify from 'dompurify';
 import type { Config, ElementHook, UponSanitizeAttributeHook, UponSanitizeElementHook } from 'dompurify';
 import markdownit from 'markdown-it'
 import { replaceThoughtsBlocks } from './thoughts';
+import { sceneBreakPlugin } from './sceneBreak';
 import { appVer, getCurrentCharacter, getDatabase, type Database, type character, type customscript, type groupChat, type triggerscript } from '../storage/database.svelte';
 import { DBState, selIdState } from '../stores.svelte';
 import { aiWatermarkingLawApplies, getFileSrc } from '../globalApi.svelte';
@@ -60,6 +61,10 @@ const mdLiteral = markdownit({ ...markdownItOptions, html: false })
 md.disable(['code'])
 mdHighlight.disable(['code'])
 mdLiteral.disable(['code', 'entity'])
+
+md.use(sceneBreakPlugin)
+mdHighlight.use(sceneBreakPlugin)
+mdLiteral.use(sceneBreakPlugin)
 
 type Purifier = typeof DOMPurify
 
