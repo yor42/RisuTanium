@@ -40,6 +40,7 @@ type Lexical = {
     rrf(r: number[][], k?: number): number[]
     rrfScores(r: number[][], k?: number): Map<number, number>
     topIdfTerms(i: Bm25, t: string, k: number): string[]
+    rareTerms(i: Bm25, t: string, share: number): string[]
     admits(i: Bm25, u: string | string[], q: string[], tau: number | null): boolean
 }
 type Unit = { rec: number; off: number; text: string }
@@ -69,7 +70,7 @@ type Stats = {
     cellStats(c: CellChat[], B?: number): Record<string, { recall: { point: number; boot: { width: number } }; d: { point: number } }>
     stopRuleMet(c: CellChat[], p?: StopP, B?: number): boolean
     growCell(f: (k: number) => CellChat, p?: StopP, B?: number): { chats: CellChat[]; status: string }
-    verdictOf(cells: Record<string, CellChat[]>): { verdict: string }
+    verdictOf(cells: Record<string, CellChat[]>): { verdict: string; rows: { cell: string; style: string; ok: boolean; borderline: boolean; reportOnly?: boolean }[] }
     outcomeOf(g: Record<string, { chats: CellChat[]; status: string }>): { verdict: string }
     kthSmallest(a: Float64Array, k: number): number
     tQuantile(p: number, df: number): number
@@ -106,6 +107,8 @@ type Gate = {
     settingsDigest(s: Settings): string
     checkGateArgs(a: { drawSeed: number; builder: string; settings: Settings; kind?: string }): void
     assertGateBuilder(b: string): void
+    assertTunePredictsPass(s: Settings): void
+    recordSettingsCommand(l: Ledger, a: { builder: string; settings: Settings }): Ledger
     gateVerdictCommand(l: Ledger, b: string): string
     recordOverrideCommand(l: Ledger, a: { builder: string; settings: Settings; drawSeed: number; cap: number; ref: string }): Ledger
     resolveLedgerPath(argv: string[]): string
@@ -135,8 +138,9 @@ type ProfileMod = {
 }
 type CounterMod = { loadCounter(k?: string): Promise<Counter>; stubCounter(f?: (s: string) => number): Counter; chatCost(c: Counter, r: Msg): number }
 type ReportMod = { assertOutsideRepo(p: string, what: string, roots?: string[]): string; repoRoots(): string[]; writeReport(d: string, r: unknown): string; renderReport(r: unknown): string }
-type Select = { selectSettings(ev: (s: Settings, r: string) => unknown, o: Record<string, unknown>): Record<string, unknown>; deltaOf(r: unknown): number; TUNE_CHATS: number }
+type Select = { selectSettings(ev: (s: Settings, r: string) => unknown, o: Record<string, unknown>): Record<string, unknown>; deltaOf(r: unknown): number; TUNE_CHATS: number; BUDGETS: number[]; RARE_SHARES: number[] }
 type Tune = {
+    PROCEDURE: Record<string, unknown>
     runTune(o: Record<string, unknown>): Promise<{ settings: Record<string, Record<string, unknown>>; diagnostics: Record<string, { controls: { tests: CTest[] }; d1: D1 }> }>
     summarizeControls(c: { tests: Pick<CTest, 'cell' | 'style' | 'control' | 'failConfirmed' | 'notConfirmed'>[] }): D1
     controlSummaryLines(b: string, s: D1): string[]
@@ -350,14 +354,14 @@ describe('S0 generator, corpora, profiles', () => {
         expect(r.replacements).toEqual([{ index: 0, reason: 'terms' }])
         expect(r.chat.i).toBe(10000)
         // more than 5% replacements in a cell is an INVALID EXPERIMENT (class GENERATOR)
-        const settings: Settings = { builder: 'fulltext', C: 4096, L: null, budget: 600, queries: 1, tau: null, F: 2, tuneDrawSeed: 510001 }
+        const settings: Settings = { builder: 'rare', C: 4096, L: null, rareShare: 0.01, budget: 600, queries: 1, tau: null, F: 2, tuneDrawSeed: 510001 }
         settings.sha256 = GATE.settingsDigest(settings)
-        const ledger = ATT.recordSettings(ATT.emptyLedger(), 'fulltext', settings.sha256 as string)
+        const ledger = ATT.recordSettings(ATT.emptyLedger(), 'rare', settings.sha256 as string)
         const every3 = (cfg: { seed: number }, o?: Record<string, unknown>) => {
             if (cfg.seed % 3 === 0) throw new Error('terms')
             return BUILD.buildChat(cfg as never, o)
         }
-        const res = await GATE.runGateAttempt({ builder: 'fulltext', kind: 'FIRST', drawSeed: TEST_SEED, seedFamily: 'GATE', settings, ledger, counter: stub(), profiles: {}, cells: [{ corpus: 'M4', lang: 'en' }], stop: { minChats: 4, minTurns: 1, cap: 4, step: 4, width: 9 }, build: every3, controlsB: 2000 })
+        const res = await GATE.runGateAttempt({ builder: 'rare', kind: 'FIRST', drawSeed: TEST_SEED, seedFamily: 'GATE', settings, ledger, counter: stub(), profiles: {}, cells: [{ corpus: 'M4', lang: 'en' }], stop: { minChats: 4, minTurns: 1, cap: 4, step: 4, width: 9 }, build: every3, controlsB: 2000 })
         expect(res.status).toBe('INVALID')
         expect(res.invalidClass).toBe('GENERATOR')
     }, SLOW)
@@ -639,6 +643,111 @@ describe('S0 engine simulation', () => {
         expect(CNT.chatCost(c, { id: 0, role: 'char', text: 'abcd', name: 'xxxxxxxx' })).toBe(1 + 3 + 2 + 1)
         expect(CNT.chatCost(c, { id: 0, role: 'user', text: 'abcd', name: 'xxxxxxxx' })).toBe(1 + 3)
     })
+
+    // ---- the rare-word builder (MC-2661): whole user turn, terms with 1 <= df <= max(1, floor(rareShare x N)) ----
+    type RareSim = { d0(first: number, L: number | null): { index: Bm25; units: Unit[]; tokens: string[][] } }
+    const w = (i: number) => `w${i} ` + 'filler '.repeat(8)
+    const chatN = (n: number, over: Record<number, string> = {}): Chat => ({
+        ...tinyChat(1, 0).chat,
+        messages: Array.from({ length: n }, (_, i) => ({ id: i, role: i % 2 === 0 ? 'user' : 'char', text: over[i] ?? w(i), ...(i % 2 ? { name: 'Bob' } : {}) })),
+        questions: [],
+    })
+    const longMsg = (i: number) => `head${i} ` + 'filler '.repeat(100) + `tail${i}`
+    // Runs engineRanker over D0 = every message of the chat, with a spy scorer that records the tokens of each query.
+    const rareRun = (chat: Chat, text: string, st: Settings = {}) => {
+        const sim = new SIM.ChatSim(chat, stub())
+        const d0 = (sim as unknown as RareSim).d0(chat.messages.length, null)
+        const calls: string[][] = []
+        const scorer: Scorer = (index, tokens) => {
+            calls.push([...tokens])
+            return index.scoreTokens(tokens)
+        }
+        const order = SIM.engineRanker(sim, { text }, d0, scorer, { builder: 'rare', rareShare: 0.01, queries: 1, tau: null, ...st })
+        return { calls, order, d0 }
+    }
+    // chat of 40 records: `filler` has df 40, `w7` df 1, and the limit at share 0.01 is max(1, floor(0.4)) = 1
+    const tiny40 = (over: Record<number, string> = {}) => chatN(40, over)
+    const tieChat = () => tiny40({ 1: w(1) + ' alpha', 2: w(2) + ' alpha', 3: w(3) + ' alpha', 4: w(4) + ' beta', 5: w(5) + ' beta', 6: w(6) + ' beta', 7: w(7) + ' gamma', 8: w(8) + ' gamma', 9: w(9) + ' gamma', 10: w(10) + ' gamma', 11: w(11) + ' gamma' })
+
+    it('RW1 (MC-2661): the rare query drops a token seen in every record and keeps a token seen once', () => {
+        expect(rareRun(tiny40(), 'filler w7').calls[0]).toEqual(['w7'])
+    })
+
+    it('RW2 (MC-2661): the df limit is floor(share x N), not ceil', () => {
+        const over: Record<number, string> = {}
+        for (const i of [10, 11]) over[i] = w(i) + ' pair'
+        for (const i of [20, 21, 22]) over[i] = w(i) + ' trio'
+        const r = rareRun(chatN(250, over), 'trio pair w5') // 0.01 x 250 = 2.5: limit 2
+        expect(r.calls[0]).toContain('pair')
+        expect(r.calls[0]).toContain('w5')
+        expect(r.calls[0]).not.toContain('trio')
+    })
+
+    it('RW3 (MC-2661): the query is the whole turn: a rare token more than 500 code points before its end is kept', () => {
+        const text = 'w7 ' + 'filler '.repeat(100)
+        expect(Array.from(text).length).toBeGreaterThan(500)
+        expect(rareRun(tiny40(), text).calls[0]).toContain('w7')
+    })
+
+    it('RW4 (MC-2661): with no qualifying token the whole smallest-df level is kept, and a token absent from the index never counts', () => {
+        const r = rareRun(tieChat(), 'zzz gamma beta alpha filler') // df: zzz 0, gamma 5, beta 3, alpha 3, filler 40; limit 1
+        expect(r.calls[0]).toEqual(['beta', 'alpha'])
+    })
+
+    it('RW5 (MC-2661): no indexed token gives an empty query and the newest-first order', () => {
+        const r = rareRun(tiny40(), 'zzz qqq')
+        expect(r.calls[0]).toEqual([])
+        expect(r.order).toEqual(Array.from({ length: 40 }, (_, i) => 39 - i))
+    })
+
+    it('RW6 (MC-2661): with three queries the first is the whole turn and the others are the 500-code-point tails of the two newest earlier messages, all through the rare rule', () => {
+        const chat = tiny40({ 38: longMsg(38), 39: longMsg(39) })
+        const r = rareRun(chat, 'filler w7', { queries: 3 })
+        expect(r.calls.length).toBe(3)
+        expect(r.calls[0]).toEqual(['w7'])
+        expect(r.calls[1]).toContain('tail39')
+        expect(r.calls[1]).not.toContain('head39')
+        expect(r.calls[1]).not.toContain('filler')
+        expect(r.calls[2]).toContain('tail38')
+        expect(r.calls[2]).not.toContain('head38')
+    })
+
+    it('RW10 (MC-2661): the rare builder ignores tailChars for every query', () => {
+        const chat = tiny40({ 38: longMsg(38), 39: longMsg(39) })
+        const plain = rareRun(chat, 'filler w7', { queries: 3 })
+        const wide = rareRun(chat, 'filler w7', { queries: 3, tailChars: 1e9 })
+        expect(wide.calls).toEqual(plain.calls)
+        expect(wide.calls[1]).not.toContain('head39')
+        expect(wide.calls[2]).not.toContain('head38')
+    })
+
+    it('RW7 (MC-2661): a rare settings object without rareShare is refused', () => {
+        const chat = tiny40()
+        const sim = new SIM.ChatSim(chat, stub())
+        const d0 = (sim as unknown as RareSim).d0(40, null)
+        const scorer: Scorer = (index, tokens) => index.scoreTokens(tokens)
+        expect(() => SIM.engineRanker(sim, { text: 'w7' }, d0, scorer, { builder: 'rare', queries: 1, tau: null })).toThrow(/rareShare/)
+    })
+
+    it('RW8: fulltext and idf keep their token lists and fulltext keeps honouring tailChars', () => {
+        const text = 'w7 ' + 'filler '.repeat(100)
+        const full = rareRun(tiny40(), text, { builder: 'fulltext' })
+        expect(full.calls[0]).toEqual(LEX.tokenize(TURNS.tailOf(text)))
+        const idf = rareRun(tiny40(), text, { builder: 'idf', k: 8 })
+        expect(idf.calls[0]).toEqual(LEX.topIdfTerms(idf.d0.index, TURNS.tailOf(text), 8))
+        const whole = rareRun(tiny40(), text, { builder: 'fulltext', tailChars: 1e9 })
+        expect(whole.calls[0]).toEqual(LEX.tokenize(text))
+        expect(whole.calls[0]).not.toEqual(full.calls[0])
+    })
+
+    it('RW9 (MC-2661): rareTerms keeps query order, dedupes, keeps a whole tie level and returns [] on an empty index', () => {
+        const r = rareRun(tieChat(), 'w7')
+        const idx = r.d0.index
+        expect(LEX.rareTerms(idx, 'w7 w7 filler w3', 0.01)).toEqual(['w7', 'w3'])
+        expect(LEX.rareTerms(idx, 'gamma beta alpha', 0.01)).toEqual(['beta', 'alpha'])
+        expect(LEX.rareTerms(idx, 'gamma beta alpha', 0.125)).toEqual(['gamma', 'beta', 'alpha']) // limit 5: all three qualify
+        expect(LEX.rareTerms(new LEX.Bm25Index(), 'abc', 0.01)).toEqual([])
+    })
 })
 
 describe('S0 statistics', () => {
@@ -707,40 +816,65 @@ describe('S0 statistics', () => {
         const ok = STATS.growCell(() => ({ ask: rec(15, 12, 0), allude: rec(15, 12, 0) }))
         expect(STATS.outcomeOf({ a: ok, b: capped }).verdict).toBe('INCONCLUSIVE')
         expect(() => STATS.outcomeOf({ a: ok, b: { chats: [], status: 'RUNNING' } })).toThrow()
-        // per-style rule: a pooled pass with one style below 0.5 is a FAIL
-        const mixed = cellOf(12, () => ({ ask: rec(15, 14, 0), allude: rec(15, 3, 0) }))
+        // ask-only rule (MC-2661): the ask style below 0.5 is a FAIL however well allude does; the converse passes (ST-ASK1a)
+        const mixed = cellOf(12, () => ({ ask: rec(15, 3, 0), allude: rec(15, 14, 0) }))
         expect(STATS.verdictOf({ cell: mixed }).verdict).toBe('FAIL')
         expect(STATS.verdictOf({ cell: cellOf(12, () => ({ ask: rec(15, 14, 0), allude: rec(15, 12, 0) })) }).verdict).toMatch(/^PASS/)
     })
 
-    it('ST3+: the gate refuses the tune seed and foreign settings; the tune refuses other seeds; FALLBACK follows a recorded GATE FAIL only', () => {
-        const base: Settings = { builder: 'fulltext', tuneDrawSeed: 510001 }
+    // ---- MC-2661: ask turns gate, allude is computed and reported only ----
+    it('ST-ASK1a (MC-2661): a cell whose ask recall passes and whose allude recall fails is a PASS; the allude row is marked report-only', () => {
+        const r = STATS.verdictOf({ cell: cellOf(12, () => ({ ask: rec(15, 14, 0), allude: rec(15, 3, 0) })) })
+        expect(r.verdict).toMatch(/^PASS/)
+        expect(r.rows.find((x) => x.style === 'allude')?.reportOnly).toBe(true)
+        expect(r.rows.find((x) => x.style === 'ask')?.reportOnly).not.toBe(true)
+    })
+
+    it('ST-ASK1b: a cell whose ask recall fails is a FAIL even when allude passes', () => {
+        expect(STATS.verdictOf({ cell: cellOf(12, () => ({ ask: rec(15, 3, 0), allude: rec(15, 14, 0) })) }).verdict).toBe('FAIL')
+    })
+
+    it('ST-ASK2 (MC-2661): BORDERLINE reads the ask interval only', () => {
+        // allude alternates 15 and 0 of 15: point 0.5 passes, its lower bound does not; ask is constant
+        const cell = cellOf(12, (i) => ({ ask: rec(15, 13, 0), allude: rec(15, i % 2 ? 15 : 0, 0) }))
+        expect(STATS.verdictOf({ cell }).verdict).toBe('PASS')
+    })
+
+    it('ST-ASK3 (MC-2661): the stop rule reads the ask minimum turns and widths only', () => {
+        const noisyAllude = (i: number) => ({ ask: rec(15, 7, 0), allude: rec(15, i % 2 ? 15 : 0, 0) })
+        expect(STATS.stopRuleMet(cellOf(12, noisyAllude))).toBe(true)
+        const fewAllude = () => ({ ask: rec(15, 7, 0), allude: rec(5, 3, 0) })
+        expect(STATS.stopRuleMet(cellOf(12, fewAllude))).toBe(true)
+        expect(STATS.growCell(fewAllude).chats.length).toBe(12)
+    })
+
+    it('RP1 (MC-2661): the report labels allude cell rows and allude validity rows as report-only, never the ask rows', () => {
+        const v = STATS.verdictOf({ cell: cellOf(12, () => ({ ask: rec(15, 14, 0), allude: rec(15, 3, 0) })) })
+        const test = (style: string) => ({ cell: 'cell', style, control: 'ORACLE-RANK', point: 1, boot: 1, t: 1, threshold: 0.9, failConfirmed: false, notConfirmed: false })
+        const md = REPORT.renderReport({ builder: 'rare', seedFamily: 'GATE', attemptNo: 1, drawSeed: 610001, status: 'VALID', verdict: v.verdict, rows: v.rows, provenance: { commit: 'c', diffHash: 'd', node: 'n', counter: 'stub', settingsSha: 's' }, validity: { m: 12, alpha: 0.004, B: 1, rank: 1, tests: [test('ask'), test('allude')] } })
+        const lines = md.split('\n')
+        const line = (re: RegExp) => lines.find((l) => re.test(l)) as string
+        for (const re of [/^- cell allude:/, /^- cell allude ORACLE-RANK:/]) expect(line(re)).toContain('(report-only, MC-2661')
+        for (const re of [/^- cell ask:/, /^- cell ask ORACLE-RANK:/]) expect(line(re)).not.toContain('report-only')
+    })
+
+    it('ST3+: the gate refuses the tune seed and foreign settings; the tune refuses other seeds; the FALLBACK families are reserved', () => {
+        const base: Settings = { builder: 'rare', rareShare: 0.01, tuneDrawSeed: 510001, evidence: { budgetFlag: null, finalFlag: null } }
         base.sha256 = GATE.settingsDigest(base)
-        expect(() => GATE.checkGateArgs({ drawSeed: 510001, builder: 'fulltext', settings: base })).toThrow(/TUNE draw seed/)
-        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'fulltext', settings: base })).not.toThrow()
-        expect(() => GATE.checkGateArgs({ drawSeed: 710001, builder: 'fulltext', settings: base })).toThrow()
-        const foreign: Settings = { builder: 'fulltext', tuneDrawSeed: 123 }
+        expect(() => GATE.checkGateArgs({ drawSeed: 510001, builder: 'rare', settings: base })).toThrow(/TUNE draw seed/)
+        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'rare', settings: base })).not.toThrow()
+        expect(() => GATE.checkGateArgs({ drawSeed: 710001, builder: 'rare', settings: base })).toThrow()
+        const foreign: Settings = { builder: 'rare', tuneDrawSeed: 123 }
         foreign.sha256 = GATE.settingsDigest(foreign)
-        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'fulltext', settings: foreign })).toThrow()
+        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'rare', settings: foreign })).toThrow()
         for (const s of [610001, 620001, 710001, 720001]) expect(() => TUNE.checkTuneArgs({ drawSeed: s })).toThrow()
         expect(() => TUNE.checkTuneArgs({ drawSeed: 510001 })).not.toThrow()
-        // ledger: FALLBACK after a GATE FAIL, then STOP after its own FAIL
+        // ledger: the rare FIRST attempt needs its settings hash recorded; a FALLBACK family never runs
         const SHA = 'a'.repeat(64)
-        const e = (o: Entry): Entry => ({ builder: 'fulltext', kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: SHA, harness: { commit: 'c', diffHash: 'd' }, outcome: 'VALID', verdict: 'FAIL', ...o })
-        const rec2 = (l: Ledger) => ATT.recordSettings(ATT.recordSettings(l, 'fulltext', SHA), 'idf', SHA)
-        const idf = (o: Entry = {}): Entry => e({ builder: 'idf', seedFamily: 'FALLBACK', drawSeed: 710001, ...o })
-        let l = rec2(ATT.emptyLedger())
-        expect(ATT.tryAttempt(l, idf()).ok).toBe(false)
-        for (const v of ['INCONCLUSIVE', 'PASS']) expect(ATT.tryAttempt(ATT.tryAttempt(l, e({ verdict: v })).ledger, idf()).ok).toBe(false)
-        const inv = ATT.tryAttempt(l, e({ outcome: 'INVALID', invalidClass: 'CONTROL', verdict: undefined }))
-        expect(ATT.tryAttempt(inv.ledger, idf()).ok).toBe(false)
-        l = ATT.tryAttempt(l, e({})).ledger
-        const f1 = ATT.tryAttempt(l, idf())
-        expect(f1.ok).toBe(true)
-        expect(ATT.tryAttempt(f1.ledger, idf()).ok).toBe(false) // STOP: nothing after the second FAIL
-        expect(ATT.tryAttempt(ATT.recordSettings(ATT.emptyLedger(), 'fulltext', SHA), e({})).ok).toBe(true)
-        const unrecorded = ATT.tryAttempt(ATT.recordSettings(ATT.emptyLedger(), 'fulltext', SHA), e({})).ledger
-        expect(ATT.tryAttempt(unrecorded, idf()).reason).toMatch(/not recorded/)
+        const e = (o: Entry): Entry => ({ builder: 'rare', kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: SHA, harness: { commit: 'c', diffHash: 'd' }, outcome: 'VALID', verdict: 'FAIL', ...o })
+        expect(ATT.tryAttempt(ATT.recordSettings(ATT.emptyLedger(), 'rare', SHA), e({})).ok).toBe(true)
+        expect(ATT.tryAttempt(ATT.emptyLedger(), e({})).reason).toMatch(/not recorded/)
+        expect(ATT.tryAttempt(ATT.recordSettings(ATT.emptyLedger(), 'rare', SHA), e({ seedFamily: 'FALLBACK', drawSeed: 710001 })).ok).toBe(false)
     })
 
     it('ST4: seeds of TUNE, GATE, GATE-R, FALLBACK and FALLBACK-R, with reserves and derived streams, never collide', () => {
@@ -756,8 +890,8 @@ describe('S0 statistics', () => {
 describe('S0 attempt ledger', () => {
     const SHA = 'a'.repeat(64)
     const SHA2 = 'b'.repeat(64)
-    const ent = (o: Entry = {}): Entry => ({ builder: 'fulltext', kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: SHA, harness: { commit: 'c', diffHash: 'd' }, outcome: 'INVALID', invalidClass: 'CONTROL', ...o })
-    const fresh = () => ATT.recordSettings(ATT.recordSettings(ATT.emptyLedger(), 'fulltext', SHA), 'idf', SHA)
+    const ent = (o: Entry = {}): Entry => ({ builder: 'rare', kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: SHA, harness: { commit: 'c', diffHash: 'd' }, outcome: 'INVALID', invalidClass: 'CONTROL', ...o })
+    const fresh = () => ATT.recordSettings(ATT.emptyLedger(), 'rare', SHA)
     const go = (l: Ledger, o: Entry) => ATT.tryAttempt(l, o)
 
     it('ST5: the INVALID procedure, caps, first valid attempt final, no verdict number in an INVALID record, the override', () => {
@@ -767,20 +901,20 @@ describe('S0 attempt ledger', () => {
         expect(go(l, ent({ kind: 'NOISE', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(true)
         // a DEFECT rerun needs a defect entry (reproducer id and Gate 2 path) and the same seed family
         expect(go(l, ent({ kind: 'DEFECT' })).ok).toBe(false)
-        const withDefect = ATT.appendDefect(l, { builder: 'fulltext', reproducerTest: 'CT1', gate2Path: 'x/gate2.md' })
-        expect(() => ATT.appendDefect(l, { builder: 'fulltext', reproducerTest: '', gate2Path: '' })).toThrow()
+        const withDefect = ATT.appendDefect(l, { builder: 'rare', reproducerTest: 'CT1', gate2Path: 'x/gate2.md' })
+        expect(() => ATT.appendDefect(l, { builder: 'rare', reproducerTest: '', gate2Path: '' })).toThrow()
         expect(go(withDefect, ent({ kind: 'DEFECT', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(false)
         expect(go(withDefect, ent({ kind: 'DEFECT' })).ok).toBe(true)
         expect(go(withDefect, ent({ kind: 'NOISE', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(false) // a defect is recorded
         // a NOISE rerun that is INVALID goes to MAINTAINER REPORT; every later attempt is refused, a second NOISE rerun too
         const noise = go(l, ent({ kind: 'NOISE', seedFamily: 'GATE_R', drawSeed: 620001 }))
-        expect(ATT.builderState(noise.ledger, 'fulltext').report).toBe(true)
+        expect(ATT.builderState(noise.ledger, 'rare').report).toBe(true)
         expect(go(noise.ledger, ent({ kind: 'NOISE', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(false)
-        expect(go(ATT.appendDefect(noise.ledger, { builder: 'fulltext', reproducerTest: 'CT1', gate2Path: 'p' }), ent({ kind: 'DEFECT', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(false)
+        expect(go(ATT.appendDefect(noise.ledger, { builder: 'rare', reproducerTest: 'CT1', gate2Path: 'p' }), ent({ kind: 'DEFECT', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(false)
         // a fourth attempt is refused
         let four = go(fresh(), ent()).ledger
         for (let k = 0; k < 2; k++) {
-            four = ATT.appendDefect(four, { builder: 'fulltext', reproducerTest: 'CT1', gate2Path: 'p' })
+            four = ATT.appendDefect(four, { builder: 'rare', reproducerTest: 'CT1', gate2Path: 'p' })
             const r = go(four, ent({ kind: 'DEFECT' }))
             expect(r.ok).toBe(true)
             four = r.ledger
@@ -794,7 +928,7 @@ describe('S0 attempt ledger', () => {
             expect(go(done, ent()).ok).toBe(false)
         }
         // a NOISE rerun with a different settings sha256 is refused
-        const changed = ATT.recordSettings(l, 'fulltext', SHA2)
+        const changed = ATT.recordSettings(l, 'rare', SHA2)
         expect(go(changed, ent({ kind: 'NOISE', seedFamily: 'GATE_R', drawSeed: 620001, settingsSha: SHA2 })).ok).toBe(false)
         // no verdict field or number on an INVALID entry; no --verdict on an INVALID attempt
         expect(go(fresh(), ent({ verdict: 'PASS' })).ok).toBe(false)
@@ -802,19 +936,15 @@ describe('S0 attempt ledger', () => {
         expect(go(fresh(), ent({ widths: [0.1] })).ok).toBe(false)
         expect(go(fresh(), ent({ controls: [{ cell: 'c', style: 'ask', control: 'NULL', recall: 0.3 }] })).ok).toBe(false)
         expect(go(fresh(), ent({ controls: [{ cell: 'c', style: 'ask', control: 'NULL', point: 0.3, boot: 0.1, t: 0.1, threshold: 0.05, failConfirmed: false, notConfirmed: true, alpha: 0.002 }] })).ok).toBe(true)
-        expect(() => GATE.gateVerdictCommand(l, 'fulltext')).toThrow(/INVALID/)
-        // IDF: the same rules with FALLBACK-R 720001 as its fresh seed
+        expect(() => GATE.gateVerdictCommand(l, 'rare')).toThrow(/INVALID/)
+        // the report-only builders and the FALLBACK families have no ledger line (MC-2661)
         const ft = go(fresh(), ent({ outcome: 'VALID', verdict: 'FAIL', invalidClass: undefined })).ledger
-        const idf = (o: Entry = {}): Entry => ent({ builder: 'idf', seedFamily: 'FALLBACK', drawSeed: 710001, ...o })
-        const i1 = go(ft, idf())
-        expect(i1.ok).toBe(true)
-        expect(go(i1.ledger, idf({ kind: 'NOISE' })).ok).toBe(false) // a same-seed IDF NOISE rerun
-        expect(go(i1.ledger, idf({ kind: 'NOISE', seedFamily: 'FALLBACK_R', drawSeed: 720001 })).ok).toBe(true)
+        for (const b of ['idf', 'fulltext']) expect(go(ATT.recordSettings(ft, b, SHA), ent({ builder: b, seedFamily: 'FALLBACK', drawSeed: 710001 })).ok).toBe(false)
         // INCONCLUSIVE is final for its settings; a maintainer-approved larger run is an override with a new procedure block
         const inc = go(fresh(), ent({ outcome: 'VALID', verdict: 'INCONCLUSIVE', invalidClass: undefined })).ledger
         expect(go(inc, ent({ kind: 'NOISE', seedFamily: 'GATE_R', drawSeed: 620001 })).ok).toBe(false)
-        expect(() => ATT.appendOverride(inc, { builder: 'fulltext', newSettingsSha: SHA, drawSeed: 630001, ref: 'MC-1' })).toThrow()
-        const ov = ATT.appendOverride(inc, { builder: 'fulltext', newSettingsSha: SHA2, drawSeed: 630001, ref: 'MC-1' })
+        expect(() => ATT.appendOverride(inc, { builder: 'rare', newSettingsSha: SHA, drawSeed: 630001, ref: 'MC-1' })).toThrow()
+        const ov = ATT.appendOverride(inc, { builder: 'rare', newSettingsSha: SHA2, drawSeed: 630001, ref: 'MC-1' })
         expect(go(ov, ent({ kind: 'FIRST', settingsSha: SHA2 })).ok).toBe(false)
         const big = go(ov, ent({ kind: 'OVERRIDE', seedFamily: 'OVERRIDE', drawSeed: 630001, settingsSha: SHA2, outcome: 'VALID', verdict: 'PASS', invalidClass: undefined }))
         expect(big.ok).toBe(true)
@@ -847,9 +977,9 @@ describe('S0 validity controls', () => {
         expect(CTL.controlTests({ c: mk(front) }).invalid).toBe(false)
         const back = [...Array.from({ length: 12 }, () => [10, 10, 10, 2, 2, 2]), ...Array.from({ length: 20 }, () => [10, 5, 10, 2, 2, 2])]
         expect(CTL.controlTests({ c: mk(back) }).invalid).toBe(true)
-        // (d) Bonferroni: m = cells x styles x 3, and a bound that excludes at 0.05 but not at 0.05 / m gives no INVALID
-        expect(CTL.controlTests({ a: mk(clean(12)), b: mk(clean(12)) }).m).toBe(12)
-        expect(CTL.controlTests({ a: mk(clean(12)), b: mk(clean(12)), c: mk(clean(12)), d: mk(clean(12)) }).m).toBe(24)
+        // (d) Bonferroni: m = cells x gating styles x 3 (MC-2661), and a bound that excludes at 0.05 but not at 0.05 / m gives no INVALID
+        expect(CTL.controlTests({ a: mk(clean(12)), b: mk(clean(12)) }).m).toBe(6)
+        expect(CTL.controlTests({ a: mk(clean(12)), b: mk(clean(12)), c: mk(clean(12)), d: mk(clean(12)) }).m).toBe(12)
         const mid = mk([5, 7, 8, 9, 10, 6, 10, 5, 8, 7, 9, 6].map((x) => [10, x, 10, 2, 2, 2]))
         const four = { a: mid, b: mid, c: mid, d: mid }
         expect(CTL.controlTests({ a: mid }, { m: 1 }).tests.some((t) => t.control === 'ORACLE-RANK' && t.failConfirmed)).toBe(true)
@@ -878,7 +1008,7 @@ describe('S0 validity controls', () => {
         }
         const a = ratios('nl'), b2 = ratios('bu'), c2 = ratios('rd')
         const ref = new Float64Array(a.map((x, i) => x - Math.max(b2[i], c2[i])))
-        expect(find(rn, 'NULL').boot).toBe(STATS.kthSmallest(ref, Math.ceil((0.05 / 6) * STATS.B_CONTROL)))
+        expect(find(rn, 'NULL').boot).toBe(STATS.kthSmallest(ref, Math.ceil((0.05 / 3) * STATS.B_CONTROL)))
         // (g) B_c = 20000 and its first 4000 resamples are the verdict interval's
         expect(rn.B).toBe(20000)
         const r4 = STATS.bootstrapDraws(12, 4000), r20 = STATS.bootstrapDraws(12, 20000)
@@ -889,12 +1019,49 @@ describe('S0 validity controls', () => {
         for (let i = 0; i < 4000; i += 397) expect(big[i]).toBe(small[i])
     })
 
-    const mkSettings = (o: Settings = {}): Settings => ({ builder: 'fulltext', C: 4096, L: null, k: 8, budget: 600, queries: 1, tau: null, F: 2, tuneDrawSeed: 510001, ...o })
+    // ---- MC-2661: allude controls are computed and reported with the same alpha, and never make an attempt INVALID ----
+    const mkAA = (ask: number[][], allude: number[][]): CellChat[] => ask.map(([n, or, oq, nl, bu, rd], i) => {
+        const [n2, or2, oq2, nl2, bu2, rd2] = allude[i]
+        return { ask: { n, or, oq, nl, bu, rd }, allude: { n: n2, or: or2, oq: oq2, nl: nl2, bu: bu2, rd: rd2 } }
+    })
+    const alludeBad = () => {
+        const cells: Record<string, CellChat[]> = {}
+        for (const name of ['a', 'b', 'c', 'd']) cells[name] = mkAA(clean(12), Array.from({ length: 12 }, () => [10, 2, 10, 2, 2, 2]))
+        return cells
+    }
+
+    it('CT-ASK1 (MC-2661): an allude-only confirmed control failure is reported and never INVALID', () => {
+        const r = CTL.controlTests(alludeBad())
+        expect(r.invalid).toBe(false)
+        expect(r.tests.find((t) => t.style === 'allude' && t.control === 'ORACLE-RANK')?.failConfirmed).toBe(true)
+    })
+
+    it('CT-ASK2 (MC-2661): the Bonferroni family is cells x gating styles x 3', () => {
+        const r = CTL.controlTests({ a: mk(clean(12)), b: mk(clean(12)), c: mk(clean(12)), d: mk(clean(12)) })
+        expect(r.m).toBe(12)
+        expect(r.alpha).toBeCloseTo(0.05 / 12, 12)
+    })
+
+    it('CT-ASK3: an ask confirmed control failure is still INVALID', () => {
+        const bad = mkAA(Array.from({ length: 12 }, () => [10, 6, 10, 2, 2, 2]), clean(12))
+        expect(CTL.controlTests({ a: bad, b: mk(clean(12)), c: mk(clean(12)), d: mk(clean(12)) }).invalid).toBe(true)
+    })
+
+    it('D1-ASK (MC-2661): the D1 summary shows an allude failure as report-only and counts only gating rows', () => {
+        const d1 = TUNE.summarizeControls(CTL.controlTests(alludeBad()))
+        expect(d1.status).toBe('PASS')
+        expect(d1.failConfirmed).toBe(0)
+        const row = d1.cells.a.controls.find((x) => x.style === 'allude' && x.control === 'ORACLE-RANK')
+        expect(row?.status).toBe('FAIL-CONFIRMED (report-only)')
+        expect(d1.cells.a.status).toBe('PASS')
+    })
+
+    const mkSettings = (o: Settings = {}): Settings => ({ builder: 'rare', C: 4096, L: null, k: null, rareShare: 0.01, budget: 600, queries: 1, tau: null, F: 2, tuneDrawSeed: 510001, evidence: { budgetFlag: null, finalFlag: null }, ...o })
     const runV1 = async (hooks: Hooks | undefined, over: Settings = {}, extra: GateOpts = {}) => {
         const settings = mkSettings(over)
         settings.sha256 = GATE.settingsDigest(settings)
-        const ledger = ATT.recordSettings(ATT.emptyLedger(), 'fulltext', settings.sha256 as string)
-        return GATE.runGateAttempt({ builder: 'fulltext', kind: 'FIRST', drawSeed: TEST_SEED, seedFamily: 'GATE', settings, ledger, counter: stub(), profiles: {}, cells: [{ corpus: 'M4', lang: 'en' }], stop: { minChats: 4, minTurns: 20, cap: 12, step: 4, width: 0.15 }, hooks, ...extra })
+        const ledger = ATT.recordSettings(ATT.emptyLedger(), 'rare', settings.sha256 as string)
+        return GATE.runGateAttempt({ builder: 'rare', kind: 'FIRST', drawSeed: TEST_SEED, seedFamily: 'GATE', settings, ledger, counter: stub(), profiles: {}, cells: [{ corpus: 'M4', lang: 'en' }], stop: { minChats: 4, minTurns: 20, cap: 12, step: 4, width: 0.15 }, hooks, ...extra })
     }
     const goldFirst = (turn: { q: Question | null }, d0: { units: Unit[]; first: number }) => (turn.q ? SIM.goldUnitIdx(d0, turn.q) : d0.units.map((_, i) => i))
 
@@ -959,18 +1126,26 @@ describe('S0 validity controls', () => {
         expect(s.status).toBe('INVALID')
         expect(s.cells.good.status).toBe('PASS')
         expect(s.cells.bad.status).toBe('INVALID')
-        expect(s.failConfirmed).toBe(2)
+        expect(s.failConfirmed).toBe(1) // gating (ask) rows only (MC-2661)
         const failed = s.cells.bad.controls.filter((c) => c.status === 'FAIL-CONFIRMED')
-        expect(failed.map((c) => `${c.style} ${c.control}`).sort()).toEqual(['allude ORACLE-RANK', 'ask ORACLE-RANK'])
+        expect(failed.map((c) => `${c.style} ${c.control}`)).toEqual(['ask ORACLE-RANK'])
+        expect(s.cells.bad.controls.find((c) => c.style === 'allude' && c.control === 'ORACLE-RANK')?.status).toBe('FAIL-CONFIRMED (report-only)')
         expect(s.cells.good.controls.every((c) => c.status === 'PASS')).toBe(true)
         const lines = TUNE.controlSummaryLines('fulltext', s)
         expect(lines).toContain('D1 fulltext good: PASS')
-        expect(lines).toContain('D1 fulltext bad: INVALID (ask ORACLE-RANK, allude ORACLE-RANK FAIL-CONFIRMED)')
-        expect(lines.some((l) => l.startsWith('D1 fulltext: INVALID, 2 FAIL-CONFIRMED'))).toBe(true)
+        expect(lines).toContain('D1 fulltext bad: INVALID (ask ORACLE-RANK FAIL-CONFIRMED)')
+        expect(lines.some((l) => l.startsWith('D1 fulltext: INVALID, 1 FAIL-CONFIRMED'))).toBe(true)
         expect(lines.join('\n')).not.toMatch(/\d\.\d/)
         const ok = TUNE.summarizeControls(CTL.controlTests({ good: mk(clean(12)) }))
         expect(ok).toMatchObject({ status: 'PASS', failConfirmed: 0 })
         expect(TUNE.controlSummaryLines('idf', ok).pop()).toBe('D1 idf: PASS, 0 FAIL-CONFIRMED control(s)')
+    })
+
+    it('TU3 (MC-2661): an INVALID line calls every builder but rare report-only', () => {
+        const bad = TUNE.summarizeControls(CTL.controlTests({ bad: mk(Array.from({ length: 12 }, () => [10, 6, 10, 2, 2, 2])) }))
+        expect(bad.status).toBe('INVALID')
+        expect(TUNE.controlSummaryLines('fulltext', bad).pop()).toMatch(/report-only \(MC-2661\)/)
+        expect(TUNE.controlSummaryLines('rare', bad).pop()).toMatch(/do not run it/)
     })
 
     const oracleRank: NonNullable<Hooks['ranker']> = (turn, d0, scorer, st, ctx) => {
@@ -1055,22 +1230,22 @@ describe('S0 validity controls', () => {
         s0v.sha256 = GATE.settingsDigest(s0v)
         const s1 = mkSettings({ budget: 700 })
         s1.sha256 = GATE.settingsDigest(s1)
-        let l = ATT.recordSettings(ATT.emptyLedger(), 'fulltext', s0v.sha256 as string)
-        l = ATT.tryAttempt(l, { builder: 'fulltext', kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: s0v.sha256, harness: { commit: 'c', diffHash: 'd' }, outcome: 'VALID', verdict: 'INCONCLUSIVE' }).ledger
-        const ok = { builder: 'fulltext', settings: s1, drawSeed: TEST_SEED, cap: 96, ref: 'MC-1' }
+        let l = ATT.recordSettings(ATT.emptyLedger(), 'rare', s0v.sha256 as string)
+        l = ATT.tryAttempt(l, { builder: 'rare', kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: s0v.sha256, harness: { commit: 'c', diffHash: 'd' }, outcome: 'VALID', verdict: 'INCONCLUSIVE' }).ledger
+        const ok = { builder: 'rare', settings: s1, drawSeed: TEST_SEED, cap: 96, ref: 'MC-1' }
         expect(() => GATE.recordOverrideCommand(l, { ...ok, drawSeed: 610001 })).toThrow(/fresh/)
         expect(() => GATE.recordOverrideCommand(l, { ...ok, drawSeed: 510001 })).toThrow(/TUNE/)
         expect(() => GATE.recordOverrideCommand(l, { ...ok, cap: 48 })).toThrow(/larger/)
         expect(() => GATE.recordOverrideCommand(l, { ...ok, settings: s0v })).toThrow(/new settings hash/)
         expect(() => GATE.recordOverrideCommand(l, { ...ok, settings: { ...s1, sha256: 'x' } })).toThrow(/sha256/)
-        expect(() => GATE.recordOverrideCommand(ATT.recordSettings(ATT.emptyLedger(), 'fulltext', s0v.sha256 as string), ok)).toThrow(/INCONCLUSIVE/)
+        expect(() => GATE.recordOverrideCommand(ATT.recordSettings(ATT.emptyLedger(), 'rare', s0v.sha256 as string), ok)).toThrow(/INCONCLUSIVE/)
         const ov = GATE.recordOverrideCommand(l, ok)
         expect(ov.entries[ov.entries.length - 1]).toMatchObject({ type: 'override', drawSeed: TEST_SEED, cap: 96, newSettingsSha: s1.sha256 })
-        expect(() => GATE.checkGateArgs({ drawSeed: TEST_SEED, builder: 'fulltext', settings: s1, kind: 'OVERRIDE' })).not.toThrow()
-        expect(() => GATE.checkGateArgs({ drawSeed: TEST_SEED, builder: 'fulltext', settings: s1 })).toThrow(/not a gate seed/)
-        expect(() => GATE.checkGateArgs({ drawSeed: 620001, builder: 'fulltext', settings: s1, kind: 'OVERRIDE' })).toThrow(/fresh/)
+        expect(() => GATE.checkGateArgs({ drawSeed: TEST_SEED, builder: 'rare', settings: s1, kind: 'OVERRIDE' })).not.toThrow()
+        expect(() => GATE.checkGateArgs({ drawSeed: TEST_SEED, builder: 'rare', settings: s1 })).toThrow(/not a gate seed/)
+        expect(() => GATE.checkGateArgs({ drawSeed: 620001, builder: 'rare', settings: s1, kind: 'OVERRIDE' })).toThrow(/fresh/)
         const shuffle: Hooks = { ranker: (turn, d0) => GENRNG.rng(4242 + turn.idx).shuffle(d0.units.map((_, i) => i)) }
-        const run = (ledger: Ledger, drawSeed: number) => GATE.runGateAttempt({ builder: 'fulltext', kind: 'OVERRIDE', drawSeed, settings: s1, ledger, counter: stub(), profiles: {}, cells: [{ corpus: 'M4', lang: 'en' }], stop: { minChats: 4, minTurns: 20, cap: 12, step: 4, width: 0.15 }, hooks: shuffle })
+        const run = (ledger: Ledger, drawSeed: number) => GATE.runGateAttempt({ builder: 'rare', kind: 'OVERRIDE', drawSeed, settings: s1, ledger, counter: stub(), profiles: {}, cells: [{ corpus: 'M4', lang: 'en' }], stop: { minChats: 4, minTurns: 20, cap: 12, step: 4, width: 0.15 }, hooks: shuffle })
         const wrong = await run(ov, TEST_SEED + 2)
         expect(wrong.status).toBe('REFUSED')
         expect(wrong.reason).toMatch(/seed mismatch/)
@@ -1157,14 +1332,104 @@ describe('S0 validity controls', () => {
         expect(CTL.pickDonor(cands, 0, 'single_fact', 'ask')).toMatchObject({ j: 1, cue: 'cue B K1' })
     })
 
-    it('MC-2655 gate: a gate attempt and record-settings for the idf builder are refused', () => {
-        const s1 = mkSettings({ builder: 'idf' })
-        s1.tuneDrawSeed = 510001
-        s1.sha256 = GATE.settingsDigest(s1)
-        expect(() => GATE.checkGateArgs({ drawSeed: 710001, builder: 'idf', settings: s1 })).toThrow(/MC-2655/)
-        expect(() => GATE.checkGateArgs({ drawSeed: TEST_SEED, builder: 'idf', settings: s1, kind: 'OVERRIDE' })).toThrow(/MC-2655/)
-        expect(() => GATE.assertGateBuilder('idf')).toThrow(/MC-2655/)
-        expect(() => GATE.assertGateBuilder('fulltext')).not.toThrow()
+    // ---- MC-2661: the rare builder carries the verdict; the gate runs only when the tune predicts PASS ----
+    const PASSING = { budgetFlag: null, finalFlag: null }
+    const FINAL_FAIL = { budgetFlag: null, finalFlag: 'tune predicts FAIL at the final settings' }
+    const rareSettings = (evidence?: Settings | null): Settings => {
+        const s: Settings = { builder: 'rare', C: 32768, L: 800, k: null, rareShare: 0.01, budget: 1200, queries: 1, tau: null, F: 2, tuneDrawSeed: 510001, ...(evidence === undefined ? {} : { evidence }) }
+        s.sha256 = GATE.settingsDigest(s)
+        return s
+    }
+    // the literal seeds are arguments to pure refusal functions: nothing is drawn
+    const gateArgs = (settings: Settings, extra: Record<string, unknown> = {}) => ({ drawSeed: 610001, builder: 'rare', settings, ...extra })
+
+    it('GB1 (MC-2661): rare is the only gate builder; fulltext and idf are report-only', () => {
+        expect(() => GATE.assertGateBuilder('rare')).not.toThrow()
+        for (const b of ['fulltext', 'idf']) expect(() => GATE.assertGateBuilder(b)).toThrow(/MC-2661/)
+    })
+
+    it('GB2: rare is accepted on the GATE and GATE-R seeds only; fulltext is refused everywhere, an override included', () => {
+        const s = rareSettings(PASSING)
+        expect(() => GATE.checkGateArgs(gateArgs(s))).not.toThrow()
+        expect(() => GATE.checkGateArgs(gateArgs(s, { drawSeed: 620001 }))).not.toThrow()
+        for (const seed of [710001, 720001]) expect(() => GATE.checkGateArgs(gateArgs(s, { drawSeed: seed }))).toThrow()
+        expect(() => GATE.checkGateArgs(gateArgs(s, { builder: 'fulltext' }))).toThrow(/MC-2661/)
+        expect(() => GATE.checkGateArgs(gateArgs(s, { builder: 'fulltext', drawSeed: TEST_SEED, kind: 'OVERRIDE' }))).toThrow(/MC-2661/)
+    })
+
+    it('GB3: the ledger takes rare attempts and refuses fulltext and idf as unknown builders', () => {
+        const SHA = 'a'.repeat(64)
+        const entry = (b: string): Entry => ({ builder: b, kind: 'FIRST', seedFamily: 'GATE', drawSeed: 610001, settingsSha: SHA, harness: { commit: 'c', diffHash: 'd' }, outcome: 'VALID', verdict: 'PASS' })
+        expect(ATT.tryAttempt(ATT.recordSettings(ATT.emptyLedger(), 'rare', SHA), entry('rare')).ok).toBe(true)
+        for (const b of ['fulltext', 'idf']) {
+            const r = ATT.tryAttempt(ATT.recordSettings(ATT.emptyLedger(), b, SHA), entry(b))
+            expect(r.ok).toBe(false)
+            expect(r.reason).toMatch(/unknown builder/)
+        }
+    })
+
+    it('GB4 (MC-2661): every gate run, an OVERRIDE included, refuses settings unless budgetFlag, finalFlag and oracleFlag are clear', () => {
+        const refused = (evidence: Settings | null | undefined, re: RegExp, extra: Record<string, unknown> = {}) => expect(() => GATE.checkGateArgs(gateArgs(rareSettings(evidence), extra))).toThrow(re)
+        refused(undefined, /predicts PASS.*evidence/)
+        refused(null, /predicts PASS.*evidence/)
+        refused({ budgetFlag: 'tune predicts FAIL', finalFlag: null }, /budgetFlag/)
+        refused(FINAL_FAIL, /finalFlag/)
+        refused({ finalFlag: null }, /budgetFlag/)
+        refused({ ...PASSING, oracleFlag: 'no oracle-eligible L/budget' }, /oracleFlag/)
+        expect(() => GATE.checkGateArgs(gateArgs(rareSettings(PASSING)))).not.toThrow()
+        expect(() => GATE.checkGateArgs(gateArgs(rareSettings({ ...PASSING, oracleFlag: null })))).not.toThrow()
+        refused(FINAL_FAIL, /finalFlag/, { kind: 'OVERRIDE', drawSeed: TEST_SEED })
+        // the digest is checked first: a hand-edited flag fails on the hash, not on the flag
+        expect(() => GATE.checkGateArgs(gateArgs({ ...rareSettings(FINAL_FAIL), sha256: 'x' }))).toThrow(/sha256/)
+    })
+
+    it('GB5: record-settings refuses the same settings and records only passing, digest-true rare settings', () => {
+        const rec = (settings: Settings, builder = 'rare') => GATE.recordSettingsCommand(ATT.emptyLedger(), { builder, settings })
+        expect(() => rec(rareSettings(undefined))).toThrow(/predicts PASS.*evidence/)
+        expect(() => rec(rareSettings(FINAL_FAIL))).toThrow(/finalFlag/)
+        expect(() => rec(rareSettings({ ...PASSING, oracleFlag: 'no oracle-eligible L/budget' }))).toThrow(/oracleFlag/)
+        for (const b of ['fulltext', 'idf']) expect(() => rec(rareSettings(PASSING), b)).toThrow(/MC-2661/)
+        expect(() => rec({ ...rareSettings(PASSING), sha256: 'x' })).toThrow(/sha256/)
+        const good = rareSettings(PASSING)
+        expect(rec(good).recordedSettings.rare).toBe(good.sha256)
+    })
+
+    it('GB6: the record-settings command line refuses flagged settings without writing the ledger and records passing ones', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ltm-s0-gb6-'))
+        try {
+            const run = (settings: Settings, name: string) => {
+                const file = path.join(dir, name + '.json')
+                const ledger = path.join(dir, name + '-ledger.json')
+                fs.writeFileSync(file, JSON.stringify(settings, null, 1), 'utf8')
+                const r = spawnSync(process.execPath, [path.join(S0, 'gate.mjs'), 'record-settings', '--builder', 'rare', '--settings', file, '--ledger', ledger], { encoding: 'utf8', env: { ...process.env, TEMP: dir, TMP: dir, TMPDIR: dir } })
+                return { r, ledger }
+            }
+            const bad = run(rareSettings(FINAL_FAIL), 'bad')
+            expect(bad.r.status).not.toBe(0)
+            expect(bad.r.stderr).toMatch(/finalFlag/)
+            expect(fs.existsSync(bad.ledger)).toBe(false)
+            const good = rareSettings(PASSING)
+            const ok = run(good, 'good')
+            expect(ok.r.status).toBe(0)
+            expect((JSON.parse(fs.readFileSync(ok.ledger, 'utf8')) as Ledger).recordedSettings.rare).toBe(good.sha256)
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true })
+        }
+    }, SLOW)
+
+    it('PR1 (MC-2661): the pre-registered procedure carries the rare rule, the ask-only gating and the refusal predicate', () => {
+        const p = TUNE.PROCEDURE as Record<string, Record<string, unknown> | string | string[]>
+        expect(p.verdictBuilder).toMatch(/^rare/)
+        expect(p.gatingStyles).toEqual(['ask'])
+        const rare = p.rare as Record<string, unknown>
+        expect(rare.query).toMatch(/whole user turn/)
+        expect(rare.query).toMatch(/tailChars is ignored/)
+        expect(rare.terms).toMatch(/floor\(rareShare x N\)/)
+        expect(rare.rareShareGrid).toEqual([0.005, 0.01, 0.02, 0.03])
+        expect((p.budgets as { grid: number[] }).grid).toContain(5215)
+        expect(p.gateOnlyIfTunePredictsPass).toMatch(/finalFlag/)
+        expect(p.gateOnlyIfTunePredictsPass).toMatch(/oracleFlag/)
+        expect((p.controls as { alphaC: string }).alphaC).toMatch(/gating styles/)
     })
 })
 
@@ -1192,6 +1457,7 @@ describe('S0 selection and tune', () => {
         const budgetFn = (st: Settings): Fake => (st.budget === 400 ? { p: 0.55, het: 0.45 } : { p: 0.6, het: 0.1 })
         const s = SEL.selectSettings(fakeEv(budgetFn), { builder: 'fulltext' })
         expect(s.budget).toBe(600)
+        expect(s.rareShare).toBeNull() // the report-only builders carry no rareShare
         const base = fakeEv(budgetFn)({ builder: 'fulltext', budget: 1200 }, 'POOL')
         expect(s.delta).toBe(SEL.deltaOf(base))
         expect(Math.abs((s.delta as number) - 0.02)).toBeGreaterThan(0.005)
@@ -1212,7 +1478,7 @@ describe('S0 selection and tune', () => {
             return { p: 0.5 + bonus, het: 0.05 }
         }
         const seen: number[] = []
-        const res = await TUNE.runTune({ drawSeed: TEST_SEED, counter: stub(), profiles: {}, diagnostics: false, makeEvaluator: (o: { nChats: number }) => { seen.push(o.nChats); return { ev: fakeEv(builderFn), chats: {} } } })
+        const res = await TUNE.runTune({ drawSeed: TEST_SEED, counter: stub(), profiles: {}, diagnostics: false, builders: ['fulltext', 'idf'], makeEvaluator: (o: { nChats: number }) => { seen.push(o.nChats); return { ev: fakeEv(builderFn), chats: {} } } })
         expect(seen).toEqual([24])
         expect(SEL.TUNE_CHATS).toBe(24)
         expect(res.settings.fulltext).toMatchObject({ L: 1200 })
@@ -1239,6 +1505,160 @@ describe('S0 selection and tune', () => {
         expect((s.evidence as { gridBudget: number }).gridBudget).toBe(1600)
         const none = SEL.selectSettings(withQuery(fn, () => 0.5), { builder: 'fulltext' })
         expect((none.evidence as { oracleFlag: string }).oracleFlag).toMatch(/no oracle-eligible/)
+    })
+
+    // ---- MC-2661: selection reads ask turns only; allude is evaluated and reported ----
+    type SplitFake = { ask: Fake; allude: Fake; oracle?: { ask: number; allude: number }; oracleQuery?: { ask: number; allude: number } }
+    const splitEv = (fn: (st: Settings, regime: string) => SplitFake) => (st: Settings, regime: string) => {
+        const f = fn(st, regime)
+        const recs: Record<string, unknown[]> = {}
+        for (const cell of CELLS) {
+            recs[cell] = Array.from({ length: 24 }, (_, c) => {
+                const sgn = c % 2 === 0 ? 1 : -1
+                const one = (x: Fake) => ({ n: 10, e: clamp(10 * (x.p + sgn * x.het)), b: 0, dl: clamp(10 * ((x.dl ?? x.p) + sgn * x.het)) })
+                return { ask: one(f.ask), allude: one(f.allude), nf: { n: 10, empty: Math.round(10 * (f.ask.empty ?? 0)) } }
+            })
+        }
+        const per = (o: { ask: number; allude: number }) => Object.fromEntries(CELLS.map((c) => [c, { ...o }]))
+        return { recs, oracle: per(f.oracle ?? { ask: 1, allude: 1 }), ...(f.oracleQuery ? { oracleQuery: per(f.oracleQuery) } : {}) }
+    }
+
+    it('SEL-ASK1 (MC-2661): the budget clears on ask turns alone', () => {
+        const s = SEL.selectSettings(splitEv(() => ({ ask: { p: 0.7, het: 0.05 }, allude: { p: 0.3, het: 0.05 } })), { builder: 'rare' })
+        expect((s.evidence as { budgetFlag: string | null }).budgetFlag).toBeNull()
+    })
+
+    it('SEL-ASK1g: a failing ask recall still gives the FAIL flag', () => {
+        const s = SEL.selectSettings(splitEv(() => ({ ask: { p: 0.3, het: 0.05 }, allude: { p: 0.7, het: 0.05 } })), { builder: 'rare' })
+        expect((s.evidence as { budgetFlag: string | null }).budgetFlag).toBe('tune predicts FAIL')
+    })
+
+    it('SEL-ASK2 (MC-2661): oracle eligibility reads ask turns only', () => {
+        const fn = (): SplitFake => ({ ask: { p: 0.7, het: 0.05 }, allude: { p: 0.7, het: 0.05 }, oracleQuery: { ask: 1, allude: 0.5 } })
+        const s = SEL.selectSettings(splitEv(fn), { builder: 'rare' })
+        const ev = s.evidence as { oracleFlag?: string; gridBudget: number }
+        expect(ev.oracleFlag).toBeUndefined()
+        expect(ev.gridBudget).toBe(1200)
+    })
+
+    it('SEL-ASK3 (MC-2661): the objective is the minimum over cells of the ask lower bound', () => {
+        const fn = (st: Settings): SplitFake => (st.L === 300 ? { ask: { p: 0.9, het: 0.05 }, allude: { p: 0.2, het: 0.05 } } : { ask: { p: 0.6, het: 0.05 }, allude: { p: 0.6, het: 0.05 } })
+        expect(SEL.selectSettings(splitEv(fn), { builder: 'rare' }).L).toBe(300)
+    })
+
+    it('SEL-ASK4 (MC-2661): delta is the smallest ask half-width', () => {
+        const ev = splitEv(() => ({ ask: { p: 0.6, het: 0.15 }, allude: { p: 0.6, het: 0 } }))
+        const s = SEL.selectSettings(ev, { builder: 'rare' })
+        const r0 = ev({}, 'POOL') as { recs: Record<string, { ask: { n: number; e: number } }[]> }
+        const half = Math.min(...CELLS.map((cell) => {
+            const b = STATS.intervals(r0.recs[cell].map((c) => ({ n: c.ask.n, v: c.ask.e })), 4000).boot
+            return (b.hi - b.lo) / 2
+        }))
+        expect(half).toBeGreaterThan(0)
+        expect(s.delta).toBe(half)
+    })
+
+    it('SEL-ASK5 (MC-2661): the cheapest-budget loss guard reads ask turns only', () => {
+        const fn = (st: Settings): SplitFake => ({ ask: { p: 0.8, het: 0.05 }, allude: { p: (st.budget as number) >= 1200 ? 0.8 : 0.5, het: 0.05 } })
+        expect(SEL.selectSettings(splitEv(fn), { builder: 'rare' }).budget).toBe(400)
+    })
+
+    // ---- MC-2661: the rareShare grid, its threading, the budget cap and the final check ----
+    it('SEL-RHO: rareShare is selected from the grid; a flat objective takes the share nearest 0.01 with the larger L', () => {
+        const fn = (st: Settings): Fake => ({ p: 0.5 + (st.L === 500 && st.rareShare === 0.02 ? 0.2 : 0), het: 0.05 })
+        expect(SEL.selectSettings(fakeEv(fn), { builder: 'rare' })).toMatchObject({ L: 500, rareShare: 0.02, k: null })
+        const flat = SEL.selectSettings(fakeEv(() => ({ p: 0.6, het: 0.05 })), { builder: 'rare' })
+        expect(flat).toMatchObject({ L: 1200, rareShare: 0.01, k: null })
+    })
+
+    // Integer-exact evaluator: per cell 24 chats of n = 20; even chats recall hi, odd chats lo; ask and allude alike.
+    type Ladder = { hi: number; lo: number; empty: number }
+    const ladderEv = (fn: (st: Settings, regime: string) => Ladder, calls?: Settings[], oracleOf: (st: Settings) => number = () => 1) => (st: Settings, regime: string) => {
+        calls?.push({ ...st })
+        const { hi, lo, empty } = fn(st, regime)
+        const recs: Record<string, unknown[]> = {}
+        for (const cell of CELLS) {
+            recs[cell] = Array.from({ length: 24 }, (_, c) => {
+                const e = c % 2 === 0 ? hi : lo
+                const one = { n: 20, e, b: 0, dl: e }
+                return { ask: one, allude: one, nf: { n: 20, empty } }
+            })
+        }
+        const o = oracleOf(st)
+        return { recs, oracle: Object.fromEntries(CELLS.map((c) => [c, { ask: o, allude: o }])) }
+    }
+    const L7_5: Ladder = { hi: 7, lo: 5, empty: 0 }
+
+    it('SEL-THREADa: the picked rareShare is used by the budget step and every later evaluation', () => {
+        // rareShare 0.02 gives 10/8 at the default budget and 16/12 from 2400; every other share stays at 7/5
+        const fn = (st: Settings): Ladder => (st.rareShare === 0.02 ? ((st.budget as number) >= 2400 ? { hi: 16, lo: 12, empty: 0 } : { hi: 10, lo: 8, empty: 0 }) : L7_5)
+        const calls: Settings[] = []
+        const s = SEL.selectSettings(ladderEv(fn, calls), { builder: 'rare', tuneDrawSeed: 510001 })
+        const evidence = s.evidence as { budgetFlag: string | null; finalFlag: string | null }
+        expect(evidence.budgetFlag).toBeNull()
+        expect(s.budget).toBe(2400)
+        expect(s.rareShare).toBe(0.02)
+        expect(evidence.finalFlag).toBeNull()
+        // the first evaluation is the step-0 delta run at the default; every later non-grid run carries the pick
+        const later = calls.filter((c) => c.oracle !== true).slice(1)
+        expect(later.length).toBeGreaterThan(5)
+        expect(later.every((c) => c.rareShare === 0.02)).toBe(true)
+    })
+
+    it('SEL-THREADb: the recheck at the chosen budget may change rareShare and the change reaches the settings', () => {
+        // 0.03 leads at the default budget; from 2400 it gives 14/10 and 0.02 gives 16/12
+        const fn = (st: Settings): Ladder => {
+            const high = (st.budget as number) >= 2400
+            if (st.rareShare === 0.03) return high ? { hi: 14, lo: 10, empty: 0 } : { hi: 10, lo: 8, empty: 0 }
+            if (st.rareShare === 0.02) return high ? { hi: 16, lo: 12, empty: 0 } : L7_5
+            return L7_5
+        }
+        const s = SEL.selectSettings(ladderEv(fn), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(s.rareShare).toBe(0.02)
+        expect(s.budget).toBe(2400)
+        expect((s.evidence as { recheck: unknown }).recheck).toMatchObject({ rareShare: 0.02, changed: true })
+    })
+
+    it('SEL-CAP: the budget grid reaches 4800 and the cap 5215', () => {
+        const clearsFrom = (from: number) => (st: Settings): Fake => ((st.budget as number) >= from ? { p: 0.8, het: 0.05 } : { p: 0.3, het: 0.05 })
+        expect(SEL.BUDGETS.at(-1)).toBe(5215)
+        expect(SEL.selectSettings(fakeEv(clearsFrom(4800)), { builder: 'rare' }).budget).toBe(4800)
+        expect(SEL.selectSettings(fakeEv(clearsFrom(5000)), { builder: 'rare' }).budget).toBe(5215)
+    })
+
+    it('SEL-FINALa (S2): settings that clear at the chosen budget but not at the final settings carry finalFlag, and the gate refuses them', () => {
+        // tau null gives 16/8; any tau costs a constant 0.05 of paired loss (within delta) and drops the lower bound under 0.5
+        const fn = (st: Settings): Ladder => (st.tau === null ? { hi: 16, lo: 8, empty: 0 } : { hi: 15, lo: 7, empty: 10 })
+        const s = SEL.selectSettings(ladderEv(fn), { builder: 'rare', tuneDrawSeed: 510001 })
+        const evidence = s.evidence as { budgetFlag: string | null; finalFlag: string | null }
+        expect(evidence.budgetFlag).toBeNull()
+        expect(s.tau).toBe(0.002)
+        expect(evidence.finalFlag).toBe('tune predicts FAIL at the final settings')
+        s.sha256 = GATE.settingsDigest(s)
+        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'rare', settings: s })).toThrow(/predicts PASS.*finalFlag/)
+    })
+
+    it('SEL-FINALb: settings that clear at the final settings carry finalFlag null', () => {
+        const fn = (st: Settings): Ladder => (st.tau === null ? { hi: 16, lo: 8, empty: 0 } : { hi: 16, lo: 8, empty: 10 })
+        const s = SEL.selectSettings(ladderEv(fn), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(s.tau).toBe(0.002)
+        expect((s.evidence as { finalFlag: string | null }).finalFlag).toBeNull()
+    })
+
+    it('SEL-ORFLAG: a recheck pick that is not oracle-eligible at the chosen budget sets oracleFlag and the gate refuses', () => {
+        // clears only from 2400; ORACLE-RANK is fine at the default budget and under the floor from 2400 up
+        const fn = (st: Settings): Ladder => ((st.budget as number) >= 2400 ? { hi: 16, lo: 12, empty: 0 } : L7_5)
+        const s = SEL.selectSettings(ladderEv(fn, undefined, (st) => ((st.budget as number) >= 2400 ? 0.5 : 1)), { builder: 'rare', tuneDrawSeed: 510001 })
+        const evidence = s.evidence as { budgetFlag: string | null; gridBudget: number; oracleFlag?: string }
+        expect(s.budget).toBe(2400)
+        expect(evidence.gridBudget).toBe(1200)
+        expect(evidence.budgetFlag).toBeNull()
+        expect(evidence.oracleFlag).toMatch(/no oracle-eligible/)
+        s.sha256 = GATE.settingsDigest(s)
+        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'rare', settings: s })).toThrow(/oracleFlag/)
+        // eligible at the chosen budget: no flag
+        const fine = SEL.selectSettings(ladderEv(fn), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect((fine.evidence as { oracleFlag?: string }).oracleFlag).toBeUndefined()
     })
 })
 
@@ -1279,28 +1699,49 @@ describe('S0 diagnostics and end to end', () => {
         }
     }, SLOW)
 
+    it('TU1: the tune runs the rare builder only by default', async () => {
+        const res = await TUNE.runTune({ drawSeed: TEST_SEED, counter: stub(), profiles: {}, diagnostics: false, makeEvaluator: () => ({ ev: () => ({ recs: { 'M4-en': [{ ask: { n: 10, e: 8, b: 0, dl: 8 }, allude: { n: 10, e: 8, b: 0, dl: 8 }, nf: { n: 10, empty: 0 } }] }, oracle: { 'M4-en': { ask: 1, allude: 1 } } }), chats: {} }) })
+        expect(Object.keys(res.settings)).toEqual(['rare'])
+    }, SLOW)
+
+    it('TU2: the tune outputs work for any builder subset', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ltm-s0-tu2-'))
+        try {
+            const res = { settings: { rare: { budget: 600, sha256: 'aa' } }, diagnostics: { rare: { icc: 0.1 } }, chats: { 'NF-real-ko': [NFko] } }
+            TUNE.writeTuneOutputs({ real: dir, res, counter: stub(), profiles: { real }, drawSeed: TEST_SEED, nSpecLong: 1, d2Options: { ns: [12], replicates: 2, B: 100 } })
+            expect(fs.existsSync(path.join(dir, 'settings-rare.json'))).toBe(true)
+            expect(fs.existsSync(path.join(dir, 'tune-report.json'))).toBe(true)
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true })
+        }
+    }, SLOW)
+
     it('E1: a tiny draw through tune-lite and the gate gives the report shape and a ledger entry', async () => {
         const cells = [{ corpus: 'M4', lang: 'en' }, { corpus: 'M4', lang: 'ko' }, { corpus: 'NF-real', lang: 'en' }, { corpus: 'NF-real', lang: 'ko' }]
-        const grid = { L: [500], K: [8], budgets: [800], budgetDefault: 800, taus: [0.01], Fs: [2] }
+        const grid = { L: [500], K: [8], rareShares: [0.01], budgets: [800], budgetDefault: 800, taus: [0.01], Fs: [2] }
         const tuneLog: string[] = []
-        const tuned = await TUNE.runTune({ drawSeed: TEST_SEED, counter: stub(), profiles: { real }, nChats: 1, cells, grid, C: 4096, builders: ['fulltext'], log: (m: string) => tuneLog.push(m) })
-        const settings = tuned.settings.fulltext
+        const tuned = await TUNE.runTune({ drawSeed: TEST_SEED, counter: stub(), profiles: { real }, nChats: 1, cells, grid, C: 4096, builders: ['rare'], log: (m: string) => tuneLog.push(m) })
+        const settings = tuned.settings.rare
         expect(settings.sha256).toBe(GATE.settingsDigest(settings))
-        expect(Object.keys(tuned.diagnostics)).toEqual(['fulltext'])
+        // PR2: the procedure block and both selection flags travel with the settings and under their digest
+        expect(settings.procedure).toEqual(TUNE.PROCEDURE)
+        expect(Object.keys(settings.evidence as object)).toEqual(expect.arrayContaining(['budgetFlag', 'finalFlag']))
+        expect(settings.rareShare).toBe(0.01)
+        expect(Object.keys(tuned.diagnostics)).toEqual(['rare'])
         // D1 reaches stdout (the tune log) and the report: one status line per cell and one for the builder
-        const d1 = tuned.diagnostics.fulltext.d1
-        expect(d1.status).toBe(tuned.diagnostics.fulltext.controls.tests.some((t) => t.failConfirmed) ? 'INVALID' : 'PASS')
+        const d1 = tuned.diagnostics.rare.d1
+        expect(d1.status).toBe(tuned.diagnostics.rare.controls.tests.some((t) => t.failConfirmed && t.style === 'ask') ? 'INVALID' : 'PASS')
         expect(Object.keys(d1.cells).sort()).toEqual(['M4-en', 'M4-ko', 'NF-real-en', 'NF-real-ko'])
-        expect(TUNE.controlSummaryLines('fulltext', d1).length).toBe(5)
-        for (const line of TUNE.controlSummaryLines('fulltext', d1)) expect(tuneLog).toContain(line)
-        let ledger = ATT.recordSettings(ATT.emptyLedger(), 'fulltext', settings.sha256 as string)
-        const res = await GATE.runGateAttempt({ builder: 'fulltext', kind: 'FIRST', drawSeed: TEST_SEED, seedFamily: 'GATE', settings, ledger, counter: stub(), profiles: { real }, cells, stop: { minChats: 1, minTurns: 1, cap: 1, step: 1, width: 1.5 }, controlsB: 2000 })
+        expect(TUNE.controlSummaryLines('rare', d1).length).toBe(5)
+        for (const line of TUNE.controlSummaryLines('rare', d1)) expect(tuneLog).toContain(line)
+        let ledger = ATT.recordSettings(ATT.emptyLedger(), 'rare', settings.sha256 as string)
+        const res = await GATE.runGateAttempt({ builder: 'rare', kind: 'FIRST', drawSeed: TEST_SEED, seedFamily: 'GATE', settings, ledger, counter: stub(), profiles: { real }, cells, stop: { minChats: 1, minTurns: 1, cap: 1, step: 1, width: 1.5 }, controlsB: 2000 })
         expect(res.status).toBe('VALID')
         expect(res.verdict).toBe('INCONCLUSIVE') // one chat per cell reaches the cap
         expect(Object.keys(res.cellChats as object).sort()).toEqual(['M4-en', 'M4-ko', 'NF-real-en', 'NF-real-ko'])
         ledger = res.ledger
         const e = ledger.entries.find((x) => x.type === 'attempt') as Entry
-        expect(e).toMatchObject({ builder: 'fulltext', outcome: 'VALID', verdict: 'INCONCLUSIVE', seedFamily: 'GATE', settingsSha: settings.sha256 })
+        expect(e).toMatchObject({ builder: 'rare', outcome: 'VALID', verdict: 'INCONCLUSIVE', seedFamily: 'GATE', settingsSha: settings.sha256 })
         const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ltm-s0-e1-'))
         try {
             const { ledger: _l, ...report } = res
