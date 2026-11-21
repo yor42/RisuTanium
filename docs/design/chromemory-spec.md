@@ -451,7 +451,7 @@ Allude turns (the user only hints at the fact) are measured and reported beside 
 
 **Statistics.**
 
-- Settings (budget, snippet share, unit split, rare-term share, query count, admission rule) are tuned on one seeded draw of the generator. The budget may go above 1200, up to 15% of the context plus 2000, and the report states the per-send token cost. [D MC-2630, MC-2654] The gate runs on a fresh seed that tuning never saw, and only if the tune predicts a pass at the exact settings it hands to the gate. [D MC-2661]
+- Settings (budget, snippet share, unit split, rare-term share, query count, admission rule) are tuned on one seeded draw of the generator. The budget may go above 1200, up to 15% of the context plus 2000, and the report states the per-send token cost. [D MC-2630, MC-2654] The gate runs on a fresh seed that tuning never saw, and only if the tune predicts a pass at the exact settings it hands to the gate. [D MC-2661] When that final check fails, selection walks to the next larger budget that cleared at the budget step and redoes the later steps, until the final settings clear or no clearing budget remains. [D MC-2662]
 - n per language is raised until the 95% intervals of the ask-turn pack recall and of its difference from the baseline are narrower than the margin. The gate report states the intervals.
 - The share of no-fact turns where anything is packed is reported beside the gate. It is the per-turn token cost of a miss.
 

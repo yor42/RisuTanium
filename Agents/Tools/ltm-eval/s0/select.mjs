@@ -119,52 +119,77 @@ export function selectSettings(ev, { builder, C = C_GATE, procedure = {}, tuneDr
   else { budget = BUDGET_DEFAULT_; flag = 'tune predicts FAIL'; }
   evidence.budgetClears = E;
   evidence.budgetFlag = flag;
-  if (budget !== gridBudget) { // L, k and rareShare are rechecked once at the chosen budget
-    g = pickGrid(budget);
-    evidence.recheck = { L: g.pick.L, k: g.pick.k, rareShare: g.pick.rareShare, changed: g.pick.L !== L || g.pick.k !== k || g.pick.rareShare !== rareShare };
-    // a pick that is not oracle-eligible at the chosen budget must stop the gate like an ineligible grid
-    if (!g.eligible) evidence.oracleFlag = 'no oracle-eligible L/budget';
-    L = g.pick.L; k = g.pick.k; rareShare = g.pick.rareShare;
-  }
-  const at = { ...base, L, k, rareShare, budget };
+  const gridPick = g.pick;
+  const gridFlagged = evidence.oracleFlag !== undefined;
 
-  // 3. query count: three only if O improves by more than delta.
-  const o1 = objective(run(at)), o3 = objective(run({ ...at, queries: 3 }));
-  const queries = o3 - o1 > delta ? 3 : 1;
-  evidence.queries = { o1, o3 };
-  const withQ = { ...at, queries };
-
-  // 4. admission tau: the smallest qualifying value of a possibly non-contiguous set.
-  // nofact: the evaluator also runs the no-fact turns, whose empty-pack share only this step reads
-  const off = { POOL: run({ ...withQ, nofact: true }, 'POOL'), DISJOINT: run({ ...withQ, nofact: true }, 'DISJOINT') };
-  const qual = G.taus.filter((tau) => ['POOL', 'DISJOINT'].every((regime) => {
-    const on = run({ ...withQ, tau, nofact: true }, regime);
-    for (const cell of cellsOf(on)) {
-      const gain = on.recs[cell].map((c, i) => ({ n: c.nf.n, v: c.nf.empty - off[regime].recs[cell][i].nf.empty }));
-      if (intervals(gain, B_VERDICT).boot.lo < 0.05) return false;
+  // Steps 2b-7 for one budget: recheck, queries, tau, snippet floor, F and the final check. The first budget and every
+  // walk step (MC-2662) go through this one function, so the walk applies exactly the selection rules.
+  const settle = (budget) => {
+    let pick = gridPick, recheck = null, oracleFlag = null;
+    if (budget !== gridBudget) { // L, k and rareShare are rechecked once at the chosen budget
+      const h = pickGrid(budget);
+      pick = h.pick;
+      recheck = { L: pick.L, k: pick.k, rareShare: pick.rareShare, changed: pick.L !== gridPick.L || pick.k !== gridPick.k || pick.rareShare !== gridPick.rareShare };
+      // a pick that is not oracle-eligible at the chosen budget must stop the gate like an ineligible grid
+      if (!h.eligible) oracleFlag = 'no oracle-eligible L/budget';
     }
-    return lossUB(off[regime], on) <= delta;
-  }));
-  const tau = qual.length ? Math.min(...qual) : null;
-  evidence.tauQualifying = qual;
-  const withT = { ...withQ, tau };
+    const { L, k, rareShare } = pick;
+    const at = { ...base, L, k, rareShare, budget };
 
-  // 5. snippet floor: 0.75 when the LB95 recall at 0.75 x budget is below 0.5; the share stays 1.0 before S5.
-  const lowB = run({ ...withT, budget: Math.floor(0.75 * budget) });
-  let minLb = Infinity;
-  for (const cell of cellsOf(lowB)) for (const s of GATING_STYLES) minLb = Math.min(minLb, iv(lowB.recs[cell], s, 'e').boot.lo);
-  const snippetFloor = minLb < 0.5 ? 0.75 : 0.5;
+    // 3. query count: three only if O improves by more than delta.
+    const o1 = objective(run(at)), o3 = objective(run({ ...at, queries: 3 }));
+    const queries = o3 - o1 > delta ? 3 : 1;
+    const withQ = { ...at, queries };
 
-  // 6. F: the largest F whose paired delivered-recall loss against F = 2 on NF-real has UB95 <= delta.
-  const nfCells = cellsOf(run(withT)).filter((c) => c.startsWith('NF-real'));
-  const ref2 = run({ ...withT, F: 2 });
-  let F = 2;
-  for (const f of G.Fs) if (f > 2 && lossUB(ref2, run({ ...withT, F: f }), 'dl', nfCells) <= delta) F = f;
+    // 4. admission tau: the smallest qualifying value of a possibly non-contiguous set.
+    // nofact: the evaluator also runs the no-fact turns, whose empty-pack share only this step reads
+    const off = { POOL: run({ ...withQ, nofact: true }, 'POOL'), DISJOINT: run({ ...withQ, nofact: true }, 'DISJOINT') };
+    const qual = G.taus.filter((tau) => ['POOL', 'DISJOINT'].every((regime) => {
+      const on = run({ ...withQ, tau, nofact: true }, regime);
+      for (const cell of cellsOf(on)) {
+        const gain = on.recs[cell].map((c, i) => ({ n: c.nf.n, v: c.nf.empty - off[regime].recs[cell][i].nf.empty }));
+        if (intervals(gain, B_VERDICT).boot.lo < 0.05) return false;
+      }
+      return lossUB(off[regime], on) <= delta;
+    }));
+    const tau = qual.length ? Math.min(...qual) : null;
+    const withT = { ...withQ, tau };
 
-  // 7. final check: the same ask-only LB95 rule as step 2 at the exact settings handed on. The run differs from the returned
-  // object only in fields the evaluation never reads (a memo hit). A set flag, like budgetFlag, makes the gate refuse the
-  // settings (MC-2661: the gate runs only when the tune predicts PASS).
-  evidence.finalFlag = clears(run({ ...withT, F })) ? null : 'tune predicts FAIL at the final settings';
+    // 5. snippet floor: 0.75 when the LB95 recall at 0.75 x budget is below 0.5; the share stays 1.0 before S5.
+    const lowB = run({ ...withT, budget: Math.floor(0.75 * budget) });
+    let minLb = Infinity;
+    for (const cell of cellsOf(lowB)) for (const s of GATING_STYLES) minLb = Math.min(minLb, iv(lowB.recs[cell], s, 'e').boot.lo);
+    const snippetFloor = minLb < 0.5 ? 0.75 : 0.5;
 
-  return { builder, C, L, k: builder === 'idf' ? k : null, rareShare: isRare ? rareShare : null, budget, queries, tau, F, snippetFloor, snippetShare: 1.0, regime: 'POOL', delta, tuneDrawSeed, evidence, procedure };
+    // 6. F: the largest F whose paired delivered-recall loss against F = 2 on NF-real has UB95 <= delta.
+    const nfCells = cellsOf(run(withT)).filter((c) => c.startsWith('NF-real'));
+    const ref2 = run({ ...withT, F: 2 });
+    let F = 2;
+    for (const f of G.Fs) if (f > 2 && lossUB(ref2, run({ ...withT, F: f }), 'dl', nfCells) <= delta) F = f;
+
+    // 7. final check: the same ask-only LB95 rule as step 2 at the exact settings handed on. The run differs from the returned
+    // object only in fields the evaluation never reads (a memo hit).
+    const finalOk = clears(run({ ...withT, F }));
+    return { L, k, rareShare, budget, queries, tau, F, snippetFloor, finalOk, recheck, oracleFlag, o: { o1, o3 }, tauQualifying: qual };
+  };
+
+  // Final-settings budget walk (MC-2662): when the final settings do not clear, move to the next larger budget that cleared at the
+  // budget step and redo the later steps, until the final settings clear or no clearing budget remains.
+  const walkBudgets = E.filter((b) => b > budget).sort((a, b) => a - b);
+  let last = settle(budget);
+  const finalWalk = [last];
+  for (const b of walkBudgets) {
+    if (last.finalOk) break;
+    last = settle(b);
+    finalWalk.push(last);
+  }
+  evidence.finalWalk = finalWalk.map((s) => ({ budget: s.budget, finalOk: s.finalOk, L: s.L, ...(isRare ? { rareShare: s.rareShare } : builder === 'idf' ? { k: s.k } : {}) }));
+  if (last.recheck) evidence.recheck = last.recheck;
+  if (gridFlagged || last.oracleFlag) evidence.oracleFlag = 'no oracle-eligible L/budget';
+  evidence.queries = last.o;
+  evidence.tauQualifying = last.tauQualifying;
+  // A set flag, like budgetFlag, makes the gate refuse the settings (MC-2661: the gate runs only when the tune predicts PASS).
+  evidence.finalFlag = last.finalOk ? null : 'tune predicts FAIL at the final settings';
+
+  return { builder, C, L: last.L, k: builder === 'idf' ? last.k : null, rareShare: isRare ? last.rareShare : null, budget: last.budget, queries: last.queries, tau: last.tau, F: last.F, snippetFloor: last.snippetFloor, snippetShare: 1.0, regime: 'POOL', delta, tuneDrawSeed, evidence, procedure };
 }
