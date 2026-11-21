@@ -34131,3 +34131,1471 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1451`, `MC-2990`, `#455`.
 
 **What the maintainer chose.** "Allow, prove on device (Recommended)". In the `off` mode reply loop, after each processed write, the loop may yield one MessageChannel task (never `setTimeout`, `requestAnimationFrame` or an idle callback) so native stream events queued during the pass reach the snapshot reader before the next pass. The change does not ship before a Note 9 hidden-page device row shows the keep-alive count rising while hidden, the finished notice posting before the app is reopened, and Stop from the notification working. If that row fails, the yield is removed and the maintainer is asked again.
+
+### MC-2475 — #292 typing-step task split off into its own ticket #301, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, #292 A1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3681; b66\tickets\uis3-authoring\i292\answers-292.md; b61\handoffs\uis3-authoring.md:20. Related: `#292`, `#301`, `MC-2476`.
+
+**What the maintainer chose (#292 A1).** The roughly 330 ms typing-step task is split off from #292 into its own ticket, filed by lane A as #301 with its own CPU profile. The source marks the description of this task as inferred.
+
+### MC-2476 — #292 refresh gap after Update all shows old list with Update all disabled, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, #292 A2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3682; b61\handoffs\uis3-authoring.md:20. Related: `#292`, `MC-2475`.
+
+**What the maintainer chose (#292 A2).** During the deferred refresh gap after Update all, the old list stays shown and Update all stays disabled.
+
+### MC-2477 — #300 and #297 filed as follow-up issues from progress-popups and hidden-reply gaps, 2026-11-20
+
+- Tag: decisions (maintainer via lane A AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3683. Related: `#300`, `#297`.
+
+**What the maintainer chose.** The 2b DV-11 read-step count line gap is filed as #300 (NEW-progress-popups-F1, low priority, progress-popups after S4). The hidden failed reply double notice is filed as #297.
+
+### MC-2478 — UI-S2 backup scope: Screen plus .bin summary sheet, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis2-backup session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3684; b61\handoffs\uis2-backup.md:20; PR #320. Related: `#320`, `MC-2074`, `MC-2479`, `CHORE-587`, `CHORE-588`.
+
+**What the maintainer chose (scope option "Screen + .bin summary sheet").** A native Data page with one Make-backup sheet: format .rtb (default) or .bin, and for .bin scope full or partial. It also covers restore from file (.rtb or .bin) and from snapshot, and dataset export. The MC-2074 kinds and counts sheet is shown before a .bin export, replacing the back-to-back leave-out alertConfirms in backuplocal.ts. CHORE-587 and CHORE-588 stay out.
+
+### MC-2479 — UI-S2 row moves: cold-storage switch and goCharacterOnImport go to Data, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis2-backup session, same round as MC-2478). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3685; PR #320; b61\handoffs\uis2-backup.md:20. Related: `MC-2478`, `PR #320`.
+
+**What the maintainer chose.** The cold-storage switch (from Advanced, DS-180) and goCharacterOnImport (from Input, DS-183) move to the Data page, and search lands on them there.
+
+### MC-2480 — Progress-popups S4 background offer only for in-app starts, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, S4 OPQ-1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3686; b61\b11\plan-s4.md:463; PR #324. Related: `MC-2481`, `MC-2482`, `MC-2483`, `MC-2498`, `MC-2509`.
+
+**What the maintainer chose (OPQ-1).** "Keep going in the background" is offered on in-app starts only: Characters picker, Modules picker and drop, for any file count. It is never offered for OS-handed files, #import= links, Chub or Realm, and never for restore, backup or export.
+
+### MC-2481 — Progress-popups S4 new import during background run: both run, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, OPQ-2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3687; b61\b11\plan-s4.md:463. Related: `MC-2355`, `MC-2480`.
+
+**What the maintainer chose (OPQ-2).** A new import while one runs in the background: both run. MC-2355 (newest replaces) applies to the shown card only.
+
+### MC-2482 — Progress-popups S4 replaced shown running card ends silently, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, OPQ-3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3688; PR #324. Related: `MC-2365`.
+
+**What the maintainer chose (OPQ-3).** A replaced shown running card still ends silently; MC-2365 is unchanged. It does not move to the background.
+
+### MC-2483 — Progress-popups S4 no auto-open of imported character after background import, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, OPQ-4). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3689; b61\b11\plan-s4.md:463; PR #324. Related: `MC-2480`.
+
+**What the maintainer chose (OPQ-4).** No auto-open of the imported character after a backgrounded import. Foreground imports are unchanged.
+
+### MC-2484 — #290 ships alone in a small PR; #179 gets its own PR later, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, B1; answers file b66\tickets\uis3-authoring\b290\answers.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3690; PR #306. Related: `#290`, `#179`, `MC-2392`, `MC-2508`.
+- Supersedes / amends: the "#179 gets its own PR later" part is superseded by MC-2508 (lane A decisions log line 3716), which closes #179 as not worth building.
+
+**What the maintainer chose (B1).** #290 ships alone now, in a small PR. It reuses the translated studioEmotionNameBlank text, so it adds no new en keys. #179 is split off to get its own PR later.
+
+### MC-2485 — #179 relink is a button on the existing file gone notice, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, B2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3691. Related: `#179`, `MC-2486`, `MC-2508`.
+
+**What the maintainer chose (B2).** The #179 relink is a button on the existing "file gone" notice.
+
+### MC-2486 — Kept-file relink re-adds the row as a new undoable step, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, B3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3692. Related: `MC-2485`, `MC-2487`.
+
+**What the maintainer chose (B3).** Pressing the MC-2485 button adds the row back with the identical kept file, as its own new undoable step.
+
+### MC-2487 — Surviving identical kept file confirmed only by a session-held hash, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, B4). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3693. Related: `MC-2508`.
+
+**What the maintainer chose (B4).** The surviving identical file is confirmed only by a hash held in the session. It is not offered after reload, and there is no stored-format change.
+
+### MC-2488 — UI-S6 stays closed; N9-1 and N9-12 become low-priority pre-release checks, 2026-11-20
+
+- Tag: decisions (maintainer via lane A AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3695; b61\handoffs\ui-lane.md:17; b61\ui-lane\s4-s6-device-rows.md:46. Related: `MC-089`, `#239`, `PR #136`.
+
+**What the maintainer chose.** UI-S6 stays closed, per the 2026-11-18 answer (no MC ID in the evidence). The never-run Note 9 rows N9-1 (large fonts, pixel check) and N9-12 (long large-font memory check) become pre-release device checks (MC-089), run later by lane B at low priority. They are not UI-S6 blockers. Issue #239 (single Trash confirm) is closed as fixed by PR #136.
+
+### MC-2489 — #248 nexus focus-ring pair capped at width 4 px and offset 6 px, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the packlint-batch session, MC-PLB-1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3697; PR #304. Related: `#248`, `MC-2490`, `MC-2491`, `MC-2492`.
+
+**What the maintainer chose (option "Width 4, offset <=6").** The shared tables cap `--nexus-focus-ring-width` at 1 to 4 px and `--nexus-focus-ring-offset` at -4 to 6 px, so every area applies it. This closes the live PatternPrompt ring of 8 to 16 px (#248).
+
+### MC-2490 — #248 Settings pattern-focus-width gets a 1 px floor, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the packlint-batch session, MC-PLB-2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3698; PR #304. Related: `#248`, `MC-2489`.
+
+**What the maintainer chose (MC-PLB-2).** The Settings `--pattern-focus-width` gets a 1 px floor. It is not live yet, because the Settings sheets are not judged or applied.
+
+### MC-2491 — Studio size ring and Home focus tokens stay 1 to 8 px, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the packlint-batch session, MC-PLB-3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3699; PR #304. Related: `MC-2489`.
+
+**What the maintainer chose (MC-PLB-3).** Studio `--studio-size-ring` and Home `--home-focus-w` and `--home-focus-offset` stay 1 to 8 px until those areas apply. No change.
+
+### MC-2492 — #249 inherited colour kept as recorded residue, closed without code, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the packlint-batch session, MC-PLB-4). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3700; PR #304. Related: `#249`, `#248`, `MC-2319`, `MC-2350`.
+
+**What the maintainer chose (MC-PLB-4).** The #249 inherited colour is kept as residue. MC-2319 and MC-2350 stand, with no code. #249 is to be closed as recorded residue.
+
+### MC-2493 — Theme-pack judge gaps: only OS-break or softlock blocks, others become warnings, 2026-11-20
+
+- Tag: decisions (maintainer standing instruction via the packlint-batch session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3701; PR #304. Related: `MC-2535`.
+
+**What the maintainer chose (standing instruction).** When a reviewer finds more theme-pack judge gaps, weigh the real blast radius first. Only critical gaps (OS break, softlock) block. Cosmetic or readability gaps become candidates for a warning prompt at Install theme, not follow-up tickets.
+
+### MC-2494 — UI-S2 Data page .rtb Start skips rtbExportConfirm, legacy keeps it, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis2-backup session, Q1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3702; PR #320; b61\handoffs\uis2-backup.md:27; b61\uis2bk\plan-r1.md. Related: `MC-2478`, `MC-2495`, `MC-2496`.
+
+**What the maintainer chose (Q1 "Skip it (Recommended)").** The Data page's .rtb Start skips rtbExportConfirm. The legacy path keeps it.
+
+### MC-2495 — UI-S2 partial .bin on Data page uses an inline line, not two confirms, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis2-backup session, Q2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3703; PR #320; b61\handoffs\uis2-backup.md:27. Related: `MC-2494`, `MC-2496`.
+
+**What the maintainer chose (Q2 "Replace with inline line (Recommended)").** For a partial .bin on the Data page, the sheet's inline line replaces partialBackupFirstConfirm and partialBackupSecondConfirm. The legacy path keeps both.
+
+### MC-2496 — UI-S2 left-out repeat after a saved .bin is a polite line, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis2-backup session, Q3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3704; PR #320; b61\handoffs\uis2-backup.md:27. Related: `MC-2478`.
+
+**What the maintainer chose (Q3 "Line under the button (Recommended)").** After a saved .bin, a polite line under the Make-a-backup row repeats what was left out.
+
+### MC-2497 — #292 accepted with a narrow phone miss; #303 filed as low-priority follow-up, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, confirmed to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3705. Related: `#292`, `#303`.
+
+**What the maintainer chose.** Accept #292 with a narrow phone miss, and close #292. A LOW follow-up, #303, profiles the remaining display-scan task and splits it if needed. The device figures are in the source line and are not restated here.
+
+### MC-2498 — Progress-popups S4 Modules round with Replace never offers background, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, S4 Gate 1 r1 finding). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3706; PR #324. Related: `MC-2480`, `MC-2509`, `MC-2513`.
+- Supersedes / amends: refined by MC-2509 (lane A decisions log line 3718): a Modules card offers background only after the round's last duplicate decision, and only if no file chose Replace.
+
+**What the maintainer chose (S4 Gate 1 r1 finding).** When a Modules import round has a Replace decision, its card does not offer "Keep going in the background", so the page stays covered until that round ends. Adds and Characters imports keep the offer. The stated reason: the Settings Modules editor edits the live module object and saves it by identity, so a backgrounded Replace would silently discard edits made meanwhile.
+
+### MC-2499 — UI-S7 Q1 default look: retune built-in slate Default toward Nexus, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, UI-S7 staged plan Q1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3707; PR #329; b61\ui-lane\s7-maintainer-answers.md. Related: `MC-2510`, `MC-2511`, `#114`.
+
+**What the maintainer chose (Q1 default look).** Retune the slate toward Nexus. New screens follow the user's scheme, and the built-in slate Default is retuned toward the Nexus colours for everyone. Built-ins repaint live. The saved db.colorScheme is never rewritten (#114 D3 precedent). The B1 plan proposes the exact colours for sign-off.
+
+### MC-2500 — UI-S7 Q3 a theme pack sits on its fixed base, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3708; PR #329; b61\ui-lane\s7-maintainer-answers.md. Related: `MC-2517` (later, keeps B2 at this token scope), `MC-2504`.
+
+**What the maintainer chose (Q3).** A theme pack sits on its fixed base.
+
+### MC-2501 — UI-S7 Q6 names for all classic screens in three batches, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q6). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3709; PR #330; b61\ui-lane\s7-maintainer-answers.md. Related: `#229`, `#287`, `#270`.
+
+**What the maintainer chose (Q6).** Names for all classic screens, in three batches (A1, A2, A3), with the S7-13 hover-colour swap in the same files. PR #330 is part of UI-S7 (#270) and covers #229 (names) and #287 (Home mode radios; that issue closes on the A1-N3 device row), plus the S7-13 swap.
+
+### MC-2502 — UI-S7 Q7 one system first: scheme mapping B1 before the Home build, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q7). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3710; b61\ui-lane\s7-maintainer-answers.md:16. Related: none named.
+
+**What the maintainer chose (Q7).** One system first. B1 (scheme mapping) comes before the Home build. Home modes unavailable under S7-28 collapse behind a "more" entry.
+
+### MC-2503 — UI-S7 Q2 tribute packs: Banana Cocoa only, D2 waits for reference pictures, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3711; b61\handoffs\theme-packs.md:11; b61\ui-lane\s7-maintainer-answers.md:16. Related: `MC-2516`, `MC-2519`.
+
+**What the maintainer chose (Q2).** Tribute packs: Banana Cocoa only. D2 waits until the maintainer gives the location of the reference pictures (given later under MC-2516). Other stages go first. The theme-packs handoff records Office Sheet and Terran Eclipse as gallery backlog.
+
+### MC-2504 — UI-S7 Q4 light packs: app supplies a light transcript base, none refused, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q4). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3712; PR #329; b61\ui-lane\s7-maintainer-answers.md:16. Related: none named.
+
+**What the maintainer chose (Q4).** The app supplies a light transcript base. No pack is refused.
+
+### MC-2505 — UI-S7 Q5 shell glyphs replaced with Lucide icons, MC-1698 tab shape, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q5). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3713; b61\ui-lane\s7-maintainer-answers.md:16. Related: `MC-1698`.
+
+**What the maintainer chose (Q5).** Replace all shell glyphs with Lucide icons, with the MC-1698 tab shape.
+
+### MC-2506 — UI-S7 Q2b classic chat gets full polish under stage H, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, Q2b). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3714; b61\ui-lane\s7-maintainer-answers.md:16. Related: none named.
+
+**What the maintainer chose (Q2b).** Classic chat gets full polish (stage H option 1): mobile header, pinned composer, focus order and skip link, empty state, red regenerate, tap targets, initials. Q8 (Settings vocabulary and language switch) is asked at the G1 plan and is not answered in this line.
+
+### MC-2507 — #305 takes S7-26 boot notice; AlertComp X buttons and S7-27 go to #247, 2026-11-20
+
+- Tag: decisions (maintainer; channel not stated in the evidence). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3715; lane A decisions log line 3856. Related: `#305`, `#247`, `MC-2460`, `MC-2614`.
+- Supersedes / amends: clarified by MC-2614 (lane A decisions log line 3856): "S7" here means progress-popups #247 stage S7, not UI-S7; AlertComp focus return is owned by progress-popups.
+
+**What the maintainer chose.** File S7-26 (archive-migration notice on an empty profile) as its own boot ticket, #305. AlertComp unnamed X buttons and S7-27 restore-confirm styling route to #247.
+
+### MC-2508 — #179 closed as not worth building; cleanup removes studioAssetUseKeptFile, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, B5, confirmed to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3716; PR #308; b61\handoffs\uis3-authoring.md:4 (records the GitHub close as not planned). Related: `#179`, `#290`, `PR #308`, `MC-2484`, `MC-2487`.
+
+**What the maintainer chose (B5).** Close #179 as not worth building. Under MC-2487 the offer appears only after an out-of-app delete of a kept file in the same session after Check bytes hashed it, which is practically never on Android. Cleanup goes in a small uis3-authoring PR after #290: remove studioAssetUseKeptFile in all 8 locales (the translator handles non-English locales) and amend SLICE4_SPEC section 7.5 to drop the offer.
+
+### MC-2509 — Progress-popups S4 Modules background offer only after last duplicate decision, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, OPQ-5). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3718; b61\b11\plan-s4.md:691; PR #324. Related: `MC-2498`, `MC-2513`.
+- Supersedes / amends: refines MC-2498 (lane A decisions log line 3706).
+
+**What the maintainer chose (OPQ-5).** A Modules import card offers "Keep going in the background" only after the round's last duplicate decision, and only if no file chose Replace. A single-file add may go to the background during asset saving; in a batch only the last file can. A backgrounded Modules round never replaces anything.
+
+### MC-2510 — UI-S7 B1 built-in Default retuned to palette "A Dusk Nexus", 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, UI-S7 B1 plan). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3719; PR #329. Related: `MC-2499`, `MC-2511`.
+
+**What the maintainer chose (palette "A Dusk Nexus").** The built-in Default palette is retuned to: bgcolor #151836, darkbg #0f112a, borderc #6f7fc8, selected #2f3670, draculared #ff6b81, textcolor #eef0ff, textcolor2 #a6b0d4, darkBorderc #3c4478, darkbutton #242a52. Nexus stays a separate preset.
+
+### MC-2511 — UI-S7 B1 boot screens and held Android bars use the new Default canvas, 2026-11-20
+
+- Tag: decisions (maintainer, same ui-lane AskUserQuestion as MC-2510). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3720; PR #329; b61\ui-lane\b1\arbitration-r1.md (cited in that line). Related: `MC-2510`, `MC-2499`.
+
+**What the maintainer chose.** The splash, boot screen and held Android bars use the new Default canvas for the whole boot. Users on another scheme see one step at hand-over. The same log line also records ui-lane rulings from arbitration-r1.md, which are not maintainer answers: B1 and B2 in one PR; S7-10 border and Welcome mark tone in B1; TB5 dropped as a source-text guard.
+
+### MC-2512 — #307 progress-popups F2 TalkBack announcements filed after S4 with #300, 2026-11-20
+
+- Tag: decisions (maintainer; channel not stated in the evidence). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3721; b61\handoffs\progress-popups.md:97. Related: `#307`, `#300`.
+
+**What the maintainer chose.** File progress-popups F2 (DV-S3-6 TalkBack announcements) as #307, medium accessibility, taken after S4 with #300. S3 is accepted by its owner with F2 open. A phone-1 multi-file share row is owed (DV-S3-8 accepted as source-covered). The packlint-batch session is archived.
+
+### MC-2513 — Progress-popups S4 no background offer while a replaced Modules round runs, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the progress-popups session, S4 Gate 1 r2 residual under MC-2365). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3722; PR #324. Related: `MC-2365`, `MC-2498`, `MC-2509`.
+
+**What the maintainer chose (guard it).** No task card offers "Keep going in the background" while a replaced (detached) Modules round is still running. The pre-S4 route (OK the drop's result, then edit) is recorded as a residual.
+
+### MC-2514 — Node-GC S2 S-N3 48 h gate replaced by deterministic asset-sweep chain test, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the orphan-features session, node-GC S2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3723; PR #340. Related: `#108`.
+
+**What the maintainer chose (node-GC S2, branch claude/node-gc-pr2 from 0d58b2ae9).** S-N3 (the 48 h real-time gate) is replaced by a deterministic asset-sweep chain test built like #108's (real server.cjs plus the clock-shift preload), as N4 was (cf. the proportional-gates rule).
+
+### MC-2515 — PR #340 two-origin PC smoke S-N5 blocks merge, 2026-11-20
+
+- Tag: decisions (maintainer, recorded in the lane A decisions log as "maintainer (same)"; the referent of "same" is the preceding log entry, not in this packet). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3724; PR #340 body; b61\handoffs\orphan-features.md:153 and :173. Related: `PR #340`, `MC-2515`.
+- Supersedes / amends: Status not ordered by the packet: the PR #340 body has a checked S-N5 line dated 2026-11-20 on 39a6d0e1e, while b61\handoffs\orphan-features.md:173 lists the smoke as still NEXT before merge. Run result TODO(evidence).
+
+**What the maintainer chose (lane A decisions log line 3724).** S-N5, the minutes-long two-origin PC smoke, blocks merge. An agent runs it on the PC in the built-in browser.
+
+### MC-2516 — UI-S7 D2 Banana Cocoa reference pictures location, 2026-11-20
+
+- Tag: decisions (maintainer, recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3725; b61\handoffs\ui-lane.md:29. Related: `MC-2503`, `MC-2516`.
+
+**What the maintainer chose (lane A decisions log line 3725).** The Banana Cocoa reference pictures are at C:\Projects\Theme reference\Banana Cocoa. This unblocks UI-S7 D2 (MC-2503). Under the tribute-theme rule, the goal is to reconstruct the general look as a parody or tribute, not to copy everything.
+
+### MC-2517 — UI-S7 B2 classic-surface colours deferred to later design, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session, UI-S7 B2 open question OPQ-1; the answer is quoted in the lane A log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log lines 3728, 3767 and 3772; PR #343; PR #329; b61\handoffs\ui-lane.md:32. Related: `MC-2500`, `MC-2517`, `PR #343`, `PR #329`.
+- Supersedes / amends: Clarified by lane A log line 3767 (11 embedded classic components plus the 8-file sidebar, toggle and toast list, same deferral class). Corrected by lane A log line 3772: AlertComp is listed only because TaskYieldHarness.svelte imports it; it stays in the same class.
+
+**What the maintainer chose (lane A decisions log line 3728).** "Later, designed." B2 stays at the MC-2500 token scope. While a pack is on, the chat sidebar, toggle-scope switch, toast host and transcript prose-invert keep following the user's colour scheme. They move onto chat tokens in stage A name batches or stage D, once their colours are designed and contrast-checked.
+
+### MC-2518 — #309 and #310 theme-pack gaps filed as unscheduled issues, 2026-11-20
+
+- Tag: decisions (maintainer, recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3729; b61\handoffs\ui-lane.md:32. Related: `#309`, `#310`, `MC-2518`.
+
+**What the maintainer chose (lane A decisions log line 3729).** File the two existing theme-pack gaps from UI-S7 B2 O-3 and O-4 as issues #309 (bare-html token rules lose to :root) and #310 (part-scoped tokens miss text-nexus-*). They go to the validator and apply owner and stay unscheduled.
+
+### MC-2519 — #177 closed as done, built-in packs already on main, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the theme-packs session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3730; b61\handoffs\theme-packs.md:19. Related: `#177`, `MC-2503`, `MC-2516`, `MC-1355`.
+- Supersedes / amends: Superseded in part by MC-2520 (lane A decisions log line 3731) for Scratch White and Office Sheet, which are built rather than left in the backlog. Terran Eclipse stays in the backlog under both.
+
+**What the maintainer chose (lane A decisions log line 3730).** Close #177 as done. Both acceptance packs are already on main as built-ins (src/ts/themePack/builtins.ts) with frozen goldens. The Banana Cocoa rework is UI-S7 D2 (MC-2503, MC-2516). At this decision, Office Sheet, Terran Eclipse and Scratch White stayed in the backlog.
+
+### MC-2520 — #311 build Scratch White and Office Sheet packs instead of archiving, 2026-11-20
+
+- Tag: decisions (maintainer, relayed by lane A per b61\handoffs\theme-packs.md:21). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3731; b61\handoffs\theme-packs.md:21; PR #323 (Closes #311). Related: `#311`, `PR #323`, `MC-2519`, `MC-2521`.
+- Supersedes / amends: Amends MC-2519 for Scratch White and Office Sheet.
+
+**What the maintainer chose (lane A decisions log line 3731).** The theme-packs session builds the two reference-free backlog packs instead of archiving them: Scratch White (no reference) and Office Sheet (a nod to a general word processor). Terran Eclipse stays in the backlog. Banana Cocoa is UI-S7 D2.
+
+### MC-2521 — #311 both packs ship as CSS built-ins and downloadable .risutheme files, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, MC-2520 packs). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3732; PR #323. Related: `#311`, `MC-2534`, `MC-2536`, `MC-2537`.
+
+**What the maintainer chose (lane A decisions log line 3732).** Both packs ship as CSS-only built-ins, like the existing two, and as downloadable .risutheme packs. Scratch White bundles the unmodified Nanum Pen Script TTF (OFL 1.1, 3.2 MB) and its OFL.txt.
+
+### MC-2522 — #311 Scratch White school-notebook palette, light only, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, MC-2520 packs). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3733; PR #323. Related: `#311`, `MC-2520`, `MC-2524`.
+
+**What the maintainer chose (lane A decisions log line 3733).** Scratch White uses a school-notebook palette: white paper, graphite text, blue rules, a red margin and a blue-ink accent. Light mode only.
+
+### MC-2523 — #311 Office Sheet classic-document look, light only, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, MC-2520 packs). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3734; PR #323. Related: `#311`, `MC-2520`, `MC-2524`.
+
+**What the maintainer chose (lane A decisions log line 3734).** Office Sheet uses a classic-document look: grey chrome, a white page with shadow, a ruler-like top bar, a toolbar-style composer, a system serif body and a blue accent. Light only. It is a nod to word processors in general, with no product branding.
+
+### MC-2524 — #311 both packs cover all four areas, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, MC-2520 packs). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3735; PR #323. Related: `#311`, `MC-2520`, `MC-2522`, `MC-2523`.
+
+**What the maintainer chose (lane A decisions log line 3735).** Both packs cover all four areas: chat, studio, settings and home.
+
+### MC-2525 — #312 app-wide TalkBack name loss as its own later ticket, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3736; b61\handoffs\ui-lane.md:39; b61\ui-lane\a23\plan.md:496 (open question). Related: `#312`, `MC-2525`.
+
+**What the maintainer chose (lane A decisions log line 3736).** The app-wide Android TalkBack name loss (wrapping-label radio and checkbox names; aria-label-only text field and textarea names) goes in its own ticket #312, later. It is sized and gated after UI-S7 A1 merges. It reuses A1c's D0-proven mechanism in the shared CheckInput, TextInput and TextAreaInput plus about 37 wrapping-label components. A1 scope is unchanged. Evidence cited in the log: lane B Note 9 N3, N4, N5 and S4 at 78d79fb7c. Open, not decided by this packet: whether A2 and A3 absorb #312 (b61\ui-lane\a23\plan.md:496 asks for confirmation).
+
+### MC-2526 — #297 #305 #169 #154 #215 #225 #226 four parallel ticket sessions approved, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3738; PR #328; PR #321; b61\handoffs\small-fixes.md:2; b61\handoffs\stats-batch.md:1. Related: `#297`, `#305`, `#169`, `#154`, `#215`, `#225`, `#226`, `MC-772`, `MC-2526`.
+- Supersedes / amends: Records note, not a decision change: b61\stats\plan-225.md:28 reports that MC-2526 had no grep match in Maintainer-Context.md at its snapshot, so the approval wording here comes from the lane A log.
+
+**What the maintainer chose (lane A decisions log line 3738).** Start four parallel ticket sessions: small fixes #297, #305 and #169; share-safe export #154 (CHORE-580); Linux file types #215 (CHORE-832); and the stats batch #225 and #226. #226 starts after orphan-features S2d if it touches store2/commit.ts.
+
+### MC-2527 — #313 always-on prose-invert defect filed as unscheduled issue, 2026-11-20
+
+- Tag: decisions (maintainer, recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3739; b61\handoffs\ui-lane.md:44. Related: `#313`, `MC-2527`.
+- Supersedes / amends: Description conflict, not arbitrated here: lane A log line 3739 describes the binding as always truthy, while b61\ui-lane\d1\gate1-r1.md:36 says ShellMessage is now bound to the pattern tone, so "always true" is no longer the premise. Both cited.
+
+**What the maintainer chose (lane A decisions log line 3739).** File the always-on prose-invert defect as issue #313, unscheduled. The defect is class:prose-invert={$ColorSchemeTypeStore}, which is truthy for light too, in ShellMessage, AlertComp, CharacterDescription and MultiLangDisplay. Lane A confirmed it on main.
+
+### MC-2528 — PR #348 Argon2id default for encrypted rtb exports 128 MiB, 3 passes, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the rtb-encryption session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3740; PR #348. Related: `MC-698`, `MC-2528`.
+
+**What the maintainer chose (lane A decisions log line 3740).** The default Argon2id for encrypted .rtb exports is m=128 MiB, t=3, p=1 (about 1.1 s estimated on the Note 9). Not chosen: 64 MiB t3 (about 0.37 s measured) and 256 MiB t3 (about 2.3 s estimated). Basis: lane B Note 9 app-WebView rows (c128\s10\laneb-results-m.md). Each file records its own parameters (MC-698 item 2), so the default can change later. PC rows (Tauri, plain-HTTP LAN) are still pending.
+
+### MC-2529 — PR #348 restore password prompt gets a Show password toggle, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the rtb-encryption session, plan c128\s10\plan-r1.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3741; b61\handoffs\rtb-encryption.md:10; PR #348. Related: `PR #348`, `MC-329`, `MC-2529`.
+
+**What the maintainer chose (lane A decisions log line 3741).** The restore password prompt has a "Show password" toggle. The log gives the reason: Android keyboards drop Hangul input in masked fields. The rtb-encryption handoff records the toggle as YES (answers marked Recommended).
+
+### MC-2530 — PR #348 wrong restore password asks again until Cancel, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the rtb-encryption session, plan c128\s10\plan-r1.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3742; b61\handoffs\rtb-encryption.md:10; PR #348. Related: `PR #348`, `MC-2530`.
+
+**What the maintainer chose (lane A decisions log line 3742).** A wrong password asks again until the user cancels, with no attempt limit.
+
+### MC-2531 — PR #348 copy-stage authentication failure shows damaged message, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the rtb-encryption session, plan c128\s10\plan-r1.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3743; b61\handoffs\rtb-encryption.md:10; PR #348. Related: `PR #348`, `MC-2531`.
+
+**What the maintainer chose (lane A decisions log line 3743).** An authentication failure found while copying assets shows the existing damaged-backup message, with the copied-kept line. PR #348 body: after the commit, the message names only the affected side sections.
+
+### MC-2532 — PR #348 KDF out-of-memory restore failure gets its own message, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the rtb-encryption session, plan c128\s10\plan-r1.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3744; b61\handoffs\rtb-encryption.md:10; PR #348. Related: `PR #348`, `MC-2532`.
+
+**What the maintainer chose (lane A decisions log line 3744).** A KDF out-of-memory failure gets its own message: nothing is restored and current data is unchanged. The rtb-encryption handoff names the key rtbRestoreUnlockFailed.
+
+### MC-2533 — #269 #268 #227 #228 #230 closed with accepted gaps, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion to lane A on ui-lane s4-s5-closeout-recs.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3746; lane A record line 3796 (cross-reference to MC-2533); b61\handoffs\ui-lane.md:49; b61\deferred-survey\report.md:162. Related: `#268`, `#269`, `#227`, `#228`, `#229`, `#230`, `#237`, `#287`, `#312`, `#330`, `MC-2533`.
+
+**What the maintainer chose (lane A decisions log line 3746).** Close UI-S5 #269 with accepted gaps (N8 not run, jsdom-covered; N10 unreachable on Android 10). Close UI-S4 #268 with its gaps moved to UI-S7 A1c (N3-N5 Android names; the app-wide part is #312; #287 closes on A1 N3). Close #227, #228 and #230, since UIL-S1 to S3 pass. #229 stays with A1. The Trash tab 200% root-font break is tracked under #237. The PC leg ran on the Vite dev server.
+
+### MC-2534 — #311 built-in Scratch White names no font, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, from the #311 plan r1 open items). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3747; PR #323. Related: `#311`, `MC-2521`, `MC-2535`.
+
+**What the maintainer chose (lane A decisions log line 3747).** The built-in Scratch White names no font. Its message text uses the user's own font.
+
+### MC-2535 — #311 validator audit runs in parallel while packs use today's validator, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, from the #311 plan r1 open items, with a follow-up answer in the same session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3748; PR #323; PR #327; b61\handoffs\theme-packs.md:38. Related: `MC-2493`, `MC-2535`, `MC-2538`, `#311`, `#315`, `#316`.
+
+**What the maintainer chose (lane A decisions log line 3748).** The maintainer said: "Validator seems too strict. I think we need audit on the validator to see if there are other overly restrictive rules similar to this one." The follow-up answer was: "Packs now, audit in parallel". Both packs are built on today's validator, with one faint blue rule under each message. A separate read-only validator audit lists rules to loosen, ranked under MC-2493. The maintainer picks each rule, and each pick is its own ticket with opus Gate 1. The packs get a polish follow-up after any loosening.
+
+### MC-2536 — #311 downloadable Scratch White paper texture under GPL-3.0, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, from the #311 plan r1 open items). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3749; b61\handoffs\theme-packs.md:44. Related: `MC-2536`, `MC-2540`, `MC-2535`, `MC-2521`, `#311`.
+- Supersedes / amends: Narrowed by MC-2540 (lane A decisions log line 3753): Scratch White v1 ships with a flat paper colour and no bundled image. The built-in stays CSS-only under both.
+
+**What the maintainer chose (lane A decisions log line 3749).** The downloadable Scratch White bundles an original, procedurally generated paper-texture image under GPL-3.0. The built-in stays CSS-only.
+
+### MC-2537 — #311 downloadable packs live in theme-packs at the repo root, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, from the #311 plan r1 open items). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3750; PR #323. Related: `#311`, `MC-2521`, `MC-2524`.
+
+**What the maintainer chose (lane A decisions log line 3750).** Downloadable packs live in theme-packs/ at the repository root.
+
+### MC-2538 — #315 #316 #317 #318 validator audit picks filed as issues, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion to lane A on validator-audit result.md). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3751; PR #327; b61\handoffs\theme-packs.md:40. Related: `MC-2535`, `MC-2538`, `MC-2309`, `MC-1550`, `#315`, `#316`, `#317`, `#318`.
+
+**What the maintainer chose (lane A decisions log line 3751).** File V1 and V2 (repeating gradients; background size, position and repeat on reach parts) as #315. File V6 (px or rem max-width of at least 320 px) as #316. File W1 (install-time warnings channel) as #317. File V7 (named system fonts warn instead of refuse; re-decides MC-1550, depends on W1) as #318. Keep these rules: pseudo-elements; mask, clip-path, filter, rotate and border-image; shadows over 2 px (MC-2309); url() images on reach parts. The log says lane A confirmed V1 on main (the skip list lacks repeating).
+
+### MC-2539 — Tab S9 E11 TalkBack run dropped, Note 9 runs cover it, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3752; lane B MC batch line 3926 (corroborates the drop). Related: `#312`, `MC-2539`, `MC-2705`.
+
+**What the maintainer chose (lane A decisions log line 3752).** Drop Tab S9 E11 (TalkBack on the Tab). The guard refused its commands on the restricted Tab and nothing was changed. The Note 9 TalkBack runs (D0, D0b, N3-N5) and #312 cover it. No scope file.
+
+### MC-2540 — #311 Scratch White v1 ships without paper texture, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in theme-packs, from #311 plan-r2 Q-T). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3753; PR #323; b61\handoffs\theme-packs.md:44. Related: `MC-2536`, `MC-2535`, `MC-2540`, `#315`, `#311`.
+- Supersedes / amends: Narrows MC-2536 (no texture in v1). The texture design stays on file as Stage 3 and lands only if bundled images on reach parts are later admitted (audit R16, kept).
+
+**What the maintainer chose (lane A decisions log line 3753).** "Ship without it for now". Scratch White v1 ships with a flat paper colour and no bundled image. Lane A accepted the builtins.test.ts golden narrowing to the two v1 goldens and an additive describe that pins each new built-in against its downloadable chat.css.
+
+### MC-2541 — UIL-N12 one Noto Sans CJK font fetch allowed for test use, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3755; later lane A record line 3770 (reports the font deleted after use). Related: `UIL-N12`, `MC-2549`, `MC-2541`.
+
+**What the maintainer chose (lane A decisions log line 3755).** For UIL-N12 (UI-S6 I3 N9-1), lane B may fetch one Noto Sans CJK OTF of 16 MiB or more from the official notofonts/googlefonts GitHub release. The answer was "Allow, official source (Recommended)". It is for test use only, in scratch and the Note 9 playground. It never enters the repo and is deleted after N12. Lane B reconfirms the exact name, URL and size with the maintainer when N12 is ready.
+
+### MC-2542 — #317 unbundled font family warns, listed symbol fonts refused, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in validator-warnings, #317). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3757; PR #331; b61\validator-warnings\plan.md:15. Related: `#317`, `#318`, `MC-1550`, `MC-1554`, `MC-2542`, `MC-2543`, `MC-2547`.
+- Supersedes / amends: Supersedes MC-1550 and MC-1554 for font-family names (as the log line states). Extended by MC-2547.
+
+**What the maintainer chose (lane A decisions log line 3757).** A font family the pack does not bundle gives an install-time warning, not a refusal. A short fixed list of OS symbol fonts stays refused: Wingdings 1-3, Webdings, Symbol, Marlett, (ITC) Zapf Dingbats, Segoe MDL2 Assets, Segoe Fluent Icons and Segoe UI Symbol. The rule is app-side only (valueRules.ts); the reference packlint has no font rule.
+
+### MC-2543 — #317 no new font fallback rule, warning names a generic family, 2026-11-20
+
+- Tag: decisions (maintainer, on #317, as the log line states). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3758; PR #331. Related: `#317`, `#318`, `MC-2542`, `MC-2543`.
+
+**What the maintainer chose (lane A decisions log line 3758).** No new fallback rule. The warning text tells the author to end the font list with a generic family.
+
+### MC-2544 — #317 pack with warnings still installs, warnings listed after Installed, 2026-11-20
+
+- Tag: decisions (maintainer, on #317, as the log line states). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3759; PR #331. Related: `#317`, `MC-2544`.
+
+**What the maintainer chose (lane A decisions log line 3759).** A pack with warnings still installs. The install row lists the warnings beneath the Installed line, under a header. No acknowledgement step is needed, and nothing is stored on the record. PR #331 body gives the header as "Installed with warnings (chat.css):" with the key themePackInstalledWithWarnings in all 8 locales.
+
+### MC-2545 — #317 and #318 ship as one PR with two commits, 2026-11-20
+
+- Tag: decisions (maintainer, recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3760; lane A record line 3787 (PR #331 opened); PR #331. Related: `#317`, `#318`, `MC-2545`.
+
+**What the maintainer chose (lane A decisions log line 3760).** #317 (W1) and #318 (V7) ship as one PR with two commits, W1 first, then V7.
+
+### MC-2546 — #319 own-gradient credit gap filed as separate follow-up warning, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in validator-warnings, answer "separate ticket"; filing confirmed to lane A as "File it"). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3761; PR #361; b61\b1-warn\decisions.md:5. Related: `#317`, `#319`, `MC-2546`.
+
+**What the maintainer chose (lane A decisions log line 3761).** The own-gradient credit gap (engine.ts reachExtra own pair and cascade.ts Rule S trust a gradient that has a size, a position or no-repeat) is a separate follow-up, filed as #319. After #317 lands, it emits an install-time warning on #317's channel, not a refusal. #317 and #318 scope is unchanged.
+
+### MC-2547 — #317 #318 font warning also covers chat font token and quoted generics, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in validator-warnings, answer "Yes to both"). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3763; lane A record line 3787; PR #331; b61\handoffs\validator-warnings.md:16. Related: `MC-2542`, `MC-2547`, `MC-1822`, `MC-1556`, `MC-1609`.
+- Supersedes / amends: Extends MC-2542. Supersedes MC-1822's "bundled plus generic only" for family names (its ban on var() of an app token stays), and supersedes MC-1556 O4 for this case.
+
+**What the maintainer chose (lane A decisions log line 3763).** The MC-2542 font rule also covers (a) the --chat-message-font token and (b) quoted generic names such as "serif". Consequence for MC-1609 Q5 (registration stays per sheet): a family registered only in another sheet now warns instead of being refused. Lane A's records note (log line 3787) names an accepted limitation: an aliased name for a listed symbol font is not refused.
+
+### MC-2548 — #322 nested percentage widths filed as warning follow-up, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion to lane A, answer "File it"). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3764; b61\issue-o1.md:7; PR #331. Related: `#322`, `#317`, `MC-2548`, `MC-2587`.
+- Supersedes / amends: Not changed by this line, but the B1 plan addendum binds the W322 message suffix to MC-2587 (b61\b1-warn\plan-addendum.md:3), with MC-2548 remaining the ticket decision. Both cited; no arbitration here.
+
+**What the maintainer chose (lane A decisions log line 3764).** O1 from validator-loosen Gate 1 r1 (nested percentage max-widths compound; 50% on every chain part is accepted, about 11 px at 360 px) is a separate follow-up, filed as #322. It gives an install-time warning on #317's channel, not a refusal.
+
+### MC-2549 — #325 pre-release font pack memory ticket filed, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion to lane A, answer "File pre-release ticket"). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3766; lane A record line 3770; b61\handoffs\ui-lane.md:61; b61\issue-packmem.md:1. Related: `#325`, `MC-2549`, `UIL-N12`, `UIL-N13`.
+
+**What the maintainer chose (lane A decisions log line 3766).** The log reports UIL-N13 PASS (no crash, kill or reload at the caps). The byte-cap pack peaked renderer RSS at 1.10 GiB (baseline 286 MiB), with an apply of about 48 s on the Note 9. Filed as pre-release performance ticket #325: lower the byte cap and/or stream fonts, mechanism chosen at sizing.
+
+### MC-2550 — #326 request log redacts API keys and secrets, filed as follow-up, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion to lane A, answer "File ticket"). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3769; PR #368 body (Closes #326); b61\handoffs\reqlog-redact-326.md:3. Related: `#321`, `#326`, `MC-2550`.
+
+**What the maintainer chose (lane A decisions log line 3769).** The request log redacts only resolved secret references (the #321 O3 follow-up). The follow-up is filed as #326: redact API keys and secrets in the on-screen request log.
+
+### MC-2551 — #225 usage stats manual clear and off-by-default auto-retention, 2026-11-20
+
+- Tag: decisions (maintainer, "#225 sizing, stats-batch", as the log line states). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3773; b61\handoffs\stats-batch.md:62 (lane A IDs). Related: `#225`, `MC-2551`, `MC-2552`.
+
+**What the maintainer chose (lane A decisions log line 3773).** Usage stats get a manual clear (all, or the months before a picked month, with a confirm) and an auto-retention setting, off by default. Retention choices are Off/3/6/12/24 months. Pruning runs at startup and when a new month starts. A reset deletes usage counts only (u1 keys, plus the overflow bucket on clear-all); price overrides and messages or imports stay. Auto-retention never touches the undated overflow bucket; only manual clear-all does.
+
+### MC-2552 — #225 Q1 to Q4 answers on clear-all and retention, 2026-11-20
+
+- Tag: decisions (maintainer, "#225 Q1-Q4" as the log line states). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3774; b61\handoffs\stats-batch.md:62. Related: `#225`, `MC-2551`, `MC-2552`.
+
+**What the maintainer chose (lane A decisions log line 3774).** Q1: clear-all keeps u2 keys. Q2: the current month counts toward retention (keep 3 means this month plus the 2 before). Q3: retention applies at once after confirm. Q4: the .bin export leaves the setting out, and it is Off after import.
+
+### MC-2553 — #226 accept over-count limitation L2 class, pinned by diagnostic test D1, 2026-11-20
+
+- Tag: decisions (maintainer, "#226 OQ-1 = A, widened at Gate 1 r1" as the log line states). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3775; b61\handoffs\stats-batch.md:62 (lane A IDs). Related: `#226`, `MC-2553`.
+
+**What the maintainer chose (lane A decisions log line 3775).** Accept limitation L2, the whole over-count class: a lost commit reply with a peer on top, a peer key-only write on top, or an own Node write after read-back. It is pinned by diagnostic test D1. The log notes the unequal case already exists on main.
+
+### MC-2554 — #226 both sides below base merge as mine plus theirs with floor 0, 2026-11-20
+
+- Tag: decisions (maintainer, "#226 OQ-2 = N2" as the log line states). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3776; b61\handoffs\stats-batch.md:62 (lane A IDs). Related: `#226`, `MC-2554`.
+
+**What the maintainer chose (lane A decisions log line 3776).** When both sides are below base, merge as mine plus theirs with a floor of 0.
+
+### MC-2555 — #307 takes the Data page .bin summary headline TalkBack fix, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3782; b61\c307.md:1; b61\handoffs\progress-popups.md:129; PR #344. Related: `#307`, `#320`.
+
+**What the maintainer chose (lane A decisions log line 3782).** "Fold into #307": the Data page `.bin` summary sheet headline, which TalkBack does not speak when the sheet opens (#320 DP-4), joins #307.
+
+### MC-2556 — #240 focus ring shares the accent search at 4.5:1 or better, 2026-11-20
+
+- Tag: decisions (maintainer, relayed by the ui-lane for UI-S7 B3 / #240 O-1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3783; PR #343; PR #375; b61\ui-lane\b3b\plan.md:18. Related: `#240`, `#270`, `MC-2557`.
+
+**What the maintainer chose (lane A decisions log line 3783).** The focus ring takes the accent search result, at 4.5:1 or better, giving one ring colour across the app.
+
+### MC-2557 — B3 stays small; other 24 classic rings ride later batches, 2026-11-20
+
+- Tag: decisions (maintainer, UI-S7 B3 O-2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3784; PR #343; b61\ui-lane\refresh\plan-delta.md:25. Related: `#240`, `#270`, `MC-2556`.
+
+**What the maintainer chose (lane A decisions log line 3784).** The other 24 classic rings in 14 files are swapped by the later batches that already edit those files (A2/A3, H, F). B3 stays small.
+
+### MC-2558 — Module amber and violet become derived scheme roles, 3:1 minimum, 2026-11-20
+
+- Tag: decisions (maintainer, UI-S7 B3 O-3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3785; PR #343; PR #378; b61\ui-lane\b3b\plan.md:17. Related: `#270`.
+
+**What the maintainer chose (lane A decisions log line 3785).** Module amber and violet become derived scheme roles, at least 3:1 against the scheme's bgcolor and darkbg on every scheme (stage B3b). The dark scrims stay black as a documented exception. The B3b plan also records the light-preset button hover as routed to B3b (stage B3b-2, waiting on OPQ-1), citing this answer (b61\ui-lane\b3b\plan.md:17).
+
+### MC-2559 — #332 selected primary Button fill becomes its own small ticket, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, UI-S7 B3 O-4; filing confirmed to lane A with "File it"). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3786; b61\issue-btnsel.md:1; b61\handoffs\ui-lane.md:161. Related: `#332`.
+
+**What the maintainer chose (lane A decisions log line 3786).** The undefined bg-bg-selected class in Button.svelte, which gives a selected primary Button no fill (guiRendering.test.ts pins it), becomes its own small ticket with a contrast check, filed as #332.
+
+### MC-2560 — #312 folds into UI-S7 A2 and A3, 2026-11-20
+
+- Tag: decisions (maintainer, relayed by the ui-lane for UI-S7 A2/A3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3788; PR #347; PR #382; b61\ui-lane\a23\plan-r2.md:96. Related: `#312`, `#333`, `MC-2561`.
+
+**What the maintainer chose (lane A decisions log line 3788).** #312 is folded into A2/A3 and closes after the second A PR plus its TalkBack rows, with #333 as the recorded remainder.
+
+### MC-2561 — #333 takes TriggerV2 per-effect fields as a separate follow-up, 2026-11-20
+
+- Tag: decisions (maintainer; filing confirmed to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3789; b61\i1.md:1; PR #382; b61\ui-lane\a23\plan-r2.md:89. Related: `#333`, `#312`, `MC-2560`.
+
+**What the maintainer chose (lane A decisions log line 3789).** The TriggerV2List per-effect fields (about 150 inputs) are a separate follow-up, filed as #333.
+
+### MC-2562 — #334 takes a D0c TalkBack diagnostic, then input naming, 2026-11-20
+
+- Tag: decisions (maintainer; method of decision not stated in the evidence). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3790; b61\i2.md:1; PR #382; PR #417; PR #427. Related: `#334`, `#270`.
+
+**What the maintainer chose (lane A decisions log line 3790).** A D0c Note 9 TalkBack diagnostic comes first, then naming for number, select, slider, colour and date inputs (about 300 call sites), filed as #334.
+
+### MC-2563 — Under a pack, pack colours win for transcript italics, bold and quotes, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, UI-S7 D1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3791; b61\ui-lane\d1\plan-r2.md:18; PR #360. Related: `MC-2569`.
+- Supersedes / amends: refined by MC-2569 (b61\ui-lane\s7-maintainer-answers.md:55: "O-10 MC-2569 (refines MC-2563)").
+
+**What the maintainer chose (lane A decisions log line 3791).** Under a pack, the pack's own colours win for the transcript's italic, bold and quote text.
+
+### MC-2564 — #335 retunes High contrast light-branch text colours, 2026-11-20
+
+- Tag: decisions (maintainer, from UI-S7 D1 sizing). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3792; b61\i3.md:1; b61\ui-lane\d1\plan-r2.md:36; PR #366. Related: `#335`.
+- Supersedes / amends: none. Conflicting label: b61\handoffs\ui-lane.md:161 calls the #335 answer MC-2565 "by typo"; the answers file (b61\ui-lane\s7-maintainer-answers.md:48) and the decisions log give MC-2564.
+
+**What the maintainer chose (lane A decisions log line 3792).** Retune the classic High contrast text theme's light branches: italic #5c4a00, bold and quote 1 #0b5f7a, quote 2 #8a4200 (7.2 to 8.6:1, against 1.12 to 1.70:1 on white today). Dark, Custom and lite stay unchanged (PR #366). The standard-theme colours are recorded under MC-2607, which is outside this batch.
+
+### MC-2565 — #313 stays a classic prose change; composer stays full width, 2026-11-20
+
+- Tag: decisions (maintainer). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3793; b61\ui-lane\c13\gate1-r2.md:9; PR #397; PR #341; PR #366. Related: `#313`.
+- Supersedes / amends: none. Later line lane A decisions log line 3843 (MC-2606) records that #313 ships in X1 now, which that line says satisfies the "after D1" condition here.
+
+**What the maintainer chose (lane A decisions log line 3793).** The three classic prose-invert files stay in #313, after D1. C3: "On this device" is explained in place (a device chip and description, no new strings). C: the composer stays full width on wide panes.
+
+### MC-2566 — #266 closed as UI-S2 complete with the gaps noted, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3794; b61\c266.md:1. Related: `#266`, `#320`, `#307`.
+
+**What the maintainer chose (lane A decisions log line 3794).** "Close #266": UI-S2 is complete after #320, and #266 is closed. The gaps are noted: #307, and the Korean and short-height rows, which were not run.
+
+### MC-2567 — #337 filed for the pack transcript canvas follow-up, 2026-11-20
+
+- Tag: decisions (maintainer via the B1+B2 session follow-up choice; filing confirmed to lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3795; PR #350; b61\issue-canvas.md:1; b61\handoffs\ui-lane.md:111. Related: `#337`, `#329`.
+
+**What the maintainer chose (lane A decisions log line 3795).** The pre-existing F1 (the transcript shows the page background under a pack) is filed as #337. #337 decides pack canvas versus user wallpaper.
+
+### MC-2568 — D1 merges only after #337 lands or in one train with it, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, UI-S7 D1 r2 O-9). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3802; lane A decisions log line 3863; PR #360; PR #350; PR #345; b61\ui-lane\s7-maintainer-answers.md:55. Related: `#337`, `#270`.
+- Supersedes / amends: later line lane A decisions log line 3863 records #350 (the #337 pack canvas) merged f06e5def5 on a maintainer AskUserQuestion answer "merge now, D1 right after"; the D1 PR then opens.
+
+**What the maintainer chose (lane A decisions log line 3802).** Implement and gate D1 now. Merge D1 only after #337 (pack canvas versus user wallpaper) lands, or in one train with #337 first. The reason given: without the backdrop, a dark pack under a light scheme drops body text from 16.55:1 to 1.02:1. The D1c' residual (importColorScheme refresh) may merge alone.
+
+### MC-2569 — Under a pack, italics and quotes take the pack's judged text colour, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, D1 r2 O-10). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3803; b61\ui-lane\s7-maintainer-answers.md:55; PR #360. Related: `MC-2563`.
+- Supersedes / amends: refines MC-2563 (b61\ui-lane\s7-maintainer-answers.md:55: "O-10 MC-2569 (refines MC-2563)").
+
+**What the maintainer chose (lane A decisions log line 3803).** Under a pack, italics and quotes take the pack's strictly judged text colour, not a second colour.
+
+### MC-2570 — Validator stage V1 not adopted now; revisit with D2, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, D1 r2 O-11). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3804; b61\ui-lane\s7-maintainer-answers.md:55; PR #360. Related: `D2` is named as the revisit point only.
+
+**What the maintainer chose (lane A decisions log line 3804).** Validator stage V1 is not adopted now. V1 would judge chat-message paints at 4.5:1 plus secondary text; the evidence says it would refuse some current third-party packs and touch the frozen corpus golden. V1 is a candidate to revisit with D2.
+
+### MC-2571 — Undo moves imported characters to Trash; modules removed; assets kept, 2026-11-20
+
+- Tag: decisions (maintainer answer via AskUserQuestion, recorded in the plan-s5 maintainer answers section, S5 OPQ-1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3806; b61\b11\plan-s5.md:402-403. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3806).** Undo moves imported characters to the Trash for 30 days. Modules are removed. Assets are never deleted directly.
+
+### MC-2572 — No Undo when an action's round replaced a module, 2026-11-20
+
+- Tag: decisions (maintainer answer via AskUserQuestion, recorded in the plan-s5 maintainer answers section, S5 OPQ-2). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3807; b61\b11\plan-s5.md:404. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3807).** An action whose round replaced a module offers no Undo.
+
+### MC-2573 — No Undo for an action that imported a preset, 2026-11-20
+
+- Tag: decisions (maintainer answer via AskUserQuestion, recorded in the plan-s5 maintainer answers section, S5 OPQ-3). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3808; b61\b11\plan-s5.md:405. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3808).** An action that imported a preset offers no Undo.
+
+### MC-2574 — A backgrounded action never offers Undo, 2026-11-20
+
+- Tag: decisions (maintainer answer via AskUserQuestion, recorded in the plan-s5 maintainer answers section, S5 OPQ-4). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3809; b61\b11\plan-s5.md:113, :406. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3809).** A backgrounded action never offers Undo. The plan also says a backgrounded or reopened card never carries Undo (b61\b11\plan-s5.md:113).
+
+### MC-2575 — Undo 10 s window pauses for pointer, focus, hidden tab or yield, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, S5 OPQ-5). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3810; b61\b11\plan-s5.md:407; b61\b11\plan-s5.md:38.
+- Supersedes / amends: superseded by MC-2583 (lane A decisions log line 3819: supersedes "MC-2575's hold/pause rule"). The plan also says DD-253's 10 s window is superseded for this card by MC-2583 (b61\b11\plan-s5.md:38).
+
+**What the maintainer chose (lane A decisions log line 3810).** The 10 s Undo window pauses for pointer over the card, focus on Undo, a hidden tab, or the card yielding to another alert. The automatic headline focus does not pause it. Status: superseded by MC-2583.
+
+### MC-2576 — Undo feedback is a plain counts toast; expiry not announced, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, S5 OPQ-6). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3811; b61\b11\plan-s5.md:408; b61\b11\g2-s5.md:72. Related: `MC-2583`.
+- Supersedes / amends: none stated. MC-2583 removes the countdown (lane A decisions log line 3819). How the "expiry not announced" wording applies after MC-2583: TODO(evidence).
+
+**What the maintainer chose (lane A decisions log line 3811).** Undo feedback is a plain toast with counts, for example "Moved 3 to the Trash, removed 1 module", plus "N could not be undone" when items fail. Expiry is not announced.
+
+### MC-2577 — Finish card Undo covers all rounds; failure cards offer none as first recorded, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, S5 OPQ-7). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3812; b61\b11\plan-s5.md:409, :410, :413; b61\handoffs\progress-popups.md:155.
+- Supersedes / amends: amended by MC-2580 (lane A decisions log line 3816). Narrowed by MC-2582 (lane A decisions log line 3818). The net rule in b61\b11\plan-s5.md:413 also lists MC-2581 as amending it, and says the "failure cards offer none" part no longer applies.
+
+**What the maintainer chose (lane A decisions log line 3812).** A finish card's Undo covers every item the action created, in all rounds. As first recorded, failure cards offered no Undo; the amendments above change that.
+
+### MC-2578 — #337 pack wins over wallpaper and text-screen overlay, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the pack-canvas-337 session). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3813; PR #350; b61\handoffs\pack-canvas-337.md:13; b61\p337\plan-r1.md:14-15. Related: `#337`, `MC-2579`.
+
+**What the maintainer chose (lane A decisions log line 3813).** With a chat theme pack on, the transcript gets the pack's solid canvas, and the user wallpaper and text-screen overlay are hidden. With no pack, nothing changes. Not chosen: wallpaper wins, tinted wallpaper, or a setting (the evidence names these as the other options).
+
+### MC-2579 — #337 pack canvas also covers card and module backgrounds, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the pack-canvas-337 session, second ruling). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3815; PR #350; b61\p337\plan-r1.md:16, :18; b61\handoffs\pack-canvas-337.md:14. Related: `#337`, `MC-2578`.
+
+**What the maintainer chose (lane A decisions log line 3815).** With a chat pack on, the pack canvas also covers the card and module chat background (backgroundHTML and module background embedding). The card's style rules still apply; only the backdrop is covered. No pack gives the upstream look. Display only; card and module data are untouched. Not chosen: "card background shows".
+
+### MC-2580 — Later Retry round card keeps Undo; silent close shows none, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, after a senior-advisor challenge). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3816; b61\b11\plan-s5.md:410; b61\handoffs\progress-popups.md:155.
+- Supersedes / amends: amends MC-2577.
+
+**What the maintainer chose (lane A decisions log line 3816).** If Retry's round fails or closes silently, a later round's card, failure cards included, still offers Undo while the action has items to undo, so pressing Retry never forfeits Undo. A silent close shows no card and so offers no Undo.
+
+### MC-2581 — Cancelled Retry card keeps Undo while items remain, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, S5 OPQ-8). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3817; b61\b11\plan-s5.md:413; PR #365. Related: `MC-2577`, `MC-2582`.
+- Supersedes / amends: listed as amending MC-2577 in b61\b11\plan-s5.md:413.
+
+**What the maintainer chose (lane A decisions log line 3817).** After Retry, cancelling that retry round shows the "Nothing was changed" card, which still offers Undo while the action has items to undo.
+
+### MC-2582 — First-round failure card offers Undo for files already added, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups, S5 MC-S5-10). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3818; b61\b11\plan-s5.md:412; PR #365. Related: `MC-2580`, `MC-2577`.
+- Supersedes / amends: confirms a reading of MC-2580 and narrows MC-2577 "failure cards offer none" (lane A decisions log line 3818).
+
+**What the maintainer chose (lane A decisions log line 3818).** A first-round failure card offers Undo when some files were added before another failed (for example 2 of 3 imported). Undo removes what the action added.
+
+### MC-2583 — Undo has no expiry; it stays on the result card until the card closes, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, after lane B device check N1 Outcome 1b). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3819; b61\handoffs\progress-popups.md:169; b61\b11\plan-s5.md:5, :414; PR #365. Related: `MC-2575`, `MC-2584`.
+- Supersedes / amends: supersedes MC-2575's hold and pause rule (lane A decisions log line 3819). The plan also says DD-253's 10 s window is superseded for this card (b61\b11\plan-s5.md:38).
+
+**What the maintainer chose (lane A decisions log line 3819).** "No expiry on card": Undo stays on the result card until the card is closed, for everyone. There is no 10 s countdown while the card is shown. The device check behind it is b61\b11\diag\n1\result.md (N1).
+
+### MC-2584 — Newer task card replacing a result card ends its Undo, 2026-11-20
+
+- Tag: decisions (maintainer via progress-popups AskUserQuestion, S5 OPQ-9). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3820; b61\b11\plan-s5.md:417; b61\handoffs\progress-popups.md:177; PR #365. Related: `MC-2583`.
+
+**What the maintainer chose (lane A decisions log line 3820).** "Undo is lost": if a newer task card replaces a finished import's result card before it is closed, that card's Undo is gone and the import stays. There is no Undo toast or other surface.
+
+### MC-2585 — #310 closed with no code; part-scoped token already refused, 2026-11-20
+
+- Tag: decisions (maintainer via b1-validator-warn AskUserQuestion, B1-D1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3822; b61\b1-warn\decisions.md:2; PR #361; b61\handoffs\b1-validator-warn.md:9. Related: `#310`, `MC-1565`.
+
+**What the maintainer chose (lane A decisions log line 3822).** Close #310 with no code. A token on a part selector is already refused (engine tier check and valueRules N1, MC-1565), so a warning could never fire. The PR says "Closes #310" with that explanation.
+
+### MC-2586 — #309 warns on a --pack helper set on bare html, 2026-11-20
+
+- Tag: decisions (B1-D2 entry in the lane A decisions log; who decided is not stated: TODO(evidence)). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3823; b61\b1-warn\decisions.md:3; PR #361. Related: `#309`.
+
+**What the maintainer chose (lane A decisions log line 3823).** App tokens on bare html are already refused (N1). The remaining case, a --pack-* helper set on bare html, is always overridden by its mandatory plain :root value. It gets an install-time warning with an English lint reason, and no refusal.
+
+### MC-2587 — #322 warns when compounded percentage widths leave under 240 px, 2026-11-20
+
+- Tag: decisions (B1-D3 entry in the lane A decisions log; who decided is not stated: TODO(evidence)). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3824; b61\b1-warn\decisions.md:4; b61\b1-warn\plan-addendum.md:3; PR #361. Related: `#322`, `MC-2548` (named as the ticket decision; not drafted here).
+
+**What the maintainer chose (lane A decisions log line 3824).** Along the chat chain (CHAT_CHAINS) at 360 px, when the product of each part's smallest percentage width is under 240 px, a warning fires. A single 50 percent part (180 px) also warns. Chat only, and accepted sheets only.
+
+### MC-2588 — ChroMemory search plus optional notes, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3825; b61\ltm-spec\decisions.md:5; b61\ltm-spec\spec.md:25. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3825).** Scope is "Search + optional notes (Recommended)". Stage 1 ships raw-log hybrid search alone. A later stage adds batched, off-turn note extraction: current-state facts with source links, editable, never replacing the log.
+
+### MC-2589 — ChroMemory keyword search by default; vectors opt-in, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3826; b61\ltm-spec\decisions.md:6; b61\ltm-spec\spec.md:120. Related: `MC-2658` (PR #423 says MC-2589 stands; not drafted here).
+
+**What the maintainer chose (lane A decisions log line 3826).** "Keyword default, vectors opt-in (Recommended)". Korean character-bigram keyword search works offline with no download. An embedding model, local or API, is opt-in. The default model stays with the CHORE-620 measurement.
+
+### MC-2590 — ChroMemory search covers chat and lore, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3827; b61\ltm-spec\decisions.md:7; b61\ltm-spec\spec.md:58. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3827).** "Chat + lore search". The engine may also surface lorebook entries whose keywords missed. Lorebooks keep working exactly as today.
+
+### MC-2591 — Who-knows-what fields reserved; decision deferred, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3828; b61\ltm-spec\decisions.md:8; b61\ltm-spec\spec.md:229, :650. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3828).** "Reserve fields, decide later (Recommended)". The schema keeps visibility and known-by room. There is no UI or logic until a stronger-model test shows it works.
+
+### MC-2592 — Phones try a Worker for local embeddings first, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3829; b61\ltm-spec\decisions.md:11; b61\ltm-spec\spec.md:64, :394, :645. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3829).** "Worker first, then decide (Recommended)". A prerequisite ticket tries local embeddings off the UI thread on the phone WebView. If it works, phones get local hybrid search. If it fails, phones get API embeddings only. Keyword search ships either way.
+
+### MC-2593 — Keep per-message trim; snippets go in the memory slot, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3830; b61\ltm-spec\decisions.md:12; b61\ltm-spec\spec.md:83; b61\ltm-s0\sizing.md:3. Related: none named.
+
+**What the maintainer chose (lane A decisions log line 3830).** "Keep per-message trim (Recommended)". The trim is the same as today. Snippets go in the memory slot. No cache claim is made. Block trimming may become a later opt-in after cost is measured.
+
+### MC-2594 — Budget-cut lore recalls only keyword misses, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3831; b61\ltm-spec\decisions.md:13; b61\ltm-spec\spec.md:58, :312. Related: `MC-2590`.
+
+**What the maintainer chose (lane A decisions log line 3831).** "No, only keyword misses (Recommended)". Recall only lorebook entries whose keywords did not match and nothing else blocked. The lore budget and activation rules stay authoritative.
+
+### MC-2595 — ChroMemory .bin export shows no memory plus a warning naming the engine, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3832). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3832; b61\ltm-spec\decisions.md line 14; b61\ltm-spec\spec.md line 140. Related: `MC-774`, `MC-223`.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 14).** For the ChroMemory engine setting in a .bin export, the option "'No memory' + warning (Recommended)" was chosen. The export warning names the engine, and upstream opens with memory off. Spec line 140 adds that the leave-out summary names the engine on both consent paths.
+
+### MC-2596 — ChroMemory hand-written pins dropped, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3833). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3833; b61\ltm-spec\decisions.md line 17; b61\ltm-spec\spec.md lines 76 and 144. Related: `MC-2597`.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 17).** The option "Drop pins (Recommended)" was chosen. Users already use always-active chat lore or the author's note, and the engine stores nothing per chat until the notes stage.
+
+### MC-2597 — ChroMemory recalled lore uses only the unused lore budget, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3834). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3834; b61\ltm-spec\decisions.md line 18; b61\ltm-spec\spec.md lines 318 and 789. Related: `MC-2600`, `MC-2596`.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 18).** The option "Only unused lore budget (Recommended)" was chosen. Recall uses only the lore budget that the keyword scan leaves free. On a turn where the scan cut entries, nothing is recalled.
+
+### MC-2598 — ChroMemory aggregate-only .bin analyzer with no text, names or keys, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3835). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3835; b61\ltm-p0\sizing.md line 3 (maintainer words); b61\ltm-p0\plan-r1.md lines 12 and 232; PR #362 body; PR #406 body. Related: `Agents/Tools/ltm-eval/`.
+
+**What the maintainer chose (b61\ltm-p0\sizing.md line 3).** An analyzer that reads the real .bin and outputs only aggregates. The maintainer's words, as quoted in the evidence: "a script that analyzes the real .bin and only outputs histogram and other datas we need in json format". The plan cites MC-2598 for the rule that output is aggregates only, never text, names, ids, keys or settings fields (b61\ltm-p0\plan-r1.md line 12). The maintainer accepted numeric aggregates (b61\ltm-p0\plan-r1.md line 232).
+
+### MC-2599 — The LTM engine is named ChroMemory, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3836). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3836; b61\ltm-spec\decisions.md line 22; b61\ltm-spec\spec.md lines 7 and 772. Related: none named.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 22).** The name ChroMemory. The maintainer's own words, as quoted in the evidence: "How about ChroMemory? Wordplay of both Chromium(element) + Chronicle, and mixes well with xxMemory naming convention."
+
+### MC-2600 — ChroMemory recalled-lore cap of 5,000 tokens by default, user-raisable, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3837; the maintainer's own words are in the decisions file). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3837; b61\ltm-spec\decisions.md line 23; b61\ltm-spec\spec.md lines 122, 318 and 803. Related: `MC-2597`.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 23).** The maintainer's own words, as quoted in the evidence: "8000 cap is mostly outdated and recent guide recommends around 15000. I think we can have defined cap of 5000 by default and let user to increase it if needed." Chosen: a recall cap of 5,000 tokens by default, which the user can raise, still within the unused lore budget (MC-2597).
+
+### MC-2601 — ChroMemory notes start from now; backfill only by a call-count button, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3838). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3838; b61\ltm-spec\decisions.md line 24; b61\ltm-spec\spec.md lines 489 and 809. Related: none named.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 24).** The option "Start from now (Recommended)" was chosen. When notes are turned on in a chat, coverage starts at the trim boundary of the next send, so older dropped chats are not covered. Backfill happens only by a button that shows the call count first.
+
+### MC-2602 — ChroMemory spec lives in docs/design, commit needs its own confirmation, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3839). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3839; b61\ltm-spec\decisions.md line 25; b61\ltm-spec\spec.md line 757. Related: none named.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 25).** The option "docs/design/ (Recommended)" was chosen: the spec lives in docs/design/. Committing it still needs its own confirmation.
+
+### MC-2603 — ChroMemory Memory dashboard menu recorded as a feature idea, not staged, 2026-11-20
+
+- Tag: decisions (maintainer via ltm-spec AskUserQuestion, recorded by lane A at log line 3840). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3840; b61\ltm-spec\decisions.md line 29; b61\ltm-spec\spec.md line 588. Related: none named.
+
+**What the maintainer chose (b61\ltm-spec\decisions.md line 29).** A "Memory dashboard" menu showing the details of this chat's memory. It is recorded as a feature idea in spec section 7, not staged, and needs its own sizing.
+
+### MC-2604 — #332 on-selected text role for the selected primary Button, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane AskUserQuestion, UI-S7 X1-OPQ-1, recorded by lane A at log line 3841). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3841; PR #366 body. Related: `#332`.
+
+**What the maintainer chose (lane A decisions log line 3841).** A derived on-selected text role: text stays textcolor where it reaches 4.5:1 on selected, otherwise black or white. The fill is unchanged. Hover is not extended (accepted limitation).
+
+### MC-2605 — #352 AlertComp tab second selection cue and aria-pressed as a follow-up, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane AskUserQuestion, UI-S7 X1-OPQ-2, recorded by lane A at log line 3842). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3842; b61\triage-issues\352.md line 5. Related: `#352`, `#247`.
+
+**What the maintainer chose (lane A decisions log line 3842).** A second selection cue (ring or border) plus aria-pressed on the AlertComp tabs becomes a follow-up ticket, scheduled after #247 and the rtb work. The triage file names the rtb-encryption UI stage as the rtb work (b61\triage-issues\352.md line 5).
+
+### MC-2606 — #313 prose-invert ships in X1 now, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane AskUserQuestion, UI-S7 X1-OPQ-3, recorded by lane A at log line 3843). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3843; b61\ui-lane\x1\plan-r2.md line 7; PR #366 body. Related: `#313`, `MC-2565`.
+
+**What the maintainer chose (lane A decisions log line 3843).** #313 ships in X1 now. It is file-disjoint from D1, so the MC-2565 condition "after D1" counts as satisfied.
+
+### MC-2607 — #335 Standard light quote colours included in the High contrast retune, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane AskUserQuestion, UI-S7 X1-O-5, recorded by lane A at log line 3844). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3844; PR #366 body. Related: `#335`, `MC-2564`.
+
+**What the maintainer chose (lane A decisions log line 3844).** The Standard light quote 1 and quote 2 values (#0b5f7a and #8a4200) are included with the High contrast retune.
+
+### MC-2608 — CHORE-128 UI encryption as a password checkbox under the rtb option, 2026-11-20
+
+- Tag: decisions (maintainer answer Q1 of CHORE-128 UI, recorded by lane A at log line 3848). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3848; b61\handoffs\rtb-encryption.md line 46 (records "all Recommended"); PR #376 body. Related: PR #376, `MC-2609`.
+
+**What the maintainer chose (lane A decisions log line 3848).** Encryption is an "Encrypt with a password" checkbox under the .rtb option in BackupChooserSheet. Ticking it shows the password fields in the same sheet, plus a fixed warning that a forgotten password cannot be recovered.
+
+### MC-2609 — CHORE-128 UI password typed twice, must match and be non-empty, 2026-11-20
+
+- Tag: decisions (maintainer answer Q2 of CHORE-128 UI, recorded by lane A at log line 3849). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3849; b61\handoffs\rtb-encryption.md line 46. Related: `MC-2608`.
+
+**What the maintainer chose (lane A decisions log line 3849).** The password is typed twice. The two entries must match and be non-empty. There is no length or strength rule.
+
+### MC-2610 — CHORE-128 UI plain-HTTP slowness line under the checkbox, 2026-11-20
+
+- Tag: decisions (maintainer answer Q3 of CHORE-128 UI, recorded by lane A at log line 3850). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3850; b61\handoffs\rtb-encryption.md line 46; PR #376 body. Related: `MC-2618`, `#167`.
+- Supersedes / amends: refined by MC-2618 (lane A decisions log line 3862), which makes the line show whether or not the box is ticked.
+
+**What the maintainer chose (lane A decisions log line 3850).** On plain HTTP (no crypto.subtle), one line shows under the checkbox and nowhere else: encryption is slower on this connection, and a large backup can take several minutes.
+
+### MC-2611 — #358 restore password prompt moves onto PatternDialog with a focus trap, 2026-11-20
+
+- Tag: decisions (maintainer answer Q4 of CHORE-128 UI, recorded by lane A at log line 3851; the plan revision is a lane A record at log line 3871). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log lines 3851 and 3871; b61\handoffs\rtb-encryption.md line 46; PR #376 body. Related: `#358`, PR #376.
+- Plan history: b61\c128\ui\plan-r2.md line 30 also returned focus to the restore control; the later CHORE-128 UI r3 (lane A decisions log line 3871) dropped that opener and recorded that focus is not returned as an accepted limitation, also stated in PR #376. The maintainer decision itself asked only for the focus trap.
+
+**What the maintainer chose (lane A decisions log line 3851).** #358 is folded in. The restore password prompt moves onto the PatternDialog pattern with a focus trap, and #358 closes with that PR. Per lane A (log line 3871), MC-2611 asked only for the focus trap.
+
+### MC-2612 — #326 redacted secrets show a literal token keeping the last 4 characters, 2026-11-20
+
+- Tag: decisions (maintainer answer "#326 a", recorded by lane A at log line 3852). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3852; PR #368 body; b61\handoffs\reqlog-redact-326.md line 6. Related: `MC-2613`.
+
+**What the maintainer chose (lane A decisions log line 3852).** A redacted secret in the request log shows as a literal, untranslated token. The token starts with "[redacted", then one Unicode ellipsis character (U+2026), the last 4 characters and "]". Short values show the plain token "[redacted]"; PR #368 body states the threshold as values under 16 characters. Existing ${NAME} labels stay. No new en.ts string.
+
+### MC-2613 — #326 secret-named response body fields are redacted too, 2026-11-20
+
+- Tag: decisions (maintainer answer "#326 b", recorded by lane A at log line 3853). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3853; PR #368 body; b61\handoffs\reqlog-redact-326.md line 7. Related: `MC-2612`.
+
+**What the maintainer chose (lane A decisions log line 3853).** Secret-named fields in logged response bodies (the evidence gives access_token and refresh_token as examples) are redacted too, not only in the request URL, headers and body.
+
+### MC-2615 — CHORE-128 UI bad password at Start keeps the chooser open with a reason, 2026-11-20
+
+- Tag: decisions (maintainer answer O1 of CHORE-128 UI, recorded by lane A at log line 3859). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3859; b61\handoffs\rtb-encryption.md line 50; PR #376 body. Related: `MC-2609`, `MC-2616`, `MC-2617`, `MC-2618`.
+
+**What the maintainer chose (lane A decisions log line 3859).** A bad password at Start keeps the chooser open. One line under the fields says why: the existing unusable-password text, or the new "The two passwords do not match." That field gets aria-invalid and focus. Start stays enabled and the typed text is kept.
+
+### MC-2616 — CHORE-128 UI Enter in the chooser password fields does nothing, 2026-11-20
+
+- Tag: decisions (maintainer answer O2 of CHORE-128 UI, recorded by lane A at log line 3860). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3860; b61\handoffs\rtb-encryption.md line 50. Related: `MC-2615`.
+
+**What the maintainer chose (lane A decisions log line 3860).** Enter in a chooser password field does nothing. Start is the only start control.
+
+### MC-2617 — CHORE-128 UI Make .rtb instead after the leave-out sheet stays plain, 2026-11-20
+
+- Tag: decisions (maintainer answer O3 of CHORE-128 UI, recorded by lane A at log line 3861). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3861; b61\handoffs\rtb-encryption.md line 50. Related: `MC-2608`.
+
+**What the maintainer chose (lane A decisions log line 3861).** "Make .rtb instead" after the .bin leave-out sheet stays a plain, unencrypted .rtb.
+
+### MC-2618 — CHORE-128 UI plain-HTTP slowness line shows whether or not ticked, 2026-11-20
+
+- Tag: decisions (maintainer answer O5 of CHORE-128 UI, recorded by lane A at log line 3862). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3862; b61\handoffs\rtb-encryption.md line 50; PR #376 body. Related: `MC-2610`.
+- Supersedes / amends: refines MC-2610 (lane A decisions log line 3862).
+
+**What the maintainer chose (lane A decisions log line 3862).** The plain-HTTP slowness line shows under the checkbox whether or not the box is ticked.
+
+### MC-2625 — #360 UI-S7 D1 merged with cost follow-up after PC-D5 tripwire fail, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane AskUserQuestion, recorded by lane A at log line 3875). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3875; b61\d1-followups\issue-cost.md line 1; b61\handoffs\ui-lane.md line 195. Related: `#363`.
+
+**What the maintainer chose (lane A decisions log line 3875).** The option "Merge, cost follow-up" was chosen. The PC-D5 tripwire fail (light-pack apply +103%/+90%, with a second install judgement for exactly-light packs) is accepted for merge. The cost cut is tracked as a follow-up ticket (ui-lane handoff line 195 names #363 for apply cost).
+
+### MC-2627 — LTM S0 gate sets: M4 and real-shaped, four cells must pass, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q1 in the LTM S0 session, recorded by lane A at log line 3881). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3881; b61\ltm-s0\decisions-s0.md line 4; PR #400 body. Related: `MC-2642`.
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 4).** The option "M4 + real-shaped (Recommended)". Four cells must pass: M4 and NF-real, each in EN and KO. NF-specLong is reported only.
+
+### MC-2628 — LTM S0 gate at 32k context, with 16k, 64k and 128k reported, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q2, recorded by lane A at log line 3882). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3882; b61\ltm-s0\decisions-s0.md line 5. Related: none named.
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 5).** The option "Gate at 32k (Recommended)". C_gate is 32768. The 16k, 64k and 128k contexts are reported.
+
+### MC-2629 — LTM S0 baseline uses engine split pieces, newest first, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q3, recorded by lane A at log line 3883). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3883; b61\ltm-s0\decisions-s0.md line 6. Related: none named.
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 6).** The option "Split pieces (Recommended)". The baseline uses the engine's split units, newest first, and a whole-message baseline is reported too. The lane A record gives the reason: real replies (median about 6.5k characters) exceed the 1,200-token budget.
+
+### MC-2630 — LTM S0 budget may exceed 1200 up to the 15% cap, cost shown, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q4, recorded by lane A at log line 3884). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3884; b61\ltm-s0\decisions-s0.md line 7. Related: `MC-2654` (cited by later LTM records; not part of this entry).
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 7).** The option "Allow, show cost (Recommended)". S0 may pick a budget above 1200, up to the 15% cap. The report states the per-send token cost.
+
+### MC-2631 — LTM S0 INCONCLUSIVE counts as not a pass; maintainer asked, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q5, recorded by lane A at log line 3885). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3885; b61\ltm-s0\decisions-s0.md line 8. Related: none named.
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 8).** The option "Not a pass, ask me (Recommended)". After the 48-chat cap, INCONCLUSIVE counts as not a pass. The report says so and offers a larger run.
+
+### MC-2632 — LTM S0 keeps the 500-character query tail and measures the loss, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q6, recorded by lane A at log line 3886). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3886; b61\ltm-s0\decisions-s0.md line 9. Related: `MC-2661` (outside this batch).
+- Supersedes / amends: amended by MC-2661 (b61\ltm-s0\decisions-s0.md line 31; lane A decisions log line 4073 dated 2026-11-21). For the rare-word builder, the whole user turn replaces the 500-character tail. MC-2661 is not in this batch.
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 9).** The option "Keep 500, measure loss (Recommended)". Gate with 500, report the loss by cue position, and propose a longer tail if the loss is large.
+
+### MC-2633 — LTM S0 real-derived numbers stay in scratch, records say real-shaped, 2026-11-20
+
+- Tag: decisions (maintainer, AskUserQuestion, LTM S0-Q7, recorded by lane A at log line 3887). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3887; b61\ltm-s0\decisions-s0.md line 10. Related: none named.
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 10).** The option "Scratch only (Recommended)". Real-derived quantiles stay in %TEMP%. Repository records cite synthetic results and say "real-shaped". The pass rule (0.5 floor, 0.15 margin) is unchanged.
+
+### MC-2634 — #334 unlabelled controls reuse existing keys; new keys only if none fits, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, #334 Q1, recorded by lane A at log line 3889). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3889; b61\ui-lane\s7-maintainer-answers.md line 71; b61\handoffs\ui-lane.md line 209. Related: `#334`, `MC-2642` (the LTM S0 plans used MC-2634 as a placeholder for a different decision; see b61\ltm-s0\decisions-s0.md line 11).
+
+**What the maintainer chose (lane A decisions log line 3889).** Unlabelled controls reuse existing keys where one fits. New keys (all 7 locales) are added only where none fits. The coder lists each mapping for the maintainer's check.
+
+### MC-2635 — #334 use-this-value checkbox takes its field label, no new string, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, #334 Q2, recorded by lane A at log line 3890). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3890; b61\ui-lane\i334\plan-r2.md line 11. Related: `MC-2636`.
+
+**What the maintainer chose (lane A decisions log line 3890).** The "use this value" checkbox takes its slider or field's label. No new string.
+
+### MC-2636 — #334 double read on swipe accepted, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, #334 Q3, recorded by lane A at log line 3891). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3891; b61\handoffs\ui-lane.md line 321. Related: `MC-2635`.
+
+**What the maintainer chose (lane A decisions log line 3891).** The double read on swipe is accepted, as in A1/A2.
+
+### MC-2637 — #334 stages 4 and 5 wait for A2 and A3 PR2 to merge, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, #334 Q4, recorded by lane A at log line 3892). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3892; lane A decisions log line 4084 (dated 2026-11-21, records the dependency #382 merged). Related: `#334`, `#382`.
+
+**What the maintainer chose (lane A decisions log line 3892).** #334 stages 4 and 5 wait for the A2 and A3 PR2 merge.
+
+### MC-2638 — #334 colour-picker library internals out of scope, accepted limitation, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, #334 Q5, recorded by lane A at log line 3893). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3893; b61\ui-lane\s7-maintainer-answers.md line 71. Related: `#334`.
+
+**What the maintainer chose (lane A decisions log line 3893).** Colour-picker library internals are out of scope. This is an accepted limitation.
+
+### MC-2639 — UI-S7 B3b OPQ-1 CBS button hover keeps borderc fill with on-borderc text, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, B3b OPQ-1, recorded by lane A at log line 3894). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3894; b61\ui-lane\s7-maintainer-answers.md line 71; PR #378 body. Related: `MC-2604`.
+
+**What the maintainer chose (lane A decisions log line 3894).** The CBS button hover keeps the borderc fill and adds an on-borderc text role: textcolor where it reaches 4.5:1, otherwise black or white.
+
+### MC-2640 — UI-S7 B3b OPQ-2 amber and violet siblings routed to other tickets, 2026-11-20
+
+- Tag: decisions (maintainer via ui-lane, B3b OPQ-2, recorded by lane A at log line 3895). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3895; b61\ui-lane\s7-maintainer-answers.md line 71; PR #378 body. Related: `#247`, `#382`.
+
+**What the maintainer chose (lane A decisions log line 3895).** Amber and violet siblings are routed: the chat divider and classic chat literals go to H, AlertComp goes to #247, and cbsnest goes to A3. The badge and brand title stay.
+
+### MC-2641 — #167 CHORE-840 plain-HTTP Node page gets a software P-256 key pair, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A, #167 CHORE-840, recorded at log line 3897). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3897; lane A decisions log line 3928 (triage routing); PR #381 body; PR #472 body. Related: `#167`, `#348`.
+
+**What the maintainer chose (lane A decisions log line 3897).** A plain-HTTP LAN Node page gets a software P-256 key pair. It uses the new dependency @noble/curves and a signer abstraction in nodeStorage and nodeAssetToken, and is used only when crypto.subtle is absent. Accepted trade-off: on that origin the private key is readable bytes in IndexedDB. This makes the plain-HTTP encryption line of #348 reachable. The log notes that the auth contract is gated by opus.
+
+### MC-2642 — LTM S0 ask and allude turns must each pass in all four cells, 2026-11-20
+
+- Tag: decisions (maintainer in the LTM session, S0 plan-r2 Q-A, recorded by lane A at log line 3902). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3902; b61\ltm-s0\decisions-s0.md line 11. Related: `MC-2634` (placeholder used in the LTM S0 plans for this decision, not the #334 decision), `MC-2661` (outside this batch).
+- Supersedes / amends: amended by MC-2661 (b61\ltm-s0\decisions-s0.md line 31; lane A decisions log line 4073 dated 2026-11-21). The keyword gate covers ask turns in all four cells; allude turns are report-only and carried to stage S3. MC-2661 is not in this batch.
+
+**Question.** Which turn kinds must meet the pass rule (S0 plan-r2 item 1).
+
+**What the maintainer chose (b61\ltm-s0\decisions-s0.md line 11).** The option "Each kind separately (Recommended)". Ask and allude turns must each meet the unchanged pass rule (0.5 floor, 0.15 margin) in all four cells.
+
+### MC-2653 — LTM S0 control defects fixed and tune rerun on seed 510001, 2026-11-20
+
+- Tag: decisions (maintainer answer "Fix + rerun", logged by the ltm-spec session; the channel is not named). Date: 2026-11-20 (bounded: the MC block was granted on 2026-11-20, lane A decisions log line 3912, and PR #421 was opened and merged that day). Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 15; b61\handoffs\ltm-spec.md line 32; PR#421 body; b61\ltm-s0\note-result.md line 46. Related: PR#421, `MC-2654`, `MC-2655`.
+
+**What the maintainer chose (decisions-s0.md line 15).** Fix the S0 harness control defects and rerun the tune on TUNE seed 510001. ORACLE-QUERY merges per-span lists round-robin instead of RRF. The NULL donor never asks the recipient's own fact key, and donor disjointness is reported. ORACLE-QUERY joins the tune eligibility screen. Recorded as a defect. Gate seeds stay unspent. The maintainer's words: "Fix + rerun".
+
+### MC-2654 — Korean real-length ideal-query shortfall lets tune pick smaller pieces or budget, 2026-11-20
+
+- Tag: decisions (maintainer answer "Let tune pick size", logged by the ltm-spec session; the channel is not named). Date: 2026-11-20 (bounded: the MC block was granted on 2026-11-20, lane A decisions log line 3912, and PR #421 was opened and merged that day). Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 16; b61\handoffs\ltm-spec.md line 32; PR#421 body. Related: `MC-2653`, `MC-2661`, PR#421.
+
+**What the maintainer chose (decisions-s0.md line 16).** For Korean real-length chats with the ideal-query shortfall, the tune may pick smaller pieces or a bigger pack budget wherever the ideal-query check passes. The chosen values and their token cost are shown in the report. The floor stays 0.9. The maintainer's words: "Let tune pick size".
+
+### MC-2655 — Only the full-text builder carries the S0 verdict, idf report-only, 2026-11-20
+
+- Tag: decisions (maintainer answer "Gate full-text only", logged by the ltm-spec session; the channel is not named). Date: 2026-11-20 (bounded: the MC block was granted on 2026-11-20, lane A decisions log line 3912, and PR #421 was opened and merged that day). Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 17; b61\handoffs\ltm-spec.md line 32; PR#421 body; b61\ltm-s0\note-result.md line 194; log:4070. Related: `MC-2659`, `MC-2661`, PR#421.
+- Supersedes / amends: superseded for the verdict by `MC-2661` (b61\ltm-s0-gate\out\gate-report.md line 923 reads "rare (MC-2661; supersedes MC-2655 for the verdict); fulltext and idf report-only"). log:4070 says the full-text-only recommendation was flawed (weaker builder) and that the maintainer was told.
+
+**What the maintainer chose (decisions-s0.md line 17).** Only the full-text builder can carry the S0 verdict. The idf builder stays report-only for comparison. The NULL rule is unchanged. The maintainer's words: "Gate full-text only".
+
+### MC-2656 — #423 S3 hybrid search ships on API embeddings first, 2026-11-21
+
+- Tag: decisions (maintainer answer "S3 API-first", logged by the ltm-spec session). Date: 2026-11-21, taken from log:4063 (dated lane A merge record of #423 that names MC-2656..2658); decisions-s0.md line 20 itself is undated. Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 20; log:4063; PR#423 body; b61\ltm-s0\note-result.md line 186. Related: `#423`, `MC-2657`, `MC-2658`, `MC-2814`, `CHORE-620`, `MC-2136`.
+
+**What the maintainer chose (decisions-s0.md line 20).** S3 (hybrid search) ships on API embeddings and needs only S1 plus a provider. S3a (phone Worker spike) and CHORE-620 / MC-2136 (Note 9 model measurement) no longer block S3. They decide only whether phones get a local fallback, and with which model. The maintainer's words: "S3 API-first".
+
+### MC-2657 — #423 unreachable API embedding means keyword-only for that send, 2026-11-21
+
+- Tag: decisions (maintainer answer "Keyword-only until back", logged by the ltm-spec session). Date: 2026-11-21, taken from log:4063 (same dated record as MC-2656); decisions-s0.md line 21 is undated. Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 21; log:4063; PR#423 body. Related: `#423`, `MC-2656`, `MC-2658`.
+
+**What the maintainer chose (decisions-s0.md line 21).** When the API embedding is unreachable (offline, no key, quota, or provider error), that send uses keyword search only, and the Memory panel shows vectors paused. There is no second local index. The maintainer's words: "Keyword-only until back".
+
+### MC-2658 — #423 keyword search stays default, local model preselected for vectors, 2026-11-21
+
+- Tag: decisions (maintainer answer "Keyword, local preselected", logged by the ltm-spec session). Date: 2026-11-21, taken from log:4063 (same dated record as MC-2656); decisions-s0.md line 22 is undated. Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 22; log:4063; PR#423 body; b61\ltm-s0fix\docv-api.md line 11. Related: `#423`, `MC-2589`, `MC-2656`, `MC-2657`.
+
+**What the maintainer chose (decisions-s0.md line 22).** Keyword search stays the default (MC-2589 stands). Turning vectors on without an API provider preselects the local model. The maintainer's words: "Keyword, local preselected".
+
+### MC-2659 — #401 S0 stops without gate run after tune predicts FAIL, 2026-11-21
+
+- Tag: decisions (maintainer answer "Stop, don't run gate", logged by the ltm-s0 session). Date: 2026-11-21 (log:4070). Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 26; log:4070; PR#437 body. Related: `#401`, `MC-2655`, `MC-2660`, `MC-2661`.
+
+**What the maintainer chose (decisions-s0.md line 26).** S0 stops without a gate run. It is recorded as 'tune predicts FAIL for both builders, gate not run'. Gate seeds 610001 and 710001 stay unspent. log:4070 gives the tune rerun at 0d9c053e3 as predicting FAIL for both builders (full-text recall .016-.27, idf .18-.69, floor 0.5). The maintainer's words: "Stop, don't run gate".
+
+### MC-2660 — #401 findings note before any S0 code change, 2026-11-21
+
+- Tag: decisions (maintainer answer "Findings note first", logged by the ltm-s0 session). Date: 2026-11-21 (log:4070 names MC-2660 on the dated line). Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 27; log:4070; b61\ltm-s0\note-result.md line 1. Related: `#401`, `MC-2659`, `MC-2814`.
+
+**What the maintainer chose (decisions-s0.md line 27).** The next step is a findings note covering why each builder misses, candidate redesigns, and the MC-2814 API-embedding route. No code until the maintainer picks. The maintainer's words: "Findings note first".
+
+### MC-2661 — #401 S0 keyword gate uses rare-word builder, allude carried to S3, 2026-11-21
+
+- Tag: decisions (maintainer answer "Rare-word keyword, hints to S3", logged by the ltm-s0 session). Date: 2026-11-21 (log:4073 dated line names MC-2661); decisions-s0.md line 31 is undated. Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 31; log:4073; PR#437 body; b61\handoffs\ltm-spec.md line 38; b61\ltm-s0-gate\out\gate-report.md lines 17-24. Related: `#401`, `MC-2630`, `MC-2632`, `MC-2642`, `MC-2654`, `MC-2655`, `MC-2659`, PR#437.
+- Supersedes / amends: amends `MC-2632` and `MC-2642` (decisions-s0.md line 31). Supersedes `MC-2655` for the verdict (gate-report.md line 923; see MC-2655).
+
+**What the maintainer chose (decisions-s0.md line 31).** S0 continues with a redesigned keyword builder. Its query is the rare words only (low document frequency) over the whole user turn, replacing the 500-char tail for this builder. The keyword gate requires ask turns in all four cells. Allude turns are reported only and carried to the API-embedding stage S3 to clear. The tune may raise the budget up to the cap. Retune on seed 510001. Gate seeds stay unspent until the tune predicts PASS. The maintainer's words: "Rare-word keyword, hints to S3".
+
+### MC-2662 — #401 final-settings failure walks to next larger cleared budget, 2026-11-21
+
+- Tag: decisions (maintainer answer "Walk up the budget", logged by the ltm-spec session; lane A records the merge). Date: 2026-11-21 (log:4106 and log:4115). Exact times: UNKNOWN. Source: b61\ltm-s0\decisions-s0.md line 38; log:4106; log:4115; PR#465 body; b61\handoffs\ltm-spec.md line 42. Related: `#401`, PR#465.
+
+**What the maintainer chose (decisions-s0.md line 38).** When the final-settings check fails, selection walks to the next larger budget that cleared at step 2 and redoes the later steps, until the final settings clear or the clearing budgets run out (cap). This is a procedure change: it goes through a reviewed PR, a retune on seed 510001, and a gate run only if the tune predicts PASS. The maintainer's words: "Walk up the budget". PR#465 body states the same decision.
+
+### MC-2663 — #354 Custom quote follows colour scheme and setDatabase stops refilling null, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer, option A', recorded in s7-maintainer-answers.md; the handoff records the X2 answers as recommended). Date: 2026-11-20 (log:3951). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 86; log:3951; b61\handoffs\ui-lane.md line 245; PR#408 body. Related: `#354`, `MC-2664`, `MC-2665`, `MC-2666`, `MC-2667`.
+
+**What the maintainer chose (s7-maintainer-answers.md line 86).** A cleared or absent Custom quote is the Standard quote of the painted scheme type. setDatabase stops refilling null or absent quotes. The quote type is string or null.
+
+### MC-2664 — #353 Standard light italic uses literal #5f6066, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer, OPQ-2, recorded in s7-maintainer-answers.md; the handoff records the X2 answers as recommended). Date: 2026-11-20 (log:3951). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 87; log:3951; b61\handoffs\ui-lane.md line 245; PR#408 body. Related: `#353`, `MC-2663`.
+
+**What the maintainer chose (s7-maintainer-answers.md line 87).** Standard light italic and italic-bold are the literal colour #5f6066.
+
+### MC-2665 — #374 list markers use currentColor on every prose surface and scheme, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer, OPQ-3, recorded in s7-maintainer-answers.md; the handoff records the X2 answers as recommended). Date: 2026-11-20 (log:3951). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 88; log:3951; b61\handoffs\ui-lane.md line 245; PR#408 body. Related: `#374`, `MC-2663`, `MC-2666`.
+
+**What the maintainer chose (s7-maintainer-answers.md line 88).** Option A: bullets and numbers use currentColor on every prose surface and every scheme.
+
+### MC-2666 — #355 danger button hover fill becomes red-600, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer, OPQ-4, recorded in s7-maintainer-answers.md; the handoff records the X2 answers as recommended). Date: 2026-11-20 (log:3951). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 89; log:3951; b61\handoffs\ui-lane.md line 245; PR#408 body. Related: `#355`, `MC-2663`, `MC-2665`.
+
+**What the maintainer chose (s7-maintainer-answers.md line 89).** Option B: danger hover fill is red-600. The on-danger text role is checked against red-700, 800 and 600.
+
+### MC-2667 — #364 task toast contrast fixed in X2-3, not deferred to #247 S7, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer, OPQ-5, recorded in s7-maintainer-answers.md; the handoff records the X2 answers as recommended). Date: 2026-11-20 (log:3951; progress-popups handoff line 277). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 90; log:3951; b61\handoffs\progress-popups.md line 277; PR#408 body. Related: `#364`, `#247`, `MC-2460`.
+
+**What the maintainer chose (s7-maintainer-answers.md line 90).** Option A: the fix is made in X2-3 (class tokens in ToastHost.svelte). #247 S7 inherits LC-9 and LC-10. The #364 item is dropped from S7 scope.
+
+### MC-2668 — #395 sheets win over overlay sidebar, sidebar refuses to open while a sheet is open, 2026-11-20
+
+- Tag: decisions (TODO(evidence): decider and channel are not named; ui-lane handoff line 298 assigns the "sheet wins" rule and PR#422 body states "Sheets now win (MC-2668)"). Date: 2026-11-20 (bounded: the MC block was granted on 2026-11-20, lane A decisions log line 3912, and PR #422 was opened and merged that day). Exact times: UNKNOWN. Source: PR#422 body; b61\handoffs\ui-lane.md lines 298-299; b61\ui-lane\i395\code-result.md line 4; b61\ui-lane\i395\gate2-r1.md line 35. Related: `#395`, PR#422.
+
+**What was decided (PR#422 body; ui-lane handoff line 299).** Sheets win over the overlay sidebar. A sheet opening closes the overlay sidebar, and the sidebar refuses to open while a sheet is open (central guard on sideBarStore). PR#422 has a "Known behaviour (consistent with MC-2668)" section whose text is not in the packet. A sidebar-hosted menu left open after a back-button close blocks reopening until dismissed (gate2-r1 line 35).
+
+### MC-2669 — #334 'Scheme type' screen-reader name for Light and Dark select, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer recorded in s7-maintainer-answers.md line 96; the line does not name the channel). Date: 2026-11-20 (bounded: the MC block was granted on 2026-11-20, lane A decisions log line 3912, and PR #427 was opened and merged that day). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 96; PR#427 body; b61\ui-lane\i334\s2-translate-request.md line 1; b61\handoffs\ui-lane.md line 316. Related: `#334`, `MC-2670`, PR#427.
+
+**What the maintainer chose (s7-maintainer-answers.md line 96).** The CustomColorSchemeEditor Light/Dark select gets a new key 'Scheme type', not the existing 'Type'. PR#427 body says the key is in en and all 7 other locales. That locale claim is the PR's statement and is not verified here.
+
+### MC-2670 — #334 'Category' screen-reader name for HypaV3 bulk-edit filter, 2026-11-20
+
+- Tag: decisions (ui-lane maintainer answer recorded in s7-maintainer-answers.md line 97; the line does not name the channel). Date: 2026-11-20 (bounded: the MC block was granted on 2026-11-20, lane A decisions log line 3912, and PR #427 was opened and merged that day). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 97; PR#427 body; b61\ui-lane\i334\s2-translate-request.md line 1. Related: `#334`, `MC-2669`, PR#427.
+
+**What the maintainer chose (s7-maintainer-answers.md line 97).** The HypaV3 bulk-edit category filter select gets a new key 'Category', not 'Categories'. The PopupEditor select keeps language.language ('Language'). PR#427 body says both keys are in 7 locales; that is the PR's statement and is not verified here.
+
+### MC-2671 — #334 bias row number and WaveSpeed model select sr-only names, 2026-11-21
+
+- Tag: decisions (ui-lane maintainer answer recorded in s7-maintainer-answers.md line 99; the line does not name the channel). Date: 2026-11-21 (dated on the line). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 99; log:4067; PR#429 body; PR#463 body. Related: `#334`, `MC-2672`, PR#429, PR#463.
+
+**What the maintainer chose (s7-maintainer-answers.md line 99).** The bias table row number field keeps the existing 'Value' key as its sr-only name. The WaveSpeed model select takes the existing 'Model' key (language.model) as its sr-only name. Not chosen: 'Select a model' (the source quotes that placeholder with trailing dots).
+
+### MC-2672 — #334 WaveSpeed LoRA weight sliders named by new key loraWeightIndexed, 2026-11-21
+
+- Tag: decisions (ui-lane maintainer answer recorded in s7-maintainer-answers.md line 100; the line does not name the channel). Date: 2026-11-21 (dated on the line). Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 100; log:4067; PR#429 body; b61\handoffs\ui-lane.md line 343. Related: `#334`, `MC-2671`, PR#429.
+
+**What the maintainer chose (s7-maintainer-answers.md line 100).** A new key settingsPage.loraWeightIndexed with the text 'LoRA {index} weight' names each WaveSpeed LoRA weight slider, matching loraUrlOptional. PR#429 body says it is translated in all locales; that is the PR's statement and is not verified here.
+
+### MC-2673 — #346 commit, merge main, push and PR approved, 2026-11-20
+
+- Tag: decisions (approval recorded by the progress-popups session as MC-2673 from its own block; relayed at lane A decisions log lines 3927 and 3930). Date: 2026-11-20. Exact times: UNKNOWN. Source: `b61\handoffs\progress-popups.md:257` (assignment line); lane A decisions log lines 3927, 3930. Related: `#346`, `MC-2713`, `MC-2674`.
+
+**What the maintainer chose (`b61\handoffs\progress-popups.md:257`).** The maintainer approved the #346 commit, merge of main, push and PR. The approval is recorded under MC-2673 as the first ID of the progress-popups block (MC-2673..MC-2682).
+
+### MC-2674 — #367 merge approved once CI is green, 2026-11-20
+
+- Tag: decisions (approval recorded by the progress-popups session as MC-2674 from its own block; relayed at lane A decisions log lines 3927 and 3930). Date: 2026-11-20. Exact times: UNKNOWN. Source: `b61\handoffs\progress-popups.md:257` (assignment line); lane A decisions log lines 3927, 3930. Related: `#367`, `MC-2713`, `MC-2673`.
+
+**What the maintainer chose (`b61\handoffs\progress-popups.md:257`).** The maintainer approved merging #367 when CI is green.
+
+### MC-2675 — Progress-popups S6a commit, push and PR approved for PR #377, 2026-11-20
+
+- Tag: decisions (maintainer approval recorded by the progress-popups session as MC-2675 from its own block; relayed at lane A decisions log line 3941). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3941; `b61\handoffs\progress-popups.md:265`; `b61\handoffs\progress-popups.md:267`. Related: `PR #377`, `MC-2713`, `MC-2673`.
+
+**What the maintainer chose (lane A decisions log line 3941).** The maintainer approved the S6a commit, merge of main, push and PR for PR #377.
+
+### MC-2676 — MC-2744 autonomy rule confirmed for progress-popups, 2026-11-20
+
+- Tag: decisions (maintainer confirmation given in the progress-popups session, `b61\handoffs\progress-popups.md:269`; relayed at lane A decisions log line 3950). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3950; `b61\handoffs\progress-popups.md:269`. Related: `MC-2744`, `MC-2713`, `#377`.
+
+**What the maintainer confirmed (`b61\handoffs\progress-popups.md:269`).** After Gate 2 the session commits, pushes and opens PRs without asking, and lane A merges on green CI with the reviewed diff. Still asked: product decisions, scope changes and escalations.
+
+### MC-2677 — Successful Realm share closes the progress card silently, 2026-11-20
+
+- Tag: decisions (recorded as a #377 ruling in lane A decisions log line 3950; the plan section that carries it, `b61\b11\brief-g1-s6b.md:7`, is titled "Maintainer answers and orchestrator rulings", so the decider for this ID is TODO(evidence)). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3950; PR #403; `b61\b11\brief-g1-s6b.md:14`. Related: `PR #403`, `#377`, `SA-1`, `MC-2678`.
+
+**What was decided (lane A decisions log line 3950).** A successful Realm share closes the card silently, and the upload page continues. The Realm nested route does not open, close or end the card itself (`b61\b11\brief-g1-s6b.md:14`).
+
+### MC-2678 — Screenshot failure card shows the error text, 2026-11-20
+
+- Tag: decisions (recorded as a #377 ruling in lane A decisions log line 3950; the plan section that carries it, `b61\b11\brief-g1-s6b.md:7`, is titled "Maintainer answers and orchestrator rulings", so the decider for this ID is TODO(evidence)). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3950; PR #403. Related: `PR #403`, `#377`, `MC-2677`.
+
+**What was decided (lane A decisions log line 3950).** The screenshot failure card shows the error text. PR #403 states the same for the fail card (`PR #403`, screenshots note).
+
+### MC-2684 — #357 fold the overlap fix into the abandon work, 2026-11-20
+
+- Tag: decisions (maintainer, recorded in rtb-encryption handoff line 110 as "maintainer 2026-11-20"). Date: 2026-11-20. Exact times: UNKNOWN. Source: b61\handoffs\rtb-encryption.md line 110; b61\c128\abandon\gate2-r4.md line 3; PR#399 body. Related: `#357`, `CHORE-128`, PR#399.
+
+**What the maintainer chose (rtb-encryption.md line 110).** Fold the overlap fix into #357. The handoff marks this option as Recommended. The in-flight first call of an overlapping pair now rejects, instead of sealing under the zeroed key, and the existing overlap test changes accordingly (PR#399 body).
+
+### MC-2685 — #276 maintainer answered Close it, session then reopened the issue, 2026-11-20
+
+- Tag: decisions (maintainer answer "Close it", recorded in rtb-encryption handoff line 120; the line is undated). Date: 2026-11-20 (issue #276 was closed and reopened at 12:09-12:11 UTC that day). Exact times: UNKNOWN. Source: b61\handoffs\rtb-encryption.md line 120. Related: `#276`, `CHORE-128`.
+- Supersedes / amends: the same line records that the rtb session reopened #276 after the close. The reopen is the session's own action, not a maintainer answer. The session asked lane A to fix the board card and own the umbrella close-out.
+
+**Question.** The question framed #276 as the encryption ticket. The handoff says #276 is the whole CHORE-128 umbrella.
+
+**What the maintainer chose (rtb-encryption.md line 120).** The maintainer answered "Close it" for #276.
+
+### MC-2703 — Device-row gh issue comments approved, one short comment per row, 2026-11-20
+
+- Tag: decisions (lane A record of lane B batch 1; the line says "approved" and does not name the approver: TODO(evidence)). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3926. Related: `#349`.
+
+**What was decided (log:3926).** gh issue comments are approved for the consolidated device-row queue: one short comment per finished row, with result path, build commit and verdict. Three were posted on #349 (#213, #259, #204).
+
+### MC-2705 — Tab S9 E11 dropped by maintainer after guard exit 95, 2026-11-20
+
+- Tag: decisions (lane A record of lane B batch 1; the line says the maintainer dropped E11). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3926. Related: `MC-2539`.
+
+**What the maintainer chose (log:3926).** Tab S9 E11 was set up, then the guard exited 95. The maintainer dropped E11. The cross-reference is MC-2539.
+
+### MC-2714 — Device-guard emulator-5580 am start limited to own package activity, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the device-guard session, OD-1, recorded in dg848 answers.md; lane A record at log:3915). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3915; b61\dg848\answers.md line 19; PR#419 body. Related: `MC-2720`, `MC-2721`, PR#419.
+
+**What the maintainer chose (log:3915).** On emulator-5580, am start becomes exactly am start [-W] -n own-package/activity with --own-package (S1b), on top of the link rule (S1a).
+
+### MC-2715 — Note 9 danger scan adds second decoding pass and telephony schemes, 2026-11-20
+
+- Tag: decisions (OD-2 answer in dg848 answers.md; the lane A line does not restate the channel). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3916; b61\dg848\answers.md line 19; PR#419 body; b61\dg848\g2.md line 117. Related: `MC-2714`, PR#419.
+
+**What the maintainer chose (log:3916).** The Note 9 danger-zone scan (DZ-2, S1c) adds a once-percent-decoded second pass. It adds mmsto, callto, tel:, sip:, sips: and scheme=tel|sip|sips|callto. http(s), geo and market stay allowed on Note 9s.
+
+### MC-2716 — Routed kit scripts run only on the two spare Note 9 serials, 2026-11-20
+
+- Tag: decisions (OD-3 answer in dg848 answers.md; lane A record at log:3917). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3917; b61\dg848\answers.md line 19; PR#419 body. Related: `MC-2719`, PR#419.
+- Supersedes / amends: amended by `MC-2719` (OD-3 re-ask with a corrected premise; log:3920 and dg848 answers.md line 19 list both).
+
+**What the maintainer chose (log:3917).** Routed kit scripts run only on the two spare Note 9 serials. emulator-5580, other emulators and restricted serials fail closed. Never Tab S9 or Fold 7.
+
+### MC-2717 — Note 9 adb forward and reverse allowed only in three exact forms, 2026-11-20
+
+- Tag: decisions (OD-4 answer in dg848 answers.md; lane A record at log:3918). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3918; b61\dg848\answers.md line 19; b61\dg848\g2.md line 118; PR#419 body. Related: PR#419.
+
+**What the maintainer chose (log:3918).** On Note 9s only: forward --list; forward --no-rebind tcp:own-port localabstract:webview_devtools_remote_digits; and reverse --no-rebind tcp:own-port tcp:own-port, with the DZ-10 reserved host-port check.
+
+### MC-2718 — Note 9 profile device-prep deviceidle whitelist calls route as plain calls, 2026-11-20
+
+- Tag: decisions (OD-5 answer in dg848 answers.md; lane A record at log:3919). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3919; b61\dg848\answers.md line 19; PR#419 body. Related: `MC-2288`, `MC-2453`, `MC-2454`, PR#419.
+- Supersedes / amends: log:3919 says MC-2288's deviceidle refusal is superseded on the Note 9 profile by MC-2453 and MC-2454. This clerk did not read MC-2453 or MC-2454 text; the parent must verify that supersession at the rule source.
+
+**What the maintainer chose (log:3919).** Device-prep deviceidle whitelist calls route as plain Note 9 calls.
+
+### MC-2719 — Kit gate at start stops routed scripts on non-Note 9 serials, 2026-11-20
+
+- Tag: decisions (OD-3 re-ask answer in dg848 answers.md; lane A record at log:3920). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3920; b61\dg848\answers.md line 19; PR#419 body. Related: `MC-2716`, PR#419.
+- Supersedes / amends: amends `MC-2716` (this is the OD-3 re-ask with a corrected premise).
+
+**What the maintainer chose (log:3920).** The gate runs at kit start. Initialize-AdbGuard stops every routed script, fixture-push included, before any device call unless the serial is under the Note 9 profile. As a result fixture-push stops working on emulator-5580.
+
+### MC-2720 — emulator-5580 am start accepts only the app package activity, 2026-11-20
+
+- Tag: decisions (OD-1 pin answer in dg848 answers; lane A record at log:3921). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3921; b61\dg848\g2.md line 104; PR#419 body. Related: `MC-2714` (this is its OD-1 pin), `MC-2721`.
+
+**What the maintainer chose (log:3921).** emulator-5580 am start accepts only io.github.yor42.risutanium/activity, whatever --own-package says. Not chosen: tbdriver.
+
+### MC-2721 — emulator-5580 am start also requires own-package flag naming the app, 2026-11-20
+
+- Tag: decisions (OMD-1 answer in dg848 answers; lane A record at log:3922). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3922; b61\dg848\g2.md line 104; PR#419 body. Related: `MC-2714`, `MC-2720`.
+
+**What the maintainer chose (log:3922).** The pinned emulator am start also requires --own-package io.github.yor42.risutanium. Any other or missing value is refused with 97.
+
+### MC-2722 — Restricted serial am start scope unchanged, residual documented, 2026-11-20
+
+- Tag: decisions (OMD-2 answer in dg848 answers.md; lane A record at log:3923). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3923; b61\dg848\answers.md line 19; PR#419 body. Related: PR#419.
+
+**What the maintainer chose (log:3923).** The restricted am-start scope is unchanged in this PR. Its residual is named in the README and the header. The restricted scope still trusts --own-package.
+
+### MC-2723 — Trust boundary is one unmodified checkout, residuals documented, 2026-11-20
+
+- Tag: decisions (device-guard answers record dg848 answers.md line 19; the lane A line says "after advisor" and names no maintainer: TODO(evidence) on decider). Date: 2026-11-20. Exact times: UNKNOWN. Source: log:3924; b61\dg848\answers.md line 19; b61\dg848\g2.md line 37; PR#419 body. Related: PR#419.
+
+**What was decided (log:3924).** The guarantee holds within one unmodified checkout. Kit scripts load lib.ps1 and the guard from their own tree only, and no env var or parameter selects them. Residuals are documented: the PATH node, the guard's fake-adb test variable, and caller-named child scripts (-FilePath, -CdpScript).
+
+### MC-2724 — File chooser paths limited to Download or app files folder, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in the file-chooser session, OD-1, recorded in the dgpick answers file). Date: 2026-11-20 (answers file header). Exact times: UNKNOWN. Source: b61\dgpick\answers.md lines 1-2; log:3925; PR#426 body. Related: `MC-2725`, `MC-2726`, PR#426.
+
+**What the maintainer chose (dgpick answers.md line 2).** Files come only from /sdcard/Download/name or /sdcard/Android/data/io.github.yor42.risutanium/files/name. Names must be safe, with no traversal. The option taken was the recommended Download plus app folder choice.
+
+### MC-2725 — File-chooser verb taps via adb input at the probed centre, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the file-chooser session; answers file header dated 2026-11-20). Date: 2026-11-20. Exact times: UNKNOWN. Source: `b61\dgpick\answers.md:1` and `:3`; `b61\dgpick\plan-r2.md:7` (MC-2724 section names MC-2725); PR #426. Related: `MC-2724`, `MC-2713`, `PR #426`.
+
+**What the maintainer chose (`b61\dgpick\answers.md:2`).** The option "adb input tap" (recommended), sent through the guard at the probed centre of the file-chooser element. Not chosen: a `Runtime.evaluate` `userGesture` click on the element, which the g1 review raised as an advisory and which was not one of the OD-2 options (`b61\dgpick\g1.md:112`).
+
+### MC-2726 — File-chooser verb exits 98 after two counted failures per run, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion in the file-chooser session; answers file header dated 2026-11-20). Date: 2026-11-20. Exact times: UNKNOWN. Source: `b61\dgpick\answers.md:1` and `:4`; `b61\dgpick\plan-r2.md:7` (MC-2724 section names MC-2726); PR #426. Related: `MC-2724`, `MC-2713`, `PR #426`.
+
+**What the maintainer chose (`b61\dgpick\answers.md:4`).** Two counted failures per run, then exit 98; the recommended option was chosen.
+
+### MC-2734 — #155 drops the separate-models checkbox and always shows aux selectors, 2026-11-20
+
+- Tag: decisions (sweeper-1 MC batch recorded in the lane A decisions log; the #155 plan says the texts were relayed by the orchestrator, `sweeper\155-plan.md:180`). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3931; PR #390; `sweeper\155-plan.md:4`. Related: `#155`, `CHORE-581`, `MC-892`, `MC-2735`, `MC-2739`, `MC-2740`.
+- Supersedes / amends: amended by MC-2739 (lane A decisions log line 3945), which replaces the main-model fallback wording of line 3931 with the Auxiliary Model fallback.
+
+**What the maintainer chose (lane A decisions log line 3931).** The separate-models checkbox is dropped, and the per-function aux selectors always show. An empty slot falls back to the main model (wording amended by MC-2739, see above). The saved flag is untouched.
+
+### MC-2735 — #155 keys always masked and aux selectors in one fixed place, 2026-11-20
+
+- Tag: decisions (sweeper-1 MC batch recorded in the lane A decisions log; the #155 plan says the texts were relayed by the orchestrator, `sweeper\155-plan.md:180`). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3931; PR #390; `sweeper\155-plan.md:4`. Related: `#155`, `CHORE-581`, `MC-892`, `MC-2734`, `MC-2740`.
+- Supersedes / amends: placement amended by MC-2740 (lane A decisions log line 3945), which puts the per-function selectors at the end of the Models page's Model tab.
+
+**What the maintainer chose (lane A decisions log line 3931).** Every key input is always masked, keeping the user's own eye toggles. The aux selectors sit in one fixed place on the Models page. Saved values are untouched.
+
+### MC-2736 — #159 closed with reduced transparency and edge-swipe toggle dropped, 2026-11-20
+
+- Tag: decisions (sweeper-1 MC batch recorded in the lane A decisions log; the deferred-survey report also records it as a maintainer drop). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3931; `b61\deferred-survey\report.md:247`. Related: `#159`, `CHORE-586`.
+
+**What the maintainer chose (lane A decisions log line 3931).** #159 is closed. Haptics, the Enter key and the button layout shipped. Reduced transparency and the edge-swipe toggle are dropped, and edge swipe is always on. The deferred-survey report calls this a maintainer drop and a rejection.
+
+### MC-2737 — #211 loadouts fault keeps the last-saved list with notice and retry, 2026-11-20
+
+- Tag: decisions (sweeper MC entry recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3940. Related: `#211`, `MC-1797`, `MC-2738`, `PR #398`.
+- Supersedes / amends: `sweeper\211-plan.md:22` says this supersedes MC-1797 for the statics and characterOrder fields. That is a plan statement, not the decision text on line 3940; TODO(evidence) for the maintainer wording of the supersession.
+
+**What the maintainer chose (lane A decisions log line 3940).** If the loadouts fault occurs, keep the whole last-saved list, show an unsaved notice and offer retry. If the list was never saved, fail as today. Statics and characterOrder keep the whole field on fault.
+
+### MC-2738 — #211 ships as its own PR with designer and Opus gates, 2026-11-20
+
+- Tag: decisions (sweeper MC entry recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3940; `sweeper\211-g1.md:22`. Related: `#211`, `MC-1797`, `MC-2737`, `PR #398`.
+
+**What the maintainer chose (lane A decisions log line 3940).** #211 is its own PR 3: designer, Opus Gate 1, coder, Opus Gate 2.
+
+### MC-2739 — #155 empty per-function aux slot falls back to the Auxiliary Model, 2026-11-20
+
+- Tag: decisions (sweeper MC entry recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3945; PR #390 (implementation). Related: `#155`, `MC-2734`, `MC-892`.
+- Supersedes / amends: amends MC-2734 (line 3945), replacing the main-model fallback wording of line 3931.
+
+**What the maintainer chose (lane A decisions log line 3945).** An empty per-function aux slot falls back to the Auxiliary Model (subModel), as today.
+
+### MC-2740 — #155 per-function aux selectors at end of Model tab, 2026-11-20
+
+- Tag: decisions (sweeper MC entry recorded in the lane A decisions log). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3945; PR #390 (implementation). Related: `#155`, `MC-2735`, `MC-2734`.
+- Supersedes / amends: amends MC-2735 (line 3945). The placement becomes the end of the Models page's Model tab, out of the prompt-template tab.
+
+**What was recorded (lane A decisions log line 3945; `sweeperm-plan.md:185` lists it as a product question with option a recommended).** The per-function aux selectors always sit at the end of the Models page's Model tab, not in the prompt-template tab. Not chosen: the prompt-template settings tab placement, the other option in `sweeper\155-plan.md:185`.
+
+### MC-2813 — #256 closed by hand with USAGE_KEY_CAP kept at 1000, 2026-11-20
+
+- Tag: decisions (maintainer answer recorded in the lane A decisions log; the close note says it closes on that answer). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 4046; `b61\issues-1121\close-256.md:1`. Related: `#256`, `USAGE_KEY_CAP`.
+
+**What the maintainer chose (lane A decisions log line 4046).** The maintainer answered "Close, keep 1000 (Recommended)". #256 is closed by hand after the T13b pass, and USAGE_KEY_CAP stays at 1000.
+
+### MC-2814 — LTM ChroMemory embeddings use API providers first with local as fallback, 2026-11-20
+
+- Tag: decisions (maintainer, typed in lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 4054; `b61\ltm-s0\decisions-s0.md:19`; PR #423. Related: `MC-2656`, `PR #423`.
+
+**What the maintainer chose (lane A decisions log line 4054).** API embedding models are the primary vector path. The maintainer uses Voyage-4-large from VoyageAI. Local embedding is a fallback and the free default, not the main engine.
+
+### MC-2815 — Note 9 guard stays as is with 13 zones and stop rules, 2026-11-20
+
+- Tag: decisions (maintainer AskUserQuestion in lane A). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 4055 (cited evidence: workflow wf_9422d98b-2dc harness report and verification).
+
+**What the maintainer chose (lane A decisions log line 4055).** The Note 9 guard stays as it is, with 13 zones and its stop rules. Not chosen: a slimmer guard option, which was declined.
+
+### MC-2816 — Finish the Note 9 file-chooser verb, 2026-11-20
+
+- Tag: lane A record (line 4056 gives the item without naming a decider). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 4056; `b61\dgpick\answers.md:4` (approval under MC-2713 item 4). Related: `MC-2713`.
+
+**What was decided (lane A decisions log line 4056).** Finish the Note 9 file-chooser verb under MC-2713 item 4.
+
+### MC-2817 — #234 NEW home build starts now in a new session, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 4057; `b61\h234\mc-entries.md:4`. Related: `#234`, `MC-2438`, `PR #109`.
+
+**What the maintainer chose (lane A decisions log line 4057).** Start #234 NEW-home-build now in a new session, with Tier 2 sizing against docs/design/home on main (the PR #109 look plus the MC-2438 function). The UI-Rework folder copy is stale.
+
+### MC-2838 — #334 playground image translation mode select named Mode, 2026-11-21
+
+- Tag: decisions (ui-lane maintainer-answers record, `b61\ui-lane\s7-maintainer-answers.md:105`). Date: 2026-11-21. Exact times: UNKNOWN. Source: `b61\ui-lane\s7-maintainer-answers.md:105`; PR #434. Related: `#334`, `PR #434`.
+
+**What the maintainer chose (`b61\ui-lane\s7-maintainer-answers.md:105`).** The playground image translation Auto/Manual select gets a new screen-reader name key, `playground.imageTranslationMode`, with the value "Mode". The key is translated in all locales. Not chosen: reusing the existing "Type" key or the home screen's "Mode" label.
+
+### MC-2839 — #334 Trigger V1 match-mode select named Match mode, 2026-11-21
+
+- Tag: decisions (ui-lane maintainer-answers record, `b61\ui-lane\s7-maintainer-answers.md:107`). Date: 2026-11-21. Exact times: UNKNOWN. Source: `b61\ui-lane\s7-maintainer-answers.md:107`; PR #463. Related: `#334`, `PR #463`.
+
+**What the maintainer chose (`b61\ui-lane\s7-maintainer-answers.md:107`).** The Loosely, Strictly and Regex select of the Trigger V1 "exists" condition gets the screen-reader name key `triggerMatchMode` with the value "Match mode". The key is reusable by Stage 5.
+
+### MC-2840 — #334 Trigger V2 operand selects named from the operand label, 2026-11-21
+
+- Tag: decisions (ui-lane maintainer-answers record, `b61\ui-lane\s7-maintainer-answers.md:109`; the Stage 5 brief names it as a maintainer decision, `b61\ui-lane\i334\s5-brief.md:5`). Date: 2026-11-21. Exact times: UNKNOWN. Source: `b61\ui-lane\s7-maintainer-answers.md:109`; `b61\ui-lane\i334\s5-brief.md:5`; PR #469. Related: `#334`, `PR #469`.
+
+**What the maintainer chose (`b61\ui-lane\s7-maintainer-answers.md:109`).** The visible operand label names the text field. The Value or Variable select of each operand gets a screen-reader-only name from the new pattern key `triggerInputLabels.operandType`, with the value "{label} type" (for example "Source type"). The key is translated in all locales.
+
+### MC-2841 — #334 Trigger V2 mobile effect-category select named Effect category, 2026-11-21
+
+- Tag: decisions (ui-lane maintainer-answers record, `b61\ui-lane\s7-maintainer-answers.md:111`). Date: 2026-11-21. Exact times: UNKNOWN. Source: `b61\ui-lane\s7-maintainer-answers.md:111`; PR #469. Related: `#334`, `PR #469`.
+
+**What the maintainer chose (`b61\ui-lane\s7-maintainer-answers.md:111`).** The add-effect picker's mobile category select gets the screen-reader name key `triggerEffectCategory` with the value "Effect category". Not chosen: reusing `hypaV3Modal.categoryFilter` across screens.
+
+### MC-2848 — #401 closed on S0 verdict and #402 S1 made ready, 2026-11-21
+
+- Tag: decisions (maintainer decision on the S0 verdict, recorded in the ltm-s0 decisions file). Date: 2026-11-21 (date taken from `b61\handoffs\ltm-spec.md:44`; `b61\ltm-s0\decisions-s0.md:44` carries no date). Exact times: UNKNOWN. Source: `b61\ltm-s0\decisions-s0.md:44`; `b61\handoffs\ltm-spec.md:44`. Related: `#401`, `#402`.
+
+**What the maintainer chose (`b61\ltm-s0\decisions-s0.md:44`).** The maintainer accepts the S0 verdict. Close #401 and make S1 (#402) ready, carrying the rare-builder settings and the borderline-Korean caveat. The maintainer's words were "Close #401, start S1".
+
+### MC-2878 — #175 grilling questions PQ-1 to PQ-4 answered with the recommended options, 2026-11-21
+
+- Tag: decisions (maintainer, AskUserQuestion, all options marked "(Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Source: `t175\answers.md:2` to `:6`; PR #440 Decisions heading. Related: `#175`, `PR #440`.
+
+**Question.** The #175 swipe-handling grilling questions PQ-1 to PQ-4.
+
+**What the maintainer chose (`t175\answers.md:3` to `:6`).** PQ-1 "Keep mes, lose none": mes stays shown, the slot is the swipe_id if it matches mes, else the first equal entry, else the first, and nothing kept is lost. PQ-2 "Show first swipe": an empty mes with non-empty swipes shows the first kept swipe, the rest as alternatives, with no notice. PQ-3 "Keep like replies": user-line swipes are kept, and at .bin export each becomes a Branch chat under the existing rule. PQ-4 "Keep as alternatives": greeting swipes are root siblings. PQ-5 to PQ-8 are orchestrator rulings, not maintainer decisions, and are not part of this entry.
+
+### MC-2943 — #439 boot restore progress follow-up after #247 S6d, 2026-11-21
+
+- Tag: decisions (maintainer request recorded in the lane A decisions log and the issue draft, `b61\issues-1121\boot-restore-progress.md:5`). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4087; `b61\issues-1121\boot-restore-progress.md:5`. Related: `#439`, `#247`.
+
+**What the maintainer chose (`b61\issues-1121\boot-restore-progress.md:5`).** A follow-up (#439) shows restore progress on the start-up screen, so a large boot restore never looks frozen. It is filed after #247 S6d.
+
+### MC-2954 — #442 to #452 ticketed from the deferred-parts survey remainders, 2026-11-21
+
+- Tag: decisions (maintainer ticketed the survey remainders, recorded in the lane A decisions log). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4090 (survey report `b61\deferred-survey\report.md`). Related: `#234`, `#443`, `CHORE-584`.
+
+**What the maintainer chose (lane A decisions log line 4090).** The maintainer ticketed #442 (module share secrets), #443 (plain-HTTP feature gaps), #444 (streaming raw markup), #445 (NovelAI and Agnai lorebooks), #446 (unsavable value loop), #447 (toast migration), #448 (trash leftovers), #449 (background reply Stop), #450 (image budget gaps), #451 (web and Node export size check) and #452 (polish batch). The CHORE-584 visibleModes carry-over is commented on #234. Stale Roadmap rows are queued for the next records batch.
+
+### MC-2988 — #458 move RisuSaveEncoder into test fixtures with no app behaviour change, 2026-11-21
+
+- Tag: decisions (maintainer wanted, per `b61\issues-1121\encoder.md:3`; lane A filed #458 per the decisions log). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4100; `b61\issues-1121\encoder.md:3`; PR #471. Related: `#173`, `PR #441`, `MC-329`, `MC-2987`.
+
+**What the maintainer chose (`b61\issues-1121\encoder.md:3`).** Move the encoder into test fixtures and drop its dead members, with no app behaviour change. Fixtures come from the real producer where MC-329 requires it, and `.bin` output bytes stay identical under the golden tests.
+
+### MC-2989 — #459 read swipes from other importers through the same seam, 2026-11-21
+
+- Tag: decisions (maintainer wanted, per `b61\issues-1121\swipes-other.md:3`; lane A filed #459 per the decisions log). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4100; `b61\issues-1121\swipes-other.md:3`. Related: `PR #440`, `MC-781`, `MC-916`.
+
+**What the maintainer chose (`b61\issues-1121\swipes-other.md:3`).** Read swipes from those formats through the same seam, filling the swipes field, so the arrows walk them in file order. The work is Tier 2 (designer plus Opus Gate 2), with synthetic fixtures per format only. The .bin export keeps its existing rule (MC-781 item 7, MC-916 PQ9).
+
+### MC-3021 — #476 bundles #334 leftovers with #352 into one accessibility ticket, 2026-11-21
+
+- Tag: decisions (maintainer, per `b61\issues-1121\a11y-cleanup.md:1`; lane A relay). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4121; `b61\issues-1121\a11y-cleanup.md:1`; `b61\ui-lane\s7-maintainer-answers.md:113`; PR #483. Related: `#334`, `#352`, `#476`.
+
+**What the maintainer chose (`b61\issues-1121\a11y-cleanup.md:1`).** Bundle #334's leftovers with #352 into one ticket (#476) for the UI lane.
+
+### MC-3022 — #476 taken next by ui-lane, #270 and #231 re-scoped after #438, 2026-11-21
+
+- Tag: decisions (maintainer, per `b61\issues-1121\a11y-cleanup.md:1`; lane A relay). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4121; `b61\issues-1121\a11y-cleanup.md:1`; `b61\ui-lane\s7-maintainer-answers.md:113`; PR #483. Related: `#270`, `#231`, `#438`, `#476`.
+
+**What the maintainer chose (`b61\issues-1121\a11y-cleanup.md:1`).** The ui-lane takes #476 next. #270 and #231 wait for the #438 token layer and are then re-scoped.
+
+### MC-3023 — #334 stays closed after the accessibility cleanup relay, 2026-11-21
+
+- Tag: lane A record (line 4121 records it in the lane A relay; no decider is named on that line). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4121; `b61\ui-lane\s7-maintainer-answers.md:113`. Related: `#334`, `#476`.
+
+**What was decided (lane A decisions log line 4121).** #334 stays closed. Its leftovers go to #476 under MC-3021.
+
+### MC-3024 — #333 closed by hand with a link to #469, 2026-11-21
+
+- Tag: decisions (maintainer chose close, `b61\ui-lane\s7-maintainer-answers.md:115`). Date: 2026-11-21. Exact times: UNKNOWN. Source: `b61\ui-lane\s7-maintainer-answers.md:115`; `b61\ui-lane\i334\close-333.md:3`; `b61\handoffs\ui-lane.md:405`; PR #483. Related: `#333`, `#469`.
+
+**What the maintainer chose (`b61\ui-lane\s7-maintainer-answers.md:115`).** #333 is closed by hand with a link to #469, which covers it.
+
+### MC-3025 — #485 the ordinary open path names the character in all four restore-failure alerts, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session). Date: 2026-11-21. Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 117; b61\ui-lane\i485\c1-brief.md line 6. Related: `#485`, `#500`.
+
+**What the maintainer chose (b61\ui-lane\s7-maintainer-answers.md line 117).** "All four alerts (Recommended)". The ordinary open path names the character in all four restore-failure alerts (damaged, unreadable, unavailable, possible loss), not only the damaged one, using the existing `coldStorageNamedRestore*` strings and the `coldStorageUnknownCharacterName` fallback for a slot with no name. No new strings.
+
+### MC-3026 — #438 while a pack's own colour scheme is on, message text uses the pack's message colour, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion in the ui-lane session). Date: 2026-11-21. Exact times: UNKNOWN. Source: b61\ui-lane\s7-maintainer-answers.md line 119. Related: `#438`, `MC-2563`, `MC-2946`.
+- Supersedes / amends: refines MC-2563 under MC-2946 (as the source states).
+
+**What the maintainer chose (b61\ui-lane\s7-maintainer-answers.md line 119).** "Pack colour while on (Recommended)". While a pack's own colour scheme is on (colour mode), message text uses the pack's judged message colour (the D1b rule re-keyed to colour mode); the user's text theme applies in shape mode.
+
+### MC-3044 — #481 per-PR MC record files instead of a merge union driver, 2026-11-21
+
+- Tag: decisions (maintainer chose; `b61\issues-1121\mc-per-pr.md:1` states it as a maintainer decision by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4123; `b61\issues-1121\mc-per-pr.md:1`. Related: `#481`, `Agents/Decision-Index.md`.
+
+**What the maintainer chose (lane A decisions log line 4123).** Each PR's new MC entries go into a per-PR record file (`Agents/mc/<ticket>.md`), which lane A folds in batches. This stops the recurring merge conflicts in Maintainer-Context and Decision-Index. Not chosen: a merge=union driver, since GitHub PR merges ignore union.
+
+### MC-3055 — #492 build Connections as the Vault with no interim key hub, 2026-11-21
+
+- Tag: decisions (maintainer answers via AskUserQuestion in the vault session, relayed at lane A decisions log line 4125). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4125; `b61\issues-1121\v1.md:1`. Related: `#492`, `#493`, `#152`, `#153`, `#495`.
+
+**What the maintainer chose (lane A decisions log line 4125).** Build the 연결 (Connections) page as the Vault, with no interim key hub. Tickets named on that line: #492 V1, #493 V2, #152 V3 (re-scoped), #153 V4 (widened), #495 V5.
+
+### MC-3056 — Connections stays under Models and presets plus its own Settings row, 2026-11-21
+
+- Tag: decisions (maintainer answers via AskUserQuestion in the vault session, relayed at lane A decisions log line 4125). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4125; `b61\issues-1121\v1.md:1`. Related: `DS-011`, `#492`.
+
+**What the maintainer chose (lane A decisions log line 4125).** Connections stays under the Models and presets page (DS-011) and also gets its own top-level Settings row.
+
+### MC-3057 — #495 Android Keystore at-rest encryption as a Vault stage, 2026-11-21
+
+- Tag: decisions (maintainer answers via AskUserQuestion in the vault session, relayed at lane A decisions log line 4125). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4125; `b61\issues-1121\v5.md:1`. Related: `MC-772`, `#495`.
+
+- Supersedes / amends: adds to MC-772 (per lane A decisions log line 4125); the amendment is recorded only as an addition.
+
+**What the maintainer chose (lane A decisions log line 4125).** Android Keystore at-rest encryption of connection keys is a Vault stage (V5, #495).
+
+### MC-3058 — Vault keeps no key reveal or copy, replace or clear only, 2026-11-21
+
+- Tag: decisions (maintainer answers via AskUserQuestion in the vault session, relayed at lane A decisions log line 4125). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4125; `b61\issues-1121\v1.md:1`; `b61\issues-1121\v2.md:6`. Related: `DS-047`.
+
+**What the maintainer chose (lane A decisions log line 4125).** Keep no reveal: keys stay masked (DS-047), and the user can only replace or clear a key.
