@@ -295,8 +295,8 @@ The added send latency is measured as a delta against a no-engine send on the sa
 ### 5.2 Query
 
 - The query is the newest message record in the send: the latest user message, or for a Continue or a group auto-turn, the latest message of any role.
-- Only its last 500 characters are used. [E]
-- S0 decides between one and three queries, and decides whether a highest-IDF-terms query builder replaces the full-text query (5.7).
+- The keyword query is the rare-word builder. It reads the whole record and keeps only its rare terms: those whose document frequency in the unit index is at most a share of the units, never below 1. That share is an S0 output. If no term qualifies, it keeps the record's rarest indexed terms. BM25 scores only those terms. [D MC-2661, amending MC-2632]
+- S0 decides between one and three queries. Queries 2 and 3 are the last 500 characters of the two newest earlier messages, through the same rule.
 - Queries are fused by RRF, never concatenated. [M M2]
 
 ### 5.3 Lexical scoring (always on)
@@ -442,24 +442,25 @@ Its turn-shaped queries come in two kinds: with a relevant old fact, and without
 
 **Baseline.** "Newest dropped messages" filling the same budget.
 
-**Pre-stated pass rule.** Both must hold, on turns that have a relevant fact, in both languages: [challenge r3 F3]
+**Pre-stated pass rule.** Both conditions must hold on ask turns (the user asks for the fact), in each of the four gate cells: M4 and the real-shaped named-filler set, each in English and Korean. [challenge r3 F3; D MC-2627, MC-2661]
 
 - an absolute floor: pack recall at least 0.5;
 - a margin: pack recall at least baseline + 0.15 (absolute).
 
+Allude turns (the user only hints at the fact) are measured and reported beside the gate. They never decide it. They are carried to the dense stage S3 (5.5) to clear. [D MC-2661, amending MC-2642]
+
 **Statistics.**
 
-- Settings (budget, snippet share, unit split, query count, admission rule) are tuned on one seeded draw of the generator. The gate runs on a fresh seed that tuning never saw.
-- n per language is raised until the 95% interval of the pack-recall difference is narrower than the margin. The gate report states the interval.
+- Settings (budget, snippet share, unit split, rare-term share, query count, admission rule) are tuned on one seeded draw of the generator. The budget may go above 1200, up to 15% of the context plus 2000, and the report states the per-send token cost. [D MC-2630, MC-2654] The gate runs on a fresh seed that tuning never saw, and only if the tune predicts a pass at the exact settings it hands to the gate. [D MC-2661]
+- n per language is raised until the 95% intervals of the ask-turn pack recall and of its difference from the baseline are narrower than the margin. The gate report states the intervals.
 - The share of no-fact turns where anything is packed is reported beside the gate. It is the per-turn token cost of a miss.
 
-**FYI to the maintainer.** The absolute floor is the feature's stop rule: below 0.5 the engine finds the old fact in fewer than half the turns that need it, and the feature does not proceed.
+**FYI to the maintainer.** The absolute floor on ask turns is the keyword engine's stop rule. Below 0.5, keyword search finds the old fact in fewer than half the turns that ask for it, and the feature does not proceed. Hints that share no rare word with the fact are left to S3.
 
 **Outcomes:**
 
-1. The pass rule holds: proceed to S1, using S0's outputs (budget, snippet share, unit split, query count, admission rule).
-2. The pass rule fails: try the highest-IDF-terms query builder once and re-measure on another fresh seed.
-3. It still fails: stop, and report to the maintainer. No app code exists yet at this point, because S0 stays outside the app's send path. LLM query rewriting stays out of scope.
+1. The pass rule holds: proceed to S1, using S0's outputs (budget, snippet share, unit split, rare-term share, query count, admission rule, history floor F).
+2. The pass rule fails, or the tune predicts a failure: stop, and report to the maintainer. No second keyword builder is tried; the highest-IDF builder is report-only. [D MC-2655, MC-2659, MC-2661] No app code exists yet at this point, because S0 stays outside the app's send path. LLM query rewriting stays out of scope.
 
 ### 5.8 Trace
 

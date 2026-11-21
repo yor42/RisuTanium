@@ -57,8 +57,8 @@
   
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.embedding}</h2>
 
-<span class="text-textcolor text-lg">{language.model}</span>
-<SelectInput bind:value={model} className="mb-4">
+<span id="{uid}-model" class="text-textcolor text-lg">{language.model}</span>
+<SelectInput labelId="{uid}-model" bind:value={model} className="mb-4">
     {#if 'gpu' in navigator}
         <OptionInput value="MiniLMGPU">MiniLM L6 v2 (GPU)</OptionInput>
         <OptionInput value="nomicGPU">Nomic Embed Text v1.5 (GPU)</OptionInput>

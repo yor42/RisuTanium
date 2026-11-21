@@ -286,6 +286,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 //#endregion
 
 import { language } from 'src/lang'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
@@ -490,6 +491,7 @@ const PLUGIN_VALUES: [string, unknown][] = [
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     backupSink.writes.length = 0
     unitMem.clear()
@@ -853,10 +855,10 @@ describe.each(SAVES)('%s writes each unit exactly once', (_save, save) => {
         expect(alertMdMock).not.toHaveBeenCalled()
         // The partial backup's completion also says that inlays are not in it.
         const started = _save === 'SavePartialLocalBackup'
-            ? `${language.exportDownloadStarted}\n\n${language.partialBackupInlaysNotIncluded}`
-            : language.exportDownloadStarted
-        expect(alertNormalMock).toHaveBeenCalledWith(started)
-        expect(alertNormalMock).not.toHaveBeenCalledWith(expect.stringMatching(/^Success/))
+            ? [language.exportDownloadStarted, language.partialBackupInlaysNotIncluded]
+            : [language.exportDownloadStarted]
+        expect(taskHostView()?.result?.summary).toEqual(started)
+        expect((taskHostView()?.result?.summary ?? []).some((line) => /^Success/.test(line))).toBe(false)
     })
 })
 

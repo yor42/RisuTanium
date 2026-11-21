@@ -102,6 +102,35 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
     doingChat: writable(false),
 }) as unknown as typeof import('src/ts/process/index.svelte'))
 
+// A backup runs on a task card and posts no wait, so a test that reacts to the export's progress hooks the card: `onCold`
+// runs once, inside the call that reports the first count of the cold-data step, never through the card's throttled view.
+const cardHook = vi.hoisted(() => ({ onCold: null as (() => void) | null }))
+
+vi.mock('src/ts/alertTask.svelte', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/alertTask.svelte')>()
+    return {
+        ...actual,
+        alertTask: (def: Parameters<typeof actual.alertTask>[0]) => {
+            const handle = actual.alertTask(def)
+            let label = ''
+            const hooked = Object.create(handle) as typeof handle & { setStep: (index: number) => void, setCount: (done: number, total: number) => void }
+            hooked.setStep = (index) => {
+                label = def.steps[index]?.label ?? ''
+                handle.setStep(index)
+            }
+            hooked.setCount = (done, total) => {
+                if (label === language.backupStepColdData && cardHook.onCold !== null) {
+                    const run = cardHook.onCold
+                    cardHook.onCold = null
+                    run()
+                }
+                handle.setCount(done, total)
+            }
+            return hooked
+        },
+    }
+})
+
 vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
     alertConfirm: alertConfirmMock,
@@ -262,7 +291,8 @@ import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuploca
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { setDatabase } from 'src/ts/storage/database.svelte'
-import { alertWait } from 'src/ts/alert'
+import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { createMemoryBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -388,6 +418,8 @@ async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Back
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
+    cardHook.onCold = null
     platformBox.isTauri = false
     backupSink.writes.length = 0
     unitMem.clear()
@@ -512,16 +544,11 @@ describe.each(writers)('plugin storage in the .bin of $label', ({ run }) => {
         const page = await pageOf()
         page.db.pluginCustomStorage = { _coldplugin: { prefs: PID }, [PID]: { v: 'fresh' } } as never
         // The first collection has settled and is writing its payloads: map a new slot before the late stage encodes.
-        let mapped = false
-        vi.mocked(alertWait).mockImplementation((message: string) => {
-            if (!mapped && message.includes('cold data')) {
-                mapped = true
-                const storage = page.db.pluginCustomStorage as Record<string, unknown> & { _coldplugin: Record<string, string> }
-                storage._coldplugin.late = PID2
-                storage[PID2] = { v: 'late' }
-            }
-            return { type: 'wait', msg: message }
-        })
+        cardHook.onCold = () => {
+            const storage = page.db.pluginCustomStorage as Record<string, unknown> & { _coldplugin: Record<string, string> }
+            storage._coldplugin.late = PID2
+            storage[PID2] = { v: 'late' }
+        }
 
         await run()
 

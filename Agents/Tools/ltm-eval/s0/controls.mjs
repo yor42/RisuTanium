@@ -1,5 +1,6 @@
 // Validity controls of the S0 gate. A control shows that the experiment can discriminate; a confirmed failure makes
-// the attempt an INVALID EXPERIMENT and the verdict is never computed.
+// the attempt an INVALID EXPERIMENT and the verdict is never computed. Only a gating-style (ask) failure counts
+// (MC-2661); an allude failure is reported.
 //   ORACLE-RANK   packing ceiling: gold units first, then the ranker's order. Must reach 0.9.
 //   ORACLE-QUERY  scorer, tokeniser and corpus ceiling: one query per gold plant sentence through the scorer, merged
 //                 round-robin (MC-2653): rank 0 of every span's list, then rank 1, and so on. A fused (RRF) merge lets a
@@ -13,7 +14,7 @@
 import { rng } from '../gen/lib.mjs';
 import { tokenize } from './lexical.ts';
 import { ChatSim, goldUnitIdx, orderFor, packFor, recallOf } from './sim.mjs';
-import { B_CONTROL, STYLES, clusterSE, kthLargest, kthSmallest, ratioOf, resampleRatios, tQuantile } from './stats.mjs';
+import { B_CONTROL, GATING_STYLES, STYLES, clusterSE, kthLargest, kthSmallest, ratioOf, resampleRatios, tQuantile } from './stats.mjs';
 import { allKey } from './turns.mjs';
 
 export const ORACLE_FLOOR = 0.9;
@@ -153,10 +154,11 @@ export function controlsRecord(chat, counter, settings, turns, donorOf, hooks) {
 
 // ---- interval tests ----
 // cells: { name: [ { ask: { n, or, oq, nl, bu, rd }, allude: {...} } per chat ] } on the final sample of each cell.
-// m = cells x styles x 3; alpha_c = 0.05 / m.
+// Both styles are tested, with the same alpha; only the gating styles (ask) can make an attempt invalid, and the family
+// is m = cells x gating styles x 3, alpha_c = 0.05 / m (MC-2661). An allude row that fails is reported, never INVALID.
 export function controlTests(cells, { B = B_CONTROL, familywise = FAMILYWISE, m: mOverride = null } = {}) {
   const names = Object.keys(cells);
-  const m = mOverride ?? names.length * STYLES.length * 3;
+  const m = mOverride ?? names.length * GATING_STYLES.length * 3;
   const alpha = familywise / m;
   const k = Math.ceil(alpha * B);
   const tests = [];
@@ -187,5 +189,5 @@ export function controlTests(cells, { B = B_CONTROL, familywise = FAMILYWISE, m:
       tests.push({ cell: name, style, control: 'NULL', point, boot: bootLower, t: tLower, threshold: NULL_SLACK, failConfirmed: confirmed, notConfirmed: !confirmed && point > NULL_SLACK, alpha, comparator: pBu >= pRd ? 'baseline' : 'random' });
     }
   }
-  return { m, alpha, rank: k, B, tests, invalid: tests.some((x) => x.failConfirmed) };
+  return { m, alpha, rank: k, B, tests, invalid: tests.some((x) => x.failConfirmed && GATING_STYLES.includes(x.style)) };
 }

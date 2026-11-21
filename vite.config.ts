@@ -4,6 +4,7 @@ import wasm from "vite-plugin-wasm";
 import strip from '@rollup/plugin-strip';
 import tailwindcss from '@tailwindcss/vite'
 import { svelteProxyPatch } from './patches/svelte-5.57.3/plugin.mjs'
+import { nodeDevPlugin } from './util/devServerNode.mjs'
 // https://vitejs.dev/config/
 export default defineConfig(({command, mode}) => {
   return {
@@ -25,6 +26,8 @@ export default defineConfig(({command, mode}) => {
       }),
       tailwindcss(),
       wasm(),
+      // Set only by `pnpm dev:server` (util/devServer.mjs); plain `pnpm dev`, which Tauri runs, is unchanged.
+      process.env.RISU_DEV_NODE_TARGET ? nodeDevPlugin(process.env.RISU_DEV_NODE_TARGET) : null,
       command === 'build' ? strip({
         include: '**/*.(mjs|js|svelte|ts)'
       }) : null

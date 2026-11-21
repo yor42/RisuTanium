@@ -2,7 +2,7 @@
 // on every cell's final sample, and only then compute the verdict. A confirmed control failure makes the attempt an
 // INVALID EXPERIMENT: nothing the engine arm produced is written, printed or returned, and the ledger records the controls.
 //
-//   node Agents/Tools/ltm-eval/s0/gate.mjs --draw 610001 --settings <out>/settings-fulltext.json --real-agg <aggregates> <outDir>
+//   node Agents/Tools/ltm-eval/s0/gate.mjs --draw 610001 --settings <out>/settings-rare.json --real-agg <aggregates> <outDir>
 //   gate.mjs record-settings --builder <b> --settings <file> --ledger <file>   (the orchestrator, before any attempt)
 //   gate.mjs record-defect --builder <b> --reproducer <test id> --gate2 <verdict path> --ledger <file>
 //   gate.mjs record-override --builder <b> --settings <new settings> --draw <fresh seed> --cap <chats> --ref <MC id> --ledger <file>
@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { FAMILIES, SEED_OF, appendDefect, appendOverride, builderState, loadLedger, recordSettings, saveLedger, tryAttempt, checkAttempt } from './attempts.mjs';
+import { FAMILIES, SEED_OF, VERDICT_BUILDER, appendDefect, appendOverride, builderState, loadLedger, recordSettings, saveLedger, tryAttempt, checkAttempt } from './attempts.mjs';
 import { controlTests, controlsRecord, donorEntry, pickDonor } from './controls.mjs';
 import { SEEDS, assertSeedsDisjoint, drawWithReserve } from './corpus.mjs';
 import { loadCounter } from './counter.mjs';
@@ -42,10 +42,22 @@ export const defaultLedgerPath = () => path.join(os.tmpdir(), 'ltm-s0', 'gate-at
 export const resolveLedgerPath = (argv) => arg(argv, '--ledger') ?? defaultLedgerPath();
 
 // Request-level refusals (before the ledger is consulted): the tune seed is never a gate seed, a gate seed belongs to
-// its builder's family, and settings must come from the tune draw. An OVERRIDE run takes a fresh seed instead of a
-// family seed: never a protected seed, and disjoint from every protected family's chat seeds.
+// its builder's family, settings must come from the tune draw, and the tune must predict PASS at the final settings
+// (MC-2661). An OVERRIDE run takes a fresh seed instead of a family seed: never a protected seed, and disjoint from
+// every protected family's chat seeds.
 export function assertGateBuilder(builder) {
-  if (builder === 'idf') throw new Error('the idf builder is report-only and carries no S0 verdict (MC-2655): no gate attempt or settings record for it');
+  if (builder !== VERDICT_BUILDER) throw new Error(`the ${builder} builder is report-only and carries no S0 verdict (MC-2661): no gate attempt or settings record for it`);
+}
+
+// The gate runs only on settings the tune itself calls PASS (MC-2661). Missing evidence is refused; the digest covers
+// `evidence`, so a flag cannot be edited away without failing the sha256 check first.
+export function assertTunePredictsPass(settings) {
+  const ev = settings.evidence;
+  const refuse = (why) => { throw new Error(`the gate runs only when the tune predicts PASS (MC-2661): ${why}`); };
+  if (ev === undefined || ev === null || typeof ev !== 'object') refuse('the settings carry no tune evidence');
+  if (ev.budgetFlag !== null) refuse(`evidence.budgetFlag is ${JSON.stringify(ev.budgetFlag) ?? 'absent'}`);
+  if (ev.finalFlag !== null) refuse(`evidence.finalFlag is ${JSON.stringify(ev.finalFlag) ?? 'absent'}`);
+  if (ev.oracleFlag !== undefined && ev.oracleFlag !== null) refuse(`evidence.oracleFlag is ${JSON.stringify(ev.oracleFlag)}`);
 }
 
 export function checkGateArgs({ drawSeed, builder, settings, kind }) {
@@ -63,6 +75,15 @@ export function checkGateArgs({ drawSeed, builder, settings, kind }) {
   if (settings.tuneDrawSeed !== SEEDS.TUNE) throw new Error('the gate refuses settings whose tuneDrawSeed is not the TUNE seed');
   if (settings.builder !== builder) throw new Error('settings belong to builder ' + settings.builder);
   if (settings.sha256 !== settingsDigest(settings)) throw new Error('settings sha256 does not match its content');
+  assertTunePredictsPass(settings);
+}
+
+// `gate.mjs record-settings`: the digest and builder checks, then the tune must predict PASS before the hash is recorded.
+export function recordSettingsCommand(ledger, { builder, settings }) {
+  assertGateBuilder(builder);
+  if (settings.sha256 !== settingsDigest(settings) || settings.builder !== builder) throw new Error('settings do not match their sha256 or builder');
+  assertTunePredictsPass(settings);
+  return recordSettings(ledger, builder, settings.sha256);
 }
 
 // Read-only git identity of the harness: the commit and a hash of the working-tree diff plus untracked files.
@@ -165,7 +186,9 @@ export async function runGateAttempt(opts) {
     return { status: 'INVALID', invalidClass, ledger: t.ledger, builder, kind, seedFamily: family, drawSeed, attemptNo: base.attemptNo, provenance, cellChats, replacements, validity: extra.validity, fallbackShare: extra.fallbackShare, history: builderState(t.ledger, builder).attempts.map((a) => ({ kind: a.kind, seedFamily: a.seedFamily, outcome: a.outcome, invalidClass: a.invalidClass, verdict: a.verdict })) };
   };
   const turnsByCell = Object.fromEntries(names.map((n) => [n, sampled[n].chats.map((c) => buildTurns(c, { regime: 'POOL', profile: sampled[n].profile, lenMode: opts.lenMode }))]));
-  // generator check: more than 5% replacements in a cell, or more than 5% allude turns over the overlap cap
+  // generator check: more than 5% replacements in a cell, or more than 5% allude turns over the overlap cap. The allude
+  // read is intentionally style-independent (MC-2661): it checks that the generator built its allude turns within the
+  // cap, a corpus-validity check, so a generator that breaks its own construction is not trusted for the ask turns.
   const capShare = {};
   for (const n of names) {
     const al = turnsByCell[n].flat().filter((t) => t.kind === 'fact' && t.style === 'allude');
@@ -256,9 +279,7 @@ async function main(argv) {
   if (cmd === 'record-settings') {
     const builder = arg(argv, '--builder');
     const s = JSON.parse(fs.readFileSync(arg(argv, '--settings'), 'utf8'));
-    assertGateBuilder(builder);
-    if (s.sha256 !== settingsDigest(s) || s.builder !== builder) throw new Error('settings do not match their sha256 or builder');
-    saveLedger(ledgerPath, recordSettings(loadLedger(ledgerPath), builder, s.sha256));
+    saveLedger(ledgerPath, recordSettingsCommand(loadLedger(ledgerPath), { builder, settings: s }));
     console.log('recorded', builder, s.sha256);
     return;
   }

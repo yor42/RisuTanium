@@ -219,7 +219,7 @@
                         {/if}
                         {#if Array.isArray(plugin.arguments[arg])}
                             <SelectInput
-                                className="mt-2 mb-4"
+                                labelId="{uid}-arg-{i}-{argIndex}" className="mt-2 mb-4"
                                 bind:value={
                                     DBState.db.plugins[i].realArg[arg] as string
                                 }
@@ -287,6 +287,7 @@
                                 {/each}
                             {:else}
                                 <NumberInput
+                                    labelId="{uid}-arg-{i}-{argIndex}"
                                     bind:value={
                                         DBState.db.plugins[i].realArg[arg] as number
                                     }

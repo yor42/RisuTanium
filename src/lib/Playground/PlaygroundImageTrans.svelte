@@ -337,7 +337,7 @@
     let selection: HTMLDivElement;
     let mouseDown = false;
 </script>
-<SelectInput bind:value={mode} className="w-1/2">
+<SelectInput label={language.playground.imageTranslationMode} bind:value={mode} className="w-1/2">
     <option value="auto">{language.playground.modeAuto}</option>
     <option value="manual">{language.playground.modeManual}</option>
 </SelectInput>
@@ -352,8 +352,8 @@
 <span id="{uid}-font" class="text-textcolor text-lg mt-4">{language.font}</span>
 <TextInput labelId="{uid}-font" bind:value={fontFamily} />
 
-<span class="text-textcolor text-lg mt-4">{language.fontSize}</span>
-<NumberInput bind:value={fontSize} />
+<span id="{uid}-font-size" class="text-textcolor text-lg mt-4">{language.fontSize}</span>
+<NumberInput labelId="{uid}-font-size" bind:value={fontSize} />
 
 {#if mode === 'manual'}
     <Button className="mt-4" onclick={selectFile}>
