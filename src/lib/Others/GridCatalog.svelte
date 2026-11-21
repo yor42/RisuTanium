@@ -1572,7 +1572,7 @@
         {@const parsedDesc = parseMultilangString(char.creatorNotes ?? '')}
         <!-- The whole row opens the character. Keyboard users reach it through the name button, whose click bubbles here; the row's other buttons stop their clicks, and a click on a link inside the description is left to the link. -->
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <div class="flex p-2 border border-darkborderc rounded-md cursor-pointer transition-colors duration-150 hover:bg-darkbutton/40" onclick={(event) => {
+        <div class="flex p-2 border border-darkborderc rounded-md cursor-pointer transition-colors duration-150 hover:bg-darkbutton/40" data-part={homeVariant ? 'library-row' : undefined} onclick={(event) => {
             if (clickedLink(event) || (!clickedButton(event) && selectedInside(event.currentTarget, window.getSelection()))) { return }
             pick(index)
         }}>
@@ -1711,6 +1711,7 @@
             <!-- The avatar's button is not a prop of CharListAvatar: in edit mode the attachment gives it aria-pressed from the selection. -->
             <div
                 class="flex items-center text-textcolor"
+                data-part={homeVariant ? 'library-tile' : undefined}
                 class:relative={badge !== undefined || editing || replyState.writing || replyState.mark !== null}
                 class:opacity-40={dimmedKeys.has(entry.key)}
                 {@attach (node: HTMLElement) => {
@@ -1785,8 +1786,8 @@
 {/snippet}
 
 <div class={homeVariant ? 'flex min-h-0 w-full flex-1' : 'h-full w-full flex justify-center'}>
-    <div class={homeVariant ? 'flex min-h-0 w-full flex-1 flex-col' : 'h-full p-6 bg-darkbg max-w-full w-2xl flex flex-col'}>
-        <div class="mx-4 mb-6 flex flex-col shrink-0">
+    <div class={homeVariant ? 'home-library flex min-h-0 w-full flex-1 flex-col' : 'h-full p-6 bg-darkbg max-w-full w-2xl flex flex-col'}>
+        <div class="mx-4 mb-6 flex flex-col shrink-0" data-part={homeVariant ? 'library-head' : undefined}>
             <div class="flex items-center gap-3 mb-2">
                 {#if !homeVariant}
                     <button

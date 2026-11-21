@@ -242,7 +242,7 @@
                 id={libraryHeadingId}
                 tabindex="-1"
                 data-jump-target="library"
-                class="mb-[var(--home-space-8)] text-[length:var(--home-text-lg)] font-bold tracking-[var(--home-tracking-h1)]"
+                class="mb-[var(--home-space-8)] border-b-[length:var(--home-hairline)] border-[color:var(--nexus-edge)] pb-[var(--home-space-6)] text-[length:var(--home-text-lg)] font-bold tracking-[var(--home-tracking-h1)]"
             >{language.homeLibraryHeading}</h2>
             <div class="flex min-h-0 flex-1 flex-col">
                 {#if libraryMounted}
