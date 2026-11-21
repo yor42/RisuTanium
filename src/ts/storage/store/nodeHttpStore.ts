@@ -533,7 +533,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         }
         if (response.headers.get(GUARDED_MARKER_HEADER) !== '1') {
             if (response.ok) {
-                // The repository's own server and service worker never answer a guarded route with an HTML page, so a
+                // The repository's own server never answers a guarded route with an HTML page, so a
                 // page is a front end's fallback and the guarded handler did not answer. An intermediary that forwards
                 // the request and then substitutes a page for the upstream answer is outside what this check covers.
                 // Any other 2xx without the marker may be the real handler's answer with the marker lost on the way.

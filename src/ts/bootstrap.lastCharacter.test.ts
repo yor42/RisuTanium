@@ -256,7 +256,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: vi.fn(async (): Promise<number[]> => []),
     buildAssetKeepSet: vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })),
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: vi.fn(),
     checkCharOrder: vi.fn(),
     getUncleanablesSync: vi.fn((): string[] => []),
     wasAssetWrittenThisPage: vi.fn(() => false),
