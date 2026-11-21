@@ -23,6 +23,7 @@ import { externalEntryDecorators, externalInsertOrder, placeDisabledMarker } fro
 import { NoLorebookInPng, readLorebookFileJson } from "./lorebookFile";
 import { firstMessageIndexOf } from "./firstMessage";
 import { ASCII_WORD, createWordStartIncludes, defaultWordBoundaries, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
+import { loreEntryName, type LoreUsedEntry } from "./loreUse";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -202,10 +203,25 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     }
     const characterLore = char?.globalLore ?? []
     const chatLore = chat?.localLore ?? []
-    const moduleLorebook = getModuleLorebooks(subject)
+    const moduleOwners: string[] = []
+    const moduleLorebook = getModuleLorebooks(subject, moduleOwners)
     const fullLore = safeStructuredClone(characterLore.concat(chatLore).concat(moduleLorebook))
-    // Only the probe reads these: entry records and the final classification, never returned.
-    const probeIndexOf = probe ? new Map<object, number>() : null
+    // The `fullLore` index of every activated entry: `used` names each sent entry by it, and so does the probe.
+    const activeIndexOf = new Map<object, number>()
+    // Only the probe reads this: entry records and the final classification, never returned.
+    const probeIndexOf = probe ? activeIndexOf : null
+    const usedEntryOf = (index: number): LoreUsedEntry => {
+        const name = loreEntryName(fullLore[index])
+        if(index < characterLore.length){
+            return { source: 'character', ownerId: char?.chaId ?? '', index, name }
+        }
+        const chatIndex = index - characterLore.length
+        if(chatIndex < chatLore.length){
+            return { source: 'chat', ownerId: chat?.id ?? '', index: chatIndex, name }
+        }
+        const moduleIndex = chatIndex - chatLore.length
+        return { source: 'module', ownerId: moduleOwners[moduleIndex] ?? '', index: moduleIndex, name }
+    }
     const currentChat = chat?.message ?? []
     let scannedMessages: Message[] | undefined
     const messagesToScan = (): Message[] => {
@@ -832,7 +848,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                     inject: inject ?? null
                 }
                 actives.push(active)
-                probeIndexOf?.set(active, i)
+                activeIndexOf.set(active, i)
                 activatedIndexes.push(i)
 
                 if(keepActivateAfterMatch){
@@ -927,6 +943,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     //I know this will make token count wrong, but performance is more important here
 
     const probeMerged: LoreScanFinal['merged'] = []
+    // Injectors whose text went into a sent entry: they reached the prompt too.
+    const mergedInjectors: typeof actives = []
     console.log('loreinjectionLores', loreinjectionLores)
     for(const lore of loreinjectionLores){
         const foundLoreIndex = activesResorted.findIndex((l) => {
@@ -934,6 +952,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         })
         if(foundLoreIndex !== -1){
             const foundLore = activesResorted[foundLoreIndex]
+            mergedInjectors.push(lore)
             if(probeIndexOf){
                 probeMerged.push({ index: probeIndexOf.get(lore), into: probeIndexOf.get(foundLore) })
             }
@@ -954,9 +973,19 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         }
     }
 
+    const sentActives = activesResorted.reverse()
+    const used: LoreUsedEntry[] = []
+    for(const act of sentActives.concat(mergedInjectors)){
+        const index = activeIndexOf.get(act)
+        if(index !== undefined){
+            used.push(usedEntryOf(index))
+        }
+    }
     const result = {
-        actives: activesResorted.reverse(),
+        actives: sentActives,
         matchLog: matchLog,
+        /** Every entry whose text reached the prompt: the sent entries in `actives` order, then merged injectors. */
+        used,
     }
     if(probe && probeIndexOf){
         const survivors = new Set<typeof actives[number]>(activesFiltered)
