@@ -184,3 +184,51 @@ describe('RealmPopUp.svelte: the report control asks before it sends anything', 
         )
     })
 })
+
+describe('RealmPopUp.svelte: the copy-link control on a page without the clipboard API', () => {
+    function copyLinkButton(target: HTMLElement): HTMLButtonElement {
+        const button = Array.from(target.querySelectorAll('button'))
+            .find((b) => b.textContent?.trim() === language.realmCopyLink) as HTMLButtonElement | undefined
+        if (!button) {
+            throw new Error('copy link button not found')
+        }
+        return button
+    }
+
+    afterEach(() => {
+        Reflect.deleteProperty(document, 'execCommand')
+        Reflect.deleteProperty(navigator, 'clipboard')
+    })
+
+    test('C3: the link is copied through execCommand and the success notice shows', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        const copied: string[] = []
+        Object.defineProperty(document, 'execCommand', {
+            value: vi.fn(() => {
+                copied.push(document.querySelector('textarea')?.value ?? '')
+                return true
+            }),
+            configurable: true,
+        })
+
+        const target = mountRealmPopUp()
+        copyLinkButton(target).click()
+        await settle()
+
+        expect(copied).toEqual(['https://realm.risuai.net/character/reported-chara'])
+        expect(alertNormalSpy).toHaveBeenCalledWith(language.clipboardSuccess)
+    })
+
+    test('C8: when no copy path works the notice says the copy failed and never claims success', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true })
+
+        const target = mountRealmPopUp()
+        copyLinkButton(target).click()
+        await settle()
+
+        expect(alertNormalSpy).toHaveBeenCalledTimes(1)
+        expect(alertNormalSpy).toHaveBeenCalledWith(language.copyFailed)
+        expect(alertNormalSpy).not.toHaveBeenCalledWith(language.clipboardSuccess)
+    })
+})

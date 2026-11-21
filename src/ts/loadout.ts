@@ -2,6 +2,7 @@ import { changeUserPersona } from "./persona"
 import { changeToPreset, getCurrentCharacter, type botPreset } from "./storage/database.svelte"
 import { currentPresetOf } from "./storage/currentPreset"
 import { DBState } from "./stores.svelte"
+import { v4 } from "uuid"
 
 export type Loadout = {
     name: string
@@ -39,7 +40,7 @@ export function makeLoadout(options:{
     name: string
 }): Loadout {
     const character = getCurrentCharacter()
-    const id = crypto.randomUUID()
+    const id = v4()
     const preset = currentPresetOf(DBState.db)
     const icons = []
 

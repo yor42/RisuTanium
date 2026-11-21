@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte'
     import { language } from '../../lang'
+    import { copyPlainText } from '../../ts/chatCopy'
     import { registerStudioField } from '../../ts/studio/fieldFlush'
     import { refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import type { EditFailure, EditOutcome, ToggleBuilder } from '../../ts/studio/toggleBuilder.svelte'
@@ -138,8 +139,9 @@
     }
 
     function copySnippet(): void {
-        void navigator.clipboard?.writeText(`{{getglobalvar::toggle_${keyText}}}`)
-        copied = true
+        copyPlainText(`{{getglobalvar::toggle_${keyText}}}`, (outcome) => {
+            copied = outcome.ok
+        })
     }
 
     function writeOption(index: number, value: string): EditOutcome {

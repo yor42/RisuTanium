@@ -1,5 +1,6 @@
 <script lang="ts">
     import { language } from "src/lang";
+    import { copyPlainText } from "src/ts/chatCopy";
     import { downloadNotice } from "src/ts/exportNotice";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import { DBState } from 'src/ts/stores.svelte';
@@ -82,9 +83,12 @@
         if(!saved){
             return
         }
-        await navigator.clipboard.writeText(json)
-        alertNormal(downloadNotice(language.settingsExported, language.settingsReportDownloadStarted))
-        
+        copyPlainText(json, (outcome) => {
+            alertNormal(outcome.ok
+                ? downloadNotice(language.settingsExported, language.settingsReportDownloadStarted)
+                : downloadNotice(language.successExport))
+        })
+
 
     }}
 >
