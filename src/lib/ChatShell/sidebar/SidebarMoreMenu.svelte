@@ -1,6 +1,6 @@
 <script lang="ts">
     import { untrack } from "svelte";
-    import { ArrowLeft, BookmarkCheckIcon, LayoutPanelLeftIcon, SettingsIcon, ShellIcon, SplitIcon, WrenchIcon } from "@lucide/svelte";
+    import { ArrowLeft, BookmarkCheckIcon, LayoutPanelLeftIcon, SettingsIcon, ToolboxIcon, SplitIcon, WrenchIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import { openStudio, selectedStudioCharacterId } from "src/ts/studio/studioScreen.svelte";
     import { studioEligible } from "src/ts/studio/studioSwitch.svelte";
@@ -80,7 +80,7 @@
                 </button>
             {/if}
             <button class={itemClass} onclick={openPlayground}>
-                <ShellIcon size={18} />
+                <ToolboxIcon size={18} />
                 <span>{language.playground.playground}</span>
             </button>
             <button class={itemClass} onclick={() => { bookmarkListOpen.set(true); afterAction(); }}>
