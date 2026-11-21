@@ -14,6 +14,8 @@
     import CustomSideBar from "./CustomSidebar.svelte";
     import { getGlobalChatVar, isLocallyHandledGlobalChatVar, removeLocallyHandledGlobalChatVar, setGlobalChatVar } from "src/ts/parser/chatVar.svelte";
     import { PinIcon } from "@lucide/svelte";
+    import { showsMemoryToggle } from "src/ts/process/memory/memoryEngine";
+    import { memoryToggleLabel } from "src/ts/process/memory/memoryLabels";
     import { onDestroy } from "svelte";
     import {
         currentScopeKeys,
@@ -297,9 +299,9 @@
         {/if}
 
         {@render toggles(groupedToggles, true)}
-        {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)}
+        {#if chara && showsMemoryToggle(DBState.db)}
             <div class="flex mt-2 items-center w-full">
-                <CheckInput check={memoryOn} onChange={setMemory} reverse name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
+                <CheckInput check={memoryOn} onChange={setMemory} reverse name={memoryToggleLabel(DBState.db)}/>
             </div>
         {/if}
     </div>
@@ -312,9 +314,9 @@
         </div>
     {/if}
     {@render toggles(groupedToggles)}
-    {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)}
+    {#if chara && showsMemoryToggle(DBState.db)}
         <div class="flex mt-2 items-center">
-            <CheckInput check={memoryOn} onChange={setMemory} name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
+            <CheckInput check={memoryOn} onChange={setMemory} name={memoryToggleLabel(DBState.db)}/>
         </div>
     {/if}
     

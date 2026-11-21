@@ -661,6 +661,22 @@ function pageUsage(db: Database): { usageStatics?: JsonObject, usagePriceOverrid
 }
 
 /**
+ * The page's ChroMemory choice and settings as the import keeps them: the flag only when it is a boolean, the settings as a
+ * plain copy through the reactive proxy, only when the page holds any.
+ */
+function pageChroMemory(db: Database): { ltmEngine?: boolean, ltmSettings?: JsonValue } {
+    const carry: { ltmEngine?: boolean, ltmSettings?: JsonValue } = {}
+    if (typeof db.ltmEngine === 'boolean') {
+        carry.ltmEngine = db.ltmEngine
+    }
+    const settings = toPlainJson(db.ltmSettings)
+    if (settings !== undefined) {
+        carry.ltmSettings = settings
+    }
+    return carry
+}
+
+/**
  * Imports the file `request` describes, over one of two paths. A file under the unit threshold takes the whole decode:
  * the tree `request.decode()` yields is resolved, planned and committed once, forced, over a fresh read of the commit
  * key (`importLegacyTree`). A file over the threshold takes the streamed prepare and commit (`prepareImportStream`,
@@ -688,6 +704,9 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     const { themePacks, activeThemePack } = pageThemePacks(getDatabase())
     // And the usage statistics and price overrides: a `.bin` carries neither, so the profile keeps the page's own, by value.
     const { usageStatics, usagePriceOverrides } = pageUsage(getDatabase())
+    // And the ChroMemory choice and settings: a `.bin` carries neither, so the profile keeps the page's own, by value, and the
+    // imported legacy engine flags never outrank the page's choice.
+    const { ltmEngine, ltmSettings } = pageChroMemory(getDatabase())
     // A committer without `commitStreamed` takes every file the whole way.
     const stream = committer.commitStreamed === undefined ? undefined : request.stream
     for (let attempt = 1; ; attempt++) {
@@ -716,7 +735,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         }
         const streamRequest = stream === undefined
             ? null
-            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
+            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource | null = null
         // What the streamed prepare decided when it did not hand the file back to the whole path.
@@ -756,7 +775,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 }
                 outcome = await importLegacyTree(
                     {
-                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides,
+                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings,
                         baseContent,
                     },
                     hooks,

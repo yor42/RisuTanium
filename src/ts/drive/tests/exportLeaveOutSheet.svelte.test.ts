@@ -321,7 +321,8 @@ afterAll(() => {
 const decoder = new TextDecoder()
 const NOW = 1_700_000_000_000
 
-type Kind = 'alternatives' | 'interrupted' | 'presets' | 'packs' | 'usage'
+type Kind = 'alternatives' | 'interrupted' | 'presets' | 'packs' | 'usage' | 'chroMemory'
+// ChroMemory is not in this list: the five-kind rows below pin the original kinds, and the ChroMemory rows add it on top.
 const ALL_KINDS: readonly Kind[] = ['alternatives', 'interrupted', 'presets', 'packs', 'usage']
 
 const PRESETS = [
@@ -408,6 +409,7 @@ async function pageOf(kinds: readonly Kind[]): Promise<Database> {
         ...(kinds.includes('presets') ? { taskPresets: PRESETS } : {}),
         ...(kinds.includes('packs') ? { themePacks: [PACK], activeThemePack: PACK.id } : {}),
         ...(kinds.includes('usage') ? { statics: { ...(base.statics as Obj | undefined), ...USAGE_STATICS } } : {}),
+        ...(kinds.includes('chroMemory') ? { ltmEngine: true, ltmSettings: { budgetTokens: 1800, future: 1 } } : {}),
     }
     const fixture = { ...base, ...extras } as unknown as Database
     const seeded = await seedTree(memory, JSON.parse(JSON.stringify(fixture)) as Database, env, fakeLists)
@@ -427,10 +429,11 @@ type Runner = (options?: BackupExportOptions, entry?: { assetsExplained?: boolea
 const full: Runner = (options) => SaveLocalBackup({ mode: 'inline', ...options })
 const partial: Runner = (options, entry) => SavePartialLocalBackup({ mode: 'inline', ...options }, entry)
 
-type Fork = 'branches' | 'forkChat' | 'presets' | 'packs' | 'usage'
+type Fork = 'branches' | 'forkChat' | 'presets' | 'packs' | 'usage' | 'chroMemory'
 
-/** Which of the five per-kind prompts a confirm text is, or null. */
+/** Which of the six per-kind prompts a confirm text is, or null. */
 function forkPromptOf(message: string): Fork | null {
+    if (message === language.backupChroMemoryConfirm) return 'chroMemory'
     if (message === language.backupUsageStatsConfirm) return 'usage'
     if (message.includes('task preset(s)')) return 'presets'
     if (message.includes('theme pack(s)')) return 'packs'
@@ -648,6 +651,41 @@ describe.each([
         expect(text).not.toContain('"interrupted"')
         const chatNames = (database.characters as Obj[]).flatMap((character) => (character.chats as Obj[]).map((chat) => String(chat.name)))
         expect(chatNames.some((name) => name.endsWith('(Branch)'))).toBe(true)
+    }, 180_000)
+})
+
+describe.each([
+    ['SaveLocalBackup', full],
+    ['SavePartialLocalBackup', partial],
+])('%s with askLeaveOut over a page with ChroMemory selected', (_name, run) => {
+    test('B7 reproducer: the summary names ChroMemory, and answering true writes a file without the keys and asks no per-kind prompt', async () => {
+        await pageOf(['chroMemory'])
+        let summary: readonly BinLeaveOutEntry[] = []
+        const askLeaveOut = vi.fn(async (given: readonly BinLeaveOutEntry[]) => {
+            summary = given
+            return true
+        })
+
+        const outcome = await run({ askLeaveOut }, { assetsExplained: true })
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(summary).toEqual([{ kind: 'chroMemory', count: 1 }])
+        expect(askLeaveOut).toHaveBeenCalledTimes(1)
+        expect(forkPrompts()).toEqual([])
+        const database = await databaseOf(sink.closedFile as Uint8Array)
+        expect(Object.hasOwn(database, 'ltmEngine')).toBe(false)
+        expect(Object.hasOwn(database, 'ltmSettings')).toBe(false)
+    }, 180_000)
+
+    test('B7 reproducer: an unanswered sheet (null) falls back to the per-kind chain, which asks the ChroMemory prompt', async () => {
+        await pageOf(['chroMemory'])
+        const askLeaveOut = vi.fn(async () => null)
+
+        const outcome = await run({ askLeaveOut }, { assetsExplained: true })
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(askLeaveOut).toHaveBeenCalledTimes(1)
+        expect(forkPrompts()).toEqual(['chroMemory'])
     }, 180_000)
 })
 

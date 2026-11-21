@@ -920,6 +920,10 @@ export interface Database{
     usagePriceOverrides?:Record<string, PriceOverride>
     /** Months of usage statistics kept; absent keeps every month. Fork-only, never in a `.bin`. */
     usageRetentionMonths?:UsageRetentionMonths
+    /** Selects ChroMemory, the fork-only memory engine; while true it wins over the legacy engine flags. Absent until chosen; fork-only, never in a `.bin`. */
+    ltmEngine?:boolean
+    /** ChroMemory settings, read only through `readLtmSettings` (unknown keys kept, a bad shape read as defaults, never written back by a read). Absent until set; fork-only, never in a `.bin`. */
+    ltmSettings?:unknown
     sdProvider: string
     webUiUrl:string
     sdSteps:number

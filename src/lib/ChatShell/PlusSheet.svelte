@@ -25,6 +25,7 @@
     import { buildPanelModel, isOn, selectedIndex, toggleVarKey, valueRowsOf } from '../../ts/chatShell/togglePanel'
     import { favouriteRows, type FavouriteRef, type FavouriteRow } from '../../ts/chatShell/toggleFavourites'
     import { currentFavourites, syncFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
+    import { legacyEngineFields } from '../../ts/process/memory/memoryEngine'
     import ShellSheet from './ShellSheet.svelte'
 
     interface Props {
@@ -42,6 +43,7 @@
     let { open, opener, background, onclose, onstickers, onchatlist, onmodules, ontoggles, togglesSummary }: Props = $props()
     let character = $derived(DBState.db.characters[selIdState.selId])
     let chat = $derived(character?.chats?.[character.chatPage])
+    let lv = $derived(legacyEngineFields(DBState.db))
     const source: ComposerActionsSource = shellGenerationSource(() => onclose())
 
     function canContinue(): boolean {
@@ -287,13 +289,13 @@
         {#each additionalChatMenu as menu (menu.id)}
             <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(menu.callback)}><PluginDefinedIcon ico={menu} />{menu.name}</button>
         {/each}
-        {#if DBState.db.showMenuHypaMemoryModal && ((DBState.db.supaModelType !== 'none' && DBState.db.hypav2) || DBState.db.hypaV3)}
+        {#if DBState.db.showMenuHypaMemoryModal && ((lv.supaModelType !== 'none' && lv.hypav2) || lv.hypaV3)}
             <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => {
-                if (DBState.db.hypav2 && chat) {
+                if (lv.hypav2 && chat) {
                     chat.hypaV2Data ??= { lastMainChunkID: 0, mainChunks: [], chunks: [] }
                     showHypaV2Alert()
-                } else if (DBState.db.hypaV3) hypaV3ModalOpen.set(true)
-            })}>{DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
+                } else if (lv.hypaV3) hypaV3ModalOpen.set(true)
+            })}>{lv.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
         {/if}
         <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { void screenshot() })}>{language.screenshot}</button>
         {#if DBState.db.showMenuChatList}

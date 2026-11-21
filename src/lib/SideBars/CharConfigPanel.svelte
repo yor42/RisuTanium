@@ -1,6 +1,7 @@
 <script lang="ts">
     import { warnOnReject } from "src/ts/warnOnReject";
     import { language } from "../../lang";
+    import { legacyEngineFields } from "../../ts/process/memory/memoryEngine";
     import { tokenizeAccurate } from "../../ts/tokenizer";
     import { getCurrentCharacter, type character, type groupChat } from "../../ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
@@ -57,6 +58,7 @@
     // One hold per image position (group member, group icon, character icon, additional icon row); they end with the page.
     const lookups = useCharImageLookups();
 
+    let lv = $derived(legacyEngineFields(DBState.db))
     let iconRemoveMode = $state(false)
     let viewSubMenu = $state(0)
     let emos:[string, string][] = $state([])
@@ -1367,7 +1369,7 @@
             <Check bind:check={() => (DBState.db.characters[$selectedCharID] as character).escapeOutput ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).escapeOutput = v} name={language.escapeOutput}/>
         </div>
 
-        {#if DBState.db.supaModelType !== 'none' && DBState.db.hypav2}
+        {#if lv.supaModelType !== 'none' && lv.hypav2}
             <Button
                 onclick={() => {
                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data ??= {
@@ -1381,7 +1383,7 @@
             >
                 {language.hypaMemoryV2Modal}
             </Button>
-        {:else if DBState.db.hypaV3}
+        {:else if lv.hypaV3}
             <Button
                 onclick={() => {
                     $hypaV3ModalOpen = true

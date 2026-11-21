@@ -315,6 +315,7 @@ vi.mock('../Playground/PlaygroundMenu.svelte', () => ({
 
 import { DBState, selectedCharID, chatPanelStore } from 'src/ts/stores.svelte'
 import DefaultChatScreen from './DefaultChatScreen.svelte'
+import { language } from 'src/lang'
 
 function installDb() {
     DBState.db = {
@@ -406,5 +407,30 @@ describe('plugin chat panel markup (C4)', () => {
         expect(wrapper.classList.contains('inset-0')).toBe(false)
         expect(wrapper.style.getPropertyValue('contain')).toBe('paint')
         expect(wrapper.style.getPropertyValue('isolation')).toBe('isolate')
+    })
+})
+
+describe('the HypaMemory menu row against the memory engine choice', () => {
+    async function openMenuText(extra: Record<string, unknown>): Promise<string> {
+        installDb()
+        Object.assign(DBState.db, { showMenuHypaMemoryModal: true, hypaV3: true }, extra)
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const instance = mount(DefaultChatScreen, { target, props: {} })
+        mounted.push({ instance, target })
+        flushSync()
+        await tick()
+        target.querySelector<HTMLButtonElement>(`button[aria-label="${language.menu}"]`)!.click()
+        flushSync()
+        await tick()
+        return target.textContent ?? ''
+    }
+
+    test('guard: a V3 database shows the V3 modal row (passes before and after)', async () => {
+        expect(await openMenuText({})).toContain(language.hypaMemoryV3Modal)
+    })
+
+    test('reproducer: ChroMemory over V3 flags shows no V3 modal row', async () => {
+        expect(await openMenuText({ ltmEngine: true })).not.toContain(language.hypaMemoryV3Modal)
     })
 })

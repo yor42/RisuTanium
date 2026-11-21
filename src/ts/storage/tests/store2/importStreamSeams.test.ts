@@ -251,6 +251,25 @@ describe('the shared prepare steps (new seam)', () => {
         expect(Object.hasOwn(bare, 'activeThemePack')).toBe(false)
     })
 
+    test('I1i reproducer: applyImportOverlay drops the file\'s ChroMemory keys and sets only what the request passes, the settings as a clone', () => {
+        const file = { ltmEngine: true, ltmSettings: { x: 1 } } as unknown as Database
+        applyImportOverlay(file, {})
+        expect(Object.hasOwn(file, 'ltmEngine')).toBe(false)
+        expect(Object.hasOwn(file, 'ltmSettings')).toBe(false)
+
+        const settings = { budgetTokens: 1800, future: 1 }
+        const bare = {} as unknown as Database
+        applyImportOverlay(bare, { ltmEngine: true, ltmSettings: settings })
+        expect(bare.ltmEngine).toBe(true)
+        expect(bare.ltmSettings).toEqual(settings)
+        expect(bare.ltmSettings).not.toBe(settings)
+
+        const off = {} as unknown as Database
+        applyImportOverlay(off, { ltmEngine: false })
+        expect(off.ltmEngine).toBe(false)
+        expect(Object.hasOwn(off, 'ltmSettings')).toBe(false)
+    })
+
     test('repairImportRoot completes the containers the encoder reads', () => {
         const tree = { characters: [] } as unknown as Database
         repairImportRoot(tree)

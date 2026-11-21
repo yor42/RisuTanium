@@ -46,7 +46,7 @@ describe('PlusSheet', () => {
         const { DBState, easyPanelStore } = await import('../../ts/stores.svelte')
         Object.assign(DBState.db, {
             useChatSticker: false, showMenuChatList: false, enableRisuaiProTools: false,
-            showMenuHypaMemoryModal: false, supaModelType: 'none', hypav2: false, hypaV3: false, sideMenuRerollButton: false,
+            showMenuHypaMemoryModal: false, supaModelType: 'none', hypav2: false, hypaV3: false, sideMenuRerollButton: false, ltmEngine: undefined,
         })
         Object.assign(DBState.db.characters[0].chats[0], { message: [{ role: 'user', data: '' }, { role: 'char', data: '' }], modules: [] })
         easyPanelStore.open = false
@@ -194,6 +194,21 @@ describe('PlusSheet', () => {
         expect(row(target, 'Hypa V3')).toBeDefined()
         row(target, 'Hypa V3')?.click()
         expect(get(hypaV3ModalOpen)).toBe(true)
+        await unmount(app)
+        target.remove()
+    })
+
+    test('reproducer: ChroMemory over V2 and V3 flags offers no Hypa memory row', async () => {
+        const { DBState } = await import('../../ts/stores.svelte')
+        Object.assign(DBState.db, { showMenuHypaMemoryModal: true, supaModelType: 'distilbart', hypav2: true, hypaV3: true, ltmEngine: true })
+        const { default: PlusSheet } = await import('./PlusSheet.svelte')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const props = $state({ open: true, opener: null, background: [], onclose: () => { props.open = false }, onstickers: vi.fn(), onchatlist: vi.fn(), onmodules: vi.fn() })
+        const app = mount(PlusSheet, { target, props })
+        flushSync()
+        expect(row(target, 'Hypa V2')).toBeUndefined()
+        expect(row(target, 'Hypa V3')).toBeUndefined()
         await unmount(app)
         target.remove()
     })
