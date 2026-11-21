@@ -36,7 +36,7 @@ Modules are independant packages of lorebooks and scripts. Fields:
     - text: Text input. User typed text.
     - group, groupEnd: Collapsible group start and end. Keyless.
     - divider. Keyless.
-  - default (optional 5th field): exactly '1' starts a checkbox on; for select, the exact text of the option to start on. Any other value, and a 5th field on other types, is ignored. Upstream RisuAI ignores defaults.
+  - default (optional 5th field): exactly '1' starts a checkbox on; for select, the exact text of the option to start on. Any other value, and a 5th field on other types, is ignored. The upstream app ignores defaults.
   - Examples:
     - booleanValue=Check Me
     - selectValue=Select Me=select=opt1,opt2,opt3
