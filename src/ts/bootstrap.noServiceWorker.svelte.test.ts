@@ -8,7 +8,6 @@
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
-import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
@@ -24,7 +23,6 @@ const dbState = vi.hoisted(() => ({
 
 const forageState = vi.hoisted(() => ({
     staleAccountProfile: false,
-    fallbackNotice: null as FallbackNotice | null,
     items: new Map<string, Uint8Array | (() => Uint8Array)>(),
 }))
 
@@ -171,16 +169,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
-    takeStorageFallbackNotice: () => {
-        const notice = forageState.fallbackNotice
-        forageState.fallbackNotice = null
-        return notice
-    },
-}))
-
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         get staleAccountProfile() { return forageState.staleAccountProfile },
@@ -267,7 +255,6 @@ beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     forageState.staleAccountProfile = false
-    forageState.fallbackNotice = null
     forageState.items.clear()
     forageState.items.set('database/database.bin', encodeRisuSaveLegacy(baseDb()))
     dbState.current = baseDb()

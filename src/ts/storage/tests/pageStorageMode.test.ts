@@ -37,7 +37,7 @@ describe('which pages may go live', () => {
     const rows: Array<[string, PageStorageMode, boolean, boolean]> = [
         ['a store2 page with its active save', { kind: 'store2' }, true, true],
         ['a store2 page with no active save', { kind: 'store2' }, false, false],
-        ['a read-only page with no save', { kind: 'read-only', reason: 'opfs-transitional' }, false, true],
+        ['a read-only page with no save', { kind: 'read-only', reason: 'server-capability' }, false, true],
         ['a read-only page that somehow holds a save', { kind: 'read-only', reason: 'backend-unavailable' }, true, true],
         ['a too-new read-only page', { kind: 'read-only', reason: 'too-new', source: 'tree' }, false, true],
         ['a page boot has not decided for, with a save', { kind: 'unset' }, true, false],

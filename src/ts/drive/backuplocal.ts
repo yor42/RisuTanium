@@ -2002,7 +2002,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // A picked file reports a change by failing its reads; an opened one is asked.
             const openedFileChanged = async (): Promise<boolean> => openedFile !== null && await openedFile.changed();
 
-            // A page that runs from OPFS this time writes nothing, and a restore is refused before it reads or writes anything.
+            // A read-only page writes nothing, and a restore is refused before it reads or writes anything.
             if (await refuseOnReadOnlyPage()) {
                 return refused();
             }

@@ -232,7 +232,7 @@ describe.each(FF_HOSTS)('a repeated chaId keeps today\'s membership rules (%s ho
 describe.each(FF_HOSTS)('what stays out of the merge (C1, C3) (%s host)', (mode) => {
     useFfHost(mode)
     test('C1 a page of any other kind never fast-forwards, and a page without a fast-forward parks a body change clean with today\'s offers and changes nothing', async () => {
-        for (const kind of ['tauri', 'opfs-transitional'] as const) {
+        for (const kind of ['tauri'] as const) {
             const fastForward = createFastForward({ backend: createMemoryBackend(), kind: kind as 'tauri', lists: fakeLists, env: defaultKeyEnv })
             expect(await fastForward.run({} as never)).toEqual({ kind: 'park', reason: 'kind' })
         }

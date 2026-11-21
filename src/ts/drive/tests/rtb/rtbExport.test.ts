@@ -379,23 +379,21 @@ describe('what was left unsaved (T-S8-4)', () => {
 describe('refusals (T-S8-5)', () => {
     interface Case {
         name: string
-        opfs: boolean
         mode: ReturnType<RtbExportDeps['pageMode']>
         session: ReturnType<RtbExportDeps['session']>
         reason: 'read-only' | 'not-store2' | 'no-session'
     }
     const live = { committer: {} as never, backend: {} as never }
     const cases: Case[] = [
-        { name: 'the OPFS page: read-only mode, no committer', opfs: true, mode: { kind: 'read-only', reason: 'opfs-transitional' }, session: { committer: null, backend: null }, reason: 'read-only' },
-        { name: 'the OPFS check is independent of the mode (branch order)', opfs: true, mode: { kind: 'store2' }, session: live, reason: 'read-only' },
-        { name: 'a read-only page with a session that has no committer', opfs: false, mode: { kind: 'read-only', reason: 'backend-unavailable' }, session: { committer: null, backend: live.backend }, reason: 'read-only' },
-        { name: 'a page that has not booted', opfs: false, mode: { kind: 'unset' }, session: null, reason: 'not-store2' },
-        { name: 'a store2 page with a null committer', opfs: false, mode: { kind: 'store2' }, session: { committer: null, backend: live.backend }, reason: 'no-session' },
-        { name: 'a store2 page with a null backend', opfs: false, mode: { kind: 'store2' }, session: { committer: live.committer, backend: null }, reason: 'no-session' },
-        { name: 'a store2 page with no session', opfs: false, mode: { kind: 'store2' }, session: null, reason: 'no-session' },
+        { name: 'a read-only page with a session that has no committer', mode: { kind: 'read-only', reason: 'backend-unavailable' }, session: { committer: null, backend: live.backend }, reason: 'read-only' },
+        { name: 'a read-only page with no session', mode: { kind: 'read-only', reason: 'server-capability' }, session: { committer: null, backend: null }, reason: 'read-only' },
+        { name: 'a page that has not booted', mode: { kind: 'unset' }, session: null, reason: 'not-store2' },
+        { name: 'a store2 page with a null committer', mode: { kind: 'store2' }, session: { committer: null, backend: live.backend }, reason: 'no-session' },
+        { name: 'a store2 page with a null backend', mode: { kind: 'store2' }, session: { committer: live.committer, backend: null }, reason: 'no-session' },
+        { name: 'a store2 page with no session', mode: { kind: 'store2' }, session: null, reason: 'no-session' },
     ]
 
-    test.each(cases)('$name is refused as $reason, with nothing opened, saved or registered', async ({ opfs, mode, session, reason }) => {
+    test.each(cases)('$name is refused as $reason, with nothing opened, saved or registered', async ({ mode, session, reason }) => {
         const backend = await world.open()
         const sampled: boolean[] = []
         const openWriter = vi.fn(async () => null)
@@ -403,7 +401,6 @@ describe('refusals (T-S8-5)', () => {
         const { deps } = rtbDeps({
             backend, env: world.env,
             over: {
-                opfsTransitional: async () => { sampled.push(isBusy()); return opfs },
                 pageMode: () => { sampled.push(isBusy()); return mode },
                 session: () => { sampled.push(isBusy()); return session },
                 openWriter,
@@ -422,17 +419,15 @@ describe('refusals (T-S8-5)', () => {
 
 describe('the pre-check agrees with the guarded entry (refusal parity)', () => {
     const live = { committer: {} as never, backend: {} as never }
-    const pairs: { name: string, opfs: boolean, mode: ReturnType<RtbExportDeps['pageMode']>, session: ReturnType<RtbExportDeps['session']> }[] = [
-        { name: 'the OPFS page', opfs: true, mode: { kind: 'read-only', reason: 'opfs-transitional' }, session: { committer: null, backend: null } },
-        { name: 'an OPFS page whose mode reads store2', opfs: true, mode: { kind: 'store2' }, session: live },
-        { name: 'a read-only page', opfs: false, mode: { kind: 'read-only', reason: 'backend-unavailable' }, session: { committer: null, backend: live.backend } },
-        { name: 'a page that has not booted', opfs: false, mode: { kind: 'unset' }, session: null },
-        { name: 'a store2 page without a committer', opfs: false, mode: { kind: 'store2' }, session: { committer: null, backend: live.backend } },
+    const pairs: { name: string, mode: ReturnType<RtbExportDeps['pageMode']>, session: ReturnType<RtbExportDeps['session']> }[] = [
+        { name: 'a read-only page', mode: { kind: 'read-only', reason: 'backend-unavailable' }, session: { committer: null, backend: live.backend } },
+        { name: 'a page that has not booted', mode: { kind: 'unset' }, session: null },
+        { name: 'a store2 page without a committer', mode: { kind: 'store2' }, session: { committer: null, backend: live.backend } },
     ]
 
-    test.each(pairs)('$name: rtbExportRefusal equals the reason the guarded entry refuses with', async ({ opfs, mode, session }) => {
+    test.each(pairs)('$name: rtbExportRefusal equals the reason the guarded entry refuses with', async ({ mode, session }) => {
         const backend = await world.open()
-        const { deps } = rtbDeps({ backend, env: world.env, over: { opfsTransitional: async () => opfs, pageMode: () => mode, session: () => session } })
+        const { deps } = rtbDeps({ backend, env: world.env, over: { pageMode: () => mode, session: () => session } })
         const asked = await rtbExportRefusal(deps)
         const result = await runRtbExportGuarded(deps)
         expect(asked).not.toBeNull()

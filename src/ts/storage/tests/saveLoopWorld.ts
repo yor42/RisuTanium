@@ -2,7 +2,7 @@
  * Test-only: boots the REAL, unmocked save loop (`saveDb()` in
  * `globalApi.svelte.ts`) over a profile that the suite's own `boot` seeds in an
  * in-memory store, in a fresh module graph per "world". A world with no `boot`
- * (and not `opfs-transitional`) is refused. The suite that uses it registers the module
+ * (and not `legacyReadOnly`) is refused. The suite that uses it registers the module
  * mocks of everything else `globalApi.svelte.ts` imports (`vi.mock` is per test
  * file) and gives this kit what only the suite owns: the database the loop
  * reads and the set of parked worlds.
@@ -31,6 +31,8 @@ export interface StartOptions {
     files?: Map<string, Uint8Array>
     crypto?: Crypto
     kind?: AppStoreKind
+    /** A read-only legacy page: the main file is planted and the page mode is read-only, with no boot. */
+    legacyReadOnly?: boolean
     /** Replaces the boot: the store is seeded and the page mode is set by the caller. */
     boot?: (world: World) => Promise<void>
     /** Starts the save loop; a suite that needs to arrange the page first sets this to false. */
@@ -171,9 +173,9 @@ export function createWorldKit(env: WorldEnv) {
         }
         worlds.push(world)
 
-        if (kind === 'opfs-transitional') {
+        if (options.legacyReadOnly === true) {
             store.plant('database/database.bin', await encodeMainFile(world, env.getDb()!))
-            pageMode.setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
+            pageMode.setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
         } else if (options.boot) {
             await options.boot(world)
         } else {

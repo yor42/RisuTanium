@@ -4060,7 +4060,7 @@ export const languageJapanese = {
     applyAdditionalParamsToAll: "すべてのモデルに追加パラメータを適用",
     localToggles: "ローカルトグル",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     staleAccountProfileNotice:
         "このブラウザプロファイルではRisuAccount同期が使用されていましたが、本アプリはこれに対応していません。\n\n現在表示されているのは、同期を有効にする前にこのブラウザに保存されていたデータです。その後、他のブラウザや端末によってデータが変更されている可能性があります。アカウントのデータは引き続きRisuAccount上に保持されています。\n\n現在表示されている内容にアカウント側にないデータが含まれている可能性がある場合は、何かをインポートする前にローカルバックアップを作成してください。\n\nアカウントのデータをここに移行するには、アップストリームのRisuAIでサインインし、ローカルバックアップ (.bin) を作成して、ここでインポートしてください。セルフホストまたはローカルのアップストリームの場合は、まず「詳細設定」に移動し、「非推奨の設定を表示」をオンにしてから「Web同期時にアセットの保存をスキップ」のチェックを外してください。外さない場合、画像が除外されます。risuai.xyzでは、サインイン中に作成された完全バックアップはここにインポートできません。代替手段はインポート画面に記載されています。詳細は移行ガイドをご確認ください。\n\n「OK」を押すとアプリが再読み込みされます。",
     keiImageProviderUnavailable: "画像プロバイダ「Kei」は本アプリでは利用できません。設定で別の画像プロバイダを選択してください。",
@@ -4077,7 +4077,6 @@ export const languageJapanese = {
     forkTermsOfService: "利用規約",
     forkPrivacyPolicy: "プライバシーポリシー",
     forkLegalLinksLabel: "法的文書",
-    opfsCopyBackProgress: (done: number, total: number) => `データをブラウザストレージに移動しています… (${done} / ${total})。完了するまでこのタブを開いたままにしてください。`,
     saveReadFailed: "RisuTaniumはストレージからセーブデータを読み込むことができなかったため、何も開かず、何も変更しませんでした。ページを再読み込みして再試行してください。この現象が続く場合は、データが存在するディスクまたはサーバーにアクセスできるか確認してください。",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '現在のセーブへのポインタ'
@@ -4120,7 +4119,6 @@ export const languageJapanese = {
     saveLeftoverNotice: "RisuTaniumは、中断された保存または復元によって取り残された未使用のセーブデータを検出しました。害はありません。設定のクリーンアップから削除できます。",
     saveMainFileLeftNotice: "データは新しい形式に移行されましたが、古いセーブファイルが大きすぎるため、このサーバーで退避させることができませんでした。同じデータを開くアップストリーム版のRisuAIがその古いファイルを開いてしまう可能性があります。削除するまで、設定のクリーンアップで安全に保持されます。",
     staticBuildUnsupported: "RisuTaniumは通常のWebホストからは動作しなくなりました。Androidアプリまたはデスクトップアプリか、RisuTanium Nodeサーバーが提供するページをご利用ください。",
-    opfsReadOnlyNotice: "今回はデータのテンポラリコピーからRisuTaniumが実行されているため、変更は保存されず、バックアップの復元やストレージのクリーンアップも利用できません。データは失われていません。データをブラウザストレージに移動できるよう、本アプリの他のタブを閉じて再起動してください。",
     legacyPartialCharacters: (count: number) => count === 1 ? "キャラクター1体" : `キャラクター${count}体`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "このバージョンでは読み取れないその他の部分1件" : `このバージョンでは読み取れないその他の部分${count}件`,
     legacyPartialNotice: (items: string[]) =>

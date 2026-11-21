@@ -257,7 +257,7 @@ describe('the sealed export (T35)', () => {
         const { deps } = rtbDeps({
             backend, env: world.env,
             over: {
-                opfsTransitional: async () => { sampled.push(isBusy()); return false },
+                pageMode: () => { sampled.push(isBusy()); return { kind: 'store2' } },
                 openWriter,
                 saveFirst,
                 seal: sealSeam(),

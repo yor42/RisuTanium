@@ -3918,7 +3918,7 @@ export const languageSpanish = {
     applyAdditionalParamsToAll: "Aplicar Parámetros Adicionales a Todos los Modelos",
     localToggles: "Interruptores Locales",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     staleAccountProfileNotice:
         "Este perfil de navegador usaba la sincronización de RisuAccount, que esta aplicación no admite.\n\nLo que ves ahora son los datos que este navegador guardó antes de activar la sincronización. Es posible que otros navegadores o dispositivos hayan cambiado tus datos desde entonces. Los datos de tu cuenta siguen estando en RisuAccount.\n\nSi lo que ves puede contener algo que le falte a tu cuenta, haz una copia de seguridad local de ello antes de importar nada.\n\nPara traer aquí los datos de tu cuenta, inicia sesión en una versión upstream de RisuAI, haz una copia de seguridad local (.bin) e impórtala aquí. En una versión upstream autoalojada o local, ve primero a Configuraciones Avanzadas, activa \"Mostrar Configuraciones No Recomendadas\" y luego desmarca \"Skip Saving Assets on Web Sync\", o las imágenes quedarán excluidas. En risuai.xyz, un respaldo completo hecho mientras se está conectado no se puede importar aquí; la pantalla de importación indica las alternativas. La guía de migración tiene los detalles.\n\nAl pulsar OK, la aplicación se recargará.",
     keiImageProviderUnavailable: "El proveedor de imágenes \"Kei\" no está disponible en esta aplicación. Elige otro proveedor de imágenes en la configuración.",
@@ -3935,7 +3935,6 @@ export const languageSpanish = {
     forkTermsOfService: "Términos de Servicio",
     forkPrivacyPolicy: "Política de Privacidad",
     forkLegalLinksLabel: "Documentos legales",
-    opfsCopyBackProgress: (done: number, total: number) => `Moviendo tus datos al almacenamiento del navegador... (${done} / ${total}). Mantén esta pestaña abierta hasta que termine.`,
     saveReadFailed: "RisuTanium no pudo leer tus datos guardados desde el almacenamiento, así que no abrió nada y no cambió nada. Recarga la página para intentarlo de nuevo. Si esto sigue ocurriendo, comprueba que se pueda acceder al disco o al servidor donde están los datos.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'el puntero a tu guardado actual'
@@ -3978,7 +3977,6 @@ export const languageSpanish = {
     saveLeftoverNotice: "RisuTanium encontró datos de guardado sin usar que dejó un guardado o una restauración interrumpidos. No causan ningún daño. Puedes eliminarlos en la limpieza de los ajustes.",
     saveMainFileLeftNotice: "Tus datos pasaron a un formato nuevo, pero el archivo de guardado antiguo es demasiado grande para que este servidor lo aparte. Otra versión de RisuAI upstream que abra los mismos datos podría abrir ese archivo antiguo. La limpieza de los ajustes lo mantiene a salvo hasta que lo borres.",
     staticBuildUnsupported: "RisuTanium ya no funciona desde un alojamiento web común. Usa la aplicación de Android o de escritorio, o la página que sirve el servidor Node de RisuTanium.",
-    opfsReadOnlyNotice: "Esta vez RisuTanium se está ejecutando desde una copia temporal de tus datos, así que no guardará los cambios, y restaurar un respaldo o limpiar el almacenamiento no está disponible. Tus datos no se han perdido. Cierra las demás pestañas de esta aplicación y reiníciala para que los datos se puedan pasar al almacenamiento del navegador.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 personaje" : `${count} personajes`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 parte más que esta versión no puede leer" : `${count} partes más que esta versión no puede leer`,
     legacyPartialNotice: (items: string[]) =>

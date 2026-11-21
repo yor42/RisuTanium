@@ -46,7 +46,7 @@ export async function loadInternalBackup(options: { card?: true } = {}): Promise
         return before('nothing-replaced', 'busy')
     }
 
-    // A page that runs from OPFS this time writes nothing: the load is refused before anything is asked.
+    // A read-only page writes nothing: the load is refused before anything is asked.
     if (await refuseOnReadOnlyPage()) {
         return before('nothing-replaced')
     }

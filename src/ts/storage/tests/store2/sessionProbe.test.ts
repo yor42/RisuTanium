@@ -109,9 +109,5 @@ describe('the Node open probe', () => {
             expect(probe, kind).not.toHaveBeenCalled()
             expect(session.decision.mode, kind).not.toBe('read-only')
         }
-        const { store, probe } = storeWith(async () => FULL)
-        const opfs = await Store2Session.open(store, { kind: 'opfs-transitional', backend: await seededBackend(), upstreamMainFile: async () => false })
-        expect(probe).not.toHaveBeenCalled()
-        expect(opfs.decision).toMatchObject({ reason: 'opfs-transitional' })
     })
 })

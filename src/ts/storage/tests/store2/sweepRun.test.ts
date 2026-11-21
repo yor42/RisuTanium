@@ -350,22 +350,6 @@ describe('what ends the pass before any delete', () => {
         expect(world.store.writes).toEqual([])
     })
 
-    // A Node page runs the sweep (sweepRunNode.test.ts); only the transitional OPFS page still skips it.
-    test.each([['opfs-transitional']] as const)('C12: a %s page reads, lists, writes and deletes nothing and never opens the gate', async (kind) => {
-        const world = await libraryWorld(['orphan.png'], kind)
-        const openGate = vi.fn(world.openGate)
-        world.openGate = openGate
-        world.store.reads.length = 0
-
-        expect(await runAssetSweep(world.env)).toEqual({ status: 'skipped' })
-
-        expect(openGate).not.toHaveBeenCalled()
-        expect(world.store.reads).toEqual([])
-        expect(world.store.lists).toEqual([])
-        expect(world.store.writes).toEqual([])
-        expect(world.store.deletes).toEqual([])
-    })
-
     test('C12: a page with no backend is skipped without a read', async () => {
         const world = await libraryWorld(['orphan.png'], 'tauri')
         const session: AssetSweepSession = { kind: 'tauri', backend: null, idleReason: null, openGate: world.openGate }

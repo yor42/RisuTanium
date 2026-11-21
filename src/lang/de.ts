@@ -3935,7 +3935,7 @@ export const languageGerman = {
     "applyAdditionalParamsToAll": "Zusätzliche Parameter auf alle Modelle anwenden",
     "localToggles": "Lokale Schalter",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     "staleAccountProfileNotice":
         "Dieses Browserprofil hat RisuAccount-Sync verwendet, was diese App nicht unterstützt.\n\nWas Sie jetzt sehen, sind die Daten, die dieser Browser gespeichert hat, bevor die Synchronisierung aktiviert wurde. Andere Browser oder Geräte haben Ihre Daten seitdem möglicherweise geändert. Die Daten Ihres Kontos befinden sich weiterhin auf RisuAccount.\n\nFalls das, was Sie sehen, etwas enthalten könnte, das Ihrem Konto fehlt, erstellen Sie davon eine lokale Sicherung, bevor Sie irgendetwas importieren.\n\nUm die Daten Ihres Kontos hierher zu bringen, melden Sie sich bei einem Upstream-RisuAI an, erstellen Sie eine lokale Sicherung (.bin) und importieren Sie diese hier. Gehen Sie bei einer selbst gehosteten oder lokalen Upstream-Installation zunächst zu Erweitert, aktivieren Sie „Nicht empfohlene Einstellungen anzeigen“, und deaktivieren Sie dann „Skip Saving Assets on Web Sync“ — sonst werden Bilder ausgelassen. Auf risuai.xyz kann ein vollständiges Backup, das im angemeldeten Zustand erstellt wurde, hier nicht importiert werden; der Import-Bildschirm nennt die Alternativen. Die Migrationsanleitung enthält die Details.\n\nWenn Sie auf OK klicken, wird die App neu geladen.",
     "keiImageProviderUnavailable": "Der Bildanbieter „Kei“ ist in dieser App nicht verfügbar. Wählen Sie in den Einstellungen einen anderen Bildanbieter.",
@@ -3952,7 +3952,6 @@ export const languageGerman = {
     "forkTermsOfService": "Nutzungsbedingungen",
     "forkPrivacyPolicy": "Datenschutzerklärung",
     "forkLegalLinksLabel": "Rechtliche Dokumente",
-    "opfsCopyBackProgress": (done: number, total: number) => `Ihre Daten werden in den Browserspeicher verschoben... (${done} / ${total}). Lassen Sie diesen Tab geöffnet, bis der Vorgang abgeschlossen ist.`,
     "saveReadFailed": "RisuTanium konnte Ihre gespeicherten Daten nicht aus dem Speicher lesen und hat deshalb nichts geöffnet und nichts verändert. Laden Sie die Seite neu, um es erneut zu versuchen. Wenn das weiterhin passiert, prüfen Sie, ob der Datenträger oder der Server, auf dem die Daten liegen, erreichbar ist.",
     "saveDamageItem": (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'der Zeiger auf Ihren aktuellen Speicherstand'
@@ -3995,7 +3994,6 @@ export const languageGerman = {
     "saveLeftoverNotice": "RisuTanium hat nicht verwendete Speicherdaten gefunden, die ein unterbrochenes Speichern oder Wiederherstellen zurückgelassen hat. Sie schaden nicht. Sie können sie in der Bereinigung in den Einstellungen entfernen.",
     "saveMainFileLeftNotice": "Ihre Daten wurden in ein neues Format überführt, aber die alte Speicherdatei ist zu groß, als dass dieser Server sie beiseiteschieben könnte. Eine Upstream-Version von RisuAI, die dieselben Daten öffnet, könnte diese alte Datei öffnen. Die Bereinigung in den Einstellungen bewahrt sie sicher auf, bis Sie sie löschen.",
     "staticBuildUnsupported": "RisuTanium läuft nicht mehr von einem gewöhnlichen Webhost. Verwenden Sie die Android- oder Desktop-App oder die Seite, die der RisuTanium-Node-Server ausliefert.",
-    "opfsReadOnlyNotice": "RisuTanium läuft diesmal mit einer temporären Kopie Ihrer Daten und speichert deshalb keine Änderungen; das Wiederherstellen eines Backups oder das Bereinigen des Speichers ist nicht verfügbar. Ihre Daten sind nicht verloren. Schließen Sie andere Tabs dieser App und starten Sie sie neu, damit die Daten in den Browser-Speicher überführt werden können.",
     "legacyPartialCharacters": (count: number) => count === 1 ? "1 Charakter" : `${count} Charaktere`,
     "legacyPartialUnreadable": (count: number) => count === 1 ? "1 weiterer Teil, den diese Version nicht lesen kann" : `${count} weitere Teile, die diese Version nicht lesen kann`,
     "legacyPartialNotice": (items: string[]) =>

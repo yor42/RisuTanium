@@ -88,7 +88,6 @@ export interface MarkerProbeDeps {
 export function markerOwnerProbeFor(kind: AppStoreKind, deps: MarkerProbeDeps): MarkerOwnerProbe | null {
     switch (kind) {
         case 'tauri':
-        case 'opfs-transitional':
             return null
         case 'node':
             return UNPROVABLE

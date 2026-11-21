@@ -36,7 +36,7 @@ export interface Store2BootEnv {
 }
 
 /** Why a legacy profile is opened without any write. */
-export type Store2LegacyReadOnlyReason = 'opfs-transitional' | 'server-capability' | 'backend-unavailable'
+export type Store2LegacyReadOnlyReason = 'server-capability' | 'backend-unavailable'
 
 /** A notice the dispatch raises through its UI port. Informational ones are fire-and-forget. */
 export type Store2BootNotice =
