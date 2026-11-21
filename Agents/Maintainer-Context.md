@@ -34163,3 +34163,9 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
 
 **What the maintainer chose.** "Include all 24 (Recommended)". The package has 24 occasions: Independence Day (Jul 4, `en` only) was added on 2026-10-17 after MC-2826's count of 23 was written. It is ported with the other 23.
+
+### MC-3006 — #438 Pack off returns to the scheme picked just before the latest Theme pack entry, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion after Note 9 row SC-DV d). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2938`, `MC-2950`, `#503`.
+
+**What the maintainer chose.** Each entry into the Theme pack scheme records the scheme in effect just before it. Turning the pack on from Light, picking Dark, then clicking the Theme pack tile again and turning the pack off returns to Dark (the latest own pick), not Light. Refines `MC-2950`.
