@@ -71,6 +71,7 @@ import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
+import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
@@ -2707,15 +2708,26 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             }
             return true
         }
-        const processAndWriteReply = async (text:string, bumpKeys = true):Promise<boolean> => {
+        // The whole text of the last write that held an open CBS block raw, or null when the last write processed all of its
+        // text. The stream end processes it once, so the stored reply is the pass over the whole text.
+        let settleText: string | null = null
+        // With `holdOpenSpan` the text from the opener of a CBS block that is still open stays raw, so the chat view can hide
+        // it until the block closes; only the text before it is processed.
+        const processAndWriteReply = async (text:string, holdOpenSpan:boolean, bumpKeys = true):Promise<boolean> => {
             const before = resolveReply()
             if(!before){
                 return false
             }
+            const { head, held } = holdOpenSpan ? splitAtOpenCbsSpan(text) : { head: text, held: '' }
             // Every text here is a partial or deferred reply that is never looked up again; caching it would only evict entries that are.
-            const processed = await processScriptFull(nowChatroom, text, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
+            const processed = await processScriptFull(nowChatroom, head, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
             emoChanged = processed.emoChanged
-            return writeReplyData(processed.data, bumpKeys)
+            const written = writeReplyData(processed.data + held, bumpKeys)
+            // A pass that threw never reaches here, so the settle text stays the last one that was written.
+            if(written){
+                settleText = held === '' ? null : text
+            }
+            return written
         }
         const flushStreamingDisplay = async () => {
             clearStreamingFlushSchedule()
@@ -2735,7 +2747,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         replyGone = !writeReplyData(reformatContent(prefix + nextResult))
                         continue
                     }
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + nextResult)))
+                    replyGone = !(await processAndWriteReply(reformatContent(prefix + nextResult), true))
                 } while(streamingFlushQueued || pendingStreamingResult !== null)
             })().finally(() => {
                 streamingFlushPromise = null
@@ -2798,7 +2810,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         }
                         scheduleStreamingDisplayFlush()
                     }
-                    else if(!(await processAndWriteReply(reformatContent(prefix + result)))){
+                    else if(!(await processAndWriteReply(reformatContent(prefix + result), true))){
                         replyGone = true
                         break
                     }
@@ -2830,7 +2842,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     throw streamingFlushError
                 }
                 if(deferStreamingPostProcessing && receivedStreamingResult && !replyGone){
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + result), false))
+                    replyGone = !(await processAndWriteReply(reformatContent(prefix + result), false, false))
+                }
+                // The last write held an open block raw: the stored reply is the pass over its whole text, as when no
+                // block was held. Done, Stop and a reader error all end here; a flush error has already thrown above.
+                if(!replyGone && settleText !== null && !deferStreamingPostProcessing){
+                    replyGone = !(await processAndWriteReply(settleText, false, false))
                 }
             }
             finally {
