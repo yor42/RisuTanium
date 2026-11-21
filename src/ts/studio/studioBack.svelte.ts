@@ -7,7 +7,8 @@ import {
     closeStudioTogglePreview,
     setStudioHistoryOpen,
     setStudioRestoreSheetOpen,
-    showStudioList,
+    studioDetailBack,
+    studioDetailBackSnapshot,
     studioScreen,
     studioViaList,
     type StudioOpener,
@@ -20,6 +21,8 @@ export { closeStudioTogglePreview }
 interface BackLayer {
     isOpen: () => boolean
     close: () => void
+    /** What a handled press changes; defaults to `isOpen`, for a layer whose close always closes it. */
+    snapshot?: () => unknown
 }
 
 /**
@@ -30,7 +33,7 @@ interface BackLayer {
 export function registerStudioBackLayer(layer: BackLayer): void {
     $effect(() => {
         if (!layer.isOpen()) return
-        return registerBackHandler(backCloseHandler({ isOpen: layer.isOpen, snapshot: layer.isOpen, close: layer.close }))
+        return registerBackHandler(backCloseHandler({ isOpen: layer.isOpen, snapshot: layer.snapshot ?? layer.isOpen, close: layer.close }))
     })
 }
 
@@ -73,10 +76,12 @@ export function installStudioBack(): void {
     // Detail to list sits below search, the drawer, the History panel and the preview sheet, whichever of them opened
     // last: it registers only while none is open, so it is always the newest handler once they are closed. It also
     // yields to the toggle builder's editor page, whose own layer closes first: both re-register in one flush when a
-    // layer above them closes, and their effect order must not decide which press is handled first.
+    // layer above them closes, and their effect order must not decide which press is handled first. From an entry opened
+    // in a merged list it returns to that list, which stays a detail, so the snapshot is the screen, not the layer.
     registerStudioBackLayer({
         isOpen: () => studioViaList() && !studioScreen.searchOpen && !studioScreen.drawerOpen && !studioScreen.historyOpen && !studioScreen.togglePreviewOpen && !studioScreen.toggleEditorPageOpen,
-        close: showStudioList,
+        close: studioDetailBack,
+        snapshot: studioDetailBackSnapshot,
     })
 }
 
