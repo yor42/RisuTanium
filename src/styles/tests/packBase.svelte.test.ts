@@ -81,6 +81,8 @@ const PINNED_NEXUS = [
 ]
 const PINNED_PATTERN = ['--pattern-on-accent', '--pattern-on-danger']
 const PINNED_CHAT = ['--color-scheme', '--color-surface-bar']
+// The app shape tokens the Tailwind radius and hairline scale reads (MC-3128): never restored by the base, but both token files must declare each, so the compared set cannot silently shrink.
+const PINNED_SHAPE = ['--ui-radius-xs', '--ui-radius-sm', '--ui-radius-md', '--ui-radius-lg', '--ui-radius-xl', '--ui-radius-2xl', '--ui-radius-3xl', '--ui-radius-4xl', '--ui-radius', '--ui-border-width']
 // The app's own black under the pack canvas; it has no reference counterpart and no pack may declare it.
 const PACK_BACKDROP = '--surface-pack-backdrop'
 
@@ -271,7 +273,7 @@ describe('TP1: with the base on, the app resolves every token to the judged refe
 
     test('the compared set holds the restored names and the pinned divergence is not a colour', () => {
         expect(names.length).toBeGreaterThan(150)
-        for (const n of [...PINNED_NEXUS, ...PINNED_PATTERN, ...PINNED_CHAT]) expect(names).toContain(n)
+        for (const n of [...PINNED_NEXUS, ...PINNED_PATTERN, ...PINNED_CHAT, ...PINNED_SHAPE]) expect(names).toContain(n)
         const resolved = new CascadeModel(compileRules(appSheets))
         for (const n of ALLOWED_DIVERGENCE) {
             const value = resolved.custom(ROOT(), n)

@@ -73,7 +73,6 @@ import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { ASSET_FOLDER_KEY } from '../../ts/studio/assets/assetOwnerKeys'
 import { resetStudioModuleLoadsForTests } from '../../ts/studio/assets/moduleStubLoad.svelte'
 import { openStudioModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from '../../ts/studio/assets/openModuleForm.svelte'
-import { setRowSliceSchedulerForTests } from '../../ts/studio/assets/rowMount.svelte'
 import type { AssetSizeJob, StoredSize } from '../../ts/studio/assets/assetSizes'
 import { setSessionAssetSizeJobForTests } from './assets/StudioAssetList.svelte'
 import StudioDetail from './StudioDetail.svelte'
@@ -287,31 +286,23 @@ describe('the module asset list across rebuilds of the owner model and across ow
     })
 })
 
-describe('the chunked first mount across an owner change', () => {
-    // The chain of the old list ends with the list: the scheduler is asked to cancel, and a slice that still runs
-    // after that writes nothing, so no row of the old owner appears in the new owner's list.
-    test('a list that is replaced during its first mount cancels its chain, and a stale slice adds no row', async () => {
-        const runs: (() => void)[] = []
-        let cancelled = 0
-        setRowSliceSchedulerForTests({ schedule: (run) => { runs.push(run); return () => { cancelled += 1 } } })
-        try {
-            const hundred = Array.from({ length: 100 }, (_, n): string[] => [`c${n}`, `assets/c${n}.png`, 'png'])
-            setWorld([loadedM1(), residentModule('M2', { assets: toAssetList([['q1', 'assets/q1.png', 'png'], ['q2', 'assets/q2.png', 'png']]) })], { additionalAssets: hundred })
-            await show('character:cha-1', 'display')
-            expect(all('studio-asset-row').length).toBeGreaterThan(0)
-            expect(runs).toHaveLength(1)
-            setStudioSelection('module:M2', 'display', null)
-            flushSync()
-            await settle()
-            expect(cancelled).toBe(1)
-            expect(all('studio-asset-name').map((field) => (field as HTMLInputElement).value)).toEqual(['q1', 'q2'])
-            runs[0]()
-            await settle()
-            expect(all('studio-asset-name').map((field) => (field as HTMLInputElement).value)).toEqual(['q1', 'q2'])
-            expect(document.querySelectorAll('[data-part="studio-asset-row"]')).toHaveLength(2)
-        } finally {
-            setRowSliceSchedulerForTests(undefined)
-        }
+describe('a windowed list across an owner change', () => {
+    // After the owner change the page holds only the new owner's rows, now and after the old widen delay would have run
+    // out. The page shows this; it does not prove that the old host's timers and observers were disposed.
+    test('a replaced list leaves no row of the old owner', async () => {
+        const hundred = Array.from({ length: 100 }, (_, n): string[] => [`c${n}`, `assets/c${n}.png`, 'png'])
+        setWorld([loadedM1(), residentModule('M2', { assets: toAssetList([['q1', 'assets/q1.png', 'png'], ['q2', 'assets/q2.png', 'png']]) })], { additionalAssets: hundred })
+        await show('character:cha-1', 'display')
+        expect(all('studio-asset-row').length).toBeGreaterThan(0)
+        expect(all('studio-asset-row').length).toBeLessThan(100)
+        setStudioSelection('module:M2', 'display', null)
+        flushSync()
+        await settle()
+        expect(all('studio-asset-name').map((field) => (field as HTMLInputElement).value)).toEqual(['q1', 'q2'])
+        await new Promise<void>((resolve) => setTimeout(resolve, 250))
+        await settle()
+        expect(all('studio-asset-name').map((field) => (field as HTMLInputElement).value)).toEqual(['q1', 'q2'])
+        expect(document.querySelectorAll('[data-part="studio-asset-row"]')).toHaveLength(2)
     })
 })
 
@@ -344,9 +335,8 @@ describe('a module that is not loaded', () => {
         expect(all('studio-asset-name').map((field) => (field as HTMLInputElement).value)).toEqual(['s1'])
     })
 
-    // The chunk covers the rows present when the list starts: a module's list starts once the slot holds the loaded
-    // module, so a hundred rows mount in a first flush of at most a few dozen and the rest in later slices.
-    test('a module that loads with a hundred assets mounts its first rows at once and the rest in later slices', async () => {
+    // A module's list starts once the slot holds the loaded module, so a hundred rows mount as one window, not all at once.
+    test('a module that loads with a hundred assets mounts its window', async () => {
         stubWorld()
         const held = heldLoad()
         await show(S1)
@@ -357,9 +347,7 @@ describe('a module that is not loaded', () => {
         setStudioSelection(S1, 'display', null)
         flushSync()
         expect(rawRows()).toBeGreaterThanOrEqual(1)
-        expect(rawRows()).toBeLessThanOrEqual(32)
-        await vi.waitFor(() => expect(rawRows()).toBe(100), { timeout: 10_000 })
-        expect(part('studio-asset-list')?.hasAttribute('data-rows-pending')).toBe(false)
+        expect(rawRows()).toBeLessThanOrEqual(20)
     })
 
     test('a refused load goes back to the stub note and the link to the Modules screen, after one request', async () => {

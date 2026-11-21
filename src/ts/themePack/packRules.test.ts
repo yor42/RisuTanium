@@ -1076,3 +1076,60 @@ describe('time on a large hostile stylesheet', () => {
         expect(largeBest / smallBest).toBeLessThan(GROWTH_LIMIT)
     }, 120000)
 })
+
+// MC-3128 / MC-3129: the app shape tokens the Tailwind radius and hairline scale reads. Radius 0-32 px, hairline 1-3 px, in every area.
+describe('S2: the app shape tokens are pack-settable and bounded (MC-3128, MC-3129)', () => {
+    const STEPS = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']
+    const RADII = ['--ui-radius', ...STEPS.map((step) => `--ui-radius-${step}`)]
+    const BELOW = /below the critical minimum/
+    const ABOVE = /above the critical maximum/
+    const verdict = (area: 'chat' | 'studio' | 'settings' | 'home', css: string): { ok: boolean, why: string } => {
+        const result = judgeAreaSheet(area, css, undefined, area).result
+        return { ok: result.ok, why: result.errors.map((e) => e.why).join(' | ') }
+    }
+
+    test('R1: Studio accepts a radius step', () => {
+        expect(verdict('studio', ':root{--ui-radius-md:2px}').ok).toBe(true)
+    })
+
+    test('R5: chat accepts the hairline token', () => {
+        expect(verdict('chat', ':root{--ui-border-width:2px}').ok).toBe(true)
+    })
+
+    test.each(['settings', 'home'] as const)('R7: %s accepts a radius step', (area) => {
+        expect(verdict(area, ':root{--ui-radius-md:2px}').ok).toBe(true)
+    })
+
+    // Each name has its own bound rows, in chat and in Studio: floor - epsilon and ceiling + epsilon are refused with the bound's reason, each edge is accepted.
+    describe.each(['chat', 'studio'] as const)('B1 bounds in %s', (area) => {
+        test.each(RADII)('%s: 0 to 32px', (name) => {
+            for (const value of ['-1px', '-0.1rem', '-5px']) {
+                const refusal = verdict(area, `:root{${name}:${value}}`)
+                expect(refusal.ok, `${name}:${value}`).toBe(false)
+                expect(refusal.why, `${name}:${value}`).toMatch(BELOW)
+            }
+            for (const value of ['32.5px', '33px', '2.1rem']) {
+                const refusal = verdict(area, `:root{${name}:${value}}`)
+                expect(refusal.ok, `${name}:${value}`).toBe(false)
+                expect(refusal.why, `${name}:${value}`).toMatch(ABOVE)
+            }
+            for (const value of ['0', '0px', '0.5rem', '2rem', '32px']) {
+                const accepted = verdict(area, `:root{${name}:${value}}`)
+                expect(accepted.ok, `${name}:${value} ${accepted.why}`).toBe(true)
+            }
+        })
+
+        test('--ui-border-width: 1 to 3px', () => {
+            for (const value of ['0.9px', '0px', '0']) expect(verdict(area, `:root{--ui-border-width:${value}}`).why, value).toMatch(BELOW)
+            for (const value of ['3.1px', '4px', '0.25rem']) expect(verdict(area, `:root{--ui-border-width:${value}}`).why, value).toMatch(ABOVE)
+            for (const value of ['1px', '2px', '3px', '0.125rem']) {
+                const accepted = verdict(area, `:root{--ui-border-width:${value}}`)
+                expect(accepted.ok, `${value} ${accepted.why}`).toBe(true)
+            }
+        })
+
+        test('a relative unit, a percentage and calc() are refused', () => {
+            for (const value of ['2em', '50%', 'calc(0px - 1px)', '2px 40px']) expect(verdict(area, `:root{--ui-radius-md:${value}}`).ok, value).toBe(false)
+        })
+    })
+})

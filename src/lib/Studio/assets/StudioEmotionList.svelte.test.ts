@@ -280,15 +280,18 @@ describe('what the list shows', () => {
         expect(section().querySelectorAll('button')).toHaveLength(0)
     })
 
-    test('U8: every row is an li directly inside the rows list', async () => {
+    test('U8: every row sits in its own li directly inside the rows list', async () => {
         await install(THREE())
         await show()
         const list = part('studio-emotion-rows') as HTMLElement
         const rows = parts('studio-asset-row', section())
         expect(rows).toHaveLength(3)
+        expect(list.children).toHaveLength(3)
         for (const row of rows) {
-            expect(row.tagName).toBe('LI')
-            expect(row.parentElement).toBe(list)
+            const item = row.parentElement as HTMLElement
+            expect(item.tagName).toBe('LI')
+            expect(item.parentElement).toBe(list)
+            expect(item.children).toHaveLength(1)
         }
     })
 

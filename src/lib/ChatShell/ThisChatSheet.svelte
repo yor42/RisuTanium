@@ -12,7 +12,7 @@
     import { effectiveJailbreak, effectiveMemory, writeChatJailbreak, writeChatMemory } from '../../ts/parser/chatToggleScope'
     import { chatStats, normalizeChatName, promptHasJailbreakToggle, relativeTime, setChatHideNames, writeChatName, writeChatNote } from '../../ts/chatShell/thisChatEdits'
     import { isImeComposing } from '../../ts/ime/compositionGuard'
-    import { legacyEngineFields, showsMemoryToggle } from '../../ts/process/memory/memoryEngine'
+    import { chroMemoryOn, legacyEngineFields, showsMemoryToggle } from '../../ts/process/memory/memoryEngine'
     import { memoryToggleLabel } from '../../ts/process/memory/memoryLabels'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
     import ShellSheet from './ShellSheet.svelte'
@@ -260,7 +260,7 @@
     let lv = $derived(legacyEngineFields(DBState.db))
     let showMemory = $derived(showsMemoryToggle(DBState.db))
     let memoryLabel = $derived(memoryToggleLabel(DBState.db))
-    let showMemoryView = $derived(!!DBState.db.showMenuHypaMemoryModal && ((lv.supaModelType !== 'none' && !!lv.hypav2) || !!lv.hypaV3))
+    let showMemoryView = $derived(!!DBState.db.showMenuHypaMemoryModal && (chroMemoryOn(DBState.db) || (lv.supaModelType !== 'none' && !!lv.hypav2) || !!lv.hypaV3))
 
     function setHideNames(value: boolean): void {
         if (!session) return
@@ -296,7 +296,9 @@
         const at = session
         if (!at) return
         leave(() => {
-            if (lv.hypav2) {
+            if (chroMemoryOn(DBState.db)) {
+                hypaV3ModalOpen.set(true)
+            } else if (lv.hypav2) {
                 at.chat.hypaV2Data ??= { lastMainChunkID: 0, mainChunks: [], chunks: [] }
                 showHypaV2Alert()
             } else if (lv.hypaV3) {
@@ -339,7 +341,7 @@
             <input type="checkbox" role="switch" aria-label={memoryLabel} data-part="this-chat-memory" checked={memoryOn} onchange={(event) => setMemory(event.currentTarget.checked)} />
         </label>
         {#if showMemoryView}
-            <button type="button" data-part="this-chat-memory-view" data-kind="button" onclick={openMemoryView}>{lv.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
+            <button type="button" data-part="this-chat-memory-view" data-kind="button" onclick={openMemoryView}>{chroMemoryOn(DBState.db) ? language.chroMemoryModal : lv.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
         {/if}
     {/if}
 {/snippet}

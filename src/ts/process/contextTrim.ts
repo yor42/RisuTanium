@@ -56,6 +56,11 @@ export const LAZY_BEFORE_LIMIT = 2 ** 51
  * The decisions are written as "not over the limit", the eager trim's own test
  * negated, so a limit that is not a number decides as it does there. Each chat
  * is counted at most once.
+ *
+ * `keepAtLeast` (default 1) is the fewest chats a successful trim leaves: a
+ * trim that would have to leave fewer returns `fits: false` before any splice.
+ * `dropped` is the spliced prefix (empty when `fits` is false) and `counts`
+ * holds every chat the trim counted, including `countedMessages`.
  */
 export async function trimChatsToContext(args: {
     chats: OpenAIChat[]
@@ -65,8 +70,10 @@ export async function trimChatsToContext(args: {
     countedMessages: ReadonlyMap<OpenAIChat, number>
     maxContextTokens: number
     count: CountChat
-}): Promise<{ fits: boolean, currentTokens: number }> {
+    keepAtLeast?: number
+}): Promise<{ fits: boolean, currentTokens: number, dropped: OpenAIChat[], counts: ReadonlyMap<OpenAIChat, number> }> {
     const { chats, firstMessageChat, maxContextTokens } = args
+    const keepAtLeast = args.keepAtLeast ?? 1
     const counts = new Map<OpenAIChat, number>(args.countedMessages)
     const countOf = async (chat: OpenAIChat) => {
         let tokens = counts.get(chat)
@@ -82,14 +89,13 @@ export async function trimChatsToContext(args: {
         let currentTokens = await totalInSendOrder({ ...args, count: countOf })
         let dropped = 0
         while(currentTokens > maxContextTokens){
-            if(chats.length - dropped <= 1){
-                return { fits: false, currentTokens }
+            if(chats.length - dropped <= keepAtLeast){
+                return { fits: false, currentTokens, dropped: [], counts }
             }
             currentTokens -= await countOf(chats[dropped])
             dropped++
         }
-        chats.splice(0, dropped)
-        return { fits: true, currentTokens }
+        return { fits: true, currentTokens, dropped: chats.splice(0, dropped), counts }
     }
 
     if(
@@ -123,8 +129,8 @@ export async function trimChatsToContext(args: {
         if(!(fixed + known > maxContextTokens)){
             break
         }
-        if(chats.length - dropped <= 1){
-            // At most one chat is left; its count makes the total exact.
+        if(chats.length - dropped <= keepAtLeast){
+            // No chat may be dropped; the counts of the rest make the total exact.
             while(counted > oldestKept){
                 counted--
                 const tokens = await countOf(chats[counted])
@@ -133,7 +139,7 @@ export async function trimChatsToContext(args: {
                 }
                 known += tokens
             }
-            return { fits: false, currentTokens: fixed + known }
+            return { fits: false, currentTokens: fixed + known, dropped: [], counts }
         }
         if(dropped < firstMessageChat){
             const tokens = await countOf(chats[dropped])
@@ -148,6 +154,27 @@ export async function trimChatsToContext(args: {
         }
         dropped++
     }
-    chats.splice(0, dropped)
-    return { fits: true, currentTokens: fixed + known }
+    return { fits: true, currentTokens: fixed + known, dropped: chats.splice(0, dropped), counts }
+}
+
+/**
+ * The `firstMessageChat` and `tokensBeforeMessages` a second trim of the same
+ * array takes after a first trim dropped a prefix. Both forms drop a prefix, so
+ * `dropped[i]` was the chat at original index i; a dropped chat before the
+ * message chats had its count in `tokensBeforeMessages`.
+ */
+export function restateForKept(args: {
+    firstMessageChat: number
+    tokensBeforeMessages: number
+    dropped: readonly OpenAIChat[]
+    counts: ReadonlyMap<OpenAIChat, number>
+}): { firstMessageChat: number, tokensBeforeMessages: number } {
+    let tokensBeforeMessages = args.tokensBeforeMessages
+    for(let i = 0; i < args.dropped.length && i < args.firstMessageChat; i++){
+        tokensBeforeMessages -= args.counts.get(args.dropped[i]) ?? 0
+    }
+    return {
+        firstMessageChat: Math.max(0, args.firstMessageChat - args.dropped.length),
+        tokensBeforeMessages,
+    }
 }

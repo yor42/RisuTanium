@@ -45,7 +45,7 @@ What you see:
 - A recovery screen at startup if a save is damaged, and a list of earlier saved versions to restore from ("Load Internal Backup").
 - A visible indicator when a browser tab has stopped saving. A message names exactly which items the app could not save. Before, the loss was silent.
 - Older saves convert automatically. The app refuses a malformed older save, or offers it without the broken parts. It does not crash.
-- Web, desktop, and Node server all share one storage contract. The OPFS switch is gone. At startup, the app copies an OPFS profile back into the IndexedDB of the browser. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
+- The desktop app and the Node server share one storage contract. A page that neither Tauri nor the Node server serves has no storage for your data. The OPFS switch is gone, and the app no longer uses the browser's OPFS or IndexedDB. If an older build left data there, this build neither reads it nor deletes it. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
 - The Node server checks revisions before it writes. So two clients cannot silently overwrite each other.
 - Saving yields to the interface during long saves. On Android, a hidden page keeps saving.
 
@@ -230,7 +230,7 @@ For details and routes, see [[Migrating from upstream]].
 | Execution of V2.1 plugins | The data stays. Nothing runs. |
 | The settings pages Global Lorebook and Global Regex | The pages are retired. |
 | Picture-in-picture keep-alive | A stored `pip` setting reads as `off`. |
-| OPFS storage switch | See Saving and storage. |
+| OPFS storage switch | Removed, along with browser storage (OPFS and IndexedDB). See Saving and storage. |
 | Desktop auto-updater | Off until the fork has its own releases. |
 
 ## Bugs fixed

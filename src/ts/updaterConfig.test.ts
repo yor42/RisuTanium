@@ -16,6 +16,7 @@ interface TauriConf {
         updater?: {
             pubkey?: unknown
             endpoints?: unknown
+            requireSignedVersion?: unknown
         }
     }
 }
@@ -26,16 +27,22 @@ async function readTauriConf(): Promise<TauriConf> {
 }
 
 describe('tauri.conf.json updater settings', () => {
-    test('the updater has no endpoint, so the plugin refuses every check', async () => {
+    test('the updater polls exactly the fork release feed, never an upstream one', async () => {
         const conf = await readTauriConf()
 
-        expect(conf.plugins?.updater?.endpoints).toEqual([])
+        expect(conf.plugins?.updater?.endpoints).toEqual(['https://github.com/yor42/RisuTanium/releases/latest/download/latest.json'])
     })
 
-    test('no updater artifacts are built, so no signing key is needed', async () => {
+    test('release builds create updater artifacts, which the signing key signs', async () => {
         const conf = await readTauriConf()
 
-        expect(conf.bundle?.createUpdaterArtifacts).toBe(false)
+        expect(conf.bundle?.createUpdaterArtifacts).toBe(true)
+    })
+
+    test('the updater accepts only a release whose signature also signs its version, so a signed older build cannot be offered under a higher version', async () => {
+        const conf = await readTauriConf()
+
+        expect(conf.plugins?.updater?.requireSignedVersion).toBe(true)
     })
 
     test('guard: the updater block keeps a non-empty pubkey, because the registered plugin requires one in its config', async () => {

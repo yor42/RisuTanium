@@ -58,7 +58,7 @@ Then make your backup. If you skip this step, the backup that you make misses im
 
 You can also migrate in another way. Swap a self-hosted upstream install for this fork on the same origin, and keep the same `save/` folder or Docker volume. This route is supported next to the `.bin` import above.
 
-Suppose that account sync was on for that origin. The storage layer of this fork detects that at startup. When you turn sync on, upstream freezes the data that was there just before sync started. That data is in the local storage of your browser, in OPFS, or in the `save/` folder of the Node server, depending on which one was active at the time. While sync stays on, upstream never updates that data again. After the switch to this fork, you see that frozen data, and nothing tells you that it is out of date.
+Suppose that account sync was on for that origin. The storage layer of this fork detects that at startup. When you turn sync on, upstream freezes the data that was there just before sync started. That data is in the local storage of your browser, in OPFS, or in the `save/` folder of the Node server, depending on which one was active at the time. This fork does not read library data that a browser holds in OPFS or IndexedDB, so move data from there with a `.bin` backup made on upstream. While sync stays on, upstream never updates that data again. After the switch to this fork, you see that frozen data, and nothing tells you that it is out of date.
 
 Instead, this fork shows a notice on boot. The notice says three things:
 - This browser profile used RisuAccount sync, which this app does not support.

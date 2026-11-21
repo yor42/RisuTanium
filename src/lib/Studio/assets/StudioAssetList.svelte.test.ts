@@ -7,11 +7,14 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ marks: 0, withheld: new Set<string>() }))
+const h = vi.hoisted(() => ({ marks: 0, withheld: new Set<string>(), gate: null as Promise<void> | null }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({
     getSaveMarkCount: () => h.marks,
-    getFileSrc: async (path: string, use: string) => (h.withheld.has(path) ? '' : `blob:${use}:${path}`),
+    getFileSrc: async (path: string, use: string) => {
+        await h.gate
+        return h.withheld.has(path) ? '' : `blob:${use}:${path}`
+    },
 }))
 
 const db = $state({ db: { characters: [] as LiveCharacter[], useAdditionalAssetsPreview: false, modules: [] as unknown[] } })
@@ -51,6 +54,7 @@ import { createClaimDouble, createMemoryStudioStore } from '../../../ts/studio/h
 import { assetRow } from '../../../ts/studio/assets/assetFixtures.test-helpers'
 import { ASSET_FOLDER_KEY } from '../../../ts/studio/assets/assetOwnerKeys'
 import type { AssetPickerPort, UsedInPort } from '../../../ts/studio/assets/assetPresentation'
+import { allRowsGeometry, setWindowGeometryForTests } from '../../../ts/windowing/windowHost.svelte'
 import StudioAssetList, { setSessionAssetSizeJobForTests } from './StudioAssetList.svelte'
 
 interface LiveCharacter {
@@ -138,9 +142,12 @@ function fakeJob(sizes: Record<string, number | null>): AssetSizeJob {
 beforeEach(async () => {
     h.marks = 0
     h.withheld.clear()
+    h.gate = null
     resetCharacterSaveMarksForTest()
     installCharacterSaveMarks({ tracker, schedule: () => { h.marks += 1 } })
     resetStudioScreenForTests()
+    // Every row falls in the window: these tests are about what a row shows, not about which rows are in the page.
+    setWindowGeometryForTests(allRowsGeometry())
     // The job a list asks when a test passes none: a fresh one that knows no size, so the production job is never loaded.
     setSessionAssetSizeJobForTests(fakeJob({}))
     db.db.useAdditionalAssetsPreview = false
@@ -164,6 +171,7 @@ afterEach(async () => {
         await unmount(entry.app)
         entry.host.remove()
     }
+    setWindowGeometryForTests(undefined)
     setSessionAssetSizeJobForTests(undefined)
     resetStudioToastsForTests()
     resetStudioHistoryAccessorForTests()
@@ -220,11 +228,20 @@ describe('what each kind of file shows', () => {
             await unmount(entry.app)
             entry.host.remove()
         }
+        // The URL lookups are held until the assertion, so the loading state does not depend on timing.
+        let release: () => void = () => {}
+        h.gate = new Promise<void>((resolve) => { release = resolve })
         const host = document.createElement('div')
         document.body.appendChild(host)
         mounted.push({ app: mount(StudioAssetList, { target: host, props: { chaId: 'A' } }), host })
         flushSync()
+        // The window mounts rows once the queued first read has run.
+        await Promise.resolve()
+        flushSync()
         expect(parts('studio-thumb-placeholder', host).map((el) => el.dataset.image)).toEqual(THUMBS.map(() => 'loading'))
+        release()
+        await settle()
+        expect(parts('studio-thumb', host).map((el) => el.dataset.image)).toEqual(THUMBS.map(() => 'ok'))
     })
 
     test('a row line is the extension alone until the size job answers, then the extension and the size', async () => {

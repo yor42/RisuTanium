@@ -39,6 +39,7 @@ import {
     alertSelect,
     alertSelectChar,
     alertStaleAccountNotice,
+    alertUpdateOffer,
     alertWait,
     alertClear,
 } from './alert'
@@ -126,6 +127,15 @@ describe('a prompt with a cancel button', () => {
     test('a parked reply is answered later by Back, never discard', async () => {
         const out = track(askPrompt({ type: 'parkedReply', msg: 'Title', parkedReply: { name: 'Ann', text: 'Hello' } }))
         expect(shown().type).toBe('parkedReply')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(out).toEqual({ settled: true, value: 'later' })
+        expect(shown().type).toBe('none')
+    })
+
+    test('an update offer is answered later by Back, never install', async () => {
+        const out = track(alertUpdateOffer({ currentVersion: '0.1.0', version: '0.2.0', notes: 'n' }))
+        expect(shown().type).toBe('updateOffer')
         expect(dispatchBack()).toBe(true)
         await settle()
         expect(out).toEqual({ settled: true, value: 'later' })
@@ -370,12 +380,12 @@ describe('alerts Back leaves on screen', () => {
         expect(held).toEqual(['none', 'peerConflicts', 'progress', 'staleAccountNotice', 'toast', 'tos'])
     })
 
-    test('exactly the select and the input are classified as a per-instance cancel', () => {
+    test('exactly the select, the input and the update offer are classified as a per-instance cancel', () => {
         const perInstance = Object.entries(ALERT_BACK_ACTIONS)
             .filter(([, action]) => action.kind === 'cancelIfOffered')
             .map(([type]) => type)
             .sort()
-        expect(perInstance).toEqual(['input', 'select'])
+        expect(perInstance).toEqual(['input', 'select', 'updateOffer'])
     })
 })
 

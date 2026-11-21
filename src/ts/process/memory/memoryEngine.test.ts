@@ -10,6 +10,7 @@ import { describe, expect, test } from 'vitest'
 import {
     alwaysToggleOnApplies,
     chroMemoryOn,
+    chroMemoryModeOf,
     chroMemoryShadowRuns,
     legacyEngineFields,
     memoryEngineOf,
@@ -198,5 +199,19 @@ describe('setMemoryEngine', () => {
             setMemoryEngine(db, engine)
             expect(Object.hasOwn(db, 'ltmEngine')).toBe(false)
         }
+    })
+})
+describe('chroMemoryModeOf', () => {
+    test('ME1: off without the engine or with memory off; inject by default; shadow only for an explicit true', () => {
+        const on = dbOf(false, false, false, 'none', true)
+        expect(chroMemoryModeOf(on, true, undefined)).toBe('inject')
+        expect(chroMemoryModeOf(on, true, { budgetTokens: 900 })).toBe('inject')
+        expect(chroMemoryModeOf(on, true, { shadow: false })).toBe('inject')
+        expect(chroMemoryModeOf(on, true, { shadow: 'yes' })).toBe('inject')
+        expect(chroMemoryModeOf(on, true, 'garbage')).toBe('inject')
+        expect(chroMemoryModeOf(on, true, { shadow: true })).toBe('shadow')
+        expect(chroMemoryModeOf(on, false, { shadow: true })).toBe('off')
+        expect(chroMemoryModeOf(dbOf(false, false, false, 'none'), true, { shadow: true })).toBe('off')
+        expect(chroMemoryModeOf(dbOf(true, false, false, 'none'), true, undefined)).toBe('off')
     })
 })

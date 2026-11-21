@@ -158,7 +158,7 @@ import type { alertData } from '../../../ts/alert'
 import { dispatchBack, installBackGuard, registerBackHandler, resetBackHandlersForTests } from '../../../ts/backHandlers'
 import { resetAlertPromptsForTests } from '../../../ts/alertPrompts'
 import { language } from '../../../lang'
-import { homeView, openHomeLibrary, showHomeLanding } from './homeView.svelte'
+import { openHomeLibrary, startHomeView } from './homeView.svelte'
 import HomeLibrary from './HomeLibrary.svelte'
 
 //#region fixtures and helpers
@@ -240,17 +240,17 @@ beforeEach(() => {
     removeCharSpy.mockReset()
     supersedeSpy.mockReset()
     showToast.mockReset()
-    showHomeLanding()
+    startHomeView()
     resetBackHandlersForTests()
     installBackGuard({ showToast })
     installDb()
     selectedCharID.set(-1)
     OpenRealmStore.set(false)
     selectionLog = []
-    // The mock writes the selection like the real one and records the Home view at that moment.
+    // The mock writes the selection like the real one.
     changeCharSpy.mockImplementation((index: number) => {
         selectedCharID.set(index)
-        selectionLog.push(`selectedCharID=${index}, view=${homeView.view}`)
+        selectionLog.push(`selectedCharID=${index}`)
     })
     let first = true
     unsubscribeSelection = selectedCharID.subscribe((value) => {
@@ -268,13 +268,13 @@ afterEach(() => {
     resetAlertPromptsForTests()
     alertStore.set({ type: 'none', msg: '' })
     resetBackHandlersForTests()
-    showHomeLanding()
+    startHomeView()
 })
 
 //#endregion
 
-describe('HomeLibrary: picking and leaving', () => {
-    test('(F) a pick writes the selection once, before the view returns to the landing', async () => {
+describe('HomeLibrary: picking', () => {
+    test('(F) a pick writes the selection once', async () => {
         await withLibrary(async (target) => {
             clickButton(target, language.simple)
             await settle()
@@ -282,29 +282,17 @@ describe('HomeLibrary: picking and leaving', () => {
             row.click()
             await settle()
             expect(changeCharSpy.mock.calls).toEqual([[1]])
-            expect(selectionLog).toEqual(['write:1', 'selectedCharID=1, view=library'])
+            expect(selectionLog).toEqual(['write:1', 'selectedCharID=1'])
             expect(get(selectedCharID)).toBe(1)
-            expect(homeView.view).toBe('landing')
         })
     })
 
-    test('(F) the back arrow returns to the landing without a selection write', async () => {
+    test('(F) the Home variant has no back arrow: the library is part of the landing', async () => {
         await withLibrary(async (target) => {
-            const back = target.querySelector<HTMLButtonElement>(`button[title="${language.settingsPage.back}"]`)
-            expect(back).toBeTruthy()
-            back!.click()
-            await settle()
-            expect(homeView.view).toBe('landing')
+            expect(target.querySelector(`button[title="${language.settingsPage.back}"]`)).toBeNull()
+            expect(target.querySelector('[data-part="library-back"]')).toBeNull()
             expect(selectionLog).toEqual([])
             expect(changeCharSpy).not.toHaveBeenCalled()
-        })
-    })
-
-    test('(F) the Realm full view opening while the library shows returns to the landing', async () => {
-        await withLibrary(async () => {
-            OpenRealmStore.set(true)
-            await settle()
-            expect(homeView.view).toBe('landing')
         })
     })
 })
@@ -340,12 +328,12 @@ describe('HomeLibrary: picking an archived character', () => {
         }))
     })
 
-    test('H1: the library stays until the load selects, then the host unmounts it and still returns to the landing', async () => {
+    test('H1: the library stays until the load selects, then the selection unmounts the shell and the library with it', async () => {
         openHomeLibrary()
         const target = document.createElement('div')
         document.body.appendChild(target)
         let app: Record<string, unknown> | null = mount(HomeLibrary, { target }) as Record<string, unknown>
-        // The Home shell removes the library as soon as the selection is written.
+        // The Home shell removes the landing as soon as the selection is written.
         const stop = selectedCharID.subscribe((value) => {
             if (value >= 0 && app) {
                 const mounted = app
@@ -360,14 +348,13 @@ describe('HomeLibrary: picking an archived character', () => {
             const row = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('Bob'))!
             row.click()
             await settle()
-            expect(homeView.view).toBe('library')
+            expect(app).not.toBeNull()
             expect(changeCharSpy.mock.calls).toEqual([[1]])
 
             land('selected')
             await settle()
             expect(app).toBeNull()
             expect(selectionLog).toEqual(['write:1'])
-            expect(homeView.view).toBe('landing')
         } finally {
             stop()
             if (app) {
@@ -377,21 +364,11 @@ describe('HomeLibrary: picking an archived character', () => {
         }
     })
 
-    test('H2: Back while the load is pending removes the library and supersedes the open', async () => {
+    test('H2: the landing leaving while the load is pending cancels the open, so a late load selects nothing', async () => {
         openHomeLibrary()
         const target = document.createElement('div')
         document.body.appendChild(target)
-        let app: Record<string, unknown> | null = mount(HomeLibrary, { target }) as Record<string, unknown>
-        // The Home shell mounts the library only in the library view.
-        const stopHost = $effect.root(() => {
-            $effect(() => {
-                if (homeView.view !== 'library' && app) {
-                    const mounted = app
-                    app = null
-                    queueMicrotask(() => void unmount(mounted as never))
-                }
-            })
-        })
+        const app = mount(HomeLibrary, { target }) as Record<string, unknown>
         try {
             await settle()
             clickButton(target, language.simple)
@@ -402,39 +379,29 @@ describe('HomeLibrary: picking an archived character', () => {
             expect(changeCharSpy).toHaveBeenCalledTimes(1)
             expect(supersedeSpy).not.toHaveBeenCalled()
 
-            expect(dispatchBack()).toBe(true)
+            await unmount(app as never)
             await settle()
-            expect(homeView.view).toBe('landing')
-            expect(app).toBeNull()
             expect(supersedeSpy).toHaveBeenCalledTimes(1)
 
             land('superseded')
             await settle()
-            expect(homeView.view).toBe('landing')
             expect(selectionLog).toEqual([])
         } finally {
-            stopHost()
-            if (app) {
-                await unmount(app as never)
-            }
             target.remove()
         }
     })
 })
 
 describe('HomeLibrary: Back', () => {
-    test('(F) Back leaves the library for the landing without the quit warning; once unmounted Back warns', async () => {
+    test('S4b-G1 on the landing with no edit mode, Back is the landing\'s: the quit warning, not a library step', async () => {
         await withLibrary(async () => {
             expect(dispatchBack()).toBe(true)
             await settle()
-            expect(homeView.view).toBe('landing')
-            expect(showToast).not.toHaveBeenCalled()
+            expect(showToast).toHaveBeenCalledTimes(1)
         })
-        expect(dispatchBack()).toBe(true)
-        expect(showToast).toHaveBeenCalledTimes(1)
     })
 
-    test('(F) Back leaves edit mode first, then the library', async () => {
+    test('S4b-G1 Back leaves edit mode first, then the landing\'s Back warns', async () => {
         await withLibrary(async (target) => {
             clickButton(target, language.grid)
             await settle()
@@ -446,25 +413,24 @@ describe('HomeLibrary: Back', () => {
             expect(dispatchBack()).toBe(true)
             await settle()
             expect(isEditing(target)).toBe(false)
-            expect(homeView.view).toBe('library')
+            expect(showToast).not.toHaveBeenCalled()
 
             expect(dispatchBack()).toBe(true)
             await settle()
-            expect(homeView.view).toBe('landing')
-            expect(showToast).not.toHaveBeenCalled()
+            expect(showToast).toHaveBeenCalledTimes(1)
         })
     })
 
-    test('(F) a dialog covering the page takes the press: the dialog closes and the library stays', async () => {
+    test('(F) a dialog covering the page takes the press: the dialog closes, then Back warns', async () => {
         await withLibrary(async () => {
             alertStore.set({ type: 'normal', msg: 'hello' } as alertData)
             expect(dispatchBack()).toBe(true)
             await settle()
             expect(get(alertStore).type).toBe('none')
-            expect(homeView.view).toBe('library')
+            expect(showToast).not.toHaveBeenCalled()
             expect(dispatchBack()).toBe(true)
             await settle()
-            expect(homeView.view).toBe('landing')
+            expect(showToast).toHaveBeenCalledTimes(1)
         })
     })
 
@@ -479,26 +445,13 @@ describe('HomeLibrary: Back', () => {
             expect(dispatchBack()).toBe(true)
             expect(cover).toHaveBeenCalledTimes(1)
             expect(isEditing(target)).toBe(true)
-            expect(homeView.view).toBe('library')
             off()
         })
     })
 
-    test('(F) the library registers its Back handler once, however often the view changes', async () => {
+    test('(F) the library registers no Back handler of its own outside edit mode', async () => {
         await withLibrary(async () => {
-            const registered = registerSpy.mock.calls.length
-            expect(registered).toBe(1)
-            showHomeLanding()
-            await settle()
-            openHomeLibrary()
-            await settle()
-            showHomeLanding()
-            openHomeLibrary()
-            await settle()
-            expect(registerSpy.mock.calls.length).toBe(registered)
-            expect(dispatchBack()).toBe(true)
-            await settle()
-            expect(homeView.view).toBe('landing')
+            expect(registerSpy.mock.calls.length).toBe(0)
         })
     })
 })

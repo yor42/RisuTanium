@@ -337,6 +337,14 @@ describe('Home persona chip and empty hero', () => {
         expect(heroOf(root)!.querySelectorAll('a').length).toBe(0)
     })
 
+    test('S4b-G5: the hero heading is the Characters entries focus target and is not in the tab order (MC-2931)', () => {
+        const root = mountShell()
+        const heading = heroOf(root)!.querySelector<HTMLElement>('[data-jump-target="home-hero"]')
+        expect(heading).not.toBeNull()
+        expect(heading!.tagName).toBe('H2')
+        expect(heading!.tabIndex).toBe(-1)
+    })
+
     test('B11: the chip comes first, then the eyebrow, the greeting and the hero, then the community rows', () => {
         const root = mountShell()
         const chip = chipOf(root)!
