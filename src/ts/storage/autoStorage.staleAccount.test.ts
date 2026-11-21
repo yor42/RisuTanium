@@ -1,17 +1,17 @@
 /**
  * I6 (Agents/Reports/28-risuaccount-removal-plan.md): `AutoStorage.Init()`
  * must detect a stale account-sync profile, land on
- * whatever backend the platform would normally choose, and leave every
+ * the Node server backend, and leave every
  * account-sync `localStorage` key untouched (removal is boot's job, not
  * `Init()`'s -- see `bootstrap.staleAccountProfile.svelte.test.ts` for the
  * removal-on-acknowledgement behaviour).
  *
- * Three cases, each with `accountst`, `dosync` and
- * `fallbackRisuToken` set as a returning account-sync profile would leave
- * them. Every case asserts both that `staleAccountProfile` becomes `true`
- * and that the backend is positively the platform's native one: the real
- * `NodeStorage`, or (for the static cases, with or without `opfs_flag!`) the
- * exact object `localforage.createInstance({ name: 'risuai' })` returns.
+ * Both cases set `accountst`, `dosync` and `fallbackRisuToken` as a
+ * returning account-sync profile would leave them. On a Node-served page
+ * `staleAccountProfile` becomes `true` and the backend is the real
+ * `NodeStorage`. A page the Node server does not serve has no backend
+ * (CHORE-557): `Init()` rejects before reading `localStorage`, opens no
+ * LocalForage instance and leaves the flags in place.
  *
  * Real, unmocked: `AutoStorage`, `NodeStorage` (this file's
  * subject); `alert.ts` (a thin wrapper `AutoStorage` imports `alertStore`
@@ -76,13 +76,6 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 import { AutoStorage } from './autoStorage'
 import { NodeStorage } from './nodeStorage'
 
-/** Minimal shape `AutoStorage.Init()` actually reads off the global `FileSystemFileHandle` (a truthy `prototype.createWritable`); never constructed or called here. */
-interface MinimalFileSystemFileHandle {
-    prototype: {
-        createWritable: () => Promise<{ write: (data: unknown) => Promise<void>, close: () => Promise<void> }>
-    }
-}
-
 /** Leaves `localStorage` exactly as a real returning account-sync profile would: every account-sync key present, none of them account-sync-specific state cleared. */
 function setStaleAccountFlags() {
     localStorage.setItem('accountst', 'able')
@@ -105,46 +98,21 @@ beforeEach(() => {
 })
 
 describe('AutoStorage.Init() detects a stale account-sync profile and lands on the native backend (I6)', () => {
-    test('static build, LocalForage backend', async () => {
+    test('a page the Node server does not serve has no backend and reads nothing', async () => {
         setStaleAccountFlags()
+        const getItem = vi.spyOn(Storage.prototype, 'getItem')
         const storage = new AutoStorage()
 
-        await storage.Init()
+        await expect(storage.Init()).rejects.toThrow('No storage backend')
 
-        // Init() must fall through to the LocalForage `risuai` instance the
-        // platform would otherwise choose whenever accountst === 'able', and
-        // must record the detection on staleAccountProfile.
-        expect(localforageCreateInstanceMock).toHaveBeenCalledWith({ name: 'risuai' })
-        expect(storage.realStorage).toBe(localforageCreateInstanceMock.mock.results[0].value)
-        expect(storage.staleAccountProfile).toBe(true)
+        expect(getItem).not.toHaveBeenCalled()
+        getItem.mockRestore()
+        expect(localforageCreateInstanceMock).not.toHaveBeenCalled()
+        expect(storage.realStorage).toBeUndefined()
+        expect(storage.staleAccountProfile).toBe(false)
         expectFlagsUntouched()
     })
 
-    test('static build with opfs_flag! set (regression reproducer): the storage object still lands on LocalForage and leaves the flag for the page store to decide', async () => {
-        setStaleAccountFlags()
-        localStorage.setItem('opfs_flag!', 'able')
-        Object.defineProperty(window.navigator, 'storage', {
-            value: { getDirectory: vi.fn(async () => ({})) },
-            configurable: true,
-        })
-            ; (globalThis as unknown as { FileSystemFileHandle: MinimalFileSystemFileHandle }).FileSystemFileHandle = {
-                prototype: {
-                    createWritable: async () => ({
-                        write: async () => { },
-                        close: async () => { },
-                    }),
-                },
-            }
-
-        const storage = new AutoStorage()
-
-        await storage.Init()
-
-        expect(storage.realStorage).toBe(localforageCreateInstanceMock.mock.results[0].value)
-        expect(storage.staleAccountProfile).toBe(true)
-        expect(localStorage.getItem('opfs_flag!')).toBe('able')
-        expectFlagsUntouched()
-    })
     test('Node server backend', async () => {
         setStaleAccountFlags()
         platformState.isNodeServer = true

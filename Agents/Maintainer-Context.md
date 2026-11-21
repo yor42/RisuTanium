@@ -33853,6 +33853,44 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 **What the maintainer chose.** "Fold into stage 4 (Recommended)": stage 4 removes the IndexedDB store, the Blob/object-URL branch, the byte-budgeted LRU cache and the oversized memo together, keeping a small uncached data-URL fallback for Node's rare non-route keys. The session moved on to stage 3.
 
+### MC-2909 — A plain web host shows one refusal and stores nothing, 2026-11-21
+
+- Tag: decision (AskUserQuestion answer to the #265 session, stage 4 planning). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-888`, `MC-2908`, `#265`.
+- Facts put to the maintainer: once stage 4 removes the IndexedDB and OPFS stores, a page that is neither the Tauri app nor served by the RisuTanium Node server has nowhere to keep data.
+
+**What the maintainer chose.** "Refusal + pointer (Recommended)": such a page shows one refusal at boot, reading "RisuTanium no longer runs from a plain web host. Use the Android or desktop app, or the page the RisuTanium Node server serves.", and reads or writes no storage. The message is a new key in all 8 locales; old storage message keys are deleted when their last reader goes.
+
+### MC-2910 — The dead optional Blob contract goes in stage 4, 2026-11-21
+
+- Tag: decision (same question set as `MC-2909`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`, `#265`.
+
+**What the maintainer chose.** "Sub-stage 4e (Recommended)": the optional Blob-saving contract that only the browser stores used is removed in its own sub-stage, 4e, inside stage 4 rather than in stage 5.
+
+### MC-2911 — The refusal uses the existing error alert, 2026-11-21
+
+- Tag: decision (AskUserQuestion answer to the #265 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`.
+
+**What the maintainer chose.** "Error pop-up (Recommended)": the refusal is the existing error alert (`alertError`). Closing it leaves the inert loading view; that is accepted.
+
+### MC-2912 — The refusal shows in English only, 2026-11-21
+
+- Tag: decision (same question set as `MC-2911`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`, `MC-058`.
+
+**What the maintainer chose.** "English only (Recommended)": the refusal fires before the UI language is loaded, so it shows the English text. The key still ships in all 8 locales so locale parity holds.
+
+### MC-2913 — Data an old static build left in the browser stays untouched, 2026-11-21
+
+- Tag: decision (same question set as `MC-2911`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`, `MC-011`.
+
+**What the maintainer chose.** "Leave it (Recommended)": IndexedDB, OPFS and localStorage data an old static build left behind are never read and never deleted; no cleanup action is planned.
+
+### MC-2914 — The Hono static host retires in stage 5, 2026-11-21
+
+- Tag: decision (AskUserQuestion answer to the #265 session, after stage 4's first Gate 1 round). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-2909`, `#265`.
+- Facts put to the maintainer: `server/hono` serves only static files and a "Hello Hono" route; it has no storage API and sets no `__NODE__`, so it is a static host under `MC-876`.
+
+**What the maintainer chose.** "Retire it in stage 5 (Recommended)": during stage 4 a Hono-served page shows the static-host refusal; stage 5 removes `server/hono`, the `hono:build` script, its CI type-check job and its README and AGENTS mentions.
+
 ### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
 
 - Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.

@@ -4064,11 +4064,6 @@ export const languageEnglish = {
     forkPrivacyPolicy: "Privacy Policy",
     forkLegalLinksLabel: "Legal documents",
     opfsCopyBackProgress: (done: number, total: number) => `Moving your data to browser storage... (${done} / ${total}). Keep this tab open until it finishes.`,
-    opfsFallbackNoticeTab: "Your data could not be moved to browser storage this time, because another tab of this app is open or this browser cannot check for other tabs. RisuTanium is running from your existing data, and nothing was lost. Close the other tabs; it will try again the next time the app starts.",
-    opfsFallbackNoticeSpace: "Your data could not be moved to browser storage this time, because there is not enough free storage space. RisuTanium is running from your existing data, and nothing was lost. Free up some space; it will try again the next time the app starts.",
-    opfsFallbackNoticeNoIndexedDb: "Your data could not be moved to browser storage this time, because this browser cannot use IndexedDB. RisuTanium is running from your existing data, and nothing was lost. It will try again the next time the app starts.",
-    opfsFallbackNoticeError: (detail: string) => `Your data could not be moved to browser storage this time: ${detail}. RisuTanium is running from your existing data, and nothing was lost. It will try again the next time the app starts.`,
-    browserStorageUnavailable: "This browser could not open the storage RisuTanium keeps your data in, so nothing was loaded and nothing was changed. Reload the page. If this message keeps appearing, this browser cannot store RisuTanium's data (private browsing and very old browsers can cause this): open RisuTanium in another browser, or outside private browsing.",
     saveReadFailed: "RisuTanium could not read your saved data from storage, so it opened nothing and changed nothing. Reload the page to try again. If this keeps happening, check that the disk or the server the data is on can be reached.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'the pointer to your current save'
@@ -4110,6 +4105,7 @@ export const languageEnglish = {
     saveSeedFailed: "RisuTanium could not create the first save, so it opened nothing and changed nothing. Reload the page to try again.",
     saveLeftoverNotice: "RisuTanium found unused save data left behind by an interrupted save or restore. It does no harm. You can remove it in the clean-up in the settings.",
     saveMainFileLeftNotice: "Your data has moved to a new format, but the old save file is too large for this server to move aside. An upstream version of RisuAI opening the same data may open that old file. The clean-up in the settings keeps it safe until you delete it.",
+    staticBuildUnsupported: "RisuTanium no longer runs from a plain web host. Use the Android or desktop app, or the page the RisuTanium Node server serves.",
     opfsReadOnlyNotice: "RisuTanium is running from a temporary copy of your data this time, so it will not save changes, and restoring a backup or cleaning up storage is not available. Your data is not lost. Close other tabs of this app and restart it so the data can be moved to browser storage.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 character" : `${count} characters`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 other part this version cannot read" : `${count} other parts this version cannot read`,

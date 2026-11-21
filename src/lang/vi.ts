@@ -3920,11 +3920,6 @@ export const languageVietnamese = {
     forkPrivacyPolicy: "Chính sách Quyền riêng tư",
     forkLegalLinksLabel: "Tài liệu pháp lý",
     opfsCopyBackProgress: (done: number, total: number) => `Đang chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt... (${done} / ${total}). Hãy giữ tab này mở cho đến khi hoàn tất.`,
-    opfsFallbackNoticeTab: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì một tab khác của ứng dụng này đang mở hoặc trình duyệt này không thể kiểm tra các tab khác. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Hãy đóng các tab khác; ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
-    opfsFallbackNoticeSpace: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì không đủ dung lượng lưu trữ trống. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Hãy giải phóng bớt dung lượng; ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
-    opfsFallbackNoticeNoIndexedDb: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì trình duyệt này không thể sử dụng IndexedDB. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
-    opfsFallbackNoticeError: (detail: string) => `Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt: ${detail}. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.`,
-    browserStorageUnavailable: "Trình duyệt này không thể mở nơi lưu trữ mà RisuTanium dùng để giữ dữ liệu của bạn, nên chưa có gì được tải và không có gì bị thay đổi. Hãy tải lại trang. Nếu thông báo này tiếp tục xuất hiện, trình duyệt này không thể lưu trữ dữ liệu của RisuTanium (chế độ duyệt web riêng tư và các trình duyệt quá cũ có thể gây ra điều này): hãy mở RisuTanium trong trình duyệt khác, hoặc bên ngoài chế độ duyệt web riêng tư.",
     saveReadFailed: "RisuTanium không thể đọc dữ liệu đã lưu của bạn từ bộ nhớ, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại. Nếu sự cố này tiếp tục xảy ra, hãy kiểm tra xem có thể truy cập được ổ đĩa hoặc máy chủ chứa dữ liệu hay không.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'con trỏ tới bản lưu hiện tại của bạn'
@@ -3966,6 +3961,7 @@ export const languageVietnamese = {
     saveSeedFailed: "RisuTanium không thể tạo bản lưu đầu tiên, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại.",
     saveLeftoverNotice: "RisuTanium đã tìm thấy dữ liệu lưu không dùng đến bị bỏ lại bởi một lần lưu hoặc khôi phục bị gián đoạn. Dữ liệu này không gây hại. Bạn có thể xóa nó trong phần dọn dẹp ở cài đặt.",
     saveMainFileLeftNotice: "Dữ liệu của bạn đã được chuyển sang định dạng mới, nhưng tệp lưu cũ quá lớn để máy chủ này dời sang một bên. Một phiên bản RisuAI thượng nguồn mở cùng dữ liệu có thể mở tệp cũ đó. Phần dọn dẹp ở cài đặt sẽ giữ nó an toàn cho đến khi bạn xóa nó.",
+    staticBuildUnsupported: "RisuTanium không còn chạy từ một máy chủ web thông thường. Hãy dùng ứng dụng Android hoặc ứng dụng máy tính, hoặc trang do máy chủ RisuTanium Node cung cấp.",
     opfsReadOnlyNotice: "Lần này RisuTanium đang chạy từ một bản sao tạm thời của dữ liệu của bạn, nên sẽ không lưu các thay đổi, và việc khôi phục bản sao lưu hoặc dọn dẹp bộ nhớ không khả dụng. Dữ liệu của bạn không bị mất. Hãy đóng các tab khác của ứng dụng này và khởi động lại để dữ liệu có thể được chuyển sang bộ nhớ trình duyệt.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 nhân vật" : `${count} nhân vật`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 phần khác mà phiên bản này không thể đọc" : `${count} phần khác mà phiên bản này không thể đọc`,

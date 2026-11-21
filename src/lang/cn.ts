@@ -3921,11 +3921,6 @@ export const languageChinese = {
     "forkPrivacyPolicy": "隐私政策",
     "forkLegalLinksLabel": "法律文件",
     "opfsCopyBackProgress": (done: number, total: number) => `正在将您的数据移至浏览器存储... (${done} / ${total})。请在完成前保持此标签页打开。`,
-    "opfsFallbackNoticeTab": "本次未能将您的数据移至浏览器存储，因为本应用的另一个标签页已打开，或此浏览器无法检查其他标签页。RisuTanium 正在使用您现有的数据运行，没有任何数据丢失。请关闭其他标签页；应用下次启动时会再次尝试。",
-    "opfsFallbackNoticeSpace": "本次未能将您的数据移至浏览器存储，因为可用存储空间不足。RisuTanium 正在使用您现有的数据运行，没有任何数据丢失。请释放一些存储空间；应用下次启动时会再次尝试。",
-    "opfsFallbackNoticeNoIndexedDb": "本次未能将您的数据移至浏览器存储，因为此浏览器无法使用 IndexedDB。RisuTanium 正在使用您现有的数据运行，没有任何数据丢失。应用下次启动时会再次尝试。",
-    "opfsFallbackNoticeError": (detail: string) => `本次未能将您的数据移至浏览器存储：${detail}。RisuTanium 正在使用您现有的数据运行，没有任何数据丢失。应用下次启动时会再次尝试。`,
-    "browserStorageUnavailable": "此浏览器无法打开 RisuTanium 用于保存您数据的存储，因此没有加载任何内容，也没有更改任何内容。请重新加载页面。如果此提示持续出现，说明此浏览器无法存储 RisuTanium 的数据（无痕浏览模式和过旧的浏览器都可能导致这种情况）：请在其他浏览器中打开 RisuTanium，或在非无痕浏览模式下打开。",
     "saveReadFailed": "RisuTanium 无法从存储中读取您保存的数据，因此没有打开任何内容，也没有更改任何内容。请重新加载页面后重试。如果问题持续出现，请检查数据所在的磁盘或服务器是否可以访问。",
     "saveDamageItem": (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '指向当前存档的指针'
@@ -3967,6 +3962,7 @@ export const languageChinese = {
     "saveSeedFailed": "RisuTanium 无法创建第一个存档，因此没有打开任何内容，也没有更改任何内容。请重新加载页面后重试。",
     "saveLeftoverNotice": "RisuTanium 发现了因保存或恢复被中断而遗留的未使用存档数据。这些数据无害，您可以在设置中的清理里将其删除。",
     "saveMainFileLeftNotice": "您的数据已迁移到新格式，但旧的存档文件过大，此服务器无法将其移开。打开同一份数据的上游版本 RisuAI 可能会打开那个旧文件。在您将其删除之前，设置中的清理会妥善保留它。",
+    "staticBuildUnsupported": "RisuTanium 不再支持从普通网页主机运行。请使用 Android 应用或桌面应用，或使用 RisuTanium Node 服务器提供的页面。",
     "opfsReadOnlyNotice": "RisuTanium 这次是在您数据的临时副本上运行，因此不会保存更改，也无法恢复备份或清理存储。您的数据没有丢失。请关闭此应用的其他标签页并重新启动，以便将数据迁移到浏览器存储。",
     "legacyPartialCharacters": (count: number) => count === 1 ? "1 个角色" : `${count} 个角色`,
     "legacyPartialUnreadable": (count: number) => count === 1 ? "另外 1 个此版本无法读取的部分" : `另外 ${count} 个此版本无法读取的部分`,
