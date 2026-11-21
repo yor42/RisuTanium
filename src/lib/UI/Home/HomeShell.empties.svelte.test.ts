@@ -189,10 +189,12 @@ afterEach(async () => {
 })
 
 describe('Home persona chip and empty hero', () => {
-    test('R1: only a hidden system character and a trashed one show the hero; the cards stay', () => {
+    test('R1: only a hidden system character and a trashed one show the hero; the community rows stay', () => {
         const root = mountShell()
         expect(heroOf(root)).not.toBeNull()
-        expect(Array.from(root.querySelectorAll('h2')).some((h) => !heroOf(root)!.contains(h))).toBe(true)
+        const rows = Array.from(root.querySelectorAll('[data-part="home-community"] > ul > li'))
+        expect(rows.length).toBe(4)
+        expect(rows.every((row) => !heroOf(root)!.contains(row))).toBe(true)
     })
 
     test('R2: the chip shows the username, not the selected persona list entry', () => {
@@ -335,7 +337,7 @@ describe('Home persona chip and empty hero', () => {
         expect(heroOf(root)!.querySelectorAll('a').length).toBe(0)
     })
 
-    test('B11: the chip comes first, then the eyebrow, the greeting and the hero, then the cards', () => {
+    test('B11: the chip comes first, then the eyebrow, the greeting and the hero, then the community rows', () => {
         const root = mountShell()
         const chip = chipOf(root)!
         const hero = heroOf(root)!
@@ -348,13 +350,13 @@ describe('Home persona chip and empty hero', () => {
         expect(follows(eyebrow!, greeting!)).toBe(true)
         expect(follows(greeting!, hero)).toBe(true)
 
-        // The card headings are the h2s that follow the hero and sit outside it.
-        const cardHeadings = Array.from(root.querySelectorAll('h2')).filter(
-            (h) => !hero.contains(h) && follows(hero, h),
+        // The community rows are the list entries that follow the hero and sit outside it.
+        const rows = Array.from(root.querySelectorAll('[data-part="home-community"] > ul > li')).filter(
+            (row) => !hero.contains(row) && follows(hero, row),
         )
-        expect(cardHeadings.length).toBeGreaterThan(0)
-        for (const heading of cardHeadings) {
-            expect(hero.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(rows.length).toBe(4)
+        for (const row of rows) {
+            expect(hero.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
         }
     })
 })

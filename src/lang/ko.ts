@@ -2108,6 +2108,8 @@ export const languageKorean = {
     "homeGreetingAfternoon": "좋은 오후예요",
     "homeGreetingEvening": "좋은 저녁이에요",
     "homeGreetingNight": "아직 안 주무세요?",
+    "homeCommunityHeading": "커뮤니티와 소스",
+    "homeSideLabel": "디스커버리와 커뮤니티",
     "homeLinkDiscordTitle": "디스코드",
     "homeLinkDiscordDescription": "디스코드 서버에 참여해 다른 사용자, 개발자와 대화해 보세요.",
     "homeLinkWebsiteTitle": "웹사이트",

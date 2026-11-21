@@ -4,6 +4,12 @@
         href: string;
         upstream: boolean;
     }
+
+    // The hairline upstream tag, defined once so the plain link rows and the
+    // destinations inside a disclosure draw it the same way. It never shrinks:
+    // a title wraps at its spaces before the tag is squeezed.
+    export const UPSTREAM_TAG_CLASS =
+        "shrink-0 rounded-[var(--home-radius-1)] border border-darkborderc px-1.5 text-[length:var(--home-text-xs)] text-[color:var(--home-ink-2)]";
 </script>
 
 <script lang="ts">
@@ -25,30 +31,23 @@
     //   - Escape (window-scoped, so it fires no matter which item holds
     //     focus) closes and returns focus to the trigger.
     //   - Activating an item closes, then calls openURL.
-    //   - Clicking outside the card closes, without moving focus.
-    //   - Focus leaving the card (via `focusout` with a `relatedTarget`
+    //   - Clicking outside the disclosure closes, without moving focus.
+    //   - Focus leaving the disclosure (via `focusout` with a `relatedTarget`
     //     containment check, not `blur`) closes. A bare `blur` would fight
     //     Escape's own focus-return, since moving focus back to the trigger
     //     blurs whatever the user was last focused on.
 
     interface Props {
         title: string;
+        // Shown only inside the revealed region, above the destinations.
         description: string;
-        cardClass: string;
-        triggerClass: string;
-        iconClass: string;
         // Defaults to the GitHub repo icon below: the only other caller
-        // (the Email disclosure in MainMenu.svelte) passes its own icon
+        // (the Email disclosure in CommunityList.svelte) passes its own icon
         // rather than this component guessing from the destinations.
         icon?: typeof FolderCodeIcon;
         // Defaults to the four GitHub destinations below. The Email
-        // disclosure in MainMenu.svelte passes its own two mailto
-        // destinations instead -- that reuse is exactly why
-        // `destinations` and `icon` exist as optional props here: the
-        // discriminated `RelatedLink` union in MainMenu.svelte gained
-        // them for this component's sake (`MC-065` records the
-        // disclosure variant itself, not these two fields), not the
-        // other way around.
+        // disclosure in CommunityList.svelte passes its own two mailto
+        // destinations instead.
         destinations?: Destination[];
     }
 
@@ -65,15 +64,12 @@
     let {
         title,
         description,
-        cardClass,
-        triggerClass,
-        iconClass,
         icon: Icon = FolderCodeIcon,
         destinations = defaultDestinations
     }: Props = $props();
 
     // Unique per instance, so aria-controls never risks colliding between
-    // the GitHub and Email disclosures that now both mount this component.
+    // the GitHub and Email disclosures that both mount this component.
     const listId = `source-disclosure-list-${Math.random().toString(36).slice(2)}`;
 
     let open = $state(false);
@@ -189,64 +185,49 @@
 </script>
 
 <!--
-  The card, not the trigger, draws the keyboard focus ring: cardClass
-  puts the trigger inset by p-6, so the trigger's own ring would land
-  as a square box inside the card instead of tracing the card's rounded
-  edge like the plain link cards' single <button> does. has-[>button:...]
-  keys off the trigger's focus-visible state (":focus-visible", not
-  ":focus", so a mouse click still draws nothing) and outline-style:auto
-  reuses the browser's default ring to match those other cards.
+  The root keeps the trigger as its direct child, so the trigger's parent
+  scopes one disclosure's revealed region. The trigger is the row: it draws
+  its own focus ring, and its title follows the shared row rule (no min-w-0,
+  break-word, flex-1) so a short title is never split beside the chevron.
 -->
-<div
-    class={cardClass + " has-[>button:focus-visible]:[outline-style:auto]"}
-    bind:this={cardEl}
-    onfocusout={handleFocusOut}
->
+<div bind:this={cardEl} onfocusout={handleFocusOut}>
     <button
-        class={triggerClass + " focus-visible:outline-hidden"}
+        class="risu-focus-ring flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 text-left text-textcolor hover:bg-darkbutton"
         aria-expanded={open}
         aria-controls={listId}
         bind:this={triggerEl}
         onclick={toggle}
     >
-        <div class="relative z-10 w-[68%] sm:w-[70%]">
-            <h2 class="text-2xl font-bold tracking-tight text-textcolor break-keep">{title}</h2>
-            <span class="mt-2 block text-base leading-relaxed text-textcolor2">
-                {description}
-            </span>
-        </div>
-
-        <div aria-hidden="true" class="pointer-events-none absolute -right-12 top-1/2 -translate-y-1/2 text-textcolor">
-            <Icon class={iconClass} strokeWidth={1} />
-        </div>
-
+        <span aria-hidden="true" data-part="home-row-icon" class="shrink-0 text-[color:var(--home-ink-2)]">
+            <Icon class="h-4 w-4" strokeWidth={1.5} />
+        </span>
+        <span data-part="home-community-title" class="max-w-full flex-1 text-[length:var(--home-text-md)] [overflow-wrap:break-word]">{title}</span>
         <!--
           The visual echo of aria-expanded, not a substitute for it: the
-          chevron is aria-hidden and rotates on open with the same
-          transition duration the other cards' hover motion uses, but the
-          state itself is carried to assistive tech by aria-expanded above.
+          chevron is aria-hidden and rotates on open, but the state itself is
+          carried to assistive tech by aria-expanded above.
         -->
-        <div
+        <span
             aria-hidden="true"
-            class={"pointer-events-none absolute right-4 top-4 z-10 text-textcolor2 transition-transform duration-300" + (open ? " rotate-180" : "")}
+            class={"shrink-0 text-[color:var(--home-ink-2)] transition-transform duration-300" + (open ? " rotate-180" : "")}
         >
-            <ChevronDownIcon class="h-5 w-5" strokeWidth={1.5} />
-        </div>
+            <ChevronDownIcon class="h-4 w-4" strokeWidth={1.5} />
+        </span>
     </button>
     {#if open}
         <!--
-          slide on this wrapper animates the height, which is what makes the
-          card's own background (overflow-hidden, so it clips to that
-          height) visibly expand downward on open and collapse on close;
-          fade on the <ul> inside fades the revealed links in and out. Both
-          collapse to a zero-length transition when the user has asked for
-          reduced motion, but the open/close state above is unaffected
-          either way -- only the animation is skipped.
+          slide on this wrapper animates the height, so the revealed region
+          visibly expands downward on open and collapses on close; fade on
+          the <ul> inside fades the revealed links in and out. Both collapse
+          to a zero-length transition when the user has asked for reduced
+          motion, but the open/close state above is unaffected either way --
+          only the animation is skipped.
         -->
         <div transition:slide={{ duration: transitionDuration }}>
+            <p class="px-2 pb-1 pl-9 text-[length:var(--home-text-sm)] text-[color:var(--home-ink-2)]">{description}</p>
             <ul
                 id={listId}
-                class="relative z-10 mt-2 flex flex-col gap-1 rounded-lg bg-black/30 p-2"
+                class="flex flex-col gap-1 pl-7"
                 transition:fade={{ duration: transitionDuration }}
             >
                 {#each destinations as destination}
@@ -255,13 +236,13 @@
                             href={destination.href}
                             target={destination.href.startsWith("mailto:") ? undefined : "_blank"}
                             rel="noopener noreferrer"
-                            class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm text-textcolor transition-colors duration-200 hover:bg-selected/50 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+                            class="risu-focus-ring flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 text-[length:var(--home-text-md)] text-textcolor transition-colors duration-200 hover:bg-darkbutton"
                             aria-label={destination.upstream ? `${destination.label} (${language.homeSourceUpstreamLabel})` : undefined}
                             onclick={(event) => activate(event, destination.href)}
                         >
-                            <span>{destination.label}</span>
+                            <span class="max-w-full flex-1 [overflow-wrap:break-word]">{destination.label}</span>
                             {#if destination.upstream}
-                                <span aria-hidden="true" class="rounded-full bg-textcolor2/20 px-2 py-0.5 text-xs text-textcolor/70">
+                                <span aria-hidden="true" data-part="home-upstream-tag" class={UPSTREAM_TAG_CLASS}>
                                     {language.homeSourceUpstreamLabel}
                                 </span>
                             {/if}
