@@ -301,11 +301,8 @@ describe('CharConfigPanel value control names', () => {
     test('additional assets page: the asset style select is named by its visible label', async () => {
         const target = await show(1, { db: { newImageHandlingBeta: true } })
         await pickView(target, 2)
-        // The insert-asset-prompt checkbox shares the select's parent, so the helper's toggle pairing (F7) reports
-        // it as the select's toggle; every naming rule (F1-F6) must still hold.
-        const problems = fieldNameProblems(target, names(language.assetStyle))
-        expect(problems.filter((line) => !line.includes(' F7 '))).toEqual([])
-        expect(problems.filter((line) => line.includes(' F7 ')).map((line) => line.replace(/^.*> /, ''))).toEqual(['F7 found an unexpected toggle checkbox'])
+        // The insert-asset-prompt checkbox shares the select's parent and shows its own text, so it is not the select's toggle.
+        expect(fieldNameProblems(target, names(language.assetStyle))).toEqual([])
         expect(unnamedControls(target, { fields: true, values: true })).toEqual(KNOWN_UNNAMED)
     })
 

@@ -114,6 +114,27 @@ describe('editing a preset in place', () => {
         expect(root.querySelector('#task-preset-name')).not.toBeNull()
     })
 
+    /**
+     * U2 regression reproducer: a plain-HTTP origin has no `crypto.randomUUID`. `uuid` captures the native function when
+     * it is first evaluated, so this proves the add handler no longer calls `crypto.randomUUID`; it does not prove the
+     * library's own `getRandomValues` fallback.
+     */
+    test('(R) U2: New adds a preset with a v4 id and selects it without crypto.randomUUID', () => {
+        seed([])
+        const root = open()
+        Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined })
+        try {
+            buttonWithText(root, language.utility.editor.newPreset).click()
+            flushSync()
+        } finally {
+            delete (crypto as { randomUUID?: unknown }).randomUUID
+        }
+
+        expect(stored()).toHaveLength(1)
+        expect(stored()[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+        expect(root.querySelector('#task-preset-name')).not.toBeNull()
+    })
+
     test('(R) New on a profile with no list creates the list', () => {
         DBState.db = {} as never
         const root = open()

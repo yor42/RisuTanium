@@ -32,6 +32,7 @@ import { escapeHtmlText } from '../htmlEscape'
 import { formatMiB } from '../drive/backupUpstreamSizes'
 import { registerGuiReloadHook } from '../guiReloadHooks'
 import { untrack } from 'svelte'
+import { sha256Hex } from '../assetHash'
 
 const markdownItOptions = {
     html: true,
@@ -1306,7 +1307,7 @@ function decodeStyleContent(hexText:string):{css?:string, fallback?:string}{
 }
 
 export async function hasher(data:Uint8Array){
-    return Buffer.from(await crypto.subtle.digest("SHA-256", data as any)).toString('hex');
+    return sha256Hex(data)
 }
 
 export type CbsConditions = {

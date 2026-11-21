@@ -66,9 +66,8 @@ async function importDropped(file:File, progress:ImportProgress):Promise<ImportO
         } else {
             return await importCharacterFile({
                 name: file.name,
-                data: file,
-                archive: true
-            }, undefined, progress)
+                data: file
+            }, progress)
         }
     } catch (error) {
         console.error(error)

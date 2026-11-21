@@ -14,7 +14,7 @@ import { describe, test, expect } from 'vitest'
 import type { Database } from '../../../ts/storage/database.svelte'
 import type { ShardEntry } from '../../../ts/storage/store2/format'
 import { stubFromEntry } from '../../../ts/storage/store2/codec/stub'
-import { buildColdStub } from '../../../ts/process/coldCharacter'
+import { buildColdStub } from '../../../ts/process/tests/coldStubFixture'
 import { coldStorageHeader } from '../../../ts/process/coldstorageData'
 import { STORY_CAP, currentChat, freezeStories, isStory, resolveFrozen, storyOrder } from './homeStories'
 

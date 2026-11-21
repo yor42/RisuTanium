@@ -4,7 +4,7 @@ import {
     assembleDatabase, CodecAssembleError, encodeScoped, IDENTITY, moduleHandles, previousFrom, unitDigest, unitMapSource,
     type EncodedTree, type PreviousEncoding, type ReusableUnit, type UnitSource,
 } from '../../store2/codec'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { hydrateEntityDigests, hydrateModuleDigests, previousOfTree, registerEntityUnits, registerModuleUnits, type StoredTree } from '../../store2/previousOfTree'
 import { createSaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
 import { IL_REF_V, keyOfRef, type ModuleEntry, type ShardEntry } from '../../store2/format'

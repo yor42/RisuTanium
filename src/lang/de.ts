@@ -1664,6 +1664,8 @@ export const languageGerman = {
         "value": "Wert",
         "var": "Variable",
         "operandType": "{label}-Typ",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Variablenname",
         "outputVar": "Ausgabevariable",
         "name": "Name",
@@ -3871,17 +3873,32 @@ export const languageGerman = {
     "coldStorage": "Charaktere und Module beim Start archivieren",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Um den Speicherverbrauch niedrig zu halten, speichert die App nun beim Start die vollständigen Daten jedes Charakters separat und lädt sie erst, wenn Sie diesen Charakter öffnen. Es wird nichts gelöscht, und Ihre Charaktere sehen aus und funktionieren wie bisher. Sie können dies unter ${settings} > ${advancedSettings} > ${toggle} ausschalten. Wenn Sie es ausschalten, werden keine neuen Charaktere archiviert, und bereits archivierte Charaktere lassen sich weiterhin normal öffnen.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `Das Archivieren wurde für diesen Start gestoppt, nachdem zwei Charaktere hintereinander nicht separat gespeichert werden konnten; der zweite war „${characterName}". Diese Charaktere bleiben vollständig geladen im Haupt-Speicherstand, und die davor archivierten Charaktere sind nicht betroffen. Die übrigen Charaktere wurden unverändert gelassen.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `Diese Charaktere konnten nicht separat gespeichert werden: ${characterNames}${otherCount > 0 ? ` und ${otherCount} weitere` : ''}. Sie bleiben vollständig geladen und funktionieren wie bisher, und die App versucht beim Start nicht erneut, sie zu archivieren. Um es auf diesem Gerät erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Ihr Speicherstand ist zu groß für das Archivieren von Charakteren auf dem selbst gehosteten Server, daher wurde nichts archiviert und Ihr Speicherstand blieb unverändert. Alles funktioniert wie bisher. Um es auf diesem Gerät erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Das Archivieren von Charakteren beim Start ist auf diesem Gerät pausiert, weil es zweimal hintereinander nicht abgeschlossen wurde. Es ist nichts verloren gegangen, und bereits archivierte Charaktere werden weiterhin geladen, wenn Sie sie öffnen. Bis Sie es fortsetzen, wird beim Start nichts Neues archiviert. Um es erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
     "cleanColdStorage": "Nicht verwendete archivierte Daten und Assets bereinigen",
     "customSidebarConfig": "Benutzerdefinierte Seitenleisten-Konfiguration",
     "cleanColdStorageConfirm": "Dadurch werden alle nicht verwendeten archivierten Daten (Kaltlager) und alle nicht verwendeten Asset-Dateien dauerhaft gelöscht, also Bilder und Audiodateien, die kein Charakter, kein Modul, keine Persona und keine Einstellung mehr verwendet. Manches davon könnte in Zukunft noch nützlich sein, und es kann nicht wiederhergestellt werden. Möchten Sie fortfahren?",
+    "cleanUnusedFiles": "Nicht verwendete Dateien bereinigen",
+    "cleanUnusedFilesMeasuring": "Nicht verwendete Dateien werden gesucht. Bei einer großen Bibliothek kann das eine Weile dauern.",
+    "cleanUnusedFilesDeleting": "Nicht verwendete Dateien werden gelöscht...",
+    "cleanUnusedFilesConfirm": (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'Größe unbekannt' : bytes < 0.1 * 1024 * 1024 ? 'unter 0.1 MiB' : `etwa ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `${count} nicht verwendete Datei(en) (${size}) löschen? Kein Charakter, kein Modul, keine Persona, keine Einstellung und kein Wiederherstellungspunkt verwendet sie. Schließen Sie zuerst alle anderen Tabs und Fenster dieser App. Dies kann nicht rückgängig gemacht werden.`
+    },
+    "cleanUnusedFilesConfirmNode": (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'Größe unbekannt' : bytes < 0.1 * 1024 * 1024 ? 'unter 0.1 MiB' : `etwa ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `${count} nicht verwendete Datei(en) (${size}) jetzt löschen?`
+            + (later > 0 ? ` Es wurden ${later} weitere nicht verwendete Datei(en) gefunden. Auf diesem Server wird eine Datei erst gelöscht, nachdem drei Bereinigungen im Abstand von mindestens einem Tag sie als nicht verwendet erkannt haben, höchstens 500 auf einmal; diese werden daher für spätere Bereinigungen vorgemerkt.` : '')
+            + ` Schließen Sie zuerst alle anderen Tabs und Geräte, die diesen Server verwenden: Mit JA bestätigen Sie, dass keines davon geöffnet ist. Dies kann nicht rückgängig gemacht werden.`
+    },
+    "cleanUnusedFilesNoteNode": (later: number) => `Es kann noch keine nicht verwendete Datei gelöscht werden. Es wurden ${later} nicht verwendete Datei(en) gefunden. Auf diesem Server wird eine Datei erst gelöscht, nachdem drei Bereinigungen im Abstand von mindestens einem Tag sie als nicht verwendet erkannt haben, höchstens 500 auf einmal. Sollen sie jetzt vorgemerkt werden, damit eine spätere Bereinigung sie löschen kann? Schließen Sie zuerst alle anderen Tabs und Geräte, die diesen Server verwenden: Mit JA bestätigen Sie, dass keines davon geöffnet ist.`,
+    "cleanUnusedFilesNodeWait": "Die nicht verwendeten Dateien wurden vor weniger als einem Tag geprüft. Auf diesem Server kann eine Datei erst einen Tag nach der letzten Prüfung gelöscht werden, versuchen Sie es daher später erneut. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesNone": "Es wurden keine nicht verwendeten Dateien gefunden. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesDone": (deleted: number, kept: number) => `${deleted} nicht verwendete Datei(en) gelöscht.${kept > 0 ? ` ${kept} Datei(en) wurden behalten, weil sie wieder verwendet wurden oder nicht gelöscht werden konnten.` : ''}`,
+    "cleanUnusedFilesStopped": (deleted: number) => `Die Bereinigung wurde angehalten, weil die App begonnen hat, ihre Daten zu verwenden (Speichern, ein Chat, eine Wiederherstellung oder ein anderer Tab). ${deleted} Datei(en) wurden vor dem Anhalten gelöscht. Versuchen Sie es später erneut.`,
+    "cleanUnusedFilesCancelled": (deleted: number) => deleted === 0 ? 'Bereinigung abgebrochen. Es wurde nichts gelöscht.' : `Bereinigung abgebrochen. ${deleted} Datei(en) wurden vor dem Anhalten gelöscht.`,
+    "cleanUnusedFilesOtherTab": "Ein anderer Tab dieser App ist geöffnet. Schließen Sie alle anderen Tabs dieser App und versuchen Sie es dann erneut. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesNoTabCheck": "Diese Seite kann nicht auf andere geöffnete Tabs prüfen (sie wurde nicht über HTTPS oder localhost geöffnet) und kann daher keine nicht verwendeten Dateien bereinigen. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesBusy": "Warten Sie, bis das Speichern, ein laufender Chat oder die automatische Bereinigung beendet ist, und versuchen Sie es dann erneut. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesRefused": "Die Bereinigung kann derzeit nicht ausgeführt werden (die gespeicherten Daten ändern sich, werden wiederhergestellt oder konnten nicht gelesen werden). Es wurde nichts gelöscht. Versuchen Sie es später erneut oder laden Sie die App zuerst neu.",
     "coldStorageCleanupNoLockConfirm": "Ihr Browser kann nicht prüfen, ob ein anderer Tab dieser App geöffnet ist. Ist während der Bereinigung ein anderer Tab dieser App geöffnet, können in diesem Tab Daten verloren gehen. Schließen Sie zuerst alle anderen Tabs dieser App und fahren Sie dann fort. Trotzdem fortfahren?",
     "coldStorageCleanupNodeConfirm": "Führen Sie diese Bereinigung nicht aus, während ein anderes Gerät oder ein anderer Browser denselben Server verwendet. Alles, was dort während der Bereinigung gespeichert wird, kann verloren gehen oder gelöscht werden. Fortfahren?",
     "coldStorageCleanupCheckingTabs": "Es wird geprüft, ob weitere Tabs dieser App geöffnet sind, bevor die Bereinigung beginnt...",

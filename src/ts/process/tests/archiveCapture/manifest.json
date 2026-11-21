@@ -1,0 +1,339 @@
+{
+  "content": {
+    "generator": {
+      "files": [
+        "Agents/Tools/save-gen/archiveCapture.svelte.harness.ts"
+      ],
+      "command": "npx vitest run --config Agents/Tools/vitest.archiveCapture.config.ts",
+      "config": "Agents/Tools/vitest.archiveCapture.config.ts"
+    },
+    "fflateVersion": "0.8.3",
+    "platform": "web",
+    "systemTime": 1795262400000,
+    "standIns": [
+      "page byte store: an in-memory map behind the real coldstorage.svelte, through createForageBackedStore",
+      "platform flags: isTauri false, isNodeServer false, isIOS false (web key layout coldstorage/<key>)",
+      "uuid v4: a counter, set per case",
+      "clock: Date faked to systemTime (fflate worker clock is not faked; the gzip MTIME field is masked when comparing)",
+      "UI and alerts: src/ts/alert, src/ts/stores.svelte (DBState is a $state object), src/ts/util",
+      "hasher (identity), parseMarkdownSafe, compressImage, getImageType, reencodeImage",
+      "saveAsset, saveAssetFromPieces and the rest of globalApi.svelte",
+      "decodeRPack, encodeRPack, convertExternalLorebook, updateInlayScreen, PngChunk, translateHTML",
+      "interchangeability, chatOrigin, avatarThumb, upstreamAgreement",
+      "database.svelte (partial: getDatabase, setDatabase, presetTemplate and the character accessors)",
+      "consequence: asset paths and image fields inside the card-import units (C5 to C9) are mock-produced opaque strings"
+    ],
+    "cases": [
+      {
+        "id": "new-alice",
+        "chaId": "cha-new-alice",
+        "kind": "new",
+        "entry": "engine-new",
+        "sourceKind": "character",
+        "sourceFile": "new-alice.source.json",
+        "stubFile": "new-alice.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000c1",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000c1",
+            "file": "new-alice.unit.gz",
+            "byteLength": 200,
+            "maskedSha256": "fc2b7028499ba3e9e9436b02fe8beb3261b70a8adb618ecf2c1a90022b89d58d",
+            "payloadSha256": "e89714ac29868b6eeaf7ac39ebf85343102daf7f56aa5a1b3bb715368a2e1782"
+          }
+        ]
+      },
+      {
+        "id": "loaded-edited",
+        "chaId": "cha-loaded-edited",
+        "kind": "loaded",
+        "entry": "engine-loaded",
+        "sourceKind": "character",
+        "sourceFile": "loaded-edited.source.json",
+        "stubFile": "loaded-edited.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000c2",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000c2",
+            "file": "loaded-edited.unit.gz",
+            "byteLength": 227,
+            "maskedSha256": "e0295fe2cb998ba4763b61e9a9da4a6d2acc2a35d2d1b2c51a92fc5733b28455",
+            "payloadSha256": "2acce0372a2e8bb83497e8f334b8e3f51e3f145c81717eeb9fe2b7662005bd56"
+          }
+        ]
+      },
+      {
+        "id": "loaded-trashed",
+        "chaId": "cha-loaded-trashed",
+        "kind": "loaded",
+        "entry": "engine-loaded",
+        "sourceKind": "character",
+        "sourceFile": "loaded-trashed.source.json",
+        "stubFile": "loaded-trashed.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000c3",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000c3",
+            "file": "loaded-trashed.unit.gz",
+            "byteLength": 204,
+            "maskedSha256": "166e81a29c3fe4d169b3a7cb3530b7aee0c5d12331b7f7a7e5b131f1114ae1a1",
+            "payloadSha256": "cdc22dac182ba167a236abf617074eca6af28d69f0174bdc30f33ace072aa49f"
+          }
+        ]
+      },
+      {
+        "id": "rearchived",
+        "chaId": "cha-rearchived",
+        "kind": "sequence",
+        "entry": "engine-sequence",
+        "sourceKind": "character",
+        "sourceFile": "rearchived.source.json",
+        "stubFile": "rearchived.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit1",
+            "key": "00000000-0000-4000-8000-0000000000c4",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000c4",
+            "file": "rearchived.unit1.gz",
+            "byteLength": 199,
+            "maskedSha256": "3e0e021c264353dbc55128abc4cb256b9d9a32cd6ad961f7b1439c69c136d95c",
+            "payloadSha256": "aa76e2c8e8a7d9c84a32293a0aaa52c38d46176f8e40d48bb09f36af1dfabb3e"
+          },
+          {
+            "role": "unit2",
+            "key": "00000000-0000-4000-8000-0000000000c5",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000c5",
+            "file": "rearchived.unit2.gz",
+            "byteLength": 206,
+            "maskedSha256": "a6878cc53e12a86ad7161b475f75db58f01ce6f466078ef22276c7ab39fbc634",
+            "payloadSha256": "07fd988a3ecf4de2218921edef78003892854500e6eb5c636f416235047150bc"
+          }
+        ]
+      },
+      {
+        "id": "import-v2",
+        "chaId": "00000000-0000-4000-8000-000000000502",
+        "kind": "import",
+        "entry": "card-import",
+        "sourceKind": "card",
+        "sourceFile": "import-v2.source.json",
+        "stubFile": "import-v2.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-000000000503",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-000000000503",
+            "file": "import-v2.unit.gz",
+            "byteLength": 719,
+            "maskedSha256": "d6e01a2f6461247f61d2f0e8fa46ca88a42f361a924aae758c82881c152e1a5b",
+            "payloadSha256": "0a556ba3916f53555b9892b5bb777aa051c80b4314d5f5805cd8c7e98ccfbcd5"
+          }
+        ]
+      },
+      {
+        "id": "import-v3",
+        "chaId": "00000000-0000-4000-8000-000000000602",
+        "kind": "import",
+        "entry": "card-import",
+        "sourceKind": "card",
+        "sourceFile": "import-v3.source.json",
+        "stubFile": "import-v3.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-000000000603",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-000000000603",
+            "file": "import-v3.unit.gz",
+            "byteLength": 723,
+            "maskedSha256": "ccf0aac28f9b898ce944888a83ae5e7dd3c1ca98ecdc1d9e572e76f1b0791718",
+            "payloadSha256": "1262b9ab3f6c2df03fd25a61f9073dfade282c2b3e59dc8a9f9f75dc95772d7b"
+          }
+        ]
+      },
+      {
+        "id": "import-tavern",
+        "chaId": "00000000-0000-4000-8000-000000000702",
+        "kind": "import",
+        "entry": "card-import",
+        "sourceKind": "card",
+        "sourceFile": "import-tavern.source.json",
+        "stubFile": "import-tavern.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-000000000703",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-000000000703",
+            "file": "import-tavern.unit.gz",
+            "byteLength": 524,
+            "maskedSha256": "b366e8a5b2c3bdaf2805fcea90f8009e79cba99608955ed840d97b4fdd5a2db8",
+            "payloadSha256": "63297540de7942b523ae7c59254fdc9206dccc2fbd1ed23a1b3bfe1348807914"
+          }
+        ]
+      },
+      {
+        "id": "owner-fields",
+        "chaId": "00000000-0000-4000-8000-000000000802",
+        "kind": "loaded",
+        "entry": "engine-loaded",
+        "sourceKind": "character",
+        "sourceFile": "owner-fields.source.json",
+        "stubFile": "owner-fields.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000c9",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000c9",
+            "file": "owner-fields.unit.gz",
+            "byteLength": 685,
+            "maskedSha256": "384fa058f1b6bd9137ef93383fca2d9f02989bef6c1e221dd9447537d1fccadd",
+            "payloadSha256": "46276e09a0752d2023206c2413c95e70fef11b323f10ee395cfa74258d85071e"
+          }
+        ]
+      },
+      {
+        "id": "render-when-complete",
+        "chaId": "00000000-0000-4000-8000-000000000902",
+        "kind": "loaded",
+        "entry": "engine-loaded",
+        "sourceKind": "character",
+        "sourceFile": "render-when-complete.source.json",
+        "stubFile": "render-when-complete.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000ca",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000ca",
+            "file": "render-when-complete.unit.gz",
+            "byteLength": 706,
+            "maskedSha256": "2b37f726c3ea44da4627e194978c06a9f4aa131845c44de3b4cad622dcb1b689",
+            "payloadSha256": "b0c13bc6196971d9e72166c4e12252afa2fd046439555c26d55612b755f36728"
+          }
+        ]
+      },
+      {
+        "id": "group-new",
+        "chaId": "cha-group-new",
+        "kind": "new",
+        "entry": "engine-new",
+        "sourceKind": "character",
+        "sourceFile": "group-new.source.json",
+        "stubFile": "group-new.stub.json",
+        "chatKeys": [],
+        "units": [
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000cb",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000cb",
+            "file": "group-new.unit.gz",
+            "byteLength": 195,
+            "maskedSha256": "cd9d2f52efdf4b32aebbd3816d89953cc70e41b7aae7a49d08fb07da3bc3deb3",
+            "payloadSha256": "067577dcba3abcd29f208ba5831cea0e9622b3f58fad309cb5451e40851c540c"
+          }
+        ]
+      },
+      {
+        "id": "pointer-chat",
+        "chaId": "cha-pointer-chat",
+        "kind": "new",
+        "entry": "engine-new",
+        "sourceKind": "character",
+        "sourceFile": "pointer-chat.source.json",
+        "stubFile": "pointer-chat.stub.json",
+        "chatKeys": [
+          "00000000-0000-4000-8000-0000000000e1"
+        ],
+        "units": [
+          {
+            "role": "chat",
+            "key": "00000000-0000-4000-8000-0000000000e1",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000e1",
+            "file": "pointer-chat.chat.unit.gz",
+            "byteLength": 93,
+            "maskedSha256": "29ad12356ad1994c9a99a710eeedc4b36a43fc5e050a58fcf73249912dda7434",
+            "payloadSha256": "8e9001b5d664fd8c0eaeaf95e75102bb83ec69660b7f69dea94cf712f4a2b3c3"
+          },
+          {
+            "role": "unit",
+            "key": "00000000-0000-4000-8000-0000000000cc",
+            "storeKey": "coldstorage/00000000-0000-4000-8000-0000000000cc",
+            "file": "pointer-chat.unit.gz",
+            "byteLength": 252,
+            "maskedSha256": "b5b2bd1db55c5571b0ffe4a54b51b54b611cbe39acc5f9f1a17ea742bc786aac",
+            "payloadSha256": "d14e008c8e79203ecce70748b1560d323d1a634a8eef1bdcfa2dab76c1eb39af"
+          }
+        ]
+      }
+    ]
+  },
+  "capture": {
+    "baseCommit": "9ad71d3d292960c4d4de86279db9f163d14458db",
+    "productionDirty": [],
+    "time": "2026-11-21T02:28:03.202Z",
+    "units": {
+      "new-alice.unit.gz": {
+        "sha256": "68b2390b4438c614849f613af4cc1719be8d44c98afd50a3b67959e01bb63293",
+        "gzipMtime": 1795228083
+      },
+      "loaded-edited.unit.gz": {
+        "sha256": "064169b193282fb24af016145473d115267d636665c5b0da009e8f1d3ee8c379",
+        "gzipMtime": 1795228083
+      },
+      "loaded-trashed.unit.gz": {
+        "sha256": "217eacc0ea9b3151687b4155abc05220aadd6ef2fe99f08cc7ddde30294bd6ae",
+        "gzipMtime": 1795228083
+      },
+      "rearchived.unit1.gz": {
+        "sha256": "b12dde4ed45d77dbc80e5de9280743cda44a90e8bf42a16c4e23a12abd826c58",
+        "gzipMtime": 1795228083
+      },
+      "rearchived.unit2.gz": {
+        "sha256": "1e201c509f4ee869e31248f1bf2187de3c8d7bd63d4fecac79b7a740385ea3d2",
+        "gzipMtime": 1795228083
+      },
+      "import-v2.unit.gz": {
+        "sha256": "a97649b51015238762532d618f2fc0a5bb9bb1310ed812e1e82e282bd15ca538",
+        "gzipMtime": 1795228083
+      },
+      "import-v3.unit.gz": {
+        "sha256": "8f4c828100de5ccbb479543e7436a7a165ddac772250ad44c5e84954db561df3",
+        "gzipMtime": 1795228083
+      },
+      "import-tavern.unit.gz": {
+        "sha256": "e6cc4d93a70bf54f3b2d107dd4f672f2f006d8e706ec2a2f6bb352609b05dc5a",
+        "gzipMtime": 1795228083
+      },
+      "owner-fields.unit.gz": {
+        "sha256": "568bec59cca7d8f1cb46808e20414368105d79e0f873ac4fb8f95be691331c80",
+        "gzipMtime": 1795228083
+      },
+      "render-when-complete.unit.gz": {
+        "sha256": "703c30f0cc2ef23a30c674d2bffa0bcb8ef2cff659556e56ef158af659a58a51",
+        "gzipMtime": 1795228083
+      },
+      "group-new.unit.gz": {
+        "sha256": "f30054c25d2f06d579054b2f42819ea029ad35e01314d23efa8dd2e600f2e259",
+        "gzipMtime": 1795228083
+      },
+      "pointer-chat.chat.unit.gz": {
+        "sha256": "96b05ec60ea9db5519a188a6a1546bdc2395d5ab76c44a0ba92f509b4d62dd16",
+        "gzipMtime": 1795228083
+      },
+      "pointer-chat.unit.gz": {
+        "sha256": "af7271eda9020426c7817e67fb6566d9fa6846ed374f807137bbfa57baddc054",
+        "gzipMtime": 1795228083
+      }
+    }
+  }
+}

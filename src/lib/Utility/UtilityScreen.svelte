@@ -29,6 +29,7 @@
     import { ArrowLeft } from '@lucide/svelte'
     import { fillLang } from 'src/lang/fill'
     import { alertConfirm } from 'src/ts/alert'
+    import { copyPlainText } from 'src/ts/chatCopy'
     import { downloadFile } from 'src/ts/globalApi.svelte'
     import { validateTaskPreset } from 'src/ts/process/utility/taskPreset'
     import {
@@ -73,14 +74,10 @@
         return utilityMarkdown(utilityConversation.presetName ?? chosen?.name ?? null, utilityConversation.turns)
     }
 
-    async function copyMarkdown() {
-        try {
-            await navigator.clipboard.writeText(markdown())
-            notice = language.utility.copied
-        }
-        catch {
-            notice = language.utility.copyFailed
-        }
+    function copyMarkdown() {
+        copyPlainText(markdown(), (outcome) => {
+            notice = outcome.ok ? language.utility.copied : language.utility.copyFailed
+        })
     }
 
     async function saveMarkdown() {
@@ -155,10 +152,12 @@
             {/each}
         </div>
 
+        <span id="utility-input-label" class="sr-only">{language.utility.messagePlaceholder}</span>
         <textarea
             class="min-h-24 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden focus:ring-2 focus:ring-borderc"
             placeholder={language.utility.messagePlaceholder}
-            aria-label={language.utility.messagePlaceholder}
+            aria-labelledby="utility-input-label"
+            aria-describedby="utility-input-label"
             data-testid="utility-input"
             bind:value={draft}
         ></textarea>

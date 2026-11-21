@@ -1,0 +1,33 @@
+{
+  "type": "character",
+  "name": "Alice",
+  "image": "assets/alice.png",
+  "chaId": "cha-pointer-chat",
+  "chatPage": 0,
+  "creatorNotes": "A short note",
+  "tags": [
+    "a"
+  ],
+  "creator": "Top",
+  "chats": [
+    {
+      "id": "c1",
+      "name": "One",
+      "note": "",
+      "localLore": [],
+      "message": [
+        {
+          "role": "char",
+          "data": "COLDSTORAGE00000000-0000-4000-8000-0000000000e1",
+          "time": 1
+        },
+        {
+          "role": "user",
+          "data": "tail",
+          "time": 2
+        }
+      ]
+    }
+  ],
+  "globalLore": []
+}

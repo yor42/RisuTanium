@@ -2,8 +2,10 @@
  * The archived-character placeholder (the "stub") and the restore-time trash
  * merge, in `../coldCharacter`.
  *
- * `buildColdStub` writes the placeholder that stands in for a character whose
- * full data lives in a cold-storage unit. Beyond the pointer fields the save
+ * `buildColdStub` (the test-support helper `coldStubFixture`) builds the
+ * placeholder that stands in for a character whose full data lives in a
+ * cold-storage unit. Its describe blocks are helper-fidelity checks: the helper
+ * stays equal to the producers that write real stubs. Beyond the pointer fields the save
  * and clean-up code read (`coldstorage`, `coldStoragedChats`, the one dummy
  * chat), it carries what the character lists show: the real `type`, the name,
  * image, `lastInteraction`, `trashTime`, the chat count and the description
@@ -52,12 +54,12 @@ import {
     COLD_STUB_CHAT_COUNT_VERSION,
     COLD_STUB_VERSION,
     applyStubStateOnRestore,
-    buildColdStub,
     characterCreator,
     coldStubChatCount,
     coldUnitCharacter,
     stubTags,
 } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 import { listColdDataKeysFromDb } from '../coldstorageData'
 import { language } from '../../../lang'
 
@@ -143,7 +145,7 @@ function versionTwoStub(chaId: string, key: string, extra: Record<string, unknow
 
 //#endregion
 
-describe('buildColdStub -- what the stub carries', () => {
+describe('helper fidelity (test-support buildColdStub) -- what the stub carries', () => {
     test('a group stub keeps type group and a copy of its member list', () => {
         const group = fullGroup()
 
@@ -310,7 +312,7 @@ describe('buildColdStub -- what the stub carries', () => {
     })
 })
 
-describe('buildColdStub -- tags and creator (stub version 3)', () => {
+describe('helper fidelity (test-support buildColdStub) -- tags and creator (stub version 3)', () => {
     test('regression reproducer: a character stub carries its tags as a copy, whole and untruncated', () => {
         const longTag = 't'.repeat(5_000)
         const source = fullCharacter({ tags: ['a', 'b', longTag] })

@@ -1,18 +1,13 @@
 // @vitest-environment happy-dom
 
 /**
- * A card imported on a store2 page is pushed live, not as a stub: the import never reaches the
- * legacy archive engine, even when the archive gates would otherwise let it run (the session noted as
- * capable, `archiveCharacters` on). On a legacy page the same import still goes straight to the
- * archive.
+ * A card imported on a store2 page or on a legacy page is pushed live, not as a stub, even with `archiveCharacters` on:
+ * the import writes no cold-storage unit.
  *
- * The real `characterCards.ts`, `characters.ts` and the real archive engine run over a reactive
- * `DBState`; the engine's entry `archiveCharacterNow` is a call-through spy, and the unit store is a
- * map. A pass here says nothing about the real IndexedDB, Tauri or Node stores.
+ * The real `characterCards.ts` and `characters.ts` run over a reactive `DBState`; the unit store is a map that records
+ * every write. A pass here says nothing about the real IndexedDB, Tauri or Node stores.
  *
- * Labels: the store2 test is a regression reproducer (it fails on the base, where only
- * `canBootArchive()` stands between a store2 import and the archive); the legacy test is a
- * compatibility guard that passes before and after.
+ * Label: compatibility guard, passes before and after the change that removed the archive import path (both rows).
  */
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -26,7 +21,6 @@ const h = vi.hoisted(() => ({
     uuid: 0,
     /** The `chaId` of every unit written. */
     writes: [] as string[],
-    archiveCharacterNow: vi.fn(),
 }))
 
 vi.mock('uuid', () => ({
@@ -225,18 +219,11 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     },
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/process/coldCharacterArchive'), async (importOriginal) => {
-    const actual = await importOriginal()
-    h.archiveCharacterNow.mockImplementation(actual.archiveCharacterNow)
-    return { ...actual, archiveCharacterNow: h.archiveCharacterNow } as unknown as typeof import('src/ts/process/coldCharacterArchive')
-})
-
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { importCharacterProcess } from 'src/ts/characterCards'
 import { resetRetainedForTest } from 'src/ts/process/coldRetained'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { resetRestoredBytesForTest } from 'src/ts/process/memory/restoredBytes'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { resetPutBackForTest } from 'src/ts/process/memory/characterPutBack'
@@ -268,15 +255,11 @@ beforeEach(() => {
     h.units.clear()
     h.uuid = 0
     h.writes.length = 0
-    h.archiveCharacterNow.mockClear()
     resetPutBackForTest()
     resetRetainedForTest()
     resetRestoredBytesForTest()
     resetCharacterSaveMarksForTest()
-    resetBootArchiveStateForTest()
     resetResidencyForTest()
-    // Every archive gate but the page's own is open.
-    noteBootArchiveSession(true)
     selectedCharID.set(-1)
     installDb()
     vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -288,28 +271,20 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-describe('a card imported with the archive requested', () => {
-    test('on a store2 page it is pushed live, not as a stub, and never reaches the archive engine', async () => {
-        registerResidency({} as unknown as Residency)
+describe('a card imported with archiveCharacters on', () => {
+    test.each([
+        ['a store2 page', () => registerResidency({} as unknown as Residency)],
+        ['a legacy page', () => {}],
+    ])('on %s it is pushed live, not as a stub, and writes no unit', async (_page, arrange) => {
+        arrange()
 
-        const index = await importCharacterProcess({ name: 'card.json', data: jsonData(v2Card), archive: true }) as number
+        const index = await importCharacterProcess({ name: 'card.json', data: jsonData(v2Card) }) as number
 
         expect(index).toBe(0)
         expect(DBState.db.characters).toHaveLength(1)
         expect(slot(index).name).toBe('Two')
         expect(slot(index).coldstorage).toBeUndefined()
-        expect(h.archiveCharacterNow).not.toHaveBeenCalled()
         expect(h.writes).toEqual([])
         expect(h.units.size).toBe(0)
-    })
-
-    // Compatibility guard: passes before and after; it also proves the gates above are open, so the store2 test
-    // above is stopped by the page and by nothing else.
-    test('on a legacy page it goes straight to the archive', async () => {
-        const index = await importCharacterProcess({ name: 'card.json', data: jsonData(v2Card), archive: true }) as number
-
-        expect(typeof slot(index).coldstorage).toBe('string')
-        expect(h.archiveCharacterNow).toHaveBeenCalledTimes(1)
-        expect(h.writes).toHaveLength(1)
     })
 })

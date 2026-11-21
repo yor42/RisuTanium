@@ -35,11 +35,11 @@ import {
     encodeUnit, newUnitKey, UNIT_TYPE, type DeletionSnapshot, type SnapshotPointer,
 } from 'src/ts/storage/store2/format'
 import {
-    bootDidNotInstall, resetMaintenanceForTests, startStore2Maintenance as startLiveMaintenance,
-    type MaintenanceEnv, type MaintenanceSeams, type SweepPageFacts,
+    bootDidNotInstall, formatSweepResult, resetMaintenanceForTests, runManualCleanUp, startStore2Maintenance as startLiveMaintenance,
+    type MaintenanceEnv, type MaintenanceSeams, type ManualCleanUpPlan, type ManualCleanUpUi, type SweepPageFacts,
 } from 'src/ts/storage/store2/maintenance'
 import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/assetDeleteHold'
-import { writeSweepRecord } from 'src/ts/storage/store2/sweep'
+import { readSweepRecord, writeSweepRecord } from 'src/ts/storage/store2/sweep'
 import { NODE_BATCH_PACE_MS, type OldDataDeletionResult } from 'src/ts/storage/store2/oldData/delete'
 import { listRestorePoints, restorePoint } from 'src/ts/storage/store2/restorePoints'
 import { Store2Session } from 'src/ts/storage/store2/session'
@@ -714,6 +714,192 @@ describe('the clean-up pass after the old-data deletion', () => {
             expect(await orphansLeftOn(page)).toBe(6)
             expect((await page.store.read('store2-gc-age')).version).toBe(before.version)
         })
+
+        /** The manual clean-up's planted Node page: one asset a record from 25 hours ago names as seen before at its revision. */
+        async function plantManualNode(): Promise<{ page: NodePage, name: string }> {
+            const page = await openNode(0)
+            const name = 'c'.repeat(64) + '.png'
+            const rev = await plantAsset(page, name)
+            expect(rev).not.toBeNull()
+            await page.store.write(
+                'store2-sweep',
+                encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - DAY - 60 * 60 * 1000, items: [[name, rev, 1]] }),
+                'unconditional',
+            )
+            return { page, name }
+        }
+
+        const UNSUPPORTED_SWEEP: SweepPageFacts = { ...ACTIVE_SWEEP, peers: async () => 'unsupported' }
+
+        function manualSeams(page: NodePage) {
+            return { session: () => page.session, store: async () => page.store, sweepFacts: UNSUPPORTED_SWEEP }
+        }
+
+        function answering(answer: boolean | (() => Promise<boolean>)): ManualCleanUpUi & {
+            progress: ReturnType<typeof vi.fn<ManualCleanUpUi['progress']>>
+            confirm: ReturnType<typeof vi.fn<(plan: ManualCleanUpPlan) => Promise<boolean>>>
+        } {
+            return { progress: vi.fn(), confirm: vi.fn(async () => (typeof answer === 'boolean' ? answer : await answer())) }
+        }
+
+        test('guard G16: the automatic node step on plain HTTP (peers unsupported) still refuses no-web-locks and keeps the asset', async () => {
+            const { page, name } = await plantManualNode()
+            const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+            await fireNode(page, { peers: async () => 'unsupported' }, { sweepFacts: UNSUPPORTED_SWEEP })
+
+            expect(sweepLines(info)).toEqual(['store2 asset sweep: status=refused reason=no-web-locks'])
+            expect(await page.store.has(`assets/${name}`)).toBe(true)
+        })
+
+        test('E2(a): manual clean-up on a plain-HTTP node page: Yes deletes the approved aged asset, rewrites the record and reports its size', async () => {
+            const { page, name } = await plantManualNode()
+            const sizes = await page.store.listSized?.('assets/', 0)
+            const size = sizes?.find(row => row.key === `assets/${name}`)?.size
+            expect(size).toBe(3)
+            const before = await page.store.read('store2-sweep')
+            vi.spyOn(console, 'info').mockImplementation(() => {})
+            const ui = answering(true)
+
+            const outcome = await runManualCleanUp(ui, manualSeams(page))
+
+            expect(ui.confirm).toHaveBeenCalledTimes(1)
+            expect(ui.confirm).toHaveBeenCalledWith({ kind: 'node', deletable: 1, later: 0, bytes: size })
+            expect(outcome).toMatchObject({ status: 'ended', approved: 1, result: { status: 'done', phase: 'swept', deleted: 1, recorded: true } })
+            expect(await page.store.has(`assets/${name}`)).toBe(false)
+            const after = await page.store.read('store2-sweep')
+            expect(after.version).not.toBe(before.version)
+            expect(await readSweepRecord(page.store)).toMatchObject({ status: 'ok', value: { items: [] } })
+        })
+
+        test('E2(b): No on the node confirm changes nothing and never starts the delete step', async () => {
+            const { page, name } = await plantManualNode()
+            const before = await page.store.read('store2-sweep')
+            const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+            const outcome = await runManualCleanUp(answering(false), manualSeams(page))
+
+            expect(outcome).toEqual({ status: 'declined' })
+            expect(await page.store.has(`assets/${name}`)).toBe(true)
+            const after = await page.store.read('store2-sweep')
+            expect(after.version).toBe(before.version)
+            expect(after.bytes).toEqual(before.bytes)
+            expect(sweepLines(info)).toEqual([expect.stringMatching(/^store2 asset sweep: status=planned /)])
+        })
+
+        test('E2(c): a record another device wrote between the plan and the Yes gives wait, deletes nothing and leaves that record', async () => {
+            const { page, name } = await plantManualNode()
+            vi.spyOn(console, 'info').mockImplementation(() => {})
+            const fresh = encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now(), items: [] })
+
+            const outcome = await runManualCleanUp(answering(async () => {
+                await page.store.write('store2-sweep', fresh, 'unconditional')
+                return true
+            }), manualSeams(page))
+
+            expect(outcome).toEqual({ status: 'wait' })
+            expect(await page.store.has(`assets/${name}`)).toBe(true)
+            expect((await page.store.read('store2-sweep')).bytes).toEqual(fresh)
+        })
+
+        test('E2(d): a repeat press within a day finds the young record at the plan: wait, no confirm, nothing deleted, record unchanged', async () => {
+            const { page, name } = await plantManualNode()
+            vi.spyOn(console, 'info').mockImplementation(() => {})
+            expect(await runManualCleanUp(answering(true), manualSeams(page))).toMatchObject({ status: 'ended' })
+            const written = await page.store.read('store2-sweep')
+            await plantAsset(page, 'd'.repeat(64) + '.png')
+            const ui = answering(true)
+
+            const outcome = await runManualCleanUp(ui, manualSeams(page))
+
+            expect(outcome).toEqual({ status: 'wait' })
+            expect(ui.confirm).not.toHaveBeenCalled()
+            expect(await page.store.has(`assets/${'d'.repeat(64)}.png`)).toBe(true)
+            expect(await page.store.has(`assets/${name}`)).toBe(false)
+            const after = await page.store.read('store2-sweep')
+            expect(after.version).toBe(written.version)
+            expect(after.bytes).toEqual(written.bytes)
+        })
+
+        test('E2(f): a young record that appears after one approved delete went through ends as done young with deleted=1, not as wait', async () => {
+            const page = await openNode(0)
+            const names = ['f', '1'].map(char => char.repeat(64) + '.png')
+            const items: [string, number | null, number][] = []
+            for (const name of names) {
+                const rev = await plantAsset(page, name)
+                expect(rev).not.toBeNull()
+                items.push([name, rev, 1])
+            }
+            await page.store.write('store2-sweep', encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - DAY - 60 * 60 * 1000, items }), 'unconditional')
+            vi.spyOn(console, 'info').mockImplementation(() => {})
+            const fresh = encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now(), items: [] })
+            const peer = committerOf(page.backend, clock, 99)
+            let holds = 0
+            const moving: SweepPageFacts = {
+                ...UNSUPPORTED_SWEEP,
+                hold: async remove => {
+                    if (++holds === 2) {
+                        expect((await peer.commit(await page.backend.readCommit(), treeRequest(0))).status).toBe('committed')
+                        await page.store.write('store2-sweep', fresh, 'unconditional')
+                    }
+                    await remove()
+                },
+            }
+
+            const outcome = await runManualCleanUp(answering(true), { ...manualSeams(page), sweepFacts: moving })
+
+            expect(outcome).toMatchObject({ status: 'ended', approved: 2, result: { status: 'done', phase: 'young', deleted: 1 } })
+            const remaining = await Promise.all(names.map(name => page.store.has(`assets/${name}`)))
+            expect(remaining.filter(present => !present)).toHaveLength(1)
+            expect((await page.store.read('store2-sweep')).bytes).toEqual(fresh)
+        })
+
+        test('E2(e): a Cancel pressed during the plan on the note path (nothing deletable yet, one later) gives cancelled(0) and never asks the confirm', async () => {
+            const page = await openNode(0)
+            const name = 'e'.repeat(64) + '.png'
+            await plantAsset(page, name)
+            vi.spyOn(console, 'info').mockImplementation(() => {})
+            let cancel: () => void = () => {}
+            const ui = answering(true)
+            ui.progress.mockImplementation((_step: string, onCancel: () => void) => { cancel = onCancel })
+            const cancelling: SweepPageFacts = {
+                ...UNSUPPORTED_SWEEP,
+                peers: async () => {
+                    cancel()
+                    return 'unsupported'
+                },
+            }
+
+            const outcome = await runManualCleanUp(ui, { ...manualSeams(page), sweepFacts: cancelling })
+
+            expect(outcome).toEqual({ status: 'cancelled', deleted: 0 })
+            expect(ui.confirm).not.toHaveBeenCalled()
+            expect(await page.store.has(`assets/${name}`)).toBe(true)
+        })
+
+        test('E2(g): a Cancel pressed while the confirm size is measured (deletable asset, Node listSized) gives cancelled(0) and never asks the confirm', async () => {
+            const { page, name } = await plantManualNode()
+            vi.spyOn(console, 'info').mockImplementation(() => {})
+            let cancel: () => void = () => {}
+            const ui = answering(true)
+            ui.progress.mockImplementation((_step, onCancel) => { cancel = onCancel })
+            const listSized = page.store.listSized?.bind(page.store)
+            expect(listSized).toBeDefined()
+            const store = {
+                ...page.store,
+                listSized: async (prefix: string, limit: number) => {
+                    const rows = await listSized?.(prefix, limit)
+                    cancel()
+                    return rows ?? []
+                },
+            }
+
+            const outcome = await runManualCleanUp(ui, { ...manualSeams(page), store: async () => store })
+
+            expect(outcome).toEqual({ status: 'cancelled', deleted: 0 })
+            expect(ui.confirm).not.toHaveBeenCalled()
+            expect(await page.store.has(`assets/${name}`)).toBe(true)
+        })
     })
 
     test('reproducer K-web (a): an indexeddb session alone on its own base deletes the orphan and logs one result line', async () => {
@@ -987,5 +1173,144 @@ describe('the asset sweep after the clean-up pass', () => {
         await getStartupCleanup()
 
         expect(store.lists).toEqual([])
+    })
+})
+
+describe('the manual clean-up (runManualCleanUp)', () => {
+    const MANUAL_ORPHAN = 'manual-orphan.png'
+
+    function ui(over: Partial<ManualCleanUpUi> = {}): ManualCleanUpUi & { progress: ReturnType<typeof vi.fn>, confirm: ReturnType<typeof vi.fn<(plan: ManualCleanUpPlan) => Promise<boolean>>> } {
+        return { progress: vi.fn(), confirm: vi.fn(async () => true), ...over } as ManualCleanUpUi & { progress: ReturnType<typeof vi.fn>, confirm: ReturnType<typeof vi.fn<(plan: ManualCleanUpPlan) => Promise<boolean>>> }
+    }
+
+    /** An indexeddb page over the seeded tree and a page store holding one asset nothing refers to, with a stored-size member. */
+    async function manualPage() {
+        const page = await openSession('ready')
+        const store = createMemoryByteStore()
+        store.files.set(`assets/${MANUAL_ORPHAN}`, new Uint8Array([1, 2, 3]))
+        store.readValue = async key => store.files.get(key) ?? null
+        return { page, store, seams: { session: () => page.session, store: async () => store, sweepFacts: ACTIVE_SWEEP } }
+    }
+
+    test('E1: the confirm receives the plan; Yes deletes the orphan with no record, No deletes nothing and never starts the delete step', async () => {
+        const { store, seams } = await manualPage()
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const declining = ui({ confirm: vi.fn(async () => false) })
+
+        expect(await runManualCleanUp(declining, seams)).toEqual({ status: 'declined' })
+        expect(declining.confirm).toHaveBeenCalledWith({ kind: 'indexeddb', deletable: 1, later: 0, bytes: 3 })
+        expect(store.files.has(`assets/${MANUAL_ORPHAN}`)).toBe(true)
+        expect(sweepLines(info)).toEqual([expect.stringMatching(/^store2 asset sweep: status=planned /)])
+        expect(declining.progress.mock.calls.map(call => call[0])).toEqual(['measuring'])
+
+        const accepting = ui()
+        const outcome = await runManualCleanUp(accepting, seams)
+
+        expect(outcome).toMatchObject({ status: 'ended', approved: 1, result: { status: 'done', deleted: 1, recorded: false } })
+        expect(store.files.has(`assets/${MANUAL_ORPHAN}`)).toBe(false)
+        expect(store.writes).toEqual([])
+        expect(accepting.progress.mock.calls.map(call => call[0])).toEqual(['measuring', 'deleting'])
+    })
+
+    test('E1: Cancel during measuring gives cancelled(0) and deletes nothing', async () => {
+        const { store, seams } = await manualPage()
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const cancelling = ui({ progress: vi.fn((_step, cancel: () => void) => cancel()) })
+
+        expect(await runManualCleanUp(cancelling, seams)).toEqual({ status: 'cancelled', deleted: 0 })
+        expect(cancelling.confirm).not.toHaveBeenCalled()
+        expect(store.files.has(`assets/${MANUAL_ORPHAN}`)).toBe(true)
+    })
+
+    test('P1: while the automatic step is pending the manual run answers busy and lists nothing', async () => {
+        const { store, seams } = await manualPage()
+        const page = await openSession('ready')
+        const held = deferred<OldDataDeletionResult>()
+        const trigger = fakeTrigger()
+        startStore2Maintenance(noStore, { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => held.promise), gcPageFacts: CLEAN })
+        trigger.fire()
+        await vi.waitFor(() => expect(getStartupCleanup()).not.toBeNull())
+        store.lists.length = 0
+        const asking = ui()
+
+        expect(await runManualCleanUp(asking, seams)).toEqual({ status: 'busy' })
+
+        expect(store.lists).toEqual([])
+        expect(asking.progress).not.toHaveBeenCalled()
+        held.resolve(COMPLETED)
+        await getStartupCleanup()
+    })
+
+    test('P2: a trigger that fires while the manual run awaits its confirm starts its step once the run ends, and not before', async () => {
+        const { seams } = await manualPage()
+        const page = await openSession('ready')
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const answer = deferred<boolean>()
+        const deletion = vi.fn(async () => COMPLETED)
+        const trigger = fakeTrigger()
+        startStore2Maintenance(noStore, { session: () => page.session, startTrigger: trigger.start, deletion, gcPageFacts: CLEAN })
+        const running = runManualCleanUp(ui({ confirm: () => answer.promise }), seams)
+        await vi.waitFor(() => expect(trigger.counts.started).toBe(1))
+
+        trigger.fire()
+        await new Promise(resolve => setTimeout(resolve, 10))
+        expect(deletion).not.toHaveBeenCalled()
+
+        answer.resolve(true)
+        await running
+        await vi.waitFor(() => expect(deletion).toHaveBeenCalledTimes(1))
+        await getStartupCleanup()
+        expect(deletion).toHaveBeenCalledTimes(1)
+    })
+
+    test('P3: a session whose boot installed the profile (row 1) answers unavailable and reads nothing', async () => {
+        const page = await openSession('empty')
+        expect(bootDidNotInstall(page.session)).toBe(false)
+        const asking = ui()
+        const storeSeam = vi.fn(async () => createMemoryByteStore())
+
+        const outcome = await runManualCleanUp(asking, { session: () => page.session, store: storeSeam, sweepFacts: ACTIVE_SWEEP })
+
+        expect(outcome).toEqual({ status: 'unavailable' })
+        expect(storeSeam).not.toHaveBeenCalled()
+        expect(asking.progress).not.toHaveBeenCalled()
+    })
+
+    test('P4: a confirm that rejects still clears the exclusion, so the next run reaches its confirm', async () => {
+        const { seams } = await manualPage()
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const failure = new Error('The confirm failed.')
+
+        await expect(runManualCleanUp(ui({ confirm: async () => { throw failure } }), seams)).rejects.toBe(failure)
+
+        const next = ui({ confirm: vi.fn(async () => false) })
+        expect(await runManualCleanUp(next, seams)).toEqual({ status: 'declined' })
+        expect(next.confirm).toHaveBeenCalledTimes(1)
+    })
+
+    test('P4: a step deferred during a manual run that then throws is started by the end of that run', async () => {
+        const { seams } = await manualPage()
+        const page = await openSession('ready')
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const answer = deferred<boolean>()
+        const deletion = vi.fn(async () => COMPLETED)
+        const trigger = fakeTrigger()
+        startStore2Maintenance(noStore, { session: () => page.session, startTrigger: trigger.start, deletion, gcPageFacts: CLEAN })
+        const running = runManualCleanUp(ui({ confirm: () => answer.promise }), seams)
+        await vi.waitFor(() => expect(trigger.counts.started).toBe(1))
+        trigger.fire()
+
+        answer.reject(new Error('The confirm failed.'))
+        await expect(running).rejects.toThrow('The confirm failed.')
+
+        await vi.waitFor(() => expect(deletion).toHaveBeenCalledTimes(1))
+        await getStartupCleanup()
+    })
+
+    test('G15: the planned sweep line carries counts and no asset name', () => {
+        const line = formatSweepResult({ status: 'planned', phase: 'swept', candidates: 3, deletable: ['secret-name.png'], later: 2 })
+
+        expect(line).toBe('store2 asset sweep: status=planned phase=swept candidates=3 deletable=1 later=2')
+        expect(line).not.toContain('secret-name')
     })
 })

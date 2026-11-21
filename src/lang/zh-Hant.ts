@@ -1709,6 +1709,8 @@ export const languageChineseTraditional = {
         "value": "值",
         "var": "變數",
         "operandType": "{label}類型",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "變數名稱",
         "outputVar": "輸出變數",
         "name": "名稱",
@@ -3896,17 +3898,32 @@ export const languageChineseTraditional = {
     "coldStorage": "啟動時封存角色和模組",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `為了維持較低的記憶體用量，本應用程式現在會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。不會刪除任何內容，您的角色外觀與運作方式都和以往相同。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中關閉此功能。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `由於連續兩個角色無法單獨儲存，本次啟動的封存已停止；第二個是「${characterName}」。這些角色仍完整保留在主存檔中並維持完全載入，在它們之前已封存的角色不受影響。其餘角色維持原樣。`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `以下角色無法單獨儲存：${characterNames}${otherCount > 0 ? ` 等另外 ${otherCount} 個` : ''}。它們仍維持完全載入，並像之前一樣正常運作，本應用程式在啟動時不會再嘗試封存它們。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `您的存檔過大，自架伺服器無法將角色封存到其中，因此未封存任何內容，您的存檔也維持原樣。一切照常運作。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `本裝置上的啟動時角色封存已暫停，因為它連續兩次未能完成。沒有任何內容遺失，已封存的角色在您開啟時仍會正常載入。在恢復之前，啟動時不會再封存任何新角色。若要重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
     "cleanColdStorage": "清理未使用的封存資料與資源",
     "customSidebarConfig": "自訂側邊欄配置",
     "cleanColdStorageConfirm": "這將永久刪除所有未使用的封存（冷儲存）資料，以及所有未使用的資源檔案，即不再被任何角色、模組、人設或設定使用的圖片和音訊。其中部分內容未來可能仍然有用，且刪除後無法復原。是否要繼續？",
+    "cleanUnusedFiles": "清理未使用的檔案",
+    "cleanUnusedFilesMeasuring": "正在尋找未使用的檔案。如果資料庫很大，可能需要較長時間。",
+    "cleanUnusedFilesDeleting": "正在刪除未使用的檔案...",
+    "cleanUnusedFilesConfirm": (count: number, bytes: number | null) => {
+        const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小於 0.1 MiB' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `要刪除 ${count} 個未使用的檔案（${size}）嗎？沒有任何角色、模組、人設、設定或還原點使用它們。請先關閉本應用程式的所有其他分頁和視窗。此操作無法復原。`
+    },
+    "cleanUnusedFilesConfirmNode": (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小於 0.1 MiB' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `現在要刪除 ${count} 個未使用的檔案（${size}）嗎？`
+            + (later > 0 ? ` 另外還發現了 ${later} 個未使用的檔案。在此伺服器上，只有經過至少相隔一天的三次清理都發現某個檔案未被使用後才會刪除它，且每次最多刪除 500 個，因此這些檔案會被記錄下來，留待以後的清理。` : '')
+            + ` 請先關閉所有使用此伺服器的其他分頁和裝置：按下「是」即表示確認沒有任何一個仍處於開啟狀態。此操作無法復原。`
+    },
+    "cleanUnusedFilesNoteNode": (later: number) => `目前還沒有可以刪除的未使用檔案。已發現 ${later} 個未使用的檔案。在此伺服器上，只有經過至少相隔一天的三次清理都發現某個檔案未被使用後才會刪除它，且每次最多刪除 500 個。要現在記錄它們，以便以後的清理可以刪除嗎？請先關閉所有使用此伺服器的其他分頁和裝置：按下「是」即表示確認沒有任何一個仍處於開啟狀態。`,
+    "cleanUnusedFilesNodeWait": "不到一天前剛檢查過未使用的檔案。在此伺服器上，檔案只能在上次檢查一天之後才能刪除，請稍後再試。未刪除任何內容。",
+    "cleanUnusedFilesNone": "未發現未使用的檔案。未刪除任何內容。",
+    "cleanUnusedFilesDone": (deleted: number, kept: number) => `已刪除 ${deleted} 個未使用的檔案。${kept > 0 ? ` 有 ${kept} 個檔案被保留，因為它們再次被使用或無法刪除。` : ''}`,
+    "cleanUnusedFilesStopped": (deleted: number) => `清理已停止，因為應用程式開始使用其資料（儲存、聊天、還原或另一個分頁）。停止前已刪除 ${deleted} 個檔案。請稍後再試。`,
+    "cleanUnusedFilesCancelled": (deleted: number) => deleted === 0 ? '清理已取消。未刪除任何內容。' : `清理已取消。停止前已刪除 ${deleted} 個檔案。`,
+    "cleanUnusedFilesOtherTab": "本應用程式的另一個分頁處於開啟狀態。請關閉本應用程式的所有其他分頁，然後重試。未刪除任何內容。",
+    "cleanUnusedFilesNoTabCheck": "此頁面無法檢查其他已開啟的分頁（它不是透過 HTTPS 或 localhost 開啟的），因此無法清理未使用的檔案。未刪除任何內容。",
+    "cleanUnusedFilesBusy": "請等待儲存、正在執行的聊天或自動清理完成後再重試。未刪除任何內容。",
+    "cleanUnusedFilesRefused": "目前無法執行清理（已儲存的資料正在變更、正在還原或無法讀取）。未刪除任何內容。請稍後再試，或先重新載入應用程式。",
     "coldStorageCleanupNoLockConfirm": "您的瀏覽器無法檢查是否已開啟此應用程式的其他分頁。如果在清理執行期間此應用程式的其他分頁處於開啟狀態，該分頁可能會遺失資料。請先關閉此應用程式的所有其他分頁，然後再繼續。仍要繼續嗎？",
     "coldStorageCleanupNodeConfirm": "當另一台裝置或瀏覽器正在使用同一個伺服器時，請勿執行此清理。它們在清理執行期間儲存的任何內容都可能遺失或被刪除。是否繼續？",
     "coldStorageCleanupCheckingTabs": "清理前正在檢查此應用程式是否還有其他已開啟的分頁...",

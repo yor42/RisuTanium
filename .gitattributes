@@ -28,3 +28,6 @@ Agents/Tools/tbdriver/** text eol=lf
 Agents/Tools/tbdriver/android/gradlew.bat text eol=crlf
 Agents/Tools/tbdriver/android/gradle/wrapper/gradle-wrapper.jar binary
 Agents/Tools/ltm-eval/** text eol=lf
+# The archive writer's captured units are shipped bytes: the gzip files are never converted, and the JSON stays LF so the manifest's hashes and diffs hold on every checkout.
+src/ts/process/tests/archiveCapture/*.gz binary
+src/ts/process/tests/archiveCapture/*.json text eol=lf

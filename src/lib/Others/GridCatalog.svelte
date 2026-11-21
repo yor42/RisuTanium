@@ -1797,7 +1797,7 @@
                     </button>
                 {/if}
                 <div class="flex-1">
-                    <TextInput placeholder={language.search} bind:value={search} size="lg" autocomplete="off" fullwidth={true}/>
+                    <TextInput label={language.search} placeholder={language.search} bind:value={search} size="lg" autocomplete="off" fullwidth={true}/>
                 </div>
             </div>
             <div class="flex flex-wrap gap-2 mt-2">

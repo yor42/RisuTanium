@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { character, groupChat } from '../../storage/database.svelte'
-import { buildColdStub } from '../../process/coldCharacter'
+import { buildColdStub } from '../../process/tests/coldStubFixture'
 import {
     buildIndex,
     createSearchCache,

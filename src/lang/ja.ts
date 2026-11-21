@@ -1797,6 +1797,8 @@ export const languageJapanese = {
         value: "値",
         var: "変数",
         operandType: "{label}の種類",
+        operandA: "A",
+        operandB: "B",
         varName: "変数名",
         outputVar: "出力変数",
         name: "名前",
@@ -3997,17 +3999,32 @@ export const languageJapanese = {
     coldStorage: "起動時にキャラクターとモジュールをアーカイブ",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `メモリ使用量を抑えるため、本アプリは起動時に各キャラクターの全データを個別に保管し、そのキャラクターを開いたときにのみ読み込むようになりました。何も削除されておらず、キャラクターは以前と同様に表示され動作します。この設定は ${settings} > ${advancedSettings} > ${toggle} で無効にできます。無効にしても新しくアーカイブされることはなく、すでにアーカイブされているキャラクターも通常どおり開くことができます。`,
-    archiveCharactersStoppedNotice: (characterName: string) =>
-        `2体のキャラクターを連続して個別に保管できなかったため、今回の起動でのアーカイブ処理を停止しました（2体目は「${characterName}」）。これらのキャラクターはメインセーブに完全に読み込まれた状態を維持し、それ以前にアーカイブされたキャラクターに影響はありません。残りのキャラクターはそのまま残されています。`,
-    archiveCharactersSkippedNotice: (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `次のキャラクターを個別に保管できませんでした：${characterNames}${otherCount > 0 ? `、他${otherCount}件` : ''}。これらは完全に読み込まれた状態を維持して以前と同様に動作し、本アプリが起動時に再度アーカイブを試みることはありません。この端末で再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
-    archiveCharactersTooLargeNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `セーブデータが大きすぎるため、セルフホストサーバーにキャラクターをアーカイブできませんでした。そのため何もアーカイブされず、セーブデータはそのまま維持されています。すべて以前と同様に動作します。この端末で再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
-    archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `2回連続で完了しなかったため、この端末での起動時キャラクターアーカイブを一時停止しています。データは失われておらず、すでにアーカイブされたキャラクターも開く際に読み込まれます。再開するまで、起動時に新しくアーカイブされることはありません。再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
     cleanColdStorage: "未使用のアーカイブデータとアセットをクリーンアップ",
     customSidebarConfig: "カスタムサイドバー設定",
     cleanColdStorageConfirm: "これにより、未使用のすべてのアーカイブ（コールドストレージ）データと、どのキャラクター、モジュール、ペルソナ、設定でも使われなくなった画像や音声などの未使用アセットファイルが完全に削除されます。これらは将来役に立つ可能性があっても復元できません。続行しますか？",
+    cleanUnusedFiles: "未使用ファイルをクリーンアップ",
+    cleanUnusedFilesMeasuring: "未使用ファイルを探しています。ライブラリが大きい場合は時間がかかることがあります。",
+    cleanUnusedFilesDeleting: "未使用ファイルを削除しています...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `未使用ファイル ${count}件(${size})を削除しますか？ キャラクター、モジュール、ペルソナ、設定、復元ポイントのいずれにも使われていないファイルです。先にこのアプリの他のタブとウィンドウをすべて閉じてください。この操作は元に戻せません。`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `未使用ファイル ${count}件(${size})を今すぐ削除しますか？`
+            + (later > 0 ? ` 未使用ファイルがさらに ${later}件見つかりました。このサーバーでは、1日以上あけた3回のクリーンアップで続けて未使用と判定されたファイルだけを、1回につき最大500件まで削除します。そのため、これらは今後のクリーンアップ用に記録されます。` : '')
+            + ` 先にこのサーバーを使用している他のタブとデバイスをすべて閉じてください。「はい」を押すと、開いているものがないことを確認したものとみなされます。この操作は元に戻せません。`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `削除できる未使用ファイルはまだありません。未使用ファイルが ${later}件見つかりました。このサーバーでは、1日以上あけた3回のクリーンアップで続けて未使用と判定されたファイルだけを、1回につき最大500件まで削除します。今後のクリーンアップで削除できるよう、今すぐ記録しますか？ 先にこのサーバーを使用している他のタブとデバイスをすべて閉じてください。「はい」を押すと、開いているものがないことを確認したものとみなされます。`,
+    cleanUnusedFilesNodeWait: "未使用ファイルは1日以内に確認済みです。このサーバーでは、前回の確認から1日経たないとファイルを削除できないため、後でもう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesNone: "未使用ファイルは見つかりませんでした。何も削除されていません。",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `未使用ファイル ${deleted}件を削除しました。${kept > 0 ? ` ${kept}件のファイルは、再び使用されていたか削除できなかったため残しました。` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `アプリがデータを使い始めたため(保存、チャット、復元、または別のタブ)、クリーンアップを中止しました。中止するまでに ${deleted}件のファイルを削除しました。後でもう一度お試しください。`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'クリーンアップをキャンセルしました。何も削除されていません。' : `クリーンアップをキャンセルしました。中止するまでに ${deleted}件のファイルを削除しました。`,
+    cleanUnusedFilesOtherTab: "このアプリの別のタブが開いています。このアプリの他のタブをすべて閉じてから、もう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesNoTabCheck: "このページでは他に開いているタブを確認できない(HTTPS または localhost で開かれていない)ため、未使用ファイルをクリーンアップできません。何も削除されていません。",
+    cleanUnusedFilesBusy: "保存、実行中のチャット、または自動クリーンアップが終わるまで待ってから、もう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesRefused: "現在クリーンアップを実行できません(保存データが変更中、復元中、または読み取れません)。何も削除されていません。後でもう一度お試しいただくか、先にアプリを再読み込みしてください。",
     coldStorageCleanupNoLockConfirm: "お使いのブラウザでは、本アプリの他のタブが開いているか確認できません。クリーンアップの実行中に本アプリの他のタブが開いていると、そのタブでデータが失われる可能性があります。本アプリの他のすべてのタブを閉じてから続行してください。それでも続行しますか？",
     coldStorageCleanupNodeConfirm: "他の端末やブラウザが同じサーバーを使用している間は、このクリーンアップを実行しないでください。実行中に保存された内容は失われるか削除される可能性があります。続行しますか？",
     coldStorageCleanupCheckingTabs: "クリーンアップの前に、本アプリの他の開いているタブを確認しています…",

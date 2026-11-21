@@ -60,7 +60,7 @@ vi.mock(import('../index.svelte'), () => ({
 }) as unknown as typeof import('../index.svelte'))
 
 import { restoreColdCharacterByChaId } from '../coldMemberRestore'
-import { buildColdStub } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 import { restoreColdCharacter } from '../coldCharacterRestore'
 import { doingChat } from '../index.svelte'
 import { DBState } from '../../stores.svelte'

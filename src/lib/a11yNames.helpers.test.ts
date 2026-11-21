@@ -158,6 +158,8 @@ describe('accessibleText', () => {
     })
 })
 
+const rulesOf = (problems: string[]) => Array.from(new Set(problems.map((line) => /\sF(\d)\s/.exec(line)?.[1] ?? '?'))).sort()
+
 describe('toggleFor and fieldControls', () => {
     it('finds the checkbox before a lone field and none when the parent holds another field', () => {
         const root = mount(`
@@ -168,6 +170,31 @@ describe('toggleFor and fieldControls', () => {
         expect(toggleFor(root.querySelector('#loneField')!)).toBe(root.querySelector('#lone input[type="checkbox"]'))
         expect(toggleFor(root.querySelector('#a')!)).toBeNull()
         expect(toggleFor(root.querySelector('#early')!)).toBeNull()
+    })
+
+    it('does not pair a standalone checkbox that shows its own text with the select beside it', () => {
+        const root = mount(`
+            <div id="standalone">
+                <label><input type="checkbox" aria-label="Insert asset prompt"><span aria-hidden="true"></span><span>Insert asset prompt </span></label>
+                <span id="style">Asset style</span>
+                <select id="styleSelect" aria-labelledby="style" aria-describedby="style"></select>
+            </div>
+        `)
+        expect(toggleFor(root.querySelector('#styleSelect')!)).toBeNull()
+        expect(fieldNameProblems(root, [{ name: 'Asset style' }])).toEqual([])
+    })
+
+    it('pairs the icon-only enable checkbox that the shared slider and optional inputs render in their own wrapper', () => {
+        const root = mount(`
+            <div id="shared">
+                <span id="n" class="sr-only">Name</span>
+                <div><label><input type="checkbox" aria-label="Name"><span aria-hidden="true"></span><span> </span></label></div>
+                <input type="number" id="field" aria-labelledby="n" aria-describedby="n">
+            </div>
+        `)
+        expect(toggleFor(root.querySelector('#field')!)).toBe(root.querySelector('#shared input[type="checkbox"]'))
+        expect(fieldNameProblems(root, [{ name: 'Name', toggle: true }])).toEqual([])
+        expect(rulesOf(fieldNameProblems(root, [{ name: 'Name' }]))).toEqual(['7'])
     })
 
     it('lists a text field only when it has a toggle', () => {

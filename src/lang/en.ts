@@ -1796,6 +1796,8 @@ export const languageEnglish = {
         value: "Value",
         var: "Variable",
         operandType: "{label} type",
+        operandA: "A",
+        operandB: "B",
         varName: "Variable Name",
         outputVar: "Output Variable",
         name: "Name",
@@ -3996,17 +3998,32 @@ export const languageEnglish = {
     coldStorage: "Archive characters and modules at startup",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `To keep memory use low, this app now stores each character's full data separately at startup and loads it only when you open that character. Nothing is deleted, and your characters look and work as before. You can turn this off in ${settings} > ${advancedSettings} > ${toggle}. Turning it off archives nothing new, and characters that are already archived still open normally.`,
-    archiveCharactersStoppedNotice: (characterName: string) =>
-        `Archiving stopped for this start after two characters in a row could not be stored separately; the second was "${characterName}". Those characters stay fully loaded in the main save, and the characters archived before them are not affected. The remaining characters were left as they are.`,
-    archiveCharactersSkippedNotice: (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `These characters could not be stored separately: ${characterNames}${otherCount > 0 ? ` and ${otherCount} more` : ''}. They stay fully loaded and work as before, and this app will not try to archive them again at startup. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
-    archiveCharactersTooLargeNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `Your save is too large for the self-hosted server to archive characters into, so nothing was archived and your save was left as it is. Everything works as before. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
-    archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `Archiving characters at startup is paused on this device because it did not finish twice in a row. Nothing was lost, and characters that are already archived still load when you open them. Until you resume it, nothing new is archived at startup. To try again, turn off ${settings} > ${advancedSettings} > ${toggle} and then turn it back on.`,
     cleanColdStorage: "Clean Unused Archived Data and Assets",
     customSidebarConfig: "Custom Sidebar Configuration",
     cleanColdStorageConfirm: "This will permanently delete all unused archived (cold storage) data and all unused asset files, meaning images and audio that no character, module, persona or setting uses any more. Some of it may still be useful in the future, and it cannot be recovered. Do you want to continue?",
+    cleanUnusedFiles: "Clean Up Unused Files",
+    cleanUnusedFilesMeasuring: "Looking for unused files. This can take a while on a large library.",
+    cleanUnusedFilesDeleting: "Deleting unused files...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Delete ${count} unused file(s) (${size})? No character, module, persona, setting or restore point uses them. Close every other tab and window of this app first. This cannot be undone.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Delete ${count} unused file(s) (${size}) now?`
+            + (later > 0 ? ` ${later} more unused file(s) were found. On this server a file is deleted only after three clean-ups at least a day apart have found it unused, at most 500 at a time, so those are noted for later clean-ups.` : '')
+            + ` Close every other tab and device using this server first: pressing Yes confirms that none is open. This cannot be undone.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `No unused file can be deleted yet. ${later} unused file(s) were found. On this server a file is deleted only after three clean-ups at least a day apart have found it unused, at most 500 at a time. Note them now so a later clean-up can delete them? Close every other tab and device using this server first: pressing Yes confirms that none is open.`,
+    cleanUnusedFilesNodeWait: "Unused files were checked less than a day ago. On this server a file can be deleted only a day after the last check, so try again later. Nothing was deleted.",
+    cleanUnusedFilesNone: "No unused files were found. Nothing was deleted.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Deleted ${deleted} unused file(s).${kept > 0 ? ` ${kept} file(s) were kept because they were in use again or could not be deleted.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `The clean-up stopped because the app started using its data (saving, a chat, a restore or another tab). ${deleted} file(s) were deleted before it stopped. Try again later.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Clean-up cancelled. Nothing was deleted.' : `Clean-up cancelled. ${deleted} file(s) were deleted before it stopped.`,
+    cleanUnusedFilesOtherTab: "Another tab of this app is open. Close every other tab of this app, then try again. Nothing was deleted.",
+    cleanUnusedFilesNoTabCheck: "This page cannot check for other open tabs (it is not opened over HTTPS or localhost), so it cannot clean up unused files. Nothing was deleted.",
+    cleanUnusedFilesBusy: "Wait until saving, a running chat or the automatic clean-up has finished, then try again. Nothing was deleted.",
+    cleanUnusedFilesRefused: "The clean-up cannot run right now (the saved data is changing, being restored or could not be read). Nothing was deleted. Try again later, or reload the app first.",
     coldStorageCleanupNoLockConfirm: "Your browser can't check whether another tab of this app is open. If another tab of this app is open while the cleanup runs, that tab can lose data. Close every other tab of this app first, then continue. Continue anyway?",
     coldStorageCleanupNodeConfirm: "Do not run this cleanup while another device or browser is using the same server. Anything they save while it runs can be lost or deleted. Continue?",
     coldStorageCleanupCheckingTabs: "Checking for other open tabs of this app before cleaning up...",

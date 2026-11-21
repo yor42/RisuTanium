@@ -1664,6 +1664,8 @@ export const languageChinese = {
         "value": "值",
         "var": "变量",
         "operandType": "{label}类型",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "变量名",
         "outputVar": "输出变量",
         "name": "名称",
@@ -3852,17 +3854,32 @@ export const languageChinese = {
     "coldStorage": "启动时归档角色和模块",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `为了保持较低的内存占用，本应用现在会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。不会删除任何内容，您的角色外观和使用方式与之前一致。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中关闭此功能。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `由于连续两个角色无法单独存储，本次启动的归档已停止；第二个是"${characterName}"。这些角色仍完整保留在主存档中并保持完全加载，在它们之前已归档的角色不受影响。其余角色保持原样。`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `以下角色无法单独存储：${characterNames}${otherCount > 0 ? ` 等另外 ${otherCount} 个` : ''}。它们仍保持完全加载，并像之前一样正常使用，本应用在启动时不会再尝试归档它们。若要在此设备上重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `您的存档过大，自托管服务器无法将角色归档到其中，因此未归档任何内容，您的存档也保持原样。一切照常运行。若要在此设备上重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `本设备上的启动时角色归档已暂停，因为它连续两次未能完成。没有任何内容丢失，已归档的角色在您打开时仍会正常加载。在恢复之前，启动时不会再归档任何新角色。若要重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
     "cleanColdStorage": "清理未使用的归档数据和资源",
     "customSidebarConfig": "自定义侧边栏配置",
     "cleanColdStorageConfirm": "这将永久删除所有未使用的归档（冷存储）数据，以及所有未使用的资源文件，即不再被任何角色、模块、人设或设置使用的图片和音频。其中部分内容将来可能仍然有用，且删除后无法恢复。是否要继续？",
+    "cleanUnusedFiles": "清理未使用的文件",
+    "cleanUnusedFilesMeasuring": "正在查找未使用的文件。如果资料库很大，可能需要较长时间。",
+    "cleanUnusedFilesDeleting": "正在删除未使用的文件...",
+    "cleanUnusedFilesConfirm": (count: number, bytes: number | null) => {
+        const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小于 0.1 MiB' : `约 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `要删除 ${count} 个未使用的文件（${size}）吗？没有任何角色、模块、人设、设置或还原点使用它们。请先关闭本应用的所有其他标签页和窗口。此操作无法撤销。`
+    },
+    "cleanUnusedFilesConfirmNode": (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小于 0.1 MiB' : `约 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `现在要删除 ${count} 个未使用的文件（${size}）吗？`
+            + (later > 0 ? ` 另外还发现了 ${later} 个未使用的文件。在此服务器上，只有经过至少相隔一天的三次清理都发现某个文件未被使用后才会删除它，且每次最多删除 500 个，因此这些文件会被记录下来，留待以后的清理。` : '')
+            + ` 请先关闭所有使用此服务器的其他标签页和设备：点击“是”即表示确认没有任何一个仍处于打开状态。此操作无法撤销。`
+    },
+    "cleanUnusedFilesNoteNode": (later: number) => `目前还没有可以删除的未使用文件。已发现 ${later} 个未使用的文件。在此服务器上，只有经过至少相隔一天的三次清理都发现某个文件未被使用后才会删除它，且每次最多删除 500 个。要现在记录它们，以便以后的清理可以删除吗？请先关闭所有使用此服务器的其他标签页和设备：点击“是”即表示确认没有任何一个仍处于打开状态。`,
+    "cleanUnusedFilesNodeWait": "不到一天前刚检查过未使用的文件。在此服务器上，文件只能在上次检查一天之后才能删除，请稍后再试。未删除任何内容。",
+    "cleanUnusedFilesNone": "未发现未使用的文件。未删除任何内容。",
+    "cleanUnusedFilesDone": (deleted: number, kept: number) => `已删除 ${deleted} 个未使用的文件。${kept > 0 ? ` 有 ${kept} 个文件被保留，因为它们再次被使用或无法删除。` : ''}`,
+    "cleanUnusedFilesStopped": (deleted: number) => `清理已停止，因为应用开始使用其数据（保存、聊天、还原或另一个标签页）。停止前已删除 ${deleted} 个文件。请稍后再试。`,
+    "cleanUnusedFilesCancelled": (deleted: number) => deleted === 0 ? '清理已取消。未删除任何内容。' : `清理已取消。停止前已删除 ${deleted} 个文件。`,
+    "cleanUnusedFilesOtherTab": "本应用的另一个标签页处于打开状态。请关闭本应用的所有其他标签页，然后重试。未删除任何内容。",
+    "cleanUnusedFilesNoTabCheck": "此页面无法检查其他已打开的标签页（它不是通过 HTTPS 或 localhost 打开的），因此无法清理未使用的文件。未删除任何内容。",
+    "cleanUnusedFilesBusy": "请等待保存、正在运行的聊天或自动清理完成后再重试。未删除任何内容。",
+    "cleanUnusedFilesRefused": "目前无法执行清理（已保存的数据正在更改、正在还原或无法读取）。未删除任何内容。请稍后再试，或先重新加载应用。",
     "coldStorageCleanupNoLockConfirm": "您的浏览器无法检查是否已打开此应用的其他标签页。如果在清理运行期间此应用的其他标签页处于打开状态，该标签页可能会丢失数据。请先关闭此应用的所有其他标签页，然后再继续。仍要继续吗？",
     "coldStorageCleanupNodeConfirm": "当另一台设备或浏览器正在使用同一服务器时，请勿运行此清理。它们在清理运行期间保存的任何内容都可能丢失或被删除。是否继续？",
     "coldStorageCleanupCheckingTabs": "清理前正在检查此应用是否还有其他已打开的标签页...",

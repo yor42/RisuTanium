@@ -1,0 +1,41 @@
+{
+  "type": "character",
+  "name": "Alice edited",
+  "image": "assets/alice.png",
+  "chaId": "cha-loaded-edited",
+  "chatPage": 0,
+  "creatorNotes": "An edited note",
+  "tags": [
+    "a"
+  ],
+  "creator": "Top",
+  "chats": [
+    {
+      "id": "c1",
+      "name": "One",
+      "note": "",
+      "localLore": [],
+      "message": [
+        {
+          "role": "user",
+          "data": "hello",
+          "time": 1
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "Two",
+      "note": "",
+      "localLore": [],
+      "message": [
+        {
+          "role": "user",
+          "data": "again",
+          "time": 2
+        }
+      ]
+    }
+  ],
+  "globalLore": []
+}
