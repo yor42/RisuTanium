@@ -2340,3 +2340,23 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |
 | [MC-2975](Maintainer-Context.md#mc-2975--upstream-7ee467abc6db4b681f-dispositions-2026-11-21) | Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21 |
 | [MC-2976](Maintainer-Context.md#mc-2976--upstream-6db4b681f-sync-flow-port-pr-then-a--s-ours-merge-pr-2026-11-21) | Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21 |
+| [MC-2938](Maintainer-Context.md#mc-2938--438-pack-default-colours-become-the-users-scheme-2026-11-21) | #438 Pack default colours become the user's scheme, 2026-11-21 |
+| [MC-2939](Maintainer-Context.md#mc-2939--438-the-users-chat-background-wins-over-the-pack-canvas-2026-11-21) | #438 The user's chat background wins over the pack canvas, 2026-11-21 |
+| [MC-2940](Maintainer-Context.md#mc-2940--438-pack-method-app-wide-shape-tokens-plus-part-css-critical-prompts-tokens-only-2026-11-21) | #438 Pack method app-wide: shape tokens plus part CSS, critical prompts tokens-only, 2026-11-21 |
+| [MC-2941](Maintainer-Context.md#mc-2941--438-pack-scope-every-new-shell-plus-popups-toasts-and-dialogs-2026-11-21) | #438 Pack scope: every new shell plus popups, toasts and dialogs, 2026-11-21 |
+| [MC-2942](Maintainer-Context.md#mc-2942--438-pack-effects-admitted-with-reduced-motion-and-reduced-effects-fallbacks-2026-11-21) | #438 Pack effects admitted with reduced-motion and reduced-effects fallbacks, 2026-11-21 |
+| [MC-2944](Maintainer-Context.md#mc-2944--438-area-model-per-area-sheets-all-on-at-once-2026-11-21) | #438 Area model: per-area sheets, all on at once, 2026-11-21 |
+| [MC-2945](Maintainer-Context.md#mc-2945--438-extend-risutheme-v1-additively-no-installed-pack-on-the-phone-2026-11-21) | #438 Extend .risutheme v1 additively; no installed pack on the phone, 2026-11-21 |
+| [MC-2946](Maintainer-Context.md#mc-2946--438-colours-declared-in-a-pack-sheet-become-its-default-scheme-2026-11-21) | #438 Colours declared in a pack sheet become its default scheme, 2026-11-21 |
+| [MC-2947](Maintainer-Context.md#mc-2947--438-critical-popups-are-the-mc-691-list-2026-11-21) | #438 Critical popups are the MC-691 list, 2026-11-21 |
+| [MC-2948](Maintainer-Context.md#mc-2948--438-pack-colours-get-their-own-theme-pack-scheme-tile-2026-11-21) | #438 Pack colours get their own "Theme pack" scheme tile, 2026-11-21 |
+| [MC-2949](Maintainer-Context.md#mc-2949--438-a-module-background-embedding-counts-as-the-users-chat-background-2026-11-21) | #438 A module background embedding counts as the user's chat background, 2026-11-21 |
+| [MC-2950](Maintainer-Context.md#mc-2950--438-turning-the-pack-off-restores-the-pre-pack-scheme-2026-11-21) | #438 Turning the pack off restores the pre-pack scheme, 2026-11-21 |
+| [MC-2951](Maintainer-Context.md#mc-2951--438-pack-text-over-a-user-wallpaper-accepted-limitation-2026-11-21) | #438 Pack text over a user wallpaper: accepted limitation, 2026-11-21 |
+| [MC-2952](Maintainer-Context.md#mc-2952--438-a-bin-carries-the-pre-pack-scheme-2026-11-21) | #438 A .bin carries the pre-pack scheme, 2026-11-21 |
+| [MC-2953](Maintainer-Context.md#mc-2953--438-active-pack-update-refreshes-colours-only-while-following-2026-11-21) | #438 Active-pack update refreshes colours only while following, 2026-11-21 |
+| [MC-3001](Maintainer-Context.md#mc-3001--438-a-pack-gets-a-default-scheme-only-if-it-declares-the-core-colours-2026-11-21) | #438 A pack gets a default scheme only if it declares the core colours, 2026-11-21 |
+| [MC-3002](Maintainer-Context.md#mc-3002--438-non-chat-area-sheets-may-carry-colours-2026-11-21) | #438 Non-chat area sheets may carry colours, 2026-11-21 |
+| [MC-3003](Maintainer-Context.md#mc-3003--438-pack-images-and-gradients-count-as-paint-2026-11-21) | #438 Pack images and gradients count as paint, 2026-11-21 |
+| [MC-3004](Maintainer-Context.md#mc-3004--438-non-core-scheme-fields-come-from-the-judged-base-2026-11-21) | #438 Non-core scheme fields come from the judged base, 2026-11-21 |
+| [MC-3005](Maintainer-Context.md#mc-3005--438-pack-canvas-parts-yield-to-the-users-background-bubbles-keep-fills-2026-11-21) | #438 Pack canvas parts yield to the user's background, bubbles keep fills, 2026-11-21 |

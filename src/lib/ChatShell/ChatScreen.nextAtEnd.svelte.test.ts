@@ -56,6 +56,7 @@ vi.mock(import('src/ts/stores.svelte'), async () => {
         HideIconStore: store(false),
         createSimpleCharacter: vi.fn(() => null),
         hypaV3ModalOpen: store(false),
+        moduleBackgroundEmbedding: store(''),
         ScrollToMessageStore: scrollToMessage,
         additionalChatMenu,
         additionalFloatingActionButtons,

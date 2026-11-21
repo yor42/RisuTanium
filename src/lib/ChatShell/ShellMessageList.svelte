@@ -53,8 +53,10 @@
         onOpenActions?: (request: ActionRequest) => void
         onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
+        // The user's own background shows under a theme pack: the list paints no fill of its own, whatever the pack sets.
+        canvasYield?: boolean
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), newCount = $bindable(0), farFromLatest = $bindable(false), readerIntent, searchHit = null, searchHitNote = '', onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), newCount = $bindable(0), farFromLatest = $bindable(false), readerIntent, searchHit = null, searchHitNote = '', onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, canvasYield = false }: Props = $props()
     // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
     let overlayRows = $state<Record<string, true>>({})
     function setOverlay(key: string, open: boolean): void {
@@ -924,7 +926,8 @@
     }
 </script>
 
-<div data-part="chat-message-list" class="flex flex-col-reverse" role="log" aria-live="off" bind:this={rows}>
+<!-- While the user's own background shows under a pack, the list paints no fill of its own, whatever the pack sets (MC-3005: Office Sheet's page); its border and shadow stay. The directives set only the two background longhands, so the padding the step hold writes on this element survives. -->
+<div data-part="chat-message-list" class="flex flex-col-reverse" role="log" aria-live="off" style:background-color|important={canvasYield ? 'transparent' : undefined} style:background-image|important={canvasYield ? 'none' : undefined} bind:this={rows}>
     {#key rebuildEpoch}
         {#each renderRows as row (row.key)}
             <div class="chat-message-container" class:older={row.idx < messages.length - 3 && !overlayRows[row.key]} class:search-hit={searchHit !== null && searchHit.message === row.message} data-part="chat-message-container">

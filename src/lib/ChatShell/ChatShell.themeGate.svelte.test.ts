@@ -17,7 +17,7 @@ vi.mock('../../ts/stores.svelte', () => {
     const selIdState = $state({ selId: 0 })
     const selectedCharID = writable(0)
     selectedCharID.subscribe((value) => { selIdState.selId = value })
-    return { DBState, selIdState, selectedCharID, CharEmotion: writable({}), sideBarStore: writable(false) }
+    return { DBState, selIdState, selectedCharID, CharEmotion: writable({}), sideBarStore: writable(false), moduleBackgroundEmbedding: writable('') }
 })
 vi.mock('../../ts/chatShell/switchTarget.svelte', () => ({ switchTarget: { target: null, phase: 'idle', reason: null }, retrySwitch: vi.fn(), backToPrevious: vi.fn(), abandonPendingSwitch: vi.fn() }))
 vi.mock('../../ts/backHandlers', () => ({ registerBackHandler: () => () => undefined, backCloseHandler: () => () => false }))
