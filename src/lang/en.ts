@@ -1795,6 +1795,7 @@ export const languageEnglish = {
     triggerInputLabels: {
         value: "Value",
         var: "Variable",
+        operandType: "{label} type",
         varName: "Variable Name",
         outputVar: "Output Variable",
         name: "Name",
@@ -3249,6 +3250,7 @@ export const languageEnglish = {
     openAIAudioLeftOut: "Not sent to the model (it takes only WAV or MP3 audio): {names}",
     openAIAudioUnnamed: "an audio attachment",
     triggerOn: "Trigger On",
+    triggerEffectCategory: "Effect category",
     noConfig: "No Config",
     var: "Variable",
     condition: "Condition",
