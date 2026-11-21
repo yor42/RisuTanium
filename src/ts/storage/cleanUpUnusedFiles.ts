@@ -56,6 +56,10 @@ export function cleanUpMessage(outcome: ManualCleanUpOutcome): string | null {
         if (result.stopped !== undefined) {
             return language.cleanUnusedFilesStopped(result.deleted)
         }
+        // Nothing approved means the Node note-only confirm: the files were only noted, so the notice must not report a deletion.
+        if (outcome.approved === 0 && result.deleted === 0) {
+            return language.cleanUnusedFilesNodeWait
+        }
         return language.cleanUnusedFilesDone(result.deleted, outcome.approved - result.deleted)
     }
     // `skipped` and `planned` are not results of a delete step; show the generic refusal rather than claim a clean-up.

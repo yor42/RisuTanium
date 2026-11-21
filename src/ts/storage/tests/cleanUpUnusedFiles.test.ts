@@ -65,6 +65,7 @@ describe('cleanUpMessage (U2): every outcome has its message', () => {
         ['ended, done stopped yielded after 1', ended(done({ deleted: 1, stopped: 'yielded' })), language.cleanUnusedFilesStopped(1)],
         ['ended, done all deleted', ended(done()), language.cleanUnusedFilesDone(3, 0)],
         ['ended, done with 1 kept', ended(done({ deleted: 2 })), language.cleanUnusedFilesDone(2, 1)],
+        ['ended, Node note-only (nothing approved, record written)', ended(done({ phase: 'recorded', deleted: 0, recorded: true }), 0), language.cleanUnusedFilesNodeWait],
         ['declined', { status: 'declined' }, null],
     ])('%s', (_name, outcome, expected) => {
         expect(cleanUpMessage(outcome)).toBe(expected)
