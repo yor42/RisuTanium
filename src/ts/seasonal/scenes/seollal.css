@@ -1,0 +1,111 @@
+/*
+  Seasonal scene: seollal. Classes are prefixed rt-sl-. Final pose = the static .rt-sl-final state on the sky, the mark
+  and the word. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the
+  root), so every light rule keys on that ancestor attribute.
+  Palette (own picks): dawn #172150 to #3c3a72 to #b8706a; pouch silk #e2453c to #c11f2c with an ivory #fff3d6 edge,
+  frill #2a5fd0, gold #f2c14e; pine needles #5fae6e / #3f8a50, wood #7a5236; magpie ink #14161f with
+  sheen #3d6fd1 and white #f4f6fb.
+*/
+
+/* ---------- Families ---------- */
+.rt-sl-ebs {
+  font-family: 'EBS Juseekyung', 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 400;
+  font-size: calc(var(--rt-sl-fs, 24px) * 1.02);
+  font-synthesis: none;
+}
+.rt-sl-fb {
+  font-family: 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--rt-sl-fs, 24px) * 0.86);
+  font-synthesis: none;
+}
+
+/* ---------- Stage ---------- */
+.rt-sl-sky { position: absolute; inset: 0; pointer-events: none; }
+.rt-sl-wash {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--rt-sl-wash-h, 72px);
+  background: linear-gradient(to bottom, #172150 0%, #3c3a72 58%, #b8706a 100%);
+  opacity: 0;
+  /* Feathered on both sides and at the bottom, with a soft hole over the mark slot so a running status mark is
+     never tinted. Static masks, no filter. */
+  --rt-sl-hole: radial-gradient(circle at var(--rt-sl-mx, -100px) var(--rt-sl-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 88%, transparent 100%), linear-gradient(to bottom, #000 70%, transparent 100%), var(--rt-sl-hole);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 88%, transparent 100%), linear-gradient(to bottom, #000 70%, transparent 100%), var(--rt-sl-hole);
+  mask-composite: intersect;
+}
+[data-rt-sw-tone="light"] .rt-sl-wash { background: linear-gradient(to bottom, #d9e4ff 0%, #f1e6f4 55%, #ffd9c2 100%); }
+
+.rt-sl-bough { position: absolute; top: 0; transform-origin: 100% 0; opacity: 0; }
+.rt-sl-bough-svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 100% 0; }
+.rt-sl-wood { fill: #7a5236; }
+.rt-sl-twig { fill: none; stroke: #7a5236; stroke-width: 1.4; stroke-linecap: round; }
+.rt-sl-needle, .rt-sl-needle-b { fill: none; stroke-width: 1.15; stroke-linecap: round; }
+.rt-sl-needle { stroke: #5fae6e; }
+.rt-sl-needle-b { stroke: #3f8a50; }
+[data-rt-sw-tone="light"] .rt-sl-needle { stroke: #3c8a4c; }
+[data-rt-sw-tone="light"] .rt-sl-needle-b { stroke: #2b6a3a; }
+
+.rt-sl-magpie { position: absolute; }
+.rt-sl-magpie-svg { display: block; width: 100%; height: 100%; overflow: visible; opacity: 0; }
+.rt-sl-mp-ink { fill: #14161f; stroke: rgb(236 240 250 / 0.6); stroke-width: 0.7; paint-order: stroke fill; }
+[data-rt-sw-tone="light"] .rt-sl-mp-ink { stroke: none; }
+.rt-sl-mp-sheen { fill: #3d6fd1; }
+.rt-sl-mp-white { fill: #f4f6fb; }
+[data-rt-sw-tone="light"] .rt-sl-mp-white { fill: #ffffff; stroke: #14161f; stroke-width: 0.35; }
+.rt-sl-mp-beak { fill: #2a2c36; }
+.rt-sl-mp-eye { fill: #f4f6fb; }
+.rt-sl-mp-leg { fill: none; stroke: #4a3b30; stroke-width: 0.9; stroke-linecap: round; }
+.rt-sl-mp-wing { transform-box: fill-box; transform-origin: 30% 85%; }
+.rt-sl-mp-tail { transform-box: fill-box; transform-origin: 0% 60%; }
+
+.rt-sl-greetbox { position: absolute; display: flex; align-items: center; white-space: nowrap; }
+.rt-sl-greet {
+  display: inline-block;
+  color: #fff6e6;
+  -webkit-text-stroke: 0.07em #172150;
+  paint-order: stroke fill;
+  transform-origin: 0 50%;
+  opacity: 0;
+}
+[data-rt-sw-tone="light"] .rt-sl-greet { color: #8a1c24; -webkit-text-stroke: 0.06em #fff8ef; }
+
+.rt-sl-sky.rt-sl-squeezed .rt-sl-bough, .rt-sl-sky.rt-sl-squeezed .rt-sl-magpie { visibility: hidden; }   /* mid-play shrink: the greeting needs the row */
+.rt-sl-sky.rt-sl-final { display: none; }
+
+/* ---------- Mark slot: everyday triangle to the lucky pouch (upright) ---------- */
+.rt-sl-mark { display: block; width: 100%; height: 100%; overflow: visible; --rt-sl-every: #ffffff; --rt-sl-edge: #fff3d6; }
+[data-rt-sw-tone="light"] .rt-sl-mark { --rt-sl-every: #0f172a; --rt-sl-edge: #6e1016; }
+.rt-sl-every, .rt-sl-pouch, .rt-sl-cord, .rt-sl-emb { transform-box: view-box; transform-origin: 50% 45.2%; }
+.rt-sl-cord { transform-origin: 50% 24.7%; }          /* the knot at (0,-30) */
+.rt-sl-emb { transform-origin: 50% 53.4%; }           /* the embroidery's centre (0,12) */
+.rt-sl-every-ink { fill: var(--rt-sl-every); }
+.rt-sl-pouch, .rt-sl-cord, .rt-sl-emb { opacity: 0; }
+.rt-sl-body { stroke: var(--rt-sl-edge); stroke-width: 4; stroke-linejoin: round; paint-order: stroke fill; }
+.rt-sl-frill { fill: #2a5fd0; stroke: var(--rt-sl-edge); stroke-width: 4; stroke-linejoin: round; paint-order: stroke fill; }
+.rt-sl-pleat { fill: none; stroke: #8fb4ff; stroke-width: 1.6; stroke-linecap: round; opacity: 0.8; }
+.rt-sl-band { fill: #f2c14e; stroke: #8a5a10; stroke-width: 1; }
+.rt-sl-knot { fill: #f2c14e; stroke: #8a5a10; stroke-width: 1; stroke-linejoin: round; }
+.rt-sl-loops { fill: none; stroke: #f2c14e; stroke-width: 2.6; stroke-linecap: round; }
+.rt-sl-stitch { fill: none; stroke: #f2c14e; stroke-width: 4.6; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.rt-sl-gold { fill: #f2c14e; }
+
+.rt-sl-mark.rt-sl-final .rt-sl-every { opacity: 0; }
+.rt-sl-mark.rt-sl-final .rt-sl-pouch,
+.rt-sl-mark.rt-sl-final .rt-sl-cord,
+.rt-sl-mark.rt-sl-final .rt-sl-emb { opacity: 1; transform: none; }
+.rt-sl-mark.rt-sl-final .rt-sl-stitch { stroke-dashoffset: 0; }
+
+/* ---------- Word: warm ivory "Tanium" and a gold edge painted behind the everyday letters ----------
+   The edge is a transparent-fill copy with a 0.13em gold stroke at z-index -1, so only its outer half shows. */
+.rt-sl-word { --rt-sl-gold: #e3a93a; --rt-sl-warm: #fff1d0; }
+[data-rt-sw-tone="light"] .rt-sl-word { --rt-sl-gold: #d39a24; --rt-sl-warm: #3b1a14; }
+.rt-sl-edge {
+  position: absolute; left: 0; top: 0; height: 1.2em; z-index: -1; white-space: nowrap;
+  pointer-events: none; opacity: 0; color: transparent;
+  -webkit-text-stroke: 0.1em var(--rt-sl-gold);
+}
+.rt-sl-edge > span { display: inline-block; height: 1.2em; vertical-align: top; }
+.rt-sl-word.rt-sl-warm .rt-sw-b { color: var(--rt-sl-warm); }
+.rt-sl-word.rt-sl-final .rt-sl-edge { opacity: 1; }
