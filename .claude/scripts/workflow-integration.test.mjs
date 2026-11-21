@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { registerDispatch, finishDispatch, loadState, validateDispatch } from './workflow-control.mjs';
 import { exportSnapshot } from '../../Agents/Tools/external/workspace.mjs';
 import { prepareWorker } from '../../Agents/Tools/external/worker.mjs';
+// The committed state snapshot is not the live state and may lag a policy revision; fixtures take the revision from the policy.
+const policyRevision = () => JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).revision;
 
 test('registered host manifest and scopes bind integration; journal tampering cannot expand writes', async t => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'risu-integration-cli-'));
@@ -19,10 +21,10 @@ test('registered host manifest and scopes bind integration; journal tampering ca
     execFileSync('git', ['-C', repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
     fs.copyFileSync(new URL('../workflow-policy.json', import.meta.url), path.join(repo, '.claude/workflow-policy.json'));
     const state = JSON.parse(fs.readFileSync(new URL('../../Agents/Workflow-State.json', import.meta.url)));
-    Object.assign(state, { activation: 'active', activeRevision: state.policyRevision, generation: 0, jobs: {}, dispatches: {}, routeHealth: {}, integrations: [] });
+    Object.assign(state, { activation: 'active', policyRevision: policyRevision(), activeRevision: policyRevision(), generation: 0, jobs: {}, dispatches: {}, routeHealth: { codex: { reason: 'passed', checkedAt: new Date().toISOString(), evidence: 'fixture probe' } }, integrations: [] });
     fs.writeFileSync(path.join(repo, 'Agents/Workflow-State.json'), JSON.stringify(state));
     const exported = exportSnapshot({ repo, dest: workdir }); const promptFile = path.join(temp, 'prompt.md'); fs.writeFileSync(promptFile, 'Bounded fixture');
-    const d = await registerDispatch({ id: 'integration-one', logicalJobId: 'stage-one', mode: 'implement', owner: 'fixture', question: 'Change a', acceptance: ['a changed'], inputIdentity: exported.digest, workdir, promptFile, outFile: path.join(temp, 'answer.json'), manifestFile: exported.manifestFile, readScope: ['src/b.ts'], allowedWrites: ['src/a.ts'] }, { root: repo });
+    const d = await registerDispatch({ id: 'integration-one', logicalJobId: 'stage-one', mode: 'implement', optIn: 'codex', owner: 'fixture', question: 'Change a', acceptance: ['a changed'], inputIdentity: exported.digest, workdir, promptFile, outFile: path.join(temp, 'answer.json'), manifestFile: exported.manifestFile, readScope: ['src/b.ts'], allowedWrites: ['src/a.ts'] }, { root: repo });
     await validateDispatch(d, { root: repo }); prepareWorker(d);
     const originalManifest = fs.readFileSync(exported.manifestFile); fs.appendFileSync(exported.manifestFile, ' ');
     assert.throws(() => prepareWorker(d), /manifest changed/); fs.writeFileSync(exported.manifestFile, originalManifest);
