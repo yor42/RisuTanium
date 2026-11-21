@@ -1664,6 +1664,8 @@ export const languageSpanish = {
         "value": "Valor",
         "var": "Variable",
         "operandType": "Tipo de {label}",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Nombre de Variable",
         "outputVar": "Variable de Salida",
         "name": "Nombre",

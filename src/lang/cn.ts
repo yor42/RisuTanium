@@ -1664,6 +1664,8 @@ export const languageChinese = {
         "value": "值",
         "var": "变量",
         "operandType": "{label}类型",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "变量名",
         "outputVar": "输出变量",
         "name": "名称",

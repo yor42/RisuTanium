@@ -1797,6 +1797,8 @@ export const languageJapanese = {
         value: "値",
         var: "変数",
         operandType: "{label}の種類",
+        operandA: "A",
+        operandB: "B",
         varName: "変数名",
         outputVar: "出力変数",
         name: "名前",

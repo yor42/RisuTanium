@@ -154,7 +154,9 @@ function otherFieldIn(parent: Element, control: Element): boolean {
 /**
  * The checkbox that switches a field on or off: the last checkbox inside the control's parent that comes
  * before the control in document order, and only when that parent holds no other value control or text
- * field. SliderInput and OptionalInput put the toggle and the field side by side under one root.
+ * field. SliderInput and OptionalInput put the toggle and the field side by side under one root. Their
+ * enable checkbox is icon-only (named by aria-label, no visible text); a checkbox that shows its own text
+ * is a standalone setting that merely shares the parent, so it never counts as the field's toggle.
  */
 export function toggleFor(control: Element): HTMLInputElement | null {
     const parent = control.parentElement
@@ -163,6 +165,9 @@ export function toggleFor(control: Element): HTMLInputElement | null {
     }
     let found: HTMLInputElement | null = null
     for(const box of Array.from(parent.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))){
+        if(normalize(visibleText(box.closest('label') ?? box)) !== ''){
+            continue
+        }
         if(box.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING){
             found = box
         }

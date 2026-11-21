@@ -38,8 +38,8 @@
         hideAutoComplete()
     }}
 >
-    {#if !labelId && label.trim()}
-        <span id={nameId} class="sr-only">{label}</span>
+    {#if ids.srOnly}
+        <span id={ids.nameId} class="sr-only">{label}</span>
     {/if}
     {#if !highlight || $disableHighlight}
         <textarea
@@ -49,8 +49,8 @@
             {autocomplete}
             {placeholder}
             id={id}
-            aria-labelledby={nameId}
-            aria-describedby={describedIds}
+            aria-labelledby={ids.nameId}
+            aria-describedby={ids.describedIds}
             bind:value={value}
             oninput={(e) => {
                 if(optimaizedInput){
@@ -122,8 +122,8 @@
             onInput()
         }}
         role="textbox"
-        aria-labelledby={nameId}
-        aria-describedby={describedIds}
+        aria-labelledby={ids.nameId}
+        aria-describedby={ids.describedIds}
         tabindex="0"
         oninput={(e) => {
             autoComplete()
@@ -152,6 +152,7 @@
   import { isMobile } from 'src/ts/platform'
     import { hotkeyMatches } from 'src/ts/hotkey';
     import { isImeComposing } from 'src/ts/ime/compositionGuard';
+    import { fieldNameIds } from './fieldNameIds';
     interface Props {
         size?: 'xs'|'sm'|'md'|'lg'|'xl'|'default';
         autocomplete?: 'on'|'off';
@@ -200,8 +201,7 @@
     const uid = $props.id();
 
     // TalkBack speaks only the description in the field's own stop, so the naming element is also the first description.
-    let nameId = $derived(labelId || (label.trim() ? `${uid}-label` : undefined));
-    let describedIds = $derived([nameId, describedBy].filter(Boolean).join(' ') || undefined);
+    let ids = $derived(fieldNameIds(uid, labelId, label, describedBy));
     let selectingAutoComplete = $state(0)
     // TODO: Review if highlight prop can change dynamically - if so, this needs to be reactive
     // svelte-ignore state_referenced_locally

@@ -1709,6 +1709,8 @@ export const languageChineseTraditional = {
         "value": "值",
         "var": "變數",
         "operandType": "{label}類型",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "變數名稱",
         "outputVar": "輸出變數",
         "name": "名稱",
