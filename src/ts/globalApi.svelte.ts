@@ -56,8 +56,6 @@ import { StoreBlobUnsupportedError, StoreInvalidKeyError } from "./storage/store
 import { NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from "./storage/nodeBodyLimit";
 import { storeAssetLimitBytes } from "./storage/assetLimit";
 import { assertBlobWithinAssetLimit } from "./storage/pickedAssetLimit";
-import { displayMimeOfAssetKey } from "./storage/assetDisplayMime";
-import { assetOrInlayBodyKeyViolation } from "./storage/store/keyRules";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -167,219 +165,18 @@ export function fetchLogRedactor(): (field: FetchLogField, text: string) => stri
 
 export { downloadFile } from "./downloadFile"
 
-type FileCacheEntry = {
-    status: 'loading' | 'done'
-    // AV-3: plain-HTTP 'done' entries store the finished,
-    // full `data:image/png;base64,...` string here, built once inside the
-    // loading producer in getFileSrc, instead of raw bytes that got
-    // re-encoded into a fresh string on every call. Every cache hit, the
-    // oversized memo included, returns this exact string object as-is — no
-    // caller re-concatenates it — so every caller served from the same cache
-    // entry or memo slot gets the same string object, instead of each holder
-    // (a DOM attribute, CSS, or any other consumer) building its own copy.
-    // Whether that also avoids a browser engine flattening its own copy of a
-    // rope/ConsString per holder is plausible but not verified against Blink.
-    // A caller that arrives after an eviction, re-read, or an orphaned
-    // attempt still gets a different string object than an earlier caller
-    // did. Entries without a `src` (a Blob shown through an object URL) cost 0
-    // bytes in the accounting below.
-    src?: string
-    // Set only while status === 'loading'. All callers that find an in-flight entry
-    // await this SAME promise object directly rather than polling the Map — polling
-    // is what let a concurrent waiter observe a stale/evicted entry after the
-    // producer finished. Awaiting the promise sidesteps the Map entirely for the
-    // result itself; the Map is only touched afterward, for caching/eviction.
-    promise?: Promise<FileCacheEntry>
-}
-
-// The `data:image/png;base64,` wrapper every successful plain-HTTP getFileSrc
-// result carries (the function-level catch below still returns '' on error,
-// not this prefix). `FileCacheEntry.src` and the oversized memo's `src` both
-// store the FULL string including this prefix (see FileCacheEntry.src above)
-// — it is never concatenated on a per-call basis, so a caller served from the
-// same cache entry or memo slot as an earlier caller gets back the exact same
-// string object. The byte budget below still sizes only the actual encoded
-// payload, so fileCacheEntryCost (below) subtracts this constant-length
-// prefix back out of the cost.
+// The `data:image/png;base64,` wrapper every store-read fallback result of
+// getFileSrc carries (Tauri and Node asset-route results are URLs without it);
+// the function-level catch still returns '' on error, not this prefix.
 const FILE_CACHE_SRC_PREFIX = 'data:image/png;base64,'
 
-// Bounded LRU cache, keyed by asset location. On the non-Tauri path this holds
-// the already-encoded `data:` string of every asset resolved via getFileSrc,
-// bounded by both an entry-count cap and a byte budget below, so long
-// sessions can't hold an unbounded amount of encoded asset data in memory. An
-// asset a Node-hosted page gets a URL for never reaches it.
-const FILE_CACHE_DEFAULT_MAX_ENTRIES = 200
-// Mutable only so the test-only seam (__fileCacheTestHooks.setLimits) can shrink
-// it for a test and restore it afterward; production code never changes it.
-let FILE_CACHE_MAX_ENTRIES = FILE_CACHE_DEFAULT_MAX_ENTRIES
-// AV-3 budget: total bytes of encoded payload the cache may
-// hold across all entries (see fileCacheEntryCost — the shared prefix on each
-// `src` is excluded). Loading entries and Blob entries (no `src`) cost 0.
-const FILE_CACHE_DEFAULT_MAX_BYTES = 64 * 1024 * 1024
-let fileCacheMaxBytes = FILE_CACHE_DEFAULT_MAX_BYTES
-// Running total of every cached entry's cost (see fileCacheEntryCost), kept in
-// sync by fileCacheSet/fileCacheDelete below — the only two functions allowed
-// to mutate `fileCache` during normal operation (the test-only
-// __fileCacheTestHooks.reset() below is the one exception: it calls
-// fileCache.clear() directly and zeroes this counter to match) — so it never
-// drifts from a recomputed sum (see __fileCacheTestHooks.stats, which asserts
-// exactly that in tests).
-let fileCacheBytes = 0
-const fileCache = new Map<string, FileCacheEntry>()
-
-// AV-3: the most recent oversized `getFileSrc` result
-// (one whose cost, see fileCacheEntryCost, exceeds fileCacheMaxBytes). Oversized
-// results are never committed to the budgeted `fileCache` map above, but
-// without this one-slot memo a caller that re-requests the same oversized loc
-// repeatedly (e.g. a streaming re-parse) would re-read and re-encode it every
-// time. Holds at most one entry, replaced whenever a new oversized result
-// arrives, and never counted toward fileCacheBytes/fileCacheMaxBytes. `src`
-// here is the full string too, returned as-is, same as a cached entry's.
-let oversizedMemo: { loc: string, src: string } | null = null
-
-// The `blob:` URL of every Blob-valued asset a page has displayed, by location.
-// A Blob handle is disk-backed, so this holds no payload bytes; it sits outside
-// `fileCache` on purpose: no entry count, byte budget or LRU eviction applies,
-// because DOM rendered earlier may still show the URL and an eviction-time
-// revoke would blank it. A URL is revoked only when its asset is deleted
-// (releaseAssetObjectUrl) or by the test seam's reset.
-const assetObjectUrls = new Map<string, string>()
-
-// The single stored-value read in flight per asset location, shared by every
-// producer that asks for the same location while it runs (a producer orphaned
-// by LRU eviction included), so one display costs one read and one URL. An
-// entry is removed when its read settles, a failed read included.
-const assetValueReads = new Map<string, Promise<Blob | Uint8Array | null>>()
-
 /**
- * Revokes the object URLs of the assets `keys` name and drops what the display
- * caches hold for them. Call it after an asset has been deleted from the store:
- * a URL left alive would keep showing the deleted content, and a cached entry
- * would keep answering for a key the store no longer holds.
+ * Drops the stored-size records of the assets `keys` name. Call it after an
+ * asset has been deleted from the store: a record left behind would keep
+ * answering for a key the store no longer holds.
  */
 export function releaseAssetObjectUrl(keys: Iterable<string>): void {
-    const released = [...keys]
-    forgetStoredAssetSizes(released)
-    for (const key of released) {
-        const url = assetObjectUrls.get(key)
-        if (url !== undefined) {
-            URL.revokeObjectURL(url)
-            assetObjectUrls.delete(key)
-        }
-        fileCacheDelete(key)
-        if (oversizedMemo !== null && oversizedMemo.loc === key) {
-            oversizedMemo = null
-        }
-    }
-}
-
-// The byte cost of one cache entry for budget purposes: `src.length` MINUS
-// the constant-length `FILE_CACHE_SRC_PREFIX` every `src` carries, so the
-// budget tracks only the encoded payload, not the prefix shared by every
-// entry. Entries with no `src` (loading, or a Blob shown through an object URL) cost 0.
-function fileCacheEntryCost(entry: FileCacheEntry): number {
-    return entry.src ? entry.src.length - FILE_CACHE_SRC_PREFIX.length : 0
-}
-
-// Every mutation of `fileCache` during normal operation must go through one
-// of these two helpers so `fileCacheBytes` can never drift from the Map's
-// actual contents. The one exception is __fileCacheTestHooks.reset(), which
-// clears the whole Map and zeroes the counter together, so no drift is
-// possible there either.
-function fileCacheSet(loc: string, entry: FileCacheEntry) {
-    fileCache.set(loc, entry)
-    fileCacheBytes += fileCacheEntryCost(entry)
-}
-
-function fileCacheDelete(loc: string) {
-    const existing = fileCache.get(loc)
-    if (!existing) {
-        return
-    }
-    fileCacheBytes -= fileCacheEntryCost(existing)
-    fileCache.delete(loc)
-}
-
-// Test-only seam for AV-3. Not used by any production code path.
-// Lets a test shrink the cache's limits, reset it between cases (the module
-// otherwise has no way to clear `fileCache`), and read both the running byte
-// total and one recomputed from the Map, so tests can assert the two never
-// drift apart.
-export const __fileCacheTestHooks = {
-    setLimits(limits: { maxEntries?: number, maxBytes?: number }) {
-        if (typeof limits.maxEntries === 'number') {
-            FILE_CACHE_MAX_ENTRIES = limits.maxEntries
-        }
-        if (typeof limits.maxBytes === 'number') {
-            fileCacheMaxBytes = limits.maxBytes
-        }
-    },
-    reset() {
-        for (const url of assetObjectUrls.values()) {
-            URL.revokeObjectURL(url)
-        }
-        assetObjectUrls.clear()
-        assetValueReads.clear()
-        fileCache.clear()
-        FILE_CACHE_MAX_ENTRIES = FILE_CACHE_DEFAULT_MAX_ENTRIES
-        fileCacheMaxBytes = FILE_CACHE_DEFAULT_MAX_BYTES
-        fileCacheBytes = 0
-        oversizedMemo = null
-    },
-    stats() {
-        let recomputedBytes = 0
-        for (const entry of fileCache.values()) {
-            recomputedBytes += fileCacheEntryCost(entry)
-        }
-        return {
-            entries: fileCache.size,
-            bytes: fileCacheBytes,
-            recomputedBytes,
-        }
-    },
-}
-
-function touchFileCache(loc: string, entry: FileCacheEntry) {
-    // Map iteration order is insertion order; delete-then-set moves this key to the
-    // end, which doubles as a cheap recency marker for the LRU eviction below.
-    fileCacheDelete(loc)
-    fileCacheSet(loc, entry)
-
-    const overBudget = () => fileCache.size > FILE_CACHE_MAX_ENTRIES || fileCacheBytes > fileCacheMaxBytes
-
-    // Walk oldest-to-newest and evict the oldest entries that aren't still
-    // in-flight, until neither the count cap nor the byte budget is exceeded. A
-    // single slow/stuck load must not block eviction of everything behind it,
-    // so this scans past 'loading' entries instead of stopping at the first one.
-    for (const [key, candidate] of fileCache) {
-        if (!overBudget()) {
-            break
-        }
-        if (candidate.status === 'loading') {
-            continue
-        }
-        fileCacheDelete(key)
-    }
-    // If every remaining entry is still 'loading' (e.g. many stalled requests at
-    // once), the pass above evicts nothing and the count cap could otherwise be
-    // exceeded without bound. Fall back to evicting the oldest in-flight entries
-    // too — this is safe because every caller already awaits its entry's
-    // `promise` directly (see getFileSrc), not a Map lookup, so removing the Map
-    // slot doesn't affect anyone already waiting on it. It only means a
-    // brand-new caller for that same key won't find this attempt and will start
-    // a fresh one instead of joining it — which is exactly why the completion
-    // side below only ever commits a result back into the Map if its own entry
-    // is still the one present, so an orphaned old attempt can never clobber a
-    // newer retry. This fallback loops on the COUNT condition only: loading
-    // entries hold no bytes (see fileCacheSet), so evicting one can never bring
-    // the byte total down, and looping on the byte condition here would spin
-    // forever whenever the remaining entries are all still loading.
-    for (const key of fileCache.keys()) {
-        if (fileCache.size <= FILE_CACHE_MAX_ENTRIES) {
-            break
-        }
-        fileCacheDelete(key)
-    }
+    forgetStoredAssetSizes([...keys])
 }
 
 let checkedPaths: string[] = []
@@ -438,62 +235,13 @@ async function readBytesForUrl(loc: string): Promise<Uint8Array | null> {
 }
 
 /**
- * The stored value of `loc` for a URL built outside Tauri, loaded once. An
- * `assets/` key on a store that can hand a value back as a Blob (`readValue`)
- * yields that Blob untouched, so a large asset is never copied into page memory;
- * everything else yields bytes. Concurrent callers for one location share the
- * read, and a rejected read leaves nothing behind for the next caller to join.
- */
-async function readValueForUrl(loc: string): Promise<Blob | Uint8Array | null> {
-    const store = await getAppStore()
-    // A key the store can address but not create (one upstream's own code wrote) can hold no Blob, since
-    // no Blob write accepts it, so it is read as bytes like any other key readValue refuses.
-    if (!loc.startsWith('assets/') || store.readValue === undefined || assetOrInlayBodyKeyViolation(loc) !== null) {
-        return await readBytesForUrl(loc)
-    }
-    const pending = assetValueReads.get(loc)
-    if (pending !== undefined) {
-        return await pending
-    }
-    const read = store.readValue(loc).catch((error: unknown) => {
-        if (error instanceof StoreInvalidKeyError) {
-            return null
-        }
-        throw error
-    })
-    const tracked = read.finally(() => {
-        if (assetValueReads.get(loc) === tracked) {
-            assetValueReads.delete(loc)
-        }
-    })
-    assetValueReads.set(loc, tracked)
-    return await tracked
-}
-
-/**
- * The `blob:` URL of the Blob stored under `loc`, made once per location: the
- * synchronous check-and-set means two producers that both hold the Blob get the
- * same URL. The Blob is retyped from the key's extension (zero copy), never
- * from its own type.
- */
-function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
-    const existing = assetObjectUrls.get(loc)
-    if (existing !== undefined) {
-        return existing
-    }
-    const url = URL.createObjectURL(blob.slice(0, blob.size, displayMimeOfAssetKey(loc)))
-    assetObjectUrls.set(loc, url)
-    return url
-}
-
-/**
  * Gets the source URL of a file.
  *
  * On Tauri an asset URL comes from the store's `urlFor`, from the key alone, so
  * no byte is read. On a Node-hosted page the same holds for an `assets/` key the
  * server's asset route serves; when the store cannot make that URL the call
- * takes the path below. Elsewhere the bytes come from the store and are encoded
- * into a data URL, or shown through an object URL for a Blob.
+ * takes the path below: one uncached read of the bytes from the store, encoded
+ * into a data URL on every call.
  *
  * On Android and on the desktop a URL for a `'whole'` use is withheld (`''`)
  * when the stored size is above the platform's whole-read limit
@@ -553,96 +301,11 @@ export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: 
             console.error(error)
         }
     }
+    // Each call reads the store afresh, so a rewritten key never shows stale
+    // bytes, and nothing here holds on to a payload.
     try {
-        const knownObjectUrl = assetObjectUrls.get(loc)
-        if (knownObjectUrl !== undefined) {
-            return knownObjectUrl
-        }
-        const existing = fileCache.get(loc)
-        let resolved: FileCacheEntry
-
-        if (!existing) {
-            // AV-3: an oversized result from a
-            // previous call for this exact loc is never committed to the
-            // budgeted cache below, so check the one-slot memo before
-            // starting a fresh read — otherwise a caller that repeatedly
-            // re-requests the same oversized asset (e.g. a streaming
-            // re-parse) would re-read and re-encode it every time.
-            if (oversizedMemo && oversizedMemo.loc === loc) {
-                return oversizedMemo.src
-            }
-            const loadingEntry: FileCacheEntry = { status: 'loading' }
-            const promise = (async (): Promise<FileCacheEntry> => {
-                // Built once here, inside the shared producer, so every
-                // concurrent or later caller for this loc reuses this same
-                // read and this same encode, and every caller served from
-                // the same cache entry or memo slot gets the same string
-                // object instead of each re-encoding or re-concatenating
-                // its own copy on every call. `src` is
-                // the FULL `data:image/png;base64,...` string, prefix
-                // included — every return path below hands it out as-is,
-                // never rebuilding it per call. A caller that arrives
-                // after this entry is evicted or superseded by a retry
-                // still gets a different string than an earlier caller.
-                const value = await readValueForUrl(loc)
-                if (value instanceof Blob) {
-                    // The object URL lives in assetObjectUrls, outside the
-                    // budget; this entry holds no payload and costs 0.
-                    objectUrlOfAssetBlob(loc, value)
-                    return { status: 'done' }
-                }
-                const src = FILE_CACHE_SRC_PREFIX + Buffer.from(value ?? new Uint8Array()).toString('base64')
-                return { status: 'done', src }
-            })()
-            loadingEntry.promise = promise
-            touchFileCache(loc, loadingEntry)
-            try {
-                resolved = await promise
-                // Only commit if this attempt's entry is still the one in the
-                // cache — it may have been evicted and superseded by a newer
-                // retry for the same key while this was in flight.
-                if (fileCache.get(loc) === loadingEntry) {
-                    if (resolved.src !== undefined && fileCacheEntryCost(resolved) > fileCacheMaxBytes) {
-                        // Oversized: don't let one asset evict the entire
-                        // budgeted cache. Remove the loading placeholder and
-                        // memoize the result on the side instead.
-                        fileCacheDelete(loc)
-                        oversizedMemo = { loc, src: resolved.src }
-                    } else {
-                        touchFileCache(loc, resolved)
-                    }
-                }
-            } catch (error) {
-                // Don't leave this entry stuck at 'loading' forever for other
-                // callers — remove it (if it's still the current one) so a future
-                // call can retry — then let the failure propagate to this caller
-                // exactly as it would have without any caching (caught by the
-                // function-level catch below).
-                if (fileCache.get(loc) === loadingEntry) {
-                    fileCacheDelete(loc)
-                }
-                throw error
-            }
-        }
-        else if (existing.status === 'loading' && existing.promise) {
-            // Await the SAME promise the original caller is waiting on, rather
-            // than re-reading the Map — the entry could otherwise be evicted (or
-            // its promise could reject) between this check and a later read.
-            resolved = await existing.promise
-        }
-        else {
-            // Bump recency on a cache hit without changing its contents.
-            touchFileCache(loc, existing)
-            resolved = existing
-        }
-        // `src` was already built once, inside the producer above (or by
-        // whichever call originally populated this entry) — every caller
-        // just returns this exact string, matching the pre-AV-3 code's
-        // output exactly (a missing file's empty buffer encodes to the
-        // empty string, same as the pre-AV-3 code's
-        // `resolved?.data ?? new Uint8Array()`) without rebuilding it per
-        // call.
-        return assetObjectUrls.get(loc) ?? resolved?.src ?? FILE_CACHE_SRC_PREFIX
+        const bytes = await readBytesForUrl(loc)
+        return FILE_CACHE_SRC_PREFIX + Buffer.from(bytes ?? new Uint8Array()).toString('base64')
     } catch (error) {
         console.error(error)
         return ''

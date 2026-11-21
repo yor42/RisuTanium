@@ -48,7 +48,7 @@ export interface RestoreDeps {
     playground: Readable<number>
     utilityOpen: Readable<boolean>
     realmStore: Readable<boolean>
-    /** The Home library: `isOpen` is the plain answer, `watch` the readable that follows it. */
+    /** The Home library engaged this visit (opened, requested or touched): `isOpen` is the plain answer, `watch` the readable that follows it. */
     library: { isOpen(): boolean, watch(): Readable<boolean> }
     restoreInProgress(): boolean
     busyKinds(): readonly string[]
@@ -92,9 +92,9 @@ function productionDeps(): RestoreDeps {
         get utilityOpen() { return utilityOpen },
         get realmStore() { return OpenRealmStore },
         library: {
-            isOpen: () => homeView.view === 'library',
+            isOpen: () => homeView.libraryEngaged,
             // `homeView` is rune state, not a store: the readable follows it through a microtask flush.
-            watch: () => toStore(() => homeView.view === 'library'),
+            watch: () => toStore(() => homeView.libraryEngaged),
         },
         restoreInProgress: () => restoreInProgress(),
         busyKinds: () => busyKinds(),

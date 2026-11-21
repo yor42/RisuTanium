@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { untrack } from 'svelte'
     import { afterFlush } from '../../../ts/afterFlush'
     import GridCatalog from '../../Others/GridCatalog.svelte'
     import type { LibraryStudio } from '../../Others/CharacterSimpleList.svelte'
@@ -7,23 +8,31 @@
     import { cancelHomeStudioOpen, homeStudioAvailable, startStudioFromHome } from './homeStudio.svelte'
     import { homeView, showHomeLanding, takeHomeReturnFocus } from './homeView.svelte'
 
+    // The landing's embedded library (the interim S4a host): the Home variant of the grid, no Back handler and no Realm
+    // effect (the Realm view unmounts the landing, and this with it). The full view passes nothing. Read once.
+    let { embedded = false }: { embedded?: boolean } = $props()
+    const isEmbedded = untrack(() => embedded)
+
     // Registered once for the lifetime of the library. The thunks read the view at call time, so
     // the effect reads no reactive state and never re-registers: a re-registration would move this
     // handler above the edit-mode handler GridCatalog registers while editing.
-    $effect(() =>
-        registerBackHandler(
+    $effect(() => {
+        if (isEmbedded) {
+            return
+        }
+        return registerBackHandler(
             backCloseHandler({
                 isOpen: () => homeView.view === 'library',
                 snapshot: () => homeView.view,
                 close: showHomeLanding,
             }),
-        ),
-    )
+        )
+    })
 
     // The Realm full view lives in the landing; opening it from elsewhere (the sidebar's import
     // from Realm) while the library shows would otherwise show nothing.
     $effect(() => {
-        if ($OpenRealmStore) {
+        if (!isEmbedded && $OpenRealmStore) {
             showHomeLanding()
         }
     })
@@ -70,6 +79,6 @@
     })
 </script>
 
-<div class="h-full w-full" bind:this={root}>
-    <GridCatalog endGrid={() => showHomeLanding()} {studio} />
+<div class={isEmbedded ? 'flex min-h-0 w-full flex-1 flex-col' : 'h-full w-full'} bind:this={root}>
+    <GridCatalog endGrid={isEmbedded ? undefined : () => showHomeLanding()} {studio} variant={isEmbedded ? 'home' : 'app'} />
 </div>

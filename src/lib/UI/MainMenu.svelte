@@ -49,7 +49,11 @@
       preview.hidden ? "" : "@min-[768px]:@max-[1000px]:grid @min-[768px]:@max-[1000px]:grid-cols-2 @min-[768px]:@max-[1000px]:items-start",
     );
 </script>
-<div class="h-full w-full flex flex-col overflow-y-auto items-center">
+<!--
+  Size containment: this scroller must get a definite height from its parent, or the landing collapses. It makes
+  the embedded library's `100cqh` cap resolve against the scroller's own height.
+-->
+<div class="h-full w-full flex flex-col overflow-y-auto items-center [container-type:size]">
   {#if !$OpenRealmStore}
     <div data-part="home-body" class="@container w-full max-w-[var(--home-page-max)] px-[var(--home-main-pad-x)] pt-[var(--home-main-pad-top)] pb-[var(--home-main-pad-bottom)] text-textcolor">
       {#if header}

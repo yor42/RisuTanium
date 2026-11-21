@@ -33836,6 +33836,14 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "No snippet (Recommended)": when a loaded character's current chat is itself archived (its messages are not in memory), the card shows the name, chat name and time and no last line. Nothing is loaded.
 - "Snapshot (Recommended)": each card's chat name and last line are fixed together with the order when Home opens, and refresh on the next visit. Only removals, renames and pictures apply live, so no reply text streams into a card.
 
+### MC-2931 — #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session on plan-s4). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1346`, `MC-2818`, `MC-2834`, `MC-2835`, `MC-2837`, `#234`.
+
+**What the maintainer chose.**
+- "Hide button, keep drawer (Recommended)": with zero characters (the Create/Import hero is the only content) the mid/wide Characters button is hidden. The drawer's Characters entry stays and scrolls to and focuses the hero.
+- "Mockup tiles, follow-up": #234 ships a look-only restyle of today's library tiles (radius, edge, tint; tile size, no name or count beneath). The mockup's large portrait tiles with the name beneath are built in a separate ticket (#479) that adds a Home tile size to the list engine, measured on the Note 9.
+
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
@@ -34131,6 +34139,31 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1451`, `MC-2990`, `#455`.
 
 **What the maintainer chose.** "Allow, prove on device (Recommended)". In the `off` mode reply loop, after each processed write, the loop may yield one MessageChannel task (never `setTimeout`, `requestAnimationFrame` or an idle callback) so native stream events queued during the pass reach the snapshot reader before the next pass. The change does not ship before a Note 9 hidden-page device row shows the keep-alive count rising while hidden, the finished notice posting before the app is reopened, and Stop from the notification working. If that row fails, the yield is removed and the maintainer is asked again.
+
+### MC-3079 — #424 seasonal scenes: a faithful TS port, loaded per day, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer chose.** "Faithful TS port (Recommended)". Each prototype scene becomes a typed TS module with its own scoped CSS, built through the host's scene context and loaded with a dynamic import only on its day. This replaces the 2026-10-17 contract line that mapped the scene fades and scales onto Tailwind utilities; scenes are not rewritten as Svelte components.
+
+### MC-3080 — #424 the Seasonal logo toggle is saved on this device only, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer chose.** "This device only (Recommended)". The Display settings toggle (on by default) is kept in `localStorage`, like the once-a-day played flag. It is not a database field and does not travel in backups.
+
+### MC-3081 — #424 the top-bar logo grows to the prototype size every day, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `MC-1443`, `#234`, `#424`.
+
+**What the maintainer chose.** "Bigger logo every day". The Home top bar shows a 32 px mark and a 24 px NanumSquare Neo Heavy wordmark on every day, and 28 px and 20 px under 640 px, as the prototype decided on 2026-10-17. Rejected: keeping the 28 px mark and 18 px semibold wordmark, or growing only on occasion days.
+
+### MC-3082 — #424 ports all 24 occasions, Independence Day included, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer chose.** "Include all 24 (Recommended)". The package has 24 occasions: Independence Day (Jul 4, `en` only) was added on 2026-10-17 after MC-2826's count of 23 was written. It is ported with the other 23.
+
 
 ### MC-2475 — #292 typing-step task split off into its own ticket #301, 2026-11-20
 

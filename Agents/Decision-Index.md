@@ -2336,6 +2336,7 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2928](Maintainer-Context.md#mc-2928--234-risurealm-announcement-sits-after-the-community-list-2026-11-21) | #234 RisuRealm announcement sits after the Community list, 2026-11-21 |
 | [MC-2929](Maintainer-Context.md#mc-2929--234-the-risurealm-heading-carries-the-upstream-tag-2026-11-21) | #234 the RisuRealm heading carries the upstream tag, 2026-11-21 |
 | [MC-2930](Maintainer-Context.md#mc-2930--234-story-shelf-no-snippet-for-an-archived-chat-card-text-is-a-snapshot-2026-11-21) | #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21 |
+| [MC-2931](Maintainer-Context.md#mc-2931--234-embedded-library-characters-controls-with-no-library-mockup-tiles-as-a-follow-up-2026-11-21) | #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21 |
 | [MC-2955](Maintainer-Context.md#mc-2955--442-module-share-secrets-refuse-mcp-modules-at-share-points-plugin-settings-file-unchanged-no-keep-keys-opt-in-2026-11-21) | #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21 |
 | [MC-2908](Maintainer-Context.md#mc-2908--chore-557-stage-2-folds-into-stage-4-2026-11-21) | CHORE-557 stage 2 folds into stage 4, 2026-11-21 |
 | [MC-2909](Maintainer-Context.md#mc-2909--a-plain-web-host-shows-one-refusal-and-stores-nothing-2026-11-21) | A plain web host shows one refusal and stores nothing, 2026-11-21 |
@@ -2382,6 +2383,10 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2867](Maintainer-Context.md#mc-2867--165-studio-undo-history-and-body-only-residue-are-accepted-limits-2026-11-21) | #165 Studio undo history and body-only residue are accepted limits, 2026-11-21 |
 | [MC-2990](Maintainer-Context.md#mc-2990--455-under-load-the-default-streaming-mode-runs-output-scripts-only-on-the-newest-reply-text-2026-11-21) | #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21 |
 | [MC-2991](Maintainer-Context.md#mc-2991--455-one-posted-message-task-yield-per-pass-is-allowed-in-the-reply-loop-gated-on-a-note-9-hidden-page-row-2026-11-21) | #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21 |
+| [MC-3079](Maintainer-Context.md#mc-3079--424-seasonal-scenes-a-faithful-ts-port-loaded-per-day-2026-11-21) | #424 seasonal scenes: a faithful TS port, loaded per day, 2026-11-21 |
+| [MC-3080](Maintainer-Context.md#mc-3080--424-the-seasonal-logo-toggle-is-saved-on-this-device-only-2026-11-21) | #424 the Seasonal logo toggle is saved on this device only, 2026-11-21 |
+| [MC-3081](Maintainer-Context.md#mc-3081--424-the-top-bar-logo-grows-to-the-prototype-size-every-day-2026-11-21) | #424 the top-bar logo grows to the prototype size every day, 2026-11-21 |
+| [MC-3082](Maintainer-Context.md#mc-3082--424-ports-all-24-occasions-independence-day-included-2026-11-21) | #424 ports all 24 occasions, Independence Day included, 2026-11-21 |
 | [MC-2475](Maintainer-Context.md#mc-2475--292-typing-step-task-split-off-into-its-own-ticket-301-2026-11-20) | #292 typing-step task split off into its own ticket #301, 2026-11-20 |
 | [MC-2476](Maintainer-Context.md#mc-2476--292-refresh-gap-after-update-all-shows-old-list-with-update-all-disabled-2026-11-20) | #292 refresh gap after Update all shows old list with Update all disabled, 2026-11-20 |
 | [MC-2477](Maintainer-Context.md#mc-2477--300-and-297-filed-as-follow-up-issues-from-progress-popups-and-hidden-reply-gaps-2026-11-20) | #300 and #297 filed as follow-up issues from progress-popups and hidden-reply gaps, 2026-11-20 |

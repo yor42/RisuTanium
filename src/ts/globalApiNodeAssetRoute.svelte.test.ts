@@ -2,9 +2,9 @@
  * `getFileSrc` on a Node-hosted page: an `assets/` key that the server's asset
  * route serves gets the store's `urlFor` URL without reading a byte, whether or
  * not the browser exposes a service worker. Everything else keeps its existing
- * path and no `/sw/` URL is ever requested or returned. This file
- * drives the REAL `globalApi.svelte.ts`; the modules it reaches are mocked with
- * the set that `globalApiFileCacheAv3.svelte.test.ts` proves loads it. The
+ * path and no `/sw/` URL is ever requested or returned. That path is one
+ * uncached store read per call, encoded into a data URL. This file
+ * drives the REAL `globalApi.svelte.ts`; the modules it reaches are mocked. The
  * platform flags and the page store are controlled per test.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -17,6 +17,8 @@ const store = vi.hoisted(() => ({
     read: vi.fn(),
     urlFor: vi.fn(),
     hasUrlFor: true,
+    readValue: vi.fn(),
+    hasReadValue: false,
 }))
 
 vi.mock('localforage', () => ({
@@ -177,9 +179,11 @@ vi.mock(import('src/ts/storage/autoStorage'), () => ({
 }) as unknown as typeof import('src/ts/storage/autoStorage'))
 
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
-    getAppStore: async () => (store.hasUrlFor
-        ? { read: store.read, urlFor: store.urlFor }
-        : { read: store.read }),
+    getAppStore: async () => ({
+        read: store.read,
+        ...(store.hasUrlFor ? { urlFor: store.urlFor } : {}),
+        ...(store.hasReadValue ? { readValue: store.readValue } : {}),
+    }),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
 vi.mock(import('src/ts/gui/animation'), () => ({
@@ -217,7 +221,8 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 
 //#endregion
 
-import { getFileSrc, __fileCacheTestHooks } from 'src/ts/globalApi.svelte'
+import { getFileSrc } from 'src/ts/globalApi.svelte'
+import { StoreInvalidKeyError } from 'src/ts/storage/store/errors'
 
 const ROUTE_URL = (loc: string) => `/api/asset/${Buffer.from(loc, 'utf-8').toString('hex')}?risu-auth=tok.en.sig`
 
@@ -231,14 +236,14 @@ beforeEach(() => {
     store.read.mockResolvedValue({ bytes: Uint8Array.from([1, 2, 3]), version: null })
     store.urlFor.mockReset()
     store.urlFor.mockImplementation(async (key: string) => ROUTE_URL(key))
-    __fileCacheTestHooks.reset()
+    store.readValue.mockReset()
+    store.hasReadValue = false
     fetchSpy = vi.fn(async () => new Response(JSON.stringify({ able: true })))
     vi.stubGlobal('fetch', fetchSpy)
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
-    __fileCacheTestHooks.reset()
     Reflect.deleteProperty(navigator, 'serviceWorker')
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -307,7 +312,7 @@ describe('getFileSrc on a Node-hosted page', () => {
         })
 
         test('a non-route key gets a data URL from one store read', async () => {
-            expect(await getFileSrc('avatars/me.png')).toMatch(/^data:image\/png;base64,/)
+            expect(await getFileSrc('avatars/g3-me.png')).toMatch(/^data:image\/png;base64,/)
             expect(store.read).toHaveBeenCalledTimes(1)
             expect(swFetches()).toEqual([])
         })
@@ -317,6 +322,54 @@ describe('getFileSrc on a Node-hosted page', () => {
             expect(await getFileSrc('assets/g3-web.png')).toMatch(/^data:image\/png;base64,/)
             expect(store.urlFor).not.toHaveBeenCalled()
             expect(swFetches()).toEqual([])
+        })
+    })
+
+    describe('the uncached data-URL fallback', () => {
+        const dataUrlOf = (bytes: number[]) => `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`
+
+        test('regression (4d-R1): a second call re-reads the store, so changed bytes are returned', async () => {
+            store.urlFor.mockRejectedValue(new Error('no key pair'))
+            const loc = 'assets/stale.png'
+            store.read.mockResolvedValueOnce({ bytes: Uint8Array.from([1]), version: null })
+            store.read.mockResolvedValueOnce({ bytes: Uint8Array.from([2]), version: null })
+            expect(await getFileSrc(loc)).toBe(dataUrlOf([1]))
+            expect(await getFileSrc(loc)).toBe(dataUrlOf([2]))
+        })
+
+        test('regression (4d-R2): every call is one store read, concurrent calls included', async () => {
+            const loc = 'avatars/reads.png'
+            await getFileSrc(loc)
+            await getFileSrc(loc)
+            expect(store.read).toHaveBeenCalledTimes(2)
+            store.read.mockClear()
+            await Promise.all([getFileSrc(loc), getFileSrc(loc)])
+            expect(store.read).toHaveBeenCalledTimes(2)
+        })
+
+        test('regression (4d-R3): a store that offers readValue is not asked, and no blob URL is made', async () => {
+            store.hasUrlFor = false
+            store.hasReadValue = true
+            store.readValue.mockResolvedValue(new Blob([Uint8Array.from([9, 9])]))
+            const src = await getFileSrc('assets/blobby.png')
+            expect(src).toBe(dataUrlOf([1, 2, 3]))
+            expect(store.readValue).not.toHaveBeenCalled()
+            expect(store.read).toHaveBeenCalledWith('assets/blobby.png')
+        })
+
+        test('guard: absent bytes give the bare prefix', async () => {
+            store.read.mockResolvedValue({ bytes: null, version: null })
+            expect(await getFileSrc('avatars/missing.png')).toBe('data:image/png;base64,')
+        })
+
+        test('guard: a key the store cannot address reads as absent', async () => {
+            store.read.mockRejectedValue(new StoreInvalidKeyError('avatars/bad.png', 'not addressable'))
+            expect(await getFileSrc('avatars/bad.png')).toBe('data:image/png;base64,')
+        })
+
+        test('guard: any other read failure gives an empty string', async () => {
+            store.read.mockRejectedValue(new Error('disk gone'))
+            expect(await getFileSrc('avatars/boom.png')).toBe('')
         })
     })
 

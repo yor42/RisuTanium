@@ -16,7 +16,7 @@
 
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { language } from 'src/lang'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
@@ -163,7 +163,11 @@ describe('HomeShell layout', () => {
         expect(mark!.getAttribute('aria-hidden')).toBe('true')
     })
 
-    test('T-A2: at 900 the layout is mid and the Characters button stays in the content, outside the top bar', () => {
+    test('T-A2: at 900 the layout is mid and the Characters button stays in the content, outside the top bar, given library content (MC-2931)', () => {
+        DBState.db.characters = [{ chaId: 'lib-1', name: 'Lib' }] as unknown as typeof DBState.db.characters
+        onTestFinished(() => {
+            Reflect.deleteProperty(DBState.db, 'characters')
+        })
         const root = mountShellAt(900)
         const landing = landingOf(root)
         expect(landing).not.toBeNull()
