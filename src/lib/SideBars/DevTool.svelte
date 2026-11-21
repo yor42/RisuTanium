@@ -41,7 +41,7 @@
                 {:else if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "string"}
                     <TextInput labelId="{uid}-variable-{keyIndex}" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as string} />
                 {:else if typeof DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] === "number"}
-                    <NumberInput bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as number} />
+                    <NumberInput labelId="{uid}-variable-{keyIndex}" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].scriptstate[key] as number} />
                 {/if}
             {/each}
         {:else}
@@ -140,14 +140,14 @@
 
 
 <Accordion styled name={language.devTool.previewPrompt}>
-    <span>{language.type}</span>
-    <SelectInput bind:value={previewMode}>
+    <span id="{uid}-preview-type">{language.type}</span>
+    <SelectInput labelId="{uid}-preview-type" bind:value={previewMode}>
         <OptionInput value="chat">{language.Chat}</OptionInput>
         <OptionInput value="instruct">{language.devTool.instruct}</OptionInput>
     </SelectInput>
     {#if previewMode === 'instruct'}
-        <span>{language.devTool.instructionType}</span>
-        <SelectInput bind:value={instructType}>
+        <span id="{uid}-instruct-type">{language.devTool.instructionType}</span>
+        <SelectInput labelId="{uid}-instruct-type" bind:value={instructType}>
             {#each Object.keys(chatTemplates) as template}
                 <OptionInput value={template}>{template}</OptionInput>
             {/each}
@@ -158,8 +158,8 @@
             <TextAreaInput labelId="{uid}-jinja" bind:value={instructCustom} />
         {/if}
     {/if}
-    <span>{language.devTool.join}</span>
-    <SelectInput bind:value={previewJoin}>
+    <span id="{uid}-preview-join">{language.devTool.join}</span>
+    <SelectInput labelId="{uid}-preview-join" bind:value={previewJoin}>
         <OptionInput value="yes">{language.devTool.withJoin}</OptionInput>
         <OptionInput value="no">{language.devTool.withoutJoin}</OptionInput>
         <OptionInput value="prompt">{language.devTool.asRequest}</OptionInput>

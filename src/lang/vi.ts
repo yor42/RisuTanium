@@ -2185,6 +2185,7 @@ export const languageVietnamese = {
     "triggerMatchRegex": "Phù hợp với Regex",
     "triggerMatchLoose": "Trận đấu lỏng lẻo",
     "triggerMatchStrict": "Trận đấu nghiêm ngặt",
+    "triggerMatchMode": "Chế độ khớp",
     "searchDepth": "Độ sâu tìm kiếm",
     "equal": "Tương đương với",
     "notEqual": "Không bằng",

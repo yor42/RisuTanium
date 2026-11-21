@@ -2320,6 +2320,7 @@ export const languageEnglish = {
     triggerMatchRegex: "Match with Regex",
     triggerMatchLoose: "Match Loosely",
     triggerMatchStrict: "Match Strictly",
+    triggerMatchMode: "Match mode",
     searchDepth: "Search Depth",
     equal: "Equal to",
     notEqual: "Not Equal to",

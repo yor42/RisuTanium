@@ -2230,6 +2230,7 @@ export const languageChineseTraditional = {
     "triggerMatchRegex": "使用 Regex 比對",
     "triggerMatchLoose": "寬鬆比對",
     "triggerMatchStrict": "嚴格比對",
+    "triggerMatchMode": "比對模式",
     "searchDepth": "搜尋深度",
     "equal": "等於",
     "notEqual": "不等於",

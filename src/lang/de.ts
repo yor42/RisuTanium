@@ -2187,6 +2187,7 @@ export const languageGerman = {
     "triggerMatchRegex": "Mit Regex übereinstimmen",
     "triggerMatchLoose": "Locker übereinstimmen",
     "triggerMatchStrict": "Streng übereinstimmen",
+    "triggerMatchMode": "Übereinstimmungsmodus",
     "searchDepth": "Suchtiefe",
     "equal": "Gleich",
     "notEqual": "Ungleich",

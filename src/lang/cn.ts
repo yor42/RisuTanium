@@ -2185,6 +2185,7 @@ export const languageChinese = {
     "triggerMatchRegex": "与正则表达式匹配",
     "triggerMatchLoose": "宽松匹配",
     "triggerMatchStrict": "严格匹配",
+    "triggerMatchMode": "匹配模式",
     "searchDepth": "搜索深度",
     "equal": "等于",
     "notEqual": "不等于",
