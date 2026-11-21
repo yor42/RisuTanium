@@ -35956,3 +35956,27 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer answer to the #495 session through AskUserQuestion, Gate 1 finding F5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `MC-3071`, `#495`.
 
 **What the maintainer chose.** "Memory first, plain only on exit (Recommended)". On Android, a typed connection key is held in memory until encryption and its verification finish, and only the encrypted form is saved. If the app is hidden or closed before encryption finishes, the key is saved plain so it is never lost, and the next boot encrypts it; plaintext reaches disk only in that race. Rejected: accepting that a background save may write the plain key once and keep it in a store2 restore point; and holding the key in memory only, losing it if the app dies before encryption finishes.
+
+### MC-3011 — #284 closed as covered; toggle default syntax split to #467 with the hold lifted, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion in the #284 session). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570`, `CHORE-570a`, `MC-1746`, `MC-1740`, `#284`, `#467`, PR #107.
+
+**What the maintainer chose.** (1) "Close; file 570a held": #284 is closed as covered, because renamed toggles keep their saved setting through the Studio toggle builder carry (PR #107, S3d2; Update all from #286 and #292). The classic character settings and module menu toggle textareas stay without carry; Studio is where renames carry. The default-value syntax moves to a new issue, #467. (2) "Lift and design now": the MC-1746 hold on the default-value syntax is lifted and #467 is designed now. Amends MC-1746.
+
+### MC-3012 — #467 toggle defaults: reach, types, syntax, Reset, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, all "Recommended"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-175`, `MC-350`, `MC-1094`.
+
+**What the maintainer chose.** (1) Reach: an unset toggle behaves as its author default everywhere, in panels and prompts (CBS `getglobalvar`, `#when`, `tis`, `@var`, Lua `getGlobalVar`, prompt-info). Nothing new is saved; the default is applied when the value is read. (2) Types: checkbox and select only; text and textarea keep empty as their default. (3) Syntax: a 5th `=` field, which upstream ignores; a select default names its option by text (`mood=Mood=select=calm,angry=angry`), a checkbox default is `1` (`nsfw=NSFW===1`). (4) Reset removes the user value, so the toggle follows the author default again. Amends MC-1094 confirmation 3 (reset = off / first option / empty).
+
+### MC-3013 — #467 Reset in chat-only scope and on toggles without a default, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, both "Recommended"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-3012`, `MC-1094`.
+
+**What the maintainer chose.** (1) With the chat-only scope on, Reset removes only the chat's own value; the toggle then shows the all-chats value if one is set, else the author default. (2) Reset makes every checkbox and select toggle unset, with or without an author default, so prompts read `null` instead of `0` after a Reset.
+
+### MC-3014 — #467 the upstream prompt difference is accepted; authors are warned, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, "Accept, warn authors (Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-175`, `MC-091`.
+
+**What the maintainer chose.** A default-on toggle is off in upstream RisuAI, which ignores the 5th field, so the same card builds a different prompt there until the user touches the toggle. This is accepted. Studio's default field and the toggle help text tell authors that upstream ignores defaults.

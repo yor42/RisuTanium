@@ -23,6 +23,7 @@
     import PencilIcon from '@lucide/svelte/icons/pencil'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { buildPanelModel, isOn, selectedIndex, toggleVarKey, valueRowsOf } from '../../ts/chatShell/togglePanel'
+    import { NO_TOGGLE_DEFAULTS, toggleDefaultsOf } from '../../ts/parser/toggleDefaults'
     import { favouriteRows, type FavouriteRef, type FavouriteRow } from '../../ts/chatShell/toggleFavourites'
     import { currentFavourites, syncFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
     import { legacyEngineFields } from '../../ts/process/memory/memoryEngine'
@@ -110,9 +111,21 @@
     // With a star showing, the Toggles item and the chips lead the menu; without one the item stays last.
     let chipsLead = $derived(shownChips.length > 0)
 
+    // Tracked, so a definition edit or module change while the sheet is open reaches the chips (same sources as chipRows).
+    let chipDefaults = $derived.by(() => {
+        void edits
+        if (!open || !ontoggles || !support || !character || !chat) return NO_TOGGLE_DEFAULTS
+        try {
+            return toggleDefaultsOf(support.sourcesOf(character).map((input) => input.text))
+        } catch (error) {
+            console.error('The favourite chip defaults could not be built:', error)
+            return NO_TOGGLE_DEFAULTS
+        }
+    })
+
     function chipValue(entry: FavouriteRow): string {
         void edits
-        return support && chat ? support.valueOf(chat, toggleVarKey(entry.row.key)) : 'null'
+        return support && chat ? support.valueOf(chat, toggleVarKey(entry.row.key), chipDefaults) : 'null'
     }
 
     function chipElement(uid: string): HTMLElement | null {

@@ -351,6 +351,40 @@ describe('favourite chips in the + menu', () => {
         expect(target.querySelector('[data-part="plus-live"]')?.textContent).toBe('picked:Mood:Bold')
     })
 
+    // T3.7 (regression reproducer): an unset toggle with an author default shows as its default on the chip
+    test('an unset check chip with an author default is on and a flip writes the off value; an unset select chip shows its default option', async () => {
+        install({ prompt: 'tone=Tone===1\nmood=Mood=select=Calm,Bold,Wild=Bold' })
+        seed([ref('prompt', 'tone'), ref('prompt', 'mood')])
+        await show()
+        expect(chipOf('tone')!.getAttribute('aria-checked')).toBe('true')
+        expect(chipOf('mood')!.textContent).toContain('Mood: Bold')
+        chipOf('tone')!.click()
+        await settle()
+        expect(sharedValues().toggle_tone).toBe('0')
+        expect(chipOf('tone')!.getAttribute('aria-checked')).toBe('false')
+    })
+
+    test('a stored value wins over the author default on a chip, a stored 0 included', async () => {
+        install({ prompt: 'tone=Tone===1\nmood=Mood=select=Calm,Bold=Bold', shared: { toggle_tone: '0', toggle_mood: '0' } })
+        seed([ref('prompt', 'tone'), ref('prompt', 'mood')])
+        await show()
+        expect(chipOf('tone')!.getAttribute('aria-checked')).toBe('false')
+        expect(chipOf('mood')!.textContent).toContain('Mood: Calm')
+    })
+
+    // T3.7 freshness: the defaults are a tracked derived, so a definition edit while the sheet is open reaches the chip
+    test('adding a default to a starred toggle while the menu is open flips its chip', async () => {
+        install({ prompt: 'tone=Tone' })
+        const reactiveDb = $state(h.db)
+        h.db = reactiveDb
+        seed([ref('prompt', 'tone')])
+        await show()
+        expect(chipOf('tone')!.getAttribute('aria-checked')).toBe('false')
+        reactiveDb.customPromptTemplateToggle = 'tone=Tone===1'
+        await settle()
+        expect(chipOf('tone')!.getAttribute('aria-checked')).toBe('true')
+    })
+
     test('Escape and Back leave the option list for the menu first, and only then close the menu', async () => {
         seed([ref('prompt', 'mood')])
         await show()

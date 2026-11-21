@@ -64,6 +64,7 @@ import {
     moveRow,
     removeRow,
     replaceText,
+    rewriteLoss,
     setRaw,
     setRow,
     type EditResult,
@@ -188,6 +189,54 @@ const dividerAroundEmptyGroup = '==divider\na=a=group\na_end=a=groupEnd\n==divid
 
 const panelOf = (text: string): PanelItem[] => buildPanelModel([{ id: 't', kind: 'module', name: 't', text }]).sources[0].items
 
+describe('1-12 author defaults in the parsed rows', () => {
+    const rowsOfText = (text: string) => rowsOf(parseDefinition(text))
+    const withCr = (text: string) => text.replace(/\n/g, '\r\n')
+
+    test('a checkbox and a select carry the 5th field as default, LF and CRLF (regression reproducer)', () => {
+        const text = 'nsfw=NSFW===1\nmood=Mood=select=calm,angry=angry\nplain=Plain=text=x=y\ngroup=G=group=a=b'
+        for (const t of [text, withCr(text)]) {
+            expect(parseToggleSyntax(t)).toStrictEqual([
+                { key: 'nsfw', value: 'NSFW', type: undefined, options: [''], default: '1' },
+                { key: 'mood', value: 'Mood', type: 'select', options: ['calm', 'angry'], default: 'angry' },
+                { key: 'plain', value: 'Plain', type: 'text', options: ['x'] },
+                { key: 'group', value: 'G', type: 'group', children: [] },
+            ])
+            expect(rowsOfText(t)).toStrictEqual(parseToggleSyntax(t))
+        }
+    })
+
+    test('the last 5th part loses exactly one trailing CR and an empty part gives no default key', () => {
+        expect(parseToggleSyntax('a=A=select=x,y=y\r')).toStrictEqual([{ key: 'a', value: 'A', type: 'select', options: ['x', 'y'], default: 'y' }])
+        expect(parseToggleSyntax('a=A===\r')).toStrictEqual([{ key: 'a', value: 'A', type: undefined, options: [''] }])
+        expect(Object.hasOwn(parseToggleSyntax('a=A=select=x,y=')[0], 'default')).toBe(false)
+    })
+
+    test('four-field lines carry no default key (compatibility guard: passes before and after)', () => {
+        for (const text of ['a=A', 'a=A=select=x,y', 'a=A=text', 'a=A=textarea=q', 'a=A=group', 'a=A=caption']) {
+            for (const t of [text, withCr(text)]) {
+                for (const row of parseToggleSyntax(t)) {
+                    expect(Object.hasOwn(row, 'default'), t).toBe(false)
+                }
+                expect(rowsOfText(t)).toStrictEqual(parseToggleSyntax(t))
+            }
+        }
+    })
+
+    test('rowsOf equals the engine parser on lines with five or six fields (compatibility guard: kills a rowsOf that omits the default)', () => {
+        const part = fc.string({ unit: fc.constantFrom('a', 'b', '1', '0', ' ', ',', '\r'), maxLength: 3 })
+        const typeArb = fc.constantFrom('', 'select', 'text', 'textarea', 'group', 'groupEnd', 'divider', 'caption')
+        const lineFields = fc.tuple(part, part, typeArb, part, part, fc.option(part, { nil: undefined }))
+        const textFields = fc.array(lineFields, { minLength: 1, maxLength: 6 }).map((lines) => lines
+            .map((fields) => fields.filter((field, index) => index < 5 || field !== undefined).join('='))
+            .join('\n'))
+        fc.assert(fc.property(textFields, fc.boolean(), (text, cr) => {
+            const t = cr ? withCr(text) : text
+            expect(rowsOfText(t)).toStrictEqual(parseToggleSyntax(t))
+        }), { numRuns: 600 })
+    })
+})
+
 describe('1-11 panel projection (A10)', () => {
     test('the outline gives the panel items on the corpus', () => {
         for (const entry of corpus) {
@@ -245,7 +294,9 @@ const valueKindArb = fc.constantFrom('check', 'text', 'textarea')
 /** Drafts the writer accepts: required fields non-empty, no `=`, newline, CR or option comma. */
 const draftArb: fc.Arbitrary<RowDraft> = fc.oneof(
     fc.tuple(valueKindArb, requiredArb, requiredArb).map(([kind, key, label]): RowDraft => ({ kind, key, label })),
+    fc.tuple(requiredArb, requiredArb).map(([key, label]): RowDraft => ({ kind: 'check', key, label, default: '1' })),
     fc.tuple(requiredArb, requiredArb, fc.array(fieldArb, { maxLength: 4 })).map(([key, label, options]): RowDraft => ({ kind: 'select', key, label, options })),
+    fc.tuple(requiredArb, requiredArb, fc.array(requiredArb, { minLength: 1, maxLength: 4 }), fc.nat(3)).map(([key, label, options, pick]): RowDraft => ({ kind: 'select', key, label, options, default: options[pick % options.length] })),
     fc.tuple(fieldArb, fieldArb).map(([key, label]): RowDraft => ({ kind: 'group', key, label })),
     fieldArb.map((label): RowDraft => ({ kind: 'divider', label })),
     requiredArb.map((text): RowDraft => ({ kind: 'caption', text })),
@@ -255,12 +306,15 @@ const draftArb: fc.Arbitrary<RowDraft> = fc.oneof(
 function expectedRow(draft: RowDraft) {
     switch (draft.kind) {
         case 'check':
-            return { key: draft.key, value: draft.label, type: undefined, options: [] }
+            // The empty fourth part of `k=K===1` is read as one empty option, as the engine does for any `k=K==`.
+            return draft.default === undefined
+                ? { key: draft.key, value: draft.label, type: undefined, options: [] }
+                : { key: draft.key, value: draft.label, type: undefined, options: [''], default: draft.default }
         case 'text':
         case 'textarea':
             return { key: draft.key, value: draft.label, type: draft.kind, options: [] }
         case 'select':
-            return { key: draft.key, value: draft.label, type: 'select', options: [...draft.options] }
+            return { key: draft.key, value: draft.label, type: 'select', options: [...draft.options], ...(draft.default === undefined ? {} : { default: draft.default }) }
         case 'group':
             return { key: draft.key, value: draft.label, type: 'group', children: [] }
         case 'divider':
@@ -310,6 +364,32 @@ describe('O-W1 the written line is read back as the described row', () => {
         expect(parseToggleSyntax(canonicalLine({ kind: 'select', key: 'k', label: 'l', options: [] }) as string)).toStrictEqual([{ key: 'k', value: 'l', type: 'select', options: [] }])
         expect(parseToggleSyntax(canonicalEndLine(lineOf(id(0), 'g=G=group')))[0].type).toBe('groupEnd')
         expect(canonicalEndLine(lineOf(id(0), 'g=G=group'))).toBe('g_end=G=groupEnd')
+    })
+})
+
+describe('O-W1b author defaults through the writer and draftOf', () => {
+    test('a written default is read back by the engine and kept by draftOf (T4.7)', () => {
+        fc.assert(fc.property(draftArb, (draft) => {
+            const line = canonicalLine(draft)
+            if (typeof line !== 'string') {
+                throw new Error('an accepted draft was refused')
+            }
+            const read = lineOf(id(0), line)
+            expect(draftOf(read)).toEqual(draft)
+            expect(rowsOf(parseDefinition(line))).toStrictEqual(parseToggleSyntax(line))
+            if (draft.kind === 'check' || draft.kind === 'select') {
+                expect(rewriteLoss(read).droppedDefault).toBeNull()
+            }
+        }), { numRuns: 500 })
+    })
+
+    test('a select default that is not an option, or is empty, is refused', () => {
+        fc.assert(fc.property(draftArb, (draft) => {
+            if (draft.kind === 'select') {
+                expect(canonicalLine({ ...draft, default: `${draft.options.join('')}z` })).toEqual({ code: 'defaultNotOption' })
+                expect(canonicalLine({ ...draft, default: '' })).toEqual({ code: 'defaultNotOption' })
+            }
+        }), { numRuns: 300 })
     })
 })
 

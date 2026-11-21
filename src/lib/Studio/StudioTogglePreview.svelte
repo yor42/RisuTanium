@@ -22,7 +22,8 @@
     import { untrack } from 'svelte'
     import { ChevronDownIcon, XIcon } from '@lucide/svelte'
     import { language } from '../../lang'
-    import { valueRowsOf, type PanelGroup, type PanelValueRow } from '../../ts/chatShell/togglePanel'
+    import { toggleVarKey, valueRowsOf, type PanelGroup, type PanelValueRow } from '../../ts/chatShell/togglePanel'
+    import { toggleDefaultsOf } from '../../ts/parser/toggleDefaults'
     import { getModules } from '../../ts/process/modules'
     import { isModuleStub } from '../../ts/storage/moduleStub'
     import { DBState } from '../../ts/stores.svelte'
@@ -73,14 +74,17 @@
 
     // The joined scope is the chat panel's own source list, with the open owner's text in place of the stored one.
     // A source with nothing to show is left out of both scopes.
-    const sources = $derived.by((): PreviewSource[] => {
+    const previewInputs = $derived.by(() => {
         if (current !== null && !joined) {
-            return previewSourcesOf([{ id: 'current', kind: current.target.kind, name: current.name, text: snapshot }]).filter((source) => source.items.length > 0)
+            return [{ id: 'current', kind: current.target.kind, name: current.name, text: snapshot }]
         }
         const owner = { chaId, name: plain?.name ?? '', customModuleToggle: plain?.customModuleToggle }
-        const inputs = joinedPreviewInputs(toggleSourcesOf(owner), { chaId, license: plain?.license }, current === null ? null : { panelId: panelIdOf(current.target), text: snapshot })
-        return previewSourcesOf(inputs).filter((source) => source.items.length > 0)
+        return joinedPreviewInputs(toggleSourcesOf(owner), { chaId, license: plain?.license }, current === null ? null : { panelId: panelIdOf(current.target), text: snapshot })
     })
+    const sources = $derived(previewSourcesOf(previewInputs).filter((source) => source.items.length > 0))
+    // A toggle the sheet has no value for starts at the author's default, as the chat panel does.
+    const previewDefaults = $derived(toggleDefaultsOf(previewInputs.map((input) => input.text)))
+    const valueOf = (key: string): string => values[key] ?? previewDefaults.get(toggleVarKey(key)) ?? ''
 
     // The source that is the owner being edited, when the sheet shows it.
     const currentSourceId = $derived.by((): string | null => {
@@ -186,7 +190,7 @@
                         <div class="flex flex-col gap-1 ps-4">
                             {#each item.children as child (child.uid)}
                                 {#if child.type === 'row'}
-                                    <StudioTogglePreviewRow row={child} value={values[child.key] ?? ''} current={own} showKey={(labelCounts.get(child.label) ?? 0) > 1} onset={(value) => setValue(child.key, value)} onfocus={() => enterRow(source, child)} />
+                                    <StudioTogglePreviewRow row={child} value={valueOf(child.key)} current={own} showKey={(labelCounts.get(child.label) ?? 0) > 1} onset={(value) => setValue(child.key, value)} onfocus={() => enterRow(source, child)} />
                                 {:else if child.type === 'caption'}
                                     <p data-part="studio-tg-preview-caption" class="px-2 text-sm text-textcolor2">{child.label}</p>
                                 {:else}
@@ -196,7 +200,7 @@
                         </div>
                     {/if}
                 {:else if item.type === 'row'}
-                    <StudioTogglePreviewRow row={item} value={values[item.key] ?? ''} current={own} showKey={(labelCounts.get(item.label) ?? 0) > 1} onset={(value) => setValue(item.key, value)} onfocus={() => enterRow(source, item)} />
+                    <StudioTogglePreviewRow row={item} value={valueOf(item.key)} current={own} showKey={(labelCounts.get(item.label) ?? 0) > 1} onset={(value) => setValue(item.key, value)} onfocus={() => enterRow(source, item)} />
                 {:else if item.type === 'caption'}
                     <p data-part="studio-tg-preview-caption" class="px-2 text-sm text-textcolor2">{item.label}</p>
                 {:else}

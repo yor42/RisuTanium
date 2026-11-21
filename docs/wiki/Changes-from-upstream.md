@@ -197,6 +197,7 @@ On Android, an image in a chat that is larger than 64 MiB shows as a box with it
 - **Keys and models:** `${NAME}` references to environment variables for keys (see [[API Keys from Environment Variables]]). A button to refresh model data. Context and pricing from OpenRouter. Deprecated models are tagged. Claude 5 Opus with adaptive thinking.
 - **Languages:** Spanish and Japanese. A machine drafted the Japanese, and no native speaker reviewed it.
 - **Utility mode:** A first slice (task presets and a run screen), shown on desktop only. It is early.
+- **Toggle defaults:** A toggle can start on, or on a chosen option, through a fifth field such as `key=Label===1` (see [[Modules]]). Upstream RisuAI ignores the fifth field, so the same card starts with the toggle off there and builds a different prompt until you change the toggle. Every upstream merge re-checks the destructuring line of upstream `parseToggleSyntax`; if upstream reads a 5th field, open a reconciliation ticket before the merge counts as ported.
 
 ### Model list
 
