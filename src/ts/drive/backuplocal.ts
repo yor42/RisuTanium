@@ -32,6 +32,8 @@ import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
 import { getDatabase, type Database, type StoredDatabase } from "../storage/database.svelte";
 import { keyStateOf, writeLegacyFromConnections } from "../connections/binTranslate";
 import { migrateConnections } from "../connections/migrate";
+import { exportKeyReader, type ExportKeyReader, type ExportKeySnapshot } from "../connections/keyVaultStore.svelte";
+import { binKeySnapshot, confirmExportKeys, exportKeysLateText } from "./exportKeys";
 import { readArchivedUnitCharacter } from "./restoreReplace";
 import { repairCharacterTree } from "../storage/characterTreeRepair";
 import { language } from "src/lang";
@@ -91,8 +93,8 @@ function getBasename(data:string){
  * database entry. `stubPayloads` are the entries of the stubs that are in the encoded tree, in `stub` mode: an entry
  * exists exactly when a stub with its uuid is written, so a character loaded while the export ran leaves no orphan.
  */
-async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>){
-    const { tree: exportCopy, notice: repairNotice, omittedChatData } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules, confirmedForkOnly)
+async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>, keys: ExportKeyReader){
+    const { tree: exportCopy, notice: repairNotice, omittedChatData, omittedConnectionKeys } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules, confirmedForkOnly, keys)
     // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
@@ -118,7 +120,7 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     const lateChats = lateForkOnlyChats([...omittedChatData, ...(late.omittedChatData ?? [])], confirmedForkOnly)
     const lateAlternatives = lateChats.alternatives
     const lateForkChatData = lateChats.other.map((chat) => forkChatDataLine(chat.text, chat.kinds))
-    return { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData }
+    return { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData, lateConnectionKeys: omittedConnectionKeys }
 }
 
 /**
@@ -255,7 +257,7 @@ const THEME_PACK_SCHEME_NAME = 'theme-pack'
  * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[] }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>, keys: ExportKeyReader): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[], omittedConnectionKeys: string[] }> {
     const unaccounted = { ...db, account: undefined }
     const plain: StoredDatabase = unaccounted
     // The keys are translated back to upstream's legacy fields from a synchronous snapshot taken before any await, with
@@ -341,8 +343,8 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     }
     const list: unknown = plain.characters
     if (!Array.isArray(list) || !characterListNeedsRepair(list, reserved)) {
-        await writeLegacyFromConnections(keyState, plain)
-        return { tree: plain, notice: null, omittedChatData }
+        writeLegacyFromConnections(keyState, plain, keys)
+        return { tree: plain, notice: null, omittedChatData, omittedConnectionKeys: keys.late() }
     }
     const repair = await repairCharacterTree(plain, 'export', { readUnitCharacter: readArchivedUnitCharacter, reservedBlockNames: reserved })
     const count = (kind: string) => repair.notices.filter((notice) => notice.kind === kind).length
@@ -350,13 +352,14 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     const filled = count('id-filled')
     const replaced = count('id-replaced')
     const unrestorable = repair.notices.flatMap((notice) => notice.kind === 'stub-unrestorable' ? [`"${notice.name}"`] : [])
-    await writeLegacyFromConnections(keyState, plain)
+    writeLegacyFromConnections(keyState, plain, keys)
     return {
         tree: plain,
         notice: recovered + filled + replaced + unrestorable.length > 0
             ? language.exportIdsRepairedNotice(recovered, filled, replaced, unrestorable.join(', '))
             : null,
         omittedChatData,
+        omittedConnectionKeys: keys.late(),
     }
 }
 
@@ -836,6 +839,16 @@ async function confirmOmitUsageStats(session: ExportSession, present: boolean): 
 }
 
 /**
+ * Asks, before the writer opens, whether to create the backup without the connection keys this device cannot read (a
+ * `.bin` carries keys as plain text and never an envelope, so they are written empty). One confirm names both the keys
+ * it can never read and the ones it cannot read right now. `true` when none is named or the person confirms; declining
+ * writes nothing. It is a dialog of its own, also in leave-out sheet mode, and follows the fork-only consent.
+ */
+async function confirmOmitConnectionKeys(session: ExportSession, snapshot: ExportKeySnapshot): Promise<boolean> {
+    return await confirmExportKeys(session, snapshot)
+}
+
+/**
  * Whether the export leaves ChroMemory out visibly: only while the engine is selected. Settings kept while another engine is
  * selected are left out silently, like the statistics retention period.
  */
@@ -1082,7 +1095,14 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
     // The other fork-only data (interrupted-reply notes, memory coverage pointers, task presets, theme packs, usage
     // statistics) has no place in a `.bin` either; it is named in the same consent before the writer opens.
+    // The wrapped connection keys are read here, before the fork-only and key prompts, so no wait sits between the last
+    // prompt and the writer and the writer never needs a vault call; the key confirm follows the fork-only consent.
+    const keySnapshot = await binKeySnapshot(db)
+    session.cancel.throwIfCancelled()
     if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    if (!await confirmOmitConnectionKeys(session, keySnapshot)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     reportWriterStepWeb(session)
@@ -1208,7 +1228,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         // The write counts of the notes below start here, so they hold the stub, late and database writes only.
         takeExportWriteStats()
     }
-    const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
+    const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData, lateConnectionKeys } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels), exportKeyReader(keySnapshot))
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSaveColdData(done, total), (done, total, text) => session.progress.count('cold', done, total, text))
@@ -1237,7 +1257,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         oldStoreUnlisted: inlayResult.oldStoreUnlisted,
         repaired: repairNotice,
     }
-    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0 || lateForkChatData.length > 0) {
+    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0 || lateForkChatData.length > 0 || lateConnectionKeys.length > 0) {
         let message = backupNoticeHeader('full', missingAssets.length > 0
             ? 'missing'
             : (lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || leftOut.length > 0)
@@ -1278,6 +1298,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         }
         if (lateForkChatData.length > 0) {
             message += (message.endsWith('\n') ? '\n' : '\n\n') + language.backupForkChatDataLeftOut(lateForkChatData.length, shownPromptNames(lateForkChatData))
+        }
+        if (lateConnectionKeys.length > 0) {
+            message += (message.endsWith('\n') ? '\n' : '\n\n') + exportKeysLateText(lateConnectionKeys)
         }
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
@@ -1430,7 +1453,12 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
     // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
+    const keySnapshot = await binKeySnapshot(db)
+    session.cancel.throwIfCancelled()
     if (!await confirmForkOnlyLeaveOut(session, options, db, forkOnlyLabels)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    if (!await confirmOmitConnectionKeys(session, keySnapshot)) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     reportWriterStepWeb(session)
@@ -1519,7 +1547,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels))
+    const { dbData, late, repairNotice, stubPayloads, lateAlternatives, lateForkChatData, lateConnectionKeys } = await encodeDatabaseWithLateColdStorage(db, cold, modules, forkOnlyConfirmKeys(forkOnlyLabels), exportKeyReader(keySnapshot))
     session.cancel.throwIfCancelled()
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, (done, total) => language.backupSavePartialColdData(done, total), (done, total, text) => session.progress.count('cold', done, total, text))
     for(let i=0;i<late.payloads.length;i++){
@@ -1544,7 +1572,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         oldStoreUnlisted: false,
         repaired: repairNotice,
     }
-    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0 || lateForkChatData.length > 0) {
+    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0 || lateForkChatData.length > 0 || lateConnectionKeys.length > 0) {
         let message = backupNoticeHeader('partial', missingAssets.length > 0
             ? 'missing'
             : (lateColdStorageReport || leftOut.length > 0)
@@ -1573,6 +1601,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         }
         if (lateForkChatData.length > 0) {
             message += `\n\n${language.backupForkChatDataLeftOut(lateForkChatData.length, shownPromptNames(lateForkChatData))}`
+        }
+        if (lateConnectionKeys.length > 0) {
+            message += `\n\n${exportKeysLateText(lateConnectionKeys)}`
         }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
         session.progress.notice('markdown', message)

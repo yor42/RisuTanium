@@ -16,11 +16,12 @@ import { currentKey } from "./request/secretKey"
 
 /**
  * The credential to send for an image provider, or null after telling the user why it cannot be
- * resolved. A value that is not a `${NAME}` reference comes back unchanged.
+ * resolved. A value that is not a `${NAME}` reference comes back unchanged. A key still being read (a
+ * wrapped key) is awaited inside the same guard, so a rejected read is reported the same way.
  */
-async function resolveImageKey(value: string): Promise<string|null> {
+async function resolveImageKey(value: string | Promise<string>): Promise<string|null> {
     try {
-        return await resolveSecret(value)
+        return await resolveSecret(await value)
     } catch (error) {
         alertError(error instanceof Error ? error.message : `${error}`)
         return null
@@ -419,7 +420,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
         }
     }
     if(db.sdProvider === 'dalle'){
-        const dalleKey = await resolveImageKey(await currentKey('openAIKey', db))
+        const dalleKey = await resolveImageKey(currentKey('openAIKey', db))
         if(dalleKey === null){
             return returnSdData === 'inlay' ? '' : false
         }
@@ -706,7 +707,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
             }
         }
 
-        const imagenKey = await resolveImageKey(await currentKey('google.accessToken', db))
+        const imagenKey = await resolveImageKey(currentKey('google.accessToken', db))
         if(imagenKey === null){
             return returnSdData === 'inlay' ? '' : false
         }

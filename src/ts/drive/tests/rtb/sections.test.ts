@@ -164,8 +164,8 @@ describe('T40 / T-resprefix reserved ids', () => {
 })
 
 describe('T39 side prefixes and optional rows under u/ a/ i/', () => {
-    test('there are eight v1 side sections, each with its own s/<name>/ prefix', () => {
-        expect(SIDE_SECTION_IDS.length).toBe(8)
+    test('there are nine v1 side sections, each with its own s/<name>/ prefix', () => {
+        expect(SIDE_SECTION_IDS.length).toBe(9)
         expect(sidePrefix('side.iris')).toBe('s/iris/')
         expect(sidePrefix('side.plugin-safe-ls')).toBe('s/plugin-safe-ls/')
         expect(sidePrefix('side.unknown')).toBeNull()
@@ -231,6 +231,13 @@ describe('T4 / T14 known and unknown rows', () => {
         const rows = rowsOf(table(row('x-test.req', 'x/req/', { required: true }), row('x-test.opt', 'x/opt/')))
         expect(unknownRequiredRow(rows)?.id).toBe('x-test.req')
         expect(unknownOptionalRows(rows).map((r) => r.id)).toEqual(['x-test.opt'])
+    })
+
+    // compatibility guard (passes before and after): a reader that does not know a side row names it and goes on; a pre-connection-keys build sees `side.connection-keys` this way
+    test('T26: an unknown optional side row under its own s/ prefix is named by unknownOptionalRows and is not required', () => {
+        const rows = rowsOf(table(row('side.zzz-test', 's/zzz-test/')))
+        expect(unknownOptionalRows(rows).map((r) => r.id)).toEqual(['side.zzz-test'])
+        expect(unknownRequiredRow(rows)).toBeNull()
     })
 
     test('a v1 table has no unknown rows', () => {
