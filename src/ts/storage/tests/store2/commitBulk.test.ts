@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * Bulk commit and the abandon-clear over the memory, IndexedDB (fake-indexeddb)
+ * Bulk commit and the abandon-clear over the memory
  * and Node (real server process) backends: the 59/60 threshold, the marker
  * written before any unit, the final compare-and-write judged on a fresh read
  * after every conflict or lost response, and the marker clear that needs this

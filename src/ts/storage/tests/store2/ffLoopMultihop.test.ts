@@ -47,10 +47,10 @@ import {
 import { chars, parsedKey, runLoopOver } from './lineFixtures'
 
 /**
- * The fast-forward over several hops on the memory and fake-IndexedDB stores: two dispatch-booted pages run the real
+ * The fast-forward over several hops on the memory store: two dispatch-booted pages run the real
  * save loop over one store and each takes the other's commit before its own, and the rows that must hold on every
  * store (a bulk final that does not descend, a commit-key rollback, a peer that alternates with this page) are run
- * here on both. The Node variants are in ffLoopNode.test.ts.
+ * here on memory. The Node variants are in ffLoopNode.test.ts.
  */
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 })
@@ -67,7 +67,7 @@ afterEach(async () => {
     opened = null
 })
 
-const NAMES: readonly BackendName[] = ['memory', 'indexedDb']
+const NAMES: readonly BackendName[] = ['memory']
 
 describe.each(NAMES)('%s', (name) => {
     test('R30 two pages alternating disjoint commits: each takes the other\'s commit before its own and neither parks', async () => {

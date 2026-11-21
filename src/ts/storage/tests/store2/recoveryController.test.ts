@@ -50,6 +50,7 @@ import { runRecovery, type RecoveryCalls, type RecoveryPort } from 'src/ts/stora
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createClock, createPeerDouble, testEnv } from '../store2SaveKit'
 import { buildSmall, fakeLists } from './codecFixtures'
+import { flushConfirming } from './flushConfirmBackend'
 import { plantTree, type Planted } from './recoveryFixtures'
 
 /**
@@ -255,7 +256,7 @@ async function rig(options: RigOptions = {}): Promise<Rig> {
         recovery: async (request) => { requests.push(request) },
         peer: createPeerDouble(),
     }
-    const kind = options.kind ?? 'indexeddb'
+    const kind = options.kind ?? 'tauri'
     const bootEnv = {
         store,
         upstreamMainFile: async () => mainFile,
@@ -266,7 +267,7 @@ async function rig(options: RigOptions = {}): Promise<Rig> {
         store.files.set(`database/dbbackup-${backup}.bin`, new Uint8Array([4, 5, 6]))
     }
     await dispatchStore2Boot(bootEnv, {
-        ui, kind, backend: async () => trace.backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders: options.decoders ?? LEGACY_DECODERS,
+        ui, kind, backend: async () => flushConfirming(trace.backend).backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders: options.decoders ?? LEGACY_DECODERS,
         importBackup: options.importBackup,
     })
     expect(requests).toHaveLength(1)
@@ -317,7 +318,7 @@ async function rig(options: RigOptions = {}): Promise<Rig> {
         async reboot(rebootKind) {
             return Store2Session.open(store, {
                 kind: rebootKind,
-                backend: memory,
+                backend: flushConfirming(memory).backend,
                 ownerStore: createOwnerIdStore(store),
                 upstreamMainFile: async () => mainFile,
                 env: testEnv(clock, 77),
@@ -667,7 +668,7 @@ describe('B2: a change made elsewhere after a marker ends the screen, and the sc
         ['a peer started its own recovery', 'recovery-marker', 8],
     ]
 
-    const owners: AppStoreKind[] = ['indexeddb', 'tauri']
+    const owners: AppStoreKind[] = ['tauri']
     const rows = cases.flatMap(([name, kind, row]) => owners.map((owner): [string, 'current' | 'no-current' | 'damaged' | 'recovery-marker', number, AppStoreKind] => [`${name} (next start on ${owner})`, kind, row, owner]))
 
     test.each(rows)('%s: the second pick ends in the changed screen, with one compare-and-write and the peer\'s bytes intact', async (_name, kind, row, owner) => {
@@ -1283,8 +1284,8 @@ describe('the reload path: the next start classifies what each ended screen left
         return { t, keysBefore }
     }
 
-    test('an unexpected stop after a pick marker leaves our recovery marker: row 8 on the web and on Tauri', async () => {
-        for (const kind of ['indexeddb', 'tauri'] as const) {
+    test('an unexpected stop after a pick marker leaves our recovery marker: row 8 on Tauri', async () => {
+        for (const kind of ['tauri'] as const) {
             const { t, keysBefore } = await (async () => {
                 const t = await rig({ kind, calls: { install: async () => { throw new TypeError('install broke') } } })
                 const keysBefore = new Set(t.memory.snapshot().keys())
@@ -1298,27 +1299,23 @@ describe('the reload path: the next start classifies what each ended screen left
             const parsed = classifyCommitRead(await t.memory.readCommit())
             expect(parsed.status === 'parsed' && parsed.value.staging?.label === 'recovery' && parsed.value.current === null).toBe(true)
             const reopened = await t.reboot(kind)
+            expect(reopened.idleReason).toBeNull()
             expect(reopened.decision.row, kind).toBe(8)
             const after = new Set(t.memory.snapshot().keys())
             expect([...keysBefore].filter((key) => !after.has(key))).toEqual([])
         }
     })
 
-    test.each(['convert', 'seed'] as const)('a %s that stopped after its marker (the upload failed): a foreign marker on the web (row 9), this device\'s own marker on Tauri (row 9, cleared at start-up)', async (label) => {
-        const web = await endedWithMarker(label, 'indexeddb')
-        await until(() => expect(web.t.port.terminalModel).not.toBeNull())
-        expectEnded(web.t, [text().blockedInstall])
-        await settle()
-        expectQuietSinceEnd(web.t)
-        const staged = classifyCommitRead(await web.t.memory.readCommit())
-        expect(staged.status === 'parsed' && staged.value.staging?.label === label && staged.value.current === null).toBe(true)
-        const reopenedWeb = await web.t.reboot('indexeddb')
-        expect(reopenedWeb.decision).toMatchObject({ row: 9, mode: 'rerun', operation: label, clear: 'foreign-path' })
-        expect([...web.keysBefore].filter((key) => !new Set(web.t.memory.snapshot().keys()).has(key))).toEqual([])
-
+    test.each(['convert', 'seed'] as const)('a %s that stopped after its marker (the upload failed): this device\'s own marker on Tauri (row 9, cleared at start-up)', async (label) => {
         const tauri = await endedWithMarker(label, 'tauri')
         await until(() => expect(tauri.t.port.terminalModel).not.toBeNull())
+        expectEnded(tauri.t, [text().blockedInstall])
+        await settle()
+        expectQuietSinceEnd(tauri.t)
+        const staged = classifyCommitRead(await tauri.t.memory.readCommit())
+        expect(staged.status === 'parsed' && staged.value.staging?.label === label && staged.value.current === null).toBe(true)
         const reopenedTauri = await tauri.t.reboot('tauri')
+        expect(reopenedTauri.idleReason).toBeNull()
         expect(reopenedTauri.decision).toMatchObject({ row: 9, mode: 'rerun', operation: label, clear: 'own' })
         expect([...tauri.keysBefore].filter((key) => !new Set(tauri.t.memory.snapshot().keys()).has(key))).toEqual([])
     })
@@ -1333,7 +1330,7 @@ describe('the reload path: the next start classifies what each ended screen left
         await t.port.press('recoveryPickGo')
         await until(() => expect(t.port.terminalModel).not.toBeNull())
         expect(Array.from(await t.commitKey() as Uint8Array)).toEqual(Array.from(before as Uint8Array))
-        expect((await t.reboot('indexeddb')).decision.row).toBe(4)
+        expect((await t.reboot('tauri')).decision.row).toBe(4)
         expect([...keysBefore].filter((key) => !new Set(t.memory.snapshot().keys()).has(key))).toEqual([])
     })
 })

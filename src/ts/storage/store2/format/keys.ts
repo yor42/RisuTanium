@@ -226,7 +226,7 @@ function hasControlCharacter(text: string): boolean {
  * `coldstorage/`, or a `database/database.pre-blocks*` file, spelled as a plain relative path. Everything else is out:
  * the store2 key space and its top-level keys, `assets/`, `inlays/`, `remotes/`, the upstream main file and the numbered
  * backups. A path with an empty, `.` or `..` segment, a backslash or a control character is out, so no spelling can
- * reach another key. The Node and IndexedDB stores refuse no such delete themselves, so this is the one defence.
+ * reach another key. The Node store refuses no such delete itself, so this is the one defence.
  */
 export function isOldDataKey(key: string): boolean {
     if (typeof key !== 'string' || key.length === 0 || key.includes('\\') || hasControlCharacter(key) || !isWellFormedUtf16(key)) {

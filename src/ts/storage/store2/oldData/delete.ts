@@ -20,11 +20,11 @@ import { observeUpstream, upstreamMatches } from './plan'
  *
  * - The list is the snapshot unit the commit key points at, never a fresh listing. The unit is used only when it is
  *   present, matches the pointer's digest, reads as a type 24 body, holds as many keys as the pointer counts, and every
- *   key is inside the allowlist (`isOldDataKey`). The Node and IndexedDB stores refuse no such delete themselves, so the
+ *   key is inside the allowlist (`isOldDataKey`). The Node store refuses no such delete itself, so the
  *   allowlist here is the defence, and it is checked again by this pass whatever the parser accepted.
  * - The phases are separate sequences of `deleteMany` calls, never mixed in one call, in this order: `coldstorage/`,
  *   `database/database.pre-blocks*`, `blocks/` without the head, the head alone. A store that goes on after a failed key
- *   (IndexedDB, Tauri) therefore cannot remove a later phase's key after an earlier phase's key failed, and any failure
+ *   (Tauri) therefore cannot remove a later phase's key after an earlier phase's key failed, and any failure
  *   ends the run before the next phase.
  * - A plan that lists `coldstorage/` keys was made against the upstream files the store held then. Before the first such
  *   batch the pass observes them again; any difference abandons those keys for good (space only) while the later
@@ -112,10 +112,8 @@ function phaseOf(key: string): Phase {
     throw new RangeError(`${key} is in no phase of the old-data deletion.`)
 }
 
-/** Keys per `deleteMany` call: the Node server's per-request limit, an IndexedDB batch, and a Tauri batch of per-key calls. */
-function batchSizeOf(kind: AppStoreKind): number {
-    return kind === 'indexeddb' ? 100 : 20
-}
+/** Keys per `deleteMany` call: the Node server's per-request limit, and a Tauri batch of per-key calls. */
+const DELETE_BATCH_SIZE = 20
 
 function decodeSnapshot(bytes: Uint8Array): DeletionSnapshot | null {
     const unit = readUnit(bytes, UNIT_TYPE.deletionSnapshot)
@@ -234,7 +232,7 @@ export async function runOldDataDeletion(session: OldDataSession, deps: OldDataD
     /** Deletes `keys` in batches; `null` when all went, otherwise the result that ends the run. */
     async function deleteAll(keys: readonly string[]): Promise<OldDataDeletionResult | null> {
         let rest = keys
-        const size = batchSizeOf(session.kind)
+        const size = DELETE_BATCH_SIZE
         while (rest.length > 0) {
             const batch = rest.slice(0, size)
             await yieldTurn()

@@ -10,6 +10,7 @@
  * Nothing here says anything about the real store.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 import { writable } from 'svelte/store'
 
 const h = vi.hoisted(() => ({
@@ -25,9 +26,9 @@ vi.mock('../../globalApi.svelte', () => ({
     }),
     globalFetch: vi.fn(),
 }))
-vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => h.db }))
+vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => absorbLegacyForTest(h.db) }))
 vi.mock('../../stores.svelte', () => ({
-    get DBState() { return { db: h.db } },
+    get DBState() { return { db: absorbLegacyForTest(h.db) } },
     selectedCharID: writable(-1),
 }))
 vi.mock('../../platform', () => ({ isTauri: false, isNodeServer: false }))

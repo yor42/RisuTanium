@@ -1,7 +1,6 @@
 /**
  * The byte-store contract: whole binary values under string keys, one interface
- * over the desktop files, the self-hosted Node server and the browser's
- * IndexedDB. A key is a `/`-separated relative path (`database/database.bin`,
+ * over the desktop files and the self-hosted Node server. A key is a `/`-separated relative path (`database/database.bin`,
  * `assets/<name>`); the rules are in `keyRules.ts`.
  *
  * Invariants every adapter keeps (values are bytes, except under an inlay body
@@ -23,8 +22,8 @@
  * callers serialize them.
  *
  * On the desktop file system a key cannot also be the directory prefix of
- * another key (`a/b` and `a/b/c` cannot both hold values); the Node server and
- * IndexedDB allow it. No key the app uses collides this way.
+ * another key (`a/b` and `a/b/c` cannot both hold values); the Node server
+ * allows it. No key the app uses collides this way.
  */
 
 /**

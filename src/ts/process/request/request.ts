@@ -26,7 +26,8 @@ import { wholeCharacterStream } from './wholeCharacterStream';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type ModelModeExtended } from './shared';
 import { auxSlotModel } from './auxModelSlot';
-import { leaseArgKey, limitedField, readKeyField, sendArgKey, sendKeyLine, type KeyFieldId } from './secretKey';
+import { leaseArgKey, limitedField, readKeyField, sendArgKey, sendKeyLine, slotHasKey, type KeyFieldId } from './secretKey';
+import { slotConnection } from 'src/ts/connections/connections';
 import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } from './keyRing';
 import { SecretRefError } from '../../secretRef';
 import { beginUsageCapture, settleUsage, settleUsageFailure } from '../../usage/usageCapture';
@@ -384,9 +385,9 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
             }
 
             if(da.type === 'fail' && da.keyLimited){
-                const readField = (field: Parameters<typeof readKeyField>[1]) => readKeyField(db, field)
-                const lineCount = splitKeys(readField(da.keyLimited)).length
-                const next = afterLimit(keyRotation, da.keyLimited, readField)
+                const freshValue = await readKeyField(db, da.keyLimited)
+                const lineCount = splitKeys(freshValue).length
+                const next = afterLimit(keyRotation, da.keyLimited, freshValue)
                 if(next === 'next'){
                     // The limited line is marked tried: the same request goes out again at once on the next line.
                     continue
@@ -625,12 +626,14 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
     if(targ.aiModel === 'reverse_proxy'){
         targ.modelInfo.internalID = db.customProxyRequestModel
         targ.modelInfo.format = db.customAPIFormat
-        targ.customURL = db.forceReplaceUrl
+        targ.customURL = slotConnection(db, 'proxyKey')?.url ?? ''
         await leaseArgKey(targ, 'proxyKey')
     }
     if(targ.aiModel.startsWith('xcustom:::')){
-        const found = db.customModels.find(m => m.id === targ.aiModel)
-        targ.customURL = found?.url
+        // A model with no resolvable connection sends to a relative path, as an empty url did: it never falls back
+        // to a provider default host, which would be a destination the user never chose.
+        const known = db.customModels.some(m => m.id === targ.aiModel)
+        targ.customURL = slotConnection(db, `customModels:${targ.aiModel}`)?.url ?? (known ? '' : undefined)
         await leaseArgKey(targ, `customModels:${targ.aiModel}`)
     }
 
@@ -889,7 +892,8 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
         const close = () => {
             oobaboogaSocket.close()
         }
-        const stream = new ReadableStream({
+        // Chunks are records keyed "0": the reply consumer reads a chunk's first key, which for a bare string is its first character.
+        const stream = new ReadableStream<StreamResponseChunk>({
             start(controller){
                 let readed = "";
                 oobaboogaSocket.onmessage = (event) => {
@@ -901,7 +905,7 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
                     }
                     if (json.event !== "text_stream") return
                     readed += json.text
-                    controller.enqueue(readed)
+                    controller.enqueue({"0": readed})
                 };
                 oobaboogaSocket.send(JSON.stringify(bodyTemplate));
             },
@@ -1348,7 +1352,7 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
         }
     }
 
-    let customHeaders: Record<string, string> = isCloud && db.ollamaApiKey ? { Authorization: 'Bearer ' + await sendKeyLine(arg, 'ollamaApiKey') } : {}
+    let customHeaders: Record<string, string> = isCloud && slotHasKey(db, 'ollamaApiKey') ? { Authorization: 'Bearer ' + await sendKeyLine(arg, 'ollamaApiKey') } : {}
 
     let requestBody: any = {
         model: ollamaModel,
@@ -1609,7 +1613,7 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
     }
 
     let apiKey = '0000000000'
-    if(db.hordeConfig.apiKey.length > 2){
+    if((await readKeyField(db, 'hordeConfig.apiKey')).length > 2){
         apiKey = await sendKeyLine(arg, 'hordeConfig.apiKey')
     }
 

@@ -14,6 +14,7 @@
  * against the old code and the new code, and the named mutants are its falsification.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../../connections/tests/legacyFixture'
 import { GPT5XHighParameters, LLMFlags, LLMFormat, LLMProvider } from '../../types'
 import type { LiteLLMData, LiteLLMRow } from '../litellmData'
 
@@ -30,11 +31,11 @@ const h = vi.hoisted(() => ({
     startModelData: vi.fn(),
 }))
 
-vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: () => h.db }))
+vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: () => absorbLegacyForTest(h.db) }))
 vi.mock('src/ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
     return {
-        get DBState() { return { db: h.db } },
+        get DBState() { return { db: absorbLegacyForTest(h.db) } },
         selectedCharID: writable(-1),
     }
 })
@@ -101,6 +102,8 @@ const anthropicPage = (ids: string[], hasMore: boolean): Reply => ({
 const openaiPage = (ids: string[]): Reply => ({ json: { data: ids.map(id => ({ id })) } })
 
 function setKeys(keys: { openai?: string, anthropic?: string, google?: string }): void {
+    // The keys given are the whole key state: a cleared key must not survive in a stored connection.
+    h.db.connections = []
     h.db.openAIKey = keys.openai ?? ''
     h.db.claudeAPIKey = keys.anthropic ?? ''
     h.db.google = { accessToken: keys.google ?? '' }

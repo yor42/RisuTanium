@@ -254,7 +254,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
 
     /**
      * Reads the tree of `manifestKey` and opens it: the load path shared by a normal boot and a fresh install. `seed` is the
-     * commit key that names `manifestKey` as its `current`: the descent baseline of an indexeddb or node page starts from it,
+     * commit key that names `manifestKey` as its `current`: the descent baseline of a node page starts from it,
      * and a seed that does not name the manifest leaves the baseline unknown (the fail-closed default).
      */
     async function openStored(session: Store2Session, manifestKey: string, decision: { fence: 'absent' | 'fenced' | 'blocked' }, seed: CommitKey | null): Promise<Round> {
@@ -363,7 +363,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             markerOwnerProbe: deps.markerOwnerProbe?.(session.kind) ?? null,
             loadStub: loadStubsOf,
             loadModuleStub: loadModuleStubsOf,
-            ...(session.kind === 'indexeddb' || session.kind === 'node'
+            ...(session.kind === 'node'
                 ? {
                     lineage: { base: baselineOf(seed, manifestKey) },
                     fastForward: createFastForward({ backend, kind: session.kind, lists, env: keyEnv }),

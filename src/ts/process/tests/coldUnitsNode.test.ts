@@ -183,6 +183,18 @@ describe('deleting units on the Node server', () => {
         expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { n: 2 } })
     })
 
+    test('new behaviour: a plugin slot rewritten reads the new value, and no older value is readable after the unit is deleted', async () => {
+        expect(await cold.setColdStorageItem(UUID, { slot: 'old' })).toBe(true)
+        expect(await cold.setColdStorageItem(UUID, { slot: 'new' })).toBe(true)
+
+        expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'ok', value: { slot: 'new' } })
+
+        expect(await cold.deleteColdStorageUnits([UUID])).toEqual([])
+
+        expect(server.keysWithPrefix('coldstorage/')).toEqual([])
+        expect(await cold.readColdStorageItem(UUID)).toEqual({ status: 'missing' })
+    })
+
     test('new behaviour: units of both shapes are listed and deleted, and a failed request reports its keys', async () => {
         await cold.setColdStorageItem(UUID, VALUE)
         await cold.setColdStorageItem(OTHER + '_accessMeta', VALUE)

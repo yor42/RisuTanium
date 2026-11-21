@@ -16,8 +16,8 @@ import type { Decision } from './delta'
 export const PRESET_RECORD_FIELDS = [
     'apiType', 'localNetworkMode', 'localNetworkTimeoutSec', 'mainPrompt', 'jailbreak', 'globalNote', 'temperature',
     'maxContext', 'maxResponse', 'frequencyPenalty', 'PresensePenalty', 'formatingOrder', 'aiModel', 'subModel',
-    'currentPluginProvider', 'textgenWebUIStreamURL', 'textgenWebUIBlockingURL', 'forceReplaceUrl', 'promptPreprocess',
-    'bias', 'koboldURL', 'proxyKey', 'ooba', 'ainconfig', 'openrouterRequestModel', 'proxyRequestModel', 'NAIsettings',
+    'currentPluginProvider', 'textgenWebUIStreamURL', 'textgenWebUIBlockingURL', 'promptPreprocess',
+    'bias', 'koboldURL', 'proxyConnectionId', 'ooba', 'ainconfig', 'openrouterRequestModel', 'proxyRequestModel', 'NAIsettings',
     'autoSuggestPrompt', 'autoSuggestPrefix', 'autoSuggestClean', 'promptTemplate', 'NAIadventure', 'NAIappendName',
     'localStopStrings', 'customProxyRequestModel', 'reverseProxyOobaArgs', 'top_p', 'promptSettings', 'repetition_penalty',
     'min_p', 'top_a', 'openrouterProvider', 'useInstructPrompt', 'customPromptTemplateToggle', 'templateDefaultVariables',

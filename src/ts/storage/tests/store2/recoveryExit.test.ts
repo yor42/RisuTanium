@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The recovery screen's exit protocol over the memory, IndexedDB (fake-indexeddb)
+ * The recovery screen's exit protocol over the memory
  * and Node (real server process) backends: the fence is written or extended
  * before the marker, the marker's basis and `seq` over each commit-key state,
  * the foreign-marker path and the conflict outcomes. Tauri is not run: the

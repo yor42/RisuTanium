@@ -1289,7 +1289,6 @@ describe('a full backup carries the inlays of both stores and restores them', ()
         const flags = new Map<string, string>()
         await runInlayCopy({
             flags: { getItem: (key) => flags.get(key) ?? null, setItem: (key, value) => { flags.set(key, value) } },
-            estimate: async () => undefined,
             withTabLock: async (work) => { await work(); return true },
         })
         expect(appInlayKeys().length).toBeGreaterThan(0)

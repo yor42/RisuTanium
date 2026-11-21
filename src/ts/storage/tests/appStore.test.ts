@@ -1,16 +1,15 @@
 // @vitest-environment node
 /**
  * The page's byte store (`src/ts/storage/store/appStore.ts`): which store each
- * platform gets, that a browser without usable IndexedDB gets no store and
- * nothing is written, and how the main file reads on the Node server.
+ * platform gets, that a page served by neither Tauri nor the Node server gets no
+ * store and nothing is initialised or written, and how the main file reads on the
+ * Node server.
  *
- * The Node server is the `FakeNodeServer` stand-in at the `fetch` boundary, the
- * Tauri file system is an in-memory model, and IndexedDB is
- * `fake-indexeddb`; a pass is no evidence about a real server, desktop file
- * system or browser. `fake-indexeddb/auto` is imported first because LocalForage
- * captures `indexedDB` once when it loads. A failed IndexedDB open is in
- * `appStore.indexedDbOpenFailure.test.ts`: LocalForage remembers a failed open
- * for the life of its module, so it needs a module registry of its own.
+ * The Node server is the `FakeNodeServer` stand-in at the `fetch` boundary and the
+ * Tauri file system is an in-memory model; a pass is no evidence about a real
+ * server, desktop file system or browser. `fake-indexeddb` stands in for the
+ * browser database that the refusal case proves is never touched, and is imported
+ * first because LocalForage captures `indexedDB` once when it loads.
  */
 import 'fake-indexeddb/auto'
 import localforage from 'localforage'
@@ -73,7 +72,7 @@ let app: AppStoreModule
 
 let server: FakeNodeServer
 
-/** The `risuai` LocalForage database the IndexedDB store and upstream's own code share. */
+/** The `risuai` LocalForage database upstream's own code uses; the refusal case plants a value there. */
 const profile = localforage.createInstance({ name: 'risuai' })
 
 function bytes(...values: number[]): Uint8Array {
@@ -133,32 +132,16 @@ describe('the store each platform gets', () => {
         expect(server.requestsTo('/api/read').length).toBe(1)
     })
 
-    test('IndexedDB: the pinned IndexedDB store over the database upstream already uses', async () => {
-        await profile.clear()
-        await profile.setItem(MAIN, bytes(3, 3, 3))
-
-        const store = await app.getAppStore()
-        const read = await app.readMainFile()
-
-        expect(store.capabilities.conditionalWrites).toBe(false)
-        expect(Array.from(read.bytes ?? [])).toEqual([3, 3, 3])
-    })
-
-    test('the selected kind is readable: Tauri, Node and IndexedDB each report their own', async () => {
+    test('the selected kind is readable: Tauri and Node each report their own', async () => {
         platform('tauri')
         expect(await app.getAppStoreKind()).toBe('tauri')
 
         await nodeWorld()
         app.injectAppStore(null)
         expect(await app.getAppStoreKind()).toBe('node')
-
-        platform('web')
-        h.forage.realStorage = undefined
-        app.injectAppStore(null)
-        expect(await app.getAppStoreKind()).toBe('indexeddb')
     })
 
-    test('the real selection reaches the asset limit registry: Tauri 1 GiB, Node 100 MiB until pieces are recorded then 1 GiB, IndexedDB 1 GiB', async () => {
+    test('the real selection reaches the asset limit registry: Tauri 1 GiB, Node 100 MiB until pieces are recorded then 1 GiB', async () => {
         const MiB = 1024 * 1024
         const limits = await import('src/ts/storage/assetLimit')
         expect(limits.selectedStoreIsNode()).toBe(false)
@@ -175,13 +158,6 @@ describe('the store each platform gets', () => {
         expect(limits.storeAssetLimitBytes()).toBe(100 * MiB)
         Object.assign(nodeStore, { piecesRecorded: () => true })
         expect(limits.storeAssetLimitBytes()).toBe(1024 * MiB)
-
-        platform('web')
-        h.forage.realStorage = undefined
-        app.injectAppStore(null)
-        await app.getAppStore()
-        expect(limits.selectedStoreIsNode()).toBe(false)
-        expect(limits.storeAssetLimitBytes()).toBe(1024 * MiB)
     })
 
     test('the kind of a store injected without one is not guessed', async () => {
@@ -193,6 +169,7 @@ describe('the store each platform gets', () => {
     })
 
     test('a selection that failed because the storage object could not be initialised stands for the page: every call gets the same rejection and Init is not run again', async () => {
+        await nodeWorld()
         let attempts = 0
         h.forage.Init = async () => {
             attempts++
@@ -240,17 +217,23 @@ describe('the main file on the Node server', () => {
     })
 })
 
-describe('a browser without usable IndexedDB', () => {
-    test('LocalForage without IndexedDB support: no store, and nothing is read or written', async () => {
+describe('a page served by neither Tauri nor the Node server', () => {
+    test('4c-R1: no store, the storage object is not initialised, and no LocalForage call or IndexedDB write happens', async () => {
         await profile.clear()
         await profile.setItem(MAIN, bytes(1))
-        vi.spyOn(localforage, 'supports').mockReturnValue(false)
+        const init = vi.fn(async (): Promise<void> => { })
+        h.forage.Init = init
+        const supports = vi.spyOn(localforage, 'supports')
+        const createInstance = vi.spyOn(localforage, 'createInstance')
         const idbWrite = vi.spyOn(IDBObjectStore.prototype, 'put')
+        platform('web')
 
         await expect(app.getAppStore()).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
         await expect(app.readMainFile()).rejects.toBeInstanceOf(app.AppStoreUnavailableError)
 
+        expect(init).not.toHaveBeenCalled()
+        expect(supports).not.toHaveBeenCalled()
+        expect(createInstance).not.toHaveBeenCalled()
         expect(idbWrite).not.toHaveBeenCalled()
     })
-
 })

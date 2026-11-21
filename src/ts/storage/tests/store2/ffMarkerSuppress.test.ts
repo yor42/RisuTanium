@@ -58,11 +58,11 @@ afterEach(() => {
     ffTeardown()
 })
 
-async function markedPage(kind: 'node' | 'indexeddb', seenForeignWrite: boolean) {
+async function markedPage(kind: 'node' | 'tauri', seenForeignWrite: boolean) {
     const { memory } = await ffWorld({ mintLine: true, count: ROWS })
     const b: PageB = await bootB(memory)
-    if (kind === 'node') {
-        b.context.session = { kind: 'node', committer: b.context.session.committer }
+    if (kind === 'tauri') {
+        b.context.session = { kind: 'tauri', committer: b.context.session.committer }
     }
     b.context.markerOwnerProbe = async () => 'unknown'
     b.peer.foreignAnswers.push('wait')
@@ -90,10 +90,10 @@ describe('Node marker-prompt suppression', () => {
         expect(b.peer.foreignAsked).toEqual([])
     })
 
-    test('R-M2 the same page with no foreign write seen asks, as does an indexeddb page', async () => {
+    test('R-M2 the same page with no foreign write seen asks, as does a tauri page', async () => {
         const unseen = await markedPage('node', false)
         await until(() => unseen.b.peer.foreignAsked.length >= 1, 'the question of a page that saw no foreign write', 8000)
-        const web = await markedPage('indexeddb', true)
-        await until(() => web.b.peer.foreignAsked.length >= 1, 'the question of an indexeddb page', 8000)
+        const tauri = await markedPage('tauri', true)
+        await until(() => tauri.b.peer.foreignAsked.length >= 1, 'the question of a tauri page', 8000)
     })
 })

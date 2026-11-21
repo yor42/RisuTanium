@@ -4,8 +4,7 @@
  * shared hold, and asks for a reload. A `pageshow` that is not a persisted restore does nothing.
  */
 import { describe, expect, test, vi } from 'vitest'
-import { markerOwnerProbeFor } from '../store2/abandonedMarker'
-import { createStorageTabLocks, STORAGE_TAB_LOCK_NAME, type StorageEpochStore } from '../storageTabLocks'
+import { createStorageTabLocks, type StorageEpochStore } from '../storageTabLocks'
 import { FakeAsyncMutex, FakeLockManagerCore, FakeTabLockManagerView } from './fakeWebLocks'
 
 function epochStore(): StorageEpochStore {
@@ -86,20 +85,6 @@ describe('back/forward-cache restore', () => {
         restore(window)
         expect(reload).not.toHaveBeenCalled()
         expect(tab.holdsOwnPresence()).toBe(true)
-    })
-
-    test('S0-T6: after a restore the indexeddb marker-owner probe answers unknown for a single-holder snapshot', async () => {
-        const win = new EventTarget()
-        const { tab } = tabOf(new FakeLockManagerCore(), 'a', win)
-        await tab.tabPresenceLockAcquired
-        const marker = { owner: 'peer', prefix: 'store2/g-0000000000000001-', startedAt: 1, label: 'bulk' as const }
-        const probe = markerOwnerProbeFor('indexeddb', {
-            query: async () => ({ held: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'shared' }], pending: [] }),
-            holdsOwnPresence: tab.holdsOwnPresence,
-        })
-        expect(await probe?.(marker)).toBe('gone')
-        restore(win)
-        expect(await probe?.(marker)).toBe('unknown')
     })
 
     test('S0-T7: a restored page keeps its shared hold, so another tab exclusive attempt is still refused (compatibility guard)', async () => {

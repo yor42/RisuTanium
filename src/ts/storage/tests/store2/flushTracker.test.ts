@@ -309,10 +309,10 @@ describe('fence writes', () => {
 })
 
 describe('other backends never set a flag', () => {
-    test.each(['indexeddb', 'node'] as const)('a %s page whose writes report no flush status stays open', async (kind) => {
+    test('a node page whose writes report no flush status stays open', async () => {
         const memory = createMemoryBackend()
         await seedStore(memory, env)
-        const session = await openSession(memory, kind)
+        const session = await openSession(memory, 'node')
         expect(session.reflush).toBeNull()
 
         await rewriteCommit(backendOf(session))
@@ -330,7 +330,7 @@ describe('other backends never set a flag', () => {
         const memory = createMemoryBackend()
         await seedStore(memory, env)
 
-        expect((await openSession(memory, 'indexeddb')).backend).toBe(memory)
+        expect((await openSession(memory, 'node')).backend).toBe(memory)
     })
 })
 

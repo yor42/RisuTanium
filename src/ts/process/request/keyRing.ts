@@ -91,11 +91,11 @@ export type AfterLimit = 'single' | 'next' | 'exhausted'
 
 /**
  * Called when the line of `field`, the field the request actually sent, was answered with a key
- * limit. Only that field is marked and judged; a field leased but not sent is left alone. `fresh`
- * reads the field as it is now, so a line added or removed during the request is honoured. 'single'
+ * limit. Only that field is marked and judged; a field leased but not sent is left alone. `freshValue`
+ * is the field as it is now, so a line added or removed during the request is honoured. 'single'
  * means the field is not a rotating one and the failure takes the ordinary path.
  */
-export function afterLimit(rotation: KeyRotation, field: string, fresh: (field: string) => string): AfterLimit {
+export function afterLimit(rotation: KeyRotation, field: string, freshValue: string): AfterLimit {
     const line = rotation.lease.get(field)
     if (line === undefined) {
         return 'single'
@@ -106,7 +106,7 @@ export function afterLimit(rotation: KeyRotation, field: string, fresh: (field: 
         rotation.tried.set(field, tried)
     }
     tried.add(line)
-    const lines = splitKeys(fresh(field))
+    const lines = splitKeys(freshValue)
     if (lines.length < 2) {
         return 'single'
     }

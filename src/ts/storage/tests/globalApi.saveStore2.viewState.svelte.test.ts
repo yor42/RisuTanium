@@ -458,7 +458,7 @@ describe('TK-P: a take in the real page, then an immediate park, gives the clean
             kind: 'tauri',
             startLoop: false,
             boot: async (world) => {
-                booted = await bootThroughDispatch(memory, { lists: fakeLists, kind: 'indexeddb' })
+                booted = await bootThroughDispatch(memory, { lists: fakeLists })
                 if (booted.result.kind !== 'store2') {
                     throw new Error(`The boot answered ${booted.result.kind}.`)
                 }

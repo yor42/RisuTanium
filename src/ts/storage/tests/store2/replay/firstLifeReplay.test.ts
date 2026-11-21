@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * First-life install under the replay (plan v3.4 amendment 7, R1), on hand-built schedules: two tabs racing first life on an
- * absent commit key (Node, Tauri and IndexedDB rigs), the install after a standing seed or convert marker, and a Tauri
+ * absent commit key (Node and Tauri rigs), the install after a standing seed or convert marker, and a Tauri
  * first life that an unflushed write interrupts and a restart that drops it. Every run must finish with no checker violation.
  * The PCT regions R19a to R19d sample the same shapes under faults; these tests fix one interleaving each and assert the outcome.
  * New behaviour unless a test says guard.
@@ -11,7 +11,6 @@ import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { outcomeLabel, type FirstLifeOutcome, type ReplayRig, type ReplayRigOptions, type StartState } from './actors'
-import { createIdbReplayRig } from './idbRig'
 import { createNodeReplayRig } from './nodeRig'
 import { createTauriReplayRig } from './tauriRig'
 import { REGIONS, runRegion } from './regions'
@@ -23,7 +22,6 @@ type RigFactory = (options: ReplayRigOptions) => Promise<ReplayRig>
 const BACKENDS: ReadonlyArray<{ name: string, make: RigFactory }> = [
     { name: 'node', make: createNodeReplayRig },
     { name: 'tauri', make: createTauriReplayRig },
-    { name: 'indexeddb', make: createIdbReplayRig },
 ]
 
 const MAX_STEPS = 20_000

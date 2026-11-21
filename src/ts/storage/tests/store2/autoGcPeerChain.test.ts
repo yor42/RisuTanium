@@ -42,9 +42,8 @@ vi.mock(import('src/ts/drive/storeImport'), () => ({
     noteImportPhase: () => { },
 }) as unknown as typeof import('src/ts/drive/storeImport'))
 
-import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
-import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
+import type { Store2Backend } from 'src/ts/storage/store2/backend'
 import { isColdStub, stubFromEntry } from 'src/ts/storage/store2/codec'
 import { encodeUnit, keyOfTail, newUnitKey, readUnit, refsOf, UNIT_TYPE, type ShardEntry } from 'src/ts/storage/store2/format'
 import { runAutoGc } from 'src/ts/storage/store2/gc/autoGc'
@@ -55,13 +54,14 @@ import { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, testEnv } from './commitFixtures'
 import { TEST_DESCENT } from './descentTable'
 import { bootB, ffSetup, ffTeardown, ffWorldOver, ownEdit, runLoopWorld, signal, stopAllWorlds, takenBy, type PageB } from './ffFixtures'
-import { flushConfirming } from './flushConfirmBackend'
+import { nodeWorld, plantSeenUnits, type NodeWorld } from './flushConfirmBackend'
 import { chaIdOf, chars, parsedKey } from './lineFixtures'
 
 /**
- * The web clean-up pass against a real peer: page A boots over a store, runs the real save loop and fast-forward, and a
- * peer page built from the committer and encoder APIs commits over it. The pass runs by `runAutoGc` with the real accessor
- * of this module graph's save loop as its own-base fact, over an `indexeddb` session on the same memory backend; the loop
+ * The Node clean-up pass against a real peer: page A boots over a store, runs the real save loop and fast-forward, and a
+ * peer page built from the committer and encoder APIs commits over it. The store is one Node world (the semantic store and
+ * the backend over it, with the aged dependencies). The pass runs by `runAutoGc` with the real accessor of this module
+ * graph's save loop as its own-base fact, over a `node` session on that world; the loop
  * is quiescent (no idle net, no commit in flight) while the pass runs, and each case starts its own loop before the pass.
  *
  * A5a is the reproducer of the stale-base rule: a page whose base a peer commit dropped refuses, so the units only that
@@ -85,7 +85,7 @@ afterEach(() => {
 
 const ORPHANS = 12
 
-async function plantOrphans(memory: MemoryBackend): Promise<string[]> {
+async function plantOrphans(memory: Store2Backend): Promise<string[]> {
     const env = testEnv(createClock(), 5150)
     const keys: string[] = []
     for (let i = 0; i < ORPHANS; i++) {
@@ -96,10 +96,10 @@ async function plantOrphans(memory: MemoryBackend): Promise<string[]> {
     return keys
 }
 
-/** Runs the pass as an `indexeddb` page whose own-base fact is the real accessor of the save loop started in this file. */
-async function runPass(memory: MemoryBackend): Promise<GcResult | null> {
-    const over = flushConfirming(memory)
-    const session = await Store2Session.open(createMemoryByteStore(), { kind: 'indexeddb', backend: over.backend, upstreamMainFile: async () => false })
+/** Runs the aged pass as a Node page whose own-base fact is the real accessor of the save loop started in this file. */
+async function runPass(world: NodeWorld): Promise<GcResult | null> {
+    const session = await Store2Session.open(world.store, { kind: 'node', backend: world.backend, upstreamMainFile: async () => false })
+    expect(session.decision, 'the pass runs on a normal Node page').toMatchObject({ mode: 'normal' })
     setPageStorageMode({ kind: 'store2' })
     return await runAutoGc(session, {
         isBusy: () => false,
@@ -108,15 +108,15 @@ async function runPass(memory: MemoryBackend): Promise<GcResult | null> {
         restoreInProgress: () => false,
         peers: async () => 'alone',
         ownBase: () => acknowledgedManifestKey(),
-    })
+    }, world.store)
 }
 
-async function present(memory: MemoryBackend, keys: readonly string[]): Promise<number> {
+async function present(memory: Store2Backend, keys: readonly string[]): Promise<number> {
     const read = await memory.readUnits([...keys])
     return keys.filter(key => read.get(key) !== null).length
 }
 
-async function currentKey(memory: MemoryBackend): Promise<string | undefined> {
+async function currentKey(memory: Store2Backend): Promise<string | undefined> {
     return (await parsedKey(memory)).current?.key
 }
 
@@ -126,7 +126,7 @@ async function peerEdit(world: Awaited<ReturnType<typeof ffWorldOver>>, index: n
 }
 
 /** Every unit key a stored manifest names, by an independent walk over `refsOf` (not the collector's mark). */
-async function treeKeys(memory: MemoryBackend, manifestKey: string): Promise<Set<string>> {
+async function treeKeys(memory: Store2Backend, manifestKey: string): Promise<Set<string>> {
     const keys = new Set<string>([manifestKey])
     const bytes = (await memory.readUnits([manifestKey])).get(manifestKey) ?? null
     const manifest = bytes === null ? null : readUnit(bytes, UNIT_TYPE.manifest)
@@ -176,7 +176,7 @@ function putBackToStub(page: PageB, chaId: string): void {
 }
 
 /** A cold load of the stub's entity through the page's own encoder: every unit the entry names must be stored. */
-async function loadStubOf(memory: MemoryBackend, page: PageB, chaId: string) {
+async function loadStubOf(memory: Store2Backend, page: PageB, chaId: string) {
     const stub = chars(page.db).find(slot => slot.chaId === chaId)
     const u = (stub as { coldstorage?: string }).coldstorage
     if (u === undefined) {
@@ -186,7 +186,8 @@ async function loadStubOf(memory: MemoryBackend, page: PageB, chaId: string) {
 }
 
 interface DroppedBase {
-    memory: MemoryBackend
+    node: NodeWorld
+    memory: Store2Backend
     a: PageB
     /** The character X, held by `a` as a cold stub whose entry names units the dropped base alone reaches. */
     chaId: string
@@ -201,7 +202,8 @@ interface DroppedBase {
  * commit key, its loop never judged C3 (no idle net), and its stub of X names units only C2 reaches.
  */
 async function pageWithDroppedBase(): Promise<DroppedBase> {
-    const memory = createMemoryBackend()
+    const node = nodeWorld()
+    const memory = node.backend
     const world = await ffWorldOver(memory)
     // C1 is current and C0 retained; the next commit admits C1 (admission is keyed on the newest retained entry's time).
     await peerEdit(world, 0, 'peer change 1')
@@ -229,15 +231,16 @@ async function pageWithDroppedBase(): Promise<DroppedBase> {
     const own = unitsOfEntry(entry)
     expect([...own].filter(unit => stale.has(unit)), 'precondition: the stub of X names a stale unit').not.toEqual([])
     expect(isColdStub(chars(a.db).find(slot => slot.chaId === chaId) as object), 'precondition: X is a cold stub').toBe(true)
-    return { memory, a, chaId, stale, named }
+    return { node, memory, a, chaId, stale, named }
 }
 
-describe('the web pass against a real peer', () => {
+describe('the Node pass against a real peer', () => {
     test('A5a: a page whose base a peer commit dropped refuses stale-base, keeps every stale unit, and still loads its cold stub of X', async () => {
-        const { memory, a, stale, chaId } = await pageWithDroppedBase()
+        const { node, memory, a, stale, chaId } = await pageWithDroppedBase()
+        await plantSeenUnits(node, [...stale])
         const before = new Set(await memory.listStore2())
 
-        const result = await runPass(memory)
+        const result = await runPass(node)
 
         // Soft, so a deleting pass reports the lost units and the failed cold load together with the wrong status.
         expect.soft(await present(memory, [...stale]), 'every unit only the dropped base reaches is still stored').toBe(stale.size)
@@ -247,14 +250,15 @@ describe('the web pass against a real peer', () => {
     })
 
     test('A5b: after A stops, a fresh page over the same store deletes every stale unit, keeps every named tree and loads its stub of X', async () => {
-        const { memory, stale, named, chaId } = await pageWithDroppedBase()
+        const { node, memory, stale, named, chaId } = await pageWithDroppedBase()
+        await plantSeenUnits(node, [...stale])
         stopAllWorlds()
 
         const fresh = await bootB(memory)
         runLoopWorld(fresh.context, fresh.db)
         expect(fresh.context.encoder.manifestKey, 'the fresh page boots on the current manifest').toBe(await currentKey(memory))
         putBackToStub(fresh, chaId)
-        const result = await runPass(memory)
+        const result = await runPass(node)
 
         expect(result).toMatchObject({ status: 'done' })
         expect(await present(memory, [...stale]), 'every stale unit is gone').toBe(0)
@@ -263,8 +267,9 @@ describe('the web pass against a real peer', () => {
     })
 
     describe('A5c: a page that fast-forwarded to the peer\'s tree', () => {
-        async function fastForwarded(): Promise<{ a: PageB, loop: ReturnType<typeof runLoopWorld>, memory: MemoryBackend, orphans: string[] }> {
-            const memory = createMemoryBackend()
+        async function fastForwarded(): Promise<{ a: PageB, loop: ReturnType<typeof runLoopWorld>, node: NodeWorld, memory: Store2Backend, orphans: string[] }> {
+            const node = nodeWorld()
+            const memory = node.backend
             const world = await ffWorldOver(memory)
             const a = await bootB(memory)
             const loop = runLoopWorld(a.context, a.db)
@@ -272,17 +277,18 @@ describe('the web pass against a real peer', () => {
             await peerEdit(world, 1, 'peer change')
             signal(loop)
             await takenBy(a, memory)
-            return { a, loop, memory, orphans }
+            return { a, loop, node, memory, orphans }
         }
 
         test('(c1) right after the fast-forward the pass refuses stale-base and every unit stays', async () => {
-            const { a, memory, orphans } = await fastForwarded()
+            const { a, node, memory, orphans } = await fastForwarded()
 
             // The preconditions of the fail-closed rule: the encoder's base is the store's current and it fast-forwarded.
             expect(a.context.encoder.manifestKey).toBe(await currentKey(memory))
             expect(a.context.encoder.fastForwarded).toBe(true)
+            await plantSeenUnits(node, orphans)
             const before = new Set(await memory.listStore2())
-            const result = await runPass(memory)
+            const result = await runPass(node)
 
             expect(result).toMatchObject({ status: 'refused', reason: 'stale-base' })
             expect(await present(memory, orphans)).toBe(ORPHANS)
@@ -290,13 +296,14 @@ describe('the web pass against a real peer', () => {
         })
 
         test('(c2) after a later own commit the pass still refuses stale-base and every unit stays', async () => {
-            const { a, loop, memory, orphans } = await fastForwarded()
+            const { a, loop, node, memory, orphans } = await fastForwarded()
             await ownEdit(loop, a, 0, 'own edit after the fast-forward')
 
             expect(a.context.encoder.manifestKey).toBe(await currentKey(memory))
             expect(a.context.encoder.fastForwarded).toBe(true)
+            await plantSeenUnits(node, orphans)
             const before = new Set(await memory.listStore2())
-            const result = await runPass(memory)
+            const result = await runPass(node)
 
             expect(result).toMatchObject({ status: 'refused', reason: 'stale-base' })
             expect(await present(memory, orphans)).toBe(ORPHANS)

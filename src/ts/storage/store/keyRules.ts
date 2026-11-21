@@ -225,14 +225,6 @@ export function nodeAssetRouteViolation(key: string): string | null {
     return null
 }
 
-/** Keys IndexedDB can address: any non-empty string. */
-export function indexedDbAddressableViolation(key: string): string | null {
-    if (typeof key !== 'string' || key.length === 0) {
-        return 'a key is a non-empty string'
-    }
-    return null
-}
-
 /**
  * Keys the desktop file system can address without leaving the AppData
  * directory or reaching an alternate data stream: not absolute, no drive

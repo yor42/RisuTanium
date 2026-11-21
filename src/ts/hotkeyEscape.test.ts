@@ -80,7 +80,7 @@ vi.mock(import('./process/index.svelte'), () => ({
 
 import { initHotkey } from './hotkey'
 import { alertStore, settingsOpen } from './stores.svelte'
-import { alertConfirm, alertInput, alertSelect } from './alert'
+import { alertConfirm, alertInput, alertSelect, alertUpdateOffer } from './alert'
 import { ANSWER_GUARD_MS, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
 
 //#region helpers
@@ -365,6 +365,30 @@ describe('Escape on a select or input whose caller offered a cancel', () => {
         press(escapeKey())
         await vi.advanceTimersByTimeAsync(0)
         expect(out).toEqual({ settled: true, value: '-1' })
+    })
+
+    test('an update offer is answered later by Escape after the answer guard, never install, and not inside the guard', async () => {
+        vi.useFakeTimers()
+        const out = track(alertUpdateOffer({ currentVersion: '0.1.0', version: '0.2.0', notes: 'n' }))
+        const prompt = shown()
+        expect(prompt.type).toBe('updateOffer')
+
+        const early = press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+        expect.soft(out.settled, 'the offer after an early Escape').toBe(false)
+        expect.soft(shown(), 'the store after an early Escape').toBe(prompt)
+        expect.soft(early.defaultPrevented, 'the early key was consumed').toBe(true)
+
+        await pastGuard()
+        const repeated = press(escapeKey({ repeat: true }))
+        await vi.advanceTimersByTimeAsync(0)
+        expect.soft(out.settled, 'the offer after a repeated Escape').toBe(false)
+        expect.soft(repeated.defaultPrevented, 'the repeated key was consumed').toBe(true)
+
+        press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+        expect(out).toEqual({ settled: true, value: 'later' })
+        expect(shown().type).toBe('none')
     })
 
     test('a repeated Escape and a composing Escape do not answer; only the composing one is left to the IME', async () => {

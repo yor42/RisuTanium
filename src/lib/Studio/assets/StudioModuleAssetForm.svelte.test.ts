@@ -73,7 +73,6 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import { ASSET_FOLDER_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
 import { readFolderDoc } from 'src/ts/studio/assets/folderCodec'
-import { setRowSliceSchedulerForTests } from 'src/ts/studio/assets/rowMount.svelte'
 import { openStudioModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { makeCharacter, makeInput, residentModule, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
@@ -194,6 +193,7 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    unobserve(): void {}
     disconnect(): void {}
 }
 
@@ -485,39 +485,26 @@ describe('a module\'s list', () => {
         expect(readFolderDoc(slot(0)[ASSET_FOLDER_KEY]).doc.additional.of).toEqual(expect.arrayContaining([['a1', 'Faces'], ['a2', 'Faces']]))
     })
 
-    // A write to a module replaces its whole slot, as the loader and the history service do. The chunked first mount
-    // keeps a queue fixed when the list started, so such a write neither unmounts a row nor schedules anything again.
-    test('a write that replaces the module slot during the first mount unmounts nothing and leaves the schedule alone', async () => {
-        const runs: (() => void)[] = []
-        let scheduled = 0
-        setRowSliceSchedulerForTests({ schedule: (run) => { scheduled += 1; runs.push(run); return () => {} } })
-        try {
-            makeRig()
-            const forty = (first: string): string[][] => Array.from({ length: 40 }, (_, n) => [n === 0 ? first : `r${n}`, `assets/r${n}.png`, 'png'])
-            db.db.modules[0] = moduleWith('M1', forty('r0'))
-            await mountOnModule('M1')
-            const rawRows = () => Array.from(document.querySelectorAll('[data-part="studio-asset-row"]'))
-            const before = rawRows()
-            expect(before).toHaveLength(32)
-            expect(part('studio-asset-list')?.getAttribute('data-rows-pending')).toBe('true')
-            expect(scheduled).toBe(1)
-            db.db.modules[0] = moduleWith('M1', forty('renamed'))
-            await settle()
-            expect(rawRows()).toHaveLength(32)
-            expect(rawRows().every((row, at) => row === before[at])).toBe(true)
-            expect(scheduled).toBe(1)
-            while (runs.length > 0) runs.shift()?.()
-            await settle()
-            expect(rawRows()).toHaveLength(40)
-            expect(part('studio-asset-list')?.hasAttribute('data-rows-pending')).toBe(false)
-            const settled = rawRows()
-            db.db.modules[0] = moduleWith('M1', forty('renamed again'))
-            await settle()
-            expect(rawRows().every((row, at) => row === settled[at])).toBe(true)
-            expect(rawRows()).toHaveLength(40)
-        } finally {
-            setRowSliceSchedulerForTests(undefined)
-        }
+    // A write to a module replaces its whole slot, as the loader and the history service do. Rows are keyed by their file,
+    // so such a write keeps the mounted row nodes (and their focus) and mounts no row it had not shown.
+    test('a write that replaces the module slot keeps the mounted row nodes', async () => {
+        makeRig()
+        const forty = (first: string): string[][] => Array.from({ length: 40 }, (_, n) => [n === 0 ? first : `r${n}`, `assets/r${n}.png`, 'png'])
+        db.db.modules[0] = moduleWith('M1', forty('r0'))
+        await mountOnModule('M1')
+        const rawRows = () => Array.from(document.querySelectorAll('[data-part="studio-asset-row"]'))
+        const before = rawRows()
+        // Only the window is in the page: the list is windowed, so forty rows are not all mounted.
+        expect(before.length).toBeGreaterThan(0)
+        expect(before.length).toBeLessThanOrEqual(20)
+        db.db.modules[0] = moduleWith('M1', forty('renamed'))
+        await settle()
+        expect(rawRows()).toHaveLength(before.length)
+        expect(rawRows().every((row, at) => row === before[at])).toBe(true)
+        expect((rawRows()[0].querySelector('[data-part="studio-asset-name"]') as HTMLInputElement).value).toBe('renamed')
+        db.db.modules[0] = moduleWith('M1', forty('renamed again'))
+        await settle()
+        expect(rawRows().every((row, at) => row === before[at])).toBe(true)
     })
 
     test('the duplicate scope switch lists the other enabled modules and leaves the module itself out', async () => {

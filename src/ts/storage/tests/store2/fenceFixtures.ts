@@ -1,12 +1,10 @@
 /**
  * Backends the fence and commit-key policy tests run against: the memory
- * reference backend, the IndexedDB backend over `fake-indexeddb`, and the Node
- * backend against the real server process. A pass says nothing about a real
- * browser's durability or the Tauri commands.
+ * reference backend and the Node backend against the real server process. A
+ * pass says nothing about a real browser's durability or the Tauri commands.
  */
-import 'fake-indexeddb/auto'
 import {
-    Store2BackendFailureError, createIndexedDbBackend, createMemoryBackend, createNodeBackend,
+    Store2BackendFailureError, createMemoryBackend, createNodeBackend,
     type Store2Backend, type Store2Read, type Store2WriteResult,
 } from 'src/ts/storage/store2/backend'
 import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
@@ -22,50 +20,10 @@ export interface FenceBackendFixture {
     open(): Promise<OpenedBackend>
 }
 
-const DATABASE = 'risuai'
-const STORE = 'keyvaluepairs'
-
-function deleteDatabase(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const deleting = indexedDB.deleteDatabase(DATABASE)
-        deleting.onsuccess = () => resolve()
-        deleting.onerror = () => reject(deleting.error)
-    })
-}
-
-function createDatabase(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const opening = indexedDB.open(DATABASE, 1)
-        opening.onupgradeneeded = () => {
-            opening.result.createObjectStore(STORE)
-        }
-        opening.onsuccess = () => {
-            opening.result.close()
-            resolve()
-        }
-        opening.onerror = () => reject(opening.error)
-    })
-}
-
 export const FENCE_BACKENDS: readonly FenceBackendFixture[] = [
     {
         name: 'memory',
         open: async () => ({ backend: createMemoryBackend(), close: async () => {} }),
-    },
-    {
-        name: 'indexedDb',
-        open: async () => {
-            await deleteDatabase()
-            await createDatabase()
-            const backend = createIndexedDbBackend()
-            return {
-                backend,
-                close: async () => {
-                    backend.close()
-                    await deleteDatabase()
-                },
-            }
-        },
     },
     {
         name: 'node',

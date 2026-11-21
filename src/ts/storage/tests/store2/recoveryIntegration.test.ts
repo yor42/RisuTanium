@@ -3,7 +3,7 @@
  * Recovery across modules: the fence exit, the marker, the closure read, the
  * staged re-write and the final write, with the real deleter gate and a deleter
  * stand-in running at each step, and the boot table deciding after a crash.
- * Memory, IndexedDB (fake-indexeddb) and Node (real server process) backends;
+ * Memory and Node (real server process) backends;
  * Tauri is not run.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'

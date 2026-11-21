@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The ordinary commit-key operations (commit, restore, save-mine, pin, unpin)
- * over the memory, IndexedDB (fake-indexeddb) and Node (real server process)
+ * over the memory and Node (real server process)
  * backends: I1 after every operation, restore always pushing `current`,
  * retention admission and pins, refusal on every unusable base, and a conflict
  * never retried. Tauri is not run here. Bulk commit and the abandon-clear are in

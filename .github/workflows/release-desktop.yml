@@ -4,10 +4,25 @@ name: Desktop draft release
 # named after the version in src-tauri/tauri.conf.json. Nothing is published until the
 # draft is published by hand (which also creates the v* tag and so triggers docker-publish.yml).
 #
-# The installers are unsigned: no Apple or Windows signing secrets exist, and updater
-# artifacts are off in tauri.conf.json, so no Tauri signing key is passed.
+# The installers are unsigned: no Apple or Windows signing secrets exist (MC-3231). Updates are
+# signed: tauri.conf.json has createUpdaterArtifacts on, the fork's own Tauri updater (minisign)
+# key comes from the TAURI_SIGNING_PRIVATE_KEY secrets, and tauri-action attaches the signed
+# updater artifacts (.sig files) and a merged latest.json to the draft. Installed desktop builds
+# check releases/latest/download/latest.json on boot, so they see a release only once it is published
+# (not a draft, not a prerelease), and only if its tauri.conf.json version is higher.
+#
+# The releaseNotes input becomes the top of the release body, and tauri-action copies the body into
+# latest.json's notes, which the in-app update popup shows. Editing the draft's body afterwards does not
+# change latest.json. The web form takes one line; for several lines run
+#   gh workflow run release-desktop.yml --repo yor42/RisuTanium -f releaseNotes="$(Get-Content -Raw notes.md)"
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      releaseNotes:
+        description: Changes in this release (shown in the in-app update popup)
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   group: release-desktop
@@ -101,6 +116,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The build fails without the private key while createUpdaterArtifacts is on.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # __VERSION__ is replaced by the app version.
           tagName: v__VERSION__
@@ -108,7 +126,9 @@ jobs:
           releaseCommitish: ${{ github.sha }}
           releaseName: v__VERSION__
           releaseBody: |
-            Unsigned desktop builds of RisuTanium. No release of this fork has been announced yet.
+            ${{ inputs.releaseNotes }}
+
+            Desktop builds of RisuTanium. The installers are unsigned; the update files are signed with the fork's own key. No release of this fork has been announced yet.
 
             - Windows: SmartScreen warns about an unknown publisher. Choose "More info", then "Run anyway".
             - macOS: the app is not signed or notarised. Right-click the app, choose Open, and confirm.
@@ -117,6 +137,9 @@ jobs:
             Back up your data with Settings, Backup and Files before trying a build, and see the
             Migrating-from-upstream wiki page if you are coming from RisuAI.
           releaseDraft: true
+          # Default true; stated because the updater depends on it. Each matrix job adds its
+          # platform to the draft's latest.json.
+          uploadUpdaterJson: true
           prerelease: false
           args: --target ${{ matrix.settings.target }}
           tauriScript: pnpm tauri

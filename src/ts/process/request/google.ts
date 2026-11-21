@@ -15,7 +15,7 @@ import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseCh
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type LLMParameter } from './shared'
 import { bodyIntercepterStore } from "src/ts/stores.svelte"
 import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
-import { limitedField, sendArgKey, sendKeyLine } from "./secretKey"
+import { limitedField, readKeyField, sendArgKey, sendKeyLine } from "./secretKey"
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from "./toolLoop"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
@@ -506,14 +506,15 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         return token;
     }
 
-    if(arg.modelInfo.format === LLMFormat.VertexAIGemini && isSecretRef(db.vertexPrivateKey)){
+    const vertexPrivateKey = await readKeyField(db, 'vertexPrivateKey')
+    if(arg.modelInfo.format === LLMFormat.VertexAIGemini && isSecretRef(vertexPrivateKey)){
         // A token minted from a referenced key is derived from a secret that is not stored, so it is
         // kept in memory only and never written to the database.
         if (!db.vertexClientEmail) {
             alertError(language.errors.vertexAuthIncomplete);
             return { type: 'fail', result: language.errors.vertexAuthIncomplete };
         }
-        const reference = db.vertexPrivateKey.trim()
+        const reference = vertexPrivateKey.trim()
         if(arg.previewBody){
             headers['Authorization'] = "Bearer " + reference
         }
@@ -521,7 +522,7 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
             headers['Authorization'] = "Bearer " + vertexMemoryToken.token
         }
         else{
-            const token = await generateToken(db.vertexClientEmail, await resolveSecret(db.vertexPrivateKey), false)
+            const token = await generateToken(db.vertexClientEmail, await resolveSecret(vertexPrivateKey), false)
             registerSensitive(token, reference + ':token')
             vertexMemoryToken = { reference, email: db.vertexClientEmail, token, expires: Date.now() + 3500 * 1000 }
             headers['Authorization'] = "Bearer " + token
@@ -529,11 +530,11 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     }
     else if(arg.modelInfo.format === LLMFormat.VertexAIGemini){
         if(db.vertexAccessTokenExpires < Date.now()){
-            if (!db.vertexClientEmail || !db.vertexPrivateKey) {
+            if (!db.vertexClientEmail || !vertexPrivateKey) {
                 alertError(language.errors.vertexAuthIncomplete);
                 return { type: 'fail', result: language.errors.vertexAuthIncomplete };
             }
-            headers['Authorization'] = "Bearer " + await generateToken(db.vertexClientEmail, db.vertexPrivateKey)
+            headers['Authorization'] = "Bearer " + await generateToken(db.vertexClientEmail, vertexPrivateKey)
         }
         else{
             headers['Authorization'] = "Bearer " + db.vertexAccessToken
@@ -553,7 +554,7 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     const urlCarriesKey = !!arg.customURL || arg.modelInfo.format !== LLMFormat.VertexAIGemini
     let apiKey = urlCarriesKey
         ? (arg.key ? await sendArgKey(arg) : await sendKeyLine(arg, 'google.accessToken'))
-        : (arg.key || db.google.accessToken)
+        : (arg.key || await readKeyField(db, 'google.accessToken'))
 
     if(arg.customURL){
         let baseURL = arg.customURL
@@ -1404,6 +1405,8 @@ function wrapToolStream(
                         resRec.body.pipeTo(transtream.writable).catch(() => {})
 
                         reader = transtream.readable.getReader()
+                        // A follow-up stream that yields no chunk must end the reply, not replay this round's calls.
+                        lastValue = initStreamState()
 
                         if(db.simplifiedToolUse) {
                             prefix += callCodes.join('\n\n')
