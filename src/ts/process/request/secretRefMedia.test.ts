@@ -23,6 +23,7 @@
  * this change, so their rows cannot run against the code before it.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 import { writable } from 'svelte/store'
 import '../../polyfill'
 import type { character } from '../../storage/database.svelte'
@@ -68,7 +69,7 @@ vi.mock('../../alert', () => ({
 }))
 
 vi.mock('../../storage/database.svelte', () => ({
-    getDatabase: vi.fn(() => h.db),
+    getDatabase: vi.fn(() => absorbLegacyForTest(h.db)),
     getCurrentCharacter: vi.fn(() => ({ type: 'group' })),
 }))
 

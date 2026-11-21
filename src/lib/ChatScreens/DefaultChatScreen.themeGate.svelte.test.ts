@@ -245,7 +245,7 @@ vi.mock('../Utility/UtilityScreen.svelte', async () => {
 
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { DBState, PlaygroundStore, selectedCharID } from 'src/ts/stores.svelte'
-import { installThemePackGate, resetThemePackGateForTests, shownSurface } from 'src/ts/themePack/surfaceGate.svelte'
+import { installThemePackGate, resetThemePackGateForTests, shownScreen } from 'src/ts/themePack/surfaceGate.svelte'
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { utilityOpen } from '../Utility/utilityGate'
 
@@ -324,7 +324,7 @@ describe('DefaultChatScreen leaves the gate with nothing shown', () => {
         const root = open()
         await tick()
         expect(marker(root)).toEqual(['main-menu-stub'])
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('Utility', async () => {
@@ -333,7 +333,7 @@ describe('DefaultChatScreen leaves the gate with nothing shown', () => {
         const root = open()
         await tick()
         expect(marker(root)).toEqual(['utility-screen-stub'])
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('the playground menu', async () => {
@@ -343,7 +343,7 @@ describe('DefaultChatScreen leaves the gate with nothing shown', () => {
         await new Promise<void>((resolve) => setTimeout(resolve, 0))
         flushSync()
         expect(marker(root)).toEqual(['playground-stub'])
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('the classic chat of a selected character', async () => {
@@ -351,6 +351,6 @@ describe('DefaultChatScreen leaves the gate with nothing shown', () => {
         const root = open()
         await tick()
         expect(root.querySelector('.default-chat-screen')).not.toBeNull()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 })

@@ -6,6 +6,7 @@ import { setPreset, type Database } from '../storage/database.svelte'
 import { prebuiltPresets } from '../process/templates/templates'
 import { FIRST_RUN_MODELS } from '../model/firstRunModels'
 import { DBState } from '../stores.svelte'
+import { setSlotKey } from '../connections/slotEditor'
 import { updateTextThemeAndCSS } from '../gui/colorscheme'
 import { setHideUnusedModes, setVisibleModes, type HomeMode } from '../storage/homeModes'
 
@@ -248,16 +249,16 @@ export function resolveChoices(state: FirstRunState): FirstRunChoices | null {
 function writeApiKey(db: Database, provider: FirstRunProvider, key: string): void {
     switch (provider) {
         case 'claude':
-            db.claudeAPIKey = key
+            void setSlotKey(db, 'claudeAPIKey', key)
             break
         case 'openai':
-            db.openAIKey = key
+            void setSlotKey(db, 'openAIKey', key)
             break
         case 'openrouter':
-            db.openrouterKey = key
+            void setSlotKey(db, 'openrouterKey', key)
             break
         case 'gemini':
-            db.google.accessToken = key
+            void setSlotKey(db, 'google.accessToken', key)
             break
         case 'horde':
         case 'later':

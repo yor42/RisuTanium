@@ -645,14 +645,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Read when the family's turn comes, so a key changed mid-pass is the one used. */
-function listKeyOf(family: AddedFamily): string {
+async function listKeyOf(family: AddedFamily): Promise<string> {
     switch(family){
         case 'google':
-            return currentKey('google.accessToken', DBState.db)
+            return await currentKey('google.accessToken', DBState.db)
         case 'anthropic':
-            return currentKey('claudeAPIKey', DBState.db)
+            return await currentKey('claudeAPIKey', DBState.db)
         case 'openai':
-            return currentKey('openAIKey', DBState.db)
+            return await currentKey('openAIKey', DBState.db)
     }
 }
 
@@ -756,7 +756,7 @@ async function refreshFamilyList(family: AddedFamily, isRegistryOn: () => boolea
         if(!isRegistryOn()){
             return 'skipped'
         }
-        const keyValue = listKeyOf(family)
+        const keyValue = await listKeyOf(family)
         if(!keyValue){
             return 'skipped'
         }

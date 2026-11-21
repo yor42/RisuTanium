@@ -8,6 +8,10 @@
  */
 import { describe, expect, test } from 'vitest'
 import { checkSendPrerequisites, type SendModelInfo, type SendPrerequisiteSettings } from '../sendPrerequisites'
+import { slotConnection, type ConnectionHolder } from '../../connections/connections'
+import { connectionHasKey } from '../../connections/keyAccess'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
+import type { LegacyKeyFields } from '../../storage/database.svelte'
 
 const OpenAI = 0
 const Anthropic = 1
@@ -44,7 +48,10 @@ function lookup(id: string): SendModelInfo {
     return MODELS[id] ?? { provider: AsIs }
 }
 
-function settings(overrides: Partial<SendPrerequisiteSettings> = {}): SendPrerequisiteSettings {
+/** The settings as a save held them: the keys sit in the legacy fields until the migration absorbs them. */
+type StoredSettings = SendPrerequisiteSettings & LegacyKeyFields
+
+function settings(overrides: Partial<StoredSettings> = {}): StoredSettings {
     return {
         aiModel: 'claude-test',
         customModels: [],
@@ -62,6 +69,16 @@ function settings(overrides: Partial<SendPrerequisiteSettings> = {}): SendPrereq
     }
 }
 
+/** The check over settings whose legacy keys are absorbed first, with presence read from connections. */
+function check(db: StoredSettings, info: (id: string) => SendModelInfo) {
+    const absorbed = absorbLegacyForTest(structuredClone(db))
+    const holder: ConnectionHolder = { ...absorbed, customModels: [...(absorbed.customModels ?? [])] }
+    return checkSendPrerequisites(db, info, (slot) => {
+        const conn = slotConnection(holder, slot)
+        return conn !== undefined && connectionHasKey(conn)
+    })
+}
+
 describe('U1 the key rows', () => {
     test.each([
         ['an OpenAI model without openAIKey', 'gpt-test', {}, 'OpenAI'],
@@ -73,7 +90,7 @@ describe('U1 the key rows', () => {
         ['a NovelAI model without novelai.token', 'novelai-test', {}, 'NovelAI'],
         ['a model with a key identifier and no entry in OaiCompAPIKeys', 'deepseek-test', {}, 'deepseek'],
     ])('%s is refused with the key reason', (_name, aiModel, extra, provider) => {
-        expect(checkSendPrerequisites(settings({ aiModel, ...extra }), lookup)).toEqual({ reason: 'key', fix: 'botSettings', provider })
+        expect(check(settings({ aiModel, ...extra }), lookup)).toEqual({ reason: 'key', fix: 'botSettings', provider })
     })
 
     test.each([
@@ -86,24 +103,24 @@ describe('U1 the key rows', () => {
         ['NovelAI', 'novelai-test', { novelai: { token: 'k' } }],
         ['a key identifier', 'deepseek-test', { OaiCompAPIKeys: { deepseek: 'k' } }],
     ])('%s with its key set passes', (_name, aiModel, extra) => {
-        expect(checkSendPrerequisites(settings({ aiModel, ...extra }), lookup)).toBeNull()
+        expect(check(settings({ aiModel, ...extra }), lookup)).toBeNull()
     })
 
     test('a key made only of whitespace counts as missing', () => {
-        expect(checkSendPrerequisites(settings({ claudeAPIKey: '  \n\t ' }), lookup)).toMatchObject({ reason: 'key' })
+        expect(check(settings({ claudeAPIKey: '  \n\t ' }), lookup)).toMatchObject({ reason: 'key' })
     })
 
     test('a key that is not a string counts as missing', () => {
-        expect(checkSendPrerequisites(settings({ claudeAPIKey: undefined }), lookup)).toMatchObject({ reason: 'key' })
-        expect(checkSendPrerequisites(settings({ aiModel: 'deepseek-test', OaiCompAPIKeys: { deepseek: 5 as unknown as string } }), lookup)).toMatchObject({ reason: 'key' })
+        expect(check(settings({ claudeAPIKey: undefined }), lookup)).toMatchObject({ reason: 'key' })
+        expect(check(settings({ aiModel: 'deepseek-test', OaiCompAPIKeys: { deepseek: 5 as unknown as string } }), lookup)).toMatchObject({ reason: 'key' })
     })
 
     test('a secret reference is never resolved or read: a non-blank reference text passes', () => {
-        expect(checkSendPrerequisites(settings({ claudeAPIKey: 'secret:ref-one' }), lookup)).toBeNull()
+        expect(check(settings({ claudeAPIKey: 'secret:ref-one' }), lookup)).toBeNull()
     })
 
     test('the refusal never carries a key value', () => {
-        const refusal = checkSendPrerequisites(settings({ claudeAPIKey: ' ' }), lookup)
+        const refusal = check(settings({ claudeAPIKey: ' ' }), lookup)
         expect(JSON.stringify(refusal)).not.toContain('"claudeAPIKey"')
     })
 })
@@ -119,43 +136,43 @@ describe('U1 setups that must never be blocked', () => {
         ['Echo', 'echo-test'],
         ['a model id the catalog does not know', 'some-unlisted-model'],
     ])('%s passes', (_name, aiModel) => {
-        expect(checkSendPrerequisites(settings({ aiModel }), lookup)).toBeNull()
+        expect(check(settings({ aiModel }), lookup)).toBeNull()
     })
 
     test('a preset chain disables the check, because the preset can change inside the send', () => {
-        expect(checkSendPrerequisites(settings({ presetChain: 'preset-a,preset-b' }), lookup)).toBeNull()
-        expect(checkSendPrerequisites(settings({ presetChain: '' }), lookup)).toMatchObject({ reason: 'key' })
+        expect(check(settings({ presetChain: 'preset-a,preset-b' }), lookup)).toBeNull()
+        expect(check(settings({ presetChain: '' }), lookup)).toMatchObject({ reason: 'key' })
     })
 
     test('a keyed fallback model passes the check even with an empty main key', () => {
-        expect(checkSendPrerequisites(settings({ fallbackModels: { model: ['gpt-test'] } }), lookup)).toBeNull()
+        expect(check(settings({ fallbackModels: { model: ['gpt-test'] } }), lookup)).toBeNull()
     })
 
     test('a fallback list of blank entries does not exempt the check', () => {
-        expect(checkSendPrerequisites(settings({ fallbackModels: { model: ['', '  '] } }), lookup)).toMatchObject({ reason: 'key' })
+        expect(check(settings({ fallbackModels: { model: ['', '  '] } }), lookup)).toMatchObject({ reason: 'key' })
     })
 
     test('the sub model is never read: a blank subModel does not matter', () => {
         const withSub = { ...settings({ claudeAPIKey: 'k' }), subModel: '' }
-        expect(checkSendPrerequisites(withSub, lookup)).toBeNull()
+        expect(check(withSub, lookup)).toBeNull()
     })
 })
 
 describe('U1 the model reason', () => {
     test('a blank main model is refused with the model reason', () => {
-        expect(checkSendPrerequisites(settings({ aiModel: '' }), lookup)).toEqual({ reason: 'model', fix: 'botSettings' })
-        expect(checkSendPrerequisites(settings({ aiModel: '   ' }), lookup)).toEqual({ reason: 'model', fix: 'botSettings' })
+        expect(check(settings({ aiModel: '' }), lookup)).toEqual({ reason: 'model', fix: 'botSettings' })
+        expect(check(settings({ aiModel: '   ' }), lookup)).toEqual({ reason: 'model', fix: 'botSettings' })
     })
 
     test('a custom model id with no entry in customModels is refused with the model reason', () => {
-        expect(checkSendPrerequisites(settings({ aiModel: 'xcustom:::gone' }), lookup)).toEqual({ reason: 'model', fix: 'botSettings' })
+        expect(check(settings({ aiModel: 'xcustom:::gone' }), lookup)).toEqual({ reason: 'model', fix: 'botSettings' })
     })
 
     test('a custom model id with an entry passes', () => {
-        expect(checkSendPrerequisites(settings({ aiModel: 'xcustom:::here', customModels: [{ id: 'xcustom:::here' }] }), lookup)).toBeNull()
+        expect(check(settings({ aiModel: 'xcustom:::here', customModels: [{ id: 'xcustom:::here' }] }), lookup)).toBeNull()
     })
 
     test('the model reason comes before the key reason', () => {
-        expect(checkSendPrerequisites(settings({ aiModel: '' }), lookup)).toMatchObject({ reason: 'model' })
+        expect(check(settings({ aiModel: '' }), lookup)).toMatchObject({ reason: 'model' })
     })
 })

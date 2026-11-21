@@ -11,6 +11,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from 'src/ts/connections/tests/legacyFixture'
 import type { Chat, Database } from 'src/ts/storage/database.svelte'
 // Installs the real `globalThis.safeStructuredClone`, the same way `src/main.ts` does.
 import 'src/ts/polyfill'
@@ -271,6 +272,9 @@ function installDb(overrides: Record<string, unknown> = {}): void {
 }
 
 function liveChat(): Chat { return DBState.db.characters[0].chats[0] }
+
+/** A key typed into the settings page: absorbed into the Claude connection the check reads. */
+function grantClaudeKey(): void { absorbLegacyForTest(Object.assign(DBState.db, { claudeAPIKey: SYNTHETIC_KEY })) }
 function datas(): string[] { return liveChat().message.map((message) => message.data) }
 
 let target: HTMLElement
@@ -405,7 +409,7 @@ describe('R3 a Send with a missing key is refused before anything is taken', () 
         expect(get(settingsOpen)).toBe(true)
         expect(get(SettingsMenuIndex)).toBe(1)
 
-        DBState.db.claudeAPIKey = SYNTHETIC_KEY
+        grantClaudeKey()
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 500 })
         settingsBackClose()
         expect(get(settingsOpen)).toBe(false)
@@ -426,7 +430,7 @@ describe('R3 a Send with a missing key is refused before anything is taken', () 
         await settleSend()
         expect(card()).not.toBeNull()
 
-        DBState.db.claudeAPIKey = SYNTHETIC_KEY
+        grantClaudeKey()
         target.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.click()
         await until(() => datas().includes('A reply.') && !get(doingChat), 'the send finished')
 
@@ -482,7 +486,7 @@ describe('R4 Continue and New reply go through the same gate', () => {
         await settleSend()
         expect(card()).not.toBeNull()
 
-        DBState.db.claudeAPIKey = SYNTHETIC_KEY
+        grantClaudeKey()
         action('retry')!.click()
         await until(() => requestChatDataMock.mock.calls.length === 1 && !get(doingChat), 'the continue request')
 

@@ -5,11 +5,11 @@
  * far as each transcription is faithful; nothing here runs upstream code. The `setPreset` an upstream switch ends with
  * is the fork's own, which copies the same working fields.
  */
-import type { botPreset, Database } from 'src/ts/storage/database.svelte'
+import type { botPreset, StoredDatabase } from 'src/ts/storage/database.svelte'
 import type { Hotkey } from 'src/ts/defaulthotkeys'
 import { writeRisuSaveV0 } from 'src/ts/storage/risuSaveV0'
 
-type PresetApplier = (db: Database, preset: botPreset) => void
+type PresetApplier = (db: StoredDatabase, preset: botPreset) => void
 
 let applyPreset: PresetApplier | null = null
 
@@ -21,7 +21,7 @@ export function setMirrorPresetApplier(applier: PresetApplier): void {
     applyPreset = applier
 }
 
-function setPreset(db: Database, preset: botPreset): void {
+function setPreset(db: StoredDatabase, preset: botPreset): void {
     if (applyPreset === null) {
         throw new Error('The mirror has no setPreset: call setMirrorPresetApplier first.')
     }
@@ -87,7 +87,7 @@ export const UPSTREAM_KNOWN_HOTKEY_ACTIONS: readonly string[] = [
  * working fields, so any key outside `UPSTREAM_SAVED_PRESET_KEYS` is lost. `normalizePromptTemplate` is not applied; the
  * working fields the tests set are already normal.
  */
-export function upstreamSaveCurrentPreset(db: Database): void {
+export function upstreamSaveCurrentPreset(db: StoredDatabase): void {
     const pres = db.botPresets
     if (db.botPresetsId === -1) {
         return
@@ -182,7 +182,7 @@ export function upstreamSaveCurrentPreset(db: Database): void {
 }
 
 /** Upstream `changeToPreset` (database.svelte.ts:2190-2198). */
-export function upstreamChangeToPreset(db: Database, id = 0, saveCurrent = true): void {
+export function upstreamChangeToPreset(db: StoredDatabase, id = 0, saveCurrent = true): void {
     if (saveCurrent) {
         upstreamSaveCurrentPreset(db)
     }
@@ -191,7 +191,7 @@ export function upstreamChangeToPreset(db: Database, id = 0, saveCurrent = true)
 }
 
 /** Upstream `copyPreset` (database.svelte.ts:2182-2188): the clone keeps every key of its source, meta included. */
-export function upstreamCopyPreset(db: Database, id: number): void {
+export function upstreamCopyPreset(db: StoredDatabase, id: number): void {
     upstreamSaveCurrentPreset(db)
     const copy = structuredClone(db.botPresets[id])
     copy.name += ' Copy'
@@ -199,7 +199,7 @@ export function upstreamCopyPreset(db: Database, id: number): void {
 }
 
 /** Upstream `movePreset` (botpreset.svelte:28-49), including its `botPresetsId` adjustment. */
-export function upstreamMovePreset(db: Database, fromIndex: number, toIndex: number): void {
+export function upstreamMovePreset(db: StoredDatabase, fromIndex: number, toIndex: number): void {
     if (fromIndex === toIndex) return
     if (fromIndex < 0 || toIndex < 0 || fromIndex >= db.botPresets.length || toIndex > db.botPresets.length) return
     const list = [...db.botPresets]
@@ -219,7 +219,7 @@ export function upstreamMovePreset(db: Database, fromIndex: number, toIndex: num
 }
 
 /** Upstream preset delete (botpreset.svelte:250-256): `changeToPreset(0)`, splice, then `changeToPreset(0, false)`. */
-export function upstreamDeletePreset(db: Database, index: number): void {
+export function upstreamDeletePreset(db: StoredDatabase, index: number): void {
     upstreamChangeToPreset(db, 0)
     db.botPresets.splice(index, 1)
     upstreamChangeToPreset(db, 0, false)
@@ -231,7 +231,7 @@ export function upstreamDeletePreset(db: Database, index: number): void {
  * rows, and `loadouts ??= []`. The default-list seeding and the per-entry `promptTemplate` and `openrouterProvider`
  * normalisation are not transcribed; neither touches the preset meta.
  */
-export function upstreamSetDatabaseSubset(db: Database): void {
+export function upstreamSetDatabaseSubset(db: StoredDatabase): void {
     for (const preset of db.botPresets) {
         preset.localNetworkMode ??= false
         preset.localNetworkTimeoutSec ??= 600
@@ -261,7 +261,7 @@ export type UpstreamCtrlDigit = { kind: 'action', action: string } | { kind: 'pr
  * :182-233 and :429-436): a row of a known action that matches wins; an unknown action runs nothing and the loop goes on;
  * then Ctrl+n selects index n-1 when the list is long enough.
  */
-export function upstreamCtrlDigitTarget(db: Pick<Database, 'hotkeys' | 'botPresets'>, digit: number): UpstreamCtrlDigit {
+export function upstreamCtrlDigitTarget(db: Pick<StoredDatabase, 'hotkeys' | 'botPresets'>, digit: number): UpstreamCtrlDigit {
     for (const hotkey of db.hotkeys) {
         const matches = hotkey.key === String(digit) && !!hotkey.ctrl && !hotkey.alt && !hotkey.shift
         if (matches && UPSTREAM_KNOWN_HOTKEY_ACTIONS.includes(hotkey.action)) {
@@ -275,12 +275,12 @@ export function upstreamCtrlDigitTarget(db: Pick<Database, 'hotkeys' | 'botPrese
 }
 
 /** Upstream loadout apply (loadout.ts:61): the first preset whose name equals `presetName`, or -1. */
-export function upstreamLoadoutTarget(db: Pick<Database, 'botPresets'>, loadout: { presetName: string }): number {
+export function upstreamLoadoutTarget(db: Pick<StoredDatabase, 'botPresets'>, loadout: { presetName: string }): number {
     return db.botPresets.findIndex((preset) => preset.name === loadout.presetName)
 }
 
 /** Upstream preset chain (process/index.svelte.ts:226-228): the first preset whose name equals `name`, or -1. */
-export function upstreamChainTarget(db: Pick<Database, 'botPresets'>, name: string): number {
+export function upstreamChainTarget(db: Pick<StoredDatabase, 'botPresets'>, name: string): number {
     return db.botPresets.findIndex((preset) => preset.name === name)
 }
 
@@ -289,7 +289,7 @@ export function upstreamChainTarget(db: Pick<Database, 'botPresets'>, name: stri
  * block format). The fork's own writer of the same format is `writeRisuSaveV0` (its backuplocal.ts export), so the
  * re-encoded bytes are what an upstream export of the same tree holds.
  */
-export function upstreamReexport(tree: Database): Uint8Array {
+export function upstreamReexport(tree: StoredDatabase): Uint8Array {
     const { upstreamKvBlocks: kv, ...rest } = tree
     return writeRisuSaveV0(rest, kv ?? {})
 }
