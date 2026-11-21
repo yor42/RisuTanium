@@ -1810,6 +1810,7 @@ export const languageChineseTraditional = {
         "modelNotSupported": "Playground 不支援此模型",
         "modeAuto": "自動",
         "modeManual": "手動",
+        "imageTranslationMode": "模式",
         "loadingLower": "載入中",
         "videoNoDuration": "此影片沒有時長資訊",
         "convertingVideo": "正在將影片轉換為音訊...",

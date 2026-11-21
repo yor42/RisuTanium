@@ -1898,6 +1898,7 @@ export const languageJapanese = {
         modelNotSupported: "このモデルはプレイグラウンドでサポートされていません",
         modeAuto: "自動",
         modeManual: "手動",
+        imageTranslationMode: "モード",
         loadingLower: "読み込み中",
         videoNoDuration: "この動画には再生時間の情報がありません",
         convertingVideo: "動画を音声に変換中…",

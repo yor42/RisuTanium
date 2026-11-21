@@ -1765,6 +1765,7 @@ export const languageVietnamese = {
         "modelNotSupported": "Mô hình này không được hỗ trợ trong Playground",
         "modeAuto": "tự động",
         "modeManual": "thủ công",
+        "imageTranslationMode": "Chế độ",
         "loadingLower": "đang tải",
         "videoNoDuration": "Video này không có thông tin thời lượng",
         "convertingVideo": "Đang chuyển video thành âm thanh...",
