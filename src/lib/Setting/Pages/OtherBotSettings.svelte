@@ -8,6 +8,7 @@
     import { readPickedFileBytes, selectSingleFile, selectSingleFileObject } from "src/ts/util";
     import { reportRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
+    import { setSlotKey, slotEditorValue } from 'src/ts/connections/slotEditor';
     import { saveAsset, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
     import { requestWavespeedModels } from "src/ts/process/wavespeedModels";
     import { wavespeedLorasToWrite } from "src/ts/process/wavespeedLoraSync";
@@ -716,7 +717,7 @@
         
         {#if DBState.db.sdProvider === 'dalle'}
             <span class="text-textcolor" id="{uid}-keyDalle">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
-            <KeyListInput labelId="{uid}-keyDalle" size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
+            <KeyListInput labelId="{uid}-keyDalle" size="sm" marginBottom placeholder="sk-..." bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }}/>
 
             <span class="text-textcolor mt-4" id="{uid}-v22">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
             <SelectInput labelId="{uid}-v22" className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>
@@ -831,7 +832,7 @@
 
         {#if DBState.db.sdProvider === 'Imagen'}
             <span class="text-textcolor mt-2" id="{uid}-keyImagen">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-            <KeyListInput labelId="{uid}-keyImagen" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
+            <KeyListInput labelId="{uid}-keyImagen" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={() => slotEditorValue(DBState.db, 'google.accessToken'), (v) => { void setSlotKey(DBState.db, 'google.accessToken', v) }}/>
 
             <span class="text-textcolor" id="{uid}-v31">{language.model}</span>
             <SelectInput labelId="{uid}-v31" className="mb-4" bind:value={DBState.db.ImagenModel}>
@@ -1047,7 +1048,7 @@
     <TextInput labelId="{uid}-f22" size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
 
     <span class="text-textcolor" id="{uid}-keyTts">{fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })}</span>
-    <KeyListInput labelId="{uid}-keyTts" size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
+    <KeyListInput labelId="{uid}-keyTts" size="sm" marginBottom bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }}/>
 
     <span class="text-textcolor mt-2" id="{uid}-f23">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
     <TextInput labelId="{uid}-f23" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>

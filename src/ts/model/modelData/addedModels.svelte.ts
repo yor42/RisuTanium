@@ -1,4 +1,6 @@
 import { DBState } from '../../stores.svelte'
+import { slotConnection, type ConnectionSlot } from '../../connections/connections'
+import { connectionHasKey } from '../../connections/keyAccess'
 import type { LLMModel } from '../types'
 import { localDateString } from '../modelStatus'
 import {
@@ -90,15 +92,21 @@ export function resolveAdded(id: string): LLMModel | null {
     return resolveAddedModel(id, state)
 }
 
-function hasKey(family: AddedFamily): boolean {
+/** Reads the connection directly: this module is imported by the database module's graph, so it cannot import the key reader. */
+function slotHasKey(slot: ConnectionSlot): boolean {
     const db = DBState.db
+    const conn = db ? slotConnection(db, slot) : undefined
+    return conn !== undefined && connectionHasKey(conn)
+}
+
+function hasKey(family: AddedFamily): boolean {
     switch (family) {
         case 'google':
-            return !!db?.google?.accessToken
+            return slotHasKey('google.accessToken')
         case 'anthropic':
-            return !!db?.claudeAPIKey
+            return slotHasKey('claudeAPIKey')
         case 'openai':
-            return !!db?.openAIKey
+            return slotHasKey('openAIKey')
     }
 }
 

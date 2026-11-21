@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../../connections/tests/legacyFixture'
 
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer } from 'src/ts/model/types'
 import { fetchNative } from 'src/ts/globalApi.svelte'
@@ -37,7 +38,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('src/ts/storage/database.svelte', () => ({
-    getDatabase: () => mocks.db,
+    getDatabase: () => absorbLegacyForTest(mocks.db),
 }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({

@@ -229,7 +229,7 @@ async function tokenizeGoogleCloud(text:string) {
 
     let apiKey: string
     try {
-        apiKey = await resolveSecret(currentKey('google.accessToken', db))
+        apiKey = await resolveSecret(await currentKey('google.accessToken', db))
     } catch (error) {
         // An unresolvable reference sends nothing; counting falls back to the local tokenizer like any failed request.
         console.error('Gemini token count key', error)
@@ -304,7 +304,7 @@ async function geminiTokenizer(text:string) {
     const db = getDatabase()
     let apiKey: string
     try {
-        apiKey = await resolveSecret(currentKey('google.accessToken', db))
+        apiKey = await resolveSecret(await currentKey('google.accessToken', db))
     } catch (error) {
         // An unresolvable reference sends nothing; counting falls back to the local tokenizer like any failed request.
         console.error('Gemini token count key', error)

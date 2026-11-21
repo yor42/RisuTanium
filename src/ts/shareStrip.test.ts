@@ -132,8 +132,13 @@ describe('shareSafePreset', () => {
         expect('koboldURL' in preset).toBe(false)
     })
 
-    test('U1 koboldURL is the only deleted endpoint field', () => {
-        expect(SHARE_ENDPOINT_FIELDS.filter((entry) => entry.mode === 'delete').map((entry) => entry.field)).toEqual(['koboldURL'])
+    test('U1 koboldURL and the connection reference are the deleted endpoint fields', () => {
+        expect(SHARE_ENDPOINT_FIELDS.filter((entry) => entry.mode === 'delete').map((entry) => entry.field)).toEqual(['koboldURL', 'proxyConnectionId'])
+    })
+
+    test('U1 a connection reference is removed from a shared preset', () => {
+        const preset = { name: 'P', proxyConnectionId: 'conn-1' }
+        expect('proxyConnectionId' in shareSafePreset(preset as unknown as botPreset)).toBe(false)
     })
 })
 

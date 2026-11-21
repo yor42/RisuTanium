@@ -31,7 +31,9 @@ import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { WEB_ASSET_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { selectedStoreIsNode, storeAssetLimitBytes } from "../storage/assetLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
-import { getDatabase, type Database } from "../storage/database.svelte";
+import { getDatabase, type Database, type StoredDatabase } from "../storage/database.svelte";
+import { keyStateOf, writeLegacyFromConnections } from "../connections/binTranslate";
+import { migrateConnections } from "../connections/migrate";
 import { readArchivedUnitCharacter } from "./restoreReplace";
 import { repairCharacterTree } from "../storage/characterTreeRepair";
 import { language } from "src/lang";
@@ -252,7 +254,19 @@ function describeWriteMeasure(): string {
  * `notice` says what was done.
  */
 async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[] }> {
-    const plain = { ...db, account: undefined }
+    const unaccounted = { ...db, account: undefined }
+    const plain: StoredDatabase = unaccounted
+    // The keys are translated back to upstream's legacy fields from a synchronous snapshot taken before any await, with
+    // new arrays, so a preset or model added or deleted while the export runs cannot shift the indices the projection is
+    // joined on. The migration over the projection sets no flag; the page's database is never changed.
+    if (Array.isArray(plain.botPresets)) {
+        plain.botPresets = [...plain.botPresets]
+    }
+    if (Array.isArray(plain.customModels)) {
+        plain.customModels = [...plain.customModels]
+    }
+    const keyState = keyStateOf(plain)
+    migrateConnections(keyState)
     // A `.bin` carries no task presets (the export confirm names them first); the key is removed, not set to undefined.
     delete plain.taskPresets
     // Installed theme packs and the active pack id are fork-only and device-local, and their files are never exported
@@ -311,6 +325,7 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     }
     const list: unknown = plain.characters
     if (!Array.isArray(list) || !characterListNeedsRepair(list, reserved)) {
+        await writeLegacyFromConnections(keyState, plain)
         return { tree: plain, notice: null, omittedChatData }
     }
     const repair = await repairCharacterTree(plain, 'export', { readUnitCharacter: readArchivedUnitCharacter, reservedBlockNames: reserved })
@@ -319,6 +334,7 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     const filled = count('id-filled')
     const replaced = count('id-replaced')
     const unrestorable = repair.notices.flatMap((notice) => notice.kind === 'stub-unrestorable' ? [`"${notice.name}"`] : [])
+    await writeLegacyFromConnections(keyState, plain)
     return {
         tree: plain,
         notice: recovered + filled + replaced + unrestorable.length > 0

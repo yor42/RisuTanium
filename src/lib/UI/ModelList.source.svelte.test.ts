@@ -17,6 +17,7 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from 'src/ts/connections/tests/legacyFixture'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { LiteLLMData, LiteLLMRow } from 'src/ts/model/modelData/litellmData'
 
@@ -182,13 +183,13 @@ beforeEach(() => {
     h.confirm.mockResolvedValue(true)
     resetModelDataForTests()
     resetAddedModelsForTests()
-    DBState.db = {
+    DBState.db = absorbLegacyForTest({
         dynamicModelRegistry: true,
         openAIKey: 'k',
         claudeAPIKey: 'k',
         google: { accessToken: 'k' },
         customModels: [],
-    } as unknown as Database
+    }) as unknown as Database
     loadSources()
 })
 

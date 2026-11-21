@@ -8,6 +8,7 @@ import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./st
 import { applyUsageRetention } from "./usage/usageRetention";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
+import { takeConnectionsMigrated } from "./connections/migrate";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState } from "./stores.svelte";
@@ -793,7 +794,10 @@ async function checkNewFormat(): Promise<void> {
     setDatabase(db);
     // Ids minted by any setDatabase of the boot, and the id of a preset the repair appended, exist only in memory
     // until the boot's normal save writes them; the mark makes it write, so the ids are the same on the next load.
-    if (takePresetIdsMinted()) {
+    // The connections migration rewrites the config and preset units the same way; the same mark persists it.
+    const presetIdsMinted = takePresetIdsMinted();
+    const connectionsMigrated = takeConnectionsMigrated();
+    if (presetIdsMinted || connectionsMigrated) {
         markBootWrite();
     }
     checkCharOrder();
