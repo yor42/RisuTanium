@@ -763,14 +763,10 @@ export const languageSpanish = {
         "secretRefInRequest": (name: string) => `Una solicitud aún contiene la referencia a la variable de entorno ${name}. No se envió.`,
         "ttsAppKeyForeignHost": "Este personaje envía las solicitudes de TTS a otro servidor, por lo que no se envió la clave de OpenAI de toda la aplicación. Introduce una clave de API en los ajustes de TTS del personaje para usar ese servidor.",
         "storageServerNeedsUpdate": "Este servidor es demasiado antiguo para el nuevo formato de almacenamiento: debe actualizarse o reiniciarse antes de poder guardar o limpiar. Reinicia el servidor Node (actualízalo primero si aún no lo has hecho) y luego recarga esta página.",
-        "coldStorageRestoreFailed": "No se pudieron cargar los datos del almacenamiento frío. Los datos del personaje afectado pueden haberse perdido permanentemente.",
-        "coldStorageRestoreUnreadable": "No se pudo cargar este personaje en este momento. No se cambió nada. Inténtalo de nuevo.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `No se pudo cargar el personaje archivado ${characterName}: los datos de su almacenamiento frío faltan o no son válidos, y pueden haberse perdido permanentemente. No se cambió nada.`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `No se pudo cargar el personaje archivado ${characterName} en este momento. No se cambió nada. Inténtalo de nuevo.`,
-        "coldStorageRestoreUnavailable": "Los personajes archivados no se pueden abrir en esta página: este navegador no ofrece aquí almacenamiento para ellos (por ejemplo, en una dirección HTTP sin cifrar). No se cambió nada.",
-        "coldStorageRestoreDamaged": "No se pudo leer la copia archivada de este personaje: puede estar dañada. No se cambió ni se eliminó nada.",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `No se pudieron leer las respuestas alternativas de estos chats de ${characterName} y se omitieron: ${chatNames}. Las conversaciones en sí se cargaron intactas.`,
         "chatAltUnreadable": "No se pueden leer las respuestas alternativas de este chat, así que no se puede regenerar ni ramificar. No se cambió nada.",

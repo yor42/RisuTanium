@@ -2,7 +2,8 @@ import { DBState } from "../stores.svelte"
 import { alertError } from "../alert"
 import type { character, groupChat } from "../storage/database.svelte"
 import { applyCharacterDefaults } from "../storage/characterDefaults"
-import { findChaIdHolders, namedRestoreFailureText, readColdCharacterCopy, restoreColdCharacter, restoreFailureName, restoreFailureReason, type ColdRestoreFailure } from "./coldCharacterRestore"
+import { findChaIdHolders, readColdCharacterCopy, restoreColdCharacter, restoreFailureReason, type ColdRestoreFailure } from "./coldCharacterRestore"
+import { namedRestoreFailureText, restoreFailureName } from "./coldRestoreText"
 
 /**
  * How a plugin call or an MCP tool reaches an archived character (a stub in

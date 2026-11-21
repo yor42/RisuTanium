@@ -715,7 +715,7 @@ describe('a load that fails', () => {
         expect(recordCaughtErrorSpy).toHaveBeenCalledTimes(1)
         expect(recordCaughtErrorSpy.mock.calls[0][0]).toBe('home.studio')
         expect(alertError).toHaveBeenCalledTimes(1)
-        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable(slot(1).name))
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
         // Released, not merely inert: a handler that outlived the throw would still be counted.
@@ -747,7 +747,7 @@ describe('a load that fails', () => {
         expect(recordCaughtErrorSpy).toHaveBeenCalledTimes(1)
         expect(recordCaughtErrorSpy.mock.calls[0][0]).toBe('home.studio')
         expect(alertError).toHaveBeenCalledTimes(1)
-        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable(slot(1).name))
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
         expect(liveBack()).toBe(0)
