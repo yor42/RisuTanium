@@ -2604,7 +2604,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     saveData: false
                 })
                 if(risum === null){
-                    // The embedded module has no assets, so it is never refused.
+                    // The embedded module has no assets and no `mcp`, so it is never refused.
                     throw new Error('The embedded module.risum was refused')
                 }
                 await writer.write("module.risum", risum)
