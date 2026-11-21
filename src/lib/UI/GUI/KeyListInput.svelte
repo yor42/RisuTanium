@@ -20,11 +20,19 @@
             autocapitalize="off"
             type={isMasked(row.text) ? 'password' : 'text'}
             placeholder={i === 0 ? placeholder : (i === rows.length - 1 ? language.settingsPage.addAnotherKey : '')}
-            aria-label={i > 0 && i === rows.length - 1 ? language.settingsPage.addAnotherKey : fillLang(language.settingsPage.keyRowLabel, { n: i + 1 })}
-            aria-describedby={hintId}
+            aria-label={labelId ? undefined : (i > 0 && i === rows.length - 1 ? language.settingsPage.addAnotherKey : fillLang(language.settingsPage.keyRowLabel, { n: i + 1 }))}
+            aria-labelledby={labelId ? labelledBy(row.id, i) : undefined}
+            aria-describedby={labelId ? labelledBy(row.id, i) + ' ' + hintId : hintId}
             value={row.text}
             {@attach rowEvents(row.id)}
         />
+        {#if labelId && rows.length > 1}
+            {#if i > 0 && i === rows.length - 1}
+                <span class="sr-only" id={addId(row.id)}>{language.settingsPage.addAnotherKey}</span>
+            {:else}
+                <span class="sr-only" id={posId(row.id)}>{i + 1}</span>
+            {/if}
+        {/if}
     {/each}
     <div id={hintId} class="text-textcolor2 text-xs">{language.settingsPage.keySeparatorHint}</div>
 </div>
@@ -44,6 +52,7 @@
         marginBottom?: boolean;
         className?: string;
         hideText?: boolean;
+        labelId?: string;
     }
 
     interface Row {
@@ -57,10 +66,23 @@
         value = $bindable(),
         marginBottom = false,
         className = '',
-        hideText = false
+        hideText = false,
+        labelId = undefined
     }: Props = $props();
 
     const hintId = $props.id()
+    const posId = (rowId: number) => hintId + '-pos' + rowId
+    const addId = (rowId: number) => hintId + '-add' + rowId
+
+    // With a caller label, a sole row is named by the label alone; with several rows each name
+    // appends the row's position, or the add-another text on the trailing empty row, so rows stay
+    // distinguishable while the visible field label leads every name.
+    function labelledBy(rowId: number, index: number): string {
+        if (rows.length === 1) {
+            return labelId ?? ''
+        }
+        return (labelId ?? '') + ' ' + (index > 0 && index === rows.length - 1 ? addId(rowId) : posId(rowId))
+    }
     let nextId = 0
     const elements = new Map<number, HTMLInputElement>()
 
