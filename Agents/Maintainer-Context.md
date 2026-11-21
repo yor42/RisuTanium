@@ -33827,3 +33827,9 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-054`, `MC-2832`, `#234`.
 
 **What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
+
+### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
+
+- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
+
+**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.
