@@ -33828,6 +33828,14 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 **What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
 
+### MC-2930 — #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session on plan-s3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2820`, `MC-2833`, `MC-2836`, `#234`.
+
+**What the maintainer chose.**
+- "No snippet (Recommended)": when a loaded character's current chat is itself archived (its messages are not in memory), the card shows the name, chat name and time and no last line. Nothing is loaded.
+- "Snapshot (Recommended)": each card's chat name and last line are fixed together with the order when Home opens, and refresh on the next visit. Only removals, renames and pictures apply live, so no reply text streams into a card.
+
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
@@ -33868,6 +33876,47 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2341`, `MC-2975`, `#454`.
 
 **What the maintainer chose.** The MC-2341 flow again (precedent PRs #137 and #144): one port PR for the taken items (`Refs #454`), then, after it merges, a `git merge -s ours upstream/main` PR that records the range in `Agents/Upstream-Merges.md` and closes #454. The merge PR is merged with a merge commit, not squash or rebase, so upstream's history stays linked.
+### MC-2858 — #163 manual clean-up: app and web delete at once, Node keeps its age rule, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `MC-2421`.
+
+**What the maintainer chose.** A manual press of the clean-up button on Tauri and IndexedDB (web) pages deletes right after the confirm, without the 24 h age record. Node keeps the 24 h / three-sighting age rule, because another tab or device may hold an uploaded but unsaved file.
+
+### MC-2859 — #342 plain-HTTP Node: the confirm is the no-other-tab attestation, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#342`, `#340`, `MC-2421`.
+
+**What the maintainer chose.** On a Node server without Web Locks (plain HTTP on LAN/VPN) the manual button is allowed: its confirm tells the user to close every other tab and device first, and pressing Yes is that attestation. The staging-marker refusal, record-before-delete and server revision checks stay. No server lease, no server code. Node keeps its 500-per-pass cap and the confirm says so. The automatic sweep still refuses there.
+
+### MC-2860 — #165 store2 inlays are deleted at once under strict checks, no new record, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `MC-316`.
+
+**What the maintainer chose.** The new store2 inlay pass deletes an unreferenced inlay at once when the inlay keep-set is complete, the inlay is not resident and the sole-tab or sole-page proof holds. No new saved record, so no storage-format change.
+
+### MC-2861 — #163, #165 and #342 ship as two PRs, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `#165`, `#342`.
+
+**What the maintainer chose.** PR 1 is the manual clean-up button for #163 and #342 plus the restored autoGcFullChain assertion from #165. PR 2 is the #165 inlay deleting pass.
+
+### MC-2862 — manual clean-up refuses after a boot that installed the profile, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`.
+
+**What the maintainer chose.** When this launch installed or restored the profile instead of starting from saved data, the button answers "cannot run right now ... reload the app first", keeping the rule that deletion follows a cold read.
+
+### MC-2863 — manual clean-up shows "size unknown" when size cannot be measured, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `MC-2421`.
+
+**What the maintainer chose.** Where no cheap size source exists or it fails, the confirm names the file count and says "size unknown"; the clean-up may still proceed.
+
+### MC-2864 — the drafted clean-up strings are accepted, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `#342`.
+
+**What the maintainer chose.** The 14 drafted English strings for the clean-up button (including the Node text naming three clean-ups a day apart, at most 500 at a time, and "pressing Yes confirms that none is open") are used as written; the maintainer may edit en.ts later.
 
 ### MC-2965 — #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21
 

@@ -22,7 +22,7 @@ import {
     type ListRef, type Manifest, type ModuleEntry, type Ref, type ShardEntry, type UnitType,
 } from 'src/ts/storage/store2/format'
 import {
-    SWEEP_MIN_AGE_MS, readSweepRecord, runAssetSweep,
+    SWEEP_MIN_AGE_MS, peersAllow, readSweepRecord, runAssetSweep,
     type AssetSweepEnv, type AssetSweepResult, type AssetSweepSession,
 } from 'src/ts/storage/store2/sweep'
 import { assetListOf, commitKeyOf, inlayListOf, manifestKey, unitTail } from './sweepFixtures'
@@ -659,5 +659,205 @@ describe('the deletion hold', () => {
 
         expect(world.store.writes).toEqual([])
         expect(world.store.deletes).toEqual([])
+    })
+})
+
+/** The manual clean-up entry: `plan` reads only, `delete` removes what `approved` names. */
+const planOf = (world: World) => runAssetSweep({ ...world.env, manual: { step: 'plan' } })
+const deleteOf = (world: World, approved: readonly string[]) => runAssetSweep({ ...world.env, manual: { step: 'delete', approved: new Set(approved) } })
+
+function planned(result: AssetSweepResult) {
+    if (result.status !== 'planned') {
+        throw new Error(`The pass ended ${JSON.stringify(result)}.`)
+    }
+    return result
+}
+
+describe('the manual clean-up entry', () => {
+    test('RR1: a manual delete runs over the automatic limit and with an unknown count, and writes no record', async () => {
+        const world = await libraryWorld(['orphan.png'], 'indexeddb', { limit: 3 })
+        world.store.countPrefix = async () => 5
+
+        const over = done(await deleteOf(world, ['orphan.png']))
+
+        expect(over).toMatchObject({ deleted: 1, failed: 0, recorded: false })
+        expect(has(world, 'orphan.png')).toBe(false)
+        for (const name of REFERENCED) {
+            expect(has(world, name)).toBe(true)
+        }
+        expect(world.store.writes).toEqual([])
+
+        putAssets(world, ['orphan2.png'])
+        world.env.limit = undefined
+        world.store.countPrefix = async () => null
+        expect(done(await deleteOf(world, ['orphan2.png']))).toMatchObject({ deleted: 1, recorded: false })
+        expect(has(world, 'orphan2.png')).toBe(false)
+        expect(world.store.writes).toEqual([])
+    })
+
+    test.each(['tauri', 'indexeddb'] as const)('RR2: a manual delete with no record deletes on the first run and writes none (%s)', async (kind) => {
+        const world = await libraryWorld(['orphan.png'], kind)
+
+        const result = done(await deleteOf(world, ['orphan.png']))
+
+        expect(result).toMatchObject({ deleted: 1, recorded: false })
+        expect(has(world, 'orphan.png')).toBe(false)
+        expect(world.store.writes).toEqual([])
+        expect(world.store.files.has(SWEEP_KEY)).toBe(false)
+    })
+
+    test('RR3: a manual delete removes only the approved names of a day-old record', async () => {
+        const world = await libraryWorld(['a.png', 'b.png'])
+        await recordThenAge(world)
+
+        const result = done(await deleteOf(world, ['a.png']))
+
+        expect(result).toMatchObject({ deleted: 1 })
+        expect(has(world, 'a.png')).toBe(false)
+        expect(has(world, 'b.png')).toBe(true)
+    })
+
+    test('G10: a manual delete of an indexeddb or tauri page leaves an existing record as it was', async () => {
+        for (const kind of ['indexeddb', 'tauri'] as const) {
+            const world = await libraryWorld(['orphan.png'], kind)
+            await recordThenAge(world)
+            const before = await world.store.read(SWEEP_KEY)
+
+            expect(done(await deleteOf(world, ['orphan.png']))).toMatchObject({ deleted: 1, recorded: false })
+
+            expect(world.store.writes).toEqual([])
+            expect((await world.store.read(SWEEP_KEY)).bytes).toEqual(before.bytes)
+        }
+    })
+
+    test.each(['tauri', 'indexeddb'] as const)('G6: a commit between batches rebuilds, the filter is worked out again and the asset the new commit names survives (%s)', async (kind) => {
+        const orphans = orphanNames(26)
+        const world = await libraryWorld(orphans, kind)
+        world.env.pace = async () => {
+            await moveCommit(world, [orphans[25]])
+        }
+
+        const result = done(await deleteOf(world, orphans))
+
+        expect(result).toMatchObject({ deleted: 25, batches: 1, recorded: false })
+        expect(has(world, orphans[25])).toBe(true)
+        expect(world.store.writes).toEqual([])
+    })
+
+    test('G2: an incomplete keep-set refuses the plan and the delete within the limit', async () => {
+        const world = await libraryWorld(['orphan.png'])
+        const next = await addManifest(world, { config: ['x.png'] }, 50)
+        await plantCommit(world, { current: next.key })
+        world.backend.poke(next.configAl, null)
+
+        expect(await planOf(world)).toEqual({ status: 'refused', reason: 'keep-incomplete' })
+        expect(await deleteOf(world, ['orphan.png'])).toEqual({ status: 'refused', reason: 'keep-incomplete' })
+        expect(world.store.deletes).toEqual([])
+        expect(world.store.writes).toEqual([])
+        expect(has(world, 'orphan.png')).toBe(true)
+    })
+
+    test.each([
+        ['a standing marker', 'staging', (world: World) => plantCommit(world, {
+            current: manifestKey(1),
+            staging: { owner: 'b'.repeat(26), prefix: 'store2/g-0123456789abcdef-', startedAt: 0, label: 'bulk' },
+        })],
+        ['a fence', 'fenced', async (world: World) => {
+            await world.backend.casFence((await world.backend.readFence()).token, encodeUnit(UNIT_TYPE.fenceRecord, { v: 1, at: 0, priorCommits: [], keys: [] }))
+        }],
+    ])('G3: %s refuses a manual delete at the gate and removes nothing', async (_name, reason, setup) => {
+        const world = await libraryWorld(['orphan.png'])
+        await setup(world)
+
+        expect(await deleteOf(world, ['orphan.png'])).toEqual({ status: 'refused', reason })
+        expect(world.store.deletes).toEqual([])
+        expect(has(world, 'orphan.png')).toBe(true)
+    })
+
+    test('G4: a stop condition true at the start ends both steps yielded, and one that turns true after the first delete stops with one deleted', async () => {
+        const world = await libraryWorld(['o1.png', 'o2.png', 'o3.png'])
+        world.env.shouldStop = () => true
+        expect(await planOf(world)).toMatchObject({ status: 'done', stopped: 'yielded' })
+        expect(await deleteOf(world, ['o1.png'])).toMatchObject({ status: 'done', stopped: 'yielded', deleted: 0 })
+
+        world.env.shouldStop = () => world.store.deletes.length >= 1
+        const result = done(await deleteOf(world, ['o1.png', 'o2.png', 'o3.png']))
+
+        expect(result).toMatchObject({ stopped: 'yielded', deleted: 1, recorded: false })
+        expect(world.store.deletes).toHaveLength(1)
+    })
+
+    test('G5: a manual delete keeps an asset this page wrote after the keep-set and a name that became resident for a later batch', async () => {
+        const written = await libraryWorld(['late.png', 'other.png'])
+        // The first answer opens the round; the later ones come before each delete, after the keep-set was built.
+        let asked = 0
+        written.env.peers = async () => {
+            if (++asked > 1) {
+                written.written.add('assets/LATE.png')
+            }
+            return 'alone'
+        }
+
+        expect(done(await deleteOf(written, ['late.png', 'other.png']))).toMatchObject({ deleted: 1, keptLive: 1 })
+        expect(has(written, 'late.png')).toBe(true)
+        expect(has(written, 'other.png')).toBe(false)
+
+        const orphans = orphanNames(26)
+        const resident = await libraryWorld(orphans)
+        resident.env.pace = async () => {
+            resident.resident.add(orphans[25])
+        }
+
+        expect(done(await deleteOf(resident, orphans))).toMatchObject({ deleted: 25, keptLive: 1, batches: 2 })
+        expect(has(resident, orphans[25])).toBe(true)
+    })
+
+    test('G7: a web manual delete refuses unsupported and others before any read', async () => {
+        for (const [answer, reason] of [['unsupported', 'no-web-locks'], ['others', 'other-tab']] as const) {
+            const world = await libraryWorld(['o1.png'])
+            world.env.peers = async () => answer
+            world.store.reads.length = 0
+
+            expect(await deleteOf(world, ['o1.png'])).toEqual({ status: 'refused', reason })
+            expect(await planOf(world)).toEqual({ status: 'refused', reason })
+            expect(world.store.reads).toEqual([])
+            expect(world.store.lists).toEqual([])
+        }
+    })
+
+    test.each(['tauri', 'indexeddb'] as const)('G11: the plan names exactly what the delete step removes and reads only (%s)', async (kind) => {
+        const world = await libraryWorld(['a.png', 'b.png'], kind)
+
+        const plan = planned(await planOf(world))
+
+        expect(plan).toMatchObject({ status: 'planned', phase: 'swept', candidates: 2, later: 0 })
+        expect([...plan.deletable].sort()).toEqual(['a.png', 'b.png'])
+        expect(world.store.writes).toEqual([])
+        expect(world.store.deletes).toEqual([])
+        expect(has(world, 'a.png') && has(world, 'b.png')).toBe(true)
+
+        const result = done(await deleteOf(world, plan.deletable))
+        expect(result.deleted).toBe(plan.deletable.length)
+    })
+
+    test('G11: a record a newer build wrote refuses the plan', async () => {
+        const world = await libraryWorld(['orphan.png'])
+        world.store.files.set(SWEEP_KEY, encodeUnit(UNIT_TYPE.sweepRecord, { v: 2, at: 1, items: [['orphan.png', null]] }))
+
+        expect(await planOf(world)).toEqual({ status: 'refused', reason: 'record-too-new' })
+        expect(await deleteOf(world, ['orphan.png'])).toEqual({ status: 'refused', reason: 'record-too-new' })
+        expect(world.store.writes).toEqual([])
+    })
+})
+
+describe('peersAllow', () => {
+    const manuals = [undefined, { step: 'plan' }, { step: 'delete', approved: new Set<string>() }] as const
+
+    test.each(['indexeddb', 'node'] as const)('G14: the answer table of a %s page', (kind) => {
+        for (const manual of manuals) {
+            expect(peersAllow(kind, 'alone', manual)).toBe('go')
+            expect(peersAllow(kind, 'others', manual)).toBe('other-tab')
+            expect(peersAllow(kind, 'unsupported', manual)).toBe(kind === 'node' && manual !== undefined ? 'go' : 'no-web-locks')
+        }
     })
 })

@@ -19,7 +19,8 @@ import type { Store2Session } from './session'
  * `reflushTopLevel` performs, which a stale page answers with `Store2StalePageError`) precedes every batch and the age
  * record write, and a stale answer stops the pass; (3) the age record's intersection rule bounds a ghost write: it can
  * only delay a removal, never make a young asset look old, and the window between the probe and a removal is accepted
- * because batches are small; (4) Node and IndexedDB have no stale-page notion, their compare tokens decide, so (1) alone
+ * because batches are small. This applies to the automatic pass; a manual Tauri run writes no record, so (2) alone
+ * protects it; (4) Node and IndexedDB have no stale-page notion, their compare tokens decide, so (1) alone
  * applies.
  */
 

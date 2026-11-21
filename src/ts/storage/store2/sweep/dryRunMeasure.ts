@@ -1,5 +1,6 @@
 import type { ByteStore } from '../../store/contract'
 import type { Store2Session } from '../session'
+import { tauriAssetSize } from './assetSize'
 import { runSweepDryRun, type SweepDryRunReport, type SweepDryRunSession } from './dryRun'
 import { measureAssetOrphans, type AssetOrphanOptions, type AssetOrphanReport } from './orphanMeasure'
 
@@ -36,6 +37,8 @@ export interface SweepDryRunHandle {
     orphans(options?: AssetOrphanOptions): Promise<AssetOrphanReport>
 }
 
+export { tauriAssetSize } from './assetSize'
+
 /** The page's own modules, loaded when the action first runs so that installing it costs nothing. */
 async function loadLiveResident(): Promise<ResidentSources> {
     const [api, database, cleanup] = await Promise.all([
@@ -54,29 +57,6 @@ async function loadLiveResident(): Promise<ResidentSources> {
             const unmentioned = new Set(matcher.remaining())
             return new Set(ids.filter(id => !unmentioned.has(id)))
         },
-    }
-}
-
-function errorText(error: unknown): string {
-    if (typeof error === 'string') {
-        return error
-    }
-    return String((error as { message?: unknown } | null | undefined)?.message ?? error)
-}
-
-/**
- * The stored size of `key` through a zero-length ranged read, so no body crosses the bridge. A missing file answers null; any
- * other rejection propagates, so a failure is never counted as an absent file.
- */
-export async function tauriAssetSize(key: string): Promise<number | null> {
-    const transport = await import('../../tauriByteTransport')
-    try {
-        return await transport.statStoredSize(key)
-    } catch (error) {
-        if (transport.MISSING_FILE_ERROR.test(errorText(error))) {
-            return null
-        }
-        throw error
     }
 }
 
