@@ -26,7 +26,7 @@
  * `appDataDir`/`join`. The boot reads the database through the plugin's
  * `readFile`, so a flat map of files is all the model it needs.
  */
-import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
@@ -262,6 +262,12 @@ async function freshLoadData() {
 }
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()

@@ -100,12 +100,17 @@ import { alertStore, DBState, settingsOpen } from './stores.svelte'
 import { changeToPreset } from './storage/database.svelte'
 import { migratePresetSlots } from './storage/presetMeta'
 import { changeChar } from './characters'
-import { alertConfirm, alertNormal, alertToast, alertWait } from './alert'
+import { alertConfirm, alertNormal, alertWait } from './alert'
 import { resetAlertPromptsForTests } from './alertPrompts'
 
 //#region helpers
 
 const NONE: alertData = { type: 'none', msg: '' }
+
+/** The raw `toast` value AlertComp's toast branch shows: these tests pin how the alert store protocol treats a toast cover, not what `alertToast` does. */
+function putToast(msg: string): void {
+    alertStore.set({ type: 'toast', msg })
+}
 const GUARD_MS = 401
 
 function shown(): alertData {
@@ -188,7 +193,7 @@ interface PromptState {
 const PROMPT_STATES: PromptState[] = [
     { name: 'a confirm showing', arrange: () => { void alertConfirm('Proceed?') }, visible: 'ask' },
     { name: 'a confirm covered by a notice', arrange: () => { void alertConfirm('Proceed?'); alertNormal('A notice') }, visible: 'normal' },
-    { name: 'a confirm covered by a toast', arrange: () => { void alertConfirm('Proceed?'); alertToast('A toast') }, visible: 'toast' },
+    { name: 'a confirm covered by a toast', arrange: () => { void alertConfirm('Proceed?'); putToast('A toast') }, visible: 'toast' },
     { name: 'a confirm covered by a wait notice', arrange: () => { void alertConfirm('Proceed?'); alertWait('Loading...') }, visible: 'wait' },
     { name: 'the terms prompt posted on its own', arrange: () => { alertStore.set({ type: 'tos', msg: 'tos' }) }, visible: 'tos' },
 ]
@@ -277,7 +282,7 @@ describe('a shortcut of the configurable table while a prompt is waiting', () =>
 describe('the Ctrl+number preset keys while a prompt is waiting', () => {
     test('a confirm hidden under a toast keeps Ctrl+1 from switching presets', () => {
         void alertConfirm('Proceed?')
-        alertToast('A toast')
+        putToast('A toast')
 
         press(keydown('1', { ctrlKey: true }))
 
@@ -317,7 +322,7 @@ describe('the triple-touch quick menu while a prompt is waiting', () => {
 
     test('a confirm hidden under a toast keeps the quick menu from opening', () => {
         void alertConfirm('Proceed?')
-        alertToast('A toast')
+        putToast('A toast')
 
         tripleTouch()
 
