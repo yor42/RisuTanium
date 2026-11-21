@@ -3993,14 +3993,6 @@ export const languageJapanese = {
     coldStorage: "起動時にキャラクターとモジュールをアーカイブ",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `メモリ使用量を抑えるため、本アプリは起動時に各キャラクターの全データを個別に保管し、そのキャラクターを開いたときにのみ読み込むようになりました。何も削除されておらず、キャラクターは以前と同様に表示され動作します。この設定は ${settings} > ${advancedSettings} > ${toggle} で無効にできます。無効にしても新しくアーカイブされることはなく、すでにアーカイブされているキャラクターも通常どおり開くことができます。`,
-    archiveCharactersStoppedNotice: (characterName: string) =>
-        `2体のキャラクターを連続して個別に保管できなかったため、今回の起動でのアーカイブ処理を停止しました（2体目は「${characterName}」）。これらのキャラクターはメインセーブに完全に読み込まれた状態を維持し、それ以前にアーカイブされたキャラクターに影響はありません。残りのキャラクターはそのまま残されています。`,
-    archiveCharactersSkippedNotice: (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `次のキャラクターを個別に保管できませんでした：${characterNames}${otherCount > 0 ? `、他${otherCount}件` : ''}。これらは完全に読み込まれた状態を維持して以前と同様に動作し、本アプリが起動時に再度アーカイブを試みることはありません。この端末で再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
-    archiveCharactersTooLargeNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `セーブデータが大きすぎるため、セルフホストサーバーにキャラクターをアーカイブできませんでした。そのため何もアーカイブされず、セーブデータはそのまま維持されています。すべて以前と同様に動作します。この端末で再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
-    archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `2回連続で完了しなかったため、この端末での起動時キャラクターアーカイブを一時停止しています。データは失われておらず、すでにアーカイブされたキャラクターも開く際に読み込まれます。再開するまで、起動時に新しくアーカイブされることはありません。再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
     cleanColdStorage: "未使用のアーカイブデータとアセットをクリーンアップ",
     customSidebarConfig: "カスタムサイドバー設定",
     cleanColdStorageConfirm: "これにより、未使用のすべてのアーカイブ（コールドストレージ）データと、どのキャラクター、モジュール、ペルソナ、設定でも使われなくなった画像や音声などの未使用アセットファイルが完全に削除されます。これらは将来役に立つ可能性があっても復元できません。続行しますか？",

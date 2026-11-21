@@ -5,7 +5,7 @@ import {
     assembleDatabase, bucketOfKey, CodecInputError, encodeScoped, IDENTITY, previousFrom, shardOfU, SharedChaIdStubError, StubRefusedError, unitsToWrite,
     type EncodedTree, type ListDerivation, type PreviousEncoding,
 } from '../../store2/codec'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { checkBuiltUnits, createKeyMint, type BuildContext } from '../../store2/commit'
 import { encodeUnit, UNIT_TYPE } from '../../store2/format'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'

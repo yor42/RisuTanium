@@ -152,7 +152,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), async (importOriginal) => (
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { beginWork } from 'src/ts/process/chatOrigin'
 import { changeChar, characterFormatUpdate, supersedeChangeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'

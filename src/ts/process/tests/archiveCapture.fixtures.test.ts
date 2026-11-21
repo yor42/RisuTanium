@@ -289,7 +289,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 import { readColdStorageItem } from '../coldstorage.svelte'
-import { buildColdStub } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 import { coldStorageHeader } from '../coldstorageData'
 import { resolveLegacyTree } from 'src/ts/storage/store2/legacy/resolve'
 import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'

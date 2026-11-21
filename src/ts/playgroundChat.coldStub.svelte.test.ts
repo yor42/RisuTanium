@@ -170,7 +170,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 
 import { DBState, PlaygroundStore, selectedCharID } from 'src/ts/stores.svelte'
 import { alertError, alertNormal, alertToast, alertMd } from 'src/ts/alert'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { language } from 'src/lang'
 import { openPlaygroundChat } from './playgroundChat'
 

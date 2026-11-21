@@ -3848,14 +3848,6 @@ export const languageKorean = {
     coldStorage: "시작 시 캐릭터와 모듈 보관",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `메모리 사용량을 낮게 유지하기 위해, 이 앱은 이제 시작할 때 각 캐릭터의 전체 데이터를 별도로 저장하고 해당 캐릭터를 열 때만 불러옵니다. 삭제되는 데이터는 없으며, 캐릭터는 이전과 동일하게 보이고 동작합니다. ${settings} > ${advancedSettings} > ${toggle}에서 이 기능을 끌 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `이번 시작 시 보관이 중단되었습니다. 캐릭터 두 개가 연속으로 별도로 저장되지 못했으며, 두 번째는 "${characterName}" 캐릭터였습니다. 해당 캐릭터들은 기본 저장 데이터에 그대로 완전히 불러온 상태로 남아 있으며, 그 이전에 보관된 캐릭터에는 영향이 없습니다. 나머지 캐릭터는 그대로 두었습니다.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `다음 캐릭터를 별도로 저장할 수 없었습니다: ${characterNames}${otherCount > 0 ? ` 외 ${otherCount}개` : ''}. 이 캐릭터들은 완전히 불러온 상태로 유지되며 이전과 동일하게 동작하고, 앱은 시작할 때 이 캐릭터들을 다시 보관하려 하지 않습니다. 이 기기에서 다시 시도하려면 ${settings} > ${advancedSettings} > ${toggle}을(를) 껐다가 다시 켜세요.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `저장 데이터가 너무 커서 셀프 호스팅 서버에 캐릭터를 보관할 수 없었으므로, 아무것도 보관되지 않았고 저장 데이터는 그대로 두었습니다. 모든 것이 이전과 동일하게 동작합니다. 이 기기에서 다시 시도하려면 ${settings} > ${advancedSettings} > ${toggle}을(를) 껐다가 다시 켜세요.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `이 기기에서 시작 시 캐릭터 보관이 두 번 연속으로 끝나지 않아 일시 중지되었습니다. 삭제되거나 잃은 데이터는 없으며, 이미 보관된 캐릭터는 열 때 그대로 불러옵니다. 재개하기 전까지는 시작 시 새로 보관되는 캐릭터가 없습니다. 다시 시도하려면 ${settings} > ${advancedSettings} > ${toggle}을(를) 껐다가 다시 켜세요.`,
     cleanColdStorage: "사용하지 않는 보관 데이터 및 에셋 정리",
     customSidebarConfig: "사이드바 커스텀 설정",
     cleanColdStorageConfirm: "이 작업은 사용하지 않는 모든 보관(콜드 스토리지) 데이터와 사용하지 않는 모든 에셋 파일(더 이상 어떤 캐릭터, 모듈, 페르소나, 설정에서도 사용하지 않는 이미지와 오디오)을 영구적으로 삭제합니다. 일부는 나중에 유용할 수 있으며, 삭제된 데이터는 복구할 수 없습니다. 계속하시겠습니까?",

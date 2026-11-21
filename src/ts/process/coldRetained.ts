@@ -215,13 +215,6 @@ export function retainedCount(): number {
     return byChaId.size
 }
 
-/** Forgets `record`; its installed character stays where it is. */
-export function dropRetained(record: RetainedRecord): void {
-    if (byChaId.get(record.chaId) === record) {
-        byChaId.delete(record.chaId)
-    }
-}
-
 /** Forgets the records whose installed character is no longer in the character list. */
 export function pruneRetained(): void {
     if (byChaId.size === 0 && loadedByChaId.size === 0) {

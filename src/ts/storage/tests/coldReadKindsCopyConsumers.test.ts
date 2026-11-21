@@ -103,7 +103,7 @@ vi.mock(import('src/ts/platform'), async (importOriginal) => ({
 }))
 
 import { exportAsDataset } from 'src/ts/storage/exportAsDataset'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
 

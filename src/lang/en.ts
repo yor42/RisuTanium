@@ -3992,14 +3992,6 @@ export const languageEnglish = {
     coldStorage: "Archive characters and modules at startup",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `To keep memory use low, this app now stores each character's full data separately at startup and loads it only when you open that character. Nothing is deleted, and your characters look and work as before. You can turn this off in ${settings} > ${advancedSettings} > ${toggle}. Turning it off archives nothing new, and characters that are already archived still open normally.`,
-    archiveCharactersStoppedNotice: (characterName: string) =>
-        `Archiving stopped for this start after two characters in a row could not be stored separately; the second was "${characterName}". Those characters stay fully loaded in the main save, and the characters archived before them are not affected. The remaining characters were left as they are.`,
-    archiveCharactersSkippedNotice: (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `These characters could not be stored separately: ${characterNames}${otherCount > 0 ? ` and ${otherCount} more` : ''}. They stay fully loaded and work as before, and this app will not try to archive them again at startup. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
-    archiveCharactersTooLargeNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `Your save is too large for the self-hosted server to archive characters into, so nothing was archived and your save was left as it is. Everything works as before. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
-    archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `Archiving characters at startup is paused on this device because it did not finish twice in a row. Nothing was lost, and characters that are already archived still load when you open them. Until you resume it, nothing new is archived at startup. To try again, turn off ${settings} > ${advancedSettings} > ${toggle} and then turn it back on.`,
     cleanColdStorage: "Clean Unused Archived Data and Assets",
     customSidebarConfig: "Custom Sidebar Configuration",
     cleanColdStorageConfirm: "This will permanently delete all unused archived (cold storage) data and all unused asset files, meaning images and audio that no character, module, persona or setting uses any more. Some of it may still be useful in the future, and it cannot be recovered. Do you want to continue?",

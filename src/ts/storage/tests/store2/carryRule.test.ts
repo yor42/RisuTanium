@@ -10,7 +10,7 @@ import {
 } from '../../store2/format'
 import { createListDerivation } from '../../store2/lists'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import type { character, Database } from '../../database.svelte'
 import { asDatabase, buildSmall, bytesOf, seededEnv, type Obj } from './codecFixtures'
 import { TEST_DESCENT } from './descentTable'

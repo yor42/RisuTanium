@@ -176,7 +176,7 @@ import { doingChat } from 'src/ts/process/index.svelte'
 import { alertError } from 'src/ts/alert'
 import { setCharacterByIndex } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { changeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
 

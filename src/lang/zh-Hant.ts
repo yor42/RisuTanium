@@ -3892,14 +3892,6 @@ export const languageChineseTraditional = {
     "coldStorage": "啟動時封存角色和模組",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `為了維持較低的記憶體用量，本應用程式現在會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。不會刪除任何內容，您的角色外觀與運作方式都和以往相同。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中關閉此功能。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `由於連續兩個角色無法單獨儲存，本次啟動的封存已停止；第二個是「${characterName}」。這些角色仍完整保留在主存檔中並維持完全載入，在它們之前已封存的角色不受影響。其餘角色維持原樣。`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `以下角色無法單獨儲存：${characterNames}${otherCount > 0 ? ` 等另外 ${otherCount} 個` : ''}。它們仍維持完全載入，並像之前一樣正常運作，本應用程式在啟動時不會再嘗試封存它們。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `您的存檔過大，自架伺服器無法將角色封存到其中，因此未封存任何內容，您的存檔也維持原樣。一切照常運作。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `本裝置上的啟動時角色封存已暫停，因為它連續兩次未能完成。沒有任何內容遺失，已封存的角色在您開啟時仍會正常載入。在恢復之前，啟動時不會再封存任何新角色。若要重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
     "cleanColdStorage": "清理未使用的封存資料與資源",
     "customSidebarConfig": "自訂側邊欄配置",
     "cleanColdStorageConfirm": "這將永久刪除所有未使用的封存（冷儲存）資料，以及所有未使用的資源檔案，即不再被任何角色、模組、人設或設定使用的圖片和音訊。其中部分內容未來可能仍然有用，且刪除後無法復原。是否要繼續？",

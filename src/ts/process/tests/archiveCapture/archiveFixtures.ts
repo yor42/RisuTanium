@@ -1,6 +1,6 @@
 /**
  * Test support: the archived characters the one-character archive wrote, captured from the real writer
- * (`Agents/Tools/save-gen/archiveCapture.svelte.harness.ts`) and committed beside this file; see `README.md`.
+ * and committed beside this file; the generator was removed with the writer, see `README.md` for how to read it.
  *
  * `loadArchiveCase` reads one case's source, stub and unit bytes, `placeUnits` puts the unit bytes under the page store
  * key the real reader looks them up by, and `decodeUnitBytes` decodes a unit without the application's reader. The

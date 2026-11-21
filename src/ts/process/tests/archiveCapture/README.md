@@ -47,9 +47,12 @@ opaque, so reader compatibility does not depend on them. Real: `archiveCharacter
 ## Provenance
 
 - Base commit: the `capture.baseCommit` of `manifest.json`. The writer's source is unchanged from there to the stage-1 commit.
-- Stage-1 commit: TODO(stage 2): the commit that added these files, so the generator can be read at that commit. It must
-  never be amended, squashed or rebased before the branch is pushed.
-- Generator: `Agents/Tools/save-gen/archiveCapture.svelte.harness.ts`, run through `Agents/Tools/vitest.archiveCapture.config.ts`.
+- Stage-1 commit: `6a6f43171`, the commit that added these files, so the generator can be read at that commit
+  (`git show 6a6f43171:Agents/Tools/save-gen/archiveCapture.svelte.harness.ts`). The id stays valid only if that commit is
+  not rewritten (amended, squashed or rebased) before the branch is pushed; the repository merges pull requests with merge
+  commits, which keep it reachable.
+- Generator (removed with the writer; read it at the stage-1 commit): `Agents/Tools/save-gen/archiveCapture.svelte.harness.ts`,
+  run through `Agents/Tools/vitest.archiveCapture.config.ts`.
   The config merges the repository's `vitest.config.ts` (`mergeConfig`), so the capture runs under the same plugin set as
   `pnpm test`: the Svelte proxy patch, the Svelte plugin with the async flag, the async-flag default, the `src` alias,
   happy-dom and `vitest.setup.ts`. Command, from the repository root:
@@ -67,8 +70,7 @@ opaque, so reader compatibility does not depend on them. Real: `archiveCharacter
   HEAD, `productionDirty` must be empty, the production diff from `capture.baseCommit` to HEAD must be empty, and
   `capture.baseCommit` must be an ancestor of HEAD. MTIME is masked because fflate's asynchronous `compress` runs in a
   worker thread whose clock is not faked, so that one header field changes with every run.
-- After the writer is deleted (the next stage of the same change) the generator and its config are removed with it. Read
-  them at the stage-1 commit. From then on the guards in `archiveCapture.fixtures.test.ts` check that the committed files
+- The writer was deleted in the stage after the capture, and the generator and its config were removed with it. From then on the guards in `archiveCapture.fixtures.test.ts` check that the committed files
   are intact and consistent; they no longer prove provenance.
 
 ## Users

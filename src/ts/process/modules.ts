@@ -760,7 +760,7 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
                 data: file,
                 returnCharacter: true,
                 lowLevelLabel: (cardName) => language.moduleLowLevelNamed(cardName, batchFile)
-            }, null, progress)
+            }, progress)
             if(outcome.kind !== 'imported'){
                 return outcome
             }

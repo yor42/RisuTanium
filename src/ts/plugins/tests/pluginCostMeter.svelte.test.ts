@@ -216,7 +216,7 @@ import { makeRisuaiAPIV3 } from '../apiV3/v3.svelte'
 import { SandboxHost } from '../apiV3/factory'
 import { getV2PluginAPIs } from '../plugins.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { buildColdStub } from '../../process/coldCharacter'
+import { buildColdStub } from '../../process/tests/coldStubFixture'
 import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
 import {
     resetPluginMeterForTest, setPluginMeterClockForTest, type PluginCostRecord, type PluginMeterHandle, type PluginRecordKind,
