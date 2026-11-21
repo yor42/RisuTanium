@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { APP_THEME_NAMES, TAILWIND_DEFAULT_NAMES, allowedTokenNames, declaredTokenNames, isColourSchemeInlineName, reservedNameReason } from './appThemeNames'
 import { effective, isPackSettable } from './engine'
 import { lintAreaPack, type ThemeArea } from './index'
@@ -175,5 +175,21 @@ describe('S2: the app shape tokens in the reserved and allowed name sets', () =>
 
     it.each([['settings', REG5B], ['home', HOME_REGISTRY]] as const)('G11: %s makes each shape name pack-settable', (_area, registry) => {
         for (const name of SHAPE) expect(isPackSettable(name, registry), name).toBe(true)
+    })
+})
+
+// S41A-G1: A_tok is the per-name derivation through the unchanged isPackSettable oracle. Each order runs on a fresh module graph, so a
+// settable test shared across areas cannot hide behind the order of the tests in this file. Compatibility guard: passes before and after.
+describe('S41A-G1: A_tok equals the per-name isPackSettable derivation, in either area order', () => {
+    it.each([['chat', 'studio'], ['studio', 'chat']] as const)('%s then %s', async (first, second) => {
+        vi.resetModules()
+        const names = await import('./appThemeNames')
+        for (const area of [first, second]) {
+            const registry = area === 'studio' ? STUDIO_REGISTRY : undefined
+            const bounded = effective(registry)
+            const candidates = [...declaredTokenNames(area), ...Object.keys(bounded.minimums), ...Object.keys(bounded.maximums)]
+            const expected = [...new Set(candidates.filter((name) => isPackSettable(name, registry) && !reservedNameReason(name)))].sort()
+            expect([...names.allowedTokenNames(area)].sort(), area).toEqual(expected)
+        }
     })
 })

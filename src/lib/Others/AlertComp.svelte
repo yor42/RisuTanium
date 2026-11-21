@@ -21,6 +21,7 @@
     import PeerConflicts from './PeerConflicts.svelte';
     import ParkedReplyPrompt from './ParkedReplyPrompt.svelte';
     import UpdateOfferPrompt from './UpdateOfferPrompt.svelte';
+    import PresetBundlePrompt from './PresetBundlePrompt.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
     import json from 'highlight.js/lib/languages/json';
@@ -66,6 +67,7 @@
             case 'patternSelect':
             case 'patternInput':
             case 'updateOffer':
+            case 'presetBundle':
                 return 'confirm'
             case 'tos':
             case 'staleAccountNotice':
@@ -80,7 +82,7 @@
     // Types that ask for an answer or report a failure interrupt a screen reader's reading; the rest are plain dialogs.
     const ALERT_DIALOG_TYPES = new Set<alertData['type']>(['error', 'ask', 'select', 'input', 'tos', 'staleAccountNotice'])
     // Reports and tool content need more room than a message.
-    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer'])
+    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer', 'presetBundle'])
     // Types whose body has no message element of its own; the dialog is named and described by the body instead.
     const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'selectChar', 'requestdata', 'addchar', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'chatOptions', 'peerConflicts', 'parkedReply'])
     // Viewers the person closes themselves: the head carries a named close, and Escape and Back close them as well.
@@ -115,6 +117,8 @@
                 return language.input
             case 'updateOffer':
                 return language.updateAvailableTitle
+            case 'presetBundle':
+                return language.presetBundleTitle
             default:
                 return null
         }
@@ -650,6 +654,10 @@
                 </div>
             {:else if a.type === 'updateOffer'}
                 <UpdateOfferPrompt offer={a.updateOffer ?? { currentVersion: '', version: '', notes: '' }} {messageId} onanswer={(message) => {
+                    alertStore.set({ type: 'none', msg: message })
+                }} />
+            {:else if a.type === 'presetBundle'}
+                <PresetBundlePrompt view={a.presetBundle ?? { rows: [], existingNames: [] }} {messageId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
             {:else if a.type !== 'select' && a.type !== 'selectChar' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'requestlogs' && a.type !== 'chatOptions' && a.type !== 'branches'}

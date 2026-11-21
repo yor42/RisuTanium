@@ -4,12 +4,12 @@ import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } 
  * A `ByteStore` over a `Map` that records what was asked of it, with hooks to
  * make chosen calls fail. Synthetic data only.
  *
- * `blobs` and `urlFor` in the options make the store offer the optional Blob
- * members and `urlFor`, so a test can drive each delivery branch; without them
- * the store is bytes only, like a Node store without a token or the OPFS fallback store.
+ * `blobs` and `urlFor` in the options make the store offer `writeBlob` and
+ * `urlFor`, so a test can drive each delivery branch; without them the store is
+ * bytes only, like a Node store without a token.
  */
 export interface MemoryByteStoreOptions {
-    /** Offer `writeBlob` and `readBlob`: a Blob is held as the very object handed over. */
+    /** Offer `writeBlob`: a Blob is held as the very object handed over, and `read` returns its bytes. */
     blobs?: boolean
     /** Offer `urlFor`: a function answers the URL of a key (and may reject); `true` answers `mem://<key>`. */
     urlFor?: boolean | ((key: string) => Promise<string>)
@@ -21,8 +21,6 @@ export interface MemoryByteStore extends ByteStore {
     readonly blobs: Map<string, Blob>
     /** Every key `read` was asked for, in order. */
     readonly reads: string[]
-    /** Every key `readBlob` was asked for, in order. */
-    readonly blobReads: string[]
     /** Every prefix `list` was asked for, in order. */
     readonly lists: string[]
     /** Every key `write` or `writeBlob` stored, in order. */
@@ -48,7 +46,6 @@ export function createMemoryByteStore(options: MemoryByteStoreOptions = {}): Mem
         files,
         blobs,
         reads: [],
-        blobReads: [],
         lists: [],
         writes: [],
         blobWrites: [],
@@ -114,10 +111,6 @@ export function createMemoryByteStore(options: MemoryByteStoreOptions = {}): Mem
             store.writes.push(key)
             store.blobWrites.push(key)
             return { version: null }
-        }
-        store.readBlob = async (key: string): Promise<Blob | null> => {
-            store.blobReads.push(key)
-            return blobs.get(key) ?? null
         }
     }
     if (options.urlFor !== undefined && options.urlFor !== false) {

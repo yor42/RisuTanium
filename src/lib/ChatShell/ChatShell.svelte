@@ -129,6 +129,7 @@
     let fade = $state<'a' | 'b' | undefined>(undefined)
     // Plain variables on purpose: the effect below must depend on the shown chat only.
     let announcedFrom: { chat: Chat | undefined } | null = null
+    let streamedFrom: { chat: Chat | undefined, streaming: boolean } | null = null
     let fadeFlip = false
     let headerHidden = $state(false)
     let hardwareKeyboardSeen = $state(false)
@@ -197,6 +198,16 @@
         announcement = language.chatShellChatOpened(chat.name ?? '')
         fadeFlip = !fadeFlip
         fade = fadeAllowed() ? (fadeFlip ? 'a' : 'b') : undefined
+    })
+
+    // The shown chat's reply start and end are announced for every outcome (success, Stop, error); a chat change or the first run only records.
+    $effect(() => {
+        const chat = shownChat
+        const streaming = chat?.isStreaming === true
+        const previous = streamedFrom
+        streamedFrom = { chat, streaming }
+        if (!previous || previous.chat !== chat || previous.streaming === streaming) return
+        void say(streaming ? language.chatShellReplyStarted : language.chatShellReplyFinished)
     })
 
     // The fade is an animation: reduced motion (the app's setting, or the OS while it follows the system) and low power switch it off, so the attribute that starts it is never set.

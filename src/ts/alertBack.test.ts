@@ -142,6 +142,15 @@ describe('a prompt with a cancel button', () => {
         expect(shown().type).toBe('none')
     })
 
+    test('a preset bundle preview is answered cancel by Back, never an import', async () => {
+        const out = track(askPrompt({ type: 'presetBundle', msg: '', presetBundle: { rows: [{ name: 'A', folder: null, aiModel: '' }], existingNames: [] } }))
+        expect(shown().type).toBe('presetBundle')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(out).toEqual({ settled: true, value: 'cancel' })
+        expect(shown().type).toBe('none')
+    })
+
     test('chat options resolve as the Cancel button does, which its caller reads as no choice', async () => {
         const out = track(alertChatOptions())
         expect(dispatchBack()).toBe(true)

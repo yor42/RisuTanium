@@ -131,7 +131,7 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 import { DBState, selectedCharID } from '../../../ts/stores.svelte'
 import { markCharacterForSave } from '../../../ts/storage/characterSaveMarks'
 import { language } from '../../../lang'
-import { homeView, openHomeLibrary, showHomeLanding } from './homeView.svelte'
+import { homeView, openHomeLibrary, startHomeView } from './homeView.svelte'
 import HomeLibrary from './HomeLibrary.svelte'
 
 //#region fixtures and helpers
@@ -165,11 +165,11 @@ async function settle(): Promise<void> {
 beforeEach(() => {
     vi.mocked(markCharacterForSave).mockClear()
     selectedCharID.set(-1)
-    showHomeLanding()
+    startHomeView()
 })
 
 afterEach(() => {
-    showHomeLanding()
+    startHomeView()
 })
 
 describe('HomeLibrary: restoring from the embedded Trash tab', () => {
@@ -205,7 +205,7 @@ describe('HomeLibrary: restoring from the embedded Trash tab', () => {
 
             expect(DBState.db.characters.find((c) => c.chaId === 'gone')?.trashTime).toBeFalsy()
             expect(vi.mocked(markCharacterForSave)).toHaveBeenCalledWith('gone')
-            expect(homeView.view).toBe('library')
+            expect(homeView.libraryEngaged).toBe(true)
             expect(get(selectedCharID)).toBe(-1)
         } finally {
             await unmount(app as never)

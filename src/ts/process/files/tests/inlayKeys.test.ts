@@ -14,7 +14,6 @@ import {
     newBodyToken,
 } from '../inlayKeys'
 import {
-    indexedDbCreatableViolation,
     isWellFormedUtf16,
     nodeCreatableViolation,
     tauriCreatableViolation,
@@ -34,7 +33,6 @@ function expectUsableEverywhere(id: string) {
         expect(key.indexOf('/', 'inlays/'.length)).toBe(-1)
         expect(nodeCreatableViolation(key)).toBeNull()
         expect(tauriCreatableViolation(key)).toBeNull()
-        expect(indexedDbCreatableViolation(key)).toBeNull()
         expect(key.startsWith('assets/')).toBe(false)
     }
 }

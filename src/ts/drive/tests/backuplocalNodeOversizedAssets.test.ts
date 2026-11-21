@@ -43,9 +43,8 @@ vi.mock(import('../../platform'), () => ({
 
 vi.mock(import('../../storage/nodeBodyLimit'), () => ({
     NODE_BODY_LIMIT_BYTES: 1024 * 1024,
-    // A Node page whose server takes pieces holds an asset up to this; the browser limit sits between the two.
+    // A Node page whose server takes pieces holds an asset up to this.
     NODE_ASSET_LIMIT_BYTES: 8 * 1024 * 1024,
-    WEB_ASSET_LIMIT_BYTES: 2 * 1024 * 1024,
 }))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({

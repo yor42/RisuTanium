@@ -243,7 +243,6 @@ describe('getInlayDraftPreview', () => {
         const id = freshId()
         await setInlayAsset(id, asset(new Blob([new Uint8Array(4321)], { type: 'video/mp4' })))
         appStore.reads.length = 0
-        appStore.blobReads.length = 0
         appStore.urlRequests.length = 0
         const created = createdCount
 
@@ -251,7 +250,6 @@ describe('getInlayDraftPreview', () => {
 
         expect(preview).toEqual({ kind: 'file', name: 'clip.mp4', size: 4321 })
         expect(bodyReads(appStore)).toEqual([])
-        expect(appStore.blobReads).toEqual([])
         expect(appStore.urlRequests).toEqual([])
         expect(createdCount).toBe(created)
         expect(cachedInlayRender(id)).toBeNull()

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { warnOnReject } from "src/ts/warnOnReject";
     import { language } from "../../lang";
-    import { legacyEngineFields } from "../../ts/process/memory/memoryEngine";
+    import { chroMemoryOn, legacyEngineFields } from "../../ts/process/memory/memoryEngine";
     import { tokenizeAccurate } from "../../ts/tokenizer";
     import { getCurrentCharacter, type character, type groupChat } from "../../ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
@@ -1369,7 +1369,16 @@
             <Check bind:check={() => (DBState.db.characters[$selectedCharID] as character).escapeOutput ?? false, (v) => (DBState.db.characters[$selectedCharID] as character).escapeOutput = v} name={language.escapeOutput}/>
         </div>
 
-        {#if lv.supaModelType !== 'none' && lv.hypav2}
+        {#if chroMemoryOn(DBState.db)}
+            <Button
+                onclick={() => {
+                    $hypaV3ModalOpen = true
+                }}
+                className="mt-4"
+            >
+                {language.chroMemoryModal}
+            </Button>
+        {:else if lv.supaModelType !== 'none' && lv.hypav2}
             <Button
                 onclick={() => {
                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data ??= {
