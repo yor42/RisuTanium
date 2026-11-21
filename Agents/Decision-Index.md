@@ -2361,3 +2361,10 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3003](Maintainer-Context.md#mc-3003--438-pack-images-and-gradients-count-as-paint-2026-11-21) | #438 Pack images and gradients count as paint, 2026-11-21 |
 | [MC-3004](Maintainer-Context.md#mc-3004--438-non-core-scheme-fields-come-from-the-judged-base-2026-11-21) | #438 Non-core scheme fields come from the judged base, 2026-11-21 |
 | [MC-3005](Maintainer-Context.md#mc-3005--438-pack-canvas-parts-yield-to-the-users-background-bubbles-keep-fills-2026-11-21) | #438 Pack canvas parts yield to the user's background, bubbles keep fills, 2026-11-21 |
+| [MC-2858](Maintainer-Context.md#mc-2858--163-manual-clean-up-app-and-web-delete-at-once-node-keeps-its-age-rule-2026-11-21) | #163 manual clean-up: app and web delete at once, Node keeps its age rule, 2026-11-21 |
+| [MC-2859](Maintainer-Context.md#mc-2859--342-plain-http-node-the-confirm-is-the-no-other-tab-attestation-2026-11-21) | #342 plain-HTTP Node: the confirm is the no-other-tab attestation, 2026-11-21 |
+| [MC-2860](Maintainer-Context.md#mc-2860--165-store2-inlays-are-deleted-at-once-under-strict-checks-no-new-record-2026-11-21) | #165 store2 inlays are deleted at once under strict checks, no new record, 2026-11-21 |
+| [MC-2861](Maintainer-Context.md#mc-2861--163-165-and-342-ship-as-two-prs-2026-11-21) | #163, #165 and #342 ship as two PRs, 2026-11-21 |
+| [MC-2862](Maintainer-Context.md#mc-2862--manual-clean-up-refuses-after-a-boot-that-installed-the-profile-2026-11-21) | manual clean-up refuses after a boot that installed the profile, 2026-11-21 |
+| [MC-2863](Maintainer-Context.md#mc-2863--manual-clean-up-shows-size-unknown-when-size-cannot-be-measured-2026-11-21) | manual clean-up shows "size unknown" when size cannot be measured, 2026-11-21 |
+| [MC-2864](Maintainer-Context.md#mc-2864--the-drafted-clean-up-strings-are-accepted-2026-11-21) | the drafted clean-up strings are accepted, 2026-11-21 |

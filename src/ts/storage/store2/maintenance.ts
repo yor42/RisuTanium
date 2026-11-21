@@ -12,6 +12,7 @@ import { runAutoGc, type AutoGcFacts } from './gc/autoGc'
 import { installGcMeasure } from './gc/gcMeasure'
 import { buildNodeGcAge } from './gc/unitAge'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
+import { sizeAssets } from './sweep/assetSize'
 import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './sweep/run'
 
 /**
@@ -37,6 +38,11 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
  * - The step is registered as the startup clean-up when it starts, so a backup load that waits on the startup clean-up
  *   waits for this step to end and no longer; the registered promise always settles and never rejects.
  * - It shows nothing to the person: the asset sweep logs one line of counts and never an asset name.
+ *
+ * The person's own entry, `runManualCleanUp`, runs the same asset sweep on demand (a plan step, the confirm, then the delete
+ * step) and excludes this step: a manual run is refused `busy` while the step runs, and a step whose trigger fires while a
+ * manual run is in progress starts when that run ends, not at a fresh quiet trigger; every deleter in it checks its own stop
+ * facts again.
  *
  * A measurement build also installs the sweep dry run (`sweep/dryRunMeasure.ts`) on any store2 page; it deletes and writes nothing.
  * It installs the collector run (`gc/gcMeasure.ts`) too, which deletes only on an explicit `confirm: true` and refuses while this
@@ -89,6 +95,9 @@ export function formatSweepResult(result: AssetSweepResult): string {
     if (result.status === 'skipped') {
         return 'store2 asset sweep: status=skipped'
     }
+    if (result.status === 'planned') {
+        return `store2 asset sweep: status=planned phase=${result.phase ?? 'none'} candidates=${result.candidates} deletable=${result.deletable.length} later=${result.later}`
+    }
     if (result.status === 'refused') {
         const earlier = result.deleted === undefined ? '' : ` deleted=${result.deleted} failed=${result.failed ?? 0}`
         return `store2 asset sweep: status=refused reason=${result.reason}${earlier}`
@@ -109,12 +118,21 @@ async function runStore2AssetSweep(env: MaintenanceEnv, session: Store2Session, 
     const store = await env.store()
     // The clocks of a Node page are the unit pass's own: the server's and the page's, read together. Without the server's
     // guarded clock there is none, and the pass ends `no-server-time` before it reads anything.
-    const sampleClock = session.kind === 'node' ? buildNodeGcAge(store)?.sampleClock : undefined
+    const sampleClock = sweepClockOf(session, store)
     const result = await runAssetSweep({ session, store, pace: batchPaceOf(session.kind), sampleClock, ...live })
     console.info(formatSweepResult(result))
 }
 
 let stepActive = false
+/** A manual clean-up is in progress. */
+let manualActive = false
+/** The automatic step whose trigger fired during a manual run; started when that run ends. */
+let deferredStep: (() => void) | null = null
+
+/** The clocks of a Node page (the server's and the page's, read together); none on any other kind. */
+function sweepClockOf(session: Pick<Store2Session, 'kind'>, store: ByteStore): AssetSweepEnv['sampleClock'] {
+    return session.kind === 'node' ? buildNodeGcAge(store)?.sampleClock : undefined
+}
 
 /** Whether the boot that opened this session found the profile ready (row 5) instead of installing it. */
 export function bootDidNotInstall(session: Store2Session): boolean {
@@ -124,6 +142,10 @@ export function bootDidNotInstall(session: Store2Session): boolean {
 
 async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion, gcPageFacts?: AutoGcFacts, sweepFacts?: SweepPageFacts): Promise<void> {
     if (stepActive) {
+        return
+    }
+    if (manualActive) {
+        deferredStep = () => { void runStep(env, session, deletion, gcPageFacts, sweepFacts) }
         return
     }
     stepActive = true
@@ -170,7 +192,7 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
             // The sweep dry run and the collector run are development actions: this branch folds away in a normal build and
             // takes both modules with it.
             installSweepDryRunMeasure({ session, store: env.store })
-            installGcMeasure({ session, store: env.store, deletionActive: () => stepActive })
+            installGcMeasure({ session, store: env.store, deletionActive: () => stepActive || manualActive })
             installImportBench()
         }
         if (session === null || !bootDidNotInstall(session)) {
@@ -191,4 +213,128 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
 
 export function resetMaintenanceForTests(): void {
     stepActive = false
+    manualActive = false
+    deferredStep = null
+}
+
+/** What the manual clean-up shows the person: the progress popups (with the way to cancel) and the confirm. */
+export interface ManualCleanUpUi {
+    progress(step: 'measuring' | 'deleting', cancel: () => void): void
+    /** Resolves true on Yes, which is also the person's attestation that no other tab or device is open. */
+    confirm(plan: ManualCleanUpPlan): Promise<boolean>
+}
+
+export interface ManualCleanUpPlan {
+    kind: 'tauri' | 'indexeddb' | 'node'
+    /** Files the delete step can remove now. */
+    deletable: number
+    /** Their total stored size, or null when it could not be told. */
+    bytes: number | null
+    /** Files only a later clean-up can delete (Node's age rule). */
+    later: number
+}
+
+export type ManualCleanUpOutcome =
+    | { status: 'busy' }
+    | { status: 'unavailable' }
+    | { status: 'declined' }
+    | { status: 'nothing' }
+    | { status: 'wait' }
+    | { status: 'cancelled', deleted: number }
+    | { status: 'ended', result: AssetSweepResult, approved: number }
+
+/** The replaceable parts, for tests. */
+export interface ManualCleanUpSeams {
+    session?: () => Store2Session | null
+    store?: () => Promise<ByteStore>
+    sweepFacts?: SweepPageFacts
+    sizeOf?: (key: string) => Promise<number | null>
+}
+
+async function defaultManualStore(): Promise<ByteStore> {
+    return (await import('../store/appStore')).getAppStore()
+}
+
+function deletedOf(result: AssetSweepResult): number {
+    if (result.status === 'done') {
+        return result.deleted
+    }
+    return result.status === 'refused' ? result.deleted ?? 0 : 0
+}
+
+/**
+ * The person's "clean up unused files": a read-only plan, the confirm, then the delete of exactly the planned names. It
+ * returns `busy` while the automatic step runs and holds the automatic step off until it ends. The delete step starts only
+ * after `confirm` resolved true. Throws what the pass or the confirm throws; the exclusion is cleared either way.
+ */
+export async function runManualCleanUp(ui: ManualCleanUpUi, seams: ManualCleanUpSeams = {}): Promise<ManualCleanUpOutcome> {
+    if (stepActive || manualActive) {
+        return { status: 'busy' }
+    }
+    manualActive = true
+    try {
+        const session = (seams.session ?? getStore2BootSession)()
+        if (session === null || getPageStorageMode().kind !== 'store2' || session.backend === null || !bootDidNotInstall(session)
+            || (session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node')) {
+            return { status: 'unavailable' }
+        }
+        const kind = session.kind
+        const facts = seams.sweepFacts ?? await loadSweepFacts()
+        const store = await (seams.store ?? defaultManualStore)()
+        let cancelled = false
+        const cancel = (): void => { cancelled = true }
+        const shouldStop = (): boolean => facts.shouldStop() || cancelled
+        const sampleClock = sweepClockOf(session, store)
+        const pace = batchPaceOf(session.kind)
+        const round = (manual: NonNullable<AssetSweepEnv['manual']>): Promise<AssetSweepResult> =>
+            runAssetSweep({ session, store, pace, sampleClock, ...facts, shouldStop, manual })
+
+        ui.progress('measuring', cancel)
+        const plan = await round({ step: 'plan' })
+        console.info(formatSweepResult(plan))
+        if (plan.status !== 'planned') {
+            return cancelled ? { status: 'cancelled', deleted: 0 } : { status: 'ended', result: plan, approved: 0 }
+        }
+        if (cancelled) {
+            return { status: 'cancelled', deleted: 0 }
+        }
+        if (plan.phase === 'young') {
+            return { status: 'wait' }
+        }
+        if (plan.deletable.length === 0 && plan.later === 0) {
+            return { status: 'nothing' }
+        }
+        let bytes: number | null = null
+        if (plan.deletable.length > 0) {
+            const sized = await sizeAssets({ kind, store, names: plan.deletable, pace, shouldStop, sizeOf: seams.sizeOf })
+            if (sized.status === 'stopped') {
+                return cancelled ? { status: 'cancelled', deleted: 0 } : { status: 'busy' }
+            }
+            bytes = sized.bytes
+        }
+        // Invariant: no confirm is ever shown after a Cancel, whichever await the Cancel landed in.
+        if (cancelled) {
+            return { status: 'cancelled', deleted: 0 }
+        }
+        if (!await ui.confirm({ kind, deletable: plan.deletable.length, bytes, later: plan.later })) {
+            return { status: 'declined' }
+        }
+        ui.progress('deleting', cancel)
+        const result = await round({ step: 'delete', approved: new Set(plan.deletable) })
+        console.info(formatSweepResult(result))
+        const deleted = deletedOf(result)
+        if (cancelled && result.status !== 'planned' && !(result.status === 'done' && result.stopped === undefined)) {
+            return { status: 'cancelled', deleted }
+        }
+        // Another device's pass wrote the Node record between the plan and the Yes: nothing was deleted or written.
+        if (result.status === 'done' && result.phase === 'young' && deleted === 0) {
+            return { status: 'wait' }
+        }
+        return { status: 'ended', result, approved: plan.deletable.length }
+    } finally {
+        manualActive = false
+        const next = deferredStep
+        deferredStep = null
+        next?.()
+    }
 }
