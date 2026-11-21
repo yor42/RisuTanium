@@ -62,6 +62,7 @@ import { BUILTIN_PACKS, type BuiltinPack } from '../../ts/themePack/builtins'
 import { buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests } from '../../ts/themePack/apply'
 import { TOKEN_FILES, tokenFile } from '../../ts/themePack/tokens'
 import { judgeAreaSheet, judgePackSheets } from '../../ts/themePack/index'
+import { judgeSessionOverForTests } from '../../ts/themePack/judgeClient'
 import { declareSurface, installThemePackGate, resetThemePackGateForTests, syncThemePackMedia } from '../../ts/themePack/surfaceGate.svelte'
 
 // ---- the sources the base is compared against
@@ -446,7 +447,7 @@ describe('TP4: without a pack nothing is marked and the chat follows the scheme'
     test('an empty pack sheet, through the prepare step and the active-pack mapping, commits null', async () => {
         applyBuiltin(pack('builtin:origin-navy'))
         const empty: BuiltinPack = { id: 'builtin:empty', slug: 'empty', name: 'Empty', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: '/* nothing */' }
-        const prepared = await preparePackSheet({ kind: 'builtin', pack: empty }, async (sheets) => judgePackSheets(sheets), () => true)
+        const prepared = await preparePackSheet({ kind: 'builtin', pack: empty }, judgeSessionOverForTests(async (sheets) => judgePackSheets(sheets)), () => true)
         expect('stale' in prepared).toBe(false)
         if ('stale' in prepared || !prepared.ok) throw new Error('the empty sheet was not prepared')
         expect(prepared.text).toBeNull()

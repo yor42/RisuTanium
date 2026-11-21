@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { injectAppStore, type AppStoreKind } from 'src/ts/storage/store/appStore'
-import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { selectedStoreIsIndexedDb, storeAssetLimitBytes } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { assetByteLimit, charxLimits } from 'src/ts/process/processzip'
@@ -56,7 +56,7 @@ beforeEach(() => {
 })
 
 describe('guard: selectedStoreIsIndexedDb answers for the selected store kind only', () => {
-    test.each([['indexeddb', true], ['opfs-transitional', false], ['tauri', false], ['node', false]] as const)('the %s store answers %s', (kind, expected) => {
+    test.each([['indexeddb', true], ['tauri', false], ['node', false]] as const)('the %s store answers %s', (kind, expected) => {
         select(kind)
         expect(selectedStoreIsIndexedDb()).toBe(expected)
     })
@@ -100,13 +100,6 @@ describe('the asset limit follows the selected store', () => {
         select('indexeddb')
         expect(storeAssetLimitBytes()).toBe(NODE_ASSET_LIMIT_BYTES)
         expect(assetByteLimit()).toBe(GIB)
-    })
-
-    // Guard: the transitional OPFS store still holds a value whole, so it keeps 200 MiB.
-    test('the opfs-transitional store keeps 200 MiB', () => {
-        select('opfs-transitional')
-        expect(storeAssetLimitBytes()).toBe(WEB_ASSET_LIMIT_BYTES)
-        expect(assetByteLimit()).toBe(200 * MIB)
     })
 
     // The Node platform flag is on in this file, so a browser store reading 200 MiB shows the flag does not decide.

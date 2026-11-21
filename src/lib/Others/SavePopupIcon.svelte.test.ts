@@ -10,8 +10,7 @@
  * directory).
  *
  * It also says, in its own words for each reason the save loop can stop for,
- * why saving stopped, and says that a page which runs from OPFS this time
- * does not save at all.
+ * why saving stopped, and says that a read-only page does not save at all.
  *
  * MOCKED: `src/ts/globalApi.svelte` (`saving` and the stop detail) and a
  * reactive `stores.svelte` stand-in. `src/lang` is real (a plain data module,
@@ -60,17 +59,6 @@ vi.mock(
         }) as unknown as typeof import('src/ts/alert'),
 )
 
-const storeKind = vi.hoisted(() => ({ opfs: false, throws: false }))
-
-vi.mock(import('src/ts/storage/store/appStore'), () => ({
-    pageStoreIsOpfsTransitional: async () => {
-        if (storeKind.throws) {
-            throw new Error('the store could not be selected')
-        }
-        return storeKind.opfs
-    },
-}) as unknown as typeof import('src/ts/storage/store/appStore'))
-
 //#endregion
 
 import { DBState, savingStoppedReason as savingStoppedReasonStore, peerWaitingStatus as peerWaitingStatusStore, frozenSaveKeysStore as frozenSaveKeysStoreMock } from '../../ts/stores.svelte'
@@ -100,8 +88,6 @@ beforeEach(() => {
     alertMdSpy.mockReset()
     alertNormalSpy.mockReset()
     stopDetail.value = ''
-    storeKind.opfs = false
-    storeKind.throws = false
     resetPageStorageModeForTests()
 })
 
@@ -143,9 +129,8 @@ describe('SavePopupIcon -- the waiting line of a fast-forward that waits for a r
 })
 
 describe('SavePopupIcon -- the read-only page and the stop reasons of the block store', () => {
-    test('a page that runs from OPFS this time shows a button that says it does not save', async () => {
-        storeKind.opfs = true
-        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
+    test('a read-only page shows a button that says the page does not save', async () => {
+        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
         const { target, app } = mountIcon()
         flushSync()
 
@@ -154,53 +139,23 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
         button!.click()
         await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
 
-        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.opfsReadOnlyNotice)
+        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.store2Boot.readOnlyRefusal)
 
         await teardown(target, app)
     })
 
     test('a page whose mode becomes read-only after the icon was created shows the button then', async () => {
-        storeKind.opfs = true
         const { target, app } = mountIcon()
         flushSync()
         expect(target.querySelector('button')).toBeNull()
 
-        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
+        setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
         flushSync()
 
         const button = target.querySelector('button')
         expect(button).not.toBeNull()
         button!.click()
         await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
-        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.opfsReadOnlyNotice)
-
-        await teardown(target, app)
-    })
-
-    test('reproducer: a page the store2 boot opened read-only on a store that is not OPFS gets the neutral words, not the OPFS ones', async () => {
-        storeKind.opfs = false
-        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
-        const { target, app } = mountIcon()
-        flushSync()
-
-        target.querySelector('button')!.click()
-        await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
-
-        expect(alertNormalSpy.mock.calls[0][0]).toBe(language.store2Boot.readOnlyRefusal)
-        expect(alertNormalSpy.mock.calls[0][0]).not.toBe(language.opfsReadOnlyNotice)
-
-        await teardown(target, app)
-    })
-
-    test('reproducer: a store selection that cannot be had is not OPFS, so the neutral words are used', async () => {
-        storeKind.throws = true
-        setPageStorageMode({ kind: 'read-only', reason: 'server-capability' })
-        const { target, app } = mountIcon()
-        flushSync()
-
-        target.querySelector('button')!.click()
-        await vi.waitFor(() => expect(alertNormalSpy).toHaveBeenCalledTimes(1))
-
         expect(alertNormalSpy.mock.calls[0][0]).toBe(language.store2Boot.readOnlyRefusal)
 
         await teardown(target, app)

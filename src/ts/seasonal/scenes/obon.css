@@ -1,0 +1,132 @@
+/*
+  Obon scene styles. Every class is rt-ob-; no shared tokens are defined. Default rules = start pose; .rt-ob-final = final
+  pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root),
+  so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-ob-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  --rt-ob-water: rgb(255 209 102 / 0.9);
+}
+.rt-ob-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, rgb(22 26 78 / 0.6) 0%, rgb(30 28 84 / 0.32) calc(var(--rt-ob-fade, 40px) * 0.55), rgb(30 28 84 / 0) var(--rt-ob-fade, 40px));
+  /* Static feathered mask (no filter): soft left, right and bottom edges, and a soft hole over the mark slot
+     (--rt-ob-mx/-my from the scene) so the wash never tints the lantern or a running status mark. */
+  --rt-ob-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 56px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%),
+    radial-gradient(circle at var(--rt-ob-mx, -100px) var(--rt-ob-my, -100px), transparent 0 var(--rt-ob-h0, 15px), #000 var(--rt-ob-h1, 23px));
+  -webkit-mask-image: var(--rt-ob-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-ob-mask);
+  mask-composite: intersect;
+}
+.rt-ob-burst {
+  position: absolute;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+/* Burst colours (dark tone), one per ring; the rings and the spark paint with currentColor. */
+.rt-ob-burst-1 { color: #ffd166; }
+.rt-ob-burst-2 { color: #ff9ab5; }
+.rt-ob-burst-3 { color: #8fe3ff; }
+.rt-ob-burst-4 { color: #ffb38a; }
+.rt-ob-burst-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-ob-ring-out, .rt-ob-ring-in { fill: none; stroke: currentColor; stroke-linecap: round; }
+.rt-ob-ring-in { transform-box: view-box; transform-origin: 50% 50%; opacity: 0.85; }
+.rt-ob-spark { fill: currentColor; opacity: 0.9; }
+.rt-ob-ripple {
+  position: absolute;
+  height: 1.6px;
+  border-radius: 1px;
+  opacity: 0;
+  background: linear-gradient(to right, transparent, var(--rt-ob-water) 30%, var(--rt-ob-water) 70%, transparent);
+  transform-origin: 50% 50%;
+}
+.rt-ob-sky.rt-ob-final { display: none; }
+
+/* Light tone: a pale twilight wash; burst colours from the light palette; deeper water. */
+[data-rt-sw-tone="light"] .rt-ob-wash {
+  background: linear-gradient(180deg, rgb(49 46 129 / 0.17) 0%, rgb(67 56 202 / 0.08) calc(var(--rt-ob-fade, 40px) * 0.55), rgb(67 56 202 / 0) var(--rt-ob-fade, 40px));
+}
+[data-rt-sw-tone="light"] .rt-ob-sky { --rt-ob-water: rgb(201 128 30 / 0.85); }
+[data-rt-sw-tone="light"] .rt-ob-burst-1 { color: #d9480f; }
+[data-rt-sw-tone="light"] .rt-ob-burst-2 { color: #c2255c; }
+[data-rt-sw-tone="light"] .rt-ob-burst-3 { color: #1971c2; }
+[data-rt-sw-tone="light"] .rt-ob-burst-4 { color: #e8590c; }
+
+/* ---------- Mark slot: tōrō lantern ---------- */
+.rt-ob-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  --rt-ob-every: #ffffff;
+  --rt-ob-edge: #d07a35;
+  --rt-ob-rail: #a86c3c;
+  --rt-ob-lit: #fff3d1;
+  --rt-ob-flame: #ff9b3d;
+  --rt-ob-core: #fffbe8;
+  --rt-ob-dash: #ffd166;
+}
+[data-rt-sw-tone="light"] .rt-ob-mark {
+  --rt-ob-every: #0f172a;
+  --rt-ob-edge: #b45f1e;
+  --rt-ob-rail: #7a4a26;
+  --rt-ob-lit: #fff1cc;
+  --rt-ob-flame: #f08a24;
+  --rt-ob-dash: #d9902a;
+}
+.rt-ob-every { transform-box: view-box; transform-origin: 50% 45.2%; }   /* the centroid (0,0) */
+.rt-ob-ink { fill: var(--rt-ob-every); }
+.rt-ob-edge { fill: none; stroke: var(--rt-ob-edge); stroke-width: 3.5; stroke-linejoin: round; }
+.rt-ob-ribs { fill: none; stroke: var(--rt-ob-edge); stroke-width: 2.4; stroke-linecap: round; opacity: 0.7; }
+.rt-ob-lit { fill: var(--rt-ob-lit); opacity: 0.92; }
+.rt-ob-flame-body { fill: var(--rt-ob-flame); }
+.rt-ob-flame-core { fill: var(--rt-ob-core); }
+.rt-ob-rail { fill: var(--rt-ob-rail); }
+.rt-ob-dash { fill: none; stroke: var(--rt-ob-dash); stroke-linecap: round; transform-box: fill-box; transform-origin: 50% 50%; }
+.rt-ob-dash-1 { stroke-width: 5; }
+.rt-ob-dash-2 { stroke-width: 4; }
+.rt-ob-flame { transform-box: fill-box; transform-origin: 50% 40%; }
+
+/* Start pose (before play): only the everyday mark shows. */
+.rt-ob-lantern, .rt-ob-paper-b, .rt-ob-flame, .rt-ob-halo, .rt-ob-dash, .rt-ob-rail { opacity: 0; }
+
+.rt-ob-mark.rt-ob-final .rt-ob-every { opacity: 0; }
+.rt-ob-mark.rt-ob-final .rt-ob-lantern,
+.rt-ob-mark.rt-ob-final .rt-ob-paper-b,
+.rt-ob-mark.rt-ob-final .rt-ob-flame,
+.rt-ob-mark.rt-ob-final .rt-ob-rail { opacity: 1; transform: none; }
+.rt-ob-mark.rt-ob-final .rt-ob-halo { opacity: 0.85; }
+.rt-ob-mark.rt-ob-final .rt-ob-dash-1 { opacity: 0.85; transform: none; }
+.rt-ob-mark.rt-ob-final .rt-ob-dash-2 { opacity: 0.5; transform: none; }
+
+/* ---------- Word: warm lantern-lit edge on "Tanium" (a ::after copy; only its opacity animates) ---------- */
+.rt-ob-tan { position: relative; }
+.rt-ob-tan::after {
+  content: attr(data-rt-ob-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #ffe6c7;
+  -webkit-text-fill-color: #ffe6c7;
+  background: none;
+  text-shadow: 0 0 0.08em rgb(255 209 102 / 0.9), 0 0.04em 0.3em rgb(255 160 80 / 0.7);
+  opacity: 0;
+  pointer-events: none;
+}
+[data-rt-sw-tone="light"] .rt-ob-tan::after {
+  /* Light tone: the warm brown alone; the amber under-glow read as a smudge on white. */
+  color: #4a230b;
+  -webkit-text-fill-color: #4a230b;
+  text-shadow: none;
+}
+.rt-ob-word.rt-ob-final .rt-ob-tan::after { opacity: 1; }

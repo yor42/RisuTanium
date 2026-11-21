@@ -1,0 +1,202 @@
+/*
+  Seasonal scene: starFestival. Every class is rt-tnb-*. Default rules = start pose; .rt-tnb-final = final pose.
+  Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root), so every
+  light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-tnb-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+.rt-tnb-night {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* Static stars painted into the wash (no animated nodes). */
+  background:
+    radial-gradient(circle at 18% 22%, rgb(255 255 255 / 0.75) 0 0.9px, transparent 1.5px),
+    radial-gradient(circle at 47% 9%, rgb(255 255 255 / 0.6) 0 0.8px, transparent 1.4px),
+    radial-gradient(circle at 71% 30%, rgb(255 255 255 / 0.7) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 88% 12%, rgb(255 255 255 / 0.55) 0 0.8px, transparent 1.4px),
+    radial-gradient(circle at 62% 58%, rgb(255 255 255 / 0.45) 0 0.7px, transparent 1.3px),
+    radial-gradient(circle at 33% 64%, rgb(255 255 255 / 0.4) 0 0.7px, transparent 1.3px),
+    linear-gradient(180deg, rgb(10 12 58 / 0.46) 0%, rgb(30 27 92 / 0.26) 64%, rgb(30 27 92 / 0) 100%);
+  --rt-tnb-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 56px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%),
+    radial-gradient(circle at var(--rt-tnb-mx, -100px) var(--rt-tnb-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: var(--rt-tnb-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-tnb-mask);
+  mask-composite: intersect;
+}
+.rt-tnb-bridge { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.rt-tnb-r0 { stop-color: #38d9ff; }
+.rt-tnb-r1 { stop-color: #ffb38a; }
+.rt-tnb-band {
+  fill: none;
+  stroke: #8fa8ff;           /* fallback; the scene sets the per-build river gradient inline */
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 100;
+  opacity: 0.32;
+}
+.rt-tnb-dust {
+  fill: none;
+  stroke: #f1f3ff;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 3.1;
+  opacity: 0;
+}
+.rt-tnb-magpie { position: absolute; width: 9px; height: 7px; opacity: 0; will-change: transform, opacity; }
+.rt-tnb-magpiesvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tnb-magpiesvg path { fill: none; stroke: #eef2ff; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.rt-tnb-star { position: absolute; width: 15px; height: 15px; opacity: 0; will-change: transform, opacity; border-radius: 50%; }
+.rt-tnb-starsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tnb-star-altair { background: radial-gradient(circle, rgb(56 217 255 / 0.55) 0 20%, rgb(56 217 255 / 0) 70%); }
+.rt-tnb-star-vega { background: radial-gradient(circle, rgb(255 179 138 / 0.55) 0 20%, rgb(255 179 138 / 0) 70%); }
+.rt-tnb-star-altair .rt-tnb-spk { fill: #38d9ff; }
+.rt-tnb-star-vega .rt-tnb-spk { fill: #ffb38a; }
+.rt-tnb-spk-core { fill: #fff; }
+.rt-tnb-flash {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  opacity: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.85) 0 8%, rgb(186 200 255 / 0.35) 30%, rgb(186 200 255 / 0) 70%);
+}
+
+.rt-tnb-sky.rt-tnb-final { display: none; }
+
+/* Light tone: a lavender dusk instead of night, deeper river and star colours, dark magpies and dust. */
+[data-rt-sw-tone="light"] .rt-tnb-night {
+  background:
+    radial-gradient(circle at 18% 22%, rgb(67 56 202 / 0.55) 0 0.9px, transparent 1.5px),
+    radial-gradient(circle at 47% 9%, rgb(67 56 202 / 0.45) 0 0.8px, transparent 1.4px),
+    radial-gradient(circle at 71% 30%, rgb(67 56 202 / 0.5) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 88% 12%, rgb(67 56 202 / 0.4) 0 0.8px, transparent 1.4px),
+    linear-gradient(180deg, rgb(99 102 241 / 0.20) 0%, rgb(129 140 248 / 0.10) 64%, rgb(129 140 248 / 0) 100%);
+}
+[data-rt-sw-tone="light"] .rt-tnb-r0 { stop-color: #0891b2; }
+[data-rt-sw-tone="light"] .rt-tnb-r1 { stop-color: #ea580c; }
+[data-rt-sw-tone="light"] .rt-tnb-band { opacity: 0.28; }
+[data-rt-sw-tone="light"] .rt-tnb-dust { stroke: #4338ca; }
+[data-rt-sw-tone="light"] .rt-tnb-magpiesvg path { stroke: #1e1b4b; }
+[data-rt-sw-tone="light"] .rt-tnb-star-altair .rt-tnb-spk { fill: #0891b2; }
+[data-rt-sw-tone="light"] .rt-tnb-star-vega .rt-tnb-spk { fill: #ea580c; }
+[data-rt-sw-tone="light"] .rt-tnb-flash {
+  background: radial-gradient(circle, rgb(255 255 255 / 0.95) 0 8%, rgb(129 140 248 / 0.35) 30%, rgb(129 140 248 / 0) 70%);
+}
+
+/* ---------- Mark slot ---------- */
+.rt-tnb-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-tnb-mark g, .rt-tnb-mark path { transform-box: view-box; transform-origin: 0 0; }
+.rt-tnb-ink { fill: #fff; }
+.rt-tnb-prism, .rt-tnb-milky { opacity: 0; }
+.rt-tnb-p0 { stop-color: rgb(56 217 255 / 0.62); }
+.rt-tnb-p1 { stop-color: rgb(255 179 138 / 0.62); }
+.rt-tnb-prismfill { stroke: none; }
+.rt-tnb-holeedge { fill: none; stroke: rgb(226 233 255 / 0.9); stroke-width: 3; stroke-linejoin: round; }
+.rt-tnb-mid { fill: #fff; }
+.rt-tnb-milkyband { fill: none; stroke: rgb(214 222 255 / 0.22); stroke-width: 16; stroke-linecap: round; }
+.rt-tnb-milkydust { fill: none; stroke: rgb(240 244 255 / 0.85); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 0.1 6; }
+.rt-tnb-dash { fill: none; stroke: #eef2ff; stroke-width: 5.2; stroke-linejoin: round; stroke-dasharray: 13 6; }
+.rt-tnb-reveal { fill: none; stroke: #fff; stroke-width: 10; stroke-dasharray: 300 300; stroke-dashoffset: 300; }
+.rt-tnb-vstar { opacity: 0; }
+.rt-tnb-vcore { fill: #fff; }
+.rt-tnb-deneb .rt-tnb-vspk { fill: #e7f0ff; }
+.rt-tnb-vega .rt-tnb-vspk { fill: #ffb38a; }
+.rt-tnb-altair .rt-tnb-vspk { fill: #38d9ff; }
+
+[data-rt-sw-tone="light"] .rt-tnb-ink { fill: #0f172a; }
+[data-rt-sw-tone="light"] .rt-tnb-p0 { stop-color: rgb(8 145 178 / 0.42); }
+[data-rt-sw-tone="light"] .rt-tnb-p1 { stop-color: rgb(234 88 12 / 0.42); }
+[data-rt-sw-tone="light"] .rt-tnb-holeedge { stroke: rgb(55 48 163 / 0.85); }
+[data-rt-sw-tone="light"] .rt-tnb-mid { fill: #0f172a; }
+[data-rt-sw-tone="light"] .rt-tnb-milkyband { stroke: rgb(99 102 241 / 0.18); }
+[data-rt-sw-tone="light"] .rt-tnb-milkydust { stroke: rgb(67 56 202 / 0.75); }
+[data-rt-sw-tone="light"] .rt-tnb-dash { stroke: #312e81; }
+[data-rt-sw-tone="light"] .rt-tnb-vspk { stroke: #1e1b4b; stroke-width: 1.2; stroke-linejoin: round; }
+[data-rt-sw-tone="light"] .rt-tnb-deneb .rt-tnb-vspk { fill: #a5b4fc; }
+[data-rt-sw-tone="light"] .rt-tnb-vega .rt-tnb-vspk { fill: #f97316; }
+[data-rt-sw-tone="light"] .rt-tnb-altair .rt-tnb-vspk { fill: #06b6d4; }
+
+.rt-tnb-mark.rt-tnb-final .rt-tnb-every { opacity: 0; }
+.rt-tnb-mark.rt-tnb-final .rt-tnb-prism,
+.rt-tnb-mark.rt-tnb-final .rt-tnb-milky,
+.rt-tnb-mark.rt-tnb-final .rt-tnb-vstar { opacity: 1; transform: none; }
+.rt-tnb-mark.rt-tnb-final .rt-tnb-reveal { stroke-dashoffset: 0; }
+
+/* ---------- Word ---------- */
+.rt-tnb-word { position: relative; }
+/* Altair and Vega colour copies on ::after; only their opacity animates. */
+.rt-tnb-risu, .rt-tnb-tan { position: relative; }
+.rt-tnb-risu::after, .rt-tnb-tan::after {
+  content: attr(data-rt-tnb-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.rt-tnb-risu::after {
+  background-image: linear-gradient(to bottom right, #38d9ff, #8ff0ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.rt-tnb-tan::after {
+  background: none;
+  color: #ffe9d6;
+  -webkit-text-fill-color: #ffe9d6;
+  text-shadow: 0 0 0.24em rgb(255 179 138 / 0.35);
+}
+[data-rt-sw-tone="light"] .rt-tnb-risu::after { background-image: linear-gradient(to bottom right, #0e7490, #0369a1); }
+[data-rt-sw-tone="light"] .rt-tnb-tan::after { color: #b45309; -webkit-text-fill-color: #b45309; text-shadow: none; }
+.rt-tnb-word.rt-tnb-final .rt-tnb-risu::after,
+.rt-tnb-word.rt-tnb-final .rt-tnb-tan::after { opacity: 1; }
+
+.rt-tnb-arc {
+  position: absolute;
+  top: -0.5em;
+  height: 0.62em;
+  pointer-events: none;
+  z-index: 2;
+}
+.rt-tnb-arcsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tnb-arcline {
+  fill: none;
+  stroke: #c9d6ff;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 100;
+  opacity: 0;
+}
+.rt-tnb-arcstar { opacity: 0; }
+.rt-tnb-arcstar-a path { fill: #38d9ff; }
+.rt-tnb-arcstar-v path { fill: #ffb38a; }
+[data-rt-sw-tone="light"] .rt-tnb-arcline { stroke: #4338ca; }
+[data-rt-sw-tone="light"] .rt-tnb-arcstar-a path { fill: #0891b2; }
+[data-rt-sw-tone="light"] .rt-tnb-arcstar-v path { fill: #ea580c; }
+.rt-tnb-word.rt-tnb-final .rt-tnb-arcline { opacity: 1; stroke-dashoffset: 0; }
+.rt-tnb-word.rt-tnb-final .rt-tnb-arcstar { opacity: 1; }
+
+/* Tanzaku (ja): a tiny wish strip hanging from the arc, 0.15em x 0.405em. */
+.rt-tnb-tanzaku { position: absolute; width: 0.15em; height: 0.405em; pointer-events: none; z-index: 2; }
+.rt-tnb-tanzaku-swing { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 50% 0; }
+.rt-tnb-tanzakusvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tnb-string { fill: none; stroke: #c9d6ff; stroke-width: 1; }
+.rt-tnb-paper { fill: #ff8fab; stroke: #ffe3ea; stroke-width: 0.8; }
+.rt-tnb-wish { fill: none; stroke: #7a1f3d; stroke-width: 1.2; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-tnb-string { stroke: #4338ca; }
+[data-rt-sw-tone="light"] .rt-tnb-paper { fill: #f06595; stroke: #a61e4d; }
+[data-rt-sw-tone="light"] .rt-tnb-wish { stroke: #fff; }
+.rt-tnb-word.rt-tnb-final .rt-tnb-tanzaku-swing { opacity: 1; transform: none; }

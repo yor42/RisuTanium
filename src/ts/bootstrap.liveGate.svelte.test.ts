@@ -168,12 +168,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
-    takeStorageFallbackNotice: () => null,
-}))
-
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         staleAccountProfile: false,
@@ -287,6 +281,12 @@ async function settle(): Promise<void> {
 }
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()

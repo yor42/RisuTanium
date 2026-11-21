@@ -3,19 +3,24 @@
 // style element before `#customcss`. Nothing here writes a persisted value or decides when to run; the driver does.
 //
 // Judged is applied: the text that reaches the element is the judged canonical text, except that each resource span is
-// replaced by a blob URL. The element is created `media="not all"` before insertion and registered with the surface gate,
-// which alone switches it on; this module never writes `all` and never touches `disabled`.
+// replaced by a blob URL. The shape variant (the allowlisted subset, judged again) is applied the same way, so it too is the
+// judge's own canonical text; when that judgement fails, shape mode applies no sheet. The element is created `media="not all"`
+// before insertion and registered with the surface gate, which alone switches it on; this module never writes `all` and
+// never touches `disabled`.
 import { sha256Hex } from '../assetHash'
 import { rangeSourceFrom } from '../drive/rtb/rangeSource'
 import { getAppStore } from '../storage/store/appStore'
+import type { ColorScheme } from '../gui/colorscheme'
 import type { SchemeTone } from '../gui/surfaceTone'
 import type { BuiltinPack } from './builtins'
 import type { AreaSheetJudgement } from './index'
-import { intakePack, readVerifiedFile, type IntakeRefusal, type PackJudge } from './intake'
-import { readJudgement } from './judgeClient'
+import { intakePack, readVerifiedFile, type IntakeRefusal } from './intake'
+import { readJudgement, type JudgeJob, type JudgeResults, type JudgeSession } from './judgeClient'
 import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
+import { packDefaultScheme } from './packColours'
 import { PACK_ARCHIVE_KEY } from './packRefs'
-import { registerThemePackElement, syncThemePackMedia } from './surfaceGate.svelte'
+import { shapeOnlySheet } from './shapeMode'
+import { registerThemePackElement, setThemePackElementBase, syncThemePackMedia } from './surfaceGate.svelte'
 
 /** What a minted object URL must look like before it is written into a sheet: no quote, backslash, paren or space. */
 export const BLOB_URL_PATTERN = /^blob:[A-Za-z0-9:/._\-\[\]]+$/
@@ -23,11 +28,12 @@ export const BLOB_URL_PATTERN = /^blob:[A-Za-z0-9:/._\-\[\]]+$/
 export type BrokenReason = 'files' | 'refused' | 'unreadable' | 'couldNotCheck'
 export type ApplySource = { kind: 'builtin'; pack: BuiltinPack } | { kind: 'archive'; key: string }
 export type Prepared =
-    | { ok: true; text: string | null; blobs: readonly string[]; skippedAreas: readonly string[]; base: SchemeTone }
+    | { ok: true; text: string | null; blobs: readonly string[]; skippedAreas: readonly string[]; base: SchemeTone; shapeText: string | null; defaultScheme: ColorScheme | null }
     | { ok: false; reason: BrokenReason; refusals?: readonly IntakeRefusal[] }
 type Stale = { ok: false; stale: true }
 
 const STALE: Stale = { ok: false, stale: true }
+
 const ARCHIVE_PREFIX_LENGTH = 'assets/tp-'.length
 const ARCHIVE_SUFFIX_LENGTH = '.risutheme'.length
 
@@ -35,6 +41,9 @@ interface CurrentElement {
     readonly el: HTMLStyleElement
     readonly unregister: () => void
     readonly blobs: readonly string[]
+    readonly text: string
+    readonly shapeText: string | null
+    readonly base: SchemeTone
 }
 
 let current: CurrentElement | null = null
@@ -80,34 +89,99 @@ function textOrNull(text: string): string | null {
     return /^\s*$/.test(text) ? null : text
 }
 
+const LIGHT_LABEL = 'chat#light'
+const SHAPE_LABEL = 'chat#shape'
+
 /**
- * The base the pack sits on. A light-only pack gets the light base only when the light base placed before the pack's
- * canonical sheet passes the same judgement: the tokens the judge never reads then take light values only for a pack whose
- * judged colours are compatible with them. Any other label, a throw, a refusal or an unanswered judgement keeps the dark
- * base. The prefix goes first so the pack's own values are the later ones, as in the applied cascade.
+ * The text shape mode would judge, or null when it is not judged: a sheet the allowlist leaves whole applies as it is, and
+ * one it leaves empty applies nothing.
  */
-async function chooseBase(modes: readonly string[], chat: AreaSheetJudgement, judge: PackJudge, isCurrent: () => boolean): Promise<SchemeTone | Stale> {
-    if (!wantsLightBase(modes)) {
-        return 'dark'
+function shapeJobText(chat: AreaSheetJudgement): string | null {
+    const shapeSource = shapeOnlySheet(chat.canonical)
+    return shapeSource === chat.canonical || /^\s*$/.test(shapeSource) ? null : shapeSource
+}
+
+/**
+ * Judges the variants of the chat sheet in one request: the light base proof, when the pack is labelled light, and the shape
+ * subset, when shape mode has one to judge. A rejected request, like a missing or refused verdict, is fail-closed: the dark
+ * base and no shape text. `null` verdicts are what the callers read as that.
+ */
+async function judgeVariants(modes: readonly string[], chat: AreaSheetJudgement, session: JudgeSession, isCurrent: () => boolean): Promise<{ light: AreaSheetJudgement | null; shape: AreaSheetJudgement | null } | Stale> {
+    const jobs: JudgeJob[] = []
+    if (wantsLightBase(modes)) {
+        jobs.push({ label: LIGHT_LABEL, area: 'chat', text: `${LIGHT_BASE_JUDGE_PREFIX}\n${chat.canonical}` })
     }
-    let judged: Awaited<ReturnType<PackJudge>> | null = null
+    const shapeSource = shapeJobText(chat)
+    if (shapeSource !== null) {
+        jobs.push({ label: SHAPE_LABEL, area: 'chat', text: shapeSource })
+    }
+    if (jobs.length === 0) {
+        return { light: null, shape: null }
+    }
+    let results: JudgeResults | null = null
     try {
-        judged = await judge({ chat: `${LIGHT_BASE_JUDGE_PREFIX}\n${chat.canonical}` })
+        results = await session.jobs(jobs)
     } catch (error) {
         if (import.meta.env.DEV) {
-            console.error('theme pack light base judge failed', error)
+            console.error('theme pack variant judge failed', error)
         }
     }
     if (!isCurrent()) {
         return STALE
     }
-    return judged?.areas?.chat?.result?.ok === true ? 'light' : 'dark'
+    const verdictOf = (label: string): AreaSheetJudgement | null => results !== null && Object.hasOwn(results, label) ? results[label] : null
+    return { light: verdictOf(LIGHT_LABEL), shape: verdictOf(SHAPE_LABEL) }
 }
 
-async function prepareBuiltin(pack: BuiltinPack, judge: PackJudge, isCurrent: () => boolean): Promise<Prepared | Stale> {
-    let judged: Awaited<ReturnType<PackJudge>> | null = null
+/**
+ * The base the pack sits on. A light-only pack gets the light base only when the light base placed before the pack's
+ * canonical sheet passes the same judgement: the tokens the judge never reads then take light values only for a pack whose
+ * judged colours are compatible with them. Any other label, a refusal or an unanswered judgement keeps the dark base. The
+ * prefix goes first so the pack's own values are the later ones, as in the applied cascade.
+ */
+function baseOf(light: AreaSheetJudgement | null): SchemeTone {
+    return light?.result?.ok === true ? 'light' : 'dark'
+}
+
+/**
+ * The text shape mode applies. The allowlisted subset of the judged sheet is itself judged, and its own canonical text
+ * (with the same blob substitution) is what applies, so judged is applied for this variant too. A refused or unanswered
+ * judgement, or a span naming a target with no minted URL, gives null: shape mode then applies no sheet.
+ */
+function prepareShapeText(chat: AreaSheetJudgement, text: string, urlOfTarget: (raw: string) => string | undefined, shape: AreaSheetJudgement | null): string | null {
+    const shapeSource = shapeOnlySheet(chat.canonical)
+    if (shapeSource === chat.canonical) {
+        return textOrNull(text)
+    }
+    if (/^\s*$/.test(shapeSource)) {
+        return null
+    }
+    if (shape?.result?.ok !== true) {
+        return null
+    }
     try {
-        judged = await judge({ chat: pack.chatCss })
+        let missing = false
+        const built = buildAppliedText(shape, (raw) => {
+            const url = urlOfTarget(raw)
+            if (url === undefined) {
+                missing = true
+                return ''
+            }
+            return url
+        })
+        return missing ? null : textOrNull(built)
+    } catch (error) {
+        if (import.meta.env.DEV) {
+            console.error('theme pack shape text failed', error)
+        }
+        return null
+    }
+}
+
+async function prepareBuiltin(pack: BuiltinPack, session: JudgeSession, isCurrent: () => boolean): Promise<Prepared | Stale> {
+    let judged: Awaited<ReturnType<JudgeSession['judge']>> | null = null
+    try {
+        judged = await session.judge({ chat: pack.chatCss })
     } catch (error) {
         if (import.meta.env.DEV) {
             console.error('theme pack judge failed', error)
@@ -127,14 +201,16 @@ async function prepareBuiltin(pack: BuiltinPack, judge: PackJudge, isCurrent: ()
         return failure('refused')
     }
     const text = buildAppliedText(chat, () => '')
-    const base = await chooseBase(pack.modes, chat, judge, isCurrent)
-    if (typeof base !== 'string') {
-        return base
+    const variants = await judgeVariants(pack.modes, chat, session, isCurrent)
+    if ('stale' in variants) {
+        return variants
     }
-    return { ok: true, text: textOrNull(text), blobs: [], skippedAreas: [], base }
+    const base = baseOf(variants.light)
+    const shapeText = prepareShapeText(chat, text, () => '', variants.shape)
+    return { ok: true, text: textOrNull(text), blobs: [], skippedAreas: [], base, shapeText, defaultScheme: packDefaultScheme(chat.canonical, base) }
 }
 
-async function prepareArchive(key: string, judge: PackJudge, isCurrent: () => boolean, minted: string[]): Promise<Prepared | Stale> {
+async function prepareArchive(key: string, session: JudgeSession, isCurrent: () => boolean, minted: string[]): Promise<Prepared | Stale> {
     if (!PACK_ARCHIVE_KEY.test(key)) {
         return failure('unreadable')
     }
@@ -167,7 +243,7 @@ async function prepareArchive(key: string, judge: PackJudge, isCurrent: () => bo
 
     const stored = bytes
     const source = rangeSourceFrom({ size: stored.length, read: async (start, end) => stored.subarray(start, end) })
-    const intake = await intakePack(source, judge)
+    const intake = await intakePack(source, session.judge)
     if (!isCurrent()) {
         return STALE
     }
@@ -198,11 +274,13 @@ async function prepareArchive(key: string, judge: PackJudge, isCurrent: () => bo
         urlOfRaw.set(span.raw, url)
     }
     const text = buildAppliedText(chat, (raw) => urlOfRaw.get(raw) ?? '')
-    const base = await chooseBase(pack.manifest.modes, chat, judge, isCurrent)
-    if (typeof base !== 'string') {
-        return base
+    const variants = await judgeVariants(pack.manifest.modes, chat, session, isCurrent)
+    if ('stale' in variants) {
+        return variants
     }
-    return { ok: true, text: textOrNull(text), blobs: [...minted], skippedAreas: pack.skippedAreas, base }
+    const base = baseOf(variants.light)
+    const shapeText = prepareShapeText(chat, text, (raw) => urlOfRaw.get(raw), variants.shape)
+    return { ok: true, text: textOrNull(text), blobs: [...minted], skippedAreas: pack.skippedAreas, base, shapeText, defaultScheme: packDefaultScheme(chat.canonical, base) }
 }
 
 /**
@@ -210,12 +288,12 @@ async function prepareArchive(key: string, judge: PackJudge, isCurrent: () => bo
  * `couldNotCheck`, or stale when the call is no longer current at that point. `isCurrent` is asked after every await; a
  * stale call revokes what it minted and answers stale. Every failure after minting revokes what was minted.
  */
-export async function preparePackSheet(source: ApplySource, judge: PackJudge, isCurrent: () => boolean): Promise<Prepared | Stale> {
+export async function preparePackSheet(source: ApplySource, session: JudgeSession, isCurrent: () => boolean): Promise<Prepared | Stale> {
     const minted: string[] = []
     try {
         const outcome = source.kind === 'builtin'
-            ? await prepareBuiltin(source.pack, judge, isCurrent)
-            : await prepareArchive(source.key, judge, isCurrent, minted)
+            ? await prepareBuiltin(source.pack, session, isCurrent)
+            : await prepareArchive(source.key, session, isCurrent, minted)
         if (outcome.ok === false) {
             revokeAll(minted)
         }
@@ -234,7 +312,7 @@ export async function preparePackSheet(source: ApplySource, judge: PackJudge, is
  * and unregister the previous one and revoke its blobs, then sync the gate. A missing `#customcss` inserts nothing and
  * leaves the previous element for the caller to remove.
  */
-export function commitPackSheet(next: { text: string; blobs: readonly string[]; base?: SchemeTone } | null):{ ok: true } | { ok: false; reason: 'couldNotCheck' } {
+export function commitPackSheet(next: { text: string; blobs: readonly string[]; base?: SchemeTone; shapeText?: string | null; colours?: boolean } | null):{ ok: true } | { ok: false; reason: 'couldNotCheck' } {
     const previous = current
     let created: CurrentElement | null = null
     if (next !== null) {
@@ -243,12 +321,15 @@ export function commitPackSheet(next: { text: string; blobs: readonly string[]; 
             revokeAll(next.blobs)
             return { ok: false, reason: 'couldNotCheck' }
         }
+        const colours = next.colours ?? true
+        const base = next.base ?? 'dark'
+        const shapeText = next.shapeText ?? null
         const el = document.createElement('style')
         el.setAttribute('media', 'not all')
         el.setAttribute('data-theme-pack', 'chat')
-        el.textContent = next.text
+        el.textContent = colours ? next.text : (shapeText ?? '')
         anchor.before(el)
-        created = { el, unregister: registerThemePackElement(el, 'chat', next.base ?? 'dark'), blobs: next.blobs }
+        created = { el, unregister: registerThemePackElement(el, 'chat', colours ? base : null), blobs: next.blobs, text: next.text, shapeText, base }
     }
     if (previous !== null) {
         previous.unregister()
@@ -258,6 +339,23 @@ export function commitPackSheet(next: { text: string; blobs: readonly string[]; 
     current = created
     syncThemePackMedia()
     return { ok: true }
+}
+
+/**
+ * Switches the current element between its colour variant (the judged sheet, with the fixed base) and its shape variant
+ * (the judged allowlisted subset, no base) in place. It never creates or removes an element and never revokes a blob:
+ * both variants share the minted URLs. With no current element it does nothing.
+ */
+export function setPackSheetColours(on: boolean): void {
+    if (current === null) {
+        return
+    }
+    const text = on ? current.text : (current.shapeText ?? '')
+    if (current.el.textContent !== text) {
+        current.el.textContent = text
+    }
+    setThemePackElementBase(current.el, on ? current.base : null)
+    syncThemePackMedia()
 }
 
 /** Test seam: detaches and forgets the current element without touching the gate registry's other entries. */

@@ -429,6 +429,12 @@ beforeAll(async () => {
     vi.resetModules()
 }, COLD_TRANSFORM_HOOK_MS)
 
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(() => {
     localStorage.clear()
     fsStore.clear()
@@ -568,7 +574,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             localStorage.setItem('dosync', 'sync')
             localStorage.setItem('fallbackRisuToken', JSON.stringify({ token: 'stale' }))
             // Unrelated keys: acknowledgement must leave them alone.
-            localStorage.setItem('opfs_flag!', 'able')
+            localStorage.setItem('unrelated_flag!', 'able')
             localStorage.setItem('unrelated-key', 'unrelated-value')
             forageState.staleAccountProfile = true
             await armInstallBranch(branch, baseDb())
@@ -606,7 +612,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
 
             // Only the three account-sync keys go: an unrelated setting and
             // an arbitrary unrelated key both survive the acknowledgement.
-            expect(localStorage.getItem('opfs_flag!')).toBe('able')
+            expect(localStorage.getItem('unrelated_flag!')).toBe('able')
             expect(localStorage.getItem('unrelated-key')).toBe('unrelated-value')
 
             // The "never touched" half of the invariant holds through to
@@ -772,7 +778,7 @@ describe("loadData(): the risuaiAccountCached drop deletes the whole database, n
 describe('loadData(): an ordinary boot removes the orphaned risu_lastsaved key (I5)', () => {
     test('a boot with no stale profile removes only risu_lastsaved, leaving unrelated keys and settings alone', async () => {
         localStorage.setItem('risu_lastsaved', '123456')
-        localStorage.setItem('opfs_flag!', 'able')
+        localStorage.setItem('unrelated_flag!', 'able')
         localStorage.setItem('unrelated-key', 'unrelated-value')
         await armInstallBranch('decode', baseDb())
 
@@ -781,7 +787,7 @@ describe('loadData(): an ordinary boot removes the orphaned risu_lastsaved key (
         await loadData()
 
         expect(localStorage.getItem('risu_lastsaved')).toBeNull()
-        expect(localStorage.getItem('opfs_flag!')).toBe('able')
+        expect(localStorage.getItem('unrelated_flag!')).toBe('able')
         expect(localStorage.getItem('unrelated-key')).toBe('unrelated-value')
         expect(get(loadedStore)).toBe(true)
     })

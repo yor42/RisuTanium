@@ -55,12 +55,13 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({
         read: async (key: string) => ({ bytes: world.files.get(key) ?? null }),
     }),
-    pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
 })
+
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 //#endregion
 
@@ -658,12 +659,10 @@ describe('T4-6 another task running', () => {
         expect(world.log).toEqual([])
     })
 
-    test('the read-only notices come from the install refusal', async () => {
+    test('the read-only notice comes from the install refusal', async () => {
         attach()
-        const install = (cause: 'opfs' | 'mode'): typeof installThemePack => async () => ({ ok: false, kind: 'readOnly', cause })
-        await runThemePackInstall(runOf(validPack(), [], { install: install('opfs') }).deps)
-        expect(outcomeLines()).toEqual([language.opfsReadOnlyNotice])
-        await runThemePackInstall(runOf(validPack(), [], { install: install('mode') }).deps)
+        const install: typeof installThemePack = async () => ({ ok: false, kind: 'readOnly' })
+        await runThemePackInstall(runOf(validPack(), [], { install }).deps)
         expect(outcomeLines()).toEqual([language.store2Boot.readOnlyRefusal])
     })
 })

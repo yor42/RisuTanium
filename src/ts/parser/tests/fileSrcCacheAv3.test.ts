@@ -2,11 +2,9 @@
  * AV-3 (Report 15, `Agents/Reports/15-av3-plain-http-encode-plan.md`):
  * T9/T10, the parser side of the plan (the `getFileSrcCached` function in
  * `src/ts/parser/parser.svelte.ts`, real, unmocked, driven through the
- * exported `ParseMarkdown`). T1-T8/T12-T13 (the `globalApi.svelte.ts` side)
- * live in `src/ts/globalApiFileCacheAv3.svelte.test.ts` instead, because
- * that side needs the REAL `getFileSrc`/`fileCache`, while this side needs
- * `getFileSrc` mocked, so the test can pick what `getFileSrcCached` is handed
- * without depending on globalApi.svelte.ts's own internals.
+ * exported `ParseMarkdown`). `getFileSrc` is mocked, so the test can pick what
+ * `getFileSrcCached` is handed without depending on globalApi.svelte.ts's own
+ * internals.
  *
  * `getFileSrcCached` decides from the string `getFileSrc` returned: a `data:`
  * URL is never pinned in its permanent map, a short URL is.

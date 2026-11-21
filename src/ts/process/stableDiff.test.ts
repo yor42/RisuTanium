@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../alert', () => ({ alertError: vi.fn() }))
 vi.mock('../globalApi.svelte', () => ({ globalFetch: vi.fn(), readImage: vi.fn() }))
-vi.mock('../kei/kei', () => ({ keiServerURL: '' }))
 vi.mock('../storage/database.svelte', () => ({ getDatabase: vi.fn() }))
 vi.mock('../stores.svelte', () => ({ CharEmotion: { set: vi.fn() } }))
 vi.mock('./processzip', () => ({ processZip: vi.fn() }))

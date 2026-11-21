@@ -18,7 +18,7 @@ import { fillLang } from '../../lang/fill';
 import { convertStFiles, detectStKind, type StKind } from '../process/stPresetFormats';
 import type { NAISettings } from '../process/models/nai';
 import { prebuiltNAIpresets, prebuiltPresets } from '../process/templates/templates';
-import { defaultColorScheme, type ColorScheme } from '../gui/colorscheme';
+import { defaultColorScheme, type ColorScheme, type ThemePackSchemeSnapshot } from '../gui/colorscheme';
 import type { PromptItem, PromptSettings } from '../process/prompt';
 import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset, normalizeHypaV3Presets } from '../process/memory/hypaV3Presets'
@@ -924,10 +924,16 @@ export interface Database{
     themePacks?:unknown[]
     /** The active theme pack's record id, or a built-in theme's `builtin:<slug>`. Absent until a pack is activated; fork-only, never in a `.bin`. */
     activeThemePack?:string
+    /** The scheme in effect before the theme-pack scheme was entered; read only through `readSchemeSnapshot`. Absent unless the pack scheme is or was entered; fork-only, never in a `.bin`. */
+    themePackSchemeSnapshot?:ThemePackSchemeSnapshot
     /** Per-model price overrides in USD per 1M tokens. Absent until one is set; fork-only, never in a `.bin`. */
     usagePriceOverrides?:Record<string, PriceOverride>
     /** Months of usage statistics kept; absent keeps every month. Fork-only, never in a `.bin`. */
     usageRetentionMonths?:UsageRetentionMonths
+    /** Selects ChroMemory, the fork-only memory engine; while true it wins over the legacy engine flags. Absent until chosen; fork-only, never in a `.bin`. */
+    ltmEngine?:boolean
+    /** ChroMemory settings, read only through `readLtmSettings` (unknown keys kept, a bad shape read as defaults, never written back by a read). Absent until set; fork-only, never in a `.bin`. */
+    ltmSettings?:unknown
     sdProvider: string
     webUiUrl:string
     sdSteps:number

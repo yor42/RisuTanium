@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { externalEntryDecorators, placeDisabledMarker } from '../lorebookImportDecorators'
+import { externalEntryDecorators, externalInsertOrder, placeDisabledMarker } from '../lorebookImportDecorators'
 
 // Unit tests of the pure helpers; the converters' tests pin the whole imported objects.
 describe('externalEntryDecorators', () => {
@@ -73,6 +73,56 @@ describe('externalEntryDecorators', () => {
             useProbability: true, probability: 30, position: 4, depth: 2, role: 1,
             selective: true, secondary_keys: ['a'], selectiveLogic: 3,
         }).lines).toEqual(['@@probability 30', '@@reverse_depth 2', '@@role user', '@@additional_keys a'])
+    })
+
+    test('an Agnai entry ordered by weight keeps a differing priority as @@priority', () => {
+        expect(externalEntryDecorators({ weight: 20, priority: 5 }).lines).toEqual(['@@priority 5'])
+        expect(externalEntryDecorators({ weight: 20, priority: 0 }).lines).toEqual(['@@priority 0'])
+        expect(externalEntryDecorators({ weight: 0, priority: -3 }).lines).toEqual(['@@priority -3'])
+    })
+
+    test('@@priority is left out when weight is not the order or priority adds nothing', () => {
+        expect(externalEntryDecorators({ weight: 20, priority: 20 }).lines).toEqual([])
+        expect(externalEntryDecorators({ weight: 20 }).lines).toEqual([])
+        expect(externalEntryDecorators({ weight: 20, priority: null }).lines).toEqual([])
+        expect(externalEntryDecorators({ weight: 20, priority: 2.5 }).lines).toEqual([])
+        expect(externalEntryDecorators({ weight: 20, priority: NaN }).lines).toEqual([])
+        expect(externalEntryDecorators({ priority: 5 }).lines).toEqual([])
+        expect(externalEntryDecorators({ weight: null, priority: 5 }).lines).toEqual([])
+        expect(externalEntryDecorators({ weight: NaN, priority: 5 }).lines).toEqual([])
+        expect(externalEntryDecorators({ order: 7, weight: 20, priority: 5 }).lines).toEqual([])
+    })
+
+    test('@@priority comes after the other lines and before a disabled marker', () => {
+        const decorators = externalEntryDecorators({
+            useProbability: true, probability: 30, position: 1, weight: 9, priority: 2, enabled: false,
+        })
+        expect(decorators.lines).toEqual(['@@probability 30', '@@position after_desc', '@@priority 2'])
+        expect(placeDisabledMarker(decorators.lines.join('\n') + '\nBODY'))
+            .toBe('@@probability 30\n@@position after_desc\n@@priority 2\n@@dont_activate\nBODY')
+    })
+})
+
+describe('externalInsertOrder', () => {
+    test('order wins, then weight, then priority, then budgetPriority, else 0', () => {
+        const all = { order: 1, weight: 2, priority: 3, contextConfig: { budgetPriority: 4 } }
+        expect(externalInsertOrder(all)).toBe(1)
+        expect(externalInsertOrder({ ...all, order: undefined })).toBe(2)
+        expect(externalInsertOrder({ ...all, order: undefined, weight: undefined })).toBe(3)
+        expect(externalInsertOrder({ contextConfig: { budgetPriority: 4 } })).toBe(4)
+        expect(externalInsertOrder({})).toBe(0)
+        expect(externalInsertOrder({ contextConfig: null })).toBe(0)
+    })
+
+    test('an Agnai entry is ordered by its weight, not its priority', () => {
+        expect(externalInsertOrder({ weight: 20, priority: 5 })).toBe(20)
+        expect(externalInsertOrder({ weight: 0, priority: 5 })).toBe(0)
+    })
+
+    test('null and non-finite values fall through to the next field', () => {
+        expect(externalInsertOrder({ order: null, weight: NaN, priority: Infinity, contextConfig: { budgetPriority: 6 } })).toBe(6)
+        expect(externalInsertOrder({ order: null, weight: null, priority: 5 })).toBe(5)
+        expect(externalInsertOrder({ contextConfig: { budgetPriority: null } })).toBe(0)
     })
 })
 

@@ -141,7 +141,7 @@ export interface ExportAssetSource {
 
 /**
  * The source an asset export uses, in the order the backup export chooses: the app's files store, then the Node
- * server's pieces, then the browser store's `readValue`. `null` where none applies (OPFS and other stores without
+ * server's pieces, then the browser store's `readValue`. `null` where none applies (a store without
  * `readValue`), which keeps the whole-read path.
  */
 export async function exportAssetPieceSource(store: ByteStore): Promise<ExportAssetSource | null> {

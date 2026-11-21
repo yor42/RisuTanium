@@ -1915,13 +1915,6 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
         return { ...test, dispatch }
     }
 
-    test('the transitional OPFS page hands the legacy profile back read-only without a store2 read or notice', async () => {
-        const test = unavailableRig('opfs-transitional')
-        expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'opfs-transitional', notices: [] })
-        expect(test.ui.notices).toEqual([])
-        expect(test.store.reads).toEqual([])
-    })
-
     test('a Node server without the check-only route, with no store2 commit key and a main file, is read-only legacy with its named notice', async () => {
         const test = unavailableRig('node', { capable: false })
         expect(await test.dispatch()).toEqual({ kind: 'legacy-readonly', reason: 'server-capability', notices: [expect.objectContaining({ name: 'server-capability' })] })

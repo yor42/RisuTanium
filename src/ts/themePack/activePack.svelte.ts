@@ -1,13 +1,21 @@
 // The driver of the active theme pack: one effect observes the active id and Safe Mode, derives the key of what should be
 // applied, and starts the apply core only when that key differs from the applied one. An unchanged pack is never re-applied,
 // whatever the surface gate, the database object or any other setting does; a superseded run is cancelled and can never commit.
-// The driver never writes the database: the status below is its own state, read by the settings row.
+// The driver writes the database only through `enterPackScheme` and `leavePackScheme`, and only for a pending request that
+// a user turn-on, turn-off, removal or install made in this page session, or for a tile click. Boot, the live lookup and every
+// repaint write nothing. The status below is its own state, read by the settings row.
 import { untrack } from 'svelte'
+import { isLite } from '../lite'
 import { DBState, SafeModeStore } from '../stores.svelte'
-import { commitPackSheet, preparePackSheet, resetPackSheetForTests, type ApplySource, type BrokenReason } from './apply'
+import {
+    enterPackScheme, leavePackScheme, PACK_SCHEME_NAME, setPackSchemeProvider, updateColorScheme, updateTextThemeAndCSS,
+    type ColorScheme,
+} from '../gui/colorscheme'
+import { commitPackSheet, preparePackSheet, resetPackSheetForTests, setPackSheetColours, type ApplySource, type BrokenReason } from './apply'
 import { builtinPackById } from './builtins'
 import type { IntakeRefusal } from './intake'
-import { createJudgeClient } from './judgeClient'
+import { openJudgeSession, type JudgeSession } from './judgeClient'
+import { sameScheme } from './packColours'
 import { listThemePacks } from './packRecord'
 
 export interface ThemePackApplyState {
@@ -28,13 +36,20 @@ const ARCHIVE_KEY_PREFIX = 'archive:'
 
 const status: ThemePackApplyState = $state({ activeId: undefined, phase: 'none' })
 let safe = $state(false)
-let applied: { key: ApplyKey; skippedAreas: readonly string[]; empty: boolean } | null = null
-let inflight: { key: ApplyKey; generation: number } | null = null
+let lite = $state(false)
+// The applied pack's default scheme: set on a successful commit, null on none, broken, unreadable and reset. The live
+// lookup in `effectiveColorScheme` and the picker tile read it.
+let appliedDefault = $state.raw<ColorScheme | null>(null)
+let applied: { key: ApplyKey; skippedAreas: readonly string[]; empty: boolean; defaultScheme: ColorScheme | null } | null = null
+// A user turn-on or update waiting for the apply outcome. `name` and `scheme` are what the scheme was when it was made, so
+// a pick or edit in between wins. In memory only.
+let schemeRequest: { id: string; kind: 'turnOn' | 'update'; name: unknown; scheme: ColorScheme | null } | null = null
+let unsubscribeLite: (() => void) | null = null
+let inflight: { key: ApplyKey; generation: number; session: JudgeSession } | null = null
 let generation = 0
 let started = false
 let disposeRoot: (() => void) | null = null
 let unsubscribeSafeMode: (() => void) | null = null
-const judge = createJudgeClient()
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -88,20 +103,107 @@ function revoke(urls: readonly string[]): void {
     }
 }
 
+/** Records that the user turned the pack `id` on (`turnOn`) or replaced it by an update (`update`); a later call replaces it. */
+export function requestPackScheme(id: string, kind: 'turnOn' | 'update'): void {
+    const stored = DBState.db?.colorScheme
+    schemeRequest = {
+        id,
+        kind,
+        name: DBState.db?.colorSchemeName,
+        scheme: stored ? safeStructuredClone(stored) : null,
+    }
+}
+
+export function cancelPackSchemeRequest(): void {
+    schemeRequest = null
+}
+
+/** Test seam. */
+export function pendingPackSchemeRequestForTests(): Readonly<NonNullable<typeof schemeRequest>> | null {
+    return schemeRequest
+}
+
+/** Colour mode: the pack has a default, lite is off and the user follows the pack scheme. */
+function coloursOn(): boolean {
+    return appliedDefault !== null && !lite && DBState.db?.colorSchemeName === PACK_SCHEME_NAME
+}
+
+/** Repaints the live default (or the stored copy) when the pack scheme is the name. Writes no database field. */
+function repaintPackScheme(): void {
+    if (DBState.db?.colorSchemeName !== PACK_SCHEME_NAME) {
+        return
+    }
+    try {
+        updateColorScheme()
+        updateTextThemeAndCSS()
+    } catch { }
+}
+
 /**
- * Prepares one key and commits it. Everything after the single await is one synchronous block: the owner-checked in-flight
+ * Honours the pending request for `activeId`, if any. `outcome` is the pack's default scheme, null for a pack without one,
+ * or `broken`. The capture check comes first: a pick or edit made while the turn-on was pending wins, whatever the outcome.
+ * A request for another id is left alone.
+ */
+function consumeSchemeRequest(activeId: string | undefined, outcome: ColorScheme | null | 'broken'): boolean {
+    const pending = schemeRequest
+    if (pending === null || pending.id !== activeId) {
+        return false
+    }
+    schemeRequest = null
+    const db = DBState.db
+    const sameCaptured = pending.scheme === null ? !db.colorScheme : sameScheme(db.colorScheme, pending.scheme)
+    if (db.colorSchemeName !== pending.name || !sameCaptured) {
+        return false
+    }
+    try {
+        if (outcome === 'broken') {
+            if (pending.kind === 'turnOn') {
+                leavePackScheme()
+            }
+            return false
+        }
+        if (pending.kind === 'update' && db.colorSchemeName !== PACK_SCHEME_NAME) {
+            return false
+        }
+        if (outcome !== null) {
+            enterPackScheme(outcome)
+            return pending.kind === 'turnOn'
+        }
+        leavePackScheme()
+    } catch { }
+    return false
+}
+
+/** The tile's palette source: the applied pack's default scheme, or null. */
+export function activePackDefaultScheme(): ColorScheme | null {
+    return appliedDefault
+}
+
+/** The tile click: enters the applied pack's scheme. Nothing happens when no pack with a default is applied. */
+export function adoptActivePackScheme(): void {
+    const scheme = appliedDefault
+    if (scheme !== null) {
+        enterPackScheme(scheme)
+    }
+}
+
+/**
+ * Prepares one key and commits it. One judge session serves the whole preparation and is closed when it settles; a newer
+ * request closes it earlier. Everything after the single await is one synchronous block: the owner-checked in-flight
  * clear, the currency re-check and the commit, with nothing between them that could let a newer request run first.
  */
-async function run(key: ApplyKey, mine: number): Promise<void> {
+async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<void> {
     const isCurrent = (): boolean => generation === mine
     const source = sourceOf(key)
     let prepared: Prepared
     try {
         prepared = source === null
             ? COULD_NOT_CHECK
-            : await preparePackSheet(source, judge, isCurrent)
+            : await preparePackSheet(source, session, isCurrent)
     } catch {
         prepared = COULD_NOT_CHECK
+    } finally {
+        session.close()
     }
     if (inflight?.generation === mine) {
         inflight = null
@@ -116,19 +218,35 @@ async function run(key: ApplyKey, mine: number): Promise<void> {
         return
     }
     if (prepared.ok === false) {
+        consumeSchemeRequest(status.activeId, 'broken')
+        appliedDefault = null
         commitPackSheet(null)
         applied = null
         setStatus({ phase: 'broken', reason: prepared.reason, refusals: prepared.refusals })
+        repaintPackScheme()
         return
     }
-    const result = commitPackSheet(prepared.text === null ? null : { text: prepared.text, blobs: prepared.blobs, base: prepared.base })
+    const enteredByTurnOn = consumeSchemeRequest(status.activeId, prepared.defaultScheme)
+    appliedDefault = prepared.defaultScheme
+    const result = commitPackSheet(prepared.text === null ? null : {
+        text: prepared.text, blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: coloursOn(),
+    })
     if (!result.ok) {
+        // A turn-on whose sheet could not be committed is a broken turn-on: the scheme it just entered is left again.
+        if (enteredByTurnOn) {
+            try {
+                leavePackScheme()
+            } catch { }
+        }
+        appliedDefault = null
         commitPackSheet(null)
         applied = null
         setStatus({ phase: 'broken', reason: 'couldNotCheck' })
+        repaintPackScheme()
         return
     }
-    applied = { key, skippedAreas: prepared.skippedAreas, empty: prepared.text === null }
+    applied = { key, skippedAreas: prepared.skippedAreas, empty: prepared.text === null, defaultScheme: prepared.defaultScheme }
+    repaintPackScheme()
     setStatus({ phase: 'applied', skippedAreas: applied.skippedAreas, empty: applied.empty })
 }
 
@@ -140,25 +258,38 @@ function request(id: unknown, safeMode: boolean): void {
         return
     }
     if (inflight !== null) {
+        inflight.session.close()
         generation += 1
         inflight = null
     }
     if (applied !== null && key === applied.key) {
+        consumeSchemeRequest(status.activeId, applied.defaultScheme)
+        setPackSheetColours(coloursOn())
         setStatus({ phase: 'applied', skippedAreas: applied.skippedAreas, empty: applied.empty })
+        repaintPackScheme()
         return
     }
     generation += 1
     if (key === 'none' || key.startsWith('unreadable:')) {
+        if (key === 'none') {
+            // Safe Mode, or an id that names no record, is never a user turn-off.
+            schemeRequest = null
+        } else {
+            consumeSchemeRequest(status.activeId, 'broken')
+        }
         if (applied !== null) {
             commitPackSheet(null)
         }
         applied = null
+        appliedDefault = null
         setStatus(key === 'none' ? { phase: 'none' } : { phase: 'broken', reason: 'unreadable' })
+        repaintPackScheme()
         return
     }
-    inflight = { key, generation }
+    const session = openJudgeSession()
+    inflight = { key, generation, session }
     setStatus({ phase: 'pending' })
-    void run(key, generation)
+    void run(key, generation, session)
 }
 
 /** Installs the driver once per page; later calls do nothing. */
@@ -170,11 +301,25 @@ export function startThemePackApply(): void {
     unsubscribeSafeMode = SafeModeStore.subscribe((value) => {
         safe = value
     })
+    unsubscribeLite = isLite.subscribe((value) => {
+        lite = value
+    })
+    setPackSchemeProvider(() => appliedDefault)
     disposeRoot = $effect.root(() => {
         $effect(() => {
             const id = DBState.db?.activeThemePack
             const safeMode = safe
             untrack(() => request(id, safeMode))
+        })
+        // The user's later pick, a tile click or lite decides the mode live. This writes nothing.
+        $effect(() => {
+            void DBState.db?.colorSchemeName
+            void lite
+            untrack(() => {
+                if (applied !== null) {
+                    setPackSheetColours(coloursOn())
+                }
+            })
         })
     })
 }
@@ -190,12 +335,19 @@ export function resetThemePackApplyForTests(): void {
     disposeRoot = null
     unsubscribeSafeMode?.()
     unsubscribeSafeMode = null
+    unsubscribeLite?.()
+    unsubscribeLite = null
+    setPackSchemeProvider(null)
     started = false
     resetPackSheetForTests()
     generation += 1
+    inflight?.session.close()
     inflight = null
     applied = null
+    appliedDefault = null
+    schemeRequest = null
     safe = false
+    lite = false
     status.activeId = undefined
     setStatus({ phase: 'none' })
 }

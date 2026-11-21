@@ -6,8 +6,8 @@ import { parseToggleSyntax, type sidebarToggle } from '../util'
  * source. Pure: values come in through a reader, and nothing here writes.
  *
  * Meaning of a value, as the old sidebar stored it in `toggle_<key>`: a check is '1' or '0', a select holds the option
- * index, a text holds the string, and an unset value reads 'null'. The panel claims only "on", never "changed"
- * (DD-083): there is no author default to compare with.
+ * index, a text holds the string, and an unset value reads 'null'. An unset check or select reads as its author default
+ * when the definition has one, and Reset removes the stored value. The panel claims only "on", never "changed" (DD-083).
  */
 
 export type ToggleKind = 'check' | 'select' | 'text' | 'textarea'
@@ -127,9 +127,12 @@ export function isOn(kind: ToggleKind, value: string): boolean {
     return value !== '' && value !== 'null'
 }
 
-/** The value a Reset writes: off, the first option, or empty. It is not an author default. */
-export function resetValue(kind: ToggleKind): string {
-    return kind === 'check' ? '0' : kind === 'select' ? '0' : ''
+/**
+ * What a Reset leaves stored: `null` for a check or select, meaning the stored value is removed so the toggle reads as
+ * unset (its author default when the definition has one); '' for a text, which keeps writing an empty string.
+ */
+export function resetValue(kind: ToggleKind): string | null {
+    return kind === 'check' || kind === 'select' ? null : ''
 }
 
 /** The shown option of a select: the stored index when it is in range, else the first. */

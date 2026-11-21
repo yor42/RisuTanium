@@ -9,13 +9,14 @@ import { createHash } from 'node:crypto'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { canonicalStylesheet } from './canonical'
+import { shapeOnlySheet } from './shapeMode'
 import { judgeAreaSheet, type PackSheetsJudgement } from './index'
-import type { BuiltinPack } from './builtins'
-import { createJudgeClient, type JudgeRequest, type JudgeWorkerLike } from './judgeClient'
+import { builtinPackById, type BuiltinPack } from './builtins'
+import { judgeSessionOverForTests, openJudgeSession, type JudgeRequest, type JudgeSession, type JudgeWorkerLike } from './judgeClient'
 import type { IntakeRefusal, PackJudge } from './intake'
 import { handleJudgeRequest } from './worker/judgeHandler'
 import {
-    BLOB_URL_PATTERN, brokenReasonOf, buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests,
+    BLOB_URL_PATTERN, brokenReasonOf, buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests, setPackSheetColours,
     type ApplySource, type Prepared,
 } from './apply'
 import { declareSurface, installThemePackGate, registerThemePackElement, resetThemePackGateForTests } from './surfaceGate.svelte'
@@ -153,20 +154,20 @@ class AnsweringWorker implements JudgeWorkerLike {
     }
 }
 
-interface JudgeRig { judge: PackJudge; posts: JudgeRequest[]; spawns: () => number }
+interface JudgeRig { session: JudgeSession; judge: PackJudge; posts: JudgeRequest[]; spawns: () => number }
 
-/** The real client over a channel that answers with the real handler; `silent` never answers (the client times out). */
+/** The real session over a channel that answers with the real handler; `silent` never answers (the session times out). */
 function judgeRig(options: { silent?: boolean; timeoutMs?: number } = {}): JudgeRig {
     const posts: JudgeRequest[] = []
     let spawned = 0
-    const judge = createJudgeClient({
+    const session = openJudgeSession({
         spawn: () => {
             spawned += 1
             return new AnsweringWorker(posts, options.silent === true)
         },
         timeoutMs: options.timeoutMs,
     })
-    return { judge, posts, spawns: () => spawned }
+    return { session, judge: session.judge, posts, spawns: () => spawned }
 }
 
 const blobs = { minted: [] as string[], revoked: [] as string[], types: [] as string[], failMintAt: 0, nextUrl: (n: number): string => `blob:http://localhost/${n}` }
@@ -244,7 +245,7 @@ function currentTimes(times: number): () => boolean {
 const ALWAYS = (): boolean => true
 
 async function prepare(source: ApplySource, rig: JudgeRig = judgeRig(), isCurrent: () => boolean = ALWAYS): Promise<Prepared | { ok: false; stale: true }> {
-    return preparePackSheet(source, rig.judge, isCurrent)
+    return preparePackSheet(source, rig.session, isCurrent)
 }
 
 async function prepareArchive(bytes: Uint8Array, rig: JudgeRig = judgeRig(), isCurrent: () => boolean = ALWAYS): Promise<Prepared | { ok: false; stale: true }> {
@@ -563,14 +564,14 @@ describe('T3-4 a pack that cannot apply', () => {
         const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
         const rejecting: PackJudge = async () => { throw new Error('no answer') }
         const empty: PackJudge = async (): Promise<PackSheetsJudgement> => ({ ok: true, areas: {} })
-        expect(await preparePackSheet({ kind: 'builtin', pack: builtin }, rejecting, ALWAYS)).toEqual({ ok: false, reason: 'couldNotCheck' })
-        expect(await preparePackSheet({ kind: 'builtin', pack: builtin }, empty, ALWAYS)).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(await preparePackSheet({ kind: 'builtin', pack: builtin }, judgeSessionOverForTests(rejecting), ALWAYS)).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(await preparePackSheet({ kind: 'builtin', pack: builtin }, judgeSessionOverForTests(empty), ALWAYS)).toEqual({ ok: false, reason: 'couldNotCheck' })
     })
 
     it('a built-in that the validator accepts applies its judged text with no blobs and no skipped areas', async () => {
         const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, blobs: [], skippedAreas: [], base: 'dark' })
+        expect(prepared).toEqual({ ok: true, text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, blobs: [], skippedAreas: [], base: 'dark', shapeText: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, defaultScheme: null })
     })
 
     it('a built-in whose raw text differs from its canonical text applies the judged canonical text, never the raw one', async () => {
@@ -579,7 +580,7 @@ describe('T3-4 a pack that cannot apply', () => {
         const canonical = judgeAreaSheet('chat', raw, undefined, 'chat').canonical
         expect(canonical).not.toBe(raw)
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, text: canonical, blobs: [], skippedAreas: [], base: 'dark' })
+        expect(prepared).toEqual({ ok: true, text: canonical, blobs: [], skippedAreas: [], base: 'dark', shapeText: canonical, defaultScheme: null })
         expect(prepared.text).not.toContain('note')
     })
 })
@@ -753,7 +754,7 @@ describe('T3-15 only the chat sheet is judged and applied', () => {
         const hostile = '[data-part]{padding-inline:60px}'
         const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'home.css': hostile, 'studio.css': hostile }), rig))
         expect(prepared.skippedAreas).toEqual(['home', 'studio'])
-        expect(rig.posts.map((post) => Object.keys(post.sheets))).toEqual([['chat']])
+        expect(rig.posts.map((post) => post.jobs.map((job) => job.area))).toEqual([['chat']])
         commitPrepared(prepared)
         const elements = packElements()
         expect(elements).toHaveLength(1)
@@ -967,5 +968,129 @@ describe('T3G-6 the surface gate and the commit order', () => {
         expect(printOnly.getAttribute('media')).toBe('print')
         expect(bare.isConnected).toBe(true)
         expect(bare.hasAttribute('media')).toBe(false)
+    })
+})
+
+describe('T16b the shape variant is the judge\'s own canonical text with the same blob substitution', () => {
+    // New field: `Prepared.shapeText` did not exist, so this fails only when the variant is built from anything but the second judgement.
+    it('keeps the font blob URL and drops the image URL, equal to buildAppliedText of the shape judgement', async () => {
+        const bytes = packOf(MIXED_SHEET, [FONT_A, FONT_B], { 'images/a.png': PNG_1X1 })
+        const prepared = accepted(await prepareArchive(bytes))
+        const full = judgeAreaSheet('chat', MIXED_SHEET, undefined, 'chat')
+        const shapeJudged = judgeAreaSheet('chat', shapeOnlySheet(full.canonical), undefined, 'chat')
+        expect(shapeJudged.result.ok).toBe(true)
+        const urlOf: Record<string, string> = { [FONT_A]: blobs.minted[0], [FONT_B]: blobs.minted[1], 'images/a.png': blobs.minted[2] }
+        expect(prepared.shapeText).toBe(buildAppliedText(shapeJudged, (raw) => urlOf[raw]))
+        expect(prepared.shapeText).toContain(blobs.minted[0])
+        expect(prepared.shapeText).toContain(blobs.minted[1])
+        expect(prepared.shapeText).not.toContain(blobs.minted[2])
+        expect(prepared.shapeText).not.toContain('background-image')
+        expect(prepared.text).toContain(blobs.minted[2])
+    })
+
+    it('a sheet the strip leaves unchanged reuses the applied text without a second judgement', async () => {
+        const rig = judgeRig()
+        const prepared = accepted(await prepareArchive(packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B]), rig))
+        expect(prepared.shapeText).toBe(prepared.text)
+        expect(rig.posts).toHaveLength(1)
+    })
+})
+
+describe('T31 shape mode fails closed', () => {
+    const originNavy = (): ApplySource => {
+        const pack = builtinPackById('builtin:origin-navy')
+        if (pack === null) {
+            throw new Error('Origin Navy is missing')
+        }
+        return { kind: 'builtin', pack }
+    }
+
+    /** Answers the first call (the sheet itself) with the real verdict, and every later call with `later`. */
+    function stubJudge(later: (sheets: Parameters<PackJudge>[0]) => ReturnType<PackJudge>): { judge: PackJudge; calls: () => number } {
+        const real = judgeRig().judge
+        let calls = 0
+        return {
+            judge: async (sheets) => {
+                calls += 1
+                return calls === 1 ? real(sheets) : later(sheets)
+            },
+            calls: () => calls,
+        }
+    }
+
+    it('a refused shape variant gives shapeText null, and the colour variant is untouched', async () => {
+        const real = judgeRig().judge
+        const stub = stubJudge(() => real({ chat: 'body{color:red}' }))
+        const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
+        expect(stub.calls()).toBe(2)
+        expect(prepared.shapeText).toBeNull()
+        expect(prepared.text).not.toBeNull()
+        expect(prepared.defaultScheme).not.toBeNull()
+    })
+
+    it('a throwing shape judgement gives shapeText null', async () => {
+        const stub = stubJudge(async () => { throw new Error('judge down') })
+        const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
+        expect(prepared.shapeText).toBeNull()
+    })
+
+    it('committed with colours off and a null shape variant, the element is empty and sets no base', async () => {
+        openGate()
+        const real = judgeRig().judge
+        const stub = stubJudge(() => real({ chat: 'body{color:red}' }))
+        const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
+        expect(commitPackSheet({ text: prepared.text ?? '', blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: false })).toEqual({ ok: true })
+        expect(packElements()[0].textContent).toBe('')
+        expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(false)
+    })
+
+    it('committed with colours on, the full text applies with its base', async () => {
+        openGate()
+        const real = judgeRig().judge
+        const stub = stubJudge(() => real({ chat: 'body{color:red}' }))
+        const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
+        expect(commitPackSheet({ text: prepared.text ?? '', blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: true })).toEqual({ ok: true })
+        expect(packElements()[0].textContent).toBe(prepared.text)
+        expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
+    })
+
+    it('a stale answer to the shape judgement is stale and revokes what was minted', async () => {
+        const real = judgeRig().judge
+        let calls = 0
+        const judge: PackJudge = async (sheets) => { calls += 1; return real(sheets) }
+        const bytes = packOf(MIXED_SHEET, [FONT_A, FONT_B], { 'images/a.png': PNG_1X1 })
+        // The intake judgement is call 1 and the shape judgement call 2: every check before the shape answer passes.
+        const outcome = await prepare({ kind: 'archive', key: store(bytes) }, { session: judgeSessionOverForTests(judge), judge, posts: [], spawns: () => 0 }, () => calls < 2)
+        expect(outcome).toEqual({ ok: false, stale: true })
+        expectBalanced()
+    })
+})
+
+describe('T16 setPackSheetColours switches the variant in place', () => {
+    it('swaps the text and the base on the same element and never revokes a blob', async () => {
+        openGate()
+        const prepared = accepted(await prepareArchive(packOf(MIXED_SHEET, [FONT_A, FONT_B], { 'images/a.png': PNG_1X1 })))
+        expect(commitPackSheet({ text: prepared.text ?? '', blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: true })).toEqual({ ok: true })
+        const [element] = packElements()
+        expect(element.textContent).toBe(prepared.text)
+        expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
+
+        setPackSheetColours(false)
+        expect(packElements()).toEqual([element])
+        expect(element.textContent).toBe(prepared.shapeText)
+        expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(false)
+        expect(element.getAttribute('media')).toBe('all')
+
+        setPackSheetColours(true)
+        expect(packElements()).toEqual([element])
+        expect(element.textContent).toBe(prepared.text)
+        expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
+        expect(blobs.revoked).toEqual([])
+    })
+
+    it('does nothing with no current element', () => {
+        openGate()
+        expect(() => setPackSheetColours(false)).not.toThrow()
+        expect(packElements()).toHaveLength(0)
     })
 })

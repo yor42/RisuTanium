@@ -1,0 +1,209 @@
+/*
+  Seasonal scene: aprilFool (four-variant pool). Every class is rt-af-*. Default rules = start pose; .rt-af-final = final pose.
+  Variant hooks: .rt-af-v-tiramisu | -invert | -element | -acorn on the stage layer, the mark and the word. Tone: the host
+  stamps [data-rt-sw-tone] on the mark slot, stage and root, so every light rule keys on that ancestor attribute.
+*/
+
+.rt-af-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.rt-af-sky.rt-af-final { display: none; }
+
+/* ============================ invert (pixel shades) ============================ */
+.rt-af-ticks { position: absolute; opacity: 0; }
+.rt-af-ticks-l { transform-origin: 100% 100%; }
+.rt-af-ticks-r { transform-origin: 0% 100%; }
+.rt-af-ticksvg { display: block; width: 100%; height: 100%; overflow: visible; fill: none; stroke: #c7d2fe; stroke-width: 1.6; stroke-linecap: round; }
+.rt-af-ticks-l .rt-af-ticksvg { transform: scaleX(-1); }
+.rt-af-ticks-r .rt-af-ticksvg { transform: none; }
+[data-rt-sw-tone="light"] .rt-af-ticksvg { stroke: #475569; }
+
+/* ---------- Mark slot ---------- */
+.rt-af-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-af-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-af-ink { fill: #0f172a; }
+/* Pivots in mark units (view-box box: px = user units from the centroid origin). */
+.rt-af-hop { transform-box: view-box; transform-origin: 0px 40px; }
+.rt-af-spin { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-af-shades { opacity: 0; }
+.rt-af-shadeedge { fill: #e0e7ff; }
+.rt-af-shade { fill: #0b0a1a; }
+.rt-af-shine { fill: #ffffff; }
+.rt-af-twinkle { fill: #ffffff; transform-box: fill-box; transform-origin: center; opacity: 0; }
+[data-rt-sw-tone="light"] .rt-af-shadeedge { fill: #ffffff; }
+[data-rt-sw-tone="light"] .rt-af-shade { fill: #111827; }
+[data-rt-sw-tone="light"] .rt-af-twinkle { fill: #f59e0b; }
+.rt-af-mark.rt-af-final .rt-af-spin { transform: rotate(180deg); }
+.rt-af-mark.rt-af-final .rt-af-shades { opacity: 1; transform: none; }
+
+/* ---------- Word overlay (aria-hidden; the accessible name never changes) ---------- */
+.rt-af-word { position: relative; }
+.rt-af-scr { position: absolute; left: 0; top: 0; width: 100%; height: 1.2em; opacity: 0; pointer-events: none; z-index: 1; }
+.rt-af-ch { position: absolute; top: 0; height: 1.2em; line-height: 1.2em; white-space: pre; transform-origin: 50% 70%; }
+.rt-af-ch-a {
+  background-image: linear-gradient(to bottom right, var(--nexus-core-from, #00a1ad), var(--nexus-core-to, #587bff));
+  background-size: var(--rt-sw-w, 6.21em) 1.2em;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-af-ch-b { color: var(--rt-sw-ink, #fff); }
+.rt-af-word.rt-af-final .rt-af-scr { display: none; }
+
+/* ============================ tiramisu ============================ */
+.rt-af-rcap, .rt-af-rlow { display: inline-block; }
+.rt-af-rlow { position: absolute; left: 0; top: 0; opacity: 0; }
+.rt-af-dust { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #c08552; opacity: 0; }
+.rt-af-dust-1 { background: #7c3f1c; width: 5px; height: 5px; }
+.rt-af-dust-2 { background: #e0b48a; width: 3px; height: 3px; }
+[data-rt-sw-tone="light"] .rt-af-dust { background: #7c3f1c; }
+[data-rt-sw-tone="light"] .rt-af-dust-1 { background: #3e1f0d; }
+[data-rt-sw-tone="light"] .rt-af-dust-2 { background: #a06a3c; }
+
+.rt-af-tn { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-af-tn1, .rt-af-tn2, .rt-af-tn3 { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-af-tb { transform-box: fill-box; transform-origin: 50% 100%; opacity: 0; }
+.rt-af-leaf { transform-box: fill-box; transform-origin: 0% 100%; opacity: 0; }
+.rt-af-tw { --rt-af-edge: #f4ecd8; }
+[data-rt-sw-tone="light"] .rt-af-tw { --rt-af-edge: #3e1f0d; }
+.rt-af-t-top { fill: #3e1f0d; stroke: var(--rt-af-edge); stroke-width: 2.6; stroke-linejoin: round; }
+.rt-af-t-cream { fill: #f4ecd8; stroke: var(--rt-af-edge); stroke-width: 2.6; stroke-linejoin: round; }
+.rt-af-t-lady { fill: #7c3f1c; stroke: var(--rt-af-edge); stroke-width: 2.6; stroke-linejoin: round; }
+.rt-af-t-soak { fill: none; stroke: #c9894f; stroke-width: 2.4; stroke-linecap: round; opacity: 0.8; }
+.rt-af-t-bub { fill: none; stroke: #d9ccae; stroke-width: 2.4; stroke-linecap: round; }
+.rt-af-t-fleck { fill: none; stroke: #8a5230; stroke-width: 2.4; stroke-linecap: round; }
+.rt-af-t-mint { fill: #34d399; stroke: #0f766e; stroke-width: 1.4; stroke-linejoin: round; }
+.rt-af-t-vein { fill: none; stroke: #0f766e; stroke-width: 1.4; stroke-linecap: round; }
+.rt-af-mark.rt-af-final .rt-af-tn { opacity: 0; }
+.rt-af-mark.rt-af-final .rt-af-tb { opacity: 1; transform: none; }
+.rt-af-mark.rt-af-final .rt-af-leaf { opacity: 1; }
+
+/* ============================ element ============================ */
+.rt-af-grid {
+  position: absolute; left: 0; top: 0; opacity: 0;
+  background-image:
+    linear-gradient(to right, rgb(56 217 255 / 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(56 217 255 / 0.3) 1px, transparent 1px),
+    linear-gradient(to right, rgb(56 217 255 / 0.11) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(56 217 255 / 0.11) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px, 12px 12px, 12px 12px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 40px), transparent 100%), linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 40px), transparent 100%), linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+  mask-composite: intersect;
+}
+[data-rt-sw-tone="light"] .rt-af-grid {
+  background-image:
+    linear-gradient(to right, rgb(14 116 144 / 0.32) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(14 116 144 / 0.32) 1px, transparent 1px),
+    linear-gradient(to right, rgb(14 116 144 / 0.13) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(14 116 144 / 0.13) 1px, transparent 1px);
+}
+.rt-af-typed {
+  position: absolute; margin: 0; opacity: 1;
+  font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-weight: 600; letter-spacing: 0; white-space: pre-wrap; word-break: normal;
+  color: #7fe9ff;
+}
+[data-rt-sw-tone="light"] .rt-af-typed { color: #0e7490; }
+.rt-af-tc { opacity: 0; }
+.rt-af-caret { position: absolute; left: 0; top: 0; background: currentColor; opacity: 0; }
+.rt-af-flash {
+  position: absolute; opacity: 0; border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 255 255 / 0.95), rgb(127 233 255 / 0.55) 40%, rgb(56 217 255 / 0) 100%);
+}
+.rt-af-arc { position: absolute; left: 0; top: 0; overflow: visible; opacity: 0; }
+.rt-af-arc path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.rt-af-arc-g { stroke: #38d9ff; stroke-width: 4.5; opacity: 0.4; }
+.rt-af-arc-c { stroke: #ffffff; stroke-width: 1.6; }
+.rt-af-arc-b { stroke: #bdf1ff; stroke-width: 1.2; }
+[data-rt-sw-tone="light"] .rt-af-arc-g { stroke: #0891b2; opacity: 0.35; }
+[data-rt-sw-tone="light"] .rt-af-arc-c { stroke: #0e7490; }
+[data-rt-sw-tone="light"] .rt-af-arc-b { stroke: #155e75; }
+.rt-af-spark { position: absolute; width: 2px; height: 8px; margin-left: -1px; border-radius: 1px; background: #bdf1ff; opacity: 0; transform-origin: 50% 5px; }
+[data-rt-sw-tone="light"] .rt-af-spark { background: #0e7490; }
+.rt-af-en { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-af-tile { transform-box: view-box; transform-origin: 0px 12px; opacity: 0; --rt-af-tile-ink: #0b1a2a; }
+.rt-af-tile-edge { fill: #64748b; }
+[data-rt-sw-tone="light"] .rt-af-tile-edge { fill: #334155; }
+.rt-af-brush { fill: none; stroke: #ffffff; stroke-width: 1.2; opacity: 0.38; }
+.rt-af-bev-t { fill: #fbfdff; }
+.rt-af-bev-l { fill: #b7c3d2; }
+.rt-af-bev-r { fill: #5e6b7e; }
+.rt-af-hole { fill: #0b1a2a; }
+.rt-af-sym { fill: #e6f9ff; font: 800 30px/1 "NanumSquare Neo Logo", "Segoe UI", system-ui, sans-serif; letter-spacing: -0.5px; }
+.rt-af-num { fill: #1e293b; font: 700 13.5px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.rt-af-mark.rt-af-final .rt-af-en { opacity: 0; }
+.rt-af-mark.rt-af-final .rt-af-tile { opacity: 1; transform: none; }
+
+/* The word's silver-cyan sheen: one static gradient, shared by the overlay and the real text in the final pose. */
+.rt-af-word.rt-af-v-element {
+  --rt-af-sheen: linear-gradient(100deg, #cbd9e6 0%, #ffffff 20%, #7fe9ff 44%, #b4c4d4 62%, #f4fbff 80%, #8fdcf0 100%);
+}
+[data-rt-sw-tone="light"] .rt-af-word.rt-af-v-element {
+  --rt-af-sheen: linear-gradient(100deg, #334155 0%, #64748b 20%, #0e7490 44%, #475569 62%, #0f172a 80%, #0e7490 100%);
+}
+.rt-af-ch-sheen {
+  background-image: var(--rt-af-sheen);
+  background-size: var(--rt-sw-w, 6.21em) 1.2em;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-af-word.rt-af-v-element.rt-af-final .rt-sw-a,
+.rt-af-word.rt-af-v-element.rt-af-final .rt-sw-b {
+  background-image: var(--rt-af-sheen);
+  background-size: var(--rt-sw-w, 6.21em) 1.2em;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-af-word.rt-af-v-element.rt-af-final .rt-sw-a { background-position: 0 0; }
+.rt-af-word.rt-af-v-element.rt-af-final .rt-sw-b { background-position: calc(-1 * var(--rt-af-tx, 2.346em)) 0; }
+
+/* ============================ acorn ============================ */
+.rt-af-tail {
+  position: absolute; left: -0.62em; top: -0.5em; width: 1.5em; height: 1.82em; z-index: -1; opacity: 0;
+  transform-origin: 38% 92%; pointer-events: none;
+}
+.rt-af-tailsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-af-tailsvg path { fill: none; stroke-linejoin: round; }
+.rt-af-tail-o { stroke: #e9c7a4; stroke-linecap: round; }
+.rt-af-tail-b { stroke: #c4622d; stroke-linecap: round; }
+.rt-af-tail-s { stroke: #8f3d14; stroke-linecap: butt; stroke-dasharray: 3.2 9.6; stroke-dashoffset: -2; }
+.rt-af-tail-h { stroke: #f2b27e; stroke-width: 4.5; stroke-linecap: round; opacity: 0.8; }
+[data-rt-sw-tone="light"] .rt-af-tail-b { stroke: #b45309; }
+[data-rt-sw-tone="light"] .rt-af-tail-s { stroke: #7c2d12; }
+.rt-af-word.rt-af-final .rt-af-tail { display: none; }
+.rt-af-fly { position: absolute; left: 0; top: 0; opacity: 0; }
+.rt-af-flysvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-af-bit { position: absolute; width: 4px; height: 4px; border-radius: 1px; background: #d8954a; opacity: 0; }
+.rt-af-ch-ac {
+  background-image: linear-gradient(to bottom right, #f2c27a, #c8761f);
+  background-size: var(--rt-sw-w, 6.21em) 1.2em;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0;
+}
+[data-rt-sw-tone="light"] .rt-af-ch-ac { background-image: linear-gradient(to bottom right, #b45309, #7c2d12); }
+.rt-af-an { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-af-ac { transform-box: view-box; transform-origin: 0px 30px; opacity: 0; --rt-af-rim: #e8c9a0; }
+[data-rt-sw-tone="light"] .rt-af-ac { --rt-af-rim: #3d2412; }
+.rt-af-ac-body { stroke: var(--rt-af-rim, #e8c9a0); stroke-width: 2; stroke-linejoin: round; fill: #b8742e; }
+.rt-af-ac-shine { fill: none; stroke: #f3cf94; stroke-width: 4.5; stroke-linecap: round; opacity: 0.75; }
+.rt-af-ac-mid { fill: none; stroke: rgb(255 255 255 / 0.4); stroke-width: 2.4; stroke-linejoin: round; }
+.rt-af-ac-cap { fill: #7a4b27; }
+.rt-af-ac-hatch { fill: none; stroke: #3d2412; stroke-width: 2.2; stroke-linecap: round; }
+.rt-af-ac-rim { fill: none; stroke: var(--rt-af-rim, #e8c9a0); stroke-width: 2.4; stroke-linejoin: round; }
+.rt-af-ac-stem { fill: #5a3a1c; stroke: var(--rt-af-rim, #e8c9a0); stroke-width: 1.6; stroke-linejoin: round; }
+.rt-af-fly .rt-af-ac-body { fill: #b8742e; stroke: #e8c9a0; stroke-width: 2.4; }
+.rt-af-fly .rt-af-ac-cap { fill: #7a4b27; stroke: #e8c9a0; stroke-width: 2.4; }
+.rt-af-fly .rt-af-ac-hatch { stroke: #3d2412; stroke-width: 2.4; }
+[data-rt-sw-tone="light"] .rt-af-fly .rt-af-ac-body { stroke: #3d2412; }
+[data-rt-sw-tone="light"] .rt-af-fly .rt-af-ac-cap { stroke: #3d2412; }
+.rt-af-mark.rt-af-final .rt-af-an { opacity: 0; }
+.rt-af-mark.rt-af-final .rt-af-ac { opacity: 1; }
+[data-rt-sw-tone="light"] .rt-af-tail-o { stroke: #5b2408; }

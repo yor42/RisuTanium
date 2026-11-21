@@ -47,6 +47,8 @@ export type SandboxSource = {
     /** Module reference ids only; the module rows are read live. */
     modules: readonly string[]
     chatModules: readonly string[]
+    /** The character's own toggle definitions: its author defaults apply to unset toggles in the preview. */
+    customModuleToggle: string
 }
 
 export type SandboxWrite = { key: string; before: string | null; after: string }
@@ -68,6 +70,7 @@ export function sandboxSourceOf(live: character, chat: Chat | null): SandboxSour
         bindedPersona: chat?.bindedPersona || null,
         modules: [...(live.modules ?? [])],
         chatModules: [...(chat?.modules ?? [])],
+        customModuleToggle: live.customModuleToggle ?? '',
     }
 }
 
@@ -117,6 +120,7 @@ export function runPreview(fieldText: string, kind: LongTextKind, source: Sandbo
         owner.defaultVariables = source.defaultVariables
         owner.alternateGreetings = [...source.alternateGreetings]
         owner.modules = [...source.modules]
+        owner.customModuleToggle = source.customModuleToggle
         for (const key of TEXT_KEYS) {
             const value = source.texts[key]
             if (value !== undefined) owner[key] = value

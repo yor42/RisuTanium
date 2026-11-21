@@ -41,7 +41,6 @@ const world = vi.hoisted(() => ({
     damageIcon: false,
     dropIcon: false,
     saveCalls: [] as Uint8Array[],
-    selection: { answer: false as boolean | 'throws' },
     snapshotPacks: (): unknown => undefined,
     /** The busy registry's `busyKinds`, set once the real module is imported. */
     busyKinds: (): string[] => [],
@@ -122,12 +121,6 @@ vi.mock(import('../storage/store/appStore'), () => ({
                 return { bytes: world.files.get(key) ?? null }
             },
         }
-    },
-    pageStoreIsOpfsTransitional: async () => {
-        if (world.selection.answer === 'throws') {
-            throw new Error('the store could not be selected')
-        }
-        return world.selection.answer
     },
 }) as unknown as typeof import('../storage/store/appStore'))
 vi.mock(import('../stores.svelte'), () => {
@@ -253,7 +246,6 @@ beforeEach(() => {
     world.failIconWrite = null
     world.damageIcon = false
     world.dropIcon = false
-    world.selection.answer = false
     world.snapshotPacks = () => snapshotOf(fields().themePacks)
     world.busyKinds = busyKinds
     requestSaveNow.mockReset()
@@ -565,39 +557,31 @@ describe('the refusals that write nothing', () => {
 })
 
 describe('an install on a read-only page', () => {
-    // Each state: the page mode, whether the store runs from OPFS this time, and what the page's own refusal says.
-    const STATES: { label: string, mode: 'read-only' | 'writable', opfs: boolean | 'throws', cause: 'opfs' | 'mode' | null }[] = [
-        { label: 'the transitional OPFS page', mode: 'writable', opfs: true, cause: 'opfs' },
-        { label: 'the OPFS page that also set the read-only mode (the OPFS notice wins)', mode: 'read-only', opfs: true, cause: 'opfs' },
-        { label: 'a page the boot made read-only on another store', mode: 'read-only', opfs: false, cause: 'mode' },
-        { label: 'a read-only page whose store selection cannot be had', mode: 'read-only', opfs: 'throws', cause: 'mode' },
-        { label: 'a writable page', mode: 'writable', opfs: false, cause: null },
-        { label: 'a writable page whose store selection cannot be had', mode: 'writable', opfs: 'throws', cause: null },
+    // Each state: the page mode, and whether the page's own refusal fires.
+    const STATES: { label: string, mode: 'read-only' | 'writable', refused: boolean }[] = [
+        { label: 'a page the boot made read-only', mode: 'read-only', refused: true },
+        { label: 'a writable page', mode: 'writable', refused: false },
     ]
 
-    test.each(STATES)('T2-18 read-only: $label: the install refuses exactly when the page\'s own refusal does, with the cause that selects the same notice', async ({ mode, opfs, cause }) => {
+    test.each(STATES)('T2-18 read-only: $label: the install refuses exactly when the page\'s own refusal does', async ({ mode, refused }) => {
         const { refuseOnReadOnlyPage } = await import('../storage/readOnlyPage')
         setPageStorageMode(mode === 'read-only' ? { kind: 'read-only', reason: 'server-capability' } : { kind: 'store2' })
-        world.selection.answer = opfs
         const { request, calls } = requestOf()
 
         const outcome = await installThemePack(request)
 
         // The install shows no notice of its own.
         expect(alertError).not.toHaveBeenCalled()
-        if (cause === null) {
+        if (!refused) {
             expect(outcome.ok).toBe(true)
         } else {
-            expect(outcome).toEqual({ ok: false, kind: 'readOnly', cause })
+            expect(outcome).toEqual({ ok: false, kind: 'readOnly' })
             expect(calls.verify).not.toHaveBeenCalled()
             expectNothingWritten()
         }
         // The page's own refusal, run now, agrees on whether and on which notice.
-        const refused = await refuseOnReadOnlyPage()
-        expect(refused).toBe(cause !== null)
-        if (cause === 'opfs') {
-            expect(alertError).toHaveBeenCalledWith(language.opfsReadOnlyNotice)
-        } else if (cause === 'mode') {
+        expect(await refuseOnReadOnlyPage()).toBe(refused)
+        if (refused) {
             expect(alertError).toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)
         } else {
             expect(alertError).not.toHaveBeenCalled()
@@ -916,5 +900,53 @@ describe('plugin exposure of the theme pack fields', () => {
 
         expect(snapshotOf(fields().themePacks)).toEqual([recordFixture()])
         expect(fields().activeThemePack).toBe('pack-1')
+    })
+})
+
+describe('onActivate runs after the list write and before the active id is set (T22, T34 premise)', () => {
+    type Seen = { id: string, replacedId: string | null, activeThen: unknown, listIds: unknown[] }
+
+    function watching(): { seen: Seen[], onActivate: NonNullable<InstallRequest<string>['onActivate']> } {
+        const seen: Seen[] = []
+        return {
+            seen,
+            onActivate: ({ id, replacedId }) => {
+                seen.push({ id, replacedId, activeThen: fields().activeThemePack, listIds: (snapshotOf(fields().themePacks) as Slot[]).map((pack) => pack.id) })
+            },
+        }
+    }
+
+    test('a fresh install reports a null replaced id while the previous active id and the new list are visible', async () => {
+        installDb({ themePacks: [recordFixture({ id: 'other', packId: 'other-pack', name: 'Other' })], activeThemePack: 'other' })
+        const watch = watching()
+        const { request } = requestOf({ newId: 'pack-new', manifest: manifestOf({ packId: 'fresh', name: 'Fresh' }) })
+        okOf(await installThemePack({ ...request, onActivate: watch.onActivate }))
+        expect(watch.seen).toEqual([{ id: 'pack-new', replacedId: null, activeThen: 'other', listIds: ['other', 'pack-new'] }])
+        expect(fields().activeThemePack).toBe('pack-new')
+    })
+
+    test('a confirmed replacement reports the replaced record id', async () => {
+        installDb({ themePacks: [recordFixture({ id: 'old-1', name: 'Old name' })], activeThemePack: 'old-1' })
+        const watch = watching()
+        const { request } = requestOf({ newId: 'pack-new' })
+        okOf(await installThemePack({ ...request, onActivate: watch.onActivate }))
+        expect(watch.seen).toEqual([{ id: 'pack-new', replacedId: 'old-1', activeThen: 'old-1', listIds: ['pack-new'] }])
+    })
+
+    test('a throw in the callback is ignored and the install still activates the pack', async () => {
+        const { request } = requestOf({ newId: 'pack-new' })
+        const outcome = await installThemePack({ ...request, onActivate: () => { throw new Error('callback') } })
+        expect(okOf(outcome).record.id).toBe('pack-new')
+        expect(fields().activeThemePack).toBe('pack-new')
+    })
+
+    test('a refusal and a declined replacement never call it', async () => {
+        const watch = watching()
+        const refused = requestOf({ refusal: 'no' }).request
+        await installThemePack({ ...refused, onActivate: watch.onActivate })
+        installDb({ themePacks: [recordFixture({ id: 'old-1' })] })
+        const declined = requestOf({ replaceAnswer: false }).request
+        await installThemePack({ ...declined, onActivate: watch.onActivate })
+        expect(watch.seen).toEqual([])
     })
 })

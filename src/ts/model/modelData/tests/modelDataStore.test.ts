@@ -32,7 +32,6 @@ vi.mock('../../../storage/store/appStore', () => ({
         }
         return pageStore.injected
     },
-    pageStoreIsOpfsTransitional: async () => pageStore.kind === 'opfs-transitional',
 }))
 
 function injectAppStore(store: ByteStore | null, kind: string | null = null): void {
@@ -120,17 +119,10 @@ describe('modelDataStore wiring', () => {
     })
 
     test('(F) S10 a page in read-only mode still fetches and shows the data but writes nothing', async () => {
-        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
+        setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
         await expect(refreshModelDataNow()).resolves.toBe('ok')
         expect(getModelContextLimit(gpt4o, db)).toBe(128000)
         expect(getModelContextLimit(gpt41, db)).toBe(1047576)
-        expect(writes).toHaveLength(0)
-    })
-
-    test('(F) S10 a page on the transitional OPFS store writes nothing', async () => {
-        injectAppStore(recordingStore(writes), 'opfs-transitional')
-        await expect(refreshModelDataNow()).resolves.toBe('ok')
-        expect(getModelContextLimit(gpt4o, db)).toBe(128000)
         expect(writes).toHaveLength(0)
     })
 

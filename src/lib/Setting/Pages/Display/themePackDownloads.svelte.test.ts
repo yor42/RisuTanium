@@ -49,12 +49,13 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({
         read: async (key: string) => ({ bytes: world.files.get(key) ?? null }),
     }),
-    pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
 })
+
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 //#endregion
 

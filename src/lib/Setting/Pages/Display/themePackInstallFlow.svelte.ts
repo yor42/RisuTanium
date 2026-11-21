@@ -7,8 +7,10 @@ import { alertConfirm, alertNormal } from 'src/ts/alert'
 import { restoreInProgress } from 'src/ts/drive/restoreInProgress'
 import { requestSaveNow } from 'src/ts/globalApi.svelte'
 import { isBusy } from 'src/ts/process/memory/busyActions'
+import { leavePackScheme } from 'src/ts/gui/colorscheme'
 import { DBState } from 'src/ts/stores.svelte'
 import type { LintError } from 'src/ts/themePack'
+import { cancelPackSchemeRequest, requestPackScheme } from 'src/ts/themePack/activePack.svelte'
 import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type PackTileColours, type PackVerifyIcon } from 'src/ts/themePack/install'
 import { APPLIED_AREAS, intakePackBytes, type IntakeRefusal, type IntakeResult, type VerifiedPack } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
@@ -189,7 +191,7 @@ function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: reado
         case 'listUnreadable':
             return errorMessage(language.themePackListUnreadable)
         case 'readOnly':
-            return errorMessage(outcome.cause === 'opfs' ? language.opfsReadOnlyNotice : language.store2Boot.readOnlyRefusal)
+            return errorMessage(language.store2Boot.readOnlyRefusal)
         case 'refused':
             return outcome.refusal.kind === 'declinedLarge'
                 ? null
@@ -303,9 +305,13 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
                 return icon === undefined ? { ok: true, manifest: pack.manifest, tile } : { ok: true, manifest: pack.manifest, tile, icon }
             },
             confirmReplace: (existing) => d.confirm(language.themePackReplaceConfirm(existing.name)),
+            // At this moment `activeThemePack` still names the pack being replaced, so the classification reads current
+            // state: replacing the active pack updates it, anything else is a turn-on (install always activates).
+            onActivate: ({ id, replacedId }) => requestPackScheme(id, replacedId !== null && replacedId === DBState.db.activeThemePack ? 'update' : 'turnOn'),
         })
         publish(mapOutcome(outcome, skippedAreas, sheetWarnings), d.notify)
     } catch {
+        cancelPackSchemeRequest()
         publish(errorMessage(language.themePackInstallFailed), d.notify)
     } finally {
         installFlowState.pending = false
@@ -327,9 +333,16 @@ export async function removeThemePack(entry: unknown, name: string, deps?: Parti
         return 'declined'
     }
     const found = listThemePacks(DBState.db.themePacks).find((item) => item.entry === entry)
+    const entryId = typeof entry === 'object' && entry !== null && 'id' in entry ? entry.id : undefined
+    const wasActive = typeof entryId === 'string' && DBState.db.activeThemePack === entryId
     if (found === undefined || !removeThemePackAt(found.index, entry).ok) {
         publish(errorMessage(language.themePackRemoveChanged), d.notify)
         return 'changed'
+    }
+    if (wasActive) {
+        // Removing the active pack turns it off: the user's own scheme comes back, unless they picked another meanwhile.
+        cancelPackSchemeRequest()
+        leavePackScheme()
     }
     requestSaveNow()
     installFlowState.outcome = null
@@ -344,6 +357,12 @@ export function selectThemePack(id: string | undefined, deps?: Partial<InstallFl
         return 'busy'
     }
     installFlowState.outcome = null
+    if (id === undefined) {
+        cancelPackSchemeRequest()
+        leavePackScheme()
+    } else {
+        requestPackScheme(id, 'turnOn')
+    }
     setActiveThemePack(id)
     requestSaveNow()
     return 'selected'

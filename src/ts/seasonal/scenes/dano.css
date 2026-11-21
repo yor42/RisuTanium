@@ -1,0 +1,119 @@
+/*
+  Seasonal scene: dano. Classes are prefixed rt-dn-. Final pose = the static .rt-dn-final state on the sky, the mark and the
+  word. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root), so
+  every light rule keys on that ancestor attribute.
+  Palette (own picks): jade wash #06303a to #0d4a4a to #1f6f62; water #7fe3c8; sweet flag blades #3fae6a / #2a8a52;
+  fan leaf hanji #f6eed8 with a #34d399 to #38d9ff band, mid #1f6f62, bamboo ribs #8a6a3e, pivot #f2c14e;
+  zongzi leaf #2f7d4a / #4caf6a / #79c98a, rice #f4efdc, cord #e2453c; word #34d399 to #38d9ff (light #047857 to #0e7490).
+*/
+
+/* ---------- Families (system only) ---------- */
+.rt-dn-ko { font-family: 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif; font-weight: 900; font-size: calc(var(--rt-dn-fs, 24px) * 0.86); }
+.rt-dn-hans { font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Noto Sans SC", sans-serif; font-weight: 700; font-size: calc(var(--rt-dn-fs, 24px) * 1.0); }
+.rt-dn-hant { font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Source Han Sans TC", "Noto Sans TC", sans-serif; font-weight: 700; font-size: calc(var(--rt-dn-fs, 24px) * 1.0); }
+
+/* ---------- Stage ---------- */
+.rt-dn-sky { position: absolute; inset: 0; pointer-events: none; }
+.rt-dn-wash {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--rt-dn-wash-h, 72px);
+  background: linear-gradient(to bottom, #06303a 0%, #0d4a4a 60%, #1f6f62 100%);
+  opacity: 0;
+  --rt-dn-hole: radial-gradient(circle at var(--rt-dn-mx, -100px) var(--rt-dn-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 88%, transparent 100%), linear-gradient(to bottom, #000 72%, transparent 100%), var(--rt-dn-hole);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 88%, transparent 100%), linear-gradient(to bottom, #000 72%, transparent 100%), var(--rt-dn-hole);
+  mask-composite: intersect;
+}
+[data-rt-sw-tone="light"] .rt-dn-wash { background: linear-gradient(to bottom, #e3f7ef 0%, #c9efe0 60%, #a8e3cf 100%); }
+
+/* Water: a static feathered mask on the (non-moving) container; the ripple svg inside drifts. */
+.rt-dn-water {
+  position: absolute; left: 0; right: 0; overflow: hidden; opacity: 0;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 80%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 80%, transparent 100%);
+}
+.rt-dn-water-svg { display: block; height: 100%; }
+.rt-dn-wave { fill: none; stroke: #7fe3c8; stroke-width: 1.3; stroke-linecap: round; }
+.rt-dn-wave-2 { opacity: 0.7; }
+.rt-dn-wave-3 { opacity: 0.45; }
+[data-rt-sw-tone="light"] .rt-dn-wave { stroke: #0f766e; }
+
+.rt-dn-reeds { position: absolute; }
+.rt-dn-leafbox { position: absolute; bottom: 0; transform-origin: 50% 100%; opacity: 0; }
+.rt-dn-blade-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-dn-blade { fill: #3fae6a; }
+.rt-dn-leafbox:nth-child(2n) .rt-dn-blade { fill: #2a8a52; }
+.rt-dn-blade-rib { fill: none; stroke: #b9f0c8; stroke-width: 0.5; opacity: 0.7; }
+[data-rt-sw-tone="light"] .rt-dn-blade { fill: #2f8f55; }
+[data-rt-sw-tone="light"] .rt-dn-leafbox:nth-child(2n) .rt-dn-blade { fill: #1f6f42; }
+
+.rt-dn-greetbox { position: absolute; display: flex; align-items: center; white-space: nowrap; }
+.rt-dn-greet {
+  display: inline-block;
+  color: #e9fff6;
+  -webkit-text-stroke: 0.07em #06303a;
+  paint-order: stroke fill;
+  transform-origin: 0 50%;
+  opacity: 0;
+  font-synthesis: none;
+}
+[data-rt-sw-tone="light"] .rt-dn-greet { color: #0b4f44; -webkit-text-stroke: 0.06em #f4fffb; }
+
+.rt-dn-sky.rt-dn-squeezed .rt-dn-reeds { visibility: hidden; }   /* mid-play shrink: the greeting needs the row */
+.rt-dn-sky.rt-dn-final { display: none; }
+
+/* ---------- Mark slot ---------- */
+.rt-dn-mark { display: block; width: 100%; height: 100%; overflow: visible; --rt-dn-every: #ffffff; --rt-dn-edge: #e9fff6; }
+[data-rt-sw-tone="light"] .rt-dn-mark { --rt-dn-every: #0f172a; --rt-dn-edge: #3b2a14; }
+.rt-dn-every, .rt-dn-fan, .rt-dn-z1, .rt-dn-z2, .rt-dn-z3 { transform-box: view-box; transform-origin: 50% 45.2%; }
+.rt-dn-slice { transform-box: view-box; transform-origin: 50% 89.4%; }        /* the pivot (0, 64.49) */
+.rt-dn-bow { transform-box: view-box; transform-origin: 79.1% 39.7%; }       /* the knot (42.5, -8) */
+.rt-dn-every-ink { fill: var(--rt-dn-every); }
+.rt-dn-fan, .rt-dn-zongzi > g, .rt-dn-bow { opacity: 0; }
+.rt-dn-zongzi > g:nth-child(2) { opacity: 1; }                                /* the clip wrapper; z2 inside fades */
+.rt-dn-z2 { opacity: 0; }
+
+/* Fan (ko) */
+.rt-dn-leaf { fill: #f6eed8; }
+.rt-dn-mid { fill: #1f6f62; }
+.rt-dn-rib { fill: none; stroke: #8a6a3e; stroke-width: 1.5; opacity: 0.55; }
+.rt-dn-guard { fill: none; stroke: #7a5630; stroke-width: 4; stroke-linecap: round; opacity: 0; }
+.rt-dn-edge { fill: none; stroke: var(--rt-dn-edge); stroke-width: 6; stroke-linejoin: round; opacity: 0; }
+.rt-dn-pivot { fill: #f2c14e; stroke: #7a5630; stroke-width: 1.4; }
+
+/* Zongzi (zh) */
+.rt-dn-zleaf { fill: #2f7d4a; }
+.rt-dn-zwrap { fill: #4caf6a; opacity: 0.9; }
+.rt-dn-zwrap-b { fill: #3f9a5c; }
+.rt-dn-zvein { fill: none; stroke: #9ee0ae; stroke-width: 1.2; opacity: 0.6; }
+.rt-dn-zhole { fill: #79c98a; }
+.rt-dn-zmid { fill: #f4efdc; }
+.rt-dn-zcore { fill: #e9dfbf; }
+.rt-dn-zedge { fill: none; stroke: var(--rt-dn-edge); stroke-width: 3.4; stroke-linejoin: round; opacity: 0; }
+.rt-dn-cord { fill: none; stroke: #e2453c; stroke-width: 4.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.rt-dn-bow { fill: none; stroke: #e2453c; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+[data-rt-sw-tone="light"] .rt-dn-cord, [data-rt-sw-tone="light"] .rt-dn-bow { stroke: #c81e2c; }
+
+.rt-dn-mark.rt-dn-final .rt-dn-every { opacity: 0; }
+.rt-dn-mark.rt-dn-final .rt-dn-fan,
+.rt-dn-mark.rt-dn-final .rt-dn-slice,
+.rt-dn-mark.rt-dn-final .rt-dn-guard,
+.rt-dn-mark.rt-dn-final .rt-dn-edge,
+.rt-dn-mark.rt-dn-final .rt-dn-zongzi > g,
+.rt-dn-mark.rt-dn-final .rt-dn-z2,
+.rt-dn-mark.rt-dn-final .rt-dn-zedge,
+.rt-dn-mark.rt-dn-final .rt-dn-bow { opacity: 1; transform: none; }
+.rt-dn-mark.rt-dn-final .rt-dn-cord { stroke-dashoffset: 0; }
+
+/* ---------- Word: celadon-to-cyan copy ---------- */
+.rt-dn-word { --rt-dn-from: #34d399; --rt-dn-to: #38d9ff; }
+[data-rt-sw-tone="light"] .rt-dn-word { --rt-dn-from: #047857; --rt-dn-to: #0e7490; }
+.rt-dn-jade {
+  position: absolute; left: 0; top: 0; height: 1.2em; white-space: nowrap; pointer-events: none; opacity: 0;
+  background-image: linear-gradient(to right, var(--rt-dn-from), var(--rt-dn-to));
+  background-size: 6.21em 1.2em; background-repeat: no-repeat;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.rt-dn-jade > span { display: inline-block; height: 1.2em; vertical-align: top; }
+.rt-dn-word.rt-dn-final .rt-sw-text { visibility: hidden; opacity: 0; }
+.rt-dn-word.rt-dn-final .rt-dn-jade { opacity: 1; transform: none; }

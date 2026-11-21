@@ -15,6 +15,7 @@ import type { Attachment } from "svelte/attachments"
 import { mount, unmount, type Snippet } from "svelte"
 import PopupList from "src/lib/UI/PopupList.svelte"
 import { markPickReturned, rememberPickOpener, returnFocusToPickOpener } from "./pickOpener"
+import { pageOpener } from "./alertOpener"
 import { openKeypairStoreDB } from "./storage/nodeKey"
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
@@ -287,8 +288,8 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
 
         // The chooser takes focus off the button that opened it. This picker keeps its own opener, so a late finish of an
         // older picker never acts on a newer picker's remembered button.
-        const active = document.activeElement
-        const opener = active instanceof HTMLElement && active !== document.body ? active : null
+        // The control that opened an alert chooser counts, because the chooser's own button is gone with the alert.
+        const opener = pageOpener(document.activeElement)
 
         // Nothing picked (a closed chooser, or a confirmed empty selection) resolves [] once, removes the input and gives
         // focus back to the opener; a pick hands the opener to the card that follows.
@@ -815,14 +816,19 @@ export type sidebarToggle =
         key:string,
         value:string,
         type:'select',
-        options:string[]
+        options:string[],
+        default?:string
     }
     | {
         key:string,
         value:string,
         type:'text'|'textarea'|undefined,
-        options?:string[]
+        options?:string[],
+        default?:string
     }
+
+/** The toggle rows that hold a value: checkbox, select, text and textarea. */
+export type sidebarToggleValue = Exclude<sidebarToggle, { type:'group'|'groupEnd'|'caption'|'divider' }>
 
 export function parseToggleSyntax(template:string){
     try {
@@ -835,7 +841,7 @@ export function parseToggleSyntax(template:string){
         const splited = template.split('\n')
 
         for(const line of splited){
-            const [key, value, type, option] = line.split('=')
+            const [key, value, type, option, fifth] = line.split('=')
             if(type === 'group' || type === 'groupEnd' || type === 'divider'){
                 keyValue.push({
                     key,
@@ -850,12 +856,20 @@ export function parseToggleSyntax(template:string){
                     type
                 })
             } else if((key && value)){
-                keyValue.push({
+                const row = {
                     key,
                     value,
                     type: type === 'select' || type === 'text' || type === 'textarea' ? type : undefined,
                     options: option?.split(',') ?? []
-                })
+                } as sidebarToggleValue
+                // Only checkbox and select rows hold an author default; the property is absent otherwise.
+                if(row.type === 'select' || row.type === undefined){
+                    const authorDefault = fifth?.endsWith('\r') ? fifth.slice(0, -1) : fifth
+                    if(authorDefault){
+                        row.default = authorDefault
+                    }
+                }
+                keyValue.push(row)
             }
         }
 

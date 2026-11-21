@@ -23,7 +23,7 @@
 import { withBusy } from '../process/memory/busyActions'
 import { getDatabase, appVer } from '../storage/database.svelte'
 import { getPageStorageMode, type PageStorageMode } from '../storage/pageStorageMode'
-import { getAppStore, getAppStoreKind, pageStoreIsOpfsTransitional } from '../storage/store/appStore'
+import { getAppStore, getAppStoreKind } from '../storage/store/appStore'
 import type { ByteStore } from '../storage/store/contract'
 import type { Store2Backend } from '../storage/store2/backend/types'
 import { yieldToEventLoop } from '../storage/saveYield'
@@ -86,8 +86,6 @@ export interface RtbExportOptions {
 
 export interface RtbExportDeps {
     pageMode(): PageStorageMode
-    /** Must not reject: a failed store selection is not "read-only". */
-    opfsTransitional(): Promise<boolean>
     session(): { committer: Committer | null, backend: Store2Backend | null } | null
     openWriter(session: ExportSession, fileName: string): Promise<LocalWriter | null>
     /** `quiet` leaves out the save's own wait dialog; the card route shows its progress on the card instead. */
@@ -131,9 +129,6 @@ export type RtbExportResult =
     | { status: 'ended', outcome: ExportOutcome, report: RtbExportReport | null }
 
 async function refusalOf(deps: RtbExportDeps): Promise<RtbExportRefusal | null> {
-    if (await deps.opfsTransitional()) {
-        return 'read-only'
-    }
     const mode = deps.pageMode()
     if (mode.kind === 'read-only') {
         return 'read-only'
@@ -411,13 +406,6 @@ async function assetBatchReadUsable(): Promise<boolean> {
 export function liveRtbExportDeps(): RtbExportDeps {
     return {
         pageMode: getPageStorageMode,
-        opfsTransitional: async () => {
-            try {
-                return await pageStoreIsOpfsTransitional()
-            } catch {
-                return false
-            }
-        },
         session: getStore2BootSession,
         openWriter: openRtbWriter,
         saveFirst: (quiet) => (quiet ? saveFirst(SAVE_FIRST_BOUND_MS, { quiet: true }) : saveFirst(SAVE_FIRST_BOUND_MS)),

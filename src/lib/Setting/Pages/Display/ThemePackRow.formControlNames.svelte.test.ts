@@ -37,7 +37,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({ read: async () => ({ bytes: null }) }),
-    pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
@@ -45,8 +44,10 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 })
 vi.mock(import('src/ts/themePack/activePack.svelte'), () => {
     const status: ThemePackApplyState = $state({ activeId: undefined, phase: 'none' })
-    return { themePackApplyState: () => status } as unknown as typeof import('src/ts/themePack/activePack.svelte')
+    return { themePackApplyState: () => status, requestPackScheme: vi.fn(), cancelPackSchemeRequest: vi.fn() } as unknown as typeof import('src/ts/themePack/activePack.svelte')
 })
+
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 import { DBState } from 'src/ts/stores.svelte'
 import ThemePackRow from './ThemePackRow.svelte'

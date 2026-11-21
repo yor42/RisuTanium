@@ -1,0 +1,112 @@
+/*
+  Easter scene styles. Every class is rt-ea-*; no shared tokens are defined. Default rules = start pose; .rt-ea-final = final
+  pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root), so
+  every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-ea-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+.rt-ea-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* Pastel spring sky over a meadow: static flower dots painted into the wash (no extra animated nodes). */
+  background:
+    radial-gradient(circle at 58% 88%, rgb(255 214 232 / 0.85) 0 1.4px, transparent 2px),
+    radial-gradient(circle at 71% 80%, rgb(255 236 160 / 0.8) 0 1.3px, transparent 1.9px),
+    radial-gradient(circle at 84% 90%, rgb(255 255 255 / 0.75) 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 93% 78%, rgb(214 196 255 / 0.8) 0 1.3px, transparent 1.9px),
+    linear-gradient(180deg, rgb(190 226 255 / 0.13) 0%, rgb(232 214 255 / 0.12) 45%, rgb(150 230 190 / 0.2) 82%, rgb(120 214 160 / 0.26) 100%);
+  /* Feathered edges plus a soft hole over the mark slot (--rt-ea-mx/-my set by the scene): a static mask. */
+  --rt-ea-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 56px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 14px), transparent 100%),
+    radial-gradient(circle at var(--rt-ea-mx, -100px) var(--rt-ea-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: var(--rt-ea-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-ea-mask);
+  mask-composite: intersect;
+}
+.rt-ea-ribbons { position: absolute; left: 0; top: 0; overflow: visible; }
+.rt-ea-rib {
+  fill: none;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+.rt-ea-rib-a { stroke: #9fe8cb; }
+.rt-ea-rib-b { stroke: #cdb8ff; }
+.rt-ea-wrapped .rt-ea-rib { stroke-width: 2.4; }
+
+.rt-ea-sky.rt-ea-final { display: none; }
+
+[data-rt-sw-tone="light"] .rt-ea-wash {
+  background:
+    radial-gradient(circle at 58% 88%, rgb(236 72 153 / 0.55) 0 1.4px, transparent 2px),
+    radial-gradient(circle at 71% 80%, rgb(234 179 8 / 0.6) 0 1.3px, transparent 1.9px),
+    radial-gradient(circle at 84% 90%, rgb(139 92 246 / 0.5) 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 93% 78%, rgb(16 185 129 / 0.5) 0 1.3px, transparent 1.9px),
+    linear-gradient(180deg, rgb(186 230 253 / 0.35) 0%, rgb(233 213 255 / 0.3) 45%, rgb(187 247 208 / 0.45) 82%, rgb(134 239 172 / 0.5) 100%);
+}
+[data-rt-sw-tone="light"] .rt-ea-rib-a { stroke: #2fb98a; }
+[data-rt-sw-tone="light"] .rt-ea-rib-b { stroke: #9673e6; }
+
+/* ---------- Mark slot ---------- */
+.rt-ea-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* SVG transforms use the local user-space origin (the default), so flip/pop turn about the centroid and the
+   wobble group turns about the egg's foot, which its parent translates to the origin. */
+.rt-ea-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-ea-ink { fill: #0f172a; }
+
+.rt-ea-egg { opacity: 0; }
+.rt-ea-rim { fill: none; stroke: #e7b3cb; stroke-width: 3; stroke-linejoin: round; }
+.rt-ea-chev {
+  fill: none;
+  stroke-width: 9.5;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+.rt-ea-chev-gold { stroke: #f2b23e; }
+.rt-ea-chev-lav { stroke: #a58af2; }
+.rt-ea-chev-mint { stroke: #4fcfa4; }
+.rt-ea-shine { fill: #fff; opacity: 0.7; }
+.rt-ea-core { opacity: 0; }
+[data-rt-sw-tone="light"] .rt-ea-rim { stroke: #a8648a; stroke-width: 3.5; }
+
+.rt-ea-mark.rt-ea-final .rt-ea-brand { opacity: 0; }
+.rt-ea-mark.rt-ea-final .rt-ea-egg { opacity: 1; }
+.rt-ea-mark.rt-ea-final .rt-ea-chev { stroke-dashoffset: 0; }
+.rt-ea-mark.rt-ea-final .rt-ea-core { opacity: 1; transform: none; }
+
+/* ---------- Word: bunny ears on the "u" ---------- */
+.rt-ea-word { position: relative; }
+.rt-ea-ears {
+  /* 0.74em wide (32 units, so 1 unit = 0.023em); base line 0.52em below the box top, i.e. tucked about 0.1em
+     behind the tops of the u's stems (z-index -1 inside the word's isolated stacking context puts the ears behind
+     the glyphs). The ear tips reach about 0.31em (7.5 px at 24 px) above the word box. */
+  position: absolute;
+  left: calc(var(--rt-ea-ux, 1.93em) - 0.37em);
+  top: calc(0.52em - 0.8325em);
+  width: 0.74em;
+  height: 0.8325em;
+  pointer-events: none;
+  z-index: -1;
+}
+.rt-ea-earsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-ea-ear { opacity: 0; }
+.rt-ea-ear-out { fill: #f4e7f1; }
+.rt-ea-ear-in { fill: #f7a3c7; }
+[data-rt-sw-tone="light"] .rt-ea-ear-out { fill: #9a7bb4; }
+[data-rt-sw-tone="light"] .rt-ea-ear-in { fill: #f3a6c8; }
+
+.rt-ea-word.rt-ea-final .rt-ea-ear { opacity: 1; }
+.rt-ea-word.rt-ea-final .rt-ea-ear-l { transform: rotate(-6deg); }
+.rt-ea-word.rt-ea-final .rt-ea-ear-r { transform: rotate(14deg); }

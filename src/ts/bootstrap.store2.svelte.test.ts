@@ -202,12 +202,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
-    takeStorageFallbackNotice: () => null,
-}))
-
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         staleAccountProfile: false,
@@ -457,6 +451,12 @@ async function settle(): Promise<void> {
 }
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
@@ -559,7 +559,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         // The page, not the port, tells the person: exactly one notice, posted after the database (and its language) is installed.
         expect(shown).toEqual([language.store2Boot.noticeServerCapability])
         expect(installedWhenPosted).toEqual([1])
-        expect(shown).not.toContain(language.opfsReadOnlyNotice)
         const { refuseOnReadOnlyPage } = await import('src/ts/storage/readOnlyPage')
         expect(await refuseOnReadOnlyPage()).toBe(true)
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
@@ -628,26 +627,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(sleepForeverMock).toHaveBeenCalled()
         expect(ui.blockedWith).toEqual([expect.objectContaining({ reason: 'store2-profile-unwritable' })])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-    })
-})
-
-describe('loadData(): the transitional OPFS page is read-only legacy (guard on the old behaviour, through the dispatch)', () => {
-    test('it loads the legacy profile, posts the OPFS notice and the dispatch says nothing, and writes nothing', async () => {
-        const store = legacyStore()
-        const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'opfs-transitional', store })
-        const reads = await recordMainFileReads(store)
-        const { language } = await import('src/lang')
-        const shown = acknowledgeNotices(alertStore)
-
-        await loadData()
-
-        expectMainFileReadAsReadOnlyPage(reads)
-        expect(get(loadedStore)).toBe(true)
-        expect(shown).toEqual([language.opfsReadOnlyNotice])
-        expect(ui.notices).toEqual([])
-        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
-        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'opfs-transitional' })
     })
 })
 

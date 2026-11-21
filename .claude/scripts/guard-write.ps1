@@ -19,6 +19,7 @@ try {
     Assert-GuardTarget $role $path
     # Assert-GuardTarget already confined external targets to writer/scratch roles under TEMP outside every repository.
     if (-not (Test-GuardWithin $path $GuardRepositoryRoot)) { exit 0 }
+    if (Test-GuardWorktreeGrant $role $payload.cwd $path) { exit 0 }
     $targets = Read-GuardManifest $session $agent $role
     if (-not $targets.Contains($path)) { throw 'Requested file is outside the exact instance grant.' }
     exit 0

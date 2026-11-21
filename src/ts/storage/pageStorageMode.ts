@@ -9,7 +9,7 @@ import type { Store2LegacyReadOnlyReason } from './store2/bootActive'
  *
  * - `store2`: the profile is a store2 tree this page opened. Saves are store2 commits; no write goes to the legacy
  *   block or main-file store.
- * - `read-only`: nothing is written this page load (the page runs from OPFS, or the boot found a store it must not
+ * - `read-only`: nothing is written this page load (the boot found a store it must not
  *   write).
  * - `unset`: boot has not decided yet.
  */
@@ -20,7 +20,7 @@ export type PageStorageMode =
 
 /**
  * A read-only page and why it is one, as a returned fact: nothing displayed or decided reads `reason` (the
- * read-only wording keeps its own probe-first order and OPFS precedence). `too-new` names the store part that was
+ * read-only wording does not depend on it). `too-new` names the store part that was
  * written by a newer version.
  */
 export type PageReadOnlyMode =

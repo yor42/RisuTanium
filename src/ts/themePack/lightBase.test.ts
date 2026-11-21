@@ -17,6 +17,7 @@ import { BUILTIN_PACKS } from './builtins'
 import { cr, parseConcrete } from './colour'
 import { judgeAreaSheet, judgePackSheets, type PackSheetsJudgement } from './index'
 import type { PackJudge } from './intake'
+import { judgeSessionOverForTests } from './judgeClient'
 import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
 import { preparePackSheet, type Prepared } from './apply'
 import { manifestText, zipPack } from './fixtures/packBuilder'
@@ -48,7 +49,7 @@ function store(modes: readonly string[], chat: string): string {
 type Okay = Extract<Prepared, { ok: true }>
 
 async function prepareArchive(modes: readonly string[], chat: string, judge: PackJudge = realJudge, isCurrent: () => boolean = () => true): Promise<Prepared | { ok: false; stale: true }> {
-    return preparePackSheet({ kind: 'archive', key: store(modes, chat) }, judge, isCurrent)
+    return preparePackSheet({ kind: 'archive', key: store(modes, chat) }, judgeSessionOverForTests(judge), isCurrent)
 }
 
 async function baseOf(modes: readonly string[], chat: string, judge: PackJudge = realJudge): Promise<'light' | 'dark'> {
@@ -138,7 +139,7 @@ describe('TD9: the base follows the pack modes', () => {
         ['builtin:origin-navy', 'dark'],
     ] as const)('built-in %s gets the %s base', async (id, expected) => {
         const pack = BUILTIN_PACKS.find((candidate) => candidate.id === id)!
-        const prepared = await preparePackSheet({ kind: 'builtin', pack }, realJudge, () => true)
+        const prepared = await preparePackSheet({ kind: 'builtin', pack }, judgeSessionOverForTests(realJudge), () => true)
         expect(prepared.ok && (prepared as Okay).base).toBe(expected)
     })
 

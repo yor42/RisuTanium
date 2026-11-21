@@ -19,7 +19,8 @@ import type { PromptView } from "../cbs";
 import { beginBusy } from "./memory/busyActions";
 import { openOutsideBusy } from "../drive/exportDialogBusy";
 import { splitLoreKeys } from "./loreKeys";
-import { externalEntryDecorators, placeDisabledMarker } from "./lorebookImportDecorators";
+import { externalEntryDecorators, externalInsertOrder, placeDisabledMarker } from "./lorebookImportDecorators";
+import { NoLorebookInPng, readLorebookFileJson } from "./lorebookFile";
 import { firstMessageIndexOf } from "./firstMessage";
 import { ASCII_WORD, createWordStartIncludes, defaultWordBoundaries, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
 
@@ -976,16 +977,16 @@ export async function importLoreBook(mode:'global'|'local'){
     let lore = 
         mode === 'global' ? DBState.db.characters[selectedID].globalLore : 
         DBState.db.characters[selectedID].chats[page].localLore
-    const file = await selectSingleFile(['json', 'lorebook'])
+    const file = await selectSingleFile(['json', 'lorebook', 'png'])
     const lorebook = file?.data
     if(!lorebook){
         return
     }
- 
+
 
 
     try {
-        const importedlore = JSON.parse(Buffer.from(lorebook).toString('utf-8'))
+        const importedlore = readLorebookFileJson(lorebook) as ImportedLorebookFile
         if(importedlore.type === 'risu' && importedlore.data){
             const datas:loreBook[] = importedlore.data
             for(const data of datas){
@@ -1003,8 +1004,15 @@ export async function importLoreBook(mode:'global'|'local'){
             DBState.db.characters[selectedID].chats[page].localLore = lore
         }
     } catch (error) {
-        alertError(error)
+        alertError(error instanceof NoLorebookInPng ? language.errors.noData : error)
     }
+}
+
+/** The top-level shapes of a picked lorebook file: RisuAI's own export, or an external book with `entries`. */
+export interface ImportedLorebookFile{
+    type?:string
+    data?:loreBook[]
+    entries?:{[key:string]:CCLorebook}
 }
 
 export interface CCLorebook{
@@ -1032,6 +1040,7 @@ export interface CCLorebook{
     role?:number|null
     selectiveLogic?:number
     keysecondary?:string[]
+    weight?:number|null
     contextConfig?: {
         budgetPriority:number
         prefix:string
@@ -1055,7 +1064,7 @@ export function convertExternalLorebook(entries:{[key:string]:CCLorebook}){
             key: currentLore.key ? currentLore.key.join(', ') :
                 currentLore.keys ? currentLore.keys.join(', ') :
                 currentLore.keywords ? currentLore.keywords.join(', ') : '',
-            insertorder: currentLore.order ?? currentLore.priority ?? currentLore?.contextConfig?.budgetPriority ?? 0,
+            insertorder: externalInsertOrder(currentLore),
             comment: currentLore.comment || currentLore.name || currentLore.displayName || '',
             content: content,
             mode: "normal",

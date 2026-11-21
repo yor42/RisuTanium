@@ -71,6 +71,7 @@ import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
+import { chroMemoryOn } from "../process/memory/memoryEngine";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -238,6 +239,9 @@ function describeWriteMeasure(): string {
     }
 }
 
+/** The fork-only scheme name of a theme pack's own colours; PACK_SCHEME_NAME in gui/colorscheme.ts is the same literal (pinned by a test). */
+const THEME_PACK_SCHEME_NAME = 'theme-pack'
+
 /**
  * The database an export encodes: `db` without its account, with the character
  * list made one a reader can load. A list with nothing wrong is exported as it
@@ -273,6 +277,16 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // A `.bin` carries no theme pack, so it carries the scheme that turning the pack off would restore, never the fork-only
+    // name or the snapshot. The page's own fields are never changed; `customColorScheme` is carried as it is.
+    if (plain.colorSchemeName === THEME_PACK_SCHEME_NAME) {
+        // Loaded only here: most tests of the export mock the colour scheme module with a narrow factory.
+        const { schemeWithoutPack } = await import("../gui/colorscheme")
+        const own = schemeWithoutPack(db)
+        plain.colorSchemeName = own.colorSchemeName
+        plain.colorScheme = own.colorScheme
+    }
+    delete plain.themePackSchemeSnapshot
     // Usage statistics (the `statics` ledger keys) and price overrides are fork-only and have no place in a `.bin` (the export
     // confirm names them first). A `statics` without usage keys keeps the page's own object; the page's values are never changed.
     if (hasUsageKeys(db.statics)) {
@@ -281,6 +295,10 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     delete plain.usagePriceOverrides
     // The statistics retention period is a fork-only device preference: left out silently, so an import ends with it off.
     delete plain.usageRetentionMonths
+    // The ChroMemory choice and its settings are fork-only and have no place in a `.bin` (the export confirm names the engine
+    // first); both keys are removed, not set to undefined. The legacy engine fields stay as stored, and the page keeps its values.
+    delete plain.ltmEngine
+    delete plain.ltmSettings
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -823,7 +841,23 @@ async function confirmOmitUsageStats(session: ExportSession, present: boolean): 
 }
 
 /**
- * The fork-only consent before the writer opens: the five per-kind prompts, or one answer to `options.askLeaveOut` that
+ * Whether the export leaves ChroMemory out visibly: only while the engine is selected. Settings kept while another engine is
+ * selected are left out silently, like the statistics retention period.
+ */
+function chroMemoryLeftOut(db: Database): boolean {
+    return chroMemoryOn(db)
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the ChroMemory choice and its settings (a `.bin` has
+ * no place for them). `true` when ChroMemory is not selected or the person confirms; declining writes nothing.
+ */
+async function confirmOmitChroMemory(session: ExportSession, present: boolean): Promise<boolean> {
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupChroMemoryConfirm))
+}
+
+/**
+ * The fork-only consent before the writer opens: the six per-kind prompts, or one answer to `options.askLeaveOut` that
  * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
@@ -833,11 +867,12 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
         && await confirmOmitTaskPresets(session, taskPresetLabels(db))
         && await confirmOmitThemePacks(session, themePackLabels(db))
         && await confirmOmitUsageStats(session, hasUsageData(db))
+        && await confirmOmitChroMemory(session, chroMemoryLeftOut(db))
     const ask = options.askLeaveOut
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db) })
     if (summary.length === 0) {
         return true
     }
@@ -1253,7 +1288,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
     }
-    session.progress.done([downloadNotice('Success')])
+    session.progress.done([downloadNotice(language.rtbExportSaved)])
     return { status: 'saved', notices: [], omitted, inlays: inlayResult }
 }
 
@@ -1550,7 +1585,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: null, suggestedName }
     }
-    session.progress.done([downloadNotice('Success'), language.partialBackupInlaysNotIncluded])
+    session.progress.done([downloadNotice(language.rtbExportSaved), language.partialBackupInlaysNotIncluded])
     return { status: 'saved', notices: [], omitted, inlays: null, suggestedName }
 }
 
@@ -2005,7 +2040,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // A picked file reports a change by failing its reads; an opened one is asked.
             const openedFileChanged = async (): Promise<boolean> => openedFile !== null && await openedFile.changed();
 
-            // A page that runs from OPFS this time writes nothing, and a restore is refused before it reads or writes anything.
+            // A read-only page writes nothing, and a restore is refused before it reads or writes anything.
             if (await refuseOnReadOnlyPage()) {
                 return refused();
             }
@@ -2057,8 +2092,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 const walk = await indexBackupEntries(file, {
                     oversizeBodyBytes: assetLimit ?? undefined,
                     onProgress: (scanned, total) => {
-                        const percent = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
-                        const progressText = `Checking local backup... (${percent}%)`;
+                        const percent = total > 0 ? Math.floor((scanned / total) * 100) : 100
+                        const progressText = language.rtbRestoreChecking(percent);
                         const changed = progressText !== lastWalkProgressText;
                         lastWalkProgressText = progressText;
                         progress.bytes('check', scanned, total, changed ? progressText : null);
@@ -2321,7 +2356,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             noteImportPhase(`copy ${visitedEntries} of ${backupEntries.length} entries`);
                         }
                         const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
-                        const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
+                        const progressText = language.rtbRestoreCopying(Math.floor((entryEnd / file.size) * 100));
                         const textChanged = progressText !== lastProgressText;
                         lastProgressText = progressText;
                         progress.bytes('copy', copyDone, file.size, textChanged ? progressText : null);

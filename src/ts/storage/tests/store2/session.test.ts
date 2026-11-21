@@ -339,14 +339,6 @@ describe('session decisions', () => {
         expect(session.commitRead).toBeNull()
     })
 
-    test('the transitional OPFS store is read-only with no backend and every gate refuses', async () => {
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'opfs-transitional', backend: createMemoryBackend(), upstreamMainFile: async () => false })
-
-        expect(session.decision).toMatchObject({ row: null, mode: 'read-only', reason: 'opfs-transitional' })
-        expect(session.backend).toBeNull()
-        expect(await session.openGate('gc')).toMatchObject({ status: 'refused' })
-    })
-
     test('a Node page whose store has no guarded operations is read-only', async () => {
         const session = await Store2Session.open((await openTauri()).store, { kind: 'node', upstreamMainFile: async () => false })
 

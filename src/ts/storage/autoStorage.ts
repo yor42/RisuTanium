@@ -6,9 +6,7 @@ import type { StorageTabLocks } from "./storageTabLocks"
 /**
  * The storage object `globalApi.svelte.ts` exports as `forageStorage`. It is
  * the Node server client on a page the Node server serves and nothing on any
- * other page: no browser-side store is opened here. A web profile whose main
- * store is still OPFS is handled by the page's byte store (`store/appStore.ts`,
- * `opfsCopyBack.ts`), not by this class.
+ * other page: no browser-side store is opened here.
  */
 export class AutoStorage{
     /** Set once, in `Init()`, from a stale RisuAccount-sync profile's leftover `localStorage` flag. Boot (`loadData()` in `bootstrap.ts`) reads this to decide whether to show the stale-profile notice; `Init()` itself never acts on it. */
@@ -84,9 +82,8 @@ export class AutoStorage{
         }
         // Waits for this tab's own shared cross-tab presence lock to actually
         // be granted first, so a tab that opens while another tab holds the
-        // exclusive storage-migration lock (the copy back from OPFS in
-        // `opfsCopyBack.ts`) waits here until that tab releases and then
-        // reads the settled outcome. Read lazily off the injected instance or
+        // exclusive storage-migration lock (a restore) waits here until that
+        // tab releases and then reads the settled outcome. Read lazily off the injected instance or
         // the production default -- never captured at construction time,
         // since `forageStorage` is constructed at module-evaluation time in
         // `globalApi.svelte.ts`, before that module's own export of this is

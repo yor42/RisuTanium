@@ -154,6 +154,12 @@ beforeAll(() => {
     initHotkey()
 })
 
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(() => {
     const db = { botPresets: [{ name: 'One' }, { name: 'Two' }], characters: TWO_CHARACTERS } as unknown as Database
     migratePresetSlots(db)

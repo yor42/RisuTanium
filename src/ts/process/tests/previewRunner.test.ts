@@ -89,11 +89,16 @@ import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
 import { alertStore, DBState, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 import { doingChat, sendChat } from 'src/ts/process/index.svelte'
-import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertToast, alertWait } from 'src/ts/alert'
+import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertWait } from 'src/ts/alert'
 
 //#region fixtures
 
 const NONE: alertData = { type: 'none', msg: '' }
+
+/** The raw `toast` value AlertComp's toast branch shows: these tests pin how the alert store protocol treats a toast cover, not what `alertToast` does. */
+function putToast(msg: string): void {
+    alertStore.set({ type: 'toast', msg })
+}
 const SELECTED = 0
 
 /** A request-shaped body: JSON, no key in it, nothing a mask would touch. */
@@ -403,7 +408,7 @@ describe('the preview hotkey while another alert is up', () => {
 
     test('guard: a toast in front of the hotkey does not stop the preview', async () => {
         fakeSend({ returns: true, body: REQUEST_BODY })
-        alertToast('Alert Closed')
+        putToast('Alert Closed')
 
         await keydownHandler(ctrlU())
 
@@ -706,7 +711,7 @@ describe('Cancel and Escape on the preview\'s notice', () => {
 
 describe.each(previewEntries)('$name: a result that finishes while another alert is up', (entry) => {
     test('a toast at the end is replaced by the result at once', async () => {
-        fakeSend({ returns: true, body: REQUEST_BODY, during: () => { alertToast('Alert Closed') } })
+        fakeSend({ returns: true, body: REQUEST_BODY, during: () => { putToast('Alert Closed') } })
 
         await entry.run()
 
@@ -799,7 +804,7 @@ describe('a newer preview run, and a refused attempt, while a result is pending'
         fakeSend({ returns: true, body: EARLIER_BODY, during: () => { alertNormal('The start trigger says hi') } })
         await keydownHandler(ctrlU())
         expect(shown().type, 'the alert the result waits behind').toBe('normal')
-        alertToast('Alert Closed')
+        putToast('Alert Closed')
         expect(shown()).toMatchObject({ type: 'toast', msg: 'Alert Closed' })
     }
 
@@ -1229,7 +1234,7 @@ describe('a preview and a prompt that is waiting', () => {
                 during: () => {
                     prompt = trackConfirm(alertConfirm('Proceed?'))
                     asked = shown()
-                    alertToast('Alert Closed')
+                    putToast('Alert Closed')
                 },
             })
             const alerts = recordAlerts()
@@ -1252,13 +1257,13 @@ describe('a preview and a prompt that is waiting', () => {
     describe('whether a preview may start', () => {
         test('it may not while a prompt is waiting under a toast', () => {
             trackConfirm(alertConfirm('Proceed?'))
-            alertToast('Alert Closed')
+            putToast('Alert Closed')
 
             expect(previewMayStart()).toBe(false)
         })
 
         test('guard: it may start under a toast when no prompt is waiting', () => {
-            alertToast('Alert Closed')
+            putToast('Alert Closed')
 
             expect(previewMayStart()).toBe(true)
         })
