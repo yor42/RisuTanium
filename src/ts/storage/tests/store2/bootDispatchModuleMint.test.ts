@@ -565,7 +565,7 @@ describe('guards: the boot does not ensure modules (MC-644)', () => {
                 recovery: async () => { },
                 peer: createPeerDouble(),
             },
-            kind: 'opfs-transitional',
+            kind: 'node',
         })
         expect(result.kind).toBe('legacy-readonly')
         expect(vi.mocked(readTreeBytes)).not.toHaveBeenCalled()

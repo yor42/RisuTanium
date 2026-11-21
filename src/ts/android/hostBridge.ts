@@ -53,19 +53,57 @@ export interface OpenedFilesTake {
     confirm(): void
 }
 
-interface PendingTake {
+/** The parsed reply a pending call is settled with. */
+type HostReply = Record<string, unknown>
+
+/**
+ * One call waiting on the host. A take is answered by a reply without a `method`; a request only by a reply
+ * that names exactly its `method`. Anything else with the same id is ignored, so a reply never settles a call
+ * of the other kind.
+ */
+interface PendingCall {
     id: number
+    kind: 'take' | 'request'
+    method?: string
     /** Null when the channel went away before the reply. */
-    resolve(reply: { raw: string; through: number } | null): void
+    settle(reply: HostReply | null): void
 }
+
+/** A request on the channel: the reply, and `cancel` to stop waiting without settling it. */
+export interface HostRequest {
+    reply: Promise<HostReply | null>
+    cancel(): void
+}
+
+const MAX_REQUEST_ID = 2147483647
 
 let bound: HostChannel | null = null
 let detachBound: (() => void) | null = null
 let cachedInset = 0
 let cachedIme: ImeState | null = null
 const imeListeners = new Set<(state: ImeState) => void>()
-let nextTakeId = 1
-let pending: PendingTake[] = []
+let nextCallId = initialCallId()
+let pending: PendingCall[] = []
+
+/**
+ * A random start in 1..2^30, so a reply meant for an earlier document of this origin is unlikely to carry a
+ * pending id of this one. The 30-bit limit leaves room to count up to the wrap at 2^31-1.
+ */
+function initialCallId(): number {
+    const draw = new Uint32Array(1)
+    try {
+        globalThis.crypto.getRandomValues(draw)
+    } catch {
+        draw[0] = Math.floor(Math.random() * 0x40000000)
+    }
+    return 1 + (draw[0] & 0x3fffffff)
+}
+
+function takeCallId(): number {
+    const id = nextCallId
+    nextCallId = id >= MAX_REQUEST_ID ? 1 : id + 1
+    return id
+}
 
 function send(channel: HostChannel, message: { bridge: string; method: string; args: unknown[]; id?: number }): void {
     // Called as a method: the host object needs its receiver.
@@ -114,13 +152,16 @@ function onHostMessage(event: HostMessageEvent): void {
     if (typeof reply.id !== 'number') {
         return
     }
-    const entry = pending.find((candidate) => reply.id === candidate.id)
+    const entry = pending.find((candidate) => reply.id === candidate.id && repliesTo(candidate, reply))
     if (!entry) {
         return
     }
     pending = pending.filter((candidate) => candidate !== entry)
-    const through = typeof reply.through === 'number' && Number.isInteger(reply.through) && reply.through > 0 ? reply.through : 0
-    entry.resolve({ raw: JSON.stringify(Array.isArray(reply.result) ? reply.result : []), through })
+    entry.settle(reply)
+}
+
+function repliesTo(call: PendingCall, reply: HostReply): boolean {
+    return call.kind === 'take' ? reply.method === undefined : reply.method === call.method
 }
 
 function attach(channel: HostChannel): () => void {
@@ -138,7 +179,7 @@ function attach(channel: HostChannel): () => void {
     }
 }
 
-/** Lets go of the current channel; a take still waiting on it resolves empty. */
+/** Lets go of the current channel; a take still waiting on it resolves empty and a request settles with null. */
 function release(): void {
     if (bound === null) {
         return
@@ -151,7 +192,7 @@ function release(): void {
     cachedInset = 0
     cachedIme = null
     for (const entry of stale) {
-        entry.resolve(null)
+        entry.settle(null)
     }
 }
 
@@ -188,6 +229,41 @@ function bind(): HostChannel | null {
     }
     release()
     return null
+}
+
+/** True when the host injected the message channel (the vault is reachable only through it). */
+export function hostChannelPresent(): boolean {
+    return bind() !== null
+}
+
+/**
+ * Sends `{bridge, method, args}` with a fresh id and waits for the reply that names `${bridge}.${method}`.
+ * Undefined when there is no channel. The reply settles null when the channel is released, and rejects when the
+ * message cannot be sent. `cancel` forgets the request, so a late reply settles nothing.
+ */
+export function hostRequest(bridge: string, method: string, args: unknown[]): HostRequest | undefined {
+    const channel = bind()
+    if (!channel) {
+        return undefined
+    }
+    const id = takeCallId()
+    let entry: PendingCall | undefined
+    const reply = new Promise<HostReply | null>((resolve, reject) => {
+        entry = { id, kind: 'request', method: `${bridge}.${method}`, settle: resolve }
+        pending.push(entry)
+        try {
+            send(channel, { bridge, method, args, id })
+        } catch (error) {
+            pending = pending.filter((candidate) => candidate !== entry)
+            reject(error)
+        }
+    })
+    return {
+        reply,
+        cancel: () => {
+            pending = pending.filter((candidate) => candidate !== entry)
+        },
+    }
 }
 
 /** Binds the channel now, so the host starts pushing the gesture inset before the first read. */
@@ -337,15 +413,18 @@ export function openedFilesTake(): Promise<OpenedFilesTake> | undefined {
     const channel = bind()
     const legacy = window.__risuTaniumOpenedFilesHost
     if (channel) {
-        const id = nextTakeId++
+        const id = takeCallId()
         return new Promise<OpenedFilesTake>((resolve, reject) => {
             pending.push({
                 id,
-                resolve: (reply) => {
-                    if (reply === null) {
+                kind: 'take',
+                settle: (answer) => {
+                    if (answer === null) {
                         resolve({ raw: '[]', held: false, confirm: () => { } })
                         return
                     }
+                    const through = typeof answer.through === 'number' && Number.isInteger(answer.through) && answer.through > 0 ? answer.through : 0
+                    const reply = { raw: JSON.stringify(Array.isArray(answer.result) ? answer.result : []), through }
                     resolve({
                         raw: reply.raw,
                         held: true,

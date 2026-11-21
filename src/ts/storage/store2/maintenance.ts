@@ -23,7 +23,7 @@ import { inlaySweepKind, runInlaySweep, type InlaySweepEnv, type InlaySweepResul
  * when the sole-tab proof and the own-base rule hold, and otherwise logs one refusal line and deletes nothing; on Node the
  * pass is aged: a unit is retired only on its third sighting a day apart, and it needs the server's guarded routes and
  * clock), followed on the app, on the web and on a Node server
- * (`tauri`, `indexeddb` and `node` sessions; the transitional OPFS page never lists `assets/`) by one asset
+ * (`tauri`, `indexeddb` and `node` sessions) by one asset
  * sweep (`sweep/run.ts`; on the web and on Node its tab check is the same sole-tab proof as the collector's, except that
  * the sweep also refuses where Web Locks are missing) that deletes stored assets nothing refers to once a record at least a
  * day old has named them (on Node, twice, each time at the asset's current revision, with the server's clock and guarded

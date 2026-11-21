@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * A page that runs from OPFS this time (the copy back into IndexedDB could
- * not run) is read-only for its session. `LoadLocalBackup`
+ * A read-only page writes nothing for its session. `LoadLocalBackup`
  * (`src/ts/drive/backuplocal.ts`) refuses the `.bin` restore there once the
  * file is picked and before it streams or writes anything: no asset write, no
  * cold-storage write, no write of the restored profile, no `setDatabase`, no cross-tab lock,
@@ -10,7 +9,7 @@
  * on to write.
  *
  * The mocks follow `backuplocalEncryptedRefusal.test.ts`; a passing test here
- * says nothing about a real browser's OPFS.
+ * says nothing about a real browser's storage.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Database } from '../../storage/database.svelte'
@@ -118,6 +117,7 @@ import { LoadLocalBackup } from '../backuplocal'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectAppStore } from '../../storage/store/appStore'
+import { setPageStorageMode } from '../../storage/pageStorageMode'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 
 function u32le(n: number): Uint8Array {
@@ -189,13 +189,14 @@ async function restore(bytes: Uint8Array): Promise<void> {
     await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
 }
 
-describe('the .bin restore on a page that runs from OPFS this time', () => {
+describe('the .bin restore on a read-only page', () => {
     test('is refused with the read-only notice before it takes a lock or writes an asset, a unit, the restored profile or the page', async () => {
-        injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'opfs-transitional')
+        injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'indexeddb')
+        setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
 
         await restore(backupBytes())
 
-        expect(alertErrorMock).toHaveBeenCalledWith(language.opfsReadOnlyNotice)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)
         expect(acquireExclusiveStorageMigrationLockMock).not.toHaveBeenCalled()
         expect(forageSetItemMock).not.toHaveBeenCalled()
         expect(setColdStorageItemMock).not.toHaveBeenCalled()
@@ -207,7 +208,7 @@ describe('the .bin restore on a page that runs from OPFS this time', () => {
 
         await restore(backupBytes())
 
-        expect(alertErrorMock).not.toHaveBeenCalledWith(language.opfsReadOnlyNotice)
+        expect(alertErrorMock).not.toHaveBeenCalledWith(language.store2Boot.readOnlyRefusal)
         expect(forageSetItemMock.mock.calls.map((call) => call[0])).toContain('assets/asset1.png')
         expect(shell.commits).toHaveLength(1)
         expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)

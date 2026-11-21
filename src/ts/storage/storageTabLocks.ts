@@ -1,7 +1,6 @@
 /**
  * Real cross-tab mutual exclusion for an operation that must run with no other
- * tab alive (the copy back of an OPFS-main profile into IndexedDB at startup,
- * `opfsCopyBack.ts`, and the restores), built on the browser's Web Locks
+ * tab alive (the restores), built on the browser's Web Locks
  * API (`navigator.locks`) rather than a ping-and-wait heartbeat — a
  * timeout-based liveness check can never be a genuine guarantee (a
  * backgrounded/suspended tab may simply not get to run its event loop in
@@ -19,11 +18,6 @@
  * from succeeding until the switch finishes and releases — closing both the
  * "suspended peer missed the ping" and "new tab opened mid-switch" gaps a
  * heartbeat approach cannot.
- *
- * This exclusion also covers the copy back from OPFS at startup, which takes
- * the same exclusive lock around its own copy so that a second tab opening
- * mid-copy waits for it and then reads the already-settled outcome instead of
- * racing a copy of its own.
  *
  * A page that only ever WAITS on this lock (queued for exclusive access, or
  * timed out) can still lose a race the lock itself cannot see: a queued
@@ -158,9 +152,8 @@ export interface StorageTabLocks {
      * Internally also acquires the write lock passed to
      * `createStorageTabLocks()` — callers must NOT separately acquire it
      * themselves. A caller that reloads right after its operation may leave
-     * the lock unreleased; one that carries on in this page (the copy back
-     * from OPFS at startup) must call the release function once its
-     * operation is fully done.
+     * the lock unreleased; one that carries on in this page must call the
+     * release function once its operation is fully done.
      *
      * **The storage epoch.** Every successful grant writes a fresh random
      * token to the shared per-origin epoch store before returning it to the
@@ -217,8 +210,7 @@ export interface StorageTabLocks {
      * **The returned release function** runs its effects exactly once, even
      * if called more than once (including with a different argument on a
      * later call — the first call's argument wins). Called with no
-     * argument (or `false`), it releases the write lock too, exactly as
-     * the copy back from OPFS at startup expects. Called with `true`, it releases only the cross-tab
+     * argument (or `false`), it releases the write lock too. Called with `true`, it releases only the cross-tab
      * exclusive Web Lock and restores this tab's own shared presence,
      * leaving the write lock closed forever — for a caller whose own write
      * has already landed and who will never write this key again from
@@ -477,9 +469,8 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
             granted()
             // Restores this tab's shared presence hold, freeing a new tab
             // (or this same tab's own next attempt) to proceed against an
-            // exclusive hold that has nothing left to do. It matters for
-            // the copy back from OPFS at startup, whose success path never
-            // reloads.
+            // exclusive hold that has nothing left to do. It matters for a
+            // caller whose success path never reloads.
             await acquireOwnSharedPresenceLock()
             if (!keepWriteLock) {
                 // Gives back the write lock so saveDb() can write again. A

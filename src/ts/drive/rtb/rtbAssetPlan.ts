@@ -74,7 +74,6 @@ export function creatableViolation(rule: CreatableRule, key: string): string | n
         case 'node':
             return nodeAddressableViolation(key) ?? nodeCreatableViolation(key) ?? nodeAssetRouteViolation(key)
         case 'indexeddb':
-        case 'opfs-transitional':
             return indexedDbAddressableViolation(key) ?? indexedDbCreatableViolation(key)
     }
 }

@@ -3924,7 +3924,7 @@ export const languageKorean = {
     applyAdditionalParamsToAll: "모든 모델에 추가 매개변수 적용",
     localToggles: "로컬 토글",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     staleAccountProfileNotice:
         "이 브라우저 프로필은 이 앱이 지원하지 않는 RisuAccount 동기화를 사용했습니다.\n\n지금 보이는 것은 동기화를 켜기 전에 이 브라우저에 저장되어 있던 데이터입니다. 그 이후 다른 브라우저나 기기에서 데이터가 변경되었을 수 있습니다. 계정의 데이터는 여전히 RisuAccount에 남아 있습니다.\n\n지금 보이는 데이터에 계정에는 없는 내용이 들어 있을 수 있다면, 무엇이든 가져오기 전에 먼저 로컬 백업을 만들어 두세요.\n\n계정의 데이터를 이곳으로 가져오려면, 업스트림 RisuAI에 로그인한 뒤 로컬 백업(.bin)을 만들어 이곳에서 가져오세요. 셀프 호스팅 또는 로컬 업스트림에서는 먼저 고급 설정으로 이동해 \"비권장 설정 보이기\"를 켠 다음 \"Skip Saving Assets on Web Sync\"의 선택을 해제하세요. 그렇지 않으면 이미지가 빠집니다. risuai.xyz에서는 로그인한 상태로 만든 전체 백업을 이곳으로 가져올 수 없습니다. 가져오기 화면에 대안이 안내되어 있습니다. 자세한 내용은 마이그레이션 가이드를 참고하세요.\n\nOK를 누르면 앱이 새로고침됩니다.",
     keiImageProviderUnavailable: "\"Kei\" 이미지 공급자는 이 앱에서 사용할 수 없습니다. 설정에서 다른 이미지 공급자를 선택하세요.",
@@ -3941,7 +3941,6 @@ export const languageKorean = {
     forkTermsOfService: "이용약관",
     forkPrivacyPolicy: "개인정보 처리방침",
     forkLegalLinksLabel: "법적 문서",
-    opfsCopyBackProgress: (done: number, total: number) => `데이터를 브라우저 저장소로 옮기는 중입니다... (${done} / ${total}). 완료될 때까지 이 탭을 열어 두세요.`,
     saveReadFailed: "RisuTanium이 저장소에서 저장된 데이터를 읽지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요. 계속 이런 일이 발생하면 데이터가 있는 디스크나 서버에 접근할 수 있는지 확인하세요.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '현재 저장본을 가리키는 포인터'
@@ -3984,7 +3983,6 @@ export const languageKorean = {
     saveLeftoverNotice: "RisuTanium이 중단된 저장 또는 복원 작업으로 남겨진, 사용하지 않는 저장 데이터를 발견했습니다. 해롭지 않으며, 설정의 정리에서 제거할 수 있습니다.",
     saveMainFileLeftNotice: "데이터가 새 형식으로 이동했지만, 이전 저장 파일이 너무 커서 이 서버가 옆으로 옮기지 못했습니다. 같은 데이터를 여는 업스트림 버전의 RisuAI가 그 이전 파일을 열 수 있습니다. 설정의 정리는 삭제하기 전까지 그 파일을 안전하게 보관합니다.",
     staticBuildUnsupported: "RisuTanium은 더 이상 일반 웹 호스트에서 실행되지 않아요. Android 앱이나 데스크톱 앱, 또는 RisuTanium Node 서버가 제공하는 페이지를 사용해 주세요.",
-    opfsReadOnlyNotice: "RisuTanium이 이번에는 데이터의 임시 사본으로 실행 중이므로 변경 사항을 저장하지 않으며, 백업 복원이나 저장소 정리도 사용할 수 없습니다. 데이터는 사라지지 않았습니다. 이 앱의 다른 탭을 닫고 다시 시작하면 데이터를 브라우저 저장소로 옮길 수 있습니다.",
     legacyPartialCharacters: (count: number) => count === 1 ? "캐릭터 1개" : `캐릭터 ${count}개`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "이 버전에서 읽을 수 없는 기타 부분 1개" : `이 버전에서 읽을 수 없는 기타 부분 ${count}개`,
     legacyPartialNotice: (items: string[]) =>

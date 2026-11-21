@@ -168,12 +168,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
-    takeStorageFallbackNotice: () => null,
-}))
-
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         staleAccountProfile: false,

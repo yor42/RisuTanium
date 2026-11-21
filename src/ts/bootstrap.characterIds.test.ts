@@ -16,7 +16,6 @@
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
-import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { BLOCK, composeSave, corruptBlockPayload } from 'src/ts/storage/tests/manualCleanupHarness'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
@@ -35,7 +34,6 @@ const dbState = vi.hoisted(() => ({
 const world = vi.hoisted(() => ({
     events: [] as string[],
     staleAccountProfile: false,
-    fallbackNotice: null as FallbackNotice | null,
     items: new Map<string, Uint8Array>(),
     failingKeys: new Set<string>(),
     blockCache: new Map<string, unknown>(),
@@ -166,14 +164,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    takeStorageFallbackNotice: () => {
-        const notice = world.fallbackNotice
-        world.fallbackNotice = null
-        return notice
-    },
-}))
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
@@ -307,7 +297,6 @@ beforeEach(() => {
     localStorage.clear()
     world.events.length = 0
     world.staleAccountProfile = false
-    world.fallbackNotice = null
     world.items.clear()
     world.failingKeys.clear()
     world.blockCache.clear()

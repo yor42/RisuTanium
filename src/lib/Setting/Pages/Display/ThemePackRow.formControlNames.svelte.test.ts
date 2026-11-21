@@ -37,7 +37,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({ read: async () => ({ bytes: null }) }),
-    pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })

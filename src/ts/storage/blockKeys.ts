@@ -1,7 +1,6 @@
 /**
  * Key names of pre-store2 data that boot import and old-data deletion still
- * recognise. No save writes these keys; the OPFS copy-back only moves existing
- * ones into IndexedDB, and a profile that ran an older build may still hold them.
+ * recognise. No save writes these keys, and a profile that ran an older build may still hold them.
  *
  * - `blocks/`                         the prefix of the old block store, `blocks/head` its head pointer
  * - `database/database.bin`           the old main file

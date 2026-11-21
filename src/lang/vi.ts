@@ -3923,7 +3923,7 @@ export const languageVietnamese = {
     applyAdditionalParamsToAll: "Áp dụng Tham số Bổ sung cho Tất cả Mô hình",
     localToggles: "Chuyển đổi Cục bộ",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     staleAccountProfileNotice:
         "Hồ sơ trình duyệt này đã sử dụng đồng bộ RisuAccount, mà ứng dụng này không hỗ trợ.\n\nNhững gì bạn thấy bây giờ là dữ liệu mà trình duyệt này đã lưu trước khi bật đồng bộ. Các trình duyệt hoặc thiết bị khác có thể đã thay đổi dữ liệu của bạn kể từ đó. Dữ liệu tài khoản của bạn vẫn còn trên RisuAccount.\n\nNếu những gì bạn thấy có thể chứa nội dung mà tài khoản của bạn không có, hãy tạo một bản sao lưu cục bộ cho nó trước khi nhập bất kỳ thứ gì.\n\nĐể mang dữ liệu tài khoản của bạn về đây, hãy đăng nhập trên một bản RisuAI thượng nguồn, tạo một bản sao lưu cục bộ (.bin), rồi nhập nó vào đây. Trên bản thượng nguồn tự lưu trữ hoặc cục bộ, trước tiên hãy vào Cài đặt nâng cao, bật \"Hiển thị cài đặt không được đề xuất\", sau đó bỏ chọn \"Skip Saving Assets on Web Sync\", nếu không hình ảnh sẽ bị bỏ sót. Trên risuai.xyz, một bản sao lưu đầy đủ được tạo khi đã đăng nhập không thể nhập được vào đây; màn hình nhập sẽ nêu tên các phương án thay thế. Hướng dẫn di chuyển có đầy đủ chi tiết.\n\nNhấn OK sẽ tải lại ứng dụng.",
     keiImageProviderUnavailable: "Nhà cung cấp hình ảnh \"Kei\" không khả dụng trong ứng dụng này. Hãy chọn nhà cung cấp hình ảnh khác trong cài đặt.",
@@ -3940,7 +3940,6 @@ export const languageVietnamese = {
     forkTermsOfService: "Điều khoản Dịch vụ",
     forkPrivacyPolicy: "Chính sách Quyền riêng tư",
     forkLegalLinksLabel: "Tài liệu pháp lý",
-    opfsCopyBackProgress: (done: number, total: number) => `Đang chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt... (${done} / ${total}). Hãy giữ tab này mở cho đến khi hoàn tất.`,
     saveReadFailed: "RisuTanium không thể đọc dữ liệu đã lưu của bạn từ bộ nhớ, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại. Nếu sự cố này tiếp tục xảy ra, hãy kiểm tra xem có thể truy cập được ổ đĩa hoặc máy chủ chứa dữ liệu hay không.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'con trỏ tới bản lưu hiện tại của bạn'
@@ -3983,7 +3982,6 @@ export const languageVietnamese = {
     saveLeftoverNotice: "RisuTanium đã tìm thấy dữ liệu lưu không dùng đến bị bỏ lại bởi một lần lưu hoặc khôi phục bị gián đoạn. Dữ liệu này không gây hại. Bạn có thể xóa nó trong phần dọn dẹp ở cài đặt.",
     saveMainFileLeftNotice: "Dữ liệu của bạn đã được chuyển sang định dạng mới, nhưng tệp lưu cũ quá lớn để máy chủ này dời sang một bên. Một phiên bản RisuAI thượng nguồn mở cùng dữ liệu có thể mở tệp cũ đó. Phần dọn dẹp ở cài đặt sẽ giữ nó an toàn cho đến khi bạn xóa nó.",
     staticBuildUnsupported: "RisuTanium không còn chạy từ một máy chủ web thông thường. Hãy dùng ứng dụng Android hoặc ứng dụng máy tính, hoặc trang do máy chủ RisuTanium Node cung cấp.",
-    opfsReadOnlyNotice: "Lần này RisuTanium đang chạy từ một bản sao tạm thời của dữ liệu của bạn, nên sẽ không lưu các thay đổi, và việc khôi phục bản sao lưu hoặc dọn dẹp bộ nhớ không khả dụng. Dữ liệu của bạn không bị mất. Hãy đóng các tab khác của ứng dụng này và khởi động lại để dữ liệu có thể được chuyển sang bộ nhớ trình duyệt.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 nhân vật" : `${count} nhân vật`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 phần khác mà phiên bản này không thể đọc" : `${count} phần khác mà phiên bản này không thể đọc`,
     legacyPartialNotice: (items: string[]) =>

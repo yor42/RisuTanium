@@ -235,8 +235,8 @@ import { language } from 'src/lang'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 
-/** The asset limit follows the store the page selected: the transitional OPFS store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
-function selectStoreKind(kind: 'node' | 'opfs-transitional'): void {
+/** The asset limit follows the store the page selected: a Node store without recorded pieces takes 100 MiB, the browser store 1 GiB. */
+function selectStoreKind(kind: 'node' | 'indexeddb'): void {
     noteSelectedStore(kind, createMemoryByteStore())
 }
 
@@ -424,10 +424,12 @@ function reset() {
     h.latePushThrow = false
     h.maxEntryBytes = 0
     h.node = false
-    selectStoreKind('opfs-transitional')
+    selectStoreKind('indexeddb')
     vi.mocked(changeChar).mockClear()
     vi.mocked(checkCharOrder).mockClear()
     Object.assign(charxLimits, defaultLimits)
+    // The 201 MiB fixtures need a bound they can exceed cheaply; the store's own bound is 1 GiB here.
+    charxLimits.assetBytes = 200 * MIB
 }
 
 function dataFor(bytes: Uint8Array, name: string, input: Input): File | Uint8Array | ImportSource | ReadableStream<Uint8Array> {

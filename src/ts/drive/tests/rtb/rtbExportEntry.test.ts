@@ -311,7 +311,7 @@ describe('the wiring through the real guarded run (T-S9-2, T-S9-4)', () => {
     test('the refusal the entry asks first equals the guarded run\'s refusal for each page state', async () => {
         const backend = await world.open()
         const cases: Array<[Parameters<typeof rtbDeps>[0]['over'], RtbExportRefusal]> = [
-            [{ opfsTransitional: async () => true }, 'read-only'],
+            [{ pageMode: () => ({ kind: 'read-only', reason: 'backend-unavailable' }) }, 'read-only'],
             [{ session: () => null }, 'no-session'],
         ]
         for (const [over, expected] of cases) {
