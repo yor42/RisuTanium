@@ -1,12 +1,12 @@
 /**
  * An inlay image above the whole-read limit on the Android transport is
  * withheld: its render names the file and its size, carries no URL, the store
- * is not asked for one, and the body is neither read as a Blob nor as bytes.
+ * is not asked for one, and the body is not read.
  * The draft preview of it is a name and size chip. A string-stored audio or
  * video over the same limit is withheld the same way, from its record alone;
  * a Blob audio keeps its URL at any size, and nothing changes off Android.
  * A Blob video is served by the store's URL like any other media; one the store
- * cannot deliver by URL or Blob, and that is over the limit, is withheld from its
+ * cannot deliver by URL, and that is over the limit, is withheld from its
  * record alone instead of being read whole.
  * The bodies are Blobs built from one shared 1 MiB piece, so no test holds
  * more than that.
@@ -164,7 +164,6 @@ describe('an inlay above the whole-read limit on Android', () => {
         expect(render).toEqual({ type: 'image', url: '', source: 'withheld', name: 'big.png', size: 64 * MIB + 1 })
         expect(store.urlRequests).toEqual([])
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(bodyKeys(store.blobReads)).toEqual([])
         expect(URL.createObjectURL).not.toHaveBeenCalled()
     })
 
@@ -179,14 +178,12 @@ describe('an inlay above the whole-read limit on Android', () => {
         const id = freshId()
         const length = await writeStringImage(id, 86)
         store.reads.length = 0
-        store.blobReads.length = 0
 
         const render = (await getInlayRender(id))!
 
         expect(render).toEqual({ type: 'image', url: '', source: 'withheld', name: 'big.png', size: Math.floor(length * 0.75) })
         expect(Math.floor(length * 0.75)).toBeGreaterThan(ANDROID_WHOLE_READ_URL_LIMIT_BYTES)
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(bodyKeys(store.blobReads)).toEqual([])
     })
 
     test('reproducer: the cached render of a withheld image keeps its name and size and costs no further read', async () => {
@@ -270,14 +267,12 @@ describe('an inlay image above the desktop whole-read limit', () => {
         await setInlayAsset(id, named('big.png', blobOfSize(LIMIT / MIB, 1, 'image/png')))
         store.urlRequests.length = 0
         store.reads.length = 0
-        store.blobReads.length = 0
 
         const render = (await getInlayRender(id))!
 
         expect(render).toEqual({ type: 'image', url: '', source: 'withheld', name: 'big.png', size: LIMIT + 1 })
         expect(store.urlRequests).toEqual([])
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(bodyKeys(store.blobReads)).toEqual([])
         expect(URL.createObjectURL).not.toHaveBeenCalled()
     })
 
@@ -336,14 +331,12 @@ describe('a string audio or video above the whole-read limit on Android', () => 
         const length = await writeStringMedia(id, audioSpec(AUDIO_23))
         expect(estimateOf(length)).toBe(LIMIT + 1)
         store.reads.length = 0
-        store.blobReads.length = 0
         store.urlRequests.length = 0
 
         const render = await renderOf(id)
 
         expect(render).toEqual({ type: 'audio', url: '', source: 'withheld', name: 'big.mp3', size: LIMIT + 1 })
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(bodyKeys(store.blobReads)).toEqual([])
         expect(store.urlRequests).toEqual([])
         expect(URL.createObjectURL).not.toHaveBeenCalled()
     })
@@ -372,14 +365,12 @@ describe('a string audio or video above the whole-read limit on Android', () => 
         const length = await writeStringMedia(id, { header: VIDEO_23, type: 'video', ext: 'webm', name: 'big.webm', ...OVER })
         expect(estimateOf(length)).toBe(LIMIT + 1)
         store.reads.length = 0
-        store.blobReads.length = 0
         store.urlRequests.length = 0
 
         const render = await renderOf(id)
 
         expect(render).toEqual({ type: 'video', url: '', source: 'withheld', name: 'big.webm', size: LIMIT + 1 })
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(bodyKeys(store.blobReads)).toEqual([])
         expect(store.urlRequests).toEqual([])
         expect(URL.createObjectURL).not.toHaveBeenCalled()
     })
@@ -448,14 +439,9 @@ describe('a Blob video above the whole-read limit on Android', () => {
     const failingUrl = async (): Promise<string> => { throw new Error('no token') }
     const WITHHELD = (size: number) => ({ type: 'video', url: '', source: 'withheld', name: 'big.mp4', size })
 
-    /** The Android store: it keeps Blobs and serves URLs, but has no `readBlob`. `keepReadBlob` offers one that finds nothing. */
-    function useAndroidStore(urlFor: MemoryByteStoreOptions['urlFor'], keepReadBlob = false): MemoryByteStore {
+    /** The Android store: it takes Blobs by `writeBlob` and serves URLs. */
+    function useAndroidStore(urlFor: MemoryByteStoreOptions['urlFor']): MemoryByteStore {
         store = createMemoryByteStore({ blobs: true, urlFor })
-        if (keepReadBlob) {
-            store.readBlob = async () => null
-        } else {
-            delete store.readBlob
-        }
         injectAppStore(store)
         return store
     }
@@ -467,7 +453,6 @@ describe('a Blob video above the whole-read limit on Android', () => {
         await setInlayAsset(id, video(blobOfSize(mib, extra, 'video/mp4')))
         store.failRead = (key) => (key.startsWith('inlays/b-') ? new Error('whole read') : null)
         store.reads.length = 0
-        store.blobReads.length = 0
         store.urlRequests.length = 0
         return id
     }
@@ -480,7 +465,6 @@ describe('a Blob video above the whole-read limit on Android', () => {
 
         expect(render).toEqual({ type: 'video', url: `mem://${[...store.blobs.keys()].find((key) => key.startsWith('inlays/b-'))}`, source: 'store-url' })
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(store.blobReads).toEqual([])
         expect(store.urlRequests.length).toBe(1)
         expect(URL.createObjectURL).not.toHaveBeenCalled()
         const readsAfterFirst = store.reads.length
@@ -498,7 +482,6 @@ describe('a Blob video above the whole-read limit on Android', () => {
 
         expect(render).toEqual(WITHHELD(LIMIT + 1))
         expect(bodyKeys(store.reads)).toEqual([])
-        expect(store.blobReads).toEqual([])
         expect(URL.createObjectURL).not.toHaveBeenCalled()
     })
 
@@ -512,16 +495,6 @@ describe('a Blob video above the whole-read limit on Android', () => {
         expect(store.urlRequests.length).toBe(1)
         expect(bodyKeys(store.reads)).toEqual([])
         expect(URL.createObjectURL).not.toHaveBeenCalled()
-    })
-
-    test('reproducer: a video over the limit whose URL cannot be had and whose Blob read finds nothing is withheld', async () => {
-        useAndroidStore(failingUrl, true)
-        const id = await writeVideo(64, 1)
-
-        const render = await getInlayRender(id)
-
-        expect(render).toEqual(WITHHELD(LIMIT + 1))
-        expect(bodyKeys(store.reads)).toEqual([])
     })
 
     test('reproducer: the withheld render is cached and costs no further read', async () => {
@@ -564,28 +537,6 @@ describe('a Blob video above the whole-read limit on Android', () => {
         const render = await getInlayRender(id)
 
         expect(render?.source).toBe('memory-blob')
-    })
-
-    test('guard: a video over the limit on a store with a Blob read is shown from the stored Blob', async () => {
-        store = createMemoryByteStore({ blobs: true })
-        injectAppStore(store)
-        const id = await writeVideo(64, 1)
-
-        const render = await getInlayRender(id)
-
-        expect(render?.source).toBe('stored-blob')
-        expect(bodyKeys(store.reads)).toEqual([])
-    })
-
-    test('guard: a video over the limit whose URL cannot be had is shown from the stored Blob', async () => {
-        store = createMemoryByteStore({ blobs: true, urlFor: failingUrl })
-        injectAppStore(store)
-        const id = await writeVideo(64, 1)
-
-        const render = await getInlayRender(id)
-
-        expect(render?.source).toBe('stored-blob')
-        expect(bodyKeys(store.reads)).toEqual([])
     })
 
     test('guard: off Android a video over the limit that nothing delivers is read, not withheld', async () => {

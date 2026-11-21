@@ -3722,7 +3722,6 @@ export const languageEnglish = {
     backupSaveProgress: (done: number, total: number) => `Saving local backup... (${done} / ${total})`,
     backupSavePartialProgress: (done: number, total: number) => `Saving partial local backup... (${done} / ${total})`,
     backupSaveDownloading: (sent: string, total: string) => `Saving local backup... downloading (${sent} / ${total})`,
-    backupCheckingAssetSizes: (done: number, total: number) => `Checking asset sizes... (${done} / ${total})`,
     backupSaveInlays: (done: number, total: number) => `Saving local backup inlays... (${done} / ${total})`,
     backupSaveColdData: (done: number, total: number) => `Saving local backup cold data... (${done} / ${total})`,
     backupSavePartialColdData: (done: number, total: number) => `Saving partial local backup cold data... (${done} / ${total})`,
@@ -4319,8 +4318,6 @@ export const languageEnglish = {
     byafSeveralCharacters: "This Backyard archive holds more than one character, which this app cannot import, so it was not imported.",
     cardImageTooLarge: (limitMiB: number) =>
         `The image of this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
-    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) =>
-        `"${fileName}" is larger than the ${limitMiB} MB this browser can store, so it was not saved.`,
     assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
         const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
         const more = fileNames.length - quoted.length

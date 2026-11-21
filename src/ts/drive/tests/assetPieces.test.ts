@@ -91,7 +91,7 @@ describe('exportAssetPieceSource (new behaviour)', () => {
         env.desktop = true
         env.isNodeServer = true
         env.nodeStore = nodeStoreOf(vi.fn())
-        const store = bareStore({ readValue: vi.fn() })
+        const store = bareStore()
         const source = await exportAssetPieceSource(store)
         expect(source?.kind).toBe('tauri')
         expect(source?.pieces).toBe(DESKTOP_PIECE_SOURCE)
@@ -108,15 +108,12 @@ describe('exportAssetPieceSource (new behaviour)', () => {
     test('a Node page whose server takes pieces wins over web', async () => {
         env.isNodeServer = true
         env.nodeStore = nodeStoreOf(vi.fn())
-        const source = await exportAssetPieceSource(bareStore({ readValue: vi.fn() }))
+        const source = await exportAssetPieceSource(bareStore())
         expect(source?.kind).toBe('node')
         expect(source?.pieces.node).toBe(true)
     })
 
-    test('a store with readValue is the web source; one without is null', async () => {
-        const web = await exportAssetPieceSource(bareStore({ readValue: vi.fn() }))
-        expect(web?.kind).toBe('web')
-        expect(web?.pieces.node).toBe(false)
+    test('a store that is neither the files store nor a Node server with pieces has no source', async () => {
         expect(await exportAssetPieceSource(bareStore())).toBeNull()
     })
 })
@@ -143,25 +140,16 @@ describe('openExportAssetPieces (new behaviour)', () => {
         expect(opened.first).toBe(withIdentity)
     })
 
-    test('a source that reports no identity (web, node) returns none, so two opens compare equal', async () => {
-        for (const kind of ['web', 'node'] as const) {
-            const { gen } = trackedPieces([piece('ab', 2)])
-            const source: ExportAssetSource = { kind, pieces: { open: () => gen(), node: kind === 'node' }, store: bareStore() }
-            expect((await openExportAssetPieces('assets/a', source)).identity).toBeUndefined()
-        }
+    test('a source that reports no identity (node) returns none, so two opens compare equal', async () => {
+        const { gen } = trackedPieces([piece('ab', 2)])
+        const source: ExportAssetSource = { kind: 'node', pieces: { open: () => gen(), node: true }, store: bareStore() }
+        expect((await openExportAssetPieces('assets/a', source)).identity).toBeUndefined()
     })
 
     test('a piece whose identity is not a string is not taken for one', async () => {
         const { gen } = trackedPieces([{ ...piece('ab', 2), identity: 7 } as unknown as ReadPiece])
         const source: ExportAssetSource = { kind: 'tauri', pieces: { open: () => gen(), node: false }, store: bareStore() }
         expect((await openExportAssetPieces('assets/a', source)).identity).toBeUndefined()
-    })
-
-    test('web: a missing first piece throws ExportAssetMissingError and closes the generator', async () => {
-        const { gen, state } = trackedPieces([])
-        const source: ExportAssetSource = { kind: 'web', pieces: { open: () => gen(), node: false }, store: bareStore() }
-        await expect(openExportAssetPieces('assets/a', source)).rejects.toBeInstanceOf(ExportAssetMissingError)
-        expect(state.closed).toBe(true)
     })
 
     test('a first piece that rejects throws ExportAssetMissingError naming the key', async () => {
@@ -230,22 +218,6 @@ describe('assetStoredSize (new behaviour)', () => {
         expect(await assetStoredSize('assets/a', source)).toBe(123)
         expect(env.stat).toHaveBeenCalledWith('assets/a')
         env.stat.mockRejectedValueOnce(new Error('os error 2'))
-        expect(await assetStoredSize('assets/a', source)).toBeNull()
-    })
-
-    test('web: a Blob gives its size and bytes their length, without reading a piece', async () => {
-        const readValue = vi.fn(async (key: string) => key === 'assets/blob' ? new Blob([new Uint8Array(70)]) : key === 'assets/bytes' ? new Uint8Array(9) : null)
-        const open = vi.fn()
-        const source: ExportAssetSource = { kind: 'web', pieces: { open, node: false }, store: bareStore({ readValue }) }
-        expect(await assetStoredSize('assets/blob', source)).toBe(70)
-        expect(await assetStoredSize('assets/bytes', source)).toBe(9)
-        expect(await assetStoredSize('assets/none', source)).toBeNull()
-        expect(open).not.toHaveBeenCalled()
-    })
-
-    test('web: a readValue error is unknown', async () => {
-        const readValue = vi.fn(async () => { throw new Error('idb') })
-        const source: ExportAssetSource = { kind: 'web', pieces: { open: vi.fn(), node: false }, store: bareStore({ readValue }) }
         expect(await assetStoredSize('assets/a', source)).toBeNull()
     })
 

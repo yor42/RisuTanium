@@ -3626,7 +3626,6 @@ export const languageChineseTraditional = {
     "backupSaveProgress": (done: number, total: number) => `正在儲存本機備份...（${done} / ${total}）`,
     "backupSavePartialProgress": (done: number, total: number) => `正在儲存部分本機備份...（${done} / ${total}）`,
     "backupSaveDownloading": (sent: string, total: string) => `正在儲存本機備份... 正在下載（${sent} / ${total}）`,
-    "backupCheckingAssetSizes": (done: number, total: number) => `正在檢查資源大小...（${done} / ${total}）`,
     "backupSaveInlays": (done: number, total: number) => `正在儲存本機備份的聊天圖片...（${done} / ${total}）`,
     "backupSaveColdData": (done: number, total: number) => `正在儲存本機備份的冷儲存資料...（${done} / ${total}）`,
     "backupSavePartialColdData": (done: number, total: number) => `正在儲存部分本機備份的冷儲存資料...（${done} / ${total}）`,
@@ -4217,7 +4216,6 @@ export const languageChineseTraditional = {
     "byafUnsupportedVersion": "此 Backyard 壓縮檔使用的格式版本本應用程式無法讀取，因此未匯入。",
     "byafSeveralCharacters": "此 Backyard 壓縮檔包含多個角色，本應用程式無法匯入，因此未匯入。",
     "cardImageTooLarge": (limitMiB: number) => `此角色卡的圖片超過了 ${limitMiB} MB 的限制，因此該角色卡未匯入。`,
-    "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `「${fileName}」超過了此瀏覽器可儲存的 ${limitMiB} MB，因此未儲存。`,
     "assetFilesTooLargeForLimit": (fileNames: string[], limitMiB: number) => {
         const quoted = fileNames.slice(0, 20).map((name) => `「${name}」`)
         const more = fileNames.length - quoted.length

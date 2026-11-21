@@ -3580,7 +3580,6 @@ export const languageKorean = {
     "backupSaveProgress": (done: number, total: number) => `로컬 백업 저장 중... (${done} / ${total})`,
     "backupSavePartialProgress": (done: number, total: number) => `부분 로컬 백업 저장 중... (${done} / ${total})`,
     "backupSaveDownloading": (sent: string, total: string) => `로컬 백업 저장 중... 다운로드 중 (${sent} / ${total})`,
-    "backupCheckingAssetSizes": (done: number, total: number) => `에셋 크기 확인 중... (${done} / ${total})`,
     "backupSaveInlays": (done: number, total: number) => `로컬 백업 채팅 이미지 저장 중... (${done} / ${total})`,
     "backupSaveColdData": (done: number, total: number) => `로컬 백업 콜드 스토리지 데이터 저장 중... (${done} / ${total})`,
     "backupSavePartialColdData": (done: number, total: number) => `부분 로컬 백업 콜드 스토리지 데이터 저장 중... (${done} / ${total})`,
@@ -4173,7 +4172,6 @@ export const languageKorean = {
     byafUnsupportedVersion: "이 Backyard 아카이브는 이 앱에서 읽을 수 없는 형식 버전을 사용하므로 임포트하지 않았습니다.",
     byafSeveralCharacters: "이 Backyard 아카이브에는 캐릭터가 둘 이상 들어 있어 이 앱에서 임포트할 수 없으므로 임포트하지 않았습니다.",
     cardImageTooLarge: (limitMiB: number) => `이 카드의 이미지가 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
-    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `"${fileName}" 파일이 이 브라우저가 저장할 수 있는 ${limitMiB} MB보다 커서 저장하지 않았습니다.`,
     assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
         const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
         const more = fileNames.length - quoted.length

@@ -8,14 +8,13 @@
 import type { ExportAssetSource } from '../../drive/assetPieces'
 import type { PieceOpener, ReadPiece } from '../../drive/inlayBackupExport'
 import type { ByteStore } from '../../storage/store/contract'
-import { assetOrInlayBodyKeyViolation } from '../../storage/store/keyRules'
 
 export type AssetFileState = 'present' | 'gone' | 'unknown'
 
 export interface AssetFileReader {
     stateOf(path: string): Promise<AssetFileState>
-    // How many paths may be asked at once: one read at a time on the browser store (each is a whole `readValue`),
-    // eight where the answer comes from metadata or a first piece.
+    // How many paths may be asked at once: one read at a time when each answer is a whole `read`, eight where the
+    // answer comes from metadata or a first piece.
     concurrency: number
 }
 
@@ -60,19 +59,6 @@ async function stateByRead(store: ByteStore, path: string): Promise<AssetFileSta
     }
 }
 
-async function stateOfWebKey(store: ByteStore, path: string): Promise<AssetFileState> {
-    const readValue = store.readValue?.bind(store)
-    // A key upstream wrote that the store can address but not create has no Blob form: it is read whole.
-    if (readValue === undefined || assetOrInlayBodyKeyViolation(path) !== null) {
-        return stateByRead(store, path)
-    }
-    try {
-        return (await readValue(path)) === null ? 'gone' : 'present'
-    } catch {
-        return 'unknown'
-    }
-}
-
 async function stateOfNodeKey(deps: AssetFileReaderDeps, source: ExportAssetSource, path: string): Promise<AssetFileState> {
     try {
         const opened = await deps.openFirstPiece(source.pieces.open, path)
@@ -111,7 +97,7 @@ export async function openAssetFileReader(deps?: AssetFileReaderDeps): Promise<A
     }
     const source = await calls.sourceOf(store)
     return {
-        concurrency: source === null || source.kind === 'web' ? 1 : 8,
+        concurrency: source === null ? 1 : 8,
         stateOf(path) {
             if (source === null) {
                 return stateByRead(store, path)
@@ -119,10 +105,7 @@ export async function openAssetFileReader(deps?: AssetFileReaderDeps): Promise<A
             if (source.kind === 'tauri') {
                 return stateOfTauriKey(calls, path)
             }
-            if (source.kind === 'node') {
-                return stateOfNodeKey(calls, source, path)
-            }
-            return stateOfWebKey(store, path)
+            return stateOfNodeKey(calls, source, path)
         },
     }
 }

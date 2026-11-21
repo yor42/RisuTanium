@@ -5,9 +5,7 @@
  * pages are respected. Synthetic data only.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { language } from 'src/lang'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
-import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
 import { beginBusy, chokePointInFlight, resetBusyActionsForTest } from '../../memory/busyActions'
 import { inlayMetaKey } from '../inlayKeys'
 import { inlayLimits, readAppInlay, readAppInlayRecord } from '../inlayStore'
@@ -431,19 +429,6 @@ describe('residue and settled starts', () => {
             expect(await readAppInlay('text')).not.toBeNull()
         })
 
-        test('reproducer: a Blob the browser cannot keep, above the whole-value bound, is refused with the message that names the file and the limit', async () => {
-            appStore.failWrite = (key, size) => (size > 0 ? new StoreBlobUnsupportedError(key, new DOMException('no blobs', 'DataCloneError')) : null)
-
-            await expect(setInlayAsset('pic', legacyImage('pic', { data: new BigBlob(WHOLE_STRING_LENGTH * 3) })))
-                .rejects.toThrow(language.assetFileTooLargeForBrowserStorage('pic.png', 200))
-        })
-
-        test('reproducer: the same refusal for a nameless inlay uses the unnamed-file wording', async () => {
-            appStore.failWrite = (key, size) => (size > 0 ? new StoreBlobUnsupportedError(key, new DOMException('no blobs', 'DataCloneError')) : null)
-
-            await expect(setInlayAsset('pic', legacyImage('pic', { name: undefined, data: new BigBlob(WHOLE_STRING_LENGTH * 3) })))
-                .rejects.toThrow(language.assetFileTooLargeForBrowserStorage('unnamed file', 200))
-        })
     })
 
     test('a settled start makes no inlay list call and no old-store list call', async () => {
@@ -655,7 +640,6 @@ describe('the cleanup of the old store', () => {
             await expect(runInlayOldStoreCleanup(env)).resolves.toBe('done')
 
             expect(h.legacy.has('a')).toBe(false)
-            expect(blobStore.blobReads.length).toBeGreaterThan(0)
             expect(await snapshot('a')).toEqual(before)
         })
     })

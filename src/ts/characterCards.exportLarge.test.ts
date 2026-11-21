@@ -3,8 +3,7 @@
  *
  * The real `exportCharacterCard`, `exportModule`, `exportModuleLegacy`, `shareRealmCardData`, `CharXWriter` and the
  * PNG chunk writer run. The size of an asset is read through the existing seams, mocked here: the desktop's
- * `statStoredSize` at `tauriByteTransport`, a browser store whose `readValue` returns a Blob that reports a size
- * without holding the bytes, and a Node store whose `readPieces` reports a total. `LocalWriter` records `init`, so
+ * `statStoredSize` at `tauriByteTransport` and a Node store whose `readPieces` reports a total. `LocalWriter` records `init`, so
  * "nothing opened" is observable. A mocked file system and a mocked store are not evidence of native behaviour.
  *
  * Labels: (R) regression reproducer, fails on the base where such an export proceeds; (G) guard, passes before and
@@ -329,38 +328,7 @@ function moduleOf(assetKeys: string[]): RisuModule {
     }
 }
 
-/** A Blob that reports a size and holds no bytes. */
-class SizedBlob extends Blob {
-    constructor(private readonly reported: number) { super([]) }
-    get size() { return this.reported }
-}
-
-/** A Blob of a served key: it reports the size and cuts the pieces of the served bytes. */
-class ServedBlob extends Blob {
-    constructor(private readonly reported: number, private readonly name: string) { super([]) }
-    get size() { return this.reported }
-    slice(start = 0, end = this.reported) {
-        const name = this.name
-        return {
-            arrayBuffer: async () => {
-                const opens = env.served.get(name) ?? 0
-                if (start === 0) {
-                    env.served.set(name, opens + 1)
-                    const from = env.failOpenFrom.get(name)
-                    if (from !== undefined && opens + 1 >= from) {
-                        throw new Error(`ENOENT ${name} (os error 2)`)
-                    }
-                }
-                if (start > 0 && env.failMid.has(name)) {
-                    throw new Error(`the read of ${name} failed at ${start}`)
-                }
-                return new Uint8Array(end - start).fill(served.byteAt(start)).buffer
-            },
-        } as unknown as Blob
-    }
-}
-
-type SourceKind = 'tauri' | 'web' | 'node'
+type SourceKind = 'tauri' | 'node'
 
 /** Selects where sizes are read from; the sizes themselves are `env.sizes`. */
 function useSource(kind: SourceKind) {
@@ -369,13 +337,6 @@ function useSource(kind: SourceKind) {
     env.nodeStore = null
     env.store = {
         read: vi.fn(async () => ({ bytes: null })),
-        readValue: vi.fn(async (name: string) => {
-            const size = env.sizes.get(name)
-            if (size === undefined) {
-                return null
-            }
-            return env.served.has(name) ? new ServedBlob(size, name) : new SizedBlob(size)
-        }),
     }
     if (kind === 'node') {
         env.nodeStore = {
@@ -395,7 +356,7 @@ function useSource(kind: SourceKind) {
     }
 }
 
-const SOURCES: SourceKind[] = ['tauri', 'web', 'node']
+const SOURCES: SourceKind[] = ['tauri', 'node']
 
 beforeEach(() => {
     globalThis.safeStructuredClone = structuredClone
@@ -665,15 +626,6 @@ describe('a large CharX asset is streamed', () => {
             expect(views.every(view => view.count === undefined)).toBe(true)
             expect(h.waits.filter(text => text.startsWith('Checking') || text.startsWith('Writing Big'))).toEqual([])
         }
-
-        test('(R) on the web the card shows the streamed bytes and no asset count', async () => {
-            env.isTauri = false
-            useSource('web')
-            serveBig()
-            const views = recordViews()
-            expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(true)
-            expectBytesOnCard(views)
-        })
 
         test('(R) on Tauri a large-asset CharX shows the streamed bytes on a card that carries a Cancel', async () => {
             serveBig()

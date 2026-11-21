@@ -285,7 +285,6 @@ import { importSourceOfBytes, type ImportSource, type ImportSourceStat } from 's
 import { inlayEntryName, inlayIdHash } from 'src/ts/drive/inlayBackupCodec'
 import { readAppInlayBody } from 'src/ts/process/files/inlayStore'
 import { getAppStore } from 'src/ts/storage/store/appStore'
-import { ASSET_PIECE_SAVE_MIN_BYTES } from 'src/ts/assetHash'
 
 //#region helpers
 
@@ -474,16 +473,6 @@ function trackPhase(onCommit?: () => void, opts?: { expect?: 'fires' | 'never' }
     })
 }
 
-function storedAssets(): Map<string, string> {
-    const out = new Map<string, string>()
-    for (const [key, value] of fakeFs.files) {
-        if (key.startsWith('assets/')) {
-            out.set(key, Buffer.from(value).toString('base64'))
-        }
-    }
-    return out
-}
-
 async function storedInlay(id: string): Promise<Uint8Array | null> {
     const asset = await readAppInlayBody(await getAppStore(), id)
     return asset === null ? null : new Uint8Array(await (asset.data as Blob).arrayBuffer())
@@ -552,52 +541,6 @@ afterEach(() => {
 })
 
 describe('a restore from an opened source on an Android page', () => {
-    describe('on a page whose store keeps Blobs', () => {
-        onStore2Page()
-
-        // The store hands back what it was given, and counts the Blob writes. A page that is not Tauri streams nothing, so
-        // an entry of ASSET_PIECE_SAVE_MIN_BYTES or more reaches `writeBlob` as a slice of the file.
-        function blobKeepingStore(blobWrites: string[]) {
-            const base = createTauriFilesStore({ platform: 'posix' })
-            return {
-                ...base,
-                writeBlob: async (key: string, _blob: Blob) => {
-                    blobWrites.push(key)
-                    return { version: null }
-                },
-                readBlob: async () => null,
-            }
-        }
-
-        // Guard: the picker File reaches the Blob branch on this page, so the test below is not passing for lack of it.
-        test('guard: a picked File of an entry that large is stored through writeBlob', async () => {
-            platformBox.isTauri = false
-            const blobWrites: string[] = []
-            useStore2RestorePage(blobKeepingStore(blobWrites) as unknown as Parameters<typeof useStore2RestorePage>[0], 'tauri')
-            const built = build([['huge.bin', patterned(ASSET_PIECE_SAVE_MIN_BYTES, 1)]])
-
-            await restoreFile(built.bytes)
-
-            expect(blobWrites).toEqual(['assets/huge.bin'])
-        })
-
-        // Reproducer against the mutant that drops the `instanceof Blob` gate: a source-backed slice is not a Blob, so the
-        // store would be handed something it cannot keep and the asset would be lost or the restore would throw.
-        test('reproducer: an entry that large from a source is written as bytes and never offered to writeBlob', async () => {
-            platformBox.isTauri = false
-            const blobWrites: string[] = []
-            useStore2RestorePage(blobKeepingStore(blobWrites) as unknown as Parameters<typeof useStore2RestorePage>[0], 'tauri')
-            const data = patterned(ASSET_PIECE_SAVE_MIN_BYTES, 1)
-            const built = build([['huge.bin', data]])
-
-            const end = await restoreOpened(probeSource(built.bytes).source)
-
-            expect(end.outcome).toBe('committed')
-            expect(blobWrites).toEqual([])
-            expect(storedAssets().get('assets/huge.bin')).toBe(Buffer.from(data).toString('base64'))
-        })
-    })
-
     describe.each([
         ['throw'],
         ['short'],
