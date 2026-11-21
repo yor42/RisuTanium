@@ -33815,3 +33815,13 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "Own scroll area (Recommended)": the embedded library is a bounded section up to one screen tall with a sticky tab bar, and the list scrolls inside it. The list engine is unchanged.
 - "Line to the Trash (Recommended)": when every character is trashed, the tabs show one line pointing to the Trash instead of a second hero.
 - "Show (0) (Recommended)": the jump row's Characters entry shows the live count, including 0.
+
+### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
+
+- Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
+
+**What the maintainer chose.**
+- "Keep refusal + guard (Recommended)": MCP modules keep the existing refusal (Download hidden, module .charx refuses), and the two module share clone points (.risum export, Realm module payload) gain a guard.
+- "Refuse MCP modules (Recommended)", over "Blank + scrub the URL": Gate 1 found the URL is also copied into the module's description, so the guard refuses an MCP module outright instead of blanking `mcp.url`.
+- "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
+- "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
