@@ -18,7 +18,7 @@ import { describeSaveFailure, saveFailureClassOf } from 'src/ts/storage/store2/u
 /**
  * What a failing store2 save tells the person (`describeSaveFailure`, applied by `reportFailure` in `globalApi`): a
  * toast at the first failure, an alert once the attempts run out, and the technical text in the sub-message only.
- * Labels: new behaviour for the two store2 failures; guard for the storage-full and unmapped rows (their behaviour is
+ * Labels: new behaviour for the two store2 failures and the storage-full reminder cadence; guard for the unmapped rows (their behaviour is
  * the one the loop already had, in the language's words).
  */
 
@@ -26,10 +26,19 @@ beforeEach(() => {
     changeLanguage('en')
 })
 
-describe('the storage-full row keeps its sentence and its long wait', () => {
-    test.each([1, 3, 5])('attempt %i: the toast, no alert, five seconds', (attempts) => {
+describe('the storage-full row keeps its sentence and its long wait, and reminds about once a minute', () => {
+    test.each([1, 13, 25])('attempt %i: the toast, no alert, five seconds', (attempts) => {
         expect(describeSaveFailure(new Error('quota'), attempts, true)).toEqual({
             toast: language.saveStorageFull,
+            alert: null,
+            showRaw: false,
+            waitMs: 5000,
+        })
+    })
+
+    test.each([2, 3, 5, 12, 14, 24])('attempt %i: no toast, still no alert and still five seconds', (attempts) => {
+        expect(describeSaveFailure(new Error('quota'), attempts, true)).toEqual({
+            toast: null,
             alert: null,
             showRaw: false,
             waitMs: 5000,

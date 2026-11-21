@@ -53,7 +53,7 @@
             'hordeConfig', 'novelai', 'koboldURL', 'ooba', 'ainconfig', 'personaPrompt', 'promptTemplate',
             'deeplOptions', 'google', 'customPromptTemplateToggle', 'globalChatVariables', 'comfyConfig',
             'comfyUiUrl', 'translatorPrompt', 'translatorPresets', 'translatorPresetId', 'customModels', 'mcpURLs', 'authRefreshes',
-            'upstreamKvBlocks', 'usagePriceOverrides'
+            'upstreamKvBlocks', 'usagePriceOverrides', 'connections'
         ]
         for(const key in db) {
             if(

@@ -1,4 +1,5 @@
 import { get, writable } from "svelte/store"
+import { untrack } from "svelte"
 import { language } from "../lang"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getDatabase, type MessageGenerationInfo } from "./storage/database.svelte"
@@ -6,6 +7,7 @@ import { alertStore as alertStoreImported } from "./stores.svelte"
 import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
 import { taskActionSettled, taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
+import { postToast, toastHost } from "./toast/toastHost.svelte"
 
 /** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
 export interface PeerConflictRowView {
@@ -266,11 +268,16 @@ export function doingAlert(){
     return taskShown() || promptWaiting() || (get(alertStoreImported).type !== 'none' && get(alertStoreImported).type !== 'toast' && get(alertStoreImported).type !== 'wait')
 }
 
+/**
+ * Posts an `info` toast to the app's toast host; it never touches the alert store, so an alert that is open stays as it is.
+ * A text an `info` toast already shows, held covered or paused included, is not posted again: a producer that repeats the
+ * same text keeps one entry and one announcement. The read is untracked so a calling effect never subscribes to the list.
+ */
 export function alertToast(msg:string){
-    alertStoreImported.set({
-        'type': 'toast',
-        'msg': msg
-    })
+    if (untrack(() => toastHost.visible).some((toast) => toast.kind === 'info' && toast.text === msg)) {
+        return
+    }
+    postToast({ kind: 'info', text: msg })
 }
 
 /**

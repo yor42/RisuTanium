@@ -17,9 +17,11 @@ import { BUILTIN_PACKS } from './builtins'
 import { cr, parseConcrete } from './colour'
 import { judgeAreaSheet, judgePackSheets, type PackSheetsJudgement } from './index'
 import type { PackJudge } from './intake'
+import { judgeSessionOverForTests } from './judgeClient'
 import { LIGHT_BASE_JUDGE_PREFIX, wantsLightBase } from './lightBase'
 import { preparePackSheet, type Prepared } from './apply'
 import { manifestText, zipPack } from './fixtures/packBuilder'
+import { chatElementOf } from './fixtures/packCommit'
 
 const world = vi.hoisted(() => ({ files: new Map<string, Uint8Array>() }))
 
@@ -48,14 +50,14 @@ function store(modes: readonly string[], chat: string): string {
 type Okay = Extract<Prepared, { ok: true }>
 
 async function prepareArchive(modes: readonly string[], chat: string, judge: PackJudge = realJudge, isCurrent: () => boolean = () => true): Promise<Prepared | { ok: false; stale: true }> {
-    return preparePackSheet({ kind: 'archive', key: store(modes, chat) }, judge, isCurrent)
+    return preparePackSheet({ kind: 'archive', key: store(modes, chat) }, judgeSessionOverForTests(judge), isCurrent)
 }
 
 async function baseOf(modes: readonly string[], chat: string, judge: PackJudge = realJudge): Promise<'light' | 'dark'> {
     const prepared = await prepareArchive(modes, chat, judge)
     expect('stale' in prepared).toBe(false)
     expect(prepared.ok).toBe(true)
-    return (prepared as Okay).base
+    return chatElementOf(prepared as Okay).base
 }
 
 /** A light pack whose every colour the validator accepts alone and against the light base. */
@@ -138,8 +140,8 @@ describe('TD9: the base follows the pack modes', () => {
         ['builtin:origin-navy', 'dark'],
     ] as const)('built-in %s gets the %s base', async (id, expected) => {
         const pack = BUILTIN_PACKS.find((candidate) => candidate.id === id)!
-        const prepared = await preparePackSheet({ kind: 'builtin', pack }, realJudge, () => true)
-        expect(prepared.ok && (prepared as Okay).base).toBe(expected)
+        const prepared = await preparePackSheet({ kind: 'builtin', pack }, judgeSessionOverForTests(realJudge), () => true)
+        expect(prepared.ok && chatElementOf(prepared as Okay).base).toBe(expected)
     })
 
     test('an archive labelled exactly light gets the light base; any other label keeps the dark one', async () => {
@@ -181,8 +183,8 @@ describe('the second judgement is the eligibility proof', () => {
     test('TD16: a mid-tone light pack passes alone, keeps the dark base and still applies', async () => {
         expect(judgeAreaSheet('chat', MID_TONE_SHEET, undefined, 'chat').result.ok).toBe(true)
         const prepared = await prepareArchive(['light'], MID_TONE_SHEET)
-        expect(prepared.ok && (prepared as Okay).text).toContain('--nexus-canvas')
-        expect((prepared as Okay).base).toBe('dark')
+        expect(prepared.ok && chatElementOf(prepared as Okay).text).toContain('--nexus-canvas')
+        expect(chatElementOf(prepared as Okay).base).toBe('dark')
     })
 
     test('TD18: the base goes first, so a pack that sets its own muted text for a header paint is eligible', async () => {
@@ -194,7 +196,7 @@ describe('the second judgement is the eligibility proof', () => {
 
     test('the applied text is the first judgement text; the prefix never reaches it', async () => {
         const prepared = await prepareArchive(['light'], chatOf('builtin:scratch-white'))
-        const text = (prepared as Okay).text!
+        const text = chatElementOf(prepared as Okay).text!
         expect(text).not.toContain('--nexus-warm: #7a3b12')
         expect(text).toBe(judgeAreaSheet('chat', chatOf('builtin:scratch-white'), undefined, 'chat').canonical)
     })

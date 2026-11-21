@@ -372,9 +372,12 @@ beforeEach(() => {
     vi.resetModules()
 })
 
-afterEach(() => {
+afterEach(async () => {
     stopAcknowledgingAlerts()
     vi.unstubAllGlobals()
+    // The host of the module graph the test just booted; a later test imports a fresh one.
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
 })
 
 describe('loadData(): the Tauri read-only boot reads the legacy profile and writes nothing (T2-P1, T2-P2)', () => {
@@ -516,7 +519,9 @@ describe('loadData(): the read-only boot applies the boot repairs (T2-P5)', () =
         const installed = setDatabaseMock.mock.calls[0][0].characters as { chaId: string }[]
         expect(installed).toHaveLength(1)
         expect(installed[0].chaId).toMatch(/^[0-9a-f-]{36}$/)
-        expect(run.alerts).toContainEqual({ type: 'toast', msg: language.saveRepairedEntriesNotice(0, 1) })
+        const { toastHost } = await import('src/ts/toast/toastHost.svelte')
+        expect(toastHost.visible.map(toast => ({ kind: toast.kind, text: toast.text }))).toContainEqual({ kind: 'info', text: language.saveRepairedEntriesNotice(0, 1) })
+        expect(run.alerts.filter(alert => alert.type === 'toast')).toEqual([])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
     })
 })

@@ -75,7 +75,7 @@ describe('D-1 the downloadable packs keep their pinned size and SHA-256, in the 
     })
 })
 
-describe('D-2 intake accepts each pack with its chat sheet judged and the other three areas skipped', () => {
+describe('D-2 intake accepts each pack with its chat and studio sheets judged and the other two areas skipped', () => {
     for (const pack of PACKS) {
         it(pack.file, async () => {
             const accepted = acceptedPack(await intakePackBytes(packBytes(pack.file), judge))
@@ -90,8 +90,9 @@ describe('D-2 intake accepts each pack with its chat sheet judged and the other 
                 fonts: pack.fonts,
                 tile: { main: { kind: 'absent' }, secondary: { kind: 'absent' }, icon: { kind: 'absent' } },
             })
-            expect(accepted.sheets.chat.result.ok).toBe(true)
-            expect(accepted.skippedAreas).toEqual(['home', 'settings', 'studio'])
+            expect(accepted.sheets.chat?.result.ok).toBe(true)
+            expect(accepted.sheets.studio?.result.ok).toBe(true)
+            expect(accepted.skippedAreas).toEqual(['home', 'settings'])
             expect(accepted.size.warn).toBe(false)
             expect([...accepted.files.keys()]).toEqual(pack.fileKeys)
         })

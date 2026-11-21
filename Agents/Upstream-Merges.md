@@ -15,6 +15,8 @@ Name the last upstream commit this file says was merged. Then:
 
 Upstream merges whole PRs, so the hash in a trailer is usually the PR's merge commit on upstream's first parent, not one of the PR's own commits. Compare by subject as well.
 
+Toggle grammar check (#467): run `git show upstream/main:src/ts/util.ts` and read the destructuring line of `parseToggleSyntax` (`const [key, value, type, option] = line.split('=')` when this was written). The fork stores toggle defaults in a 5th '='-field that upstream ignores. Merges here use `-s ours`, so an upstream change to that line raises no conflict: if upstream reads a 5th field or changes the split, open a reconciliation ticket before the merge counts as ported.
+
 ## Fork point
 
 The fork's base is upstream `669b12ce` (2026-09-19, "feat: add Gemini 3.8 Flash model (#1615)"). The fork's first own commit is `f7e95130` (2026-09-19, "docs: add investigation baseline for perf, persistence, asset corruption, platform expansion"), whose parent is `669b12ce`.

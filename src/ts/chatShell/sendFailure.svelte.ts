@@ -1,6 +1,7 @@
 import { getModelInfo } from '../model/modellist'
 import { regenerateNewest, sendMain, type ComposerActionsSource, type GenerationAction, type GenerationRequest } from '../process/composerActions.svelte'
 import type { Origin } from '../process/chatOrigin'
+import { slotHasKey } from '../process/request/secretKey'
 import { checkSendPrerequisites, type SendRefusal } from '../process/sendPrerequisites'
 import { DBState } from '../stores.svelte'
 
@@ -31,7 +32,7 @@ export function shellGenerationSource(closeMenu: () => void): ComposerActionsSou
         closeMenu,
         refuseGeneration: (request: GenerationRequest) => {
             const key = keyOf(request.origin.chaId, request.origin.chatId)
-            const refusal = checkSendPrerequisites(DBState.db, getModelInfo)
+            const refusal = checkSendPrerequisites(DBState.db, getModelInfo, (slot) => slotHasKey(DBState.db, slot))
             if (refusal === null) {
                 delete failures[key]
                 return false

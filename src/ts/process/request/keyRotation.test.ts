@@ -19,6 +19,7 @@ import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
 import { resetKeyRings } from './keyRing'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 
 //#region module mocks
 
@@ -129,7 +130,7 @@ vi.mock('../../storage/database.svelte', async () => {
     const state = stores.DBState as unknown as { db: object }
     return {
         appVer: '0.0.0', presetTemplate: {}, changeToPreset: vi.fn(), setCurrentChat: vi.fn(), setDatabase: vi.fn(),
-        getDatabase: vi.fn(() => state.db), getCurrentCharacter: vi.fn(() => undefined), getCurrentChat: vi.fn(() => undefined),
+        getDatabase: vi.fn(() => absorbLegacyForTest(state.db)), getCurrentCharacter: vi.fn(() => undefined), getCurrentChat: vi.fn(() => undefined),
     }
 })
 

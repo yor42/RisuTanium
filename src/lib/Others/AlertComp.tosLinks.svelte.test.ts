@@ -3,7 +3,8 @@
 /**
  * `AlertComp.svelte`'s `'tos'` block: the Terms and Privacy links read the scheme accent through the
  * `risu-link` class, and the accent is derived to stay at least 4.5:1 on the dialog's own surface (the
- * alert box paints the scheme `darkbg`). The links were a fixed green (`text-green-600`), 2.82:1 on Light.
+ * alert box is the pattern dialog: it paints the pattern surface).
+ * The links were a fixed green (`text-green-600`), 2.82:1 on Light.
  *
  * The contrast test is a regression reproducer against that markup. The hover test is a new-rule guard:
  * hovering or focusing a link moves it to the scheme text colour under the hover-capable media query, and
@@ -152,7 +153,7 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 import { alertStore, DBState } from '../../ts/stores.svelte'
 import { colorSchemeList, colorSchemePresets, updateColorScheme } from '../../ts/gui/colorscheme'
 import { cr, parseConcrete, toHex, type Rgba } from '../../ts/themePack/colour'
-import { CascadeModel, classCandidates, compileAppStyles, compileRules, readRepoFile, type ModelEnv, type RuleSet } from '../../styles/tests/cascadeModel'
+import { CascadeModel, classCandidates, compileAppStyles, compileRules, compositeHex, readRepoFile, type ModelEnv, type RuleSet } from '../../styles/tests/cascadeModel'
 import AlertComp from './AlertComp.svelte'
 
 let rules: RuleSet
@@ -169,6 +170,22 @@ const rgbOf = (value: string | undefined): Rgba => {
 }
 const modelOf = (env: ModelEnv = {}): CascadeModel => new CascadeModel(rules, env)
 
+/**
+ * The opaque surface the element's text sits on: the alert box paint, then every translucent background layer of the
+ * ancestors between the box and the element, composited in order (a tint layer is a colour with alpha, or a gradient of one).
+ */
+function surfaceUnder(m: CascadeModel, el: HTMLElement): string {
+    const chain: Element[] = []
+    for (let node = el.parentElement; node && node !== box; node = node.parentElement) chain.unshift(node)
+    let surface = toHex(rgbOf(m.painted(box)['background-color']))
+    for (const node of chain) {
+        const painted = m.painted(node)
+        const layer = painted['background-color'] ?? painted['background-image']?.match(/#[0-9a-f]{8}/i)?.[0]
+        if (layer !== undefined && layer.length === 9) surface = compositeHex(layer, surface)
+    }
+    return surface
+}
+
 function applyScheme(name: string): void {
     (DBState.db as unknown as Record<string, unknown>).colorSchemeName = name
     document.documentElement.removeAttribute('style')
@@ -178,7 +195,11 @@ function applyScheme(name: string): void {
 
 beforeAll(async () => {
     vi.stubEnv('VITE_RISU_LEGAL_CONFIGURED', 'TRUE')
-    rules = compileRules([await compileAppStyles(classCandidates(readRepoFile('src/lib/Others/AlertComp.svelte')))])
+    rules = compileRules([
+        await compileAppStyles(classCandidates(readRepoFile('src/lib/Others/AlertComp.svelte'))),
+        { name: 'pattern-dialog', css: readRepoFile('src/lib/Nexus/pattern/pattern-dialog.css') },
+        { name: 'pattern-alert', css: readRepoFile('src/lib/Nexus/pattern/pattern-alert.css') },
+    ])
     target = document.createElement('div')
     document.body.appendChild(target)
     alertStore.set({ type: 'tos', msg: 'tos' } as never)
@@ -213,12 +234,14 @@ describe("AlertComp 'tos' block: the document links", () => {
         }
     })
 
-    test.each(colorSchemeList)('%s: the links read at 4.5:1 on the dialog surface, which is the scheme darkbg', (name) => {
+    test.each(colorSchemeList)('%s: the links read at 4.5:1 on the surface painted under them: the pattern surface plus any tint layer that covers them', (name) => {
         applyScheme(name)
         const m = modelOf()
-        const surface = m.painted(box)['background-color']
-        expect(toHex(rgbOf(surface))).toBe(toHex(rgbOf(colorSchemePresets[name].darkbg)))
+        const resolvedSurface = m.custom(box, '--pattern-surface')
+        expect(resolvedSurface, 'the pattern surface token resolves').toBeDefined()
+        expect(toHex(rgbOf(m.painted(box)['background-color']))).toBe(toHex(rgbOf(resolvedSurface)))
         for (const link of links) {
+            const surface = surfaceUnder(m, link)
             const colour = m.painted(link).color
             expect(cr(rgbOf(colour), rgbOf(surface)), `${name} ${colour} on ${surface}`).toBeGreaterThanOrEqual(4.5)
         }

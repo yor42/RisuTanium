@@ -3,7 +3,7 @@
  * slot n, wherever it sits in the list.
  *
  * Drives the REAL document keydown listener that `initHotkey()` (`hotkey.ts`) registers, with real KeyboardEvents
- * dispatched into the page. The assertions read the preset switch (`changeToPreset`), the toast in the alert store,
+ * dispatched into the page. The assertions read the preset switch (`changeToPreset`), the toast on the toast host,
  * `defaultPrevented` and the settings panel.
  *
  * Invariants pinned here:
@@ -86,6 +86,7 @@ import { alertStore, DBState, settingsOpen } from './stores.svelte'
 import { changeToPreset } from './storage/database.svelte'
 import { migratePresetSlots } from './storage/presetMeta'
 import type { alertData } from './alert'
+import { resetToastHostForTests, toastHost } from './toast/toastHost.svelte'
 
 //#region helpers
 
@@ -102,6 +103,11 @@ function press(ev: KeyboardEvent, target: EventTarget = document.body): Keyboard
 
 function shown(): alertData {
     return get(alertStore) as alertData
+}
+
+/** The texts the toast host shows, oldest first. */
+function toastTexts(): string[] {
+    return toastHost.visible.map((toast) => toast.text)
 }
 
 type Preset = { name: string, slot?: number }
@@ -127,6 +133,7 @@ afterEach(() => {
     document.body.replaceChildren()
     settingsOpen.set(false)
     alertStore.set(NONE)
+    resetToastHostForTests()
     vi.mocked(changeToPreset).mockClear()
 })
 
@@ -191,8 +198,10 @@ describe('Ctrl+n selects the preset holding slot n', () => {
 
         expect(vi.mocked(changeToPreset)).not.toHaveBeenCalled()
         expect(key.defaultPrevented).toBe(true)
-        expect(shown()).toMatchObject({ type: 'toast' })
-        expect(shown().msg).toContain('5')
+        expect(shown()).toEqual(NONE)
+        expect(toastHost.visible).toHaveLength(1)
+        expect(toastHost.visible[0]).toMatchObject({ kind: 'info' })
+        expect(toastTexts()[0]).toContain('5')
     })
 
     test('B7 the holder of slot 3 was deleted: Ctrl+3 does not fall through to the next preset', () => {
@@ -203,7 +212,8 @@ describe('Ctrl+n selects the preset holding slot n', () => {
 
         expect(vi.mocked(changeToPreset)).not.toHaveBeenCalled()
         expect(key.defaultPrevented).toBe(true)
-        expect(shown().type).toBe('toast')
+        expect(shown()).toEqual(NONE)
+        expect(toastHost.visible).toHaveLength(1)
     })
 
     test('the toast of a hit names the preset, and the key works inside a text field', () => {
@@ -216,7 +226,7 @@ describe('Ctrl+n selects the preset holding slot n', () => {
 
         expect(vi.mocked(changeToPreset)).toHaveBeenCalledWith(1)
         expect(key.defaultPrevented).toBe(true)
-        expect(shown().msg).toContain('Second')
+        expect(toastTexts()[0]).toContain('Second')
     })
 
     test('an unbound slot row is not a shortcut and its key is not consumed', () => {

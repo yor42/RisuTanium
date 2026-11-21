@@ -1,0 +1,107 @@
+/*
+  Independence Day scene styles (Jul 4, en). Every class is rt-id-*; no shared tokens are defined. Default rules = start pose;
+  .rt-id-final = final pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits
+  inside the root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage: twilight wash and fireworks ---------- */
+.rt-id-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.rt-id-sky.rt-id-final { display: none; }
+/* Deep summer twilight: indigo at the top, violet in the middle, a warm horizon glow at the bottom. Feathered at the
+   left edge and around the mark slot (a soft round hole with a wide feather, so the wash never forms a disc and the
+   slot is filled by the mark from the first frame). --rt-id-mx/-my/-h0/-h1 are set from the live geometry. */
+.rt-id-wash {
+  position: absolute; inset: 0; opacity: 0;
+  background:
+    linear-gradient(to bottom, rgb(30 36 128 / 0.5) 0%, rgb(86 44 150 / 0.4) 55%, rgb(214 90 110 / 0.3) 100%);
+  -webkit-mask-image:
+    radial-gradient(circle at var(--rt-id-mx, -200px) var(--rt-id-my, -200px), transparent var(--rt-id-h0, 18px), #000 var(--rt-id-h1, 42px)),
+    linear-gradient(to right, transparent 0, rgb(0 0 0 / 0.55) 30px, #000 90px, #000 calc(100% - 28px), transparent 100%),
+    linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    radial-gradient(circle at var(--rt-id-mx, -200px) var(--rt-id-my, -200px), transparent var(--rt-id-h0, 18px), #000 var(--rt-id-h1, 42px)),
+    linear-gradient(to right, transparent 0, rgb(0 0 0 / 0.55) 30px, #000 90px, #000 calc(100% - 28px), transparent 100%),
+    linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%);
+  mask-composite: intersect;
+}
+[data-rt-sw-tone="light"] .rt-id-wash {
+  background: linear-gradient(to bottom, rgb(99 102 241 / 0.3) 0%, rgb(168 85 247 / 0.2) 55%, rgb(251 113 133 / 0.22) 100%);
+}
+.rt-id-fw { position: absolute; left: 0; top: 0; overflow: visible; }
+.rt-id-fw path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.rt-id-trail { stroke-width: 1.4; opacity: 0; }
+.rt-id-ra, .rt-id-rb { stroke-width: 1.7; opacity: 0; }
+.rt-id-rb { stroke-width: 1.4; }
+.rt-id-sp { opacity: 0; transform-box: view-box; transform-origin: 0px 0px; }
+.rt-id-flash { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.rt-id-burst { transform-box: view-box; }
+/* Burst colours (dark): sapphire, crimson-coral, white. Stroke classes colour rays and trails, fill classes sparks. */
+.rt-id-c-sap { stroke: #38d9ff; }
+.rt-id-c-crim { stroke: #ff6b81; }
+.rt-id-c-wht { stroke: #ebecff; }
+.rt-id-fw path.rt-id-f-sap, .rt-id-flash.rt-id-f-sap { fill: #38d9ff; stroke: none; }
+.rt-id-fw path.rt-id-f-crim, .rt-id-flash.rt-id-f-crim { fill: #ff6b81; stroke: none; }
+.rt-id-fw path.rt-id-f-wht, .rt-id-flash.rt-id-f-wht { fill: #ebecff; stroke: none; }
+[data-rt-sw-tone="light"] .rt-id-c-sap { stroke: #0284c7; }
+[data-rt-sw-tone="light"] .rt-id-c-crim { stroke: #e11d48; }
+[data-rt-sw-tone="light"] .rt-id-c-wht { stroke: #4338ca; }
+[data-rt-sw-tone="light"] .rt-id-fw path.rt-id-f-sap,
+[data-rt-sw-tone="light"] .rt-id-flash.rt-id-f-sap { fill: #0284c7; }
+[data-rt-sw-tone="light"] .rt-id-fw path.rt-id-f-crim,
+[data-rt-sw-tone="light"] .rt-id-flash.rt-id-f-crim { fill: #e11d48; }
+[data-rt-sw-tone="light"] .rt-id-fw path.rt-id-f-wht,
+[data-rt-sw-tone="light"] .rt-id-flash.rt-id-f-wht { fill: #4338ca; }
+
+/* ---------- Mark slot ---------- */
+.rt-id-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-id-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-id-ink { fill: #0f172a; }
+.rt-id-lift { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-id-flip { transform-box: view-box; transform-origin: 0px 0px; }
+.rt-id-mid, .rt-id-core { transform-box: view-box; transform-origin: 0px 2px; }
+.rt-id-flame { fill: #38d9ff; opacity: 0; transform-box: view-box; transform-origin: 0px 36px; }
+[data-rt-sw-tone="light"] .rt-id-flame { fill: #0284c7; }
+/* The glass badge: the silhouette's frame turned navy with a bright edge, so the star reads on both themes. */
+.rt-id-glass { opacity: 0; }
+.rt-id-glassfill { fill: #0b0a3a; fill-opacity: 0.9; }
+.rt-id-glassedge { fill: #ebecff; fill-opacity: 0.92; }
+[data-rt-sw-tone="light"] .rt-id-glassfill { fill: #1e1b6b; fill-opacity: 0.95; }
+[data-rt-sw-tone="light"] .rt-id-glassedge { fill: #0f172a; fill-opacity: 1; }
+.rt-id-pt { transform-box: view-box; transform-origin: 0px 2px; opacity: 0; }
+.rt-id-f { stroke: #0b0a3a; stroke-width: 1; stroke-linejoin: round; }
+.rt-id-sap-l { fill: #7be8ff; } .rt-id-sap-r { fill: #1fa8cc; }
+.rt-id-crim-l { fill: #ff8fa0; } .rt-id-crim-r { fill: #d94862; }
+.rt-id-wht-l { fill: #f4f4ff; } .rt-id-wht-r { fill: #b4b9e6; }
+[data-rt-sw-tone="light"] .rt-id-f { stroke: #1e1b6b; }
+.rt-id-hi { fill: #ffffff; opacity: 0; stroke: none; }
+.rt-id-tw { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.rt-id-tw-sap { fill: #7be8ff; } .rt-id-tw-wht { fill: #ffffff; } .rt-id-tw-crim { fill: #ff8fa0; }
+[data-rt-sw-tone="light"] .rt-id-tw-sap { fill: #0284c7; }
+[data-rt-sw-tone="light"] .rt-id-tw-wht { fill: #4338ca; }
+[data-rt-sw-tone="light"] .rt-id-tw-crim { fill: #e11d48; }
+
+/* Final pose: the glass badge with the unfolded star; the nested pieces and the plain frame are gone. */
+.rt-id-mark.rt-id-final .rt-id-flip { transform: rotate(180deg); }
+.rt-id-mark.rt-id-final .rt-id-ring, .rt-id-mark.rt-id-final .rt-id-mid, .rt-id-mark.rt-id-final .rt-id-core { opacity: 0; }
+.rt-id-mark.rt-id-final .rt-id-glass, .rt-id-mark.rt-id-final .rt-id-pt { opacity: 1; }
+
+/* ---------- Word: sparkler star on the first "i" dot (em units) ---------- */
+.rt-id-word { position: relative; }
+.rt-id-spark {
+  position: absolute; pointer-events: none;
+  left: calc(var(--rt-id-ix, 0.906em) - 0.25em); top: -0.08em; width: 0.5em; height: 0.5em;
+}
+.rt-id-sparkglow {
+  position: absolute; inset: 0; border-radius: 50%; opacity: 0.55;
+  background: radial-gradient(closest-side, rgb(255 233 168 / 0.85), rgb(56 217 255 / 0.25) 60%, rgb(56 217 255 / 0) 100%);
+}
+.rt-id-sparkstar { position: absolute; inset: 0; display: block; }
+.rt-id-sparksvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-id-sp-a { fill: #fff3b0; stroke: #ff8fa0; stroke-width: 0.06; }
+.rt-id-sp-b { fill: #7be8ff; }
+[data-rt-sw-tone="light"] .rt-id-sparkglow {
+  background: radial-gradient(closest-side, rgb(245 158 11 / 0.55), rgb(2 132 199 / 0.18) 60%, rgb(2 132 199 / 0) 100%);
+}
+[data-rt-sw-tone="light"] .rt-id-sp-a { fill: #f59e0b; stroke: #e11d48; }
+[data-rt-sw-tone="light"] .rt-id-sp-b { fill: #0284c7; }

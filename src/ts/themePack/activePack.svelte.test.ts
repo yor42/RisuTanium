@@ -16,7 +16,7 @@ import { resetBusyActionsForTest } from '../process/memory/busyActions'
 import { resetRestoreInProgressForTests } from '../drive/restoreInProgress'
 import { resetPageStorageModeForTests } from '../storage/pageStorageMode'
 import {
-    fakeFont, manifestText, PLAIN_CHAT_SHEET, validPackFiles, zipPack, type PackFile,
+    fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, validPackFiles, zipPack, type PackFile,
 } from './fixtures/packBuilder'
 import bananaCocoaChat from '../../../docs/design/chat/themes/banana-cocoa.css?raw'
 import originNavyStudio from '../../../docs/design/studio/themes/origin-navy.css?raw'
@@ -31,8 +31,12 @@ const world = vi.hoisted(() => ({
 /** The judge channel: every spawn is counted, and `deferred` holds each answer until the test releases it. */
 const channel = vi.hoisted(() => ({
     spawns: 0,
+    terminations: 0,
     deferred: false,
     held: [] as Array<() => void>,
+    posts: [] as unknown[],
+    /** Replaces the real handler's answer to the post with this zero-based index; null answers every post for real. */
+    override: null as null | ((message: { id: number }, index: number) => unknown),
 }))
 
 vi.mock('../storage/store/appStore', () => ({
@@ -64,10 +68,15 @@ vi.mock('./worker/spawnJudgeWorker', async () => {
     const { handleJudgeRequest } = await import('./worker/judgeHandler')
     class FakeWorker {
         private readonly listeners: Array<(event: Event) => void> = []
+        private terminated = false
 
         postMessage(message: Parameters<typeof handleJudgeRequest>[0]): void {
-            const answer = handleJudgeRequest(message)
+            const index = channel.posts.length
+            channel.posts.push(structuredClone(message))
+            const answer = channel.override === null ? handleJudgeRequest(message) : channel.override(message as { id: number }, index)
+            // A terminated worker delivers nothing, as a real one.
             const deliver = (): void => {
+                if (this.terminated) return
                 for (const listener of this.listeners) listener(new MessageEvent('message', { data: answer }))
             }
             if (channel.deferred) {
@@ -77,7 +86,10 @@ vi.mock('./worker/spawnJudgeWorker', async () => {
             }
         }
 
-        terminate(): void { }
+        terminate(): void {
+            if (!this.terminated) channel.terminations += 1
+            this.terminated = true
+        }
 
         addEventListener(type: string, listener: (event: Event) => void): void {
             if (type === 'message') this.listeners.push(listener)
@@ -89,7 +101,12 @@ vi.mock('./worker/spawnJudgeWorker', async () => {
 //#endregion
 
 import { DBState, SafeModeStore } from '../stores.svelte'
-import { updateTextThemeAndCSS } from '../gui/colorscheme'
+import { PACK_SCHEME_NAME, updateTextThemeAndCSS } from '../gui/colorscheme'
+import { builtinPackById } from './builtins'
+import { judgeAreaSheet } from './index'
+import { LIGHT_BASE_JUDGE_PREFIX } from './lightBase'
+import { shapeOnlySheet } from './shapeMode'
+import { handleJudgeRequest } from './worker/judgeHandler'
 import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallRequest } from './install'
 import { listThemePacks, type PackManifestFields } from './packRecord'
 import { resetPackSheetForTests } from './apply'
@@ -143,7 +160,7 @@ function addRecord(record: Record<string, unknown>): void {
 }
 
 const PACK_A = packOf(FACE_A + leaf('1'), [FONT_A], {}, 'Pack A')
-const PACK_B = packOf(FACE_B + leaf('0'), [FONT_B], { 'studio.css': 'body{color:red}' }, 'Pack B')
+const PACK_B = packOf(FACE_B + leaf('0'), [FONT_B], { 'home.css': 'body{color:red}' }, 'Pack B')
 const PACK_C = packOf(leaf('0.5'), [], {}, 'Pack C')
 /** A refused sheet: `body` is outside the chat scope. */
 const PACK_REFUSED = packOf('body{color:red}', [], {}, 'Pack Refused')
@@ -355,8 +372,11 @@ beforeEach(() => {
     world.files.clear()
     world.reads.length = 0
     channel.spawns = 0
+    channel.terminations = 0
     channel.deferred = false
     channel.held.length = 0
+    channel.posts.length = 0
+    channel.override = null
     blobs.minted.length = 0
     blobs.revoked.length = 0
     blobs.failMintAt = 0
@@ -436,16 +456,15 @@ describe('T3D-2 callers', () => {
         await until(() => status().phase === 'applied', 'the first key addition')
         expect(packElements()).toHaveLength(1)
 
-        // An exactly-light pack is judged a second time for the light base, and a sheet with paint declarations a third time for its
-        // shape variant, so Banana Cocoa's apply spawned the judge three times and Origin Navy's twice.
+        // One apply is one session: one worker whatever the number of judgements, so each apply here adds one spawn.
         setActiveThemePack('builtin:origin-navy')
-        await until(() => status().phase === 'applied' && status().activeId === 'builtin:origin-navy' && channel.spawns === 5, 'the setActiveThemePack apply')
+        await until(() => status().phase === 'applied' && status().activeId === 'builtin:origin-navy' && channel.spawns === 2, 'the setActiveThemePack apply')
         expect(packElements()).toHaveLength(1)
         expect(packElements()[0].getAttribute('media')).toBe('all')
 
         const outcome = await installThemePack(installRequestOf(PACK_A, 'Pack A', 'rec-a', [FONT_A]))
         expect(outcome.ok).toBe(true)
-        await until(() => status().phase === 'applied' && status().activeId === 'rec-a' && channel.spawns === 6, 'the install apply')
+        await until(() => status().phase === 'applied' && status().activeId === 'rec-a' && channel.spawns === 3, 'the install apply')
         expect(packElements()).toHaveLength(1)
         expect(packElements()[0].textContent).toContain('blob:http://localhost/1')
         expect(world.reads).toHaveLength(2)
@@ -634,7 +653,7 @@ describe('T3D-6 races', () => {
         expect(replay(records).filter((step) => step.type === 'add')).toEqual([])
         expect(childListRecordsOn(records, elementB)).toEqual([])
         expect(packElements()).toEqual([elementB])
-        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-b', skippedAreas: ['studio'], empty: false })
+        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-b', skippedAreas: ['home'], empty: false })
         expect(channel.spawns - spawnsBefore).toBe(1)
         expectOnlyAppliedBlobsLive()
     })
@@ -872,17 +891,16 @@ describe('T3G-7 a {chat Banana Cocoa, studio Origin Navy} pack', () => {
         })
     }
 
-    it('applies chat only and never has two sheets on through cover toggles and a remount', async () => {
+    it('applies a chat and a studio element and never has two sheets on through cover toggles and a remount, the studio sheet staying off while Studio is not declared', async () => {
         addRecord(archiveRecord('rec-mixed', mixedPack()))
         const recorder = startRecording()
         startThemePackApply()
         activate('rec-mixed')
         await until(() => status().phase === 'applied', 'the apply')
-        expect(status().skippedAreas).toEqual(['studio'])
-        expect(packElements()).toHaveLength(1)
-        expect(packElements()[0].getAttribute('data-theme-pack')).toBe('chat')
-        expect(document.querySelectorAll('style[data-theme-pack]:not([data-theme-pack="chat"])')).toHaveLength(0)
+        expect(status().skippedAreas).toEqual([])
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
         expect(packElements()[0].getAttribute('media')).toBe('all')
+        expect(packElements()[1].getAttribute('media')).toBe('not all')
 
         // Settings over the shell, then Studio over the shell: each is one cover transition pair.
         for (let pass = 0; pass < 2; pass++) {
@@ -905,6 +923,164 @@ describe('T3G-7 a {chat Banana Cocoa, studio Origin Navy} pack', () => {
         const steps = replay(recorder.take())
         expect(steps.length).toBeGreaterThan(0)
         expect(steps.every((step) => step.on.length <= 1)).toBe(true)
-        expect(steps.filter((step) => step.type === 'add')).toHaveLength(1)
+        expect(steps.filter((step) => step.type === 'add')).toHaveLength(2)
+    })
+})
+
+describe('D1 studio.css is judged for a stored pack (MC-3121, MC-3008)', () => {
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:1}'
+
+    it('a stored chat and studio pack applies, and studio is no longer a skipped area', async () => {
+        addRecord(archiveRecord('rec-s', packOf(leaf('1'), [], { 'studio.css': STUDIO_LEAF }, 'Pack S')))
+        startThemePackApply()
+        activate('rec-s')
+        await until(() => status().phase === 'applied', 'the apply')
+        expect(status().skippedAreas).toEqual([])
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
+    })
+
+    it('a stored pack whose studio.css is refused is broken refused, carrying the studio refusal', async () => {
+        const hostile = '[data-part="chat-header"]{opacity:1}'
+        addRecord(archiveRecord('rec-h', packOf(leaf('1'), [], { 'studio.css': hostile }, 'Pack H')))
+        startThemePackApply()
+        activate('rec-h')
+        await until(() => status().phase === 'broken', 'the refused pack')
+        expect(status().reason).toBe('refused')
+        expect(status().refusals).toEqual([
+            { code: 'sheetRefused', sheet: 'studio.css', errors: judgeAreaSheet('studio', hostile, undefined, 'studio').result.errors },
+        ])
+        expect(packElements()).toHaveLength(0)
+    })
+})
+
+describe('S4a empty: every element\'s applied text is null (MC-3121, MC-3127)', () => {
+    const STUDIO_SHAPE = '[data-part="studio-asset-row"]{min-height:3rem}'
+    const PAINT_ONLY_IMAGE = '[data-part="studio-asset-row"]{background-image:url(images/s.png)}'
+    /** Accepted for chat, and kept whole in colour mode: a token background with a literal text colour. */
+    const CHAT_PAINT = '[data-part="chat-send"]{background-color:var(--nexus-accent) !important;color:#000000 !important}'
+
+    function studioOnly(studio: string, extra: Readonly<Record<string, PackFile>> = {}): Uint8Array {
+        return zipPack({ 'manifest.json': manifestText({ name: 'Studio Only' }), 'studio.css': studio, ...extra })
+    }
+
+    async function applyStored(id: string, bytes: Uint8Array): Promise<void> {
+        addRecord(archiveRecord(id, bytes))
+        startThemePackApply()
+        activate(id)
+        await until(() => status().phase === 'applied' || status().phase === 'broken', 'the apply')
+    }
+
+    it('A8: a comment-only chat sheet with a studio shape rule is applied, not empty, and has a studio element', async () => {
+        await applyStored('rec-a8', packOf('/* nothing */', [], { 'studio.css': STUDIO_SHAPE }, 'A8'))
+        expect(status()).toMatchObject({ phase: 'applied', empty: false })
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['studio'])
+    })
+
+    it('a studio-only pack with a shape rule is applied and not empty; its studio element is on while Studio is shown', async () => {
+        const release = declareSurface('studio')
+        await applyStored('rec-so', studioOnly(STUDIO_SHAPE))
+        expect(status()).toMatchObject({ phase: 'applied', empty: false })
+        const [studio] = packElements()
+        expect(packElements()).toHaveLength(1)
+        expect(studio.getAttribute('data-theme-pack')).toBe('studio')
+        expect(studio.getAttribute('media')).toBe('all')
+        release()
+    })
+
+    it('a studio-only pack whose shape variant has only empty blocks is accepted and reported empty (MC-3127)', async () => {
+        await applyStored('rec-eb', studioOnly(PAINT_ONLY_IMAGE, { 'images/s.png': PNG_1X1 }))
+        expect(status()).toMatchObject({ phase: 'applied', empty: true })
+        expect(packElements()).toHaveLength(0)
+        expect(blobs.minted).toHaveLength(0)
+    })
+
+    it('a chat sheet with colours only keeps today\'s result: applied, not empty, one chat element (guard)', async () => {
+        await applyStored('rec-cp', packOf(CHAT_PAINT, [], {}, 'Chat paint'))
+        expect(status()).toMatchObject({ phase: 'applied', empty: false })
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat'])
+    })
+
+    it('a comment-only chat sheet alone is empty, as today (guard)', async () => {
+        await applyStored('rec-co', packOf('/* nothing */', [], {}, 'Comment'))
+        expect(status()).toMatchObject({ phase: 'applied', empty: true })
+        expect(packElements()).toHaveLength(0)
+    })
+})
+
+describe('S4-0 one judge worker per apply', () => {
+    const scratchWhite = builtinPackById('builtin:scratch-white')!
+
+    it('S0-R1: applying a light built-in spawns one worker', async () => {
+        startThemePackApply()
+        activate('builtin:scratch-white')
+        await until(() => status().phase === 'applied', 'the apply')
+        expect(channel.spawns).toBe(1)
+    })
+
+    it('S0-R2: the apply makes two requests whose job texts are byte-exact: intake, then light and shape together', async () => {
+        startThemePackApply()
+        activate('builtin:scratch-white')
+        await until(() => status().phase === 'applied', 'the apply')
+        expect(channel.posts).toHaveLength(2)
+        const canonical = judgeAreaSheet('chat', scratchWhite.chatCss, undefined, 'chat').canonical
+        const shape = shapeOnlySheet(canonical)
+        expect(shape).not.toBe(canonical)
+        expect(shape.trim()).not.toBe('')
+        const jobsOf = (post: unknown): unknown => (post as { jobs?: unknown }).jobs
+        expect(jobsOf(channel.posts[0])).toEqual([{ label: 'chat', area: 'chat', text: scratchWhite.chatCss }])
+        expect(jobsOf(channel.posts[1])).toEqual([
+            { label: 'chat#light', area: 'chat', text: `${LIGHT_BASE_JUDGE_PREFIX}\n${canonical}` },
+            { label: 'chat#shape', area: 'chat', text: shape },
+        ])
+    })
+
+    it('S0-R3: a newer request terminates the cancelled run\'s worker before its answer arrives', async () => {
+        channel.deferred = true
+        startThemePackApply()
+        activate('builtin:origin-navy')
+        await until(() => channel.held.length === 1, 'the first run at its judge')
+        expect(channel.terminations).toBe(0)
+        activate('builtin:banana-cocoa')
+        await until(() => channel.held.length === 2, 'the second run at its judge')
+        expect(channel.terminations).toBe(1)
+    })
+
+    it('S0-R4: every worker is terminated once its apply settles, applied or broken', async () => {
+        startThemePackApply()
+        activate('builtin:scratch-white')
+        await until(() => status().phase === 'applied', 'the applied run')
+        expect(channel.terminations).toBe(channel.spawns)
+        addRecord(archiveRecord('rec-refused', PACK_REFUSED))
+        activate('rec-refused')
+        await until(() => status().phase === 'broken', 'the broken run')
+        expect(channel.terminations).toBe(channel.spawns)
+    })
+
+    it('S0-C4: an answer without the intake label is broken couldNotCheck', async () => {
+        channel.override = (message) => ({ id: message.id, ok: true, judgement: { ok: true, areas: {} }, results: {} })
+        addRecord(archiveRecord('rec-a', PACK_A, [FONT_A]))
+        startThemePackApply()
+        activate('rec-a')
+        await until(() => status().phase === 'broken', 'the broken run')
+        expect(status().reason).toBe('couldNotCheck')
+        expect(packElements()).toHaveLength(0)
+    })
+
+    it('S0-C5: a rejected second request gives the dark base, and the status is applied', async () => {
+        DBState.db.colorSchemeName = PACK_SCHEME_NAME
+        startThemePackApply()
+        activate('builtin:scratch-white')
+        await until(() => status().phase === 'applied', 'the control apply')
+        expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('light')
+        activate(undefined)
+        await until(() => status().phase === 'none', 'the pack turned off')
+        channel.posts.length = 0
+        channel.override = (message, index) => index === 0
+            ? handleJudgeRequest(message)
+            : { id: message.id, ok: false, error: 'Error: lost' }
+        activate('builtin:scratch-white')
+        await until(() => status().phase === 'applied', 'the apply with a failing second request')
+        expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
+        expect(packElements()).toHaveLength(1)
     })
 })

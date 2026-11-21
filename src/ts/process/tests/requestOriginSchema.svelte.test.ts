@@ -13,6 +13,7 @@
  * preserved.
  */
 import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 import { writable, get } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import type { RunSubject } from '../chatOrigin'
@@ -148,7 +149,7 @@ vi.mock('../../storage/database.svelte', async () => {
     const getCurrentChat = () => { const c = getCurrentCharacter(); return c?.chats?.[c.chatPage] }
     return {
         appVer: '0.0.0', presetTemplate: {}, changeToPreset: vi.fn(), setCurrentChat: vi.fn(), setDatabase: vi.fn(),
-        getDatabase: vi.fn(() => state.db), getCurrentCharacter: vi.fn(getCurrentCharacter), getCurrentChat: vi.fn(getCurrentChat),
+        getDatabase: vi.fn(() => absorbLegacyForTest(state.db)), getCurrentCharacter: vi.fn(getCurrentCharacter), getCurrentChat: vi.fn(getCurrentChat),
     }
 })
 

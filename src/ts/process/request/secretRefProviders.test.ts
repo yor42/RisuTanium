@@ -19,6 +19,7 @@
  * they fail without the change only for the Bedrock and Vertex previews.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
@@ -126,7 +127,7 @@ vi.mock('../../storage/database.svelte', async () => {
     h.setDatabase = vi.fn()
     return {
         appVer: '0.0.0', presetTemplate: {}, changeToPreset: vi.fn(), setCurrentChat: vi.fn(), setDatabase: h.setDatabase,
-        getDatabase: vi.fn(() => state.db), getCurrentCharacter: vi.fn(() => undefined), getCurrentChat: vi.fn(() => undefined),
+        getDatabase: vi.fn(() => absorbLegacyForTest(state.db)), getCurrentCharacter: vi.fn(() => undefined), getCurrentChat: vi.fn(() => undefined),
     }
 })
 

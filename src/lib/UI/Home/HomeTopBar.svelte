@@ -74,12 +74,15 @@
     // track minimum (6rem) keeps the wordmark at 56 px or more, above the threshold, so a clipped
     // "Ris" stays visible (MC-1436). The wordmark is a fixed-width box, so a narrow cell clips it
     // horizontally (overflow-x-clip on the cell) instead of ellipsising it; the 6 px clip margin keeps the
-    // replay button's focus ring (2 px outline, 3 px offset) visible past the cell edge. The phone band is unchanged
-    // (MC-1415): no container, no rule.
+    // replay button's focus ring (2 px outline, 3 px offset) visible past the cell edge where the engine honours it.
+    // While a seasonal occasion shows (the host's data-seasonal-active), the cell adds 22 px of end padding: a scene's
+    // final pose may reach 22 px right of the word and the focus ring sits past it, and the clip edge is the padding
+    // box, so both stay visible without the cell drawing into the next track; the phone band takes this padding too.
+    // The phone band has no container and no sliver rule (MC-1415).
     const brandClass: Record<HomeBand, string> = {
-        phone: 'flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] text-textcolor',
-        mid: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] text-textcolor',
-        wide: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] text-textcolor',
+        phone: 'flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
+        mid: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
+        wide: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] data-seasonal-active:pe-[22px] text-textcolor',
     }
     const wordmarkClass: Record<HomeBand, string> = {
         phone: 'min-w-0',

@@ -1101,3 +1101,115 @@ describe('appToggleKeys', () => {
         expect([...appToggleKeys({ kind: 'module', moduleId: 'M1' })].sort()).toEqual(['ch', 'other'])
         expect([...appToggleKeys({ kind: 'character', chaId: 'A' })].sort()).toEqual(['other', 'own'])
     })})
+
+describe('T5.1 the default follows the row through edits', () => {
+    const SELECT = 'm=Mood=select=calm,angry,sad=angry\n'
+
+    function open(raw: string, id = 0, options: Partial<BuilderOptions> = {}) {
+        const text = raw.replace(/\n$/, '')
+        const port = fakePort(text)
+        const builder = createToggleBuilder(port, live({ keyEditsLive: true, ...options }))
+        builder.open(idOf(text, id))
+        return { port, builder, row: idOf(text, id) }
+    }
+
+    test('regression reproducer: a label and a key edit keep a check default and a select default', () => {
+        const check = open('k=K===1\n')
+        expect(check.builder.setLabel(check.row, 'Kay').ok).toBe(true)
+        expect(check.port.text).toBe('k=Kay===1')
+        expect(check.builder.setKey(check.row, 'q').ok).toBe(true)
+        expect(check.port.text).toBe('q=Kay===1')
+        const select = open(SELECT)
+        expect(select.builder.setLabel(select.row, 'Feel').ok).toBe(true)
+        expect(select.builder.setKey(select.row, 'f').ok).toBe(true)
+        expect(select.port.text).toBe('f=Feel=select=calm,angry,sad=angry')
+    })
+
+    test('regression reproducer: renaming the default option moves the default; renaming another keeps it', () => {
+        const { port, builder, row } = open(SELECT)
+        expect(builder.setOptions(row, ['calm', 'furious', 'sad']).ok).toBe(true)
+        expect(port.text).toBe('m=Mood=select=calm,furious,sad=furious')
+        expect(builder.setOptions(row, ['quiet', 'furious', 'sad']).ok).toBe(true)
+        expect(port.text).toBe('m=Mood=select=quiet,furious,sad=furious')
+    })
+
+    test('regression reproducer: a reorder and an added option keep the default by text', () => {
+        const { port, builder, row } = open(SELECT)
+        expect(builder.setOptions(row, ['angry', 'calm', 'sad'], 'single').ok).toBe(true)
+        expect(port.text).toBe('m=Mood=select=angry,calm,sad=angry')
+        expect(builder.setOptions(row, ['angry', 'calm', 'sad', 'Option 4'], 'single').ok).toBe(true)
+        expect(port.text).toBe('m=Mood=select=angry,calm,sad,Option 4=angry')
+    })
+
+    test('regression reproducer: removing the default option clears the default', () => {
+        const { port, builder, row } = open(SELECT)
+        expect(builder.setOptions(row, ['calm', 'sad'], 'single').ok).toBe(true)
+        expect(port.text).toBe('m=Mood=select=calm,sad')
+    })
+
+    test('regression reproducer: blanking the default option is refused and writes nothing', () => {
+        const { port, builder, row } = open(SELECT)
+        const outcome = builder.setOptions(row, ['calm', '', 'sad'])
+        expect(outcome).toEqual({ ok: false, kind: 'field', refusal: { code: 'defaultNotOption' } })
+        expect(port.writes).toEqual([])
+        expect(port.text).toBe(SELECT.trimEnd())
+    })
+
+    test('compatibility guard: a select without a default stays without one when options change', () => {
+        const { port, builder, row } = open('m=Mood=select=a,b\n')
+        expect(builder.setOptions(row, ['b', 'a'], 'single').ok).toBe(true)
+        expect(port.text).toBe('m=Mood=select=b,a')
+    })
+})
+
+describe('T5.2 setDefault', () => {
+    function open(raw: string, options: Partial<BuilderOptions> = {}) {
+        const text = raw.replace(/\n$/, '')
+        const port = fakePort(text)
+        const builder = createToggleBuilder(port, live({ keyEditsLive: true, ...options }))
+        const row = idOf(text, 0)
+        builder.open(row)
+        return { port, builder, row }
+    }
+
+    test('new-unit guard: a check default is written as 1 and removed with null or anything else', () => {
+        const { port, builder, row } = open('k=K\n')
+        expect(builder.setDefault(row, '1').ok).toBe(true)
+        expect(port.text).toBe('k=K===1')
+        expect(port.writes.at(-1)?.mode).toBe('single')
+        expect(builder.setDefault(row, null).ok).toBe(true)
+        expect(port.text).toBe('k=K')
+        builder.setDefault(row, '1')
+        expect(builder.setDefault(row, '0').ok).toBe(true)
+        expect(port.text).toBe('k=K')
+    })
+
+    test('new-unit guard: a select default is written, replaced and cleared; a non-option is refused', () => {
+        const { port, builder, row } = open('m=M=select=a,b\n')
+        expect(builder.setDefault(row, 'b').ok).toBe(true)
+        expect(port.text).toBe('m=M=select=a,b=b')
+        expect(builder.setDefault(row, 'a').ok).toBe(true)
+        expect(port.text).toBe('m=M=select=a,b=a')
+        expect(builder.setDefault(row, null).ok).toBe(true)
+        expect(port.text).toBe('m=M=select=a,b')
+        const writes = port.writes.length
+        expect(builder.setDefault(row, 'z')).toEqual({ ok: false, kind: 'field', refusal: { code: 'defaultNotOption' } })
+        expect(builder.setDefault(row, '')).toEqual({ ok: false, kind: 'field', refusal: { code: 'defaultNotOption' } })
+        expect(port.writes).toHaveLength(writes)
+    })
+
+    test('new-unit guard: text, textarea and caption rows take no default and write nothing', () => {
+        for (const text of ['t=T=text\n', 'a=A=textarea\n', '[[note]]\n']) {
+            const { port, builder, row } = open(text)
+            expect(builder.setDefault(row, '1')).toEqual({ ok: true })
+            expect(port.writes).toEqual([])
+        }
+    })
+
+    test('new-unit guard: a locked base row still takes a default (it is none of key, kind or options)', () => {
+        const { port, builder, row } = open('k=K\n', { keyEditsLive: false })
+        expect(builder.isLocked(row)).toBe(true)
+        expect(builder.setDefault(row, '1').ok).toBe(true)
+        expect(port.text).toBe('k=K===1')
+    })
+})

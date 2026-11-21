@@ -12,7 +12,7 @@ RisuAI is a cross-platform AI chat application: Svelte 5/TypeScript frontend, Ta
 | Reactive database and stores | [stores.svelte.ts](../../src/ts/stores.svelte.ts), [dbChangeEffects.svelte.ts](../../src/ts/storage/dbChangeEffects.svelte.ts) |
 | Page byte store and platform choice | [appStore.ts](../../src/ts/storage/store/appStore.ts) |
 | Save loop and incremental block format | [globalApi.svelte.ts](../../src/ts/globalApi.svelte.ts), [risuSave.ts](../../src/ts/storage/risuSave.ts) |
-| OPFS copy-back / cold units | [opfsCopyBack.ts](../../src/ts/storage/opfsCopyBack.ts), [coldstorage.svelte.ts](../../src/ts/process/coldstorage.svelte.ts), [coldUnitLocation.ts](../../src/ts/process/coldUnitLocation.ts) |
+| Cold units | [coldstorage.svelte.ts](../../src/ts/process/coldstorage.svelte.ts), [coldUnitLocation.ts](../../src/ts/process/coldUnitLocation.ts) |
 | Chat/request orchestration | [process/index.svelte.ts](../../src/ts/process/index.svelte.ts), `src/ts/process/request/` |
 | Provider definitions | [model/types.ts](../../src/ts/model/types.ts), [modellist.ts](../../src/ts/model/modellist.ts) |
 | Parsing / lorebook / card interchange | [parser.svelte.ts](../../src/ts/parser/parser.svelte.ts), [lorebook.svelte.ts](../../src/ts/process/lorebook.svelte.ts), [characterCards.ts](../../src/ts/characterCards.ts) |
@@ -22,7 +22,7 @@ RisuAI is a cross-platform AI chat application: Svelte 5/TypeScript frontend, Ta
 
 `DBState` is a `$state` object, not a writable store: use `DBState.db`. Actual writable stores such as `selectedCharID` support legitimate `$store` subscriptions. Avoid blanket bans on that syntax. Runes files use `.svelte.ts`. Use precise types; narrowing `unknown` at a real boundary is valid, hiding a type error behind `any`/`unknown` is not.
 
-Persisted main files, backups, remote blocks, assets and cold units go through one byte store chosen per page by `appStore.ts`. `AutoStorage` constructs Node/LocalForage clients and does not choose OPFS. A flagged legacy OPFS profile is copied back to IndexedDB under the migration lock; failed copy-back may use a transitional OPFS store for that page and retry later. Cold units use store keys; legacy OPFS units are read only when missing and deleted with the unit. Do not infer an active storage path from a filename.
+Persisted main files, backups, remote blocks, assets and cold units go through one byte store chosen per page by `appStore.ts`. `AutoStorage` constructs Node/LocalForage clients. Tauri uses the desktop files store, the Node server its HTTP store, and the web the IndexedDB store (until #265 stage 4c retires that too); OPFS is gone (#265 stage 4b, #509), and data an older build left in OPFS is neither read nor deleted (`appStore.ts`; the same leave-it-alone rule MC-2913 set for old static-build data). Cold units use store keys. Do not infer an active storage path from a filename.
 
 Dirty-tracking flags control whether blocks are encoded at all. Preserve every relevant mutation dependency and partition the work; dropping dependencies can silently lose writes. Asset caches may carry correctness contracts: trace those contracts before bounding or replacing them. Secure-context APIs must be checked for plain-HTTP self-hosting (`crypto.randomUUID`, service workers).
 

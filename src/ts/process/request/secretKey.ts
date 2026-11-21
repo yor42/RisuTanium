@@ -1,4 +1,6 @@
 import { resolveSecret } from 'src/ts/secretRef'
+import { slotConnection, type ConnectionHolder, type ConnectionSlot } from 'src/ts/connections/connections'
+import { connectionHasKey, connectionKey, connectionKeyForUi } from 'src/ts/connections/keyAccess'
 import { getDatabase, type Database } from 'src/ts/storage/database.svelte'
 import { isKeyLimitStatus, pickLine, type KeyRotation } from './keyRing'
 
@@ -22,21 +24,16 @@ export type KeyFieldId =
     | 'novelai.token' | 'hordeConfig.apiKey' | 'google.accessToken'
     | `OaiCompAPIKeys:${string}` | `customModels:${string}`
 
-/** The stored value of a key field: the whole multi-line string, never split or resolved. */
-export function readKeyField(db: Database, field: KeyFieldId): string {
-    switch (field) {
-        case 'novelai.token': return db.novelai?.token
-        case 'hordeConfig.apiKey': return db.hordeConfig?.apiKey
-        case 'google.accessToken': return db.google?.accessToken
-    }
-    if (field.startsWith('OaiCompAPIKeys:')) {
-        return db.OaiCompAPIKeys?.[field.slice('OaiCompAPIKeys:'.length)]
-    }
-    if (field.startsWith('customModels:')) {
-        const id = field.slice('customModels:'.length)
-        return db.customModels?.find((model) => model.id === id)?.key
-    }
-    return db[field as 'openAIKey']
+/** The stored value of a key field: the whole multi-line string, never split or resolved. A slot with no connection reads as empty. */
+export async function readKeyField(db: ConnectionHolder, field: ConnectionSlot): Promise<string> {
+    const conn = slotConnection(db, field)
+    return conn === undefined ? '' : await connectionKey(conn)
+}
+
+/** Whether the slot resolves to a connection holding a non-blank key. */
+export function slotHasKey(db: ConnectionHolder, field: ConnectionSlot): boolean {
+    const conn = slotConnection(db, field)
+    return conn !== undefined && connectionHasKey(conn)
 }
 
 /** What a request carries by key: the rotation (when it can rotate) and whether this is a preview. */
@@ -47,7 +44,7 @@ export type KeyLeaseArg = { previewBody?: boolean, keyRotation?: KeyRotation }
  * A real request leases a line through the rotation of its attempt and resolves a reference per line.
  */
 export async function leaseRequestKey(arg: KeyLeaseArg, field: KeyFieldId): Promise<string> {
-    const value = readKeyField(getDatabase(), field)
+    const value = await readKeyField(getDatabase(), field)
     if (arg.previewBody) {
         return pickLine(undefined, field, value)
     }
@@ -58,8 +55,14 @@ export async function leaseRequestKey(arg: KeyLeaseArg, field: KeyFieldId): Prom
  * The current line of `field`, unresolved, for readers that never rotate: utility runs, model lists,
  * tokenizers and image or speech calls.
  */
-export function currentKey(field: KeyFieldId, db: Database = getDatabase()): string {
-    return pickLine(undefined, field, readKeyField(db, field))
+export async function currentKey(field: KeyFieldId, db: Database = getDatabase()): Promise<string> {
+    return pickLine(undefined, field, await readKeyField(db, field))
+}
+
+/** The sync form of `currentKey` for editors and templates, which cannot await; the only raw read outside the async seam. */
+export function currentKeyForUi(field: KeyFieldId, db: Database = getDatabase()): string {
+    const conn = slotConnection(db, field)
+    return pickLine(undefined, field, conn === undefined ? '' : connectionKeyForUi(conn))
 }
 
 /**

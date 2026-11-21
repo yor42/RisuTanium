@@ -26,7 +26,7 @@ export type TavernHeader = {
 export type ChatImportResult = {
     messages: TavernLine[]
     skipped: number
-    /** Messages whose swipes other than the shown reply were not kept. */
+    /** Messages not kept beside the shown reply: alternatives that could not be kept and, for branched files, the messages after a branch's first differing message. */
     swipesNotKept: number
     header?: TavernHeader
     /** Picture or audio tokens removed from the text, which the import does not keep. */
@@ -213,41 +213,71 @@ function readReply(value: unknown): string | undefined {
     return undefined
 }
 
+// A kept reply is a readable, non-empty entry; the others hold no reply and are
+// dropped silently.
+function isKeptReply(entry: string | undefined): entry is string {
+    return entry !== undefined && entry !== ''
+}
+
+// The slot of the shown text among `entries`: `index` only when it is in range
+// and that entry is the shown text, else the first entry with that text, else
+// -1 (the shown reply then goes before every kept reply).
+function shownSlot(shown: string, entries: readonly (string | undefined)[], index: unknown): number {
+    if(typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < entries.length && entries[index] === shown){
+        return index
+    }
+    return entries.indexOf(shown)
+}
+
+// The kept entries other than `slot`, in file order: those before `slot` in
+// `before`, the rest in `after` (all of them when `slot` is -1). `undefined`
+// when no kept entry other than `slot` exists.
+function splitSwipes(entries: readonly (string | undefined)[], slot: number): TavernSwipes | undefined {
+    const before: string[] = []
+    const after: string[] = []
+    entries.forEach((entry, index) => {
+        if(!isKeptReply(entry) || index === slot){
+            return
+        }
+        (slot !== -1 && index < slot ? before : after).push(entry)
+    })
+    return before.length === 0 && after.length === 0 ? undefined : { before, after }
+}
+
 // The shown reply of a line and the replies kept beside it, or `undefined` for
-// an empty `mes` with no non-empty swipe. A kept reply is a readable, non-empty
-// entry; the others hold no reply and are dropped silently. The shown reply is
-// always `mes` (an empty one is replaced by the first kept reply), so nothing
-// the line shows changes. Its slot among the kept replies is `swipeId` only
-// when that entry is the shown text, else the first entry with that text, else
-// none, in which case the shown reply goes before every kept reply. A lone
-// entry equal to `mes` therefore leaves both lists empty.
-function readSwipes(mes: string, swipes: unknown, swipeId: unknown): { mes: string, swipes?: TavernSwipes } | undefined {
-    const entries = Array.isArray(swipes) ? swipes.map(readReply) : []
-    const isKept = (entry: string | undefined): entry is string => entry !== undefined && entry !== ''
+// an empty `mes` with no kept entry. The shown reply is always `mes` (an empty
+// one is replaced by the first kept entry), so nothing the line shows changes.
+// A lone entry equal to `mes` therefore leaves both lists empty.
+function keepSwipes(mes: string, entries: readonly (string | undefined)[], index: unknown): { mes: string, swipes?: TavernSwipes } | undefined {
     let shown = mes
-    let slot = -1
+    let slot: number
     if(mes === ''){
-        slot = entries.findIndex(isKept)
+        slot = entries.findIndex(isKeptReply)
         if(slot === -1){
             return undefined
         }
         shown = entries[slot] as string
     }
-    else if(typeof swipeId === 'number' && Number.isInteger(swipeId) && swipeId >= 0 && swipeId < entries.length && entries[swipeId] === mes){
-        slot = swipeId
+    else {
+        slot = shownSlot(mes, entries, index)
     }
-    else{
-        slot = entries.indexOf(mes)
-    }
-    const before: string[] = []
-    const after: string[] = []
-    entries.forEach((entry, index) => {
-        if(!isKept(entry) || index === slot){
-            return
-        }
-        (slot !== -1 && index < slot ? before : after).push(entry)
-    })
-    return before.length === 0 && after.length === 0 ? { mes: shown } : { mes: shown, swipes: { before, after } }
+    const swipes = splitSwipes(entries, slot)
+    return swipes === undefined ? { mes: shown } : { mes: shown, swipes }
+}
+
+// A SillyTavern line's `swipes`, read through `readReply`, with `swipe_id` as the slot hint.
+function readSwipes(mes: string, swipes: unknown, swipeId: unknown): { mes: string, swipes?: TavernSwipes } | undefined {
+    return keepSwipes(mes, Array.isArray(swipes) ? swipes.map(readReply) : [], swipeId)
+}
+
+// Role and name are copied from the shown message onto every kept swipe, so a
+// swipe taken from another entry of the file must match the shown message's side.
+function sameSide(a: TavernLine, b: TavernLine): boolean {
+    return a.isUser === b.isUser && Boolean(a.isSystem) === Boolean(b.isSystem)
+}
+
+function sameSpeaker(a: TavernLine, b: TavernLine): boolean {
+    return sameSide(a, b) && a.name === b.name
 }
 
 /** The chat name for an imported `.jsonl` or `.json` file: its name without the extension. */
@@ -595,13 +625,45 @@ export function parseOobaTimestamp(value: unknown): number | undefined {
     return boundTime(localTime(year, month, day, hour, minute, 0, 0))
 }
 
-// True when `versions` holds more than one entry and at least one has non-empty
-// text, i.e. a reply exists besides an empty shown one.
-function hasOtherOobaVersions(versions: unknown): boolean {
-    if(!Array.isArray(versions) || versions.length < 2){
-        return false
+// The shown text of an Ooba cell and the other `versions` of it, or `undefined`
+// when the shown text is empty and no version holds text. `content` holds what
+// the stored cell held, so the shown slot is matched against `cell` (the stored
+// cell) whatever field `text` reads for display. An empty cell never matches a
+// slot while the shown text is not empty. An empty shown text shows the first
+// kept version.
+function readOobaVersions(
+    shown: string,
+    cell: string,
+    versions: unknown,
+    index: unknown,
+    text: (version: Record<string, unknown>) => string | undefined,
+): { mes: string, swipes?: TavernSwipes } | undefined {
+    const list: unknown[] = Array.isArray(versions) ? versions : []
+    const contents = list.map((version) => isPlainObject(version) && typeof version.content === 'string' ? version.content : undefined)
+    const texts = list.map((version) => isPlainObject(version) ? text(version) : undefined)
+    if(shown === ''){
+        const first = texts.findIndex(isKeptReply)
+        if(first === -1){
+            return undefined
+        }
+        const swipes = splitSwipes(texts, first)
+        return swipes === undefined ? { mes: texts[first] as string } : { mes: texts[first] as string, swipes }
     }
-    return versions.some((version) => isPlainObject(version) && typeof version.content === 'string' && version.content !== '')
+    const swipes = splitSwipes(texts, cell === '' ? -1 : shownSlot(cell, contents, index))
+    return swipes === undefined ? { mes: shown } : { mes: shown, swipes }
+}
+
+// A character version shows its `content` as stored.
+function oobaCharacterVersionText(version: Record<string, unknown>): string | undefined {
+    return typeof version.content === 'string' ? version.content : undefined
+}
+
+// A user version shows like the user cell: its decoded `visible_content`, else its raw `content`.
+function oobaUserVersionText(version: Record<string, unknown>): string | undefined {
+    if(typeof version.visible_content === 'string' && version.visible_content !== ''){
+        return unescapeHtmlEntities(version.visible_content)
+    }
+    return typeof version.content === 'string' ? version.content : undefined
 }
 
 function oobaMetadataEntry(metadata: unknown, key: string): Record<string, unknown> | undefined {
@@ -622,9 +684,14 @@ function oobaSendDate(entry: Record<string, unknown> | undefined): number | unde
  * the raw `internal` cell when `visible` has none, and the character text is the
  * `internal` cell as stored. The row whose internal user cell is the start
  * marker gives only its character message. A row that cannot be read is
- * counted in `skipped`; cells beyond the second are ignored. Only the shown
- * reply is read: `swipesNotKept` counts the rows whose other versions are
- * therefore lost. Message times come from the row-indexed `metadata` entries.
+ * counted in `skipped`; cells beyond the second are ignored. The other
+ * `versions` of a row's `user_N` and `assistant_N` metadata entries are the
+ * swipes of its message, in version order; `current_version_index` places the
+ * shown reply among them (see `readOobaVersions`). A user version shows its
+ * decoded `visible_content`, else its raw `content`. The marker row's and an
+ * unreadable user cell's versions are ignored, an empty cell shows the first
+ * version with text, and `swipesNotKept` stays 0. Message times come from the
+ * row-indexed `metadata` entries.
  */
 export function readOobaChat(value: unknown): ChatImportResult {
     const result: ChatImportResult = { messages: [], skipped: 0, swipesNotKept: 0 }
@@ -659,13 +726,20 @@ export function readOobaChat(value: unknown): ChatImportResult {
         else if(typeof visibleUser !== 'string'){
             unreadable = true
         }
-        if(userText !== undefined && userText !== ''){
-            const message: TavernLine = { isUser: true, mes: userText }
-            const sendDate = oobaSendDate(oobaMetadataEntry(metadata, `user_${index}`))
-            if(sendDate !== undefined){
-                message.sendDate = sendDate
+        if(userText !== undefined){
+            const entry = oobaMetadataEntry(metadata, `user_${index}`)
+            const read = readOobaVersions(userText, typeof internalUser === 'string' ? internalUser : '', entry?.versions, entry?.current_version_index, oobaUserVersionText)
+            if(read !== undefined){
+                const message: TavernLine = { isUser: true, mes: read.mes }
+                if(read.swipes !== undefined){
+                    message.swipes = read.swipes
+                }
+                const sendDate = oobaSendDate(entry)
+                if(sendDate !== undefined){
+                    message.sendDate = sendDate
+                }
+                result.messages.push(message)
             }
-            result.messages.push(message)
         }
 
         if(typeof internalCharacter !== 'string'){
@@ -673,20 +747,17 @@ export function readOobaChat(value: unknown): ChatImportResult {
         }
         else {
             const entry = oobaMetadataEntry(metadata, `assistant_${index}`)
-            const versions: unknown = entry?.versions
-            if(internalCharacter !== ''){
-                const message: TavernLine = { isUser: false, mes: internalCharacter }
+            const read = readOobaVersions(internalCharacter, internalCharacter, entry?.versions, entry?.current_version_index, oobaCharacterVersionText)
+            if(read !== undefined){
+                const message: TavernLine = { isUser: false, mes: read.mes }
+                if(read.swipes !== undefined){
+                    message.swipes = read.swipes
+                }
                 const sendDate = oobaSendDate(entry)
                 if(sendDate !== undefined){
                     message.sendDate = sendDate
                 }
                 result.messages.push(message)
-                if(Array.isArray(versions) && versions.length > 1){
-                    result.swipesNotKept++
-                }
-            }
-            else if(hasOtherOobaVersions(versions)){
-                result.swipesNotKept++
             }
         }
         if(unreadable){
@@ -759,10 +830,12 @@ function newestAgnaiNode(candidates: AgnaiNode[]): AgnaiNode | undefined {
  * Reads an Agnai chat export. Each message is a node linked to its parent by
  * `_id`/`parent`; export eras without resolvable links (no ids, or parents that
  * are text prefixes) import every message in file order. A branched file
- * imports the path from the newest-created tip back to its root, and
- * `swipesNotKept` is the number of importable messages off that path (other
- * branches and orphan subtrees). A repeated `_id` or a parent loop gives file
- * order with nothing counted. `treeLeafId` is never read. An element whose
+ * imports the path from the newest-created tip back to its root. An importable
+ * message off the path that shares a path message's parent and speaker is a
+ * swipe of that message, in file order. `swipesNotKept` is the number of other
+ * importable messages off the path (descendants of a swipe, other speakers,
+ * orphan subtrees). A repeated `_id` or a parent loop gives file order with
+ * nothing counted. `treeLeafId` is never read. An element whose
  * `msg` is not a string is counted in `skipped` but stays a link, so its
  * children stay attached; an empty `msg` emits no line and is uncounted. Every
  * pass is iterative and linear in the number of messages.
@@ -863,13 +936,51 @@ export function readAgnaiChat(value: unknown): ChatImportResult {
     }
     path.reverse()
 
+    const importable = (node: AgnaiNode): node is AgnaiNode & { text: string } => node.text !== undefined && node.text !== ''
     const onPath = new Set<AgnaiNode>(path)
+    const next = new Map<AgnaiNode, AgnaiNode>()
+    for(let position = 0; position + 1 < path.length; position++){
+        next.set(path[position], path[position + 1])
+    }
+    // An off-path message whose parent is on the path and whose speaker is the
+    // path child's is a swipe of that child, in file order. Everything else
+    // off the path (descendants of a swipe, other components, another speaker,
+    // a path child with no line) stays counted.
+    const siblings = new Map<AgnaiNode, Array<{ index: number, text: string }>>()
     for(const node of nodes){
-        if(!onPath.has(node) && node.text !== undefined && node.text !== ''){
+        if(onPath.has(node) || !importable(node)){
+            continue
+        }
+        const parent = up.get(node)
+        const child = parent === undefined ? undefined : next.get(parent)
+        if(child !== undefined && importable(child) && sameSpeaker(agnaiLine(node, node.text), agnaiLine(child, child.text))){
+            const kept = siblings.get(child)
+            if(kept === undefined){
+                siblings.set(child, [{ index: node.index, text: node.text }])
+            }
+            else {
+                kept.push({ index: node.index, text: node.text })
+            }
+        }
+        else {
             result.swipesNotKept++
         }
     }
-    return emit(path)
+    for(const node of path){
+        if(!importable(node)){
+            continue
+        }
+        const line = agnaiLine(node, node.text)
+        const kept = siblings.get(node)
+        if(kept !== undefined){
+            line.swipes = {
+                before: kept.filter((sibling) => sibling.index < node.index).map((sibling) => sibling.text),
+                after: kept.filter((sibling) => sibling.index > node.index).map((sibling) => sibling.text),
+            }
+        }
+        result.messages.push(line)
+    }
+    return result
 }
 
 export type KoboldChatResult = ChatImportResult & {
@@ -1188,8 +1299,12 @@ function sameKoboldLine(a: TavernLine, b: TavernLine): boolean {
  * stores, using the settings after `loadKoboldSettings`. Non-string actions are
  * counted in `skipped`; picture and audio tokens are removed and counted in
  * `mediaNotKept`. A branch in `altbranches` that is not an older snapshot of the
- * shown story counts its messages after the common message prefix in
- * `swipesNotKept`. Memory, author's note and world info are not read.
+ * shown story keeps its first message after the common message prefix as a
+ * swipe of the shown message at that position (when it is from the same
+ * speaker, once per distinct text) and counts its later messages in
+ * `swipesNotKept`; a branch that only extends the shown story counts them all.
+ * Pictures inside a kept head are not counted. Memory, author's note and world
+ * info are not read.
  */
 export function readKoboldChat(value: unknown): KoboldChatResult {
     const result: KoboldChatResult = { messages: [], skipped: 0, swipesNotKept: 0 }
@@ -1235,7 +1350,13 @@ export function readKoboldChat(value: unknown): KoboldChatResult {
     }
 
     if(Array.isArray(value.altbranches)){
-        for(const branch of value.altbranches as unknown[]){
+        const branches = value.altbranches as unknown[]
+        // Lite stores the shown branch as `null` and lists the others in array
+        // order, so earlier branches go before the shown reply and later ones after.
+        const shownBranch = branches.indexOf(null)
+        const positions = new Map<number, { before: string[], after: string[], seen: Set<string> }>()
+        for(let branchIndex = 0; branchIndex < branches.length; branchIndex++){
+            const branch = branches[branchIndex]
             if(!Array.isArray(branch)){
                 continue
             }
@@ -1251,7 +1372,25 @@ export function readKoboldChat(value: unknown): KoboldChatResult {
             while(common < other.length && common < shown.messages.length && sameKoboldLine(other[common], shown.messages[common])){
                 common++
             }
-            result.swipesNotKept += other.length - common
+            let rest = other.length - common
+            const head = other[common]
+            if(head !== undefined && common < shown.messages.length && sameSpeaker(head, shown.messages[common])){
+                let position = positions.get(common)
+                if(position === undefined){
+                    position = { before: [], after: [], seen: new Set<string>() }
+                    positions.set(common, position)
+                }
+                if(!position.seen.has(head.mes)){
+                    position.seen.add(head.mes)
+                    const side = shownBranch !== -1 && branchIndex < shownBranch ? position.before : position.after
+                    side.push(head.mes)
+                }
+                rest--
+            }
+            result.swipesNotKept += rest
+        }
+        for(const [position, lists] of positions){
+            shown.messages[position].swipes = { before: lists.before, after: lists.after }
         }
     }
     return result
@@ -1277,34 +1416,41 @@ function trimmedName(value: unknown): string | undefined {
 type CaiTurnRead = {
     line?: TavernLine
     skipped: boolean
-    /** A character turn with a non-empty reply besides the shown one. */
-    swipe: boolean
-    media: boolean
+    /** Kept candidates that carry a picture, which the import does not keep. */
+    media: number
 }
 
-// The shown reply is the candidate named by `primary_candidate_id`. Only the
-// boolean `true` makes a user line; a human turn's author name is never read.
-// Only character turns count toward `swipe`: a human turn's alternates are not
-// swipes of a reply.
+// The shown reply is the candidate named by `primary_candidate_id`; the other
+// candidates that are not blank are its swipes, in array order, for character
+// and human turns alike. A blank shown candidate is replaced by the first
+// non-blank one. Only the boolean `true` makes a user line; a human turn's
+// author name is never read.
 function readCaiTurn(turn: unknown): CaiTurnRead {
     if(!isPlainObject(turn) || !Array.isArray(turn.candidates)){
-        return { skipped: true, swipe: false, media: false }
+        return { skipped: true, media: 0 }
     }
     const candidates: unknown[] = turn.candidates
-    const shown = turn.primary_candidate_id === undefined ? undefined : candidates.find(
-        (candidate): candidate is Record<string, unknown> => isPlainObject(candidate) && candidate.candidate_id === turn.primary_candidate_id
+    const shownIndex = turn.primary_candidate_id === undefined ? -1 : candidates.findIndex(
+        (candidate) => isPlainObject(candidate) && candidate.candidate_id === turn.primary_candidate_id
     )
-    if(shown === undefined || typeof shown.raw_content !== 'string'){
-        return { skipped: true, swipe: false, media: false }
+    const shown = shownIndex === -1 ? undefined : candidates[shownIndex]
+    if(!isPlainObject(shown) || typeof shown.raw_content !== 'string'){
+        return { skipped: true, media: 0 }
     }
+    const texts = candidates.map((candidate) =>
+        isPlainObject(candidate) && typeof candidate.raw_content === 'string' && candidate.raw_content.trim() !== '' ? candidate.raw_content : undefined)
+    const read = keepSwipes(texts[shownIndex] ?? '', texts, shownIndex)
+    if(read === undefined){
+        return { skipped: false, media: 0 }
+    }
+    const media = candidates.filter((candidate, index) =>
+        texts[index] !== undefined && isPlainObject(candidate) && trimmedName(candidate.tti_image_rel_path) !== undefined).length
     const author = isPlainObject(turn.author) ? turn.author : undefined
     const isUser = author?.is_human === true
-    const swipe = !isUser && candidates.some((candidate) =>
-        candidate !== shown && isPlainObject(candidate) && typeof candidate.raw_content === 'string' && candidate.raw_content.trim() !== '')
-    if(shown.raw_content.trim() === ''){
-        return { skipped: false, swipe, media: false }
+    const line: TavernLine = { isUser, mes: read.mes }
+    if(read.swipes !== undefined){
+        line.swipes = read.swipes
     }
-    const line: TavernLine = { isUser, mes: shown.raw_content }
     const sendDate = parseTavernSendDate(turn.create_time)
     if(sendDate !== undefined){
         line.sendDate = sendDate
@@ -1313,7 +1459,7 @@ function readCaiTurn(turn: unknown): CaiTurnRead {
     if(name !== undefined){
         line.name = name
     }
-    return { line, skipped: false, swipe, media: trimmedName(shown.tti_image_rel_path) !== undefined }
+    return { line, skipped: false, media }
 }
 
 // `dedupe` skips a turn whose `turn_key.turn_id` was already read (the first
@@ -1337,12 +1483,7 @@ function readCaiTurns(turns: unknown[], newestFirst: boolean, dedupe: boolean): 
         if(read.skipped){
             result.skipped++
         }
-        if(read.swipe){
-            result.swipesNotKept++
-        }
-        if(read.media){
-            media++
-        }
+        media += read.media
         if(read.line !== undefined){
             result.messages.push(read.line)
         }
@@ -1437,41 +1578,67 @@ export function readMorseChats(value: unknown, openName: string): CaiChatsResult
     return pickCaiChats(found, openName)
 }
 
-// A run of consecutive alternate messages counts once, as one reply with its
-// alternates. Only a character message's alternates count; a human message's
-// alternate is dropped without a count and leaves the run as it was. Message
-// text is kept in stored order.
+// A message built from a dumper entry: the redaction token becomes the user
+// placeholder and a human message carries no name.
+function dumperLine(text: string, src: unknown): TavernLine {
+    const source = isPlainObject(src) ? src : undefined
+    const isUser = source?.is_human === true
+    const line: TavernLine = { isUser, mes: text.split(caiRedactionToken).join('{{user}}') }
+    const name = isUser ? undefined : trimmedName(source?.name)
+    if(name !== undefined){
+        line.name = name
+    }
+    return line
+}
+
+// An alternate (`is_alternative`) is a swipe of the message just before it
+// when it is from the same side (one history belongs to one character, so the
+// source name is not compared); a blank message with such an alternate takes
+// the first one as its text. An alternate with no message before it (a
+// non-object entry ends the run), or from the other side, is not kept, and a
+// run of them counts once. Blank alternates are dropped silently. Message text
+// is kept in stored order.
 function readDumperHistory(msgs: unknown[]): ChatImportResult {
     const result: ChatImportResult = { messages: [], skipped: 0, swipesNotKept: 0 }
-    let inAlternates = false
+    let owner: { isUser: boolean, line: TavernLine | undefined } | undefined
+    let runCounted = false
     for(const msg of msgs){
         if(!isPlainObject(msg) || typeof msg.text !== 'string'){
             result.skipped++
-            inAlternates = false
+            owner = undefined
+            runCounted = false
             continue
         }
-        if(msg.is_alternative === true){
-            const fromUser = isPlainObject(msg.src) && msg.src.is_human === true
-            if(!fromUser && msg.text.trim() !== ''){
-                if(!inAlternates){
-                    result.swipesNotKept++
-                }
-                inAlternates = true
+        const alt = msg.is_alternative === true
+        if(alt && msg.text.trim() === ''){
+            continue
+        }
+        const line = msg.text.trim() === '' ? undefined : dumperLine(msg.text, msg.src)
+        if(!alt){
+            runCounted = false
+            owner = { isUser: isPlainObject(msg.src) && msg.src.is_human === true, line }
+            if(line !== undefined){
+                result.messages.push(line)
             }
             continue
         }
-        inAlternates = false
-        if(msg.text.trim() === ''){
-            continue
+        const swipe = dumperLine(msg.text, msg.src)
+        if(owner === undefined || owner.isUser !== swipe.isUser){
+            if(!runCounted){
+                result.swipesNotKept++
+                runCounted = true
+            }
         }
-        const src = isPlainObject(msg.src) ? msg.src : undefined
-        const isUser = src?.is_human === true
-        const line: TavernLine = { isUser, mes: msg.text.split(caiRedactionToken).join('{{user}}') }
-        const name = isUser ? undefined : trimmedName(src?.name)
-        if(name !== undefined){
-            line.name = name
+        else if(owner.line === undefined){
+            owner.line = swipe
+            result.messages.push(swipe)
         }
-        result.messages.push(line)
+        else {
+            if(owner.line.swipes === undefined){
+                owner.line.swipes = { before: [], after: [] }
+            }
+            owner.line.swipes.after.push(swipe.mes)
+        }
     }
     return result
 }

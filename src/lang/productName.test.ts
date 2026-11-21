@@ -94,6 +94,9 @@ const UPSTREAM_NAMING_KEYS = [
     'encryptedBackupRefused',
     'rtbExportConfirm',
     'backupFileNotRecognized',
+    'help.customPromptTemplateToggle',
+    'studioTgDefaultUpstream',
+    'studioTgFormatIntro',
 ]
 
 // Keys that name the upstream app as the product that restores a .bin file.

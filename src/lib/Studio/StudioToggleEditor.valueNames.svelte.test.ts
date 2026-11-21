@@ -61,12 +61,12 @@ const TEXT_FIELD = '<input type=text class="min-h-11 w-full rounded-md border bo
 
 describe('StudioToggleEditor value-control names', () => {
     test.each([
-        ['k=Label=select=a,b\n', 4],
-        ['k=Label\n', 2],
-    ] as const)('regression reproducer: the type select of %j is named by its type text', (text, textFields) => {
+        ['k=Label=select=a,b\n', 4, [{ name: language.studioTgType }, { name: language.studioTgDefault }]],
+        ['k=Label\n', 2, [{ name: language.studioTgType }]],
+    ] as const)('regression reproducer: the type select of %j is named by its type text', (text, textFields, names) => {
         const host = show(text)
         expect(typeSelects(host)).toBe(1)
-        expect(fieldNameProblems(host, [{ name: language.studioTgType }])).toEqual([])
+        expect(fieldNameProblems(host, [...names])).toEqual([])
         expect(unnamedControls(host, { fields: true, values: true })).toEqual(Array.from({ length: textFields }, () => TEXT_FIELD))
     })
 
