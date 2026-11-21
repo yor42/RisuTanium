@@ -37,6 +37,7 @@ vi.mock('src/ts/stores.svelte', () => {
         DBState: state,
         CharEmotion: writable({}),
         selectedCharID: writable(-1),
+        moduleBackgroundEmbedding: writable(''),
     }
 })
 vi.mock('src/ts/util', () => ({
