@@ -13,7 +13,7 @@
 
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { language } from 'src/lang'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import { dispatchBack, installBackGuard, resetBackHandlersForTests } from 'src/ts/backHandlers'
@@ -424,6 +424,9 @@ describe('HomeDrawer', () => {
 
     test('T-B1b: on the phone the Characters button is not in the content; at mid it is, given library content (MC-2931)', () => {
         DBState.db.characters = [{ chaId: 'lib-1', name: 'Lib' }] as unknown as typeof DBState.db.characters
+        onTestFinished(() => {
+            Reflect.deleteProperty(DBState.db, 'characters')
+        })
         const phone = mountShellAt(360)
         expect(menuButtonOf(phone)).not.toBeNull()
         expect(contentCharactersButtonOf(phone)).toBeNull()
@@ -431,7 +434,6 @@ describe('HomeDrawer', () => {
         const mid = mountShellAt(900)
         expect(menuButtonOf(mid)).toBeNull()
         expect(contentCharactersButtonOf(mid)).not.toBeNull()
-        delete (DBState.db as Record<string, unknown>).characters
     })
 
     test('T-B2: the Characters item opens the library and closes the drawer with no layer left', () => {
