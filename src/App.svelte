@@ -64,6 +64,8 @@
 
   
     let didFirstSetup: boolean  = $derived(DBState.db?.didFirstSetup)
+    // The grid flag outlives App, so each mount starts with the grid closed.
+    charGridOpen.set(false)
     // Settings and Studio each replace the sidebar and grid and hide the still-mounted chat surface.
     const covered = $derived($settingsOpen || $studioOpen)
     // A theme pack's chat sheet is on only while the chat shell is declared and this cover is off.
