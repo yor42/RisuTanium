@@ -33816,6 +33816,18 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "Line to the Trash (Recommended)": when every character is trashed, the tabs show one line pointing to the Trash instead of a second hero.
 - "Show (0) (Recommended)": the jump row's Characters entry shows the live count, including 0.
 
+### MC-2928 — #234 RisuRealm announcement sits after the Community list, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-053`, `MC-2821`, `#234`.
+
+**What the maintainer chose.** "After the list (Recommended)". The RisuRealm announcement is the last block of the side column, after the Community and source list, under its "Announcement from RisuRealm" heading, and hidden with Hide Realm. Inside the RisuRealm panel (the mockup's spot) it would grow the panel after load and push the list down, against MC-053. This supersedes the in-panel placement in the #234 plan.
+
+### MC-2929 — #234 the RisuRealm heading carries the upstream tag, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-054`, `MC-2832`, `#234`.
+
+**What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
+
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.

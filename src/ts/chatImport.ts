@@ -1,6 +1,16 @@
+import type { ChatAlt, Message } from './storage/database.svelte'
+
+/** The replies kept beside the shown one, in file order: those before it and those after it. */
+export type TavernSwipes = {
+    before: string[]
+    after: string[]
+}
+
 export type TavernLine = {
     isUser: boolean
     mes: string
+    /** Present only when at least one list is non-empty. */
+    swipes?: TavernSwipes
     /** Milliseconds since the epoch, always within `boundTime`'s range. */
     sendDate?: number
     /** Trimmed, non-empty. The own-name filter runs in `tavernMessageName`. */
@@ -203,18 +213,41 @@ function readReply(value: unknown): string | undefined {
     return undefined
 }
 
-/**
- * True when `swipes` holds more than one entry and at least one of them is a
- * non-empty reply, i.e. a reply exists besides an empty shown one.
- */
-export function hasOtherReplies(swipes: unknown): boolean {
-    if(!Array.isArray(swipes) || swipes.length < 2){
-        return false
+// The shown reply of a line and the replies kept beside it, or `undefined` for
+// an empty `mes` with no non-empty swipe. A kept reply is a readable, non-empty
+// entry; the others hold no reply and are dropped silently. The shown reply is
+// always `mes` (an empty one is replaced by the first kept reply), so nothing
+// the line shows changes. Its slot among the kept replies is `swipeId` only
+// when that entry is the shown text, else the first entry with that text, else
+// none, in which case the shown reply goes before every kept reply. A lone
+// entry equal to `mes` therefore leaves both lists empty.
+function readSwipes(mes: string, swipes: unknown, swipeId: unknown): { mes: string, swipes?: TavernSwipes } | undefined {
+    const entries = Array.isArray(swipes) ? swipes.map(readReply) : []
+    const isKept = (entry: string | undefined): entry is string => entry !== undefined && entry !== ''
+    let shown = mes
+    let slot = -1
+    if(mes === ''){
+        slot = entries.findIndex(isKept)
+        if(slot === -1){
+            return undefined
+        }
+        shown = entries[slot] as string
     }
-    return swipes.some((swipe) => {
-        const reply = readReply(swipe)
-        return reply !== undefined && reply !== ''
+    else if(typeof swipeId === 'number' && Number.isInteger(swipeId) && swipeId >= 0 && swipeId < entries.length && entries[swipeId] === mes){
+        slot = swipeId
+    }
+    else{
+        slot = entries.indexOf(mes)
+    }
+    const before: string[] = []
+    const after: string[] = []
+    entries.forEach((entry, index) => {
+        if(!isKept(entry) || index === slot){
+            return
+        }
+        (slot !== -1 && index < slot ? before : after).push(entry)
     })
+    return before.length === 0 && after.length === 0 ? { mes: shown } : { mes: shown, swipes: { before, after } }
 }
 
 /** The chat name for an imported `.jsonl` or `.json` file: its name without the extension. */
@@ -246,6 +279,99 @@ export function tavernMessageName(
     return name
 }
 
+/**
+ * Turns a reader's lines into the active path and the alternatives of a chat.
+ * Each line becomes one path message. A line with `swipes` also yields one
+ * record `{ m, p, a: 1 }` per kept reply, `p` the `chatId` of the previous path
+ * message (null at position 0), one import being one run. Siblings display in
+ * file order with the shown reply at its own slot: by millisecond offsets
+ * around its time while every offset time stays within 1..`maxTime`, otherwise
+ * by sorted ids, which the tree breaks equal times with. A chat without any
+ * swipe is returned exactly as a plain path: no record, no `chatId`.
+ */
+export function buildTavernTree(
+    result: Pick<ChatImportResult, 'messages' | 'header'>,
+    own: TavernOwnNames,
+    format: (text: string) => string,
+    newId: () => string,
+): { message: Message[], alt: ChatAlt[] } {
+    const { messages, header } = result
+    const message: Message[] = messages.map((line) => {
+        const built: Message = {
+            role: line.isUser ? 'user' : 'char',
+            data: format(line.mes),
+        }
+        if(line.sendDate !== undefined){
+            built.time = line.sendDate
+        }
+        const name = tavernMessageName(line, header, own)
+        if(name !== undefined){
+            built.name = name
+        }
+        if(line.isSystem){
+            built.disabled = true
+        }
+        return built
+    })
+    if(!messages.some((line) => line.swipes !== undefined)){
+        return { message, alt: [] }
+    }
+
+    const siblings: { position: number, text: string, time?: number, chatId: string }[] = []
+    messages.forEach((line, position) => {
+        if(line.swipes === undefined){
+            return
+        }
+        const texts = [...line.swipes.before, line.mes, ...line.swipes.after]
+        const shownSlot = line.swipes.before.length
+        const shown = message[position]
+        const shownTime = shown.time
+        const offsets = shownTime !== undefined
+            && shownTime - shownSlot >= 1
+            && shownTime + (texts.length - 1 - shownSlot) <= maxTime
+        const ids = offsets ? [] : texts.map(() => newId()).sort()
+        if(!offsets){
+            shown.chatId = ids[shownSlot]
+        }
+        texts.forEach((text, slot) => {
+            if(slot === shownSlot){
+                return
+            }
+            const sibling: { position: number, text: string, time?: number, chatId: string } = {
+                position,
+                text,
+                chatId: offsets ? newId() : ids[slot],
+            }
+            if(shownTime !== undefined){
+                sibling.time = offsets ? shownTime + (slot - shownSlot) : shownTime
+            }
+            siblings.push(sibling)
+        })
+    })
+    for(const built of message){
+        if(!built.chatId){
+            built.chatId = newId()
+        }
+    }
+
+    const alt: ChatAlt[] = siblings.map((sibling) => {
+        const shown = message[sibling.position]
+        const record: Message = { role: shown.role, data: format(sibling.text) }
+        if(sibling.time !== undefined){
+            record.time = sibling.time
+        }
+        if(shown.name !== undefined){
+            record.name = shown.name
+        }
+        if(shown.disabled){
+            record.disabled = shown.disabled
+        }
+        record.chatId = sibling.chatId
+        return { m: record, p: sibling.position === 0 ? null : message[sibling.position - 1].chatId ?? null, a: 1 }
+    })
+    return { message, alt }
+}
+
 function readHeader(line: Record<string, unknown>): TavernHeader {
     const header: TavernHeader = {}
     if(typeof line.user_name === 'string' && line.user_name !== ''){
@@ -270,15 +396,16 @@ function isTavernHeader(line: Record<string, unknown>): boolean {
  * Reads a SillyTavern `.jsonl` chat. Every line whose `mes` is a string, or a
  * Chub object holding a string `message`, becomes a message in file order; a
  * line that cannot be read is counted in `skipped` instead of failing the
- * file. Blank lines and an empty `mes` are ignored without being counted, and
- * a leading header line is dropped uncounted (its names are returned). Only
- * the shown reply is read: `swipesNotKept` counts the lines whose other
- * swipes are therefore lost.
+ * file. Blank lines and an empty `mes` without a non-empty swipe are ignored
+ * without being counted, and a leading header line is dropped uncounted (its
+ * names are returned). Every readable non-empty swipe is kept in `swipes` of its
+ * line (see `readSwipes` for the slot rule; a lone entry equal to `mes` leaves
+ * both lists empty and so no `swipes`), so `swipesNotKept` stays 0.
  */
 export function readTavernJsonl(text: string): TavernJsonlResult {
     const messages: TavernLine[] = []
     let skipped = 0
-    let swipesNotKept = 0
+    const swipesNotKept = 0
     let header: TavernHeader | undefined
     let isFirst = true
 
@@ -306,22 +433,20 @@ export function readTavernJsonl(text: string): TavernJsonlResult {
             header = readHeader(parsed)
             continue
         }
-        const mes = readReply(parsed.mes)
-        if(mes === undefined){
+        const shownReply = readReply(parsed.mes)
+        if(shownReply === undefined){
             skipped++
             continue
         }
-        if(mes === ''){
-            if(hasOtherReplies(parsed.swipes)){
-                swipesNotKept++
-            }
+        const read = readSwipes(shownReply, parsed.swipes, parsed.swipe_id)
+        if(read === undefined){
             continue
         }
-        if(Array.isArray(parsed.swipes) && parsed.swipes.length > 1){
-            swipesNotKept++
-        }
 
-        const message: TavernLine = { isUser: Boolean(parsed.is_user), mes }
+        const message: TavernLine = { isUser: Boolean(parsed.is_user), mes: read.mes }
+        if(read.swipes !== undefined){
+            message.swipes = read.swipes
+        }
         const sendDate = parseTavernSendDate(parsed.send_date)
         if(sendDate !== undefined){
             message.sendDate = sendDate
