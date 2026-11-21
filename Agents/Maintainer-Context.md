@@ -33918,6 +33918,23 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 
 **What the maintainer chose.** The 14 drafted English strings for the clean-up button (including the Node text naming three clean-ups a day apart, at most 500 at a time, and "pressing Yes confirms that none is open") are used as written; the maintainer may edit en.ts later.
 
+### MC-2965 — #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #443 session before planning). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2641`, `MC-2954`, `#443`, `#167`.
+
+**What the maintainer chose.**
+- "Yes, in this PR (Recommended)": the copy buttons that call `navigator.clipboard` with no fallback (Utility screen, settings JSON export, Realm link, code-block menu, Studio toggle) are fixed in #443 through `copyPlainText`, not ticketed separately.
+- "Add RSA fallback": Vertex AI service-account login works on plain HTTP instead of stopping with the Web Crypto error. The option named a new dependency; the session built an owned BigInt RSASSA-PKCS1-v1_5/SHA-256 signer instead (no package added), because PKCS#1 v1.5 is deterministic and the tests require byte equality with WebCrypto.
+
+### MC-2966 — #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21
+
+- Tag: decisions (three AskUserQuestion answers to the #443 session on plan r1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2965`, `#443`.
+
+**What the maintainer chose.**
+- "Honest failure (Recommended)": when both the clipboard API and `execCommand` fail, Utility and Realm show "copy failed", the settings JSON export shows only the export/download notice, the Studio toggle shows no "Copied", and the code-block menu stays silent. No new strings.
+- "Leftover, not this PR (Recommended)": the chat export "HTML embed" (rich `ClipboardItem` copy) stays unavailable on plain HTTP and is recorded as a leftover.
+- "Localized invalid-key (Recommended)": a malformed Vertex private key shows the existing `vertexInvalidPrivateKey` message on both the WebCrypto and the fallback path. Network and token-response errors are not relabelled.
+
 
 ### MC-2990 — #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21
 

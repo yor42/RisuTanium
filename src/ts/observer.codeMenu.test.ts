@@ -105,6 +105,36 @@ describe('code block context menu', () => {
         expect(downloads).toEqual(['code.js'])
     })
 
+    it('C4 Copy without the clipboard API copies through execCommand and still removes the menu', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        const copied: string[] = []
+        Object.defineProperty(document, 'execCommand', {
+            value: vi.fn(() => {
+                copied.push(document.querySelector('textarea')?.value ?? '')
+                return true
+            }),
+            configurable: true,
+        })
+        document.body.innerHTML = codeBlock('js', 'let a = 1')
+        start()
+        await vi.advanceTimersByTimeAsync(0)
+        rightClick(document.querySelector('code')!)
+        chooseOption('Copy')
+        expect(copied).toEqual(['let a = 1'])
+        expect(document.getElementById('code-contextmenu')).toBeNull()
+    })
+
+    it('C4b Copy stays silent and removes the menu when no copy path works', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true })
+        document.body.innerHTML = codeBlock('js')
+        start()
+        await vi.advanceTimersByTimeAsync(0)
+        rightClick(document.querySelector('code')!)
+        expect(() => chooseOption('Copy')).not.toThrow()
+        expect(document.getElementById('code-contextmenu')).toBeNull()
+    })
+
     it('T-M5 an element without x-hl-lang opens no menu', async () => {
         document.body.innerHTML = '<pre x-hl-lang=""><code>x</code></pre><p>plain</p>'
         start()
