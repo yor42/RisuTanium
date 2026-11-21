@@ -33827,3 +33827,15 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-054`, `MC-2832`, `#234`.
 
 **What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
+
+### MC-2990 — #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2975`, `MC-1499`, `MC-1466`, `#455`.
+
+**What the maintainer chose.** "Accept (Recommended)". In the default `off` streaming display mode, when the phone falls behind the stream, the editoutput pass (Lua `editOutput`, plugin `editoutput`, regex scripts), the chat write and the re-render run on the newest reply snapshot available when the previous pass is done; snapshots superseded meanwhile are never processed. The final text is always fully processed, and nothing changes when the phone keeps up. Rejected: keeping a pass per chunk and coalescing only the write (most of the gain lost), or a new setting (locale work, user choice).
+
+### MC-2991 — #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1451`, `MC-2990`, `#455`.
+
+**What the maintainer chose.** "Allow, prove on device (Recommended)". In the `off` mode reply loop, after each processed write, the loop may yield one MessageChannel task (never `setTimeout`, `requestAnimationFrame` or an idle callback) so native stream events queued during the pass reach the snapshot reader before the next pass. The change does not ship before a Note 9 hidden-page device row shows the keep-alive count rising while hidden, the finished notice posting before the app is reopened, and Stop from the notification working. If that row fails, the yield is removed and the maintainer is asked again.
