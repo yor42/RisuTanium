@@ -45,7 +45,7 @@
     }
 </script>
 
-<div data-part="pattern-alert-stack" data-peer-conflicts>
+<div data-part="pattern-alert-stack" data-part-critical data-peer-conflicts>
     <p id={titleId} data-part="pattern-alert-title">{title}</p>
     <div data-part="pattern-alert-bulk">
         <span>{text.peerSameForAll}</span>
