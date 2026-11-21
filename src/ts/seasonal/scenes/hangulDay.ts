@@ -190,19 +190,6 @@ function build(ctx: SceneContext): SceneInstance {
         // the fallback stays
     })
 
-    function onVis(): void {
-        if (state !== 'playing') return
-        for (const a of anims) {
-            try {
-                if (document.hidden) a.pause()
-                else a.play()
-            } catch {
-                // already finished or cancelled
-            }
-        }
-    }
-    document.addEventListener('visibilitychange', onVis)
-
     function later(fn: () => void, ms: number): void {
         timers.push(ctx.setTimeout(fn, ms))
     }
@@ -334,7 +321,6 @@ function build(ctx: SceneContext): SceneInstance {
         })
         placeDate()
         timeline()
-        if (document.hidden) for (const a of anims) a.pause()
         const mine = anims.slice()
         Promise.all(mine.map((a) => a.finished)).then(() => {
             if (state === 'playing' && anims.length && anims[0] === mine[0]) applyFinal()
@@ -351,7 +337,6 @@ function build(ctx: SceneContext): SceneInstance {
         if (state === 'destroyed') return
         cancelAll()
         state = 'destroyed'
-        document.removeEventListener('visibilitychange', onVis)
         dateBox.remove()
         mark?.remove()
         ko.remove()

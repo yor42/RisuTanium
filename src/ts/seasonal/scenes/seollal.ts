@@ -411,7 +411,6 @@ function build(ctx: SceneContext): SceneInstance {
             resolvePlay = res
         })
         timeline()
-        if (document.hidden) for (const a of anims) a.pause()
         const mine = anims.slice()
         Promise.all(mine.map((a) => a.finished)).then(() => {
             if (state === 'playing' && anims.length && anims[0] === mine[0]) applyFinal()

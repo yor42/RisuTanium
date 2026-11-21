@@ -345,6 +345,49 @@ describe.each(CASES.map((c) => [c.label ?? c.key, c] as const))('scene %s', (_la
         expect(vi.getTimerCount()).toBe(0)
     })
 
+    // Guards: a scene resuming every animation when the page is shown again (play() rewinds a finished one, so ended
+    // beats replay after a tab switch mid-play). Animations whose segment has ended must stay finished.
+    test('a hide and show in the middle of the play leaves finished animations finished', async () => {
+        now = c.date
+        let hidden = false
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+        try {
+            const { ctrl } = await mountScene(c)
+            await settle(700 + 2000)
+            expect(ctrl.phase).toBe('playing')
+            const ended = [...live]
+            expect(ended.length).toBeGreaterThan(0)
+            for (const a of ended) a.playState = 'finished'
+            hidden = true
+            document.dispatchEvent(new Event('visibilitychange'))
+            hidden = false
+            document.dispatchEvent(new Event('visibilitychange'))
+            expect(ended.filter((a) => a.playState !== 'finished')).toHaveLength(0)
+        } finally {
+            delete (document as unknown as { hidden?: boolean }).hidden
+        }
+    })
+
+    // Guards: a scene pausing its own animations when it starts on a hidden page. The host only resumes what it paused
+    // itself, so such animations would stay frozen after the page is shown.
+    test('a play that starts on a hidden page runs once the page is shown', async () => {
+        now = c.date
+        let hidden = true
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+        try {
+            const { ctrl } = await mountScene(c)
+            await settle()
+            expect(ctrl.phase).toBe('playing')
+            const started = [...live]
+            expect(started.length).toBeGreaterThan(0)
+            hidden = false
+            document.dispatchEvent(new Event('visibilitychange'))
+            expect(started.filter((a) => a.playState !== 'running')).toHaveLength(0)
+        } finally {
+            delete (document as unknown as { hidden?: boolean }).hidden
+        }
+    })
+
     // Guards: a scene that depends on the font loading (font failure must not stall or break the scene).
     test('keeps running when the logo font fails to load', async () => {
         now = c.date
