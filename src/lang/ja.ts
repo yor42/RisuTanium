@@ -4183,6 +4183,12 @@ export const languageJapanese = {
         `RisuTaniumはデータが無効であった${count}件のペルソナを除外しました。プラグインによって書き込まれた可能性があります。`,
     personaListEmptyNotice: `ペルソナリストに使用可能なペルソナが残っていなかったため、RisuTaniumがユーザー名とアイコンからペルソナを1つ追加して選択しました。`,
     personaSelectionMissingNotice: `選択されていたペルソナがペルソナリストに存在しなかったため、RisuTaniumが現在のユーザー名、アイコン、ペルソナプロンプト、ノートからペルソナを1つ追加して選択しました。`,
+    vaultKeepPlainNotice: `RisuTaniumはこの端末のセキュアストレージで接続キーを保護できなかったため、現在キーは平文のまま保存されています。起動のたび、およびキーを変更するたびに再試行します。`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `この端末では次の保存済みキーを読み取れません: ${names}。それぞれのキーを入力し直してください。入力し直すまで、以前に保存されたキーはそのまま残ります。`,
+    vaultNeedsReentryLabel: `キーの再入力が必要です`,
+    vaultKeyTemporarilyUnavailable: `保存済みのキーを今は読み取れません。しばらくしてからもう一度お試しください。`,
+    vaultKeyTemporarilyUnavailableHint: `キーは一時的に利用できません。復号されると表示されます。`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuTaniumがキャラクターリストを修復した後にバックアップが読み込まれました：${[
             dropped > 0 ? `キャラクターではない${dropped}件のエントリを除外` : '',

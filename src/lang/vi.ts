@@ -4038,6 +4038,12 @@ export const languageVietnamese = {
         `RisuTanium đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
     personaListEmptyNotice: `Không còn persona nào dùng được trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng và biểu tượng của bạn rồi chọn nó.`,
     personaSelectionMissingNotice: `Persona đã chọn không có trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng, biểu tượng, lời nhắc persona và ghi chú hiện tại của bạn rồi chọn nó.`,
+    vaultKeepPlainNotice: `RisuTanium không thể bảo vệ các khóa kết nối của bạn bằng bộ nhớ bảo mật của thiết bị này, nên hiện tại các khóa vẫn được lưu dưới dạng văn bản thuần. Ứng dụng sẽ thử lại mỗi lần khởi động và mỗi khi bạn đổi khóa.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `Thiết bị này không thể đọc khóa đã lưu của: ${names}. Hãy nhập lại khóa cho từng mục. Khóa đã lưu trước đó được giữ nguyên cho đến khi bạn nhập lại.`,
+    vaultNeedsReentryLabel: `Cần nhập lại khóa`,
+    vaultKeyTemporarilyUnavailable: `Hiện chưa thể đọc khóa đã lưu. Hãy thử lại sau giây lát.`,
+    vaultKeyTemporarilyUnavailableHint: `Khóa tạm thời không khả dụng; khóa sẽ hiển thị sau khi được giải mã.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `Bản sao lưu đã được tải sau khi RisuTanium sửa danh sách nhân vật: ${[
             dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : '',

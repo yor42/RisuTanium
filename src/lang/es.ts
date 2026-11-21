@@ -4041,6 +4041,12 @@ export const languageSpanish = {
         `RisuTanium omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
     personaListEmptyNotice: `No quedó ninguna persona utilizable en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario e icono y la seleccionó.`,
     personaSelectionMissingNotice: `La persona seleccionada faltaba en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario, icono, prompt de persona y nota actuales y la seleccionó.`,
+    vaultKeepPlainNotice: `RisuTanium no pudo proteger tus claves de conexión con el almacenamiento seguro de este dispositivo, así que por ahora siguen guardadas como texto sin cifrar. Lo intenta de nuevo en cada inicio y cada vez que cambias una clave.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `Este dispositivo no puede leer la clave guardada de: ${names}. Vuelve a introducir la clave de cada uno. La clave guardada anterior se conserva intacta hasta que lo hagas.`,
+    vaultNeedsReentryLabel: `Hay que volver a introducir la clave`,
+    vaultKeyTemporarilyUnavailable: `La clave guardada no se puede leer ahora mismo. Inténtalo de nuevo en un momento.`,
+    vaultKeyTemporarilyUnavailableHint: `Clave no disponible temporalmente; aparecerá cuando se descifre.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `La copia de seguridad se cargó después de que RisuTanium reparara su lista de personajes: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : '',

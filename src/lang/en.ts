@@ -4182,6 +4182,12 @@ export const languageEnglish = {
         `RisuTanium left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,
     personaSelectionMissingNotice: `The selected persona was missing from the persona list, so RisuTanium added one from your current user name, icon, persona prompt and note and selected it.`,
+    vaultKeepPlainNotice: `RisuTanium could not protect your connection keys with this device's secure storage, so they stay saved as plain text for now. It tries again at every start and whenever you change a key.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `This device cannot read the saved key of: ${names}. Enter the key again for each of them. The old saved key is left untouched until you do.`,
+    vaultNeedsReentryLabel: `Key must be entered again`,
+    vaultKeyTemporarilyUnavailable: `The saved key cannot be read right now. Try again in a moment.`,
+    vaultKeyTemporarilyUnavailableHint: `Key temporarily unavailable; it will appear once decrypted.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `The backup was loaded after RisuTanium repaired its character list: ${[
             dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : '',

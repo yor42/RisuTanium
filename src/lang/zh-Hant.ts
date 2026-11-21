@@ -4083,6 +4083,12 @@ export const languageChineseTraditional = {
         `RisuTanium 排除了 ${count} 個不是有效資料的使用者人設。這可能是外掛寫入的。`,
     "personaListEmptyNotice": `使用者人設清單中沒有剩餘的可用人設，因此 RisuTanium 根據你的使用者名稱和圖示新增了一個人設並將其選取。`,
     "personaSelectionMissingNotice": `所選的使用者人設不在人設清單中，因此 RisuTanium 根據你目前的使用者名稱、圖示、人設提示詞和備註新增了一個人設並將其選取。`,
+    "vaultKeepPlainNotice": `RisuTanium 無法使用此裝置的安全儲存空間保護你的連線金鑰，因此這些金鑰目前仍以明文儲存。每次啟動以及每次修改金鑰時都會重試。`,
+    "vaultNeedsReentryNotice": (names: string) =>
+        `此裝置無法讀取以下項目已儲存的金鑰：${names}。請為每一項重新輸入金鑰。在你重新輸入之前，舊的已儲存金鑰不會被更動。`,
+    "vaultNeedsReentryLabel": `需要重新輸入金鑰`,
+    "vaultKeyTemporarilyUnavailable": `暫時無法讀取已儲存的金鑰，請稍後再試。`,
+    "vaultKeyTemporarilyUnavailableHint": `金鑰暫時無法使用；解密後會顯示。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuTanium 修復角色列表後已載入此備份：${[
             dropped > 0 ? `${dropped} 個不是角色的項目已被排除` : '',

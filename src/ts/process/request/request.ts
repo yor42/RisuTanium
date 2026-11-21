@@ -30,6 +30,7 @@ import { leaseArgKey, limitedField, readKeyField, sendArgKey, sendKeyLine, slotH
 import { slotConnection } from 'src/ts/connections/connections';
 import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } from './keyRing';
 import { SecretRefError } from '../../secretRef';
+import { VaultKeyUnavailableError } from 'src/ts/connections/keyVaultStore.svelte';
 import { beginUsageCapture, settleUsage, settleUsageFailure } from '../../usage/usageCapture';
 import type { UsageMeterState, UsagePurpose } from '../../usage/usageTypes';
 import type { NativeReplyGrant } from '../../nativeReply/grant';
@@ -565,7 +566,7 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
 /**
  * A credential that is a `${NAME}` reference and cannot be read ends this model's attempt: no
  * retry on the same model (the variable will not appear by itself), and the next fallback
- * model, which may use another credential, is still tried.
+ * model, which may use another credential, is still tried. A wrapped key that is temporarily unreadable\r\n * ends the attempt the same way, with its own message, so it never surfaces as a provider auth error or a throw.
  */
 export async function requestChatDataMain(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
     // Each call is one attempt with its own meter, whatever meter a reused argument object still carries.
@@ -576,7 +577,7 @@ export async function requestChatDataMain(arg:requestDataArgument, model:ModelMo
     }
     catch(error){
         settleUsageFailure(arg, model)
-        if(error instanceof SecretRefError){
+        if(error instanceof SecretRefError || error instanceof VaultKeyUnavailableError){
             return {
                 type: 'fail',
                 result: error.message,

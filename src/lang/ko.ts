@@ -4039,6 +4039,12 @@ export const languageKorean = {
         `RisuTanium이 유효하지 않은 데이터인 페르소나 ${count}개를 제외했습니다. 플러그인이 기록했을 수 있습니다.`,
     personaListEmptyNotice: `페르소나 목록에 사용할 수 있는 페르소나가 남아 있지 않아, RisuTanium이 사용자 이름과 아이콘으로 페르소나를 하나 추가하고 선택했습니다.`,
     personaSelectionMissingNotice: `선택한 페르소나가 페르소나 목록에 없어, RisuTanium이 현재 사용자 이름, 아이콘, 페르소나 프롬프트, 노트로 페르소나를 하나 추가하고 선택했습니다.`,
+    vaultKeepPlainNotice: `RisuTanium이 이 기기의 보안 저장소로 연결 키를 보호하지 못해, 지금은 키가 일반 텍스트로 저장되어 있습니다. 앱을 시작할 때마다, 그리고 키를 바꿀 때마다 다시 시도합니다.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `이 기기에서 다음 항목의 저장된 키를 읽을 수 없습니다: ${names}. 각 항목의 키를 다시 입력하세요. 다시 입력하기 전까지 이전에 저장된 키는 그대로 유지됩니다.`,
+    vaultNeedsReentryLabel: `키 다시 입력 필요`,
+    vaultKeyTemporarilyUnavailable: `저장된 키를 지금은 읽을 수 없습니다. 잠시 후 다시 시도하세요.`,
+    vaultKeyTemporarilyUnavailableHint: `키를 일시적으로 사용할 수 없습니다. 복호화되면 표시됩니다.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuTanium이 캐릭터 목록을 복구한 뒤 백업을 불러왔습니다: ${[
             dropped > 0 ? `캐릭터가 아닌 항목 ${dropped}개를 제외했습니다` : '',

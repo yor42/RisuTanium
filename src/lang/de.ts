@@ -4058,6 +4058,12 @@ export const languageGerman = {
         `RisuTanium hat ${count} ${count === 1 ? 'Persona' : 'Personas'} ausgelassen, deren Daten ungültig waren. Möglicherweise hat ein Plugin sie geschrieben.`,
     "personaListEmptyNotice": `In der Persona-Liste war keine verwendbare Persona mehr vorhanden, daher hat RisuTanium aus Ihrem Benutzernamen und Symbol eine hinzugefügt und ausgewählt.`,
     "personaSelectionMissingNotice": `Die ausgewählte Persona fehlte in der Persona-Liste, daher hat RisuTanium aus Ihrem aktuellen Benutzernamen, Symbol, Persona-Prompt und Ihrer Notiz eine hinzugefügt und ausgewählt.`,
+    "vaultKeepPlainNotice": `RisuTanium konnte Ihre Verbindungsschlüssel nicht mit dem sicheren Speicher dieses Geräts schützen, daher bleiben sie vorerst als Klartext gespeichert. Es wird bei jedem Start und bei jeder Schlüsseländerung erneut versucht.`,
+    "vaultNeedsReentryNotice": (names: string) =>
+        `Dieses Gerät kann den gespeicherten Schlüssel von folgenden Einträgen nicht lesen: ${names}. Geben Sie den Schlüssel für jeden davon erneut ein. Der alte gespeicherte Schlüssel bleibt unverändert, bis Sie das tun.`,
+    "vaultNeedsReentryLabel": `Schlüssel muss erneut eingegeben werden`,
+    "vaultKeyTemporarilyUnavailable": `Der gespeicherte Schlüssel kann gerade nicht gelesen werden. Versuchen Sie es gleich noch einmal.`,
+    "vaultKeyTemporarilyUnavailableHint": `Schlüssel vorübergehend nicht verfügbar; er erscheint, sobald er entschlüsselt ist.`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `Das Backup wurde geladen, nachdem RisuTanium seine Charakterliste repariert hat: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'Eintrag, der kein Charakter ist, wurde' : 'Einträge, die keine Charaktere sind, wurden'} ausgelassen` : '',
