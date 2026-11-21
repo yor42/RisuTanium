@@ -15,7 +15,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
-import type { RisuHubResult } from 'src/ts/characterCards'
+import type { RisuHubResult, hubType } from 'src/ts/characterCards'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import { accessibleText, controlName, exposedIcons, paletteClasses } from 'src/lib/a11yNames.test-helpers'
 
@@ -56,7 +56,7 @@ vi.mock('./Realm/RealmMain.svelte', () => ({
 }))
 
 import MainMenu from './MainMenu.svelte'
-import { DBState } from 'src/ts/stores.svelte'
+import { DBState, OpenRealmStore } from 'src/ts/stores.svelte'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 
 const mountedTargets: HTMLElement[] = []
@@ -93,6 +93,7 @@ afterEach(async () => {
     mountedTargets.splice(0).forEach((t) => t.remove())
     document.body.replaceChildren()
     DBState.db.hideRealm = false
+    OpenRealmStore.set(false)
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
     resetPageStorageModeForTests()
@@ -214,8 +215,8 @@ describe('the Community and source list rows', () => {
             expect(title.classList.contains('min-w-0'), classes).toBe(false)
         }
         const tags = Array.from(aside.querySelectorAll<HTMLElement>('[data-part="home-upstream-tag"]'))
-        // Discord, Website, and the two upstream destinations of the open disclosure.
-        expect(tags.length).toBe(4)
+        // Discord, Website, the two upstream destinations of the open disclosure, and the RisuRealm heading.
+        expect(tags.length).toBe(5)
         for (const tag of tags) expect(tag.classList.contains('shrink-0'), tag.outerHTML).toBe(true)
         for (const title of titles) {
             const row = title.parentElement!
@@ -248,5 +249,230 @@ describe('the side block order (MC-2831)', () => {
         expect(follows(utility, titleSpan(target, language.homeLinkDiscordTitle))).toBe(true)
         expect(realmTitleButton(target)).toBeNull()
         expect(h.getRisuHub).not.toHaveBeenCalled()
+    })
+})
+
+function makeChara(name: string): hubType {
+    return {
+        name,
+        desc: '',
+        download: '',
+        id: name,
+        img: '',
+        tags: [],
+        viewScreen: 'none',
+        hasLore: false,
+        hasEmotion: false,
+        hasAsset: false,
+        hot: 0,
+        license: '',
+        type: 'character',
+    }
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((res) => {
+        resolve = res
+    })
+    return { promise, resolve }
+}
+
+const populated = (html = ''): RisuHubResult => ({ ok: true, cards: [makeChara('one'), makeChara('two')], additionalHTML: html })
+
+const RESERVED_BODY = 'h-[calc(var(--home-realm-list-max)+2*var(--home-space-3))]'
+
+function has(el: Element | null, ...classes: string[]): boolean {
+    return !!el && classes.every((c) => el.classList.contains(c))
+}
+
+/** The first ancestor of `from` (starting at `from`) carrying the `@container` class. */
+function nearestContainer(from: Element | null): Element | null {
+    let el = from
+    while (el) {
+        if (el.classList.contains('@container')) return el
+        el = el.parentElement
+    }
+    return null
+}
+
+const partOf = (root: ParentNode, part: string) => root.querySelector<HTMLElement>(`[data-part="${part}"]`)
+
+describe('the page grid, the Realm panel and the list container (S2b-2)', () => {
+    test('(R) S2b2-R1: the Realm pair is keyed to the Home tokens, not to Tailwind lg literals', async () => {
+        h.getRisuHub.mockImplementation(async () => populated())
+        const target = mountMainMenu()
+        await flushHub()
+        const html = target.innerHTML
+        for (const literal of ['min-h-[296px]', 'lg:min-h-[380px]', 'max-h-[150px]', 'lg:max-h-[200px]']) {
+            expect(html, literal).not.toContain(literal)
+        }
+        const panel = partOf(target, 'home-realm')!
+        expect(has(panel, 'min-h-[var(--home-realm-min-height)]')).toBe(true)
+        const scroller = target.querySelector('[data-realm-preview-list]')!.firstElementChild!
+        expect(has(scroller, 'max-h-[var(--home-realm-list-max)]', 'min-h-0', 'overflow-y-auto')).toBe(true)
+    })
+
+    test('(R) S2b2-R2: the landing body is capped and padded by the page tokens; no max-w-4xl ancestor of the side block', async () => {
+        const target = mountMainMenu()
+        const aside = target.querySelector('aside[data-part="home-side"]')!
+        for (let el: Element | null = aside; el; el = el.parentElement) {
+            expect(el.classList.contains('max-w-4xl'), el.className).toBe(false)
+        }
+        const body = partOf(target, 'home-body')!
+        expect(has(body, '@container', 'w-full', 'max-w-[var(--home-page-max)]', 'px-[var(--home-main-pad-x)]', 'pt-[var(--home-main-pad-top)]', 'pb-[var(--home-main-pad-bottom)]')).toBe(true)
+        expect(body.contains(aside)).toBe(true)
+    })
+
+    test('(G) S2b2-G1: the reserved body is the same fixed-height node in every Realm state and across pending to populated', async () => {
+        const check = (target: HTMLElement) => {
+            const body = partOf(target, 'home-realm-body')
+            expect(body, 'reserved body').not.toBeNull()
+            expect(has(body, RESERVED_BODY), body!.className).toBe(true)
+            return body!
+        }
+
+        // consent
+        localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
+        resetUpstreamAgreementForTests()
+        const consent = mountMainMenu()
+        expect(consent.querySelector('[data-testid="upstream-consent-placeholder"]')).not.toBeNull()
+        check(consent)
+        consent.remove()
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+
+        const results: Array<[string, RisuHubResult]> = [
+            ['offline', { ok: false, reason: 'offline' }],
+            ['failed', { ok: false, reason: 'http', status: 500 }],
+            ['empty', { ok: true, cards: [], additionalHTML: '' }],
+            ['populated', populated()],
+        ]
+        for (const [name, result] of results) {
+            h.getRisuHub.mockImplementation(async () => result)
+            const target = mountMainMenu()
+            await flushHub()
+            check(target)
+            expect(!!target.querySelector('[data-realm-preview-list]'), name).toBe(name === 'populated')
+            target.remove()
+        }
+
+        // pending, then populated: identity
+        const pending = deferred<RisuHubResult>()
+        h.getRisuHub.mockImplementation(() => pending.promise)
+        const target = mountMainMenu()
+        await flushHub()
+        expect(target.querySelector('[role="status"]')).not.toBeNull()
+        const before = check(target)
+        pending.resolve(populated())
+        await flushHub()
+        expect(target.querySelector('[data-realm-preview-list]')).not.toBeNull()
+        expect(check(target)).toBe(before)
+    })
+
+    test('(G) S2b2-G2: the two-up classes are on the grid and the aside only with Realm shown', () => {
+        showUtility()
+        const shown = mountMainMenu()
+        const columns = partOf(shown, 'home-columns')!
+        expect(has(columns, '@min-[1000px]:grid-cols-[minmax(0,1fr)_var(--home-side-width)]')).toBe(true)
+        const aside = shown.querySelector('aside[data-part="home-side"]')!
+        expect(has(aside, '@min-[1000px]:col-start-2')).toBe(true)
+        expect(has(aside, '@min-[768px]:@max-[1000px]:grid', '@min-[768px]:@max-[1000px]:grid-cols-2', '@min-[768px]:@max-[1000px]:items-start')).toBe(true)
+        expect(has(shown.querySelector('[data-testid="utility-card"]'), 'col-span-full')).toBe(true)
+        expect(columns.lastElementChild).toBe(aside)
+        shown.remove()
+
+        DBState.db.hideRealm = true
+        const hidden = mountMainMenu()
+        const hiddenColumns = partOf(hidden, 'home-columns')!
+        const hiddenAside = hidden.querySelector('aside[data-part="home-side"]')!
+        const forbidden = /grid-cols-\[minmax|col-start-2|@max-\[|:grid-cols-2|:grid\b/
+        expect(hiddenColumns.className).not.toMatch(forbidden)
+        expect(hiddenAside.className).not.toMatch(forbidden)
+        expect(hiddenColumns.lastElementChild).toBe(hiddenAside)
+        const utility = hidden.querySelector('[data-testid="utility-card"]')!
+        expect(follows(utility, titleSpan(hidden, language.homeLinkDiscordTitle))).toBe(true)
+    })
+
+    test('(G) S2b2-G3: opening and closing the Realm view leaves the preview as it was, with no new request', async () => {
+        h.getRisuHub.mockImplementation(async () => populated())
+        const target = mountMainMenu()
+        await flushHub()
+        expect(h.getRisuHub).toHaveBeenCalledTimes(1)
+        OpenRealmStore.set(true)
+        flushSync()
+        expect(partOf(target, 'home-body')).toBeNull()
+        OpenRealmStore.set(false)
+        flushSync()
+        expect(h.getRisuHub).toHaveBeenCalledTimes(1)
+        expect(target.querySelector('[data-realm-preview-list]')).not.toBeNull()
+        expect(target.querySelector('[data-testid="upstream-consent-placeholder"]')).toBeNull()
+    })
+
+    test('(G) S2b2-G8: the Community section is the list container, with Realm shown and hidden', async () => {
+        const check = (target: HTMLElement) => {
+            const section = partOf(target, 'home-community')!
+            const ul = section.querySelector(':scope > ul')!
+            expect(nearestContainer(ul.parentElement)).toBe(section)
+            expect(has(section, '@container', 'w-full')).toBe(true)
+            expect(has(ul, '@min-[36rem]:grid-cols-2')).toBe(true)
+            const aside = target.querySelector('aside[data-part="home-side"]')!
+            expect(aside.classList.contains('@container')).toBe(false)
+        }
+        h.getRisuHub.mockImplementation(async () => populated())
+        const shown = mountMainMenu()
+        await flushHub()
+        check(shown)
+        shown.remove()
+        DBState.db.hideRealm = true
+        check(mountMainMenu())
+    })
+
+    test('(G) S2b2-G9: the announcement is the last block, after the list, full width, and hidden with hideRealm', async () => {
+        h.getRisuHub.mockImplementation(async () => populated('<p>banner</p>'))
+        const target = mountMainMenu()
+        await flushHub()
+        const aside = target.querySelector('aside[data-part="home-side"]')!
+        const announcement = partOf(target, 'home-realm-announcement')!
+        expect(announcement).not.toBeNull()
+        expect(aside.lastElementChild).toBe(announcement)
+        expect(follows(partOf(target, 'home-community')!, announcement)).toBe(true)
+        expect(has(announcement, 'col-span-full')).toBe(true)
+        expect(announcement.innerHTML).toContain('<p>banner</p>')
+
+        DBState.db.hideRealm = true
+        flushSync()
+        await flushHub()
+        expect(partOf(target, 'home-realm-announcement')).toBeNull()
+        DBState.db = { hideRealm: true, realmDirectOpen: false, hideAllImages: false } as never
+        flushSync()
+        expect(partOf(target, 'home-realm-announcement')).toBeNull()
+    })
+
+    test('(G) S2b2-G10 and (R) S2b2-R3: the Realm heading carries the upstream tag outside the title button', async () => {
+        h.getRisuHub.mockImplementation(async () => populated())
+        const target = mountMainMenu()
+        await flushHub()
+        const button = realmTitleButton(target)!
+        const head = button.parentElement!
+        expect(accessibleText(head)).toBe(`${language.hubBrowseMore} (${language.homeSourceUpstreamLabel})`)
+        expect(head.tagName).toBe('H3')
+        const tag = head.querySelector('[data-part="home-upstream-tag"]')!
+        expect(tag.getAttribute('aria-hidden')).toBe('true')
+        expect(tag.textContent?.trim()).toBe(language.homeSourceUpstreamLabel)
+        expect(button.contains(tag)).toBe(false)
+        const marker = Array.from(head.children).find((c) => c.classList.contains('sr-only'))!
+        expect(marker.textContent?.trim()).toBe(`(${language.homeSourceUpstreamLabel})`)
+        expect(button.contains(marker)).toBe(false)
+        expect(follows(button, marker)).toBe(true)
+        expect(controlName(button)).toBe(language.hubBrowseMore)
+        expect(button.textContent?.trim()).toBe(language.hub)
+
+        expect(has(head, 'flex', 'flex-wrap', 'items-center', 'justify-between')).toBe(true)
+        expect(has(button, 'w-fit', 'max-w-full', '[overflow-wrap:break-word]')).toBe(true)
+        expect(button.classList.contains('min-w-0')).toBe(false)
+        expect(button.classList.contains('flex-1')).toBe(false)
+        expect(has(tag, 'shrink-0')).toBe(true)
+        expect(head.nextElementSibling?.textContent).toContain(language.hubDescription)
     })
 })

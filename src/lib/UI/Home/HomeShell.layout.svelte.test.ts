@@ -652,4 +652,17 @@ describe('HomeShell greeting header', () => {
         expect(emailTitle).toBeTruthy()
         expect(emailTitle!.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
+
+    test('S2b2-G4: the greeting sits in the head above the columns, outside them, at full body width', () => {
+        const root = mountShellAt(1280)
+        const greeting = greetingOf(root)!
+        const head = root.querySelector('[data-part="home-head"]')!
+        const columns = root.querySelector('[data-part="home-columns"]')!
+        expect(head).not.toBeNull()
+        expect(head.contains(greeting)).toBe(true)
+        expect(columns.contains(head)).toBe(false)
+        expect(head.compareDocumentPosition(columns) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(greeting.classList.contains('max-w-4xl')).toBe(false)
+        expect(greeting.classList.contains('px-6')).toBe(false)
+    })
 })

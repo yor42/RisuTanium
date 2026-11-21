@@ -71,9 +71,9 @@
     const headingId = `home-community-heading-${Math.random().toString(36).slice(2)}`;
 </script>
 
-<section data-part="home-community" aria-labelledby={headingId} class="flex flex-col gap-2">
+<section data-part="home-community" aria-labelledby={headingId} class="@container flex w-full flex-col gap-2">
   <h3 id={headingId} class="text-[length:var(--home-text-sm)] font-normal text-[color:var(--home-ink-2)]">{language.homeCommunityHeading}</h3>
-  <ul class="flex flex-col">
+  <ul class="flex flex-col @min-[36rem]:grid @min-[36rem]:grid-cols-2 @min-[36rem]:items-start @min-[36rem]:gap-x-[var(--home-space-6)]">
     {#each relatedLinks as relatedLink}
       <li>
         {#if relatedLink.kind === 'disclosure'}
