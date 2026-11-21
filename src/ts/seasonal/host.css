@@ -53,7 +53,8 @@
 .rt-sw, .rt-sw-greet-row, .rt-sw-stage, .rt-sw-markslot, .rt-sw-game {
   --rt-sw-ink: var(--color-textcolor);
   --rt-sw-ink-2: var(--color-textcolor2);
-  --rt-sw-ring: var(--risu-theme-role-focus-ring, #6f7fc8);
+  /* The theme text colour, so the ring reads on the bar in every scheme; derived role variables stay in the token files. */
+  --rt-sw-ring: var(--color-textcolor);
   --rt-sw-amber: #fbbf24;
   --rt-sw-amber-hover: #fcd34d;
 }
