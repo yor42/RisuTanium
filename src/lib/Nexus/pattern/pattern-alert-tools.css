@@ -1,0 +1,230 @@
+/*
+  Tool dialogs: the legacy alert API's working surfaces (choosers, data viewers, export, branches) inside the alert shell.
+  Needs styles/pattern-tokens.css, pattern-dialog.css and pattern-alert.css (the layer, the dialog, the head, the body and the --d-* durations they define).
+  Every value comes from a pattern or nexus token; the one literal length is the 1px hairline. The quiet surfaces are the raised theme surface under a hairline edge; each dialog
+  has one bold element: the Realm row of addchar, the head of chatOptions, the avatar grid of selectChar, the token meter of requestdata,
+  the accent edge of the active summary of hypaV2, the status edge of a request log, and the confirm fill of the footer of cardexport,
+  peerConflicts and parkedReply.
+  Code panels read the theme: a key is the strong text colour and every other highlighted token the secondary colour, so the global
+  highlight sheet's colours never reach a dialog.
+*/
+
+/* ---- choosers: option rows (addchar, chatOptions) ---- */
+[data-part="pattern-alert-rows"] { display: grid; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-row"] {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--pattern-warn-padding); min-width: 0;
+  min-height: var(--pattern-warn-action-height); padding: var(--pattern-warn-gap) var(--pattern-warn-padding);
+  font: inherit; font-size: var(--pattern-warn-body-size); line-height: var(--pattern-warn-body-leading); text-align: start; cursor: pointer;
+  color: var(--nexus-text); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+  transition: border-color var(--d-state) var(--pattern-ease), transform var(--d-press) var(--pattern-ease);
+}
+[data-part="pattern-alert-row"]:hover { border-color: var(--nexus-edge-strong); }
+[data-part="pattern-alert-row"]:active { transform: scale(var(--pm-press)); }
+[data-part="pattern-alert-row"]:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-row"][data-emphasis="hero"] {
+  padding-block: var(--pattern-warn-padding); border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-fill-confirm);
+}
+[data-part="pattern-alert-row"] > [aria-hidden="true"] { grid-column: 2; grid-row: 1 / span 2; display: grid; place-items: center; color: var(--nexus-text-secondary); }
+[data-part="pattern-alert-row-title"] { grid-column: 1; overflow-wrap: anywhere; }
+[data-part="pattern-alert-row"][data-emphasis="hero"] > [data-part="pattern-alert-row-title"] { font-size: var(--pattern-warn-headline-size); font-weight: var(--pattern-warn-headline-weight); line-height: var(--pattern-warn-headline-leading); }
+[data-part="pattern-alert-row-desc"] { grid-column: 1; color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+
+/* ---- chooser: the avatar grid of selectChar ---- */
+[data-part="pattern-alert-chars"] {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--pattern-warn-action-height) * 2), 1fr)); gap: var(--pattern-warn-padding) var(--pattern-warn-gap); justify-items: center;
+}
+[data-part="pattern-alert-char"] { display: grid; justify-items: center; align-content: start; gap: var(--pattern-warn-gap); width: 100%; min-width: 0; }
+[data-part="pattern-alert-char"] > button:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-char-name"] {
+  max-width: 100%; text-align: center; color: var(--nexus-text-secondary); font-size: var(--pattern-warn-body-size); line-height: var(--pattern-warn-body-leading);
+  overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* ---- data viewers: the close in the head, the tabs and the stack of a tab's content ---- */
+[data-part="pattern-alert-close"] {
+  flex: none; margin-inline-start: auto; display: grid; place-items: center; min-width: var(--pattern-warn-action-height); min-height: var(--pattern-warn-action-height); padding: 0;
+  color: var(--nexus-text); background: transparent; border: 1px solid transparent; border-radius: var(--pattern-warn-action-radius); cursor: pointer;
+  transition: border-color var(--d-state) var(--pattern-ease);
+}
+[data-part="pattern-alert-close"]:hover { border-color: var(--nexus-edge-strong); }
+[data-part="pattern-alert-close"]:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-tabs"] { display: flex; flex-wrap: wrap; gap: var(--pattern-warn-gap); }
+[data-part="pattern-layer"] [data-part="pattern-alert-tab"] { font-weight: normal; background: transparent; border-color: var(--nexus-edge); transition: border-color var(--d-state) var(--pattern-ease); }
+[data-part="pattern-layer"] [data-part="pattern-alert-tab"]:hover { border-color: var(--nexus-edge-strong); }
+[data-part="pattern-layer"] [data-part="pattern-alert-tab"][aria-pressed="true"] { font-weight: var(--pattern-weight-strong); background: var(--nexus-surface-raised); border-color: var(--nexus-edge-strong); }
+[data-part="pattern-alert-stack"] { display: grid; gap: var(--pattern-warn-padding); min-width: 0; }
+[data-part="pattern-alert-note"] { margin: 0; padding-inline-start: var(--pattern-warn-gap); border-inline-start: 1px solid var(--nexus-edge-strong); color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+[data-part="pattern-alert-empty"] { display: grid; gap: var(--pattern-warn-gap); justify-items: center; padding-block: var(--pattern-warn-padding); text-align: center; color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+[data-part="pattern-alert-empty"] > strong { color: var(--nexus-text); font-weight: var(--pattern-weight-strong); }
+
+/* ---- requestdata: the token meter, its legend and the facts ---- */
+[data-part="pattern-alert-meter"] {
+  position: relative; height: calc(var(--pattern-task-bar-height) * 4); overflow: hidden; border-radius: var(--pattern-pill-radius);
+  background: var(--pattern-surface); border: 1px solid var(--nexus-edge-strong);
+}
+[data-part="pattern-alert-meter-input"], [data-part="pattern-alert-meter-output"] {
+  position: absolute; inset-block: 0; transition: width var(--d-state) var(--pattern-ease), inset-inline-start var(--d-state) var(--pattern-ease);
+}
+[data-part="pattern-alert-meter-input"] { inset-inline-start: 0; width: calc(var(--p-in, 0) * 100%); background: var(--pattern-fill-confirm); }
+[data-part="pattern-alert-meter-output"] {
+  inset-inline-start: calc(var(--p-in, 0) * 100%); width: calc(var(--p-out, 0) * 100%);
+  background: repeating-linear-gradient(135deg, var(--pattern-fill-confirm) 0 var(--pattern-bullet-inset), transparent var(--pattern-bullet-inset) var(--pattern-bullet-size));
+}
+[data-part="pattern-alert-legend"] { display: grid; gap: var(--pattern-warn-gap); margin: 0; padding: 0; list-style: none; }
+[data-part="pattern-alert-legend"] > li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: var(--pattern-warn-gap);
+  color: var(--nexus-text); font-variant-numeric: tabular-nums;
+}
+[data-part="pattern-alert-legend"] > li > span:last-child { text-align: end; }
+[data-part="pattern-alert-swatch"] { width: var(--pattern-icon-size); height: var(--pattern-icon-size); border-radius: var(--pattern-bullet-inset); border: 1px solid var(--nexus-edge-strong); }
+[data-part="pattern-alert-swatch"][data-kind="input"] { background: var(--pattern-fill-confirm); }
+[data-part="pattern-alert-swatch"][data-kind="output"] {
+  background: repeating-linear-gradient(135deg, var(--pattern-fill-confirm) 0 var(--pattern-bullet-inset), transparent var(--pattern-bullet-inset) var(--pattern-bullet-size));
+}
+[data-part="pattern-alert-swatch"][data-kind="max"] { background: var(--pattern-surface); }
+[data-part="pattern-alert-facts"] { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: var(--pattern-warn-gap) var(--pattern-warn-padding); margin: 0; }
+[data-part="pattern-alert-facts"] > dt { color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+[data-part="pattern-alert-facts"] > dd { margin: 0; text-align: end; color: var(--nexus-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+[data-part="pattern-alert-panel"] {
+  display: grid; gap: var(--pattern-warn-gap); min-width: 0; max-height: calc(var(--pattern-warn-action-height) * 6); overflow: auto; padding: var(--pattern-warn-gap) var(--pattern-warn-padding);
+  color: var(--nexus-text); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+
+/* ---- code panels (requestdata, requestlogs): a raised panel with a quiet theme highlight ---- */
+[data-part="pattern-alert-code-block"] { display: grid; gap: var(--pattern-warn-gap); min-width: 0; }
+[data-part="pattern-alert-code-head"] { display: flex; align-items: center; justify-content: space-between; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-code-label"] { color: var(--nexus-text); font-weight: var(--pattern-weight-strong); overflow-wrap: anywhere; }
+[data-part="pattern-alert-copy"] {
+  display: grid; place-items: center; min-width: var(--pattern-warn-action-height); min-height: var(--pattern-warn-action-height); padding: 0;
+  color: var(--nexus-text-secondary); background: transparent; border: 1px solid transparent; border-radius: var(--pattern-warn-action-radius); cursor: pointer;
+  transition: border-color var(--d-state) var(--pattern-ease);
+}
+[data-part="pattern-alert-copy"]:hover, [data-part="pattern-alert-copy"][data-state="copied"] { color: var(--nexus-text); border-color: var(--nexus-edge-strong); }
+[data-part="pattern-alert-copy"]:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-code"] {
+  margin: 0; min-width: 0; max-height: calc(var(--pattern-warn-action-height) * 5); overflow: auto; padding: var(--pattern-warn-gap) var(--pattern-warn-padding);
+  font-family: monospace; font-size: var(--pattern-warn-body-size); line-height: var(--pattern-warn-body-leading); white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--nexus-text); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+[data-part="pattern-alert-code"] [class*="hljs-"] { color: var(--nexus-text-secondary); background: none; font-style: normal; font-weight: normal; text-decoration: none; }
+[data-part="pattern-alert-code"] .hljs-attr { color: var(--nexus-text); font-weight: var(--pattern-weight-strong); }
+[data-part="pattern-alert-code"] .hljs-string, [data-part="pattern-alert-code"] .hljs-number, [data-part="pattern-alert-code"] .hljs-literal, [data-part="pattern-alert-code"] .hljs-punctuation { color: var(--nexus-text-secondary); }
+
+/* ---- hypaV2: a summary panel, the first one is the active one ---- */
+[data-part="pattern-alert-chunk"] {
+  display: grid; gap: var(--pattern-warn-gap); padding: var(--pattern-warn-gap) var(--pattern-warn-padding); min-width: 0;
+  background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+[data-part="pattern-alert-chunk"][data-state="active"] { border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-fill-confirm); }
+[data-part="pattern-alert-chunk-label"] { color: var(--nexus-text-secondary); }
+[data-part="pattern-alert-chunk"][data-state="active"] > [data-part="pattern-alert-chunk-label"] { color: var(--nexus-text); font-weight: var(--pattern-weight-strong); }
+
+/* ---- requestlogs: one row per request, the status edge is the one bold element ---- */
+[data-part="pattern-alert-toolbar"] { display: flex; justify-content: flex-end; }
+[data-part="pattern-alert-logs"] { display: grid; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-log"] {
+  min-width: 0; overflow: hidden; background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+  border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-fill-confirm);
+}
+[data-part="pattern-alert-log"][data-state="err"] { border-inline-start-color: var(--pattern-fill-danger); }
+[data-part="pattern-alert-log-summary"] {
+  display: flex; align-items: center; gap: var(--pattern-warn-gap); width: 100%; min-height: var(--pattern-warn-action-height); padding: 0 var(--pattern-warn-padding);
+  font: inherit; text-align: start; color: var(--nexus-text); background: none; border: 0; cursor: pointer;
+}
+[data-part="pattern-alert-log-summary"]:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: calc(var(--pattern-focus-offset) * -1); }
+[data-part="pattern-alert-log-status"] { display: inline-flex; align-items: center; flex: none; gap: var(--pattern-bullet-inset); font-family: monospace; font-weight: var(--pattern-weight-strong); font-variant-numeric: tabular-nums; color: var(--nexus-text); }
+[data-part="pattern-alert-log-url"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; color: var(--nexus-text); }
+[data-part="pattern-alert-log-date"] { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--nexus-text-secondary); }
+[data-part="pattern-alert-log-chevron"] { flex: none; display: grid; place-items: center; color: var(--nexus-text-secondary); }
+[data-part="pattern-alert-log-detail"] { display: grid; gap: var(--pattern-warn-padding); min-width: 0; padding: var(--pattern-warn-padding); border-top: 1px solid var(--nexus-edge); }
+
+/* ---- cardexport: the format tiles and the warning line; the confirm fill of the footer is the one bold element ---- */
+[data-part="pattern-alert-field-label"] { color: var(--nexus-text); font-weight: var(--pattern-weight-strong); }
+[data-part="pattern-alert-tiles"] { display: flex; flex-wrap: wrap; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-tile"] {
+  flex: 1 1 calc(var(--pattern-warn-action-height) * 3); min-height: var(--pattern-warn-action-height); padding: var(--pattern-warn-gap) var(--pattern-warn-padding);
+  font: inherit; cursor: pointer; color: var(--nexus-text); background: transparent; border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+  transition: border-color var(--d-state) var(--pattern-ease);
+}
+[data-part="pattern-alert-tile"]:hover { border-color: var(--nexus-edge-strong); }
+[data-part="pattern-alert-tile"][aria-pressed="true"] { font-weight: var(--pattern-weight-strong); background: var(--nexus-surface-raised); border-color: var(--nexus-edge-strong); }
+[data-part="pattern-alert-tile"]:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-warning"] {
+  display: flex; align-items: baseline; gap: var(--pattern-warn-gap); margin: 0; padding-inline-start: var(--pattern-warn-gap);
+  color: var(--nexus-text); border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-fill-danger); overflow-wrap: anywhere;
+}
+[data-part="pattern-alert-warning-mark"] {
+  flex: none; display: inline-grid; place-items: center; width: var(--pattern-icon-size); height: var(--pattern-icon-size); border-radius: var(--pattern-pill-radius);
+  color: var(--pattern-on-danger); background: var(--pattern-fill-danger); font-weight: var(--pattern-weight-strong); line-height: 1;
+}
+
+/* ---- the two prompts: peerConflicts and parkedReply, titled in the body ---- */
+[data-part="pattern-alert-title"] { margin: 0; color: var(--nexus-text); font-weight: var(--pattern-weight-strong); overflow-wrap: anywhere; }
+[data-part="pattern-alert-text"] { margin: 0; color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+[data-part="pattern-alert-bulk"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-bulk"] > span { color: var(--nexus-text-secondary); }
+[data-part="pattern-alert-conflict"] {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--pattern-warn-gap) var(--pattern-warn-padding); min-width: 0; margin: 0; padding: var(--pattern-warn-gap) var(--pattern-warn-padding);
+  background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+[data-part="pattern-alert-conflict"] > legend { padding-inline: var(--pattern-warn-gap); color: var(--nexus-text); overflow-wrap: anywhere; }
+[data-part="pattern-alert-conflict"] > [data-part="pattern-alert-note"] { flex: 1 1 100%; }
+[data-part="pattern-alert-choice"] {
+  display: inline-flex; align-items: center; gap: var(--pattern-warn-gap); min-height: var(--pattern-warn-action-height); color: var(--nexus-text); cursor: pointer; accent-color: var(--pattern-fill-confirm);
+}
+[data-part="pattern-alert-choice"] > input:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-reply"] {
+  min-width: 0; max-height: calc(var(--pattern-warn-action-height) * 5); overflow: auto; padding: var(--pattern-warn-gap) var(--pattern-warn-padding);
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--nexus-text); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+[data-part="pattern-alert-reply-tools"] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-reply-tools"] > span { color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+
+/* ---- branches: the tree is the one bold element; a solid accent line is a straight run, a dashed warning line is a branch ---- */
+[data-part="pattern-alert-tree"] {
+  position: relative; min-width: 0; max-height: calc(var(--pattern-warn-action-height) * 8); overflow: auto;
+  border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+[data-part="pattern-alert-tree-node"] {
+  position: absolute; padding: 0; cursor: pointer; background: var(--nexus-surface-raised); border: 1px solid var(--nexus-text-secondary); border-radius: var(--pattern-pill-radius);
+  transition: border-color var(--d-state) var(--pattern-ease);
+}
+[data-part="pattern-alert-tree-node"]:hover { border-color: rgb(var(--nexus-accent-rgb)); }
+[data-part="pattern-alert-tree-node"]:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
+[data-part="pattern-alert-tree-link"] { position: absolute; pointer-events: none; }
+[data-part="pattern-alert-tree-link"] { border-style: solid; border-color: rgb(var(--nexus-accent-rgb)); }
+[data-part="pattern-alert-tree-link"][data-axis="vertical"] { width: 0; border-width: 0 1px; }
+[data-part="pattern-alert-tree-link"][data-axis="horizontal"] { height: 0; border-width: 1px 0; }
+[data-part="pattern-alert-tree-link"][data-kind="branch"] { border-style: dashed; border-color: rgb(var(--nexus-warning-rgb)); }
+[data-part="pattern-alert-tree-preview"] {
+  position: absolute; width: max-content; max-width: min(100%, calc(var(--pattern-warn-action-height) * 8)); max-height: calc(var(--pattern-warn-action-height) * 5); overflow: auto;
+  padding: var(--pattern-warn-gap) var(--pattern-warn-padding); white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: none;
+  font-size: var(--pattern-warn-body-size); line-height: var(--pattern-warn-body-leading);
+  color: var(--nexus-text); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--pattern-warn-action-radius);
+}
+
+/* ---- forced colours: the edges and the focus fall back to system colours ---- */
+@media (forced-colors: active) {
+  [data-part="pattern-alert-tree"], [data-part="pattern-alert-tree-node"], [data-part="pattern-alert-tree-preview"] { background: Canvas; border-color: CanvasText; color: CanvasText; }
+  [data-part="pattern-alert-tree-node"]:focus-visible { outline-color: Highlight; }
+  [data-part="pattern-alert-tree-link"] { border-color: CanvasText; forced-color-adjust: none; }
+  [data-part="pattern-alert-tile"], [data-part="pattern-alert-conflict"], [data-part="pattern-alert-reply"] { background: Canvas; border-color: CanvasText; color: CanvasText; }
+  [data-part="pattern-alert-tile"][aria-pressed="true"] { border-color: Highlight; }
+  [data-part="pattern-alert-tile"]:focus-visible, [data-part="pattern-alert-choice"] > input:focus-visible { outline-color: Highlight; }
+  [data-part="pattern-alert-warning"] { border-inline-start-color: CanvasText; }
+  [data-part="pattern-alert-warning-mark"] { color: Canvas; background: CanvasText; forced-color-adjust: none; }
+  [data-part="pattern-alert-panel"], [data-part="pattern-alert-code"], [data-part="pattern-alert-chunk"], [data-part="pattern-alert-log"], [data-part="pattern-alert-meter"] { background: Canvas; border-color: CanvasText; color: CanvasText; }
+  [data-part="pattern-alert-chunk"][data-state="active"], [data-part="pattern-alert-log"] { border-inline-start-color: Highlight; }
+  [data-part="pattern-alert-log"][data-state="err"] { border-inline-start-color: CanvasText; }
+  [data-part="pattern-alert-meter-input"] { background: Highlight; forced-color-adjust: none; }
+  [data-part="pattern-alert-meter-output"] { background: repeating-linear-gradient(135deg, Highlight 0 var(--pattern-bullet-inset), Canvas var(--pattern-bullet-inset) var(--pattern-bullet-size)); forced-color-adjust: none; }
+  [data-part="pattern-alert-swatch"] { border-color: CanvasText; }
+  [data-part="pattern-layer"] [data-part="pattern-alert-tab"][aria-pressed="true"] { border-color: Highlight; }
+  [data-part="pattern-alert-close"], [data-part="pattern-alert-copy"] { color: ButtonText; }
+  [data-part="pattern-alert-close"]:focus-visible, [data-part="pattern-alert-copy"]:focus-visible, [data-part="pattern-alert-log-summary"]:focus-visible { outline-color: Highlight; }
+  [data-part="pattern-alert-code"] [class*="hljs-"], [data-part="pattern-alert-log-url"], [data-part="pattern-alert-log-date"] { color: CanvasText; }
+  [data-part="pattern-alert-row"] { background: Canvas; border-color: CanvasText; color: ButtonText; }
+  [data-part="pattern-alert-row"][data-emphasis="hero"] { border-inline-start-color: Highlight; }
+  [data-part="pattern-alert-row"]:focus-visible, [data-part="pattern-alert-char"] > button:focus-visible { outline-color: Highlight; }
+  [data-part="pattern-alert-char-name"] { color: CanvasText; }
+}

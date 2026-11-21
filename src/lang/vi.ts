@@ -651,6 +651,7 @@ export const languageVietnamese = {
     patternTaskBytes: (done: string, total: string) => `${done} / ${total}`,
     patternTaskSlowHint: "Vẫn đang xử lý. Tệp lớn có thể mất một lúc.",
     alertWaitSlowHint: "Vẫn đang xử lý.",
+    alertRequestDataTitle: "Thông tin yêu cầu",
     patternTaskCancelUnsafe: "Không thể dừng bước này giữa chừng",
     patternTaskCancelling: "Đang hoàn tất",
     patternTaskCancelled: "Đã hủy",

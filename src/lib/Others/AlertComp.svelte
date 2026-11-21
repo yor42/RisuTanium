@@ -36,12 +36,14 @@
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme";
     import { getChatBranches } from "src/ts/gui/branches";
+    import { branchMoveTarget, branchNodeKey, branchNodeName, branchNodeText, classifyBranchKey, placeBranchPreview, resolveBranchStop, type BranchNodeLike } from "src/ts/gui/branchNode";
     import { getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { translateStackTrace } from "../../ts/sourcemap";
     import { getDetailedOSLabel, getFallbackOSLabel, getRisuEnvironmentLabel } from "src/ts/platform";
     import versionData from "../../../version.json";
     import '../Nexus/pattern/pattern-dialog.css';
     import '../Nexus/pattern/pattern-alert.css';
+    import '../Nexus/pattern/pattern-alert-tools.css';
     import PatternWarnMark from '../Nexus/pattern/PatternWarnMark.svelte';
     import type { PatternSeverity } from '../Nexus/pattern/patternWarning';
     import { motionPrefs } from 'src/ts/chatShell/motionPrefs.svelte';
@@ -59,6 +61,7 @@
             case 'selectChar':
             case 'addchar':
             case 'chatOptions':
+            case 'cardexport':
             case 'pluginconfirm':
             case 'patternSelect':
             case 'patternInput':
@@ -77,12 +80,15 @@
     // Types that ask for an answer or report a failure interrupt a screen reader's reading; the rest are plain dialogs.
     const ALERT_DIALOG_TYPES = new Set<alertData['type']>(['error', 'ask', 'select', 'input', 'tos', 'staleAccountNotice'])
     // Reports and tool content need more room than a message.
-    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer'])
+    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer'])
     // Types whose body has no message element of its own; the dialog is named and described by the body instead.
-    const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'requestdata', 'addchar', 'hypaV2', 'chatOptions', 'peerConflicts', 'parkedReply'])
+    const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'selectChar', 'requestdata', 'addchar', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'chatOptions', 'peerConflicts', 'parkedReply'])
+    // Viewers the person closes themselves: the head carries a named close, and Escape and Back close them as well.
+    const CLOSE_BUTTON_TYPES = new Set<alertData['type']>(['requestdata', 'hypaV2', 'requestlogs', 'branches'])
 
-    function headingOf(type: alertData['type']): string | null {
-        switch (type) {
+    // The headline of a dialog that has one. A tool dialog is named by it, so every tool dialog that moves into the shared box adds its case here.
+    function headingOf(a: alertData): string | null {
+        switch (a.type) {
             case 'error':
                 return language.error
             case 'ask':
@@ -91,6 +97,20 @@
                 return language.alertComp.pluginImport
             case 'selectChar':
                 return language.select
+            case 'addchar':
+                return language.addCharacter
+            case 'chatOptions':
+                return language.chatOptions
+            case 'requestdata':
+                return language.alertRequestDataTitle
+            case 'hypaV2':
+                return language.hypaMemoryV2Modal
+            case 'requestlogs':
+                return language.ShowLog
+            case 'cardexport':
+                return language.shareExport
+            case 'branches':
+                return language.chatShellBranches
             case 'input':
                 return language.input
             case 'updateOffer':
@@ -172,10 +192,48 @@
     let generationInfoMenuIndex = $state(0)
     // Second selection cue besides the bg-selected fill: an inset ring keeps layout stable.
     const tabSelectedCue = 'ring-2 ring-inset ring-textcolor'
+    // The branch tree: pixels per cell, the offset of the first cell from the tree's edge, and the node's own size.
+    const TREE_CELL = 80
+    const TREE_OFFSET = 24
+    const TREE_NODE = 48
+    // The link offsets that put a line through the centre of a node column.
+    const TREE_LINK_LEFT = 45
+    const TREE_ELBOW_LEFT = 46
+    // The preview is owned by the node whose key it carries: only that node's blur clears it.
     let branchHover:null|{
+        key:string,
         x:number,
         y:number,
         content:string,
+    } = $state(null)
+    let branchTree: HTMLElement | null = $state(null)
+    let branchPreview: HTMLElement | null = $state(null)
+    // The preview is measured after it renders and placed inside the tree's visible box at its current scroll position.
+    // The effect runs before the next paint, so the unplaced preview is never shown. A scroll while a preview is
+    // shown does not re-place it: the preview leaves with the pointer or the focus.
+    $effect(() => {
+        if(branchHover === null || !branchPreview || !branchTree){
+            return
+        }
+        const placed = placeBranchPreview({
+            nodeLeft: branchHover.x * TREE_CELL + TREE_OFFSET,
+            nodeTop: branchHover.y * TREE_CELL + TREE_OFFSET,
+            nodeSize: TREE_NODE,
+            gap: TREE_CELL - TREE_NODE,
+            previewWidth: branchPreview.offsetWidth,
+            previewHeight: branchPreview.offsetHeight,
+            scrollLeft: branchTree.scrollLeft,
+            scrollTop: branchTree.scrollTop,
+            viewWidth: branchTree.clientWidth,
+            viewHeight: branchTree.clientHeight,
+        })
+        branchPreview.style.left = placed.left + 'px'
+        branchPreview.style.top = placed.top + 'px'
+    })
+    // The one node of the tree that takes Tab, remembered by key and by index.
+    let branchStop:null|{
+        key:string,
+        index:number,
     } = $state(null)
     let expandedLogs: Set<number> = $state(new Set())
     let allExpanded = $state(false)
@@ -274,6 +332,7 @@
         isTranslating = false
         if(value.type !== 'branches'){
             branchHover = null
+            branchStop = null
         }
         if(value.type !== 'requestlogs'){
             expandedLogs = new Set()
@@ -362,17 +421,88 @@
             return data
         }
     }
+
+    function showBranchPreview(node: BranchNodeLike & { x: number }) {
+        branchHover = {
+            key: branchNodeKey(node),
+            x: node.x,
+            y: node.y,
+            content: branchNodeText(getCurrentCharacter(), node),
+        }
+    }
+
+    // Arrow keys, Home and End move focus between the node buttons. Every other key, and any key with a modifier, is left alone.
+    function onTreeKeydown(e: KeyboardEvent, nodes: BranchNodeLike[]) {
+        const move = classifyBranchKey(e)
+        if(move === null || !(e.target instanceof Element)){
+            return
+        }
+        const node = e.target.closest<HTMLElement>('[data-part="pattern-alert-tree-node"]')
+        const tree = node?.closest<HTMLElement>('[data-part="pattern-alert-tree"]')
+        if(!node || !tree){
+            return
+        }
+        e.preventDefault()
+        const target = branchMoveTarget(nodes, Number(node.dataset.index), move)
+        if(target !== null){
+            tree.querySelector<HTMLElement>(`[data-part="pattern-alert-tree-node"][data-index="${target}"]`)?.focus()
+        }
+    }
+
+    // A share of the context window within [0, 1]. A missing or empty window reads as zero, so the meter never gets NaN.
+    const contextShare = (tokens: number | undefined, maxContext: number | undefined): number => {
+        const share = (tokens ?? 0) / (maxContext ?? 0)
+        return Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0
+    }
 </script>
 
+{#snippet tabButton(index: number, label: string, labelId?: string)}
+    <button type="button" class="pattern-button {generationInfoMenuIndex === index ? tabSelectedCue : ''}" data-part="pattern-alert-tab" aria-pressed={generationInfoMenuIndex === index} onclick={() => {generationInfoMenuIndex = index}}>
+        {#if labelId !== undefined}
+            <span id={labelId}>{label}</span>
+        {:else}
+            {label}
+        {/if}
+    </button>
+{/snippet}
+
+<!-- A labelled code panel. `html` is highlighter output (its fallback escapes markup) and replaces `text` on screen; `text` is what the copy button copies. -->
+{#snippet codePanel(label: string, text: string, html?: string, copyKey?: string)}
+    <div data-part="pattern-alert-code-block">
+        <div data-part="pattern-alert-code-head">
+            <span data-part="pattern-alert-code-label">{label}</span>
+            {#if copyKey !== undefined}
+                <button
+                    type="button"
+                    data-part="pattern-alert-copy"
+                    data-state={copiedKey === copyKey ? 'copied' : undefined}
+                    title={language.copy}
+                    aria-label={language.copy}
+                    onclick={(e) => { e.stopPropagation(); copyToClipboard(text, copyKey) }}
+                >
+                    {#if copiedKey === copyKey}
+                        <CheckIcon size={14} />
+                    {:else}
+                        <CopyIcon size={14} />
+                    {/if}
+                </button>
+            {/if}
+        </div>
+        <pre data-part="pattern-alert-code">{#if html !== undefined}{@html html}{:else}{text}{/if}</pre>
+    </div>
+{/snippet}
+
 {#snippet alertView(a: alertData, slot: 'held' | 'live')}
-{#if a.type !== 'none' &&  a.type !== 'toast' &&  a.type !== 'cardexport' && a.type !== 'branches' && a.type !== 'selectModule' && a.type !== 'pukmakkurit' && a.type !== 'requestlogs'}
+{#if a.type !== 'none' &&  a.type !== 'toast' && a.type !== 'selectModule' && a.type !== 'pukmakkurit'}
     {@const severity = severityOf(a.type)}
-    {@const heading = headingOf(a.type)}
+    {@const heading = headingOf(a)}
     {@const headingId = `${uid}-${slot}-heading`}
     {@const messageId = `${uid}-${slot}-message`}
     {@const bodyId = `${uid}-${slot}-body`}
     {@const hasMessage = a.type === 'select' ? a.msg.startsWith('__DISPLAY__') : !NO_MESSAGE_TYPES.has(a.type)}
     {@const waiting = a.type === 'wait' || a.type === 'wait2'}
+    <!-- The two prompts draw their own title inside the body and name the dialog by it (it carries headingId). -->
+    {@const titledByBody = a.type === 'peerConflicts' || a.type === 'parkedReply'}
     <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined}>
         <div data-part="pattern-scrim" aria-hidden="true"></div>
         <div
@@ -383,7 +513,7 @@
             data-alert-size={WIDE_TYPES.has(a.type) ? 'wide' : undefined}
             role={ALERT_DIALOG_TYPES.has(a.type) ? 'alertdialog' : 'dialog'}
             aria-modal="true"
-            aria-labelledby={heading !== null ? headingId : hasMessage ? messageId : bodyId}
+            aria-labelledby={heading !== null || titledByBody ? headingId : hasMessage ? messageId : bodyId}
             aria-describedby={heading !== null && hasMessage ? messageId : undefined}
         >
         <div data-part="pattern-warn-root" data-alert-root data-alert-headed={heading !== null ? '' : undefined} data-form="sheet" data-pattern-severity={severity} data-alert-kind={waiting || a.type === 'progress' ? 'wait' : undefined}>
@@ -392,6 +522,24 @@
                 <span data-part="pattern-warn-mark" aria-hidden="true"><PatternWarnMark {severity} /></span>
                 {#if heading !== null}
                     <h2 id={headingId} data-part="pattern-warn-headline">{heading}</h2>
+                {/if}
+                {#if CLOSE_BUTTON_TYPES.has(a.type)}
+                    <button type="button" data-part="pattern-alert-close" aria-label={language.uiCommon.close} onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: ''
+                        })
+                    }}><XIcon size={20} /></button>
+                {:else if a.type === 'cardexport'}
+                    <button type="button" data-part="pattern-alert-close" aria-label={language.uiCommon.close} onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: JSON.stringify({
+                                type: 'cancel',
+                                type2: cardExportType2
+                            })
+                        })
+                    }}><XIcon size={20} /></button>
                 {/if}
             </div>
             <div id={bodyId} data-part="pattern-alert-body">
@@ -431,18 +579,80 @@
                     <p class="confirm-message">{confirmMessage}</p>
                 </div>
             {:else if a.type === 'peerConflicts'}
-                <PeerConflicts rows={a.peerConflicts ?? []} title={a.msg} onanswer={(message) => {
+                <PeerConflicts rows={a.peerConflicts ?? []} title={a.msg} titleId={headingId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
             {:else if a.type === 'parkedReply'}
-                <ParkedReplyPrompt name={a.parkedReply?.name ?? ''} text={a.parkedReply?.text ?? ''} title={a.msg} onanswer={(message) => {
+                <ParkedReplyPrompt name={a.parkedReply?.name ?? ''} text={a.parkedReply?.text ?? ''} title={a.msg} titleId={headingId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
+            {:else if a.type === 'cardexport'}
+                <div data-part="pattern-alert-stack">
+                    <span data-part="pattern-alert-field-label">{language.type}</span>
+                    <div data-part="pattern-alert-tiles">
+                        {#if a.submsg === 'preset'}
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>Risupreset</button>
+                        {:else if a.submsg === 'module'}
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>RisuM</button>
+                        {:else}
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {
+                                cardExportType = ''
+                                cardExportType2 = 'charxJpeg'
+                            }}>Character Card V3</button>
+                            <button type="button" data-part="pattern-alert-tile" class:ring-1={cardExportType === 'ccv2'} aria-pressed={cardExportType === 'ccv2'} onclick={() => {cardExportType = 'ccv2'}}>Character Card V2</button>
+                        {/if}
+                    </div>
+                    {#if cardExportType === ''}
+                        {#if a.submsg === 'module'}
+                            <p data-part="pattern-alert-note">{language.risuMDesc}</p>
+                        {:else if a.submsg === 'preset'}
+                            <p data-part="pattern-alert-note">{language.risupresetDesc}</p>
+                            {#if cardExportType2 === 'preset' && (currentPresetOf(DBState.db)?.image || currentPresetOf(DBState.db)?.regex?.length > 0)}
+                                <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.alertComp.realmShareNotice}</p>
+                            {/if}
+                        {:else}
+                            <p data-part="pattern-alert-note">{language.ccv3Desc}</p>
+                            {#if cardExportType2 !== 'charx' && cardExportType2 !== 'charxJpeg' && isCharacterHasAssets(DBState.db.characters[$selectedCharID])}
+                                <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.notCharxWarn}</p>
+                            {/if}
+                        {/if}
+                    {:else if cardExportType === 'json'}
+                        <p data-part="pattern-alert-note">{language.jsonDesc}</p>
+                    {:else if cardExportType === 'ccv2'}
+                        <p data-part="pattern-alert-note">{language.ccv2Desc}</p>
+                        <p data-part="pattern-alert-warning"><span data-part="pattern-alert-warning-mark" aria-hidden="true">!</span>{language.v2Warning}</p>
+                    {:else}
+                        <p data-part="pattern-alert-note">{language.realmDesc}</p>
+                    {/if}
+                    {#if a.submsg === '' && cardExportType === ''}
+                        <span id="{uid}-export-format" data-part="pattern-alert-field-label">{language.format}</span>
+                        <SelectInput bind:value={cardExportType2} labelId="{uid}-export-format">
+                            <OptionInput value="charx">CHARX</OptionInput>
+                            <OptionInput value="charxJpeg">CHARX-JPEG</OptionInput>
+                            <OptionInput value="">PNG</OptionInput>
+                            <OptionInput value="json">JSON</OptionInput>
+                        </SelectInput>
+                    {/if}
+                </div>
+                <div data-part="pattern-warn-actions" data-count="1">
+                    <button type="button" class="pattern-button" data-variant="confirm" onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: JSON.stringify({
+                                type: cardExportType,
+                                type2: cardExportType2
+                            })
+                        })
+                    }}>{cardExportType === 'realm' ? language.shareCloud : language.export}</button>
+                </div>
             {:else if a.type === 'updateOffer'}
                 <UpdateOfferPrompt offer={a.updateOffer ?? { currentVersion: '', version: '', notes: '' }} {messageId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
-            {:else if a.type !== 'select' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'chatOptions'}
+            {:else if a.type !== 'select' && a.type !== 'selectChar' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'requestlogs' && a.type !== 'chatOptions' && a.type !== 'branches'}
                 <span id={messageId} data-part="pattern-alert-message">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}
                     <span data-part="pattern-warn-detail">{a.submsg}</span>
@@ -631,193 +841,163 @@
                     </datalist>
                 {/if}
             {:else if a.type === 'selectChar'}
-                <div class="flex w-full items-start flex-wrap gap-2 justify-start">
+                <div data-part="pattern-alert-chars">
                     {#each DBState.db.characters as char, i (i)}
                         {#if char.type !== 'group' && !char.trashTime && !isHiddenSystemCharacter(char)}
                             {@const imgPath = char.image}
                             {@const isVisible = visibleSelectChars.has(i)}
                             {@const avatarStyle = lookups.getIf('char:' + i, isVisible, imgPath, 'thumbcss', '')}
-                            <div use:nearViewport={{ onChange: (v, node) => {
+                            <div data-part="pattern-alert-char" use:nearViewport={{ onChange: (v, node) => {
                                 if (v) { visibleSelectChars.set(i, node) } else if (visibleSelectChars.get(i) === node) { visibleSelectChars.delete(i) }
                             } }}>
                             {#if imgPath}
-                                <BarIcon onClick={() => {
+                                <BarIcon label={char.name} onClick={() => {
                                     alertStore.set({type: 'none',msg: char.chaId})
                                 }} additionalStyle={avatarStyle} />
                             {:else}
-                                <BarIcon onClick={() => {
+                                <BarIcon label={char.name} onClick={() => {
                                     alertStore.set({type: 'none',msg: char.chaId})
                                 }}>
                                 <User/>
                                 </BarIcon>
                             {/if}
+                            <!-- The avatar button already carries the name; the caption is the same name for sighted users. -->
+                            <span data-part="pattern-alert-char-name" aria-hidden="true">{char.name}</span>
                             </div>
                         {/if}
                     {/each}
                 </div>
-                <div class="flex w-full">
-                    <Button styled="outlined" className="mt-4 grow" onclick={() => {
+                <div data-part="pattern-warn-actions" data-count="1">
+                    <button type="button" class="pattern-button" onclick={() => {
                         alertStore.set({type: 'none', msg: ''})
-                    }}>{language.cancel}</Button>
+                    }}>{language.cancel}</button>
                 </div>
             {:else if a.type === 'requestdata'}
                 {#if aiLawApplies()}
-                <div>
-                    {language.generatedByAIDisclaimer}
-                </div>
+                    <p data-part="pattern-alert-note">{language.generatedByAIDisclaimer}</p>
                 {/if}
-                <div class="flex flex-wrap gap-2">
-                    <Button selected={generationInfoMenuIndex === 0} ariaPressed={generationInfoMenuIndex === 0} className={generationInfoMenuIndex === 0 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 0}}>
-                        {language.tokens}
-                    </Button>
-                    <Button selected={generationInfoMenuIndex === 1} ariaPressed={generationInfoMenuIndex === 1} className={generationInfoMenuIndex === 1 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 1}}>
-                        {language.metaData}
-                    </Button>
-                    <Button selected={generationInfoMenuIndex === 2} ariaPressed={generationInfoMenuIndex === 2} className={generationInfoMenuIndex === 2 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 2}}>
-                        {language.log}
-                    </Button>
-                    <Button selected={generationInfoMenuIndex === 3} ariaPressed={generationInfoMenuIndex === 3} className={generationInfoMenuIndex === 3 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 3}}>
-                        {language.prompt}
-                    </Button>
-                    <button class="ml-auto" onclick={() => {
-                        alertStore.set({
-                            type: 'none',
-                            msg: ''
-                        })
-                    }} aria-label={language.uiCommon.close}>✖</button>
+                <div data-part="pattern-alert-tabs">
+                    {@render tabButton(0, language.tokens)}
+                    {@render tabButton(1, language.metaData)}
+                    {@render tabButton(2, language.log)}
+                    {@render tabButton(3, language.prompt)}
                 </div>
                 {#if generationInfoMenuIndex === 0}
-                    <div class="mt-4 flex justify-center w-full">
-                        <div class="w-32 h-32 border-darkborderc border-4 rounded-lg" style:background={
-                            `linear-gradient(0deg,
-                            rgb(59,130,246) 0%,
-                            rgb(59,130,246) ${($alertGenerationInfoStore.genInfo.inputTokens / $alertGenerationInfoStore.genInfo.maxContext) * 100}%,
-                            rgb(34 197 94) ${($alertGenerationInfoStore.genInfo.inputTokens / $alertGenerationInfoStore.genInfo.maxContext) * 100}%,
-                            rgb(34 197 94) ${(($alertGenerationInfoStore.genInfo.outputTokens + $alertGenerationInfoStore.genInfo.inputTokens) / $alertGenerationInfoStore.genInfo.maxContext) * 100}%,
-                            rgb(156 163 175) ${(($alertGenerationInfoStore.genInfo.outputTokens + $alertGenerationInfoStore.genInfo.inputTokens) / $alertGenerationInfoStore.genInfo.maxContext) * 100}%,
-                            rgb(156 163 175) 100%)`
-                        }>
-
+                    {@const info = $alertGenerationInfoStore.genInfo}
+                    {@const shareInput = contextShare(info.inputTokens, info.maxContext)}
+                    {@const shareOutput = Math.min(contextShare(info.outputTokens, info.maxContext), 1 - shareInput)}
+                    <div data-part="pattern-alert-stack">
+                        <!-- The legend carries the numbers; the meter is the picture of them. -->
+                        <div data-part="pattern-alert-meter" aria-hidden="true" style:--p-in={shareInput} style:--p-out={shareOutput}>
+                            <div data-part="pattern-alert-meter-input"></div>
+                            <div data-part="pattern-alert-meter-output"></div>
                         </div>
+                        <ul data-part="pattern-alert-legend">
+                            <li><span data-part="pattern-alert-swatch" data-kind="input" aria-hidden="true"></span><span>{language.inputTokens}</span><span>{info.inputTokens ?? '?'} {language.tokens}</span></li>
+                            <li><span data-part="pattern-alert-swatch" data-kind="output" aria-hidden="true"></span><span>{language.outputTokens}</span><span>{info.outputTokens ?? '?'} {language.tokens}</span></li>
+                            <li><span data-part="pattern-alert-swatch" data-kind="max" aria-hidden="true"></span><span>{language.maxContextSize}</span><span>{info.maxContext ?? '?'} {language.tokens}</span></li>
+                        </ul>
+                        <span data-part="pattern-warn-detail">{language.tokenWarning}</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-y-2 gap-x-4 mt-4">
-                        <span class="text-blue-500">{language.inputTokens}</span>
-                        <span class="text-blue-500 justify-self-end">{$alertGenerationInfoStore.genInfo.inputTokens ?? '?'} {language.tokens}</span>
-                        <span class="text-green-500">{language.outputTokens}</span>
-                        <span class="text-green-500 justify-self-end">{$alertGenerationInfoStore.genInfo.outputTokens ?? '?'} {language.tokens}</span>
-                        <span class="text-gray-400">{language.maxContextSize}</span>
-                        <span class="text-gray-400 justify-self-end">{$alertGenerationInfoStore.genInfo.maxContext ?? '?'} {language.tokens}</span>
-                    </div>
-                    <span class="text-textcolor2 text-sm">{language.tokenWarning}</span>
                 {/if}
                 {#if generationInfoMenuIndex === 1}
-                <div class="grid grid-cols-2 gap-y-2 gap-x-4 mt-4">
-                    <span class="text-blue-500">{language.index}</span>
-                    <span class="text-blue-500 justify-self-end">{$alertGenerationInfoStore.idx}</span>
-                    <span class="text-amber-500">{language.model}</span>
-                    <span class="text-amber-500 justify-self-end">{$alertGenerationInfoStore.genInfo.model}</span>
-                    <span class="text-green-500">ID</span>
-                    <span class="text-green-500 justify-self-end">{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].chatId ?? language.none}</span>
-                    <span class="text-red-500">GenID</span>
-                    <span class="text-red-500 justify-self-end">{$alertGenerationInfoStore.genInfo.generationId}</span>
-                    <span class="text-cyan-500">{language.alertComp.saying}</span>
-                    <span class="text-cyan-500 justify-self-end">{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].saying}</span>
-                    <span class="text-purple-500">{language.alertComp.size}</span>
-                    <span class="text-purple-500 justify-self-end">{JSON.stringify(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx]).length} Bytes</span>
-                    <span class="text-yellow-500">{language.alertComp.time}</span>
-                    <span class="text-yellow-500 justify-self-end">{(new Date(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].time ?? 0)).toLocaleString()}</span>
-                    {#if $alertGenerationInfoStore.genInfo.stageTiming}
-                        {@const stage1 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage1 ?? 0) / 1000).toFixed(1)))}
-                        {@const stage2 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage2 ?? 0) / 1000).toFixed(1)))}
-                        {@const stage3 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage3 ?? 0) / 1000).toFixed(1)))}
-                        {@const stage4 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage4 ?? 0) / 1000).toFixed(1)))}
-                        {@const totalRounded = (stage1 + stage2 + stage3 + stage4).toFixed(1)}
-                        <span class="text-gray-400">{language.alertComp.timing}</span>
-                        <span class="text-gray-400 justify-self-end">
-                            <span style="color: #60a5fa;">{stage1}</span> + 
-                            <span style="color: #db2777;">{stage2}</span> + 
-                            <span style="color: #34d399;">{stage3}</span> + 
-                            <span style="color: #8b5cf6;">{stage4}</span> = 
-                            <span class="text-white font-bold">{totalRounded}s</span>
-                        </span>
-                    {/if}
-
-                    <span class="text-green-500">{language.tokens}</span>
-                    {#await tokenize(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].data)}
-                        <span class="text-green-500 justify-self-end">{language.alertComp.loading}</span>
-                    {:then tokens} 
-                        <span class="text-green-500 justify-self-end">{tokens}</span>
-                    {/await}
-                </div>
+                    <dl data-part="pattern-alert-facts">
+                        <dt>{language.index}</dt>
+                        <dd>{$alertGenerationInfoStore.idx}</dd>
+                        <dt>{language.model}</dt>
+                        <dd>{$alertGenerationInfoStore.genInfo.model}</dd>
+                        <dt>ID</dt>
+                        <dd>{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].chatId ?? language.none}</dd>
+                        <dt>GenID</dt>
+                        <dd>{$alertGenerationInfoStore.genInfo.generationId}</dd>
+                        <dt>{language.alertComp.saying}</dt>
+                        <dd>{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].saying}</dd>
+                        <dt>{language.alertComp.size}</dt>
+                        <dd>{JSON.stringify(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx]).length} Bytes</dd>
+                        <dt>{language.alertComp.time}</dt>
+                        <dd>{(new Date(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].time ?? 0)).toLocaleString()}</dd>
+                        {#if $alertGenerationInfoStore.genInfo.stageTiming}
+                            {@const stage1 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage1 ?? 0) / 1000).toFixed(1)))}
+                            {@const stage2 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage2 ?? 0) / 1000).toFixed(1)))}
+                            {@const stage3 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage3 ?? 0) / 1000).toFixed(1)))}
+                            {@const stage4 = parseFloat(((($alertGenerationInfoStore.genInfo.stageTiming.stage4 ?? 0) / 1000).toFixed(1)))}
+                            {@const totalRounded = (stage1 + stage2 + stage3 + stage4).toFixed(1)}
+                            <dt>{language.alertComp.timing}</dt>
+                            <dd>{stage1} + {stage2} + {stage3} + {stage4} = <strong>{totalRounded}s</strong></dd>
+                        {/if}
+                        <dt>{language.tokens}</dt>
+                        {#await tokenize(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].data)}
+                            <dd>{language.alertComp.loading}</dd>
+                        {:then tokens}
+                            <dd>{tokens}</dd>
+                        {/await}
+                    </dl>
                 {/if}
                 {#if generationInfoMenuIndex === 2}
-                    {#await getFetchData(a.msg) then data} 
+                    {#await getFetchData(a.msg) then data}
                         {#if !data}
-                            <span class="text-gray-300 text-lg mt-2">{language.errors.requestLogRemoved}</span>
-                            <span class="text-gray-500">{language.errors.requestLogRemovedDesc}</span>
+                            <div data-part="pattern-alert-empty">
+                                <strong>{language.errors.requestLogRemoved}</strong>
+                                <span>{language.errors.requestLogRemovedDesc}</span>
+                            </div>
                         {:else}
-                            <h1 class="text-2xl font-bold my-4">URL</h1>
-                            <code class="text-gray-300 border border-darkborderc p-2 rounded-md whitespace-pre-wrap">{data.url}</code>
-                            <h1 class="text-2xl font-bold my-4">Request Body</h1>
-                            <code class="text-gray-300 border border-darkborderc p-2 rounded-md whitespace-pre-wrap">{beautifyJSON(data.body)}</code>
-                            <h1 class="text-2xl font-bold my-4">Response</h1>
-                            <code class="text-gray-300 border border-darkborderc p-2 rounded-md whitespace-pre-wrap">{beautifyJSON(data.response)}</code>
+                            <!-- A log entry that lost a field still renders: the empty text stands in for it. -->
+                            {@const requestBody = beautifyJSON(data.body) ?? ''}
+                            {@const responseBody = beautifyJSON(data.response) ?? ''}
+                            <div data-part="pattern-alert-stack">
+                                {@render codePanel('URL', data.url)}
+                                {@render codePanel('Request Body', requestBody, highlightJson(requestBody))}
+                                {@render codePanel('Response', responseBody, highlightJson(responseBody))}
+                            </div>
                         {/if}
                     {/await}
                 {/if}
                 {#if generationInfoMenuIndex === 3}
                     {#if Object.keys(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo || {}).length === 0}
-                        <div class="text-gray-300 text-lg mt-2">{language.promptInfoEmptyMessage}</div>
+                        <div data-part="pattern-alert-empty">{language.promptInfoEmptyMessage}</div>
                     {:else}
-                        <div class="grid grid-cols-2 gap-y-2 gap-x-4 mt-4">
-                            <span class="text-blue-500">{language.alertComp.presetName}</span>
-                            <span class="text-blue-500 justify-self-end">{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptName}</span>
-                            <span class="text-purple-500">{language.alertComp.toggles}</span>
-                            <div class="col-span-2 max-h-32 overflow-y-auto border border-stone-500 rounded-sm p-2 bg-gray-900">
-                                {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptToggles.length === 0}
-                                    <div class="text-gray-500 italic text-center py-4">{language.promptInfoEmptyToggle}</div>
-                                {:else}
-                                    <div class="grid grid-cols-2 gap-y-2 gap-x-4">
-                                        {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptToggles as toggle}
-                                        <span class="text-gray-200 truncate">{toggle.key}</span>
-                                        <span class="text-gray-200 justify-self-end truncate">{toggle.value}</span>
-                                        {/each}
-                                    </div>
-                                {/if}
+                        <div data-part="pattern-alert-stack">
+                            <dl data-part="pattern-alert-facts">
+                                <dt>{language.alertComp.presetName}</dt>
+                                <dd>{DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptName}</dd>
+                            </dl>
+                            <div data-part="pattern-alert-code-block">
+                                <span data-part="pattern-alert-code-label">{language.alertComp.toggles}</span>
+                                <div data-part="pattern-alert-panel">
+                                    {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptToggles.length === 0}
+                                        <div data-part="pattern-alert-empty">{language.promptInfoEmptyToggle}</div>
+                                    {:else}
+                                        <dl data-part="pattern-alert-facts">
+                                            {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptToggles as toggle}
+                                                <dt>{toggle.key}</dt>
+                                                <dd>{toggle.value}</dd>
+                                            {/each}
+                                        </dl>
+                                    {/if}
+                                </div>
                             </div>
-                            <span class="text-red-500">{language.alertComp.promptText}</span>
-                            <div class="col-span-2 max-h-80 overflow-y-auto border border-stone-500 rounded-sm p-4 bg-gray-900">
-                                {#if !DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptText}
-                                    <div class="text-gray-500 italic text-center py-4">{language.promptInfoEmptyText}</div>
-                                {:else}
-                                    {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptText as block}
-                                        <div class="mb-2">
-                                            <div class="font-bold text-gray-600">{block.role}</div>
-                                            <pre class="whitespace-pre-wrap text-sm bg-stone-900 p-2 rounded-sm border border-stone-500">{block.content}</pre>
-                                        </div>
-                                    {/each}
-                                {/if}
+                            <div data-part="pattern-alert-code-block">
+                                <span data-part="pattern-alert-code-label">{language.alertComp.promptText}</span>
+                                <div data-part="pattern-alert-panel">
+                                    {#if !DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptText}
+                                        <div data-part="pattern-alert-empty">{language.promptInfoEmptyText}</div>
+                                    {:else}
+                                        {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message[$alertGenerationInfoStore.idx].promptInfo.promptText as block}
+                                            {@render codePanel(block.role, block.content)}
+                                        {/each}
+                                    {/if}
+                                </div>
                             </div>
                         </div>
                     {/if}
                 {/if}
             {:else if a.type === 'hypaV2'}
-                <div class="flex flex-wrap gap-2 mb-4 max-w-full w-124">
-                    <Button selected={generationInfoMenuIndex === 0} ariaPressed={generationInfoMenuIndex === 0} className={generationInfoMenuIndex === 0 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 0}}>
-                        <span id="{uid}-chunks-tab">Chunks</span>
-                    </Button>
-                    <Button selected={generationInfoMenuIndex === 1} ariaPressed={generationInfoMenuIndex === 1} className={generationInfoMenuIndex === 1 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 1}}>
-                        {language.alertComp.summarized}
-                    </Button>
-                    <button class="ml-auto" onclick={() => {
-                        alertStore.set({
-                            type: 'none',
-                            msg: ''
-                        })
-                    }} aria-label={language.uiCommon.close}>✖</button>
+                <div data-part="pattern-alert-tabs">
+                    {@render tabButton(0, 'Chunks', `${uid}-chunks-tab`)}
+                    {@render tabButton(1, language.alertComp.summarized)}
                 </div>
                 {#if generationInfoMenuIndex === 0}
-                    <div class="flex flex-col gap-2 w-full">
+                    <div data-part="pattern-alert-stack">
                         {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data.chunks as chunk, i}
                             <TextAreaInput bind:value={chunk.text} labelId="{uid}-chunks-tab" />
                         {/each}
@@ -825,21 +1005,84 @@
                         <!-- Adding non-bound chunk is not okay, change the user flow to edit existing ones. -->
                     </div>
                 {:else}
+                    <div data-part="pattern-alert-stack">
                     {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data.mainChunks as chunk, i} <!-- Summarized should be mainChunks, afaik. Be aware of that chunks are created with mainChunks, however this editing would not change related chunks. -->
-                        <div class="flex flex-col p-2 rounded-md border-darkborderc border">
-                            {#if i === 0}
-                                <span id="{uid}-summary-{i}" class="text-green-500">{language.active}</span>
-                            {:else}
-                                <span id="{uid}-summary-{i}">{language.alertComp.inactive}</span>
-                            {/if}
+                        <div data-part="pattern-alert-chunk" data-state={i === 0 ? 'active' : undefined}>
+                            <span id="{uid}-summary-{i}" data-part="pattern-alert-chunk-label">{i === 0 ? language.active : language.alertComp.inactive}</span>
                             <TextAreaInput bind:value={chunk.text} labelId="{uid}-summary-{i}" />
                         </div>
                     {/each}
+                    </div>
+                {/if}
+            {:else if a.type === 'requestlogs'}
+                {@const logs = getFetchLogs()}
+                <div data-part="pattern-alert-toolbar">
+                    <button type="button" class="pattern-button" onclick={() => {
+                        if(allExpanded) {
+                            expandedLogs = new Set()
+                        } else {
+                            expandedLogs = new Set(logs.map((_, i) => i))
+                        }
+                        allExpanded = !allExpanded
+                    }}>
+                        {allExpanded ? language.collapseAll : language.expandAll}
+                    </button>
+                </div>
+                {#if logs.length === 0}
+                    <div data-part="pattern-alert-empty">{language.noRequestLogs}</div>
+                {:else}
+                    <div data-part="pattern-alert-logs">
+                        {#each logs as log, i}
+                            {@const isExpanded = expandedLogs.has(i)}
+                            <div data-part="pattern-alert-log" data-state={log.success ? 'ok' : 'err'}>
+                                <button
+                                    type="button"
+                                    data-part="pattern-alert-log-summary"
+                                    aria-expanded={isExpanded}
+                                    onclick={() => {
+                                        const newSet = new Set(expandedLogs)
+                                        if(isExpanded) {
+                                            newSet.delete(i)
+                                        } else {
+                                            newSet.add(i)
+                                        }
+                                        expandedLogs = newSet
+                                    }}
+                                >
+                                    <!-- The state is told by a glyph and the code; the colour of the edge only repeats it. -->
+                                    <span data-part="pattern-alert-log-status" data-state={log.success ? 'ok' : 'err'}>
+                                        {#if log.success}
+                                            <CheckIcon size={14} aria-hidden="true" />
+                                        {:else}
+                                            <XIcon size={14} aria-hidden="true" />
+                                        {/if}
+                                        {log.status ?? (log.success ? 'OK' : 'ERR')}
+                                    </span>
+                                    <span data-part="pattern-alert-log-url" title={log.url}>{log.url}</span>
+                                    <span data-part="pattern-alert-log-date">{log.date}</span>
+                                    <span data-part="pattern-alert-log-chevron" aria-hidden="true">
+                                        {#if isExpanded}
+                                            <ChevronUpIcon size={20} />
+                                        {:else}
+                                            <ChevronDownIcon size={20} />
+                                        {/if}
+                                    </span>
+                                </button>
+                                {#if isExpanded}
+                                    <div data-part="pattern-alert-log-detail">
+                                        {@render codePanel('URL', log.url, undefined, `${i}-url`)}
+                                        {@render codePanel('Request Body', log.body, highlightJson(log.body), `${i}-body`)}
+                                        {@render codePanel('Request Header', log.header, highlightJson(log.header), `${i}-header`)}
+                                        {@render codePanel('Response', log.response, highlightJson(log.response), `${i}-response`)}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
                 {/if}
             {:else if a.type === 'addchar'}
-                <div class="w-2xl flex flex-col max-w-full">
-
-                    <button class="border-darkborderc border py-12 px-8 flex rounded-md hover:ring-2 justify-center items-center" onclick={(e) => {
+                <div data-part="pattern-alert-rows">
+                    <button type="button" data-part="pattern-alert-row" data-emphasis="hero" onclick={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
                         alertStore.set({
@@ -847,30 +1090,22 @@
                             msg: 'importFromRealm'
                         })
                     }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span class="text-2xl font-bold">{language.importFromRealm}</span>
-                            <span class="text-textcolor2">{language.importFromRealmDesc}</span>
-                        </div>
-                        <div class="ml-9 float-right flex-1 flex justify-end">
-                            <ChevronRightIcon />
-                        </div>
+                        <span data-part="pattern-alert-row-title">{language.importFromRealm}</span>
+                        <span data-part="pattern-alert-row-desc">{language.importFromRealmDesc}</span>
+                        <span aria-hidden="true"><ChevronRightIcon /></span>
                     </button>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={((e) => {
+                    <button type="button" data-part="pattern-alert-row" onclick={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
                         alertStore.set({
                             type: 'none',
                             msg: 'importCharacter'
                         })
-                    })}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.importCharacter}</span>
-                        </div>
-                        <div class="ml-9 float-right flex-1 flex justify-end">
-                            <ChevronRightIcon />
-                        </div>
+                    }}>
+                        <span data-part="pattern-alert-row-title">{language.importCharacter}</span>
+                        <span aria-hidden="true"><ChevronRightIcon /></span>
                     </button>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={(e) => {
+                    <button type="button" data-part="pattern-alert-row" onclick={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
                         alertStore.set({
@@ -878,14 +1113,10 @@
                             msg: 'createfromScratch'
                         })
                     }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.createfromScratch}</span>
-                        </div>
-                        <div class="ml-9 float-right flex-1 flex justify-end">
-                            <ChevronRightIcon />
-                        </div>
+                        <span data-part="pattern-alert-row-title">{language.createfromScratch}</span>
+                        <span aria-hidden="true"><ChevronRightIcon /></span>
                     </button>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={(e) => {
+                    <button type="button" data-part="pattern-alert-row" onclick={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
                         alertStore.set({
@@ -893,67 +1124,124 @@
                             msg: 'createGroup'
                         })
                     }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.createGroup}</span>
-                        </div>
-                        <div class="ml-9 float-right flex-1 flex justify-end">
-                            <ChevronRightIcon />
-                        </div>
+                        <span data-part="pattern-alert-row-title">{language.createGroup}</span>
+                        <span aria-hidden="true"><ChevronRightIcon /></span>
                     </button>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={(e) => {
+                </div>
+                <div data-part="pattern-warn-actions" data-count="1">
+                    <button type="button" class="pattern-button" onclick={(e) => {
                         e.stopPropagation()
                         e.preventDefault()
                         alertStore.set({
                             type: 'none',
                             msg: 'cancel'
                         })
-                    }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.cancel}</span>
-                        </div>
-                    </button>
+                    }}>{language.cancel}</button>
                 </div>
             {:else if a.type === 'chatOptions'}
-                <div class="w-2xl flex flex-col max-w-full">
-                    <h1 class="text-xl mb-4 font-bold">
-                        {language.chatOptions}
-                    </h1>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={() => {
+                <div data-part="pattern-alert-rows">
+                    <button type="button" data-part="pattern-alert-row" onclick={() => {
                         alertStore.set({
                             type: 'none',
                             msg: '0'
                         })
                     }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.createCopy}</span>
-                        </div>
-                        <div class="ml-9 float-right flex-1 flex justify-end">
-                            <ChevronRightIcon />
-                        </div>
+                        <span data-part="pattern-alert-row-title">{language.createCopy}</span>
+                        <span aria-hidden="true"><ChevronRightIcon /></span>
                     </button>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={() => {
+                    <button type="button" data-part="pattern-alert-row" onclick={() => {
                         alertStore.set({
                             type: 'none',
                             msg: '1'
                         })
                     }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.bindPersona}</span>
-                        </div>
-                        <div class="ml-9 float-right flex-1 flex justify-end">
-                            <ChevronRightIcon />
-                        </div>
+                        <span data-part="pattern-alert-row-title">{language.bindPersona}</span>
+                        <span aria-hidden="true"><ChevronRightIcon /></span>
                     </button>
-                    <button class="border-darkborderc border py-2 px-8 flex rounded-md hover:ring-2 items-center mt-2" onclick={() => {
+                </div>
+                <div data-part="pattern-warn-actions" data-count="1">
+                    <button type="button" class="pattern-button" onclick={() => {
                         alertStore.set({
                             type: 'none',
                             msg: 'cancel'
                         })
-                    }}>
-                        <div class="flex flex-col justify-start items-start">
-                            <span>{language.cancel}</span>
-                        </div>
-                    </button>
+                    }}>{language.cancel}</button>
+                </div>
+            {:else if a.type === 'branches'}
+                {@const nodes = getChatBranches()}
+                {@const stop = resolveBranchStop(nodes, branchStop)}
+                <!-- The tree only routes the keys of the node buttons inside it; it is not a control itself. -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                    data-part="pattern-alert-tree"
+                    bind:this={branchTree}
+                    style:height={(nodes.reduce((deepest, node) => Math.max(deepest, node.y), 0) * TREE_CELL + TREE_OFFSET * 2 + TREE_NODE) + 'px'}
+                    onkeydown={(e) => onTreeKeydown(e, nodes)}
+                >
+                    {#each nodes as obj, i (branchNodeKey(obj))}
+                        <button
+                            type="button"
+                            data-part="pattern-alert-tree-node"
+                            data-index={i}
+                            tabindex={i === stop ? 0 : -1}
+                            aria-label={branchNodeName(branchNodeText(getCurrentCharacter(), obj), language.chatShellTogglesEmpty)}
+                            style:top={(obj.y * TREE_CELL + TREE_OFFSET) + 'px'}
+                            style:left={(obj.x * TREE_CELL + TREE_OFFSET) + 'px'}
+                            style:width={TREE_NODE + 'px'}
+                            style:height={TREE_NODE + 'px'}
+                            onmouseenter={() => {
+                                if(branchHover === null){
+                                    showBranchPreview(obj)
+                                }
+                            }}
+                            onclick={() => showBranchPreview(obj)}
+                            onmouseleave={() => {
+                                branchHover = null
+                            }}
+                            onfocus={() => {
+                                showBranchPreview(obj)
+                                branchStop = { key: branchNodeKey(obj), index: i }
+                            }}
+                            onblur={() => {
+                                if(branchHover?.key === branchNodeKey(obj)){
+                                    branchHover = null
+                                }
+                            }}
+                        ></button>
+                        {#if obj.connectX === obj.x}
+                            <div
+                                data-part="pattern-alert-tree-link"
+                                data-kind={obj.multiChild ? 'branch' : 'line'}
+                                data-axis="vertical"
+                                style:top={((obj.y - 1) * TREE_CELL + TREE_OFFSET) + 'px'}
+                                style:left={(obj.x * TREE_CELL + TREE_LINK_LEFT) + 'px'}
+                                style:height={TREE_CELL + 'px'}
+                            ></div>
+                        {:else if obj.connectX !== -1}
+                            <div
+                                data-part="pattern-alert-tree-link"
+                                data-kind="branch"
+                                data-axis="vertical"
+                                style:top={(obj.y * TREE_CELL) + 'px'}
+                                style:left={(obj.x * TREE_CELL + TREE_LINK_LEFT) + 'px'}
+                                style:height={(TREE_CELL / 2) + 'px'}
+                            ></div>
+                            <div
+                                data-part="pattern-alert-tree-link"
+                                data-kind="branch"
+                                data-axis="horizontal"
+                                style:top={(obj.y * TREE_CELL) + 'px'}
+                                style:left={(obj.connectX * TREE_CELL + TREE_ELBOW_LEFT) + 'px'}
+                                style:width={Math.abs((obj.x - obj.connectX) * TREE_CELL) + 'px'}
+                            ></div>
+                        {/if}
+                    {/each}
+                    {#if branchHover !== null}
+                        <div
+                            data-part="pattern-alert-tree-preview"
+                            bind:this={branchPreview}
+                        >{branchHover.content}</div>
+                    {/if}
                 </div>
             {/if}
             </div>
@@ -961,88 +1249,6 @@
         </div>
     </div>
 
-{:else if a.type === 'cardexport'}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} role="button" tabindex="0" onclick={close}>
-        <div data-part="pattern-scrim" aria-hidden="true"></div>
-        <div data-part="pattern-dialog" data-alert-plain data-alert-size="wide" data-pattern-severity="confirm" role="button" tabindex="0" onclick={(e) => {
-            e.stopPropagation()
-        }}>
-            <h1 class="font-bold text-2xl w-full outline-none" tabindex="-1" data-alert-box>
-                <span>
-                    {language.shareExport}
-                </span>
-                <button class="float-right text-textcolor2 hover:text-green-500" onclick={() => {
-                    alertStore.set({
-                        type: 'none',
-                        msg: JSON.stringify({
-                            type: 'cancel',
-                            type2: cardExportType2
-                        })
-                    })
-                }} aria-label={language.uiCommon.close}>
-                    <XIcon />
-                </button>
-            </h1>
-            <span class="text-textcolor mt-4">{language.type}</span>
-            {#if cardExportType === ''}
-                {#if a.submsg === 'module'}
-                    <span class="text-textcolor2 text-sm">{language.risuMDesc}</span>
-                {:else if a.submsg === 'preset'}
-                    <span class="text-textcolor2 text-sm">{language.risupresetDesc}</span>
-                    {#if cardExportType2 === 'preset' && (currentPresetOf(DBState.db)?.image || currentPresetOf(DBState.db)?.regex?.length > 0)}
-                        <span class="text-red-500 text-sm">{language.alertComp.realmShareNotice}</span>
-                    {/if}
-                {:else}
-                    <span class="text-textcolor2 text-sm">{language.ccv3Desc}</span>
-                    {#if cardExportType2 !== 'charx' && cardExportType2 !== 'charxJpeg' && isCharacterHasAssets(DBState.db.characters[$selectedCharID])}
-                        <span class="text-red-500 text-sm">{language.notCharxWarn}</span>
-                    {/if}
-                {/if}
-            {:else if cardExportType === 'json'}
-                <span class="text-textcolor2 text-sm">{language.jsonDesc}</span>
-            {:else if cardExportType === 'ccv2'}
-                <span class="text-textcolor2 text-sm">{language.ccv2Desc}</span>
-                <span class="text-red-500 text-sm">{language.v2Warning}</span>
-            {:else}
-                <span class="text-textcolor2 text-sm">{language.realmDesc}</span>
-            {/if}
-            <div class="flex items-center flex-wrap mt-2">
-                {#if a.submsg === 'preset'}
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>Risupreset</button>
-                {:else if a.submsg === 'module'}
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>RisuM</button>
-                {:else}
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {
-                        cardExportType = ''
-                        cardExportType2 = 'charxJpeg'
-                    }}>Character Card V3</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === 'ccv2'} aria-pressed={cardExportType === 'ccv2'} onclick={() => {cardExportType = 'ccv2'}}>Character Card V2</button>
-                {/if}
-            </div>
-            {#if a.submsg === '' && cardExportType === ''}
-                <span id="{uid}-export-format" class="text-textcolor mt-4">{language.format}</span>
-                <SelectInput bind:value={cardExportType2} className="mt-2" labelId="{uid}-export-format">
-                    <OptionInput value="charx">CHARX</OptionInput>
-                    <OptionInput value="charxJpeg">CHARX-JPEG</OptionInput>
-                    <OptionInput value="">PNG</OptionInput>
-                    <OptionInput value="json">JSON</OptionInput>
-                </SelectInput>
-            {/if}
-            <Button className="mt-4" onclick={() => {
-                alertStore.set({
-                    type: 'none',
-                    msg: JSON.stringify({
-                        type: cardExportType,
-                        type2: cardExportType2
-                    })
-                })
-            }}>{cardExportType === 'realm' ? language.shareCloud : language.export}</Button>
-        </div>
-    </div>
 
 {:else if a.type === 'toast'}
     <div class="toast-anime absolute right-0 bottom-0 bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl  max-h-11/12 overflow-y-auto z-50 text-textcolor"
@@ -1068,222 +1274,6 @@
         <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl  max-h-full overflow-y-auto outline-none" tabindex="-1" data-alert-box>
             <h2 class="text-green-700 mt-0 mb-2 w-40 max-w-full">{language.preview}</h2>
 
-        </div>
-    </div>
-{:else if a.type === 'branches'}
-    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} class="overflow-x-auto overflow-y-auto outline-none" tabindex="-1" data-alert-box>
-        <div data-part="pattern-scrim" aria-hidden="true"></div>
-        {#if branchHover !== null}
-            <div class="z-30 whitespace-pre-wrap p-4 text-textcolor bg-darkbg border-darkborderc border rounded-md absolute" style="top: {branchHover.y * 80 + 24}px; left: {(branchHover.x + 1) * 80 + 24}px">
-                {branchHover.content}
-            </div>
-        {/if}
-
-        <div class="x-50 right-2 top-2 absolute">
-            <button class="bg-darkbg border-darkborderc border p-2 rounded-md" onclick={() => {
-                alertStore.set({
-                    type: 'none',
-                    msg: ''
-                })
-            }} aria-label={language.uiCommon.close}>
-                <XIcon />
-            </button>
-        </div>
-
-        {#each getChatBranches() as obj}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div
-                role="table"
-                class="peer w-12 h-12 z-20 bg-bgcolor border border-darkborderc rounded-full flex justify-center items-center overflow-y-auto absolute"
-                style="top: {obj.y * 80 + 24}px; left: {obj.x * 80 + 24}px"
-                onmouseenter={() => {
-                    if(branchHover === null){
-                        const char = getCurrentCharacter()
-                        branchHover = {
-                            x: obj.x,
-                            y: obj.y,
-                            content: char.chats[obj.chatId].message[obj.y - 1].data
-                        }
-                    }
-                }}
-                onclick={() => {
-                    if(branchHover === null){
-                        const char = getCurrentCharacter()
-                        branchHover = {
-                            x: obj.x,
-                            y: obj.y,
-                            content: char.chats[obj.chatId].message[obj.y - 1].data
-                        }
-                    }
-                }}
-                onmouseleave={() => {
-                    branchHover = null
-                }}
-            >
-                
-            </div>
-            {#if obj.connectX === obj.x}
-                {#if obj.multiChild}
-                    <div class="w-0 h-20 border-x border-x-red-500 absolute" style="top: {(obj.y-1) * 80 + 24}px; left: {obj.x * 80 + 45}px">
-
-                    </div>
-                {:else}
-                    <div class="w-0 h-20 border-x border-x-blue-500 absolute" style="top: {(obj.y-1) * 80 + 24}px; left: {obj.x * 80 + 45}px">
-
-                    </div>
-                {/if}
-            {:else if obj.connectX !== -1}
-                <div class="w-0 h-10 border-x border-x-red-500 absolute" style="top: {(obj.y) * 80}px; left: {obj.x * 80 + 45}px">
-
-                </div>
-                <div class="h-0 border-y border-y-red-500 absolute" style="top: {(obj.y) * 80}px; left: {obj.connectX * 80 + 46}px" style:width={Math.abs((obj.x - obj.connectX) * 80) + 'px'}>
-
-                </div>
-            {/if}
-        {/each}
-    </div>
-{:else if a.type === 'requestlogs'}
-    {@const logs = getFetchLogs()}
-    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} class="overflow-y-auto outline-none" tabindex="-1" data-alert-box>
-        <div data-part="pattern-scrim" aria-hidden="true"></div>
-        <div data-part="pattern-dialog" data-alert-size="wide" data-pattern-severity="notice" class="my-4 flex flex-col max-h-[90vh]">
-            <div class="flex items-center justify-between p-4 border-b border-darkborderc sticky top-0 bg-darkbg z-10">
-                <h1 class="text-xl font-bold text-textcolor">{language.ShowLog}</h1>
-                <div class="flex items-center gap-2">
-                    <Button size="sm" onclick={() => {
-                        if(allExpanded) {
-                            expandedLogs = new Set()
-                        } else {
-                            expandedLogs = new Set(logs.map((_, i) => i))
-                        }
-                        allExpanded = !allExpanded
-                    }}>
-                        {allExpanded ? language.collapseAll : language.expandAll}
-                    </Button>
-                    <button class="text-textcolor2 hover:text-textcolor p-1" onclick={() => {
-                        alertStore.set({ type: 'none', msg: '' })
-                    }} aria-label={language.uiCommon.close}>
-                        <XIcon />
-                    </button>
-                </div>
-            </div>
-            <div class="flex-1 overflow-y-auto p-4">
-                {#if logs.length === 0}
-                    <div class="text-textcolor2 text-center py-8">{language.noRequestLogs}</div>
-                {:else}
-                    <div class="flex flex-col gap-2">
-                        {#each logs as log, i}
-                            {@const isExpanded = expandedLogs.has(i)}
-                            <div class="border border-darkborderc rounded-lg overflow-hidden">
-                                <button
-                                    class="w-full flex items-center justify-between p-3 hover:bg-bgcolor/50 transition-colors"
-                                    onclick={() => {
-                                        const newSet = new Set(expandedLogs)
-                                        if(isExpanded) {
-                                            newSet.delete(i)
-                                        } else {
-                                            newSet.add(i)
-                                        }
-                                        expandedLogs = newSet
-                                    }}
-                                >
-                                    <div class="flex items-center gap-3 min-w-0 flex-1">
-                                        <span class="px-2 py-1 rounded text-xs font-bold font-mono {log.success ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}">
-                                            {log.status ?? (log.success ? 'OK' : 'ERR')}
-                                        </span>
-                                        <span class="text-textcolor text-sm truncate flex-1 text-left font-mono" title={log.url}>
-                                            {log.url}
-                                        </span>
-                                        <span class="text-textcolor text-xs whitespace-nowrap opacity-70">{log.date}</span>
-                                    </div>
-                                    <div class="ml-2 text-textcolor">
-                                        {#if isExpanded}
-                                            <ChevronUpIcon size={20} />
-                                        {:else}
-                                            <ChevronDownIcon size={20} />
-                                        {/if}
-                                    </div>
-                                </button>
-                                {#if isExpanded}
-                                    <div class="border-t border-darkborderc p-4 bg-bgcolor/30">
-                                        <div class="space-y-4">
-                                            <div>
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <span class="text-textcolor text-sm font-semibold">URL</span>
-                                                    <button
-                                                        class="p-1 rounded hover:bg-bgcolor transition-colors {copiedKey === `${i}-url` ? 'text-green-500' : 'text-textcolor2 hover:text-textcolor'}"
-                                                        onclick={(e) => { e.stopPropagation(); copyToClipboard(log.url, `${i}-url`) }}
-                                                        title={language.copy}
-                                                    >
-                                                        {#if copiedKey === `${i}-url`}
-                                                            <CheckIcon size={14} />
-                                                        {:else}
-                                                            <CopyIcon size={14} />
-                                                        {/if}
-                                                    </button>
-                                                </div>
-                                                <pre class="request-log-code hljs text-sm">{log.url}</pre>
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <span class="text-textcolor text-sm font-semibold">Request Body</span>
-                                                    <button
-                                                        class="p-1 rounded hover:bg-bgcolor transition-colors {copiedKey === `${i}-body` ? 'text-green-500' : 'text-textcolor2 hover:text-textcolor'}"
-                                                        onclick={(e) => { e.stopPropagation(); copyToClipboard(log.body, `${i}-body`) }}
-                                                        title={language.copy}
-                                                    >
-                                                        {#if copiedKey === `${i}-body`}
-                                                            <CheckIcon size={14} />
-                                                        {:else}
-                                                            <CopyIcon size={14} />
-                                                        {/if}
-                                                    </button>
-                                                </div>
-                                                <pre class="request-log-code hljs">{@html highlightJson(log.body)}</pre>
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <span class="text-textcolor text-sm font-semibold">Request Header</span>
-                                                    <button
-                                                        class="p-1 rounded hover:bg-bgcolor transition-colors {copiedKey === `${i}-header` ? 'text-green-500' : 'text-textcolor2 hover:text-textcolor'}"
-                                                        onclick={(e) => { e.stopPropagation(); copyToClipboard(log.header, `${i}-header`) }}
-                                                        title={language.copy}
-                                                    >
-                                                        {#if copiedKey === `${i}-header`}
-                                                            <CheckIcon size={14} />
-                                                        {:else}
-                                                            <CopyIcon size={14} />
-                                                        {/if}
-                                                    </button>
-                                                </div>
-                                                <pre class="request-log-code hljs max-h-32">{@html highlightJson(log.header)}</pre>
-                                            </div>
-                                            <div>
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <span class="text-textcolor text-sm font-semibold">Response</span>
-                                                    <button
-                                                        class="p-1 rounded hover:bg-bgcolor transition-colors {copiedKey === `${i}-response` ? 'text-green-500' : 'text-textcolor2 hover:text-textcolor'}"
-                                                        onclick={(e) => { e.stopPropagation(); copyToClipboard(log.response, `${i}-response`) }}
-                                                        title={language.copy}
-                                                    >
-                                                        {#if copiedKey === `${i}-response`}
-                                                            <CheckIcon size={14} />
-                                                        {:else}
-                                                            <CopyIcon size={14} />
-                                                        {/if}
-                                                    </button>
-                                                </div>
-                                                <pre class="request-log-code hljs max-h-64">{@html highlightJson(log.response)}</pre>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {/if}
-                            </div>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
         </div>
     </div>
 {/if}
@@ -1382,20 +1372,5 @@
     .stack-trace-copy:hover {
         background-color: var(--risu-theme-bgcolor);
         color: var(--risu-theme-textcolor);
-    }
-
-    .request-log-code {
-        background-color: #1a1a2e;
-        color: #e0e0e0;
-        border: 1px solid var(--risu-theme-darkborderc);
-        border-radius: 0.375rem;
-        padding: 0.75rem;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-        font-size: 0.75rem;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-break: break-all;
-        max-height: 12rem;
-        overflow: auto;
     }
 </style>

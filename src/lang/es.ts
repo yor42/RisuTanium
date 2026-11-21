@@ -651,6 +651,7 @@ export const languageSpanish = {
     patternTaskBytes: (done: string, total: string) => `${done} / ${total}`,
     patternTaskSlowHint: "Sigue trabajando. Los archivos grandes pueden tardar un poco.",
     alertWaitSlowHint: "Sigue trabajando.",
+    alertRequestDataTitle: "Información de la Solicitud",
     patternTaskCancelUnsafe: "Este paso no se puede detener a mitad de camino",
     patternTaskCancelling: "Terminando",
     patternTaskCancelled: "Cancelado",

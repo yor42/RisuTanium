@@ -651,6 +651,7 @@ export const languageKorean = {
     patternTaskBytes: (done: string, total: string) => `${done} / ${total}`,
     patternTaskSlowHint: "아직 작업 중입니다. 큰 파일은 시간이 걸릴 수 있습니다.",
     alertWaitSlowHint: "아직 작업 중입니다.",
+    alertRequestDataTitle: "요청 정보",
     patternTaskCancelUnsafe: "이 단계는 도중에 멈출 수 없습니다",
     patternTaskCancelling: "마무리하는 중",
     patternTaskCancelled: "취소됨",

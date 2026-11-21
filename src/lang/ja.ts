@@ -651,6 +651,7 @@ export const languageJapanese = {
     patternTaskBytes: (done: string, total: string) => `${done} / ${total}`,
     patternTaskSlowHint: "処理中です。大きなファイルは時間がかかることがあります。",
     alertWaitSlowHint: "処理中です。",
+    alertRequestDataTitle: "リクエスト情報",
     patternTaskCancelUnsafe: "このステップは途中で止められません",
     patternTaskCancelling: "終了処理中",
     patternTaskCancelled: "キャンセルしました",
