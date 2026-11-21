@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 
 //#region module mocks
 

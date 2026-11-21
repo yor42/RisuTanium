@@ -34071,3 +34071,16 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 **Question.** The old character-archive path (`coldCharacterArchive.ts`, `archiveGate.ts`, `bootArchiveState.ts`, the import-archive branch in `characterCards.ts`) can no longer run in any build: its boot flag is always off, and import, restore and Android data only read archived characters. It still produced the old-format archive fixtures several compatibility tests use. Delete it, or keep it frozen as test-only code and park the item?
 
 **What the maintainer chose.** Option A, delete it in two steps. First capture the real writer's output as committed fixtures and move the compatibility tests onto them (`MC-329`, producer-built fixtures). Then delete the engine, the gate, the boot archive state, the `characterCards.ts` import branch and its plumbing, the archive-only retained helpers, `buildColdStub`'s production copy, and the four orphan archive notice keys in all 8 locale files. Every reader stays: restore, conversion, export, Android MVP data (`MC-350`) and upstream stubs. Tier 2. The final PR closes `#173`. Not chosen: B, keep it frozen as test-only and park the item.
+
+
+### MC-2990 — #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2975`, `MC-1499`, `MC-1466`, `#455`.
+
+**What the maintainer chose.** "Accept (Recommended)". In the default `off` streaming display mode, when the phone falls behind the stream, the editoutput pass (Lua `editOutput`, plugin `editoutput`, regex scripts), the chat write and the re-render run on the newest reply snapshot available when the previous pass is done; snapshots superseded meanwhile are never processed. The final text is always fully processed, and nothing changes when the phone keeps up. Rejected: keeping a pass per chunk and coalescing only the write (most of the gain lost), or a new setting (locale work, user choice).
+
+### MC-2991 — #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1451`, `MC-2990`, `#455`.
+
+**What the maintainer chose.** "Allow, prove on device (Recommended)". In the `off` mode reply loop, after each processed write, the loop may yield one MessageChannel task (never `setTimeout`, `requestAnimationFrame` or an idle callback) so native stream events queued during the pass reach the snapshot reader before the next pass. The change does not ship before a Note 9 hidden-page device row shows the keep-alive count rising while hidden, the finished notice posting before the app is reopened, and Stop from the notification working. If that row fails, the yield is removed and the maintainer is asked again.
