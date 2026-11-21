@@ -6,9 +6,13 @@
  * `DATA_ACTION_ITEMS`, and the row component reads its label from that same item. A setting row is a legacy item
  * used as it is (the same object, so the page and the sidebar picker agree).
  *
- * Import-pure: TypeScript only, no component and no engine import; a component row names its component by string.
+ * TypeScript only, no component import; a component row names its component by string. The one storage import is the
+ * clean-up row's visibility rule, which loads no engine (the clean-up itself is imported on click).
  */
 
+import { get } from 'svelte/store';
+import { cleanUpOfferedFor } from '../storage/cleanUpUnusedFiles';
+import { pageStorageModeStore } from '../storage/pageStorageMode';
 import { accessibilitySettingsItems } from './accessibilitySettingsData';
 import { advancedSettingsItems } from './advancedSettingsData';
 import { legacyLookup, sectionOfRow, sectionRowIds, settingItemsOf } from './shellSections';
@@ -18,7 +22,15 @@ import type { SettingItem } from './types';
 const legacyAccessibility = legacyLookup(accessibilitySettingsItems, 'accessibility');
 const legacyAdvanced = legacyLookup(advancedSettingsItems, 'advanced');
 
-/** The four action rows, as search sees them. They have no stored value: each one starts a flow. */
+/**
+ * Whether the clean-up is offered on this page. The row and its search item share this rule, so a row that is not
+ * shown is never a search hit.
+ */
+function cleanUpOffered(): boolean {
+    return cleanUpOfferedFor(get(pageStorageModeStore));
+}
+
+/** The five action rows, as search sees them. They have no stored value: each one starts a flow. */
 export const DATA_ACTION_ITEMS: readonly SettingItem[] = [
     {
         id: 'data.backup',
@@ -43,6 +55,13 @@ export const DATA_ACTION_ITEMS: readonly SettingItem[] = [
         type: 'button',
         labelKey: 'exportAsDataset',
         keywords: ['dataset', 'export', 'training'],
+    },
+    {
+        id: 'data.cleanUp',
+        type: 'button',
+        labelKey: 'cleanUnusedFiles',
+        keywords: ['clean', 'unused', 'files', 'delete', 'storage'],
+        condition: cleanUpOffered,
     },
 ];
 
@@ -72,6 +91,7 @@ export const DATA_SHELL_SECTIONS: readonly ShellSection[] = [
         collapsed: false,
         rows: [
             { kind: 'shell', id: 'data.dataset', component: 'DataDatasetRow' },
+            { kind: 'shell', id: 'data.cleanUp', component: 'DataCleanUpRow', condition: cleanUpOffered },
             { kind: 'setting', item: legacyAccessibility('acc.goCharacterOnImport') },
         ],
     },
