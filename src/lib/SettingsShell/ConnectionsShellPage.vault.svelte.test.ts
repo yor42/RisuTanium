@@ -12,6 +12,7 @@ import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
+import type { VaultResult } from '../../ts/android/keyVault'
 
 vi.mock(import('../../ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
@@ -37,7 +38,7 @@ const fake = vi.hoisted(() => {
             const result = { ok: true as const, value: 'ENV:' + plain }
             return s.hold ? new Promise<typeof result>((resolve) => { s.held.push(() => resolve(result)) }) : result
         }),
-        unwrapKey: vi.fn(async (envelope: string) => ({ ok: true as const, value: envelope.slice(4) })),
+        unwrapKey: vi.fn(async (envelope: string): Promise<VaultResult<string>> => ({ ok: true as const, value: envelope.slice(4) })),
         watchdogFired: () => false,
     }
 })
