@@ -60,6 +60,7 @@ import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, se
 import { createFakeClock, drainMicrotasks } from '../../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../../ts/studio/history/tests/studioStoreDoubles'
 import { assetRow } from '../../../ts/studio/assets/assetFixtures.test-helpers'
+import { allRowsGeometry, setWindowGeometryForTests } from '../../../ts/windowing/windowHost.svelte'
 import StudioAssetList from './StudioAssetList.svelte'
 
 interface LiveCharacter {
@@ -148,6 +149,8 @@ beforeEach(async () => {
     resetCharacterSaveMarksForTest()
     installCharacterSaveMarks({ tracker, schedule: () => { h.marks += 1 } })
     resetStudioScreenForTests()
+    // The size job reads every row's file whether or not the row is in the window; this suite counts the rows' meta lines.
+    setWindowGeometryForTests(allRowsGeometry())
     db.db.characters = [makeCharacter('A', 20), makeCharacter('B', 2)]
     selection.selId = 0
     const service = createOwnerHistoryService({
@@ -163,6 +166,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await unmountAll()
+    setWindowGeometryForTests(undefined)
     resetStudioToastsForTests()
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
