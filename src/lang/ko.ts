@@ -2169,6 +2169,8 @@ export const languageKorean = {
     "homeStoryArchived": "보관됨",
     "homeLibraryHeading": "캐릭터",
     "homeLibraryAllTrashed": "모든 캐릭터가 휴지통에 있습니다.",
+    "homeJumpLabel": "바로 가기",
+    "homeJumpCharacters": (count: number) => `캐릭터 (${count})`,
     "homeLinkDiscordTitle": "디스코드",
     "homeLinkDiscordDescription": "디스코드 서버에 참여해 다른 사용자, 개발자와 대화해 보세요.",
     "homeLinkWebsiteTitle": "웹사이트",

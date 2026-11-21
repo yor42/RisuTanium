@@ -2169,6 +2169,8 @@ export const languageVietnamese = {
     "homeStoryArchived": "Đã lưu trữ",
     "homeLibraryHeading": "Nhân vật",
     "homeLibraryAllTrashed": "Tất cả nhân vật đều nằm trong Thùng rác.",
+    "homeJumpLabel": "Chuyển đến",
+    "homeJumpCharacters": (count: number) => `Nhân vật (${count})`,
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Tham gia máy chủ Discord của chúng tôi để trò chuyện với người dùng khác và nhà phát triển.",
     "homeLinkWebsiteTitle": "Trang web",

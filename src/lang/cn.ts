@@ -2169,6 +2169,8 @@ export const languageChinese = {
     "homeStoryArchived": "已归档",
     "homeLibraryHeading": "角色",
     "homeLibraryAllTrashed": "所有角色都在垃圾桶中。",
+    "homeJumpLabel": "跳转到",
+    "homeJumpCharacters": (count: number) => `角色（${count}）`,
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "加入我们的 Discord 服务器，与其他用户和开发者交流。",
     "homeLinkWebsiteTitle": "网站",
