@@ -1430,7 +1430,6 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
 
     test.each([
         ['tauri', 'tauri' as const, GIB],
-        ['indexeddb', 'indexeddb' as const, GIB],
     ])('regression reproducer: on %s a file one byte above the limit is refused with its name and never sliced or read', async (_label, kind, limit) => {
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
@@ -1445,22 +1444,6 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
         expect(big.arrayBuffer).not.toHaveBeenCalled()
         expect(handle.files.size).toBe(0)
         expect(handle.write.mock.calls.length).toBe(0)
-    })
-
-    test('regression reproducer: on the browser IndexedDB store that keeps Blobs a file above the limit is refused before the Blob is handed to the store, sliced or read', async () => {
-        const { api, appStore } = await loadWorld()
-        const handle = await blobMapStore()
-        appStore.injectAppStore(handle.store, 'indexeddb')
-        const big = fileReporting('clip.mp4', GIB + 1)
-
-        const refusal = await refusalOf(api.saveAssetFromBlob(big.file, 'mp4'))
-
-        expect(refusal.names).toEqual(['clip.mp4'])
-        expect(refusal.limitBytes).toBe(GIB)
-        expect(handle.writeBlob.mock.calls.length).toBe(0)
-        expect(big.slice).not.toHaveBeenCalled()
-        expect(big.arrayBuffer).not.toHaveBeenCalled()
-        expect(handle.blobs.size).toBe(0)
     })
 
     test('the refusal message is the translated notice with the limit in MB', async () => {
@@ -1539,7 +1522,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const below = randomBytes(16 * MIB - 1, 102)
         const { api, appStore } = await loadWorld()
         const handle = await blobMapStore()
-        appStore.injectAppStore(handle.store, 'indexeddb')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         const key = await api.saveAsset(exact, '', 'clip.mp4')
 
@@ -1565,7 +1548,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
             const { api, appStore } = await loadWorld()
             const handle = await mapStore()
             const writeBlob = vi.fn(async () => ({ version: null }))
-            appStore.injectAppStore({ ...handle.store, writeBlob }, node ? 'node' : 'indexeddb')
+            appStore.injectAppStore({ ...handle.store, writeBlob }, node ? 'node' : 'tauri')
 
             const key = await api.saveAsset(bytes, '', 'clip.mp4')
 
@@ -1579,7 +1562,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const bytes = randomBytes(LARGE, 105)
         const { api, appStore } = await loadWorld()
         const handle = await blobMapStore(await unsupported())
-        appStore.injectAppStore(handle.store, 'indexeddb')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         const key = await api.saveAsset(bytes, '', 'clip.mp4')
 
@@ -1595,7 +1578,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const quota = new DOMException('', 'QuotaExceededError')
         const { api, appStore } = await loadWorld()
         const handle = await blobMapStore(quota)
-        appStore.injectAppStore(handle.store, 'indexeddb')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         const failure = api.saveAsset(bytes, '', 'a.png')
 
@@ -1611,7 +1594,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const failure = new Error('disk failure')
         const { api, appStore } = await loadWorld()
         const handle = await blobMapStore(failure)
-        appStore.injectAppStore(handle.store, 'indexeddb')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         await expect(api.saveAsset(bytes, '', 'a.png')).rejects.toBe(failure)
 
@@ -1625,7 +1608,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const { api, appStore } = await loadWorld()
         const handle = await blobMapStore(await unsupported())
         handle.write.mockRejectedValueOnce(quota)
-        appStore.injectAppStore(handle.store, 'indexeddb')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         const failure = api.saveAsset(bytes, '', 'a.png')
 
@@ -1637,7 +1620,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const bytes = randomBytes(LARGE, 109)
         const { api, appStore } = await loadWorld()
         const handle = await blobMapStore(await unsupported())
-        appStore.injectAppStore(handle.store, 'indexeddb')
+        appStore.injectAppStore(handle.store, 'tauri')
 
         const key = await api.saveAssetFromBlob(new File([bytes as Uint8Array<ArrayBuffer>], 'clip.mp4'), 'clip.mp4')
 
@@ -1653,7 +1636,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
         const { api, appStore } = await loadWorld()
         const memory = createMemoryByteStore({ blobs: true })
-        appStore.injectAppStore(memory, 'indexeddb')
+        appStore.injectAppStore(memory, 'tauri')
 
         const key = await api.saveAsset(view, '', 'clip.mp4')
 
@@ -1668,7 +1651,7 @@ describe('saveAsset of a whole value of the piece-save threshold or more on a st
         const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
         const { api, appStore } = await loadWorld()
         const memory = createMemoryByteStore({ blobs: true })
-        appStore.injectAppStore(memory, 'indexeddb')
+        appStore.injectAppStore(memory, 'tauri')
 
         const key = await api.saveAsset(bytes, 'custom', 'x.zip')
 

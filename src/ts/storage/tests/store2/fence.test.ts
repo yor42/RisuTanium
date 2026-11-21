@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The fence policy layer over the memory, IndexedDB (fake-indexeddb) and Node
+ * The fence policy layer over the memory and Node
  * (real server process) backends: the readers' verdicts, the exit's steps (1) to
  * (3) and their order, and the discard. Tauri is not run here: the `flushed`
  * contract is exercised through a recording wrapper that overrides the reported

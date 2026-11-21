@@ -1054,7 +1054,7 @@ describe('a clean run of a trivial commit and collection reports no violation', 
         })
         scheduler.spawn('collector', async (actor) => {
             actor.setContext({ kind: 'gc' })
-            await gcPass({ backend: actor.backend(rig.memory), kind: 'indexeddb', idleReason: () => null })
+            await gcPass({ backend: actor.backend(rig.memory), kind: 'tauri', idleReason: () => null })
         })
         const result = await scheduler.run()
         expect(result.status).toBe('finished')

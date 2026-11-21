@@ -13,7 +13,7 @@ import { buildNodeGcAge } from './unitAge'
  * The automatic clean-up of store2 leftovers: one collector pass per page load, from the maintenance step after the
  * old-data deletion settled (`maintenance.ts` calls it, inside the step's own try/catch).
  *
- * - It runs on the app (`tauri` sessions), on the web (`indexeddb` sessions) and on a Node server (`node` sessions). A
+ * - It runs on the app (`tauri` sessions) and on a Node server (`node` sessions). A
  * - A Node page runs the aged pass (`pass.ts`, `unitAge.ts`): a server cannot prove that no reader still holds an older
  *   base, so a unit is retired only on its third sighting, each at least a day after the previous record in the earlier of
  *   the server's and the page's clock. The pass needs the guarded routes and the server's clock and otherwise refuses
@@ -50,7 +50,7 @@ import { buildNodeGcAge } from './unitAge'
 
 /**
  * What the page contributes to the stop rule and to the web proofs; the rest of the page's state is the session's.
- * `peers` and `ownBase` are read only for an `indexeddb` or `node` session.
+ * `peers` and `ownBase` are read only for a `node` session.
  */
 export type AutoGcFacts = Pick<GcPageFacts, 'isBusy' | 'saveLoopParked'> & {
     isSaveClean(): boolean
@@ -99,7 +99,7 @@ export function buildAutoGcDeps(session: Pick<Store2Session, 'kind' | 'backend' 
         pace: batchPaceOf(session.kind),
         shouldStop: () => facts.isBusy() || facts.saveLoopParked() || !facts.isSaveClean() || facts.restoreInProgress(),
     }
-    if (session.kind === 'indexeddb' || session.kind === 'node') {
+    if (session.kind === 'node') {
         deps.peers = () => facts.peers()
         deps.ownBase = () => facts.ownBase()
     }
@@ -132,7 +132,7 @@ export function formatGcResult(result: GcResult): string {
  * logs and swallows it. A `node` session without the aged dependencies is refused `capability-missing` before any store2 read.
  */
 export async function runAutoGc(session: Store2Session, facts?: AutoGcFacts, store?: ByteStore): Promise<GcResult | null> {
-    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node') || session.backend === null || getPageStorageMode().kind !== 'store2') {
+    if ((session.kind !== 'tauri' && session.kind !== 'node') || session.backend === null || getPageStorageMode().kind !== 'store2') {
         return null
     }
     const deps = buildAutoGcDeps(session, facts ?? await loadLiveFacts(), store)

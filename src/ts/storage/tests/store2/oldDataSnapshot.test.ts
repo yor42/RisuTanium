@@ -46,6 +46,7 @@ import { runRecovery, type RecoveryCalls, type RecoveryPort } from 'src/ts/stora
 import { createClock, createPeerDouble, testEnv } from '../store2SaveKit'
 import { buildSmall, fakeLists, type Obj } from './codecFixtures'
 import { createClock as fixtureClock, parsedCommit, peerWrite, seedStore, testEnv as fixtureEnv, treeRequest } from './commitFixtures'
+import { flushConfirming } from './flushConfirmBackend'
 
 // The page's unit naming reads the platform at load; this stands in for the browser and Node naming.
 vi.mock('src/ts/process/coldUnitLocation', () => ({
@@ -277,7 +278,7 @@ describe('a conversion writes the snapshot', () => {
         expect((await convertLegacyProfile(w.request, accept)).status).toBe('installed')
         const found = await snapshotOf(w.memory)
         expect(found).not.toBeNull()
-        const pass = await gcPass({ backend: w.memory, kind: 'indexeddb', idleReason: () => null })
+        const pass = await gcPass({ backend: w.memory, kind: 'tauri', idleReason: () => null })
         expect(pass.status).toBe('done')
         expect((await w.memory.readUnits([found?.pointer.key as string])).get(found?.pointer.key as string)).not.toBeNull()
     })
@@ -598,7 +599,7 @@ describe('the callers hand the planner the page\'s store', () => {
         const memory = createMemoryBackend()
         const result = await dispatchStore2Boot(
             { store, upstreamMainFile: async () => false, listBackupTimes: async () => [], readColdStorageItem: async () => ({ status: 'missing' }) },
-            { ui: ui(), kind: 'indexeddb', backend: async () => memory, keyEnv: testEnv(createClock(), 9001), lists: fakeLists },
+            { ui: ui(), kind: 'tauri', backend: async () => flushConfirming(memory).backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists },
         )
         expect(result.kind).toBe('store2')
         const found = await snapshotOf(memory)
@@ -615,7 +616,7 @@ describe('the callers hand the planner the page\'s store', () => {
         const requests: Store2RecoveryRequest[] = []
         await dispatchStore2Boot(
             { store, upstreamMainFile: async () => true, listBackupTimes: async () => [], readColdStorageItem: async () => ({ status: 'missing' }) },
-            { ui: ui(async (request) => { requests.push(request) }), kind: 'indexeddb', backend: async () => memory, keyEnv: testEnv(createClock(), 9002), lists: fakeLists },
+            { ui: ui(async (request) => { requests.push(request) }), kind: 'tauri', backend: async () => flushConfirming(memory).backend, keyEnv: testEnv(createClock(), 9002), lists: fakeLists },
         )
         expect(requests).toHaveLength(1)
 

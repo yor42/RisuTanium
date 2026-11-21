@@ -417,7 +417,7 @@ describe('restore points after garbage collection', () => {
         expect(rows.at(-1)?.key).toBe(pinned)
         const oldestRetained = (await parsedCommit(raw)).retained.at(-1)?.key as string
 
-        const swept = await gcPass({ backend: raw, kind: 'indexeddb', idleReason: () => null })
+        const swept = await gcPass({ backend: raw, kind: 'tauri', idleReason: () => null })
         expect(swept.status).toBe('done')
 
         const first = await restorePoint(a, wrapped.backend, oldestRetained)

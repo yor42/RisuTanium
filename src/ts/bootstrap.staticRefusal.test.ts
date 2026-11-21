@@ -187,7 +187,7 @@ dbState.baseline = () => baseDb()
 const dispatchEntered = { count: 0 }
 
 async function freshLoadData() {
-    // The real dispatch over a memory store2 backend: the page's own store stays the LocalForage/IndexedDB store.
+    // The real dispatch over a memory store2 backend: the page serves neither Tauri nor the Node server, so it has no store of its own.
     const dispatch = await registerRealDispatch({ kind: 'node', acknowledgeAlerts: true, onEnter: () => { dispatchEntered.count += 1 } })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {

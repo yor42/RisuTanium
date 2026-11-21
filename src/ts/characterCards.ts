@@ -38,8 +38,6 @@ import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { DOWNLOAD_IMPORT_STEPS, IMPORT_STEPS, ImportCancelled, NO_IMPORT_PROGRESS, responseBlobWithProgress, sourceWithProgress, type ImportProgress } from "./importProgress"
 import { markBootWrite } from "./bootWindow"
-import { selectedStoreIsIndexedDb } from "./storage/assetLimit"
-import { WEB_ASSET_LIMIT_BYTES } from "./storage/nodeBodyLimit"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
@@ -691,7 +689,7 @@ function guardStringLength<T>(build:() => T):T {
 }
 
 /** The message of the first asset or image over the limit, or null. An asset chunk's decoded size is at most three quarters of its base64 text. */
-function pngCardOverLimit(chunks:PngLayoutChunk[], imageBytes:number, plainWebStore:boolean):string|null {
+function pngCardOverLimit(chunks:PngLayoutChunk[], imageBytes:number):string|null {
     const limit = assetByteLimit()
     const limitMiB = Math.round(limit / (1024 * 1024))
     for(const chunk of chunks){
@@ -699,9 +697,7 @@ function pngCardOverLimit(chunks:PngLayoutChunk[], imageBytes:number, plainWebSt
             return language.cardFileEntryTooLarge(chunk.key, limitMiB)
         }
     }
-    //The image is built and saved as one value in page memory. On the browser's IndexedDB store it keeps the plain web limit, because the page shows a bytes value as one base64 string; asset chunks stream in pieces and keep the store's limit.
-    const imageLimit = plainWebStore ? Math.min(limit, WEB_ASSET_LIMIT_BYTES) : limit
-    return imageBytes > imageLimit ? language.cardImageTooLarge(Math.round(imageLimit / (1024 * 1024))) : null
+    return imageBytes > limit ? language.cardImageTooLarge(limitMiB) : null
 }
 
 //A v2 or v3 card keeps its fields in `data`, which must be an object. A missing or null `data.extensions` is read as empty.
@@ -948,7 +944,7 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, pro
         }
         const chunks = scan.chunks ?? []
         const imageBytes = scan.imageBytes ?? 0
-        const overLimit = pngCardOverLimit(chunks, imageBytes, selectedStoreIsIndexedDb())
+        const overLimit = pngCardOverLimit(chunks, imageBytes)
         if(overLimit !== null){
             return refusedOutcome(overLimit)
         }

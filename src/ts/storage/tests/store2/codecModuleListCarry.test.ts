@@ -653,7 +653,7 @@ describe('guard: the store stays whole and collectable around a carried pass', (
         for (const key of carriedKeys) {
             expect(marked.status === 'marked' && marked.live.has(key), key).toBe(true)
         }
-        const result = await gcPass({ backend: kit.memory, kind: 'indexeddb', idleReason: () => null })
+        const result = await gcPass({ backend: kit.memory, kind: 'tauri', idleReason: () => null })
         expect(result.status).toBe('done')
         const read = await readTreeBytes(kit.memory, landed.manifestKey, { resident: input => new Set(input.entries.map(entry => entry.u)) })
         expect(read.status).toBe('ok')

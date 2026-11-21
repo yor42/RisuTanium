@@ -19,7 +19,7 @@ import { SWEEP_FUTURE_SKEW_MS, SWEEP_MIN_AGE_MS } from './params'
 import { readSweepRecord, writeSweepRecord } from './record'
 
 /**
- * The deleting pass of the asset sweep on a store2 page (`tauri`, `indexeddb` and `node` kinds; every other kind reads and
+ * The deleting pass of the asset sweep on a store2 page (`tauri` and `node` kinds; every other kind reads and
  * writes nothing). It deletes an `assets/` file only when all of these hold:
  *
  * - the closure keep-set over `{current} + retained + pins` is complete (an incomplete one deletes nothing and writes
@@ -28,11 +28,11 @@ import { readSweepRecord, writeSweepRecord } from './record'
  *   must have been named by two such records (a third sighting), each time at the revision it still has;
  * - the deleter gate is open, the fences are clear and, per batch, the commit key and the fence are still what the gate
  *   read: a Tauri page proves it with a same-bytes `casCommit` on the gate's commit token (a page that a newer page
- *   superseded is refused by the native gate, so it deletes nothing and writes no record), a web page by a read, and a
+ *   superseded is refused by the native gate, so it deletes nothing and writes no record), and a
  *   Node page by a read of the revisions the gate saw, its deletes and its record write carrying the same two
  *   revisions as check-only entries;
  * - at that very delete: no stop condition holds, this page did not write the asset, the resident database does not
- *   refer to it and, on the web and on Node, no other tab is open.
+ *   refer to it and, on Node, no other tab is open.
  *
  * The stop check, the written check, the resident check and the registration of the deletion hold are one synchronous
  * run, so a same-page writer of the key either was seen by the check or waits for the hold. The stored assets are
@@ -53,7 +53,7 @@ import { readSweepRecord, writeSweepRecord } from './record'
  * stops right after the age decision and returns what a following `delete` step would remove, with no batch, no hold, no
  * delete and no record write; a `delete` step removes only the names of its `approved` set that this round's own decision
  * also deletes, worked out again in every round, so the delete set never grows beyond what the person confirmed. The age
- * differs by kind. A Tauri or IndexedDB manual round deletes every fresh candidate at once and writes no record (it still
+ * differs by kind. A Tauri manual round deletes every fresh candidate at once and writes no record (it still
  * reads the record, so a newer build's record refuses), which leaves the per-batch `casCommit` probe as its only
  * ghost-write protection; the window between the probe and the removal is accepted because batches are small. A Node
  * manual round keeps the third-sighting rule, the revision binding and the record cap unchanged. A Node page accepts
@@ -309,12 +309,11 @@ async function removeAtRevision(store: ByteStore, key: string, ifVersion: number
 /** One scan and delete round: a commit key that moved ends it with `rebuild`. */
 async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally, plan: PlanOut): Promise<'finished' | 'rebuild'> {
     const { session, store, manual } = env
-    const web = session.kind === 'indexeddb'
     const node = session.kind === 'node'
     if (env.shouldStop()) {
         throw stopped(tally, 'yielded')
     }
-    if (web || node) {
+    if (node) {
         const verdict = peersAllow(session.kind, await env.peers(), manual)
         if (verdict !== 'go') {
             throw refused(verdict)
@@ -362,8 +361,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
         fence: gate.fence === 'absent' ? 'absent' : 'present',
         legacyFiles: legacyFilesOf([...reader.manifests().values()]),
         tauriFlushPending: session.idleReason !== null,
-        // The caller vouches that no bulk operation's asset writes can be lost to the pass. A web pass runs only while
-        // it is the sole tab and a Tauri pass is the sole page, so no other writer's bulk operation runs; this page's own
+        // The caller vouches that no bulk operation's asset writes can be lost to the pass. A Tauri pass is the sole page, so no other writer's bulk operation runs; this page's own
         // restore is covered by the busy check, the written set and the hold. On the Node server, every bulk operation
         // that decides by the store's contents holds its marker before it lists (the gate refuses `staging`), and every
         // other asset write moves the key's revision, which a deletion must have seen in two bound sightings.
@@ -406,7 +404,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
                 record,
                 candidates,
                 now: (env.now ?? Date.now)(),
-                backend: session.kind === 'tauri' ? 'tauri' : 'indexeddb',
+                backend: 'tauri',
                 keep,
                 minAgeMs: env.minAgeMs,
             })
@@ -446,7 +444,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
         let moved = false
         try {
             for (const { name, ifVersion } of deletes.slice(start, start + REMOVE_BATCH_MAX)) {
-                if ((web || node) && peersAllow(session.kind, await env.peers(), manual) !== 'go') {
+                if (node && peersAllow(session.kind, await env.peers(), manual) !== 'go') {
                     throw stopped(tally, 'other-tab')
                 }
                 // One synchronous run from the stop check to the registration of the hold; no await may enter it.
@@ -539,7 +537,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
 /** Runs the pass; rejects only with what the store or the backend threw unexpectedly, or with a hold overlap. */
 export async function runAssetSweep(env: AssetSweepEnv): Promise<AssetSweepResult> {
     const { session } = env
-    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node') || session.backend === null) {
+    if ((session.kind !== 'tauri' && session.kind !== 'node') || session.backend === null) {
         return { status: 'skipped' }
     }
     const tally: Tally = { phase: null, candidates: 0, deleted: 0, failed: 0, keptLive: 0, batches: 0, recorded: false }

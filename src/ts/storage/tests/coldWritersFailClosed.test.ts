@@ -4,19 +4,18 @@
  * `deleteColdStorageUnits` reports every key as not deleted, each with a console error, and neither
  * reaches the page's store or the browser's private file system. Without a residency both behave as before.
  *
- * Runs the real writers over the real IndexedDB store (`fake-indexeddb`) with a
+ * Runs the real writers over an in-memory byte store injected as the page's store, with a
  * `navigator.storage.getDirectory` that records its calls; a pass here says nothing about a real
- * browser's IndexedDB.
+ * device's store.
  *
  * Labels: "fail closed" tests are regression reproducers (they fail on the writers that ignore the
  * residency); "legacy page" tests are compatibility guards that pass before and after.
  */
-import 'fake-indexeddb/auto'
-import localforage from 'localforage'
 import { compressSync } from 'fflate'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Residency } from 'src/ts/storage/store2/residency'
+import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
@@ -73,8 +72,8 @@ let cold: ColdModule
 let getDirectory: ReturnType<typeof vi.fn>
 let errors: ReturnType<typeof vi.spyOn>
 
-/** The `risuai` LocalForage database the IndexedDB store and upstream's own code share. */
-const profile = localforage.createInstance({ name: 'risuai' })
+/** The page's byte store, injected before the writers are loaded. */
+let profile: MemoryByteStore
 
 const UUID = '3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10'
 const OTHER = '9a1d7c20-2b3e-4f5a-8c6d-1e2f3a4b5c6d'
@@ -84,11 +83,11 @@ function encodeUnit(value: unknown): Uint8Array {
 }
 
 async function putInStore(key: string, value: unknown): Promise<void> {
-    await profile.setItem('coldstorage/' + key, encodeUnit(value))
+    await profile.write('coldstorage/' + key, encodeUnit(value), 'unconditional')
 }
 
 async function storeHas(key: string): Promise<boolean> {
-    return (await profile.getItem('coldstorage/' + key)) !== null
+    return profile.files.has('coldstorage/' + key)
 }
 
 async function registerStore2Page(): Promise<void> {
@@ -101,8 +100,10 @@ beforeEach(async () => {
     h.platform.isNodeServer = false
     getDirectory = vi.fn(async () => { throw new Error('the browser private file system must not be touched') })
     Object.defineProperty(navigator, 'storage', { configurable: true, value: { getDirectory } })
-    await profile.clear()
     vi.resetModules()
+    profile = createMemoryByteStore()
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
+    injectAppStore(profile, 'tauri')
     cold = await import('src/ts/process/coldstorage.svelte')
     errors = vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(console, 'log').mockImplementation(() => { })

@@ -115,13 +115,13 @@ describe('boot row 5 over a foreign bulk marker', () => {
         const { probe, calls } = probeAnswering('gone')
         const factory = vi.fn((_kind: string) => probe)
 
-        const boot = await bootThroughDispatch(counted.backend, { kind: 'indexeddb', markerOwnerProbe: factory })
+        const boot = await bootThroughDispatch(counted.backend, { kind: 'node', markerOwnerProbe: factory })
 
         expect(boot.result.kind).toBe('store2')
         expect(await standingOwner(counted)).toBeNull()
         expect((await openDeleterGate(counted.memory, 'sweep')).status).toBe('open')
         expect(calls.length).toBe(1)
-        expect(factory).toHaveBeenCalledWith('indexeddb')
+        expect(factory).toHaveBeenCalledWith('node')
         expect(getActiveStore2Save()?.markerOwnerProbe).toBe(probe)
         expect(boot.foreignMarkerAsked).toBe(0)
     })
@@ -130,7 +130,7 @@ describe('boot row 5 over a foreign bulk marker', () => {
         const counted = await profileWithForeignMarker()
         const { probe } = probeAnswering(answer)
 
-        const boot = await bootThroughDispatch(counted.backend, { kind: 'indexeddb', markerOwnerProbe: () => probe })
+        const boot = await bootThroughDispatch(counted.backend, { kind: 'node', markerOwnerProbe: () => probe })
 
         expect(boot.result.kind).toBe('store2')
         expect(await standingOwner(counted)).toBe('peer-page')
@@ -152,7 +152,7 @@ describe('boot row 5 over a foreign bulk marker', () => {
         }
         const { probe } = probeAnswering('gone')
 
-        const boot = await bootThroughDispatch(failing, { kind: 'indexeddb', markerOwnerProbe: () => probe })
+        const boot = await bootThroughDispatch(failing, { kind: 'node', markerOwnerProbe: () => probe })
 
         expect(boot.result.kind).toBe('store2')
         expect(await standingOwner(counted)).toBe('peer-page')
@@ -163,7 +163,7 @@ describe('boot row 5 over a foreign bulk marker', () => {
         const counted = await profileWithForeignMarker()
         const { probe, calls } = probeAnswering('gone')
 
-        const boot = await bootThroughDispatch(counted.backend, { kind: 'indexeddb', markerOwnerProbe: () => probe, maxRounds: 1 })
+        const boot = await bootThroughDispatch(counted.backend, { kind: 'node', markerOwnerProbe: () => probe, maxRounds: 1 })
 
         expect(boot.result.kind).toBe('store2')
         expect(await standingOwner(counted)).toBe('peer-page')

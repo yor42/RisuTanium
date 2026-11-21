@@ -105,8 +105,8 @@ export class PageUnavailableError extends Error {
 
 export type ReplayVariant = 'node' | 'tauri'
 
-/** The variants a rig can have: the two ByteStore backends, and IndexedDB, which is scheduled at the `Store2Backend` layer. */
-export type RigVariant = ReplayVariant | 'indexeddb'
+/** The variants a rig can have: the two ByteStore backends. */
+export type RigVariant = ReplayVariant
 
 /** Direct access to the stored state, with no request and no wrapper: how a test plants and reads. */
 export interface StateHooks {

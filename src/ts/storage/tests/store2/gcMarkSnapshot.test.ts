@@ -48,7 +48,7 @@ async function exists(backend: Store2Backend, key: string): Promise<boolean> {
     return (await backend.readUnits([key])).get(key) !== null
 }
 
-const pass = (fx: Fx) => gcPass({ backend: fx.backend, kind: 'indexeddb', idleReason: () => null })
+const pass = (fx: Fx) => gcPass({ backend: fx.backend, kind: 'tauri', idleReason: () => null })
 
 async function markOf(fx: Fx) {
     return markLiveKeys(fx.backend, await fx.backend.readCommit())

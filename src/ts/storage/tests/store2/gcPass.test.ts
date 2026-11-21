@@ -2,7 +2,7 @@
 /**
  * The GC pass: it deletes only what the mark of ONE commit-key read leaves
  * unnamed, every batch carries that read's token, and every refusal or stop
- * leaves the store as it was. Backends: memory, IndexedDB (fake-indexeddb), the
+ * leaves the store as it was. Backends: memory, the
  * Node backend against the real server process, and the Tauri backend over the
  * desktop command and file system stand-ins (not evidence about the Rust commands).
  */
@@ -138,7 +138,7 @@ function done(result: GcResult): Extract<GcResult, { status: 'done' }> {
 }
 
 describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))('GC pass on the %s backend', (name, fixture) => {
-    const kind = name === 'node' ? 'node' : 'indexeddb'
+    const kind = name === 'node' ? 'node' : 'tauri'
 
     async function open(): Promise<Store2Backend> {
         const entry = await fixture.open()
@@ -593,7 +593,7 @@ describe('GC pass: a malformed reference never reaches the gate', () => {
         await backend.casCommit((await backend.readCommit()).token, encodeUnit(UNIT_TYPE.commit, firstCommitKey({ current: { key: built.manifest.key, at: START_TIME }, staging: null, manifests: [built.manifest.body] }, env)))
         const junk = await orphan(backend)
 
-        const result = await gcPass(depsOf(backend, 'indexeddb'))
+        const result = await gcPass(depsOf(backend, 'tauri'))
         expect(result.status === 'refused' && result.reason).toBe('mark-refused')
         expect(await exists(backend, junk)).toBe(true)
     })

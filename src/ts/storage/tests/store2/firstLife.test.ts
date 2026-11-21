@@ -4,7 +4,7 @@
  * row-9 clear, the staged install under the marker's prefix, and the one installer shared with a fenced exit's marker.
  * Each test says what it is: new behaviour, guard (passes before and after any change that keeps the protocol), or
  * mutant (red under the named in-memory mutant of the library, kept in the test name).
- * Memory, IndexedDB (fake-indexeddb) and Node (real server process) backends; Tauri is covered by the replay.
+ * Memory and Node (real server process) backends; Tauri is covered by the replay.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { Store2BackendFailureError, Store2CommitConflictError, Store2UnknownOutcomeError, type Store2Backend, type Store2Read } from 'src/ts/storage/store2/backend'

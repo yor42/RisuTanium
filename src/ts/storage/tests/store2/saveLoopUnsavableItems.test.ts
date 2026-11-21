@@ -592,7 +592,7 @@ describe('Save mine carries an item\'s saved copy only over a base that holds it
         const peer: PeerDouble = createPeerDouble('save-mine')
         const loop = await start({ options: { peer }, live: (db) => { modules(db)[1].cyc = cyclic() } })
         await dropSeedManifest(loop.kit, (peerDb) => { modules(peerDb)[1].description = 'a peer rewrote this module' })
-        const collected = await gcPass({ backend: loop.kit.memory, kind: 'indexeddb', idleReason: () => null })
+        const collected = await gcPass({ backend: loop.kit.memory, kind: 'tauri', idleReason: () => null })
         expect(collected.status).toBe('done')
         const before = await loop.kit.commitKey()
         chars(loop.db)[0].personality = 'my edit'
