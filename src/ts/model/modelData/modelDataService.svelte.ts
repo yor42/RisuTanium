@@ -193,7 +193,7 @@ export interface ModelDataResponse {
 export interface ModelDataServiceDeps {
     fetchImpl: (url: string, init: { credentials: 'omit', signal: AbortSignal }) => Promise<ModelDataResponse>
     getStore: () => Promise<ByteStore>
-    /** False on a page that must not write (transitional OPFS, read-only mode). */
+    /** False on a page that must not write (read-only mode). */
     canWrite: () => Promise<boolean>
     now: () => number
 }

@@ -180,7 +180,7 @@ class MockNotFoundError extends Error {
     name = 'NotFoundError'
 }
 
-// No legacy OPFS unit file exists: every read falls through to "not found".
+// The page's store holds no unit: every read is an absent unit.
 Object.defineProperty(globalThis.navigator, 'storage', {
     configurable: true,
     value: {

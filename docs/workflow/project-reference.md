@@ -12,7 +12,7 @@ RisuAI is a cross-platform AI chat application: Svelte 5/TypeScript frontend, Ta
 | Reactive database and stores | [stores.svelte.ts](../../src/ts/stores.svelte.ts), [dbChangeEffects.svelte.ts](../../src/ts/storage/dbChangeEffects.svelte.ts) |
 | Page byte store and platform choice | [appStore.ts](../../src/ts/storage/store/appStore.ts) |
 | Save loop and incremental block format | [globalApi.svelte.ts](../../src/ts/globalApi.svelte.ts), [risuSave.ts](../../src/ts/storage/risuSave.ts) |
-| OPFS copy-back / cold units | [opfsCopyBack.ts](../../src/ts/storage/opfsCopyBack.ts), [coldstorage.svelte.ts](../../src/ts/process/coldstorage.svelte.ts), [coldUnitLocation.ts](../../src/ts/process/coldUnitLocation.ts) |
+| Cold units | [coldstorage.svelte.ts](../../src/ts/process/coldstorage.svelte.ts), [coldUnitLocation.ts](../../src/ts/process/coldUnitLocation.ts) |
 | Chat/request orchestration | [process/index.svelte.ts](../../src/ts/process/index.svelte.ts), `src/ts/process/request/` |
 | Provider definitions | [model/types.ts](../../src/ts/model/types.ts), [modellist.ts](../../src/ts/model/modellist.ts) |
 | Parsing / lorebook / card interchange | [parser.svelte.ts](../../src/ts/parser/parser.svelte.ts), [lorebook.svelte.ts](../../src/ts/process/lorebook.svelte.ts), [characterCards.ts](../../src/ts/characterCards.ts) |

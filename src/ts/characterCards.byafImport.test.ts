@@ -412,7 +412,7 @@ beforeEach(() => {
     h.characters = []
     h.uuid = 0
     globalThis.safeStructuredClone = structuredClone
-    noteSelectedStore('opfs-transitional', createMemoryByteStore())
+    noteSelectedStore('indexeddb', createMemoryByteStore())
     Object.assign(charxLimits, defaultLimits)
 })
 

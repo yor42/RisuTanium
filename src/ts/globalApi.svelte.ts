@@ -1113,8 +1113,8 @@ export function getSavingStoppedDetail(): string {
  * A minimal async mutex serializing the save loop's commits and conversion
  * with any other whole-state writer (currently LoadLocalBackup()'s restore,
  * `loadInternalBackup` (drive/internalBackup.ts)'s snapshot load, and the
- * exclusive storage-migration lock's holders below,
- * such as the copy back from OPFS at startup). LoadLocalBackup()'s
+ * exclusive storage-migration lock's holders below).
+ * LoadLocalBackup()'s
  * restore write and the internal-backup load's write acquire this directly only
  * on Tauri or when Web Locks aren't supported; on an ordinary web build their
  * exclusive storage lock already holds this internally for the same reason (see
@@ -1667,7 +1667,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
 }
 
 export async function saveDb() {
-    // A page that runs from OPFS this time saves nothing. This check and the
+    // A read-only page saves nothing. This check and the
     // dispatch below happen before the first await.
     if (getPageStorageMode().kind === 'read-only') {
         return

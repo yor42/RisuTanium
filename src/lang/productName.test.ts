@@ -54,7 +54,6 @@ function hasMention(text: string): boolean {
 const OWN_PRODUCT_KEYS = [
     'iris.introTip',
     'staticBuildUnsupported',
-    'opfsReadOnlyNotice',
     'personasRepairedNotice',
     'restoreRepairedNotice',
     'saveCharacterNeverSavedNotice',

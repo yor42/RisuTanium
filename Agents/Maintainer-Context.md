@@ -35878,3 +35878,81 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-12). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-115`, `MC-288`, `MC-3047`.
 
 **What the maintainer chose.** Option label "First, then each minute". OPQ-S7-12 = "(A)" storage-full toast at the first failed attempt, then about once a minute (every 12th attempt at the 5 s wait) (MC-3052). Context: no earlier MC deliberately set the every-attempt repeat; it was a code default pinned by reportFailure.test.ts. MC-115 called the toast reappearing "every few seconds" a problem, and MC-288 is a related one-time-notice precedent. The rejected options were not recorded.
+
+### MC-3069 — #495 `.rtb` carries connection keys in plain form in a side entry, re-encrypted on restore, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3057`, `MC-772` item 2, `MC-687`, `MC-698`, `#495`.
+
+**What the maintainer chose.** "Plain keys in a side entry (Recommended)". `.rtb` export copies stored units byte for byte, so Keystore-encrypted connection keys would otherwise travel encrypted and be unreadable on another device. Export therefore decrypts connection keys into a separate entry in the archive (sealed by the `.rtb` password when one is set), and restore re-encrypts them under the restoring device's key. `MC-772` item 2 (full backups keep keys) stands for `.rtb`. Rejected: carrying the encrypted keys and asking the user to re-enter every key after a restore on another device.
+
+### MC-3070 — #495 Keystore encryption covers connection keys only, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3057`, `#492`, `#153`, `#495`.
+
+**What the maintainer chose.** "Connection keys only (Recommended)". V5 encrypts the keys of `db.connections` (the store #492 adds). The other key fields (TTS, image, translator, memory and embedding, about 35) stay plain until Vault V4 moves them into connections, which encrypts them automatically. Rejected: encrypting every legacy key field in place now (store2 save encoder, every load path and about 35 direct readers).
+
+### MC-3071 — #495 older plaintext copies are left to normal cleanup, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-350`, `#495`.
+
+**What the maintainer chose.** "Leave to normal cleanup (Recommended)". After keys on an existing install are encrypted, store2 restore points and legacy `dbbackup-*.bin` files still hold earlier plain copies until normal retention removes them. Nothing is purged; the PR states the limit. Rejected: a one-time purge action (destructive, loses those restore points).
+
+### MC-3072 — #495 Android OS backup stays on; transferred keys need re-entry, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-350`, `MC-3069`, `#495`.
+
+**What the maintainer chose.** "Leave backup on (Recommended)". The manifest keeps Android's default Auto Backup and device transfer. The Keystore key never transfers, so a transferred or restored app shows "키 다시 입력 필요" on each affected connection, and nothing is overwritten. `.rtb` is the way to move keys. Rejected: a manifest rule turning OS backup off (also drops chats from phone transfer).
+
+### MC-3073 — #495 when the Keystore cannot encrypt, the key is saved plain, the user is told, and encryption is retried, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3078`, `MC-3077`, `#495`.
+
+**What the maintainer chose.** "Keep plain, notify, retry (Recommended)". If the Keystore cannot encrypt when a key is saved (key generation fails, or an old WebView without the secure message channel), the key is saved plain as today, a one-time notice says so, and encryption is retried later once the Keystore works. A typed key is never lost. Rejected: refusing to save the key.
+
+### MC-3074 — #495 export warns about keys it cannot decrypt and writes them empty, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3076`, `MC-772` item 2, `MC-175`, `#495`.
+
+**What the maintainer chose.** "Warn, export without it (Recommended)". When a connection key cannot be decrypted (Keystore key lost after an OS transfer or reset), `.bin` and `.rtb` export name those connections in a warning before export starts and write their keys empty. Ciphertext is never written where upstream would read it as a key. Rejected: blocking export until the keys are re-entered or cleared.
+
+### MC-3075 — #495 connection keys are decrypted at startup; no plain hint is stored, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3058`, `#495`.
+
+**What the maintainer chose.** "Decrypt at startup (Recommended)". Nothing extra is stored for the masked display (`•••• 7f3a`); all connection keys are decrypted into memory at boot, and the hint and the has-key checks come from memory. Rejected: persisting the last 4 characters in plain beside the ciphertext.
+
+### MC-3076 — #495 the unreadable-key export warning is a confirm; cancel writes nothing, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3074`, `#495`.
+
+**What the maintainer chose.** "Confirm; cancel writes nothing (Recommended)". The `MC-3074` warning works like the other pre-export prompts: it names the connections, and cancelling writes no file. Rejected: an OK-only notice after which export always continues.
+
+### MC-3077 — #495 vault notices show once and again only when the situation changes, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `MC-3075`, `#495`.
+
+**What the maintainer chose.** "Once, again on change (Recommended)". The "saved plain for now" notice shows once per device until encryption succeeds; the "these connections need their key re-entered" notice shows when the set of affected connections changes. Rejected: both notices on every app start.
+
+### MC-3078 — #495 encryption of a plain-kept key is retried at each boot and each key edit, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `#495`.
+
+**What the maintainer chose.** "Each boot and key edit (Recommended)". The `MC-3073` retry runs at every app start and whenever a key is written; the save loop is not changed. Rejected: retrying on every background save pass.
+
+### MC-3110 — #495 a key that is only temporarily undecryptable shows nothing; only a send that hits it fails, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3075`, `MC-3077`, `#495`.
+
+**What the maintainer chose.** "Nothing; error only on send (Recommended)". When the Keystore is only slow or briefly unavailable at startup (not lost), a saved connection key that cannot be decrypted yet still counts as present, gets no boot notice and is never marked "키 다시 입력 필요"; decryption is retried on the next use, and a send that still cannot get the key fails with an error saying the key is temporarily unavailable. Rejected: also showing a boot notice naming those connections.
+
+### MC-3111 — #495 export retries a temporarily undecryptable key once, then names it in the confirm, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3074`, `MC-3076`, `MC-3110`, `#495`.
+
+**What the maintainer chose.** "Retry, then name it in confirm (Recommended)". At `.bin` or `.rtb` export, a connection key that is only temporarily undecryptable is retried once; if it still cannot be read, the `MC-3074` confirm names it as "cannot be read right now", and it is exported empty unless the user cancels and tries later. Rejected: aborting the export with an error.
+
+### MC-3112 — #495 a newly typed key is held in memory until encrypted; it is saved plain only if the app leaves first, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion, Gate 1 finding F5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `MC-3071`, `#495`.
+
+**What the maintainer chose.** "Memory first, plain only on exit (Recommended)". On Android, a typed connection key is held in memory until encryption and its verification finish, and only the encrypted form is saved. If the app is hidden or closed before encryption finishes, the key is saved plain so it is never lost, and the next boot encrypts it; plaintext reaches disk only in that race. Rejected: accepting that a background save may write the plain key once and keep it in a store2 restore point; and holding the key in memory only, losing it if the app dies before encryption finishes.

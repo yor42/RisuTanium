@@ -4059,7 +4059,7 @@ export const languageEnglish = {
     applyAdditionalParamsToAll: "Apply Additional Parameters to All Models",
     localToggles: "Local Toggles",
 
-    // Backup & Files panel, asset cache integrity, the OPFS copy back, and account-migration notices
+    // Backup & Files panel, asset cache integrity, and account-migration notices
     staleAccountProfileNotice:
         "This browser profile used RisuAccount sync, which this app does not support.\n\nWhat you see now is the data this browser stored before it turned on sync. Other browsers or devices may have changed your data since then. Your account's data is still on RisuAccount.\n\nIf what you see may hold anything your account lacks, make a local backup of it before importing anything.\n\nTo bring your account's data here, sign in on an upstream RisuAI, make a local backup (.bin), and import it here. On a self-hosted or local upstream, first go to Advanced Settings, turn on \"Show Unrecommended Settings\", then untick \"Skip Saving Assets on Web Sync\", or images are left out. On risuai.xyz, a full backup made while signed in cannot be imported here; the import screen names the alternatives. The migration guide has the details.\n\nPressing OK reloads the app.",
     keiImageProviderUnavailable: "The \"Kei\" image provider is not available in this app. Choose another image provider in settings.",
@@ -4076,7 +4076,6 @@ export const languageEnglish = {
     forkTermsOfService: "Terms of Service",
     forkPrivacyPolicy: "Privacy Policy",
     forkLegalLinksLabel: "Legal documents",
-    opfsCopyBackProgress: (done: number, total: number) => `Moving your data to browser storage... (${done} / ${total}). Keep this tab open until it finishes.`,
     saveReadFailed: "RisuTanium could not read your saved data from storage, so it opened nothing and changed nothing. Reload the page to try again. If this keeps happening, check that the disk or the server the data is on can be reached.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'the pointer to your current save'
@@ -4119,7 +4118,6 @@ export const languageEnglish = {
     saveLeftoverNotice: "RisuTanium found unused save data left behind by an interrupted save or restore. It does no harm. You can remove it in the clean-up in the settings.",
     saveMainFileLeftNotice: "Your data has moved to a new format, but the old save file is too large for this server to move aside. An upstream version of RisuAI opening the same data may open that old file. The clean-up in the settings keeps it safe until you delete it.",
     staticBuildUnsupported: "RisuTanium no longer runs from a plain web host. Use the Android or desktop app, or the page the RisuTanium Node server serves.",
-    opfsReadOnlyNotice: "RisuTanium is running from a temporary copy of your data this time, so it will not save changes, and restoring a backup or cleaning up storage is not available. Your data is not lost. Close other tabs of this app and restart it so the data can be moved to browser storage.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 character" : `${count} characters`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 other part this version cannot read" : `${count} other parts this version cannot read`,
     legacyPartialNotice: (items: string[]) =>

@@ -36,10 +36,6 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormal: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
-vi.mock(import('src/ts/storage/store/appStore'), () => ({
-    pageStoreIsOpfsTransitional: async () => false,
-}) as unknown as typeof import('src/ts/storage/store/appStore'))
-
 //#endregion
 
 import { DBState, savingStoppedReason, frozenSaveKeysStore } from '../../ts/stores.svelte'
@@ -60,7 +56,7 @@ function mountIcon(): HTMLElement {
 }
 
 const branches: Array<[string, () => void]> = [
-    ['read-only page', () => setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })],
+    ['read-only page', () => setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })],
     ['stopped saving', () => savingStoppedReason.set('replaced')],
     ['frozen chaId', () => frozenSaveKeysStore.set([{ names: ['A', 'B'] } as unknown as FrozenSaveKeyInfo])],
     ['held save', () => heldSaveStore.set([{ name: 'Held', kind: 'unusable-id', archived: false }] as never)],

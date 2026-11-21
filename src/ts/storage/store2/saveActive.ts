@@ -33,7 +33,7 @@ export interface LineageBase {
 /**
  * The descent baseline of a loop whose store can carry several pages (indexeddb and node). The record is replaced
  * whole, only by the boot seed, a judged `ok` or an own landed commit; `'unknown'` is the fail-closed default.
- * Tauri, the kit and the opfs-transitional store never get one, so their loops judge as before.
+ * Tauri and the kit never get one, so their loops judge as before.
  */
 export interface Store2Lineage {
     base: LineageBase | 'unknown'

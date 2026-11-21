@@ -626,10 +626,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
     }
 
     /** A page whose store2 backend is not available: the legacy profile may be read, never written, and never over a store2 profile. */
-    async function readOnlyRow(session: Store2Session, reason: 'opfs-transitional' | 'server-capability' | 'backend-unavailable', detail: string): Promise<Round> {
-        if (reason === 'opfs-transitional') {
-            return legacyReadOnly(reason)
-        }
+    async function readOnlyRow(session: Store2Session, reason: Store2LegacyReadOnlyReason, detail: string): Promise<Round> {
         raise({ name: reason, detail })
         let commitKeyBytes: Uint8Array | null
         try {

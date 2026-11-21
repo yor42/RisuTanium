@@ -8,7 +8,6 @@
   import { storeAssetLimitBytes } from "src/ts/storage/assetLimit";
   import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
   import { heldSaveStore } from "src/ts/storage/saveHold";
-  import { pageStoreIsOpfsTransitional } from "src/ts/storage/store/appStore";
 
   function heldMessage(held: { name: string, kind: 'unusable-id' | 'waiting', archived: boolean }[]){
     const waiting = held.filter((item) => item.kind === 'waiting')
@@ -23,23 +22,10 @@
     return parts.join('\n\n')
   }
 
-  // A page that runs from OPFS this time never starts the save loop, so its
-  // state comes from the page's storage mode. The component is created before
-  // boot decides the mode, so it follows the store, not a value read once.
+  // A read-only page never starts the save loop, so its state comes from the
+  // page's storage mode. The component is created before boot decides the
+  // mode, so it follows the store, not a value read once.
   const readOnlyPage = $derived($pageStorageModeStore.kind === 'read-only')
-
-  // The OPFS page is read-only for a reason a restart fixes and sets the read-only mode too, so the store is asked
-  // first; any other read-only page was opened read-only by the store2 boot and gets the neutral words.
-  async function readOnlyMessage(){
-    let opfs = false
-    try{
-      opfs = await pageStoreIsOpfsTransitional()
-    }
-    catch{
-      opfs = false
-    }
-    return opfs ? language.opfsReadOnlyNotice : language.store2Boot.readOnlyRefusal
-  }
 
   function savingStoppedMessage(reason: string){
     switch(reason){
@@ -63,8 +49,8 @@
 </script>
 
 {#if readOnlyPage}
-  <button class="absolute top-3 right-3 z-10 text-bgcolor bg-draculared hover:ring-2 hover:ring-textcolor p-2 rounded-sm" aria-label={language.savingIssueDetails} onclick={async () =>{
-      alertNormal(await readOnlyMessage())
+  <button class="absolute top-3 right-3 z-10 text-bgcolor bg-draculared hover:ring-2 hover:ring-textcolor p-2 rounded-sm" aria-label={language.savingIssueDetails} onclick={() =>{
+      alertNormal(language.store2Boot.readOnlyRefusal)
   }}>
       <OctagonAlert size={24} aria-hidden="true" />
   </button>

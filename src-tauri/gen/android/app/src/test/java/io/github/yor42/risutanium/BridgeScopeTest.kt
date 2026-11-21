@@ -438,4 +438,61 @@ class BridgeScopeTest {
     assertNull(toCommand("keepAlive", "requestOpenTarget", listOf(null), null))
     assertNull(toCommand("keepAlive", "openTarget", emptyList(), null))
   }
+
+  @Test
+  fun aKeyVaultCallBecomesACommandAndABadArgumentListWithAnIdIsAnsweredNotDropped() {
+    assertEquals(BridgeCommand.VaultWrap(1, "SYNTH-KEY-1234"), toCommand("keyVault", "wrap", listOf("SYNTH-KEY-1234"), 1))
+    assertEquals(BridgeCommand.VaultUnwrap(2, "AAAA"), toCommand("keyVault", "unwrap", listOf("AAAA"), 2))
+    assertEquals(BridgeCommand.VaultAvailable(3), toCommand("keyVault", "available", emptyList(), 3))
+    assertEquals(BridgeCommand.KeyVaultMalformed(4, "wrap"), toCommand("keyVault", "wrap", emptyList(), 4))
+    assertEquals(BridgeCommand.KeyVaultMalformed(4, "wrap"), toCommand("keyVault", "wrap", listOf(5), 4))
+    assertEquals(BridgeCommand.KeyVaultMalformed(5, "unwrap"), toCommand("keyVault", "unwrap", listOf("a", "b"), 5))
+    assertEquals(BridgeCommand.KeyVaultMalformed(6, "available"), toCommand("keyVault", "available", listOf("a"), 6))
+  }
+
+  @Test
+  fun aKeyVaultCallWithoutAnIntegerIdOrWithAnUnknownMethodIsDropped() {
+    assertNull(toCommand("keyVault", "wrap", listOf("SYNTH-KEY-1234"), null))
+    assertNull(toCommand("keyVault", "wrap", emptyList(), null))
+    assertNull(toCommand("keyVault", "unwrap", listOf("AAAA"), "3"))
+    assertNull(toCommand("keyVault", "unwrap", listOf("AAAA"), 1.5))
+    assertNull(toCommand("keyVault", "delete", emptyList(), 1))
+  }
+
+  @Test
+  fun aVaultReplyNamesItsMethodAndEscapesWhatTheHostMustNotMisread() {
+    assertEquals(
+      "{\"id\":7,\"method\":\"keyVault.wrap\",\"vault\":\"ok\",\"value\":\"QUJD\"}",
+      encodeVaultReply(7, "keyVault.wrap", VaultResult.Value("QUJD"))
+    )
+    assertEquals(
+      "{\"id\":7,\"method\":\"keyVault.available\",\"vault\":\"ok\",\"value\":false}",
+      encodeVaultReply(7, "keyVault.available", VaultResult.Flag(false))
+    )
+    assertEquals(
+      "{\"id\":8,\"method\":\"keyVault.unwrap\",\"vault\":\"error\",\"code\":\"invalidated\"}",
+      encodeVaultReply(8, "keyVault.unwrap", VaultResult.Error(VaultErrorCode.INVALIDATED))
+    )
+    val text = "q\"b\\n\nl\u2028\u2029t\tc\u0001\uD83D\uDD11\uD55C"
+    assertEquals(
+      "{\"id\":1,\"method\":\"keyVault.unwrap\",\"vault\":\"ok\",\"value\":\"q\\\"b\\\\n\\u000al\\u2028\\u2029t\\u0009c\\u0001\uD83D\uDD11\uD55C\"}",
+      encodeVaultReply(1, "keyVault.unwrap", VaultResult.Value(text))
+    )
+  }
+
+  @Test
+  fun onlyADebugBuildThatWasAskedDeletesTheVaultKeys() {
+    assertTrue(shouldDeleteVaultKeys(true, true))
+    assertFalse(shouldDeleteVaultKeys(true, false))
+    assertFalse(shouldDeleteVaultKeys(false, true))
+    assertFalse(shouldDeleteVaultKeys(false, false))
+  }
+
+  @Test
+  fun aDroppedMessageIsLoggedByClassNameOnly() {
+    val line = droppedMessageLog(IllegalArgumentException("Unterminated string at character 40 of {\"args\":[\"SYNTH-KEY-1234"))
+    assertFalse(line.contains("SYNTH-KEY"))
+    assertFalse(line.contains("Unterminated"))
+    assertTrue(line.contains("IllegalArgumentException"))
+  }
 }

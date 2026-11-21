@@ -104,7 +104,7 @@ describe('uncreatable names (T9)', () => {
         expect(creatableViolation({ kind: 'node', platform: 'posix' }, `assets/${NODE_LONG}`)).not.toBeNull()
         expect(creatableViolation({ kind: 'node', platform: 'posix' }, `assets/${LITERAL}`)).toBeNull()
         expect(creatableViolation({ kind: 'tauri', platform: 'windows' }, `assets/${TAURI_DOT}`)).not.toBeNull()
-        expect(creatableViolation({ kind: 'opfs-transitional', platform: 'posix' }, `assets/${IDB_DOT}`)).not.toBeNull()
+        expect(creatableViolation({ kind: 'indexeddb', platform: 'posix' }, `assets/${IDB_DOT}`)).not.toBeNull()
     })
 })
 
