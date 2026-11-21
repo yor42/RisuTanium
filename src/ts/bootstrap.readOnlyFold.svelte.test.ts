@@ -312,8 +312,7 @@ type ReadOnlyKind = 'node' | 'tauri' | 'opfs-transitional'
 /** Injects `store` as the page store of `kind`, registers the real dispatch and imports a fresh `loadData`. */
 async function boot(kind: ReadOnlyKind, store: MemoryByteStore): Promise<Run> {
     platformState.isTauri = kind === 'tauri'
-    const { injectAppStore, cleanUpCopiedBackOpfs } = await import('src/ts/storage/store/appStore')
-    vi.mocked(cleanUpCopiedBackOpfs).mockClear()
+    const { injectAppStore } = await import('src/ts/storage/store/appStore')
     injectAppStore(store, kind satisfies AppStoreKind)
     const dispatch = await registerRealDispatch({ kind, acknowledgeAlerts: true, injectBackend: false })
     const { loadData } = await import('src/ts/bootstrap')
@@ -349,11 +348,6 @@ function errors(run: Run): string[] {
     return run.alerts.filter(alert => alert.type === 'error').map(alert => alert.msg)
 }
 
-async function cleanUpCalls(): Promise<number> {
-    const { cleanUpCopiedBackOpfs } = await import('src/ts/storage/store/appStore')
-    return vi.mocked(cleanUpCopiedBackOpfs).mock.calls.length
-}
-
 /**
  * The page-life fact the boot keeps for the export. Imported by a name Vite cannot resolve ahead of the run, so the rows
  * that only check the notices load and fail on their own assertion on a build that has no such module.
@@ -369,7 +363,7 @@ beforeEach(() => {
     localStorage.clear()
     blockCache.clear()
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     getDbBackupsMock.mockReset().mockResolvedValue([])
     saveDbMock.mockReset().mockResolvedValue(undefined)
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
@@ -527,7 +521,6 @@ describe('loadData(): the web read-only boot reads the legacy profile and writes
         expect(errors(run)).toEqual([])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(store.files.has(MAIN_KEY)).toBe(false)
-        expect(await cleanUpCalls()).toBe(0)
         // The seeded empty profile decodes strictly: no partial notice and no fact.
         const { language } = await import('src/lang')
         expect(run.notices).toEqual([language.opfsReadOnlyNotice])
@@ -761,12 +754,12 @@ describe('loadData(): a main file that decodes only non-strictly is installed as
     })
 })
 
-describe('loadData(): the OPFS leftovers go only after a boot that decoded and installed the main file (T2-G2)', () => {
+describe('loadData(): a legacy profile boots read-only whichever way its main file decodes (T2-G2)', () => {
     test.each([
-        ['a main file that decodes strictly', 1, async () => encodeRisuSaveLegacy(baseDb())],
-        ['a main file that decodes only non-strictly', 1, async () => corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')],
-        ['a main file that does not decode (the backup route)', 0, async () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
-    ] as const)('T2-G2 guard: %s: the clean-up runs %s time(s)', async (_label, calls, build) => {
+        ['a main file that decodes strictly', async () => encodeRisuSaveLegacy(baseDb())],
+        ['a main file that decodes only non-strictly', async () => corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')],
+        ['a main file that does not decode (the backup route)', async () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
+    ] as const)('T2-G2 guard: %s: the profile installs and nothing is written', async (_label, build) => {
         const store = legacyStore({ main: await build(), backups: [[OLDEST, encodeRisuSaveLegacy(baseDb({ mainPrompt: 'from-oldest-backup' }))]] })
         const run = await boot('opfs-transitional', store)
 
@@ -774,19 +767,7 @@ describe('loadData(): the OPFS leftovers go only after a boot that decoded and i
         await settle()
 
         expect(get(run.loadedStore)).toBe(true)
-        expect(await cleanUpCalls()).toBe(calls)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-    })
-
-    test('T2-G2 guard: a seeded empty profile leaves the OPFS leftovers', async () => {
-        const store = legacyStore({ main: null })
-        const run = await boot('opfs-transitional', store)
-
-        await run.loadData()
-        await settle()
-
-        expect(get(run.loadedStore)).toBe(true)
-        expect(await cleanUpCalls()).toBe(0)
     })
 
     test('T2-G2 guard: the OPFS read-only notice is posted once, after the install', async () => {

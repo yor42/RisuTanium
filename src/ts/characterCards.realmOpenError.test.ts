@@ -282,13 +282,13 @@ afterEach(() => {
 })
 
 const BRANCHES = [
-    ['png', () => realmPng('Realm'), 'realm.openPng'],
-    ['charx', () => realmCharx('Realm'), 'realm.openPng'],
-    ['card json', () => hubJson('Hub'), 'realm.openCard'],
+    ['png', () => realmPng('Realm'), 'realm.openPng', 'Realm'],
+    ['charx', () => realmCharx('Realm'), 'realm.openPng', 'Realm'],
+    ['card json', () => hubJson('Hub'), 'realm.openCard', 'Hub'],
 ] as const
 
 describe('a Realm download that opens the card at once, when the open throws', () => {
-    test.each(BRANCHES)('regression reproducer: the %s branch reports the failure once, translated, and does not claim the import failed', async (_branch, response, site) => {
+    test.each(BRANCHES)('regression reproducer: the %s branch reports the failure once, translated, and does not claim the import failed', async (_branch, response, site, name) => {
         const failure = new TypeError('boom')
         h.open = async () => { throw failure }
         stubFetch(response())
@@ -298,7 +298,7 @@ describe('a Realm download that opens the card at once, when the open throws', (
 
         expect(h.changed).toEqual([0])
         expect(unhandled).toEqual([])
-        expect(h.errors).toEqual([language.errors.coldStorageRestoreUnreadable])
+        expect(h.errors).toEqual([language.errors.coldStorageNamedRestoreUnreadable(name)])
         expect(vi.mocked(recordCaughtError)).toHaveBeenCalledWith(site, failure)
     })
 
@@ -312,7 +312,7 @@ describe('a Realm download that opens the card at once, when the open throws', (
         await macrotask()
 
         expect(unhandled).toEqual([])
-        expect(h.errors).toEqual([language.errors.coldStorageRestoreUnreadable])
+        expect(h.errors).toEqual([language.errors.coldStorageNamedRestoreUnreadable('Realm')])
         expect(vi.mocked(recordCaughtError)).toHaveBeenCalledWith('realm.openPng', failure)
     })
 
@@ -326,7 +326,7 @@ describe('a Realm download that opens the card at once, when the open throws', (
         await macrotask()
 
         expect(unhandled).toEqual([])
-        expect(h.errors).toEqual([language.errors.coldStorageRestoreUnreadable])
+        expect(h.errors).toEqual([language.errors.coldStorageNamedRestoreUnreadable('Hub')])
         expect(vi.mocked(recordCaughtError)).toHaveBeenCalledWith('realm.openCard', failure)
     })
 })

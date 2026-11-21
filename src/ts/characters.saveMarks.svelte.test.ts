@@ -16,7 +16,7 @@
  * plan's purposes other than the new `restoreCharacterFromTrash` export) and
  * the REAL `characterSaveMarks.ts` / `dbChangeEffects.svelte.ts` /
  * `risuSave.ts`. Every other module `characters.ts` imports is mocked below,
- * following the pattern in `src/ts/globalApiFileCacheAv3.svelte.test.ts` and
+ * following the pattern in `src/ts/globalApi.saveSequence.svelte.test.ts` and
  * `src/ts/process/tests/sendChatColdGuard.svelte.test.ts`.
  */
 import { flushSync } from 'svelte'

@@ -60,6 +60,8 @@ export interface RtbInstallDeps {
     copy(plan: RtbInstallPlan, hold: RestoreHold): Promise<CopyEnd>
     /** Passed to the copy by the default `copy`. */
     copyDeps?: Partial<RtbCopyDeps>
+    /** Replaces the installing wait, for a run that reports on the task card; the start-up restore passes none. */
+    installing?(): void
     baseManifest(backend: Store2Backend, read: Store2Read): Promise<BaseManifest>
     planRestore(input: RestorePlanInput): RestoreRequest
     /** The facts of a landed end, built after the commit returned. */
@@ -268,7 +270,11 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
         await clearPluginGrants(plan, deps.sideBackends)
 
         // I4: the commit.
-        deps.wait(language.rtbRestoreInstalling)
+        if (deps.installing !== undefined) {
+            deps.installing()
+        } else {
+            deps.wait(language.rtbRestoreInstalling)
+        }
         const guarded: Committer = rtbGuardedCommitter(plan.target.committer, hold.busy)
         commitStarted = true
         let result: CommitResult

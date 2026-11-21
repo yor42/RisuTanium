@@ -270,6 +270,21 @@ describe('the shared prepare steps (new seam)', () => {
         expect(Object.hasOwn(off, 'ltmSettings')).toBe(false)
     })
 
+    test('T26 guard: the import overlay keeps the file\'s colour scheme and sets only the page\'s active pack', () => {
+        const scheme = { bgcolor: '#101010', darkbg: '#202020', borderc: '#303030', selected: '#404040', draculared: '#505050', textcolor: '#606060', textcolor2: '#707070', darkBorderc: '#808080', darkbutton: '#909090', type: 'dark' }
+        const custom = { ...scheme, bgcolor: '#111111' }
+        const database = { colorSchemeName: 'ocean', colorScheme: scheme, customColorScheme: custom } as unknown as Database
+        const before = structuredClone(database)
+
+        applyImportOverlay(database, { activeThemePack: 'builtin:origin-navy' })
+
+        expect(database.colorSchemeName).toBe(before.colorSchemeName)
+        expect(database.colorScheme).toEqual(before.colorScheme)
+        expect(database.customColorScheme).toEqual(before.customColorScheme)
+        expect(database.activeThemePack).toBe('builtin:origin-navy')
+        expect(Object.hasOwn(database, 'themePackSchemeSnapshot')).toBe(false)
+    })
+
     test('repairImportRoot completes the containers the encoder reads', () => {
         const tree = { characters: [] } as unknown as Database
         repairImportRoot(tree)

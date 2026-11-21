@@ -1,7 +1,7 @@
 import { alertError } from '../alert'
 import { language } from 'src/lang'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
-import { backupPickerAccept, LoadLocalBackup, LoadPickedLocalBackup, loadPickedBackupAtBoot, type OpenedBin } from './backuplocal'
+import { backupPickerAccept, LoadLocalBackup, LoadOpenedLocalBackup, LoadPickedLocalBackup, loadPickedBackupAtBoot, type OpenedBin } from './backuplocal'
 import type { ImportSource } from '../importSource'
 import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/bootImport'
 import type { OperationOutcome } from './operationEnd'
@@ -52,6 +52,8 @@ export interface RouterDeps {
 export interface PickedRoute {
     /** The Welcome restore: the `.bin` restore completes first setup; the `.rtb` restore skips the newer-data question. */
     firstRun?: boolean
+    /** The restore shows its running phases on the task card, with Cancel offered until its first write. */
+    card?: true
 }
 
 /** The picker's route: also told when a file has been picked. */
@@ -66,11 +68,24 @@ export interface PickerRoute extends PickedRoute {
  */
 function realRouterDeps(route: PickedRoute): RouterDeps {
     return {
-        loadBin: (file) => route.firstRun === true ? LoadPickedLocalBackup(file, { completeFirstSetup: true }) : LoadPickedLocalBackup(file),
+        loadBin: (file) => {
+            const restore = route.firstRun === true ? { completeFirstSetup: true as const } : undefined
+            if (route.card === true) {
+                return LoadPickedLocalBackup(file, restore, { card: true })
+            }
+            return restore === undefined ? LoadPickedLocalBackup(file) : LoadPickedLocalBackup(file, restore)
+        },
         loadRtb: async (file) => {
             const { runRtbRestore, pickedRtbOf } = await import('./rtbRestoreEntry')
-            if (route.firstRun === true) {
-                const run: RtbRunOptions = { firstRun: true }
+            if (route.firstRun === true || route.card === true) {
+                // `runRtbRestore` reads `card` once the `.rtb` restore shows its own card; until then the field is ignored.
+                const run: RtbRunOptions = {}
+                if (route.firstRun === true) {
+                    run.firstRun = true
+                }
+                if (route.card === true) {
+                    run.card = true
+                }
                 return runRtbRestore(pickedRtbOf(file), {}, run)
             }
             return runRtbRestore(pickedRtbOf(file))
@@ -215,11 +230,20 @@ export interface OpenedRouterDeps {
     loadRtb(opened: OpenedBin): Promise<{ outcome: OperationOutcome }>
 }
 
-function realOpenedRouterDeps(): OpenedRouterDeps {
+/** How an opened file is routed: with `card` each restore shows its running phases on the task card. */
+export interface OpenedRoute {
+    card?: true
+}
+
+/** With no route the calls are today's plain calls, with no extra argument. */
+function realOpenedRouterDeps(route: OpenedRoute): OpenedRouterDeps {
     return {
-        loadBin: (opened) => LoadLocalBackup(undefined, opened),
+        loadBin: (opened) => route.card === true ? LoadOpenedLocalBackup(opened, { card: true }) : LoadLocalBackup(undefined, opened),
         loadRtb: async (opened) => {
             const { runRtbRestore, pickedRtbOfSource } = await import('./rtbRestoreEntry')
+            if (route.card === true) {
+                return runRtbRestore(pickedRtbOfSource(opened), {}, { card: true })
+            }
             return runRtbRestore(pickedRtbOfSource(opened))
         },
     }
@@ -230,8 +254,8 @@ function realOpenedRouterDeps(): OpenedRouterDeps {
  * (each restore opens its own, and a held one would refuse it), never closes the source, and never rejects: the caller
  * closes the source after the restore returned.
  */
-export async function routeOpenedBackup(opened: OpenedBin, deps: Partial<OpenedRouterDeps> = {}): Promise<{ outcome: OperationOutcome }> {
-    const calls: OpenedRouterDeps = { ...realOpenedRouterDeps(), ...deps }
+export async function routeOpenedBackup(opened: OpenedBin, deps: Partial<OpenedRouterDeps> = {}, route: OpenedRoute = {}): Promise<{ outcome: OperationOutcome }> {
+    const calls: OpenedRouterDeps = { ...realOpenedRouterDeps(route), ...deps }
     const kind = await readBackupKindOfSource(opened.source)
     try {
         switch (kind) {
@@ -287,7 +311,7 @@ export function loadBackupFromPicker(deps: Partial<RouterDeps> = {}, route: Pick
             } catch (error) {
                 console.error(error)
             }
-            const end = await routePickedBackup(file, deps, { firstRun: route.firstRun })
+            const end = await routePickedBackup(file, deps, { firstRun: route.firstRun, card: route.card })
             settle(end.outcome)
         }
         input.addEventListener('cancel', () => {

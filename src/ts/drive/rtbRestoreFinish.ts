@@ -44,6 +44,8 @@ export interface RtbFinishDeps {
     /** An OK-only notice, resolved when the person dismisses it. */
     notice(text: string): Promise<void>
     wait(text: string): void
+    /** Takes the task card away: after the side data, before the first notice or done wait, and after the catch's wait. A run without a card passes none. */
+    leave?(): void
     markReload(): void
     reload(): Promise<void>
 }
@@ -166,10 +168,20 @@ export function leftOutLines(plan: Pick<RestorePlan, 'notice'>, results: readonl
     return lines
 }
 
+/** A card that cannot be taken away never changes how the restore ends. */
+function leaveCard(deps: Pick<RtbFinishDeps, 'leave'>): void {
+    try {
+        deps.leave?.()
+    } catch (error) {
+        console.error(error)
+    }
+}
+
 export async function finishRtbRestore(plan: RtbFinishPlan, hold: RtbFinishHold, landed: RtbFinishLanded, options: Partial<RtbFinishDeps> = {}): Promise<void> {
     const deps: RtbFinishDeps = { ...realFinishDeps(), ...options }
     try {
         const results = await restoreSides(plan, deps)
+        leaveCard(deps)
         if (plan.notice.outsideEntryCount > 0 || plan.notice.unreadableLists > 0) {
             console.warn(`rtb restore: ${plan.notice.outsideEntryCount} entries outside the known sections, ${plan.notice.unreadableLists} unreadable lists`)
         }
@@ -200,5 +212,6 @@ export async function finishRtbRestore(plan: RtbFinishPlan, hold: RtbFinishHold,
         } catch (alertError) {
             console.error(alertError)
         }
+        leaveCard(deps)
     }
 }

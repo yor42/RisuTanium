@@ -17,12 +17,14 @@ export interface DeclContext {
     at: string[]
 }
 
-/** One declaration; `vs`/`ve` are the offsets of its value in the walked text, so `css.slice(vs, ve) === value`. */
+/** One declaration; `vs`/`ve` are the offsets of its value in the walked text, so `css.slice(vs, ve) === value`; `ds`/`de` span the whole declaration, from its property name to the terminating `;` or `}` (exclusive). */
 export interface Decl {
     prop: string
     value: string
     vs: number
     ve: number
+    ds: number
+    de: number
     ctx: DeclContext
 }
 
@@ -79,7 +81,7 @@ export function decls(css0: string): Decl[] {
         let vs = vs0, ve = b
         while (/\s/.test(css[vs])) vs++
         while (ve > vs && /\s/.test(css[ve - 1])) ve--
-        out.push({ prop: m[2].toLowerCase(), value: css.slice(vs, ve), vs, ve, ctx: ctxNow() })
+        out.push({ prop: m[2].toLowerCase(), value: css.slice(vs, ve), vs, ve, ds: a + m[1].length, de: b, ctx: ctxNow() })
     }
     while (i < n) {
         const ch = css[i]

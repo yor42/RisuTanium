@@ -291,7 +291,7 @@ beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     saveDbMock.mockReset().mockResolvedValue(undefined)
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     putBackMock.mockReset()

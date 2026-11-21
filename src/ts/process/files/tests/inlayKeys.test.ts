@@ -8,6 +8,7 @@ import {
     decodeInlayId,
     encodeInlayId,
     inlayBodyKey,
+    inlayIdFromBodyKey,
     inlayIdFromMetaKey,
     inlayMetaKey,
     newBodyToken,
@@ -111,6 +112,26 @@ describe('the key of an inlay id', () => {
                 expect(keyA === keyB).toBe(a === b)
             }),
         )
+    })
+
+    test('a body key names its id: it round-trips with inlayBodyKey and a metadata key names none', () => {
+        for (const id of ['abc', 'a/b.c', 'Zz', 'é', 'x'.repeat(91)]) {
+            expect(inlayIdFromBodyKey(inlayBodyKey(id, TOKEN)!)).toBe(id)
+        }
+        expect(inlayIdFromBodyKey(inlayMetaKey('abc')!)).toBeNull()
+        expect(inlayIdFromBodyKey('assets/abc.0123456789abcdef')).toBeNull()
+    })
+
+    test('a body key with a malformed token or a non-canonical encoding names no id', () => {
+        expect(inlayIdFromBodyKey('inlays/b-abc.0123456789abcde')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-abc.0123456789abcdef0')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-abc.0123456789ABCDEF')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-abc')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-abc.')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-A.0123456789abcdef')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-%2f.0123456789abcdef')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-.0123456789abcdef')).toBeNull()
+        expect(inlayIdFromBodyKey('inlays/b-a.b.0123456789abcdef')).toBeNull()
     })
 
     test('a body token is 16 lower-case hex digits and differs between calls', () => {

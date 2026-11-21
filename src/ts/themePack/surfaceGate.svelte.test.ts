@@ -12,6 +12,7 @@ import {
     installThemePackGate,
     registerThemePackElement,
     resetThemePackGateForTests,
+    setThemePackElementBase,
     shownSurface,
     syncThemePackMedia,
 } from './surfaceGate.svelte'
@@ -382,5 +383,57 @@ describe('the light base: the attribute value and the tone follow the base the e
         syncThemePackMedia()
         expect(value()).toBe('')
         expect(get(packBaseTone)).toBe('dark')
+    })
+})
+
+describe('T16 a null base is shape mode: the element is on, but no base applies', () => {
+    // New behaviour: before the null base every registered element that was on set the attribute and the tone.
+    const ATTRIBUTE = 'data-theme-pack-base'
+
+    function shapeProbe(): HTMLStyleElement {
+        const element = document.createElement('style')
+        element.setAttribute('data-theme-pack', 'chat')
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        registerThemePackElement(element, 'chat', null)
+        return element
+    }
+
+    test('a chat element with a null base is on, and sets no attribute and no tone', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const element = shapeProbe()
+        syncThemePackMedia()
+        expect(element.getAttribute('media')).toBe('all')
+        expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
+    })
+
+    test('re-registering the same element under a base turns the attribute on, and back to null turns it off', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const element = shapeProbe()
+        syncThemePackMedia()
+        setThemePackElementBase(element, 'light')
+        syncThemePackMedia()
+        expect(document.documentElement.getAttribute(ATTRIBUTE)).toBe('light')
+        expect(get(packBaseTone)).toBe('light')
+        setThemePackElementBase(element, null)
+        syncThemePackMedia()
+        expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
+        expect(element.getAttribute('media')).toBe('all')
+    })
+
+    test('setting the base of an element that is not registered does nothing', () => {
+        installThemePackGate(() => cover.on)
+        declareSurface('chat')
+        const element = document.createElement('style')
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        setThemePackElementBase(element, 'dark')
+        syncThemePackMedia()
+        expect(element.getAttribute('media')).toBe('not all')
+        expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(false)
     })
 })

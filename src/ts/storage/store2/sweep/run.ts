@@ -1,9 +1,8 @@
 import type { ByteStore, CheckOnlyEntry, GuardedOperations } from '../../store/contract'
 import { StoreVersionConflictError } from '../../store/errors'
 import { AssetDeleteHoldOverlapError } from '../../assetDeleteHold'
-import { Store2BackendError, Store2CommitConflictError, Store2StalePageError } from '../backend/errors'
 import {
-    REMOVE_BATCH_MAX, bytesTokenOf, revisionTokenOf, tokenMatches, type CompareToken, type Store2Backend,
+    REMOVE_BATCH_MAX, revisionTokenOf, type Store2Backend,
 } from '../backend/types'
 import type { GateOpen, GateRefusal } from '../boot'
 import { COMMIT_KEY, FENCE_KEY, SWEEP_KEY } from '../format'
@@ -13,6 +12,7 @@ import { ageOf, decideAge, type AgeCandidate, type AgeClock, type AgeDecision, t
 import { AssetKeySet } from './assetKey'
 import { createBackendClosureReader } from './backendReader'
 import { checkFences } from './fences'
+import { gateFreshness } from './fresh'
 import { buildClosureAssetKeepSet, legacyFilesOf } from './keepSet'
 import { decideAutoSweep, type AssetCount } from './limit'
 import { SWEEP_FUTURE_SKEW_MS, SWEEP_MIN_AGE_MS } from './params'
@@ -197,58 +197,17 @@ function stopped(tally: Tally, reason: SweepStopReason): Ended {
     return new Ended({ status: 'done', ...tally, stopped: reason })
 }
 
-/** Whether a read token is the gate's revision token: the same kind and the same revision, never the revision alone. */
-function sameRevision(gateToken: CompareToken, read: CompareToken): boolean {
-    return gateToken.kind === 'revision' && read.kind === 'revision' && gateToken.revision === read.revision
-}
-
 /**
  * Whether the commit key and the fence are still what the gate read, in the check that precedes a batch or the record
- * write. A moved commit key is `moved` (rebuild the keep-set); a moved fence, a stale page or a failed probe ends the pass.
- * A Node page compares the revisions of the gate's tokens (a token of another kind counts as moved) and never byte
- * tokens, which a revision token cannot be compared with.
+ * write. A moved commit key is `moved` (rebuild the keep-set); a moved fence, a stale page, a failed probe or an idle
+ * session ends the pass. The checks are `gateFreshness`.
  */
 async function checkFresh(env: AssetSweepEnv, gate: GateOpen, backend: Store2Backend, tally: Tally): Promise<'fresh' | 'moved'> {
-    const { session } = env
-    const node = session.kind === 'node'
-    try {
-        const fence = await backend.readFence()
-        if (node ? !sameRevision(gate.fenceToken, fence.token) : !tokenMatches(gate.fenceToken, fence.bytes)) {
-            throw stopped(tally, 'fence-conflict')
-        }
-        if (session.kind === 'tauri') {
-            const bytes = bytesTokenOf(gate.commitToken).bytes
-            if (bytes === null) {
-                throw stopped(tally, 'probe-failed')
-            }
-            // The same bytes under the gate's own token: it succeeds only while the commit key is unchanged, and the
-            // native gate refuses it when a newer page has registered.
-            await backend.casCommit(gate.commitToken, bytes)
-        } else {
-            const commit = await backend.readCommit()
-            if (node ? !sameRevision(gate.commitToken, commit.token) : !tokenMatches(gate.commitToken, commit.bytes)) {
-                return 'moved'
-            }
-        }
-    } catch (error) {
-        if (error instanceof Ended) {
-            throw error
-        }
-        if (error instanceof Store2CommitConflictError) {
-            return 'moved'
-        }
-        if (error instanceof Store2StalePageError) {
-            throw stopped(tally, 'stale-page')
-        }
-        if (error instanceof Store2BackendError) {
-            throw stopped(tally, 'probe-failed')
-        }
-        throw error
+    const freshness = await gateFreshness(env.session, gate, backend)
+    if (freshness === 'fresh' || freshness === 'moved') {
+        return freshness
     }
-    if (session.idleReason !== null) {
-        throw stopped(tally, 'idle')
-    }
-    return 'fresh'
+    throw stopped(tally, freshness)
 }
 
 /** The names under `assets/` (top level only), their count and, on Node, the revision each is listed at (null: none is known). */

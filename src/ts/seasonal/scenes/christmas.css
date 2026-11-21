@@ -1,0 +1,101 @@
+/*
+  Seasonal scene: christmas. Classes are prefixed rt-xm-. Poses: [data-rt-pose="pre" | "play" | "final"] on each scene
+  root (mark svg, snow layer, hat). The Web Animations timeline (fill: both) drives "play"; "final" is the static end
+  pose that finish() applies instantly. Tone: the host stamps [data-rt-sw-tone] on the mark slot, stage and root, so
+  every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Mark (in ctx.markSlot) ---------- */
+.rt-xm-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-xm-mark * { transform-box: view-box; transform-origin: 0 0; }
+
+.rt-xm-mark .rt-xm-ink { fill: #fff; stroke: #fff; stroke-width: 0.5; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-ink { fill: #0f172a; stroke: #0f172a; }
+
+/* Tree palette: a teal-leaning pine green. Dark: bright on the dark canvas. Light: deeper, with a mint hole. */
+.rt-xm-mark .rt-xm-g0 { stop-color: #34d399; }
+.rt-xm-mark .rt-xm-g1 { stop-color: #0f766e; }
+.rt-xm-mark .rt-xm-tree-frame { stroke: #0b4f4a; stroke-width: 0.8; stroke-linejoin: round; }
+.rt-xm-mark .rt-xm-tree-hole { fill: #083b38; }
+.rt-xm-mark .rt-xm-tree-mid { fill: #ccfbf1; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-g0 { stop-color: #10b981; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-g1 { stop-color: #115e59; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-tree-frame { stroke: #134e4a; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-tree-hole { fill: #ccfbf1; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-tree-mid { fill: #0f766e; }
+
+.rt-xm-mark .rt-xm-trunk { fill: #9a6a3a; transform-origin: 0 30.5px; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-trunk { fill: #7c4a1e; }
+
+.rt-xm-mark .rt-xm-orn circle:first-child { stroke-width: 1; }
+.rt-xm-mark .rt-xm-orn-r circle:first-child { fill: #ff4d6d; stroke: #8f1330; }
+.rt-xm-mark .rt-xm-orn-g circle:first-child { fill: #ffd166; stroke: #8a5a00; }
+.rt-xm-mark .rt-xm-orn-c circle:first-child { fill: #38d9ff; stroke: #0b5e73; }
+.rt-xm-mark .rt-xm-orn-hi { fill: #fff; opacity: 0.75; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-orn-r circle:first-child { fill: #e11d48; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-orn-g circle:first-child { fill: #f59e0b; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-orn-c circle:first-child { fill: #0891b2; }
+
+.rt-xm-mark .rt-xm-star path { fill: #fde68a; stroke: #ca8a04; stroke-width: 1.4; stroke-linejoin: round; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-star path { fill: #fbbf24; stroke: #92400e; }
+.rt-xm-mark .rt-xm-spark path { fill: none; stroke: #fff4cf; stroke-width: 2.6; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-xm-mark .rt-xm-spark path { stroke: #d97706; }
+
+/* Poses. pre/play: the idle mark; the timeline brings the rest in. */
+.rt-xm-mark .rt-xm-tree,
+.rt-xm-mark .rt-xm-trunk,
+.rt-xm-mark .rt-xm-orn,
+.rt-xm-mark .rt-xm-star,
+.rt-xm-mark .rt-xm-spark { opacity: 0; }
+.rt-xm-mark[data-rt-pose="final"] .rt-xm-flip { transform: scale(1, -1); }
+.rt-xm-mark[data-rt-pose="final"] .rt-xm-brand { opacity: 0; }
+.rt-xm-mark[data-rt-pose="final"] .rt-xm-tree,
+.rt-xm-mark[data-rt-pose="final"] .rt-xm-trunk,
+.rt-xm-mark[data-rt-pose="final"] .rt-xm-orn,
+.rt-xm-mark[data-rt-pose="final"] .rt-xm-star { opacity: 1; }
+
+/* ---------- Snow (in ctx.stage) ---------- */
+.rt-xm-snow { position: absolute; inset: 0; pointer-events: none; }
+.rt-xm-snow[data-rt-pose="final"], .rt-xm-snow[data-rt-pose="pre"] { display: none; }
+.rt-xm-flake { position: absolute; left: 0; top: 0; display: block; border-radius: 50%; background: #f1f6ff; opacity: 0; will-change: transform, opacity; }
+[data-rt-sw-tone="light"] .rt-xm-flake { background: #9db3cf; }
+.rt-xm-flake--star { border-radius: 0; background: no-repeat center / 100% 100% url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-6 -6 12 12'%3E%3Cpath d='M0-5.4V5.4M-4.7-2.7L4.7 2.7M-4.7 2.7L4.7-2.7' stroke='%23f1f6ff' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E"); }
+[data-rt-sw-tone="light"] .rt-xm-flake--star { background: no-repeat center / 100% 100% url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-6 -6 12 12'%3E%3Cpath d='M0-5.4V5.4M-4.7-2.7L4.7 2.7M-4.7 2.7L4.7-2.7' stroke='%237f97b8' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E"); }
+
+/* Moon: a static radial gradient; only opacity and scale move. */
+.rt-xm-moon { position: absolute; display: block; border-radius: 50%; opacity: 0; overflow: hidden;
+  background: radial-gradient(circle at 38% 34%, #fff6cf, #fbe39a 62%, #f3cf6b); }
+/* No halo ring on dark. Light: a thin amber edge so the pale disc holds. */
+[data-rt-sw-tone="light"] .rt-xm-moon { box-shadow: 0 0 0 1px rgb(202 138 4 / 0.45); }
+.rt-xm-crater { position: absolute; display: block; border-radius: 50%; background: rgb(255 250 225 / 0.65); }
+.rt-xm-crater-a { left: 52%; top: 22%; width: 26%; height: 26%; }
+.rt-xm-crater-b { left: 24%; top: 58%; width: 18%; height: 18%; }
+.rt-xm-sleigh { position: absolute; left: 0; top: 0; display: block; opacity: 0; color: #0b1430; will-change: transform, opacity; }
+.rt-xm-sleigh--lit { color: #c9d8f5; }
+[data-rt-sw-tone="light"] .rt-xm-sleigh { color: #1e293b; }
+.rt-xm-sleigh svg { display: block; width: 100%; height: 100%; }
+
+/* ---------- Santa hat (in ctx.over via ctx.attachGame) ----------
+   viewBox 64x48 at 1.5em x 1.125em; anchor (30,44) on the "m" x-height top. The host adds role, tabindex and the
+   translate hops; the scene animates only the inner drop element. */
+.rt-xm-hat {
+  position: absolute;
+  z-index: 2;
+  right: -0.308em;
+  top: -0.636em;
+  width: 1.5em;
+  height: 1.125em;
+  display: block;
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rt-xm-hat[hidden] { display: none; }
+.rt-xm-hat[data-rt-sw-game="inactive"] { cursor: inherit; }
+.rt-xm-hat:focus { outline: none; }
+.rt-xm-hat:focus-visible { outline: 2px solid #7fe9ff; outline-offset: 1px; }
+[data-rt-sw-tone="light"] .rt-xm-hat:focus-visible { outline-color: #0e7490; }
+.rt-xm-hat-drop { display: block; width: 100%; height: 100%; transform-origin: 46.9% 91.7%; /* brim anchor 30,44 of 64x48 */ }
+.rt-xm-hat-drop svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-xm-hat[data-rt-pose="pre"] .rt-xm-hat-drop,
+.rt-xm-hat[data-rt-pose="play"] .rt-xm-hat-drop { opacity: 0; }

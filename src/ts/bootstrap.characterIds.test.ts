@@ -315,7 +315,7 @@ beforeEach(() => {
     world.setItemKeys.length = 0
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     dbState.current = baseDb({ characters: [] })
     getDbBackupsMock.mockReset().mockResolvedValue([])
     saveDbMock.mockClear()

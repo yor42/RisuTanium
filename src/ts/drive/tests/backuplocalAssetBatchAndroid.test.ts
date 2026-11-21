@@ -372,11 +372,45 @@ vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
 const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
 vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
 
+/** What a card restore reported to the seam, in order; `done` is -1 for a call that carries no amount. */
+interface SeamCall {
+    kind: 'phase' | 'bytes'
+    step: string
+    done: number
+    text: string | null
+}
+const seam = vi.hoisted(() => ({ calls: [] as SeamCall[] }))
+
+// The real card seam, recording the progress calls the restore makes on it. The legacy `LoadLocalBackup()` route never
+// builds a card, so the tests above run as before.
+vi.mock('src/ts/drive/restoreProgress', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/drive/restoreProgress')>()
+    return {
+        ...actual,
+        cardRestoreProgress: (...args: Parameters<typeof actual.cardRestoreProgress>) => {
+            const real = actual.cardRestoreProgress(...args)
+            return {
+                ...real,
+                get cancelRequested() { return real.cancelRequested },
+                phase(step: string, text: string | null) {
+                    seam.calls.push({ kind: 'phase', step, done: -1, text })
+                    real.phase(step, text)
+                },
+                bytes(step: string, done: number, total: number, text: string | null) {
+                    seam.calls.push({ kind: 'bytes', step, done, text })
+                    real.bytes(step, done, total, text)
+                },
+            }
+        },
+    }
+})
+
 //#endregion
 
 import { injectRestoreStore } from './restoreSupport'
+import { isRestoreCopyText, restoreCopyPercent } from './restoreWaitText'
 import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
-import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { LoadLocalBackup, LoadPickedLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
@@ -550,6 +584,7 @@ beforeEach(() => {
     fakeFs.reset()
     fakeFs.directories.add('assets')
     resetStore2ShellBox(shell)
+    seam.calls.length = 0
     setDatabaseMock.mockReset()
     alertErrorMock.mockReset()
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
@@ -1049,7 +1084,6 @@ describe('a restore on an Android page with several large-entry streams at once'
 
 describe('the message while the copies finish on an Android page', () => {
     const FINISHING = 'Finishing copying files...'
-    const PROGRESS = 'Loading local Backup...'
     const LARGE_SIZE = MIB + MIB / 2
 
     function waitTexts(): string[] {
@@ -1057,9 +1091,8 @@ describe('the message while the copies finish on an Android page', () => {
     }
 
     function lastProgressPercent(): number {
-        const texts = waitTexts().filter((text) => text.startsWith(PROGRESS))
-        const match = /\((\d+\.\d+)%\)/.exec(texts[texts.length - 1] ?? '')
-        return match === null ? Number.NaN : Number(match[1])
+        const texts = waitTexts().filter(isRestoreCopyText)
+        return restoreCopyPercent(texts[texts.length - 1] ?? '') ?? Number.NaN
     }
 
     function lastIndexWhere(texts: string[], matches: (text: string) => boolean): number {
@@ -1094,7 +1127,9 @@ describe('the message while the copies finish on an Android page', () => {
             expect(held[held.length - 1]).toBe(FINISHING)
             expect(held.filter((text) => text === FINISHING)).toHaveLength(1)
             // After the last entry was shown, not inside the loop.
-            expect(held.indexOf(FINISHING)).toBeGreaterThan(lastIndexWhere(held, (text) => text.startsWith(PROGRESS)))
+            const lastProgress = lastIndexWhere(held, isRestoreCopyText)
+            expect(lastProgress).toBeGreaterThanOrEqual(0)
+            expect(held.indexOf(FINISHING)).toBeGreaterThan(lastProgress)
             expect(shell.commits).toHaveLength(0)
             release.release()
             await restoring
@@ -1184,6 +1219,123 @@ describe('a restore on a desktop page', () => {
 
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.bigbad']))
+        expectCommittedOnce()
+    })
+})
+
+// The card's copy line (`LoadPickedLocalBackup(file, undefined, { card: true })`): a running byte sum that streams reading
+// beside the copy loop add up. RR = regression reproducer; the base has no card option, so no report is recorded.
+describe('the card copy line of a restore with streamed assets', () => {
+    const LARGE = 2.5 * MIB
+    const THIRD_SLICE = LARGE - 2 * WRITE_CHUNK_BYTES
+    const SMALL_NAMES = ['s1.png', 's2.png', 's3.png']
+
+    const largeBody = (index: number): Uint8Array => patterned(LARGE, index + 1)
+    const smallBody = (index: number): Uint8Array => filled(40, index + 1)
+
+    function backupWith(largeNames: string[]): Uint8Array {
+        return backupOf([
+            ...SMALL_NAMES.map((name, index): [string, Uint8Array] => [name, smallBody(index)]),
+            ...largeNames.map((name, index): [string, Uint8Array] => [name, largeBody(index)]),
+        ])
+    }
+
+    function startCardRestore(bytes: Uint8Array): Promise<unknown> {
+        const file = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+        const run = LoadPickedLocalBackup(file, undefined, { card: true })
+        lastRestore = run.then(() => undefined)
+        return run
+    }
+
+    // The copy line's reports; the check step's walk reports are a different line.
+    const bytesReports = (): SeamCall[] => seam.calls.filter((call) => call.kind === 'bytes' && call.step === 'copy')
+    const lastReported = (): number => bytesReports().at(-1)?.done ?? -1
+
+    function expectNeverDecreasing(): void {
+        const values = bytesReports().map((call) => call.done)
+        for (let i = 1; i < values.length; i++) {
+            expect(values[i], `report ${i} after ${values[i - 1]}`).toBeGreaterThanOrEqual(values[i - 1])
+        }
+    }
+
+    // BR-T13b (a), (b), (d). RR: base e07a6e889 has no card option and records no report.
+    test('BR-T13b: with two streams held and a third waiting for a slot, the line rises with the held streams\' own slices, never falls, and ends at the file size', async () => {
+        const names = ['l1.bin', 'l2.bin', 'l3.bin']
+        const bytes = backupWith(names)
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+
+        const restoring = startCardRestore(bytes)
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(2) })
+        await settleTimers()
+        expect(streamTrack.held.size).toBe(2)
+        const v0 = lastReported()
+        const before = seam.calls.length
+        expect(v0, 'the card reported before the hold').toBeGreaterThan(0)
+        release.release()
+        await restoring
+
+        // (a) The first rise after the release is one held stream's third slice, before the waiting stream has moved.
+        const firstRise = bytesReports().filter((call) => seam.calls.indexOf(call) >= before).find((call) => call.done > v0)
+        expect(firstRise?.done).toBe(v0 + THIRD_SLICE)
+        // (b)
+        expectNeverDecreasing()
+        // (d)
+        expect(lastReported()).toBe(bytes.length)
+        names.forEach((name, index) => expect(sameBytes(storedBytes(name), largeBody(index))).toBe(true))
+        SMALL_NAMES.forEach((name, index) => expect(sameBytes(storedBytes(name), smallBody(index))).toBe(true))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expectCommittedOnce()
+    })
+
+    // BR-T13b (c): the drain keeps the line moving under the `files` step.
+    test('BR-T13b: while both streams are held after the loop, the line rises during the drain and only the last report is the file size', async () => {
+        const names = ['l1.bin', 'l2.bin']
+        const bytes = backupWith(names)
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+
+        const restoring = startCardRestore(bytes)
+        await waitForProgress(() => {
+            expect(seam.calls.some((call) => call.kind === 'phase' && call.step === 'files')).toBe(true)
+        })
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(2) })
+        await settleTimers()
+        const filesAt = seam.calls.findIndex((call) => call.kind === 'phase' && call.step === 'files')
+        const filesValue = seam.calls.slice(0, filesAt).filter((call) => call.kind === 'bytes').at(-1)?.done ?? -1
+        release.release()
+        await restoring
+
+        const reports = bytesReports()
+        const afterFiles = seam.calls.slice(filesAt).filter((call) => call.kind === 'bytes')
+        // The held streams' two unread third slices are still outstanding at the `files` phase.
+        expect(filesValue).toBe(bytes.length - 2 * THIRD_SLICE)
+        // (c) A report strictly between the `files` value and the file size, before the final report.
+        const beforeFinal = afterFiles.slice(0, -1)
+        expect(beforeFinal.some((call) => call.done > filesValue && call.done < bytes.length)).toBe(true)
+        expect(reports.at(-1)?.done).toBe(bytes.length)
+        expectNeverDecreasing()
+        expectCommittedOnce()
+    })
+
+    // BR-T13: the desktop's inline streamed path (no pipeline), CG for the legacy texts, RR for the card line.
+    test('BR-T13: a streamed desktop asset read in slices raises the line by each slice, never falling', async () => {
+        osBox.os = 'windows'
+        const bytes = backupOf([['big.bin', filled(4 * CHUNK_MAX + 5, 9)]])
+
+        await startCardRestore(bytes)
+
+        const values = bytesReports().map((call) => call.done)
+        // The entry's header is counted as it is handed on; every later rise before the end is one slice.
+        const afterHeader = values.indexOf(15)
+        expect(afterHeader).toBeGreaterThanOrEqual(0)
+        const rises = [...new Set(values.slice(afterHeader).filter((done) => done > 15 && done < bytes.length))]
+        expect(rises.length).toBeGreaterThanOrEqual(4)
+        expectNeverDecreasing()
+        expect(lastReported()).toBe(bytes.length)
+        expect(sameBytes(storedBytes('big.bin'), filled(4 * CHUNK_MAX + 5, 9))).toBe(true)
         expectCommittedOnce()
     })
 })

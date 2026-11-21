@@ -39,6 +39,11 @@ export interface InstallRequest<R> {
     confirmReplace: (existing: ThemePackRecordV1) => Promise<boolean>
     now?: () => number
     newId?: () => string
+    /**
+     * Called synchronously after the list write and just before the active id is set, so a caller registers its request
+     * before the write that queues the driver. `replacedId` is the record this install replaced, or null. A throw is ignored.
+     */
+    onActivate?: (next: { id: string; replacedId: string | null }) => void
 }
 
 export type InstallOutcome<R> =
@@ -181,6 +186,7 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
     }
     const live = DBState.db.themePacks
     let replaced = false
+    let replacedId: string | null = null
     if (live === undefined) {
         DBState.db.themePacks = [record]
     } else if (!Array.isArray(live)) {
@@ -191,10 +197,14 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
         if (at >= 0) {
             live[at] = record
             replaced = true
+            replacedId = existing === null ? null : existing.id
         } else {
             live.push(record)
         }
     }
+    try {
+        request.onActivate?.({ id: record.id, replacedId })
+    } catch { }
     DBState.db.activeThemePack = record.id
     return { ok: true, record, replaced }
 }

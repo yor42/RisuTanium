@@ -716,8 +716,8 @@
          
         
         {#if DBState.db.sdProvider === 'dalle'}
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
-            <KeyListInput size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
+            <span class="text-textcolor" id="{uid}-keyDalle">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
+            <KeyListInput labelId="{uid}-keyDalle" size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
 
             <span class="text-textcolor mt-4" id="{uid}-v22">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
             <SelectInput labelId="{uid}-v22" className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>
@@ -831,8 +831,8 @@
         {/if}
 
         {#if DBState.db.sdProvider === 'Imagen'}
-            <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-            <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
+            <span class="text-textcolor mt-2" id="{uid}-keyImagen">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
+            <KeyListInput labelId="{uid}-keyImagen" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
 
             <span class="text-textcolor" id="{uid}-v31">{language.model}</span>
             <SelectInput labelId="{uid}-v31" className="mb-4" bind:value={DBState.db.ImagenModel}>
@@ -1047,8 +1047,8 @@
     <span class="text-textcolor mt-2" id="{uid}-f22">{fillLang(language.settingsPage.nameUrl, { name: 'VOICEVOX' })}</span>
     <TextInput labelId="{uid}-f22" size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
 
-    <span class="text-textcolor">{fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })}</span>
-    <KeyListInput size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
+    <span class="text-textcolor" id="{uid}-keyTts">{fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })}</span>
+    <KeyListInput labelId="{uid}-keyTts" size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
 
     <span class="text-textcolor mt-2" id="{uid}-f23">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
     <TextInput labelId="{uid}-f23" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>

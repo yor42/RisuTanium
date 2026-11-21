@@ -6,8 +6,14 @@
         colorSchemeList,
         colorSchemePresets,
         defaultColorScheme,
+        PACK_SCHEME_NAME,
         type ColorScheme,
     } from 'src/ts/gui/colorscheme';
+    import { activePackDefaultScheme, adoptActivePackScheme } from 'src/ts/themePack/activePack.svelte';
+
+    // The theme-pack tile is its own scheme entry: the Custom slot is never touched by it (MC-2948).
+    const packTileVisible = $derived(DBState.db.colorSchemeName === PACK_SCHEME_NAME || activePackDefaultScheme() !== null);
+    const packSelected = $derived(DBState.db.colorSchemeName === PACK_SCHEME_NAME);
 
     const formatSchemeName = (name: string) => {
         if (name === 'custom') {
@@ -56,6 +62,27 @@
             <span class="w-full truncate text-sm text-textcolor">{formatSchemeName(scheme)}</span>
         </button>
     {/each}
+
+    {#if packTileVisible}
+        <button
+            type="button"
+            class="flex min-h-28 flex-col items-center justify-center gap-2 rounded-md border p-3 text-center transition-colors hover:bg-darkbutton focus:outline-hidden focus:ring-2 focus:ring-borderc"
+            class:border-borderc={packSelected}
+            class:border-darkborderc={!packSelected}
+            class:bg-darkbutton={packSelected}
+            aria-pressed={packSelected}
+            title={formatSchemeName(PACK_SCHEME_NAME)}
+            onclick={adoptActivePackScheme}
+        >
+            <span
+                class="palette-wheel relative h-14 w-14 overflow-hidden rounded-full shadow-sm"
+                aria-hidden="true"
+            >
+                <span class="palette-wheel-fill" style={paletteStyle(activePackDefaultScheme() ?? DBState.db.colorScheme ?? defaultColorScheme)}></span>
+            </span>
+            <span class="w-full truncate text-sm text-textcolor">{formatSchemeName(PACK_SCHEME_NAME)}</span>
+        </button>
+    {/if}
 
     <button
         type="button"

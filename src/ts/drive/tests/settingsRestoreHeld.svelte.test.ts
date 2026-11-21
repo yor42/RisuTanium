@@ -223,7 +223,8 @@ describe('CHORE-398 a card opened on Android before the restore point or snapsho
         const { restoreFromInternalBackup } = await import('src/ts/drive/settingsRestore')
 
         const flow = restoreFromInternalBackup()
-        await until(() => vi.mocked(page.alert.alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving), 'the save-first wait')
+        // The world has its own module graph: the card slot is the one the restore under test opened.
+        await until(async () => (await import('src/ts/alertTask.svelte')).taskShown(), 'the save-first card')
         await until(() => commitsHeld >= 1, 'the commit to be held')
         // Precondition: the wait is real and nothing of the restore is registered as work yet.
         expect(page.busy.busyKinds()).toEqual([])
