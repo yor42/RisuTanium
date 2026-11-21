@@ -1,10 +1,12 @@
-import { alertConfirm, alertSelect, alertWait } from "./alert";
+import { alertError, alertSelect, alertUpdateOffer, alertWait, waitAlert } from "./alert";
 import { language } from "../lang";
 import { fillLang } from "../lang/fill";
 import {
     check,
 } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import { isTauriDesktop } from "./tauriDesktop"
+import versionData from "../../version.json"
 
 const UPDATE_REMINDER_KEY = 'risu_update_reminder'
 
@@ -45,87 +47,150 @@ function isUpdateReminderActive(): boolean {
 }
 
 /**
- * The desktop updater is off until the fork has its own release endpoint and
- * signing key. While false, `checkRisuUpdate` makes no plugin call and no
- * network request. These change together to turn it on: the `endpoints` and
- * `pubkey` under `plugins.updater` and `bundle.createUpdaterArtifacts` in
- * `src-tauri/tauri.conf.json`, the release signing secrets used by the release
- * workflow, and this constant. An upstream pubkey with a fork endpoint (or the
- * reverse) rejects every update on signature mismatch.
+ * How long the boot check waits for the release endpoint. A silent network would otherwise hold
+ * "Checking Update..." for as long as the connection stays open; this bounds the check only, never
+ * the download.
  */
-const UPDATER_ENABLED = false
+const UPDATE_CHECK_TIMEOUT_MS = 10_000
 
+function errorText(error: unknown): string {
+    if (typeof error === 'string') {
+        return error
+    }
+    if (error instanceof Error) {
+        return error.message
+    }
+    return String(error)
+}
+
+async function remindLater(): Promise<void> {
+    const options = [
+        language.remindIgnore,
+        language.remindLater1Day,
+        language.remindLater3Days,
+        language.remindLater5Days,
+        language.remindLater1Week,
+    ]
+
+    const selected = await alertSelect(options, language.remindLaterQuestion, { cancel: '0' })
+    const selectedIndex = parseInt(selected)
+
+    switch (selectedIndex) {
+        case 0:
+            break
+        case 1:
+            setUpdateReminder(1)
+            break
+        case 2:
+            setUpdateReminder(3)
+            break
+        case 3:
+            setUpdateReminder(5)
+            break
+        case 4:
+            setUpdateReminder(7)
+            break
+    }
+}
+
+/**
+ * Checks the fork's release endpoint once at boot and offers an update when there is one. Desktop
+ * only: the updater plugin is not compiled into Android or iOS builds, and a dev build never polls
+ * the endpoint or offers an install.
+ *
+ * The endpoint and the signing `pubkey` live under `plugins.updater` in `src-tauri/tauri.conf.json`
+ * and change together: an update signed by a key other than that pubkey is rejected. An offer
+ * appears only when the published release's version is higher than the app's `version`, the
+ * top-level key of `src-tauri/tauri.conf.json` (Tauri uses it over `Cargo.toml`), so a release
+ * needs that version raised. While no release is published the endpoint answers 404, `check()`
+ * rejects and nothing is shown. The notes and versions come from `latest.json`, which the update
+ * signature does not cover: they are untrusted text.
+ *
+ * Boot waits for this whole flow, so nothing loads behind an install and the installer cannot cut
+ * a save short. A stalled download keeps the wait notice up; closing the window is safe and the
+ * update is offered again at the next boot.
+ */
 export async function checkRisuUpdate(){
-    if(!UPDATER_ENABLED){
+    if(import.meta.env.DEV || !isTauriDesktop){
+        return
+    }
+    // While reminded no request is made at all.
+    if(isUpdateReminderActive()){
         return
     }
     try {
-        const checked = await check()     
-        if(checked){
-            if (isUpdateReminderActive()) {
+        const update = await check({ timeout: UPDATE_CHECK_TIMEOUT_MS })
+        if(!update){
+            return
+        }
+
+        const answer = await alertUpdateOffer({
+            currentVersion: update.currentVersion,
+            version: update.version,
+            notes: update.body ?? '',
+        })
+
+        if(answer === 'install'){
+            clearUpdateReminder()
+            alertWait(fillLang(language.alerts.updatingTo, { version: update.version }))
+            try {
+                await update.downloadAndInstall()
+            } catch (error) {
+                alertError(fillLang(language.updateInstallFailed, { error: errorText(error) }))
+                await waitAlert()
                 return
             }
-
-            const conf = await alertConfirm(language.newVersion)
-            if(conf){
-                clearUpdateReminder()
-                alertWait(fillLang(language.alerts.updatingTo, { version: checked.version }))
-                await checked.downloadAndInstall()
+            // The update is on disk by now; a failed restart is not an install failure.
+            try {
                 await relaunch()
-            } else {
-                const options = [
-                    language.remindIgnore,
-                    language.remindLater1Day,
-                    language.remindLater3Days,
-                    language.remindLater5Days,
-                    language.remindLater1Week,
-                ]
-                
-                const selected = await alertSelect(options, language.remindLaterQuestion, { cancel: '0' })
-                const selectedIndex = parseInt(selected)
-
-                switch (selectedIndex) {
-                    case 0:
-                        break
-                    case 1:
-                        setUpdateReminder(1)
-                        break
-                    case 2:
-                        setUpdateReminder(3)
-                        break
-                    case 3:
-                        setUpdateReminder(5)
-                        break
-                    case 4:
-                        setUpdateReminder(7)
-                        break
-                }
+            } catch (error) {
+                console.error(error)
+                alertError(language.updateRelaunchFailed)
+                await waitAlert()
             }
+            return
         }
+
+        // Frees the Rust-side update resource; the offer is not taken.
+        void update.close().catch(() => {})
+        await remindLater()
     } catch (error) {
         console.error(error)
     }
 }
 
-// Test function for web console
-// @ts-ignore
-if (typeof window !== 'undefined') {
-    (window as any).testUpdateReminder = async () => {
-        const conf = await alertConfirm(language.newVersion)
-        if (conf) {
-            console.log('User chose to install')
-        } else {
-            const options = [
-                language.remindIgnore,
-                language.remindLater1Day,
-                language.remindLater3Days,
-                language.remindLater5Days,
-                language.remindLater1Week,
-            ]
-            
-            const selected = await alertSelect(options, language.remindLaterQuestion, { cancel: '0' })
-            console.log('Selected index:', selected)
-        }
+declare global {
+    interface Window {
+        testUpdateReminder?: () => Promise<void>
     }
 }
 
+// Dev-only web console hook: shows the offer with sample data (not a real update). It never
+// installs and never writes the reminder.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+    window.testUpdateReminder = async () => {
+        const answer = await alertUpdateOffer({
+            currentVersion: versionData.version,
+            version: '9.9.9',
+            notes: [
+                '## Sample release notes (not a real update)',
+                '',
+                ...Array.from({ length: 30 }, (_, i) => `* Sample change ${i + 1}`),
+                '<img src=x onerror="window.__updateXss=true">',
+            ].join('\n'),
+        })
+        if (answer === 'install') {
+            console.log('User chose to install')
+            return
+        }
+        const options = [
+            language.remindIgnore,
+            language.remindLater1Day,
+            language.remindLater3Days,
+            language.remindLater5Days,
+            language.remindLater1Week,
+        ]
+        const selected = await alertSelect(options, language.remindLaterQuestion, { cancel: '0' })
+        console.log('Selected index:', selected)
+    }
+}
