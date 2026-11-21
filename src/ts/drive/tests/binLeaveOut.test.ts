@@ -10,7 +10,7 @@ function label(key: string, kinds: ForkOnlyKind[], branches?: ForkOnlyChatLabel[
     return { key, text: `Char / ${key}`, kinds, ...(branches !== undefined ? { branches } : {}) }
 }
 
-const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], themePacks: [], usageStats: false }
+const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], themePacks: [], usageStats: false, chroMemory: false }
 
 describe('binLeaveOutSummary', () => {
     test('nothing to leave out gives an empty list', () => {
@@ -23,9 +23,10 @@ describe('binLeaveOutSummary', () => {
             taskPresets: ['One', 'Two'],
             themePacks: ['Pack'],
             usageStats: true,
+            chroMemory: true,
         })
-        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats'])
-        expect(summary.map((entry) => entry.count)).toEqual([1, 1, 2, 1, 1])
+        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats', 'chroMemory'])
+        expect(summary.map((entry) => entry.count)).toEqual([1, 1, 2, 1, 1, 1])
         const forkChat = summary[1]
         expect(forkChat.kind === 'forkChatData' && forkChat.kinds).toEqual(['interruptedNote', 'hideNames'])
     })
@@ -53,6 +54,13 @@ describe('binLeaveOutSummary', () => {
         expect(binLeaveOutSummary({ ...NONE, usageStats: false })).toEqual([])
     })
 
+    test('B1 reproducer: ChroMemory is listed last, after usage statistics, only when the export leaves it out', () => {
+        expect(binLeaveOutSummary({ ...NONE, usageStats: true, chroMemory: true })).toEqual([{ kind: 'usageStats', count: 1 }, { kind: 'chroMemory', count: 1 }])
+        expect(binLeaveOutSummary({ ...NONE, chroMemory: true })).toEqual([{ kind: 'chroMemory', count: 1 }])
+        // guard: passes before and after
+        expect(binLeaveOutSummary({ ...NONE, chroMemory: false })).toEqual([])
+    })
+
     test('the extra chats written add up over the chats that hold alternatives', () => {
         const summary = binLeaveOutSummary({
             ...NONE,
@@ -64,7 +72,7 @@ describe('binLeaveOutSummary', () => {
     })
 
     test('the input is not changed', () => {
-        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], themePacks: [], usageStats: false }
+        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], themePacks: [], usageStats: false, chroMemory: false }
         const before = JSON.stringify(input)
         binLeaveOutSummary(input)
         expect(JSON.stringify(input)).toBe(before)

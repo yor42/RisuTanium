@@ -46,6 +46,9 @@ import { runImageEmbedding } from "./transformers";
 import { hanuraiMemory } from "./memory/hanuraiMemory";
 import { hypaMemoryV2 } from "./memory/hypav2";
 import { openMemorySettings } from "./memory/memorySettingsLink";
+import { chroMemoryShadowRuns, memoryTakesChatsOf } from "./memory/memoryEngine";
+import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/records";
+import { runShadowSafely } from "./memory/chroMemory/shadow";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
 import { LLMTokenizer } from "../model/types";
@@ -1571,6 +1574,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     firstMessageDecision = firstMessageSent
     promptView = promptViewOf(sentSplit, firstMessageSent)
 
+    let chroFirst:FirstMessageSource|null = null
     if(firstMessageSent){
         const firstMsg = firstMessageOf(nowChatroom, currentChat)
 
@@ -1580,6 +1584,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 risuChatParser(firstMsg, {chara: currentChar, subject, promptView}),
             'editprocess', {}, undefined, subject, promptView))
         }
+        chroFirst = { chat, preWrap: chat.content, raw: firstMsg }
 
         if(usingPromptTemplate && DBState.db.promptSettings.sendName){
             chat.content = `${currentChar.name}: ${chat.content}`
@@ -1626,11 +1631,15 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // prompt is the same either way while the tokenizer settings stay unchanged
     // during the send. A message the trim drops without counting can no longer
     // fail the send through its count (tiktoken refuses special-token text).
-    const memoryTakesChats = () => effectiveMemory(nowChatroom, currentChat) && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)
+    // ChroMemory is never taken here, so a true result implies it is off and the
+    // dispatcher's four legacy branches below are the only ones reachable.
+    const memoryTakesChats = () => memoryTakesChatsOf(DBState.db, effectiveMemory(nowChatroom, currentChat))
     const countTokenizer = getModelInfo(DBState.db.aiModel)?.tokenizer
     const countVaries = (DBState.db.aiModel === 'custom' && pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer === 'custom')
         || countTokenizer === LLMTokenizer.GoogleCloud
     const countMessagesInTrim = !memoryTakesChats() && !countVaries
+    // Capture only keeps references; every ChroMemory computation runs later in runShadowSafely.
+    const chroCapture = chroMemoryShadowRuns(DBState.db, effectiveMemory(nowChatroom, currentChat)) ? createSendCapture() : null
     const firstMessageChat = chats.length
     const tokensBeforeMessages = currentTokens
     const tokensAfterMessages:number[] = []
@@ -1738,6 +1747,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             }
         }
 
+        const chroPreWrap = formatedChat
         let attr:string[] = []
         let role:'user'|'assistant'|'system' = msg.role === 'user' ? 'user' : 'assistant'
 
@@ -1807,6 +1817,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         if(chat.multimodals.length === 0){
             delete chat.multimodals
+        }
+        if(chroCapture){
+            chroCapture.add(chat, { msg, chatIndex, name, preWrap: chroPreWrap })
         }
         chats.push(chat)
         if(!countMessagesInTrim){
@@ -1952,6 +1965,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
     else{
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
+        // Both trim forms drop only a prefix, so this copy is the chats the trim started from.
+        const chroBefore = chroCapture ? chats.slice() : null
         if(countMessagesInTrim){
             const trimmed = await trimChatsToContext({ ...countArgs, maxContextTokens })
             currentTokens = trimmed.currentTokens
@@ -1972,6 +1987,20 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 currentTokens -= await tokenizer.tokenizeChat(chats[0])
                 chats.splice(0, 1)
             }
+        }
+        if(chroCapture && chroBefore){
+            await runShadowSafely({
+                capture: chroCapture, first: chroFirst, charName: currentChar.name,
+                userName: () => getUserName(currentChat),
+                before: chroBefore, kept: chats,
+                ownerId: nowChatroom.chaId, chatId: currentChat.id,
+                ltmSettings: DBState.db.ltmSettings, maxContextTokens, countVaries,
+                tokenizerKey: () => [DBState.db.aiModel, DBState.db.customTokenizer, DBState.db.currentPluginProvider, pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer ?? 'none', DBState.db.googleClaudeTokenizing ? '1' : '0', chatAdditonalTokens].join('|'),
+            }, {
+                countText: (t) => tokenize(t),
+                countBlock: async (b) => (await tokenize(b)) + chatAdditonalTokens,
+                now: () => performance.now(),
+            })
         }
         const lastMemoryCtx = subject.resolve()
         if(lastMemoryCtx){

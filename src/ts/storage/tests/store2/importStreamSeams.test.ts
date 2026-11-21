@@ -251,6 +251,25 @@ describe('the shared prepare steps (new seam)', () => {
         expect(Object.hasOwn(bare, 'activeThemePack')).toBe(false)
     })
 
+    test('I1i reproducer: applyImportOverlay drops the file\'s ChroMemory keys and sets only what the request passes, the settings as a clone', () => {
+        const file = { ltmEngine: true, ltmSettings: { x: 1 } } as unknown as Database
+        applyImportOverlay(file, {})
+        expect(Object.hasOwn(file, 'ltmEngine')).toBe(false)
+        expect(Object.hasOwn(file, 'ltmSettings')).toBe(false)
+
+        const settings = { budgetTokens: 1800, future: 1 }
+        const bare = {} as unknown as Database
+        applyImportOverlay(bare, { ltmEngine: true, ltmSettings: settings })
+        expect(bare.ltmEngine).toBe(true)
+        expect(bare.ltmSettings).toEqual(settings)
+        expect(bare.ltmSettings).not.toBe(settings)
+
+        const off = {} as unknown as Database
+        applyImportOverlay(off, { ltmEngine: false })
+        expect(off.ltmEngine).toBe(false)
+        expect(Object.hasOwn(off, 'ltmSettings')).toBe(false)
+    })
+
     test('T26 guard: the import overlay keeps the file\'s colour scheme and sets only the page\'s active pack', () => {
         const scheme = { bgcolor: '#101010', darkbg: '#202020', borderc: '#303030', selected: '#404040', draculared: '#505050', textcolor: '#606060', textcolor2: '#707070', darkBorderc: '#808080', darkbutton: '#909090', type: 'dark' }
         const custom = { ...scheme, bgcolor: '#111111' }
@@ -265,6 +284,7 @@ describe('the shared prepare steps (new seam)', () => {
         expect(database.activeThemePack).toBe('builtin:origin-navy')
         expect(Object.hasOwn(database, 'themePackSchemeSnapshot')).toBe(false)
     })
+
     test('repairImportRoot completes the containers the encoder reads', () => {
         const tree = { characters: [] } as unknown as Database
         repairImportRoot(tree)

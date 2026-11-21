@@ -69,6 +69,7 @@ import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
+import { chroMemoryOn } from "../process/memory/memoryEngine";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -280,6 +281,10 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     delete plain.usagePriceOverrides
     // The statistics retention period is a fork-only device preference: left out silently, so an import ends with it off.
     delete plain.usageRetentionMonths
+    // The ChroMemory choice and its settings are fork-only and have no place in a `.bin` (the export confirm names the engine
+    // first); both keys are removed, not set to undefined. The legacy engine fields stay as stored, and the page keeps its values.
+    delete plain.ltmEngine
+    delete plain.ltmSettings
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -820,7 +825,23 @@ async function confirmOmitUsageStats(session: ExportSession, present: boolean): 
 }
 
 /**
- * The fork-only consent before the writer opens: the five per-kind prompts, or one answer to `options.askLeaveOut` that
+ * Whether the export leaves ChroMemory out visibly: only while the engine is selected. Settings kept while another engine is
+ * selected are left out silently, like the statistics retention period.
+ */
+function chroMemoryLeftOut(db: Database): boolean {
+    return chroMemoryOn(db)
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the ChroMemory choice and its settings (a `.bin` has
+ * no place for them). `true` when ChroMemory is not selected or the person confirms; declining writes nothing.
+ */
+async function confirmOmitChroMemory(session: ExportSession, present: boolean): Promise<boolean> {
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupChroMemoryConfirm))
+}
+
+/**
+ * The fork-only consent before the writer opens: the six per-kind prompts, or one answer to `options.askLeaveOut` that
  * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
@@ -830,11 +851,12 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
         && await confirmOmitTaskPresets(session, taskPresetLabels(db))
         && await confirmOmitThemePacks(session, themePackLabels(db))
         && await confirmOmitUsageStats(session, hasUsageData(db))
+        && await confirmOmitChroMemory(session, chroMemoryLeftOut(db))
     const ask = options.askLeaveOut
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db) })
     if (summary.length === 0) {
         return true
     }

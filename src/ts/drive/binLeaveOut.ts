@@ -2,7 +2,7 @@
  * Bin Leave-Out
  *
  * What a `.bin` export leaves out because upstream has no place for it, as one summary the export hands to a single
- * leave-out sheet instead of five prompts. The summary lists the kinds in the order the per-kind prompts ask them, and a
+ * leave-out sheet instead of six prompts. The summary lists the kinds in the order the per-kind prompts ask them, and a
  * kind that is absent from the profile is absent from the list, so an empty list means there is nothing to confirm.
  *
  * Pure: it reads the labels the export already computed and never changes them.
@@ -18,6 +18,7 @@ export type BinLeaveOutEntry =
     | { kind: 'taskPresets', count: number, names: readonly string[] }
     | { kind: 'themePacks', count: number, names: readonly string[] }
     | { kind: 'usageStats', count: 1 }
+    | { kind: 'chroMemory', count: 1 }
 
 export interface BinLeaveOutInput {
     /** Every chat that loses fork-only data, as the export labelled them. */
@@ -25,6 +26,7 @@ export interface BinLeaveOutInput {
     taskPresets: readonly string[]
     themePacks: readonly string[]
     usageStats: boolean
+    chroMemory: boolean
 }
 
 /** The kinds the chat table names, in table order. */
@@ -52,6 +54,9 @@ export function binLeaveOutSummary(input: BinLeaveOutInput): BinLeaveOutEntry[] 
     }
     if (input.usageStats) {
         summary.push({ kind: 'usageStats', count: 1 })
+    }
+    if (input.chroMemory) {
+        summary.push({ kind: 'chroMemory', count: 1 })
     }
     return summary
 }
