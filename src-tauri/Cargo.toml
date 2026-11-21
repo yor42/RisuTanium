@@ -13,7 +13,7 @@ edition = "2021"
 tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
-tauri = { version = "2.12.1", features = ["protocol-asset", "devtools"] }
+tauri = { version = "~2.12.1", features = ["protocol-asset", "devtools"] }
 # A version floor only: tauri brings wry in, and Android plays a video from a file
 # only from wry 0.57.1 on. No features are added here, so tauri's selection stands.
 wry = { version = "0.57.1", default-features = false }
@@ -26,19 +26,22 @@ darling = "0.20.3"
 futures = "0.3.30"
 url = "2.2"
 uuid = { version = "1.9.1", features = [ "v4" ] }
-tauri-plugin-fs = "2.6.0"
-tauri-plugin-os = "2.4.0"
-tauri-plugin-dialog = "2.8.1"
-tauri-plugin-process = "2.4.0"
-tauri-plugin-shell = "2.4.0"
+# Every crate with an npm counterpart stays on that package's major.minor (tilde
+# range): the Tauri CLI refuses to build when the two differ, and Cargo.lock is
+# not tracked, so a caret range would pull a newer minor on a fresh checkout.
+tauri-plugin-fs = "~2.6.0"
+tauri-plugin-os = "~2.4.0"
+tauri-plugin-dialog = "~2.8.1"
+tauri-plugin-process = "~2.4.0"
+tauri-plugin-shell = "~2.4.0"
 tauri-plugin-opener = "2.7.3"
-tauri-plugin-http = "2.8.0"
+tauri-plugin-http = "~2.8.0"
 # Native avatar preview (avatar_preview module). Direct crates are pinned; the
 # transitive inflate and rayon crates float until Cargo.lock is tracked.
 png = "=0.18.1"
 jpeg-decoder = { version = "=0.3.2", default-features = false, features = ["platform_independent", "rayon"] }
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
-tauri-plugin-deep-link = "2.6.1"
+tauri-plugin-deep-link = "~2.6.1"
 
 # Desktop keeps reqwest's default TLS backend (platform-native); Android has no
 # system OpenSSL to link, so it uses rustls.
@@ -62,7 +65,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = { version = "2.5.2", features = ["deep-link"] }
-tauri-plugin-updater = "2.13.1"
+tauri-plugin-updater = "~2.13.1"
 
 [dev-dependencies]
 # Test-only fixture producers and a one-thread pool for the peak measurement rows.

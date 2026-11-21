@@ -8,7 +8,6 @@
  */
 import { describe, expect, test, vi } from 'vitest'
 import type { ByteStore } from 'src/ts/storage/store/contract'
-import { ExportCancelToken } from 'src/ts/exportCancel'
 import {
     UPSTREAM_NODE_ASSET_LIMIT_BYTES,
     findOversizeAssets,
@@ -16,13 +15,6 @@ import {
     isOversizeForUpstream,
     shownPromptNames,
 } from 'src/ts/drive/backupUpstreamSizes'
-
-// The cancel token's module reaches the alert and the application stores only for its wait dialog, which no test here opens.
-vi.mock('src/ts/alert', () => ({ alertClear: vi.fn(), alertWait: vi.fn() }))
-vi.mock('src/ts/stores.svelte', async () => {
-    const { writable } = await import('svelte/store')
-    return { alertStore: writable({ type: 'none', msg: '' }) }
-})
 
 const LIMIT = 104857600
 
@@ -86,7 +78,7 @@ describe('the threshold', () => {
     })
 })
 
-const base = (store: ByteStore) => ({ store, sized: null, keys: null, listedKeys: [] as string[], cancel: new ExportCancelToken() })
+const base = (store: ByteStore) => ({ store, sized: null, keys: null })
 
 describe('findOversizeAssets, desktop and Android', () => {
     test('reproducer: names the listed assets strictly above 100 MiB with their sizes and reads nothing', async () => {
@@ -113,7 +105,7 @@ describe('findOversizeAssets, desktop and Android', () => {
 
     test('guard: no sized listing names nothing and reads nothing', async () => {
         const probe = storeOf({ 'assets/a': LIMIT + 1 })
-        expect(await findOversizeAssets({ ...base(probe.store), kind: 'tauri', listedKeys: ['assets/a'] })).toEqual([])
+        expect(await findOversizeAssets({ ...base(probe.store), kind: 'tauri' })).toEqual([])
         expect(probe.reads).toEqual([])
     })
 })
@@ -122,7 +114,7 @@ describe('findOversizeAssets, Node page', () => {
     test('reproducer: asks the server for the keys above 100 MiB under assets/ once and reads nothing', async () => {
         const listSized = vi.fn(async () => [{ key: 'assets/big', size: LIMIT + 5 }])
         const probe = storeOf({}, listSized)
-        const found = await findOversizeAssets({ ...base(probe.store), kind: 'node', listedKeys: ['assets/big'] })
+        const found = await findOversizeAssets({ ...base(probe.store), kind: 'node' })
         expect(found).toEqual([{ key: 'assets/big', size: LIMIT + 5 }])
         expect(listSized).toHaveBeenCalledExactlyOnceWith('assets/', LIMIT)
         expect(probe.reads).toEqual([])

@@ -16,6 +16,7 @@ interface TauriConf {
         updater?: {
             pubkey?: unknown
             endpoints?: unknown
+            requireSignedVersion?: unknown
         }
     }
 }
@@ -36,6 +37,12 @@ describe('tauri.conf.json updater settings', () => {
         const conf = await readTauriConf()
 
         expect(conf.bundle?.createUpdaterArtifacts).toBe(true)
+    })
+
+    test('the updater accepts only a release whose signature also signs its version, so a signed older build cannot be offered under a higher version', async () => {
+        const conf = await readTauriConf()
+
+        expect(conf.plugins?.updater?.requireSignedVersion).toBe(true)
     })
 
     test('guard: the updater block keeps a non-empty pubkey, because the registered plugin requires one in its config', async () => {

@@ -11,7 +11,7 @@
  * heavy imports and child lists are stubbed. The alert confirm is a mock.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { writable } from 'svelte/store'
+import { writable, get } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
 
 //#region module mocks
@@ -133,7 +133,7 @@ vi.mock('src/lib/Others/Help.svelte', () => ({ default: (_target: unknown) => ({
 //#endregion
 
 import { flushSync, mount, unmount } from 'svelte'
-import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { DBState, selectedCharID, hypaV3ModalOpen } from 'src/ts/stores.svelte'
 import CharConfig from 'src/lib/SideBars/CharConfig.svelte'
 import { language } from 'src/lang'
 
@@ -312,11 +312,28 @@ describe('the HypaMemory modal buttons against the memory engine choice', () => 
         expect(texts).not.toContain(language.hypaMemoryV2Modal)
     })
 
-    test('guard: ChroMemory with every legacy engine off keeps the SupaMemory data branch as with no engine (expected in S1a)', () => {
+    test('UI2 reproducer: ChroMemory shows the ChroMemory button whatever showMenuHypaMemoryModal says, and a click opens the modal flag (MC-3205)', () => {
+        for (const menuFlag of [false, true]) {
+            installWorld('character')
+            DBState.db.ltmEngine = true
+            DBState.db.showMenuHypaMemoryModal = menuFlag
+            hypaV3ModalOpen.set(false)
+            const target = mountConfig()
+            const button = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.chroMemoryModal)
+            expect(button).toBeDefined()
+            button!.click()
+            expect(get(hypaV3ModalOpen)).toBe(true)
+            unmount(mounted!.instance as never)
+            mounted!.target.remove()
+            mounted = undefined
+        }
+    })
+
+    test('UI2 reproducer: ChroMemory hides the SupaMemory data branch even with legacy summary text present', () => {
         installWorld('character')
         DBState.db.characters[0].supaMemory = true
         DBState.db.ltmEngine = true
         const texts = buttonTexts(mountConfig())
-        expect(texts).toContain(language.resetSupaMemory)
+        expect(texts).not.toContain(language.resetSupaMemory)
     })
 })

@@ -126,7 +126,10 @@ export const SHARED_PAIRS: ContrastPair[] = [['--nexus-text', '--color-surface-s
 // shared floors and ceilings for the DD-235 tokens and the motion basics (a pack may tune them inside these limits; they also make the names pack-settable)
 //   --opacity-dim / --opacity-soft: chat's two dimming steps, which Banana Cocoa tunes (0.78, 0.82). Listed deliberately with a floor of 0.5 (just under Deep Nexus' 0.55) and a ceiling of 1; the other --opacity-* steps stay internal.
 //   chat's ring tokens (MC-2320, MC-2321, MC-2323): --focus-ring-w and --focus-ring-w-forced at most 4 px; --focus-ring-offset-inset and --focus-ring-offset-wide from -6 to 6 px, the range of --focus-ring-offset. Per-token limits only: nothing bounds a width and an offset together.
-export const SHARED_MINIMUMS: Record<string, string | number> = { '--nexus-focus-ring-width': '1px', '--nexus-focus-ring-offset': '-4px', '--focus-ring-offset-inset': '-6px', '--focus-ring-offset-wide': '-6px', '--nexus-touch': '32px', '--opacity-dim': 0.5, '--opacity-soft': 0.5 }
+// MC-3128: the app shape tokens the Tailwind radius and hairline scale reads (styles.css): radius 0-32 px, hairline 1-3 px. Listing them here makes them pack-settable in every area.
+const UI_RADIUS_NAMES: string[] = ['--ui-radius', ...['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl'].map((step) => `--ui-radius-${step}`)]
+export const SHARED_MINIMUMS: Record<string, string | number> = { '--nexus-focus-ring-width': '1px', '--nexus-focus-ring-offset': '-4px', '--focus-ring-offset-inset': '-6px', '--focus-ring-offset-wide': '-6px', '--nexus-touch': '32px', '--opacity-dim': 0.5, '--opacity-soft': 0.5,
+    ...Object.fromEntries(UI_RADIUS_NAMES.map((name) => [name, '0px'])), '--ui-border-width': '1px' }
 // DD-260: ceilings for the size role tokens that had none (px; the defaults are far below). A header or a gap beyond these pushes the content off a phone; the sheet-height rule (DD-256) judges the sum.
 export const SIZE_CEILINGS: Record<string, string> = (() => {
     const px = (names: string, v: string): Record<string, string> => Object.fromEntries(names.split(/\s+/).filter(Boolean).map((n) => ['--' + n, v]))
@@ -138,7 +141,7 @@ export const SIZE_CEILINGS: Record<string, string> = (() => {
         ...px('bubble-pad-y bubble-pad-start bubble-pad-end', '48px'), ...px('radius-bubble radius-bubble-tail', '32px'), ...px('stroke-medium stroke-bold stroke-heavy stroke-xheavy', '8px') }
 })()
 export const SHARED_MAXIMUMS: Record<string, string | number> = { ...SIZE_CEILINGS, '--opacity-dim': 1, '--opacity-soft': 1, '--nexus-focus-ring-width': '4px', '--nexus-focus-ring-offset': '6px', '--focus-ring-w': '4px', '--focus-ring-w-forced': '4px', '--focus-ring-offset-inset': '6px', '--focus-ring-offset-wide': '6px', '--nexus-touch': '72px', '--nexus-blur': '40px', '--nexus-duration-press': '600ms', '--nexus-duration-enter': '600ms', '--nexus-duration-exit': '600ms',
-    '--nexus-duration-lowpower-cap': '600ms', '--nexus-scrim-duration': '600ms', '--nexus-dialog-enter-distance': '48px', '--nexus-sheet-enter-distance': '48px' }
+    '--nexus-duration-lowpower-cap': '600ms', '--nexus-scrim-duration': '600ms', '--nexus-dialog-enter-distance': '48px', '--nexus-sheet-enter-distance': '48px', ...Object.fromEntries(UI_RADIUS_NAMES.map((name) => [name, '32px'])), '--ui-border-width': '3px' }
 // chat's own role tokens (DD-148 role block, DD-153 decoration hooks, the bubble hooks of DD-018/Banana Cocoa, the named sizes) and its non-ladder scales. The numbered ladder (--space-N, --size-N, --offset-N, --size-rel-N, --radius-N, --leading-N) is NOT listed.
 export const CHAT_SETTABLE: NameMatch[] = [/^--(control-gap|control-padding-x|header-height|transcript-padding-(top|top-strip|x|bottom)|message-(gap|meta-gap|name-row-height|inset-start)|composer-(gap|padding-x|padding-y|field-padding-x|field-padding-y|field-height)|sheet-padding-(x|bottom)|item-gap|item-padding-x|row-padding-(start|end)|status-row-padding-start)$/,
     /^--(icon-stroke|icon-scale|icon-size-(2xs|xs|sm|md|lg|xl|2xl)|selection-bg|selection-text|scrollbar-color|scrollbar-width|caret-color)$/,
@@ -335,6 +338,10 @@ function focusLoss(prop: string, value: string, T: TokenMap): string {
     if (/^border(-(top|right|bottom|left))?-style$/.test(prop) && v === 'none') return `${prop}: none would remove the indication of focus`
     if (/^(box-shadow|border(-(top|right|bottom|left))?(-color)?)$/.test(prop) && colourWords(v).some((c) => c[3] === 0)) return `${prop}: a fully transparent colour would remove the indication of focus`
     return ''
+}
+/** The pack-settable test of a registry, built once; one call per area replaces one registry rebuild per candidate name. */
+export function packSettableTest(registry?: RegistryInput): (name: string) => boolean {
+    return settableTest({ ...effective(registry), isBounded: VALUES.isBounded })
 }
 // DD-242: is this custom property pack-settable under the registry? (used by the regression fuzz)
 export function isPackSettable(name: string, registry?: RegistryInput): boolean {

@@ -3,9 +3,8 @@
 /**
  * `HomeLibrary.svelte`, Open in Studio from the library (stage G2). HomeLibrary is the one host that
  * passes the `studio` prop to `GridCatalog`, wired to `homeStudioAvailable` and `startStudioFromHome`
- * (T14, T15, T17); the library cancels a pending open when it unmounts (`cancelHomeStudioOpen`, T37a); the library reopens on the remembered tab after a visit (T18, the real `gridMemory`);
- * and a mounted library takes the return-focus request that ends a visit and focuses the character's
- * control, else the library Back button, never `body` (T19).
+ * (T14, T15, T17); the library cancels a pending open when it unmounts (`cancelHomeStudioOpen`, T37a); and the library reopens on the remembered tab after a visit (T18, the real `gridMemory`).
+ * The focus after a visit belongs to HomeShell's reveal (`HomeShell.studioReturn.svelte.test.ts`, T19).
  *
  * Test labels: `(F)` is new behaviour (fails on the code before the stage by assertion), `(G)` is a
  * compatibility guard that may pass before and after.
@@ -160,7 +159,7 @@ import { DBState } from '../../../ts/stores.svelte'
 import { resetBackHandlersForTests } from '../../../ts/backHandlers'
 import { language } from '../../../lang'
 import { LIBRARY_TAB_KEY } from '../../Others/gridMemory'
-import { openHomeLibrary, requestHomeReturnFocus, showHomeLanding, takeHomeReturnFocus } from './homeView.svelte'
+import { openHomeLibrary, showHomeLanding, takeHomeReturnFocus } from './homeView.svelte'
 import HomeLibrary from './HomeLibrary.svelte'
 
 //#region fixtures and helpers
@@ -365,88 +364,4 @@ describe('HomeLibrary: the remembered tab', { timeout: 60_000 }, () => {
             }
         })
     }
-})
-
-describe('HomeLibrary: focus after a visit', { timeout: 60_000 }, () => {
-    test('(F) T19a the character\'s control takes the focus when it is rendered', async () => {
-        localStorage.setItem(LIBRARY_TAB_KEY, 'list')
-        requestHomeReturnFocus('b')
-        await withLibrary(async (target) => {
-            await tick()
-            await settle()
-            expect(document.activeElement).not.toBe(document.body)
-            expect(document.activeElement).toBe(studioButtonOf(target, 'b'))
-        })
-    })
-
-    test('(F) T19a the Simple tab\'s control takes the focus the same way', async () => {
-        localStorage.setItem(LIBRARY_TAB_KEY, 'simple')
-        requestHomeReturnFocus('a')
-        await withLibrary(async (target) => {
-            await settle()
-            expect(document.activeElement).toBe(studioButtonOf(target, 'a'))
-        })
-    })
-
-    test('(F) T19a the library Back button takes the focus when the control is not rendered (the Grid tab, a gone character)', async () => {
-        localStorage.setItem(LIBRARY_TAB_KEY, 'grid')
-        requestHomeReturnFocus('b')
-        await withLibrary(async (target) => {
-            await settle()
-            expect(document.activeElement).not.toBe(document.body)
-            expect(document.activeElement).toBe(target.querySelector('[data-part="library-back"]'))
-        })
-        takeHomeReturnFocus()
-        localStorage.setItem(LIBRARY_TAB_KEY, 'list')
-        requestHomeReturnFocus('gone')
-        await withLibrary(async (target) => {
-            await settle()
-            expect(document.activeElement).toBe(target.querySelector('[data-part="library-back"]'))
-        })
-    })
-
-    test('(F) T19a a chaId with selector characters finds its control by attribute value, not as markup', async () => {
-        const odd = '"] [x'
-        DBState.db.characters.push(makeCharacter(odd, 'Odd', 4000))
-        DBState.db.characterOrder.push(odd)
-        localStorage.setItem(LIBRARY_TAB_KEY, 'list')
-        requestHomeReturnFocus(odd)
-        await withLibrary(async (target) => {
-            await settle()
-            expect(document.activeElement).toBe(studioButtonOf(target, odd))
-        })
-    })
-
-    test('(F) T19b a request made before the library exists waits for it: nothing is focused first, the control is focused on mount', async () => {
-        localStorage.setItem(LIBRARY_TAB_KEY, 'list')
-        requestHomeReturnFocus('c')
-        // The library chunk is still loading: no library, so nothing to focus and nothing thrown.
-        await settle()
-        expect(document.activeElement).toBe(document.body)
-        await withLibrary(async (target) => {
-            await settle()
-            expect(document.activeElement).toBe(studioButtonOf(target, 'c'))
-        })
-    })
-
-    test('(G) T19 the request is taken once: a later library mount moves no focus', async () => {
-        localStorage.setItem(LIBRARY_TAB_KEY, 'list')
-        requestHomeReturnFocus('b')
-        await withLibrary(async () => {
-            await settle()
-        })
-        expect(takeHomeReturnFocus()).toBeNull()
-        document.body.replaceChildren()
-        await withLibrary(async () => {
-            await settle()
-            expect(document.activeElement).toBe(document.body)
-        })
-    })
-
-    test('(G) T19 with no request a mount moves no focus', async () => {
-        await withLibrary(async () => {
-            await settle()
-            expect(document.activeElement).toBe(document.body)
-        })
-    })
 })

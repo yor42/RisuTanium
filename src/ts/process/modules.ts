@@ -35,7 +35,6 @@ import { hasModuleStubKey, isModuleStub } from "../storage/moduleStub"
 import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
 import { withBusy, type BusyHandle } from "./memory/busyActions"
 import { openOutsideBusy } from "../drive/exportDialogBusy"
-import { StoreBlobUnsupportedError } from "../storage/store/errors"
 import { assetByteLimit, charxLimits } from "./processzip"
 import { IMPORT_PIECE_BYTES, WindowedReader, importSourceOfBytes, importSourceOfFile, isImportSource, type ImportSource, type ImportSourceStat } from "../importSource"
 
@@ -468,8 +467,7 @@ export type ReadModuleOptions = {beforeAssets?: (module:RisuModule) => Promise<v
  * validates the structure (see scanRisum), the second reads one record at a time, in file order, and saves it. A record
  * below ASSET_PIECE_SAVE_MIN_BYTES is read whole; decoded records waiting to be saved are bounded by count and, beyond
  * the first one, by charxLimits.backlogBytes. A record at or above it is read, decoded and saved in pieces while the
- * next record waits and is not counted against the backlog: in the desktop and Android app it holds a few pieces, on the
- * browser's IndexedDB store saveAssetFromPieces accumulates the pieces in a Blob (the page holds no whole copy), and on
+ * next record waits and is not counted against the backlog: in the desktop and Android app it holds a few pieces, and on
  * a store without a piece writer it collects the record whole.
  *
  * The magic byte, version, module type and block mark checks, a file cut short, a record count that does not match the
@@ -546,7 +544,6 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
         const failed: number[] = []
         let inFlightBytes = 0
         let readFailure: { cause: unknown } | null = null
-        let blobRefusal: Error | null = null
 
         for(const index of indices){
             const record = scan.records[index]
@@ -568,12 +565,6 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
                 } catch (error) {
                     if(error instanceof AssetSourceChangedError){
                         readFailure = { cause: error }
-                        break
-                    }
-                    //A browser that keeps no Blob refuses this asset every time; a retry cannot help and the localized refusal must reach the user.
-                    //Rethrown after the saves already in flight settle, so none of them reports over the caller's error.
-                    if(error instanceof Error && error.cause instanceof StoreBlobUnsupportedError){
-                        blobRefusal = error
                         break
                     }
                     failed.push(index)
@@ -625,9 +616,6 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
         }
 
         await Promise.all(inFlight)
-        if(blobRefusal !== null){
-            throw blobRefusal
-        }
         if(readFailure){
             throw changed(readFailure.cause)
         }

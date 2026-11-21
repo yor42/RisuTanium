@@ -149,12 +149,55 @@ interface PendingRequest {
     readonly timer: ReturnType<typeof setTimeout>
     readonly mark: 'risu:judge:first' | 'risu:judge:next'
     readonly startedAt: number
+    readonly areas: ReadonlyMap<string, string>
 }
 
 /** User Timing entries survive a production build and CDP can read them, so the judge's cost is measurable on a device. */
 function markJudgeTiming(name: string, start: number): void {
     try {
         performance.measure(name, { start, end: performance.now() })
+    } catch { }
+}
+
+/**
+ * The worker-side cost of each requested job, read leniently: a label that was not requested, or a value that is not
+ * `{ ms: finite >= 0, cold: boolean }`, is ignored. Timing is observational and never fails a request.
+ */
+function readTiming(value: unknown, labels: ReadonlySet<string>): Array<{ label: string; ms: number; cold: boolean }> {
+    if (!isRecord(value)) {
+        return []
+    }
+    const read: Array<{ label: string; ms: number; cold: boolean }> = []
+    for (const label of labels) {
+        const item: unknown = Object.hasOwn(value, label) ? value[label] : undefined
+        if (isRecord(item) && typeof item.ms === 'number' && Number.isFinite(item.ms) && item.ms >= 0 && typeof item.cold === 'boolean') {
+            read.push({ label, ms: item.ms, cold: item.cold })
+        }
+    }
+    return read
+}
+
+/**
+ * One measure per answered job, `risu:judge:job:<label>`, whose duration is the worker-side cost and whose `detail` carries the cold flag.
+ * The worker's clock is not the window's, so a measure ends at the answer's arrival: its placement on this timeline is approximate.
+ */
+function markJobTimings(timings: ReadonlyArray<{ label: string; ms: number; cold: boolean }>, areas: ReadonlyMap<string, string>): void {
+    for (const { label, ms, cold } of timings) {
+        try {
+            performance.measure(`risu:judge:job:${label}`, { start: performance.now() - ms, duration: ms, detail: { cold, area: areas.get(label) } })
+        } catch { }
+    }
+}
+
+/** `risu:judge:ready`: from the spawn to the moment the worker finished loading its validator, clamped into [spawn, now]. */
+function markJudgeReady(spawnedAt: number, readyAt: unknown): void {
+    if (typeof readyAt !== 'number' || !Number.isFinite(readyAt)) {
+        return
+    }
+    try {
+        const now = performance.now()
+        const end = Math.min(Math.max(readyAt - performance.timeOrigin, spawnedAt), now)
+        performance.measure('risu:judge:ready', { start: spawnedAt, end })
     } catch { }
 }
 
@@ -199,6 +242,7 @@ export function openJudgeSession(options: { spawn?: () => JudgeWorkerLike; timeo
     let worker: JudgeWorkerLike | null = null
     let spawnedAt = 0
     let posted = false
+    let readyMarked = false
     let closed = false
 
     /** Closes the session once and rejects everything still in flight with `error`. */
@@ -244,7 +288,13 @@ export function openJudgeSession(options: { spawn?: () => JudgeWorkerLike; timeo
             shutdown(error)
             return
         }
+        // The verdict resolves first: the timing marks are observational and must never delay or block it.
         request.resolve(results)
+        markJobTimings(readTiming(data.timing, request.labels), request.areas)
+        if (!readyMarked) {
+            readyMarked = true
+            markJudgeReady(spawnedAt, data.readyAt)
+        }
     }
 
     function jobs(list: readonly JudgeJob[]): Promise<JudgeResults> {
@@ -280,6 +330,7 @@ export function openJudgeSession(options: { spawn?: () => JudgeWorkerLike; timeo
             pending.set(id, {
                 labels: new Set(list.map((job) => job.label)), resolve, reject, timer,
                 mark: first ? 'risu:judge:first' : 'risu:judge:next', startedAt: first ? spawnedAt : performance.now(),
+                areas: new Map(list.map((job) => [job.label, job.area])),
             })
             const request: JudgeRequest = { id, jobs: list.map((job) => ({ label: job.label, area: job.area, text: job.text })) }
             try {

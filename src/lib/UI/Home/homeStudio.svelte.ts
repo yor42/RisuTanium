@@ -15,7 +15,7 @@ import { studioSwitch } from 'src/ts/studio/studioSwitch.svelte'
 import { requestHomeLibrary, requestHomeReturnFocus } from './homeView.svelte'
 
 // Open in Studio from the Home library. Home selects the clicked slot and opens Studio in one synchronous
-// stretch, then a Home-owned subscriber on `studioOpen` ends each such visit at the library. Nothing here is
+// stretch, then a Home-owned subscriber on `studioOpen` ends each such visit at the landing's library. Nothing here is
 // stored: no field, no `.bin` content, no key.
 //
 // An archived slot is loaded first, through the restore a row tap uses, without selecting it. After the await
@@ -43,7 +43,7 @@ export function homeStudioAvailable(slot: character | groupChat | undefined): bo
     return slot.type !== 'group' && slot.chaId !== '§playground' && !slot.trashTime
 }
 
-// Leaves the state a failed open must leave: nothing selected, the library shown.
+// Leaves the state a failed open must leave: nothing selected, the landing's library revealed.
 function restoreHomeLibrary(): void {
     if (get(selectedCharID) !== -1) selectedCharID.set(-1)
     requestHomeLibrary()
@@ -68,17 +68,17 @@ function installVisitEnd(): void {
         const selected = get(selectedCharID)
         // Someone else moved the selection: the visit undoes only its own.
         if (selected !== -1 && DBState.db.characters?.[selected] !== visit.slot) return
-        // The library is requested before the selection clears, so the shell that clearing creates starts there.
+        // The library is requested before the selection clears, so the shell that clearing creates reveals it.
         requestHomeLibrary()
         if (selected !== -1) selectedCharID.set(-1)
-        // After the clear, so the library it reaches already shows no chat. The library takes it on mount.
+        // After the clear, so the landing it reaches already shows no chat. The reveal takes it.
         requestHomeReturnFocus(visit.chaId)
     })
 }
 
 /**
  * Selects the slot at `index` and opens Studio on it, `from: 'home'`; false, with nothing selected and the
- * library shown, when it cannot. All synchronous and in this order, so no flush runs between the select and
+ * landing's library revealed, when it cannot. All synchronous and in this order, so no flush runs between the select and
  * the open: a flush there would show the opened character's chat uncovered and clear its new-reply mark and
  * notification. The pick keeps the last interaction. `changeChar` is not awaited: for a warm, non-group slot
  * it selects before its first await, so an archived slot is refused here before any `changeChar`; the cold

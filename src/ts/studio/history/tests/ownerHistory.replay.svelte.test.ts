@@ -478,8 +478,8 @@ describe('a row whose path is not under assets/ is put back as it was, never pro
     // The browser store: a key it holds no bytes for reads as no value, which the reader calls gone.
     const webStoreReader = (): Promise<AssetFileReader> =>
         openAssetFileReader({
-            getStore: async () => ({ read: async () => ({ bytes: null, version: null }), readValue: async () => null }) as unknown as ByteStore,
-            sourceOf: async (store) => ({ kind: 'web', pieces: { open: async function* () {}, node: false }, store }),
+            getStore: async () => ({ read: async () => ({ bytes: null, version: null }) }) as unknown as ByteStore,
+            sourceOf: async (store) => ({ kind: 'node', pieces: { open: async function* () {}, node: false }, store }),
             statSize: async () => 0,
             confirmedAbsent: async () => false,
             openFirstPiece: async () => null,

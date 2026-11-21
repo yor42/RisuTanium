@@ -52,7 +52,7 @@ const BUDGET = 2400
 
 function recordsFor(chat: Chat, first: number): MessageRecord[] {
     return chat.messages.slice(0, first).map((m, i) =>
-        recordOf({ msg: { chatId: `m${i}`, role: m.role === 'char' ? 'char' : 'user', data: m.text }, chatIndex: i, name: chat.names.char, preWrap: m.text }, chat.names.user),
+        recordOf({ msg: { chatId: `m${i}`, role: m.role === 'char' ? 'char' : 'user', data: m.text }, chatIndex: i, name: chat.names.char, preWrap: m.text, data: m.text }, chat.names.user),
     )
 }
 

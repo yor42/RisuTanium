@@ -510,6 +510,96 @@ describe('W the session: one worker for every request', () => {
         })
     })
 
+    describe('T1-C and T2 per-job User Timing and the ready mark', () => {
+        const jobMeasures = (label: string): PerformanceEntry[] => performance.getEntriesByName(`risu:judge:job:${label}`)
+        const clear = (...labels: string[]): void => {
+            performance.clearMeasures('risu:judge:ready')
+            for (const label of labels) performance.clearMeasures(`risu:judge:job:${label}`)
+        }
+
+        it('T1-C: measures one risu:judge:job:<label> per answered label, carrying cold and area, and one ready per session', async () => {
+            clear('a', 'b')
+            const { opened } = session()
+            await opened.jobs([job('a', PLAIN_CHAT_SHEET), job('b', SHEET_B)])
+            await opened.jobs([job('c', SHEET_B)])
+            expect(jobMeasures('a')).toHaveLength(1)
+            expect(jobMeasures('b')).toHaveLength(1)
+            const detail = (jobMeasures('b')[0] as PerformanceMeasure).detail as { cold: unknown; area: unknown }
+            expect(detail.cold).toBe(false)
+            expect(detail.area).toBe('chat')
+            expect(performance.getEntriesByName('risu:judge:ready')).toHaveLength(1)
+            const ready = performance.getEntriesByName('risu:judge:ready')[0]
+            expect(ready.duration).toBeGreaterThanOrEqual(0)
+            await session().opened.jobs([job('a', PLAIN_CHAT_SHEET)])
+            expect(performance.getEntriesByName('risu:judge:ready')).toHaveLength(2)
+            expect(jobMeasures('a')).toHaveLength(2)
+        })
+
+        const WELL_FORMED = { ms: 1.5, cold: true }
+        const ROWS: Array<[string, unknown]> = [
+            ['missing', undefined],
+            ['not a record', 'slow'],
+            ['an array', [WELL_FORMED]],
+            ['a non-finite ms', { a: { ms: Number.POSITIVE_INFINITY, cold: true } }],
+            ['a negative ms', { a: { ms: -1, cold: true } }],
+            ['a cold that is not a boolean', { a: { ms: 1, cold: 'yes' } }],
+            ['a label that was not requested', { zzz: WELL_FORMED }],
+        ]
+        it.each(ROWS)('T2: a %s timing changes no result and records no measure', async (_name, timing) => {
+            clear('a', 'zzz')
+            const behaviour: Behaviour = (request) => {
+                const answer = handleJudgeRequest(request)
+                if (!answer.ok) return answer
+                return { ...answer, timing }
+            }
+            const { opened } = session(behaviour)
+            const results = await opened.jobs([job('a', PLAIN_CHAT_SHEET)])
+            expect(results.a).toEqual(judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat'))
+            expect(jobMeasures('a')).toHaveLength(0)
+            expect(jobMeasures('zzz')).toHaveLength(0)
+        })
+
+        it('T1-C positive control: a well-formed cold timing reaches the measure with its cold flag, area and duration', async () => {
+            clear('a')
+            const behaviour: Behaviour = (request) => {
+                const answer = handleJudgeRequest(request)
+                if (!answer.ok) return answer
+                return { ...answer, timing: { a: { ms: 1.5, cold: true } } }
+            }
+            const { opened } = session(behaviour)
+            await opened.jobs([job('a', PLAIN_CHAT_SHEET)])
+            expect(jobMeasures('a')).toHaveLength(1)
+            const measure = jobMeasures('a')[0] as PerformanceMeasure
+            expect(measure.detail).toEqual({ cold: true, area: 'chat' })
+            expect(measure.duration).toBeCloseTo(1.5, 5)
+        })
+
+        it('T2: a missing or non-finite readyAt records no ready mark and still resolves', async () => {
+            for (const readyAt of [undefined, Number.NaN, 'soon']) {
+                clear('a')
+                const behaviour: Behaviour = (request) => {
+                    const answer = handleJudgeRequest(request)
+                    return answer.ok ? { ...answer, readyAt } : answer
+                }
+                await session(behaviour).opened.jobs([job('a', PLAIN_CHAT_SHEET)])
+                expect(performance.getEntriesByName('risu:judge:ready')).toHaveLength(0)
+            }
+        })
+
+        it('T2: an answer rejected for an extra result key carries valid timing and records no job measure', async () => {
+            clear('a')
+            const behaviour: Behaviour = (request) => {
+                const answer = handleJudgeRequest(request)
+                if (!answer.ok) return answer
+                return { ...answer, results: { ...answer.results, extra: answer.results.a }, timing: { a: WELL_FORMED } }
+            }
+            const { opened } = session(behaviour)
+            await expect(opened.jobs([job('a', PLAIN_CHAT_SHEET)])).rejects.toBeInstanceOf(JudgeProtocolError)
+            expect(jobMeasures('a')).toHaveLength(0)
+            expect(performance.getEntriesByName('risu:judge:ready')).toHaveLength(0)
+        })
+    })
+
     it('createJudgeClient stays a one-request session: one spawn, one post, terminated after the answer', async () => {
         const workers: FakeJudgeWorker[] = []
         const judge = createJudgeClient({ spawn: () => { const worker = new FakeJudgeWorker(); workers.push(worker); return worker } })

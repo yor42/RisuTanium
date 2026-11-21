@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The size job of the Studio asset list: it starts only after the list is shown, reads one size at a time on the web
- * and several on a native store, keeps its answers for the session, and ends with the list or the owner it was
+ * The size job of the Studio asset list: it starts only after the list is shown, reads several sizes at once up to
+ * the native limit, keeps its answers for the session, and ends with the list or the owner it was
  * started for. The job is the real one over a double reader; the stores are doubles at their seams, so nothing
  * here proves native behaviour.
  */
@@ -60,6 +60,7 @@ import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, se
 import { createFakeClock, drainMicrotasks } from '../../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../../ts/studio/history/tests/studioStoreDoubles'
 import { assetRow } from '../../../ts/studio/assets/assetFixtures.test-helpers'
+import { allRowsGeometry, setWindowGeometryForTests } from '../../../ts/windowing/windowHost.svelte'
 import StudioAssetList from './StudioAssetList.svelte'
 
 interface LiveCharacter {
@@ -86,10 +87,6 @@ function makeCharacter(chaId: string, count: number, prefix = chaId): LiveCharac
         additionalAssets: Array.from({ length: count }, (_, i) => assetRow(`${prefix}${i}`, `assets/${prefix}${i}.png`)),
         emotionImages: [],
     }
-}
-
-function webSource(): ExportAssetSource {
-    return { kind: 'web', pieces: { node: false, open: async function* () { } }, store: {} as ByteStore }
 }
 
 function nativeSource(): ExportAssetSource {
@@ -148,6 +145,8 @@ beforeEach(async () => {
     resetCharacterSaveMarksForTest()
     installCharacterSaveMarks({ tracker, schedule: () => { h.marks += 1 } })
     resetStudioScreenForTests()
+    // The size job reads every row's file whether or not the row is in the window; this suite counts the rows' meta lines.
+    setWindowGeometryForTests(allRowsGeometry())
     db.db.characters = [makeCharacter('A', 20), makeCharacter('B', 2)]
     selection.selId = 0
     const service = createOwnerHistoryService({
@@ -163,6 +162,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     await unmountAll()
+    setWindowGeometryForTests(undefined)
     resetStudioToastsForTests()
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
@@ -194,18 +194,7 @@ describe('when the sizes start', () => {
 })
 
 describe('how many sizes are read at once', () => {
-    test('on the web at most one read is in flight, and every row is sized', async () => {
-        const { meter, sizeOf } = meteredReader()
-        show({ chaId: 'A', sizeJob: async () => createAssetSizeJob({ source: webSource(), sizeOf }) })
-        await until(() => sizeOf.mock.calls.length === 20 && meter.now === 0)
-        await settle()
-        expect(meter.max).toBe(1)
-        expect(sizeOf).toHaveBeenCalledTimes(20)
-        expect(document.querySelectorAll('[data-part="studio-asset-meta"]')).toHaveLength(20)
-        expect(document.querySelector('[data-part="studio-asset-meta"]')?.textContent).toMatch(/^png · \d+ B$/)
-    })
-
-    test('on a native store several reads run at once, up to the native limit', async () => {
+    test('several reads run at once, up to the native limit, and every row is sized', async () => {
         const { meter, sizeOf } = meteredReader()
         show({ chaId: 'A', sizeJob: async () => createAssetSizeJob({ source: nativeSource(), sizeOf }) })
         await until(() => sizeOf.mock.calls.length === 20 && meter.now === 0)
@@ -213,6 +202,8 @@ describe('how many sizes are read at once', () => {
         expect(meter.max).toBeGreaterThan(1)
         expect(meter.max).toBeLessThanOrEqual(NATIVE_SIZE_CONCURRENCY)
         expect(sizeOf).toHaveBeenCalledTimes(20)
+        expect(document.querySelectorAll('[data-part="studio-asset-meta"]')).toHaveLength(20)
+        expect(document.querySelector('[data-part="studio-asset-meta"]')?.textContent).toMatch(/^png · \d+ B$/)
     })
 })
 
@@ -221,32 +212,33 @@ describe('when the sizes stop', () => {
         let release: () => void = () => {}
         const gate = new Promise<void>((resolve) => { release = resolve })
         const { meter, sizeOf } = meteredReader(gate)
-        show({ chaId: 'A', sizeJob: async () => createAssetSizeJob({ source: webSource(), sizeOf }) })
+        show({ chaId: 'A', sizeJob: async () => createAssetSizeJob({ source: nativeSource(), sizeOf }) })
         await settle()
-        expect(meter.started).toHaveLength(1)
+        expect(meter.started).toHaveLength(NATIVE_SIZE_CONCURRENCY)
         await unmountAll()
         release()
         await pause(30)
         await settle()
-        expect(sizeOf).toHaveBeenCalledTimes(1)
+        expect(sizeOf).toHaveBeenCalledTimes(NATIVE_SIZE_CONCURRENCY)
     })
 
     test('a change of owner ends the old owner\'s reads and reads the new owner\'s rows', async () => {
         let release: () => void = () => {}
         const gate = new Promise<void>((resolve) => { release = resolve })
         const { meter, sizeOf } = meteredReader(gate)
-        const job = createAssetSizeJob({ source: webSource(), sizeOf })
+        const job = createAssetSizeJob({ source: nativeSource(), sizeOf })
         const props = $state({ chaId: 'A', sizeJob: async (): Promise<AssetSizeJob> => job })
         show(props)
         await settle()
-        expect(meter.started).toEqual(['assets/A0.png'])
+        const inFlightOfA = Array.from({ length: NATIVE_SIZE_CONCURRENCY }, (_, i) => `assets/A${i}.png`)
+        expect(meter.started).toEqual(inFlightOfA)
         props.chaId = 'B'
         await settle()
         release()
         await pause(30)
         await settle()
-        // The one read already in flight finished; no other row of the old owner was read, and the new owner's were.
-        expect(meter.started.filter((key) => key.startsWith('assets/A'))).toEqual(['assets/A0.png'])
+        // The reads already in flight finished; no other row of the old owner was read, and the new owner's were.
+        expect(meter.started.filter((key) => key.startsWith('assets/A'))).toEqual(inFlightOfA)
         expect(meter.started.filter((key) => key.startsWith('assets/B'))).toEqual(['assets/B0.png', 'assets/B1.png'])
         expect(document.querySelectorAll('[data-part="studio-asset-meta"]')).toHaveLength(2)
     })

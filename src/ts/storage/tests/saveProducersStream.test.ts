@@ -537,7 +537,7 @@ describe('a restored text inlay', () => {
 
     test('guard: a store without writeBlob stores the same string inlay from bytes', async () => {
         const base = useTauri()
-        const bytesOnly: ByteStore = { ...base, writeBlob: undefined, readBlob: undefined }
+        const bytesOnly: ByteStore = { ...base, writeBlob: undefined }
         injectAppStore(bytesOnly, 'tauri')
 
         await restore(bytesOnly, 'text-bytes', 'string', new TextEncoder().encode('hello'))
@@ -597,7 +597,6 @@ describe('the Tauri store writeBlob', () => {
         expect(Math.max(...h.desktop.payloads)).toBeLessThanOrEqual(CAP)
         expect(sameBytes(h.fs.files.get(BODY) ?? null, bytes)).toBe(true)
         expect(Array.from(h.fs.files.keys()).filter((key) => key.includes('.tmp'))).toEqual([])
-        expect(store.readBlob).toBeUndefined()
     })
 
     test('data safety: a slice that cannot be read rejects with that error, is read once, is not sent again and keeps the earlier value', async () => {

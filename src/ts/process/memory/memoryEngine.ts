@@ -1,4 +1,5 @@
 import type { Database } from '../../storage/database.svelte'
+import { readLtmSettings } from './chroMemory/settings'
 
 export type MemoryEngine = 'none' | 'supaMemory' | 'hypaV2' | 'hanuraiMemory' | 'hypaV3' | 'chroMemory'
 
@@ -60,6 +61,15 @@ export function memoryTakesChatsOf(db: Pick<EngineFields, 'hanuraiEnable' | 'hyp
 /** Whether the ChroMemory shadow retrieval runs for this send. */
 export function chroMemoryShadowRuns(db: Pick<EngineFields, 'hanuraiEnable' | 'hypav2' | 'hypaV3' | 'supaModelType' | 'ltmEngine'>, memoryOn: boolean): boolean {
     return memoryOn && memoryEngineOf(db) === 'chroMemory'
+}
+
+/**
+ * What the ChroMemory send does: nothing, retrieval only, or retrieval plus
+ * injection. Injection is the default; only a stored `shadow: true` holds it back.
+ */
+export function chroMemoryModeOf(db: Pick<EngineFields, 'hanuraiEnable' | 'hypav2' | 'hypaV3' | 'supaModelType' | 'ltmEngine'>, memoryOn: boolean, rawSettings: unknown): 'off' | 'shadow' | 'inject' {
+    if (!chroMemoryShadowRuns(db, memoryOn)) return 'off'
+    return readLtmSettings(rawSettings, 0).shadow ? 'shadow' : 'inject'
 }
 
 /** Whether the per-chat memory toggle is offered: any engine, ChroMemory included. */
