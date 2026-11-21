@@ -34164,7 +34164,6 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 
 **What the maintainer chose.** "Include all 24 (Recommended)". The package has 24 occasions: Independence Day (Jul 4, `en` only) was added on 2026-10-17 after MC-2826's count of 23 was written. It is ported with the other 23.
 
-
 ### MC-2475 — #292 typing-step task split off into its own ticket #301, 2026-11-20
 
 - Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, #292 A1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3681; b66\tickets\uis3-authoring\i292\answers-292.md; b61\handoffs\uis3-authoring.md:20. Related: `#292`, `#301`, `MC-2476`.
