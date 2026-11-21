@@ -33828,13 +33828,6 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 **What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
 
-<<<<<<< HEAD
-### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
-
-- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
-
-**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.
-=======
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
@@ -33844,4 +33837,9 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "Refuse MCP modules (Recommended)", over "Blank + scrub the URL": Gate 1 found the URL is also copied into the module's description, so the guard refuses an MCP module outright instead of blanking `mcp.url`.
 - "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
 - "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
->>>>>>> 501b9c14c8d733956013eaea4b4573567fc0206d
+
+### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
+
+- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
+
+**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.
