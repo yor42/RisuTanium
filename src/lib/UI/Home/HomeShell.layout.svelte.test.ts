@@ -120,8 +120,8 @@ beforeEach(() => {
     resetUpstreamAgreementForTests()
     resetBackHandlersForTests()
     startHomeView()
-    // jsdom has no `scrollIntoView`; the library reveal calls it.
-    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: vi.fn() })
+    // jsdom has no `scrollTo`; the library reveal calls it on the landing scroller.
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: vi.fn() })
 })
 
 afterEach(async () => {
@@ -135,7 +135,7 @@ afterEach(async () => {
     setViewportWidth(originalInnerWidth)
     resetBackHandlersForTests()
     startHomeView()
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
 })

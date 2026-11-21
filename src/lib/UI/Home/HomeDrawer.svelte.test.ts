@@ -140,7 +140,7 @@ function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
     return event
 }
 
-// jsdom has no scrollIntoView.
+// jsdom has no scrollTo. The reveal scrolls the landing scroller (the MainMenu root, the parent of the page body); a marked target top tells which section it aimed at.
 const scrollSpy = vi.fn()
 const pluginCallback = additionalHamburgerMenu[0].callback as ReturnType<typeof vi.fn>
 
@@ -150,7 +150,7 @@ beforeEach(() => {
     resetBackHandlersForTests()
     startHomeView()
     scrollSpy.mockClear()
-    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollSpy })
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     pluginCallback.mockReset()
 })
 
@@ -168,7 +168,7 @@ afterEach(async () => {
     setViewportWidth(originalInnerWidth)
     resetBackHandlersForTests()
     startHomeView()
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
 })
@@ -447,6 +447,7 @@ describe('HomeDrawer', () => {
             Reflect.deleteProperty(DBState.db, 'characters')
         })
         const root = mountShellAt(360)
+        root.querySelector<HTMLElement>('[data-part="home-library"]')!.getBoundingClientRect = () => ({ top: 321 } as DOMRect)
         openDrawer(root)
         expect(modalLayerCount()).toBe(1)
         itemNamed(language.character)!.click()
@@ -456,7 +457,8 @@ describe('HomeDrawer', () => {
         expect(modalLayerCount()).toBe(0)
         expect(root.querySelector('[data-part="home-landing"]')).not.toBeNull()
         const section = root.querySelector<HTMLElement>('[data-part="home-library"]')!
-        expect(scrollSpy.mock.contexts[0]).toBe(section)
+        expect(scrollSpy.mock.contexts[0]).toBe(root.querySelector('[data-part="home-body"]')!.parentElement)
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
         expect(document.activeElement).toBe(section.querySelector('h2'))
         expect(homeView.libraryEngaged).toBe(true)
     })
@@ -469,6 +471,7 @@ describe('HomeDrawer', () => {
         const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
         onTestFinished(() => focusSpy.mockRestore())
         const root = mountShellAt(360)
+        root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')!.getBoundingClientRect = () => ({ top: 654 } as DOMRect)
         openDrawer(root)
         itemNamed(language.character)!.click()
         flushSync()
@@ -478,7 +481,8 @@ describe('HomeDrawer', () => {
         expect(root.querySelector('[data-part="home-landing"]')).not.toBeNull()
         expect(root.querySelector('[data-part="home-library"]')).toBeNull()
         const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')!
-        expect(scrollSpy.mock.contexts[0]).toBe(hero)
+        expect(scrollSpy.mock.contexts[0]).toBe(root.querySelector('[data-part="home-body"]')!.parentElement)
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 654, behavior: 'smooth' })
         const heading = hero.querySelector<HTMLElement>('[data-jump-target="home-hero"]')!
         expect(document.activeElement).toBe(heading)
         expect(focusSpy.mock.contexts).toContain(heading)

@@ -128,17 +128,18 @@
         }
         const root = landingRoot
         if (!root) return
+        const scroller = landingBody?.firstElementChild instanceof HTMLElement ? landingBody.firstElementChild : null
         const reduced = reducedMotionActive()
         const section = root.querySelector<HTMLElement>('[data-part="home-library"]')
         if (section) {
             const control = focusChaId === null ? undefined : Array.from(section.querySelectorAll<HTMLElement>('[data-part="library-studio"]'))
                 .find((candidate) => candidate.getAttribute('data-cha-id') === focusChaId)
-            jumpToSection({ scroll: section, focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'), reduced })
+            jumpToSection({ scroller, target: section, focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'), reduced })
             return
         }
         const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')
         if (hero) {
-            jumpToSection({ scroll: hero, focus: hero.querySelector<HTMLElement>('[data-jump-target="home-hero"]'), reduced })
+            jumpToSection({ scroller, target: hero, focus: hero.querySelector<HTMLElement>('[data-jump-target="home-hero"]'), reduced })
         }
     }
 

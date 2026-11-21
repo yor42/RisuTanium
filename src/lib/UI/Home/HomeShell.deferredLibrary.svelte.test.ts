@@ -186,7 +186,7 @@ beforeEach(() => {
     showHomeLanding()
     installSchedulers()
     scrollSpy.mockReset()
-    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollSpy })
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     setCharacters([warm('a'), warm('b'), warm('c')])
 })
 
@@ -200,7 +200,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     showHomeLanding()
     startHomeView()
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     vi.unstubAllGlobals()
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
@@ -261,6 +261,7 @@ describe('the deferred library mount', () => {
         runFrame()
         runFrame()
         expect(stubs(root)).toHaveLength(0)
+        root.querySelector<HTMLElement>('[data-part="home-library"]')!.getBoundingClientRect = () => ({ top: 321 } as DOMRect)
         let stubsAtScroll = -1
         scrollSpy.mockImplementationOnce(() => {
             stubsAtScroll = stubs(root).length
@@ -273,7 +274,8 @@ describe('the deferred library mount', () => {
         // The reveal waits for the mount: the section was already full height when it was scrolled.
         expect(stubsAtScroll).toBe(1)
         const section = root.querySelector<HTMLElement>('[data-part="home-library"]')!
-        expect(scrollSpy.mock.contexts[0]).toBe(section)
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
         expect(document.activeElement).toBe(section.querySelector('h2'))
 
         expect(placeholderOf(root)).toBeNull()

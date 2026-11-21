@@ -8,7 +8,7 @@
  *
  * MOCKED: the module set of `MainMenu.hubStates.svelte.test.ts` (`src/lib/UI`). `HomeLibrary` is a
  * marker stand-in (its own behaviour is tested in `HomeLibrary.svelte.test.ts`), and `alertError` is
- * the only export of a stand-in alert module. jsdom has no `scrollIntoView`, so a spy stands in.
+ * the only export of a stand-in alert module. jsdom has no `scrollTo`, so a spy stands in.
  */
 
 import { flushSync, mount, onDestroy, tick, unmount } from 'svelte'
@@ -113,6 +113,12 @@ function mountShell(): HTMLElement {
 const landingOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-landing"]')
 const sectionOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-library"]')
 const stubsOf = (root: HTMLElement) => root.querySelectorAll('[data-testid="library-stub"]')
+// The landing scroller is the MainMenu root: the parent of the page body. The reveal scrolls it, never the document.
+const scrollerOf = (root: HTMLElement): HTMLElement => landingOf(root)!.querySelector('[data-part="home-body"]')!.parentElement!
+// The scroll offset is the target's top edge, so a marked top tells which element the reveal aimed at.
+function markTop(element: HTMLElement, top: number): void {
+    element.getBoundingClientRect = () => ({ top } as DOMRect)
+}
 
 function libraryButton(root: HTMLElement): HTMLButtonElement {
     const button = Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.character)
@@ -128,7 +134,7 @@ beforeEach(() => {
     resetBackHandlersForTests()
     alertErrorSpy.mockClear()
     scrollSpy.mockClear()
-    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollSpy })
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     setWidth(1280)
     setCharacters([liveSlot('a'), liveSlot('b'), liveSlot('c')])
     startHomeView()
@@ -144,7 +150,7 @@ afterEach(async () => {
     document.documentElement.classList.remove('rm')
     resetBackHandlersForTests()
     startHomeView()
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     setWidth(originalInnerWidth)
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
@@ -155,14 +161,15 @@ describe('HomeShell', () => {
         const root = mountShell()
         expect(landingOf(root)).not.toBeNull()
         expect(homeView.libraryEngaged).toBe(false)
+        markTop(sectionOf(root)!, 321)
 
         libraryButton(root).click()
         flushSync()
         await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(landingOf(root)).not.toBeNull()
         const section = sectionOf(root)!
-        expect(scrollSpy.mock.contexts[0]).toBe(section)
-        expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' })
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
         expect(document.activeElement).toBe(section.querySelector('h2'))
         expect(section.querySelector('h2')!.textContent).toBe(language.homeLibraryHeading)
         expect(homeView.libraryEngaged).toBe(true)
@@ -172,22 +179,26 @@ describe('HomeShell', () => {
     test('S4b-R1 with reduced motion on the root the scroll is instant', async () => {
         document.documentElement.classList.add('rm')
         const root = mountShell()
+        markTop(sectionOf(root)!, 321)
         libraryButton(root).click()
         flushSync()
         await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
-        expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' })
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'instant' })
     })
 
     test('S4b-R1 every character trashed: the library wins over the visible hero, scrolled and focused', async () => {
         setCharacters([{ ...liveSlot('a'), trashTime: 3 }, { ...liveSlot('b'), trashTime: 3 }])
         const root = mountShell()
         expect(root.querySelectorAll('[data-part="home-empty-hero"]')).toHaveLength(1)
+        markTop(sectionOf(root)!, 321)
+        markTop(root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')!, 654)
 
         libraryButton(root).click()
         flushSync()
         await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
         const section = sectionOf(root)!
-        expect(scrollSpy.mock.contexts[0]).toBe(section)
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
         expect(document.activeElement).toBe(section.querySelector('[data-jump-target="library"]'))
         expect(document.activeElement).not.toBe(root.querySelector('[data-jump-target="home-hero"]'))
     })
@@ -253,7 +264,7 @@ describe('HomeShell', () => {
         const first = mountShell()
         expect(homeView.libraryEngaged).toBe(true)
         await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
-        expect(scrollSpy.mock.contexts[0]).toBe(sectionOf(first))
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(first))
 
         await unmount(mountedInstances.pop() as never)
         mountedTargets.pop()!.remove()

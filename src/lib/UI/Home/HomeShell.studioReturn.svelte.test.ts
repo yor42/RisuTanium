@@ -271,6 +271,8 @@ async function settleChunk(): Promise<void> {
 
 const scrollSpy = vi.fn()
 const sectionOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-library"]')
+// The landing scroller is the MainMenu root: the parent of the page body. The reveal scrolls it, never the document.
+const scrollerOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-body"]')?.parentElement ?? null
 const landingShown = (root: HTMLElement): boolean => root.querySelector('[data-part="home-landing"]') !== null
 const opener = (): HTMLElement => document.body.appendChild(document.createElement('button'))
 const controlOf = (root: HTMLElement, chaId: string): HTMLElement | null =>
@@ -289,7 +291,7 @@ beforeEach(() => {
     installDb()
     scrollSpy.mockClear()
     drawnControls.chaIds = []
-    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollSpy })
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     stopBackLayers = $effect.root(() => {
         installStudioBack()
     })
@@ -309,7 +311,7 @@ afterEach(async () => {
     resetHomeStudioForTests()
     selectedCharID.set(-1)
     startHomeView()
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     setStudioEnabled(false)
     localStorage.clear()
     resetUpstreamAgreementForTests()
@@ -324,6 +326,8 @@ describe('the landing library after a Home-opened Studio', () => {
         const root = mountShell()
         expect(landingShown(root)).toBe(true)
         flushSync()
+        // The scroll offset is the target's top edge, so a marked top tells which section the reveal aimed at.
+        sectionOf(root)!.getBoundingClientRect = () => ({ top: 321 } as DOMRect)
 
         await removeChar(1, 'one')
         flushSync()
@@ -332,7 +336,8 @@ describe('the landing library after a Home-opened Studio', () => {
         expect(homeView.libraryEngaged).toBe(true)
         await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(landingShown(root)).toBe(true)
-        expect(scrollSpy.mock.contexts[0]).toBe(sectionOf(root))
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
         expect(document.activeElement).toBe(controlOf(root, 'one'))
     })
 
@@ -348,8 +353,8 @@ describe('the landing library after a Home-opened Studio', () => {
         expect(homeView.libraryEngaged).toBe(true)
         await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(landingShown(root)).toBe(true)
-        expect(scrollSpy.mock.contexts[0]).toBe(sectionOf(root))
-        expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' })
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
         expect(document.activeElement).toBe(controlOf(root, 'one'))
     })
 
@@ -377,7 +382,7 @@ describe('the landing library after a Home-opened Studio', () => {
         expect(sectionOf(root)).toBeNull()
         const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')
         expect(hero).not.toBeNull()
-        expect(scrollSpy.mock.contexts[0]).toBe(hero)
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
         expect(document.activeElement).toBe(hero!.querySelector('[data-jump-target="home-hero"]'))
     })
 
@@ -448,7 +453,7 @@ describe('the landing library after a Home-opened Studio', () => {
             expect(get(selectedCharID)).toBe(-1)
             await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
             expect(landingShown(target)).toBe(true)
-            expect(scrollSpy.mock.contexts[0]).toBe(sectionOf(target))
+            expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(target))
             expect(document.activeElement).toBe(controlOf(target, 'one'))
 
             await tick()
