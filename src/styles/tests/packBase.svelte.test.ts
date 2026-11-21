@@ -60,6 +60,7 @@ import { updateColorScheme } from '../../ts/gui/colorscheme'
 import { packBaseTone } from '../../ts/gui/surfaceTone'
 import { BUILTIN_PACKS, type BuiltinPack } from '../../ts/themePack/builtins'
 import { buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests } from '../../ts/themePack/apply'
+import { chatCommitInput, chatElementOf } from '../../ts/themePack/fixtures/packCommit'
 import { TOKEN_FILES, tokenFile } from '../../ts/themePack/tokens'
 import { judgeAreaSheet, judgePackSheets } from '../../ts/themePack/index'
 import { judgeSessionOverForTests } from '../../ts/themePack/judgeClient'
@@ -80,6 +81,8 @@ const PINNED_NEXUS = [
 ]
 const PINNED_PATTERN = ['--pattern-on-accent', '--pattern-on-danger']
 const PINNED_CHAT = ['--color-scheme', '--color-surface-bar']
+// The app shape tokens the Tailwind radius and hairline scale reads (MC-3128): never restored by the base, but both token files must declare each, so the compared set cannot silently shrink.
+const PINNED_SHAPE = ['--ui-radius-xs', '--ui-radius-sm', '--ui-radius-md', '--ui-radius-lg', '--ui-radius-xl', '--ui-radius-2xl', '--ui-radius-3xl', '--ui-radius-4xl', '--ui-radius', '--ui-border-width']
 // The app's own black under the pack canvas; it has no reference counterpart and no pack may declare it.
 const PACK_BACKDROP = '--surface-pack-backdrop'
 
@@ -237,11 +240,11 @@ function pack(id: string): BuiltinPack {
 function applyBuiltin(builtin: BuiltinPack): void {
     const judged = judgeAreaSheet('chat', builtin.chatCss, undefined, 'chat')
     expect(judged.result.ok).toBe(true)
-    expect(commitPackSheet({ text: buildAppliedText(judged, () => ''), blobs: [] })).toEqual({ ok: true })
+    expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
 }
 
 function applySheet(text: string): void {
-    expect(commitPackSheet({ text, blobs: [] })).toEqual({ ok: true })
+    expect(commitPackSheet(chatCommitInput(text))).toEqual({ ok: true })
 }
 
 const packElement = (): HTMLStyleElement | null => document.querySelector<HTMLStyleElement>('style[data-theme-pack]')
@@ -270,7 +273,7 @@ describe('TP1: with the base on, the app resolves every token to the judged refe
 
     test('the compared set holds the restored names and the pinned divergence is not a colour', () => {
         expect(names.length).toBeGreaterThan(150)
-        for (const n of [...PINNED_NEXUS, ...PINNED_PATTERN, ...PINNED_CHAT]) expect(names).toContain(n)
+        for (const n of [...PINNED_NEXUS, ...PINNED_PATTERN, ...PINNED_CHAT, ...PINNED_SHAPE]) expect(names).toContain(n)
         const resolved = new CascadeModel(compileRules(appSheets))
         for (const n of ALLOWED_DIVERGENCE) {
             const value = resolved.custom(ROOT(), n)
@@ -450,8 +453,8 @@ describe('TP4: without a pack nothing is marked and the chat follows the scheme'
         const prepared = await preparePackSheet({ kind: 'builtin', pack: empty }, judgeSessionOverForTests(async (sheets) => judgePackSheets(sheets)), () => true)
         expect('stale' in prepared).toBe(false)
         if ('stale' in prepared || !prepared.ok) throw new Error('the empty sheet was not prepared')
-        expect(prepared.text).toBeNull()
-        commitPackSheet(prepared.text === null ? null : { text: prepared.text, blobs: prepared.blobs })
+        expect(chatElementOf(prepared).text).toBeNull()
+        commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs })
         expect(ROOT().hasAttribute(ATTRIBUTE)).toBe(false)
         expect(get(packBaseTone)).toBeNull()
         expect(colourText(under('light', resolvedRules()).custom(ROOT(), '--nexus-canvas'))).toBe(colourText('#ffffff'))

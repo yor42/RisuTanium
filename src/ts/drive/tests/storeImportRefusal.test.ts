@@ -270,7 +270,7 @@ describe('checkStore2Import names the cause of each refusal (new behaviour)', ()
     describe('the question about a foreign marker is a Node page\'s alone (compatibility guard for the other kinds; passes before the change)', () => {
         const restoreMarker = { status: 'parsed', value: { current: {}, staging: { owner: 'other-page', prefix: 'pfx-other', label: 'restore' } } }
 
-        test.each(['indexeddb', 'tauri', 'opfs-transitional'] as const)('a %s page keeps the refusal: the question is never asked and nothing is cleared', async (kind) => {
+        test.each(['tauri', 'opfs-transitional'] as const)('a %s page keeps the refusal: the question is never asked and nothing is cleared', async (kind) => {
             world.session = { ...sessionWith(readsNothing), kind }
             world.classified = restoreMarker
             world.active = { markerOwnerProbe: async () => 'unknown' }

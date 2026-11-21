@@ -167,6 +167,7 @@ describe('SECRET_FIELDS completeness', () => {
         // their paths are walked.
         db.OaiCompAPIKeys = { 'my-model': 'x' }
         db.customModels = [{ id: 'm', key: 'k', name: 'n' }]
+        db.connections = [{ id: 'conn-1', name: 'n', provider: 'openai', key: 'k' }]
         db.authRefreshes = [{ url: 'u', tokenUrl: 't', refreshToken: 'r', clientId: 'c', clientSecret: 's' }]
         return [
             ...walkStrings(db, '', []),
@@ -187,6 +188,7 @@ describe('SECRET_FIELDS completeness', () => {
         const paths = defaultLeaves().map((leaf) => leaf.path)
         expect(paths).toContain('OaiCompAPIKeys.my-model')
         expect(paths).toContain('customModels[0].key')
+        expect(paths).toContain('connections[0].key')
         expect(paths).toContain('botPresets[0].openAIKey')
     })
 
@@ -228,18 +230,23 @@ describe('importPreset blanks whole-field references', () => {
         expect(imported.proxyKey).toBe('')
     })
 
-    test('guard: plain keys are kept as written', async () => {
+    /** The key of the connection an imported preset references, or undefined when it references none. */
+    const referencedKey = (preset: { proxyConnectionId?: string }) =>
+        DBState.db.connections?.find((conn) => conn.id === preset.proxyConnectionId)?.key
+
+    test('a plain proxy key moves into the store with an empty URL, and a plain OpenAI key is dropped', async () => {
         await importPreset(presetFile({ openAIKey: 'sk-plain-openai', proxyKey: 'sk-plain-proxy' }))
         const [imported] = DBState.db.botPresets
-        expect(imported.openAIKey).toBe('sk-plain-openai')
-        expect(imported.proxyKey).toBe('sk-plain-proxy')
+        expect(imported.openAIKey).toBe('')
+        expect(imported.proxyKey).toBe('')
+        expect(referencedKey(imported)).toBe('sk-plain-proxy')
     })
 
-    test('guard: a lowercase look-alike and a reference inside a longer value are kept', async () => {
+    test('a lowercase look-alike and a reference inside a longer value are stored as written', async () => {
         await importPreset(presetFile({ openAIKey: '${risu_x_key}', proxyKey: 'prefix-${RISU_Y_KEY}' }))
         const [imported] = DBState.db.botPresets
-        expect(imported.openAIKey).toBe('${risu_x_key}')
-        expect(imported.proxyKey).toBe('prefix-${RISU_Y_KEY}')
+        expect(imported.openAIKey).toBe('')
+        expect(referencedKey(imported)).toBe('prefix-${RISU_Y_KEY}')
     })
 
     test('guard: a preset file without key fields imports with the template defaults', async () => {
@@ -268,14 +275,14 @@ describe('importPreset blanks whole-field references', () => {
         await importPreset(producedPreset({ openAIKey: 'sk-test-A\r${RISU_A_KEY}', proxyKey: 'sk-test-B' }))
         const [imported] = DBState.db.botPresets
         expect(imported.openAIKey).toBe('')
-        expect(imported.proxyKey).toBe('sk-test-B')
+        expect(referencedKey(imported)).toBe('sk-test-B')
     })
 
-    test('guard: a whole reference is blanked and a plain multi-line key list is kept as written', async () => {
+    test('a whole reference is blanked and a plain multi-line key list is stored as written', async () => {
         await importPreset(producedPreset({ openAIKey: '${RISU_A_KEY}', proxyKey: 'sk-test-A\nsk-test-B' }))
         const [imported] = DBState.db.botPresets
         expect(imported.openAIKey).toBe('')
-        expect(imported.proxyKey).toBe('sk-test-A\nsk-test-B')
+        expect(referencedKey(imported)).toBe('sk-test-A\nsk-test-B')
     })
 })
 
@@ -313,6 +320,12 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
     const asRisupreset = (o: unknown) => fflate.compressSync(encodeMsgpack({ presetVersion: 2, type: 'preset', preset: encodeMsgpack(o) }))
     const working = () => DBState.db as unknown as Loose
 
+    /** Selecting an imported preset leaves the working proxy empty: no reference, and nothing of the attacker's pair. */
+    function expectNoImportedProxy() {
+        expect(working().proxyConnectionId).toBe('')
+        expect(String(working().forceReplaceUrl)).not.toContain('attacker')
+    }
+
     async function importFile(name: string, data: Uint8Array): Promise<Loose> {
         await importPreset({ name, data })
         const list = DBState.db.botPresets as unknown as Loose[]
@@ -333,7 +346,7 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
         const stored = await importFile('shared.json', asJson(attackerA1()))
         expect(stored.forceReplaceUrl2).toBe('')
         changeToPreset(0)
-        expect(working().forceReplaceUrl).toBe('')
+        expectNoImportedProxy()
         expect(stored.forceReplaceUrl).toBe('')
         expect(stored.proxyKey).toBe('')
     })
@@ -341,13 +354,13 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
     test('T2 risupreset wrapper', async () => {
         await importFile('imported.risupreset', asRisupreset(attackerA1()))
         changeToPreset(0)
-        expect(working().forceReplaceUrl).toBe('')
+        expectNoImportedProxy()
     })
 
     test('T3 risup wrapper', async () => {
         await importFile('p.risup', asRisupreset(attackerA1()))
         changeToPreset(0)
-        expect(working().forceReplaceUrl).toBe('')
+        expectNoImportedProxy()
     })
 
     test('T4 Google format with a blank proxy key', async () => {
@@ -356,7 +369,7 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
             forceReplaceUrl: 'https://attacker.test/v1beta', proxyKey: '',
         }))
         changeToPreset(0)
-        expect(working().forceReplaceUrl).toBe('')
+        expectNoImportedProxy()
     })
 
     test('T5 mancer textgen URLs', async () => {
@@ -399,7 +412,7 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
         }))
         changeToPreset(0)
         expect(working().subModel).toBe('reverse_proxy')
-        expect(working().forceReplaceUrl).toBe('')
+        expectNoImportedProxy()
     })
 
     test('T10 native kobold model with an attacker koboldURL', async () => {
@@ -484,14 +497,14 @@ describe('importPreset never lets a preset choose where stored secrets are sent'
         expectImportsAsExported(await importFile('x.risup', result.buf as Uint8Array), exported)
     })
 
-    test('G4 guard: selecting a preset the user saved applies its own destinations', () => {
+    test('G4 guard: selecting a preset the user saved applies its own proxy connection and destinations', () => {
         const own = presetFromWorkingSettings(userDb({
-            forceReplaceUrl: 'https://own.test/v1', proxyKey: 'sk-own', koboldURL: 'http://own-kobold.test/api/v1',
+            proxyConnectionId: 'conn-own', koboldURL: 'http://own-kobold.test/api/v1',
         }) as unknown as Database, 'Own', '')
         DBState.db.botPresets.push(own)
+        working().proxyConnectionId = 'conn-user'
         changeToPreset(0)
-        expect(working().forceReplaceUrl).toBe('https://own.test/v1')
-        expect(working().proxyKey).toBe('sk-own')
+        expect(working().proxyConnectionId).toBe('conn-own')
         expect(working().koboldURL).toBe('http://own-kobold.test/api/v1')
     })
 })

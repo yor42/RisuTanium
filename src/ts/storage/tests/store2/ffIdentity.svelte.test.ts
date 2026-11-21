@@ -131,7 +131,7 @@ function forceFailure(w: MergeWorld): void {
         throw new Error('No key environment.')
     }
     w.b.context.fastForward = createFastForward({
-        backend: w.memory, kind: 'indexeddb', lists: fakeLists, env,
+        backend: w.memory, kind: 'node', lists: fakeLists, env,
         apply: steps => applyVerified([...steps, { apply: () => () => { }, verify: () => false }]),
     })
     w.run = runSpyOf(w.b)
@@ -324,21 +324,6 @@ describe.each(FF_HOSTS)('a failed check restores every step kind (%s host)', (mo
 describe.each(FF_HOSTS)('after a park the own edits still save (%s host)', (mode) => {
     useFfHost(mode)
 
-    test('T8 C7f a forced failing last step after an insertion, Save mine, then an own edit of character 3: the edit is saved and no pass fails', async () => {
-        const w = await world()
-        w.b.peer.answer = 'save-mine'
-        forceFailure(w)
-        ownEdit(w, 2, 'own edit char2')
-        expect(await peerCommits(w, db => appendOne(db, 'added-c7f'))).toEqual({ kind: 'park', reason: 'check-a' })
-        await until(() => w.world.state.saved > 0 || w.world.failures.length > 0, 'the Save mine pass', 8000)
-        chars(w.b.db)[3].personality = 'user edit after Save mine'
-        w.world.mark(chaIdOf(w.b.db, 3))
-        await until(() => w.world.state.saved > 1 || w.world.failures.length > 0, 'the later pass', 8000)
-        const read = await w.page.freeze()
-        expect(w.world.failures).toEqual([])
-        expect(chars(read.db)[3].personality).toBe('user edit after Save mine')
-    })
-
     test('T9 C7n a natural insertion with an own unsaved edit: the take asks nothing, the store holds the added character and the later own edit', async () => {
         const w = await world()
         w.b.peer.answer = 'save-mine'
@@ -355,39 +340,6 @@ describe.each(FF_HOSTS)('after a park the own edits still save (%s host)', (mode
         expect(chars(read.db).map(slot => String(slot.chaId))).toContain('added-c7n')
         expect(chars(read.db)[3].personality).toBe('user edit after the peer add')
     })
-
-    const saveMine: Array<[string, Seed | undefined, Seed]> = [
-        ['U1 a replacement', undefined, editBody],
-        ['U2 an insertion', undefined, db => appendOne(db, 'added-u2')],
-        ['U3 a removal', undefined, db => remove(db, 3)],
-        ['U4 a root field', undefined, (db) => { Reflect.set(db, 'username', 'peer username') }],
-        ['U5 the unit path', undefined, (db) => { chatsAt(db, 1)[0].message = [...(chatsAt(db, 1)[0].message as unknown[]), { role: 'user', data: 'peer pushed', time: 1 }] }],
-        ['U6 a moved field', undefined, (db) => { chars(db)[2].lastInteraction = Date.now() + 5000 }],
-        ['U7 two appends outside the domain', repeated, (db) => { appendOne(db, 'app-one'); appendOne(db, 'app-two') }],
-        ['U9 edit, insert, remove and append', undefined, (db) => {
-            chars(db)[2].personality = 'peer body'
-            insertAt(db, 3, 'inserted-mid')
-            remove(db, 1)
-            appendOne(db, 'appended-last')
-        }],
-    ]
-    for (const [name, seed, edit] of saveMine) {
-        test(`T18 ${name} undone by a forced failure, then Save mine and a later own edit: both are saved and no pass fails`, async () => {
-            const w = await world(seed)
-            w.b.peer.answer = 'save-mine'
-            forceFailure(w)
-            ownEdit(w, 0, 'own edit char0')
-            expect(await peerCommits(w, edit)).toEqual({ kind: 'park', reason: 'check-a' })
-            await until(() => w.world.state.saved > 0 || w.world.failures.length > 0, 'the Save mine pass', 8000)
-            chars(w.b.db)[0].personality = 'later edit char0'
-            const saved = w.world.state.saved
-            w.world.mark(chaIdOf(w.b.db, 0))
-            await until(() => w.world.state.saved > saved || w.world.failures.length > 0, 'the later pass', 8000)
-            const read = await w.page.freeze()
-            expect(w.world.failures).toEqual([])
-            expect(chars(read.db)[0].personality).toBe('later edit char0')
-        })
-    }
 })
 
 describe('the identity tracker after a take, with the real change effects (state host)', () => {

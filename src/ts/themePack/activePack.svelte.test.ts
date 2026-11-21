@@ -16,7 +16,7 @@ import { resetBusyActionsForTest } from '../process/memory/busyActions'
 import { resetRestoreInProgressForTests } from '../drive/restoreInProgress'
 import { resetPageStorageModeForTests } from '../storage/pageStorageMode'
 import {
-    fakeFont, manifestText, PLAIN_CHAT_SHEET, validPackFiles, zipPack, type PackFile,
+    fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, validPackFiles, zipPack, type PackFile,
 } from './fixtures/packBuilder'
 import bananaCocoaChat from '../../../docs/design/chat/themes/banana-cocoa.css?raw'
 import originNavyStudio from '../../../docs/design/studio/themes/origin-navy.css?raw'
@@ -160,7 +160,7 @@ function addRecord(record: Record<string, unknown>): void {
 }
 
 const PACK_A = packOf(FACE_A + leaf('1'), [FONT_A], {}, 'Pack A')
-const PACK_B = packOf(FACE_B + leaf('0'), [FONT_B], { 'studio.css': 'body{color:red}' }, 'Pack B')
+const PACK_B = packOf(FACE_B + leaf('0'), [FONT_B], { 'home.css': 'body{color:red}' }, 'Pack B')
 const PACK_C = packOf(leaf('0.5'), [], {}, 'Pack C')
 /** A refused sheet: `body` is outside the chat scope. */
 const PACK_REFUSED = packOf('body{color:red}', [], {}, 'Pack Refused')
@@ -653,7 +653,7 @@ describe('T3D-6 races', () => {
         expect(replay(records).filter((step) => step.type === 'add')).toEqual([])
         expect(childListRecordsOn(records, elementB)).toEqual([])
         expect(packElements()).toEqual([elementB])
-        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-b', skippedAreas: ['studio'], empty: false })
+        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-b', skippedAreas: ['home'], empty: false })
         expect(channel.spawns - spawnsBefore).toBe(1)
         expectOnlyAppliedBlobsLive()
     })
@@ -891,17 +891,16 @@ describe('T3G-7 a {chat Banana Cocoa, studio Origin Navy} pack', () => {
         })
     }
 
-    it('applies chat only and never has two sheets on through cover toggles and a remount', async () => {
+    it('applies a chat and a studio element and never has two sheets on through cover toggles and a remount, the studio sheet staying off while Studio is not declared', async () => {
         addRecord(archiveRecord('rec-mixed', mixedPack()))
         const recorder = startRecording()
         startThemePackApply()
         activate('rec-mixed')
         await until(() => status().phase === 'applied', 'the apply')
-        expect(status().skippedAreas).toEqual(['studio'])
-        expect(packElements()).toHaveLength(1)
-        expect(packElements()[0].getAttribute('data-theme-pack')).toBe('chat')
-        expect(document.querySelectorAll('style[data-theme-pack]:not([data-theme-pack="chat"])')).toHaveLength(0)
+        expect(status().skippedAreas).toEqual([])
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
         expect(packElements()[0].getAttribute('media')).toBe('all')
+        expect(packElements()[1].getAttribute('media')).toBe('not all')
 
         // Settings over the shell, then Studio over the shell: each is one cover transition pair.
         for (let pass = 0; pass < 2; pass++) {
@@ -924,7 +923,87 @@ describe('T3G-7 a {chat Banana Cocoa, studio Origin Navy} pack', () => {
         const steps = replay(recorder.take())
         expect(steps.length).toBeGreaterThan(0)
         expect(steps.every((step) => step.on.length <= 1)).toBe(true)
-        expect(steps.filter((step) => step.type === 'add')).toHaveLength(1)
+        expect(steps.filter((step) => step.type === 'add')).toHaveLength(2)
+    })
+})
+
+describe('D1 studio.css is judged for a stored pack (MC-3121, MC-3008)', () => {
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:1}'
+
+    it('a stored chat and studio pack applies, and studio is no longer a skipped area', async () => {
+        addRecord(archiveRecord('rec-s', packOf(leaf('1'), [], { 'studio.css': STUDIO_LEAF }, 'Pack S')))
+        startThemePackApply()
+        activate('rec-s')
+        await until(() => status().phase === 'applied', 'the apply')
+        expect(status().skippedAreas).toEqual([])
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
+    })
+
+    it('a stored pack whose studio.css is refused is broken refused, carrying the studio refusal', async () => {
+        const hostile = '[data-part="chat-header"]{opacity:1}'
+        addRecord(archiveRecord('rec-h', packOf(leaf('1'), [], { 'studio.css': hostile }, 'Pack H')))
+        startThemePackApply()
+        activate('rec-h')
+        await until(() => status().phase === 'broken', 'the refused pack')
+        expect(status().reason).toBe('refused')
+        expect(status().refusals).toEqual([
+            { code: 'sheetRefused', sheet: 'studio.css', errors: judgeAreaSheet('studio', hostile, undefined, 'studio').result.errors },
+        ])
+        expect(packElements()).toHaveLength(0)
+    })
+})
+
+describe('S4a empty: every element\'s applied text is null (MC-3121, MC-3127)', () => {
+    const STUDIO_SHAPE = '[data-part="studio-asset-row"]{min-height:3rem}'
+    const PAINT_ONLY_IMAGE = '[data-part="studio-asset-row"]{background-image:url(images/s.png)}'
+    /** Accepted for chat, and kept whole in colour mode: a token background with a literal text colour. */
+    const CHAT_PAINT = '[data-part="chat-send"]{background-color:var(--nexus-accent) !important;color:#000000 !important}'
+
+    function studioOnly(studio: string, extra: Readonly<Record<string, PackFile>> = {}): Uint8Array {
+        return zipPack({ 'manifest.json': manifestText({ name: 'Studio Only' }), 'studio.css': studio, ...extra })
+    }
+
+    async function applyStored(id: string, bytes: Uint8Array): Promise<void> {
+        addRecord(archiveRecord(id, bytes))
+        startThemePackApply()
+        activate(id)
+        await until(() => status().phase === 'applied' || status().phase === 'broken', 'the apply')
+    }
+
+    it('A8: a comment-only chat sheet with a studio shape rule is applied, not empty, and has a studio element', async () => {
+        await applyStored('rec-a8', packOf('/* nothing */', [], { 'studio.css': STUDIO_SHAPE }, 'A8'))
+        expect(status()).toMatchObject({ phase: 'applied', empty: false })
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['studio'])
+    })
+
+    it('a studio-only pack with a shape rule is applied and not empty; its studio element is on while Studio is shown', async () => {
+        const release = declareSurface('studio')
+        await applyStored('rec-so', studioOnly(STUDIO_SHAPE))
+        expect(status()).toMatchObject({ phase: 'applied', empty: false })
+        const [studio] = packElements()
+        expect(packElements()).toHaveLength(1)
+        expect(studio.getAttribute('data-theme-pack')).toBe('studio')
+        expect(studio.getAttribute('media')).toBe('all')
+        release()
+    })
+
+    it('a studio-only pack whose shape variant has only empty blocks is accepted and reported empty (MC-3127)', async () => {
+        await applyStored('rec-eb', studioOnly(PAINT_ONLY_IMAGE, { 'images/s.png': PNG_1X1 }))
+        expect(status()).toMatchObject({ phase: 'applied', empty: true })
+        expect(packElements()).toHaveLength(0)
+        expect(blobs.minted).toHaveLength(0)
+    })
+
+    it('a chat sheet with colours only keeps today\'s result: applied, not empty, one chat element (guard)', async () => {
+        await applyStored('rec-cp', packOf(CHAT_PAINT, [], {}, 'Chat paint'))
+        expect(status()).toMatchObject({ phase: 'applied', empty: false })
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat'])
+    })
+
+    it('a comment-only chat sheet alone is empty, as today (guard)', async () => {
+        await applyStored('rec-co', packOf('/* nothing */', [], {}, 'Comment'))
+        expect(status()).toMatchObject({ phase: 'applied', empty: true })
+        expect(packElements()).toHaveLength(0)
     })
 })
 

@@ -2,7 +2,7 @@
 // Shape mode (MC-3003): the allowlisted strip of a judged chat sheet. T5 pins exact output strings, T5b pins the token and
 // property partition, T6 shows that the stripped text of every real producer and every hostile row still passes the judge
 // and carries no paint.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { strFromU8, unzipSync } from 'fflate'
@@ -12,7 +12,7 @@ import { BUILTIN_PACKS } from './builtins'
 import { classify, decls } from './csslit'
 import { judgeAreaSheet } from './index'
 import { PROP_ALLOW, isAllowedProperty } from './scope'
-import { SHAPE_PROPERTY, SHAPE_TOKEN_NAMES, shapeOnlySheet } from './shapeMode'
+import { SHAPE_PROPERTY, SHAPE_TOKEN_NAMES, shapeOnlySheet, shapeTokenNames } from './shapeMode'
 import { tokenFile } from './tokens'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -242,5 +242,111 @@ describe('T6 the stripped text of every real producer and hostile row is judged 
         expect(checked).toBeGreaterThan(20)
         expect(refused).toEqual([])
         expect(painted).toEqual([])
+    })
+})
+
+describe('S1 the studio shape token list (MC-3121)', () => {
+    const STEPS = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']
+    const SHAPE_APP = [...STEPS.map((step) => `--ui-radius-${step}`), '--ui-radius', '--ui-border-width']
+    const COLOUR_FAMILY = /color|colour|-rgb$|alpha|tint|-bg$|shadow|selection|^--studio-(on-|knob|lt-hl|diff-|syn-)|^--nexus-(canvas|surface|text|accent|warm|edge)|^--opacity-/
+    // Studio's geometry role tokens (R6b): every pack-settable studio name that is not a colour, alpha or tint family.
+    const STUDIO_GEOMETRY = [...allowedTokenNames('studio')].filter((name) => name.startsWith('--studio-') && !COLOUR_FAMILY.test(name)).sort()
+    // A Tailwind arbitrary-value utility that sets a size, gap or inset and nothing painted.
+    const GEOMETRY_UTILITY = /^(?:[\w!-]+:)*(?:w|h|min-w|min-h|max-w|max-h|size|gap|basis|p|px|py|m|mx|my)-\[/
+
+    function sourceFiles(dir: string, into: string[] = []): string[] {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name)
+            if (entry.isDirectory()) sourceFiles(full, into)
+            else if (/\.(svelte|ts|css)$/.test(entry.name) && !/\.test\.|test-helpers|testHost|\.scenarios\.|Harness|Stub/.test(entry.name) && !/[\\/]tests[\\/]/.test(full)) into.push(full)
+        }
+        return into
+    }
+    const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const readers = new Map<string, RegExp>()
+    const reads = (value: string, name: string): boolean => value.includes(name) && (readers.get(name) ?? readers.set(name, new RegExp(`var\\(\\s*${name}(?![\\w-])`)).get(name))!.test(value)
+
+    it('the chat list is the pinned set itself and holds the ten app shape names (G5)', () => {
+        expect(shapeTokenNames('chat')).toBe(SHAPE_TOKEN_NAMES)
+        for (const name of SHAPE_APP) expect(SHAPE_TOKEN_NAMES.has(name), name).toBe(true)
+        expect([...SHAPE_TOKEN_NAMES].filter((name) => name.startsWith('--ui-')).sort()).toEqual([...SHAPE_APP].sort())
+    })
+
+    it('the studio list is the chat list intersected with the studio names plus the geometry role tokens, all settable and no paint family (R6b, G5)', () => {
+        const allowed = allowedTokenNames('studio')
+        const names = shapeTokenNames('studio')
+        const expected = new Set([...SHAPE_TOKEN_NAMES].filter((name) => allowed.has(name)))
+        for (const name of STUDIO_GEOMETRY) expected.add(name)
+        expect(STUDIO_GEOMETRY.length).toBeGreaterThan(40)
+        for (const name of ['--studio-radius-card', '--studio-radius-row', '--studio-space-3', '--studio-size-touch', '--studio-tree-width', '--studio-form-row-height']) expect(names.has(name), name).toBe(true)
+        expect([...names].sort()).toEqual([...expected].sort())
+        expect([...names].filter((name) => !allowed.has(name))).toEqual([])
+        for (const name of SHAPE_APP) expect(names.has(name), name).toBe(true)
+        expect([...names].filter((name) => COLOUR_FAMILY.test(name))).toEqual([])
+    })
+
+    // N7 (SC.2): no app rule puts a listed studio geometry name, or a token derived from one, into a paint property. A stylesheet
+    // declaration is judged by its property; any other reader (markup, script) must be a geometry utility or is a finding.
+    it('every studio geometry name is read only as geometry, derived tokens included (G6b)', () => {
+        const added = [...shapeTokenNames('studio')].filter((name) => !SHAPE_TOKEN_NAMES.has(name))
+        const files = sourceFiles(path.join(ROOT, 'src')).filter((file) => !/[\\/]src[\\/]ts[\\/]themePack[\\/]/.test(file))
+        const texts = files.map((file) => ({ file: path.relative(ROOT, file).replace(/\\/g, '/'), text: readFileSync(file, 'utf8') }))
+        const tracked = new Set(added)
+        const seen = new Set<string>()
+        const outside: string[] = []
+        const cssBlocks = (file: string, text: string): string[] => file.endsWith('.css') ? [stripComments(text)] : file.endsWith('.svelte') ? [...text.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => stripComments(m[1])) : []
+        // fixed point over custom properties derived from a tracked name
+        for (let grew = true; grew;) {
+            grew = false
+            for (const { file, text } of texts) {
+                for (const css of cssBlocks(file, text)) {
+                    for (const declaration of css.matchAll(/(--?[\w-]+)\s*:([^;{}]*)/g)) {
+                        if (declaration[1].startsWith('--') && !tracked.has(declaration[1]) && [...tracked].some((name) => reads(declaration[2], name))) {
+                            tracked.add(declaration[1])
+                            grew = true
+                        }
+                    }
+                }
+            }
+        }
+        for (const { file, text } of texts) {
+            const blocks = cssBlocks(file, text)
+            for (const css of blocks) {
+                for (const declaration of css.matchAll(/(--?[\w-]+)\s*:([^;{}]*)/g)) {
+                    for (const name of tracked) {
+                        if (!reads(declaration[2], name)) continue
+                        seen.add(name)
+                        if (!declaration[1].startsWith('--') && !SHAPE_PROPERTY.some((pattern) => pattern.test(declaration[1]))) outside.push(`${file}: ${name} in ${declaration[1]}`)
+                    }
+                }
+            }
+            const markup = file.endsWith('.svelte') ? text.replace(/<style[^>]*>[\s\S]*?<\/style>/g, '') : file.endsWith('.css') ? '' : text
+            for (const name of tracked) {
+                for (const match of markup.matchAll(new RegExp(`var\\(\\s*${name}(?![\\w-])`, 'g'))) {
+                    seen.add(name)
+                    const token = markup.slice(0, match.index).split(/[\s"'`]/).pop() ?? ''
+                    if (!GEOMETRY_UTILITY.test(token)) outside.push(`${file}: ${name} in ${token}`)
+                }
+            }
+        }
+        expect(texts.length).toBeGreaterThan(500)
+        for (const name of ['--studio-form-row-height', '--studio-size-touch', '--studio-tree-width']) expect(seen.has(name), `the scan reaches ${name}`).toBe(true)
+        expect(tracked.has('--studio-tree-row-height-owner'), 'the walk follows a derived token').toBe(true)
+        expect(outside).toEqual([])
+    })
+
+    it('the studio list keeps a studio geometry token that the chat list drops', () => {
+        const sheet = ':root{--studio-size-touch:40px;--nexus-text:#fff}'
+        expect(shapeOnlySheet(sheet, shapeTokenNames('studio'))).toBe(':root{--studio-size-touch:40px;}')
+        expect(shapeOnlySheet(sheet)).toBe(':root{}')
+    })
+
+    it('R2: the studio shape variant keeps the app shape tokens', () => {
+        expect(shapeOnlySheet(':root{--ui-radius-md:2px;--ui-border-width:2px}', shapeTokenNames('studio'))).toBe(':root{--ui-radius-md:2px;--ui-border-width:2px}')
+    })
+
+    it('R8: the chat shape variant keeps the hairline token and the radius steps, and still drops a colour token', () => {
+        expect(shapeOnlySheet(':root{--ui-border-width:2px}', shapeTokenNames('chat'))).toBe(':root{--ui-border-width:2px}')
+        expect(shapeOnlySheet(':root{--ui-radius:0px;--ui-radius-4xl:8px;--nexus-text:#fff}', shapeTokenNames('chat'))).toBe(':root{--ui-radius:0px;--ui-radius-4xl:8px;}')
     })
 })

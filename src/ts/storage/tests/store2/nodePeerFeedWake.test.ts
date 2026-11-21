@@ -176,9 +176,8 @@ describe('F2a a feed event wakes exactly one peer check', () => {
         const reads = { commit: 0 }
         const counted = countedBackend({ hooks: { before: (name) => { if (name === 'readCommit') { reads.commit += 1 } } } })
         await seedTree(counted.memory, JSON.parse(JSON.stringify(buildSmall(2))) as Database, testEnv(createClock(), 4242), fakeLists)
-        // The dispatch builds its own Node backend over a guarded HTTP store for kind 'node', so the in-memory profile is
-        // booted as 'indexeddb'; the loop's peer check does not depend on the kind.
-        const boot = await bootThroughDispatch(counted.backend, { kind: 'indexeddb' })
+        // The kit boots the in-memory profile as a Node page over a Node-semantic byte store.
+        const boot = await bootThroughDispatch(counted.backend)
         if (boot.result.kind !== 'store2') {
             throw new Error(`The boot came to ${boot.result.kind}.`)
         }

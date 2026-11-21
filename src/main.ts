@@ -14,7 +14,6 @@ import { hideQuitPill, showQuitPill } from "./ts/quitPill.svelte";
 import { registerStore2Boot } from "./ts/storage/store2/bootActive";
 import { dispatchStore2Boot } from "./ts/storage/store2/bootDispatch";
 import { markerOwnerProbeFor } from "./ts/storage/store2/abandonedMarker";
-import { holdsOwnTabPresence } from "./ts/globalApi.svelte";
 import { createProductionBootUi } from "./ts/storage/store2/ui/productionBootUi";
 import { installMotionPrefs } from "./ts/chatShell/motionPrefs.svelte";
 import { installCardAnimationVisibilityHold } from "./ts/gui/cardAnimationHold";
@@ -45,12 +44,7 @@ installBackGuard({
 // The import flow is loaded on first use: a boot that never imports does not load the backup code.
 registerStore2Boot((env) => dispatchStore2Boot(env, {
     ui: createProductionBootUi(),
-    markerOwnerProbe: (kind) => {
-        // Plain HTTP has no navigator.locks at all, so the query is read defensively.
-        const locks = navigator.locks
-        const query = typeof locks?.query === 'function' ? () => locks.query() : undefined
-        return markerOwnerProbeFor(kind, { query, holdsOwnPresence: holdsOwnTabPresence })
-    },
+    markerOwnerProbe: (kind) => markerOwnerProbeFor(kind),
     importBackup: async (target) => (await import("./ts/drive/backuplocal")).loadBackupAtBoot(target),
 }))
 loadData()

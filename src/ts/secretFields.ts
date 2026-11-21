@@ -1,4 +1,4 @@
-import type { Database, botPreset, character } from 'src/ts/storage/database.svelte'
+import type { StoredDatabase, botPreset, character } from 'src/ts/storage/database.svelte'
 
 /**
  * Every credential-bearing field, and whether an environment-variable
@@ -18,7 +18,7 @@ import type { Database, botPreset, character } from 'src/ts/storage/database.sve
  */
 
 export type SecretFieldOwner =
-    | { scope: 'database', field: keyof Database }
+    | { scope: 'database', field: keyof StoredDatabase }
     | { scope: 'botPreset', field: keyof botPreset }
     | { scope: 'character', field: keyof character }
 
@@ -32,24 +32,25 @@ export type SecretFieldEntry = SecretFieldOwner & {
 
 export const SECRET_FIELDS = [
     //#region chat providers (stage 1)
-    { scope: 'database', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses; reverse proxy fallback; modellist; tts.ts (OpenAI TTS, default host only); stableDiff.ts (DALL-E); PlaygroundSubtitle' },
-    { scope: 'database', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses (reverse proxy)' },
-    { scope: 'botPreset', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'preset copy of db.openAIKey; blanked on preset import' },
-    { scope: 'botPreset', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'preset copy of db.proxyKey; blanked on preset import' },
-    { scope: 'database', field: 'claudeAPIKey', class: 'resolved', stage: 1, reader: 'anthropic (one key per line; Bedrock: one AKID:SECRET:region triple per line); modellist' },
-    { scope: 'database', field: 'openrouterKey', class: 'resolved', stage: 1, reader: 'openAI requests (OpenRouter)' },
-    { scope: 'database', field: 'nanogptKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses (NanoGPT)' },
-    { scope: 'database', field: 'mistralKey', class: 'resolved', stage: 1, reader: 'openAI requests (Mistral)' },
-    { scope: 'database', field: 'cohereAPIKey', class: 'resolved', stage: 1, reader: 'request.ts (Cohere)' },
-    { scope: 'database', field: 'ollamaApiKey', class: 'resolved', stage: 1, reader: 'request.ts (Ollama); ollama.ts (model list)' },
-    { scope: 'database', field: 'novellistAPI', class: 'resolved', stage: 1, reader: 'request.ts (NovelList)' },
-    { scope: 'database', field: 'mancerHeader', class: 'resolved', stage: 1, reader: 'request.ts (Mancer)' },
-    { scope: 'database', field: 'novelai', sub: '.token', class: 'resolved', stage: 1, reader: 'request.ts (NovelAI)' },
-    { scope: 'database', field: 'hordeConfig', sub: '.apiKey', class: 'resolved', stage: 1, reader: 'request.ts (AI Horde)' },
-    { scope: 'database', field: 'google', sub: '.accessToken', class: 'resolved', stage: 1, reader: 'google.ts (Gemini key, Vertex); modellist; tokenizer.ts; stableDiff.ts (Imagen)' },
-    { scope: 'database', field: 'vertexPrivateKey', class: 'resolved', stage: 1, reader: 'google.ts (Vertex PEM; minted token stays in memory)' },
-    { scope: 'database', field: 'OaiCompAPIKeys', sub: '[*]', class: 'resolved', stage: 1, reader: 'openAI requests/responses (per-model keys)' },
-    { scope: 'database', field: 'customModels', sub: '[].key', class: 'resolved', stage: 1, reader: 'request.ts (custom models)' },
+    { scope: 'database', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'botPreset', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'legacy preset copy, absorbed at load; blanked on preset import; written by .bin translation' },
+    { scope: 'botPreset', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'legacy preset copy, absorbed at load; blanked on preset import; written by .bin translation' },
+    { scope: 'database', field: 'claudeAPIKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'openrouterKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'nanogptKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'mistralKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'cohereAPIKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'ollamaApiKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'novellistAPI', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'mancerHeader', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'novelai', sub: '.token', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'hordeConfig', sub: '.apiKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'google', sub: '.accessToken', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'vertexPrivateKey', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'OaiCompAPIKeys', sub: '[*]', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'customModels', sub: '[].key', class: 'resolved', stage: 1, reader: 'legacy slot, absorbed at load; written by .bin translation' },
+    { scope: 'database', field: 'connections', sub: '[].key', class: 'resolved', stage: 1, reader: 'connections/keyAccess.ts (all chat requests)' },
     //#endregion
 
     //#region stage 2 readers

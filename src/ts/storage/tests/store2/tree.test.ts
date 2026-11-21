@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The read-only tree read over the memory, IndexedDB (fake-indexeddb) and Node
+ * The read-only tree read over the memory and Node
  * (real server process) backends: which units it reads, how it sorts what it
  * finds (ok, missing, damaged, too new, unreadable) and that it only reads.
  */

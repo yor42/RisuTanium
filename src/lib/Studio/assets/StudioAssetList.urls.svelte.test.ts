@@ -200,8 +200,11 @@ describe('the URL a row asks for at render', () => {
     })
 
     test('fonts, styles and unknown files never ask for a URL, even after their menu is opened', async () => {
+        // Only these rows: a windowed list leaves the rows far from the band out of the page, and each row here must be in it.
+        const noUrl = ['ttf', 'css', 'xyz']
+        db.db.characters = [makeCharacter(noUrl.map((ext) => assetRow(`n-${ext}`, pathOf(ext), ext)))]
         await show()
-        for (const ext of ['ttf', 'css', 'xyz']) {
+        for (const ext of noUrl) {
             ;(rowOf(`n-${ext}`).querySelector('[data-part="studio-asset-row-more"]') as HTMLElement).click()
             await settle()
             expect(rowOf(`n-${ext}`).querySelector('[data-part="studio-asset-menu-preview"]'), ext).toBeNull()

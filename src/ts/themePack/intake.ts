@@ -16,9 +16,13 @@ import { checkEntryPath } from '../drive/rtb/entryPath'
 import { RtbCouldNotReadError, rangeSourceFrom, type RangeSource } from '../drive/rtb/rangeSource'
 import { readDirectory, readEntry, type BodySink, type ContainerFinding, type ZipIndex } from '../drive/rtb/zip64Reader'
 
-export type AppliedArea = 'chat'
-/** The areas this build judges and applies. An area joins only once every R20 tripwire row is refused there. */
-export const APPLIED_AREAS: readonly AppliedArea[] = ['chat']
+export type AppliedArea = 'chat' | 'studio'
+/** The screen areas this build judges at install, in refusal order. An area joins only once every R20 tripwire row is refused there. */
+export const APPLIED_AREAS: readonly AppliedArea[] = ['chat', 'studio']
+
+function isAppliedArea(area: string): area is AppliedArea {
+    return (APPLIED_AREAS as readonly string[]).includes(area)
+}
 /** The longest entry name a pack may hold, in raw bytes (a trailing `/` counted). */
 export const PACK_ENTRY_NAME_MAX_BYTES = 255
 
@@ -50,8 +54,8 @@ export interface VerifiedFile {
 }
 export interface VerifiedPack {
     readonly manifest: PackManifest
-    /** One accepted judgement per applied area: `result.ok` is true, so `resources` is complete. */
-    readonly sheets: Readonly<Record<AppliedArea, AreaSheetJudgement>>
+    /** One accepted judgement per applied area the pack holds a sheet for (at least one): `result.ok` is true, so `resources` is complete. */
+    readonly sheets: Readonly<Partial<Record<AppliedArea, AreaSheetJudgement>>>
     /** Area names of the skipped `<area>.css` sheets, sorted (never judged, kept in the archive). */
     readonly skippedAreas: readonly string[]
     /** Every font and image entry, by exact entry name. */
@@ -339,7 +343,7 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
     const files = new Map<string, VerifiedFile>()
     const skippedSheets: { area: string; at: number }[] = []
     const licenseTexts: number[] = []
-    let chatAt = -1
+    const appliedAt: Partial<Record<AppliedArea, number>> = {}
     for (let i = 0; i < index.count; i++) {
         const name = names[i]
         const entry = classifyName(name)
@@ -351,7 +355,7 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
                 layoutRefusals.add({ code: 'unknownFile', name })
                 break
             case 'sheet':
-                if (entry.area === 'chat') chatAt = i
+                if (isAppliedArea(entry.area)) appliedAt[entry.area] = i
                 else skippedSheets.push({ area: entry.area, at: i })
                 break
             case 'licenseText':
@@ -367,7 +371,7 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
                 break
         }
     }
-    if (chatAt < 0) {
+    if (APPLIED_AREAS.every((area) => appliedAt[area] === undefined)) {
         layoutRefusals.add({ code: 'noArea' })
     }
     const licensesOf = new Map<string, number>()
@@ -382,44 +386,70 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
         return refuse(layoutRefusals.list)
     }
 
-    // Step 6: the applied sheet.
-    const chatBytes = await readWhole(source, index, chatAt)
-    if (chatBytes.ok === false) {
-        return refuse([chatBytes.refusal])
+    // Step 6: the applied sheets, chat first.
+    const sheetTexts: Partial<Record<AppliedArea, string>> = {}
+    const textRefusals = new RefusalList()
+    for (const area of APPLIED_AREAS) {
+        const at = appliedAt[area]
+        if (at === undefined) {
+            continue
+        }
+        const bytes = await readWhole(source, index, at)
+        if (bytes.ok === false) {
+            return refuse([bytes.refusal])
+        }
+        const text = decodeSheet(bytes.bytes)
+        if (text === null) textRefusals.add({ code: 'notUtf8', name: `${area}.css` })
+        else sheetTexts[area] = text
     }
-    const chatText = decodeSheet(chatBytes.bytes)
-    if (chatText === null) {
-        return refuse([{ code: 'notUtf8', name: 'chat.css' }])
+    if (textRefusals.size > 0) {
+        return refuse(textRefusals.list)
     }
 
-    // Step 7: the judge sees the applied-area sheets only.
+    // Step 7: the judge sees the applied-area sheets only, in one request. A requested area without a verdict is not checked.
     let judgement: PackSheetsJudgement
     try {
-        judgement = await judge({ chat: chatText })
+        judgement = await judge(sheetTexts)
     } catch (error) {
         if (import.meta.env.DEV) {
             console.error('theme pack judge failed', error)
         }
         return couldNotCheck()
     }
-    const chat = judgement?.areas?.chat
-    if (!chat || typeof chat.result?.ok !== 'boolean') {
-        return couldNotCheck()
-    }
-    if (!chat.result.ok) {
-        return refuse([{ code: 'sheetRefused', sheet: 'chat.css', errors: chat.result.errors }])
-    }
-
-    // Step 8: every resource the accepted sheet names is an entry of the kind its context needs.
-    const targetRefusals = new RefusalList()
-    for (const span of chat.resources) {
-        const inFontFace = chat.fontFaceBlocks.some((block) => block.start <= span.start && span.end <= block.end)
-        const file = files.get(span.raw)
-        if (file && file.kind === (inFontFace ? 'font' : 'image')) {
+    const sheets: Partial<Record<AppliedArea, AreaSheetJudgement>> = {}
+    const sheetRefusals = new RefusalList()
+    for (const area of APPLIED_AREAS) {
+        if (sheetTexts[area] === undefined) {
             continue
         }
-        if (index.find(span.raw).length > 0) targetRefusals.add({ code: 'wrongKind', sheet: 'chat.css', target: span.raw })
-        else targetRefusals.add({ code: 'target', sheet: 'chat.css', target: span.raw })
+        const verdict = judgement?.areas?.[area]
+        if (!verdict || typeof verdict.result?.ok !== 'boolean') {
+            return couldNotCheck()
+        }
+        if (verdict.result.ok) sheets[area] = verdict
+        else sheetRefusals.add({ code: 'sheetRefused', sheet: `${area}.css`, errors: verdict.result.errors })
+    }
+    if (sheetRefusals.size > 0) {
+        return refuse(sheetRefusals.list)
+    }
+
+    // Step 8: every resource an accepted sheet names is an entry of the kind its context needs. Judged whole at install
+    // (MC-3121): an image only studio.css names is checked and kept though it never applies.
+    const targetRefusals = new RefusalList()
+    for (const area of APPLIED_AREAS) {
+        const verdict = sheets[area]
+        if (verdict === undefined) {
+            continue
+        }
+        for (const span of verdict.resources) {
+            const inFontFace = verdict.fontFaceBlocks.some((block) => block.start <= span.start && span.end <= block.end)
+            const file = files.get(span.raw)
+            if (file && file.kind === (inFontFace ? 'font' : 'image')) {
+                continue
+            }
+            if (index.find(span.raw).length > 0) targetRefusals.add({ code: 'wrongKind', sheet: `${area}.css`, target: span.raw })
+            else targetRefusals.add({ code: 'target', sheet: `${area}.css`, target: span.raw })
+        }
     }
     if (targetRefusals.size > 0) {
         return refuse(targetRefusals.list)
@@ -447,7 +477,7 @@ async function runIntake(source: RangeSource, judge: PackJudge): Promise<IntakeR
         ok: true,
         pack: {
             manifest,
-            sheets: { chat },
+            sheets,
             skippedAreas: skippedSheets.map((sheet) => sheet.area).sort(),
             files,
             totalBytes,

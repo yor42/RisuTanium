@@ -36,7 +36,7 @@ async function seededBackend() {
     return backend
 }
 
-const open = (store: ByteStore, kind: 'node' | 'indexeddb' | 'tauri', backend: ReturnType<typeof createMemoryBackend>) =>
+const open = (store: ByteStore, kind: 'node' | 'tauri', backend: ReturnType<typeof createMemoryBackend>) =>
     Store2Session.open(store, { kind, backend, upstreamMainFile: async () => false })
 
 describe('the Node open probe', () => {
@@ -102,12 +102,10 @@ describe('the Node open probe', () => {
         expect(order).toContain('readCommit')
     })
 
-    test('guard: no other kind ever calls the probe, even when the capability would be missing', async () => {
-        for (const kind of ['indexeddb', 'tauri'] as const) {
-            const { store, probe } = storeWith(async () => ({ ...FULL, checkOnly: false }))
-            const session = await open(store, kind, await seededBackend())
-            expect(probe, kind).not.toHaveBeenCalled()
-            expect(session.decision.mode, kind).not.toBe('read-only')
-        }
+    test('guard: a Tauri page never calls the probe, even when the capability would be missing', async () => {
+        const { store, probe } = storeWith(async () => ({ ...FULL, checkOnly: false }))
+        const session = await open(store, 'tauri', await seededBackend())
+        expect(probe).not.toHaveBeenCalled()
+        expect(session.decision.mode).not.toBe('read-only')
     })
 })

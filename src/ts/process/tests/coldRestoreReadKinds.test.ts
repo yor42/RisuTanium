@@ -41,7 +41,7 @@ const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
     /** The page store's content on each platform: `coldstorage/<key>` (`coldstorage/<key>.json` on the desktop). */
     units: { node: new Map<string, Uint8Array>(), tauri: new Map<string, Uint8Array>(), web: new Map<string, Uint8Array>() },
-    /** While set, the page store cannot be opened, as when the browser has no usable IndexedDB. */
+    /** While set, the page store cannot be opened, as when the page is served by neither Tauri nor the Node server. */
     storeUnavailable: false,
     /** While set, every read of the web page store throws it. */
     webReadFailure: null as Error | null,
@@ -70,7 +70,7 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
     return {
         getAppStore: async () => {
             if (h.storeUnavailable) {
-                throw Object.assign(new Error('IndexedDB is not available in this browser.'), { name: 'AppStoreUnavailableError' })
+                throw Object.assign(new Error('This page is not served by Tauri or the Node server, so it has no storage.'), { name: 'AppStoreUnavailableError' })
             }
             return store
         },

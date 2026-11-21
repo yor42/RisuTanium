@@ -109,6 +109,22 @@ describe('settings bug-report export: credential entries of the registry', () =>
         expect(clipboardText).not.toContain('SENTINEL:')
     })
 
+    test('reproducer: the connection store and the working proxy reference are left out of the report whole', async () => {
+        liveDb.value = {
+            temperature: 0.7,
+            proxyConnectionId: 'conn-1',
+            connections: [{ id: 'conn-1', name: 'host-name-sentinel', provider: 'reverse_proxy', key: 'SENTINEL:connection-key', url: 'https://url-sentinel.invalid/v1' }],
+        }
+
+        const { text, report } = await exportReport()
+
+        expect(Object.hasOwn(report, 'connections')).toBe(false)
+        expect(Object.hasOwn(report, 'proxyConnectionId')).toBe(false)
+        expect(text).not.toContain('url-sentinel')
+        expect(text).not.toContain('host-name-sentinel')
+        expect(text).not.toContain('SENTINEL:connection-key')
+    })
+
     test('guard: non-credential look-alikes and ordinary settings are kept', async () => {
         liveDb.value = {
             ...object,

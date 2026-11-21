@@ -12,6 +12,7 @@
  */
 import { flushSync } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../../connections/tests/legacyFixture'
 import { LLMFlags, LLMProvider, type LLMModel } from '../../types'
 import type { CatalogModel } from '../addedModelsData'
 import type { LiteLLMData, LiteLLMRow } from '../litellmData'
@@ -21,7 +22,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('src/ts/stores.svelte', () => ({
-    get DBState() { return { db: h.db } },
+    get DBState() { return { db: absorbLegacyForTest(h.db) } },
 }))
 
 import * as reg from '../addedModels.svelte'
@@ -52,6 +53,8 @@ function ids(models: LLMModel[]): string[] {
 }
 
 function setKeys(keys: { openai?: string, anthropic?: string, google?: string }): void {
+    // The keys given are the whole key state: a cleared key must not survive in a stored connection.
+    h.db.connections = []
     h.db.openAIKey = keys.openai ?? ''
     h.db.claudeAPIKey = keys.anthropic ?? ''
     h.db.google = { accessToken: keys.google ?? '' }

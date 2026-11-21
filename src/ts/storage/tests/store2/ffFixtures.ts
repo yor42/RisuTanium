@@ -158,20 +158,22 @@ export interface BootBOptions {
     sink?: (mark: DbWriteMark) => void
 }
 
-export async function bootB(memory: Store2Backend, kind: 'indexeddb' | 'node' = 'indexeddb', options: BootBOptions = {}): Promise<PageB> {
+/** A page is a Node page: over the server opened with `openNamed('node')` when one is open, else over `memory` through the kit's Node boot. */
+export async function bootB(memory: Store2Backend, options: BootBOptions = {}): Promise<PageB> {
     resetPage()
-    if (kind === 'node' && nodeStore === null) {
-        throw new Error('A node page needs the byte store of the Node server opened with openNamed.')
-    }
-    const booted = kind === 'node' && nodeStore !== null
+    const booted = nodeStore !== null
         ? await bootNodeDispatch(memory, nodeStore)
-        : await bootThroughDispatch(memory, { lists: fakeLists, kind })
+        : await bootThroughDispatch(memory, { lists: fakeLists })
     if (booted.result.kind !== 'store2') {
         throw new Error(`The boot answered ${booted.result.kind}.`)
     }
     const context = getActiveStore2Save()
     if (context?.encoder === undefined) {
         throw new Error('No save context.')
+    }
+    // The fast-forward is what a Node page runs; a page without it is not the mode these suites test.
+    if (context.fastForward === undefined) {
+        throw new Error('The booted page has no fast-forward: it is not a Node page.')
     }
     const db = hostMode === 'state' ? proxiedDb(booted.result.database, { sink: options.sink ?? (() => { }) }) : booted.result.database
     return { db, context: context as PageB['context'], peer: booted.peer }
@@ -356,9 +358,9 @@ export function runLoopWorld(context: Store2SaveContext, db: Database, options: 
     return world
 }
 
-export type BackendName = 'memory' | 'indexedDb' | 'node'
+export type BackendName = 'memory' | 'node'
 
-/** The memory, fake-IndexedDB or real-Node-server backend of the fence suites, opened fresh; the caller closes it. */
+/** The memory or real-Node-server backend of the fence suites, opened fresh; the caller closes it. */
 export async function openNamed(name: BackendName): Promise<OpenedBackend> {
     if (name === 'node') {
         const { startNodeServer } = await import('../nodeServerFixture')
@@ -380,9 +382,6 @@ export async function openNamed(name: BackendName): Promise<OpenedBackend> {
     }
     return found.open()
 }
-
-/** The session kind a page over `name` is booted as: the Node server is a node page, every other store an indexeddb page. */
-export const kindOfBackend = (name: BackendName): 'indexeddb' | 'node' => name === 'node' ? 'node' : 'indexeddb'
 
 /** `ffWorld` over any backend: the kit seed plus, optionally, one descending commit by a peer page that mints the line. */
 export async function ffWorldOver(memory: Store2Backend, options: { mintLine: boolean, count?: number } = { mintLine: true }) {
@@ -426,7 +425,7 @@ export async function scenarioR25(name: BackendName, backend: Store2Backend): Pr
     // Loaded here: the module re-exports the fence fixtures, which need a Node environment that a page-module test lacks.
     const { hooked } = await import('./commitFixtures')
     const { clock } = await ffWorldOver(backend)
-    const b = await bootB(backend, kindOfBackend(name))
+    const b = await bootB(backend)
     const run = runSpyOf(b)
     let markerSeen = false
     let gate: () => void = () => { }
@@ -470,7 +469,7 @@ export async function scenarioR25(name: BackendName, backend: Store2Backend): Pr
  */
 export async function scenarioR29(name: BackendName, backend: Store2Backend): Promise<void> {
     const { page } = await ffWorldOver(backend)
-    const b = await bootB(backend, kindOfBackend(name))
+    const b = await bootB(backend)
     const loop = runLoopOver(b.context, b.db)
     await ownEdit(loop, b, 0, 'my edit')
     await page.commitEdit((db) => { chars(db)[1].personality = 'peer one' })
@@ -496,7 +495,7 @@ export async function scenarioR29(name: BackendName, backend: Store2Backend): Pr
 /** Alternating disjoint commits by a peer page and the booted page: every one is taken and none parks. */
 export async function scenarioR30(name: BackendName, backend: Store2Backend): Promise<void> {
     const { page } = await ffWorldOver(backend)
-    const b = await bootB(backend, kindOfBackend(name))
+    const b = await bootB(backend)
     const loop = runLoopOver(b.context, b.db)
     for (const [index, text] of ['a1', 'b1', 'a2', 'b2', 'a3', 'b3'].entries()) {
         if (index % 2 === 0) {
@@ -531,11 +530,11 @@ export interface MergeWorld {
 }
 
 /** A dispatch-booted page over a line-seeded store with its save loop, and a spy on the fast-forward's runs. */
-export async function mergeWorld(options: { count?: number, backend?: Store2Backend, kind?: 'indexeddb' | 'node', before?: (page: ReturnType<typeof peerPage>) => Promise<void>, sink?: BootBOptions['sink'] } = {}): Promise<MergeWorld> {
+export async function mergeWorld(options: { count?: number, backend?: Store2Backend, before?: (page: ReturnType<typeof peerPage>) => Promise<void>, sink?: BootBOptions['sink'] } = {}): Promise<MergeWorld> {
     const memory = options.backend ?? createMemoryBackend()
     const seeded = await ffWorldOver(memory, { mintLine: true, count: options.count })
     await options.before?.(seeded.page)
-    const b = await bootB(memory, options.kind ?? 'indexeddb', { sink: options.sink })
+    const b = await bootB(memory, { sink: options.sink })
     const world = runLoopWorld(b.context, b.db)
     if (lastHostState !== null) {
         lastHostState.onMark = chaId => world.mark(chaId)
@@ -554,8 +553,8 @@ export interface BootedPage {
  * replaces the page-global state of an earlier booted page, so the earlier page's loop must be stopped first. The host's
  * mark callback now feeds this page's loop.
  */
-export async function bootPageOver(backend: Store2Backend, kind: 'indexeddb' | 'node' = 'indexeddb'): Promise<BootedPage> {
-    const b = await bootB(backend, kind)
+export async function bootPageOver(backend: Store2Backend): Promise<BootedPage> {
+    const b = await bootB(backend)
     const world = runLoopWorld(b.context, b.db)
     if (lastHostState !== null) {
         lastHostState.onMark = chaId => world.mark(chaId)

@@ -21,19 +21,15 @@ import { FIRST_ACTOR_SEED } from './actors'
 
 const KINDS: readonly RunKind[] = ['violation', 'stalled', 'max-steps', 'threw', 'not-exercised', 'crashed', 'complete']
 
-/** IndexedDB runs cost more each than the fakes of the other two; a region takes this many of its seeds there unless it says otherwise. */
-const IDB_SEEDS = 24
-
-function seedsOf(region: RegionConfig, backend: RegionBackend): number[] {
-    const count = backend === 'indexeddb' ? Math.min(region.seeds, region.idbSeeds ?? IDB_SEEDS) : region.seeds
-    return Array.from({ length: count }, (_, index) => index + 1)
+function seedsOf(region: RegionConfig): number[] {
+    return Array.from({ length: region.seeds }, (_, index) => index + 1)
 }
 
 function floorsOf(region: RegionConfig, backend: RegionBackend): Record<string, number> {
     if (backend === 'tauri' && region.tauriFloors !== undefined) {
         return region.tauriFloors
     }
-    return backend === 'indexeddb' && region.idbFloors !== undefined ? region.idbFloors : region.floors
+    return region.floors
 }
 
 function minFaultedOf(region: RegionConfig, backend: RegionBackend): number {
@@ -41,7 +37,7 @@ function minFaultedOf(region: RegionConfig, backend: RegionBackend): number {
     if (faults === undefined) {
         return 0
     }
-    const own = backend === 'tauri' ? faults.tauriMinFaulted : backend === 'indexeddb' ? faults.idbMinFaulted : undefined
+    const own = backend === 'tauri' ? faults.tauriMinFaulted : undefined
     return own ?? faults.minFaulted ?? 0.5
 }
 
@@ -129,7 +125,7 @@ describe.each(REGIONS)('region $id $name', (region) => {
         test(`${backend}: ${region.covers}`, async () => {
             const started = Date.now()
             const runs: RegionRun[] = []
-            for (const seed of seedsOf(region, backend)) {
+            for (const seed of seedsOf(region)) {
                 const run = await runRegion(region, backend, seed)
                 runs.push(run)
                 if (process.env.PCT_REPORT === '1') {
@@ -198,10 +194,10 @@ describe('the region configs', () => {
         }
     })
 
-    test('the regions the plan names are all present: R1 to R16, the V1 cases R17 and the uncovered set R18', () => {
+    test('the regions the plan names are all present: R1 to R16 but R11, the V1 cases R17 and the uncovered set R18', () => {
         const ids = new Set(REGIONS.map((region) => region.id))
         for (let number = 1; number <= 16; number++) {
-            expect(ids.has(`R${number}`), `R${number}`).toBe(true)
+            expect(ids.has(`R${number}`), `R${number}`).toBe(number !== 11)
         }
         expect(REGIONS.some((region) => region.id.startsWith('R17'))).toBe(true)
         expect(REGIONS.some((region) => region.id.startsWith('R18'))).toBe(true)

@@ -34,7 +34,7 @@ export type RevisionToken = Extract<CompareToken, { kind: 'revision' }>
 /**
  * What a writing method resolves to. `flushed` is whether the backend knows the
  * write reached stable storage: `true` or `false` when it reports, `undefined`
- * when it does not (IndexedDB, Node and the memory backend never report, and are
+ * when it does not (Node and the memory backend never report, and are
  * never read as `true`). The Tauri backend never resolves `undefined` from a write
  * that reaches the store: a missing report is `false`. The protocol layer must
  * treat `false` as "not durable"; what to do about it is the protocol's policy,
@@ -116,8 +116,8 @@ export interface Store2Backend {
      * key is not written. Duplicate keys in `units` are a `RangeError`.
      *
      * The commit key changes only when the step succeeds. Whether a failed step
-     * also leaves the units unwritten depends on the backend: the memory and
-     * IndexedDB backends are atomic across units, so a conflict or an existing unit
+     * also leaves the units unwritten depends on the backend: the memory
+     * backend is atomic across units, so a conflict or an existing unit
      * writes no unit at all; the Node backend uploads each unit as its own request
      * before the commit-key write, and the Tauri backend writes each unit before the commit key, so a failed step may leave fresh units behind.
      * Such a unit is named by no commit, and a retry uses new unit keys.

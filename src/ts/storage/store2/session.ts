@@ -3,7 +3,7 @@ import type { AppStoreKind } from '../store/appStore'
 import type { ByteStore } from '../store/contract'
 import { ServerLacksCapabilityError } from '../store/errors'
 import {
-    createIndexedDbBackend, createNodeBackend, createTauriBackend, Store2BackendError,
+    createNodeBackend, createTauriBackend, Store2BackendError,
     type Store2Backend, type Store2Read, type Store2WriteResult,
 } from './backend'
 import {
@@ -177,8 +177,6 @@ async function createBackend(kind: AppStoreKind, store: ByteStore): Promise<Stor
                 }
                 throw error
             }
-        case 'indexeddb':
-            return createIndexedDbBackend()
     }
 }
 

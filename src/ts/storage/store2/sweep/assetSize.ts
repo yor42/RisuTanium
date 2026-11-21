@@ -4,7 +4,7 @@ import type { Store2Session } from '../session'
 /**
  * The total stored size of a set of assets, for the confirm of the manual clean-up. It is a hint, never a gate: any failure
  * of the size source answers `null` ("size unknown") and the clean-up may go on. It never goes through `store.read`, so no
- * asset body crosses the bridge or the network just to be counted; the IndexedDB source loads one stored value at a time.
+ * asset body crosses the bridge or the network just to be counted.
  */
 
 const ASSETS_PREFIX = 'assets/'
@@ -12,7 +12,7 @@ const ASSETS_PREFIX = 'assets/'
 /** Names sized between two yields of the event loop. */
 export const SIZE_PACE_EVERY = 200
 
-export type AssetSizeKind = Extract<Store2Session['kind'], 'tauri' | 'indexeddb' | 'node'>
+export type AssetSizeKind = Extract<Store2Session['kind'], 'tauri' | 'node'>
 
 export interface AssetSizeInput {
     kind: AssetSizeKind
@@ -92,19 +92,6 @@ async function measure(input: AssetSizeInput): Promise<AssetSizeResult> {
         // The answer holds only keys above the minimum, so a name it omits is empty (or gone since the listing), not unknown.
         const sizes = new Map(listed.map(entry => [entry.key, entry.size]))
         return { status: 'sized', bytes: input.names.reduce((sum, name) => sum + (sizes.get(`${ASSETS_PREFIX}${name}`) ?? 0), 0) }
-    }
-    if (kind === 'indexeddb') {
-        if (store.readValue === undefined) {
-            return { status: 'sized', bytes: null }
-        }
-        const readValue = store.readValue.bind(store)
-        return sumPerName(input, async name => {
-            const value = await readValue(`${ASSETS_PREFIX}${name}`)
-            if (value === null) {
-                return null
-            }
-            return value instanceof Uint8Array ? value.length : value.size
-        })
     }
     const probe = await tauriProbe(input.sizeOf)
     if (probe === null) {

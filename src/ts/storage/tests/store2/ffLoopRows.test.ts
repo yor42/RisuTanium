@@ -49,7 +49,7 @@ import { hooked } from './commitFixtures'
 import { bootB, ffSetup, ffTeardown, ffWorld, personalityOf, signal, sleepMs, type PageB } from './ffFixtures'
 
 /**
- * The fast-forward over the real save loop: page B is dispatch-booted as an indexeddb page, the peer is built from the
+ * The fast-forward over the real save loop: page B is dispatch-booted as a node page, the peer is built from the
  * committer and encoder APIs, and every row reads what B holds and what the store holds. A taken peer commit parks
  * nothing, a commit whose descent is unproven parks with today's prompt and never calls the fast-forward.
  */
@@ -129,7 +129,7 @@ describe('a peer commit that provably descends is taken, never parked on', () =>
         await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
         await until(() => b.peer.asked.length >= 1, 'the question', 4000)
         expect(b.peer.asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true })
-        expect(b.peer.asked[0].offers).toEqual(['reload', 'save-mine'])
+        expect(b.peer.asked[0].offers).toEqual(['reload', 'export-first'])
         expect(personalityOf(b.db, 3)).toBe('my edit to the same record')
         expect(loop.crashed).toEqual([])
     })
@@ -147,12 +147,12 @@ describe('a peer commit that provably descends is taken, never parked on', () =>
         await page.commitEdit((db) => { db.temperature = 99 })
         await until(() => b.peer.asked.length >= 1, 'the question', 4000)
         expect(b.db.temperature).toBe(7)
-        expect(b.peer.asked[0].offers).toEqual(['reload', 'save-mine'])
+        expect(b.peer.asked[0].offers).toEqual(['reload', 'export-first'])
     })
 })
 
 describe('a commit whose descent is unproven parks and never calls the fast-forward', () => {
-    test('R24 a peer\'s web Save mine over this page\'s committed edit parks with Save mine and no fast-forward', async () => {
+    test('R24 a peer\'s web Save mine over this page\'s committed edit parks with the Node offers and no fast-forward', async () => {
         const { memory, page } = await ffWorld()
         const frozen = await page.freeze()
         const b = await bootB(memory)
@@ -163,7 +163,7 @@ describe('a commit whose descent is unproven parks and never calls the fast-forw
         chars(b.db)[1].personality = 'my unsaved edit'
         loop.mark(chaIdOf(b.db, 1))
         await until(() => b.peer.asked.length >= 1, 'the question', 4000)
-        expect(b.peer.asked[0].offers).toEqual(['reload', 'save-mine'])
+        expect(b.peer.asked[0].offers).toEqual(['reload', 'export-first'])
         expect(personalityOf(b.db, 3)).toBe('my committed edit')
         expect(run).not.toHaveBeenCalled()
     })
@@ -233,26 +233,6 @@ describe('the baseline moves with every taken tree', () => {
         const final = await page.freeze()
         expect(personalityOf(final.db, 0)).toBe('b3')
         expect(personalityOf(final.db, 1)).toBe('a3')
-    })
-
-    test('C16 a page that saved over a peer with Save mine takes the next peer commit without a park', async () => {
-        const { memory, page } = await ffWorld()
-        const b = await bootB(memory)
-        const loop = runLoopOver(b.context, b.db)
-        b.peer.answer = 'save-mine'
-        await page.commitEdit((db) => { chars(db)[2].personality = 'peer edit' })
-        chars(b.db)[2].personality = 'my edit to the same record'
-        loop.mark(chaIdOf(b.db, 2))
-        await until(() => loop.state.saved >= 1, 'the Save mine commit', 4000)
-        expect(b.peer.asked.length).toBe(1)
-        await page.commitEdit((db) => { db.temperature = 321 })
-        signal(loop)
-        await until(() => b.db.temperature === 321, 'the peer change', 4000)
-        expect(b.peer.asked.length).toBe(1)
-        expect(personalityOf(b.db, 2)).toBe('my edit to the same record')
-        const read = await page.freeze()
-        expect(personalityOf(read.db, 2)).toBe('my edit to the same record')
-        expect(read.db.temperature).toBe(321)
     })
 
     test('R28a a store without a line parks a clean page once, with Reload and Export this tab first', async () => {

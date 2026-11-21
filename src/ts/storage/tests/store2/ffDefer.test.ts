@@ -194,7 +194,7 @@ describe('D2 a swap that waits for a busy action', () => {
         const b = await bootB(memory)
         await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
         hostHandle.host.state.busy = true
-        const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
+        const fastForward = createFastForward({ backend: memory, kind: 'node', lists: fakeLists, env: defaultKeyEnv })
         const frame = async (): Promise<FastForwardFrame> => {
             const port: FastForwardPort = { getDatabase: () => b.db, now: () => Date.now() }
             return { read: await memory.readCommit(), key: await parsedKey(memory), baseKey: b.context.encoder.manifestKey, encoder: b.context.encoder, port, snapshot: null }

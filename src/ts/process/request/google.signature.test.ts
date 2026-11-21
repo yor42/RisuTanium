@@ -11,6 +11,7 @@
  * Tests whose title starts with `guard:` pass with or without the change.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 import { writable } from 'svelte/store'
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer, type LLMModel } from '../../model/types'
 
@@ -33,9 +34,9 @@ vi.mock('../../characters', () => ({ createBlankChar: vi.fn(() => ({ name: '', c
 vi.mock('../command', () => ({ processMultiCommand: vi.fn(async () => {}) }))
 vi.mock('../../media', () => ({ compressImage: vi.fn(async (v: unknown) => v) }))
 vi.mock('../tts', () => ({ sayTTS: vi.fn() }))
-vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => h.db, setDatabase: vi.fn() }))
+vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => absorbLegacyForTest(h.db), setDatabase: vi.fn() }))
 vi.mock('../../stores.svelte', () => ({
-    get DBState() { return { db: h.db } },
+    get DBState() { return { db: absorbLegacyForTest(h.db) } },
     CharEmotion: writable({}), selectedCharID: writable(-1), selIdState: { selId: 0 },
     CurrentTriggerIdStore: writable(null), ReloadChatPointer: writable({}), ReloadGUIPointer: writable(0),
     HideIconStore: writable(false), moduleBackgroundEmbedding: writable(''),

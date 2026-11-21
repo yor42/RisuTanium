@@ -1367,7 +1367,9 @@ function wrapToolStream(
                         resRec.body.pipeTo(transtream.writable).catch(() => {})
                         
                         reader = transtream.readable.getReader()
-                        
+                        // A follow-up stream that yields no chunk must end the reply, not replay this round's calls.
+                        lastValue = undefined
+
                         prefix += (content && !db.simplifiedToolUse ? content + '\n\n' : '') + callCodes.join('\n\n')
                         controller.enqueue({"0": prefix})
 
@@ -1377,8 +1379,16 @@ function wrapToolStream(
                 }
                 
                 lastValue = value
-                
-                controller.enqueue({"0": (prefix ? prefix + '\n\n' : '') + content})
+
+                // Every generation key goes on: the consumer turns each into a reroll candidate. Only
+                // generation 0 carries the tool-round prefix, since tool rounds read generation 0 alone.
+                const chunk:StreamResponseChunk = {"0": (prefix ? prefix + '\n\n' : '') + content}
+                for(const key in value){
+                    if(key !== '0' && /^\d+$/.test(key)){
+                        chunk[key] = value[key]
+                    }
+                }
+                controller.enqueue(chunk)
             }
         }
     })

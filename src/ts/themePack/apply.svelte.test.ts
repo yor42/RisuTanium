@@ -9,21 +9,24 @@ import { createHash } from 'node:crypto'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { canonicalStylesheet } from './canonical'
-import { shapeOnlySheet } from './shapeMode'
+import { shapeOnlySheet, shapeTokenNames } from './shapeMode'
 import { judgeAreaSheet, type PackSheetsJudgement } from './index'
 import { builtinPackById, type BuiltinPack } from './builtins'
 import { judgeSessionOverForTests, openJudgeSession, type JudgeRequest, type JudgeSession, type JudgeWorkerLike } from './judgeClient'
 import type { IntakeRefusal, PackJudge } from './intake'
-import { handleJudgeRequest } from './worker/judgeHandler'
+import { handleJudgeRequest, type JudgeResponse } from './worker/judgeHandler'
 import {
     BLOB_URL_PATTERN, brokenReasonOf, buildAppliedText, commitPackSheet, preparePackSheet, resetPackSheetForTests, setPackSheetColours,
     type ApplySource, type Prepared,
 } from './apply'
+import studioScratchWhite from '../../../docs/design/studio/themes/scratch-white.css?raw'
 import { declareSurface, installThemePackGate, registerThemePackElement, resetThemePackGateForTests } from './surfaceGate.svelte'
 import { getFileSrc } from '../globalApi.svelte'
+import { chatCommitInput, chatElementOf } from './fixtures/packCommit'
 import {
     CHAT_SHEET, concat, fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, utf8, validPackFiles, zipPack, type PackFile,
 } from './fixtures/packBuilder'
+import { CascadeModel, compileAppStyles, compileRules } from '../../styles/tests/cascadeModel'
 
 //#region module mocks
 
@@ -135,12 +138,12 @@ class ProbedBytes extends Uint8Array {
 class AnsweringWorker implements JudgeWorkerLike {
     private readonly listeners: Record<string, Array<(event: Event) => void>> = {}
 
-    constructor(private readonly posts: JudgeRequest[], private readonly silent: boolean) {}
+    constructor(private readonly posts: JudgeRequest[], private readonly silent: boolean, private readonly rewrite: (response: JudgeResponse) => JudgeResponse = (response) => response) {}
 
     postMessage(message: JudgeRequest): void {
         this.posts.push(message)
         if (!this.silent) {
-            const answer = handleJudgeRequest(message)
+            const answer = this.rewrite(handleJudgeRequest(message))
             setTimeout(() => {
                 for (const listener of this.listeners.message ?? []) listener(new MessageEvent('message', { data: answer }))
             }, 0)
@@ -157,13 +160,13 @@ class AnsweringWorker implements JudgeWorkerLike {
 interface JudgeRig { session: JudgeSession; judge: PackJudge; posts: JudgeRequest[]; spawns: () => number }
 
 /** The real session over a channel that answers with the real handler; `silent` never answers (the session times out). */
-function judgeRig(options: { silent?: boolean; timeoutMs?: number } = {}): JudgeRig {
+function judgeRig(options: { silent?: boolean; timeoutMs?: number; rewrite?: (response: JudgeResponse) => JudgeResponse } = {}): JudgeRig {
     const posts: JudgeRequest[] = []
     let spawned = 0
     const session = openJudgeSession({
         spawn: () => {
             spawned += 1
-            return new AnsweringWorker(posts, options.silent === true)
+            return new AnsweringWorker(posts, options.silent === true, options.rewrite)
         },
         timeoutMs: options.timeoutMs,
     })
@@ -260,7 +263,12 @@ function accepted(prepared: Prepared | { ok: false; stale: true }): Extract<Prep
 }
 
 function commitPrepared(prepared: Extract<Prepared, { ok: true }>): void {
-    expect(commitPackSheet(prepared.text === null ? null : { text: prepared.text, blobs: prepared.blobs })).toEqual({ ok: true })
+    expect(commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs })).toEqual({ ok: true })
+}
+
+/** Commits every prepared element of an accepted pack, as the driver does. */
+function commitAll(prepared: Extract<Prepared, { ok: true }>, colours = false): void {
+    expect(commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours })).toEqual({ ok: true })
 }
 
 function packElements(): HTMLStyleElement[] {
@@ -406,7 +414,7 @@ describe('T3-1b the anchor is the app style element', () => {
         const appStyle = document.createElement('style')
         appStyle.id = 'customcss'
         document.body.append(app, appStyle)
-        expect(commitPackSheet({ text: LEAF, blobs: [] })).toEqual({ ok: true })
+        expect(commitPackSheet(chatCommitInput(LEAF))).toEqual({ ok: true })
         const [element] = packElements()
         expect(packElements()).toHaveLength(1)
         expect(element.parentElement).toBe(document.body)
@@ -423,7 +431,7 @@ describe('T3-1b the anchor is the app style element', () => {
         card.id = 'customcss'
         app.appendChild(card)
         document.body.appendChild(app)
-        expect(commitPackSheet({ text: LEAF, blobs: [] })).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(commitPackSheet(chatCommitInput(LEAF))).toEqual({ ok: false, reason: 'couldNotCheck' })
         expect(packElements()).toHaveLength(0)
     })
 })
@@ -431,7 +439,7 @@ describe('T3-1b the anchor is the app style element', () => {
 describe('T3-2 the text is text', () => {
     it('keeps a closing style tag inside a string as text and creates no element from it', () => {
         const text = '[data-part="chat-message-avatar"]{content:"</style><img src=x onerror=1>"}'
-        expect(commitPackSheet({ text, blobs: [] })).toEqual({ ok: true })
+        expect(commitPackSheet(chatCommitInput(text))).toEqual({ ok: true })
         expect(document.querySelectorAll('img')).toHaveLength(0)
         const [element] = packElements()
         expect(packElements()).toHaveLength(1)
@@ -459,12 +467,12 @@ describe('T3-3 judged is applied', () => {
             at = span.end
         }
         expected += judged.canonical.slice(at)
-        expect(prepared.text).toBe(expected)
-        expect(prepared.text).toContain('src:url("blob:http://localhost/1") format("woff2")')
-        expect(prepared.text).toContain('src:url("blob:http://localhost/2") format("woff2")')
-        expect(prepared.text).toContain('background-image:url("blob:http://localhost/3"),image-set("blob:http://localhost/3" 1x)')
-        expect(prepared.text).not.toMatch(/fonts\/|images\//)
-        expect(canonicalStylesheet(prepared.text as string).resources.map((span) => span.raw)).toEqual([blobs.minted[0], blobs.minted[1], blobs.minted[2], blobs.minted[2]])
+        expect(chatElementOf(prepared).text).toBe(expected)
+        expect(chatElementOf(prepared).text).toContain('src:url("blob:http://localhost/1") format("woff2")')
+        expect(chatElementOf(prepared).text).toContain('src:url("blob:http://localhost/2") format("woff2")')
+        expect(chatElementOf(prepared).text).toContain('background-image:url("blob:http://localhost/3"),image-set("blob:http://localhost/3" 1x)')
+        expect(chatElementOf(prepared).text).not.toMatch(/fonts\/|images\//)
+        expect(canonicalStylesheet(chatElementOf(prepared).text as string).resources.map((span) => span.raw)).toEqual([blobs.minted[0], blobs.minted[1], blobs.minted[2], blobs.minted[2]])
     })
 
     it('buildAppliedText replaces from the last span to the first so earlier offsets stay valid', () => {
@@ -571,7 +579,7 @@ describe('T3-4 a pack that cannot apply', () => {
     it('a built-in that the validator accepts applies its judged text with no blobs and no skipped areas', async () => {
         const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, blobs: [], skippedAreas: [], base: 'dark', shapeText: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, defaultScheme: null })
+        expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, shapeText: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, base: 'dark' }] })
     })
 
     it('a built-in whose raw text differs from its canonical text applies the judged canonical text, never the raw one', async () => {
@@ -580,8 +588,8 @@ describe('T3-4 a pack that cannot apply', () => {
         const canonical = judgeAreaSheet('chat', raw, undefined, 'chat').canonical
         expect(canonical).not.toBe(raw)
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
-        expect(prepared).toEqual({ ok: true, text: canonical, blobs: [], skippedAreas: [], base: 'dark', shapeText: canonical, defaultScheme: null })
-        expect(prepared.text).not.toContain('note')
+        expect(prepared).toEqual({ ok: true, blobs: [], skippedAreas: [], defaultScheme: null, elements: [{ area: 'chat', text: canonical, shapeText: canonical, base: 'dark' }] })
+        expect(chatElementOf(prepared).text).not.toContain('note')
     })
 })
 
@@ -595,7 +603,7 @@ describe('T2b-2 a stored pack with malformed tile fields still applies', () => {
     ])('%s applies the judged sheet', async (_label, over) => {
         const bytes = zipPack(validPackFiles({ 'manifest.json': manifestText(over) }))
         const prepared = accepted(await prepareArchive(bytes))
-        expect(prepared.text).toBe(judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical)
+        expect(chatElementOf(prepared).text).toBe(judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical)
         expect(prepared.skippedAreas).toEqual([])
     })
 })
@@ -701,8 +709,8 @@ describe('T3-11 a leading byte-order mark', () => {
     it('applies a chat sheet that starts with a BOM, and the applied text has no U+FEFF', async () => {
         const bytes = packOf(concat(Uint8Array.of(0xEF, 0xBB, 0xBF), utf8(PLAIN_CHAT_SHEET)))
         const prepared = accepted(await prepareArchive(bytes))
-        expect(typeof prepared.text).toBe('string')
-        expect(prepared.text).not.toContain('﻿')
+        expect(typeof chatElementOf(prepared).text).toBe('string')
+        expect(chatElementOf(prepared).text).not.toContain('﻿')
         commitPrepared(prepared)
         expect(packElements()[0].textContent).not.toContain('﻿')
     })
@@ -729,31 +737,31 @@ describe('T3-13 the blob URL pattern', () => {
     it('an IPv6-literal origin applies', async () => {
         blobs.nextUrl = (n) => `blob:http://[::1]:6001/${n}`
         const prepared = accepted(await prepareArchive(packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B])))
-        expect(prepared.text).toContain('url("blob:http://[::1]:6001/1")')
+        expect(chatElementOf(prepared).text).toContain('url("blob:http://[::1]:6001/1")')
     })
 })
 
 describe('T3-14 an empty chat sheet applies nothing', () => {
-    it.each([['0 bytes', ''], ['a comment only', '/* nothing */']])('%s: text null, studio skipped, and a previous pack is removed with its blobs', async (_label, sheet) => {
+    it.each([['0 bytes', ''], ['a comment only', '/* nothing */']])('%s: text null, home skipped, and a previous pack is removed with its blobs', async (_label, sheet) => {
         const a = accepted(await prepareArchive(packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B], {}, 'Pack A')))
         commitPrepared(a)
         expect(packElements()).toHaveLength(1)
-        const empty = accepted(await prepareArchive(packOf(sheet, [], { 'studio.css': PLAIN_CHAT_SHEET }, 'Pack E')))
-        expect(empty.text).toBeNull()
+        const empty = accepted(await prepareArchive(packOf(sheet, [], { 'home.css': PLAIN_CHAT_SHEET }, 'Pack E')))
+        expect(chatElementOf(empty).text).toBeNull()
         expect(empty.blobs).toEqual([])
-        expect(empty.skippedAreas).toEqual(['studio'])
+        expect(empty.skippedAreas).toEqual(['home'])
         commitPrepared(empty)
         expect(packElements()).toHaveLength(0)
         expect([...blobs.revoked].sort()).toEqual([...a.blobs].sort())
     })
 })
 
-describe('T3-15 only the chat sheet is judged and applied', () => {
-    it('judges the chat key only, applies one element and reports the skipped areas', async () => {
+describe('T3-15 only the chat sheet is applied', () => {
+    it('judges the chat key only for a pack with only skipped areas besides chat, applies one element and reports the skipped areas', async () => {
         const rig = judgeRig()
         const hostile = '[data-part]{padding-inline:60px}'
-        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'home.css': hostile, 'studio.css': hostile }), rig))
-        expect(prepared.skippedAreas).toEqual(['home', 'studio'])
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'home.css': hostile, 'popups.css': hostile }), rig))
+        expect(prepared.skippedAreas).toEqual(['home', 'popups'])
         expect(rig.posts.map((post) => post.jobs.map((job) => job.area))).toEqual([['chat']])
         commitPrepared(prepared)
         const elements = packElements()
@@ -761,14 +769,215 @@ describe('T3-15 only the chat sheet is judged and applied', () => {
         expect(elements[0].getAttribute('data-theme-pack')).toBe('chat')
         expect(document.querySelectorAll('style').length).toBe(3)
     })
+
+    it('judges studio.css with the chat sheet in one request and applies it as its own element after the chat one', async () => {
+        const rig = judgeRig()
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'studio.css': '[data-part="studio-asset-row"]{opacity:1}' }), rig))
+        expect(prepared.skippedAreas).toEqual([])
+        expect(rig.posts.map((post) => post.jobs.map((job) => job.area))).toEqual([['chat', 'studio']])
+        commitAll(prepared)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
+    })
+})
+
+describe('S4a the studio element (MC-3121: shape variant only, no base, in both modes)', () => {
+    const FONT_X = 'fonts/x.woff2'
+    const FACE_X = '@font-face{font-family:"pack-x";src:url(fonts/x.woff2) format("woff2")}'
+    const CHAT_X = FACE_X + LEAF
+    /** A studio sheet on a safe leaf: a font shared with chat, an image only studio names, a radius. */
+    const STUDIO_X = '@font-face{font-family:"pack-x";src:url(fonts/x.woff2)}[data-part="studio-asset-row"]{font-family:"pack-x";background-image:url(images/s.png);border-radius:6px}'
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:0.5}'
+    const BASE = 'data-theme-pack-base'
+
+    function studioOnlyPack(studio: string, fonts: readonly string[] = [], extra: Readonly<Record<string, PackFile>> = {}): Uint8Array {
+        const entries: Record<string, PackFile> = { 'manifest.json': fontManifest('Studio Only', fonts), 'studio.css': studio, ...extra }
+        for (const font of fonts) {
+            entries[font] = fakeFont()
+        }
+        return zipPack(entries)
+    }
+
+    /** The text the studio element must carry: the judged shape variant, with each resource span replaced by its URL. */
+    function expectedStudioText(studio: string, urlOf: Readonly<Record<string, string>> = {}): string {
+        const whole = judgeAreaSheet('studio', studio, undefined, 'studio')
+        const shape = judgeAreaSheet('studio', shapeOnlySheet(whole.canonical, shapeTokenNames('studio')), undefined, 'studio')
+        expect(shape.result.ok).toBe(true)
+        return buildAppliedText(shape, (raw) => urlOf[raw] ?? '')
+    }
+
+    it('A1: the studio element is the shape judgement with blob substitution, tagged studio, after chat and before #customcss', async () => {
+        const prepared = accepted(await prepareArchive(packOf(CHAT_X, [FONT_X], { 'studio.css': STUDIO_X, 'images/s.png': PNG_1X1 })))
+        commitAll(prepared)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
+        const [chat, studio] = packElements()
+        expect(chat.nextElementSibling).toBe(studio)
+        expect(studio.nextElementSibling?.id).toBe('customcss')
+        expect(studio.getAttribute('media')).toBe('not all')
+        expect(studio.textContent).toBe(expectedStudioText(STUDIO_X, { [FONT_X]: blobs.minted[0] }))
+        expect(studio.textContent).toContain('border-radius')
+        expect(studio.textContent).not.toMatch(/background-image|images\//)
+    })
+
+    it('A2: a commit replaces both elements and revokes the previous blobs once; a chat-only commit leaves no studio element; null leaves none', async () => {
+        const first = accepted(await prepareArchive(packOf(CHAT_X, [FONT_X], { 'studio.css': STUDIO_X, 'images/s.png': PNG_1X1 })))
+        commitAll(first)
+        const old = packElements()
+        expect(old).toHaveLength(2)
+        const second = accepted(await prepareArchive(packOf(LEAF, [], { 'studio.css': STUDIO_LEAF }, 'Second')))
+        commitAll(second)
+        expect(packElements()).toHaveLength(2)
+        expect(old.some((element) => element.isConnected)).toBe(false)
+        expect(blobs.revoked.filter((url) => first.blobs.includes(url))).toEqual([...first.blobs])
+        const third = accepted(await prepareArchive(packOf(ALT_SHEET, [], {}, 'Third')))
+        commitAll(third)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat'])
+        expect(commitPackSheet(null)).toEqual({ ok: true })
+        expect(packElements()).toHaveLength(0)
+        expectBalanced()
+    })
+
+    it('A3: a light chat sheet beside a design studio sheet: chat keeps its light base, studio applies its shape text with no base in both modes', async () => {
+        const light = builtinPackById('builtin:scratch-white')!
+        const bytes = zipPack(validPackFiles({
+            'manifest.json': manifestText({ name: 'Light', modes: ['light'] }),
+            'chat.css': light.chatCss,
+            'studio.css': studioScratchWhite.replace(/\r\n/g, '\n'),
+        }))
+        const prepared = accepted(await prepareArchive(bytes))
+        openGate()
+        const releaseStudio = declareSurface('studio')
+        flushSync()
+        commitAll(prepared, true)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat', 'studio'])
+        const [chat, studio] = packElements()
+        const shapeText = expectedStudioText(studioScratchWhite.replace(/\r\n/g, '\n'))
+        expect(shapeText.trim()).not.toBe('')
+        expect(studio.textContent).toBe(shapeText)
+        expect(studio.getAttribute('media')).toBe('all')
+        expect(chat.getAttribute('media')).toBe('not all')
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+        const chatElement = prepared.elements.find((element) => element.area === 'chat')
+        const studioElement = prepared.elements.find((element) => element.area === 'studio')
+        expect(chatElement?.base).toBe('light')
+        expect(studioElement).toMatchObject({ area: 'studio', text: shapeText, shapeText, base: null })
+        setPackSheetColours(false)
+        expect(studio.textContent).toBe(shapeText)
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+        setPackSheetColours(true)
+        expect(studio.textContent).toBe(shapeText)
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+        releaseStudio()
+        flushSync()
+        expect(chat.getAttribute('media')).toBe('all')
+        expect(document.documentElement.getAttribute(BASE)).toBe('light')
+    })
+
+    it('A5: a refused studio shape judgement gives no studio element; chat applies (guard, kills a shape text taken without its own judgement)', async () => {
+        const refused = judgeAreaSheet('studio', '[data-part="chat-header"]{opacity:1}', undefined, 'studio')
+        const rig = judgeRig({
+            rewrite: (response) => response.ok && Object.hasOwn(response.results, 'studio#shape')
+                ? { ...response, results: { ...response.results, 'studio#shape': refused } }
+                : response,
+        })
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'studio.css': studioScratchWhite.replace(/\r\n/g, '\n') }), rig))
+        expect(rig.posts.flatMap((post) => post.jobs.map((job) => job.label))).toContain('studio#shape')
+        commitAll(prepared)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['chat'])
+    })
+
+    it('A6: a font both sheets name is minted once and revoked once; an image only studio.css names is never minted', async () => {
+        const prepared = accepted(await prepareArchive(packOf(CHAT_X, [FONT_X], { 'studio.css': STUDIO_X, 'images/s.png': PNG_1X1 })))
+        commitAll(prepared)
+        expect(blobs.minted).toHaveLength(1)
+        expect(blobs.types).toEqual(['font/woff2'])
+        expect(prepared.blobs).toEqual(blobs.minted)
+        const [chat, studio] = packElements()
+        expect(studio.textContent).toContain(`url("${blobs.minted[0]}")`)
+        expect(chat.textContent).toContain(`url("${blobs.minted[0]}")`)
+        expect(commitPackSheet(null)).toEqual({ ok: true })
+        expect(blobs.revoked).toEqual(blobs.minted)
+    })
+
+    it('a font only studio.css names is minted after the chat resources, for the studio element', async () => {
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [FONT_X], { 'studio.css': STUDIO_X, 'images/s.png': PNG_1X1 })))
+        commitAll(prepared)
+        expect(blobs.minted).toHaveLength(1)
+        expect(prepared.blobs).toEqual(blobs.minted)
+        const studio = packElements().find((element) => element.getAttribute('data-theme-pack') === 'studio')
+        expect(studio?.textContent).toBe(expectedStudioText(STUDIO_X, { [FONT_X]: blobs.minted[0] }))
+    })
+
+    it('a damaged file only studio.css names is broken files, and nothing minted stays live', async () => {
+        world.verifiedRefuseAt = 1
+        const prepared = await prepareArchive(packOf(PLAIN_CHAT_SHEET, [FONT_X], { 'studio.css': STUDIO_X, 'images/s.png': PNG_1X1 }))
+        expect(prepared).toEqual({ ok: false, reason: 'files' })
+        expectBalanced()
+    })
+
+    it('A9: studio.css keeps its own geometry token and drops an app colour token, as its shape variant', async () => {
+        const sheet = ':root{--studio-size-touch:40px;--nexus-text:#fff}'
+        const prepared = accepted(await prepareArchive(packOf(PLAIN_CHAT_SHEET, [], { 'studio.css': sheet })))
+        commitAll(prepared)
+        const studio = packElements().find((element) => element.getAttribute('data-theme-pack') === 'studio')
+        expect(studio?.textContent).toMatch(/--studio-size-touch:\s*40px/)
+        expect(studio?.textContent).not.toContain('--nexus-text')
+    })
+
+    it('R4: a studio-only pack that sets the app shape tokens is accepted, and its element reshapes the legacy utilities (MC-3128)', async () => {
+        const prepared = await prepareArchive(studioOnlyPack(':root{--ui-radius-md:2px;--ui-radius:0px;--ui-border-width:2px}'))
+        expect(prepared.ok).toBe(true)
+        const studio = accepted(prepared).elements.find((element) => element.area === 'studio')
+        expect(studio).toBeDefined()
+        expect(studio?.text).toMatch(/--ui-radius-md:\s*2px/)
+        expect(studio?.text).toMatch(/--ui-radius:\s*0px/)
+        expect(studio?.text).toMatch(/--ui-border-width:\s*2px/)
+        const app = await compileAppStyles(['rounded-md', 'rounded', 'border'])
+        document.body.innerHTML = '<div class="rounded-md"></div><div class="rounded"></div><div class="border"></div>'
+        const model = new CascadeModel(compileRules([app, { name: 'studio', css: studio?.text ?? '' }]))
+        const [md, bare, border] = [...document.body.children]
+        expect([model.prop(md, 'border-radius'), model.prop(bare, 'border-radius'), model.prop(border, 'border-width')]).toEqual(['2px', '0px', '2px'])
+    }, 60000)
+
+    it('R6: studio.css keeps a studio radius token it reads in the same rule set (MC-3128)', async () => {
+        const sheet = ':root{--studio-radius-card:18px}[data-part="studio-history-step"]{border-radius:var(--studio-radius-card)}'
+        const prepared = accepted(await prepareArchive(studioOnlyPack(sheet)))
+        const studio = prepared.elements.find((element) => element.area === 'studio')
+        expect(studio?.text).toMatch(/--studio-radius-card:\s*18px/)
+        expect(studio?.text).toMatch(/border-radius:\s*var\(--studio-radius-card\)/)
+    })
+
+    it('a studio-only pack applies only the studio element, with no chat text, no base and no default scheme', async () => {
+        const prepared = accepted(await prepareArchive(studioOnlyPack(STUDIO_LEAF)))
+        expect(prepared.defaultScheme).toBeNull()
+        expect(chatElementOf(prepared).text).toBeNull()
+        commitAll(prepared)
+        expect(packElements().map((element) => element.getAttribute('data-theme-pack'))).toEqual(['studio'])
+    })
+
+    it('a studio shape variant of only empty blocks applies no element', async () => {
+        const prepared = accepted(await prepareArchive(studioOnlyPack('[data-part="studio-asset-row"]{background-image:url(images/s.png)}', [], { 'images/s.png': PNG_1X1 })))
+        commitAll(prepared)
+        expect(packElements()).toHaveLength(0)
+        expect(blobs.minted).toHaveLength(0)
+    })
+
+    it('A7: a chat-only built-in prepares one chat element with its judged text and its base (compatibility)', async () => {
+        for (const slug of ['origin-navy', 'banana-cocoa', 'scratch-white', 'office-sheet']) {
+            const prepared = accepted(await prepare({ kind: 'builtin', pack: builtinPackById(`builtin:${slug}`)! }))
+            const pack = builtinPackById(`builtin:${slug}`)!
+            expect(prepared.elements.map((element) => element.area)).toEqual(['chat'])
+            expect(prepared.elements[0].text).toBe(judgeAreaSheet('chat', pack.chatCss, undefined, 'chat').canonical)
+            expect(prepared.elements[0].base).toBe(pack.modes.length === 1 && pack.modes[0] === 'light' ? 'light' : 'dark')
+        }
+    })
 })
 
 describe('T3-16 a missing #customcss', () => {
     it('inserts nothing, answers couldNotCheck, revokes the passed blobs and leaves the previous element', () => {
-        expect(commitPackSheet({ text: LEAF, blobs: ['blob:http://localhost/a'] })).toEqual({ ok: true })
+        expect(commitPackSheet(chatCommitInput(LEAF, { blobs: ['blob:http://localhost/a'] }))).toEqual({ ok: true })
         const [previous] = packElements()
         document.getElementById('customcss')?.remove()
-        expect(commitPackSheet({ text: ALT_SHEET, blobs: ['blob:http://localhost/b'] })).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(commitPackSheet(chatCommitInput(ALT_SHEET, { blobs: ['blob:http://localhost/b'] }))).toEqual({ ok: false, reason: 'couldNotCheck' })
         expect(packElements()).toEqual([previous])
         expect(previous.textContent).toBe(LEAF)
         expect(blobs.revoked).toEqual(['blob:http://localhost/b'])
@@ -825,7 +1034,7 @@ describe('T3G-6 the surface gate and the commit order', () => {
     it('(a) the element is created off: at the record that adds it, its media is not all', async () => {
         openGate()
         const recording = startRecording()
-        commitPackSheet({ text: LEAF, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
         flushSync()
         const steps = replay(recording.take())
         const add = steps.find((step) => step.type === 'add')
@@ -838,7 +1047,7 @@ describe('T3G-6 the surface gate and the commit order', () => {
 
     it('(b) shown (declared, not covered): the element is all after the commit', () => {
         openGate()
-        commitPackSheet({ text: LEAF, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
         expect(packElements()[0].getAttribute('media')).toBe('all')
         flushSync()
         expect(packElements()[0].getAttribute('media')).toBe('all')
@@ -848,8 +1057,8 @@ describe('T3G-6 the surface gate and the commit order', () => {
     it('(c) covered: A then B, and no registered element is ever written all; B is off after the commit and after the flush', () => {
         openGate(true)
         const recording = startRecording()
-        commitPackSheet({ text: LEAF, blobs: [] })
-        commitPackSheet({ text: ALT_SHEET, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
+        commitPackSheet(chatCommitInput(ALT_SHEET))
         expect(packElements()).toHaveLength(1)
         expect(packElements()[0].getAttribute('media')).toBe('not all')
         flushSync()
@@ -863,10 +1072,10 @@ describe('T3G-6 the surface gate and the commit order', () => {
     it('(d) shown: A on then B; B gets exactly one all record and it follows the removal of A', () => {
         openGate()
         const recording = startRecording()
-        commitPackSheet({ text: LEAF, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
         const [first] = packElements()
         expect(first.getAttribute('media')).toBe('all')
-        commitPackSheet({ text: ALT_SHEET, blobs: [] })
+        commitPackSheet(chatCommitInput(ALT_SHEET))
         const steps = replay(recording.take())
         const second = packElements()[0]
         expect(second).not.toBe(first)
@@ -883,7 +1092,7 @@ describe('T3G-6 the surface gate and the commit order', () => {
 
     it('(e) committed while covered, then uncovered: all after the flush', () => {
         openGate(true)
-        commitPackSheet({ text: LEAF, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
         flushSync()
         expect(packElements()[0].getAttribute('media')).toBe('not all')
         cover.on = false
@@ -894,7 +1103,7 @@ describe('T3G-6 the surface gate and the commit order', () => {
 
     it('(f) a null commit removes the element, unregisters it and revokes its blobs', () => {
         openGate(true)
-        commitPackSheet({ text: LEAF, blobs: ['blob:http://localhost/1'] })
+        commitPackSheet(chatCommitInput(LEAF, { blobs: ['blob:http://localhost/1'] }))
         const [element] = packElements()
         expect(commitPackSheet(null)).toEqual({ ok: true })
         expect(element.isConnected).toBe(false)
@@ -913,7 +1122,7 @@ describe('T3G-6 the surface gate and the commit order', () => {
         document.head.appendChild(probe)
         registerThemePackElement(probe, 'studio')
         openGate()
-        commitPackSheet({ text: LEAF, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
         flushSync()
         const [chat] = packElements().filter((element) => element !== probe)
         expect(chat.getAttribute('media')).toBe('all')
@@ -930,9 +1139,9 @@ describe('T3G-6 the surface gate and the commit order', () => {
         registerThemePackElement(probe, 'studio')
         openGate()
         const recording = startRecording()
-        commitPackSheet({ text: LEAF, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
         flushSync()
-        commitPackSheet({ text: ALT_SHEET, blobs: [] })
+        commitPackSheet(chatCommitInput(ALT_SHEET))
         flushSync()
         commitPackSheet(null)
         flushSync()
@@ -956,8 +1165,8 @@ describe('T3G-6 the surface gate and the commit order', () => {
         bare.setAttribute('data-theme-pack', 'chat')
         document.body.appendChild(bare)
         openGate()
-        commitPackSheet({ text: LEAF, blobs: [] })
-        commitPackSheet({ text: ALT_SHEET, blobs: [] })
+        commitPackSheet(chatCommitInput(LEAF))
+        commitPackSheet(chatCommitInput(ALT_SHEET))
         cover.on = true
         flushSync()
         cover.on = false
@@ -980,18 +1189,18 @@ describe('T16b the shape variant is the judge\'s own canonical text with the sam
         const shapeJudged = judgeAreaSheet('chat', shapeOnlySheet(full.canonical), undefined, 'chat')
         expect(shapeJudged.result.ok).toBe(true)
         const urlOf: Record<string, string> = { [FONT_A]: blobs.minted[0], [FONT_B]: blobs.minted[1], 'images/a.png': blobs.minted[2] }
-        expect(prepared.shapeText).toBe(buildAppliedText(shapeJudged, (raw) => urlOf[raw]))
-        expect(prepared.shapeText).toContain(blobs.minted[0])
-        expect(prepared.shapeText).toContain(blobs.minted[1])
-        expect(prepared.shapeText).not.toContain(blobs.minted[2])
-        expect(prepared.shapeText).not.toContain('background-image')
-        expect(prepared.text).toContain(blobs.minted[2])
+        expect(chatElementOf(prepared).shapeText).toBe(buildAppliedText(shapeJudged, (raw) => urlOf[raw]))
+        expect(chatElementOf(prepared).shapeText).toContain(blobs.minted[0])
+        expect(chatElementOf(prepared).shapeText).toContain(blobs.minted[1])
+        expect(chatElementOf(prepared).shapeText).not.toContain(blobs.minted[2])
+        expect(chatElementOf(prepared).shapeText).not.toContain('background-image')
+        expect(chatElementOf(prepared).text).toContain(blobs.minted[2])
     })
 
     it('a sheet the strip leaves unchanged reuses the applied text without a second judgement', async () => {
         const rig = judgeRig()
         const prepared = accepted(await prepareArchive(packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B]), rig))
-        expect(prepared.shapeText).toBe(prepared.text)
+        expect(chatElementOf(prepared).shapeText).toBe(chatElementOf(prepared).text)
         expect(rig.posts).toHaveLength(1)
     })
 })
@@ -1023,15 +1232,15 @@ describe('T31 shape mode fails closed', () => {
         const stub = stubJudge(() => real({ chat: 'body{color:red}' }))
         const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
         expect(stub.calls()).toBe(2)
-        expect(prepared.shapeText).toBeNull()
-        expect(prepared.text).not.toBeNull()
+        expect(chatElementOf(prepared).shapeText).toBeNull()
+        expect(chatElementOf(prepared).text).not.toBeNull()
         expect(prepared.defaultScheme).not.toBeNull()
     })
 
     it('a throwing shape judgement gives shapeText null', async () => {
         const stub = stubJudge(async () => { throw new Error('judge down') })
         const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
-        expect(prepared.shapeText).toBeNull()
+        expect(chatElementOf(prepared).shapeText).toBeNull()
     })
 
     it('committed with colours off and a null shape variant, the element is empty and sets no base', async () => {
@@ -1039,7 +1248,7 @@ describe('T31 shape mode fails closed', () => {
         const real = judgeRig().judge
         const stub = stubJudge(() => real({ chat: 'body{color:red}' }))
         const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
-        expect(commitPackSheet({ text: prepared.text ?? '', blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: false })).toEqual({ ok: true })
+        expect(commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: false })).toEqual({ ok: true })
         expect(packElements()[0].textContent).toBe('')
         expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(false)
     })
@@ -1049,8 +1258,8 @@ describe('T31 shape mode fails closed', () => {
         const real = judgeRig().judge
         const stub = stubJudge(() => real({ chat: 'body{color:red}' }))
         const prepared = accepted(await preparePackSheet(originNavy(), judgeSessionOverForTests(stub.judge), ALWAYS))
-        expect(commitPackSheet({ text: prepared.text ?? '', blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: true })).toEqual({ ok: true })
-        expect(packElements()[0].textContent).toBe(prepared.text)
+        expect(commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: true })).toEqual({ ok: true })
+        expect(packElements()[0].textContent).toBe(chatElementOf(prepared).text)
         expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
     })
 
@@ -1070,20 +1279,20 @@ describe('T16 setPackSheetColours switches the variant in place', () => {
     it('swaps the text and the base on the same element and never revokes a blob', async () => {
         openGate()
         const prepared = accepted(await prepareArchive(packOf(MIXED_SHEET, [FONT_A, FONT_B], { 'images/a.png': PNG_1X1 })))
-        expect(commitPackSheet({ text: prepared.text ?? '', blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: true })).toEqual({ ok: true })
+        expect(commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: true })).toEqual({ ok: true })
         const [element] = packElements()
-        expect(element.textContent).toBe(prepared.text)
+        expect(element.textContent).toBe(chatElementOf(prepared).text)
         expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
 
         setPackSheetColours(false)
         expect(packElements()).toEqual([element])
-        expect(element.textContent).toBe(prepared.shapeText)
+        expect(element.textContent).toBe(chatElementOf(prepared).shapeText)
         expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(false)
         expect(element.getAttribute('media')).toBe('all')
 
         setPackSheetColours(true)
         expect(packElements()).toEqual([element])
-        expect(element.textContent).toBe(prepared.text)
+        expect(element.textContent).toBe(chatElementOf(prepared).text)
         expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
         expect(blobs.revoked).toEqual([])
     })

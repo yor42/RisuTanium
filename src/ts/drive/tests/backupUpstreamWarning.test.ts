@@ -271,7 +271,6 @@ import { UPSTREAM_HARD_LIMIT_BYTES } from 'src/ts/drive/exportInline'
 import { webWriterNeedsGesture } from 'src/ts/exportWriters'
 import { getAppStore, injectAppStore, type AppStoreKind } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
-import { inlayBodyKey, inlayMetaKey } from 'src/ts/process/files/inlayKeys'
 
 //#region helpers
 
@@ -367,16 +366,6 @@ function plantAssets(...items: Array<[string, number]>): void {
     for (const [key, size] of items) {
         webFiles.set(key, lengthLike(size))
     }
-}
-
-function plantInlay(id: string, length: number): void {
-    const bodyKey = inlayBodyKey(id, '0123456789abcdef')
-    const metaKey = inlayMetaKey(id)
-    if (bodyKey === null || metaKey === null) {
-        throw new Error('the fixture inlay id has no key')
-    }
-    webFiles.set(bodyKey, new Uint8Array(4))
-    webFiles.set(metaKey, encoder.encode(JSON.stringify({ v: 1, repr: 'blob', mime: 'image/png', len: length, body: bodyKey, fields: {} })))
 }
 
 //#endregion
@@ -519,78 +508,6 @@ describe('SaveLocalBackup, assets sized by the desktop listing', () => {
     })
 })
 
-describe('SaveLocalBackup, browser store', () => {
-    beforeEach(() => {
-        sizedBox.available = false
-        injectStore('indexeddb')
-    })
-
-    test('reproducer: an asset above 100 MiB is found by reading it once before the writer opens, and is named', async () => {
-        plantAssets(['assets/small', 10], ['assets/big', 150 * MIB])
-        let openedAtPrompt = -1
-        let readsAtPrompt = -1
-        alertConfirmMock.mockImplementation(async (message: string) => {
-            if (message.includes(UPSTREAM_PROMPT)) {
-                openedAtPrompt = backupSink.opened
-                readsAtPrompt = storeReads.filter((key) => key === 'assets/big').length
-            }
-            return true
-        })
-
-        await SaveLocalBackup()
-
-        expect(upstreamPrompts()).toHaveLength(1)
-        expect(upstreamPrompts()[0]).toContain("'assets/big' (150.0 MiB)")
-        expect(openedAtPrompt).toBe(0)
-        expect(readsAtPrompt).toBe(1)
-        expect(entryNames()).toContain('big')
-    })
-
-    test('reproducer: declining ends the export as declined with no file', async () => {
-        plantAssets(['assets/small', 10], ['assets/big', LIMIT + 1])
-        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(UPSTREAM_PROMPT))
-
-        const outcome = await SaveLocalBackup()
-
-        expect(outcome).toEqual({ status: 'declined', cause: 'oversize-declined' })
-        expect(backupSink.opened).toBe(0)
-        expect(backupSink.writes).toEqual([])
-    })
-
-    test('guard: exactly 100 MiB is not named', async () => {
-        plantAssets(['assets/at-limit', LIMIT])
-
-        await SaveLocalBackup()
-
-        expect(upstreamPrompts()).toEqual([])
-        expect(entryNames()).toContain('at-limit')
-    })
-
-    test('reproducer: an inlay above 100 MiB is not named and asks nothing (the backup holds it in entries of at most 64 MiB, which an upstream Node server takes)', async () => {
-        plantAssets(['assets/small', 10])
-        plantInlay('chat-video', 150 * MIB)
-        plantInlay('chat-small', 5)
-
-        const outcome = await SaveLocalBackup()
-
-        expect(outcome).toEqual(expect.objectContaining({ status: 'saved' }))
-        expect(upstreamPrompts()).toEqual([])
-        expect(alertConfirmMock).not.toHaveBeenCalled()
-    })
-
-    test('reproducer: an oversize asset is named alone when an inlay is over 100 MiB too', async () => {
-        plantAssets(['assets/big', LIMIT + 1])
-        plantInlay('chat-video', LIMIT + 2)
-
-        await SaveLocalBackup()
-
-        expect(upstreamPrompts()).toHaveLength(1)
-        expect(upstreamPrompts()[0]).toContain('1 item(s)')
-        expect(upstreamPrompts()[0]).toContain('assets/big')
-        expect(upstreamPrompts()[0]).not.toContain('chat-video')
-    })
-})
-
 describe('SaveLocalBackup, Node store', () => {
     test('reproducer: the oversize assets come from the server listing and the pre-pass reads no asset', async () => {
         injectStore('node')
@@ -676,24 +593,9 @@ describe('SavePartialLocalBackup', () => {
         expect(backupSink.writes).toEqual([])
     })
 
-    test('reproducer: on a browser store only the profile image is read to size it', async () => {
-        sizedBox.available = false
-        injectStore('indexeddb')
-        plantAssets(['assets/icon', 150 * MIB], ['assets/other', 300 * MIB])
-
-        const outcome = await SavePartialLocalBackup()
-
-        expect(upstreamPrompts()).toHaveLength(1)
-        expect(upstreamPrompts()[0]).toContain('150.0 MiB')
-        expect(storeReads.filter((key) => key === 'assets/other')).toEqual([])
-        expect(outcome).toMatchObject({ status: 'saved' })
-        expect(entryNames()).toContain('icon')
-    })
-
     test('guard: with nothing oversize the partial export asks nothing about size', async () => {
-        sizedBox.available = false
-        injectStore('indexeddb')
-        plantAssets(['assets/icon', 10])
+        injectStore('tauri')
+        listAssets(['assets/icon', 10])
 
         await SavePartialLocalBackup()
 
@@ -703,9 +605,8 @@ describe('SavePartialLocalBackup', () => {
 
 describe('the ready-to-save prompt', () => {
     beforeEach(() => {
-        sizedBox.available = false
-        injectStore('indexeddb')
-        plantAssets(['assets/small', 10])
+        injectStore('tauri')
+        listAssets(['assets/small', 10])
         setSecureContext(false)
     })
 
@@ -721,7 +622,7 @@ describe('the ready-to-save prompt', () => {
     })
 
     test('reproducer: activation that lapses after the size confirmation asks for no click either', async () => {
-        plantAssets(['assets/big', LIMIT + 1])
+        listAssets(['assets/big', LIMIT + 1])
         setActivation(true)
         alertConfirmMock.mockImplementation(async () => {
             setActivation(false)

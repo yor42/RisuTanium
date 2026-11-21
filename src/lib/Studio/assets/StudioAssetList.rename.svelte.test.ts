@@ -314,8 +314,17 @@ describe('committing a name', () => {
         await show()
         type(nameField(0), '')
         db.db.characters[0].additionalAssets = [assetRow('grin', 'assets/grin.png')]
-        nameField(0).blur()
-        await settle()
+        // A handler that throws on the removed row's blur reaches the window as an error event.
+        const thrown: unknown[] = []
+        const onError = (event: ErrorEvent) => { thrown.push(event.error); event.preventDefault() }
+        window.addEventListener('error', onError)
+        try {
+            nameField(0).blur()
+            await settle()
+        } finally {
+            window.removeEventListener('error', onError)
+        }
+        expect(thrown).toEqual([])
         expect(parts('studio-asset-refusal')).toHaveLength(0)
     })
 

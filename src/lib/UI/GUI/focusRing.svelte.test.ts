@@ -90,6 +90,7 @@ import { colorSchemeList, colorSchemePresets, updateColorScheme } from 'src/ts/g
 import { trimMarkdown } from 'src/ts/parser/parser.svelte'
 import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
 import { buildAppliedText, commitPackSheet, resetPackSheetForTests } from 'src/ts/themePack/apply'
+import { chatCommitInput } from 'src/ts/themePack/fixtures/packCommit'
 import { judgeAreaSheet } from 'src/ts/themePack/index'
 import { declareSurface, installThemePackGate, resetThemePackGateForTests } from 'src/ts/themePack/surfaceGate.svelte'
 import Button from './Button.svelte'
@@ -354,7 +355,7 @@ describe('TB5f: a theme pack does not move the classic ring', () => {
         const navy = BUILTIN_PACKS.find((p) => p.id === 'builtin:origin-navy')!
         const judged = judgeAreaSheet('chat', navy.chatCss, undefined, 'chat')
         expect(judged.result.ok).toBe(true)
-        expect(commitPackSheet({ text: buildAppliedText(judged, () => ''), blobs: [] })).toEqual({ ok: true })
+        expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
         expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(true)
 
         applyScheme('light')

@@ -244,32 +244,32 @@ describe('the filter', () => {
 describe('a row the filter or a fold takes off the screen', () => {
     const rowNodes = () => rawParts('studio-asset-row')
 
-    test('stays in the page: narrowing and clearing the filter keep the same row nodes, hidden and shown again', async () => {
+    // The page holds displayed rows only: a row the filter or a fold takes off the screen is removed, not hidden, and
+    // it comes back, in its place, when the filter clears or the folder opens again.
+    test('leaves the page: narrowing keeps only the matching row\'s node, and clearing the filter brings every row back in order', async () => {
         await show()
-        const before = rowNodes()
+        const before = rowNodes().map((row) => row.dataset.rowKey)
         expect(before).toHaveLength(30)
         await filterBy('be1-pic3')
-        expect(rowNodes()).toHaveLength(30)
-        expect(before.every((row) => row.isConnected)).toBe(true)
+        expect(rowNodes()).toHaveLength(1)
+        expect(rowNodes().filter((row) => row.closest('[hidden]') !== null)).toHaveLength(0)
         expect(parts('studio-asset-row')).toHaveLength(1)
-        expect(rowNodes().filter((row) => row.hidden)).toHaveLength(29)
         await filterBy('')
-        expect(rowNodes()).toHaveLength(30)
-        expect(rowNodes().every((row, at) => row === before[at])).toBe(true)
+        expect(rowNodes().map((row) => row.dataset.rowKey)).toEqual(before)
         expect(parts('studio-asset-row')).toHaveLength(30)
     })
 
-    test('stays in the page: folding a folder and opening it again keep its row nodes', async () => {
+    test('leaves the page: folding a folder removes its rows and opening it again brings them back in order', async () => {
         await show()
-        const before = rowNodes()
+        const before = rowNodes().map((row) => row.dataset.rowKey)
         const second = Array.from(parts('studio-asset-folder')[1].querySelectorAll<HTMLElement>('[data-part="studio-asset-row"]'))
         expect(second).toHaveLength(10)
         await click(parts('studio-asset-folder-header')[1])
-        expect(rowNodes()).toHaveLength(30)
-        expect(second.every((row) => row.isConnected)).toBe(true)
+        expect(rowNodes()).toHaveLength(20)
+        expect(second.every((row) => !row.isConnected)).toBe(true)
         expect(parts('studio-asset-row')).toHaveLength(20)
         await click(parts('studio-asset-folder-header')[1])
-        expect(rowNodes().every((row, at) => row === before[at])).toBe(true)
+        expect(rowNodes().map((row) => row.dataset.rowKey)).toEqual(before)
         expect(parts('studio-asset-row')).toHaveLength(30)
     })
 

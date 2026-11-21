@@ -157,8 +157,8 @@ async function importModule() {
     lastCard = await answerImportCard(importModuleOnCard)
 }
 
-/** The asset limit follows the store the page selected: the browser store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
-function selectStoreKind(kind: 'node' | 'indexeddb'): void {
+/** The asset limit follows the store the page selected: the Tauri store takes 1 GiB, a Node store without recorded pieces 100 MiB. */
+function selectStoreKind(kind: 'node' | 'tauri'): void {
     noteSelectedStore(kind, createMemoryByteStore())
 }
 
@@ -197,7 +197,7 @@ beforeEach(() => {
     lastCard = null
     h.modules = []
     h.node = false
-    selectStoreKind('indexeddb')
+    selectStoreKind('tauri')
     h.saves = []
     h.failing = new Map()
     h.onSave = null

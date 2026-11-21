@@ -204,7 +204,7 @@ async function viewWorld(options: ViewWorldOptions = {}): Promise<ViewWorld> {
     }
     const hookMarks: string[] = []
     const kinds: SaveMarkKind[] = []
-    const b = await bootB(memory, 'indexeddb', { sink: (mark) => { hookMarks.push(JSON.stringify(mark)); markDbWrite(mark) } })
+    const b = await bootB(memory, { sink: (mark) => { hookMarks.push(JSON.stringify(mark)); markDbWrite(mark) } })
     const landing = options.beforeFirstCommit
     if (landing !== undefined) {
         // The loop reads its committer once, when it starts: the wrap goes in before it does.

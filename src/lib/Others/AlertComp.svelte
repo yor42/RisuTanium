@@ -20,6 +20,7 @@
     import Button from '../UI/GUI/Button.svelte';
     import PeerConflicts from './PeerConflicts.svelte';
     import ParkedReplyPrompt from './ParkedReplyPrompt.svelte';
+    import UpdateOfferPrompt from './UpdateOfferPrompt.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
     import json from 'highlight.js/lib/languages/json';
@@ -64,6 +65,7 @@
             case 'pluginconfirm':
             case 'patternSelect':
             case 'patternInput':
+            case 'updateOffer':
                 return 'confirm'
             case 'tos':
             case 'staleAccountNotice':
@@ -78,7 +80,7 @@
     // Types that ask for an answer or report a failure interrupt a screen reader's reading; the rest are plain dialogs.
     const ALERT_DIALOG_TYPES = new Set<alertData['type']>(['error', 'ask', 'select', 'input', 'tos', 'staleAccountNotice'])
     // Reports and tool content need more room than a message.
-    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply'])
+    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer'])
     // Types whose body has no message element of its own; the dialog is named and described by the body instead.
     const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'selectChar', 'requestdata', 'addchar', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'chatOptions', 'peerConflicts', 'parkedReply'])
     // Viewers the person closes themselves: the head carries a named close, and Escape and Back close them as well.
@@ -111,6 +113,8 @@
                 return language.chatShellBranches
             case 'input':
                 return language.input
+            case 'updateOffer':
+                return language.updateAvailableTitle
             default:
                 return null
         }
@@ -620,6 +624,10 @@
                         })
                     }}>{cardExportType === 'realm' ? language.shareCloud : language.export}</button>
                 </div>
+            {:else if a.type === 'updateOffer'}
+                <UpdateOfferPrompt offer={a.updateOffer ?? { currentVersion: '', version: '', notes: '' }} {messageId} onanswer={(message) => {
+                    alertStore.set({ type: 'none', msg: message })
+                }} />
             {:else if a.type !== 'select' && a.type !== 'selectChar' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'requestlogs' && a.type !== 'chatOptions' && a.type !== 'branches'}
                 <span id={messageId} data-part="pattern-alert-message">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}

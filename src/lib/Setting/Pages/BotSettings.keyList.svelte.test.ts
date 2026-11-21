@@ -44,6 +44,7 @@ vi.mock(import('src/ts/platform'), () => ({
 
 vi.mock(import('src/ts/process/request/secretKey'), () => ({
     currentKey: vi.fn(() => ''),
+    currentKeyForUi: vi.fn(() => ''),
 }) as unknown as typeof import('src/ts/process/request/secretKey'))
 
 vi.mock(import('src/ts/util'), () => ({
@@ -118,7 +119,6 @@ function mountPage(hideApiKey: boolean): HTMLElement {
         aiModel: 'stub',
         subModel: 'stub',
         hideApiKey,
-        claudeAPIKey: '',
         nanogptRequestModel: '',
         nanogptRequestModelName: '',
         nanogptUseSubscriptionEndpoint: false,
@@ -135,6 +135,15 @@ function mountPage(hideApiKey: boolean): HTMLElement {
     mounted.push({ target, app })
     flushSync()
     return target
+}
+
+/** The key the Claude connection holds; the field writes through the connection, never a legacy root field. */
+function claudeKey(): string | undefined {
+    return DBState.db.connections?.find((conn) => conn.provider === 'anthropic')?.key
+}
+
+function seedClaudeKey(key: string): void {
+    DBState.db.connections = [{ id: 'conn-1', name: 'Claude', provider: 'anthropic', key }]
 }
 
 function keyInputs(target: HTMLElement, hideApiKey = true): HTMLInputElement[] {
@@ -162,7 +171,7 @@ describe('the Claude key box keeps one key per row', () => {
     test('BK1 an insertion that left two keys apart by a space ends as two masked rows', () => {
         const target = mountPage(true)
         settle(keyInputs(target)[0], 'sk-test-A sk-test-B')
-        expect(DBState.db.claudeAPIKey).toBe('sk-test-A\nsk-test-B')
+        expect(claudeKey()).toBe('sk-test-A\nsk-test-B')
         expect(keyInputs(target).map((node) => node.value)).toEqual(['sk-test-A', 'sk-test-B', ''])
     })
 
@@ -178,7 +187,7 @@ describe('the Claude key box keeps one key per row', () => {
         expect(keyInputs(target).filter((row) => row.value !== '')).toHaveLength(1)
         node.dispatchEvent(new CompositionEvent('compositionend', { data: 'sk-test-A\nsk-test-B' }))
         flushSync()
-        expect(DBState.db.claudeAPIKey).toBe('sk-test-A\nsk-test-B')
+        expect(claudeKey()).toBe('sk-test-A\nsk-test-B')
         expect(keyInputs(target).map((row) => row.value)).toEqual(['sk-test-A', 'sk-test-B', ''])
     })
 
@@ -191,7 +200,7 @@ describe('the Claude key box keeps one key per row', () => {
     test('SK1 compatibility guard (passes before and after): a secret reference stays readable in its row', () => {
         for (const hideApiKey of [true, false]) {
             const target = mountPage(hideApiKey)
-            DBState.db.claudeAPIKey = '${OPENAI_KEY}'
+            seedClaudeKey('${OPENAI_KEY}')
             flushSync()
             const shown = keyInputs(target, false).filter((row) => row.value === '${OPENAI_KEY}')
             expect(shown).toHaveLength(1)
@@ -201,25 +210,25 @@ describe('the Claude key box keeps one key per row', () => {
     test('BK3 three keys in one insertion end as three rows', () => {
         const target = mountPage(true)
         settle(keyInputs(target)[0], 'sk-test-A sk-test-B sk-test-C')
-        expect(DBState.db.claudeAPIKey).toBe('sk-test-A\nsk-test-B\nsk-test-C')
+        expect(claudeKey()).toBe('sk-test-A\nsk-test-B\nsk-test-C')
         expect(keyInputs(target)).toHaveLength(4)
     })
 
     test('BK4 compatibility guard (passes before and after): a single key keeps its spaces', () => {
         const target = mountPage(true)
         settle(keyInputs(target)[0], ' sk-test-A ')
-        expect(DBState.db.claudeAPIKey).toBe(' sk-test-A ')
+        expect(claudeKey()).toBe(' sk-test-A ')
     })
 
     test('BK5 compatibility guard (passes before and after): focus and blur leave a saved spaced value alone', () => {
         const target = mountPage(true)
-        DBState.db.claudeAPIKey = 'pass word'
+        seedClaudeKey('pass word')
         flushSync()
         const node = keyInputs(target)[0]
         node.focus()
         node.dispatchEvent(new FocusEvent('focusout'))
         flushSync()
-        expect(DBState.db.claudeAPIKey).toBe('pass word')
+        expect(claudeKey()).toBe('pass word')
         expect(node.value).toBe('pass word')
     })
 })

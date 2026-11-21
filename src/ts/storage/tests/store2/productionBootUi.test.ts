@@ -56,7 +56,9 @@ import { getBootScreen, pressBootButton, resetBootScreenForTests, type BootScree
 import { createProductionBootUi } from 'src/ts/storage/store2/ui/productionBootUi'
 import { createClock, testEnv } from '../store2SaveKit'
 import { buildSmall, fakeLists } from './codecFixtures'
+import { flushConfirming } from './flushConfirmBackend'
 import { plantTree } from './recoveryFixtures'
+import { createNodeSemanticStore } from './replay/nodeSemanticStore'
 
 /**
  * The production port (`store2/ui/productionBootUi.ts`): one screen per prompt, the mapped answer, and a terminal screen
@@ -293,7 +295,7 @@ describe('the real dispatch with the production port, over rows of the boot tabl
             upstreamMainFile: async () => mainFile,
             listBackupTimes: listBackups,
             readColdStorageItem: async () => ({ status: 'missing' }),
-        }, { ui, kind: 'indexeddb', backend: async () => backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists })
+        }, { ui, kind: 'tauri', backend: async () => flushConfirming(backend).backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists })
         const writes = () => ({
             backendChanged: [...backend.snapshot().entries()].some(([key, bytes]) => !before.has(key) || [...before.get(key)!].join() !== [...bytes].join()),
             store: store.writes.filter((key) => key !== OWNER_KEY),
@@ -345,7 +347,7 @@ describe('the real dispatch with the production port, over rows of the boot tabl
             upstreamMainFile: async () => true,
             listBackupTimes: async () => [...BACKUPS],
             readColdStorageItem: async () => ({ status: 'missing' }),
-        }, { ui, kind: 'indexeddb', backend: async () => backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists, importBackup })
+        }, { ui, kind: 'tauri', backend: async () => flushConfirming(backend).backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists, importBackup })
         const question = await screenAfter(null)
         await sleep(ANSWER_GUARD_MS + 40)
         pressBootButton('convertNo', performance.now())
@@ -398,9 +400,11 @@ describe('the real dispatch with the production port, over a damaged commit key 
         const memory = createMemoryBackend()
         const planted = await plantTree(memory, testEnv(clock, 100), { seq: 5 })
         memory.poke(COMMIT_KEY, DAMAGED_COMMIT)
-        const store = createMemoryByteStore()
+        // A Node page does not re-flush at open, so the commit-write counts below are the screen's own writes.
+        const semantic = createNodeSemanticStore()
+        const store = semantic.store
         if (options.mainFile) {
-            store.files.set('database/database.bin', new Uint8Array([1, 2, 3]))
+            semantic.plant('database/database.bin', new Uint8Array([1, 2, 3]))
         }
         let commitWrites = 0
         const backend: Store2Backend = {
@@ -415,7 +419,7 @@ describe('the real dispatch with the production port, over a damaged commit key 
             upstreamMainFile: async () => options.mainFile,
             listBackupTimes: async () => [],
             readColdStorageItem: async () => ({ status: 'missing' }),
-        }, { ui, kind: 'indexeddb', backend: async () => backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders })
+        }, { ui, kind: 'node', backend: async () => backend, keyEnv: testEnv(clock, 9001), lists: fakeLists, decoders })
         void result.then(() => { settled = true })
         return { memory, planted, reload, commitWrites: () => commitWrites, settled: () => settled }
     }

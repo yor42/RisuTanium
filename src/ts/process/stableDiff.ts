@@ -419,7 +419,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
         }
     }
     if(db.sdProvider === 'dalle'){
-        const dalleKey = await resolveImageKey(currentKey('openAIKey', db))
+        const dalleKey = await resolveImageKey(await currentKey('openAIKey', db))
         if(dalleKey === null){
             return returnSdData === 'inlay' ? '' : false
         }
@@ -706,7 +706,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
             }
         }
 
-        const imagenKey = await resolveImageKey(currentKey('google.accessToken', db))
+        const imagenKey = await resolveImageKey(await currentKey('google.accessToken', db))
         if(imagenKey === null){
             return returnSdData === 'inlay' ? '' : false
         }
