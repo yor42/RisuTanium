@@ -114,6 +114,27 @@ export function topIdfTerms(index: Bm25Index, text: string, k: number): string[]
     return terms.slice(0, k).map((x) => x.t)
 }
 
+// The rare query terms of the keyword builder (MC-2661): the distinct query tokens, in first-appearance order, whose
+// document frequency is at least 1 and at most max(1, floor(share * N)). When none qualifies, every distinct token at the
+// smallest document frequency >= 1 among the query tokens is kept (the whole level, no tie-break). A token absent from
+// the index never counts, so a query with no indexed token gives [].
+export function rareTerms(index: Bm25Index, text: string, share: number): string[] {
+    const seen = new Set<string>()
+    const terms: Array<{ t: string; df: number }> = []
+    for (const t of tokenize(text)) {
+        if (seen.has(t)) continue
+        seen.add(t)
+        terms.push({ t, df: index.df(t) })
+    }
+    const limit = Math.max(1, Math.floor(share * index.size))
+    const rare = terms.filter((x) => x.df >= 1 && x.df <= limit)
+    if (rare.length) return rare.map((x) => x.t)
+    const indexed = terms.filter((x) => x.df >= 1)
+    if (!indexed.length) return []
+    const lowest = Math.min(...indexed.map((x) => x.df))
+    return indexed.filter((x) => x.df === lowest).map((x) => x.t)
+}
+
 // Admission: a unit passes when it holds a query token whose df is at most max(1, floor(tau * N)). tau = null admits all.
 export function admits(index: Bm25Index, unit: string | readonly string[], qTokens: readonly string[], tau: number | null): boolean {
     if (tau === null) return true
