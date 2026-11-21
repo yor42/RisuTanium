@@ -2624,3 +2624,43 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3056](Maintainer-Context.md#mc-3056--connections-stays-under-models-and-presets-plus-its-own-settings-row-2026-11-21) | Connections stays under Models and presets plus its own Settings row, 2026-11-21 |
 | [MC-3057](Maintainer-Context.md#mc-3057--495-android-keystore-at-rest-encryption-as-a-vault-stage-2026-11-21) | #495 Android Keystore at-rest encryption as a Vault stage, 2026-11-21 |
 | [MC-3058](Maintainer-Context.md#mc-3058--vault-keeps-no-key-reveal-or-copy-replace-or-clear-only-2026-11-21) | Vault keeps no key reveal or copy, replace or clear only, 2026-11-21 |
+| [MC-2614](Maintainer-Context.md#mc-2614--346-picker-focus-helper-only-alertcomp-focus-return-in-s7-2026-11-20) | #346 picker focus: helper only, AlertComp focus return in S7, 2026-11-20 |
+| [MC-2619](Maintainer-Context.md#mc-2619--247-s6-export-ends-on-the-task-card-2026-11-20) | #247 S6 export ends on the task card, 2026-11-20 |
+| [MC-2620](Maintainer-Context.md#mc-2620--247-s6-card-without-cancel-reuses-the-existing-stop-line-2026-11-20) | #247 S6 card without Cancel reuses the existing stop line, 2026-11-20 |
+| [MC-2621](Maintainer-Context.md#mc-2621--247-s6-export-cancel-wording-depends-on-the-file-2026-11-20) | #247 S6 export Cancel wording depends on the file, 2026-11-20 |
+| [MC-2622](Maintainer-Context.md#mc-2622--247-s6-instant-flows-get-no-card-2026-11-20) | #247 S6 instant flows get no card, 2026-11-20 |
+| [MC-2623](Maintainer-Context.md#mc-2623--247-s6a-replaced-export-card-stays-silent-unless-a-kept-incomplete-file-remains-2026-11-20) | #247 S6a replaced export card stays silent unless a kept incomplete file remains, 2026-11-20 |
+| [MC-2624](Maintainer-Context.md#mc-2624--247-s6a-export-fail-card-shows-the-message-only-2026-11-20) | #247 S6a export fail card shows the message only, 2026-11-20 |
+| [MC-2626](Maintainer-Context.md#mc-2626--247-s6a-export-failure-before-any-card-posts-todays-error-notice-2026-11-20) | #247 S6a export failure before any card posts today's error notice, 2026-11-20 |
+| [MC-2679](Maintainer-Context.md#mc-2679--247-s6c-a-save-with-a-report-closes-the-card-and-keeps-todays-notice-2026-11-20) | #247 S6c a save with a report closes the card and keeps today's notice, 2026-11-20 |
+| [MC-2680](Maintainer-Context.md#mc-2680--247-s6c-report-notice-posts-even-when-the-card-was-replaced-2026-11-20) | #247 S6c report notice posts even when the card was replaced, 2026-11-20 |
+| [MC-2681](Maintainer-Context.md#mc-2681--247-s6c-peer-park-export-keeps-the-legacy-dialog-and-notices-2026-11-20) | #247 S6c peer-park export keeps the legacy dialog and notices, 2026-11-20 |
+| [MC-2682](Maintainer-Context.md#mc-2682--247-s6c-android-backgrounding-mid-export-is-a-known-limit-2026-11-20) | #247 S6c Android backgrounding mid-export is a known limit, 2026-11-20 |
+| [MC-2799](Maintainer-Context.md#mc-2799--247-s6c-plain-prompts-cover-the-card-only-the-leave-out-sheet-and-native-save-dialogs-step-aside-2026-11-20) | #247 S6c plain prompts cover the card; only the leave-out sheet and native save dialogs step aside, 2026-11-20 |
+| [MC-2800](Maintainer-Context.md#mc-2800--247-s6c-desktop-success-literal-left-for-s7-2026-11-20) | #247 S6c desktop 'Success' literal left for S7, 2026-11-20 |
+| [MC-2801](Maintainer-Context.md#mc-2801--247-s6d-terminal-restore-notices-stay-blocking-waits-2026-11-21) | #247 S6d terminal restore notices stay blocking waits, 2026-11-21 |
+| [MC-2802](Maintainer-Context.md#mc-2802--247-s6d-start-up-rtb-restore-stays-unchanged-mc-2334-boot-exclusion-2026-11-21) | #247 S6d start-up .rtb restore stays unchanged (MC-2334 boot exclusion), 2026-11-21 |
+| [MC-2803](Maintainer-Context.md#mc-2803--247-s6d-welcome-restore-gets-the-restore-card-2026-11-21) | #247 S6d Welcome restore gets the restore card, 2026-11-21 |
+| [MC-2804](Maintainer-Context.md#mc-2804--247-s6d-android-open-with-restore-gets-the-card-2026-11-21) | #247 S6d Android "open with" restore gets the card, 2026-11-21 |
+| [MC-2805](Maintainer-Context.md#mc-2805--247-s6d-cancel-during-the-clean-up-ends-on-a-cancelled-card-2026-11-21) | #247 S6d Cancel during the clean-up ends on a cancelled card, 2026-11-21 |
+| [MC-2806](Maintainer-Context.md#mc-2806--247-s6d-refusal-or-failure-before-commit-shows-todays-error-notice-2026-11-21) | #247 S6d refusal or failure before commit shows today's error notice, 2026-11-21 |
+| [MC-2807](Maintainer-Context.md#mc-2807--247-s6d-restore-card-offers-cancel-until-the-point-of-no-return-2026-11-21) | #247 S6d restore card offers Cancel until the point of no return, 2026-11-21 |
+| [MC-2808](Maintainer-Context.md#mc-2808--247-s6d-backgrounding-or-a-kill-mid-restore-is-a-known-limit-2026-11-21) | #247 S6d backgrounding or a kill mid-restore is a known limit, 2026-11-21 |
+| [MC-2918](Maintainer-Context.md#mc-2918--247-s6d-a-newer-task-may-replace-a-running-restore-card-2026-11-21) | #247 S6d a newer task may replace a running restore card, 2026-11-21 |
+| [MC-2919](Maintainer-Context.md#mc-2919--247-s6d-restore-bytes-shown-for-every-copy-2026-11-21) | #247 S6d restore bytes shown for every copy, 2026-11-21 |
+| [MC-2920](Maintainer-Context.md#mc-2920--247-s6d-restore-save-step-wording-2026-11-21) | #247 S6d restore save step wording, 2026-11-21 |
+| [MC-2921](Maintainer-Context.md#mc-2921--247-s6d-split-restore-titles-2026-11-21) | #247 S6d split restore titles, 2026-11-21 |
+| [MC-2922](Maintainer-Context.md#mc-2922--247-s6d-pre-commit-cancel-ends-on-the-cancelled-card-2026-11-21) | #247 S6d pre-commit Cancel ends on the cancelled card, 2026-11-21 |
+| [MC-2923](Maintainer-Context.md#mc-2923--247-s7-backup-saved-copy-reuses-the-existing-notice-2026-11-21) | #247 S7 backup-saved copy reuses the existing notice, 2026-11-21 |
+| [MC-2924](Maintainer-Context.md#mc-2924--247-s7-boot-route-restore-wait-reuses-checking-and-copying-strings-with-a-percent-2026-11-21) | #247 S7 boot-route restore wait reuses checking and copying strings with a percent, 2026-11-21 |
+| [MC-2925](Maintainer-Context.md#mc-2925--247-s7-remove-the-internalbackupwaitingforcleanup-string-2026-11-21) | #247 S7 remove the internalBackupWaitingForCleanup string, 2026-11-21 |
+| [MC-2926](Maintainer-Context.md#mc-2926--247-s7-legacy-waits-stay-waits-in-the-restyled-shell-2026-11-21) | #247 S7 legacy waits stay waits in the restyled shell, 2026-11-21 |
+| [MC-2927](Maintainer-Context.md#mc-2927--247-s7-confirm-button-placement-and-style-2026-11-21) | #247 S7 confirm button placement and style, 2026-11-21 |
+| [MC-3045](Maintainer-Context.md#mc-3045--247-s7-type-headings-stay-as-the-headline-2026-11-21) | #247 S7 type headings stay as the headline, 2026-11-21 |
+| [MC-3046](Maintainer-Context.md#mc-3046--247-s7-shell-now-tool-dialog-redesign-later-as-s7d-2026-11-21) | #247 S7 shell now, tool-dialog redesign later as S7d, 2026-11-21 |
+| [MC-3047](Maintainer-Context.md#mc-3047--247-s7-alerttoast-moves-to-the-apps-toasthost-2026-11-21) | #247 S7 alertToast moves to the app's ToastHost, 2026-11-21 |
+| [MC-3048](Maintainer-Context.md#mc-3048--247-s7-bottom-sheet-at-640-px-and-below-2026-11-21) | #247 S7 bottom sheet at 640 px and below, 2026-11-21 |
+| [MC-3049](Maintainer-Context.md#mc-3049--247-s7-split-into-two-prs-plus-a-later-s7d-stage-2026-11-21) | #247 S7 split into two PRs plus a later S7d stage, 2026-11-21 |
+| [MC-3050](Maintainer-Context.md#mc-3050--247-s7-alerttoast-posts-info-at-every-call-site-2026-11-21) | #247 S7 alertToast posts info at every call site, 2026-11-21 |
+| [MC-3051](Maintainer-Context.md#mc-3051--484-rtb-restore-byte-line-during-large-inlay-writes-is-a-known-limit-follow-up-491-2026-11-21) | #484 .rtb restore byte line during large inlay writes is a known limit, follow-up #491, 2026-11-21 |
+| [MC-3052](Maintainer-Context.md#mc-3052--247-storage-full-toast-repeats-about-once-a-minute-2026-11-21) | #247 storage-full toast repeats about once a minute, 2026-11-21 |

@@ -19,6 +19,7 @@ import { createWorldKit, settled, sleepReal, type World } from 'src/ts/storage/t
 import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import { language } from 'src/lang'
+import { isRestoreCopyText } from 'src/ts/drive/tests/restoreWaitText'
 import { importSourceOfBytes, type ImportSource, type ImportSourceStat } from 'src/ts/importSource'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -218,7 +219,7 @@ function followStage(page: Page, onStage?: (stage: Stage) => void): { current: (
     vi.mocked(page.alert.alertWait).mockImplementation((text: string) => {
         const next: Stage | null = text === 'Reading the database in the backup...' ? 'decode'
             : text === 'Loading backup...' ? 'commit'
-                : text.startsWith('Loading local Backup...') && stage !== 'commit' ? 'copy'
+                : isRestoreCopyText(text) && stage !== 'commit' ? 'copy'
                     : null
         if (next !== null) {
             stage = next

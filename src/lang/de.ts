@@ -3794,7 +3794,6 @@ export const languageGerman = {
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupWriteFailed": "Das Backup konnte nicht gespeichert werden. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupListFailed": "Die Backup-Liste konnte nicht gelesen werden. Es wurde nichts verändert.",
-    "internalBackupWaitingForCleanup": "Die Bereinigung beim Start wird abgeschlossen, bevor das Backup geladen wird...",
     "internalBackupPartialConfirm": "Dieses Backup ist teilweise beschädigt. Es können nur die noch intakten Teile geladen werden; Folgendes wird ausgelassen:",
     "internalBackupPartialConfirmKeep": "Ihre aktuellen Daten werden zuerst als neuestes internes Backup aufbewahrt, sodass Sie über dieselbe Liste dorthin zurückkehren können. Die intakten Teile laden?",
     "internalBackupLeftOutPresets": "Alle Voreinstellungen (stattdessen wird die Standardvoreinstellung verwendet)",

@@ -3777,7 +3777,6 @@ export const languageSpanish = {
     "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
     "internalBackupWriteFailed": "No se pudo guardar la copia de seguridad. Tus datos actuales no se modificaron.",
     "internalBackupListFailed": "No se pudo leer la lista de copias de seguridad. No se modificó nada.",
-    "internalBackupWaitingForCleanup": "Finalizando la limpieza de inicio antes de cargar la copia de seguridad...",
     "internalBackupPartialConfirm": "Esta copia de seguridad está parcialmente dañada. Solo se pueden cargar las partes que siguen intactas, y lo siguiente quedará excluido:",
     "internalBackupPartialConfirmKeep": "Primero, tus datos actuales se conservarán como la copia de seguridad interna más reciente, para que puedas volver a ellos desde la misma lista. ¿Cargar las partes intactas?",
     "internalBackupLeftOutPresets": "Todos los presets (se usará el preset predeterminado en su lugar)",

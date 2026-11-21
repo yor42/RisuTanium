@@ -3774,7 +3774,6 @@ export const languageVietnamese = {
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",
-    "internalBackupWaitingForCleanup": "Đang hoàn tất dọn dẹp khi khởi động trước khi tải bản sao lưu...",
     "internalBackupPartialConfirm": "Bản sao lưu này bị hỏng một phần. Chỉ có thể tải những phần còn nguyên vẹn, và những mục sau sẽ bị bỏ qua:",
     "internalBackupPartialConfirmKeep": "Trước tiên, dữ liệu hiện tại của bạn sẽ được giữ lại làm bản sao lưu nội bộ mới nhất, để bạn có thể quay lại từ cùng danh sách này. Tải các phần nguyên vẹn?",
     "internalBackupLeftOutPresets": "Tất cả cài đặt trước (thay vào đó sẽ dùng cài đặt trước mặc định)",

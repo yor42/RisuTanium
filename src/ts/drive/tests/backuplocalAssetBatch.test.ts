@@ -346,6 +346,7 @@ import { alertWait } from 'src/ts/alert'
 import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
+import { armTrigger, expectEveryTriggerFired, isRestoreCopyText } from './restoreWaitText'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { getAppStore } from 'src/ts/storage/store/appStore'
 import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
@@ -517,12 +518,14 @@ function restoreBytes(bytes: Uint8Array): Promise<void> {
     return startRestore(new File([asBlobPart(bytes)], 'backup.bin'))
 }
 
-/** Whether the restore has begun its copy pass: it shows its first "Loading local Backup..." progress text after the walk and before it reads. */
+/** Whether the restore has begun its copy pass: it shows its first copy progress text (`rtbRestoreCopying`) after the walk and before it reads. */
 function copyPhaseTracker(): { copying: () => boolean } {
     let copying = false
+    const trigger = armTrigger('copy phase')
     vi.mocked(alertWait).mockImplementation((message: string) => {
-        if (message.startsWith('Loading local Backup')) {
+        if (isRestoreCopyText(message)) {
             copying = true
+            trigger.hit()
         }
         return {} as ReturnType<typeof alertWait>
     })
@@ -695,6 +698,8 @@ beforeEach(() => {
     })
 })
 
+afterEach(expectEveryTriggerFired)
+
 afterEach(async () => {
     // A test that failed while its restore was held leaves that restore running, and the next test's restore would be refused as busy.
     for (const held of madeGates.splice(0)) {
@@ -818,7 +823,7 @@ describe('a restore through the batch commands that fails', () => {
         // The first progress notice of the pass after a batch was sent throws.
         let thrown = false
         vi.mocked(alertWait).mockImplementation((message: string) => {
-            if (!thrown && batchFake.ctl.calls.length > 0 && message.startsWith('Loading local Backup')) {
+            if (!thrown && batchFake.ctl.calls.length > 0 && isRestoreCopyText(message)) {
                 thrown = true
                 throw new Error('scratch: the pass failed')
             }
@@ -1587,7 +1592,7 @@ describe('an export through the batch commands', () => {
         expect(batchFake.ctl.calls.some((call) => call.kind === 'read')).toBe(true)
         expect(exportedAssets()).toEqual(expectedExport(NAMES))
         expect(Object.keys(exportedAssets())).toEqual(fakeFs.listing('assets'))
-        expect(doneSummary()).toEqual(['Success'])
+        expect(doneSummary()).toEqual([language.rtbExportSaved])
     })
 
     test('an asset deleted between the listing and the read is reported as missing and the others are still written', async () => {
@@ -1608,7 +1613,7 @@ describe('an export through the batch commands', () => {
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
         expect(exportedAssets()).toEqual(expectedExport(NAMES))
-        expect(doneSummary()).toEqual(['Success'])
+        expect(doneSummary()).toEqual([language.rtbExportSaved])
     })
 
     test('a read call that rejects leaves every key of its batch to be read with the ranged reader, and the export completes', async () => {
@@ -1732,7 +1737,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').flatMap((call) => call.keys)).not.toContain('assets/big.bin')
         expect(desktop.chunk.callsOf('read_range').filter((call) => call.args.key === 'assets/big.bin').map((call) => call.args.offset)).toEqual([0, CHUNK_MAX, 2 * CHUNK_MAX])
         expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
-        expect(doneSummary()).toEqual(['Success'])
+        expect(doneSummary()).toEqual([language.rtbExportSaved])
     })
 
     test('a file that grew past the listed size is answered large by the batch and exported from the ranged reader', async () => {
@@ -1744,7 +1749,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').flatMap((call) => call.keys)).toContain('assets/big.bin')
         expect(same(exportedEntries()[0].data, data)).toBe(true)
         expect(alertMdMock).not.toHaveBeenCalled()
-        expect(doneSummary()).toEqual(['Success'])
+        expect(doneSummary()).toEqual([language.rtbExportSaved])
     })
 
     test('a key the batch defers is asked for again in a later batch and exported whole', async () => {
@@ -1770,7 +1775,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         expect(names).toEqual(['a.png', 'big.bin', 'database.risudat'])
         expect(same(exportedEntries()[1].data, data)).toBe(true)
         expect(alertMdMock).not.toHaveBeenCalled()
-        expect(doneSummary()).toEqual(['Success'])
+        expect(doneSummary()).toEqual([language.rtbExportSaved])
     })
 
     test('an asset absent when the ranged reader asks for it is reported as missing and the export goes on', async () => {
@@ -1939,7 +1944,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         fakeFs.files.delete('assets/big.bin')
         backupSink.writes.length = 0
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
-        expect(doneSummary()).toEqual(['Success'])
+        expect(doneSummary()).toEqual([language.rtbExportSaved])
     })
 })
 

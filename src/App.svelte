@@ -48,6 +48,7 @@
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
     import TaskHost from './lib/Nexus/pattern/TaskHost.svelte';
     import { coversPage } from './ts/alertEscape';
+    import { installAlertFocusReturn } from './ts/alertFocusReturn';
     import NexusBootScreen from './lib/Nexus/boot/NexusBootScreen.svelte';
     import { createLegacyBootTracker } from './lib/Nexus/boot/bootProgress';
 
@@ -118,6 +119,9 @@
             close: leaveStudio,
         }))
     })
+
+    // A covering alert hands focus back to the control that was focused when it opened, once it is gone.
+    $effect(() => installAlertFocusReturn())
 
     // The bars keep the boot canvas colour until the app has replaced the boot screen.
     $effect(() => {

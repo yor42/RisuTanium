@@ -3819,7 +3819,6 @@ export const languageChineseTraditional = {
     "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
     "internalBackupWriteFailed": "無法儲存此備份。目前的資料未被變更。",
     "internalBackupListFailed": "無法讀取備份清單。未變更任何內容。",
-    "internalBackupWaitingForCleanup": "正在完成啟動清理作業，之後將載入備份...",
     "internalBackupPartialConfirm": "此備份部分已損毀。只能載入仍然完好的部分，以下內容將被排除：",
     "internalBackupPartialConfirmKeep": "您目前的資料會先被保存為最新的內部備份，因此可以從同一份清單中還原。是否載入完好的部分？",
     "internalBackupLeftOutPresets": "所有預設集（將改用預設的預設集）",

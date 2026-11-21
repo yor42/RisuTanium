@@ -74,10 +74,9 @@ const box = (h2: string, text: string, buttons: string[]): AlertProbe => ({ h2, 
 const probe = (alerts: AlertProbe[], boot: BootProbe | null = null): Probe => ({ alerts, boot })
 const boot = (heading: string, paragraphs: string[], details: string | null, enabledKeys: string[], disabledKeys: string[] = []): BootProbe => ({ heading, paragraphs, details, enabledKeys, disabledKeys })
 
-/** The progress texts the import path shows, with example numbers (backuplocal.ts, boot branch of LoadLocalBackup). */
+/** The progress texts of the import path that are fixed English (backuplocal.ts, boot branch of LoadLocalBackup). */
 const PROGRESS_TEXTS = [
-    'Checking local backup... (0.00%)', 'Checking local backup... (100.00%)', 'Reading the database in the backup...',
-    'Loading local Backup... (37.52%)', 'Finishing copying files...', 'Loading backup...',
+    'Reading the database in the backup...', 'Finishing copying files...', 'Loading backup...',
 ]
 //#endregion
 
@@ -117,7 +116,9 @@ describe('T4s page-end classifier (pure table, app strings)', () => {
         })
 
         test('every progress text of the import path is progress', () => {
-            for (const text of [...PROGRESS_TEXTS, lang.restoreCheckingOtherTabs, lang.store2ImportDone]) {
+            // The walk and copy texts come from the language keys, with example integer percents.
+            const percentTexts = [lang.rtbRestoreChecking(0), lang.rtbRestoreChecking(100), lang.rtbRestoreCopying(37)]
+            for (const text of [...PROGRESS_TEXTS, ...percentTexts, lang.restoreCheckingOtherTabs, lang.store2ImportDone]) {
                 expect(mod.classifyProbe(probe([box('', text, [])]), table).kind, text).toBe('progress')
             }
         })
