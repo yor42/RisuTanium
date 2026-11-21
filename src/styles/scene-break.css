@@ -1,0 +1,8 @@
+/* The scene divider: a lone `~~~` line renders <hr data-risu-scene-break>. Short and centred so it reads differently from a full-width `---` rule.
+   No colour is declared, so the prose rule colour applies. Specificity (0,1,1) lets a later card `.chattext hr` rule win. */
+.chattext hr:where([data-risu-scene-break]) {
+    inline-size: 30%;
+    max-inline-size: 12rem;
+    margin-inline: auto;
+    margin-block: 1.25em;
+}
