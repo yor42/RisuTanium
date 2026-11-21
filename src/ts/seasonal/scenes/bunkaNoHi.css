@@ -1,0 +1,123 @@
+/*
+  Bunka no Hi scene styles. Every class is rt-bk-; no shared tokens are defined (it reads --nexus-core-from/-to for the first
+  kana run). Default rules = start pose; .rt-bk-final = final pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the
+  mark slot and the root (the word sits inside the root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Family: the system Japanese mincho stack (no web font) ---------- */
+.rt-bk-mincho {
+  font-family: "Hiragino Mincho ProN", "YuMincho", "Yu Mincho", "Noto Serif JP", serif;
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: 0.02em;
+  font-synthesis: none;
+  font-kerning: normal;
+}
+
+/* ---------- Word: リス in the everyday gradient, タニウム in ink ---------- */
+.rt-bk-word { --rt-bk-ink: rgb(255 255 255 / 0.92); }
+[data-rt-sw-tone="light"] .rt-bk-word { --rt-bk-ink: #0f172a; }
+
+.rt-bk-ja {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 1.2em;
+  line-height: 1.2em;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.rt-bk-a, .rt-bk-b {
+  opacity: 0;
+  display: inline-block;
+  transform-origin: 0 55%;
+}
+.rt-bk-a {
+  background-image: linear-gradient(to bottom right, var(--nexus-core-from, #00a1ad), var(--nexus-core-to, #587bff));
+  background-size: var(--rt-bk-w, 6em) 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-bk-b { color: var(--rt-bk-ink); }
+
+/* Final pose: only リスタニウム is painted; the everyday text stays in the DOM (host-owned) but is hidden. */
+.rt-bk-word.rt-bk-final .rt-sw-text { visibility: hidden; opacity: 0; }
+.rt-bk-word.rt-bk-final .rt-bk-a,
+.rt-bk-word.rt-bk-final .rt-bk-b { opacity: 1; transform: none; }
+
+/* ---------- Stage: the date line ---------- */
+.rt-bk-datebox {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  --rt-bk-date-ink: rgb(255 255 255 / 0.92);
+  --rt-bk-date-ink-2: rgb(255 255 255 / 0.66);
+}
+[data-rt-sw-tone="light"] .rt-bk-datebox {
+  --rt-bk-date-ink: #0f172a;
+  --rt-bk-date-ink-2: #475569;
+}
+.rt-bk-date {
+  display: inline-block;
+  font-size: var(--rt-bk-fs, 24px);
+  line-height: 1.2;
+  white-space: nowrap;
+  transform-origin: 0 50%;
+  opacity: 0;
+}
+.rt-bk-date-num { color: var(--rt-bk-date-ink-2); }
+.rt-bk-date-day { color: var(--rt-bk-date-ink); }
+.rt-bk-datebox.rt-bk-final { display: none; }
+
+/* ---------- Mark slot: seigaiha triangle and seal ---------- */
+.rt-bk-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  --rt-bk-base: #2b4a91;      /* 藍 indigo, lifted for the NEXUS canvas */
+  --rt-bk-ring: #dbe6ff;
+  --rt-bk-edge: #eef3ff;
+  --rt-bk-hole: #f7f3ea;      /* 和紙 white */
+  --rt-bk-seal: #e5482b;      /* 朱 vermilion */
+  --rt-bk-carve: #fff6ec;
+  --rt-bk-every: #ffffff;
+}
+[data-rt-sw-tone="light"] .rt-bk-mark {
+  --rt-bk-base: #1f3b73;
+  --rt-bk-ring: #ffffff;
+  --rt-bk-edge: #1f3b73;
+  --rt-bk-hole: #ffffff;
+  --rt-bk-seal: #d23a1e;
+  --rt-bk-every: #0f172a;
+}
+.rt-bk-every { transform-box: view-box; transform-origin: 50% 45.2%; }   /* the centroid (0,0) in the -73 -66 146 146 box */
+.rt-bk-every-ink { fill: var(--rt-bk-every); }
+.rt-bk-scale { fill: var(--rt-bk-base); }
+.rt-bk-rings { fill: none; stroke: var(--rt-bk-ring); stroke-width: 3.2; stroke-opacity: 0.9; }
+.rt-bk-edge, .rt-bk-hole {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+.rt-bk-edge { stroke: var(--rt-bk-edge); stroke-width: 5; }
+.rt-bk-hole { stroke: var(--rt-bk-hole); stroke-width: 4.5; }
+.rt-bk-seal-body { fill: var(--rt-bk-seal); }
+.rt-bk-seal-line { fill: none; stroke: var(--rt-bk-carve); stroke-width: 1.6; }
+.rt-bk-seal-carve { fill: none; stroke: var(--rt-bk-carve); stroke-width: 2.6; stroke-linejoin: round; }
+.rt-bk-seal { transform-box: fill-box; transform-origin: 50% 50%; opacity: 0; }
+.rt-bk-row { opacity: 0; }
+
+.rt-bk-mark.rt-bk-final .rt-bk-every { opacity: 0; }
+.rt-bk-mark.rt-bk-final .rt-bk-row { opacity: 1; transform: none; }
+.rt-bk-mark.rt-bk-final .rt-bk-edge,
+.rt-bk-mark.rt-bk-final .rt-bk-hole { stroke-dashoffset: 0; }
+.rt-bk-mark.rt-bk-final .rt-bk-seal { opacity: 1; transform: none; }
+
+/* Under reduced motion the host never calls play(), so only the static final rules above apply. */

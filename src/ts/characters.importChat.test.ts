@@ -874,8 +874,9 @@ describe('importChat -- Ooba JSON', () => {
         expect(noticeText()).toBe(language.successImport)
     })
 
-    // R9: regression reproducer. Regenerated replies are not imported, and the notice says so.
-    test('R9: a regenerated reply imports its shown text and the notice names the count', async () => {
+    // R9: regression reproducer. Regenerated replies are kept as siblings of the shown reply; the base imports
+    // no alternative and names the count in the notice.
+    test('R9: a regenerated reply imports its shown text and keeps the old version as its sibling', async () => {
         await runOoba({
             internal: [['hello', 'shown reply']],
             visible: [['hello', 'shown reply']],
@@ -886,10 +887,14 @@ describe('importChat -- Ooba JSON', () => {
             ['user', 'hello'],
             ['char', 'shown reply'],
         ])
-        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(1))
+        expect(chatList()[0].alt).toHaveLength(1)
+        expect(chatList()[0].alt?.[0].m.role).toBe('char')
+        expect(chatList()[0].alt?.[0].p).toBe(importedMessages()[0].chatId)
+        expect(siblingsAt(chatList()[0], 1).map((m) => m.data)).toEqual(['old reply', 'shown reply'])
+        expect(noticeText()).toBe(language.successImport)
     })
 
-    test('R9: two regenerated rows are counted together', async () => {
+    test('R9: two regenerated rows keep one sibling each', async () => {
         await runOoba({
             internal: [['a', 'b'], ['c', 'd']],
             visible: [['a', 'b'], ['c', 'd']],
@@ -900,10 +905,12 @@ describe('importChat -- Ooba JSON', () => {
         })
 
         expect(importedMessages()).toHaveLength(4)
-        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(2))
+        expect(siblingsAt(chatList()[0], 1).map((m) => m.data)).toEqual(['b0', 'b'])
+        expect(siblingsAt(chatList()[0], 3).map((m) => m.data)).toEqual(['d0', 'd'])
+        expect(noticeText()).toBe(language.successImport)
     })
 
-    test('R9: a skipped row and a regenerated row show both sentences', async () => {
+    test('R9: a skipped row and a regenerated row show only the skipped sentence', async () => {
         await runOoba({
             internal: [['x'], ['a', 'b']],
             visible: [['x'], ['a', 'b']],
@@ -911,7 +918,8 @@ describe('importChat -- Ooba JSON', () => {
         })
 
         expect(importedMessages()).toHaveLength(2)
-        expect(noticeText()).toBe(language.chatImportSkippedLines(1) + ' ' + language.chatImportSwipesNotKept(1))
+        expect(siblingsAt(chatList()[0], 1).map((m) => m.data)).toEqual(['b0', 'b'])
+        expect(noticeText()).toBe(language.chatImportSkippedLines(1))
     })
 
     // R10: boundary pairing with R9. Passes only once the feature exists, because the base never imports.
@@ -952,8 +960,8 @@ describe('importChat -- Ooba JSON', () => {
         expect(noticeText()).toBe(language.successImport)
     })
 
-    // R12: guard. Versions on the user entry are never a swipe loss.
-    test('R12: versions on the user entry add no swipe notice', async () => {
+    // R12: regression reproducer. Versions on the user entry are kept as user siblings (the base ignores them).
+    test('R12: versions on the user entry are kept as siblings of the user message', async () => {
         await runOoba({
             internal: [['hello', 'reply']],
             visible: [['hello', 'reply']],
@@ -961,11 +969,14 @@ describe('importChat -- Ooba JSON', () => {
         })
 
         expect(importedMessages()).toHaveLength(2)
+        expect(chatList()[0].alt).toHaveLength(3)
+        expect(chatList()[0].alt?.every((r) => r.m.role === 'user')).toBe(true)
+        expect(siblingsAt(chatList()[0], 0).map((m) => m.data).sort()).toEqual(['a', 'b', 'c', 'hello'])
         expect(noticeText()).toBe(language.successImport)
     })
 
-    // R13: regression reproducer. A stopped generation keeps its old reply only as an unimported version.
-    test('R13: an empty shown reply with a non-empty alternate adds no message and is counted', async () => {
+    // R13: regression reproducer. A stopped generation's old reply becomes the shown reply of the empty cell.
+    test('R13: an empty shown reply with a non-empty alternate shows that alternate and counts nothing', async () => {
         await runOoba({
             internal: [[marker, 'Welcome'], ['hello', '']],
             visible: [['', 'Welcome'], ['hello', '']],
@@ -975,18 +986,21 @@ describe('importChat -- Ooba JSON', () => {
         expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
             ['char', 'Welcome'],
             ['user', 'hello'],
+            ['char', 'old reply'],
         ])
-        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(1))
+        expect(chatList()[0].alt ?? []).toEqual([])
+        expect(noticeText()).toBe(language.successImport)
     })
 
-    // R14: boundary pairing with R13. Red on the base only because the base never imports.
-    test('R14: an empty shown reply without a non-empty alternate is not counted', async () => {
-        const cases: unknown[] = [
-            { versions: [{ content: '' }, { content: '' }] },
-            { versions: [{ content: 'old reply' }] },
-            { versions: 'old reply' },
+    // R14: an empty shown reply without a kept version stays unimported and uncounted; case 2 is a regression reproducer
+    // (the base drops the lone version), cases 1 and 3 are compatibility guards.
+    test('R14: an empty shown reply without a kept alternate adds no message; one lone version is shown', async () => {
+        const cases: Array<[unknown, string[][]]> = [
+            [{ versions: [{ content: '' }, { content: '' }] }, [['user', 'hello']]],
+            [{ versions: [{ content: 'old reply' }] }, [['user', 'hello'], ['char', 'old reply']]],
+            [{ versions: 'old reply' }, [['user', 'hello']]],
         ]
-        for(const entry of cases){
+        for(const [entry, expected] of cases){
             vi.mocked(alertNormal).mockClear()
             testDb.db = { characters: [makeCharacter([])] } as unknown as Database
             await runOoba({
@@ -995,7 +1009,8 @@ describe('importChat -- Ooba JSON', () => {
                 metadata: { assistant_0: entry },
             })
 
-            expect(importedMessages().map((m) => [m.role, m.data])).toEqual([['user', 'hello']])
+            expect(importedMessages().map((m) => [m.role, m.data])).toEqual(expected)
+            expect(chatList()[0].alt ?? []).toEqual([])
             expect(noticeText()).toBe(language.successImport)
         }
     })
@@ -1272,18 +1287,24 @@ describe('importChat -- Agnai JSON', () => {
         expect(noticeText()).toBe(language.successImport)
     })
 
-    test('E3: a branched file imports the path to the newest tip and reports the rest', async () => {
+    function siblingTexts(position: number) {
+        return siblingsAt(chatList()[0], position).map((m) => m.data)
+    }
+
+    test('E3: a branched file imports the path to the newest tip, keeps the retry sibling and reports the rest', async () => {
         await runAgnai(agnaiFile(branched(), 'd4'))
 
         expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
-        expect(noticeText()).toBe(expectedNotice(0, 2))
+        expect(siblingTexts(2)).toEqual(['m-b2', 'm-c3'])
+        expect(noticeText()).toBe(expectedNotice(0, 1))
     })
 
-    test('E3: the same file in reverse order gives the same chat', async () => {
+    test('E3: the same file in reverse order gives the same path and the siblings in the new file order', async () => {
         await runAgnai(agnaiFile(branched().reverse(), 'd4'))
 
         expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
-        expect(noticeText()).toBe(expectedNotice(0, 2))
+        expect(siblingTexts(2)).toEqual(['m-c3', 'm-b2'])
+        expect(noticeText()).toBe(expectedNotice(0, 1))
     })
 
     test('FC: fork and continue imports the newer branch although treeLeafId names the older tip', async () => {
@@ -1292,7 +1313,8 @@ describe('importChat -- Agnai JSON', () => {
         await runAgnai(agnaiFile(rows, 'd4'))
 
         expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-e5', 'm-f6'])
-        expect(noticeText()).toBe(expectedNotice(0, 2))
+        expect(siblingTexts(2)).toEqual(['m-b2', 'm-e5'])
+        expect(noticeText()).toBe(expectedNotice(0, 1))
     })
 
     test.each([['a tip', 'd4'], ['an ancestor', 'a1'], ['an unknown id', 'zzzzzzzz'], ['a number', 7], ['a missing value', undefined]])(
@@ -1300,21 +1322,23 @@ describe('importChat -- Agnai JSON', () => {
             await runAgnai(agnaiFile(branched(), leaf))
 
             expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
-            expect(noticeText()).toBe(expectedNotice(0, 2))
+            expect(siblingTexts(2)).toEqual(['m-b2', 'm-c3'])
+            expect(noticeText()).toBe(expectedNotice(0, 1))
         })
 
-    test('ties: equal creation times pick the later element in the file', async () => {
+    test('ties: equal creation times pick the later element in the file and keep the other as its sibling', async () => {
         await runAgnai(agnaiFile([row('r0', undefined, 0), row('c3', 'r0', 5), row('b2', 'r0', 5)]))
 
         expect(importedTexts()).toEqual(['m-r0', 'm-b2'])
-        expect(noticeText()).toBe(expectedNotice(0, 1))
+        expect(siblingTexts(1)).toEqual(['m-c3', 'm-b2'])
+        expect(noticeText()).toBe(expectedNotice(0, 0))
     })
 
-    const undatedCases: Array<[string, string[], string[]]> = [
-        ['undated tip last', ['r0', 'x1', 'y2'], ['m-r0', 'm-y2']],
-        ['undated tip before the dated one', ['r0', 'y2', 'x1'], ['m-r0', 'm-x1']],
+    const undatedCases: Array<[string, string[], string[], string[]]> = [
+        ['undated tip last', ['r0', 'x1', 'y2'], ['m-r0', 'm-y2'], ['m-x1', 'm-y2']],
+        ['undated tip before the dated one', ['r0', 'y2', 'x1'], ['m-r0', 'm-x1'], ['m-y2', 'm-x1']],
     ]
-    test.each(undatedCases)('ties: %s, the greatest file index wins', async (_label, order, expected) => {
+    test.each(undatedCases)('ties: %s, the greatest file index wins', async (_label, order, expected, siblings) => {
         const byId: Record<string, Row> = {
             r0: row('r0', undefined, 0),
             x1: row('x1', 'r0', 9),
@@ -1324,7 +1348,8 @@ describe('importChat -- Agnai JSON', () => {
         await runAgnai(agnaiFile(order.map((id) => byId[id])))
 
         expect(importedTexts()).toEqual(expected)
-        expect(noticeText()).toBe(expectedNotice(0, 1))
+        expect(siblingTexts(1)).toEqual(siblings)
+        expect(noticeText()).toBe(expectedNotice(0, 0))
     })
 
     test('O1: a newer orphan subtree is imported and the main chain is counted', async () => {
@@ -1403,7 +1428,8 @@ describe('importChat -- Agnai JSON', () => {
         await runAgnai(agnaiFile(rows))
 
         expect(importedTexts()).toEqual(['m-r0', 'm-d4'])
-        expect(noticeText()).toBe(expectedNotice(2, 2))
+        expect(siblingTexts(1)).toEqual(['m-a1', 'm-d4'])
+        expect(noticeText()).toBe(expectedNotice(2, 1))
     })
 
     test('E1x-a: an empty msg in a chain keeps it whole and is uncounted; all-empty is no data', async () => {
@@ -1420,13 +1446,14 @@ describe('importChat -- Agnai JSON', () => {
         expectNoData()
     })
 
-    test('E1x-b: an empty msg off the path is not counted', async () => {
+    test('E1x-b: an empty msg off the path is neither a swipe nor counted', async () => {
         const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: '' }), row('c3', 'a1', 3), row('d4', 'r0', 4)]
 
         await runAgnai(agnaiFile(rows))
 
         expect(importedTexts()).toEqual(['m-r0', 'm-d4'])
-        expect(noticeText()).toBe(expectedNotice(0, 2))
+        expect(siblingTexts(1)).toEqual(['m-a1', 'm-d4'])
+        expect(noticeText()).toBe(expectedNotice(0, 1))
     })
 
     test('M1x: several characters in a linear chat are all kept', async () => {
@@ -2049,22 +2076,26 @@ describe('importChat -- Kobold Lite JSON', () => {
             expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportMediaNotKept(1)}`)
         })
 
-        test('MED6: a token inside another branch is not counted', async () => {
+        // Accepted limitation: a picture inside a kept branch head is not counted (only the shown story's pictures are).
+        test('MED6: a token inside another branch is not counted; its stripped head is the sibling', async () => {
             await runKobold(koboldFile({
                 actions: [NLI + 'q', NLO + 'a'],
                 altbranches: [['', NLI + 'q', NLO + `b ${media('alt')}`]],
             }))
 
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
+            expect(roleAndData()).toEqual([['user', 'q'], ['char', 'a']])
+            expect(siblingsAt(chatList()[0], 1).map((m) => m.data)).toEqual(['a', 'b'])
+            expect(noticeText()).toBe(language.successImport)
         })
 
+        // The branch head is now a kept swipe, so only the two messages after it count (the count is new; the sentence order is guarded).
         test('the notice lists swipes before pictures', async () => {
             await runKobold(koboldFile({
                 actions: [NLI + 'q', NLO + `a ${media('x')}`],
-                altbranches: [['', NLI + 'q', NLO + 'other']],
+                altbranches: [['', NLI + 'q', NLO + 'other', NLI + 'q3', NLO + 'b3']],
             }))
 
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)} ${language.chatImportMediaNotKept(1)}`)
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(2)} ${language.chatImportMediaNotKept(1)}`)
         })
 
         test('the notice follows the skipped-line sentence when lines were skipped', async () => {
@@ -2073,11 +2104,12 @@ describe('importChat -- Kobold Lite JSON', () => {
             expect(noticeText()).toBe(`${language.chatImportSkippedLines(1)} ${language.chatImportMediaNotKept(1)}`)
         })
 
-        // Without pictures the notice is the existing sentence; the Ooba and Agnai tests guard the shared path.
+        // Without pictures the notice is the existing sentence; the Ooba and Agnai tests guard the shared path. The sentence is
+        // guarded; its count is new, because the branch head is now a kept swipe and only the two messages after it count.
         test('guard: a swipe-only import keeps today\'s sentence', async () => {
-            await runKobold(koboldFile({ actions: [NLI + 'q', NLO + 'a'], altbranches: [['', NLI + 'q', NLO + 'other']] }))
+            await runKobold(koboldFile({ actions: [NLI + 'q', NLO + 'a'], altbranches: [['', NLI + 'q', NLO + 'other', NLI + 'q3', NLO + 'b3']] }))
 
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(2)}`)
         })
 
         test('guard: a skipped-only import keeps today\'s sentence', async () => {
@@ -2091,14 +2123,16 @@ describe('importChat -- Kobold Lite JSON', () => {
         const shown = ['', NLI + 'q', NLO + 'a1', NLI + 'q2', NLO + 'a2']
         const withBranches = (altbranches: unknown[]) => koboldFile({ prompt: shown[0], actions: shown.slice(1), altbranches })
 
-        test('ALT1: a branch counts its messages after the common message prefix', async () => {
+        test('ALT1: a branch keeps its first message after the common prefix as a swipe and counts the rest', async () => {
             await runKobold(withBranches([
                 ['', NLI + 'q', NLO + 'a1', NLI + 'q2', NLO + 'b2', NLI + 'q3', NLO + 'b3'],
                 ['', NLI + 'z', NLO + 'y'],
             ]))
 
             expect(roleAndData()).toHaveLength(4)
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(5)}`)
+            expect(siblingsAt(chatList()[0], 3).map((m) => m.data)).toEqual(['a2', 'b2'])
+            expect(siblingsAt(chatList()[0], 0).map((m) => m.data)).toEqual(['q', 'z'])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(3)}`)
         })
 
         test('ALT3: a branch that is an element-wise prefix of the shown story is an older snapshot', async () => {
@@ -2117,10 +2151,11 @@ describe('importChat -- Kobold Lite JSON', () => {
             expect(noticeText()).toBe(language.successImport)
         })
 
-        test('ALT5: a branch changed in one element counts the messages from the change on', async () => {
+        test('ALT5: a branch changed in one element keeps the changed message as a swipe and counts the rest', async () => {
             await runKobold(withBranches([['', NLI + 'q', NLO + 'a1', NLI + 'q2 changed', NLO + 'a2']]))
 
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(2)}`)
+            expect(siblingsAt(chatList()[0], 2).map((m) => m.data)).toEqual(['q2', 'q2 changed'])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
         })
 
         test('non-array branches and branches of empty strings add nothing', async () => {
@@ -2243,20 +2278,23 @@ describe('importChat -- Character.AI JSON', () => {
             expect(dataOf(chatList()[0])).toEqual([['user', 'a'], ['char', 'b']])
         })
 
-        test('LI3: the primary candidate is shown and one swipe is reported', async () => {
+        test('LI3: the primary candidate is shown and the other candidates are its siblings in array order', async () => {
             await run(lianneFile([bot('Mira', '', { candidates: alternates('older', 'shown', 'newer'), primary: 'c1' })]))
 
             expect(chatList()).toHaveLength(1)
             expect(dataOf(chatList()[0])).toEqual([['char', 'shown']])
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
+            expect(siblingsAt(chatList()[0], 0).map((m) => m.data)).toEqual(['older', 'shown', 'newer'])
+            expect(noticeText()).toBe(language.successImport)
         })
 
-        // Kills a swipe count that also covers human turns.
-        test('LI4: alternates on a human turn are not reported', async () => {
+        // Kills a reader that keeps only character turns' candidates.
+        test('LI4: the candidates of a human turn are siblings of the user message', async () => {
             await run(lianneFile([bot('Mira', 'b'), user('', { candidates: alternates('mine', 'other'), primary: 'c0' })]))
 
             expect(chatList()).toHaveLength(1)
             expect(dataOf(chatList()[0])).toEqual([['user', 'mine'], ['char', 'b']])
+            expect(chatList()[0].alt).toHaveLength(1)
+            expect(chatList()[0].alt?.[0].m).toMatchObject({ role: 'user', data: 'other' })
             expect(noticeText()).toBe(language.successImport)
         })
 
@@ -2424,7 +2462,20 @@ describe('importChat -- Character.AI JSON', () => {
             expect(noticeText()).toBe(language.successImport)
         })
 
-        test('MO10: swipe, picture and skipped counts add up over the added chats only', async () => {
+        test('MO3d: the candidates of character and human turns are siblings in every chat of a Morse file', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([
+                bot('Mira', '', { candidates: alternates('a', 'b'), primary: 'c0' }),
+                user('', { candidates: alternates('q', 'q2'), primary: 'c0' }),
+            ])])]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'a'], ['user', 'q']])
+            expect(siblingsAt(chatList()[0], 0).map((m) => m.data)).toEqual(['a', 'b'])
+            expect(siblingsAt(chatList()[0], 1).map((m) => m.data)).toEqual(['q', 'q2'])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('MO10: picture and skipped counts add up over the added chats only; kept candidates add no swipe sentence', async () => {
             await run(morseFile([
                 morseEntry('Mira', [
                     morseChat([bot('Mira', '', { candidates: alternates('a', 'b'), primary: 'c0' }), bot('Mira', 'x', { primary: 'nope' })]),
@@ -2436,7 +2487,6 @@ describe('importChat -- Character.AI JSON', () => {
             expect(chatList()).toHaveLength(2)
             expect(noticeText()).toBe([
                 language.chatImportChats(2),
-                language.chatImportSwipesNotKept(2),
                 language.chatImportMediaNotKept(1),
                 language.chatImportLeftOut(1),
                 language.chatImportLinesSkipped(2),
@@ -2532,22 +2582,36 @@ describe('importChat -- Character.AI JSON', () => {
             expect(chatList()[0].message.map((m) => m.name)).toEqual([undefined, undefined])
         })
 
-        test('DU7: alternates are not imported and a run of them is reported once', async () => {
+        test('DU7: the alternates after a message of the same side are its siblings in order; one after another side is reported once', async () => {
             const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
             await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt('a1'), alt('a2'), alt('a3'), dumperMsg('Mira', true, 'q'), alt('a4')]]))
 
             expect(chatList()).toHaveLength(1)
             expect(dataOf(chatList()[0])).toEqual([['char', 'shown'], ['user', 'q']])
-            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(2)}`)
+            expect(siblingsAt(chatList()[0], 0).map((m) => m.data)).toEqual(['shown', 'a1', 'a2', 'a3'])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
         })
 
-        // Only character messages count toward the swipes notice, as for the other two writers.
-        test('DU7b: alternates of a human message are not reported', async () => {
+        test('DU7b: an alternate of a human message is a sibling of that user message', async () => {
             await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), dumperMsg('Mira', true, 'q'), dumperMsg('Mira', true, 'q2', { is_alternative: true })]]))
 
             expect(chatList()).toHaveLength(1)
             expect(dataOf(chatList()[0])).toEqual([['char', 'shown'], ['user', 'q']])
+            expect(chatList()[0].alt).toHaveLength(1)
+            expect(chatList()[0].alt?.[0].m).toMatchObject({ role: 'user', data: 'q2' })
             expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('DU7c: the redaction token in an alternate becomes the current persona name', async () => {
+            vi.mocked(getUserName).mockReturnValue('Tess')
+            try {
+                await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), dumperMsg('Mira', false, 'Hi [NAME_IN_MESSAGE_REDACTED]', { is_alternative: true })]]))
+            }
+            finally {
+                vi.mocked(getUserName).mockReturnValue('User')
+            }
+
+            expect(siblingsAt(chatList()[0], 0).map((m) => m.data)).toEqual(['shown', 'Hi Tess'])
         })
 
         // Guard: passes before and after the CAI branches exist.

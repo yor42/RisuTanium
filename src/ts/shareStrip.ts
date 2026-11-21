@@ -17,6 +17,7 @@ export const SHARE_ENDPOINT_FIELDS: readonly {
     { field: 'textgenWebUIStreamURL', mode: 'blank' },
     { field: 'textgenWebUIBlockingURL', mode: 'blank' },
     { field: 'koboldURL', mode: 'delete' },
+    { field: 'proxyConnectionId', mode: 'delete' },
 ]
 
 type Node = string | number | boolean | null | undefined | Node[] | { [key: string]: Node }

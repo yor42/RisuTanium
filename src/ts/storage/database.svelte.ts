@@ -5,6 +5,12 @@ import { downloadNotice } from '../exportNotice';
 import type { RisuPlugin } from '../plugins/plugins.svelte';
 import type {triggerscript as triggerscriptMain} from '../process/triggers';
 import type { TrashOrigin } from '../trashOrigin';
+import {
+    isMalformedStore, nextConnectionId, presetProxyRef, proxyName, storedConnections, uniqueName,
+    type Connection,
+} from '../connections/connections';
+import { setConnectionKey } from '../connections/keyAccess';
+import { migrateConnectionsOnLoad } from '../connections/migrate';
 import { downloadFile, saveAsset as saveImageGlobal } from '../globalApi.svelte';
 import { defaultAutoSuggestPrompt, defaultJailbreak, defaultMainPrompt } from './defaultPrompts';
 import { alertNormal, alertNormalWait } from '../alert';
@@ -49,7 +55,7 @@ export function normalizeKeepSessionAlive(value: string | undefined): KeepSessio
     return value === 'sound' ? 'sound' : 'off'
 }
 
-export function setDatabase(data:Database){
+export function setDatabase(data:StoredDatabase){
     // Drop any upstream RisuAccount token before it ever reaches `DBState.db`
     // (MC-080): no later save, backup, export or plugin read may carry it
     // forward once a database has passed through here.
@@ -753,6 +759,7 @@ export function setDatabase(data:Database){
         }
     }
     changeLanguage(data.language)
+    migrateConnectionsOnLoad(data)
     setDatabaseLite(data)
 }
 
@@ -858,9 +865,11 @@ export type BlockedRealmCreator = {
 
 export interface Database{
     characters: (character|groupChat)[],
+    /** Every stored chat key, one connection each; see connections/connections.ts. */
+    connections?: Connection[]
+    /** The working reverse-proxy connection ('' or absent means none). */
+    proxyConnectionId?: string
     apiType: string
-    openAIKey: string
-    proxyKey:string
     mainPrompt: string
     jailbreak: string
     globalNote:string
@@ -887,7 +896,6 @@ export interface Database{
     userNote: string
     additionalPrompt: string
     descriptionPrefix: string
-    forceReplaceUrl: string
     language: string
     translator: string
     plugins: RisuPlugin[]
@@ -975,7 +983,6 @@ export interface Database{
     characterOrder:(string|folder)[]
     hordeConfig:hordeConfig,
     novelai:{
-        token:string,
         model:string
     }
     globalscript: customscript[],
@@ -989,9 +996,7 @@ export interface Database{
     autoSuggestPrompt:string
     autoSuggestPrefix:string
     autoSuggestClean:boolean
-    claudeAPIKey:string,
     useChatCopy:boolean,
-    novellistAPI:string,
     useAutoTranslateInput:boolean
     imageCompression:boolean
     classicMaxWidth: boolean,
@@ -1007,9 +1012,7 @@ export interface Database{
     ainconfig: AINsettings
     personaPrompt:string
     openrouterRequestModel:string
-    openrouterKey:string
     openrouterMiddleOut:boolean
-    nanogptKey:string
     nanogptRequestModel:string
     nanogptRequestModelName:string
     nanogptProvider:string
@@ -1031,7 +1034,6 @@ export interface Database{
     forceProxyAsOpenAI?:boolean
     hypaModel:HypaModel
     saveTime?:number
-    mancerHeader:string
     emotionProcesser:'submodel'|'embedding',
     showMenuChatList?:boolean,
     translatorType:'google'|'deepl'|'none'|'llm'|'deeplX'|'bergamot',
@@ -1064,10 +1066,8 @@ export interface Database{
     translatorPresetId: number
     top_p: number,
     google: {
-        accessToken: string
         projectId: string
     }
-    mistralKey?:string
     chainOfThought?:boolean
     genTime:number
     promptSettings: PromptSettings
@@ -1094,7 +1094,6 @@ export interface Database{
     ollamaModelSource:'local'|'cloud'
     ollamaInputMode:'list'|'manual'
     ollamaRequestFormat:LLMFormat
-    ollamaApiKey:string
     ollamaModelName:string
     ollamaCloudModel:string
     ollamaCloudModelName:string
@@ -1125,7 +1124,6 @@ export interface Database{
     templateDefaultVariables:string
     hypaAllocatedTokens:number
     hypaChunkSize:number
-    cohereAPIKey:string
     goCharacterOnImport:boolean
     dallEQuality:string
     font: string
@@ -1171,7 +1169,6 @@ export interface Database{
     customAPIFormat:LLMFormat
     systemContentReplacement:string
     systemRoleReplacement:'user'|'assistant'
-    vertexPrivateKey: string
     vertexClientEmail: string
     vertexAccessToken: string
     vertexAccessTokenExpires: number
@@ -1206,7 +1203,6 @@ export interface Database{
     hypaV3Presets: HypaV3Preset[]
     hypaV3PresetId: number
     realmDirectOpen:boolean
-    OaiCompAPIKeys: {[key:string]:string}
     inlayErrorResponse:boolean
     reasoningEffort:number
     bulkEnabling:boolean
@@ -1263,13 +1259,12 @@ export interface Database{
     customModels: {
         id: string
         internalId: string
-        url: string
         format: LLMFormat
         tokenizer: LLMTokenizer
-        key: string
         name: string
         params: string
         flags: LLMFlags[]
+        connectionId?: string
     }[]
     igpPrompt:string
     useTokenizerCaching:boolean
@@ -1361,6 +1356,34 @@ export interface Database{
     customSidebarItems: CustomSideBarItem[]
     lastLoadedLoadoutName: string
     moveInsteadOfCopyOnCMPConvert?:boolean
+}
+
+/**
+ * The chat keys a saved database held before they moved into connections. They are read only
+ * where a stored or imported database is absorbed or exported; every request reads connections.
+ */
+export type LegacyKeyFields = {
+    openAIKey?: string
+    proxyKey?: string
+    forceReplaceUrl?: string
+    claudeAPIKey?: string
+    novellistAPI?: string
+    openrouterKey?: string
+    nanogptKey?: string
+    mancerHeader?: string
+    mistralKey?: string
+    ollamaApiKey?: string
+    cohereAPIKey?: string
+    vertexPrivateKey?: string
+    OaiCompAPIKeys?: {[key:string]:string}
+    google?: { accessToken?: string }
+    novelai?: { token?: string }
+    hordeConfig?: { apiKey?: string }
+}
+
+/** A database as stored: the current shape plus the legacy key fields a save or import may still carry. */
+export type StoredDatabase = Omit<Database, 'customModels'> & LegacyKeyFields & {
+    customModels: (Database['customModels'][number] & { key?: string, url?: string })[]
 }
 
 export interface CustomSideBarItem{
@@ -1723,6 +1746,7 @@ export interface botPreset{
     proxyRequestModel?:string
     openrouterRequestModel?:string
     proxyKey?:string
+    proxyConnectionId?:string
     ooba: OobaSettings
     ainconfig: AINsettings
     koboldURL?: string
@@ -1803,7 +1827,6 @@ export interface botPreset{
 
 
 interface hordeConfig{
-    apiKey:string
     model:string
     softPrompt:string
 }
@@ -2247,7 +2270,7 @@ export function presetFromWorkingSettings(db:Database, name:string, image:string
     return {
         name,
         apiType: db.apiType,
-        openAIKey: db.openAIKey,
+        openAIKey: '',
         localNetworkMode: db.localNetworkMode,
         localNetworkTimeoutSec: db.localNetworkTimeoutSec,
         mainPrompt:db.mainPrompt,
@@ -2264,11 +2287,12 @@ export function presetFromWorkingSettings(db:Database, name:string, image:string
         currentPluginProvider: db.currentPluginProvider,
         textgenWebUIStreamURL: db.textgenWebUIStreamURL,
         textgenWebUIBlockingURL: db.textgenWebUIBlockingURL,
-        forceReplaceUrl: db.forceReplaceUrl,
+        forceReplaceUrl: '',
         promptPreprocess: db.promptPreprocess,
         bias: db.bias,
         koboldURL: db.koboldURL,
-        proxyKey: db.proxyKey,
+        proxyKey: '',
+        proxyConnectionId: db.proxyConnectionId ?? '',
         ooba: safeStructuredClone(db.ooba),
         ainconfig: safeStructuredClone(db.ainconfig),
         proxyRequestModel: db.proxyRequestModel,
@@ -2410,11 +2434,10 @@ export function setPreset(db:Database, newPres: botPreset){
     db.currentPluginProvider = newPres.currentPluginProvider ?? db.currentPluginProvider
     db.textgenWebUIStreamURL = newPres.textgenWebUIStreamURL ?? db.textgenWebUIStreamURL
     db.textgenWebUIBlockingURL = newPres.textgenWebUIBlockingURL ?? db.textgenWebUIBlockingURL
-    db.forceReplaceUrl = newPres.forceReplaceUrl ?? db.forceReplaceUrl
     db.promptPreprocess = newPres.promptPreprocess ?? db.promptPreprocess
     db.bias = newPres.bias ?? db.bias
     db.koboldURL = newPres.koboldURL ?? db.koboldURL
-    db.proxyKey = newPres.proxyKey ?? db.proxyKey
+    db.proxyConnectionId = presetProxyRef(newPres) ?? db.proxyConnectionId
     db.ooba = safeStructuredClone(newPres.ooba ?? db.ooba)
     db.ainconfig = safeStructuredClone(newPres.ainconfig ?? db.ainconfig)
     db.openrouterRequestModel = newPres.openrouterRequestModel ?? db.openrouterRequestModel
@@ -2589,6 +2612,34 @@ const importBlankedDestinationFields = [
     'textgenWebUIBlockingURL',
 ] as const
 
+/**
+ * An imported preset's remaining proxy key joins the user's own store as a connection with an empty
+ * URL (the URL was blanked), so the preset carries a reference and never a stored key. A malformed
+ * store keeps the key on the preset, where the next valid load absorbs it.
+ */
+async function absorbImportedProxy(db:Database, pre:{proxyKey?:unknown, proxyConnectionId?:unknown}){
+    const key = typeof pre.proxyKey === 'string' ? pre.proxyKey : ''
+    if(key === '' || isMalformedStore(db)){
+        return
+    }
+    const conns = storedConnections(db)
+    let target = conns.find((conn) => conn.provider === 'reverse_proxy' && (conn.url ?? '') === '' && conn.key === key)
+    if(!target){
+        const created:Connection = {
+            id: nextConnectionId(conns),
+            name: uniqueName(proxyName(''), conns),
+            provider: 'reverse_proxy',
+            key: '',
+            url: '',
+        }
+        db.connections = [...conns, created]
+        target = storedConnections(db).find((conn) => conn.id === created.id) ?? created
+        await setConnectionKey(target, key)
+    }
+    pre.proxyConnectionId = target.id
+    pre.proxyKey = ''
+}
+
 export async function importPreset(f:{
     name:string
     data:Uint8Array
@@ -2690,13 +2741,15 @@ export async function importPreset(f:{
     //so no field of the preset or the user may decide whether the rule applies. The blanked fields
     //match what downloadPreset writes; koboldURL is removed so selecting the preset keeps the
     //user's own Kobold URL.
+    delete pre.proxyConnectionId
     for(const field of importBlankedDestinationFields){
         pre[field] = ''
     }
     delete pre.koboldURL
     //A key field holds one key per line, so the field is blanked when any of its lines is a whole reference.
-    pre.openAIKey = typeof pre.openAIKey === 'string' ? blankSecretRef(pre.openAIKey) : ''
     pre.proxyKey = typeof pre.proxyKey === 'string' ? blankSecretRef(pre.proxyKey) : ''
+    await absorbImportedProxy(db, pre)
+    pre.openAIKey = ''
     db.botPresets.push(freshPresetMeta(pre, {keepFolder: false}))
 }
 

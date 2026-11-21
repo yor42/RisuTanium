@@ -325,7 +325,7 @@
         }
         else{
             try {
-                outputText = await requestOpenAITranscription(requestFile, currentKey('openAIKey', DBState.db))
+                outputText = await requestOpenAITranscription(requestFile, await currentKey('openAIKey', DBState.db))
             } catch (error) {
                 if(error instanceof SecretRefError){
                     alertError(error.message)

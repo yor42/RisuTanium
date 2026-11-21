@@ -19,7 +19,8 @@ import { intakePackBytes, type IntakeRefusal, type IntakeResult, type PackJudge 
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
 import { createHash } from 'node:crypto'
 import { apngBytes, padPngTo, pngBytes, riffWebp, vp8Chunk, vp8lChunk, vp8xChunk, WEBP_ALPHA, WEBP_ANIMATED, WEBP_LOSSY } from 'src/ts/themePack/fixtures/imageBuilder'
-import { fakeFont, manifestText, PLAIN_CHAT_SHEET, utf8, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
+import { fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, utf8, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
+import studioScratchWhite from '../../../../../docs/design/studio/themes/scratch-white.css?raw'
 import { PACK_SIZE_WARN_BYTES } from 'src/ts/themePack/packSize'
 import { PACK_FILE_MAX_BYTES, PACK_MAX_UNPACKED_BYTES } from 'src/ts/themePack/zipTail'
 
@@ -440,10 +441,108 @@ describe('T4-16 an outcome is shown once', () => {
 describe('T4-4 a pack with another area keeps it and says so', () => {
     test('the installed line is followed by the skipped-areas line', async () => {
         attach()
-        const bytes = zipPack(validPackFiles({ 'studio.css': PLAIN_CHAT_SHEET }))
+        const bytes = zipPack(validPackFiles({ 'home.css': PLAIN_CHAT_SHEET }))
         await runThemePackInstall(runOf(bytes).deps)
-        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackSkippedAreas('studio.css')])
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackSkippedAreas('home.css')])
         expect(storedPacks()).toHaveLength(1)
+    })
+})
+
+describe('W1 a studio-only pack installs (MC-3121, MC-3123)', () => {
+    const STUDIO_LEAF = '[data-part="studio-asset-row"]{opacity:1}'
+    const STUDIO_NOTE = { selector: '[data-part="studio-asset-row"]', prop: 'opacity', why: 'a studio note' }
+    const studioOnly = (sheet: string = STUDIO_LEAF): Uint8Array => zipPack({ 'manifest.json': manifestText(), 'studio.css': sheet })
+    const storedRecord = (): Record<string, unknown> => $state.snapshot(storedPacks()[0]) as Record<string, unknown>
+    const noteJudge: PackJudge = async (sheets) => {
+        const judged = judgePackSheets(sheets)
+        const studio = judged.areas.studio
+        if (studio === undefined) throw new Error('the fixture pack has no studio sheet')
+        return { ...judged, areas: { ...judged.areas, studio: { ...studio, warnings: [STUDIO_NOTE] } } }
+    }
+
+    test('the pack is stored and the outcome is the installed line alone', async () => {
+        attach()
+        await runThemePackInstall(runOf(studioOnly()).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+        expect(installFlowState.outcome?.tone).toBe('info')
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('the studio notes show under the installed line, naming studio.css, and nothing throws', async () => {
+        attach()
+        const bytes = studioOnly()
+        await runThemePackInstall(runOf(bytes, [], { intake: (verified) => intakePackBytes(verified, noteJudge) }).deps)
+        expect(outcomeLines()).toEqual([
+            language.themePackInstalled('Test Pack'),
+            language.themePackInstalledWithWarnings('studio.css'),
+            language.themePackLintLine(STUDIO_NOTE.selector, STUDIO_NOTE.prop, STUDIO_NOTE.why),
+        ])
+    })
+
+    test('no tile colours are derived from a studio sheet that declares the tile tokens', async () => {
+        attach()
+        await runThemePackInstall(runOf(studioOnly(':root{--nexus-canvas:#21222c;--nexus-accent:#8be9fd}')).deps)
+        const record = storedRecord()
+        expect(Object.hasOwn(record, 'mainColor')).toBe(false)
+        expect(Object.hasOwn(record, 'secondaryColor')).toBe(false)
+    })
+
+    test('a chat and studio pack lists the notes of each sheet in area order', async () => {
+        attach()
+        const bytes = zipPack(validPackFiles({ 'studio.css': STUDIO_LEAF }))
+        const bothNotes: PackJudge = async (sheets) => {
+            const judged = await noteJudge(sheets)
+            const chat = judged.areas.chat
+            if (chat === undefined) throw new Error('the fixture pack has no chat sheet')
+            return { ...judged, areas: { ...judged.areas, chat: { ...chat, warnings: [STUDIO_NOTE] } } }
+        }
+        await runThemePackInstall(runOf(bytes, [], { intake: (verified) => intakePackBytes(verified, bothNotes) }).deps)
+        expect((outcomeLines() ?? []).filter((line) => line === language.themePackInstalledWithWarnings('chat.css') || line === language.themePackInstalledWithWarnings('studio.css')))
+            .toEqual([language.themePackInstalledWithWarnings('chat.css'), language.themePackInstalledWithWarnings('studio.css')])
+    })
+})
+
+describe('S4a notices: colours held back and a pack that shows nothing (MC-3125, MC-3127)', () => {
+    const DESIGN = studioScratchWhite.replace(/\r\n/g, '\n')
+    const IMAGE_ONLY = '[data-part="studio-asset-row"]{background-image:url(images/s.png)}'
+    const TOKEN_COLOURS = ':root{--nexus-canvas:#21222c;--nexus-accent:#8be9fd}'
+    const studioOnly = (sheet: string, extra: Record<string, Uint8Array> = {}): Uint8Array => zipPack({ 'manifest.json': manifestText(), 'studio.css': sheet, ...extra })
+
+    test('a studio sheet whose colours are held back adds the held-colours notice naming studio.css, and nothing else when chat shows something', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'studio.css': DESIGN }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('studio.css')])
+    })
+
+    test('a studio-only pack whose shape variant has only empty blocks adds the held notice and the shows-nothing line', async () => {
+        attach()
+        await runThemePackInstall(runOf(studioOnly(IMAGE_ONLY, { 'images/s.png': PNG_1X1 })).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('studio.css'), language.themePackShowsNothing])
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('a studio-only pack of colour tokens only is accepted with both notices', async () => {
+        attach()
+        await runThemePackInstall(runOf(studioOnly(TOKEN_COLOURS)).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('studio.css'), language.themePackShowsNothing])
+    })
+
+    test('a studio sheet that is already shape-only adds no notice', async () => {
+        attach()
+        await runThemePackInstall(runOf(studioOnly('[data-part="studio-asset-row"]{opacity:0.5}')).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
+    })
+
+    test('a comment-only chat sheet beside a studio sheet of colours only shows nothing', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': '/* nothing */', 'studio.css': TOKEN_COLOURS }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack'), language.themePackColoursHeld('studio.css'), language.themePackShowsNothing])
+    })
+
+    test('a chat-only pack never gets either notice, even with a comment-only chat sheet (guard)', async () => {
+        attach()
+        await runThemePackInstall(runOf(zipPack(validPackFiles({ 'chat.css': '/* nothing */' }))).deps)
+        expect(outcomeLines()).toEqual([language.themePackInstalled('Test Pack')])
     })
 })
 
@@ -499,11 +598,11 @@ describe('W1 warnings of an accepted sheet show under the installed line', () =>
 
     test('the warnings come after the skipped-areas line', async () => {
         attach()
-        const bytes = zipPack(validPackFiles({ 'studio.css': PLAIN_CHAT_SHEET }))
+        const bytes = zipPack(validPackFiles({ 'home.css': PLAIN_CHAT_SHEET }))
         await runThemePackInstall(runOf(bytes, [], { intake: warnIntake }).deps)
         expect(outcomeLines()).toEqual([
             language.themePackInstalled('Test Pack'),
-            language.themePackSkippedAreas('studio.css'),
+            language.themePackSkippedAreas('home.css'),
             language.themePackInstalledWithWarnings('chat.css'),
             ...warningLines,
         ])

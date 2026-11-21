@@ -211,7 +211,72 @@ describe('2-4 draftOf and rewriteLoss', () => {
         expect(draftOf(divider)).toEqual({ kind: 'divider', label: 'Sec' })
         expect(rewriteLoss(divider).structuralKey).toBe('d')
         expect(rewriteLoss(lineOf(id(2), '=Sec=divider')).structuralKey).toBeNull()
-        expect(rewriteLoss(lineOf(id(3), 'a=A=select=x,y=tail=more')).tail).toEqual(['tail', 'more'])
+        const tailed = rewriteLoss(lineOf(id(3), 'a=A=select=x,y=tail=more'))
+        expect(tailed.tail).toEqual(['more'])
+        expect(tailed.droppedDefault).toBe('tail')
+    })
+
+    test('T4.4 draftOf keeps the author default and a rewrite writes it back', () => {
+        expect(draftOf(lineOf(id(0), 'k=K===1'))).toEqual({ kind: 'check', key: 'k', label: 'K', default: '1' })
+        expect(draftOf(lineOf(id(0), 'k=K===1\r'))).toEqual({ kind: 'check', key: 'k', label: 'K', default: '1' })
+        expect(draftOf(lineOf(id(0), 'k=K===0'))).toEqual({ kind: 'check', key: 'k', label: 'K' })
+        expect(draftOf(lineOf(id(0), 'k=K===yes'))).toEqual({ kind: 'check', key: 'k', label: 'K' })
+        expect(draftOf(lineOf(id(0), 'mood=Mood=select=calm,angry=angry'))).toEqual({ kind: 'select', key: 'mood', label: 'Mood', options: ['calm', 'angry'], default: 'angry' })
+        expect(draftOf(lineOf(id(0), 'mood=Mood=select=calm,angry=angry\r'))).toEqual({ kind: 'select', key: 'mood', label: 'Mood', options: ['calm', 'angry'], default: 'angry' })
+        expect(draftOf(lineOf(id(0), 'mood=Mood=select=calm,angry=Angry'))).toEqual({ kind: 'select', key: 'mood', label: 'Mood', options: ['calm', 'angry'] })
+        expect(draftOf(lineOf(id(0), 't=T=text==1'))).toEqual({ kind: 'text', key: 't', label: 'T' })
+        const def = parse('k=K===1\r\nmood=Mood=select=calm,angry=angry\r\n')
+        for (const index of [0, 1]) {
+            const draft = draftOf(def.lines[index])
+            if (!draft || draft.kind === 'caption' || draft.kind === 'divider') {
+                throw new Error('expected a leaf draft')
+            }
+            expect(raws(ok(setRow(def, def.lines[index].id, { ...draft, label: 'X' })))[index]).toBe(index === 0 ? 'k=X===1' : 'mood=X=select=calm,angry=angry')
+        }
+    })
+
+    test('T4.5 rewriteLoss reports stray options and dropped defaults, never a kept default', () => {
+        for (const raw of ['k=K===1', 'k=K===0', 'k=K===1\r', 't=T=text=', 'k=K===', 'mood=Mood=select=a,b=b']) {
+            const loss = rewriteLoss(lineOf(id(0), raw))
+            expect(loss, raw).toEqual({ tail: [], unknownType: null, strayOptions: null, droppedDefault: null, trailingCr: raw.endsWith('\r'), structuralKey: null })
+        }
+        expect(rewriteLoss(lineOf(id(0), 'k=K=x=opts')).strayOptions).toBe('opts')
+        expect(rewriteLoss(lineOf(id(0), 'k=K=x=opts\r')).strayOptions).toBe('opts')
+        expect(rewriteLoss(lineOf(id(0), 'm=M=select=a,b=z')).droppedDefault).toBe('z')
+        expect(rewriteLoss(lineOf(id(0), 'k=K===yes')).droppedDefault).toBe('yes')
+        expect(rewriteLoss(lineOf(id(0), 'm=M=select=a,b=z\r')).droppedDefault).toBe('z')
+        expect(rewriteLoss(lineOf(id(0), 't=T=text==hi')).tail).toEqual(['hi'])
+        expect(rewriteLoss(lineOf(id(0), 't=T=text==hi')).droppedDefault).toBeNull()
+        expect(rewriteLoss(lineOf(id(0), 'k=K===1=more')).tail).toEqual(['more'])
+        expect(rewriteLoss(lineOf(id(0), '=Sec=divider')).droppedDefault).toBeNull()
+    })
+
+    test('T4.6 canonicalLine writes a check or select default and refuses one that cannot be read back', () => {
+        expect(canonicalLine({ kind: 'check', key: 'k', label: 'K', default: '1' })).toBe('k=K===1')
+        expect(canonicalLine({ kind: 'select', key: 'mood', label: 'Mood', options: ['calm', 'angry'], default: 'angry' })).toBe('mood=Mood=select=calm,angry=angry')
+        expect(canonicalLine({ kind: 'select', key: 'mood', label: 'Mood', options: ['calm', 'angry'] })).toBe('mood=Mood=select=calm,angry')
+        const refusal = { code: 'defaultNotOption' }
+        expect(canonicalLine({ kind: 'select', key: 'm', label: 'M', options: ['a', 'b'], default: '' })).toEqual(refusal)
+        expect(canonicalLine({ kind: 'select', key: 'm', label: 'M', options: ['a', 'b'], default: 'c' })).toEqual(refusal)
+        expect(canonicalLine({ kind: 'select', key: 'm', label: 'M', options: [], default: 'a' })).toEqual(refusal)
+        expect(canonicalLine({ kind: 'select', key: 'm', label: 'M', options: ['a', ''], default: '' })).toEqual(refusal)
+        expect(canonicalLine({ kind: 'select', key: '', label: 'M', options: ['a', 'b'], default: 'c' })).toEqual(refusal)
+        expect(refused(setRow(parse('m=M=select=a,b'), id(0), { kind: 'select', key: 'm', label: 'M', options: ['a', 'b'], default: 'c' }))).toEqual(refusal)
+    })
+
+    test('T4.6 every written default reads back as the described row (I7)', () => {
+        const drafts = [
+            { kind: 'check', key: 'k', label: 'K', default: '1' },
+            { kind: 'select', key: 'm', label: 'M', options: ['a', '1', 'b c'], default: '1' },
+        ] as const
+        for (const draft of drafts) {
+            const raw = canonicalLine(draft)
+            if (typeof raw !== 'string') {
+                throw new Error('expected a line')
+            }
+            expect(draftOf(lineOf(id(0), raw))).toEqual(draft)
+            expect(rewriteLoss(lineOf(id(0), raw)).droppedDefault).toBeNull()
+        }
     })
 
     test('blank, dropped and group-end lines have no draft', () => {

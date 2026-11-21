@@ -14,7 +14,7 @@ import {
 import { commitPackSheet, preparePackSheet, resetPackSheetForTests, setPackSheetColours, type ApplySource, type BrokenReason } from './apply'
 import { builtinPackById } from './builtins'
 import type { IntakeRefusal } from './intake'
-import { createJudgeClient } from './judgeClient'
+import { openJudgeSession, type JudgeSession } from './judgeClient'
 import { sameScheme } from './packColours'
 import { listThemePacks } from './packRecord'
 
@@ -45,12 +45,11 @@ let applied: { key: ApplyKey; skippedAreas: readonly string[]; empty: boolean; d
 // a pick or edit in between wins. In memory only.
 let schemeRequest: { id: string; kind: 'turnOn' | 'update'; name: unknown; scheme: ColorScheme | null } | null = null
 let unsubscribeLite: (() => void) | null = null
-let inflight: { key: ApplyKey; generation: number } | null = null
+let inflight: { key: ApplyKey; generation: number; session: JudgeSession } | null = null
 let generation = 0
 let started = false
 let disposeRoot: (() => void) | null = null
 let unsubscribeSafeMode: (() => void) | null = null
-const judge = createJudgeClient()
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -189,19 +188,22 @@ export function adoptActivePackScheme(): void {
 }
 
 /**
- * Prepares one key and commits it. Everything after the single await is one synchronous block: the owner-checked in-flight
+ * Prepares one key and commits it. One judge session serves the whole preparation and is closed when it settles; a newer
+ * request closes it earlier. Everything after the single await is one synchronous block: the owner-checked in-flight
  * clear, the currency re-check and the commit, with nothing between them that could let a newer request run first.
  */
-async function run(key: ApplyKey, mine: number): Promise<void> {
+async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<void> {
     const isCurrent = (): boolean => generation === mine
     const source = sourceOf(key)
     let prepared: Prepared
     try {
         prepared = source === null
             ? COULD_NOT_CHECK
-            : await preparePackSheet(source, judge, isCurrent)
+            : await preparePackSheet(source, session, isCurrent)
     } catch {
         prepared = COULD_NOT_CHECK
+    } finally {
+        session.close()
     }
     if (inflight?.generation === mine) {
         inflight = null
@@ -226,9 +228,7 @@ async function run(key: ApplyKey, mine: number): Promise<void> {
     }
     const enteredByTurnOn = consumeSchemeRequest(status.activeId, prepared.defaultScheme)
     appliedDefault = prepared.defaultScheme
-    const result = commitPackSheet(prepared.text === null ? null : {
-        text: prepared.text, blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: coloursOn(),
-    })
+    const result = commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: coloursOn() })
     if (!result.ok) {
         // A turn-on whose sheet could not be committed is a broken turn-on: the scheme it just entered is left again.
         if (enteredByTurnOn) {
@@ -243,7 +243,7 @@ async function run(key: ApplyKey, mine: number): Promise<void> {
         repaintPackScheme()
         return
     }
-    applied = { key, skippedAreas: prepared.skippedAreas, empty: prepared.text === null, defaultScheme: prepared.defaultScheme }
+    applied = { key, skippedAreas: prepared.skippedAreas, empty: prepared.elements.every((element) => element.text === null), defaultScheme: prepared.defaultScheme }
     repaintPackScheme()
     setStatus({ phase: 'applied', skippedAreas: applied.skippedAreas, empty: applied.empty })
 }
@@ -256,6 +256,7 @@ function request(id: unknown, safeMode: boolean): void {
         return
     }
     if (inflight !== null) {
+        inflight.session.close()
         generation += 1
         inflight = null
     }
@@ -283,9 +284,10 @@ function request(id: unknown, safeMode: boolean): void {
         repaintPackScheme()
         return
     }
-    inflight = { key, generation }
+    const session = openJudgeSession()
+    inflight = { key, generation, session }
     setStatus({ phase: 'pending' })
-    void run(key, generation)
+    void run(key, generation, session)
 }
 
 /** Installs the driver once per page; later calls do nothing. */
@@ -337,6 +339,7 @@ export function resetThemePackApplyForTests(): void {
     started = false
     resetPackSheetForTests()
     generation += 1
+    inflight?.session.close()
     inflight = null
     applied = null
     appliedDefault = null

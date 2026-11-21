@@ -309,7 +309,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
             case 'openai':{
                 const cfg = character.oaiTTSConfig?.enabled ? character.oaiTTSConfig : null
                 const baseURL = (cfg?.baseURL?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '')
-                let apiKey  = (cfg?.apiKey || currentKey('openAIKey', db) || '').trim()
+                let apiKey  = (cfg?.apiKey || await currentKey('openAIKey', db) || '').trim()
                 // Only the app-wide key may be a reference, and only for the default OpenAI host: a
                 // card chooses the base URL, so it must not be able to aim a referenced key elsewhere.
                 // The card's own key never resolves; globalFetch refuses a request that carries it.

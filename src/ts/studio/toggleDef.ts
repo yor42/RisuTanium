@@ -17,7 +17,8 @@ export type GroupInfo = { readonly group: LineId, readonly end: LineId | null, r
 export type Outline = { readonly groups: readonly GroupInfo[], readonly parentOf: ReadonlyMap<LineId, LineId>, readonly strayEnds: readonly LineId[], readonly openAtEnd: LineId | null }
 export type Structure = { readonly parentOf: ReadonlyMap<LineId, LineId | null>, readonly endOf: ReadonlyMap<LineId, LineId | null>, readonly stray: ReadonlySet<LineId>, readonly openAtEnd: LineId | null }
 export type StructureExemption = { readonly parentOf?: LineId, readonly endOf?: LineId }
-export type DiagnosticCode = 'unreadable' | 'partsBeyondFour' | 'unknownType' | 'ignoredOptions' | 'crInLine'
+export type DiagnosticCode = 'unreadable' | 'partsBeyondFour' | 'partsBeyondFive' | 'defaultNotOption' | 'ignoredDefault'
+    | 'unknownType' | 'ignoredOptions' | 'crInLine'
     | 'duplicateKey' | 'keyLookalike' | 'keyEdgeSpace' | 'keyInteriorSpace' | 'selectFewOptions'
     | 'emptyGroup' | 'groupReplaced' | 'groupOpenAtEnd' | 'strayGroupEnd'
 export type Diagnostic = { readonly code: DiagnosticCode, readonly severity: 'error' | 'warning' | 'hint', readonly related?: readonly LineId[] }
@@ -97,6 +98,8 @@ function normalisedKey(key: string): string {
     return key.toLowerCase().replace(/[\s_]/gu, '')
 }
 
+const withoutCr = (text: string): string => (text.endsWith('\r') ? text.slice(0, -1) : text)
+
 function readingOf(form: LineForm): string {
     return form.kind === 'value' ? `value:${form.valueKind}` : form.kind
 }
@@ -134,8 +137,9 @@ function diagnosticsOf(lines: readonly DefLine[], outline: Outline): ReadonlyMap
             add(line.id, { code: 'unreadable', severity: 'error' })
             continue
         }
-        if (line.parts.length > 4) {
-            add(line.id, { code: 'partsBeyondFour', severity: 'warning' })
+        const takesDefault = form.kind === 'value' && (form.valueKind === 'check' || form.valueKind === 'select')
+        if (takesDefault ? line.parts.length > 5 : line.parts.length > 4) {
+            add(line.id, { code: takesDefault ? 'partsBeyondFive' : 'partsBeyondFour', severity: 'warning' })
         }
         if (line.raw.endsWith('\r')) {
             const stripped = lineOf(line.id, line.raw.slice(0, -1))
@@ -150,8 +154,15 @@ function diagnosticsOf(lines: readonly DefLine[], outline: Outline): ReadonlyMap
         if (type !== undefined && type !== '' && type !== 'select' && type !== 'text' && type !== 'textarea') {
             add(line.id, { code: 'unknownType', severity: 'warning' })
         }
-        if (line.parts[3] !== undefined && form.valueKind !== 'select') {
+        if (form.valueKind !== 'select' && withoutCr(line.parts[3] ?? '') !== '') {
             add(line.id, { code: 'ignoredOptions', severity: 'warning' })
+        }
+        const defaultPart = withoutCr(line.parts[4] ?? '')
+        if (form.valueKind === 'select' && defaultPart !== '' && !(line.parts[3]?.split(',') ?? []).includes(defaultPart)) {
+            add(line.id, { code: 'defaultNotOption', severity: 'warning' })
+        }
+        if (form.valueKind === 'check' && defaultPart !== '' && defaultPart !== '1' && defaultPart !== '0') {
+            add(line.id, { code: 'ignoredDefault', severity: 'warning' })
         }
         if (form.valueKind === 'select' && (line.parts[3]?.split(',') ?? []).length < 2) {
             add(line.id, { code: 'selectFewOptions', severity: 'warning' })
@@ -245,7 +256,15 @@ export function rowsOf(def: Definition): sidebarToggle[] {
             rows.push({ key, value, type: 'caption' })
         } else if (form.kind === 'value') {
             const options = line.parts[3]?.split(',') ?? []
-            rows.push({ key, value, type: form.valueKind === 'check' ? undefined : form.valueKind, options } as sidebarToggle)
+            const fifth = form.valueKind === 'check' || form.valueKind === 'select' ? line.parts[4] : undefined
+            const authorDefault = fifth?.endsWith('\r') ? fifth.slice(0, -1) : fifth
+            rows.push({
+                key,
+                value,
+                type: form.valueKind === 'check' ? undefined : form.valueKind,
+                options,
+                ...(authorDefault ? { default: authorDefault } : {}),
+            } as sidebarToggle)
         }
     }
     return rows

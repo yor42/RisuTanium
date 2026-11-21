@@ -473,6 +473,21 @@ describe('request log credential redaction', () => {
         expect(JSON.parse(log.response)).toEqual({ echo: '[redacted …abcd]' })
     })
 
+    test('R7b a key stored in a connection is redacted like a legacy key field, every line of it', () => {
+        dbState.db = { connections: [{ id: 'conn-1', name: 'n', provider: 'openai', key: `${K1}\n${KQ}` }] }
+        addFetchLog({
+            body: `note ${KQ} and ${K1} end`,
+            headers: {},
+            response: 'ok',
+            success: true,
+            url: 'https://api.example.invalid/v1',
+        })
+        const [log] = getFetchLogs()
+        expect(log.body).not.toContain(KQ)
+        expect(log.body).not.toContain(K1)
+        expect(log.body).toBe('note [redacted …abcd] and [redacted …abcd] end')
+    })
+
     test('G7b guard: additionalParams values and the Vertex PEM are not matched by value', () => {
         dbState.db = {
             additionalParams: [['x', 'a-long-nonsecret-param-0001']],

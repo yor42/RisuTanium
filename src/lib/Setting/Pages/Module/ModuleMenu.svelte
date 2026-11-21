@@ -4,7 +4,8 @@
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import type { loreBook } from "src/ts/storage/database.svelte";
     import LoreBookList from "src/lib/SideBars/LoreBook/LoreBookList.svelte";
-    import { type CCLorebook, convertExternalLorebook } from "src/ts/process/lorebook.svelte";
+    import { type CCLorebook, type ImportedLorebookFile, convertExternalLorebook } from "src/ts/process/lorebook.svelte";
+    import { NoLorebookInPng, readLorebookFileJson } from "src/ts/process/lorebookFile";
     import type { RisuModule } from "src/ts/process/modules";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { DownloadIcon, FileMusicIcon, FolderPlusIcon, HardDriveUploadIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
@@ -169,13 +170,13 @@
 
     async function importLoreBook(){
         let lore = currentModule.lorebook
-        const lorebook = (await selectMultipleFile(['json', 'lorebook']))
+        const lorebook = (await selectMultipleFile(['json', 'lorebook', 'png']))
         if(!lorebook){
             return
         }
         try {
             for(const f of lorebook){
-                const importedlore = JSON.parse(Buffer.from(f.data).toString('utf-8'))
+                const importedlore = readLorebookFileJson(f.data) as ImportedLorebookFile
                 if(importedlore.type === 'risu' && importedlore.data){
                     const datas:loreBook[] = importedlore.data
                     for(const data of datas){
@@ -188,7 +189,7 @@
                 }
             }
         } catch (error) {
-            alertError(`${error}`)
+            alertError(error instanceof NoLorebookInPng ? language.errors.noData : `${error}`)
         }
     }
 

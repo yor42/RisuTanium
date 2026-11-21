@@ -7,7 +7,7 @@
  * REAL: ChatScreen.svelte, shellSwitch.svelte.ts, surfaceGate.svelte.ts. MOCKED: ChatShell and DefaultChatScreen (marker
  * stand-ins that do not declare), the stores and ChatScreen's other parts, as in `ChatScreen.shellBranch.svelte.test.ts`.
  *
- * The stand-in shell does not declare, so every `shownSurface()` assertion here only pins that ChatScreen itself never
+ * The stand-in shell does not declare, so every `shownScreen()` assertion here only pins that ChatScreen itself never
  * declares (XG-4a). The marker assertions (`chat-shell-stub` absent or present, `classic-stub` present) carry T3G-3.
  */
 import { flushSync, mount, unmount } from 'svelte'
@@ -100,7 +100,7 @@ describe('ChatScreen leaves the gate with nothing shown', () => {
         switcher.setShellEnabled(false)
         flushSync()
         expect(target.querySelector('[data-testid="classic-stub"]')).not.toBeNull()
-        expect(gate.shownSurface()).toBeNull()
+        expect(gate.shownScreen()).toBeNull()
     })
 
     test('the shell branch mounts the shell stand-in, and ChatScreen itself still declares nothing', async () => {
@@ -110,7 +110,7 @@ describe('ChatScreen leaves the gate with nothing shown', () => {
         switcher.setShellEnabled(true)
         flushSync()
         expect(target.querySelector('[data-testid="chat-shell-stub"]')).not.toBeNull()
-        expect(gate.shownSurface()).toBeNull()
+        expect(gate.shownScreen()).toBeNull()
     })
 
     test('waifu theme, group chat, playground, a missing chat and Home declare nothing', async () => {
@@ -126,14 +126,14 @@ describe('ChatScreen leaves the gate with nothing shown', () => {
         switcher.setShellEnabled(true)
         flushSync()
         expect(target.querySelector('[data-testid="chat-shell-stub"]')).toBeNull()
-        expect(gate.shownSurface()).toBeNull()
+        expect(gate.shownScreen()).toBeNull()
         state.db.theme = ''
         for (const index of [1, 2, 3, -1]) {
             selectedCharID.set(index)
             flushSync()
             expect(target.querySelector('[data-testid="chat-shell-stub"]')).toBeNull()
             expect(target.querySelector('[data-testid="classic-stub"]')).not.toBeNull()
-            expect(gate.shownSurface()).toBeNull()
+            expect(gate.shownScreen()).toBeNull()
         }
     })
 })

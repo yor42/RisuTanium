@@ -306,7 +306,7 @@ describe('1-5 diagnostics', () => {
     })
 
     test('partsBeyondFour, unknownType, ignoredOptions and crInLine', () => {
-        expect(codes(parseDefinition('a=A=select=x,y=tail'), 0)).toContain('partsBeyondFour')
+        expect(codes(parseDefinition('a=A=text=x=tail'), 0)).toContain('partsBeyondFour')
         expect(codes(parseDefinition('g=G=group=1=2=3\na=A\n'), 0)).toContain('partsBeyondFour')
         expect(codes(parseDefinition('a=A=select=x,y'), 0)).not.toContain('partsBeyondFour')
         expect(codes(parseDefinition('a=A=weird'), 0)).toContain('unknownType')
@@ -322,6 +322,31 @@ describe('1-5 diagnostics', () => {
         expect(codes(parseDefinition('g=G=group\r'), 0)).toContain('crInLine')
         expect(codes(parseDefinition('a=A\r\nb=B\r\n'), 0)).not.toContain('crInLine')
         expect(codes(parseDefinition('a=A\r\n\r\n'), 1)).toEqual([])
+    })
+
+    test('T4.1 a valid author default raises no parts, options or CR warning', () => {
+        for (const text of ['a=A=select=x,y=y', 'a=A===1', 'a=A===1\r', 'a=A=select=x,y=y\r', 'a=A===0', 'a=A===', 'k=K==', 't=T=text=']) {
+            const found = codes(parseDefinition(text), 0)
+            for (const code of ['partsBeyondFour', 'partsBeyondFive', 'ignoredOptions', 'crInLine', 'defaultNotOption', 'ignoredDefault'] as const) {
+                expect(found, text).not.toContain(code)
+            }
+        }
+    })
+
+    test('T4.2 ignored defaults and extra parts are flagged by the code that names them', () => {
+        expect(codes(parseDefinition('a=A===1=x'), 0)).toContain('partsBeyondFive')
+        expect(codes(parseDefinition('a=A===1=x'), 0)).not.toContain('partsBeyondFour')
+        expect(codes(parseDefinition('a=A=select=x,y=y=z'), 0)).toContain('partsBeyondFive')
+        expect(codes(parseDefinition('a=A=select=x,y=z'), 0)).toContain('defaultNotOption')
+        expect(codes(parseDefinition('a=A=select=x,y=z\r'), 0)).toContain('defaultNotOption')
+        expect(codes(parseDefinition('a=A===yes'), 0)).toContain('ignoredDefault')
+        expect(codes(parseDefinition('a=A===yes'), 0)).not.toContain('defaultNotOption')
+        expect(codes(parseDefinition('a=A=select=x,y=y'), 0)).not.toContain('defaultNotOption')
+        expect(codes(parseDefinition('t=T=text==hi'), 0)).toContain('partsBeyondFour')
+        expect(codes(parseDefinition('t=T=text==hi'), 0)).not.toContain('ignoredDefault')
+        expect(codes(parseDefinition('g=G=group=1=2=3\na=A\n'), 0)).toContain('partsBeyondFour')
+        expect(codes(parseDefinition('a=A=text=opts'), 0)).toContain('ignoredOptions')
+        expect(codes(parseDefinition('a=A=text=opts\r'), 0)).toContain('ignoredOptions')
     })
 
     test('unreadable, stray end, replaced and open-at-end groups', () => {

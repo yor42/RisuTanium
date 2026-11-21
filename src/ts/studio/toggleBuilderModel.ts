@@ -179,6 +179,7 @@ export type TgMessageKey =
     | 'studioTgMarkIgnoredOptions' | 'studioTgMarkCr' | 'studioTgMarkGroupOpen' | 'studioTgMarkGroupReplaced'
     | 'studioTgTypeCheck' | 'studioTgTypeSelect' | 'studioTgTypeText' | 'studioTgTypeTextarea' | 'studioTgTypeGroup'
     | 'studioTgTypeDivider' | 'studioTgTypeCaption'
+    | 'studioTgMarkPartsBeyondFive' | 'studioTgMarkDefaultNotOption' | 'studioTgMarkIgnoredDefault' | 'studioTgErrDefaultNotOption'
 
 /** The message for a refused field value (DD-105): the refusal's code names the rule it broke. */
 export function fieldErrorKeyOf(refusal: Refusal): TgMessageKey {
@@ -192,6 +193,7 @@ export function fieldErrorKeyOf(refusal: Refusal): TgMessageKey {
         case 'emptyKey': return 'studioTgErrEmptyKey'
         case 'emptyLabel': return 'studioTgErrEmptyLabel'
         case 'captionNeedsText': return 'studioTgErrCaption'
+        case 'defaultNotOption': return 'studioTgErrDefaultNotOption'
         case 'changesRole':
         case 'changesStructure': return 'studioTgStructure'
         default: return 'studioTgNotWritten'
@@ -202,6 +204,9 @@ export function diagnosticKeyOf(code: DiagnosticCode): TgMessageKey {
     switch (code) {
         case 'unreadable': return 'studioTgUnreadable'
         case 'partsBeyondFour': return 'studioTgMarkPartsBeyondFour'
+        case 'partsBeyondFive': return 'studioTgMarkPartsBeyondFive'
+        case 'defaultNotOption': return 'studioTgMarkDefaultNotOption'
+        case 'ignoredDefault': return 'studioTgMarkIgnoredDefault'
         case 'unknownType': return 'studioTgMarkUnknownType'
         case 'ignoredOptions': return 'studioTgMarkIgnoredOptions'
         case 'crInLine': return 'studioTgMarkCr'
@@ -275,6 +280,33 @@ export function newDraft(kind: NewKind, key: string, label: string): RowDraft {
         default:
             return { kind, key, label }
     }
+}
+
+/**
+ * The default a select keeps when its options change from `before` to `after`. The default follows its option by text,
+ * never by index: reorders, additions and edits of other options keep it; renaming the default option (exactly one slot
+ * changed, and it held the default) renames the default; removing it, or changing several options so it cannot be
+ * traced, clears it. A rename to '' returns '', which the writer refuses with `defaultNotOption`.
+ */
+export function followDefault(before: readonly string[], after: readonly string[], current: string | undefined): string | undefined {
+    if (current === undefined) {
+        return undefined
+    }
+    if (after.includes(current)) {
+        return current
+    }
+    if (before.length === after.length) {
+        const changed: number[] = []
+        for (let index = 0; index < before.length; index++) {
+            if (before[index] !== after[index]) {
+                changed.push(index)
+            }
+        }
+        if (changed.length === 1 && before[changed[0]] === current) {
+            return after[changed[0]]
+        }
+    }
+    return undefined
 }
 
 /** The draft of another leaf kind that keeps the row's name and key; a select dropping to another kind loses its options. */

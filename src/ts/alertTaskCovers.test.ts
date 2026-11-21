@@ -6,7 +6,7 @@
  *
  * Drives the REAL `alert.ts`, `alertPrompts.ts`, `alertBack.ts` and `alertTask.svelte.ts` over a real `writable`
  * standing in for `alertStore` from `stores.svelte`. Legacy state is built with the real producers (`alertConfirm`,
- * `alertToast`, `alertNormal`), never by writing hand-made store values.
+ * `alertNormal`, and `putToast` for the raw toast value), never by other hand-made store values.
  *
  * Tests whose title starts with `guard:` pass with or without the integration: they pin behaviour that must be kept.
  */
@@ -30,7 +30,7 @@ vi.mock(import('./platform'), () => ({
 
 //#endregion
 
-import { alertConfirm, alertNormal, alertToast, doingAlert, waitUnreadNotice } from './alert'
+import { alertConfirm, alertNormal, doingAlert, waitUnreadNotice } from './alert'
 import { closeDialogForBack } from './alertBack'
 import { pageCovered, promptWaiting, resetAlertPromptsForTests } from './alertPrompts'
 import { alertTask, answerTask, resetTaskHostForTests, taskShown } from './alertTask.svelte'
@@ -39,6 +39,11 @@ import { alertStore } from './stores.svelte'
 import type { TaskDef } from '../lib/Nexus/pattern/taskProgress'
 
 const NONE = { type: 'none' as const, msg: '' }
+
+/** The raw `toast` value AlertComp's toast branch shows: these tests pin how the alert store protocol treats a toast cover, not what `alertToast` does. */
+function putToast(msg: string): void {
+    alertStore.set({ type: 'toast', msg })
+}
 
 const def: TaskDef = {
     title: 'Import',
@@ -144,7 +149,7 @@ describe('Back and a task', () => {
     test('guard: R4b a prompt held under a toast keeps Back; the task is untouched', () => {
         const onCancel = vi.fn()
         void alertConfirm('Sure?')
-        alertToast('toast')
+        putToast('toast')
         expect(promptWaiting()).toBe(true)
         alertTask({ ...def, onCancel })
         closeDialogForBack()

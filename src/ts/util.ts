@@ -816,14 +816,19 @@ export type sidebarToggle =
         key:string,
         value:string,
         type:'select',
-        options:string[]
+        options:string[],
+        default?:string
     }
     | {
         key:string,
         value:string,
         type:'text'|'textarea'|undefined,
-        options?:string[]
+        options?:string[],
+        default?:string
     }
+
+/** The toggle rows that hold a value: checkbox, select, text and textarea. */
+export type sidebarToggleValue = Exclude<sidebarToggle, { type:'group'|'groupEnd'|'caption'|'divider' }>
 
 export function parseToggleSyntax(template:string){
     try {
@@ -836,7 +841,7 @@ export function parseToggleSyntax(template:string){
         const splited = template.split('\n')
 
         for(const line of splited){
-            const [key, value, type, option] = line.split('=')
+            const [key, value, type, option, fifth] = line.split('=')
             if(type === 'group' || type === 'groupEnd' || type === 'divider'){
                 keyValue.push({
                     key,
@@ -851,12 +856,20 @@ export function parseToggleSyntax(template:string){
                     type
                 })
             } else if((key && value)){
-                keyValue.push({
+                const row = {
                     key,
                     value,
                     type: type === 'select' || type === 'text' || type === 'textarea' ? type : undefined,
                     options: option?.split(',') ?? []
-                })
+                } as sidebarToggleValue
+                // Only checkbox and select rows hold an author default; the property is absent otherwise.
+                if(row.type === 'select' || row.type === undefined){
+                    const authorDefault = fifth?.endsWith('\r') ? fifth.slice(0, -1) : fifth
+                    if(authorDefault){
+                        row.default = authorDefault
+                    }
+                }
+                keyValue.push(row)
             }
         }
 

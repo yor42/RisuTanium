@@ -445,6 +445,9 @@ export function mountSeasonal(host: HTMLElement, opts: HostOptions): HostControl
         if (!root || !word) return
         const still = reduced()
         root.setAttribute('data-occasion', resolved || 'none')
+        // The brand cell reserves room for a final pose's right overflow (the scene contract allows 22 px) while an
+        // occasion shows; the top bar keys that space on this attribute.
+        brandSlot().toggleAttribute('data-seasonal-active', resolved !== '')
         root.setAttribute('data-phase', phase)
         for (const n of [root, stage, markSlot, greetRow, game && game.panel]) {
             if (!n) continue
@@ -1404,6 +1407,7 @@ export function mountSeasonal(host: HTMLElement, opts: HostOptions): HostControl
             if (document.fonts && document.fonts.removeEventListener) document.fonts.removeEventListener('loadingdone', onResize)
             offMql(mqPhone, onResize)
             offMql(mqReduce, onMotionPref)
+            brandSlot().removeAttribute('data-seasonal-active')
             for (const [n, position] of restore.reverse()) n.style.position = position
             restore.length = 0
             host.innerHTML = PLAIN_WORDMARK_HTML
