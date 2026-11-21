@@ -2261,6 +2261,8 @@ export const languageEnglish = {
     homeLinkUtilityDescription: "Talk to a model through a saved task preset, with no character or chat.",
     homeLinkEmailTitle: "Email",
     homeLinkEmailDescription: "Contact the developer directly.",
+    homeCommunityHeading: "Community and source",
+    homeSideLabel: "Discover and community",
     homeSourceEmailForkLabel: "Contact the maintainer",
     homeSourceEmailUpstreamLabel: "Contact official support",
     backgroundHTML: "Background Embedding",

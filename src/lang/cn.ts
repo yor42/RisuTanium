@@ -2104,6 +2104,8 @@ export const languageChinese = {
     "homeGreetingAfternoon": "下午好",
     "homeGreetingEvening": "晚上好",
     "homeGreetingNight": "还没睡呀？",
+    "homeCommunityHeading": "社区与源码",
+    "homeSideLabel": "发现与社区",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "加入我们的 Discord 服务器，与其他用户和开发者交流。",
     "homeLinkWebsiteTitle": "网站",

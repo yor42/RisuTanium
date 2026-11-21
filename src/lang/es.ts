@@ -2104,6 +2104,8 @@ export const languageSpanish = {
     "homeGreetingAfternoon": "Buenas tardes",
     "homeGreetingEvening": "Buenas noches",
     "homeGreetingNight": "¿Sigues despierto?",
+    "homeCommunityHeading": "Comunidad y código fuente",
+    "homeSideLabel": "Descubrir y comunidad",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Únete a nuestro servidor de Discord para chatear con otros usuarios y con el desarrollador.",
     "homeLinkWebsiteTitle": "Sitio web",

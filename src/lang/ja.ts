@@ -2238,6 +2238,8 @@ export const languageJapanese = {
     homeGreetingAfternoon: "こんにちは",
     homeGreetingEvening: "こんばんは",
     homeGreetingNight: "まだ起きてますか？",
+    homeCommunityHeading: "コミュニティとソース",
+    homeSideLabel: "発見とコミュニティ",
     homeLinkDiscordTitle: "Discord",
     homeLinkDiscordDescription: "Discordサーバーに参加して、他のユーザーや開発者と交流しましょう。",
     homeLinkWebsiteTitle: "ウェブサイト",

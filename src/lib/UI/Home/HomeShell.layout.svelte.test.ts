@@ -636,18 +636,20 @@ describe('HomeShell greeting header', () => {
         expect(bar.querySelector('[data-part="home-brand"]')!.textContent).toContain('RisuTanium')
     })
 
-    test('S1-R5: the version line appears once, after the last related-link card heading', () => {
+    test('S1-R5: the version line appears once, as the last element of the Community list, after the Email row', () => {
         const root = mountShellAt(1280)
         const holders = Array.from(root.querySelectorAll('*')).filter(
             (el) => el.children.length === 0 && el.textContent?.includes('test-version'),
         )
         expect(holders.length).toBe(1)
         const version = holders[0]
-        const bar = topBarOf(root)!
-        const headings = Array.from(root.querySelectorAll('h2')).filter((h) => !bar.contains(h) && !h.closest('[data-part="home-empty-hero"]'))
-        expect(headings.length).toBeGreaterThan(0)
-        for (const heading of headings) {
-            expect(heading.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING, heading.textContent ?? '').toBeTruthy()
-        }
+        const community = root.querySelector('[data-part="home-community"]')!
+        expect(version.parentElement).toBe(community)
+        expect(community.lastElementChild).toBe(version)
+        const emailTitle = Array.from(community.querySelectorAll('[data-part="home-community-title"]')).find(
+            (el) => el.textContent?.trim() === language.homeLinkEmailTitle,
+        )
+        expect(emailTitle).toBeTruthy()
+        expect(emailTitle!.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
 })
