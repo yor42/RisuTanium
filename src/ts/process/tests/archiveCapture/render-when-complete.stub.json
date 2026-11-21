@@ -1,0 +1,29 @@
+{
+  "type": "character",
+  "name": "Field Holder",
+  "chaId": "00000000-0000-4000-8000-000000000902",
+  "creatorNotes": "",
+  "coldstorage": "00000000-0000-4000-8000-0000000000ca",
+  "coldStoragedChats": [],
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000000903",
+      "message": [
+        {
+          "time": 1795262400000,
+          "data": "",
+          "role": "char"
+        }
+      ],
+      "note": "",
+      "name": "",
+      "localLore": []
+    }
+  ],
+  "chatPage": 0,
+  "firstMsgIndex": 0,
+  "coldVersion": 3,
+  "coldChatCount": 1,
+  "tags": [],
+  "creator": ""
+}

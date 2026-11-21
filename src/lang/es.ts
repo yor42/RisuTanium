@@ -3849,14 +3849,6 @@ export const languageSpanish = {
     coldStorage: "Archivar personajes y módulos al iniciar",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Para mantener bajo el uso de memoria, la aplicación ahora guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. No se elimina nada y tus personajes se ven y funcionan igual que antes. Puedes desactivarlo en ${settings} > ${advancedSettings} > ${toggle}. Si lo desactivas, no se archiva ningún personaje nuevo y los personajes ya archivados se siguen abriendo con normalidad.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `El archivado se detuvo en este inicio después de que dos personajes seguidos no se pudieran guardar por separado; el segundo fue "${characterName}". Esos personajes permanecen totalmente cargados en el guardado principal y los personajes archivados antes no se ven afectados. El resto de los personajes se dejó como estaba.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `Estos personajes no se pudieron guardar por separado: ${characterNames}${otherCount > 0 ? ` y ${otherCount} más` : ''}. Siguen totalmente cargados y funcionan como antes, y la aplicación no intentará archivarlos de nuevo al iniciar. Para volver a intentarlo en este dispositivo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Tu guardado es demasiado grande para que el servidor autoalojado archive personajes en él, así que no se archivó nada y tu guardado se dejó como estaba. Todo funciona como antes. Para volver a intentarlo en este dispositivo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `El archivado de personajes al iniciar está en pausa en este dispositivo porque no se completó dos veces seguidas. No se perdió nada y los personajes ya archivados se siguen cargando cuando los abres. Mientras no lo reanudes, no se archiva nada nuevo al iniciar. Para volver a intentarlo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
     cleanColdStorage: "Limpiar Datos Archivados y Activos No Utilizados",
     customSidebarConfig: "Configuración Personalizada de la Barra Lateral",
     cleanColdStorageConfirm: "Esto eliminará permanentemente todos los datos archivados (almacenamiento frío) no utilizados y todos los archivos de activos no utilizados, es decir, las imágenes y el audio que ya no usa ningún personaje, módulo, persona ni ajuste. Parte de ello podría ser útil en el futuro y no se puede recuperar. ¿Quieres continuar?",

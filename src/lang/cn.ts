@@ -3847,14 +3847,6 @@ export const languageChinese = {
     "coldStorage": "启动时归档角色和模块",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `为了保持较低的内存占用，本应用现在会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。不会删除任何内容，您的角色外观和使用方式与之前一致。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中关闭此功能。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `由于连续两个角色无法单独存储，本次启动的归档已停止；第二个是"${characterName}"。这些角色仍完整保留在主存档中并保持完全加载，在它们之前已归档的角色不受影响。其余角色保持原样。`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `以下角色无法单独存储：${characterNames}${otherCount > 0 ? ` 等另外 ${otherCount} 个` : ''}。它们仍保持完全加载，并像之前一样正常使用，本应用在启动时不会再尝试归档它们。若要在此设备上重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `您的存档过大，自托管服务器无法将角色归档到其中，因此未归档任何内容，您的存档也保持原样。一切照常运行。若要在此设备上重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `本设备上的启动时角色归档已暂停，因为它连续两次未能完成。没有任何内容丢失，已归档的角色在您打开时仍会正常加载。在恢复之前，启动时不会再归档任何新角色。若要重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
     "cleanColdStorage": "清理未使用的归档数据和资源",
     "customSidebarConfig": "自定义侧边栏配置",
     "cleanColdStorageConfirm": "这将永久删除所有未使用的归档（冷存储）数据，以及所有未使用的资源文件，即不再被任何角色、模块、人设或设置使用的图片和音频。其中部分内容将来可能仍然有用，且删除后无法恢复。是否要继续？",

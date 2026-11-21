@@ -1,0 +1,31 @@
+{
+  "type": "character",
+  "name": "Two",
+  "chaId": "00000000-0000-4000-8000-000000000502",
+  "creatorNotes": "n",
+  "coldstorage": "00000000-0000-4000-8000-000000000503",
+  "coldStoragedChats": [],
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000000504",
+      "message": [
+        {
+          "time": 1795262400000,
+          "data": "",
+          "role": "char"
+        }
+      ],
+      "note": "",
+      "name": "",
+      "localLore": []
+    }
+  ],
+  "chatPage": 0,
+  "firstMsgIndex": 0,
+  "coldVersion": 3,
+  "coldChatCount": 1,
+  "tags": [
+    "x"
+  ],
+  "creator": "me"
+}

@@ -161,7 +161,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { DBState, selectedCharID, selIdState } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { alertError, alertNormal } from 'src/ts/alert'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { beginWork, type WorkHandle } from 'src/ts/process/chatOrigin'
 import { changeChar, supersedeChangeChar } from './characters'
 import { changeChatTo } from 'src/ts/globalApi.svelte'

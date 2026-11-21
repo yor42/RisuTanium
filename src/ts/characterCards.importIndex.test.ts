@@ -1,16 +1,13 @@
 // @vitest-environment happy-dom
 
 /**
- * Card import straight to the archive (`characterCards.ts`): a new card is formatted, written to a unit by the
- * one-character archive and enters the library as a stub; when archiving cannot run, or the write fails, the card
- * enters the library live, silently. A batch stops trying after two failures in a row.
+ * Card import (`characterCards.ts`): every imported card enters the library live, whatever `archiveCharacters` says, and
+ * each outcome names the index of its own card, read at the push and not after a later await.
  *
- * The real `characterCards.ts` and `pngChunk.ts` run on synthetic cards. The archive engine is replaced by a
- * scripted stand-in (its own contract is tested in `coldCharacterArchive.svelte.test.ts`); `bootArchiveState`
- * is real. A pass here says nothing about the real stores.
+ * The real `characterCards.ts` and `pngChunk.ts` run on synthetic cards. A pass here says nothing about the real stores.
  *
- * Labels: "new behaviour" tests the archive wiring, which does not exist on the base; "regression reproducer" fails
- * on the base for the defect it names; "guard" passes with or without the change.
+ * Labels: "regression reproducer" fails on the base for the defect it names; "guard" and "compatibility guard" pass with
+ * or without the change that removed the archive import path.
  */
 
 import crc32 from 'crc/crc32'
@@ -19,9 +16,6 @@ import * as fflate from 'fflate'
 
 //#region module mocks
 
-type Target = { kind: 'new' | 'loaded', character: Record<string, unknown> }
-type Step = 'ok' | 'write-failed' | 'too-large' | 'setting' | 'throw' | 'gate'
-
 const h = vi.hoisted(() => ({
     errors: [] as string[],
     normals: [] as string[],
@@ -29,13 +23,7 @@ const h = vi.hoisted(() => ({
     picked: null as File[] | null,
     ordered: 0,
     uuid: 0,
-    /** what the scripted engine does for each call, in order; 'ok' once the script runs out */
-    script: [] as Step[],
-    engineCalls: [] as Target[],
-    /** while set, every engine call waits for the gate of its own number before it acts */
-    engineGates: null as null | Array<Promise<void>>,
     formatCalls: [] as unknown[],
-    formatThrowsOnce: false,
     /** while set, an asset save waits for this promise */
     saveGate: null as Promise<void> | null,
     saveWaiting: 0,
@@ -115,10 +103,6 @@ vi.mock(import('src/ts/characters'), () => ({
     changeChar: vi.fn(async (index: number) => { h.changed.push(index) }),
     characterFormatUpdate: vi.fn((c: unknown) => {
         h.formatCalls.push(c)
-        if (h.formatThrowsOnce) {
-            h.formatThrowsOnce = false
-            throw new Error('format failed')
-        }
         return c
     }),
 }) as unknown as typeof import('src/ts/characters'))
@@ -194,36 +178,9 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
     onOpenUrl: vi.fn(async () => vi.fn()),
 }))
 
-/** The scripted stand-in for the archive engine: 'ok' appends a stub the way the real one would and returns its index. */
-vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
-    archiveCharacterNow: vi.fn(async (target: Target) => {
-        const call = h.engineCalls.push(target) - 1
-        await h.engineGates?.[call]
-        const step = h.script[call] ?? 'ok'
-        if (step === 'throw') {
-            throw new Error('engine failed')
-        }
-        if (step === 'write-failed') {
-            return { ok: false, reason: 'write-failed', writtenUnitKey: null, countsAsFailure: true }
-        }
-        if (step === 'too-large') {
-            return { ok: false, reason: 'too-large', writtenUnitKey: null, countsAsFailure: false }
-        }
-        if (step === 'setting' || step === 'gate') {
-            return { ok: false, reason: 'setting', writtenUnitKey: null, countsAsFailure: false }
-        }
-        const stub = { chaId: target.character.chaId, name: target.character.name, coldstorage: `unit-${call}` }
-        const index = h.db.characters.push(stub) - 1
-        return { ok: true, index, chaId: String(stub.chaId), stub, unitKey: `unit-${call}`, previousUnitKey: null }
-    }),
-    archiveMayRun: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/process/coldCharacterArchive'))
-
 //#endregion
 
 import { downloadRisuHub, importCharacter, importCharacterProcess } from 'src/ts/characterCards'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
-import { archiveCharacterNow } from 'src/ts/process/coldCharacterArchive'
 import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
 import { answerImportCard } from 'src/ts/process/tests/answerImportCard'
 import { language } from 'src/lang'
@@ -304,17 +261,10 @@ beforeEach(() => {
     h.picked = null
     h.ordered = 0
     h.uuid = 0
-    h.script = []
-    h.engineCalls = []
-    h.engineGates = null
     h.formatCalls = []
-    h.formatThrowsOnce = false
     h.saveGate = null
     h.saveWaiting = 0
     h.changed = []
-    vi.mocked(archiveCharacterNow).mockClear()
-    resetBootArchiveStateForTest()
-    noteBootArchiveSession(true)
     setup()
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -335,72 +285,47 @@ async function pick(files: File[]) {
 const download = (arg: { forceRedirect?: boolean, creator?: string } = {}) => answerImportCard(() => downloadRisuHub('id', { creator: 'someone', ...arg }))
 
 // ---------------------------------------------------------------------------------------------
-// The three push sites
+// Every card enters live
 // ---------------------------------------------------------------------------------------------
 
-describe('a card imported on the archive path', () => {
+describe('a card imported with archiveCharacters on', () => {
     test.each([
         ['a tavern json card', () => ({ name: 'a.json', data: jsonBytes(tavernCard('Tav')) }), 'Tav'],
         ['a tavern png card', () => ({ name: 'a.png', data: tavernPng('TavPng') }), 'TavPng'],
         ['a v2 json card', () => ({ name: 'a.json', data: jsonBytes(v2Card('Two')) }), 'Two'],
         ['a v3 json card', () => ({ name: 'a.json', data: enc.encode(v3Json('Three')) }), 'Three'],
-        ['a v3 charx', () => ({ name: 'a.charx', data: charx('Archive') }), 'Archive'],
+        ['a v3 charx', () => ({ name: 'a.charx', data: charx('Live') }), 'Live'],
         ['a v2 png card', () => ({ name: 'a.png', data: png('Image') }), 'Image'],
-    ])('new behaviour: %s enters the library as a stub, formatted first, and its index is the engine\'s', async (_kind, file, name) => {
-        const returned = await importCharacterProcess({ ...file(), archive: true })
-
-        expect(returned).toBe(0)
-        expect(stubs()).toEqual([true])
-        expect(names()).toEqual([name])
-        expect(h.engineCalls).toHaveLength(1)
-        expect(h.engineCalls[0].kind).toBe('new')
-        expect(h.engineCalls[0].character.name).toBe(name)
-        expect(h.formatCalls).toEqual([h.engineCalls[0].character])
-        expect(h.errors).toEqual([])
-        expect(h.normals.length).toBeGreaterThan(0)
-    })
-
-    test('new behaviour: the card that falls back to live is formatted, pushed whole and reported like any import', async () => {
-        h.script = ['write-failed']
-
-        const returned = await importCharacterProcess({ name: 'a.json', data: jsonBytes(v2Card('Live')), archive: true })
+    ])('compatibility guard: %s enters the library live, with its own index and no format call', async (_kind, file, name) => {
+        const returned = await importCharacterProcess(file())
 
         expect(returned).toBe(0)
         expect(stubs()).toEqual([false])
+        expect(names()).toEqual([name])
+        expect(h.formatCalls).toEqual([])
         expect(h.errors).toEqual([])
         expect(h.normals.length).toBeGreaterThan(0)
     })
+})
 
-    test('guard: without the archive flag nothing is formatted or archived, as before', async () => {
+describe('whatever the archiveCharacters setting says', () => {
+    test.each([
+        ['the setting is true', () => { h.db.archiveCharacters = true }],
+        ['the setting is false', () => { h.db.archiveCharacters = false }],
+        ['the setting is not yet committed (undefined)', () => { delete h.db.archiveCharacters }],
+    ])('compatibility guard: %s -> imported live and no format call', async (_name, apply) => {
+        apply()
+
         const returned = await importCharacterProcess({ name: 'a.json', data: jsonBytes(v2Card('Live')) })
 
         expect(returned).toBe(0)
         expect(stubs()).toEqual([false])
-        expect(h.engineCalls).toEqual([])
-        expect(h.formatCalls).toEqual([])
-    })
-})
-
-describe('when archiving cannot run', () => {
-    test.each([
-        ['the session cannot archive', () => noteBootArchiveSession(false)],
-        ['the setting is false', () => { h.db.archiveCharacters = false }],
-        ['the setting is not yet committed (undefined)', () => { delete h.db.archiveCharacters }],
-    ])('compatibility guard: %s -> imported live, no format call and the engine is never called', async (_name, apply) => {
-        apply()
-
-        const returned = await importCharacterProcess({ name: 'a.json', data: jsonBytes(v2Card('Live')), archive: true })
-
-        expect(returned).toBe(0)
-        expect(stubs()).toEqual([false])
         expect(names()).toEqual(['Live'])
-        expect(h.engineCalls).toEqual([])
         expect(h.formatCalls).toEqual([])
         expect(h.errors).toEqual([])
     })
 
     test('compatibility guard: index 0, the first character of an empty library, is reported as imported', async () => {
-        noteBootArchiveSession(false)
         const spec = await importCharacterProcess({ name: 'a.json', data: jsonBytes(v2Card('First')) })
         expect(spec).toBe(0)
 
@@ -414,92 +339,12 @@ describe('when archiving cannot run', () => {
     })
 })
 
-// ---------------------------------------------------------------------------------------------
-// The batch breaker
-// ---------------------------------------------------------------------------------------------
-
 describe('a batch through the picker', () => {
-    const five = () => [charx('C1'), charx('C2'), charx('C3'), charx('C4'), charx('C5')]
-
-    test('new behaviour: two failures in a row import the rest live without trying; the earlier success stays a stub', async () => {
-        h.script = ['ok', 'write-failed', 'write-failed']
-
-        await pick(five())
-
-        expect(names()).toEqual(['C1', 'C2', 'C3', 'C4', 'C5'])
-        expect(stubs()).toEqual([true, false, false, false, false])
-        expect(h.engineCalls).toHaveLength(3)
-        expect(h.errors).toEqual([])
-    })
-
-    test('new behaviour: failures that are not in a row never stop the batch', async () => {
-        h.script = ['write-failed', 'ok', 'write-failed', 'ok']
-
-        await pick([charx('C1'), charx('C2'), charx('C3'), charx('C4')])
-
-        expect(stubs()).toEqual([false, true, false, true])
-        expect(h.engineCalls).toHaveLength(4)
-    })
-
-    test('new behaviour: a refusal that is not a storage failure does not count toward the breaker', async () => {
-        h.script = ['setting', 'setting', 'setting', 'ok']
-
-        await pick([charx('C1'), charx('C2'), charx('C3'), charx('C4')])
-
-        expect(h.engineCalls).toHaveLength(4)
-        expect(stubs()).toEqual([false, false, false, true])
-    })
-
-    test('guard (MC-308 3): cards refused as too large for the Node server are not counted, so the batch is not stopped and the next card archives; catches a caller that counts every refusal', async () => {
-        h.script = ['too-large', 'too-large', 'too-large', 'ok']
-
-        await pick([charx('C1'), charx('C2'), charx('C3'), charx('C4')])
-
-        expect(h.engineCalls).toHaveLength(4)
-        expect(names()).toEqual(['C1', 'C2', 'C3', 'C4'])
-        expect(stubs()).toEqual([false, false, false, true])
-        expect(h.errors).toEqual([])
-    })
-
-    test('new behaviour: an engine that throws is a failure for the breaker and the card imports live', async () => {
-        h.script = ['throw', 'throw']
-
-        await pick([charx('C1'), charx('C2'), charx('C3')])
-
-        expect(stubs()).toEqual([false, false, false])
-        expect(h.engineCalls).toHaveLength(2)
-        expect(h.errors).toEqual([])
-    })
-
-    test('new behaviour: a format step that throws imports that card live, skips the engine and leaves the breaker alone', async () => {
-        h.script = ['write-failed', 'ok', 'ok']
-        h.formatThrowsOnce = true
-
-        await pick([charx('C1'), charx('C2'), charx('C3'), charx('C4')])
-
-        expect(names()).toEqual(['C1', 'C2', 'C3', 'C4'])
-        expect(h.engineCalls.map((call) => call.character.name)).toEqual(['C2', 'C3', 'C4'])
-        expect(stubs()).toEqual([false, false, true, true])
-        expect(h.errors).toEqual([])
-    })
-
-    test('new behaviour: each picker call has its own run, so an earlier batch\'s failures do not carry over', async () => {
-        h.script = ['write-failed', 'write-failed']
-        await pick([charx('C1'), charx('C2'), charx('C3')])
-        expect(h.engineCalls).toHaveLength(2)
-
-        h.script = []
-        await pick([charx('D1')])
-
-        expect(h.engineCalls).toHaveLength(3)
-        expect(stubs()[3]).toBe(true)
-    })
-
-    test('new behaviour: presets and modules in a batch are unaffected, and an off-spec json card archives', async () => {
+    test('compatibility guard: an off-spec json card in a batch with a charx imports live', async () => {
         await pick([jsonFile(tavernCard('Old'), 'old.json'), charx('Good')])
 
         expect(names()).toEqual(['Old', 'Good'])
-        expect(stubs()).toEqual([true, true])
+        expect(stubs()).toEqual([false, false])
         expect(h.ordered).toBe(2)
     })
 })
@@ -532,31 +377,31 @@ describe('downloadRisuHub', () => {
         globalThis.fetch = realFetch
     })
 
-    test('new behaviour: a realm png that does not open at once is archived and nothing is opened', async () => {
+    test('compatibility guard: a realm png that does not open at once is imported live and nothing is opened', async () => {
         stubFetch(realmPng('Realm'))
 
         await download()
 
-        expect(stubs()).toEqual([true])
+        expect(stubs()).toEqual([false])
+        expect(names()).toEqual(['Realm'])
         expect(h.changed).toEqual([])
     })
 
     test.each([
         ['goCharacterOnImport', () => { h.db.goCharacterOnImport = true }, {}],
         ['forceRedirect', () => {}, { forceRedirect: true }],
-    ])('new behaviour: a realm png with %s is imported live and the imported index is opened', async (_name, apply, arg) => {
+    ])('compatibility guard: a realm png with %s is imported live and the imported index is opened', async (_name, apply, arg) => {
         h.db.characters.push({ name: 'Existing' })
         apply()
         stubFetch(realmPng('Realm'))
 
         await download(arg)
 
-        expect(h.engineCalls).toEqual([])
         expect(names()).toEqual(['Existing', 'Realm'])
         expect(h.changed).toEqual([1])
     })
 
-    test('new behaviour: the opens-at-once decision is the one read before the download', async () => {
+    test('compatibility guard: the opens-at-once decision is the one read before the download', async () => {
         h.db.goCharacterOnImport = true
         const response = realmPng('Realm')
         let calls = 0
@@ -569,39 +414,28 @@ describe('downloadRisuHub', () => {
         await download()
 
         expect(calls).toBe(1)
-        expect(h.engineCalls).toEqual([])
         expect(h.changed).toEqual([0])
     })
 
-    test('new behaviour: a hub spec card that does not open at once is archived', async () => {
+    test('compatibility guard: a hub spec card that does not open at once is imported live and nothing is opened', async () => {
         stubFetch(hubJson())
 
         await download()
 
-        expect(stubs()).toEqual([true])
+        expect(stubs()).toEqual([false])
+        expect(names()).toEqual(['Hub'])
         expect(h.changed).toEqual([])
     })
 
-    test('new behaviour: a hub spec card that opens at once is imported live and its own index is opened', async () => {
+    test('compatibility guard: a hub spec card that opens at once is imported live and its own index is opened', async () => {
         h.db.characters.push({ name: 'Existing' }, { name: 'Other' })
         h.db.goCharacterOnImport = true
         stubFetch(hubJson())
 
         await download()
 
-        expect(h.engineCalls).toEqual([])
         expect(names()).toEqual(['Existing', 'Other', 'Hub'])
         expect(h.changed).toEqual([2])
-    })
-
-    test('new behaviour: a hub spec card imported live (opens at once) into an empty library is index 0 and is opened', async () => {
-        h.db.goCharacterOnImport = true
-        stubFetch(hubJson())
-
-        await download()
-
-        expect(names()).toEqual(['Hub'])
-        expect(h.changed).toEqual([0])
     })
 })
 
@@ -627,39 +461,5 @@ describe('two imports that overlap', () => {
         expect(typeof indexOfB).toBe('number')
         expect(h.db.characters[indexOfA as number].name).toBe('A')
         expect(h.db.characters[indexOfB as number].name).toBe('B')
-    })
-
-    test('new behaviour: two archive-path imports with a splice during the unit writes each get their own index', async () => {
-        h.db.characters.push({ name: 'Existing' })
-        const first = deferred()
-        const second = deferred()
-        h.engineGates = [first.promise, second.promise]
-
-        const a = importCharacterProcess({ name: 'a.json', data: jsonBytes(v2Card('A')), archive: true })
-        await vi.waitFor(() => expect(h.engineCalls).toHaveLength(1))
-        const b = importCharacterProcess({ name: 'b.json', data: jsonBytes(v2Card('B')), archive: true })
-        await vi.waitFor(() => expect(h.engineCalls).toHaveLength(2))
-        h.db.characters.splice(0, 1)
-        second.resolve()
-        first.resolve()
-        const [indexOfA, indexOfB] = [await a, await b]
-
-        expect(h.db.characters[indexOfA as number].name).toBe('A')
-        expect(h.db.characters[indexOfB as number].name).toBe('B')
-    })
-
-    test('new behaviour: a live card pushed after a splice during the format and archive wait reports its own index', async () => {
-        h.script = ['write-failed']
-        const gate = deferred()
-        h.engineGates = [gate.promise]
-        h.db.characters.push({ name: 'Existing' }, { name: 'Other' })
-
-        const pending = importCharacterProcess({ name: 'a.json', data: jsonBytes(v2Card('A')), archive: true })
-        await vi.waitFor(() => expect(h.engineCalls).toHaveLength(1))
-        h.db.characters.splice(0, 1)
-        gate.resolve()
-        const index = await pending
-
-        expect(h.db.characters[index as number].name).toBe('A')
     })
 })

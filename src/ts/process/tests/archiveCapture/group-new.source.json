@@ -1,0 +1,27 @@
+{
+  "type": "group",
+  "name": "Trio",
+  "image": "",
+  "chaId": "cha-group-new",
+  "characters": [
+    "cha-new-alice",
+    "cha-loaded-edited"
+  ],
+  "creatorNotes": "A group",
+  "chatPage": 0,
+  "chats": [
+    {
+      "id": "g1",
+      "name": "One",
+      "note": "",
+      "localLore": [],
+      "message": [
+        {
+          "role": "user",
+          "data": "hi group",
+          "time": 1
+        }
+      ]
+    }
+  ]
+}

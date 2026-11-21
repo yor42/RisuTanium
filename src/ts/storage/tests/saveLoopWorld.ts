@@ -31,7 +31,6 @@ export interface StartOptions {
     files?: Map<string, Uint8Array>
     crypto?: Crypto
     kind?: AppStoreKind
-    passCommitted?: boolean
     /** Replaces the boot: the store is seeded and the page mode is set by the caller. */
     boot?: (world: World) => Promise<void>
     /** Starts the save loop; a suite that needs to arrange the page first sets this to false. */
@@ -50,7 +49,6 @@ export interface World {
     api: typeof import('src/ts/globalApi.svelte')
     appStore: typeof import('src/ts/storage/store/appStore')
     marks: typeof import('src/ts/storage/characterSaveMarks')
-    bootState: typeof import('src/ts/process/memory/bootArchiveState')
     risuSave: typeof import('src/ts/storage/risuSave')
     pageMode: typeof import('src/ts/storage/pageStorageMode')
     errors: typeof import('src/ts/storage/store/errors')
@@ -146,7 +144,6 @@ export function createWorldKit(env: WorldEnv) {
         const api = await import('src/ts/globalApi.svelte')
         const appStore = await import('src/ts/storage/store/appStore')
         const marks = await import('src/ts/storage/characterSaveMarks')
-        const bootState = await import('src/ts/process/memory/bootArchiveState')
         const risuSave = await import('src/ts/storage/risuSave')
         const pageMode = await import('src/ts/storage/pageStorageMode')
         const errors = await import('src/ts/storage/store/errors')
@@ -167,7 +164,7 @@ export function createWorldKit(env: WorldEnv) {
             env.parked.add(earlier)
         }
         const world: World = {
-            id, store, api, appStore, marks, bootState, risuSave, pageMode, errors,
+            id, store, api, appStore, marks, risuSave, pageMode, errors,
             start() {
                 void api.saveDb()
             },
@@ -182,7 +179,6 @@ export function createWorldKit(env: WorldEnv) {
         } else {
             throw new Error('a world needs a boot')
         }
-        bootState.noteBootPassCommitted(options.passCommitted === true)
         store.ops.length = 0
         if (options.startLoop !== false) {
             world.start()

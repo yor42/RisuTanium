@@ -180,7 +180,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { alertError, alertNormal, alertToast, alertMd } from 'src/ts/alert'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { changeChar, createNewChat } from './characters'
 
 //#region fixtures and helpers

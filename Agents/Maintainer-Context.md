@@ -33935,6 +33935,14 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - "Leftover, not this PR (Recommended)": the chat export "HTML embed" (rich `ClipboardItem` copy) stays unavailable on plain HTTP and is recorded as a leftover.
 - "Localized invalid-key (Recommended)": a malformed Vertex private key shows the existing `vertexInvalidPrivateKey` message on both the WebCrypto and the fallback path. Network and token-response errors are not relabelled.
 
+### MC-2987 — #173 F-ARCH: delete the old character-archive path after capturing its output, 2026-11-21
+
+- Tag: decisions (maintainer answer relayed by lane A to the #173 session). Date: 2026-11-21. Exact times: UNKNOWN. ID assigned by lane A. Related: `MC-091`, `MC-329`, `MC-350`, `MC-175`, `MC-223`, `MC-058`, `#173`, `#129`, `#441`.
+
+**Question.** The old character-archive path (`coldCharacterArchive.ts`, `archiveGate.ts`, `bootArchiveState.ts`, the import-archive branch in `characterCards.ts`) can no longer run in any build: its boot flag is always off, and import, restore and Android data only read archived characters. It still produced the old-format archive fixtures several compatibility tests use. Delete it, or keep it frozen as test-only code and park the item?
+
+**What the maintainer chose.** Option A, delete it in two steps. First capture the real writer's output as committed fixtures and move the compatibility tests onto them (`MC-329`, producer-built fixtures). Then delete the engine, the gate, the boot archive state, the `characterCards.ts` import branch and its plumbing, the archive-only retained helpers, `buildColdStub`'s production copy, and the four orphan archive notice keys in all 8 locale files. Every reader stays: restore, conversion, export, Android MVP data (`MC-350`) and upstream stubs. Tier 2. The final PR closes `#173`. Not chosen: B, keep it frozen as test-only and park the item.
+
 
 ### MC-2990 — #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21
 

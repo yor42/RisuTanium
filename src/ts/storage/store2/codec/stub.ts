@@ -13,7 +13,7 @@ export function isColdStub(slot: object): boolean {
 }
 
 /**
- * The stub a shard entry stands for, with the fields `buildColdStub` gives an archived character: `coldstorage` is the
+ * The stub a shard entry stands for, with the fields an archived character's stub carries: `coldstorage` is the
  * entry's `u`, so the units are read from the store and not from a legacy cold-storage file. `chatPage`,
  * `firstMsgIndex` and the one dummy chat are placeholders; the encoder takes none of them from a stub. Every field
  * the entry holds that a stub may change (`name`, `image`, `creatorNotes`, `lastInteraction`, `trashTime`, a group's

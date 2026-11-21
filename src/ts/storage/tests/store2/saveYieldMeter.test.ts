@@ -8,7 +8,7 @@ import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
 import { startStore2, type Store2Kit } from '../store2SaveKit'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { buildSmall } from './codecFixtures'
 
 /**

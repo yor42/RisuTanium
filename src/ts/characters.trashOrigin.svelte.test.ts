@@ -231,7 +231,7 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { liveCharacterCheck, requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
 import { removeChar, restoreCharacterFromTrash, trashCharacters } from 'src/ts/characters'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { stubFromEntry } from 'src/ts/storage/store2/codec/stub'
 import type { ShardEntry } from 'src/ts/storage/store2/format'
 import type { Database, folder } from 'src/ts/storage/database.svelte'

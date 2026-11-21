@@ -21,7 +21,7 @@ import { createWorldKit, nextCommit, settled, sleepReal, until, type World } fro
 import { startStore2, store2Boot, type Store2Kit, type Store2StartOptions } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
 import { stubFromEntry } from 'src/ts/storage/store2/codec'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 
