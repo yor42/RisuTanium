@@ -336,6 +336,18 @@ $excludedTargets = @('.claude/scripts/guard-write.ps1', '.claude/scripts/write-g
     'Agents/Workflow-State.json', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md', 'Agents/mc/384.md', 'docs/Terms-of-Services.md', 'docs/Privacy-Policy.md', 'src/lib/Others/Legal.svelte')
 foreach ($excluded in $excludedTargets) { Test-FixtureHook "own worktree excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) -Cwd $wt) }
 foreach ($excluded in @('AGENTS.md', 'docs/workflow/gates.md', 'docs/Terms-of-Services.md', '.claude/agents/x.md')) { Test-FixtureHook "own worktree doc-writer excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) 'doc-writer' $wt) }
+foreach ($instruction in @('src/CLAUDE.md', 'src/deep/AGENTS.md', 'docs/GEMINI.md', 'CLAUDE.local.md', 'src/claude.md', 'src/.claude/agents/x.md', 'src/.claude/settings.json', '.mcp.json')) {
+    Test-FixtureHook "own worktree agent instruction $instruction" (New-WorktreePayload (Join-Path $wt $instruction) -Cwd $wt)
+}
+Test-FixtureHook 'own worktree ordinary Markdown near an instruction name' (New-WorktreePayload (Join-Path $wt 'src/CLAUDE-notes.md') -Cwd $wt) 0
+# Git's structure: a per-worktree directory outside <common>\worktrees, or a commondir naming nothing, is not a worktree.
+$offTree = Join-Path $repo '.claude/worktrees/off-tree'; $offGit = Join-Path $repo '.git/elsewhere/off-tree'
+[IO.Directory]::CreateDirectory($offTree) | Out-Null; [IO.Directory]::CreateDirectory($offGit) | Out-Null
+[IO.File]::WriteAllText((Join-Path $offGit 'commondir'), "../..`n"); [IO.File]::WriteAllText((Join-Path $offGit 'gitdir'), ((Join-Path $offTree '.git').Replace('\', '/') + "`n"))
+[IO.File]::WriteAllText((Join-Path $offTree '.git'), "gitdir: $offGit`n")
+Test-FixtureHook 'per-worktree directory outside common worktrees' (New-WorktreePayload (Join-Path $offTree 'src/a.ts') -Cwd $offTree)
+$lost = New-FixtureWorktree 'lost-common'; [IO.File]::WriteAllText((Join-Path $repo '.git/worktrees/lost-common/commondir'), "../../missing-common`n")
+Test-FixtureHook 'commondir naming a missing directory' (New-WorktreePayload (Join-Path $lost 'src/a.ts') -Cwd $lost)
 Test-FixtureHook 'own worktree near-miss name is ordinary' (New-WorktreePayload (Join-Path $wt 'src/AGENTS.md.ts') -Cwd $wt) 0
 $wtGuard = Join-Path $wt '.claude/scripts/guard-write.ps1'; Register-Fixture $wtGuard -AgentId 'wt-guard-coder'
 Test-FixtureHook 'own worktree excluded path with an exact grant' (New-WorktreePayload $wtGuard 'sonnet-coder' $wt 'wt-guard-coder') 0
@@ -366,7 +378,7 @@ Test-FixtureHook 'layout B translator ja' (New-WorktreePayload (Join-Path $wt 's
 Test-FixtureHook 'layout B main checkout target' (New-WorktreePayload (Join-Path $repo 'src/a.ts') -Cwd $wt) -Script $guardB
 Test-FixtureHook 'layout B missing cwd' (New-WorktreePayload (Join-Path $wt 'src/a.ts')) -Script $guardB
 Test-FixtureHook 'layout B scratch role' (New-WorktreePayload (Join-Path $wt 'src/a.ts') 'adversarial-reviewer' $wt) -Script $guardB
-foreach ($excluded in @('.claude/scripts/guard-write.ps1', '.claude/scripts/write-guard-common.ps1', '.claude/settings.json', '.claude/workflow-policy.json', 'Agents/Workflow-State.json', '.claude/scratch/write-scopes/x.json', 'docs/branding/logo.svg')) {
+foreach ($excluded in @('.claude/scripts/guard-write.ps1', '.claude/scripts/write-guard-common.ps1', '.claude/settings.json', '.claude/workflow-policy.json', 'Agents/Workflow-State.json', '.claude/scratch/write-scopes/x.json', 'docs/branding/logo.svg', 'src/CLAUDE.md', 'CLAUDE.local.md', 'src/.claude/agents/x.md', '.mcp.json')) {
     Test-FixtureHook "layout B excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) -Cwd $wt) -Script $guardB
 }
 foreach ($identityCase in @(@{ Role='sonnet-coder'; Cwd=$wt; Auto=$true }, @{ Role='sonnet-coder'; Cwd=$repo; Auto=$false }, @{ Role='opus-reviewer'; Cwd=$wt; Auto=$false })) {

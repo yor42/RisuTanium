@@ -91,8 +91,9 @@ function Get-GuardManifestPath([string]$SessionId, [string]$AgentId, [string]$Ro
 function Test-GuardWorktreePointer([string]$Root) {
     # A linked worktree's .git is a file whose gitdir names an existing per-worktree directory holding commondir.
     try {
-        # Git's own validation: the per-worktree directory sits under <common>\worktrees and its gitdir file
-        # links back to this root's .git, so a planted .git file elsewhere does not qualify.
+        # Git's own validation: the existing per-worktree directory sits under <common>\worktrees (so the common
+        # directory exists) and its gitdir file links back to this root's .git, so a planted .git file elsewhere
+        # does not qualify.
         $text = [IO.File]::ReadAllText((Join-Path $Root '.git'))
         if ($text -notmatch '(?m)^gitdir:[ \t]*(\S(?:.*\S)?)[ \t]*\r?$') { return $false }
         $gitDir = $Matches[1]
@@ -102,7 +103,6 @@ function Test-GuardWorktreePointer([string]$Root) {
         $common = [IO.File]::ReadAllText((Join-Path $gitDir 'commondir')).Trim()
         if (-not [IO.Path]::IsPathRooted($common)) { $common = Join-Path $gitDir $common }
         $common = [IO.Path]::GetFullPath($common).TrimEnd('\')
-        if (-not (Test-Path -LiteralPath $common -PathType Container)) { return $false }
         if (-not [IO.Path]::GetDirectoryName($gitDir).Equals((Join-Path $common 'worktrees'), [StringComparison]::OrdinalIgnoreCase)) { return $false }
         $back = [IO.File]::ReadAllText((Join-Path $gitDir 'gitdir')).Trim()
         if (-not [IO.Path]::IsPathRooted($back)) { $back = Join-Path $gitDir $back }
@@ -204,6 +204,9 @@ function Test-GuardWorktreeGrant([string]$Role, [object]$Cwd, [string]$Path) {
     if (-not ($owner -and $owner.Linked -and $owner.Root.Equals($worktree, [StringComparison]::OrdinalIgnoreCase))) { return $false }
     foreach ($relative in $GuardWorktreeExcludedTrees) { if (Test-GuardWithin $Path ([IO.Path]::GetFullPath((Join-Path $worktree $relative)))) { return $false } }
     foreach ($relative in $GuardWorktreeExcludedFiles) { if ($Path.Equals([IO.Path]::GetFullPath((Join-Path $worktree $relative)), [StringComparison]::OrdinalIgnoreCase)) { return $false } }
+    # Agent instruction files load at any depth, and a nested .claude directory carries agents, skills or settings.
+    $relativePath = $Path.Substring($worktree.TrimEnd('\').Length).TrimStart('\')
+    if ([IO.Path]::GetFileName($Path) -match '(?i)^(?:CLAUDE|CLAUDE\.local|AGENTS|GEMINI)\.md$' -or $relativePath -match '(?i)(?:^|\\)\.claude(?:\\|$)' -or $relativePath -ieq '.mcp.json') { return $false }
     return $true
 }
 function Read-GuardManifest([string]$SessionId, [string]$AgentId, [string]$Role) {
