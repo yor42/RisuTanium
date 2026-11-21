@@ -291,6 +291,29 @@ for (const arm of ['whole', 'stream'] as const) describe(`ChroMemory over the .b
         expect(Object.hasOwn(stored, 'ltmSettings')).toBe(false)
     })
 
+    test('IM1 guard (passes before and after): settings held while the engine is off survive a full-replace restore, shadow key included', async () => {
+        const settings: Entry = { budgetTokens: 1800, shadow: true, future: { deep: [1] } }
+        const page = await openPage()
+        await pageHolds(page, { ltmEngine: false, ltmSettings: settings })
+
+        await loadBin(page, await binWith(page, { ltmSettings: FILE_SETTINGS }))
+
+        const stored = await storedDatabase(page)
+        expect(stored.ltmEngine).toBe(false)
+        expect(stored.ltmSettings).toEqual(settings)
+    })
+
+    test('IM1 guard (passes before and after): settings on a page that never set ltmEngine survive a full-replace restore', async () => {
+        const settings: Entry = { budgetTokens: 1800, shadow: true, future: { deep: [1] } }
+        const page = await openPage()
+        await pageHolds(page, { ltmSettings: settings })
+
+        await loadBin(page, await binWith(page, { ltmSettings: FILE_SETTINGS }))
+
+        const stored = await storedDatabase(page)
+        expect(stored.ltmSettings).toEqual(settings)
+    })
+
     test('I2i guard: a page that chose another engine keeps its false flag and the file\'s legacy flags decide (passes before and after for the legacy flags)', async () => {
         const page = await openPage()
         await pageHolds(page, { ltmEngine: false })

@@ -118,7 +118,7 @@
 
 One global object with these fields:
 
-- `budgetTokens`: default `min(1200, 15% of max context)` [E: S0 output].
+- `budgetTokens`: default `min(2400, 15% of max context)` [E: S0 output, final settings].
 - `retrieval: 'lexical' | 'hybrid'`, default `lexical`. [D MC-2589]
 - `searchLore: boolean`. Its default is set by the S4 usefulness gate.
 - `loreRecallCap`: default 5,000 tokens; the user may raise it. [D MC-2600]
@@ -261,16 +261,20 @@ The engine runs at the existing memory slot, after the lorebook scan. [C index.s
    - The second call reuses step 1's returned counts, with `firstMessageChat` and `tokensBeforeMessages` restated for the shortened array, so the kept window is not tokenised twice.
    - Make-room never drops below the history floor F (step 1).
    - The trace records the kept-history tokens evicted, next to T.
-   - If that trim returns `fits: false`, or would break the floor, drop the lowest-ranked item from P and retry.
-   - If P becomes empty, return K0 unchanged. This satisfies I2.
+   - The room is computed before the pack, not found by retrying. Room is the context, minus the reserve below, minus the tokens that cannot leave (the newest F message chats, with the prompt parts before and after the history). The pack walk still admits items by `budgetTokens`, and the assembled block must also fit the room. This equals "trim, and when it fails drop the lowest-ranked item and retry": both succeed exactly when the floor's tokens fit the context minus T.
+   - The reserve is the character's `depth_prompt` tokens. The app adds that prompt after the trim and never trims it, so the room keeps them out of the history's share.
+   - Skip-ahead: after the walk, items drop from the lowest-ranked end on the walk's own estimate, with no new count, until the estimate fits. Only then is the block counted, and each failed count drops one more item. Cached item counts make the walk's choice independent of what the cache holds.
+   - Count budget: the walk keeps two count slots back for block counts, so it visits at most the cap minus three lines (the heading count takes one slot). The cap is 64 on a counter that gives the same count for the same text, and 12 on a varying counter (step 7).
+   - If the room is zero or negative, or P becomes empty, return K0 unchanged. This satisfies I2.
+   - Recheck last resort: the prompt's final token check is unchanged unless this send placed a block. With a placed block, the memory entries are emptied only when the send would otherwise fail: first when the content that cannot be removed already exceeds the limit, so history survives as the engine-off send keeps it, and again when the total is still over after every removable entry is emptied. The trace then says `dropped-at-recheck` and the send goes out without memory. This covers what the pre-assembly count misses (a later `depth_prompt` change, Lua `editRequest` additions, random CBS, overlapping `chat` ranges).
    - Chats newly dropped in this step are not retrieved this send. They become candidates on a later send if that send's engine-off trim drops them.
 5. **Return.** Prepend one memory message (`memo: 'supaMemory'`) to the kept set. [C index.svelte.ts:2000-2012]
    - This keeps the template `memory` card, the `<Previous Conversation>` wrap and the non-removable rule.
    - `lastMemory` is stamped from the first kept message chat *before* the memory message is prepended. [C :1975-1978]
-   - Inside the wrap, the block carries two headings: "Noted earlier (with source turn)" and "Earlier in this chat".
-6. **Errors.** Any engine error returns K0 unchanged for this send (I1 and I2 hold) and is shown in the trace.
+   - Inside the wrap, the block carries one heading, "Earlier in this chat" [D MC-3206]. The heading "Noted earlier (with source turn)" arrives with the notes in S5.
+6. **Errors.** Any engine error returns K0 unchanged for this send (I1 and I2 hold) and is shown in the trace. An error after the make-room splice keeps the block (the history is already shortened).
 7. **Counters that vary.** When `countMessagesInTrim` is already false engine-off (plugin tokenizer or Google Cloud counter), steps 3 and 4 use the same counter.
-   - At most 12 items are counted per send. [C index.svelte.ts:1629-1632; tokenizer.ts]
+   - At most 12 counts are made per send, retries included. One count of a line, of the heading or of the assembled block is one count. [C index.svelte.ts:1629-1632; tokenizer.ts]
    - If counting fails, step 6 applies.
 8. **Shadow mode.** Run steps 1 to 3, return K0 unchanged, and record P in the trace.
    - Lore recall in shadow mode computes and traces its entries but places none.

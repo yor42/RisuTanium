@@ -153,3 +153,23 @@ Tokeniser corner cases (kept; S1 states which reading it keeps): a mixed Han plu
 Tests: `s0/s0.harness.ts` runs the guards (tokeniser, scorer, generator options, merge, turns, overlap, trim, pack, make-room, recall, counter, statistics, controls, ledger, selection, a tiny tune and gate). It never runs `tune.mjs` or `gate.mjs` on the TUNE, GATE, GATE-R, FALLBACK or FALLBACK-R seeds. Scratch mutants run against a copy of this folder named by `LTM_S0_DIR` (the S0 modules) and `LTM_EVAL_DIR` (the generator).
 
 A change under `s0/` or `gen/` changes the oracle of `src/ts/process/memory/chroMemory/tests/s0Parity.test.ts`, which must then be run by hand, because CI skips `Agents/**`.
+
+## S1b recall harness
+
+`s1b-recall.harness.ts` measures the src engine against S0's gate result (spec 11, S1 exit row). It replays S0's GATE draw (seed 610001) at S0's final settings (L 1200, rareShare 0.005, budget 2400, F 4, C 32768, one query, the llama3 app counter, settings sha 16df6c4c) and runs every ask fact turn through the src ranker and `packForRoom` (the function the send also calls) instead of S0's pack and make-room. The S0 simulator runs beside it on the same chats, so each cell also reports the simulator's value, which reproduces the S0 gate figures.
+
+- Exit measure: src PACK recall (the walk and fit at limit = budget, before make-room) per cell, against the S0 gate value minus 0.05: M4-en .768, M4-ko .787, NF-real-en .508, NF-real-ko .475 (S0: .818, .837, .558, .525).
+- Reported beside it, not gating: src DELIVERED recall, the same pack at the room make-room leaves (context minus the newest F kept chats).
+- "Latest value present" is reported as k/n over the knowledge_update ask turns, with the spec's 28 update cases named beside n.
+- The chats are the ones S0's stop rule drew, so the cell sizes equal the gate's.
+- Run it by hand, one file at a time (CI skips `Agents/**`). `LTM_S1B_OUT` must lie under the temp folder and receives one `cell-<corpus>-<lang>.json` per cell. The NF-real cells run only when `LTM_REAL_AGG` names the aggregate file (outside both checkouts); their numbers stay in the temp folder (MC-2633) and only pass or fail goes into a PR.
+
+```powershell
+$env:LTM_S1B_OUT = "$env:TEMP\ltm-s1b-out"
+$env:LTM_REAL_AGG = "<aggregates.json>"   # optional
+node node_modules/vitest/vitest.mjs run --config Agents/Tools/ltm-eval/vitest.ltm.config.ts Agents/Tools/ltm-eval/s1b-recall.harness.ts
+```
+
+The CI-sized floor is `src/ts/process/memory/chroMemory/tests/recallFloor.test.ts`: on `corpus.ciSubset()` (context 4096 and budget 800, so the small chats leave a dropped set and a halved walk budget costs recall) src pack and delivered recall stay within 0.05 of the simulator's, knowledge updates included.
+
+`--ltm-bench [short|long]` of `../save-gen/synth-bin-gen.mjs` builds the device-row `.bin`: the device scale plus one character, "LTM Bench", with chats of 2000 and 5000 synthetic messages at spec 9's lengths, 40% Hangul, and `maxContext` 32768. A `.bin` cannot carry `ltmEngine`, so pick ChroMemory in Settings after the import. Without the flag the output is byte-identical.

@@ -71,6 +71,8 @@ vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 import { DBState } from 'src/ts/stores.svelte'
 import OtherBotSettings from './OtherBotSettings.svelte'
 import { language } from 'src/lang'
+import { fillLang } from 'src/lang/fill'
+import { defaultBudgetTokens } from 'src/ts/process/memory/chroMemory/settings'
 
 //#region helpers
 
@@ -180,19 +182,19 @@ describe('the memory Type dropdown follows the request path precedence', () => {
 describe('ChroMemory in the memory Type dropdown', () => {
     const bodyText = () => document.body.textContent ?? ''
 
-    test('reproducer: ChroMemory over V3 flags shows the ChroMemory value, option and preview, and no V3 panel', async () => {
+    test('UI6 reproducer: ChroMemory over V3 flags shows the ChroMemory value, option and description, and no V3 panel', async () => {
         installDb({ ltmEngine: true, hypaV3: true })
         const select = await typeSelect()
         expect(select.value).toBe('chroMemory')
         expect(Array.from(select.options).some((o) => o.value === 'chroMemory')).toBe(true)
-        expect(bodyText()).toContain(language.chroMemoryPreviewDesc)
+        expect(bodyText()).toContain(language.chroMemoryDesc)
         expect(bodyText()).not.toContain(language.hypaV3Settings.descriptionLabel)
     })
 
-    test('guard: a V3 database without ChroMemory shows no preview line and its V3 panel', async () => {
+    test('guard: a V3 database without ChroMemory shows no ChroMemory description and its V3 panel', async () => {
         installDb({ hypaV3: true })
         await typeSelect()
-        expect(bodyText()).not.toContain(language.chroMemoryPreviewDesc)
+        expect(bodyText()).not.toContain(language.chroMemoryDesc)
         expect(bodyText()).toContain(language.hypaV3Settings.descriptionLabel)
     })
 
@@ -202,6 +204,85 @@ describe('ChroMemory in the memory Type dropdown', () => {
         await choose(await typeSelect(), 'chroMemory')
         expect(memoryFields()).toEqual({ supaModelType: 'none', memoryAlgorithmType: 'none', hypav2: false, hanuraiEnable: false, hypaV3: false })
         expect(DBState.db.ltmEngine).toBe(true)
+    })
+})
+
+describe('the ChroMemory budget input (UI6)', () => {
+    const bodyText = () => document.body.textContent ?? ''
+
+    async function budgetInput(settings?: unknown, maxContext = 8000): Promise<HTMLInputElement> {
+        installDb({ ltmEngine: true })
+        Object.assign(DBState.db, { maxContext })
+        if (settings !== undefined) (DBState.db as unknown as Record<string, unknown>).ltmSettings = settings
+        const select = await typeSelect()
+        const root = select.closest('div')!.parentElement!
+        const input = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="number"]')).find((el) =>
+            (el.getAttribute('aria-labelledby') ?? '').endsWith('-chro-budget'))
+        if (!input) throw new Error('the budget input is not shown')
+        return input
+    }
+    const stored = () => (DBState.db as unknown as { ltmSettings?: unknown }).ltmSettings
+
+    async function type(input: HTMLInputElement, text: string, commit: boolean): Promise<void> {
+        input.value = text
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        if (commit) input.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+        await sleep(5)
+    }
+
+    test('the description fills the automatic budget for the current context size', async () => {
+        await budgetInput(undefined, 8000)
+        expect(bodyText()).toContain(fillLang(language.chroMemoryBudgetDesc, { tokens: defaultBudgetTokens(8000) }))
+    })
+
+    test('mounting over a stored budget shows it, and writes nothing', async () => {
+        const settings = { budgetTokens: 900, future: { x: 1 } }
+        const input = await budgetInput(settings)
+        expect(input.value).toBe('900')
+        expect(stored()).toEqual({ budgetTokens: 900, future: { x: 1 } })
+    })
+
+    test('mounting over a bad ltmSettings shape shows blank and writes nothing', async () => {
+        const input = await budgetInput('garbage')
+        expect(input.value).toBe('')
+        expect(stored()).toBe('garbage')
+    })
+
+    test('typing 0, a minus sign or a decimal writes nothing until change', async () => {
+        const input = await budgetInput({ budgetTokens: 900, future: { x: 1 } })
+        for (const text of ['0', '-', '1500.5']) {
+            await type(input, text, false)
+            expect(stored()).toEqual({ budgetTokens: 900, future: { x: 1 } })
+        }
+    })
+
+    test('change writes the normalized value and keeps unknown keys', async () => {
+        const input = await budgetInput({ budgetTokens: 900, future: { x: 1 } })
+        await type(input, '1500', true)
+        expect(stored()).toEqual({ budgetTokens: 1500, future: { x: 1 } })
+        expect(input.value).toBe('1500')
+    })
+
+    test('G2-F8: a rejected value over an already blank field is cleared from the display, though the stored value did not change', async () => {
+        for (const text of ['0', '1500.5']) {
+            document.body.innerHTML = ''
+            const input = await budgetInput({ future: { x: 1 } })
+            await type(input, text, true)
+            expect(stored()).toEqual({ future: { x: 1 } })
+            expect(input.value).toBe('')
+        }
+    })
+
+    test('change with a value that is not a positive integer deletes the key, and the field shows blank (G2-F8)', async () => {
+        for (const text of ['0', '1500.5', '']) {
+            document.body.innerHTML = ''
+            const input = await budgetInput({ budgetTokens: 900, future: { x: 1 } })
+            await type(input, text, true)
+            expect(stored()).toEqual({ future: { x: 1 } })
+            expect(input.value).toBe('')
+        }
     })
 })
 

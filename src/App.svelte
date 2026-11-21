@@ -27,7 +27,7 @@
     import CustomGUISettingMenu from './lib/Setting/Pages/CustomGUISettingMenu.svelte';
     import { ArrowUpIcon, GlobeIcon, PlusIcon } from '@lucide/svelte';
     import { hypaV3ModalOpen, hypaV3ProgressStore } from "./ts/stores.svelte";
-    import HypaV3Modal from './lib/Others/HypaV3Modal.svelte';
+    import MemoryModalHost from './lib/Others/MemoryModalHost.svelte';
     import HypaV3Progress from './lib/Others/HypaV3Progress.svelte';
     import PopupList from './lib/UI/PopupList.svelte';
     import EasyPanel from './lib/Others/ProTools/EasyPanel.svelte';
@@ -323,7 +323,7 @@
         <BookmarkList />
     {/if}
     {#if $hypaV3ModalOpen}
-        <HypaV3Modal />
+        <MemoryModalHost />
     {/if}
     <SavePopupIconComp />
     {#if $hypaV3ProgressStore.open}

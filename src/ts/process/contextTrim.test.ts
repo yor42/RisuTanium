@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import type { OpenAIChat } from './index.svelte'
-import { LAZY_BEFORE_LIMIT, LAZY_COUNT_LIMIT, LAZY_ENTRY_LIMIT, totalInSendOrder, trimChatsToContext } from './contextTrim'
+import { LAZY_BEFORE_LIMIT, LAZY_COUNT_LIMIT, LAZY_ENTRY_LIMIT, restateForKept, totalInSendOrder, trimChatsToContext } from './contextTrim'
 
 /**
  * `trimChatsToContext` against a copy of the send's eager trim: the message
@@ -287,5 +287,110 @@ describe('guard: the total in send order', () => {
             count: async (chat) => c.counts.get(chat)!,
         })
         expect(Object.is(total, 13.1 + 0.1 + 0.2 + 0.3 + 0.7)).toBe(true)
+    })
+})
+describe('keepAtLeast, dropped, counts and restateForKept', () => {
+    // A fractional `tokensBeforeMessages` forces the eager form; an integer one takes the lazy walk.
+    const forms: Array<[string, number]> = [['lazy', 0], ['eager', 0.5]]
+
+    async function run(c: Case, extra: number, keepAtLeast?: number) {
+        const chats = c.chats.slice()
+        const result = await trimChatsToContext({
+            chats,
+            firstMessageChat: c.firstMessageChat,
+            tokensBeforeMessages: c.tokensBeforeMessages + extra,
+            tokensAfterMessages: c.tokensAfterMessages,
+            countedMessages: c.countedMessages,
+            maxContextTokens: c.maxContextTokens,
+            count: async (chat) => c.counts.get(chat)!,
+            ...(keepAtLeast === undefined ? {} : { keepAtLeast }),
+        })
+        return { ...result, kept: chats }
+    }
+
+    test('CT1 regression reproducer: a total that needs dropping past keepAtLeast fails before any splice', async () => {
+        for(const [form, extra] of forms){
+            const c = makeCase([], [10, 10, 10, 10, 10], 0, [], 25)
+            // Three chats must go to fit 25; keeping 4 forbids it.
+            const out = await run(c, extra, 4)
+            expect(out.fits, form).toBe(false)
+            expect(out.dropped, form).toEqual([])
+            expect(out.kept, form).toEqual(c.chats)
+            const ok = await run(c, extra, 2)
+            expect(ok.fits, form).toBe(true)
+            expect(ok.kept.length, form).toBe(2)
+        }
+    })
+
+    test('CT2 guard: the default keepAtLeast is 1, and dropped is the removed prefix with every counted chat in counts', async () => {
+        for(let seed = 1; seed <= 500; seed++){
+            const next = random(seed)
+            const prefix = Array.from({ length: next(3) }, () => next(40))
+            const messages = Array.from({ length: next(30) }, () => next(50))
+            const before = next(100) + prefix.reduce((a, b) => a + b, 0)
+            const c = makeCase(prefix, messages, before, [next(20)], next(900))
+            for(const [form, extra] of forms){
+                const implicit = await run(c, extra)
+                const explicit = await run(c, extra, 1)
+                expect(implicit.fits, form).toBe(explicit.fits)
+                expect(implicit.kept, form).toEqual(explicit.kept)
+                expect(Object.is(implicit.currentTokens, explicit.currentTokens), form).toBe(true)
+                expect(implicit.dropped, form).toEqual(c.chats.slice(0, c.chats.length - implicit.kept.length))
+                if(implicit.fits){
+                    for(const chat of implicit.dropped.filter((_, i) => i < c.firstMessageChat)){
+                        expect(implicit.counts.get(chat), form).toBe(c.counts.get(chat))
+                    }
+                    for(const chat of implicit.kept.filter((chat) => implicit.counts.has(chat))){
+                        expect(implicit.counts.get(chat), form).toBe(c.counts.get(chat))
+                    }
+                }
+                else{
+                    expect(implicit.dropped, form).toEqual([])
+                }
+            }
+        }
+    })
+
+    test('CT3 composition: trim to L1, restate, trim to L2 <= L1 equals one trim to L2', async () => {
+        for(let seed = 1; seed <= 800; seed++){
+            const next = random(seed)
+            const prefix = Array.from({ length: next(4) }, () => 1 + next(40))
+            const messages = Array.from({ length: 1 + next(40) }, () => 1 + next(50))
+            const before = next(100) + prefix.reduce((a, b) => a + b, 0)
+            const after = [next(20)]
+            const total = before + messages.reduce((a, b) => a + b, 0) + after[0]
+            const l2 = next(total + 1)
+            const l1 = l2 + next(total - l2 + 1)
+            for(const [form, extra] of forms){
+                const c = makeCase(prefix, messages, before, after, l1)
+                const first = await run(c, extra)
+                if(!first.fits) continue
+                const restated = restateForKept({ firstMessageChat: c.firstMessageChat, tokensBeforeMessages: c.tokensBeforeMessages + extra, dropped: first.dropped, counts: first.counts })
+                const rest = first.kept
+                const second = await trimChatsToContext({
+                    chats: rest,
+                    firstMessageChat: restated.firstMessageChat,
+                    tokensBeforeMessages: restated.tokensBeforeMessages,
+                    tokensAfterMessages: after,
+                    countedMessages: new Map([...first.counts].filter(([chat]) => rest.includes(chat))),
+                    maxContextTokens: l2,
+                    count: async (chat) => c.counts.get(chat)!,
+                })
+                const single = await run({ ...c, maxContextTokens: l2 }, extra)
+                expect(second.fits, `${form} seed ${seed}`).toBe(single.fits)
+                if(single.fits){
+                    expect(rest, `${form} seed ${seed}`).toEqual(single.kept)
+                    expect(Object.is(second.currentTokens, single.currentTokens), `${form} seed ${seed}`).toBe(true)
+                }
+            }
+        }
+    })
+
+    test('restateForKept: the message index shifts by the dropped count and only dropped prefix chats leave tokensBeforeMessages', () => {
+        const chats: OpenAIChat[] = [0, 1, 2, 3, 4].map((i) => ({ role: 'user', content: `c${i}` }))
+        const counts = new Map(chats.map((chat, i) => [chat, 10 * (i + 1)] as [OpenAIChat, number]))
+        expect(restateForKept({ firstMessageChat: 2, tokensBeforeMessages: 100, dropped: chats.slice(0, 1), counts })).toEqual({ firstMessageChat: 1, tokensBeforeMessages: 90 })
+        expect(restateForKept({ firstMessageChat: 2, tokensBeforeMessages: 100, dropped: chats.slice(0, 4), counts })).toEqual({ firstMessageChat: 0, tokensBeforeMessages: 70 })
+        expect(restateForKept({ firstMessageChat: 2, tokensBeforeMessages: 100, dropped: [], counts })).toEqual({ firstMessageChat: 2, tokensBeforeMessages: 100 })
     })
 })

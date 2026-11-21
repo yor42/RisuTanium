@@ -19,7 +19,7 @@ vi.mock('../Utility/utilityGate', () => ({ utilityVisible: vi.fn(() => false), u
 vi.mock('../../lang', () => ({ language: {
     chatShellMoreActions: 'More actions', tools: 'Tools', continueResponse: 'Continue', ttsStop: 'Stop speech',
     chatShellStickers: 'Stickers', chatList: 'Chat list', easyPanel: 'Easy panel',
-    hypaMemoryV2Modal: 'Hypa V2', hypaMemoryV3Modal: 'Hypa V3', screenshot: 'Screenshot',
+    hypaMemoryV2Modal: 'Hypa V2', hypaMemoryV3Modal: 'Hypa V3', chroMemoryModal: 'ChroMemory Modal', screenshot: 'Screenshot',
     modules: 'Modules', reroll: 'Reroll', chatShellUtility: 'Utility', chatShellTogglesTitle: 'Toggles',
     alerts: { screenshotTaking: 'Taking screenshot', screenshotMerging: 'Merging' },
     screenshotSaved: 'Saved', errors: { screenshotFailed: 'Screenshot failed' },
@@ -198,8 +198,9 @@ describe('PlusSheet', () => {
         target.remove()
     })
 
-    test('reproducer: ChroMemory over V2 and V3 flags offers no Hypa memory row', async () => {
-        const { DBState } = await import('../../ts/stores.svelte')
+    test('UI1 reproducer: ChroMemory over V2 and V3 flags offers the ChroMemory row and no Hypa row; a click opens the modal flag', async () => {
+        const { DBState, hypaV3ModalOpen } = await import('../../ts/stores.svelte')
+        hypaV3ModalOpen.set(false)
         Object.assign(DBState.db, { showMenuHypaMemoryModal: true, supaModelType: 'distilbart', hypav2: true, hypaV3: true, ltmEngine: true })
         const { default: PlusSheet } = await import('./PlusSheet.svelte')
         const target = document.createElement('div')
@@ -209,6 +210,23 @@ describe('PlusSheet', () => {
         flushSync()
         expect(row(target, 'Hypa V2')).toBeUndefined()
         expect(row(target, 'Hypa V3')).toBeUndefined()
+        expect(row(target, 'ChroMemory Modal')).toBeDefined()
+        row(target, 'ChroMemory Modal')?.click()
+        expect(get(hypaV3ModalOpen)).toBe(true)
+        await unmount(app)
+        target.remove()
+    })
+
+    test('UI1 reproducer: ChroMemory with the menu setting off offers no memory row (MC-3205)', async () => {
+        const { DBState } = await import('../../ts/stores.svelte')
+        Object.assign(DBState.db, { showMenuHypaMemoryModal: false, hypav2: false, hypaV3: false, ltmEngine: true })
+        const { default: PlusSheet } = await import('./PlusSheet.svelte')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const props = $state({ open: true, opener: null, background: [], onclose: () => { props.open = false }, onstickers: vi.fn(), onchatlist: vi.fn(), onmodules: vi.fn() })
+        const app = mount(PlusSheet, { target, props })
+        flushSync()
+        expect(row(target, 'ChroMemory Modal')).toBeUndefined()
         await unmount(app)
         target.remove()
     })
