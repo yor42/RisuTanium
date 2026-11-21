@@ -279,18 +279,29 @@ describe('the snapshot', () => {
 })
 
 describe('hidden states', () => {
-    const cases: [string, () => Slot[]][] = [
-        ['zero characters', () => []],
-        ['only never-opened characters', () => [warm('a', 0), warm('b', undefined), warm('c', 0)]],
-        ['only trashed characters', () => [warm('a', 5000, { trashTime: 3 }), warm('b', 4000, { trashTime: 3 })]],
-    ]
-    test.each(cases)('S3b-R6: %s render no section, no heading and no stage', (_name, build) => {
-        setCharacters(build())
+    test('S3b-R6: zero characters render no shelf section, no heading and no stage', () => {
+        setCharacters([])
         const { root } = mountShell()
         expect(root.querySelector('[data-part="home-shelf-section"]')).toBeNull()
         expect(root.textContent).not.toContain(language.homeStoriesHeading)
         expect(root.querySelector('[data-part="home-stage"]')).toBeNull()
         const columns = root.querySelector('[data-part="home-columns"]')!
         expect(columns.firstElementChild!.getAttribute('data-part')).toBe('home-side')
+    })
+
+    const withLibrary: [string, () => Slot[]][] = [
+        ['only never-opened characters', () => [warm('a', 0), warm('b', undefined), warm('c', 0)]],
+        ['only trashed characters', () => [warm('a', 5000, { trashTime: 3 }), warm('b', 4000, { trashTime: 3 })]],
+    ]
+    test.each(withLibrary)('S3b-R6 (S4a-G3): %s render no shelf section and no shelf heading; the stage holds exactly the library section', (_name, build) => {
+        setCharacters(build())
+        const { root } = mountShell()
+        expect(root.querySelector('[data-part="home-shelf-section"]')).toBeNull()
+        expect(root.textContent).not.toContain(language.homeStoriesHeading)
+        const stage = root.querySelector('[data-part="home-stage"]')!
+        expect(stage).not.toBeNull()
+        expect(Array.from(stage.children).map((c) => c.getAttribute('data-part'))).toEqual(['home-library'])
+        const columns = root.querySelector('[data-part="home-columns"]')!
+        expect(columns.firstElementChild).toBe(stage)
     })
 })

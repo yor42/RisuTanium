@@ -2,16 +2,17 @@
 
 /**
  * `HomeShell.svelte`: Home's landing (the real `MainMenu` with the Library button in its header)
- * and the lazily loaded library. Every creation starts at the landing; the landing stays up while
- * the library chunk is pending; a chunk that fails to load goes back to the landing and reports
- * the error.
+ * and the full-screen library view. Every creation starts at the landing; the Library button shows the
+ * view at once, since the library is a static import. The landing's embedded library is a separate
+ * stand-in instance (`data-embedded="true"`) that these rows ignore, and the button needs library
+ * content, so the fixture holds one character.
  *
  * MOCKED: the module set of `MainMenu.hubStates.svelte.test.ts` (`src/lib/UI`). `HomeLibrary` is a
  * marker stand-in (its own behaviour is tested in `HomeLibrary.svelte.test.ts`), and `alertError` is
  * the only export of a stand-in alert module.
  */
 
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, onDestroy, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
@@ -34,7 +35,12 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({
-        db: { hideRealm: false, realmDirectOpen: false, hideAllImages: false } as unknown as Record<string, unknown>,
+        db: {
+            hideRealm: false,
+            realmDirectOpen: false,
+            hideAllImages: false,
+            characters: [{ type: 'character', chaId: 'a', name: 'a', image: '', chats: [], chatPage: 0 }],
+        } as unknown as Record<string, unknown>,
     })
     return {
         DBState: state,
@@ -57,10 +63,13 @@ vi.mock('src/ts/characters', () => ({
 }))
 vi.mock('src/ts/characterPick', () => ({ changeCharOrAlert: vi.fn() }))
 
-const libraryStub = vi.hoisted(() => (anchor: Comment) => {
+const libraryStub = vi.hoisted(() => (anchor: Comment, props?: { embedded?: boolean }) => {
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'library-stub')
+    marker.setAttribute('data-embedded', String(props?.embedded === true))
     anchor.parentNode!.insertBefore(marker, anchor)
+    // The stand-in sits at the block's own anchor, so the block would not remove it; remove it with the component.
+    onDestroy(() => marker.remove())
 })
 vi.mock('./HomeLibrary.svelte', () => ({ default: libraryStub }))
 
@@ -82,15 +91,7 @@ function mountShell(): HTMLElement {
     return target
 }
 
-async function settleChunk(): Promise<void> {
-    for (let i = 0; i < 20; i++) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 10))
-        await tick()
-        flushSync()
-    }
-}
-
-const libraryShown = (root: HTMLElement): boolean => root.querySelector('[data-testid="library-stub"]') !== null
+const libraryShown = (root: HTMLElement): boolean => root.querySelector('[data-testid="library-stub"][data-embedded="false"]') !== null
 const landingShown = (root: HTMLElement): boolean => root.textContent?.includes('test-version') === true
 
 function libraryButton(root: HTMLElement): HTMLButtonElement {
@@ -123,31 +124,7 @@ afterEach(async () => {
 })
 
 describe('HomeShell', () => {
-    // First in the file: it replaces the stand-in with a module that throws, for this test only.
-    test('a library chunk that fails to load returns to the landing and reports the error', async () => {
-        vi.doMock('./HomeLibrary.svelte', () => {
-            throw new Error('chunk failed to load')
-        })
-        const root = mountShell()
-        libraryButton(root).click()
-        flushSync()
-        expect(homeView.view).toBe('library')
-        expect(landingShown(root)).toBe(true)
-
-        try {
-            await vi.waitFor(() => expect(alertErrorSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
-            await settleChunk()
-
-            expect(homeView.view).toBe('landing')
-            expect(landingShown(root)).toBe(true)
-            expect(libraryShown(root)).toBe(false)
-            expect(alertErrorSpy.mock.calls[0][0]).toBeInstanceOf(Error)
-        } finally {
-            vi.doMock('./HomeLibrary.svelte', () => ({ default: libraryStub }))
-        }
-    })
-
-    test('the Library button opens the library; the landing stays up until the chunk is ready', async () => {
+    test('the Library button opens the full view at once (the library is a static import)', () => {
         const root = mountShell()
         expect(landingShown(root)).toBe(true)
         expect(libraryShown(root)).toBe(false)
@@ -155,10 +132,7 @@ describe('HomeShell', () => {
         libraryButton(root).click()
         flushSync()
         expect(homeView.view).toBe('library')
-        expect(landingShown(root)).toBe(true)
-        expect(libraryShown(root)).toBe(false)
-
-        await vi.waitFor(() => expect(libraryShown(root)).toBe(true), { timeout: 5000 })
+        expect(libraryShown(root)).toBe(true)
         expect(landingShown(root)).toBe(false)
     })
 

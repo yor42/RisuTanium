@@ -2110,6 +2110,8 @@ export const languageGerman = {
     "homeStoriesHeading": "Deine Geschichte fortsetzen",
     "homeStoryJustNow": "gerade eben",
     "homeStoryArchived": "Archiviert",
+    "homeLibraryHeading": "Charaktere",
+    "homeLibraryAllTrashed": "Alle Charaktere befinden sich im Papierkorb.",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Treten Sie unserem Discord-Server bei, um mit anderen Nutzern und dem Entwickler zu chatten.",
     "homeLinkWebsiteTitle": "Website",

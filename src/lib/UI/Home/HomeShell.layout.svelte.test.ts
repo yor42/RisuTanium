@@ -163,7 +163,8 @@ describe('HomeShell layout', () => {
         expect(mark!.getAttribute('aria-hidden')).toBe('true')
     })
 
-    test('T-A2: at 900 the layout is mid and the Characters button stays in the content, outside the top bar', () => {
+    test('T-A2: at 900 the layout is mid and the Characters button stays in the content, outside the top bar, given library content (MC-2931)', () => {
+        DBState.db.characters = [{ chaId: 'lib-1', name: 'Lib' }] as unknown as typeof DBState.db.characters
         const root = mountShellAt(900)
         const landing = landingOf(root)
         expect(landing).not.toBeNull()
@@ -179,6 +180,7 @@ describe('HomeShell layout', () => {
         expect(characters).not.toBeNull()
         expect(bar!.contains(characters)).toBe(false)
         expect(landing!.contains(characters)).toBe(true)
+        delete (DBState.db as Record<string, unknown>).characters
     })
 
     test('T-A2b: at 1280 the layout is wide with the same three parts in the top bar', () => {

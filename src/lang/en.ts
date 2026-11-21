@@ -2267,6 +2267,8 @@ export const languageEnglish = {
     homeStoriesHeading: "Continue your story",
     homeStoryJustNow: "just now",
     homeStoryArchived: "Archived",
+    homeLibraryHeading: "Characters",
+    homeLibraryAllTrashed: "All characters are in the Trash.",
     homeSourceEmailForkLabel: "Contact the maintainer",
     homeSourceEmailUpstreamLabel: "Contact official support",
     backgroundHTML: "Background Embedding",

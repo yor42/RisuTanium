@@ -2110,6 +2110,8 @@ export const languageKorean = {
     "homeStoriesHeading": "이야기 이어가기",
     "homeStoryJustNow": "방금",
     "homeStoryArchived": "보관됨",
+    "homeLibraryHeading": "캐릭터",
+    "homeLibraryAllTrashed": "모든 캐릭터가 휴지통에 있습니다.",
     "homeLinkDiscordTitle": "디스코드",
     "homeLinkDiscordDescription": "디스코드 서버에 참여해 다른 사용자, 개발자와 대화해 보세요.",
     "homeLinkWebsiteTitle": "웹사이트",

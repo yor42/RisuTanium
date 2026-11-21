@@ -2244,6 +2244,8 @@ export const languageJapanese = {
     homeStoriesHeading: "物語の続きから",
     homeStoryJustNow: "たった今",
     homeStoryArchived: "アーカイブ済み",
+    homeLibraryHeading: "キャラクター",
+    homeLibraryAllTrashed: "すべてのキャラクターがゴミ箱に入っています。",
     homeLinkDiscordTitle: "Discord",
     homeLinkDiscordDescription: "Discordサーバーに参加して、他のユーザーや開発者と交流しましょう。",
     homeLinkWebsiteTitle: "ウェブサイト",

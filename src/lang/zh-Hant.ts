@@ -2155,6 +2155,8 @@ export const languageChineseTraditional = {
     "homeStoriesHeading": "繼續你的故事",
     "homeStoryJustNow": "剛剛",
     "homeStoryArchived": "已封存",
+    "homeLibraryHeading": "角色",
+    "homeLibraryAllTrashed": "所有角色都在垃圾桶中。",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "加入我們的 Discord 伺服器，與其他使用者和開發者交流。",
     "homeLinkWebsiteTitle": "網站",

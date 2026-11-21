@@ -91,9 +91,14 @@
         // Passed only by the Home library. Without it no Open in Studio control exists in any tab, as in the
         // App-level grid host.
         studio?: LibraryStudio;
+        // 'home' is the library embedded in the Home landing: no Back button, no box or width cap (the Home
+        // section bounds the height), and the all-trashed state is one line instead of a second hero. Read
+        // once; the host never changes it. 'app' is the App-level grid host.
+        variant?: 'app' | 'home';
     }
 
-    let { endGrid = () => {}, studio }: Props = $props();
+    let { endGrid = () => {}, studio, variant = 'app' }: Props = $props();
+    const homeVariant = untrack(() => variant === 'home');
 
     const uid = $props.id();
     // A dark halo behind a folder tile's icon or name keeps it readable over a bright picture.
@@ -1766,7 +1771,9 @@
 <!-- The empty library's hero (Create and Import select a character and then close this screen) or the
      no-match line. Shown in place of the Simple, Grid and List content. -->
 {#snippet libraryEmptyState()}
-    {#if libraryEmpty}
+    {#if libraryEmpty && homeVariant}
+        <div class="flex-1 min-h-0 overflow-y-auto"><p class="text-textcolor2 text-sm text-center mt-4" data-part="library-all-trashed">{language.homeLibraryAllTrashed}</p></div>
+    {:else if libraryEmpty}
         <div class="flex-1 min-h-0 overflow-y-auto flex justify-center">
             <HomeEmptyHero onselected={() => endGrid()} />
         </div>
@@ -1775,18 +1782,20 @@
     {/if}
 {/snippet}
 
-<div class="h-full w-full flex justify-center">
-    <div class="h-full p-6 bg-darkbg max-w-full w-2xl flex flex-col">
+<div class={homeVariant ? 'flex min-h-0 w-full flex-1' : 'h-full w-full flex justify-center'}>
+    <div class={homeVariant ? 'flex min-h-0 w-full flex-1 flex-col' : 'h-full p-6 bg-darkbg max-w-full w-2xl flex flex-col'}>
         <div class="mx-4 mb-6 flex flex-col shrink-0">
             <div class="flex items-center gap-3 mb-2">
-                <button
-                    class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
-                    data-part="library-back"
-                    onclick={() => endGrid()}
-                    title={language.settingsPage.back}
-                >
-                    <ArrowLeft size={20} />
-                </button>
+                {#if !homeVariant}
+                    <button
+                        class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
+                        data-part="library-back"
+                        onclick={() => endGrid()}
+                        title={language.settingsPage.back}
+                    >
+                        <ArrowLeft size={20} />
+                    </button>
+                {/if}
                 <div class="flex-1">
                     <TextInput placeholder={language.search} bind:value={search} size="lg" autocomplete="off" fullwidth={true}/>
                 </div>
