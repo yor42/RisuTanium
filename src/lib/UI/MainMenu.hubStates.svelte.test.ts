@@ -344,13 +344,16 @@ describe('MainMenu.svelte realm card: the five-state model', () => {
         expect(get(OpenRealmStore)).toBe(true)
     })
 
-    test('hideRealm true omits the realm card entirely and leaves four grid children', () => {
+    test('hideRealm true omits the realm card entirely and keeps the four-entry Community list', () => {
         DBState.db.hideRealm = true
         const target = mountMainMenu()
         flushSync()
-        const grid = target.querySelector('.grid')
-        expect(grid).toBeTruthy()
-        expect(grid!.children.length).toBe(4)
+        const aside = target.querySelector('[data-part="home-side"]')
+        expect(aside).toBeTruthy()
+        expect(Array.from(target.querySelectorAll('button')).some((b) => b.getAttribute('aria-label') === language.hubBrowseMore)).toBe(false)
+        expect(target.querySelector('[data-realm-preview-list]')).toBeNull()
+        expect(aside!.querySelector('[role="status"]')).toBeNull()
+        expect(aside!.querySelectorAll('[data-part="home-community"] > ul > li').length).toBe(4)
         expect(hubMock.getRisuHub).not.toHaveBeenCalled()
     })
 
@@ -367,7 +370,7 @@ describe('MainMenu.svelte realm card: the five-state model', () => {
         expect(rows.length).toBe(10)
     })
 
-    test('the banner renders after the Related Links grid, is sanitized, and updates once the fetch resolves', async () => {
+    test('the banner renders after the Community list, is sanitized, and updates once the fetch resolves', async () => {
         hubMock.setImpl(() => ({
             ok: true,
             cards: [],
@@ -385,8 +388,8 @@ describe('MainMenu.svelte realm card: the five-state model', () => {
         expect(target.innerHTML).not.toContain('<img')
         expect(target.innerHTML).toContain('<p>banner text</p>')
 
-        const grid = target.querySelector('.grid')
-        expect(grid).toBeTruthy()
+        const community = target.querySelector('[data-part="home-community"]')
+        expect(community).toBeTruthy()
         // The innermost div wrapping just the sanitized output, not an
         // ancestor whose innerHTML happens to also contain the substring.
         const bannerHost = Array.from(target.querySelectorAll('div')).find(
@@ -394,7 +397,7 @@ describe('MainMenu.svelte realm card: the five-state model', () => {
         )
         expect(bannerHost).toBeTruthy()
         // eslint-disable-next-line no-bitwise
-        expect(Boolean(grid!.compareDocumentPosition(bannerHost!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+        expect(Boolean(community!.compareDocumentPosition(bannerHost!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
     })
 
     test('reassigning DBState.db with hideRealm unchanged does not refetch; changing hideRealm does', async () => {

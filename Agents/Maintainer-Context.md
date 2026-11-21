@@ -33838,6 +33838,12 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
 - "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
 
+### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
+
+- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
+
+**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.
+
 ### MC-2975 — Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21
 
 - Tag: decisions (maintainer with lane A, upstream triage). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2279`, `MC-1451`, `MC-2341`, `#454`, `#455`, `upstream 6db4b681f`.

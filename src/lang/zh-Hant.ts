@@ -2153,6 +2153,8 @@ export const languageChineseTraditional = {
     "homeGreetingAfternoon": "午安",
     "homeGreetingEvening": "晚上好",
     "homeGreetingNight": "還沒睡嗎？",
+    "homeCommunityHeading": "社群與原始碼",
+    "homeSideLabel": "探索與社群",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "加入我們的 Discord 伺服器，與其他使用者和開發者交流。",
     "homeLinkWebsiteTitle": "網站",

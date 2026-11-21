@@ -7,7 +7,9 @@
    the band block sits on the landing element rather than on html[data-layout]. */
 :root {
   /* type */
+  --home-text-xs: 12px;
   --home-text-sm: 13px;
+  --home-text-md: 14px;
   --home-text-xl: 22px;
   --home-text-2xl: 30px;
   --home-weight-regular: 400;
@@ -19,6 +21,10 @@
   --home-eyebrow-transform: none;
   --home-h1-size: var(--home-text-2xl);
   --home-h1-sm-size: var(--home-text-xl);
+
+  /* radius */
+  --home-radius-1: 4px;
+  --home-radius-3: 8px;
 
   /* colour roles */
   --home-ink: var(--nexus-text);

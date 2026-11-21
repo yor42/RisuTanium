@@ -160,6 +160,15 @@ describe('a pack value reaches the landing (S1-G5)', () => {
         expect(modelWith(':root{--home-text-2xl:40px}').custom(h1, '--home-h1-size')).toBe('40px')
     })
 
+    test('(f) the side block row tokens resolve to the registry values under the wide band', () => {
+        const h1 = h1Under('wide', 'en')
+        const model = modelWith('')
+        expect(model.custom(h1, '--home-text-md')).toBe('14px')
+        expect(model.custom(h1, '--home-text-xs')).toBe('12px')
+        expect(model.custom(h1, '--home-radius-1')).toBe('4px')
+        expect(model.custom(h1, '--home-radius-3')).toBe('8px')
+    })
+
     test('(e) the Korean block outranks a pack plain :root value', () => {
         const h1 = h1Under('wide', 'ko')
         const model = modelWith(':root{--home-tracking-h1:0.05em}')
