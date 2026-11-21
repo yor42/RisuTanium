@@ -100,8 +100,8 @@
 
         <div class="flex flex-wrap items-center gap-2">
             {#if presets.length > 0}
-                <span class="text-textcolor2">{language.utility.presetLabel}</span>
-                <SelectInput bind:value={presetId} className="min-w-48">
+                <span id="utility-preset-label" class="text-textcolor2">{language.utility.presetLabel}</span>
+                <SelectInput labelId="utility-preset-label" bind:value={presetId} className="min-w-48">
                     <option value="" disabled>{language.utility.presetLabel}</option>
                     {#each presets as preset (preset.id)}
                         <option value={preset.id}>

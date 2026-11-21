@@ -92,8 +92,8 @@
             <TextInput labelId="{uid}-model-{index}" size={"sm"} bind:value={DBState.db.customModels[index].internalId}/>
             <span class="text-textcolor mt-4" id="{uid}-url-{index}">URL</span>
             <TextInput labelId="{uid}-url-{index}" size={"sm"} bind:value={DBState.db.customModels[index].url}/>
-            <span class="text-textcolor mt-4">{language.tokenizer}</span>
-            <SelectInput size={"sm"} value={DBState.db.customModels[index].tokenizer.toString()} onchange={(e) => {
+            <span class="text-textcolor mt-4" id="{uid}-tokenizer-{index}">{language.tokenizer}</span>
+            <SelectInput labelId="{uid}-tokenizer-{index}" size={"sm"} value={DBState.db.customModels[index].tokenizer.toString()} onchange={(e) => {
                 DBState.db.customModels[index].tokenizer = parseInt(e.currentTarget.value) as LLMTokenizer
             }}>
                 <OptionInput value="0">{language.settingsPage.unknown}</OptionInput>
@@ -113,8 +113,8 @@
                 <OptionInput value="15">GLM4</OptionInput>
                 <OptionInput value="16">GLM5</OptionInput>
             </SelectInput>
-            <span class="text-textcolor">{language.format}</span>
-            <SelectInput size={"sm"} value={DBState.db.customModels[index].format.toString()} onchange={(e) => {
+            <span class="text-textcolor" id="{uid}-format-{index}">{language.format}</span>
+            <SelectInput labelId="{uid}-format-{index}" size={"sm"} value={DBState.db.customModels[index].format.toString()} onchange={(e) => {
                 DBState.db.customModels[index].format = parseInt(e.currentTarget.value) as LLMFormat
             }}>
                 <OptionInput value="0">OpenAICompatible</OptionInput>

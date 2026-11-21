@@ -119,24 +119,24 @@
                 <span class="text-textcolor2">{language.utility.editor.model}</span>
                 <ModelList bind:value={preset.model} />
 
-                <span class="text-textcolor2">{language.utility.editor.temperature}</span>
+                <span id="task-preset-temperature-label" class="text-textcolor2">{language.utility.editor.temperature}</span>
                 <CheckInput
                     name={language.utility.editor.useGlobalTemperature}
                     check={preset.temperature === undefined}
                     onChange={(check) => setGlobalTemperature(preset, check)}
                 />
                 {#if preset.temperature !== undefined}
-                    <NumberInput id="task-preset-temperature" min={0} max={TASK_PRESET_TEMPERATURE_MAX} value={preset.temperature} onChange={(event) => setTemperature(preset, event.currentTarget.valueAsNumber)} />
+                    <NumberInput id="task-preset-temperature" labelId="task-preset-temperature-label" min={0} max={TASK_PRESET_TEMPERATURE_MAX} value={preset.temperature} onChange={(event) => setTemperature(preset, event.currentTarget.valueAsNumber)} />
                 {/if}
 
-                <span class="text-textcolor2">{language.utility.editor.maxTokens}</span>
+                <span id="task-preset-max-tokens-label" class="text-textcolor2">{language.utility.editor.maxTokens}</span>
                 <CheckInput
                     name={language.utility.editor.useGlobalMaxTokens}
                     check={preset.maxTokens === undefined}
                     onChange={(check) => setGlobalMaxTokens(preset, check)}
                 />
                 {#if preset.maxTokens !== undefined}
-                    <NumberInput id="task-preset-max-tokens" min={1} value={preset.maxTokens} onChange={(event) => setMaxTokens(preset, event.currentTarget.valueAsNumber)} />
+                    <NumberInput id="task-preset-max-tokens" labelId="task-preset-max-tokens-label" min={1} value={preset.maxTokens} onChange={(event) => setMaxTokens(preset, event.currentTarget.valueAsNumber)} />
                 {/if}
 
                 <div>

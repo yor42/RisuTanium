@@ -1780,6 +1780,7 @@ export const languageGerman = {
         "modelNotSupported": "Dieses Modell wird in der Spielwiese nicht unterstützt",
         "modeAuto": "automatisch",
         "modeManual": "manuell",
+        "imageTranslationMode": "Modus",
         "loadingLower": "lädt",
         "videoNoDuration": "Dieses Video hat keine Laufzeitangabe",
         "convertingVideo": "Video wird in Audio umgewandelt...",

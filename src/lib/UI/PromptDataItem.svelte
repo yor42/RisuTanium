@@ -249,8 +249,8 @@
     
         <span class="mt-6" id="{uid}-name">{language.name}</span>
         <TextInput labelId="{uid}-name" bind:value={promptItem.name} />
-        <span class="mt-2">{language.type} </span>
-        <SelectInput bind:value={promptItem.type} onchange={() => {
+        <span class="mt-2" id="{uid}-type">{language.type}</span> 
+        <SelectInput labelId="{uid}-type" bind:value={promptItem.type} onchange={() => {
             if(promptItem.type === 'plain' || promptItem.type === 'jailbreak' || promptItem.type === 'cot'){
                 promptItem.text = ""
                 promptItem.role = "system"
@@ -285,16 +285,16 @@
         </SelectInput>
 
         {#if promptItem.type === 'plain' || promptItem.type === 'jailbreak' || promptItem.type === 'cot'}
-            <span>{language.specialType}</span>
-            <SelectInput bind:value={promptItem.type2}>
+            <span id="{uid}-type2">{language.specialType}</span>
+            <SelectInput labelId="{uid}-type2" bind:value={promptItem.type2}>
                 <OptionInput value="normal">{language.noSpecialType}</OptionInput>
                 <OptionInput value="main">{language.mainPrompt}</OptionInput>
                 <OptionInput value="globalNote">{language.globalNote}</OptionInput>
             </SelectInput>
             <span id="{uid}-prompt">{language.prompt}</span>
             <TextAreaInput labelId="{uid}-prompt" highlight bind:value={promptItem.text} />
-            <span>{language.role}</span>
-            <SelectInput bind:value={promptItem.role}>
+            <span id="{uid}-role">{language.role}</span>
+            <SelectInput labelId="{uid}-role" bind:value={promptItem.role}>
                 <OptionInput value="user">{language.user}</OptionInput>
                 <OptionInput value="bot">{language.character}</OptionInput>
                 <OptionInput value="system">{language.systemPrompt}</OptionInput>
@@ -305,10 +305,10 @@
             <TextAreaInput labelId="{uid}-chatml" highlight bind:value={promptItem.text} />
         {/if}
         {#if promptItem.type === 'cache'}
-            <span>{language.depth}</span>
-            <NumberInput bind:value={promptItem.depth} />
-            <span>{language.role}</span>
-            <SelectInput bind:value={promptItem.role}>
+            <span id="{uid}-depth">{language.depth}</span>
+            <NumberInput labelId="{uid}-depth" bind:value={promptItem.depth} />
+            <span id="{uid}-cache-role">{language.role}</span>
+            <SelectInput labelId="{uid}-cache-role" bind:value={promptItem.role}>
                 <OptionInput value="all">{language.all}</OptionInput>
                 <OptionInput value="user">{language.user}</OptionInput>
                 <OptionInput value="assistant">{language.character}</OptionInput>
@@ -317,18 +317,18 @@
         {/if}
         {#if promptItem.type === 'chat'}
             {#if promptItem.rangeStart !== -1000}
-                <span>{language.rangeStart}</span>
-                <NumberInput bind:value={promptItem.rangeStart} />
-                <span>{language.rangeEnd}</span>
+                <span id="{uid}-range-start">{language.rangeStart}</span>
+                <NumberInput labelId="{uid}-range-start" bind:value={promptItem.rangeStart} />
+                <span id="{uid}-range-end">{language.rangeEnd}</span>
                 {#if promptItem.rangeEnd === 'end'}
-                    <NumberInput value={0} marginBottom  disabled/>
+                    <NumberInput labelId="{uid}-range-end" value={0} marginBottom  disabled/>
                     <CheckInput name={language.untilChatEnd} check={true} onChange={() => {
                         if(promptItem.type === 'chat'){
                             promptItem.rangeEnd = 0
                         }
                     }} />
                 {:else}
-                    <NumberInput bind:value={promptItem.rangeEnd} marginBottom />
+                    <NumberInput labelId="{uid}-range-end" bind:value={promptItem.rangeEnd} marginBottom />
                     <CheckInput name={language.untilChatEnd} check={false} onChange={() => {
                         if(promptItem.type === 'chat'){
                             promptItem.rangeEnd = 'end'
@@ -363,8 +363,8 @@
             {/if}
         {/if}
         {#if hasPromptBlockRole(promptItem)}
-            <span>{language.role}</span>
-            <SelectInput value={promptItem.role2 ?? 'system'} onchange={(event) => {
+            <span id="{uid}-block-role">{language.role}</span>
+            <SelectInput labelId="{uid}-block-role" value={promptItem.role2 ?? 'system'} onchange={(event) => {
                 if(hasPromptBlockRole(promptItem)){
                     promptItem.role2 = event.currentTarget.value as PromptRole
                 }

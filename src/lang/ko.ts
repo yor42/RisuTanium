@@ -1780,6 +1780,7 @@ export const languageKorean = {
         "modelNotSupported": "이 모델은 플레이그라운드에서 지원하지 않습니다",
         "modeAuto": "자동",
         "modeManual": "수동",
+        "imageTranslationMode": "모드",
         "loadingLower": "로딩 중",
         "videoNoDuration": "이 비디오에는 재생 시간 정보가 없습니다",
         "convertingVideo": "비디오를 오디오로 변환하는 중...",

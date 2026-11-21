@@ -1912,6 +1912,7 @@ export const languageEnglish = {
         modelNotSupported: "This model is not supported in the playground",
         modeAuto: "auto",
         modeManual: "manual",
+        imageTranslationMode: "Mode",
         loadingLower: "loading",
         videoNoDuration: "This video does not have a duration",
         convertingVideo: "Converting video to audio...",
