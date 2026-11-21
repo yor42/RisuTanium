@@ -252,8 +252,8 @@
             {/if}
             {#if !lorePlus}
                 {#if !(value.activationPercent === undefined || value.activationPercent === null)}
-                    <span class="text-textcolor mt-6">{language.activationProbability}</span>
-                    <NumberInput size="sm" bind:value={value.activationPercent} onChange={() => {
+                    <span id="{uid}-activation-percent" class="text-textcolor mt-6">{language.activationProbability}</span>
+                    <NumberInput size="sm" labelId="{uid}-activation-percent" bind:value={value.activationPercent} onChange={() => {
                         if(isNaN(value.activationPercent) || !value.activationPercent || value.activationPercent < 0){
                             value.activationPercent = 0
                         }
@@ -264,8 +264,8 @@
                 {/if}
             {/if}
             {#if !lorePlus}
-                <span class="text-textcolor mt-4">{language.insertOrder} <Help key="loreorder"/></span>
-                <NumberInput size="sm" bind:value={value.insertorder} min={0} max={1000}/>
+                <span class="text-textcolor mt-4"><span id="{uid}-insert-order">{language.insertOrder}</span> <Help key="loreorder"/></span>
+                <NumberInput size="sm" labelId="{uid}-insert-order" bind:value={value.insertorder} min={0} max={1000}/>
             {/if}
             <span id="{uid}-prompt" class="text-textcolor mt-4 mb-2">{language.prompt}</span>
             <TextAreaInput highlight autocomplete="off" labelId="{uid}-prompt" bind:value={value.content} />

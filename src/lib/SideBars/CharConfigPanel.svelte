@@ -556,7 +556,7 @@
         <!-- svelte-ignore block_empty -->
 
         {#if DBState.db.characters[$selectedCharID].type !== 'group'}
-            <SelectInput className="mb-2" bind:value={DBState.db.characters[$selectedCharID].viewScreen} onchange={() => {
+            <SelectInput className="mb-2" label={language.viewScreen} bind:value={DBState.db.characters[$selectedCharID].viewScreen} onchange={() => {
                 if(DBState.db.characters[$selectedCharID].type === 'character'){
                     DBState.db.characters[$selectedCharID] = updateInlayScreen((DBState.db.characters[$selectedCharID] as character))
                 }
@@ -566,7 +566,7 @@
                 <OptionInput value="imggen">{language.imageGeneration}</OptionInput>
             </SelectInput>
         {:else}
-            <SelectInput className="mb-2" bind:value={DBState.db.characters[$selectedCharID].viewScreen}>
+            <SelectInput className="mb-2" label={language.viewScreen} bind:value={DBState.db.characters[$selectedCharID].viewScreen}>
                 <OptionInput value="none">{language.none}</OptionInput>
                 <OptionInput value="single">{language.singleView}</OptionInput>
                 <OptionInput value="multiple">{language.SpacedView}</OptionInput>
@@ -673,8 +673,8 @@
             {#if DBState.db.newImageHandlingBeta}
             <CheckInput bind:check={() => DBState.db.characters[$selectedCharID].prebuiltAssetCommand ?? false, (v) => DBState.db.characters[$selectedCharID].prebuiltAssetCommand = v} name={language.insertAssetPrompt}/>
 
-            <span class="text-textcolor mt-2">{language.assetStyle}</span>
-            <SelectInput className="mb-2" bind:value={DBState.db.characters[$selectedCharID].prebuiltAssetStyle}>
+            <span id="{uid}-asset-style" class="text-textcolor mt-2">{language.assetStyle}</span>
+            <SelectInput className="mb-2" labelId="{uid}-asset-style" bind:value={DBState.db.characters[$selectedCharID].prebuiltAssetStyle}>
                 <OptionInput value="">{language.static}</OptionInput>
                 <OptionInput value="dynamic">{language.dynamic}</OptionInput>
             </SelectInput>
@@ -874,8 +874,8 @@
 {:else if $CharConfigSubMenu === 5}
     {#if DBState.db.characters[$selectedCharID].type === 'character'}
         <h2 class="mb-2 text-2xl font-bold mt-2">TTS</h2>
-        <span class="text-textcolor">{language.provider}</span>
-        <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].ttsMode} onchange={(e) => {
+        <span id="{uid}-tts-provider" class="text-textcolor">{language.provider}</span>
+        <SelectInput className="mb-4 mt-2" labelId="{uid}-tts-provider" bind:value={DBState.db.characters[$selectedCharID].ttsMode} onchange={(e) => {
             if(DBState.db.characters[$selectedCharID].type === 'character'){
                 (DBState.db.characters[$selectedCharID] as character).ttsSpeech = ''
             }
@@ -897,8 +897,8 @@
             {#if !speechSynthesis}
                 <span class="text-textcolor">{language.sidebarUi.webSpeechUnsupported}</span>
             {:else}
-                <span class="text-textcolor">{language.Speech}</span>
-                <SelectInput className="mb-4 mt-2" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>
+                <span id="{uid}-tts-speech" class="text-textcolor">{language.Speech}</span>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-tts-speech" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>
                     <OptionInput value="">{language.optAuto}</OptionInput>
                     {#each getWebSpeechTTSVoices() as voice}
                         <OptionInput value={voice}>{voice}</OptionInput>
@@ -911,8 +911,8 @@
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'elevenlab'}
             <span class="text-sm mb-2 text-textcolor2">{language.ttsElevenLabsKeyHint}</span>
             {#await getElevenTTSVoices() then voices}
-                <span class="text-textcolor">{language.Speech}</span>
-                <SelectInput className="mb-4 mt-2" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>
+                <span id="{uid}-tts-eleven-speech" class="text-textcolor">{language.Speech}</span>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-tts-eleven-speech" bind:value={(DBState.db.characters[$selectedCharID] as character).ttsSpeech}>
                     <OptionInput value="">{language.sidebarUi.unset}</OptionInput>
                         {#each voices as voice}
                             <OptionInput value={voice.voice_id}>{voice.name}</OptionInput>
@@ -922,8 +922,8 @@
                 <span class="text-draculared">{error instanceof Error ? error.message : String(error)}</span>
             {/await}
          {:else if DBState.db.characters[$selectedCharID].ttsMode === 'VOICEVOX'}
-                <span class="text-textcolor">{language.sidebarUi.ttsSpeaker}</span>
-                <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.speaker}>
+                <span id="{uid}-vv-speaker" class="text-textcolor">{language.sidebarUi.ttsSpeaker}</span>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-vv-speaker" bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.speaker}>
                     {#await getVOICEVOXVoices() then voices}
                         {#each voices as voice}
                             <OptionInput value={voice.list}  selected={DBState.db.characters[$selectedCharID].voicevoxConfig.speaker === voice.list}>{voice.name}</OptionInput>
@@ -931,31 +931,31 @@
                     {/await}
                 </SelectInput>
                 {#if DBState.db.characters[$selectedCharID].voicevoxConfig.speaker}
-                <span class="text-textcolor">{language.sidebarUi.ttsStyle}</span>
-                <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].ttsSpeech}>
+                <span id="{uid}-vv-style" class="text-textcolor">{language.sidebarUi.ttsStyle}</span>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-vv-style" bind:value={DBState.db.characters[$selectedCharID].ttsSpeech}>
                 {#each JSON.parse(DBState.db.characters[$selectedCharID].voicevoxConfig.speaker) as styles}
                         <OptionInput value={styles.id} selected={DBState.db.characters[$selectedCharID].ttsSpeech === styles.id}>{styles.name}</OptionInput>
                 {/each}
                 </SelectInput>
                 {/if}
-                <span class="text-textcolor">Speed scale</span>
-                <NumberInput size={"sm"} marginBottom bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.SPEED_SCALE}/>
+                <span id="{uid}-vv-speed-scale" class="text-textcolor">Speed scale</span>
+                <NumberInput size={"sm"} marginBottom labelId="{uid}-vv-speed-scale" bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.SPEED_SCALE}/>
 
-                <span class="text-textcolor">Pitch scale</span>
-                <NumberInput size={"sm"} marginBottom bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.PITCH_SCALE}/>
+                <span id="{uid}-vv-pitch-scale" class="text-textcolor">Pitch scale</span>
+                <NumberInput size={"sm"} marginBottom labelId="{uid}-vv-pitch-scale" bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.PITCH_SCALE}/>
 
-                <span class="text-textcolor">Volume scale</span>
-                <NumberInput size={"sm"} marginBottom bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.VOLUME_SCALE}/>
+                <span id="{uid}-vv-volume-scale" class="text-textcolor">Volume scale</span>
+                <NumberInput size={"sm"} marginBottom labelId="{uid}-vv-volume-scale" bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.VOLUME_SCALE}/>
 
-                <span class="text-textcolor">Intonation scale</span>
-                <NumberInput size={"sm"} marginBottom bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.INTONATION_SCALE}/>
+                <span id="{uid}-vv-intonation-scale" class="text-textcolor">Intonation scale</span>
+                <NumberInput size={"sm"} marginBottom labelId="{uid}-vv-intonation-scale" bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.INTONATION_SCALE}/>
                 <span class="text-sm mb-2 text-textcolor2">{language.sidebarUi.voicevoxHint}</span>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'novelai' && ttsConfigReady}
             <span class="text-textcolor">{language.sidebarUi.ttsCustomVoiceSeed}</span>
             <Check label={language.sidebarUi.ttsCustomVoiceSeed} bind:check={DBState.db.characters[$selectedCharID].naittsConfig.customvoice}/>
             {#if !DBState.db.characters[$selectedCharID].naittsConfig.customvoice}
-                <span class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
-                <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.voice}>
+                <span id="{uid}-novelai-voice-select" class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-novelai-voice-select" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.voice}>
                     {#await getNovelAIVoices() then voices}
                         {#each voices as voiceGroup}
                             <optgroup label={voiceGroup.gender} class="bg-darkbg appearance-none">
@@ -970,15 +970,15 @@
                 <span id="{uid}-novelai-voice" class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
                 <TextInput size={"sm"} labelId="{uid}-novelai-voice" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.voice}/>
             {/if}
-            <span class="text-textcolor">{language.sidebarUi.ttsVersion}</span>
-            <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.version}>
+            <span id="{uid}-novelai-version" class="text-textcolor">{language.sidebarUi.ttsVersion}</span>
+            <SelectInput className="mb-4 mt-2" labelId="{uid}-novelai-version" bind:value={DBState.db.characters[$selectedCharID].naittsConfig.version}>
                 <OptionInput value="v1">v1</OptionInput>
                 <OptionInput value="v2">v2</OptionInput>
             </SelectInput>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'openai' && ttsConfigReady}
             <span id="{uid}-openai-voice" class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
             {#if !DBState.db.characters[$selectedCharID].oaiTTSConfig?.enabled}
-                <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].oaiVoice}>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-openai-voice" bind:value={DBState.db.characters[$selectedCharID].oaiVoice}>
                     <OptionInput value="">{language.sidebarUi.unset}</OptionInput>
                     {#each oaiVoices as voice}
                         <OptionInput value={voice}>{voice}</OptionInput>
@@ -1013,8 +1013,9 @@
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.model}
                     placeholder="tts-1" />
 
-                <span class="text-textcolor">Response Format</span>
+                <span id="{uid}-openai-format" class="text-textcolor">Response Format</span>
                 <SelectInput className="mb-4 mt-2"
+                    labelId="{uid}-openai-format"
                     bind:value={DBState.db.characters[$selectedCharID].oaiTTSConfig.format}>
                     <OptionInput value="mp3">mp3</OptionInput>
                     <OptionInput value="opus">opus</OptionInput>
@@ -1051,8 +1052,8 @@
                 }
             }}>{language.selectModel}</Button>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'gptsovits' && ttsConfigReady}
-            <span class="text-textcolor">{language.sidebarUi.ttsVolume}</span>
-            <SliderInput min={0.0} max={1.0} step={0.01} fixed={2} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.volume}/>
+            <span id="{uid}-gsv-volume" class="text-textcolor">{language.sidebarUi.ttsVolume}</span>
+            <SliderInput min={0.0} max={1.0} step={0.01} fixed={2} labelId="{uid}-gsv-volume" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.volume}/>
             <span id="{uid}-gsv-url" class="text-textcolor">URL</span>
             <TextInput className="mb-4 mt-2" labelId="{uid}-gsv-url" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.url}/>
 
@@ -1103,8 +1104,8 @@
                     {DBState.db.characters[$selectedCharID].gptSoVitsConfig.ref_audio_data.fileName}
                 {/if}
             </Button>
-            <span class="text-textcolor">{language.sidebarUi.ttsTextLanguage}</span>
-            <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.text_lang}>
+            <span id="{uid}-gsv-text-lang" class="text-textcolor">{language.sidebarUi.ttsTextLanguage}</span>
+            <SelectInput className="mb-4 mt-2" labelId="{uid}-gsv-text-lang" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.text_lang}>
                 <OptionInput value="auto">{language.sidebarUi.ttsLangMultiMixed}</OptionInput>
                 <OptionInput value="auto_yue">{language.sidebarUi.ttsLangMultiMixedCantonese}</OptionInput>
                 <OptionInput value="en">{language.languageNameEnglish}</OptionInput>
@@ -1128,8 +1129,8 @@
                 <TextAreaInput className="mb-4 mt-2" labelId="{uid}-gsv-ref-script" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.prompt}/>
             {/if}
 
-            <span class="text-textcolor">{language.sidebarUi.ttsRefAudioLanguage}</span>
-            <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.prompt_lang}>
+            <span id="{uid}-gsv-prompt-lang" class="text-textcolor">{language.sidebarUi.ttsRefAudioLanguage}</span>
+            <SelectInput className="mb-4 mt-2" labelId="{uid}-gsv-prompt-lang" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.prompt_lang}>
                 <OptionInput value="auto">{language.sidebarUi.ttsLangMultiMixed}</OptionInput>
                 <OptionInput value="auto_yue">{language.sidebarUi.ttsLangMultiMixedCantonese}</OptionInput>
                 <OptionInput value="en">{language.languageNameEnglish}</OptionInput>
@@ -1142,20 +1143,20 @@
                 <OptionInput value="all_yue">{language.sidebarUi.ttsLangCantonese}</OptionInput>
                 <OptionInput value="all_ko">{language.languageNameKorean}</OptionInput>
             </SelectInput>
-            <span class="text-textcolor">Top P</span>
-            <SliderInput min={0.0} max={1.0} step={0.05} fixed={2} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.top_p}/>
+            <span id="{uid}-gsv-top-p" class="text-textcolor">Top P</span>
+            <SliderInput min={0.0} max={1.0} step={0.05} fixed={2} labelId="{uid}-gsv-top-p" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.top_p}/>
 
-            <span class="text-textcolor">{language.temperature}</span>
-            <SliderInput min={0.0} max={1.0} step={0.05} fixed={2} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.temperature}/>
+            <span id="{uid}-gsv-temperature" class="text-textcolor">{language.temperature}</span>
+            <SliderInput min={0.0} max={1.0} step={0.05} fixed={2} labelId="{uid}-gsv-temperature" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.temperature}/>
 
-            <span class="text-textcolor">{language.sidebarUi.ttsSpeed}</span>
-            <SliderInput min={0.6} max={1.65} step={0.05} fixed={2} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.speed}/>
+            <span id="{uid}-gsv-speed" class="text-textcolor">{language.sidebarUi.ttsSpeed}</span>
+            <SliderInput min={0.6} max={1.65} step={0.05} fixed={2} labelId="{uid}-gsv-speed" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.speed}/>
 
-            <span class="text-textcolor">Top K</span>
-            <SliderInput min={1} max={100} step={1} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.top_k}/>
+            <span id="{uid}-gsv-top-k" class="text-textcolor">Top K</span>
+            <SliderInput min={1} max={100} step={1} labelId="{uid}-gsv-top-k" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.top_k}/>
 
-            <span class="text-textcolor">{language.sidebarUi.ttsTextSplitMethod}</span>
-            <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.text_split_method}>
+            <span id="{uid}-gsv-split" class="text-textcolor">{language.sidebarUi.ttsTextSplitMethod}</span>
+            <SelectInput className="mb-4 mt-2" labelId="{uid}-gsv-split" bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.text_split_method}>
                 <OptionInput value="cut0">{language.sidebarUi.ttsCut0}</OptionInput>
                 <OptionInput value="cut1">{language.sidebarUi.ttsCut1}</OptionInput>
                 <OptionInput value="cut2">{language.sidebarUi.ttsCut2}</OptionInput>
@@ -1167,8 +1168,8 @@
             {#await getFishSpeechModels()}
                 <span class="text-textcolor">{language.loadingEllipsis}</span>
             {:then}
-                <span class="text-textcolor">{language.model}</span>
-                <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].fishSpeechConfig.model._id}>
+                <span id="{uid}-fish-model" class="text-textcolor">{language.model}</span>
+                <SelectInput className="mb-4 mt-2" labelId="{uid}-fish-model" bind:value={DBState.db.characters[$selectedCharID].fishSpeechConfig.model._id}>
                     <OptionInput value="">{language.sidebarUi.notSelected}</OptionInput>
                     {#each fishSpeechModels as model}
                         <OptionInput value={model._id}>
@@ -1183,8 +1184,8 @@
                 <span class="text-textcolor">{language.sidebarUi.modelsFetchError}</span>
             {/await}
 
-            <span class="text-textcolor">Chunk Length</span>
-            <NumberInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].fishSpeechConfig.chunk_length}/>
+            <span id="{uid}-fish-chunk-length" class="text-textcolor">Chunk Length</span>
+            <NumberInput className="mb-4 mt-2" labelId="{uid}-fish-chunk-length" bind:value={DBState.db.characters[$selectedCharID].fishSpeechConfig.chunk_length}/>
 
             <span class="mt-2 text-textcolor">Normalize</span>
             <Check className="mb-4 mt-2" label="Normalize" bind:check={DBState.db.characters[$selectedCharID].fishSpeechConfig.normalize}/>
@@ -1226,7 +1227,7 @@
                         <TextInput fullh fullwidth label={language.sidebarUi.bias} bind:value={(DBState.db.characters[$selectedCharID] as character).bias[i][0]} placeholder={language.sidebarUi.biasTokenPlaceholder} />
                     </td> 
                     <td class="font-medium truncate w-1/3">
-                        <NumberInput fullh fullwidth bind:value={(DBState.db.characters[$selectedCharID] as character).bias[i][1]} max={100} min={-100} />
+                        <NumberInput fullh fullwidth label={language.value} bind:value={(DBState.db.characters[$selectedCharID] as character).bias[i][1]} max={100} min={-100} />
                     </td>
                     <td>
                         <button class="font-medium flex justify-center items-center w-full h-full cursor-pointer hover:text-textcolor2" aria-label={language.remove} onclick={() => {
@@ -1289,7 +1290,7 @@
 
         <span id="{uid}-depth-prompt" class="text-textcolor">{language.depthPrompt}</span>
         <div class="flex justify-center items-center">
-            <NumberInput size="sm" bind:value={DBState.db.characters[$selectedCharID].depth_prompt.depth} className="w-12"/>
+            <NumberInput size="sm" label={language.depth} bind:value={DBState.db.characters[$selectedCharID].depth_prompt.depth} className="w-12"/>
             <TextInput size="sm" labelId="{uid}-depth-prompt" bind:value={DBState.db.characters[$selectedCharID].depth_prompt.prompt} className="flex-1"/>
         </div>
 

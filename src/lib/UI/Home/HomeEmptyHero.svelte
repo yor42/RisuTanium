@@ -55,7 +55,7 @@
 </script>
 
 {#if empty}
-    <section data-part="home-empty-hero" aria-labelledby={headingId} class="mt-4 w-full max-w-4xl px-6">
+    <section data-part="home-empty-hero" aria-labelledby={headingId} class="mt-4 w-full">
         <div class="rounded-2xl border border-borderc/10 bg-darkbg p-6 text-center">
             <h2 id={headingId} class="text-2xl font-bold tracking-tight text-textcolor break-keep">{language.homeEmptyHeading}</h2>
             <p class="mt-2 text-textcolor2">{language.homeEmptyBody}</p>

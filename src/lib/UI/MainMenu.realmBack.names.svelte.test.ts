@@ -99,7 +99,7 @@ describe('MainMenu Realm header back and preview backing', () => {
         const target = await mountMainMenu()
         const list = target.querySelector('[data-realm-preview-list]') as HTMLElement
         expect(list).not.toBeNull()
-        expect(list.classList.contains('bg-darkbg/30')).toBe(true)
+        expect(list.classList.contains('bg-bgcolor/55')).toBe(true)
         expect(list.classList.contains('bg-black/30')).toBe(false)
     })
 })

@@ -8,7 +8,7 @@
  * search still finds an item by its English fallback label while the UI is Korean.
  *
  * Items come from the REAL registry files (`advancedSettingsData.ts`,
- * `accessibilitySettingsData.ts`) and are rendered by the REAL wrappers over a `$state`
+ * `accessibilitySettingsData.ts`, and one `botSettingsParamsData.ts` item through `vi.importActual`) and are rendered by the REAL wrappers over a `$state`
  * stand-in for `DBState`. MOCKED: `platform` (a web build), `alert` (`alertMd` only, used by
  * `Help.svelte`'s click handler), `stores.svelte`, and the registry files this test does not
  * use (emptied lists; `utils` imports them to build the full list).
@@ -169,25 +169,30 @@ describe('registry option labels follow the language at render time', () => {
         ])
     })
 
-    test('regression reproducer: Korean shows a Segmented option label from the registry', () => {
-        const item = advancedSettingsItems.find((i) =>
-            i.options?.segmentOptions?.some((o) => o.value === 'fedramp'))
-        if (!item) throw new Error('the data-region Segmented item is missing')
+    // A Segmented item whose options carry both an English `label` and a `labelKey`, from the
+    // real parameter registry (the module mock above empties it for the full-list build).
+    async function thinkingModeItem(): Promise<SettingItem> {
+        const actual = await vi.importActual<typeof import('src/ts/setting/botSettingsParamsData')>('src/ts/setting/botSettingsParamsData')
+        const item = actual.modelSpecificParameterItems.find((i) => i.id === 'params.deepseekThinkingType')
+        if (!item) throw new Error('the thinking-mode Segmented item is missing')
+        return item
+    }
+
+    test('regression reproducer: Korean shows a Segmented option label from the registry', async () => {
+        const item = await thinkingModeItem()
 
         changeLanguage('ko')
         const target = render(SettingSegmented, item)
         const buttons = Array.from(target.querySelectorAll('button')).map((b) => b.textContent?.trim())
-        expect(buttons).toContain(languageKorean.optDefault)
-        expect(languageKorean.optDefault).not.toBe(languageEnglish.optDefault)
+        expect(buttons).toContain(languageKorean.optEnabled)
+        expect(languageKorean.optEnabled).not.toBe(languageEnglish.optEnabled)
     })
 
-    test('guard: English shows the Segmented option "Default"', () => {
-        const item = advancedSettingsItems.find((i) =>
-            i.options?.segmentOptions?.some((o) => o.value === 'fedramp'))
-        if (!item) throw new Error('the data-region Segmented item is missing')
+    test('guard: English shows the Segmented option "Enabled"', async () => {
+        const item = await thinkingModeItem()
         const target = render(SettingSegmented, item)
         const buttons = Array.from(target.querySelectorAll('button')).map((b) => b.textContent?.trim())
-        expect(buttons).toContain('Default')
+        expect(buttons).toContain('Enabled')
     })
 })
 
