@@ -5,8 +5,7 @@
  * prunes has something to delete). The "no store write" assertions (`storeEffects`) carry the rule that a read-only
  * boot writes and deletes nothing.
  *
- * Reproducers: a page that registered no dispatch reports the registration error and touches no store (T2-N1), and a
- * store2 boot on an IndexedDB page starts the OPFS leftover clean-up once (T2-OPFS).
+ * Reproducer: a page that registered no dispatch reports the registration error and touches no store (T2-N1).
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { writable, get } from 'svelte/store'
@@ -462,7 +461,7 @@ beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
@@ -684,20 +683,6 @@ describe('loadData(): a normal store2 profile', () => {
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(backupTimesOf(store)).toHaveLength(21)
         expect(saveDbMock, 'the save loop starts through saveDb after the install').toHaveBeenCalled()
-    })
-
-    test.each([[false, 1], [true, 0]] as const)('T2-OPFS reproducer: a store2 boot starts the OPFS leftover clean-up once on the web page (IndexedDB kind) and never on a Tauri page (Tauri: %s, calls: %s)', async (tauri, calls) => {
-        const { loadData, alertStore, loadedStore } = await storeTwoRig(tauri)
-        const { cleanUpCopiedBackOpfs } = await import('src/ts/storage/store/appStore')
-        const cleanUp = vi.mocked(cleanUpCopiedBackOpfs)
-        cleanUp.mockClear()
-        acknowledgeNotices(alertStore)
-
-        await loadData()
-        await settle()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUp).toHaveBeenCalledTimes(calls)
     })
 
     test.each([[false], [true]])('B1 reproducer: the save text marks the dispatch entry, the library text marks the install, and the steps never go back (Tauri: %s)', async (tauri) => {

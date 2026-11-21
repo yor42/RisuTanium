@@ -23,7 +23,9 @@ import { planAssets, type AssetPlanDeps, type AssetsPlan, type CreatableRule, ty
 import { verifyRtb, type NewerItem, type RtbVerdict, type SidePlanItem, type Store2Plan, type VerifyOptions } from './rtb/rtbVerify'
 import type { ImportSource } from '../importSource'
 import { nodePieceStore } from './assetPieces'
+import { ExportCancelledError } from '../exportCancel'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
+import type { RestoreCancelGate } from './restoreProgress'
 import { acquireRestoreHold, baseOfRead, type BaseRead, type HoldAcquire, type HoldOptions, type RestoreHold } from './rtbRestoreHold'
 import { askToClearForeignMarker, checkStore2Import, confirmImportScale, type ForeignMarkerQuestion, type Store2ImportCheck, type Store2ImportRefusal, type Store2ImportTarget } from './storeImport'
 import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
@@ -97,6 +99,8 @@ export interface RestorePlan {
 export type RtbPrepareCause =
     | 'busy' | 'read-only' | 'not-store2' | 'other-tab' | 'declined' | Store2ImportRefusal
     | 'not-an-rtb' | 'encrypted' | 'damaged' | 'newer' | 'could-not-read' | 'unexpected' | 'base-moved'
+    /** The person pressed Cancel before the point of no return, or the lock was refused. */
+    | 'cancelled'
 
 export type RtbPrepareEnd =
     | { kind: 'ready', plan: RestorePlan, hold: RestoreHold }
@@ -137,6 +141,12 @@ export interface RtbPrepareOptions {
      * Welcome `.bin` restore.
      */
     firstRun?: boolean
+    /**
+     * A run on the task card: Cancel is checked at each step before the file's copy, and `lockCancel` is asked once the
+     * preparation has succeeded, before `ready`. A refused lock ends `canceled` with cause `cancelled` and nothing written.
+     * The start-up restore passes none.
+     */
+    cancel?: RestoreCancelGate
     deps?: Partial<RtbPrepareDeps>
 }
 
@@ -284,9 +294,15 @@ export function realVerifyDeps(): RtbVerifyDeps {
  * Any decryption of the file belongs inside this function (in `verifyRtb` or here, carried by `VerifiedRtb.source`), never
  * in `prepareRtbRestore` or in the restore run: the start-up restore shares this middle and would otherwise need a second copy.
  */
-export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, options: { newerBase: BaseRead | null, sideCheckCapBytes?: number, beforeAssetPlan?: () => Promise<RtbEnded | null> }): Promise<RtbVerifyEnd> {
+export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, options: { newerBase: BaseRead | null, sideCheckCapBytes?: number, beforeAssetPlan?: () => Promise<RtbEnded | null>, cancel?: RestoreCancelGate }): Promise<RtbVerifyEnd> {
+    // A Cancel pressed before the next prompt or read ends the run here; the caller's `finally` releases what it holds.
+    const stopped = (): RtbEnded | null => options.cancel?.cancelRequested === true ? ended('canceled', 'cancelled') : null
     // V: the file.
     let lastPercent = -1
+    const cancelledBeforeOpen = stopped()
+    if (cancelledBeforeOpen !== null) {
+        return cancelledBeforeOpen
+    }
     const opened = await openRestoreSource(picked, deps)
     if (opened.kind === 'ended') {
         return opened.end
@@ -298,6 +314,10 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
             if (percent !== lastPercent) {
                 lastPercent = percent
                 deps.wait(language.rtbRestoreChecking(percent))
+                // A throw here leaves `verifyRtb` untouched (it re-throws anything but a read failure) and reaches the prepare `catch`.
+                if (options.cancel?.cancelRequested === true) {
+                    throw new ExportCancelledError()
+                }
             }
         },
     }))
@@ -321,6 +341,10 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
             break
     }
     const verified = verdict.verified
+    const cancelledAfterVerify = stopped()
+    if (cancelledAfterVerify !== null) {
+        return cancelledAfterVerify
+    }
 
     // P.1: the target was saved after the backup was made.
     const origin = verified.manifest.source
@@ -343,15 +367,23 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
     }
 
     // P.1b: the caller's step between the newer-data question and the asset listing; an answer ends the run.
+    const cancelledBeforeMarker = stopped()
+    if (cancelledBeforeMarker !== null) {
+        return cancelledBeforeMarker
+    }
     if (options.beforeAssetPlan !== undefined) {
-        const stopped = await options.beforeAssetPlan()
-        if (stopped !== null) {
-            return stopped
+        const answered = await options.beforeAssetPlan()
+        if (answered !== null) {
+            return answered
         }
     }
 
     // P.2: what is copied, skipped, oversize and uncreatable. Read-only.
     const { assets, inlays } = await planAssets(verified.index, verified.inlays, deps.assetDeps())
+    const cancelledAfterListing = stopped()
+    if (cancelledAfterListing !== null) {
+        return cancelledAfterListing
+    }
 
     // P.3: the scale of the copy.
     const copyBytes = assets.copyBytes + inlays.copyBytes
@@ -361,6 +393,10 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
     }
 
     // P.4: what a Node server cannot take.
+    const cancelledBeforeOversize = stopped()
+    if (cancelledBeforeOversize !== null) {
+        return cancelledBeforeOversize
+    }
     if (assets.limit !== null && inlays.limit !== null && (assets.oversize.length > 0 || inlays.oversize.length > 0)) {
         const names = shownNames(assets.oversize.map((item) => item.key))
         const inlayNames = shownNames(inlays.oversize.map((pair) => pair.id))
@@ -376,6 +412,10 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
     }
 
     // P.5: names the page's store cannot create.
+    const cancelledBeforeNames = stopped()
+    if (cancelledBeforeNames !== null) {
+        return cancelledBeforeNames
+    }
     if (assets.uncreatable.length > 0) {
         if (!await deps.confirm(language.rtbRestoreUncreatableConfirm(assets.uncreatable.length, shownNames(assets.uncreatable.map((item) => item.key))))) {
             return ended('canceled', 'declined')
@@ -404,6 +444,8 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
     const deps: RtbPrepareDeps = { ...realDeps(), ...options.deps }
     let hold: RestoreHold | null = null
     let ready = false
+    // A call, not a property read: a Cancel can land at any await, and a read narrowed by an earlier check would hide that.
+    const cancelPressed = (): boolean => options.cancel?.cancelRequested === true
     /** The marker P.1b wrote and the committer that holds it; set by the P.1b closure, read by `finally`. */
     const standing: { held: HeldBulk | null, committer: Committer | null } = { held: null, committer: null }
     try {
@@ -426,6 +468,9 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
 
         // R0.2-R0.4: save, hold the lock, ask once about edits that could not be saved.
         await deps.saveFirst(options.saveBoundMs ?? SAVE_FIRST_BOUND_MS)
+        if (cancelPressed()) {
+            return ended('canceled', 'cancelled')
+        }
         const acquired = await deps.acquireHold(busy, { onGranted: options.onHoldGranted })
         if (acquired.kind === 'declined') {
             return ended('canceled', 'declined')
@@ -434,6 +479,10 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
             return ended('nothing-replaced', 'other-tab')
         }
         hold = acquired.hold
+        // Inside the `try`, so the `finally` releases the hold a Cancel leaves behind.
+        if (cancelPressed()) {
+            return ended('canceled', 'cancelled')
+        }
         if (!await hold.guard.check()) {
             return ended('canceled', 'declined')
         }
@@ -558,18 +607,30 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
         }
 
         // V and P.1-P.5: the file and the prompts, shared with the start-up restore.
+        if (cancelPressed()) {
+            return ended('canceled', 'cancelled')
+        }
         const verifiedEnd = await verifyAndConfirm(picked, deps, {
             newerBase: options.firstRun === true ? null : base,
             sideCheckCapBytes: options.sideCheckCapBytes,
             beforeAssetPlan: deps.heldMarker() ? holdMarker : undefined,
+            cancel: options.cancel,
         })
         if (verifiedEnd.kind === 'ended') {
             return verifiedEnd
+        }
+        // The point of no return: the copy that follows is the first write of what the backup holds. A Cancel that came
+        // first wins and the `finally` below clears the marker and releases the hold; a granted lock is final.
+        if (options.cancel !== undefined && !options.cancel.lockCancel()) {
+            return ended('canceled', 'cancelled')
         }
         const plan: RestorePlan = { kind: 'rtb-page', ...verifiedEnd.verified, target, base, held: standing.held }
         ready = true
         return { kind: 'ready', plan, hold }
     } catch (error) {
+        if (error instanceof ExportCancelledError && cancelPressed()) {
+            return ended('canceled', 'cancelled')
+        }
         console.error(error)
         deps.error(language.store2ImportReadFailed)
         return ended('failed', 'unexpected')

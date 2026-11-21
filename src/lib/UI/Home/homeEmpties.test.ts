@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { hasLiveCharacter, personaChipName } from './homeEmpties'
+import { hasLibraryContent, hasLiveCharacter, personaChipName } from './homeEmpties'
 
 type Slot = { chaId?: string, trashTime?: number }
 
@@ -31,6 +31,24 @@ describe('hasLiveCharacter', () => {
 
     test.each(cases)('%s', (_name, characters, expected) => {
         expect(hasLiveCharacter(characters)).toBe(expected)
+    })
+})
+
+describe('hasLibraryContent', () => {
+    const cases: [string, readonly (Slot | null | undefined)[] | undefined, boolean][] = [
+        ['an undefined list', undefined, false],
+        ['an empty list', [], false],
+        ['null and undefined slots only', [null, undefined], false],
+        ['the playground and the temp copy', [slot('§playground'), slot('§temp')], false],
+        ['a single trashed character', [slot('a', { trashTime: 3 })], true],
+        ['a hidden character and a trashed one', [slot('§playground'), slot('a', { trashTime: 3 })], true],
+        ['a single live character', [slot('a')], true],
+        ['null entries around a live character', [null, slot('a'), undefined], true],
+        ['mixed hidden, trashed and live', [slot('§temp'), slot('a', { trashTime: 3 }), slot('b')], true],
+    ]
+
+    test.each(cases)('S4a-U1: %s', (_name, characters, expected) => {
+        expect(hasLibraryContent(characters)).toBe(expected)
     })
 })
 

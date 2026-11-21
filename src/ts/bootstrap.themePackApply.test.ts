@@ -43,7 +43,7 @@ vi.mock('localforage', () => ({
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
-    isNodeServer: false,
+    isNodeServer: true,
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 

@@ -35,7 +35,15 @@ vi.mock('src/ts/gui/highlight', () => ({
 vi.mock('src/ts/hotkey', () => ({
     hotkeyMatches: vi.fn(() => false),
 }))
-vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({ default: () => {} }))
+// The real KeyListInput is covered by its own test; here the stub records the `labelId` the page
+// passes, as a non-form marker so the control counts of the other tests stay unchanged.
+vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({
+    default: (anchor: Comment, props: { labelId?: string }) => {
+        const marker = document.createElement('span')
+        marker.setAttribute('data-key-list-label', props.labelId ?? '')
+        anchor.before(marker)
+    },
+}))
 
 import { language } from 'src/lang'
 import { fieldNameProblems, unnamedControls, type FieldExpectation } from 'src/lib/a11yNames.test-helpers'
@@ -92,5 +100,16 @@ describe('CustomModelsSettings value controls are named', () => {
 
     test('two opened models give each select its own naming span', () => {
         check(render(2), [...MODEL_TABLE, ...MODEL_TABLE])
+    })
+
+    test('each model\'s key list points at its own visible label span', () => {
+        const target = render(2)
+        const markers = Array.from(target.querySelectorAll('[data-key-list-label]'))
+        expect(markers).toHaveLength(2)
+        const labelIds = markers.map((marker) => marker.getAttribute('data-key-list-label') ?? '')
+        expect(new Set(labelIds).size).toBe(2)
+        for (const id of labelIds) {
+            expect(document.getElementById(id)?.textContent?.trim()).toBe(language.proxyAPIKey)
+        }
     })
 })

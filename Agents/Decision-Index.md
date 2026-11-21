@@ -2336,8 +2336,15 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2928](Maintainer-Context.md#mc-2928--234-risurealm-announcement-sits-after-the-community-list-2026-11-21) | #234 RisuRealm announcement sits after the Community list, 2026-11-21 |
 | [MC-2929](Maintainer-Context.md#mc-2929--234-the-risurealm-heading-carries-the-upstream-tag-2026-11-21) | #234 the RisuRealm heading carries the upstream tag, 2026-11-21 |
 | [MC-2930](Maintainer-Context.md#mc-2930--234-story-shelf-no-snippet-for-an-archived-chat-card-text-is-a-snapshot-2026-11-21) | #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21 |
+| [MC-2931](Maintainer-Context.md#mc-2931--234-embedded-library-characters-controls-with-no-library-mockup-tiles-as-a-follow-up-2026-11-21) | #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21 |
 | [MC-2955](Maintainer-Context.md#mc-2955--442-module-share-secrets-refuse-mcp-modules-at-share-points-plugin-settings-file-unchanged-no-keep-keys-opt-in-2026-11-21) | #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21 |
 | [MC-2908](Maintainer-Context.md#mc-2908--chore-557-stage-2-folds-into-stage-4-2026-11-21) | CHORE-557 stage 2 folds into stage 4, 2026-11-21 |
+| [MC-2909](Maintainer-Context.md#mc-2909--a-plain-web-host-shows-one-refusal-and-stores-nothing-2026-11-21) | A plain web host shows one refusal and stores nothing, 2026-11-21 |
+| [MC-2910](Maintainer-Context.md#mc-2910--the-dead-optional-blob-contract-goes-in-stage-4-2026-11-21) | The dead optional Blob contract goes in stage 4, 2026-11-21 |
+| [MC-2911](Maintainer-Context.md#mc-2911--the-refusal-uses-the-existing-error-alert-2026-11-21) | The refusal uses the existing error alert, 2026-11-21 |
+| [MC-2912](Maintainer-Context.md#mc-2912--the-refusal-shows-in-english-only-2026-11-21) | The refusal shows in English only, 2026-11-21 |
+| [MC-2913](Maintainer-Context.md#mc-2913--data-an-old-static-build-left-in-the-browser-stays-untouched-2026-11-21) | Data an old static build left in the browser stays untouched, 2026-11-21 |
+| [MC-2914](Maintainer-Context.md#mc-2914--the-hono-static-host-retires-in-stage-5-2026-11-21) | The Hono static host retires in stage 5, 2026-11-21 |
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |
 | [MC-2975](Maintainer-Context.md#mc-2975--upstream-7ee467abc6db4b681f-dispositions-2026-11-21) | Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21 |
 | [MC-2976](Maintainer-Context.md#mc-2976--upstream-6db4b681f-sync-flow-port-pr-then-a--s-ours-merge-pr-2026-11-21) | Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21 |
@@ -2371,3 +2378,12 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2965](Maintainer-Context.md#mc-2965--443-plain-http-scope-copy-buttons-in-vertex-service-account-login-gets-a-fallback-signer-2026-11-21) | #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21 |
 | [MC-2966](Maintainer-Context.md#mc-2966--443-plan-answers-honest-copy-failure-html-embed-left-out-one-invalid-key-message-2026-11-21) | #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21 |
 | [MC-2987](Maintainer-Context.md#mc-2987--173-f-arch-delete-the-old-character-archive-path-after-capturing-its-output-2026-11-21) | #173 F-ARCH: delete the old character-archive path after capturing its output, 2026-11-21 |
+| [MC-2865](Maintainer-Context.md#mc-2865--165-the-automatic-store2-inlay-pass-skips-node-2026-11-21) | #165 the automatic store2 inlay pass skips Node, 2026-11-21 |
+| [MC-2866](Maintainer-Context.md#mc-2866--165-the-clean-up-unused-files-button-stays-files-only-2026-11-21) | #165 the Clean Up Unused Files button stays files-only, 2026-11-21 |
+| [MC-2867](Maintainer-Context.md#mc-2867--165-studio-undo-history-and-body-only-residue-are-accepted-limits-2026-11-21) | #165 Studio undo history and body-only residue are accepted limits, 2026-11-21 |
+| [MC-2990](Maintainer-Context.md#mc-2990--455-under-load-the-default-streaming-mode-runs-output-scripts-only-on-the-newest-reply-text-2026-11-21) | #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21 |
+| [MC-2991](Maintainer-Context.md#mc-2991--455-one-posted-message-task-yield-per-pass-is-allowed-in-the-reply-loop-gated-on-a-note-9-hidden-page-row-2026-11-21) | #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21 |
+| [MC-3079](Maintainer-Context.md#mc-3079--424-seasonal-scenes-a-faithful-ts-port-loaded-per-day-2026-11-21) | #424 seasonal scenes: a faithful TS port, loaded per day, 2026-11-21 |
+| [MC-3080](Maintainer-Context.md#mc-3080--424-the-seasonal-logo-toggle-is-saved-on-this-device-only-2026-11-21) | #424 the Seasonal logo toggle is saved on this device only, 2026-11-21 |
+| [MC-3081](Maintainer-Context.md#mc-3081--424-the-top-bar-logo-grows-to-the-prototype-size-every-day-2026-11-21) | #424 the top-bar logo grows to the prototype size every day, 2026-11-21 |
+| [MC-3082](Maintainer-Context.md#mc-3082--424-ports-all-24-occasions-independence-day-included-2026-11-21) | #424 ports all 24 occasions, Independence Day included, 2026-11-21 |

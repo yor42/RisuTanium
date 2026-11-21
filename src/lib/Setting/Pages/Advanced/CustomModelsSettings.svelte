@@ -133,8 +133,8 @@
                 <OptionInput value="17">AWSBedrockClaude</OptionInput>
                 <OptionInput value="18">OpenAIResponseAPI</OptionInput>
             </SelectInput>
-            <span class="text-textcolor">{language.proxyAPIKey}</span>
-            <KeyListInput size={"sm"} bind:value={DBState.db.customModels[index].key}/>
+            <span class="text-textcolor" id="{uid}-key-{index}">{language.proxyAPIKey}</span>
+            <KeyListInput labelId="{uid}-key-{index}" size={"sm"} bind:value={DBState.db.customModels[index].key}/>
             <span class="text-textcolor" id="{uid}-params-{index}">{language.additionalParams}</span>
             <TextAreaInput labelId="{uid}-params-{index}" bind:value={DBState.db.customModels[index].params} placeholder={`temperature=0.7
     max_tokens=2000

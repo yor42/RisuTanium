@@ -10,6 +10,10 @@ export {
     checkFences, decideBatch,
     type BatchDecision, type BatchTokens, type CommitKeyRead, type FenceInput, type FenceRead, type FenceReason, type FenceResult, type VersionToken,
 } from './fences'
+export {
+    inlaySweepKind, runInlaySweep,
+    type InlayResident, type InlaySweepEnv, type InlaySweepRefusal, type InlaySweepResult, type InlaySweepStop,
+} from './inlayRun'
 export { decideInlayDeletions, type InlayDecision, type InlayDecisionInput, type InlayKeepReason } from './inlayRule'
 export {
     buildClosureAssetKeepSet, buildInlayKeepSet, keepManifestKeys, legacyFilesOf,

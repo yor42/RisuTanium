@@ -685,7 +685,7 @@ describe('a load that fails', () => {
 
         expect(await opened).toBe(false)
         expect(alertError).toHaveBeenCalledTimes(1)
-        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageRestoreFailed)
+        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreFailed(slot(1).name))
         expect(slot(1).coldstorage).toBe('unit-alpha')
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
@@ -694,14 +694,14 @@ describe('a load that fails', () => {
         expect(dispatchBack()).toBe(false)
     })
 
-    test('F T44: a failed read alerts with the unreadable text', async () => {
+    test('F T44: a failed read alerts with the unreadable text naming the character', async () => {
         const opened = tap(1)
         await drain()
         await land('alpha', { status: 'error', error: new Error('storage failed') })
 
         expect(await opened).toBe(false)
         expect(alertError).toHaveBeenCalledTimes(1)
-        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertError).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable(slot(1).name))
         expect(slot(1).coldstorage).toBe('unit-alpha')
         expect(liveBack()).toBe(0)
     })

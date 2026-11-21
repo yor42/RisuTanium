@@ -20,6 +20,7 @@ export const INLAY_META_PREFIX = 'inlays/m-'
 export const INLAY_BODY_PREFIX = 'inlays/b-'
 
 const BODY_TOKEN_LENGTH = 16
+const BODY_TOKEN_PATTERN = new RegExp(`^[0-9a-f]{${BODY_TOKEN_LENGTH}}$`)
 /** The longest key derived from an id is its body key. */
 const MAX_ENCODED_ID_LENGTH = NODE_MAX_WRITE_KEY_BYTES - INLAY_BODY_PREFIX.length - 1 - BODY_TOKEN_LENGTH
 
@@ -86,6 +87,22 @@ export function inlayBodyKey(id: string, token: string): string | null {
 /** The id a metadata key belongs to, or `null` for any other key. */
 export function inlayIdFromMetaKey(key: string): string | null {
     return key.startsWith(INLAY_META_PREFIX) ? decodeInlayId(key.slice(INLAY_META_PREFIX.length)) : null
+}
+
+/**
+ * The id a body key belongs to, or `null` for any other key. A body key is `inlays/b-<encoded id>.<token>` with a
+ * `BODY_TOKEN_LENGTH` lowercase hex token; the encoded id never holds `.`, so the first `.` ends it.
+ */
+export function inlayIdFromBodyKey(key: string): string | null {
+    if (!key.startsWith(INLAY_BODY_PREFIX)) {
+        return null
+    }
+    const rest = key.slice(INLAY_BODY_PREFIX.length)
+    const dot = rest.indexOf('.')
+    if (dot < 0 || !BODY_TOKEN_PATTERN.test(rest.slice(dot + 1))) {
+        return null
+    }
+    return decodeInlayId(rest.slice(0, dot))
 }
 
 /** A fresh token for a body key. */

@@ -81,7 +81,16 @@ vi.mock(import('src/ts/model/ollama'), () => ({
 const catalog = vi.hoisted(() => {
     const LLMProvider = { GoogleCloud: 1, VertexAI: 2, NovelList: 3, Anthropic: 4, AWS: 5, Mistral: 6, NovelAI: 7, Cohere: 8, OpenAI: 9 }
     const LLMFormat = { OpenAICompatible: 0, OpenAIResponseAPI: 18, Anthropic: 2, Mistral: 4, GoogleCloud: 5, Cohere: 8, Ollama: 19, NovelAI: 9, NovelList: 7 }
-    const byId: Record<string, { provider: number, format: number }> = {
+    const byId: Record<string, { provider: number, format: number, name?: string, keyIdentifier?: string }> = {
+        google: { provider: LLMProvider.GoogleCloud, format: -1 },
+        anthropic: { provider: LLMProvider.Anthropic, format: -1 },
+        mistral: { provider: LLMProvider.Mistral, format: -1 },
+        cohere: { provider: LLMProvider.Cohere, format: -1 },
+        openai: { provider: LLMProvider.OpenAI, format: -1 },
+        'novellist-key': { provider: LLMProvider.NovelList, format: -1 },
+        'nai-token': { provider: LLMProvider.NovelAI, format: -1 },
+        keyed: { provider: -1, format: -1, name: 'Keyed model', keyIdentifier: 'kid1' },
+        keyedsub: { provider: -1, format: -1, name: 'Keyed sub', keyIdentifier: 'kid2' },
         vertex: { provider: LLMProvider.VertexAI, format: -1 },
         nai: { provider: -1, format: LLMFormat.NovelAI },
         novellist: { provider: -1, format: LLMFormat.NovelList },
@@ -123,7 +132,15 @@ vi.mock('src/lib/SideBars/DropList.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/ModelGrid.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/NanoGPTDashboard.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/UI/NanoGPTProviderPicker.svelte', () => ({ default: () => {} }))
-vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({ default: () => {} }))
+// The real KeyListInput is covered by its own test; here the stub records the `labelId` the page
+// passes, as a non-form marker so the control counts of the other tests stay unchanged.
+vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({
+    default: (anchor: Comment, props: { labelId?: string }) => {
+        const marker = document.createElement('span')
+        marker.setAttribute('data-key-list-label', props.labelId ?? '')
+        anchor.before(marker)
+    },
+}))
 vi.mock('src/lib/SideBars/Scripts/RegexList.svelte', () => ({ default: () => {} }))
 vi.mock('src/lib/Setting/SettingRenderer.svelte', () => ({ default: () => {} }))
 vi.mock('./OobaSettings.svelte', () => ({ default: () => {} }))
@@ -307,6 +324,37 @@ describe('BotSettings value controls are named by their visible labels', () => {
     test('several bias rows: each number input has its own name element', () => {
         const target = mountPage('x', 'x', { bias: [['a', 1], ['b', 2], ['c', 3]] })
         expect(fieldNameProblems(target, [BIAS_VALUE, BIAS_VALUE, BIAS_VALUE])).toEqual([])
+    })
+})
+
+/** The visible label text each KeyListInput on the page is pointed at, in document order. */
+function keyListLabels(target: HTMLElement): string[] {
+    return Array.from(target.querySelectorAll('[data-key-list-label]')).map((marker) => {
+        const label = document.getElementById(marker.getAttribute('data-key-list-label') ?? '')
+        return label === null ? '' : (label.textContent ?? '').replace(/\s+/g, ' ').trim()
+    })
+}
+
+describe('BotSettings key lists are named by their visible labels', () => {
+    const key = language.apiKey
+    test.each([
+        ['GoogleAI', 'google', 'x', [fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })]],
+        ['NovelList', 'novellist-key', 'x', [`NovelList ${key}`]],
+        ['Mancer', 'mancer', 'x', [`Mancer ${key}`]],
+        ['Claude', 'anthropic', 'x', [`Claude ${key}`]],
+        ['Mistral', 'mistral', 'x', [`Mistral ${key}`]],
+        ['NovelAI', 'nai-token', 'x', [fillLang(language.settingsPage.nameBearerToken, { name: 'NovelAI' })]],
+        ['reverse proxy', 'reverse_proxy', 'x', [language.proxyAPIKey]],
+        ['Cohere', 'cohere', 'x', [`Cohere ${key}`]],
+        ['Ollama cloud', 'ollama-cloud', 'x', [`Ollama ${key}`]],
+        ['NanoGPT', 'nanogpt', 'x', [`NanoGPT ${key}`]],
+        ['OpenRouter', 'openrouter', 'x', [`OpenRouter ${key}`]],
+        ['OpenAI keeps its Help button out of the name', 'openai', 'x', [`OpenAI ${key}`]],
+        ['keyed model and keyed sub model', 'keyed', 'keyedsub', [`Keyed model ${key}`, `Keyed sub ${key}`]],
+        ['Horde', 'horde', 'x', [`Horde ${key}`]],
+    ] as Array<[string, string, string, string[]]>)('%s', (_label, aiModel, subModel, expected) => {
+        const target = mountPage(aiModel, subModel, { OaiCompAPIKeys: {}, novelai: { token: '' } })
+        expect(keyListLabels(target)).toEqual(expected)
     })
 })
 

@@ -30,11 +30,21 @@ import { encodeUnit, keyOfTail, newUnitKey, readUnit, refsOf, UNIT_TYPE } from '
 import type { MemoryBackend } from 'src/ts/storage/store2/backend'
 import { readTree } from 'src/ts/storage/store2/tree'
 import type { Database } from 'src/ts/storage/database.svelte'
+import type { MaintenanceSeams } from 'src/ts/storage/store2/maintenance'
 import { TEST_DESCENT } from './descentTable'
 import { flushConfirming } from './flushConfirmBackend'
 
 // The line a sweep logs when its page yields before listing anything (`shouldStop: () => true`).
 const SWEEP_YIELDED = 'store2 asset sweep: status=done phase=none candidates=0 deleted=0 failed=0 kept-live=0 batches=0 recorded=false stopped=yielded'
+
+// The line the inlay sweep logs when its page yields before listing anything (`shouldStop: () => true`).
+const INLAY_YIELDED = 'store2 inlay sweep: status=done candidates=0 deleted=0 bodies=0 failed=0 kept-live=0 kept-legacy=0 batches=0 stopped=yielded'
+
+// The inlay sweep follows the asset sweep; these cases are about the clean-up, so its page yields at once.
+const QUIET_INLAYS: MaintenanceSeams['inlayFacts'] = {
+    peers: async () => 'alone', shouldStop: () => true, saveMarks: () => 0, writtenThisPage: () => false,
+    legacyInlayIds: async () => [], residentInlays: async () => null, lock: (_id, work) => work(),
+}
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -278,6 +288,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
                     residentRefs: () => [], writtenCount: () => 0, writtenThisPage: () => [], peers: async () => 'alone',
                     shouldStop: () => true, release: () => { }, hold: remove => remove(),
                 },
+                inlayFacts: QUIET_INLAYS,
             },
         )
         expect(started).not.toBeNull()
@@ -285,8 +296,8 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         await getStartupCleanup()
         w.pageMode.setPageStorageMode({ kind: 'unset' })
 
-        // The step logs exactly the clean-up line and then the sweep line.
-        expect(info.mock.calls.map(call => String(call[0]))).toEqual([expect.stringContaining(`store2 clean-up: status=done deleted=${deadKeys.size} batches=`), SWEEP_YIELDED])
+        // The step logs exactly the clean-up line, then the asset sweep line, then the inlay sweep line.
+        expect(info.mock.calls.map(call => String(call[0]))).toEqual([expect.stringContaining(`store2 clean-up: status=done deleted=${deadKeys.size} batches=`), SWEEP_YIELDED, INLAY_YIELDED])
         const after = new Set(await k.memory.listStore2())
         expect([...deadKeys].filter(unit => after.has(unit)), 'orphans and the units of dropped and evicted trees are gone').toEqual([])
         expect([...namedKeys].filter(unit => !after.has(unit)), 'every unit of the current, retained and pinned trees is present').toEqual([])
@@ -375,6 +386,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
                     residentRefs: () => [], writtenCount: () => 0, writtenThisPage: () => [], peers: async () => 'alone',
                     shouldStop: () => true, release: () => { }, hold: remove => remove(),
                 },
+                inlayFacts: QUIET_INLAYS,
             },
         )
         ;(fire as (() => void) | null)?.()
@@ -389,7 +401,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         const result = await runWebStep({ alone: true, ownBase: 'current' })
 
         expect(result.dead.length, 'precondition: dead units exist').toBeGreaterThan(1)
-        expect(result.lines).toEqual([expect.stringContaining(`store2 clean-up: status=done deleted=${result.dead.length} batches=`), SWEEP_YIELDED])
+        expect(result.lines).toEqual([expect.stringContaining(`store2 clean-up: status=done deleted=${result.dead.length} batches=`), SWEEP_YIELDED, INLAY_YIELDED])
         expect(result.deleted).toBe(true)
         expect([...result.named].filter(unit => !result.after.has(unit))).toEqual([])
     })
@@ -397,7 +409,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
     test('A4b: an indexeddb page with another tab open deletes nothing', async () => {
         const others = await runWebStep({ alone: false, ownBase: 'current' })
 
-        expect(others.lines).toEqual([expect.stringContaining('store2 clean-up: status=refused reason=other-tab'), SWEEP_YIELDED])
+        expect(others.lines).toEqual([expect.stringContaining('store2 clean-up: status=refused reason=other-tab'), SWEEP_YIELDED, INLAY_YIELDED])
         expect(others.dead.every(unit => others.after.has(unit))).toBe(true)
     })
 
@@ -408,7 +420,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         expect([(key.current as { key: string }).key, ...key.retained.map(entry => entry.key), ...key.pins.map(pin => pin.key)], 'precondition: the base is in no list of the commit key').not.toContain(stale.droppedBase)
         expect(stale.droppedUnits.length, 'precondition: the dropped base reaches units no named tree reaches').toBeGreaterThan(0)
         expect(stale.droppedUnits.every(unit => stale.dead.includes(unit)), 'precondition: those units are among the dead').toBe(true)
-        expect(stale.lines).toEqual([expect.stringContaining('store2 clean-up: status=refused reason=stale-base'), SWEEP_YIELDED])
+        expect(stale.lines).toEqual([expect.stringContaining('store2 clean-up: status=refused reason=stale-base'), SWEEP_YIELDED, INLAY_YIELDED])
         expect(stale.droppedUnits.filter(unit => !stale.after.has(unit)), 'the dropped base\'s units are still stored').toEqual([])
         expect(stale.dead.every(unit => stale.after.has(unit))).toBe(true)
     })

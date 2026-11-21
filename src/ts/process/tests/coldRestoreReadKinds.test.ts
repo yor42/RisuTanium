@@ -308,7 +308,7 @@ describe('opening an archived character with no storage on the page', () => {
         expect(outcome).toEqual({ status: 'refused', reason: 'unavailable' })
         expect(alerts()).toHaveLength(1)
         expectNoStorageWording(alerts()[0])
-        expect(alerts()[0]).toBe(language.errors.coldStorageRestoreUnavailable)
+        expect(alerts()[0]).toBe(language.errors.coldStorageNamedRestoreUnavailable(NAME))
         expectStubUntouched(stub)
         expect(hasBytes('opfs', UNIT)).toBe(true)
     })
@@ -333,7 +333,7 @@ describe('opening an archived character with no storage on the page', () => {
         expect(outcome).toEqual({ status: 'refused', reason: 'unavailable' })
         expect(alerts()).toHaveLength(1)
         expectNoStorageWording(alerts()[0])
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreUnavailable])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreUnavailable(NAME)])
     })
 
     test('reading the archived character as a copy reports status unreadable with kind unavailable and installs nothing', async () => {
@@ -371,7 +371,7 @@ describe('opening an archived character whose copy does not decode', () => {
             expect(outcome).toEqual({ status: 'refused', reason: 'damaged' })
             expect(alerts()).toHaveLength(1)
             expectDamagedWording(alerts()[0])
-            expect(alerts()[0]).toBe(language.errors.coldStorageRestoreDamaged)
+            expect(alerts()[0]).toBe(language.errors.coldStorageNamedRestoreDamaged(NAME))
             expectStubUntouched(stub)
             expect(hasBytes(backend, UNIT)).toBe(true)
         })
@@ -421,7 +421,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const outcome = await withNavigatorStorage(rejecting, () => restoreColdCharacter(stub))
 
         expect(outcome).toEqual({ status: 'refused', reason: 'unreadable' })
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreUnreadable])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreUnreadable(NAME)])
         expect(alerts()[0]).toMatch(TRY_AGAIN)
         expect(alerts()[0]).not.toMatch(LOSS)
         expectStubUntouched(stub)
@@ -436,7 +436,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const outcome = await restoreColdCharacter(stub)
 
         expect(outcome).toEqual({ status: 'refused', reason: 'unreadable' })
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreUnreadable])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreUnreadable(NAME)])
     })
 
     test.each(['node', 'tauri'] as const)('guard: with navigator.storage removed a good %s unit still restores', async (backend) => {
@@ -458,8 +458,27 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const outcome = await restoreColdCharacter(stub)
 
         expect(outcome).toEqual({ status: 'refused', reason: 'missing' })
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreFailed])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreFailed(NAME)])
         expect(alerts()[0]).toMatch(LOSS)
+    })
+
+    test('a stub with no name is named by the unknown-character text in each refusal alert, once', async () => {
+        const stub = placeholder('member', UNIT, '')
+        installDb([stub])
+
+        await restoreColdCharacter(stub)
+
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreFailed(language.errors.coldStorageUnknownCharacterName)])
+    })
+
+    test('a quiet restore of a refused unit shows no alert', async () => {
+        const stub = placeholder()
+        installDb([stub])
+
+        const outcome = await restoreColdCharacter(stub, { quiet: true })
+
+        expect(outcome).toEqual({ status: 'refused', reason: 'missing' })
+        expect(alerts()).toEqual([])
     })
 
     test('guard: a unit holding another character is refused as mismatch with the data-loss text', async () => {
@@ -470,7 +489,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const outcome = await restoreColdCharacter(stub)
 
         expect(outcome).toEqual({ status: 'refused', reason: 'mismatch' })
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreFailed])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreFailed(NAME)])
     })
 
     test('guard: a unit that decodes but holds no character is refused as missing with the data-loss text', async () => {
@@ -481,7 +500,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const outcome = await restoreColdCharacter(stub)
 
         expect(outcome).toEqual({ status: 'refused', reason: 'missing' })
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreFailed])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreFailed(NAME)])
     })
 
     test('guard: a chaId held by two characters is refused as ambiguous with the data-loss text', async () => {
@@ -493,7 +512,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const outcome = await restoreColdCharacter(first, { byChaId: true })
 
         expect(outcome).toEqual({ status: 'refused', reason: 'ambiguous' })
-        expect(alerts()).toEqual([language.errors.coldStorageRestoreFailed])
+        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreFailed(NAME)])
     })
 
     test('guard: the copy of a plain read error is status unreadable with no kind', async () => {

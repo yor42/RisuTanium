@@ -267,6 +267,7 @@ function resetSurfaces(): void {
     botMakerMode.set(false)
     selectedCharID.set(-1)
     showHomeLanding()
+    homeView.libraryEngaged = false
     flushSync()
 }
 
@@ -357,5 +358,44 @@ describe('the restore of an archived last character, through the real changeChar
         expect(await startLastCharacterRestore()).toBe('skipped')
         expect(readSpy).not.toHaveBeenCalled()
         expect(get(selectedCharID)).toBe(-1)
+    })
+
+    // The embedded library is not a view: touching it sets the engaged flag, which is the only signal
+    // the restore reads.
+    test('S4a-R5: the library engaged while the unit read is pending: the selection stays at Home after the read lands', async () => {
+        writeLastChaId('alpha')
+        const end = startLastCharacterRestore()
+        await drain()
+
+        homeView.libraryEngaged = true
+        await landAlpha()
+
+        expect(await end).toBe('superseded')
+        expect(get(selectedCharID)).toBe(-1)
+        expect(slot(1).lastInteraction).toBe(LONG_AGO)
+        expect(localStorage.getItem(LAST_CHARACTER_KEY)).toBe('{"chaId":"alpha"}')
+    })
+
+    test('S4a-R6: a restore that starts with the library already engaged does not pick at all', async () => {
+        writeLastChaId('alpha')
+        homeView.libraryEngaged = true
+
+        const end = startLastCharacterRestore()
+        await drain()
+        expect(readSpy).not.toHaveBeenCalled()
+        expect(get(selectedCharID)).toBe(-1)
+        expect(await end).toBe('skipped')
+    })
+
+    test('S4a-R5: the full view alone, without the engaged flag, does not supersede (the flag is the signal)', async () => {
+        writeLastChaId('alpha')
+        const end = startLastCharacterRestore()
+        await drain()
+
+        homeView.view = 'library'
+        await landAlpha()
+
+        expect(await end).toBe('selected')
+        expect(get(selectedCharID)).toBe(1)
     })
 })

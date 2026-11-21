@@ -31,6 +31,8 @@ const setDatabaseMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
 const alertWaitMock = vi.hoisted(() => vi.fn())
+// Forwards to the real `requestSaveNow`; it only records whether the restore's save-first step asked for a save.
+const requestSaveNowMock = vi.hoisted(() => vi.fn())
 const openSourceMock = vi.hoisted(() => vi.fn())
 const readOnlyBox = vi.hoisted(() => ({ readOnly: false }))
 const reloadMark = vi.hoisted(() => ({ marked: false }))
@@ -271,10 +273,15 @@ vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(
 
 // The real `globalApi.svelte` (the write lock stays real) with one answer fixed: a clean page, so the restore's
 // save-first step returns at its clean check and the unsaved-edits question is not asked.
-vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
-    ...await importOriginal(),
-    isSaveClean: () => true,
-}))
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => {
+    const original = await importOriginal()
+    requestSaveNowMock.mockImplementation(original.requestSaveNow)
+    return {
+        ...original,
+        isSaveClean: () => true,
+        requestSaveNow: requestSaveNowMock,
+    }
+})
 
 //#endregion
 
@@ -282,6 +289,7 @@ import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2
 import { restoreOpenedBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
+import { requestTaskCancel, resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
@@ -404,6 +412,7 @@ beforeEach(() => {
     setDatabaseMock.mockReset()
     alertErrorMock.mockReset()
     alertWaitMock.mockReset()
+    requestSaveNowMock.mockClear()
     alertConfirmMock.mockReset().mockResolvedValue(true)
     openSourceMock.mockReset()
     runRtbMock.mockReset()
@@ -417,8 +426,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    // The restore's save-first step returned at its clean check; it never waited out its bound.
-    expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+    // The restore's save-first step returned at its clean check; it never asked for a save or waited out its bound.
+    expect(requestSaveNowMock).not.toHaveBeenCalled()
+    resetTaskHostForTests()
     resetBusyActionsForTest()
     resetRestoreInProgressForTests()
     resetStartupCleanupForTests()
@@ -549,30 +559,30 @@ describe('restoreOpenedBackup', () => {
         const running = restoreOpenedBackup(entry)
         await settle()
         expect(alertConfirmMock).toHaveBeenCalledTimes(1)
-        expect(alertWaitMock).toHaveBeenCalledWith(language.internalBackupWaitingForCleanup, expect.any(Function))
+        // The wait shows on the task card at its clean-up step, with Cancel offered, and posts no wait dialog.
+        const view = taskHostView()
+        expect(view?.steps[view.stepIndex]?.label).toBe(language.restoreStepCleanup)
+        expect(view?.cancelOffered).toBe(true)
+        expect(alertWaitMock).not.toHaveBeenCalledWith(language.internalBackupWaitingForCleanup, expect.any(Function))
         expect(openSourceMock).not.toHaveBeenCalled()
 
         finish()
         await running
         expect(openSourceMock).toHaveBeenCalledTimes(1)
         expect(shell.commits).toHaveLength(1)
-        // Once the clean-up settles the restore can no longer be cancelled, so the wait is replaced by one without Cancel
-        // before the source is opened. Red against the mutants that drop that wait, move it after the open, or keep Cancel.
-        const cleanupWait = alertWaitMock.mock.calls.findIndex((call) => call[0] === language.internalBackupWaitingForCleanup)
-        const loadingWait = alertWaitMock.mock.calls.findIndex((call) => call[0] === 'Loading backup...' && call[1] === undefined)
-        expect(loadingWait).toBeGreaterThan(cleanupWait)
-        expect(alertWaitMock.mock.invocationCallOrder[loadingWait]).toBeLessThan(openSourceMock.mock.invocationCallOrder[0])
+        // The restore's own card follows the clean-up card; no separate "Loading backup" wait sits between them.
+        expect(alertWaitMock).not.toHaveBeenCalledWith(language.backupRestoreLoading)
     })
 
     test('a person who stops waiting for the clean-up opens and writes nothing', async () => {
         recordStartupCleanup(new Promise<void>(() => { }))
         const running = restoreOpenedBackup(entry)
         await settle()
-        const cancel = alertWaitMock.mock.calls.find((call) => call[0] === language.internalBackupWaitingForCleanup)?.[1] as (() => void) | undefined
-        expect(cancel).toBeTypeOf('function')
-        cancel?.()
+        expect(taskHostView()?.cancelOffered).toBe(true)
+        requestTaskCancel()
         await running
 
+        expect(taskHostView()?.cancelled).toBe(true)
         expect(openSourceMock).not.toHaveBeenCalled()
         expectNothingInstalled()
     })
@@ -635,8 +645,7 @@ describe('restoreOpenedBackup', () => {
         recordStartupCleanup(new Promise<void>(() => { }))
         const running = restoreOpenedBackup(entry)
         await settle()
-        const cancel = alertWaitMock.mock.calls.find((call) => call[0] === language.internalBackupWaitingForCleanup)?.[1] as (() => void) | undefined
-        cancel?.()
+        requestTaskCancel()
         await expect(running).resolves.toBe('pageLive')
     })
 

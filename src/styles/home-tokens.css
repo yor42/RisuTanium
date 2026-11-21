@@ -10,13 +10,17 @@
   --home-text-xs: 12px;
   --home-text-sm: 13px;
   --home-text-md: 14px;
+  --home-text-base: 15px;
   --home-text-lg: 17px;
   --home-text-xl: 22px;
   --home-text-2xl: 30px;
+  --home-text-quote: 19px;
+  --home-text-quote-sm: 16px;
   --home-weight-regular: 400;
   --home-weight-strong: 700;
   --home-leading-body: 1.5;
   --home-leading-tight: 1.25;
+  --home-leading-quote: 1.55;
   --home-tracking-eyebrow: 0.02em;
   --home-tracking-h1: -0.015em;
   --home-eyebrow-transform: none;
@@ -28,10 +32,18 @@
   --home-radius-3: 8px;
   --home-radius-4: 10px;
   --home-radius-5: 12px;
+  --home-radius-7: 18px;
+  --home-card-radius: var(--home-radius-7);
+  --home-hairline: 1px;
 
   /* space */
+  --home-space-2: 4px;
   --home-space-3: 6px;
+  --home-space-4: 8px;
+  --home-space-5: 10px;
   --home-space-6: 12px;
+  --home-space-7: 14px;
+  --home-space-8: 16px;
   --home-space-10: 20px;
   --home-space-11: 24px;
   --home-space-15: 48px;
@@ -46,6 +58,12 @@
   --home-realm-min-height: 296px;
   --home-realm-list-max: 150px;
 
+  /* story shelf */
+  --home-avatar-lg: 72px;
+  --home-lead-portrait: 168px;
+  --home-lead-portrait-phone: 88px;
+  --home-measure-quote: 52ch;
+
   /* colour roles */
   --home-ink: var(--nexus-text);
   --home-ink-2: var(--nexus-text-secondary);
@@ -59,6 +77,7 @@
   --home-tracking-eyebrow: 0;
   --home-tracking-h1: 0;
   --home-leading-body: 1.6;
+  --home-leading-quote: 1.7;
 }
 
 .home-root[data-layout="mid"] {
@@ -67,6 +86,8 @@
 
 .home-root[data-layout="phone"] {
   --home-h1-size: 24px;
+  --home-text-quote: var(--home-text-quote-sm);
+  --home-avatar-lg: 56px;
   --home-main-pad-top: 16px;
   --home-main-pad-x: 16px;
   --home-main-pad-bottom: 96px;

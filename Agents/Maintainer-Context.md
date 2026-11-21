@@ -33836,6 +33836,14 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "No snippet (Recommended)": when a loaded character's current chat is itself archived (its messages are not in memory), the card shows the name, chat name and time and no last line. Nothing is loaded.
 - "Snapshot (Recommended)": each card's chat name and last line are fixed together with the order when Home opens, and refresh on the next visit. Only removals, renames and pictures apply live, so no reply text streams into a card.
 
+### MC-2931 — #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session on plan-s4). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1346`, `MC-2818`, `MC-2834`, `MC-2835`, `MC-2837`, `#234`.
+
+**What the maintainer chose.**
+- "Hide button, keep drawer (Recommended)": with zero characters (the Create/Import hero is the only content) the mid/wide Characters button is hidden. The drawer's Characters entry stays and scrolls to and focuses the hero.
+- "Mockup tiles, follow-up": #234 ships a look-only restyle of today's library tiles (radius, edge, tint; tile size, no name or count beneath). The mockup's large portrait tiles with the name beneath are built in a separate ticket (#479) that adds a Home tile size to the list engine, measured on the Note 9.
+
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
@@ -33852,6 +33860,44 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Facts put to the maintainer (read at origin/main 696ab524c): the base64 data-URL cache in `getFileSrc` is still the static build's main image path; its Blob/object-URL branch serves only the IndexedDB store's `readValue`; on Node-hosted pages every `assets/` and inlay body key already gets the `/api/asset` URL, so only other keys or a failed URL fall back to the cache.
 
 **What the maintainer chose.** "Fold into stage 4 (Recommended)": stage 4 removes the IndexedDB store, the Blob/object-URL branch, the byte-budgeted LRU cache and the oversized memo together, keeping a small uncached data-URL fallback for Node's rare non-route keys. The session moved on to stage 3.
+
+### MC-2909 — A plain web host shows one refusal and stores nothing, 2026-11-21
+
+- Tag: decision (AskUserQuestion answer to the #265 session, stage 4 planning). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-888`, `MC-2908`, `#265`.
+- Facts put to the maintainer: once stage 4 removes the IndexedDB and OPFS stores, a page that is neither the Tauri app nor served by the RisuTanium Node server has nowhere to keep data.
+
+**What the maintainer chose.** "Refusal + pointer (Recommended)": such a page shows one refusal at boot, reading "RisuTanium no longer runs from a plain web host. Use the Android or desktop app, or the page the RisuTanium Node server serves.", and reads or writes no storage. The message is a new key in all 8 locales; old storage message keys are deleted when their last reader goes.
+
+### MC-2910 — The dead optional Blob contract goes in stage 4, 2026-11-21
+
+- Tag: decision (same question set as `MC-2909`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`, `#265`.
+
+**What the maintainer chose.** "Sub-stage 4e (Recommended)": the optional Blob-saving contract that only the browser stores used is removed in its own sub-stage, 4e, inside stage 4 rather than in stage 5.
+
+### MC-2911 — The refusal uses the existing error alert, 2026-11-21
+
+- Tag: decision (AskUserQuestion answer to the #265 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`.
+
+**What the maintainer chose.** "Error pop-up (Recommended)": the refusal is the existing error alert (`alertError`). Closing it leaves the inert loading view; that is accepted.
+
+### MC-2912 — The refusal shows in English only, 2026-11-21
+
+- Tag: decision (same question set as `MC-2911`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`, `MC-058`.
+
+**What the maintainer chose.** "English only (Recommended)": the refusal fires before the UI language is loaded, so it shows the English text. The key still ships in all 8 locales so locale parity holds.
+
+### MC-2913 — Data an old static build left in the browser stays untouched, 2026-11-21
+
+- Tag: decision (same question set as `MC-2911`). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2909`, `MC-011`.
+
+**What the maintainer chose.** "Leave it (Recommended)": IndexedDB, OPFS and localStorage data an old static build left behind are never read and never deleted; no cleanup action is planned.
+
+### MC-2914 — The Hono static host retires in stage 5, 2026-11-21
+
+- Tag: decision (AskUserQuestion answer to the #265 session, after stage 4's first Gate 1 round). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-2909`, `#265`.
+- Facts put to the maintainer: `server/hono` serves only static files and a "Hello Hono" route; it has no storage API and sets no `__NODE__`, so it is a static host under `MC-876`.
+
+**What the maintainer chose.** "Retire it in stage 5 (Recommended)": during stage 4 a Hono-served page shows the static-host refusal; stage 5 removes `server/hono`, the `hono:build` script, its CI type-check job and its README and AGENTS mentions.
 
 ### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
 
@@ -34063,3 +34109,57 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 **Question.** The old character-archive path (`coldCharacterArchive.ts`, `archiveGate.ts`, `bootArchiveState.ts`, the import-archive branch in `characterCards.ts`) can no longer run in any build: its boot flag is always off, and import, restore and Android data only read archived characters. It still produced the old-format archive fixtures several compatibility tests use. Delete it, or keep it frozen as test-only code and park the item?
 
 **What the maintainer chose.** Option A, delete it in two steps. First capture the real writer's output as committed fixtures and move the compatibility tests onto them (`MC-329`, producer-built fixtures). Then delete the engine, the gate, the boot archive state, the `characterCards.ts` import branch and its plumbing, the archive-only retained helpers, `buildColdStub`'s production copy, and the four orphan archive notice keys in all 8 locale files. Every reader stays: restore, conversion, export, Android MVP data (`MC-350`) and upstream stubs. Tier 2. The final PR closes `#173`. Not chosen: B, keep it frozen as test-only and park the item.
+
+### MC-2865 — #165 the automatic store2 inlay pass skips Node, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `MC-2860`, `MC-2858`.
+
+**What the maintainer chose.** The automatic inline-image clean-up runs on Tauri and browser storage (IndexedDB) only. On a Node server the no-other-tab check sees only this browser's tabs, and another device may hold an attached but unsaved image with no age record to protect it, so unused inlays on Node stay and cost space only.
+
+### MC-2866 — #165 the Clean Up Unused Files button stays files-only, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `#163`, `MC-2864`.
+
+**What the maintainer chose.** The manual clean-up button does not run the inline-image pass; its counts and approved texts stay as they are.
+
+### MC-2867 — #165 Studio undo history and body-only residue are accepted limits, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `MC-2860`.
+
+**What the maintainer chose.** (1) A Studio undo step that names an inlay the pass has deleted is a named known limitation: a later Undo shows a missing image, the text stays intact. (2) Inlay bodies without listed metadata and stale bodies of kept ids are recorded as a leftover (space only), with no ticket; removing them needs an age-safe rule that MC-2860 rules out for now.
+
+### MC-2990 — #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2975`, `MC-1499`, `MC-1466`, `#455`.
+
+**What the maintainer chose.** "Accept (Recommended)". In the default `off` streaming display mode, when the phone falls behind the stream, the editoutput pass (Lua `editOutput`, plugin `editoutput`, regex scripts), the chat write and the re-render run on the newest reply snapshot available when the previous pass is done; snapshots superseded meanwhile are never processed. The final text is always fully processed, and nothing changes when the phone keeps up. Rejected: keeping a pass per chunk and coalescing only the write (most of the gain lost), or a new setting (locale work, user choice).
+
+### MC-2991 — #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1451`, `MC-2990`, `#455`.
+
+**What the maintainer chose.** "Allow, prove on device (Recommended)". In the `off` mode reply loop, after each processed write, the loop may yield one MessageChannel task (never `setTimeout`, `requestAnimationFrame` or an idle callback) so native stream events queued during the pass reach the snapshot reader before the next pass. The change does not ship before a Note 9 hidden-page device row shows the keep-alive count rising while hidden, the finished notice posting before the app is reopened, and Stop from the notification working. If that row fails, the yield is removed and the maintainer is asked again.
+
+### MC-3079 — #424 seasonal scenes: a faithful TS port, loaded per day, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer chose.** "Faithful TS port (Recommended)". Each prototype scene becomes a typed TS module with its own scoped CSS, built through the host's scene context and loaded with a dynamic import only on its day. This replaces the 2026-10-17 contract line that mapped the scene fades and scales onto Tailwind utilities; scenes are not rewritten as Svelte components.
+
+### MC-3080 — #424 the Seasonal logo toggle is saved on this device only, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer chose.** "This device only (Recommended)". The Display settings toggle (on by default) is kept in `localStorage`, like the once-a-day played flag. It is not a database field and does not travel in backups.
+
+### MC-3081 — #424 the top-bar logo grows to the prototype size every day, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `MC-1443`, `#234`, `#424`.
+
+**What the maintainer chose.** "Bigger logo every day". The Home top bar shows a 32 px mark and a 24 px NanumSquare Neo Heavy wordmark on every day, and 28 px and 20 px under 640 px, as the prototype decided on 2026-10-17. Rejected: keeping the 28 px mark and 18 px semibold wordmark, or growing only on occasion days.
+
+### MC-3082 — #424 ports all 24 occasions, Independence Day included, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer chose.** "Include all 24 (Recommended)". The package has 24 occasions: Independence Day (Jul 4, `en` only) was added on 2026-10-17 after MC-2826's count of 23 was written. It is ported with the other 23.

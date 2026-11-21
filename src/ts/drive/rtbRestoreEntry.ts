@@ -6,7 +6,11 @@ import { assetDeletionSettled } from '../storage/assetDeleteHold'
 import type { OperationOutcome } from './operationEnd'
 import { finishRtbRestore } from './rtbRestoreFinish'
 import { installRtbRestore, type RtbInstallCause, type RtbInstallEnd } from './rtbRestoreInstall'
-import { prepareRtbRestore, type PickedRtb, type RtbPrepareCause, type RtbPrepareEnd } from './rtbRestorePlan'
+import { acquireRestoreHold } from './rtbRestoreHold'
+import { prepareRtbRestore, type PickedRtb, type RtbPrepareCause, type RtbPrepareDeps, type RtbPrepareEnd } from './rtbRestorePlan'
+import { askRtbPassword } from './rtbSealedOpen'
+import { cardRestoreProgress, rtbCardDef, type RestoreProgress } from './restoreProgress'
+import { saveFirst } from './storeRestore'
 
 /**
  * The shell of a `.rtb` restore (CHORE-128 S12b): the busy entry, the wait for a pending asset deletion, the preparation,
@@ -36,6 +40,8 @@ export function pickedRtbOfSource(opened: { source: ImportSource, name: string, 
 /** How a restore was started; the Welcome restore sets `firstRun`. */
 export interface RtbRunOptions {
     firstRun?: boolean
+    /** Show the running phases on the task card, with Cancel until the copy begins; the start-up restore and a direct call do not. */
+    card?: true
 }
 
 /** The calls the shell makes; tests replace them to observe order and to keep the page out of it. */
@@ -48,60 +54,112 @@ export interface RtbRestoreDeps {
     wait(text: string): void
 }
 
-function realRestoreDeps(): RtbRestoreDeps {
+/** The preparation's calls on the card: named steps instead of wait dialogs, and the password prompt stands the card aside. */
+function cardPrepareDeps(progress: RestoreProgress): Partial<RtbPrepareDeps> {
+    return {
+        saveFirst: (ms) => saveFirst(ms, { quiet: true }),
+        acquireHold: (busy, options) => acquireRestoreHold(busy, { ...options, checking: () => progress.phase('tabs', null) }),
+        // The verify progress and the sealed file's key derivation both report through this one dep.
+        wait: () => progress.phase('check', null),
+        password: (reason) => progress.aside(() => askRtbPassword(reason)),
+    }
+}
+
+/** `progress` is null on every route without the card, which then runs exactly the stages' own calls. */
+function realRestoreDeps(progress: RestoreProgress | null): RtbRestoreDeps {
     return {
         beginBusy: () => beginBusy('backupLoad'),
         settled: assetDeletionSettled,
-        prepare: (picked, busy, run) => prepareRtbRestore(picked, busy, { firstRun: run.firstRun === true }),
-        install: (plan, hold) => installRtbRestore(plan, hold),
-        finish: (plan, hold, landed) => finishRtbRestore(plan, hold, landed),
+        prepare: (picked, busy, run) => prepareRtbRestore(picked, busy, progress === null
+            ? { firstRun: run.firstRun === true }
+            : { firstRun: run.firstRun === true, deps: cardPrepareDeps(progress), cancel: progress }),
+        install: (plan, hold) => progress === null
+            ? installRtbRestore(plan, hold)
+            : installRtbRestore(plan, hold, {
+                installing: () => progress.phase('load', null),
+                copyDeps: { bytes: (done, total) => progress.bytes('copy', done, total, null) },
+            }),
+        finish: (plan, hold, landed) => progress === null
+            ? finishRtbRestore(plan, hold, landed)
+            : finishRtbRestore(plan, hold, landed, { leave: () => progress.leave() }),
         wait: alertWait,
     }
 }
 
 export async function runRtbRestore(picked: PickedRtb, options: Partial<RtbRestoreDeps> = {}, run: RtbRunOptions = {}): Promise<{ outcome: OperationOutcome, cause: RtbRestoreCause | null }> {
-    const deps: RtbRestoreDeps = { ...realRestoreDeps(), ...options }
-    const busy = deps.beginBusy()
+    // The card is opened inside the `try` whose `finally` leaves it, with no await before `beginBusy`: a throwing
+    // `beginBusy` can never leave a card with Cancel and no run behind it.
+    let progress: RestoreProgress | null = null
+    // A failure of the card never changes how the restore ends.
+    const leaveCard = (): void => {
+        try {
+            progress?.leave()
+        } catch (error) {
+            console.error(error)
+        }
+    }
     try {
-        await deps.settled()
-        const prep = await deps.prepare(picked, busy, run)
-        if (prep.kind === 'ended') {
-            return { outcome: prep.outcome, cause: prep.cause }
-        }
-        let end: RtbInstallEnd
+        progress = run.card === true ? cardRestoreProgress(rtbCardDef()) : null
+        const deps: RtbRestoreDeps = { ...realRestoreDeps(progress), ...options }
+        const busy = deps.beginBusy()
         try {
-            end = await deps.install(prep.plan, prep.hold)
-        } catch (error) {
-            console.error(error)
-            try {
-                deps.wait(language.store2ImportUnconfirmed)
-            } catch (alertError) {
-                console.error(alertError)
+            await deps.settled()
+            if (progress?.cancelRequested === true) {
+                progress.cancelled()
+                return { outcome: 'canceled', cause: 'cancelled' }
             }
-            return { outcome: 'unknown', cause: null }
-        }
-        if (end.kind === 'stopped') {
-            return { outcome: end.outcome, cause: end.cause }
-        }
-        if (end.kind === 'unconfirmed') {
-            return { outcome: 'unknown', cause: end.cause }
-        }
-        try {
-            await deps.finish(prep.plan, prep.hold, end)
-        } catch (error) {
-            console.error(error)
+            const prep = await deps.prepare(picked, busy, run)
+            if (prep.kind === 'ended') {
+                if (prep.cause === 'cancelled') {
+                    progress?.cancelled()
+                }
+                return { outcome: prep.outcome, cause: prep.cause }
+            }
+            // The preparation has locked Cancel: the copy is the first write.
+            progress?.phase('copy', null)
+            let end: RtbInstallEnd
             try {
-                deps.wait(language.restoreSavedReloadOrRestart)
-            } catch (alertError) {
-                console.error(alertError)
+                end = await deps.install(prep.plan, prep.hold)
+            } catch (error) {
+                console.error(error)
+                try {
+                    deps.wait(language.store2ImportUnconfirmed)
+                } catch (alertError) {
+                    console.error(alertError)
+                }
+                leaveCard()
+                return { outcome: 'unknown', cause: null }
+            }
+            if (end.kind === 'stopped') {
+                leaveCard()
+                return { outcome: end.outcome, cause: end.cause }
+            }
+            if (end.kind === 'unconfirmed') {
+                leaveCard()
+                return { outcome: 'unknown', cause: end.cause }
+            }
+            progress?.phase('finish', null)
+            try {
+                await deps.finish(prep.plan, prep.hold, end)
+            } catch (error) {
+                console.error(error)
+                try {
+                    deps.wait(language.restoreSavedReloadOrRestart)
+                } catch (alertError) {
+                    console.error(alertError)
+                }
+                leaveCard()
+            }
+            return { outcome: 'committed', cause: null }
+        } finally {
+            try {
+                busy.end()
+            } catch (error) {
+                console.error(error)
             }
         }
-        return { outcome: 'committed', cause: null }
     } finally {
-        try {
-            busy.end()
-        } catch (error) {
-            console.error(error)
-        }
+        // The backstop for every exit above; `leave` is idempotent.
+        leaveCard()
     }
 }

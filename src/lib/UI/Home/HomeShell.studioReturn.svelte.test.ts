@@ -15,7 +15,7 @@
  * `selectedCharID < 0`, from an effect root.
  */
 
-import { flushSync, mount, tick, unmount, untrack } from 'svelte'
+import { flushSync, mount, onDestroy, tick, unmount, untrack } from 'svelte'
 import { fromStore, get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
@@ -117,10 +117,13 @@ vi.mock(import('src/ts/alert'), () => ({
     alertWait: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
-const libraryStub = vi.hoisted(() => (anchor: Comment) => {
+const libraryStub = vi.hoisted(() => (anchor: Comment, props?: { embedded?: boolean }) => {
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'library-stub')
+    marker.setAttribute('data-embedded', String(props?.embedded === true))
     anchor.parentNode!.insertBefore(marker, anchor)
+    // The stand-in sits at the block's own anchor, so the block would not remove it; remove it with the component.
+    onDestroy(() => marker.remove())
 })
 vi.mock('./HomeLibrary.svelte', () => ({ default: libraryStub }))
 
@@ -259,7 +262,8 @@ async function settleChunk(): Promise<void> {
     }
 }
 
-const libraryShown = (root: HTMLElement): boolean => root.querySelector('[data-testid="library-stub"]') !== null
+// The full view is the stand-in without the `embedded` prop; the landing's embedded library never counts.
+const libraryShown = (root: HTMLElement): boolean => root.querySelector('[data-testid="library-stub"][data-embedded="false"]') !== null
 const landingShown = (root: HTMLElement): boolean => root.textContent?.includes('test-version') === true
 const opener = (): HTMLElement => document.body.appendChild(document.createElement('button'))
 

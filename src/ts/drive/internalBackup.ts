@@ -29,13 +29,13 @@ export async function reloadOntoRestoredState(releaseExclusiveHold: ExclusiveHol
  * needs the value. A store2 page restores one of its own restore points (or an old numbered backup); any other page is
  * refused with nothing read.
  */
-export async function loadInternalBackup(): Promise<OperationEnd<ImportFacts>> {
+export async function loadInternalBackup(options: { card?: true } = {}): Promise<OperationEnd<ImportFacts>> {
 
     // A store2 page keeps no numbered backups: it restores one of its own restore
     // points, and never reads or rebuilds a numbered backup.
     const mode = getPageStorageMode()
     if (mode.kind === 'store2') {
-        return await loadStoreRestorePoint({ reload: reloadOntoRestoredState })
+        return await loadStoreRestorePoint({ reload: reloadOntoRestoredState, ...(options.card === true ? { card: true } : {}) })
     }
 
     const before = (outcome: OperationOutcome, cause: OperationCause | null = null): OperationEnd<ImportFacts> =>

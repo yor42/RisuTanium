@@ -32,7 +32,7 @@ vi.mock('../UI/ModelList.svelte', () => ({
 }))
 
 import { language } from 'src/lang'
-import { fieldNameProblems, unnamedControls, type FieldExpectation } from 'src/lib/a11yNames.test-helpers'
+import { controlName, fieldNameProblems, unnamedControls, type FieldExpectation } from 'src/lib/a11yNames.test-helpers'
 import { DBState } from 'src/ts/stores.svelte'
 import UtilityScreen from './UtilityScreen.svelte'
 
@@ -55,17 +55,18 @@ afterEach(async () => {
     }
 })
 
-// The message textarea has no visible label: it is named by aria-label alone (the placeholder text), which the
-// checker's labelledby rule does not count. It is a text field, not a value control, and stays out of scope.
-const KNOWN_UNNAMED: string[] = [
-    '<textarea class="min-h-24 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden focus:ring-2 focus:ring-borderc">',
-]
-
 function check(target: HTMLElement, expected: FieldExpectation[]): void {
     expect(fieldNameProblems(target, expected)).toEqual([])
-    expect(unnamedControls(target, { fields: true, values: true })).toEqual(KNOWN_UNNAMED)
-    // Every control is named by its visible label span; a lost labelId would fall back to a duplicate sr-only name.
-    expect(target.querySelectorAll('span.sr-only')).toHaveLength(0)
+    expect(unnamedControls(target, { fields: true, values: true })).toEqual([])
+    // The message textarea has no visible label, so its screen-reader-only span is the only one: a lost labelId on
+    // another control would add a second span.
+    const spans = Array.from(target.querySelectorAll('span.sr-only'))
+    expect(spans.map((span) => span.textContent)).toEqual([language.utility.messagePlaceholder])
+    const textarea = target.querySelector('[data-testid="utility-input"]')!
+    expect(textarea.hasAttribute('aria-label')).toBe(false)
+    expect(textarea.getAttribute('aria-labelledby')).toBe(spans[0].id)
+    expect(textarea.getAttribute('aria-describedby')!.split(' ')[0]).toBe(spans[0].id)
+    expect(controlName(textarea)).toBe(language.utility.messagePlaceholder)
 }
 
 const GOOD = { id: 'p1', name: 'Fixer', instructions: 'Fix it.', model: 'gpt4o' }

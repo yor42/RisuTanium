@@ -1,6 +1,6 @@
 // Deterministic synthetic upstream-compatible .bin generator (MC-471). Plain Node ESM, no src/ imports.
 //
-//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units [--dry-run] [--p3-modules]
+//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units|home-1000-shelf|home-1000-noshelf|home-500-shelf [--dry-run] [--p3-modules]
 //
 // Writes <out> (the .bin) and <out>.manifest.json (the expectations synth-bin-verify.mjs compares an exported .bin against).
 //
@@ -210,6 +210,22 @@ SCALES['device-units'] = {
   },
 }
 
+// The home-* scales are Home-landing fixtures: the device scale with archived stubs, folders, groups and trashed slots, and
+// a chosen number of story slots (`storySlots`). Only the `storySlots` slots with the highest generated lastInteraction keep
+// the field, in the unit and in the stub; every other slot omits it, which is the shape of a character that was never opened
+// (the app writes lastInteraction only on interaction, and a stub copies it only when it is a number). The groups are
+// generated after the characters, so they rank highest: with 5 groups, storySlots 8 is the 5 groups and the last 3 characters.
+// The 1000-character chat table is the device table with every character count doubled, so it still sums to the character
+// count and keeps its two-chat entries for the session characters. Avatars are 4-8 KiB, which understates real decode cost.
+const HOME_SHELF_BASE = {
+  ...SCALES.device,
+  stubEvery: 10, folders: 6, trashEvery: 50, groups: 5, avatarKiB: [4, 8],
+}
+const HOME_1000_CHAT_COUNTS = SCALES.device.chatCountTable.map(([count, characterCount]) => [count, characterCount * 2])
+SCALES['home-1000-shelf'] = { ...HOME_SHELF_BASE, characters: 1000, chatCountTable: HOME_1000_CHAT_COUNTS, storySlots: 8 }
+SCALES['home-1000-noshelf'] = { ...HOME_SHELF_BASE, characters: 1000, chatCountTable: HOME_1000_CHAT_COUNTS, storySlots: 0 }
+SCALES['home-500-shelf'] = { ...HOME_SHELF_BASE, characters: 500, storySlots: 8 }
+
 // ---------------------------------------------------------------------------------------------------------------------
 // arguments
 
@@ -241,7 +257,7 @@ function parseArguments(argv) {
     else throw new Error(`unknown argument ${arg}`)
   }
   if (!Number.isInteger(opt.seed) || opt.seed < 0 || opt.seed > 0xFFFFFFFF) throw new Error('--seed must be an integer from 0 to 4294967295')
-  if (!Object.hasOwn(SCALES, opt.scale)) throw new Error('--scale must be small, mid, device or device-units')
+  if (!Object.hasOwn(SCALES, opt.scale)) throw new Error(`--scale must be one of ${Object.keys(SCALES).join(', ')}`)
   if (!opt.dryRun && !opt.out) throw new Error('--out is required unless --dry-run')
   if (opt.out) {
     const resolved = path.resolve(opt.out)
@@ -677,6 +693,12 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       comment: `tu${planned.index}-${k}`, type: 'manual', conditions: [], effect: [{ type: 'setvar', var: 'synthetic', operator: '=', value: unitText(each, 0) }], lowLevelAccess: false,
     })))
   }
+  // `storySlots` keeps lastInteraction on the slots that rank highest by it: the groups (generated after the characters), then
+  // the characters from the last index down. Unset keeps it on every slot.
+  const groupsKeeping = cfg.storySlots === undefined ? plan.groups.length : Math.min(cfg.storySlots, plan.groups.length)
+  const charactersKeeping = cfg.storySlots === undefined ? plan.characters.length : Math.max(0, cfg.storySlots - plan.groups.length)
+  const keepsLastInteraction = (index) => index >= plan.characters.length - charactersKeeping
+  const groupKeepsLastInteraction = (index) => index >= plan.groups.length - groupsKeeping
   const characters = plan.characters.map((planned) => {
     const chats = planned.chats.map((chat, c) => buildChat(planned.index + c, chat, c, null))
     const full = {
@@ -698,20 +720,23 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       tags: planned.index % 3 === 0 ? ['synthetic', `tag${planned.index % 5}`] : [],
     }
     if (planned.unit) shapeUnit(full, planned)
+    if (!keepsLastInteraction(planned.index)) delete full.lastInteraction
     if (planned.trashed === 'inline') full.trashTime = TRASH_TIME
     if (planned.vits) full.vits = { id: planned.vits.id, name: planned.vits.name, files: Object.fromEntries(planned.vits.files.map(([rel, id]) => [rel, refOf(id)])) }
     if (planned.voice) full.gptSoVitsConfig = { ref_audio_data: { fileName: planned.voice.fileName, assetId: refOf(planned.voice.id) } }
     if (planned.cc.length) full.ccAssets = planned.cc.map((c) => ({ type: 'icon', uri: refOf(c.id), name: c.name, ext: 'png' }))
     // A stub is authoritative for the trash state, and its lastInteraction wins when newer (applyStubStateOnRestore); a unit never holds trashTime.
-    const stubLastInteraction = planned.newerStub ? full.lastInteraction + 5000 : full.lastInteraction
+    // A slot that never had the field gets none (a number plus 5000 would be NaN, which JSON stores as null).
+    const stubLastInteraction = typeof full.lastInteraction !== 'number' ? undefined : planned.newerStub ? full.lastInteraction + 5000 : full.lastInteraction
+    const stubInteractionField = stubLastInteraction === undefined ? {} : { lastInteraction: stubLastInteraction }
     const restored = !planned.stub ? full : {
-      ...full, lastInteraction: stubLastInteraction, ...(planned.trashed === 'stub' ? { trashTime: TRASH_TIME } : {}),
+      ...full, ...stubInteractionField, ...(planned.trashed === 'stub' ? { trashTime: TRASH_TIME } : {}),
     }
     if (withProjections) addCharacterProjections(restored, chats)
     if (!planned.stub) return full
     units.push({ key: planned.stubKey, value: { character: full } })
     return {
-      type: 'character', chaId: full.chaId, name: full.name, image: full.image, chatPage: 0, firstMsgIndex: -1, lastInteraction: stubLastInteraction,
+      type: 'character', chaId: full.chaId, name: full.name, image: full.image, chatPage: 0, firstMsgIndex: -1, ...stubInteractionField,
       ...(planned.trashed === 'stub' ? { trashTime: TRASH_TIME } : {}),
       coldstorage: planned.stubKey, coldStoragedChats: [],
       // the fields applyCharacterDefaults would add to the slot at boot
@@ -729,6 +754,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       characters: memberIds, characterTalks: memberIds.map(() => 0.5), characterActive: memberIds.map(() => true),
       chats, customscript: [], globalLore: [], viewScreen: 'none', emotionImages: [],
     }
+    if (!groupKeepsLastInteraction(planned.index)) delete full.lastInteraction
     if (withProjections) addCharacterProjections(full, chats)
     return full
   })
