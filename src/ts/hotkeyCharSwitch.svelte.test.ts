@@ -450,7 +450,7 @@ describe('nextChar / prevChar switch through the same path as a sidebar click', 
 
         expect(get(selectedCharID)).toBe(BOB)
         expect((DBState.db.characters[CHARLIE] as unknown as { coldstorage?: string }).coldstorage).toBe('cold-key-1')
-        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageRestoreFailed)
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreFailed(DBState.db.characters[CHARLIE].name))
     })
 })
 

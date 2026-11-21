@@ -13,7 +13,7 @@
 
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { language } from 'src/lang'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import { dispatchBack, installBackGuard, resetBackHandlersForTests } from 'src/ts/backHandlers'
@@ -68,7 +68,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 
 import HomeShell from './HomeShell.svelte'
 import { homeView, showHomeLanding } from './homeView.svelte'
-import { OpenRealmStore, PlaygroundStore, additionalHamburgerMenu, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
+import { DBState, OpenRealmStore, PlaygroundStore, additionalHamburgerMenu, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 
 const mountedInstances: unknown[] = []
 const mountedTargets: HTMLElement[] = []
@@ -422,7 +422,11 @@ describe('HomeDrawer', () => {
         for (const item of items) expect(item.classList.contains('min-h-11')).toBe(true)
     })
 
-    test('T-B1b: on the phone the Characters button is not in the content; at mid it is', () => {
+    test('T-B1b: on the phone the Characters button is not in the content; at mid it is, given library content (MC-2931)', () => {
+        DBState.db.characters = [{ chaId: 'lib-1', name: 'Lib' }] as unknown as typeof DBState.db.characters
+        onTestFinished(() => {
+            Reflect.deleteProperty(DBState.db, 'characters')
+        })
         const phone = mountShellAt(360)
         expect(menuButtonOf(phone)).not.toBeNull()
         expect(contentCharactersButtonOf(phone)).toBeNull()

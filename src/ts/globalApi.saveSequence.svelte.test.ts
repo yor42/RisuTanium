@@ -3,14 +3,12 @@
  * Also `sweepDraftRegistrations`, the orphan draft-registration sweep the store2 loop runs every pass.
  *
  * This file drives the REAL, unmocked `src/ts/globalApi.svelte.ts`. The module-mock set below is
- * copied, trimmed to what these functions' own dependency graph
- * actually needs, from `src/ts/globalApiFileCacheAv3.svelte.test.ts` (the
- * existing precedent for loading this same huge module for real).
+ * trimmed to what these functions' own dependency graph actually needs.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 
-//#region module mocks -- trimmed from globalApiFileCacheAv3.svelte.test.ts
+//#region module mocks
 
 vi.mock('localforage', () => ({
     default: {
