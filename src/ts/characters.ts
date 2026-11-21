@@ -33,7 +33,7 @@ import { chatRecency } from "./chatShell/chatListModel";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
 import { findOrigin, placeRestored, recordTrashOrigins, releaseTrashOrigin } from "./trashOrigin";
 import { recordCaughtError } from "./caughtErrors";
-import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readCaiTurnsChat, readDumperChats, readKoboldChat, readMorseChats, readOobaChat, readTavernJsonl, tavernMessageName, type CaiChatsResult, type ChatImportResult } from "./chatImport";
+import { buildTavernTree, chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readCaiTurnsChat, readDumperChats, readKoboldChat, readMorseChats, readOobaChat, readTavernJsonl, type CaiChatsResult, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -681,7 +681,6 @@ export async function exportChat(page:number){
 
 // Builds one chat from a reader's result, or `undefined` when it has no messages.
 function buildImportedChat(result: ChatImportResult, name: string, selectedID: number): Chat | undefined {
-    const { messages, header } = result
     let newChat:Chat = {
         message: [],
         note: "",
@@ -692,26 +691,13 @@ function buildImportedChat(result: ChatImportResult, name: string, selectedID: n
     }
 
     const ownNames = { userName: getUserName(), characterName: DBState.db.characters[selectedID].name }
-    for(const line of messages){
-        const message: Chat['message'][number] = {
-            role: line.isUser ? "user" : 'char',
-            data: formatTavernChat(line.mes, ownNames.characterName)
-        }
-        if(line.sendDate !== undefined){
-            message.time = line.sendDate
-        }
-        const name = tavernMessageName(line, header, ownNames)
-        if(name !== undefined){
-            message.name = name
-        }
-        if(line.isSystem){
-            message.disabled = true
-        }
-        newChat.message.push(message)
-    }
-
-    if(newChat.message.length === 0){
+    const { message, alt } = buildTavernTree(result, ownNames, (text) => formatTavernChat(text, ownNames.characterName), v4)
+    if(message.length === 0){
         return undefined
+    }
+    newChat.message = message
+    if(alt.length > 0){
+        newChat.alt = alt
     }
 
     // Characters saved before chat folders existed have no `chatFolders`.

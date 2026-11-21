@@ -57,19 +57,18 @@ describe('adv.coldstorage', () => {
     })
 
     test('turning the setting off forgets the skipped characters and the too-large save', async () => {
-        const memo = await memoModule()
-        memo.rememberSkipped(['a', 'b'])
-        memo.rememberTooLarge()
-        expect(memo.readArchiveMemo().skipped.size).toBe(2)
+        await memoModule()
+        localStorage.setItem('archivePassSkipped', JSON.stringify(['a', 'b']))
+        localStorage.setItem('archivePassTooLarge', '1')
 
         archiveEntry().setValue({}, false)
 
-        expect(memo.readArchiveMemo().skipped.size).toBe(0)
-        expect(memo.readArchiveMemo().tooLarge).toBe(false)
+        expect(localStorage.getItem('archivePassSkipped')).toBeNull()
+        expect(localStorage.getItem('archivePassTooLarge')).toBeNull()
     })
 
     test('turning the setting off forgets the strike count and the told record of the crash-loop breaker', async () => {
-        const memo = await memoModule()
+        await memoModule()
         localStorage.setItem('archivePassStrikes', '2')
         localStorage.setItem('archivePassPausedTold', '1')
         localStorage.setItem('unrelated-key', 'kept')
@@ -78,7 +77,6 @@ describe('adv.coldstorage', () => {
 
         expect(localStorage.getItem('archivePassStrikes')).toBeNull()
         expect(localStorage.getItem('archivePassPausedTold')).toBeNull()
-        expect(memo.readArchiveMemo().pausedTold).toBe(false)
         expect(localStorage.getItem('unrelated-key')).toBe('kept')
     })
 
@@ -159,14 +157,14 @@ describe('adv.coldstorage', () => {
     })
 
     test('guard: turning the setting off still clears the archive memo and the strike count beside the stub-enrichment count', async () => {
-        const memo = await memoModule()
-        memo.rememberTooLarge()
+        await memoModule()
+        localStorage.setItem('archivePassTooLarge', '1')
         localStorage.setItem('archivePassStrikes', '2')
         localStorage.setItem('stubEnrichStrikes', '1')
 
         archiveEntry().setValue({}, false)
 
-        expect(memo.readArchiveMemo().tooLarge).toBe(false)
+        expect(localStorage.getItem('archivePassTooLarge')).toBeNull()
         expect(localStorage.getItem('archivePassStrikes')).toBeNull()
     })
 })

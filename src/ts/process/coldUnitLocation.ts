@@ -64,11 +64,3 @@ export function coldUnitKeyOfStoreKey(storeKey: string): string | null {
 export function legacyOpfsUnitName(key: string): string {
     return LEGACY_OPFS_PREFIX + key + LEGACY_OPFS_SUFFIX
 }
-
-/** The unit key a legacy OPFS root file name stands for, or `null` for any other name. */
-export function legacyOpfsUnitKeyOfName(name: string): string | null {
-    if (name.startsWith(LEGACY_OPFS_PREFIX) && name.endsWith(LEGACY_OPFS_SUFFIX) && name.length > LEGACY_OPFS_PREFIX.length + LEGACY_OPFS_SUFFIX.length) {
-        return name.slice(LEGACY_OPFS_PREFIX.length, -LEGACY_OPFS_SUFFIX.length)
-    }
-    return null
-}

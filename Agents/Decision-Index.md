@@ -2335,4 +2335,5 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2837](Maintainer-Context.md#mc-2837--234-library-stage-answers-restore-cancel-scroll-area-all-trashed-line-zero-count-2026-11-20) | #234 library stage answers: restore cancel, scroll area, all-trashed line, zero count, 2026-11-20 |
 | [MC-2928](Maintainer-Context.md#mc-2928--234-risurealm-announcement-sits-after-the-community-list-2026-11-21) | #234 RisuRealm announcement sits after the Community list, 2026-11-21 |
 | [MC-2929](Maintainer-Context.md#mc-2929--234-the-risurealm-heading-carries-the-upstream-tag-2026-11-21) | #234 the RisuRealm heading carries the upstream tag, 2026-11-21 |
+| [MC-2955](Maintainer-Context.md#mc-2955--442-module-share-secrets-refuse-mcp-modules-at-share-points-plugin-settings-file-unchanged-no-keep-keys-opt-in-2026-11-21) | #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21 |
 | [MC-2908](Maintainer-Context.md#mc-2908--chore-557-stage-2-folds-into-stage-4-2026-11-21) | CHORE-557 stage 2 folds into stage 4, 2026-11-21 |

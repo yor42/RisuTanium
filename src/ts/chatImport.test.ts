@@ -6,10 +6,13 @@
  * `characters.importChat.test.ts`.
  */
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { Chat } from './storage/database.svelte'
+import { isChatAltReadable, siblingsAt, switchTo, treeLeaves } from './process/chatTree'
+import { branchPlanOf, branchSummaryOf } from './drive/exportBranches'
 import {
+    buildTavernTree,
     chatNameFromFile,
     detectJsonChatFormat,
-    hasOtherReplies,
     loadKoboldSettings,
     parseOobaTimestamp,
     parseTavernSendDate,
@@ -22,6 +25,7 @@ import {
     readTavernJsonl,
     tavernMessageName,
     unescapeHtmlEntities,
+    type TavernLine,
 } from './chatImport'
 
 // Restoring by assignment: deleting TZ does not re-zone Date on every host.
@@ -164,34 +168,303 @@ describe('readTavernJsonl Chub mes (unit)', () => {
 })
 
 describe('readTavernJsonl swipes (unit)', () => {
-    const count = (...lines: string[]) => readTavernJsonl(lines.join('\n')).swipesNotKept
+    const read = (...lines: string[]) => readTavernJsonl(lines.join('\n'))
+    const sent = Date.UTC(2024, 6, 12, 1, 31, 37, 123)
 
-    test('an accepted line with more than one swipe counts once, with one swipe it does not', () => {
-        expect(count(msg('a', { swipes: ['a', 'b', 'c'] }), msg('b', { swipes: ['b', 'x'] }))).toBe(2)
-        expect(count(msg('a', { swipes: ['a'] }), msg('b', { swipes: [] }), msg('c'), msg('d', { swipes: 'x' }))).toBe(0)
+    // Regression reproducer: the base keeps no swipe and counts the line.
+    test('R-1: the replies beside the shown one are kept in file order and nothing is counted', () => {
+        const r = read(msg('b', { swipes: ['a', 'b', 'c'], swipe_id: 1, swipe_info: [{}, {}, {}] }))
+        expect(r.messages).toStrictEqual([{ isUser: false, mes: 'b', name: 'C', swipes: { before: ['a'], after: ['c'] } }])
+        expect(r.swipesNotKept).toBe(0)
     })
 
-    test('an empty-shown line counts only when another swipe is non-empty', () => {
-        expect(count(msg('', { swipes: ['', 'x'] }), msg('ok'))).toBe(1)
-        expect(count(msg({ message: '' }, { swipes: [{ message: 'a' }, { message: 'b' }] }), msg('ok'))).toBe(1)
-        expect(count(msg('', { swipes: ['', ''] }), msg('', { swipes: ['x'] }), msg('ok'))).toBe(0)
+    // Regression reproducer: the Chub object form.
+    test('R-2: Chub object entries are read as their message', () => {
+        const r = read(msg({ message: 'a' }, { swipes: [{ message: 'a' }, { message: 'b' }], swipe_id: 0 }))
+        expect(r.messages).toStrictEqual([{ isUser: false, mes: 'a', name: 'C', swipes: { before: [], after: ['b'] } }])
+        expect(r.swipesNotKept).toBe(0)
     })
 
-    test('a skipped line adds nothing to the swipe count', () => {
+    // Regression reproducer: without a swipe_id the text match places the shown reply.
+    test('R-3: a missing swipe_id places the shown reply by its text', () => {
+        const r = read(msg('b', { swipes: ['a', 'b', 'c'] }))
+        expect(r.messages[0].swipes).toStrictEqual({ before: ['a'], after: ['c'] })
+    })
+
+    // Regression reproducer: a swipe_id that is no in-range integer is not trusted.
+    test.each([-1, 3, 1.5, '2', null])('R-4: swipe_id %j falls back to the text match', (swipeId) => {
+        const r = read(msg('z', { swipes: ['x', 'y', 'z'], swipe_id: swipeId }))
+        expect(r.messages[0].swipes).toStrictEqual({ before: ['x', 'y'], after: [] })
+    })
+
+    // Regression reproducer: a swipe_id whose entry is not the shown reply is not trusted.
+    test('R-5: a swipe_id that points at another text puts the shown reply first and loses nothing', () => {
+        const r = read(msg('b', { swipes: ['a', 'x', 'c'], swipe_id: 1 }))
+        expect(r.messages[0].mes).toBe('b')
+        expect(r.messages[0].swipes).toStrictEqual({ before: [], after: ['a', 'x', 'c'] })
+    })
+
+    // Regression reproducer: unreadable and empty entries hold no reply.
+    test('R-6: empty and unreadable entries are dropped silently', () => {
+        const r = read(msg('a', { swipes: ['a', '', 5, null, { x: 1 }, 'c'], swipe_id: 0 }))
+        expect(r.messages[0].swipes).toStrictEqual({ before: [], after: ['c'] })
+        expect(r.swipesNotKept).toBe(0)
+    })
+
+    // Regression reproducer: another swipe with the shown text is a reply of its own.
+    test('R-7: other entries equal to the shown reply are kept', () => {
+        const r = read(msg('a', { swipes: ['a', 'a', 'b'], swipe_id: 0 }))
+        expect(r.messages[0].swipes).toStrictEqual({ before: [], after: ['a', 'b'] })
+    })
+
+    // Regression reproducer: a valid swipe_id wins over an earlier copy of the same text.
+    test('R-7: a swipe_id pointing at a later copy of the shown reply places it there', () => {
+        const r = read(msg('a', { swipes: ['a', 'b', 'a'], swipe_id: 2 }))
+        expect(r.messages[0].swipes).toStrictEqual({ before: ['a', 'b'], after: [] })
+    })
+
+    // Regression reproducer: the base drops an empty-shown line and counts it.
+    test('R-8: an empty shown reply promotes the first kept reply and the rest follow', () => {
+        const r = read(msg('', { swipes: ['', 'x', 'y'], swipe_id: 0 }), msg('ok'))
+        expect(r.messages.map((m) => m.mes)).toEqual(['x', 'ok'])
+        expect(r.messages[0].swipes).toStrictEqual({ before: [], after: ['y'] })
+        expect(r.swipesNotKept).toBe(0)
+        expect(r.skipped).toBe(0)
+    })
+
+    test('R-8: the promotion ignores swipe_id and reads the Chub form', () => {
+        const r = read(
+            msg('', { swipes: ['', 'x', 'y'], swipe_id: 2 }),
+            msg({ message: '' }, { swipes: [{ message: 'a' }, { message: 'b' }] }),
+        )
+        expect(r.messages.map((m) => m.mes)).toEqual(['x', 'a'])
+        expect(r.messages[0].swipes).toStrictEqual({ before: [], after: ['y'] })
+        expect(r.messages[1].swipes).toStrictEqual({ before: [], after: ['b'] })
+    })
+
+    // Regression reproducer for the empty-entry rule (the base counts `['f', '']`); the rest is a compatibility guard.
+    test('R-9: a line without another reply carries no swipes key and is not counted', () => {
+        const r = read(
+            msg('a'),
+            msg('b', { swipes: ['b'] }),
+            msg('c', { swipes: [] }),
+            msg('d', { swipes: 'x' }),
+            msg('e', { swipes: [''] }),
+            msg('f', { swipes: ['f', ''] }),
+        )
+        expect(r.messages.map((m) => m.mes)).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+        for (const m of r.messages) {
+            expect(m).not.toHaveProperty('swipes')
+        }
+        expect(r.swipesNotKept).toBe(0)
+    })
+
+    test('R-9: a lone entry that differs from the shown reply is a kept reply, and a lone one with an empty shown reply is the message', () => {
+        const r = read(msg('a', { swipes: ['x'] }), msg('', { swipes: ['y'] }), msg('', { swipes: ['', ''] }))
+        expect(r.messages).toStrictEqual([
+            { isUser: false, mes: 'a', name: 'C', swipes: { before: [], after: ['x'] } },
+            { isUser: false, mes: 'y', name: 'C' },
+        ])
+        expect(r.swipesNotKept).toBe(0)
+    })
+
+    // Regression reproducer (the base keeps no swipes): swipe_info and extra are never read.
+    test('R-10: swipe_info and extra change neither the swipes nor the time', () => {
+        const base = { swipes: ['a', 'b', 'c'], swipe_id: 1, send_date: '2024-07-12T01:31:37.123Z' }
+        const plain = read(msg('b', base))
+        const withInfo = read(msg('b', {
+            ...base,
+            swipe_info: [
+                { send_date: '2020-01-01T00:00:00.000Z', extra: { api: 'x' } },
+                { send_date: '2030-01-01T00:00:00.000Z' },
+                { send_date: '2031-01-01T00:00:00.000Z' },
+            ],
+            extra: { y: 1 },
+        }))
+        expect(withInfo.messages).toStrictEqual(plain.messages)
+        expect(withInfo.messages[0].swipes).toStrictEqual({ before: ['a'], after: ['c'] })
+        expect(withInfo.messages[0].sendDate).toBe(sent)
+        const none = read(msg('a'), msg('b', { extra: { y: 1 }, swipe_info: [{}] }))
+        expect(none.messages.map((m) => m.mes)).toEqual(['a', 'b'])
+        expect(none.messages[1]).not.toHaveProperty('swipes')
+    })
+
+    test('a skipped line adds nothing to the swipe lists or the count', () => {
         const r = readTavernJsonl([msg(5, { swipes: ['a', 'b'] }), '{broken', msg('ok')].join('\n'))
         expect(r.swipesNotKept).toBe(0)
         expect(r.skipped).toBe(2)
+        expect(r.messages).toStrictEqual([{ isUser: false, mes: 'ok', name: 'C' }])
+    })
+})
+
+describe('buildTavernTree (unit)', () => {
+    const own = { userName: 'User', characterName: 'Solo' }
+    const sent = Date.UTC(2024, 6, 12, 1, 31, 37, 123)
+    // The largest time Intl.DateTimeFormat can format.
+    const latest = 253402300799999
+
+    const ascending = () => {
+        let n = 0
+        return () => `id${String(1000 + ++n)}`
+    }
+    const descending = () => {
+        let n = 0
+        return () => `id${String(9000 - ++n)}`
+    }
+    const identity = (text: string) => text
+    const line = (mes: string, extra: Partial<TavernLine> = {}): TavernLine => ({ isUser: false, mes, ...extra })
+    const chatOf = (built: ReturnType<typeof buildTavernTree>): Chat => {
+        const chat = { id: 'chat', name: 'c', note: '', localLore: [], message: built.message } as unknown as Chat
+        if(built.alt.length > 0){
+            chat.alt = built.alt
+        }
+        return chat
+    }
+    const dataAt = (chat: Chat, i: number) => siblingsAt(chat, i).map((m) => m.data)
+
+    // Specification test of the new export (the base has no such export).
+    test('S-1: siblings carry millisecond offsets around the shown time, in file order', () => {
+        const built = buildTavernTree({
+            messages: [line('hi', { isUser: true }), line('b', { sendDate: sent, swipes: { before: ['a'], after: ['c'] } })],
+        }, own, identity, ascending())
+        const chat = chatOf(built)
+        expect(built.message[1].time).toBe(sent)
+        expect(built.alt.map((r) => r.m.time)).toEqual([sent - 1, sent + 1])
+        expect(dataAt(chat, 1)).toEqual(['a', 'b', 'c'])
+        expect(siblingsAt(chat, 1).map((m) => m.time)).toEqual([sent - 1, sent, sent + 1])
     })
 
-    test('hasOtherReplies needs more than one entry and one non-empty reply', () => {
-        expect(hasOtherReplies(['', 'x'])).toBe(true)
-        expect(hasOtherReplies([{ message: '' }, { message: 'x' }])).toBe(true)
-        expect(hasOtherReplies(['', ''])).toBe(false)
-        expect(hasOtherReplies(['x'])).toBe(false)
-        expect(hasOtherReplies([])).toBe(false)
-        expect(hasOtherReplies('xx')).toBe(false)
-        expect(hasOtherReplies(undefined)).toBe(false)
-        expect(hasOtherReplies([5, null])).toBe(false)
+    test('S-1: the shown reply first and last of its siblings', () => {
+        const first = buildTavernTree({ messages: [line('a', { sendDate: sent, swipes: { before: [], after: ['b', 'c'] } })] }, own, identity, ascending())
+        expect(first.alt.map((r) => r.m.time)).toEqual([sent + 1, sent + 2])
+        expect(dataAt(chatOf(first), 0)).toEqual(['a', 'b', 'c'])
+        const last = buildTavernTree({ messages: [line('c', { sendDate: sent, swipes: { before: ['a', 'b'], after: [] } })] }, own, identity, ascending())
+        expect(last.alt.map((r) => r.m.time)).toEqual([sent - 2, sent - 1])
+        expect(dataAt(chatOf(last), 0)).toEqual(['a', 'b', 'c'])
+    })
+
+    test('S-2: without a time the siblings order by sorted ids, whatever order the ids are drawn in', () => {
+        const built = buildTavernTree({
+            messages: [line('hi', { isUser: true }), line('b', { swipes: { before: ['a'], after: ['c', 'd'] } })],
+        }, own, identity, descending())
+        const chat = chatOf(built)
+        expect(dataAt(chat, 1)).toEqual(['a', 'b', 'c', 'd'])
+        for (const record of built.alt) {
+            expect(record.m).not.toHaveProperty('time')
+        }
+        expect(built.message[1]).not.toHaveProperty('time')
+    })
+
+    test('S-3: a time that leaves no room for the offsets is copied and the ids order the siblings', () => {
+        const top = buildTavernTree({ messages: [line('a', { sendDate: latest, swipes: { before: [], after: ['b'] } })] }, own, identity, ascending())
+        expect(top.alt.map((r) => r.m.time)).toEqual([latest])
+        expect(top.message[0].time).toBe(latest)
+        expect(dataAt(chatOf(top), 0)).toEqual(['a', 'b'])
+
+        const bottom = buildTavernTree({ messages: [line('c', { sendDate: 1, swipes: { before: ['a', 'b'], after: [] } })] }, own, identity, descending())
+        expect(bottom.alt.map((r) => r.m.time)).toEqual([1, 1])
+        expect(bottom.message[0].time).toBe(1)
+        expect(dataAt(chatOf(bottom), 0)).toEqual(['a', 'b', 'c'])
+    })
+
+    test('S-3: offsets that just fit are used, one step further falls back', () => {
+        const fits = buildTavernTree({ messages: [line('a', { sendDate: latest - 1, swipes: { before: [], after: ['b'] } })] }, own, identity, descending())
+        expect(fits.alt.map((r) => r.m.time)).toEqual([latest])
+        const fitsLow = buildTavernTree({ messages: [line('b', { sendDate: 2, swipes: { before: ['a'], after: [] } })] }, own, identity, descending())
+        expect(fitsLow.alt.map((r) => r.m.time)).toEqual([1])
+        const shortLow = buildTavernTree({ messages: [line('b', { sendDate: 1, swipes: { before: ['a'], after: [] } })] }, own, identity, descending())
+        expect(shortLow.alt.map((r) => r.m.time)).toEqual([1])
+    })
+
+    test('S-4: records are exactly m, p and a, with unique ids and a readable tree', () => {
+        const built = buildTavernTree({
+            messages: [
+                line('g1', { swipes: { before: [], after: ['g2'] } }),
+                line('hi', { isUser: true, name: 'Narrator' }),
+                line('b', { sendDate: sent, swipes: { before: ['a'], after: ['c'] } }),
+                line('plain'),
+                line('y', { isSystem: true, swipes: { before: [], after: ['y2'] } }),
+            ],
+        }, own, identity, ascending())
+        const chat = chatOf(built)
+        expect(built.alt).toHaveLength(4)
+        for (const record of built.alt) {
+            expect(Object.keys(record).sort()).toEqual(['a', 'm', 'p'])
+            expect(record.a).toBe(1)
+            expect(record.m.chatId).toBeTruthy()
+        }
+        expect(built.alt.map((r) => r.m.data)).toEqual(['g2', 'a', 'c', 'y2'])
+        expect(built.alt[1].m).toStrictEqual({ role: 'char', data: 'a', time: sent - 1, chatId: built.alt[1].m.chatId })
+        expect(built.alt.map((r) => r.p)).toEqual([null, built.message[1].chatId, built.message[1].chatId, built.message[3].chatId])
+        const ids = [...built.message.map((m) => m.chatId), ...built.alt.map((r) => r.m.chatId)]
+        expect(ids.every((id) => typeof id === 'string' && id !== '')).toBe(true)
+        expect(new Set(ids).size).toBe(ids.length)
+        expect(isChatAltReadable(chat)).toBe(true)
+        const tree = treeLeaves(chat)
+        expect(tree?.unreachable).toEqual([])
+        expect(tree?.leaves).toHaveLength(built.alt.length)
+        expect(dataAt(chat, 0)).toEqual(['g1', 'g2'])
+        expect(dataAt(chat, 2)).toEqual(['a', 'b', 'c'])
+        expect(dataAt(chat, 4)).toEqual(['y', 'y2'])
+    })
+
+    test('S-4: a record takes the role, name, disabled flag and formatted text of its line', () => {
+        const built = buildTavernTree({
+            messages: [line('{{user}} hi', { isUser: true, name: 'Narrator', isSystem: true, swipes: { before: [], after: ['{{user}} yo'] } })],
+        }, own, (text) => text.replace('{{user}}', 'User'), ascending())
+        expect(built.message[0]).toMatchObject({ role: 'user', data: 'User hi', name: 'Narrator', disabled: true })
+        expect(built.alt[0].m).toStrictEqual({ role: 'user', data: 'User yo', name: 'Narrator', disabled: true, chatId: built.alt[0].m.chatId })
+    })
+
+    // Compatibility guard (the base has no export): a chat without a kept swipe stays as it is today.
+    test('S-5: lines without swipes give no record and no id', () => {
+        const built = buildTavernTree({
+            messages: [line('hi', { isUser: true }), line('b', { sendDate: sent, name: 'N', isSystem: true })],
+        }, own, identity, ascending())
+        expect(built.alt).toEqual([])
+        expect(built.message).toStrictEqual([
+            { role: 'user', data: 'hi' },
+            { role: 'char', data: 'b', time: sent, name: 'N', disabled: true },
+        ])
+        const ooba = buildTavernTree(readOobaChat({ internal: [['hi', 'there']], visible: [['hi', 'there']] }), own, identity, ascending())
+        expect(ooba.alt).toEqual([])
+        expect(ooba.message.length).toBeGreaterThan(0)
+        for (const message of ooba.message) {
+            expect(message).not.toHaveProperty('chatId')
+        }
+    })
+
+    test('S-6: the built chat switches to any sibling and back', () => {
+        const built = buildTavernTree({
+            messages: [line('hi', { isUser: true }), line('b', { sendDate: sent, swipes: { before: ['a'], after: ['c'] } }), line('next', { isUser: true })],
+        }, own, identity, ascending())
+        const chat = chatOf(built)
+        const shownId = chat.message[1].chatId as string
+        const swipeId = siblingsAt(chat, 1)[0].chatId as string
+        expect(switchTo(chat, 1, swipeId)).toBe(true)
+        expect(chat.message.map((m) => m.data)).toEqual(['hi', 'a'])
+        expect(chat.alt?.filter((r) => r.a === 2).map((r) => r.m.data)).toEqual(['b', 'next'])
+        expect(switchTo(chat, 1, shownId)).toBe(true)
+        expect(chat.message.map((m) => m.data)).toEqual(['hi', 'b', 'next'])
+        expect(dataAt(chat, 1)).toEqual(['a', 'b', 'c'])
+    })
+
+    // Diagnostic of an unchanged export rule: this change adds no export code.
+    test('S-7: at .bin export a character swipe is omitted and a user swipe is one branch chat', () => {
+        const built = buildTavernTree({
+            messages: [
+                line('hi', { isUser: true }),
+                line('b', { swipes: { before: ['a'], after: [] } }),
+                line('u1', { isUser: true, swipes: { before: ['u0'], after: [] } }),
+            ],
+        }, own, identity, ascending())
+        const chat = chatOf(built)
+        const plan = branchPlanOf(chat)
+        expect(plan?.kept).toHaveLength(1)
+        expect(plan?.omitted).toBe(1)
+        const summary = branchSummaryOf(chat)
+        expect(summary?.chats).toBe(1)
+        expect(summary?.omitted).toBe(1)
     })
 })
 
