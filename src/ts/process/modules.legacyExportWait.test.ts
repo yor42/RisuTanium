@@ -10,7 +10,8 @@
  * records `init`, `write` and `close`) and every module `modules.ts` imports, so nothing is read,
  * compressed, encoded or written. Titles beginning "guard:" pin behaviour that must be preserved
  * before and after the change; titles beginning "regression reproducer:" fail against the version
- * that prints the fixed English text under every language or reads every asset before the dialog.
+ * that prints the fixed English text under every language or reads every asset before the dialog. An MCP module is
+ * refused before anything is read or opened; its reproducers fail against the version that writes it.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -133,6 +134,7 @@ import { languageKorean } from 'src/lang/ko'
 import { fillLang } from 'src/lang/fill'
 import { exportModuleLegacy, type RisuModule } from './modules'
 import { resetTaskHostForTests, taskHostView, taskResultShowing, taskShown } from 'src/ts/alertTask.svelte'
+import { alertError } from 'src/ts/alert'
 
 const twoAssetModule = {
     name: 'M', description: '', id: 'm1',
@@ -164,6 +166,7 @@ beforeEach(() => {
     spies.offersCancel.mockReturnValue(false)
     spies.readImage.mockReset()
     spies.readImage.mockResolvedValue(new Uint8Array([1]))
+    vi.mocked(alertError).mockClear()
     resetTaskHostForTests()
 })
 afterEach(() => {
@@ -269,5 +272,44 @@ describe('exportModuleLegacy save result', () => {
         expect(spies.offersCancel.mock.calls[0][0]).toMatchObject({ type: 'risum', assetCount: 0, writer: undefined, tauri: expect.any(Boolean) })
         expect(spies.readImage).not.toHaveBeenCalled()
         expect(spies.close).toHaveBeenCalledTimes(1)
+    })
+})
+
+/** Synthetic: a token-bearing URL on a reserved host. */
+const MCP_URL = 'https://mcp.invalid/sse?token=SYNTHETIC'
+/** Shaped like an imported MCP server module: the URL is in `mcp` and copied into the description. */
+const mcpModule = {
+    name: 'Server', description: 'MCP from ' + MCP_URL, id: 'mcp1',
+    mcp: { url: MCP_URL },
+    lorebook: [{ comment: 'MCP Info', key: '', content: '', mode: 'normal', alwaysActive: true, insertorder: 100, secondkey: '', selective: false }],
+} as unknown as RisuModule
+
+describe('exportModuleLegacy refuses an MCP module', () => {
+    // On the base the bytes are produced and carry the URL in `mcp` and in the description.
+    test('regression reproducer: the CharX-embed bytes are refused: null, the user is told, no byte holds the URL', async () => {
+        const bytes = await exportModuleLegacy(mcpModule, { saveData: false, alertEnd: false })
+
+        expect(bytes === null ? '' : Buffer.from(bytes).toString('utf-8')).not.toContain(MCP_URL)
+        expect(bytes).toBeNull()
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(languageEnglish.errors.mcpModuleConversionUnsupported)
+    })
+
+    // A file export resolves null on success too, so the evidence is the writer that never opens and the error.
+    test('regression reproducer: the file export opens no save dialog, writes nothing and tells the user', async () => {
+        await exportModuleLegacy(mcpModule)
+
+        expect(spies.init).not.toHaveBeenCalled()
+        expect(spies.write).not.toHaveBeenCalled()
+        expect(spies.offersCancel).not.toHaveBeenCalled()
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(languageEnglish.errors.mcpModuleConversionUnsupported)
+        expect(taskShown()).toBe(false)
+    })
+
+    test('guard: a module without mcp still exports and its main block has no mcp key', async () => {
+        const bytes = await exportModuleLegacy(twoAssetModule, { saveData: false, alertEnd: false })
+
+        expect(bytes).toBeInstanceOf(Uint8Array)
+        expect(Buffer.from(bytes!).toString('utf-8')).not.toContain('"mcp"')
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
     })
 })

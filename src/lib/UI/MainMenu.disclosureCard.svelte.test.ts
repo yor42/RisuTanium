@@ -11,12 +11,10 @@
  * is where any cross-talk between their window-scoped Escape handling or
  * document-level click handling would show up.
  *
- * `MainMenu.hubStates.svelte.test.ts` asserts the grid child count only for
- * `hideRealm: true`, where the realm card is absent (four children). The
- * five-children count, with the realm card present, is asserted nowhere
- * else, so the first test below carries that assertion itself alongside
- * the complementary check that the disclosure count doubled (1 -> 2)
- * without changing the grid child count.
+ * `MainMenu.hubStates.svelte.test.ts` asserts the Community list only for
+ * `hideRealm: true`, where the realm card is absent. The first test below
+ * carries the list's four-entry count with the realm card present, alongside
+ * the complementary check that exactly two of the entries are disclosures.
  *
  * Mocks follow the precedent in `MainMenu.hubStates.svelte.test.ts`:
  * `src/ts/characterCards` so no network fetch fires, `src/ts/globalApi.svelte`
@@ -101,13 +99,13 @@ afterEach(async () => {
     vi.clearAllMocks()
 })
 
-// The two disclosure triggers are the only elements in the grid carrying
-// aria-expanded, and each is identified by the <h2> text inside it rather
-// than DOM order, so a reorder of relatedLinks can't silently swap which
-// assertions apply to which card.
+// The two disclosure triggers are the only elements in the list carrying
+// aria-expanded, and each is identified by the title text inside it rather
+// than DOM order, so a reorder of the entries can't silently swap which
+// assertions apply to which row.
 function findTrigger(target: HTMLElement, titleText: string) {
     const buttons = Array.from(target.querySelectorAll('button[aria-expanded]')) as HTMLButtonElement[]
-    const match = buttons.find((b) => b.querySelector('h2')?.textContent === titleText)
+    const match = buttons.find((b) => b.querySelector('[data-part="home-community-title"]')?.textContent === titleText)
     if (!match) {
         throw new Error(`no disclosure trigger found with title "${titleText}"`)
     }
@@ -129,12 +127,12 @@ function openDisclosure(target: HTMLElement, titleText: string) {
     return trigger
 }
 
-// Plain link cards (Discord, Website) carry no aria-expanded at all -- they
+// Plain link rows (Discord, Website) carry no aria-expanded at all -- they
 // are <button onclick> elements, not disclosures -- so they have to be
-// found the same way, by their <h2> text, from the remaining buttons.
+// found the same way, by their title text, from the remaining buttons.
 function findPlainLinkButton(target: HTMLElement, titleText: string) {
     const buttons = Array.from(target.querySelectorAll('button:not([aria-expanded])')) as HTMLButtonElement[]
-    const match = buttons.find((b) => b.querySelector('h2')?.textContent === titleText)
+    const match = buttons.find((b) => b.querySelector('[data-part="home-community-title"]')?.textContent === titleText)
     if (!match) {
         throw new Error(`no plain link button found with title "${titleText}"`)
     }
@@ -146,17 +144,15 @@ function findPlainLinkButton(target: HTMLElement, titleText: string) {
 // concatenate every text node under `el` in DOM order, skipping any subtree
 // rooted at an `aria-hidden="true"` element. That is what a real accessible
 // name would be for this button once `aria-label` is gone -- title text,
-// then the visible description, then the sr-only marker -- and it excludes
-// the visible-but-decorative pill, which carries `aria-hidden="true"`
-// itself. This can fail two ways that matter here: if the marker's `sr-only`
-// span is removed (or never rendered), its text drops out of the
-// concatenation entirely, which the ordering assertions below would catch
-// as a missing marker. If the pill's `aria-hidden` is removed instead, the
-// ordering assertions still pass -- the pill's text carries no parentheses,
-// so `indexOf('(...)')` still finds the sr-only marker -- but the later
-// assertion that `[aria-hidden="true"]` resolves to the pill (with the
-// marker label as its text) fails, because that selector now matches the
-// decorative icon wrapper instead, whose text is empty.
+// then the sr-only marker -- and it excludes the visible-but-decorative tag,
+// which carries `aria-hidden="true"` itself. This can fail two ways that
+// matter here: if the marker's `sr-only` span is removed (or never
+// rendered), its text drops out of the concatenation entirely, which the
+// ordering assertions below would catch as a missing marker. If the tag's
+// `aria-hidden` is removed instead, the ordering assertions still pass --
+// the tag's text carries no parentheses, so `indexOf('(...)')` still finds
+// the sr-only marker -- but the later assertion that the tag is
+// `aria-hidden="true"` fails.
 function accessibleName(el: Element): string {
     let name = ''
     function walk(node: Node) {
@@ -172,17 +168,20 @@ function accessibleName(el: Element): string {
     return name.replace(/\s+/g, ' ').trim()
 }
 
-describe('MainMenu.svelte: grid child count with two disclosure cards present', () => {
-    test('the realm card shown still renders five grid children; two of them are now disclosures', () => {
+describe('MainMenu.svelte: the Community list with two disclosure rows present', () => {
+    test('the list has four entries, two of them disclosures, and the realm card is shown beside it', () => {
         const target = mountMainMenu()
-        const grid = target.querySelector('.grid')
-        expect(grid).toBeTruthy()
-        expect(grid!.children.length).toBe(5)
-        // Confirms both the GitHub and the Email card are disclosures now,
-        // not just that the grid grew by one -- a count alone would not
+        const list = target.querySelector('[data-part="home-community"] > ul')
+        expect(list).toBeTruthy()
+        expect(list!.querySelectorAll(':scope > li').length).toBe(4)
+        // Confirms both the GitHub and the Email entry are disclosures, not
+        // just that the list has four entries -- a count alone would not
         // distinguish "two disclosures" from "one disclosure plus an
-        // unrelated fifth aria-expanded element elsewhere in the card".
-        expect(grid!.querySelectorAll('[aria-expanded]').length).toBe(2)
+        // unrelated aria-expanded element elsewhere in the list".
+        expect(list!.querySelectorAll('[aria-expanded]').length).toBe(2)
+        const aside = target.querySelector('[data-part="home-side"]')
+        expect(aside).toBeTruthy()
+        expect(Array.from(aside!.querySelectorAll('button')).some((b) => b.getAttribute('aria-label') === language.hubBrowseMore)).toBe(true)
     })
 
     test('one of the two aria-expanded elements is the GitHub trigger and the other is the Email trigger', () => {
@@ -273,18 +272,21 @@ describe('MainMenu.svelte: Discord and Website carry the upstream marker (MC-054
         const titleIndex = name.indexOf(language.homeLinkDiscordTitle)
         const descriptionIndex = name.indexOf(language.homeLinkDiscordDescription)
         const markerIndex = name.indexOf(`(${language.homeSourceUpstreamLabel})`)
-        // Each must be found (indexOf would return -1 otherwise) and appear
-        // in this order, so the description is neither missing (the
-        // original regression) nor the marker (a hypothetical over-fix).
+        // The row shows no description (MC-2832), so the name is the title
+        // then the marker: the title is found first, the marker follows it,
+        // and the description is absent. A missing marker (indexOf -1) or a
+        // description back in the row fails here.
         expect(titleIndex).toBe(0)
-        expect(descriptionIndex).toBeGreaterThan(titleIndex)
-        expect(markerIndex).toBeGreaterThan(descriptionIndex)
+        expect(descriptionIndex).toBe(-1)
+        expect(markerIndex).toBeGreaterThan(titleIndex)
 
-        // The visible pill duplicates the marker's text for sighted users
+        // The visible tag duplicates the marker's text for sighted users
         // but must stay out of the accessible name, which is why it is
-        // aria-hidden rather than being the sole carrier of the marker.
-        const pill = discordButton.querySelector('[aria-hidden="true"]')
+        // aria-hidden rather than being the sole carrier of the marker. It
+        // is found by its hook: the row's leading icon is aria-hidden too.
+        const pill = discordButton.querySelector('[data-part="home-upstream-tag"]')
         expect(pill).toBeTruthy()
+        expect(pill!.getAttribute('aria-hidden')).toBe('true')
         expect(pill!.textContent?.trim()).toBe(language.homeSourceUpstreamLabel)
     })
 
@@ -299,11 +301,12 @@ describe('MainMenu.svelte: Discord and Website carry the upstream marker (MC-054
         const descriptionIndex = name.indexOf(language.homeLinkWebsiteDescription)
         const markerIndex = name.indexOf(`(${language.homeSourceUpstreamLabel})`)
         expect(titleIndex).toBe(0)
-        expect(descriptionIndex).toBeGreaterThan(titleIndex)
-        expect(markerIndex).toBeGreaterThan(descriptionIndex)
+        expect(descriptionIndex).toBe(-1)
+        expect(markerIndex).toBeGreaterThan(titleIndex)
 
-        const pill = websiteButton.querySelector('[aria-hidden="true"]')
+        const pill = websiteButton.querySelector('[data-part="home-upstream-tag"]')
         expect(pill).toBeTruthy()
+        expect(pill!.getAttribute('aria-hidden')).toBe('true')
         expect(pill!.textContent?.trim()).toBe(language.homeSourceUpstreamLabel)
     })
 

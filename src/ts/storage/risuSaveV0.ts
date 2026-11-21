@@ -9,7 +9,7 @@ import { assertNoModuleStubs } from "./moduleStub";
  * only this format can hold; the fork's own storage never uses it.
  *
  * The module is pure (fflate and the import-free module-stub leaf only) so that it
- * runs in any environment and shares no code with the fork's block store. Every
+ * runs in any environment and shares no code with the pre-store2 block format. Every
  * value is written as JSON, so a tree is expected to be JSON-clean: a value JSON
  * cannot represent is dropped or changed exactly as `JSON.stringify` does, and one
  * it cannot encode at all makes the write throw.

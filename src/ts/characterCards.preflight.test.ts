@@ -164,7 +164,7 @@ function cardFile(name: string, reads: string[]): File {
 async function runUntil(done: Promise<unknown>, until: () => boolean) {
     let ended = false
     void done.then(() => { ended = true }, () => { ended = true })
-    for (let i = 0; i < 400 && !ended && !until(); i++) {
+    for (const deadline = performance.now() + 10_000; !ended && !until() && performance.now() < deadline;) {
         await new Promise((resolve) => setTimeout(resolve, 0))
     }
 }

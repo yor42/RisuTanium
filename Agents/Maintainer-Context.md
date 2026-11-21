@@ -33675,3 +33675,171 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - Tag: decisions (maintainer answer to lane A through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2810`, `#53`.
 
 **What the maintainer chose.** Before the size check in #53, the phone reported a successful export of a file that came out 7.8 MB short. Lane B repeats that step on current main in the .rtb batch, to confirm a target deleted mid-export now fails.
+
+### MC-2818 — #234 Home embeds the existing library, restyled, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2438`, `MC-2817`, `#234`.
+
+**What the maintainer chose.** "Embed existing, restyled (Recommended)": the landing embeds today's library (GridCatalog) below the story shelf, restyled as the mockup's cast sheet. It keeps folder tiles, drag, trash and Studio. The mockup's folder chips are not built.
+
+### MC-2819 — #234 restyles the upstream Sidebar on Home only, look only, 2026-11-20
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-1344`, `#234`.
+
+**What the maintainer chose.** "Restyle Sidebar on Home", then "Look only (Recommended)". While Home is open, the upstream Sidebar takes the mockup rail's flush darkbg look (hairline edge, spacing, radii), with the same buttons and character list. There is no Home-owned rail, and chats keep today's Sidebar.
+
+### MC-2820 — #234 story cards: snippet only for loaded characters, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2833`, `MC-2835`, `MC-2836`, `#234`.
+
+**What the maintainer chose.** "Snippet when loaded (Recommended)". A card shows the character, chat name and relative time. The last line (set large on the lead card) appears only for characters that are loaded. The mockup's branch label and memory pill are dropped, and there is no storage change. MC-2833 later settles archived characters, which have no chat name.
+
+### MC-2821 — #234 links become a plain list that keeps the disclosures, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-054`, `MC-065`, `MC-2832`, `#234`.
+
+**What the maintainer chose.** "Plain list, keep disclosures (Recommended)". The four link cards become plain rows of a Community and source list in the side column. Source & Issues and Email still expand to their fork and upstream destinations, and the upstream labels stay (MC-054/065 behaviour preserved).
+
+### MC-2822 — #234 nameless time-of-day greeting; landing title dropped; version in the list, 2026-11-20
+
+- Tag: decisions (maintainer free-text answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-1359` (superseded for the landing title), `MC-2827`, `#234`.
+
+**What the maintainer said.** "greeting, but without the persona name. (Example: Good morning, good afternoon, etc. with no name.) version in list. drop the title."
+
+**Applied as.** A time-of-day greeting with no persona or user name. The upstream landing Title is dropped; the top-bar brand stays. The version line moves to the foot of the Community and source list. Until that list exists (#234 S2b), it sits after the link cards (S1).
+
+### MC-2823 — Check whether the UI-Rework seasonal animations can be brought in, 2026-11-20
+
+- Tag: decisions (maintainer free-text answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
+
+**What the maintainer said.** "C:\Projects\Risutanium-UI-Rework\docs\design\mockups contains seasonal easter egg animations. see if we can bring them here."
+
+**Result.** A feasibility check found the package at that checkout's `docs/design/seasonal`: 23 occasions played in the top-bar logo, plus a Santa-hat game, checked only in desktop Chrome. The maintainer then decided its scheduling in MC-2826.
+
+### MC-2824 — #234 lattice background: animated on wide screens, still on phones, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#234`.
+
+**What the maintainer chose.** "Still on phone (Recommended)". The network lattice animates on wide screens and shows a still frame on phones and under reduced motion or low power. It is the last stage, with a Note 9 battery and thermal check.
+
+### MC-2825 — #234 Tasks is an ongoing-replies list; Hybrid and Utility stay inert, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-1145` item 2 (stands), `MC-1345`, `#234`.
+
+**What the maintainer chose.** "Add ongoing-replies list". A Tasks button in the top bar lists in-flight AI replies per chat, with Stop, built on the existing chatOrigin work registry. The Hybrid and Utility pages are not built and stay inert ("coming later"). The Stop scope and the dialog's empty and finished states are asked at #234 S6.
+
+### MC-2826 — Seasonal logo port: its own ticket, all 23 occasions, 2026-11-20
+
+- Tag: decisions (four AskUserQuestion answers to the #234 session). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2823`, `#424`.
+
+**What the maintainer chose.**
+- "Own ticket, all 23": a separate ticket (#424) ports every occasion; #234 keeps a plain wordmark.
+- "Display toggle (Recommended)": a Seasonal logo on/off switch in Display settings, on by default.
+- "Keep it (Recommended)": the Santa-hat game is kept.
+- "Fetch from CDN": the four Korean EBS-font scenes load their fonts from jsDelivr on those days, fall back silently when offline, and accept the licence ambiguity.
+
+### MC-2827 — #234 greeting periods: four, with a night line, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2822`, `#234`.
+
+**What the maintainer chose.** "4 periods with night". By device local time: morning 05:00-11:59, afternoon 12:00-17:59, evening 18:00-21:59, night 22:00-04:59. The night line is neutral (en "Still up?"), because "Good night" is a farewell in English.
+
+### MC-2828 — #234 keeps the Roleplay eyebrow and drops the persona caption, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2822`, `#234`.
+
+**What the maintainer chose.** "Eyebrow only (Recommended)". The small "Roleplay" label stays above the greeting. The mockup's persona caption goes, since the greeting carries no name.
+
+### MC-2829 — #234 Home uses the app's scheme-derived colour roles, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#234`.
+
+**What the maintainer chose.** "Use app's roles (Recommended)". Home's accent and secondary text alias the app's contrast-checked `--nexus-*` roles derived from the colour scheme. There are no mockup `color-mix()` mixes and no WebView floor. Small differences from the mockup on some presets are accepted.
+
+### MC-2830 — #234 Home uses the app font, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#234`.
+
+**What the maintainer chose.** "App's font (Recommended)". Home uses the app font and honours the user's font setting. No NanumSquare Neo body weights are bundled; only its Heavy logo weight is in the app.
+
+### MC-2831 — #234 Utility card sits at the top of the side column, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2836`, `#234`.
+
+**What the maintainer chose.** "Top of side column (Recommended)". When the page storage mode shows it, the Utility card becomes a plain row at the top of the side column, above RisuRealm, keeping its title and description. With Realm hidden it stays at the top of the full-width side block (derived default).
+
+### MC-2832 — #234 Community rows show the title and upstream tag, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2821`, `#234`.
+
+**What the maintainer chose.** "Title + upstream tag (Recommended)". Each row shows its title, plus the upstream tag where it applies. The disclosure descriptions stay inside the disclosures.
+
+### MC-2833 — #234 archived characters' story cards: name, time and an Archived tag, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2820`, `#234`.
+
+**What the maintainer chose.** "Name, time, Archived tag (Recommended)". Archived (cold) characters keep no chat names. Their card shows the character name, the relative time from `lastInteraction` and a small Archived marker, and nothing is loaded.
+
+### MC-2834 — #234 retires the separate full-screen library view, 2026-11-20
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-1346`, `MC-2818`, `#234`.
+
+**What the maintainer chose.** "Retire it (Recommended)". The drawer's Characters entry, the mid/wide Characters button and the return from Studio scroll to and focus the embedded library. The phone jump row gains a Characters (count) entry.
+
+### MC-2835 — #234 grilling answers: empty Home, which stories, time wording, library speed, 2026-11-20
+
+- Tag: decisions (four AskUserQuestion answers to the #234 session after the grilling step). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2818`, `MC-2820`, `#234`.
+
+**What the maintainer chose.**
+- "Hide both (Recommended)": with zero live characters the shelf and library are hidden and the Create/Import hero is the only content. When every character is in the Trash, the library still shows so the Trash stays reachable.
+- "Opened only, lead + 5": stories are characters with `lastInteraction > 0`, shown as a lead card plus 5 rows. Group chats count. Each card names the character's current chat, the one that opens.
+- "Relative to 30 days (Recommended)": "just now", minutes, hours or days up to 30 days, then a localized date. A future timestamp shows "just now".
+- "Defer mount, 1 s budget (Recommended)": if Home is not interactive within 1 s on a Note 9 with 1000 synthetic characters, the library mounts after the shelf (when idle or scrolled near), still as the full library.
+
+### MC-2836 — #234 grilling answers: snippet text, no-Realm layout, jump row, frozen shelf, 2026-11-20
+
+- Tag: decisions (four AskUserQuestion answers to the #234 session after the grilling step). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2820`, `MC-2831`, `#234`.
+
+**What the maintainer chose.**
+- "Plain text, stripped (Recommended)": the snippet is the last message of any role as plain text, with markup and macros stripped, not resolved. Two lines on the lead card, one on rows, none for an empty chat, never HTML.
+- "Single column (Recommended)": with Hide Realm on there is no side column. The Community list is a full-width section below the library.
+- "Only with 2 entries (Recommended)": the phone jump row is hidden below two entries. The RisuRealm entry stays in every Realm state.
+- "Freeze while open (Recommended)": the shelf order is fixed while Home is shown and refreshes on the next visit. There is no "replying" marker.
+
+### MC-2837 — #234 library stage answers: restore cancel, scroll area, all-trashed line, zero count, 2026-11-20
+
+- Tag: decisions (four AskUserQuestion answers to the #234 session on plan r2). Date: 2026-11-20. Exact times: UNKNOWN. Related: `MC-2834`, `MC-2835`, `#234`.
+
+**What the maintainer chose.**
+- "Touching the library (Recommended)": any Characters entry, or the first tap, key press or focus inside the embedded library, cancels a pending last-character restore for that visit. The signal is not persisted.
+- "Own scroll area (Recommended)": the embedded library is a bounded section up to one screen tall with a sticky tab bar, and the list scrolls inside it. The list engine is unchanged.
+- "Line to the Trash (Recommended)": when every character is trashed, the tabs show one line pointing to the Trash instead of a second hero.
+- "Show (0) (Recommended)": the jump row's Characters entry shows the live count, including 0.
+
+### MC-2928 — #234 RisuRealm announcement sits after the Community list, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-053`, `MC-2821`, `#234`.
+
+**What the maintainer chose.** "After the list (Recommended)". The RisuRealm announcement is the last block of the side column, after the Community and source list, under its "Announcement from RisuRealm" heading, and hidden with Hide Realm. Inside the RisuRealm panel (the mockup's spot) it would grow the panel after load and push the list down, against MC-053. This supersedes the in-panel placement in the #234 plan.
+
+### MC-2929 — #234 the RisuRealm heading carries the upstream tag, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-054`, `MC-2832`, `#234`.
+
+**What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
+
+### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
+
+- Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
+
+**What the maintainer chose.**
+- "Keep refusal + guard (Recommended)": MCP modules keep the existing refusal (Download hidden, module .charx refuses), and the two module share clone points (.risum export, Realm module payload) gain a guard.
+- "Refuse MCP modules (Recommended)", over "Blank + scrub the URL": Gate 1 found the URL is also copied into the module's description, so the guard refuses an MCP module outright instead of blanking `mcp.url`.
+- "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
+- "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
+
+### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
+
+- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
+
+**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.

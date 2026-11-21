@@ -341,6 +341,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { StubEntryUnpackError, unpackStubEntry } from 'src/ts/drive/exportInline'
 import { language } from 'src/lang'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { coldUnitCharacter } from 'src/ts/process/coldCharacter'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
@@ -542,6 +543,7 @@ function packedJson(body: string): Pick<MintedStubEntry, 'packed' | 'rawLength'>
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     sink.chunks.length = 0
     sink.onWrite = null
@@ -714,8 +716,8 @@ describe.each(RUNNERS)('%s of a store2 page, a stub entry that does not unpack',
         expect(outcome.status).toBe('failed')
         expect(outcome.status === 'failed' ? outcome.cause : null).toBeInstanceOf(StubEntryUnpackError)
         expect(outcome.status === 'failed' ? outcome.file : null).toBe('kept')
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedFileKept(null))
         expect(sink.closedFile).toBeNull()
         expect(alertNormalMock).not.toHaveBeenCalled()
     }, 120_000)
@@ -735,8 +737,8 @@ describe.each(RUNNERS)('%s of a store2 page, a stub entry that does not unpack',
         expect(outcome.status === 'failed' ? outcome.cause : null).toBeInstanceOf(StubEntryUnpackError)
         expect(outcome.status === 'failed' ? outcome.file : null).toBe('deleted')
         expect(fsBox.removed).toEqual(['backup-output.bin'])
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedFileDeleted(null))
         // The first stub entry reached the file before the second failed.
         expect(fsBox.calls.length).toBeGreaterThan(0)
     }, 120_000)
@@ -751,8 +753,8 @@ describe.each(RUNNERS)('%s of a store2 page, a stub entry that does not unpack',
 
         expect(outcome.status).toBe('failed')
         expect(outcome.status === 'failed' ? outcome.file : null).toBe('kept')
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedFileKept(null))
     }, 120_000)
 })
 
@@ -781,7 +783,8 @@ describe('SaveLocalBackup, the fallback that reads a minted entry back whole', (
             const outcome = await SaveLocalBackup(STUB)
 
             expect(outcome.status).toBe('failed')
-            expect(alertErrorMock).toHaveBeenCalledTimes(1)
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(taskHostView()?.state).toBe('failed')
             expect(sink.closedFile).toBeNull()
         }, 120_000)
     })

@@ -523,3 +523,133 @@ describe('HomeShell phone chrome', () => {
         expect(get(sideBarStore)).toBe(false)
     })
 })
+
+describe('HomeShell greeting header', () => {
+    const greetingOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-greeting"]')
+    const h1Of = (root: HTMLElement): string | undefined => greetingOf(root)?.querySelector('h1')?.textContent?.trim()
+    const setClock = (hour: number, minute = 0, second = 0): void => {
+        vi.setSystemTime(new Date(2026, 5, 10, hour, minute, second))
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers()
+        setClock(10)
+        ;(DBState.db as unknown as Record<string, unknown>).username = 'Synthetic Name'
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    test('S1-R1: the landing root and the header carry the eyebrow and the morning greeting at every band', () => {
+        for (const [width, band] of [[360, 'phone'], [900, 'mid'], [1280, 'wide']] as const) {
+            const root = mountShellAt(width)
+            const landing = landingOf(root)!
+            expect(landing.classList.contains('home-root')).toBe(true)
+            expect(landing.getAttribute('data-layout')).toBe(band)
+            const header = greetingOf(root)
+            expect(header).not.toBeNull()
+            expect(header!.children.length).toBe(2)
+            const eyebrow = header!.querySelector('[data-part="home-eyebrow"]')
+            expect(eyebrow!.tagName).toBe('P')
+            expect(eyebrow!.textContent).toBe(language.settingsShellModesNameRp)
+            expect(header!.children[1].tagName).toBe('H1')
+            expect(h1Of(root)).toBe(language.homeGreetingMorning)
+            expect(language.homeGreetingMorning).toBeTruthy()
+            expect(header!.textContent).not.toContain('Synthetic Name')
+        }
+    })
+
+    test('S1-R1: the period table at 360 follows the local clock', () => {
+        const table: Array<[number, number, string]> = [
+            [4, 59, language.homeGreetingNight],
+            [0, 0, language.homeGreetingNight],
+            [5, 0, language.homeGreetingMorning],
+            [11, 59, language.homeGreetingMorning],
+            [12, 0, language.homeGreetingAfternoon],
+            [17, 59, language.homeGreetingAfternoon],
+            [18, 0, language.homeGreetingEvening],
+            [21, 59, language.homeGreetingEvening],
+            [22, 0, language.homeGreetingNight],
+        ]
+        for (const [hour, minute, expected] of table) {
+            setClock(hour, minute)
+            const root = mountShellAt(360)
+            expect(expected, `${hour}:${minute} string`).toBeTruthy()
+            expect(h1Of(root), `${hour}:${minute}`).toBe(expected)
+        }
+    })
+
+    test('S1-R2: the greeting is absent while the Realm view is open and returns when it closes', () => {
+        const root = mountShellAt(900)
+        expect(greetingOf(root)).not.toBeNull()
+        OpenRealmStore.set(true)
+        flushSync()
+        expect(greetingOf(root)).toBeNull()
+        OpenRealmStore.set(false)
+        flushSync()
+        expect(greetingOf(root)).not.toBeNull()
+    })
+
+    test('S1-R3: a mounted greeting switches at each boundary and on becoming visible', () => {
+        for (const text of [language.homeGreetingMorning, language.homeGreetingAfternoon, language.homeGreetingEvening, language.homeGreetingNight]) {
+            expect(text).toBeTruthy()
+        }
+        setClock(21, 59, 30)
+        const root = mountShellAt(900)
+        expect(h1Of(root)).toBe(language.homeGreetingEvening)
+        vi.advanceTimersByTime(30000)
+        flushSync()
+        expect(h1Of(root)).toBe(language.homeGreetingNight)
+
+        setClock(4, 59, 30)
+        const second = mountShellAt(900)
+        expect(h1Of(second)).toBe(language.homeGreetingNight)
+        vi.advanceTimersByTime(30000)
+        flushSync()
+        expect(h1Of(second)).toBe(language.homeGreetingMorning)
+
+        setClock(12, 10)
+        const third = mountShellAt(900)
+        expect(h1Of(third)).toBe(language.homeGreetingAfternoon)
+        setClock(18, 5)
+        const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+        try {
+            document.dispatchEvent(new Event('visibilitychange'))
+            flushSync()
+            expect(h1Of(third)).toBe(language.homeGreetingEvening)
+        } finally {
+            if (visibility) {
+                Object.defineProperty(document, 'visibilityState', visibility)
+            } else {
+                delete (document as unknown as Record<string, unknown>).visibilityState
+            }
+        }
+    })
+
+    test('S1-R4: the landing carries no RisuTanium title outside the top bar', () => {
+        const root = mountShellAt(900)
+        const bar = topBarOf(root)!
+        const titles = Array.from(root.querySelectorAll('h2')).filter((h) => !bar.contains(h) && h.textContent?.trim() === 'RisuTanium')
+        expect(titles.length).toBe(0)
+        expect(bar.querySelector('[data-part="home-brand"]')!.textContent).toContain('RisuTanium')
+    })
+
+    test('S1-R5: the version line appears once, as the last element of the Community list, after the Email row', () => {
+        const root = mountShellAt(1280)
+        const holders = Array.from(root.querySelectorAll('*')).filter(
+            (el) => el.children.length === 0 && el.textContent?.includes('test-version'),
+        )
+        expect(holders.length).toBe(1)
+        const version = holders[0]
+        const community = root.querySelector('[data-part="home-community"]')!
+        expect(version.parentElement).toBe(community)
+        expect(community.lastElementChild).toBe(version)
+        const emailTitle = Array.from(community.querySelectorAll('[data-part="home-community-title"]')).find(
+            (el) => el.textContent?.trim() === language.homeLinkEmailTitle,
+        )
+        expect(emailTitle).toBeTruthy()
+        expect(emailTitle!.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+})

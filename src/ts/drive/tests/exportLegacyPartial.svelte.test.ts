@@ -13,7 +13,7 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import type { SalvageOmittedBlock } from 'src/ts/storage/risuSave'
 import { changeLanguage, language } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
-import { languageKorean } from 'src/lang/ko'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 
 //#region module mocks
 
@@ -374,6 +374,7 @@ const PROMPT_END = 'Save the backup anyway?'
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     sink.chunks.length = 0
     sink.closedFile = null
@@ -472,6 +473,13 @@ describe.each([
     test('new contract: a page opened from a backup names its date, and accepting saves and shows the export wait again', async () => {
         await pageOf()
         setLegacyPartialSave(backupFact())
+        let cardAtPrompt: number | undefined
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            if (message.includes(PROMPT_END)) {
+                cardAtPrompt = taskHostView()?.id
+            }
+            return true
+        })
 
         const outcome = await run(STUB)
 
@@ -480,9 +488,16 @@ describe.each([
         expect(prompts).toEqual([language.legacyPartialExportConfirm(new Date(BACKUP_TIME * 100).toLocaleString(), [])])
         expect(prompts[0]).toContain(new Date(BACKUP_TIME * 100).toLocaleString())
         expect(sink.closedFile).not.toBeNull()
-        // The writer's own wait is on screen again after the prompt, before the file opens.
-        const waits = alertWaitMock.mock.calls.map((call) => call[0]).filter((text) => text === waitText)
-        expect(waits).toHaveLength(2)
+        if (_name === 'exportThisTabBackup') {
+            // The card-less route: the writer's own wait is on screen again after the prompt, before the file opens.
+            const waits = alertWaitMock.mock.calls.map((call) => call[0]).filter((text) => text === waitText)
+            expect(waits).toHaveLength(2)
+        } else {
+            // A card route: the card is in the slot at the prompt and is the same card that ends the run, and no wait is posted.
+            expect(cardAtPrompt).toBeDefined()
+            expect(taskHostView()?.id).toBe(cardAtPrompt)
+            expect(alertWaitMock).not.toHaveBeenCalled()
+        }
     }, 120_000)
 
     test('guard: with no fact the export asks nothing of the kind and shows its wait once', async () => {
@@ -492,23 +507,25 @@ describe.each([
 
         expect(outcome).toMatchObject({ status: 'saved' })
         expect(askedWith(PROMPT_END)).toEqual([])
-        expect(alertWaitMock.mock.calls.map((call) => call[0]).filter((text) => text === waitText)).toHaveLength(1)
+        if (_name === 'exportThisTabBackup') {
+            expect(alertWaitMock.mock.calls.map((call) => call[0]).filter((text) => text === waitText)).toHaveLength(1)
+        } else {
+            expect(alertWaitMock).not.toHaveBeenCalled()
+            expect(taskHostView()?.state).toBe('done')
+        }
         expect(sink.closedFile).not.toBeNull()
     }, 120_000)
 })
 
-/** Every English export wait and progress text starts with one of these; a Korean page shows none of them. */
-const ENGLISH_EXPORT_WAIT = /Saving (partial )?local backup|Checking asset sizes/i
-
 describe.each([
-    ['SaveLocalBackup', SaveLocalBackup as Runner, languageKorean.backupSaveWait],
-    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner, languageKorean.backupSavePartialWait],
-])('%s on a page set to Korean', (_name, run, koreanWait) => {
+    ['SaveLocalBackup', SaveLocalBackup as Runner, 'backupTaskTitle', ['backupStepCollect', 'backupStepSizes', 'exportStepAssets', 'backupStepInlays', 'backupStepColdData', 'backupStepDatabase', 'exportStepWrite']],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner, 'backupTaskPartialTitle', ['backupStepCollect', 'backupStepSizes', 'exportStepAssets', 'backupStepColdData', 'backupStepDatabase', 'exportStepWrite']],
+] as const)('%s on a page set to Korean', (_name, run, titleKey, stepKeys) => {
     afterEach(() => {
         changeLanguage('en')
     })
 
-    test('new contract: the export wait and its progress (stub cold data, database) are shown in the page language, read when the export runs', async () => {
+    test('new contract: the export card (title and step labels) is shown in the page language, read when the export runs', async () => {
         await pageOf()
         // The language changes after backuplocal was loaded, as it does when a user switches languages in Settings.
         changeLanguage('ko')
@@ -516,12 +533,13 @@ describe.each([
         const outcome = await run(STUB)
 
         expect(outcome).toMatchObject({ status: 'saved' })
-        const waits = alertWaitMock.mock.calls.map((call) => String(call[0]))
-        expect(koreanWait).toBeTruthy()
-        expect(koreanWait).not.toMatch(ENGLISH_EXPORT_WAIT)
-        expect(waits).toContain(koreanWait)
-        // The three stub characters are written as cold data, and the database last, so progress texts are among the waits too.
-        expect(waits.length).toBeGreaterThan(2)
-        expect(waits.filter((text) => ENGLISH_EXPORT_WAIT.test(text))).toEqual([])
+        expect(alertWaitMock).not.toHaveBeenCalled()
+        const view = taskHostView()
+        expect(view?.title).toBe(language[titleKey])
+        expect(view?.steps.map((step) => step.label)).toEqual(stepKeys.map((key) => language[key]))
+        // A Korean page shows none of the English labels; until a locale carries a key, `language` falls back to English and this fails.
+        for (const key of [titleKey, ...stepKeys]) {
+            expect(language[key], key).not.toBe(languageEnglish[key])
+        }
     }, 120_000)
 })

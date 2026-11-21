@@ -5,17 +5,18 @@
  * Contracts:
  *  - A refusal shows its text before anything is asked, registered or opened.
  *  - A second start while one run is in flight is ignored, so two quick taps never stack two confirms.
- *  - The saved notice follows `saved` only, and is built from the report (`report.omitted` is the only place a
- *    side-section omission appears), never from the outcome's `ExportOmitted`.
+ *  - The saved ending follows `saved` only, and is built from the report (`report.omitted` is the only place a
+ *    side-section omission appears), never from the outcome's `ExportOmitted`. The run posts it on its task card.
  *  - A failed or cancelled run adds no notice here: the S7 shell has already said what became of the file.
  */
 import { language } from 'src/lang'
 import { isTauri } from 'src/ts/platform'
 import { alertClear, alertConfirm, alertError, alertNormal } from '../alert'
 import { shownPromptNames } from './backupUpstreamSizes'
+import type { ExportTaskStepDef } from '../exportTask'
 import {
     exportRtb, rtbExportRefusal,
-    type RtbExportOptions, type RtbExportProgress, type RtbExportRefusal, type RtbExportReport, type RtbExportResult,
+    type RtbExportCard, type RtbExportOptions, type RtbExportProgress, type RtbExportRefusal, type RtbExportReport, type RtbExportResult, type RtbStep,
 } from './rtbExport'
 
 export interface RtbEntryDeps {
@@ -89,6 +90,31 @@ export function rtbSavedNotice(report: RtbExportReport, isTauriPage: boolean): s
     return parts.join('\n\n')
 }
 
+/** The task card of a run: its steps by the ids the core reports, with their labels. */
+function rtbExportCard(isTauriPage: boolean): RtbExportCard {
+    const steps: readonly ExportTaskStepDef<RtbStep>[] = [
+        { id: 'prepare', label: language.exportStepPrepare },
+        { id: 'save', label: language.rtbStepSaveFirst },
+        { id: 'units', label: language.rtbStepUnits },
+        { id: 'side', label: language.rtbStepSide },
+        { id: 'inlays', label: language.backupStepInlays, noun: language.backupNounInlays, mark: 'transfer_out' },
+        { id: 'assets', label: language.exportStepAssets, noun: language.importNounAssets, mark: 'transfer_out' },
+        { id: 'finish', label: language.exportStepWrite },
+    ]
+    return {
+        def: {
+            title: language.rtbExportTaskTitle,
+            steps,
+            doneHeadline: language.backupTaskDone,
+            failedHeadline: language.backupTaskFailed,
+        },
+        // A report ends on the notice that names what the file lacks; a clean save ends on the done card.
+        savedEnding: (report) => report.unsavedExcluded || report.omitted.length > 0 || report.oldInlayStoreUnlisted
+            ? { notice: rtbSavedNotice(report, isTauriPage) }
+            : { summary: [isTauriPage ? language.rtbExportSaved : language.exportDownloadStarted] },
+    }
+}
+
 export function liveRtbEntryDeps(): RtbEntryDeps {
     return {
         refusal: () => rtbExportRefusal(),
@@ -118,17 +144,11 @@ export async function startRtbExport(deps: RtbEntryDeps = liveRtbEntryDeps(), op
         if (!await deps.confirm(language.rtbExportConfirm(language.saveBackupLocal))) {
             return null
         }
-        const result = await deps.run({ progressText: rtbProgressText, password: options.password })
+        // The run's task card carries every ending: the saved text, a report notice and the failures. The entry posts
+        // only a refusal, and clears nothing after a dismissed save dialog, so no unrelated notice is erased.
+        const result = await deps.run({ progressText: rtbProgressText, card: rtbExportCard(deps.isTauri), password: options.password })
         if (result.status === 'refused') {
             deps.error(rtbRefusalText(result.reason))
-        } else if (result.outcome.status === 'saved') {
-            if (result.report !== null) {
-                deps.normal(rtbSavedNotice(result.report, deps.isTauri))
-            } else {
-                deps.normal(deps.isTauri ? language.rtbExportSaved : language.exportDownloadStarted)
-            }
-        } else if (result.outcome.status === 'declined' && result.outcome.cause === 'save-dialog-cancelled') {
-            deps.clear()
         }
         return result
     } finally {

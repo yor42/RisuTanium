@@ -2313,3 +2313,27 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2810](Maintainer-Context.md#mc-2810--276-closes-its-owed-rtb-device-rows-move-to-tracker-349-2026-11-20) | #276 closes; its owed .rtb device rows move to tracker #349, 2026-11-20 |
 | [MC-2811](Maintainer-Context.md#mc-2811--the-rtb-sync-folder-gets-its-own-deferred-ticket-2026-11-20) | The .rtb sync folder gets its own deferred ticket, 2026-11-20 |
 | [MC-2812](Maintainer-Context.md#mc-2812--re-run-the-dv-s8-2-truncated-export-step-on-current-main-2026-11-20) | Re-run the DV-S8-2 truncated-export step on current main, 2026-11-20 |
+| [MC-2818](Maintainer-Context.md#mc-2818--234-home-embeds-the-existing-library-restyled-2026-11-20) | #234 Home embeds the existing library, restyled, 2026-11-20 |
+| [MC-2819](Maintainer-Context.md#mc-2819--234-restyles-the-upstream-sidebar-on-home-only-look-only-2026-11-20) | #234 restyles the upstream Sidebar on Home only, look only, 2026-11-20 |
+| [MC-2820](Maintainer-Context.md#mc-2820--234-story-cards-snippet-only-for-loaded-characters-2026-11-20) | #234 story cards: snippet only for loaded characters, 2026-11-20 |
+| [MC-2821](Maintainer-Context.md#mc-2821--234-links-become-a-plain-list-that-keeps-the-disclosures-2026-11-20) | #234 links become a plain list that keeps the disclosures, 2026-11-20 |
+| [MC-2822](Maintainer-Context.md#mc-2822--234-nameless-time-of-day-greeting-landing-title-dropped-version-in-the-list-2026-11-20) | #234 nameless time-of-day greeting; landing title dropped; version in the list, 2026-11-20 |
+| [MC-2823](Maintainer-Context.md#mc-2823--check-whether-the-ui-rework-seasonal-animations-can-be-brought-in-2026-11-20) | Check whether the UI-Rework seasonal animations can be brought in, 2026-11-20 |
+| [MC-2824](Maintainer-Context.md#mc-2824--234-lattice-background-animated-on-wide-screens-still-on-phones-2026-11-20) | #234 lattice background: animated on wide screens, still on phones, 2026-11-20 |
+| [MC-2825](Maintainer-Context.md#mc-2825--234-tasks-is-an-ongoing-replies-list-hybrid-and-utility-stay-inert-2026-11-20) | #234 Tasks is an ongoing-replies list; Hybrid and Utility stay inert, 2026-11-20 |
+| [MC-2826](Maintainer-Context.md#mc-2826--seasonal-logo-port-its-own-ticket-all-23-occasions-2026-11-20) | Seasonal logo port: its own ticket, all 23 occasions, 2026-11-20 |
+| [MC-2827](Maintainer-Context.md#mc-2827--234-greeting-periods-four-with-a-night-line-2026-11-20) | #234 greeting periods: four, with a night line, 2026-11-20 |
+| [MC-2828](Maintainer-Context.md#mc-2828--234-keeps-the-roleplay-eyebrow-and-drops-the-persona-caption-2026-11-20) | #234 keeps the Roleplay eyebrow and drops the persona caption, 2026-11-20 |
+| [MC-2829](Maintainer-Context.md#mc-2829--234-home-uses-the-apps-scheme-derived-colour-roles-2026-11-20) | #234 Home uses the app's scheme-derived colour roles, 2026-11-20 |
+| [MC-2830](Maintainer-Context.md#mc-2830--234-home-uses-the-app-font-2026-11-20) | #234 Home uses the app font, 2026-11-20 |
+| [MC-2831](Maintainer-Context.md#mc-2831--234-utility-card-sits-at-the-top-of-the-side-column-2026-11-20) | #234 Utility card sits at the top of the side column, 2026-11-20 |
+| [MC-2832](Maintainer-Context.md#mc-2832--234-community-rows-show-the-title-and-upstream-tag-2026-11-20) | #234 Community rows show the title and upstream tag, 2026-11-20 |
+| [MC-2833](Maintainer-Context.md#mc-2833--234-archived-characters-story-cards-name-time-and-an-archived-tag-2026-11-20) | #234 archived characters' story cards: name, time and an Archived tag, 2026-11-20 |
+| [MC-2834](Maintainer-Context.md#mc-2834--234-retires-the-separate-full-screen-library-view-2026-11-20) | #234 retires the separate full-screen library view, 2026-11-20 |
+| [MC-2835](Maintainer-Context.md#mc-2835--234-grilling-answers-empty-home-which-stories-time-wording-library-speed-2026-11-20) | #234 grilling answers: empty Home, which stories, time wording, library speed, 2026-11-20 |
+| [MC-2836](Maintainer-Context.md#mc-2836--234-grilling-answers-snippet-text-no-realm-layout-jump-row-frozen-shelf-2026-11-20) | #234 grilling answers: snippet text, no-Realm layout, jump row, frozen shelf, 2026-11-20 |
+| [MC-2837](Maintainer-Context.md#mc-2837--234-library-stage-answers-restore-cancel-scroll-area-all-trashed-line-zero-count-2026-11-20) | #234 library stage answers: restore cancel, scroll area, all-trashed line, zero count, 2026-11-20 |
+| [MC-2928](Maintainer-Context.md#mc-2928--234-risurealm-announcement-sits-after-the-community-list-2026-11-21) | #234 RisuRealm announcement sits after the Community list, 2026-11-21 |
+| [MC-2929](Maintainer-Context.md#mc-2929--234-the-risurealm-heading-carries-the-upstream-tag-2026-11-21) | #234 the RisuRealm heading carries the upstream tag, 2026-11-21 |
+| [MC-2955](Maintainer-Context.md#mc-2955--442-module-share-secrets-refuse-mcp-modules-at-share-points-plugin-settings-file-unchanged-no-keep-keys-opt-in-2026-11-21) | #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21 |
+| [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |

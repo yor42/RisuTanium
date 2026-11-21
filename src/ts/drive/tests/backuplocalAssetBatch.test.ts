@@ -343,6 +343,7 @@ import { BlobDownloadWriter, type ExportByteWriter, type TauriWriter } from 'src
 import { language } from 'src/lang'
 import { RestoreAssetPipeline } from 'src/ts/drive/assetBatchPipeline'
 import { alertWait } from 'src/ts/alert'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
@@ -637,7 +638,12 @@ function recordUnhandled(reason: unknown): void {
 
 //#endregion
 
+/** What the export's task card ended on: a failed run's sentence, and a clean run's summary. */
+const failedDetail = (): string | undefined => taskHostView()?.failure?.detail
+const doneSummary = (): readonly string[] | undefined => taskHostView()?.result?.summary
+
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = true
     backupSink.writes.length = 0
     backupSink.failWrites = false
@@ -1581,7 +1587,7 @@ describe('an export through the batch commands', () => {
         expect(batchFake.ctl.calls.some((call) => call.kind === 'read')).toBe(true)
         expect(exportedAssets()).toEqual(expectedExport(NAMES))
         expect(Object.keys(exportedAssets())).toEqual(fakeFs.listing('assets'))
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(doneSummary()).toEqual(['Success'])
     })
 
     test('an asset deleted between the listing and the read is reported as missing and the others are still written', async () => {
@@ -1602,7 +1608,7 @@ describe('an export through the batch commands', () => {
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
         expect(exportedAssets()).toEqual(expectedExport(NAMES))
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(doneSummary()).toEqual(['Success'])
     })
 
     test('a read call that rejects leaves every key of its batch to be read with the ranged reader, and the export completes', async () => {
@@ -1644,8 +1650,8 @@ describe('an export through the batch commands', () => {
         expect(await exporting).toBeNull()
 
         expect(allCallsSettled()).toBe(true)
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileDeleted(null))
         expect(backupSink.removed).toEqual([BACKUP_PATH])
         expect(alertNormalMock).not.toHaveBeenCalled()
         expect(unhandled).toEqual([])
@@ -1726,7 +1732,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').flatMap((call) => call.keys)).not.toContain('assets/big.bin')
         expect(desktop.chunk.callsOf('read_range').filter((call) => call.args.key === 'assets/big.bin').map((call) => call.args.offset)).toEqual([0, CHUNK_MAX, 2 * CHUNK_MAX])
         expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(doneSummary()).toEqual(['Success'])
     })
 
     test('a file that grew past the listed size is answered large by the batch and exported from the ranged reader', async () => {
@@ -1738,7 +1744,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         expect(batchFake.ctl.calls.filter((call) => call.kind === 'read').flatMap((call) => call.keys)).toContain('assets/big.bin')
         expect(same(exportedEntries()[0].data, data)).toBe(true)
         expect(alertMdMock).not.toHaveBeenCalled()
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(doneSummary()).toEqual(['Success'])
     })
 
     test('a key the batch defers is asked for again in a later batch and exported whole', async () => {
@@ -1764,7 +1770,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         expect(names).toEqual(['a.png', 'big.bin', 'database.risudat'])
         expect(same(exportedEntries()[1].data, data)).toBe(true)
         expect(alertMdMock).not.toHaveBeenCalled()
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(doneSummary()).toEqual(['Success'])
     })
 
     test('an asset absent when the ranged reader asks for it is reported as missing and the export goes on', async () => {
@@ -1795,8 +1801,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(`'User Icon' from User Settings`))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileDeleted(`'User Icon' from User Settings`))
         expect(backupSink.removed).toEqual([BACKUP_PATH])
         expect(alertNormalMock).not.toHaveBeenCalled()
         expect(alertMdMock).not.toHaveBeenCalled()
@@ -1811,8 +1817,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(`'assets/big.bin'`))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileKept(`'assets/big.bin'`))
         expect(backupSink.removed).toEqual([])
         expect(alertNormalMock).not.toHaveBeenCalled()
     })
@@ -1827,7 +1833,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(`'assets/big.bin'`))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileDeleted(`'assets/big.bin'`))
         expect(backupSink.removed).toEqual([BACKUP_PATH])
     })
 
@@ -1836,8 +1843,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedNothingWritten())
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedNothingWritten())
         expect(backupSink.removed).toEqual([])
         expect(alertNormalMock).not.toHaveBeenCalled()
     })
@@ -1852,8 +1859,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedNothingWritten())
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedNothingWritten())
         expect(backupSink.writes).toEqual([])
         expect(backupSink.removed).toEqual([])
         expect(alertNormalMock).not.toHaveBeenCalled()
@@ -1875,8 +1882,8 @@ describe('an export of assets above CHUNK_MAX', () => {
             expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
             expect(backupSink.writes.length).toBeGreaterThan(0)
-            expect(alertErrorMock).toHaveBeenCalledTimes(1)
-            expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'deleted'))
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(failedDetail()).toBe(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'deleted'))
             expect(backupSink.removed).toEqual([BACKUP_PATH])
             expect(alertNormalMock).not.toHaveBeenCalled()
             expect(alertMdMock).not.toHaveBeenCalled()
@@ -1896,7 +1903,8 @@ describe('an export of assets above CHUNK_MAX', () => {
             expect(message).toContain('too large for a backup entry')
             expect(message).toContain('about 4.29 GB')
             expect(message).not.toMatch(/run the backup again/i)
-            expect(alertErrorMock).toHaveBeenCalledWith(message)
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(failedDetail()).toBe(message)
         })
 
         test('when nothing reached the file the message says so and nothing is deleted', async () => {
@@ -1905,8 +1913,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
             expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-            expect(alertErrorMock).toHaveBeenCalledTimes(1)
-            expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'untouched'))
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(failedDetail()).toBe(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'untouched'))
             expect(backupSink.removed).toEqual([])
         })
 
@@ -1916,8 +1924,8 @@ describe('an export of assets above CHUNK_MAX', () => {
 
             expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
-            expect(alertErrorMock).toHaveBeenCalledTimes(1)
-            expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'kept'))
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(failedDetail()).toBe(language.backupFailedAssetTooLarge(`'assets/big.bin'`, 'kept'))
             expect(backupSink.removed).toEqual([])
         })
     })
@@ -1931,7 +1939,7 @@ describe('an export of assets above CHUNK_MAX', () => {
         fakeFs.files.delete('assets/big.bin')
         backupSink.writes.length = 0
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
-        expect(alertNormalMock).toHaveBeenCalledWith('Success')
+        expect(doneSummary()).toEqual(['Success'])
     })
 })
 
@@ -1974,8 +1982,8 @@ describe('a failed export on a page that is not the desktop app', () => {
 
         await failExportOn(target)
 
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedNothingWritten())
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedNothingWritten())
         expect(abort).toHaveBeenCalledTimes(1)
         expect(target.heldInMemory).toBe(true)
         expect(alertNormalMock).not.toHaveBeenCalled()
@@ -1992,8 +2000,8 @@ describe('a failed export on a page that is not the desktop app', () => {
 
         await failExportOn(target)
 
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileKept(null))
         expect(abort).toHaveBeenCalledTimes(1)
         expect(alertNormalMock).not.toHaveBeenCalled()
     })
@@ -2007,7 +2015,8 @@ describe('a failed export on a page that is not the desktop app', () => {
 
         await failExportOn(target)
 
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileKept(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileKept(null))
     })
 })
 
@@ -2051,7 +2060,8 @@ describe('a partial backup', () => {
 
         expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(`'Custom Background' from User Settings`))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileDeleted(`'Custom Background' from User Settings`))
         expect(backupSink.removed).toEqual([BACKUP_PATH])
         expect(alertNormalMock).not.toHaveBeenCalled()
         expect(exportedHasName('database.risudat')).toBe(false)
@@ -2064,7 +2074,8 @@ describe('a partial backup', () => {
 
         expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
 
-        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFailedFileDeleted(null))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(failedDetail()).toBe(language.backupFailedFileDeleted(null))
         expect(backupSink.removed).toEqual([BACKUP_PATH])
     })
 })

@@ -13,10 +13,10 @@ import type { EntryProbe } from './store/indexedDbStore'
  * only in a browser that can read and write OPFS files.
  * - flag unset: the profile is not OPFS-main; IndexedDB is current and nothing
  *   in OPFS is copied.
- * - flag set, IndexedDB holds the main file or the block store's head and no
- *   `migrated` marker: the move to OPFS never completed, so IndexedDB is
- *   current; the flag is cleared. A converted profile has a head and no main
- *   file in IndexedDB.
+ * - flag set, IndexedDB holds the main file or the pre-store2 block-format head
+ *   and no `migrated` marker: the move to OPFS never completed, so IndexedDB is
+ *   current; the flag is cleared. A profile converted by an older build has a
+ *   head and no main file in IndexedDB.
  * - flag set otherwise (neither a main file nor a head in IndexedDB, or the
  *   marker is present): OPFS is current, and it is copied back.
  *
@@ -24,7 +24,7 @@ import type { EntryProbe } from './store/indexedDbStore'
  * profile whose current data is in OPFS until a verified copy has completed,
  * and nothing in OPFS is deleted unless IndexedDB holds the same key (the one
  * exception is the OPFS main file, which is also deleted when IndexedDB holds
- * the block store's head instead: see `runLeftoverCleanup`). The copy
+ * the pre-store2 block-format head instead: see `runLeftoverCleanup`). The copy
  * runs only under the exclusive storage-migration lock. The flag is removed
  * only after every OPFS file is in IndexedDB and the main file's bytes read
  * back from IndexedDB hash the same as the OPFS file's, and the page uses
@@ -36,8 +36,8 @@ import type { EntryProbe } from './store/indexedDbStore'
  * After a copy-back the OPFS copies stay in place for one start. At a later
  * start that loaded normally from IndexedDB, `runLeftoverCleanup` deletes the
  * hex-named OPFS files whose key IndexedDB holds, and the OPFS main file of a
- * profile that has since been converted (IndexedDB holds its head and no main
- * file: the main file moved aside).
+ * profile that an older build has since converted (IndexedDB holds its head and
+ * no main file: the main file moved aside).
  */
 
 /** The `localStorage` flag that marks a profile as OPFS-main. */
@@ -390,8 +390,8 @@ async function copyBack(env: CopyBackEnvironment, indexedDb: IndexedDbHandle): P
  * unset and the clean-up marker is pending, and the caller guarantees this page
  * booted from IndexedDB in this page load (a store2 boot, or a read-only page
  * that decoded its main file) and did not do the copy itself. A file is deleted only when it is a file, its name is the hex of a key,
- * and IndexedDB holds that key (for the main file, or the block store's head,
- * which replaces it once the profile is converted); every other entry is left, and
+ * and IndexedDB holds that key (for the main file, or the pre-store2 block-format head,
+ * which replaces it once an older build has converted the profile); every other entry is left, and
  * `coldstorage_<key>.json` unit files are never touched. The marker is removed
  * only when no deletion failed and no presence check was inconclusive.
  */

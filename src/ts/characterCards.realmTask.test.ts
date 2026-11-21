@@ -271,7 +271,7 @@ function seenNow(): Seen | null {
 const setUrl = (pathAndQuery: string) => window.history.replaceState(null, '', pathAndQuery)
 
 async function untilResult(): Promise<void> {
-    for (let i = 0; i < 400 && !taskResultShowing(); i++) {
+    for (const deadline = performance.now() + 10_000; !taskResultShowing() && performance.now() < deadline;) {
         await new Promise((resolve) => setTimeout(resolve, 0))
     }
 }

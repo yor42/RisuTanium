@@ -78,7 +78,7 @@
             {/if}
         {/if}
         {#if hasField}
-            <label class="mb-1 mt-4" for={fieldId}>{meta?.name || key}</label>
+            <label class="mb-1 mt-4" for={fieldId}><span id="{fieldId}-label">{meta?.name || key}</span></label>
         {:else}
             <span class="mb-1 mt-4" id="{fieldId}-label">{meta?.name || key}</span>
         {/if}
@@ -86,8 +86,9 @@
             <span class="mb-1 text-sm text-textcolor2">{meta.description}</span>
         {/if}
         {#if Array.isArray(kind)}
-            <div role="group" aria-labelledby="{fieldId}-label" class="flex flex-col">
+            <div class="flex flex-col">
                 <SelectInput
+                    labelId="{fieldId}-label"
                     className="mb-2 min-h-11"
                     value={stored(key)}
                     onchange={(event) => save(key, 'string', event.currentTarget.value)}
@@ -101,6 +102,8 @@
             {#if meta?.textarea}
                 <textarea
                     id={fieldId}
+                    aria-labelledby="{fieldId}-label"
+                    aria-describedby="{fieldId}-label"
                     class="{fieldClass} min-h-24"
                     placeholder={meta?.placeholder}
                     value={stored(key)}
@@ -121,6 +124,8 @@
             {:else}
                 <input
                     id={fieldId}
+                    aria-labelledby="{fieldId}-label"
+                    aria-describedby="{fieldId}-label"
                     type="text"
                     class={fieldClass}
                     placeholder={meta?.placeholder}
@@ -152,6 +157,8 @@
             {:else}
                 <input
                     id={fieldId}
+                    aria-labelledby="{fieldId}-label"
+                    aria-describedby="{fieldId}-label"
                     type="text"
                     inputmode="decimal"
                     class={fieldClass}

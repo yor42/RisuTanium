@@ -8,6 +8,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
+import { requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { buildSmall, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
@@ -134,13 +135,13 @@ describe('the confirm and the run (T-S9-5)', () => {
         const deps = entryDeps()
         await startRtbExport(deps)
         expect(deps.calls.confirm).toHaveBeenCalledWith(language.rtbExportConfirm(bin))
-        expect(deps.calls.run).toHaveBeenCalledWith({ progressText: rtbProgressText })
+        expect(deps.calls.run).toHaveBeenCalledWith({ progressText: rtbProgressText, card: expect.objectContaining({ def: expect.any(Object), savedEnding: expect.any(Function) }) })
     })
 
     test('T-S2-10: a password in the options reaches the run, and no options leave it undefined', async () => {
         const sealed = entryDeps()
         await startRtbExport(sealed, { password: 'pw' })
-        expect(sealed.calls.run).toHaveBeenCalledWith({ progressText: rtbProgressText, password: 'pw' })
+        expect(sealed.calls.run).toHaveBeenCalledWith({ progressText: rtbProgressText, card: expect.objectContaining({ def: expect.any(Object), savedEnding: expect.any(Function) }), password: 'pw' })
         const plain = entryDeps()
         await startRtbExport(plain)
         expect(plain.calls.run.mock.calls[0][0].password).toBeUndefined()
@@ -169,12 +170,20 @@ describe('the saved notice (T-S9-6, T-S9-7, T-S9-8)', () => {
 
     test('a side omission that only the report holds is named, with the outcome\'s omitted list empty', async () => {
         const side: OmittedEntry = { kind: 'side', name: 'side.iris', reason: 'unreadable' }
-        const deps = entryDeps({ run: async () => savedResult(reportOf({ omitted: [side] })) })
+        const deps = entryDeps()
+        deps.calls.run.mockImplementation(async () => savedResult(reportOf({ omitted: [side] })))
         await startRtbExport(deps)
-        const notice = String(deps.calls.normal.mock.calls[0][0])
+        // The run posts the saved ending on its card; the entry posts nothing itself.
+        expect(deps.calls.normal).not.toHaveBeenCalled()
+        const { savedEnding } = deps.calls.run.mock.calls[0][0].card!
+        const sideReport = reportOf({ omitted: [side] })
+        expect(savedEnding(sideReport)).toEqual({ notice: rtbSavedNotice(sideReport, false) })
+        const ending = savedEnding(sideReport)
+        const notice = 'notice' in ending ? ending.notice : ''
         expect(notice).toContain(language.backupDataLeftOut)
         expect(notice).toContain(language.rtbExportSideLeftOut(1))
         expect(notice).not.toContain('side.iris')
+        expect(savedEnding(reportOf())).toEqual({ summary: [language.exportDownloadStarted] })
     })
 
     test('units, assets, inlays and the old inlay store each add their paragraph, and long lists are cut', () => {
@@ -210,10 +219,10 @@ describe('what ends without a saved file (T-S9-9)', () => {
         expect(deps.calls.clear).not.toHaveBeenCalled()
     })
 
-    test('a closed save dialog removes the progress dialog silently', async () => {
+    test('a closed save dialog says nothing and clears no notice, as no wait of the run is up', async () => {
         const deps = entryDeps({ run: async () => endedWith({ status: 'declined', cause: 'save-dialog-cancelled' }) })
         await startRtbExport(deps)
-        expect(deps.calls.clear).toHaveBeenCalledTimes(1)
+        expect(deps.calls.clear).not.toHaveBeenCalled()
         expect(deps.calls.error).not.toHaveBeenCalled()
         expect(deps.calls.normal).not.toHaveBeenCalled()
     })
@@ -248,6 +257,9 @@ describe('the wiring through the real guarded run (T-S9-2, T-S9-4)', () => {
     beforeEach(() => {
         resetBusyActionsForTest()
         resetPageStorageModeForTests()
+        resetTaskHostForTests()
+        let tick = 0
+        setTaskClockForTests({ now: () => (tick += 1000), setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (timer) => clearTimeout(timer), hidden: () => false })
         vi.mocked(alertWait).mockClear()
         vi.spyOn(console, 'error').mockImplementation(() => { })
         vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -255,30 +267,42 @@ describe('the wiring through the real guarded run (T-S9-2, T-S9-4)', () => {
     })
 
     afterEach(() => {
+        setTaskClockForTests(null)
+        resetTaskHostForTests()
         vi.restoreAllMocks()
     })
 
-    test('the entry passes rtbProgressText to the run, so the dialog shows the phase texts in order with a Cancel, and a Cancel ends it as cancelled', async () => {
+    test('the entry passes its card to the run, so the card shows the steps in order with a Cancel, and a Cancel ends it as cancelled', async () => {
         const backend = await world.open()
-        const { deps } = rtbDeps({ backend, env: world.env })
+        const stepsSeen: string[] = []
+        const { deps } = rtbDeps({
+            backend, env: world.env,
+            over: { afterUnitBatch: async () => { const view = taskHostView(); stepsSeen.push(view?.steps[view.stepIndex]?.label ?? '') } },
+        })
         const live = entryDeps({ run: (options) => runRtbExportGuarded(deps, { ...options, fileName: 'test.rtb' }) })
         const result = await startRtbExport(live)
         expect(result?.status).toBe('ended')
-        const posted = vi.mocked(alertWait).mock.calls
-        expect(posted.length).toBeGreaterThan(2)
-        expect(posted[0][0]).toBe(language.rtbExportProgressOpening)
-        expect(posted.some((call) => call[0] === language.rtbExportProgressFinishing)).toBe(true)
-        expect(posted.every((call) => typeof call[1] === 'function')).toBe(true)
-        expect(live.calls.normal).toHaveBeenCalledWith(language.exportDownloadStarted)
+        expect(stepsSeen.length).toBeGreaterThan(0)
+        expect(stepsSeen.every((label) => label === language.rtbStepUnits)).toBe(true)
+        expect(taskHostView()?.state).toBe('done')
+        expect(taskHostView()?.result?.summary).toEqual([language.exportDownloadStarted])
+        expect(taskHostView()?.steps.map((step) => step.label)).toEqual([
+            language.exportStepPrepare, language.rtbStepSaveFirst, language.rtbStepUnits, language.rtbStepSide,
+            language.backupStepInlays, language.exportStepAssets, language.exportStepWrite,
+        ])
+        expect(live.calls.normal).not.toHaveBeenCalled()
+        expect(alertWait).not.toHaveBeenCalled()
 
-        vi.mocked(alertWait).mockClear()
+        resetTaskHostForTests()
         const second = rtbDeps({
             backend: await world.open(), env: world.env,
-            over: { afterUnitBatch: async () => { vi.mocked(alertWait).mock.calls.at(-1)?.[1]?.() } },
+            over: { afterUnitBatch: async () => { expect(taskHostView()?.cancelOffered).toBe(true); requestTaskCancel() } },
         })
         const cancelled = entryDeps({ run: (options) => runRtbExportGuarded(second.deps, { ...options, fileName: 'test.rtb' }) })
         const ended = await startRtbExport(cancelled)
         expect(ended).toMatchObject({ status: 'ended', outcome: { status: 'declined', cause: 'export-cancelled' } })
+        expect(taskHostView()?.cancelled).toBe(true)
+        expect(alertWait).not.toHaveBeenCalled()
         expect(cancelled.calls.normal).not.toHaveBeenCalled()
         expect(second.writer.closes).toBe(0)
         expect(isBusy()).toBe(false)

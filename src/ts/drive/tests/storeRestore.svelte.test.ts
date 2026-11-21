@@ -360,6 +360,20 @@ describe('saving first', () => {
         expect(page.alert.alertWait).toHaveBeenCalledWith(language.store2RestoreSaving)
     })
 
+    // A caller with its own progress passes `quiet`: no wait dialog is posted (it would sit over a hidden task card), and
+    // the save still runs. Regression reproducer for the wait; the saved-edit half is a compatibility guard.
+    test('quiet: saveFirst posts no wait and still commits the unsaved edits', async () => {
+        const page = await openPage()
+        page.db.mainPrompt = 'quiet edit'
+        page.flush()
+        vi.mocked(page.alert.alertWait).mockClear()
+
+        await page.restore.saveFirst(3000, { quiet: true })
+
+        expect(page.alert.alertWait).not.toHaveBeenCalled()
+        expect((await page.k.saved()).mainPrompt).toBe('quiet edit')
+    })
+
     // New behaviour, pinned by mutants: a parked loop is not asked to save. `requestSaveNow` would mark the tab dirty and raise the peer prompt.
     test('a parked loop skips the save: no save is requested and no prompt is raised', async () => {
         const page = await openPage()
