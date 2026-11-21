@@ -51,7 +51,7 @@ import { language } from '../../lang'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { storedConnections } from '../../ts/connections/connections'
 import { needsKey } from '../../ts/connections/connectionEditor'
-import { installVaultHost, resetVaultStoreForTest, type VaultPlatform } from '../../ts/connections/keyVaultStore.svelte'
+import { installVaultHost, resetVaultStoreForTest, unwrapEnvelope, type VaultPlatform } from '../../ts/connections/keyVaultStore.svelte'
 import { setSettingsSubLevel } from '../../ts/settingsShell/settingsNavigation'
 import { DBState } from '../../ts/stores.svelte'
 import Page from './ConnectionsShellPage.svelte'
@@ -96,6 +96,7 @@ beforeEach(() => {
     resetBackHandlersForTests()
     fake.s.hold = false
     fake.s.held.length = 0
+    fake.unwrapKey.mockImplementation(async (envelope: string) => ({ ok: true as const, value: envelope.slice(4) }))
     DBState.db = {
         connections: [{ id: 'conn-1', name: 'Sealed', provider: 'openai', key: '', keyWrapped: 'SYNTH-ENVELOPE' }],
         proxyConnectionId: '',
@@ -158,6 +159,38 @@ describe('wrapped key states on the page', () => {
         expect(detail).not.toContain(language.connectionsKeyMissing)
         expect(part('connection-key-input').querySelector('input')).not.toBeNull()
         expect(part('connection-key-save')).not.toBeNull()
+    })
+})
+
+describe('after a failed unwrap', () => {
+    // Transient codes keep the key recoverable: the page must not read it as missing or offer Clear.
+    test.each(['unavailable', 'timeout', 'other'] as const)('a transient %s failure shows the unavailable hint on card and detail, with no Clear', async (code) => {
+        fake.unwrapKey.mockImplementation(async () => ({ ok: false as const, code }))
+        install('vault')
+        await unwrapEnvelope('SYNTH-ENVELOPE')
+        mountPage()
+        await settle()
+        const card = part('connection-card').textContent ?? ''
+        expect(card).toContain(language.vaultKeyTemporarilyUnavailableHint)
+        expect(card).not.toContain(language.connectionsKeyMissingReason)
+        await openDetail()
+        const detail = part('connection-key').textContent ?? ''
+        expect(detail).toContain(language.vaultKeyTemporarilyUnavailableHint)
+        expect(detail).not.toContain(language.connectionsKeyMissing)
+        expect(document.querySelector('[data-part="connection-key-clear"]')).toBeNull()
+    })
+
+    // Permanent codes mean this device can never read the envelope, so the key must be typed again.
+    test.each(['unreadable', 'invalidated'] as const)('a permanent %s failure shows the re-entry label, not "No key"', async (code) => {
+        fake.unwrapKey.mockImplementation(async () => ({ ok: false as const, code }))
+        install('vault')
+        await unwrapEnvelope('SYNTH-ENVELOPE')
+        mountPage()
+        await settle()
+        const card = part('connection-card').textContent ?? ''
+        expect(card).toContain(language.vaultNeedsReentryLabel)
+        expect(card).not.toContain(language.vaultKeyTemporarilyUnavailableHint)
+        expect(card).not.toContain(language.connectionsKeyMissingReason)
     })
 })
 
