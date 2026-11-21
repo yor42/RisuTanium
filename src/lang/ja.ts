@@ -370,7 +370,6 @@ export const languageJapanese = {
     settingsShellAdvGenTime: "1回のリクエストあたりの返信数",
     settingsShellAdvGenTimeHint: "対応モデルで、1回のリクエストで求める返信の数です。アプリは0〜4096を受け付けます。",
     settingsShellAdvVisionQual: "画像認識の品質",
-    settingsShellAdvReqLoc: "リクエストのリージョン",
     settingsShellAdvAutoCont: "途中で切れた返信を自動で続ける",
     settingsShellAdvAutoContinueMin: "自動継続の最小トークン数",
     settingsShellAdvAutoContinueMinHint: "自動継続と組み合わせて使われます",
@@ -436,7 +435,6 @@ export const languageJapanese = {
     settingsShellAdvGoogleTrans: "新しいGoogle翻訳",
     settingsShellAdvClaudeRet: "Claudeのキャッシュ取得",
     settingsShellAdvCot: "思考の連鎖",
-    settingsShellAdvPlainFetch: "通常のfetchを強制",
     settingsShellAdvDepTrig: "非推奨のトリガーV1を表示",
     settingsShellAdvLegacyMedia: "メディアを探す従来の方法",
     settingsShellPersonaCount: (count: number) => `ペルソナ ${count} 件`,
@@ -743,7 +741,6 @@ export const languageJapanese = {
         networkFetch: "ネットワークが不安定であるか、サーバーがダウンしている場合に発生します。",
         networkFetchWeb:
             "CORSエラーの可能性があります。これはブラウザの制限により、ウェブ版の使用時にのみ発生します。デスクトップローカル版、またはRisuTaniumの他のバージョンをお試しください。",
-        networkFetchPlain: "プレーンfetchエラーの可能性があります。設定で「プレーンfetch強制」オプションを無効にしてみてください。",
         androidHttpBlocked: "Android は暗号化されていない http:// アドレスを使うこのリクエストをブロックします。代わりに https:// アドレスを使用してください。",
         requestTimedOut: "リクエストがタイムアウトしました。",
         realmUploadNoAnswer: "RisuRealm から応答がなかったため、何もアップロードされませんでした。接続を確認して、もう一度お試しください。",
@@ -1286,7 +1283,6 @@ export const languageJapanese = {
         imageCompression: "有効にすると、キャラクターのエクスポート時に画像を圧縮します。アニメーション画像が正常に動作しない場合は、このオプションを無効にしてみてください。",
         useExperimental: "有効にすると、一部の実験的機能が表示されます。",
         forceProxyAsOpenAI: "有効にすると、リバースプロキシの使用時にOpenAI形式の使用を強制します。",
-        forcePlainFetch: "有効にすると、ネイティブのHTTPリクエストの代わりにブラウザのFetch APIを使用します。これによりCORSエラーが発生する可能性があります。",
         autoFillRequestURL: "有効にすると、現在のモデルに合わせてリクエストURLを自動入力します。",
         localNetworkModeDesc:
             "プライベート／LANモデルのURLを、ブラウザからの直接フェッチではなくローカルランタイムパス経由でルーティングします。\n\n" +
@@ -2983,7 +2979,6 @@ export const languageJapanese = {
     loadBackupLocal: "ローカルバックアップを読み込み",
     genTimes: "生成候補数",
     cot: "思考の連鎖",
-    forcePlainFetch: "プレーンFetchを強制",
     autoFillRequestURL: "リクエストURLを自動入力",
     newOAIHandle: "新しいOpenAI処理方式",
     postEndInnerFormat: "エンド後",
@@ -3527,7 +3522,6 @@ export const languageJapanese = {
     realmPrevPage: "前のページ",
     realmNextPage: "次のページ",
     groupTalkLevel: (level: number) => `発言頻度 6段階中${level}`,
-    requestLocation: "リクエスト位置",
     newImageHandlingBeta: "新しい画像処理 (Beta)",
     settingsExported: "バグ報告用の設定をエクスポートし、クリップボードにコピーしました。",
     settingsReportDownloadStarted: "バグ報告用設定のダウンロードを開始し、設定をクリップボードにコピーしました。",

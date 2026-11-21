@@ -33838,6 +33838,13 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
 - "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
 
+### MC-2908 — CHORE-557 stage 2 folds into stage 4, 2026-11-21
+
+- Tag: decision (one AskUserQuestion answer to the #265 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-2344`, `#265`.
+- Facts put to the maintainer (read at origin/main 696ab524c): the base64 data-URL cache in `getFileSrc` is still the static build's main image path; its Blob/object-URL branch serves only the IndexedDB store's `readValue`; on Node-hosted pages every `assets/` and inlay body key already gets the `/api/asset` URL, so only other keys or a failed URL fall back to the cache.
+
+**What the maintainer chose.** "Fold into stage 4 (Recommended)": stage 4 removes the IndexedDB store, the Blob/object-URL branch, the byte-budgeted LRU cache and the oversized memo together, keeping a small uncached data-URL fallback for Node's rare non-route keys. The session moved on to stage 3.
+
 ### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
 
 - Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.

@@ -20,7 +20,7 @@ import { botMakerMode, DBState, LoadingStatusState, selIdState, selectedCharID, 
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertConfirm, alertError, alertMd, alertStore, alertToast, waitAlert } from "./alert";
 import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
-import { characterURLImport, hubURL } from "./characterCards";
+import { characterURLImport } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { encodeRisuSaveLegacy, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
@@ -2039,12 +2039,9 @@ const knownHostes = ["localhost", "127.0.0.1", "0.0.0.0"];
 const webLocalNetworkBlockedMessage = "웹에서는 사설망 직접 호출 불가. Tauri 또는 LAN Node self-host 사용";
 const defaultProxyJobHeartbeatSec = 15;
 
+// The page's own server answers the proxy routes; the upstream hub's proxy is never used (CHORE-557).
 function getProxy2Url() {
-    return !isTauri && !isNodeServer ? `${hubURL}/proxy2` : `/proxy2`;
-}
-
-function getProxyStreamJobBaseUrl() {
-    return isNodeServer ? '' : `${hubURL}`;
+    return `/proxy2`;
 }
 
 function buildTimeoutSignal(originalSignal?: AbortSignal, timeoutMs?: number) {
@@ -2206,7 +2203,6 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}, intern
         const forcePlainFetch = decidePlainFetch({
             knownHost: knownHostes.includes(urlHost),
             isTauri,
-            usePlainFetch: db.usePlainFetch,
             plainFetchForce: arg.plainFetchForce,
             plainFetchDeforce: arg.plainFetchDeforce,
             localNetworkRoute: useLocalNetworkRoute,
@@ -2479,7 +2475,6 @@ async function fetchWithProxy(url: string, arg: GlobalFetchArgs): Promise<Global
             "Content-Type": arg.body instanceof URLSearchParams ? "application/x-www-form-urlencoded" : "application/json",
             ...(arg.requestTimeoutMs && { "risu-timeout-ms": Math.max(1, Math.floor(arg.requestTimeoutMs)).toString() }),
             ...(nodeProxyAuth && { "risu-auth": nodeProxyAuth }),
-            ...(DBState?.db?.requestLocation && { "risu-location": DBState.db.requestLocation }),
         };
 
         const body = arg.body instanceof URLSearchParams ? arg.body.toString() : JSON.stringify(arg.body);
@@ -3181,10 +3176,8 @@ async function fetchViaProxyJobWs(url: string, arg: {
     const auth = await getNodeServerProxyAuth();
 
     const requestSignal = arg.signal;
-    const baseUrl = getProxyStreamJobBaseUrl();
-
     let jobId = '';
-    const createRes = await fetch(`${baseUrl}/proxy-stream-jobs`, {
+    const createRes = await fetch(`/proxy-stream-jobs`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -3332,7 +3325,7 @@ async function fetchViaProxyJobWs(url: string, arg: {
         if (streamController && !settled) {
             streamController.enqueue(encoder.encode('Aborted'));
         }
-        void fetch(`${baseUrl}/proxy-stream-jobs/${encodeURIComponent(jobId)}`, {
+        void fetch(`/proxy-stream-jobs/${encodeURIComponent(jobId)}`, {
             method: 'DELETE',
             headers: {
                 'risu-auth': auth
@@ -3431,7 +3424,7 @@ export async function fetchNative(url: string, arg: {
     if (useLocalNetworkRoute && !isTauri && !isNodeServer) {
         throw new Error(webLocalNetworkBlockedMessage)
     }
-    let throughProxy = (!isTauri) && (!isNodeServer) && (!db.usePlainFetch)
+    let throughProxy = (!isTauri) && (!isNodeServer)
     if (useLocalNetworkRoute) {
         if (isNodeServer) {
             throughProxy = true
@@ -3797,7 +3790,6 @@ export async function fetchNative(url: string, arg: {
                 "Content-Type": "application/json",
                 ...(arg.requestTimeoutMs && { "risu-timeout-ms": Math.max(1, Math.floor(arg.requestTimeoutMs)).toString() }),
                 ...(nodeProxyAuth ? { "risu-auth": nodeProxyAuth } : {}),
-                ...(DBState?.db?.requestLocation && { "risu-location": DBState.db.requestLocation }),
             },
             method: arg.method,
             signal: requestSignal

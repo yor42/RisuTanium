@@ -28,9 +28,11 @@ The fork has its own name and its own app-data folder, so it does not overwrite 
 - The in-app updater is off until the first release.
 - The CBS version tags report the version of this fork. `{{version}}` returns `0.1.0` and `{{majorversion}}` returns `0`. An upstream card that compares them with a 2026 version behaves differently.
 
-## Where your API key goes on a web build
+## Where your API key goes
 
-This applies to a static web build of RisuTanium. It does not apply to the desktop app, to Android, or to the Node server. On the static web build, requests to AI providers go through the proxy of upstream RisuAI at `sv.risuai.xyz` (`/proxy2`). This is the same as the own hosted build of upstream. Requests to localhost addresses are the exception, which a web build refuses anyway. Your API key travels with the request, so it passes through the server of upstream. The desktop app and Android send requests directly from the device. The Node server uses its own `/proxy2`. On 2026-11-02, the maintainer decided to document this and to change nothing. The code has a plain-fetch setting that skips the proxy. The authors found no toggle for it in the settings screens (they did not check this fully).
+Requests to AI providers never go through the proxy of upstream RisuAI (`sv.risuai.xyz`). The desktop app and Android send them directly from the device. The Node server sends them through its own `/proxy2`. The static web build, which keeps data only in the browser, is being retired; it no longer has a proxy, so its provider requests fail.
+
+The **Request Location** and **Force Plain Fetch** settings are gone. A saved value is kept in backups for upstream, but this app ignores it.
 
 ## Rewritten systems
 
