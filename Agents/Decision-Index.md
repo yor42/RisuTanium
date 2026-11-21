@@ -2336,6 +2336,7 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2928](Maintainer-Context.md#mc-2928--234-risurealm-announcement-sits-after-the-community-list-2026-11-21) | #234 RisuRealm announcement sits after the Community list, 2026-11-21 |
 | [MC-2929](Maintainer-Context.md#mc-2929--234-the-risurealm-heading-carries-the-upstream-tag-2026-11-21) | #234 the RisuRealm heading carries the upstream tag, 2026-11-21 |
 | [MC-2930](Maintainer-Context.md#mc-2930--234-story-shelf-no-snippet-for-an-archived-chat-card-text-is-a-snapshot-2026-11-21) | #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21 |
+| [MC-2931](Maintainer-Context.md#mc-2931--234-embedded-library-characters-controls-with-no-library-mockup-tiles-as-a-follow-up-2026-11-21) | #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21 |
 | [MC-2955](Maintainer-Context.md#mc-2955--442-module-share-secrets-refuse-mcp-modules-at-share-points-plugin-settings-file-unchanged-no-keep-keys-opt-in-2026-11-21) | #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21 |
 | [MC-2908](Maintainer-Context.md#mc-2908--chore-557-stage-2-folds-into-stage-4-2026-11-21) | CHORE-557 stage 2 folds into stage 4, 2026-11-21 |
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |

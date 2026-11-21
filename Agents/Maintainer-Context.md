@@ -33836,6 +33836,14 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "No snippet (Recommended)": when a loaded character's current chat is itself archived (its messages are not in memory), the card shows the name, chat name and time and no last line. Nothing is loaded.
 - "Snapshot (Recommended)": each card's chat name and last line are fixed together with the order when Home opens, and refresh on the next visit. Only removals, renames and pictures apply live, so no reply text streams into a card.
 
+### MC-2931 — #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session on plan-s4). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-1346`, `MC-2818`, `MC-2834`, `MC-2835`, `MC-2837`, `#234`.
+
+**What the maintainer chose.**
+- "Hide button, keep drawer (Recommended)": with zero characters (the Create/Import hero is the only content) the mid/wide Characters button is hidden. The drawer's Characters entry stays and scrolls to and focuses the hero.
+- "Mockup tiles, follow-up": #234 ships a look-only restyle of today's library tiles (radius, edge, tint; tile size, no name or count beneath). The mockup's large portrait tiles with the name beneath are built in a separate ticket (#479) that adds a Home tile size to the list engine, measured on the Note 9.
+
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
