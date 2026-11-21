@@ -25,6 +25,8 @@
         paramKey?: string
     } = $props()
 
+    const uid = $props.id()
+
     let effectiveModel = $derived.by(() => {
         if (!paramKey) return DBState.db.subModel
         if (auxModelKeys.includes(paramKey as AuxModelKey)) {
@@ -68,23 +70,23 @@
 </script>
 
 {#if hasTemperature}
-<span class="text-textcolor">{language.temperature} <Help key="tempature"/></span>
-<SliderInput min={0} max={200} marginBottom bind:value={value.temperature} multiple={0.01} fixed={2} disableable/>
+<span class="text-textcolor"><span id="{uid}-temperature">{language.temperature}</span> <Help key="tempature"/></span>
+<SliderInput min={0} max={200} marginBottom labelId="{uid}-temperature" label={language.temperature} bind:value={value.temperature} multiple={0.01} fixed={2} disableable/>
 {/if}
-<span class="text-textcolor">Top K</span>
-<SliderInput min={0} max={100} marginBottom step={1} bind:value={value.top_k} disableable/>
-<span class="text-textcolor">{'Repetition Penalty'}</span>
-<SliderInput min={0} max={2} marginBottom step={0.01} fixed={2} bind:value={value.repetition_penalty} disableable/>
-<span class="text-textcolor">Min P</span>
-<SliderInput min={0} max={1} marginBottom step={0.01} fixed={2} bind:value={value.min_p} disableable/>
-<span class="text-textcolor">Top A</span>
-<SliderInput min={0} max={1} marginBottom step={0.01} fixed={2} bind:value={value.top_a} disableable/>
-<span class="text-textcolor">Top P</span>
-<SliderInput min={0} max={1} marginBottom step={0.01} fixed={2} bind:value={value.top_p} disableable/>
-<span class="text-textcolor">{language.frequencyPenalty}</span>
-<SliderInput min={0} max={200} marginBottom step={0.01} fixed={2} bind:value={value.frequency_penalty} disableable/>
-<span class="text-textcolor">{language.presensePenalty}</span>
-<SliderInput min={0} max={200} marginBottom step={0.01} fixed={2} bind:value={value.presence_penalty} disableable/>
+<span id="{uid}-top-k" class="text-textcolor">Top K</span>
+<SliderInput min={0} max={100} marginBottom step={1} labelId="{uid}-top-k" label="Top K" bind:value={value.top_k} disableable/>
+<span id="{uid}-repetition-penalty" class="text-textcolor">{'Repetition Penalty'}</span>
+<SliderInput min={0} max={2} marginBottom step={0.01} fixed={2} labelId="{uid}-repetition-penalty" label="Repetition Penalty" bind:value={value.repetition_penalty} disableable/>
+<span id="{uid}-min-p" class="text-textcolor">Min P</span>
+<SliderInput min={0} max={1} marginBottom step={0.01} fixed={2} labelId="{uid}-min-p" label="Min P" bind:value={value.min_p} disableable/>
+<span id="{uid}-top-a" class="text-textcolor">Top A</span>
+<SliderInput min={0} max={1} marginBottom step={0.01} fixed={2} labelId="{uid}-top-a" label="Top A" bind:value={value.top_a} disableable/>
+<span id="{uid}-top-p" class="text-textcolor">Top P</span>
+<SliderInput min={0} max={1} marginBottom step={0.01} fixed={2} labelId="{uid}-top-p" label="Top P" bind:value={value.top_p} disableable/>
+<span id="{uid}-frequency-penalty" class="text-textcolor">{language.frequencyPenalty}</span>
+<SliderInput min={0} max={200} marginBottom step={0.01} fixed={2} labelId="{uid}-frequency-penalty" label={language.frequencyPenalty} bind:value={value.frequency_penalty} disableable/>
+<span id="{uid}-presence-penalty" class="text-textcolor">{language.presensePenalty}</span>
+<SliderInput min={0} max={200} marginBottom step={0.01} fixed={2} labelId="{uid}-presence-penalty" label={language.presensePenalty} bind:value={value.presence_penalty} disableable/>
 <ClaudeThinkingSeparateParams bind:value={value} {paramKey} />
 {#if hasReasoningEffort}
 <span class="text-textcolor">Reasoning Effort</span>

@@ -40,6 +40,8 @@
     import { getDetailedOSLabel, getFallbackOSLabel, getRisuEnvironmentLabel } from "src/ts/platform";
     import versionData from "../../../version.json";
 
+    const uid = $props.id();
+
     // One hold per character row of the picker; a row gives it back when it leaves the viewport, the alert when it closes.
     const lookups = useCharImageLookups();
 
@@ -900,8 +902,8 @@
                 {/if}
             </div>
             {#if a.submsg === '' && cardExportType === ''}
-                <span class="text-textcolor mt-4">{language.format}</span>
-                <SelectInput bind:value={cardExportType2} className="mt-2">
+                <span id="{uid}-export-format" class="text-textcolor mt-4">{language.format}</span>
+                <SelectInput bind:value={cardExportType2} className="mt-2" labelId="{uid}-export-format">
                     <OptionInput value="charx">CHARX</OptionInput>
                     <OptionInput value="charxJpeg">CHARX-JPEG</OptionInput>
                     <OptionInput value="">PNG</OptionInput>

@@ -6,7 +6,6 @@ export interface PlainFetchInput {
     /** The request host is one of the known local hosts. */
     knownHost: boolean
     isTauri: boolean
-    usePlainFetch?: boolean
     plainFetchForce?: boolean
     plainFetchDeforce?: boolean
     /** The request takes the local-network route. */
@@ -25,7 +24,7 @@ export function decidePlainFetch(input: PlainFetchInput): boolean {
     if (input.android && input.protocol === 'http:') {
         return false
     }
-    return ((input.knownHost && !input.isTauri) || !!input.usePlainFetch || !!input.plainFetchForce)
+    return ((input.knownHost && !input.isTauri) || !!input.plainFetchForce)
         && !input.plainFetchDeforce
         && !input.localNetworkRoute
 }

@@ -5,8 +5,8 @@ import type { botPreset } from 'src/ts/storage/database.svelte'
  * Preset destination URLs left out of a shared preset. `blank` keeps the key
  * as `''`, the shape upstream writes. `delete` omits it: upstream's
  * `changeToPreset` reads `koboldURL` with `??`, so an absent key keeps the
- * importer's own value while `''` would wipe it. Presets made by upstream
- * still carry the sharer's koboldURL; that is outside this fork's export.
+ * importer's own value while `''` would wipe it. Every preset this fork
+ * exports omits it whatever its origin; only upstream's own exports carry it.
  */
 export const SHARE_ENDPOINT_FIELDS: readonly {
     field: keyof botPreset

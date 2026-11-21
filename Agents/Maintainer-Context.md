@@ -33828,6 +33828,47 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 **What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
 
+### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
+
+- Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
+
+**What the maintainer chose.**
+- "Keep refusal + guard (Recommended)": MCP modules keep the existing refusal (Download hidden, module .charx refuses), and the two module share clone points (.risum export, Realm module payload) gain a guard.
+- "Refuse MCP modules (Recommended)", over "Blank + scrub the URL": Gate 1 found the URL is also copied into the module's description, so the guard refuses an MCP module outright instead of blanking `mcp.url`.
+- "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
+- "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
+
+### MC-2908 — CHORE-557 stage 2 folds into stage 4, 2026-11-21
+
+- Tag: decision (one AskUserQuestion answer to the #265 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-2344`, `#265`.
+- Facts put to the maintainer (read at origin/main 696ab524c): the base64 data-URL cache in `getFileSrc` is still the static build's main image path; its Blob/object-URL branch serves only the IndexedDB store's `readValue`; on Node-hosted pages every `assets/` and inlay body key already gets the `/api/asset` URL, so only other keys or a failed URL fall back to the cache.
+
+**What the maintainer chose.** "Fold into stage 4 (Recommended)": stage 4 removes the IndexedDB store, the Blob/object-URL branch, the byte-budgeted LRU cache and the oversized memo together, keeping a small uncached data-URL fallback for Node's rare non-route keys. The session moved on to stage 3.
+
+### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
+
+- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
+
+**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.
+
+### MC-2975 — Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21
+
+- Tag: decisions (maintainer with lane A, upstream triage). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2279`, `MC-1451`, `MC-2341`, `#454`, `#455`, `upstream 6db4b681f`.
+
+**What the maintainer chose.** Of upstream's four changes in the range (plus six merges of them):
+- `1baf4b2b9` (#1751), allowBuilds `onnxruntime-node: false`: TAKE. Set it in `pnpm-workspace.yaml` and keep the fork's `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` lines (MC-2279). It also covers `server.sh`, which runs a plain `pnpm install` without the variable.
+- `918d63543` (#1656), NAI `nai-diffusion-5-full-medium`: TAKE as upstream. Add the option and drop the `nai-diffusion-2` dropdown option; saved values stay readable.
+- `bd02ca878` (#1648), Lua `generateImage` `options.name` names the inlay: TAKE as upstream, with no length cap. Keep the fork's access-id gate, member gate and runner resolution.
+- `524111403` (#1643), Tauri `streamed_fetch` chunk coalescing: NOT TAKEN in this sync. It goes to a separate Tier 2 ticket (#455), because the fork's MC-1451 wake-driven pump leaves no backlog where upstream's timer coalesces.
+
+Triage evidence (one triager and one independent verifier per commit): lane A `b61\upstream-6db4b681f\triage.md`.
+
+### MC-2976 — Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2341`, `MC-2975`, `#454`.
+
+**What the maintainer chose.** The MC-2341 flow again (precedent PRs #137 and #144): one port PR for the taken items (`Refs #454`), then, after it merges, a `git merge -s ours upstream/main` PR that records the range in `Agents/Upstream-Merges.md` and closes #454. The merge PR is merged with a merge commit, not squash or rebase, so upstream's history stays linked.
+
 ### MC-2990 — #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21
 
 - Tag: decisions (maintainer answer to the #455 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2975`, `MC-1499`, `MC-1466`, `#455`.

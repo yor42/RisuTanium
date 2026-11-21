@@ -431,9 +431,6 @@ describe('SourceDisclosure.svelte: the Escape listener', () => {
         const { target } = mountComponent(SourceDisclosure, {
             title: 'Source & Issues',
             description: 'Browse the source code.',
-            cardClass: 'card',
-            triggerClass: 'trigger',
-            iconClass: 'icon',
         })
         const trigger = target.querySelector('button') as HTMLButtonElement
         trigger.click()

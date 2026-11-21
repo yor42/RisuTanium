@@ -72,9 +72,6 @@ function mountDisclosure(target: HTMLElement, destinations?: Destination[]): voi
         props: {
             title: 'Source & Issues',
             description: 'Browse the source code or file an issue on GitHub.',
-            cardClass: 'card',
-            triggerClass: 'trigger',
-            iconClass: 'icon',
             ...(destinations ? { destinations } : {}),
         },
     }))
