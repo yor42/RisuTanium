@@ -18,6 +18,7 @@
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import KeyListInput from "src/lib/UI/GUI/KeyListInput.svelte";
+    import ConnectionsLink from "src/lib/SettingsShell/connections/ConnectionsLink.svelte";
     import SelectInput from "src/lib/UI/GUI/SelectInput.svelte";
     import OptionInput from "src/lib/UI/GUI/OptionInput.svelte";
     import SliderInput from "src/lib/UI/GUI/SliderInput.svelte";
@@ -719,6 +720,7 @@
         {#if DBState.db.sdProvider === 'dalle'}
             <span class="text-textcolor" id="{uid}-keyDalle">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
             <KeyListInput labelId="{uid}-keyDalle" size="sm" marginBottom placeholder="sk-..." bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }}/>
+            <ConnectionsLink />
 
             <span class="text-textcolor mt-4" id="{uid}-v22">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
             <SelectInput labelId="{uid}-v22" className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>

@@ -17,6 +17,7 @@
     import { PlusIcon, TrashIcon, HardDriveUploadIcon, DownloadIcon, UploadIcon } from "@lucide/svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import KeyListInput from "src/lib/UI/GUI/KeyListInput.svelte";
+    import ConnectionsLink from "src/lib/SettingsShell/connections/ConnectionsLink.svelte";
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
     import SliderInput from "src/lib/UI/GUI/SliderInput.svelte";
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
@@ -179,6 +180,7 @@
     <ModelDataRefresh />
 
     <p class="text-textcolor2 text-sm mt-4 mb-2" data-testid="api-key-env-ref-note">{language.settingsPage.apiKeyEnvRefNote}</p>
+    <ConnectionsLink />
 
     {#if modelInfo.provider === LLMProvider.GoogleCloud || subModelInfo.provider === LLMProvider.GoogleCloud}
         <span class="text-textcolor" id="{uid}-keyGoogle">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>

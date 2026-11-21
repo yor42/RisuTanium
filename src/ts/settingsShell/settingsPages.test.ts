@@ -25,6 +25,8 @@ const WRITER_INDEXES: Array<[number, string, string]> = [
     [14, 'extensions', 'modules'],
     [15, 'shortcuts', 'shortcuts'],
     [17, 'statistics', 'statistics'],
+    [18, 'connections', 'connections'],
+    [19, 'models', 'modelsConnections'],
 ]
 
 describe('Settings index to page mapping', () => {
@@ -32,7 +34,7 @@ describe('Settings index to page mapping', () => {
         expect(pageForIndex(index)).toEqual({ page, view })
     })
 
-    test.each([-1, 5, 16, 99, NaN, 1.5])('index %s hosts no page', (index) => {
+    test.each([-1, 5, 16, 20, 99, NaN, 1.5])('index %s hosts no page', (index) => {
         expect(pageForIndex(index)).toBeNull()
     })
 
@@ -48,14 +50,14 @@ describe('Settings index to page mapping', () => {
     test('every legacy index is hosted by exactly one view', () => {
         const indexes = orderedPages().flatMap((page) => page.views.map((view) => view.legacyIndex))
         expect(new Set(indexes).size).toBe(indexes.length)
-        expect([...indexes].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 6, 10, 11, 12, 13, 14, 15, 17])
+        expect([...indexes].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 6, 10, 11, 12, 13, 14, 15, 17, 18, 19])
     })
 })
 
 describe('Settings index order', () => {
-    test('the eleven entries follow the specification order, Statistics before Advanced', () => {
+    test('the twelve entries follow the specification order, Statistics before Advanced', () => {
         expect(orderedPages().map((page) => page.id)).toEqual([
-            'models', 'features', 'display', 'input', 'language',
+            'models', 'connections', 'features', 'display', 'input', 'language',
             'personas', 'extensions', 'data', 'shortcuts', 'statistics', 'advanced',
         ])
     })
