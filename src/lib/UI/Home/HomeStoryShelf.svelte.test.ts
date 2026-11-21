@@ -16,7 +16,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { controlDescription, controlName, exposedIcons, paletteClasses } from 'src/lib/a11yNames.test-helpers'
 
 //#region module mocks
