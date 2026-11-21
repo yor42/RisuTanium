@@ -31,6 +31,17 @@ export function hasLibraryContent(characters: readonly (CharacterSlot | null | u
 }
 
 /**
+ * How many slots `hasLiveCharacter` would accept: present, not in the Trash and not a hidden system
+ * character. Groups count, as in the library. An undefined list counts as zero.
+ */
+export function liveCharacterCount(characters: readonly (CharacterSlot | null | undefined)[] | undefined): number {
+    if (!characters) {
+        return 0
+    }
+    return characters.filter((c) => !!c && !c.trashTime && !isHiddenSystemCharacter(c)).length
+}
+
+/**
  * The name the persona chip shows, or null when the persona counts as unnamed: an empty name or the
  * default 'User' after trimming (a persona deliberately named "User" is indistinguishable and shows
  * the set-up label too). The name is the stored username, which the Personas page edits directly.
