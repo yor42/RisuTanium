@@ -26,6 +26,7 @@ import { chatCommitInput, chatElementOf } from './fixtures/packCommit'
 import {
     CHAT_SHEET, concat, fakeFont, manifestText, PLAIN_CHAT_SHEET, PNG_1X1, utf8, validPackFiles, zipPack, type PackFile,
 } from './fixtures/packBuilder'
+import { CascadeModel, compileAppStyles, compileRules } from '../../styles/tests/cascadeModel'
 
 //#region module mocks
 
@@ -920,6 +921,29 @@ describe('S4a the studio element (MC-3121: shape variant only, no base, in both 
         const studio = packElements().find((element) => element.getAttribute('data-theme-pack') === 'studio')
         expect(studio?.textContent).toMatch(/--studio-size-touch:\s*40px/)
         expect(studio?.textContent).not.toContain('--nexus-text')
+    })
+
+    it('R4: a studio-only pack that sets the app shape tokens is accepted, and its element reshapes the legacy utilities (MC-3128)', async () => {
+        const prepared = await prepareArchive(studioOnlyPack(':root{--ui-radius-md:2px;--ui-radius:0px;--ui-border-width:2px}'))
+        expect(prepared.ok).toBe(true)
+        const studio = accepted(prepared).elements.find((element) => element.area === 'studio')
+        expect(studio).toBeDefined()
+        expect(studio?.text).toMatch(/--ui-radius-md:\s*2px/)
+        expect(studio?.text).toMatch(/--ui-radius:\s*0px/)
+        expect(studio?.text).toMatch(/--ui-border-width:\s*2px/)
+        const app = await compileAppStyles(['rounded-md', 'rounded', 'border'])
+        document.body.innerHTML = '<div class="rounded-md"></div><div class="rounded"></div><div class="border"></div>'
+        const model = new CascadeModel(compileRules([app, { name: 'studio', css: studio?.text ?? '' }]))
+        const [md, bare, border] = [...document.body.children]
+        expect([model.prop(md, 'border-radius'), model.prop(bare, 'border-radius'), model.prop(border, 'border-width')]).toEqual(['2px', '0px', '2px'])
+    }, 60000)
+
+    it('R6: studio.css keeps a studio radius token it reads in the same rule set (MC-3128)', async () => {
+        const sheet = ':root{--studio-radius-card:18px}[data-part="studio-history-step"]{border-radius:var(--studio-radius-card)}'
+        const prepared = accepted(await prepareArchive(studioOnlyPack(sheet)))
+        const studio = prepared.elements.find((element) => element.area === 'studio')
+        expect(studio?.text).toMatch(/--studio-radius-card:\s*18px/)
+        expect(studio?.text).toMatch(/border-radius:\s*var\(--studio-radius-card\)/)
     })
 
     it('a studio-only pack applies only the studio element, with no chat text, no base and no default scheme', async () => {

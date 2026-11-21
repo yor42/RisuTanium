@@ -51,13 +51,29 @@ export const SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([
     '--size-avatar', '--size-avatar-lg', '--size-avatar-md', '--size-avatar-sm', '--size-avatar-xl', '--size-touch', '--size-touch-lg', '--size-touch-sm',
     '--status-row-padding-start', '--stroke-bold', '--stroke-heavy', '--stroke-medium', '--stroke-xheavy',
     '--thread-max-width', '--transcript-padding-bottom', '--transcript-padding-top', '--transcript-padding-top-strip', '--transcript-padding-x',
+    '--ui-border-width', '--ui-radius', '--ui-radius-2xl', '--ui-radius-3xl', '--ui-radius-4xl', '--ui-radius-lg', '--ui-radius-md', '--ui-radius-sm', '--ui-radius-xl', '--ui-radius-xs',
 ])
 
 /**
- * Studio's live geometry tokens: the names src/lib/Studio reads, each only as the size of a geometry utility (never in a paint
- * property), so a pack value in them cannot add a colour. shapeMode.test.ts scans the consumers and pins the set.
+ * Studio's geometry role tokens: the pack-settable names that are sizes, spacing, type scale, radii or hairlines and never a
+ * colour, alpha or tint. Every reader in the source tree uses one only as a geometry value (never in a paint property), so a pack
+ * value in them cannot add a colour. shapeMode.test.ts scans the consumers, derived tokens included, and pins the set.
  */
-const STUDIO_GEOMETRY_TOKEN_NAMES: readonly string[] = ['--studio-form-row-height', '--studio-size-touch', '--studio-tree-width']
+const STUDIO_GEOMETRY_TOKEN_NAMES: readonly string[] = [
+    '--studio-code-card-min-height', '--studio-code-min-height', '--studio-content-max-width', '--studio-critical-min-width', '--studio-dialog-width',
+    '--studio-font-base', '--studio-font-lg', '--studio-font-md', '--studio-font-sm', '--studio-font-xl', '--studio-font-xs',
+    '--studio-form-depth-width', '--studio-form-field-gap', '--studio-form-fold-row-height', '--studio-form-group-gap', '--studio-form-label-size',
+    '--studio-form-max-width', '--studio-form-member-avatar-size', '--studio-form-portrait-alt-size', '--studio-form-portrait-size',
+    '--studio-form-risky-edge-width', '--studio-form-row-height', '--studio-form-section-padding', '--studio-form-talk-segment-height',
+    '--studio-form-talk-segment-width', '--studio-form-thumb-size', '--studio-gutter-width', '--studio-header-height', '--studio-leading-body',
+    '--studio-leading-tight', '--studio-menu-width', '--studio-radius-1', '--studio-radius-2', '--studio-radius-3', '--studio-radius-card',
+    '--studio-radius-row', '--studio-search-width', '--studio-side-width', '--studio-size-hairline', '--studio-size-ring', '--studio-size-touch',
+    '--studio-size-touch-lg', '--studio-size-touch-sm', '--studio-skip-hidden-offset', '--studio-sp-10px', '--studio-sp-14px', '--studio-space-1',
+    '--studio-space-2', '--studio-space-3', '--studio-space-4', '--studio-space-5', '--studio-space-6', '--studio-space-7', '--studio-space-8',
+    '--studio-splitter-width', '--studio-tab-height', '--studio-tab-size', '--studio-toast-max-width', '--studio-tree-head-height',
+    '--studio-tree-row-height', '--studio-tree-row-height-fine', '--studio-tree-row-height-owner', '--studio-tree-row-height-owner-fine',
+    '--studio-tree-width', '--studio-weight-medium', '--studio-weight-strong',
+]
 const STUDIO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([...SHAPE_TOKEN_NAMES, ...STUDIO_GEOMETRY_TOKEN_NAMES])
 
 /**
