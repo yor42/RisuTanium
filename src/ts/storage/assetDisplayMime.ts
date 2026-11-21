@@ -1,14 +1,11 @@
 /**
- * The MIME type an asset is shown with, decided from the extension of its key
- * alone. A stored value's own type is never consulted: a picked file carries
- * whatever type the operating system guessed, and a restored value carries the
- * type of an untrusted backup, so neither may decide how the page treats a
- * `blob:` URL. Anything outside the closed table, markup types (`svg`, `html`)
+ * The MIME type an inlay is shown with. A stored value's own type is never
+ * consulted: a picked file carries whatever type the operating system guessed,
+ * and a restored value carries the type of an untrusted backup, so neither may
+ * decide how the page treats a `blob:` URL. An inlay's body key carries no
+ * extension (it is a 16-hex token), so the inlay's own `ext` and kind decide,
+ * within a closed table. Anything outside it, markup types (`svg`, `html`)
  * included, is shown as opaque bytes.
- *
- * An inlay's body key carries no extension (it is a 16-hex token), so the
- * inlay's own `ext` and kind decide, within the same closed table. A font type
- * is never reachable for an inlay.
  */
 
 const DISPLAY_MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
@@ -33,23 +30,10 @@ const DISPLAY_MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
     ['aac', 'audio/aac'],
     ['flac', 'audio/flac'],
     ['opus', 'audio/opus'],
-    ['ttf', 'font/ttf'],
-    ['otf', 'font/otf'],
-    ['woff', 'font/woff'],
-    ['woff2', 'font/woff2'],
 ])
 
-/** The type shown for a key whose extension is not in the table. */
+/** The type shown for an inlay whose extension is not in the table. */
 export const OPAQUE_DISPLAY_MIME = 'application/octet-stream'
-
-/** The display MIME type of the asset stored under `key`; the extension after the last dot, lower-cased, picks it. */
-export function displayMimeOfAssetKey(key: string): string {
-    const dot = key.lastIndexOf('.')
-    if (dot < 0 || key.indexOf('/', dot) >= 0) {
-        return OPAQUE_DISPLAY_MIME
-    }
-    return DISPLAY_MIME_BY_EXTENSION.get(key.slice(dot + 1).toLowerCase()) ?? OPAQUE_DISPLAY_MIME
-}
 
 /**
  * The display MIME type of an inlay of kind `type` (`image`, `video` or `audio`)

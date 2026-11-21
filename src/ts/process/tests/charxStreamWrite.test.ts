@@ -55,7 +55,7 @@ vi.mock('src/ts/storage/store/appStore', () => ({
 }))
 
 import { TAURI_WRITE_CHUNK_BYTES } from 'src/ts/exportWriters'
-import { ExportAssetMissingError, openExportAssetPieces, webBlobPieceSource, type ExportAssetSource } from 'src/ts/drive/assetPieces'
+import { ExportAssetMissingError, openExportAssetPieces, type ExportAssetSource } from 'src/ts/drive/assetPieces'
 import { nodePieceOpener, type ReadPiece } from 'src/ts/drive/inlayBackupExport'
 import { getImageType } from 'src/ts/media/imageType'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -364,16 +364,7 @@ describe('import equality through CharXImporter, on all three sources', () => {
         return { kind: 'node', pieces: { node: true, open: nodePieceOpener(store) }, store }
     }
 
-    function webSource(): ExportAssetSource {
-        const store = { read: async () => ({ bytes: null }), readValue: async () => new Blob([data]) } as unknown as ByteStore
-        const pieces = webBlobPieceSource(store)
-        if (pieces === null) {
-            throw new Error('the test store has readValue')
-        }
-        return { kind: 'web', pieces, store }
-    }
-
-    const sources: Array<[string, () => ExportAssetSource]> = [['tauri', tauriSource], ['node', nodeSource], ['web', webSource]]
+    const sources: Array<[string, () => ExportAssetSource]> = [['tauri', tauriSource], ['node', nodeSource]]
     for (const [kind, make] of sources) {
         test(`(G) ${kind}: the exported asset imports with equal bytes (mutant: drop the first piece of pass 2)`, async () => {
             const source = make()

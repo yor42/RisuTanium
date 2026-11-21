@@ -261,7 +261,7 @@ describe('the copy of the old store on a store that keeps Blobs', () => {
         expect(revoked).toEqual([])
         const after = (await getInlayRender(id))!
         expect(before.source).toBe('memory-blob')
-        expect(after.source).toBe('stored-blob')
+        expect(after.source).toBe('memory-blob')
     })
 })
 
@@ -278,16 +278,8 @@ describe('the source a render is delivered from', () => {
         expect(store.reads.filter((key) => key.startsWith('inlays/b-'))).toEqual([])
     })
 
-    test('a store that cannot give a URL for the key falls back to the stored Blob, then to bytes', async () => {
+    test('a store that cannot give a URL for the key falls back to the bytes', async () => {
         const failing = async () => { throw new Error('no token') }
-        const blobStore = useStore({ urlFor: failing, blobs: true })
-        const first = freshId()
-        await setInlayAsset(first, asset(new Blob(['abc'], { type: 'video/mp4' }), { ext: 'mp4' }))
-        const held = blobStore.blobs.get(bodyKeyOf(blobStore))!
-        const slice = vi.spyOn(held, 'slice')
-        expect((await getInlayRender(first))!.source).toBe('stored-blob')
-        expect(objectUrls.get('blob:test/1')).toBe(slice.mock.results[0].value)
-
         useStore({ urlFor: failing })
         const second = freshId()
         await setInlayAsset(second, asset(new Blob(['abc'], { type: 'video/mp4' })))
@@ -313,26 +305,7 @@ describe('the source a render is delivered from', () => {
         expect(createdCount).toBe(0)
     })
 
-    test('a store that keeps Blobs shows a retyped view of the Blob it holds through an object URL', async () => {
-        const store = useStore({ blobs: true })
-        const id = freshId()
-        await setInlayAsset(id, asset(new Blob(['stored'], { type: 'video/mp4' }), { ext: 'mp4' }))
-        const held = store.blobs.get(bodyKeyOf(store))!
-        const slice = vi.spyOn(held, 'slice')
-
-        const render = (await getInlayRender(id))!
-
-        expect(render.source).toBe('stored-blob')
-        expect(slice).toHaveBeenCalledWith(0, held.size, 'video/mp4')
-        const shown = objectUrls.get(render.url)!
-        expect(shown).toBe(slice.mock.results[0].value)
-        expect(shown.type).toBe('video/mp4')
-        expect(await textOf(shown)).toBe('stored')
-        expect(createdCount).toBe(1)
-        expect(store.reads.filter((key) => key.startsWith('inlays/b-'))).toEqual([])
-    })
-
-    test('a body stored as bytes on a store that keeps Blobs is read into memory', async () => {
+    test('a body stored as bytes on a store that takes Blobs is read into memory', async () => {
         const store = useStore({ blobs: true })
         const id = freshId()
         await setInlayAsset(id, asset(new Blob(['bytes'], { type: 'video/mp4' })))
@@ -346,21 +319,9 @@ describe('the source a render is delivered from', () => {
         expect(await textOf(objectUrls.get(render.url)!)).toBe('bytes')
     })
 
-    test('a stored Blob whose size is not the recorded length is not shown, and the bytes are read instead', async () => {
-        const store = useStore({ blobs: true })
-        const id = freshId()
-        await setInlayAsset(id, asset(new Blob(['right'], { type: 'video/mp4' })))
-        store.readBlob = async () => new Blob(['much longer than recorded'])
-
-        const render = (await getInlayRender(id))!
-
-        expect(render.source).toBe('memory-blob')
-        expect(await textOf(objectUrls.get(render.url)!)).toBe('right')
-    })
-
     test.each([
         ['serves URLs', { urlFor: true, blobs: true }],
-        ['keeps Blobs', { blobs: true }],
+        ['takes Blobs', { blobs: true }],
         ['keeps bytes', {}],
     ] as Array<[string, MemoryByteStoreOptions]>)('a base64 data URI string is decoded into a memory Blob on a store that %s', async (_label, options) => {
         const store = useStore(options)
@@ -374,7 +335,6 @@ describe('the source a render is delivered from', () => {
         expect(shown.type).toBe('audio/mpeg')
         expect(await textOf(shown)).toBe('hello')
         expect(store.urlRequests).toEqual([])
-        expect(store.blobReads).toEqual([])
     })
 
     test('a signature has no URL and is never delivered from the store', async () => {
@@ -428,7 +388,7 @@ describe('the type an inlay object URL carries', () => {
     type Route = {
         label: string
         options: MemoryByteStoreOptions
-        source: 'memory-blob' | 'stored-blob'
+        source: 'memory-blob'
         place: (id: string, fields: Record<string, unknown>, bodyType: string) => Promise<void>
     }
 
@@ -446,7 +406,7 @@ describe('the type an inlay object URL carries', () => {
         {
             label: 'a Blob in the app store',
             options: { blobs: true },
-            source: 'stored-blob',
+            source: 'memory-blob',
             place: (id, fields, bodyType) => writeRestored(id, fields, new Blob([HOSTILE_BODY], { type: bodyType })),
         },
         {
@@ -512,14 +472,14 @@ describe('the type an inlay object URL carries', () => {
             ['ogg', 'audio/ogg'],
             ['flac', 'audio/flac'],
         ])('a .%s file keeps its type %s and its bytes on a store of bytes and of Blobs', async (ext, mime) => {
-            for (const [options, source] of [[{}, 'memory-blob'], [{ blobs: true }, 'stored-blob']] as Array<[MemoryByteStoreOptions, string]>) {
+            for (const options of [{}, { blobs: true }] as MemoryByteStoreOptions[]) {
                 useStore(options)
                 const id = freshProducedId()
                 expect(await postInlayAsset({ name: `a.${ext}`, data: new Blob(['media'], { type: 'application/x-test' }) })).toBe(id)
 
                 const render = (await getInlayRender(id))!
 
-                expect(render.source).toBe(source)
+                expect(render.source).toBe('memory-blob')
                 const shown = objectUrls.get(render.url)!
                 expect(shown.type).toBe(mime)
                 expect(await textOf(shown)).toBe('media')
@@ -563,12 +523,10 @@ describe('the render cache', () => {
         await setInlayAsset(id, asset(new Blob(['x'], { type: 'video/mp4' })))
         const first = await getInlayRender(id)
         const reads = appStore.reads.length
-        const blobReads = appStore.blobReads.length
 
         expect(await getInlayRender(id)).toEqual(first)
 
         expect(appStore.reads.length).toBe(reads)
-        expect(appStore.blobReads.length).toBe(blobReads)
         expect(createdCount).toBe(1)
     })
 

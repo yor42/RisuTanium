@@ -10,6 +10,7 @@ const FILES = [
     'src/lib/ChatShell/ShellHeader.svelte',
     'src/lib/ChatShell/ShellComposer.svelte',
     'src/lib/ChatShell/ToggleRow.svelte',
+    'src/lib/ChatShell/StreamingView.svelte',
     'src/styles/studio-tokens.css',
     'src/styles/nexus-tokens.css',
     'src/lib/Nexus/boot/nexus-boot.css',
@@ -76,6 +77,19 @@ describe('the reduce-motion "off" choice reaches every OS rule', () => {
         const lowPower = source.indexOf(':global(html[data-low-power])')
         expect(media).toBeGreaterThan(-1)
         expect(lowPower).toBeGreaterThan(media)
+    })
+
+    // The streaming image skeleton's shimmer stops under the OS setting, the `rm` setting and both low-power markers.
+    test('StreamingView.svelte stops the image shimmer under reduced motion and both low-power markers, the OS rule first', () => {
+        const source = readFileSync('src/lib/ChatShell/StreamingView.svelte', 'utf8')
+        const media = source.indexOf('@media (prefers-reduced-motion: reduce)')
+        const rm = source.indexOf(':global(html.rm) [data-part="chat-stream-image"]::after { animation: none; }')
+        const lowPower = source.indexOf(':global(html[data-low-power]) [data-part="chat-stream-image"]::after')
+        const nexusLowPower = source.indexOf(':global(html.nexus-low-power) [data-part="chat-stream-image"]::after { animation: none; }')
+        expect(media).toBeGreaterThan(-1)
+        expect(rm).toBeGreaterThan(media)
+        expect(lowPower).toBeGreaterThan(media)
+        expect(nexusLowPower).toBeGreaterThan(media)
     })
 
     // Each OS rule has an `rm` twin with the same target, so the setting's "on" reduces exactly what the OS query does.

@@ -263,10 +263,6 @@ export async function openInlay(store: ByteStore, id: string, streaming: boolean
         if (streaming || openPieces !== undefined) {
             return { repr: record.repr, mime: record.mime, fields: record.fields, len: record.len, source: new RangedSource(record.body, record.len, openPieces, pieceBytes) }
         }
-        const blob = await store.readBlob?.(record.body) ?? null
-        if (blob !== null && blob.size === record.len) {
-            return { repr: record.repr, mime: record.mime, fields: record.fields, len: record.len, source: new BlobSource(blob) }
-        }
         const bytes = (await store.read(record.body)).bytes
         if (bytes === null || bytes.length !== record.len) {
             return null

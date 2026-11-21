@@ -52,8 +52,8 @@ import type { ByteStore, PieceWriter } from "./storage/store/contract";
 import { heldSaveStore, type HeldSaveInfo } from "./storage/saveHold";
 import { isCharacterEntry, isMissingCharacterId, isUsableCharacterId } from "./storage/characterIds";
 import { getPageStorageMode } from "./storage/pageStorageMode";
-import { StoreBlobUnsupportedError, StoreInvalidKeyError } from "./storage/store/errors";
-import { NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from "./storage/nodeBodyLimit";
+import { StoreInvalidKeyError } from "./storage/store/errors";
+import { NODE_BODY_LIMIT_BYTES } from "./storage/nodeBodyLimit";
 import { storeAssetLimitBytes } from "./storage/assetLimit";
 import { assertBlobWithinAssetLimit } from "./storage/pickedAssetLimit";
 import { updateAnimationSpeed } from "./gui/animation";
@@ -371,7 +371,7 @@ export async function readImage(data: string) {
  * @param {Uint8Array} data - The data of the asset file; an ArrayBuffer or another typed-array view is taken as it is. Any other value rejects with a TypeError.
  * @param {string} [customId=''] - The custom ID for the asset file.
  * @param {string} [fileName=''] - The name of the asset file. Its extension (the part after the last dot) is kept when it is 1 to 16 ASCII letters or digits, and is `png` otherwise.
- * @returns {Promise<string>} - A promise that resolves to the path of the saved asset file. On a store that keeps Blobs (the browser's IndexedDB) a value of `ASSET_PIECE_SAVE_MIN_BYTES` or more is stored as a Blob.
+ * @returns {Promise<string>} - A promise that resolves to the path of the saved asset file.
  */
 export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView, customId: string = '', fileName: string = '') {
     return await saveAssetBytes(assetBytesOf(data), customId, fileName, assetDisplayName(null, fileName))
@@ -379,11 +379,8 @@ export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView
 
 /**
  * `saveAsset` for bytes already taken as a `Uint8Array`; `displayName` is the name a storage-full message shows.
- * On a store that keeps Blobs (the browser's IndexedDB) a value of `ASSET_PIECE_SAVE_MIN_BYTES` or more is stored as a
- * Blob under its final key, unless `blobRefused` says the browser already refused a Blob for these bytes. Where a Blob
- * cannot be kept the bytes are stored; a quota or any other failure of the Blob put is not retried as bytes.
  */
-async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: string, displayName: string, options: { blobRefused?: boolean } = {}): Promise<string> {
+async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: string, displayName: string): Promise<string> {
     const endInFlight = beginChokePoint('asset')
     try {
         let id = ''
@@ -418,21 +415,6 @@ async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: str
             return key
         }
         try {
-            // The bytes are whole and already hashed, so a large value goes straight to its final key: one put is one
-            // transaction, and a failed put keeps the previous value, so no temporary key is needed.
-            if (store.readBlob !== undefined && store.writeBlob !== undefined
-                && bytes.byteLength >= ASSET_PIECE_SAVE_MIN_BYTES && options.blobRefused !== true) {
-                try {
-                    // The Blob is built from the view itself, never its backing buffer, and copies the bytes at construction.
-                    await store.writeBlob(key, new Blob([bytes as Uint8Array<ArrayBuffer>]), 'unconditional')
-                    return key
-                } catch (error) {
-                    if (!(error instanceof StoreBlobUnsupportedError)) {
-                        throw error
-                    }
-                    // The browser keeps no Blob: every such save builds one copy and fails once before the bytes are stored below.
-                }
-            }
             await store.write(key, bytes, 'unconditional')
         } catch (error) {
             rethrowStorageFull(error, displayName)
@@ -504,7 +486,7 @@ function assetDisplayName(blob: Blob | null, fileName: string): string {
  * already converted is never wrapped twice.
  */
 function rethrowStorageFull(error: unknown, displayName: string): never {
-    if (error instanceof AssetStorageFullError || error instanceof AssetSourceChangedError || error instanceof StoreBlobUnsupportedError) {
+    if (error instanceof AssetStorageFullError || error instanceof AssetSourceChangedError) {
         throw error
     }
     if (isQuotaExceededError(error) || (error instanceof Error && isQuotaExceededError(error.cause))) {
@@ -541,11 +523,8 @@ function assetExtensionOf(fileName: string): string {
  * in `assets/`; the last chunk renames it to the key computed from the pieces, or
  * discards it when that key already holds a file. The whole asset is never held
  * when the store writes in pieces (a Node server that lacks the upload routes
- * collects the pieces inside its writer; the browser's IndexedDB accumulates them
- * in a Blob, writes nothing under the temporary name, and stores the bytes whole
- * within `WEB_ASSET_LIMIT_BYTES` if the browser cannot keep a Blob).
- * Anywhere else, and for a smaller asset,
- * the pieces are collected and `saveAsset` saves them.
+ * collects the pieces inside its writer). Anywhere else, and for a smaller
+ * asset, the pieces are collected and `saveAsset` saves them.
  *
  * The pieces are read once and written as read: a piece is never modified or
  * reused after it is yielded, because the writer keeps the newest piece until
@@ -616,10 +595,6 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
         } catch {
             // The source is released best-effort; the error that ended the save is the one reported.
         }
-        if (error instanceof StoreBlobUnsupportedError) {
-            // The writer raises it only above the bound a whole value has on this store, so the user is told the limit.
-            throw browserStorageTooLargeError(fileName, error)
-        }
         rethrowStorageFull(error, assetDisplayName(null, fileName))
     } finally {
         endInFlight()
@@ -652,15 +627,6 @@ export async function pieceStoreOrNull(): Promise<ByteStore | null> {
 }
 
 /**
- * The error shown when a browser that keeps no Blob is handed a file above the bound a whole value has on the plain web
- * store. The message names the file and that bound; `cause` keeps the store's own error.
- */
-export function browserStorageTooLargeError(fileName: string, cause?: unknown): Error {
-    const message = language.assetFileTooLargeForBrowserStorage(fileName !== '' ? fileName : 'unnamed file', Math.floor(WEB_ASSET_LIMIT_BYTES / (1024 * 1024)))
-    return cause === undefined ? new Error(message) : new Error(message, { cause })
-}
-
-/**
  * The largest file a user may add as an asset, in bytes: the page store's asset limit. The piece capability is settled
  * first, because a Node page that has not yet recorded it would otherwise answer the smaller body limit and refuse
  * files that save fine in pieces.
@@ -679,12 +645,8 @@ const BLOB_PIECE_BYTES = 4 * 1024 * 1024
  * `openWriter`, a Blob that may reach `ASSET_PIECE_SAVE_MIN_BYTES` is read one
  * slice at a time (`saveAssetFromPieces`), so the page never holds the file
  * whole (a Node server without upload routes still collects the pieces into one
- * body in `openWriter`). On a store that keeps Blobs (`readBlob`, the browser's
- * IndexedDB) such a Blob is stored under a temporary name, the stored copy is
- * hashed by slices and named after that hash (`saveAssetBlobKept`); if
- * the browser cannot keep a Blob, a file within `WEB_ASSET_LIMIT_BYTES` is read
- * whole and saved by `saveAsset`, and a larger one is refused. Anywhere else, and
- * for a smaller Blob, it is read whole and `saveAsset` saves it.
+ * body in `openWriter`). Anywhere else, and for a smaller Blob, it is read whole
+ * and `saveAsset` saves it.
  * On every store, a Blob above the store's asset limit (`pickedAssetLimitBytes`) is refused first with
  * `AssetTooLargeError`, before any byte is read.
  * An error thrown while a slice is read (the file changed or vanished) is
@@ -696,19 +658,6 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
     const pieceBytes = options.pieceBytes ?? BLOB_PIECE_BYTES
     const displayName = assetDisplayName(blob, fileName)
     assertBlobWithinAssetLimit(blob, displayName, await pickedAssetLimitBytes())
-    if (store.readBlob !== undefined && store.writeBlob !== undefined && blob.size >= threshold) {
-        // The browser's IndexedDB: the file is stored under a temporary name and the stored copy is named after its hash.
-        const kept = await saveAssetBlobKept(store.writeBlob.bind(store), store, blob, fileName, displayName, pieceBytes)
-        if (kept !== null) {
-            return kept
-        }
-        // The browser keeps no Blob. The whole bytes are read and hashed once, so the key always names the bytes stored;
-        // a file above the bound a whole value has on this store is refused.
-        if (blob.size > WEB_ASSET_LIMIT_BYTES) {
-            throw browserStorageTooLargeError(displayName === 'unnamed file' ? '' : displayName)
-        }
-        return await saveAssetBytes(new Uint8Array(await blob.arrayBuffer()), '', fileName, displayName, { blobRefused: true })
-    }
     if (store.openWriter === undefined || blob.size < threshold) {
         return await saveAssetBytes(new Uint8Array(await blob.arrayBuffer()), '', fileName, displayName)
     }
@@ -731,137 +680,6 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
             throw failed.error
         }
         throw error
-    }
-}
-
-/**
- * Saves `blob` and returns the key its stored bytes name, `assets/<SHA-256 of the stored bytes>.<ext>`, without the page
- * ever holding the file whole. Returns `null` when the browser refused to keep a Blob on the first write
- * (`StoreBlobUnsupportedError`, nothing stored); every other failure is rethrown (a quota failure as
- * `AssetStorageFullError`). A failure leaves no wrong value under a content key; if reading the final value back fails,
- * the correct Blob this save wrote stays there.
- *
- * The file is written once under a temporary name, `assets/incoming-<uuid>`. The browser may copy a File into the
- * database after the app has read it, so hashing the File could name bytes other than the ones stored. The app therefore
- * hashes the copy the database holds (`readBlob`), slice by slice, and writes that same Blob under its hash, unless the
- * hash key already holds a value (a name is a content hash, so it holds these bytes; it is never touched). The only key
- * this function deletes is its own temporary key. If the File changed while it was copied, what the browser copied is
- * what is named and stored: neither the original nor the edited file is promised; a copy whose size differs from the
- * File's snapshot ends the save as `AssetSourceChangedError`, with nothing stored.
- *
- * Limits. Storage of up to twice the file is held for the duration of the save. A crash or a closed tab during the save
- * leaves the temporary key; on a `tauri` store2 page the asset sweep deletes it once two passes at least a
- * day apart found it, and until then a full backup exports it (a Node server keeps it; CHORE-836). An orphan of 100 MiB or more can appear by its raw key in the upstream-size prompt. After the final write, a value of
- * the right size, Blob or bytes, completes the save, so a concurrent same-content `saveAsset` that replaced the Blob with
- * bytes or a Blob leaves both saves with a valid key. Only a Blob of the wrong size is deleted; an absent key, or bytes of another
- * size, end the save with an error and nothing is deleted.
- */
-async function saveAssetBlobKept(writeBlob: NonNullable<ByteStore['writeBlob']>, store: ByteStore, blob: Blob, fileName: string, displayName: string, pieceBytes: number): Promise<string | null> {
-    const endInFlight = beginChokePoint('asset')
-    const tempKey = `assets/incoming-${uuidv4()}`
-    // Before any I/O, so a sweep of this page never takes the key from under the save.
-    noteAssetWrittenThisPage(tempKey)
-    try {
-        try {
-            await writeBlob(tempKey, blob, 'unconditional')
-        } catch (error) {
-            if (error instanceof StoreBlobUnsupportedError) {
-                return null
-            }
-            throw error
-        }
-        const stored = await store.readBlob?.(tempKey) ?? null
-        if (stored === null) {
-            throw new Error(`"${displayName}" was not saved: its temporary copy was removed by another tab of this app. Try again.`)
-        }
-        if (stored.size !== blob.size) {
-            throw new AssetSourceChangedError(`The source of the asset changed while it was stored: ${stored.size} of ${blob.size} bytes.`)
-        }
-        const finalKey = `assets/${await hashBlobBySlices(stored, pieceBytes)}.${assetExtensionOf(fileName)}`
-        await noteAndSettleAssetWrite(finalKey)
-        if (!await store.has(finalKey)) {
-            // The second write must not fall back to a whole read: the browser has shown it keeps Blobs, so its failure is the answer.
-            await writeBlob(finalKey, stored, 'unconditional')
-            await verifyFinalKeyHolds(store, finalKey, stored.size)
-        }
-        await deleteKeyReportingFailure(store, tempKey)
-        return finalKey
-    } catch (error) {
-        await deleteKeyReportingFailure(store, tempKey)
-        rethrowStorageFull(error, displayName)
-    } finally {
-        endInFlight()
-    }
-}
-
-/** The hex SHA-256 of `blob`, read one slice at a time. Ends as `AssetSourceChangedError` if the slices do not total the Blob's size. */
-async function hashBlobBySlices(blob: Blob, pieceBytes: number): Promise<string> {
-    const hash = new Sha256()
-    let hashed = 0
-    for (let start = 0; start < blob.size; start += pieceBytes) {
-        const slice = new Uint8Array(await blob.slice(start, start + pieceBytes).arrayBuffer())
-        hash.update(slice)
-        hashed += slice.length
-    }
-    if (hashed !== blob.size) {
-        throw new AssetSourceChangedError(`The stored asset ended after ${hashed} of ${blob.size} bytes.`)
-    }
-    return hash.digestHex()
-}
-
-type FinalKeyState = 'complete' | 'wrong-blob' | 'wrong-bytes' | 'absent'
-
-/**
- * What `key` holds relative to `size`. A store writes one value per key, so a same-content `saveAsset` (no dedupe)
- * may have replaced the Blob with bytes or a Blob: that value counts when its size is right. The branch without `readValue` exists only for a
- * store that offers `readBlob` alone (the browser store offers both); a `null` there is judged by `has` and never
- * reported as a wrong value.
- */
-async function finalKeyState(store: ByteStore, key: string, size: number): Promise<FinalKeyState> {
-    if (store.readValue === undefined) {
-        const held = await store.readBlob?.(key) ?? null
-        if (held === null) {
-            return await store.has(key) ? 'complete' : 'absent'
-        }
-        return held.size === size ? 'complete' : 'wrong-blob'
-    }
-    const value = await store.readValue(key)
-    if (value === null) {
-        return 'absent'
-    }
-    if (value instanceof Blob) {
-        return value.size === size ? 'complete' : 'wrong-blob'
-    }
-    return value.byteLength === size ? 'complete' : 'wrong-bytes'
-}
-
-/**
- * Ends the Blob save once `key` holds `size` bytes, checking twice before it gives up. Only a Blob of the wrong size is
- * deleted; an absent key or bytes of another size belong to another writer, so the save throws and deletes nothing.
- */
-async function verifyFinalKeyHolds(store: ByteStore, key: string, size: number): Promise<void> {
-    let state = await finalKeyState(store, key, size)
-    if (state !== 'complete') {
-        state = await finalKeyState(store, key, size)
-    }
-    if (state === 'complete') {
-        return
-    }
-    if (state === 'wrong-blob') {
-        await deleteKeyReportingFailure(store, key)
-        throw new AssetSourceChangedError(`The stored asset was not complete: it is not ${size} bytes.`)
-    }
-    throw new AssetSourceChangedError(state === 'absent'
-        ? 'The stored asset was removed before the save finished.'
-        : `The stored asset was replaced by a value of another size than ${size} bytes.`)
-}
-
-/** Deletes a key this save created; a failure is logged and does not change the outcome of the save. */
-async function deleteKeyReportingFailure(store: ByteStore, key: string): Promise<void> {
-    try {
-        await store.delete(key, 'unconditional')
-    } catch (error) {
-        console.error(error)
     }
 }
 

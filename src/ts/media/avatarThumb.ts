@@ -8,7 +8,6 @@ import { isNodeServer, isTauri } from '../platform'
 import { getAppStore } from '../storage/store/appStore'
 import { ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, ANDROID_WHOLE_READ_URL_LIMIT_BYTES, androidAssetSizeVerdict, androidWholeReadQueue, knownStoredAssetSize } from '../storage/assetUrlGate'
 import { isAndroidTransport, readRangedPieces } from '../storage/tauriByteTransport'
-import { assetOrInlayBodyKeyViolation } from '../storage/store/keyRules'
 import { readTauriHeader, readTauriPrefix, readUrlHeader, readUrlPrefix, type ImageHeader } from './avatarThumbHeader'
 import { EMBEDDED_THUMB_SCAN_BYTES, MAX_EMBEDDED_THUMB_LONG_SIDE, extractEmbeddedJpegThumb, orientationTransform, orientedSize, readJpegOrientation, type EmbeddedCrop, type ExifOrientation } from './embeddedJpegThumb'
 import { MAX_PREVIEW_SIDE, requestNativePreview } from './avatarPreviewNative'
@@ -1003,37 +1002,8 @@ async function resolveSizedSource(loc: string, scope: TaskScope): Promise<SizedS
             }
             return { kind: 'sized', size: prefix.total, header: prefix.header, source: { platform: 'node', url, blob: null, loaded: null } }
         }
-        let store: Awaited<ReturnType<typeof getAppStore>>
-        try {
-            store = await getAppStore()
-        } catch {
-            return NO_SIZE_SOURCE
-        }
-        // A key the browser store can address but not create (written by
-        // upstream) is read whole, as every other reader of it does.
-        if (assetOrInlayBodyKeyViolation(loc) !== null) {
-            return NO_SIZE_SOURCE
-        }
-        // A store that offers a lazy Blob instead: its size is the
-        // stored size and a slice reads only that slice.
-        if (store.readValue === undefined && store.readLazyBlob !== undefined) {
-            const lazy = await store.readLazyBlob(loc)
-            if (lazy === null) {
-                return SIZE_READ_FAILED
-            }
-            return { kind: 'sized', size: lazy.size, header: null, source: { platform: 'web', url: null, blob: lazy, loaded: null } }
-        }
-        if (store.readValue === undefined) {
-            return NO_SIZE_SOURCE
-        }
-        const value = await store.readValue(loc)
-        if (value === null) {
-            return SIZE_READ_FAILED
-        }
-        if (value instanceof Uint8Array) {
-            return { kind: 'sized', size: value.length, header: null, source: { platform: 'web', url: null, blob: null, loaded: value } }
-        }
-        return { kind: 'sized', size: value.size, header: null, source: { platform: 'web', url: null, blob: value, loaded: null } }
+        // Neither store has a size source on any other page: the avatar is read whole.
+        return NO_SIZE_SOURCE
     } catch {
         return SIZE_READ_FAILED
     }

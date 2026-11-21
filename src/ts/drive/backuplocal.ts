@@ -16,8 +16,7 @@ import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport,
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
-import { StoreBlobUnsupportedError, StoreInvalidKeyError, UploadCapacityError, UploadGoneError } from "../storage/store/errors";
-import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash";
+import { StoreInvalidKeyError, UploadCapacityError, UploadGoneError } from "../storage/store/errors";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type ChunkedWriter } from "../storage/tauriByteTransport";
 import { takeStore2BatchStats } from "../storage/tauriStore2Batch";
@@ -28,7 +27,6 @@ import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreA
 import { MEASURE } from "../process/memory/measureFlag";
 import { peekNetTickStats, residentCharacterCount, resetNetTickStats } from "../storage/measureExportHold";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
-import { WEB_ASSET_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { selectedStoreIsNode, storeAssetLimitBytes } from "../storage/assetLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
 import { getDatabase, type Database, type StoredDatabase } from "../storage/database.svelte";
@@ -54,7 +52,7 @@ import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActi
 import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
 import { ExportReadError, openFirstPiece, writeInlaysToBackup, type ReadPiece } from "./inlayBackupExport";
-import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, DESKTOP_PIECE_SOURCE, desktopStreamingUsable, exportTauriPieceSource, nodeAssetPieceSource, nodePieceStore, webBlobPieceSource, type AssetPieceSource } from "./assetPieces";
+import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, DESKTOP_PIECE_SOURCE, desktopStreamingUsable, exportTauriPieceSource, nodeAssetPieceSource, nodePieceStore, type AssetPieceSource } from "./assetPieces";
 import { findOversizeAssets, formatMiB, shownPromptNames, UPSTREAM_PROMPT_NAMES_SHOWN } from "./backupUpstreamSizes";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
@@ -744,9 +742,6 @@ async function upstreamOversizeNames(
         store,
         sized: listing.sized,
         keys,
-        listedKeys: listing.keys,
-        cancel: session.cancel,
-        onProgress: (done, total) => session.progress.count('sizes', done, total, language.backupCheckingAssetSizes(done, total)),
     })
     return assets.filter((item) => !isPackAssetName(item.key)).map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
 }
@@ -1147,7 +1142,6 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     const tauriSource = await exportTauriPieceSource()
     const streamAssets = tauriSource !== null
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
-    const webSource = streamAssets || nodeSource !== null ? null : webBlobPieceSource(store)
     let batchedAssets = 0
     let fallbackAssets = 0
     try {
@@ -1180,8 +1174,8 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
                 outcome = 'missing'
             } else if (serverRoute === 'pin') {
                 outcome = await writeAssetSpliced(writer, key)
-            } else if (streamAssets || nodeSource !== null || webSource !== null) {
-                outcome = await writeAssetStreamed(writer, key, tauriSource ?? nodeSource ?? webSource!)
+            } else if (tauriSource !== null || nodeSource !== null) {
+                outcome = await writeAssetStreamed(writer, key, tauriSource ?? nodeSource!)
             } else {
                 let data: Uint8Array | null = null
                 try {
@@ -1492,7 +1486,6 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     const tauriSource = await exportTauriPieceSource()
     const streamAssets = tauriSource !== null
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
-    const webSource = streamAssets || nodeSource !== null ? null : webBlobPieceSource(store)
 
     for(let i=0;i<assetKeys.length;i++){
         const key = assetKeys[i]
@@ -1527,8 +1520,8 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
             }
             continue
         }
-        if (streamAssets || nodeSource !== null || webSource !== null) {
-            if (await writeAssetStreamed(writer, key, tauriSource ?? nodeSource ?? webSource!) === 'missing') {
+        if (tauriSource !== null || nodeSource !== null) {
+            if (await writeAssetStreamed(writer, key, tauriSource ?? nodeSource!) === 'missing') {
                 missingAssets.push(key)
             }
             continue
@@ -1754,8 +1747,8 @@ export function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skipped
     if (invalidNames.length > 0) {
         notices.push(language.restoreAssetsSkipped(invalidNames.length, shownSkippedNames(invalidNames)));
     }
-    if (tooLargeNames.length > 0) {
-        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), assetLimit ?? WEB_ASSET_LIMIT_BYTES));
+    if (tooLargeNames.length > 0 && assetLimit !== null) {
+        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), assetLimit));
     }
     const inlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
     const invalidInlays = inlayNames('invalid');
@@ -2345,12 +2338,6 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 const nodeRestoreStore = desktopStreamLargeAssets ? null : await nodePieceStore();
                 const streamLargeAssets = desktopStreamLargeAssets || nodeRestoreStore !== null;
                 const openRestoreStream = (key: string): ChunkedWriter => nodeRestoreStore !== null ? nodeRestoreStore.openWriter!(key) : openAssetStream(key);
-                // On the browser's IndexedDB (a store that keeps Blobs) an entry of ASSET_PIECE_SAVE_MIN_BYTES or more is stored as a
-                // slice of the backup file, so the page never reads it into memory. No other page streams this way.
-                // Only a real Blob can be handed on as a slice; a file another app opened is always read into memory piece by piece.
-                const fileBlob: Blob | null = file instanceof Blob ? file : null;
-                const webBlobRestoreStore = streamLargeAssets || fileBlob === null ? null : await getAppStore();
-                const blobRestoreStore = webBlobRestoreStore !== null && webBlobRestoreStore.readBlob !== undefined && webBlobRestoreStore.writeBlob !== undefined ? webBlobRestoreStore : null;
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
                 let visitedEntries = 0;
@@ -2529,40 +2516,6 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             }
                             await yieldBudget.maybeYield();
                             continue;
-                        }
-
-                        // The browser's IndexedDB: a large asset entry is stored as a slice of the backup file. The database entry and the
-                        // cold-storage entries never reach this point: they are skipped above. A browser that cannot keep a Blob falls through to the
-                        // whole-entry path below, which restores an asset of any size and checks the file as it reads.
-                        if (blobRestoreStore !== null && fileBlob !== null && entry.dataLength >= ASSET_PIECE_SAVE_MIN_BYTES
-                                && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
-                            const assetKey = 'assets/' + name;
-                            noteAssetWrittenThisPage(assetKey);
-                            const entryData = fileBlob.slice(dataStart, dataStart + entry.dataLength);
-                            if (entryData.size !== entry.dataLength) {
-                                stopMessage = language.backupFileChangedWhileReading;
-                                break;
-                            }
-                            let keptAsBlob = false;
-                            try {
-                                await blobRestoreStore.writeBlob!(assetKey, entryData, 'unconditional');
-                                keptAsBlob = true;
-                            } catch (error) {
-                                if (error instanceof StoreInvalidKeyError) {
-                                    console.error(error);
-                                    skippedAssets.push({ name, reason: 'invalidName' });
-                                    await yieldBudget.maybeYield();
-                                    continue;
-                                }
-                                if (!(error instanceof StoreBlobUnsupportedError)) {
-                                    throw error;
-                                }
-                            }
-                            if (keptAsBlob) {
-                                assetsSubmitted++;
-                                await yieldBudget.maybeYield();
-                                continue;
-                            }
                         }
 
                         let data: Uint8Array;

@@ -5,7 +5,8 @@
     import { DBState, openPresetList } from 'src/ts/stores.svelte';
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
-    import { CopyIcon, Share2Icon, PencilIcon, HardDriveUploadIcon, PlusIcon, TrashIcon, XIcon, GitCompare } from "@lucide/svelte";
+    import { CopyIcon, Share2Icon, PencilIcon, HardDriveUploadIcon, PlusIcon, TrashIcon, XIcon, GitCompare, ListChecksIcon, CheckIcon } from "@lucide/svelte";
+    import { fillLang } from "src/lang/fill";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { prebuiltPresets } from "src/ts/process/templates/templates";
     import { freshPresetMeta, slotBadgeFor } from "src/ts/storage/presetMeta";
@@ -14,6 +15,40 @@
     import { RISU_PRESET_DRAG_TYPE } from "src/ts/dragTypes";
 
     let editMode = $state(false)
+    // Select mode ticks presets for a bundle export. The selection holds preset ids, so it survives a reorder or a removal.
+    let selectMode = $state(false)
+    let selectedIds = $state<string[]>([])
+    let exporting = $state(false)
+    const selectedCount = $derived(DBState.db.botPresets.filter((p) => typeof p.id === 'string' && selectedIds.includes(p.id)).length)
+    const allSelected = $derived(DBState.db.botPresets.length > 0 && selectedCount === DBState.db.botPresets.length)
+
+    function toggleSelected(id: string | undefined) {
+        if (typeof id !== 'string') return
+        selectedIds = selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]
+    }
+
+    function toggleAll() {
+        selectedIds = allSelected ? [] : DBState.db.botPresets.flatMap((p) => typeof p.id === 'string' ? [p.id] : [])
+    }
+
+    function setSelectMode(on: boolean) {
+        selectMode = on
+        selectedIds = []
+        if (on) editMode = false
+    }
+
+    async function exportSelected() {
+        if (selectedCount === 0 || exporting) return
+        exporting = true
+        try {
+            // Loaded on use so the list does not pull the bundle codec in when no bundle is exported.
+            const { downloadPresetBundle } = await import("src/ts/storage/presetBundleFlow")
+            await downloadPresetBundle([...selectedIds])
+        } finally {
+            exporting = false
+        }
+        setSelectMode(false)
+    }
     let isDragging = $state(false)
     let dragOverIndex = $state(-1)
 
@@ -149,17 +184,21 @@
             </div>
             
             <button onclick={() => {
-                if(!editMode){
+                if(selectMode){
+                    toggleSelected(preset.id)
+                } else if(!editMode){
                     changeToPreset(i)
                     close()
                 }
-            }} 
-            class="flex items-center text-textcolor border-t-1 border-solid border-0 border-darkborderc p-2 cursor-pointer" 
-            class:bg-selected={i === DBState.db.botPresetsId}
-            class:draggable-preset={!editMode}
-            draggable={!editMode ? "true" : "false"}
+            }}
+            class="flex items-center text-textcolor border-t-1 border-solid border-0 border-darkborderc p-2 cursor-pointer"
+            class:min-h-11={selectMode}
+            class:bg-selected={i === DBState.db.botPresetsId && !selectMode}
+            class:draggable-preset={!editMode && !selectMode}
+            draggable={!editMode && !selectMode ? "true" : "false"}
+            aria-pressed={selectMode ? (typeof preset.id === 'string' && selectedIds.includes(preset.id)) : undefined}
             ondragstart={(e) => {
-                if (editMode) {
+                if (editMode || selectMode) {
                     e.preventDefault()
                     return
                 }
@@ -204,7 +243,11 @@
                 {#if editMode}
                     <TextInput label={language.name} bind:value={DBState.db.botPresets[i].name} placeholder={language.name} padding={false}/>
                 {:else}
-                    {#if slotBadgeFor(DBState.db.botPresets, i) !== undefined}
+                    {#if selectMode}
+                        <span class="w-5 h-5 mr-2 shrink-0 flex items-center justify-center rounded-sm border border-solid {typeof preset.id === 'string' && selectedIds.includes(preset.id) ? 'bg-selected border-borderc text-textcolor' : 'border-darkborderc text-transparent'}" data-select-mark>
+                            <CheckIcon size={14} aria-hidden="true"/>
+                        </span>
+                    {:else if slotBadgeFor(DBState.db.botPresets, i) !== undefined}
                         <span class="w-2 text-center mr-2 text-textcolor2">{slotBadgeFor(DBState.db.botPresets, i)}</span>
                     {/if}
                     {#if preset.image}
@@ -214,6 +257,7 @@
                     <span>{preset.name}</span>
                 {/if}
                 <div class="grow flex justify-end">
+                    {#if !selectMode}
                     {#if DBState.db.showPromptComparison}
                         <div class="{selectedDiffPreset === i ? 'text-textcolor bg-selected ring-1 ring-borderc rounded-sm' : 'text-textcolor2 hover:text-textcolor'} cursor-pointer mr-2" role="button" tabindex="0" aria-label={language.comparePreset} aria-pressed={selectedDiffPreset === i} onclick={(e) => {
                             e.stopPropagation()
@@ -288,6 +332,7 @@
                     }}>
                         <TrashIcon size={18} aria-hidden="true"/>
                     </div>
+                    {/if}
                 </div>
             </button>
         {/each}
@@ -319,6 +364,20 @@
             }}>
         </div>
         
+        {#if selectMode}
+        <div class="sticky bottom-0 bg-darkbg border-t border-solid border-0 border-darkborderc flex items-center gap-2 mt-2 pt-2" data-select-bar>
+            <button type="button" class="min-h-11 px-3 text-textcolor2 hover:text-textcolor cursor-pointer rounded-md border border-solid border-darkborderc" class:bg-selected={allSelected} class:text-textcolor={allSelected} aria-pressed={allSelected} onclick={toggleAll}>
+                {language.presetBundleAll}
+            </button>
+            <div class="grow"></div>
+            <button type="button" class="min-h-11 px-3 text-textcolor2 hover:text-textcolor cursor-pointer" onclick={() => setSelectMode(false)}>
+                {language.cancel}
+            </button>
+            <button type="button" class="min-h-11 px-4 font-semibold text-textcolor bg-selected rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled={selectedCount === 0 || exporting} onclick={exportSelected}>
+                {fillLang(language.presetBundleExport, { count: selectedCount })}
+            </button>
+        </div>
+        {:else}
         <div class="flex mt-2 items-center">
             <button aria-label={language.add} class="text-textcolor2 hover:text-textcolor cursor-pointer mr-1" onclick={() => {
                 let botPresets = DBState.db.botPresets
@@ -335,12 +394,16 @@
             }}>
                 <HardDriveUploadIcon size={18} aria-hidden="true"/>
             </button>
+            <button aria-label={language.presetBundleSelect} aria-pressed={selectMode} class="text-textcolor2 hover:text-textcolor mr-2 cursor-pointer" onclick={() => setSelectMode(true)}>
+                <ListChecksIcon size={18} aria-hidden="true"/>
+            </button>
             <button aria-label={language.othersUi.editMode} aria-pressed={editMode} class="text-textcolor2 hover:text-textcolor cursor-pointer" onclick={() => {
                 editMode = !editMode
             }}>
                 <PencilIcon size={18} aria-hidden="true"/>
             </button>
         </div>
+        {/if}
         <span class="text-textcolor2 text-sm">{language.quickPreset}</span>
     </div>
 </div>

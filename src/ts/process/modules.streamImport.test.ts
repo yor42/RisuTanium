@@ -143,7 +143,6 @@ import { exportModuleLegacy, importModule as importModuleOnCard, readModule, typ
 import { charxLimits } from 'src/ts/process/processzip'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import { language } from 'src/lang'
-import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
@@ -392,16 +391,6 @@ describe('guards', () => {
         expect(h.modules).toEqual([])
         expect(h.log).toEqual([])
         expect(lastCard?.failure?.detail).toBe('Failed to save 2 assets')
-    })
-
-    test('a piece-saved record that a browser without Blob storage refuses shows the localized refusal at once, without retries or the generic count (regression reproducer)', async () => {
-        const refusal = new Error('File big.bin is too large for this browser to store', { cause: new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError')) })
-        h.pieceFailure = refusal
-
-        await expect(readModule(Buffer.from(risumBytes({ records: [patterned(16 * MIB, 1)] })))).rejects.toBe(refusal)
-
-        expect(h.pieceSaves).toBe(1)
-        expect(h.sleeps).toEqual([])
     })
 
     test('a piece-saved record whose save fails for another reason is still retried and counted (guard)', async () => {

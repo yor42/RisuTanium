@@ -757,7 +757,6 @@ describe('writeBlob', () => {
         expect(spy.count('/api/upload/append')).toBe(5)
         expect(result.version).toBe(1)
         expect(sameBytes(await onDisk(main, BODY), bytes)).toBe(true)
-        expect(store.readBlob).toBeUndefined()
     })
 
     test('new behaviour: a Blob of one chunk or less is one single-body write', async () => {
