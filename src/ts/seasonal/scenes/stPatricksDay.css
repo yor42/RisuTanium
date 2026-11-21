@@ -1,0 +1,109 @@
+/*
+  St. Patrick's Day scene styles. Every class is rt-sp-*; no shared tokens are defined. Default rules = start pose;
+  .rt-sp-final = final pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits
+  inside the root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-sp-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.rt-sp-bowhost { position: absolute; inset: 0; }
+.rt-sp-bow { position: absolute; left: 0; top: 0; overflow: visible; }
+.rt-sp-band { fill: none; stroke-width: 2.4; stroke-linecap: round; opacity: 0.62; }
+.rt-sp-bow-thin .rt-sp-band { stroke-width: 1.8; }
+.rt-sp-band-gold { stroke: #fcd34d; }
+.rt-sp-band-mint { stroke: #6ee7b7; }
+.rt-sp-band-emerald { stroke: #10b981; }
+.rt-sp-drift { position: absolute; width: 12px; height: 12px; opacity: 0; will-change: transform, opacity; }
+.rt-sp-driftsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-sp-c-leaf { fill: #34d399; }
+.rt-sp-c-rib { fill: none; stroke: #a7f3d0; stroke-width: 0.5; stroke-linecap: round; }
+.rt-sp-c-stem { fill: none; stroke: #10b981; stroke-width: 1.5; stroke-linecap: round; }
+.rt-sp-sky.rt-sp-final { display: none; }
+
+[data-rt-sw-tone="light"] .rt-sp-band-gold { stroke: #d97706; }
+[data-rt-sw-tone="light"] .rt-sp-band-mint { stroke: #10b981; }
+[data-rt-sw-tone="light"] .rt-sp-band-emerald { stroke: #047857; }
+[data-rt-sw-tone="light"] .rt-sp-c-leaf { fill: #059669; }
+[data-rt-sw-tone="light"] .rt-sp-c-rib { stroke: #d1fae5; }
+[data-rt-sw-tone="light"] .rt-sp-c-stem { stroke: #047857; }
+
+/* ---------- Mark slot ---------- */
+.rt-sp-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-sp-ink { fill: #fff; }
+.rt-sp-sway, .rt-sp-coin, .rt-sp-glint { transform-box: fill-box; transform-origin: center; }
+.rt-sp-leaf { transform-box: fill-box; transform-origin: 50% 0%; opacity: 0; }
+.rt-sp-frame { fill: #047857; stroke: #34d399; stroke-width: 1.6; stroke-linejoin: round; opacity: 0; }
+.rt-sp-mid { fill: #6ee7b7; opacity: 0; }
+.rt-sp-l0 { stop-color: #10b981; }
+.rt-sp-l1 { stop-color: #34d399; }
+.rt-sp-leafbody { stroke: #065f46; stroke-width: 0.22; stroke-linejoin: round; }
+.rt-sp-rib { fill: none; stroke: #a7f3d0; stroke-width: 0.42; stroke-linecap: round; opacity: 0.85; }
+.rt-sp-stem { fill: none; stroke-width: 6; stroke-linecap: round; opacity: 0; }
+.rt-sp-coin { opacity: 0; }
+.rt-sp-coinface { stroke: #b45309; stroke-width: 1.2; }
+.rt-sp-coinmark { fill: #b45309; opacity: 0.75; }
+.rt-sp-glint { fill: #fff; opacity: 0; }
+
+[data-rt-sw-tone="light"] .rt-sp-ink { fill: #0f172a; }
+[data-rt-sw-tone="light"] .rt-sp-frame { fill: #065f46; stroke: #047857; }
+[data-rt-sw-tone="light"] .rt-sp-mid { fill: #10b981; }
+[data-rt-sw-tone="light"] .rt-sp-l0 { stop-color: #047857; }
+[data-rt-sw-tone="light"] .rt-sp-l1 { stop-color: #10b981; }
+[data-rt-sw-tone="light"] .rt-sp-rib { stroke: #d1fae5; }
+[data-rt-sw-tone="light"] .rt-sp-glint { stroke: #b45309; stroke-width: 0.12; }
+
+.rt-sp-mark.rt-sp-final .rt-sp-every { opacity: 0; }
+.rt-sp-mark.rt-sp-final .rt-sp-frame,
+.rt-sp-mark.rt-sp-final .rt-sp-mid,
+.rt-sp-mark.rt-sp-final .rt-sp-leaf,
+.rt-sp-mark.rt-sp-final .rt-sp-stem,
+.rt-sp-mark.rt-sp-final .rt-sp-coin { opacity: 1; transform: none; }
+.rt-sp-mark.rt-sp-final .rt-sp-glint { opacity: 1; transform: scale(0.75); }
+
+/* ---------- Word ---------- */
+.rt-sp-word { position: relative; }
+/* Emerald-cyan "Risu": during play a gradient copy on ::after fades in; the final pose paints the span itself. */
+.rt-sp-word {
+  --rt-sp-risu: linear-gradient(to bottom right, #10b981 0%, #00a1ad 42%, #00a1ad 100%);
+}
+[data-rt-sw-tone="light"] .rt-sp-word {
+  --rt-sp-risu: linear-gradient(to bottom right, #047857 0%, #0e7490 42%, #0e7490 100%);
+}
+.rt-sp-risu { position: relative; }
+.rt-sp-risu::after {
+  content: attr(data-rt-sp-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  background-image: var(--rt-sp-risu);
+  background-size: var(--rt-sw-w, 6.21em) 1.2em;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+.rt-sp-word.rt-sp-final .rt-sp-risu { background-image: var(--rt-sp-risu); }
+.rt-sp-word.rt-sp-final .rt-sp-risu::after { content: none; }
+
+/* Small shamrock tucked in the empty x-height space above the "u" of Risu (u ink: 1.73-2.26em x, top 0.354em). */
+.rt-sp-tuck {
+  position: absolute;
+  left: calc(var(--rt-sp-ux, 2em) - 0.19em);
+  top: 0.01em;
+  width: 0.38em;
+  height: 0.38em;
+  pointer-events: none;
+  z-index: 2;
+}
+.rt-sp-tuckin { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 55% 90%; }
+.rt-sp-tucksvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-sp-t-leaf { fill: #34d399; stroke: #065f46; stroke-width: 0.5; }
+.rt-sp-t-rib { fill: none; stroke: #d1fae5; stroke-width: 0.6; stroke-linecap: round; }
+.rt-sp-t-stem { fill: none; stroke: #fbbf24; stroke-width: 1.8; stroke-linecap: round; }
+[data-rt-sw-tone="light"] .rt-sp-t-leaf { fill: #059669; stroke: #064e3b; }
+[data-rt-sw-tone="light"] .rt-sp-t-stem { stroke: #b45309; }
+.rt-sp-word.rt-sp-final .rt-sp-tuckin { opacity: 1; transform: none; }

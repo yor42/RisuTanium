@@ -17,6 +17,11 @@ const KO = ['ko']
 // Languages the calendar resolves dano in (ko by dangi, the Chinese locales by the chinese calendar) and starFestival by lunar 7/7.
 const DANO_LANGS = ['ko', 'cn', 'zh', 'zh-Hant']
 const LUNAR_STAR_LANGS = ['ko', 'cn', 'zh', 'zh-Hant']
+// springFestival resolves for the Chinese locales and Vietnamese by the chinese calendar; midAutumn for the Chinese locales only.
+const ZH_LANGS = ['cn', 'zh', 'zh-Hant']
+const SPRING_LANGS = ['cn', 'zh', 'zh-Hant', 'vi']
+// St. Patrick's Day and Easter resolve for the Western languages; Independence Day and Thanksgiving for en only.
+const WESTERN_LANGS = ['en', 'de', 'es']
 
 const strings: SeasonalStrings = {
     replayHint: 'Replay the animation',
@@ -72,6 +77,19 @@ const CASES: Case[] = [
     { key: 'sakura', langs: ['ko', 'ja'], date: new Date(2027, 2, 30, 12, 0, 0), playMs: 6900, isFinal: poseClass('rt-skr-final'), load: () => import('./scenes/sakura') },
     { key: 'starFestival', label: 'starFestival lunar', langs: LUNAR_STAR_LANGS, date: new Date(2026, 7, 19, 12, 0, 0), playMs: 7300, isFinal: poseClass('rt-tnb-final'), load: () => import('./scenes/starFestival') },
     { key: 'starFestival', label: 'starFestival tanabata', langs: ['ja'], date: new Date(2026, 6, 7, 12, 0, 0), playMs: 7300, isFinal: poseClass('rt-tnb-final'), load: () => import('./scenes/starFestival') },
+    // Chinese new year (lunar 1/1 on 2027-02-07) for the Chinese locales and Vietnamese; mid-autumn (lunar 8/15 on 2026-09-25) for the Chinese
+    // locales and tsukimi for ja (the same lunar day); Obon and Bunka no Hi are fixed ja days.
+    { key: 'springFestival', langs: SPRING_LANGS, date: new Date(2027, 1, 7, 12, 0, 0), playMs: 7500, isFinal: poseClass('rt-sf-final'), load: () => import('./scenes/springFestival') },
+    { key: 'midAutumn', langs: ZH_LANGS, date: new Date(2026, 8, 25, 12, 0, 0), playMs: 7700, isFinal: poseClass('rt-ma-final'), load: () => import('./scenes/midAutumn') },
+    { key: 'tsukimi', langs: ['ja'], date: new Date(2026, 8, 25, 12, 0, 0), playMs: 7200, isFinal: poseClass('rt-tk-final'), load: () => import('./scenes/tsukimi') },
+    { key: 'obon', langs: ['ja'], date: new Date(2026, 7, 14, 12, 0, 0), playMs: 6900, isFinal: poseClass('rt-ob-final'), load: () => import('./scenes/obon') },
+    { key: 'bunkaNoHi', langs: ['ja'], date: new Date(2026, 10, 3, 12, 0, 0), playMs: 5900, isFinal: poseClass('rt-bk-final'), load: () => import('./scenes/bunkaNoHi') },
+    // Western days: Mar 17, Easter Sunday (2027-03-28 by the computus), the solstice (Jun 20-21, every language), Jul 4 and the fourth Thursday of November (2026-11-26).
+    { key: 'stPatricksDay', langs: WESTERN_LANGS, date: new Date(2027, 2, 17, 12, 0, 0), playMs: 6700, isFinal: poseClass('rt-sp-final'), load: () => import('./scenes/stPatricksDay') },
+    { key: 'easter', langs: WESTERN_LANGS, date: new Date(2027, 2, 28, 12, 0, 0), playMs: 6500, isFinal: poseClass('rt-ea-final'), load: () => import('./scenes/easter') },
+    { key: 'summerSolstice', date: new Date(2026, 5, 21, 12, 0, 0), playMs: 6900, isFinal: poseClass('rt-ss-final'), load: () => import('./scenes/summerSolstice') },
+    { key: 'thanksgiving', langs: ['en'], date: new Date(2026, 10, 26, 12, 0, 0), playMs: 7300, isFinal: poseClass('rt-tg-final'), load: () => import('./scenes/thanksgiving') },
+    { key: 'independenceDay', langs: ['en'], date: new Date(2026, 6, 4, 12, 0, 0), playMs: 7300, isFinal: poseClass('rt-id-final'), load: () => import('./scenes/independenceDay') },
 ]
 const AF_VARIANTS = ['tiramisu', 'invert', 'element', 'acorn'] as const
 // Random source for the April Fools pool: every mount starts the cycle at this variant unless a test replays.
@@ -1067,5 +1085,495 @@ describe('starFestival magpies, tanzaku and word colours', () => {
         expect(word.querySelector('.rt-tnb-arc')).toBeNull()
         expect(word.querySelector('.rt-sw-a')!.hasAttribute('data-rt-tnb-text')).toBe(false)
         expect(word.querySelector('.rt-sw-a')!.classList.contains('rt-tnb-risu')).toBe(false)
+    })
+})
+
+function rectOf(width: number, height = 96): DOMRect {
+    return { x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON: () => ({}) }
+}
+
+// Every HTML element measures 400 px wide except the word, which measures `wordWidth`, so the room beside the word is explicit.
+function mockRects(wordWidth: number): void {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        return rectOf(this.classList.contains('rt-sw-word') ? wordWidth : 400)
+    })
+}
+
+describe('springFestival variants, crowded rule and word motif', () => {
+    // Guards: the Chinese locales losing the two sky lanterns, the lattice mark, the knot on the word, or the script tag of the greeting.
+    test.each([
+        ['cn', 'zh-Hans', '新春快乐'],
+        ['zh', 'zh-Hans', '新春快乐'],
+        ['zh-Hant', 'zh-Hant', '新春快樂'],
+    ])('%s: two sky lanterns, lattice mark, knot and a %s greeting', async (lang, tag, text) => {
+        now = BY_KEY('springFestival').date
+        const { fx } = await mountScene(BY_KEY('springFestival'), { language: lang })
+        await settle()
+        expect(fx.anchor.querySelectorAll('.rt-sf-rise').length).toBe(2)
+        expect(fx.anchor.querySelector('.rt-sf-branch')).toBeNull()
+        expect(fx.brand.querySelectorAll('.rt-sf-lattice').length).toBe(1)
+        expect(fx.brand.querySelectorAll('.rt-sf-tassel').length).toBe(1)
+        expect(fx.host.querySelector('.rt-sw-word .rt-sf-k-body')).not.toBeNull()
+        expect(fx.anchor.querySelector('.rt-sf-greet')!.textContent).toBe(text)
+        expect(fx.anchor.querySelector('.rt-sf-greetbox')!.getAttribute('lang')).toBe(tag)
+        expect(fx.host.querySelector('.rt-sw-desc')!.querySelector('span')!.getAttribute('lang')).toBe(tag)
+    })
+
+    // Guards: the Vietnamese look losing the hoa mai branch, its six petals, the blossom mark or the blossom on the word, or taking lanterns.
+    test('vi: a hoa mai branch with six petals, a blossom mark and a blossom on the word', async () => {
+        now = BY_KEY('springFestival').date
+        const { fx } = await mountScene(BY_KEY('springFestival'), { language: 'vi' })
+        await settle()
+        expect(fx.anchor.querySelectorAll('.rt-sf-branch').length).toBe(1)
+        expect(fx.anchor.querySelectorAll('.rt-sf-fall').length).toBe(6)
+        expect(fx.anchor.querySelector('.rt-sf-rise')).toBeNull()
+        expect(fx.brand.querySelectorAll('.rt-sf-p').length).toBe(5)
+        expect(fx.brand.querySelector('.rt-sf-lattice')).toBeNull()
+        expect(fx.host.querySelector('.rt-sw-word .rt-sf-motif-vi')).not.toBeNull()
+        expect(fx.anchor.querySelector('.rt-sf-greet')!.textContent).toBe('Chúc Mừng Năm Mới')
+        expect(fx.host.querySelector('.rt-sw-desc')!.querySelector('span')!.getAttribute('lang')).toBe('vi')
+    })
+
+    // Guards: the crowded rule (a greeting that would shrink by more than 20% beside the props enters at 2000 ms and the props leave first).
+    test.each([
+        ['cn', 'room beside the props', 10, 1400, '.rt-sf-rise', [300, 900]],
+        ['cn', 'a crowded row', 1000, 2000, '.rt-sf-rise', [200, 450]],
+        ['vi', 'room beside the props', 10, 1400, '.rt-sf-branch-svg', [4400]],
+        ['vi', 'a crowded row', 1000, 2000, '.rt-sf-branch-svg', [1500]],
+    ])('%s, %s (natural width %i): greeting at %i ms, %s at %j', async (lang, _name, natural, greetAt, selector, propsAt) => {
+        now = BY_KEY('springFestival').date
+        mockRects(60)
+        vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(natural)
+        const calls = trackAnimate()
+        await mountScene(BY_KEY('springFestival'), { language: lang })
+        await settle()
+        expect(calls.filter((t) => t.el.matches('.rt-sf-greet')).map((t) => t.delay)).toEqual([greetAt])
+        expect(calls.filter((t) => t.el.matches(selector)).map((t) => t.delay)).toEqual(propsAt)
+    })
+
+    // Guards: the warm word copy missing its text in the final pose, or the motif and copy staying on the word after teardown.
+    test('the final pose paints the warm copy and the motif, and a replay clears them', async () => {
+        now = BY_KEY('springFestival').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('springFestival'), { language: 'cn' })
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        expect(word.classList.contains('rt-sf-final')).toBe(true)
+        expect(word.querySelector('.rt-sf-warm')!.textContent).toBe('RisuTanium')
+        expect(word.querySelector('.rt-sf-motif')!.getAttribute('aria-hidden')).toBe('true')
+        ctrl.destroy()
+        expect(word.querySelector('.rt-sf-warm, .rt-sf-motif')).toBeNull()
+        expect(word.classList.contains('rt-sf-word')).toBe(false)
+    })
+})
+
+describe('midAutumn greeting, layout mode and amber word', () => {
+    // Guards: the greeting taking the wrong script or text, or the stage missing the clouds, moon and lantern.
+    test.each([
+        ['cn', 'zh-Hans', '中秋快乐'],
+        ['zh', 'zh-Hans', '中秋快乐'],
+        ['zh-Hant', 'zh-Hant', '中秋快樂'],
+    ])('%s greets in %s with two cloud banks, a moon and a lantern', async (lang, tag, text) => {
+        now = BY_KEY('midAutumn').date
+        const { fx } = await mountScene(BY_KEY('midAutumn'), { language: lang })
+        await settle()
+        const greet = fx.anchor.querySelector('.rt-ma-greet') as HTMLElement
+        expect(greet.textContent).toBe(text)
+        expect(greet.getAttribute('lang')).toBe(tag)
+        expect(fx.anchor.querySelectorAll('.rt-ma-cloud').length).toBe(2)
+        expect(fx.anchor.querySelectorAll('.rt-ma-moon, .rt-ma-lantern').length).toBe(2)
+        expect(fx.host.querySelector('.rt-sw-word .rt-ma-motif')!.getAttribute('aria-hidden')).toBe('true')
+    })
+
+    // Guards: the layout rule (room beside the word keeps it dimmed under the greeting from 2300 ms; otherwise the greeting takes its place and the word is hidden at 0 ms).
+    test.each([
+        ['room for the greeting beside the word', 10, 'beside', [2300, 6100]],
+        ['a greeting wider than the room', 1000, 'over', [0, 6100]],
+    ])('%s: %s layout, word animations at %j', async (_name, natural, mode, wordAt) => {
+        now = BY_KEY('midAutumn').date
+        mockRects(60)
+        vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(natural)
+        const calls = trackAnimate()
+        const { fx } = await mountScene(BY_KEY('midAutumn'), { language: 'cn' })
+        await settle()
+        expect(fx.anchor.querySelector('.rt-ma-sky')!.getAttribute('data-rt-ma-mode')).toBe(mode)
+        expect(calls.filter((t) => t.el.matches('.rt-sw-text')).map((t) => t.delay)).toEqual(wordAt)
+    })
+
+    // Guards: the final pose missing the amber word, or the classes and motif staying on the word after teardown.
+    test('the final pose turns the word amber and a replay clears it', async () => {
+        now = BY_KEY('midAutumn').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('midAutumn'), { language: 'cn' })
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        expect(word.classList.contains('rt-ma-final')).toBe(true)
+        expect(word.classList.contains('rt-ma-amber')).toBe(true)
+        expect(word.querySelector('.rt-ma-risu')!.textContent).toBe('Risu')
+        expect(word.querySelector('.rt-ma-tan')!.textContent).toBe('Tanium')
+        ctrl.destroy()
+        expect(word.querySelector('.rt-ma-motif')).toBeNull()
+        expect(word.querySelector('.rt-ma-risu, .rt-ma-tan')).toBeNull()
+        expect(word.classList.contains('rt-ma-amber')).toBe(false)
+    })
+})
+
+describe('tsukimi susuki, dango and plume', () => {
+    // Guards: the stage losing a susuki, the offering losing a dango or the order they are set down in, or the greeting language.
+    test('three susuki, six dango set down in order and a Japanese greeting', async () => {
+        now = BY_KEY('tsukimi').date
+        const { fx } = await mountScene(BY_KEY('tsukimi'), { language: 'ja' })
+        await settle()
+        expect(fx.anchor.querySelectorAll('.rt-tk-stalk').length).toBe(3)
+        const order = Array.from(fx.brand.querySelectorAll('.rt-tk-d')).map((n) => Number(n.getAttribute('data-order'))).sort()
+        expect(order).toEqual([0, 1, 2, 3, 4, 5])
+        expect(fx.anchor.querySelector('.rt-tk-textbox')!.getAttribute('lang')).toBe('ja')
+        expect(fx.host.querySelector('.rt-sw-desc')!.textContent).toContain('中秋の名月')
+    })
+
+    // Guards: the layout rule (a wide stage puts the moon right of the greeting, a narrow one fits it) and the plume omitted where the row has no room right of the word.
+    test.each([
+        ['wide stage, room right of the word', 10, 60, 'wide', false],
+        ['narrow stage, room right of the word', 1000, 60, 'narrow', false],
+        ['no room right of the word', 10, 400, 'wide', true],
+    ])('%s: %s mode, plume off %s', async (_name, natural, wordWidth, mode, plumeOff) => {
+        now = BY_KEY('tsukimi').date
+        mockRects(wordWidth)
+        vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(natural)
+        const { fx } = await mountScene(BY_KEY('tsukimi'), { language: 'ja' })
+        await settle()
+        expect(fx.anchor.querySelector('.rt-tk-sky')!.getAttribute('data-rt-tk-mode')).toBe(mode)
+        expect(fx.host.querySelector('.rt-sw-word .rt-tk-plumebox')!.classList.contains('rt-tk-plume-off')).toBe(plumeOff)
+    })
+
+    // Guards: the silver-gold copy missing its halves in the final pose, or the copy and plume staying on the word after teardown.
+    test('the final pose paints the silver-gold halves and a replay clears them and the plume', async () => {
+        now = BY_KEY('tsukimi').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('tsukimi'), { language: 'ja' })
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        expect(word.classList.contains('rt-tk-final')).toBe(true)
+        expect(word.querySelector('.rt-tk-a')!.textContent).toBe('Risu')
+        expect(word.querySelector('.rt-tk-b')!.textContent).toBe('Tanium')
+        expect(word.querySelector('.rt-tk-plumebox')!.getAttribute('aria-hidden')).toBe('true')
+        ctrl.destroy()
+        expect(word.querySelector('.rt-tk-gold, .rt-tk-plumebox')).toBeNull()
+        expect(word.classList.contains('rt-tk-word')).toBe(false)
+    })
+})
+
+describe('obon hanabi, ripples and lantern', () => {
+    // Guards: the node budget (four rings, five ripples) and the lantern losing its reflection dashes or the description.
+    test('four hanabi rings, five ripples, two reflection dashes and the day described in Japanese', async () => {
+        now = BY_KEY('obon').date
+        const { fx } = await mountScene(BY_KEY('obon'), { language: 'ja' })
+        await settle()
+        const bursts = Array.from(fx.anchor.querySelectorAll('.rt-ob-burst'))
+        expect(bursts.length).toBe(4)
+        for (const b of bursts) expect(b.querySelector('.rt-ob-ring-in')).not.toBeNull()
+        expect(fx.anchor.querySelectorAll('.rt-ob-ripple').length).toBe(5)
+        expect(fx.brand.querySelectorAll('.rt-ob-dash').length).toBe(2)
+        expect(fx.host.querySelector('.rt-sw-desc')!.querySelector('span')!.getAttribute('lang')).toBe('ja')
+    })
+
+    // Guards: the burst layout rule (room right of the word blooms rings there; otherwise all four stay in the band above the word).
+    test.each([
+        ['room right of the word', 60, 'wide'],
+        ['no room right of the word', 400, 'band'],
+    ])('%s: %s layout', async (_name, wordWidth, mode) => {
+        now = BY_KEY('obon').date
+        mockRects(wordWidth)
+        const { fx } = await mountScene(BY_KEY('obon'), { language: 'ja' })
+        await settle()
+        expect(fx.anchor.querySelector('.rt-ob-sky')!.getAttribute('data-rt-ob-mode')).toBe(mode)
+    })
+
+    // Guards: the Tanium edge copy missing its text source, or the attribute and class staying on the word after teardown.
+    test('Tanium carries its edge text in the final pose and a replay clears it', async () => {
+        now = BY_KEY('obon').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('obon'), { language: 'ja' })
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        const tan = word.querySelector('.rt-ob-tan') as HTMLElement
+        expect(word.classList.contains('rt-ob-final')).toBe(true)
+        expect(tan.getAttribute('data-rt-ob-text')).toBe('Tanium')
+        ctrl.destroy()
+        expect(tan.hasAttribute('data-rt-ob-text')).toBe(false)
+        expect(tan.classList.contains('rt-ob-tan')).toBe(false)
+    })
+})
+
+describe('bunkaNoHi name, seigaiha and kana width', () => {
+    // Guards: the accessible name or description not following the kana wordmark, or not resetting afterwards.
+    test('names the logo in katakana, describes the day, shows the date line and restores the name', async () => {
+        now = BY_KEY('bunkaNoHi').date
+        const { ctrl, fx } = await mountScene(BY_KEY('bunkaNoHi'), { language: 'ja' })
+        await settle()
+        expect(fx.host.querySelector('.rt-sw-sr')!.textContent).toBe('リスタニウム')
+        expect(fx.host.querySelector('.rt-sw-desc')!.textContent).toContain('11月3日 文化の日')
+        expect(fx.anchor.querySelector('.rt-bk-date')!.textContent).toBe('11月3日 文化の日')
+        const ja = fx.host.querySelector('.rt-sw-word .rt-bk-ja') as HTMLElement
+        expect(ja.textContent).toBe('リスタニウム')
+        expect(ja.getAttribute('aria-hidden')).toBe('true')
+        ctrl.destroy()
+        expect(fx.host.querySelector('.rt-sw-sr')!.textContent).toBe('RisuTanium')
+    })
+
+    // Guards: the wave field losing a row (six) or the seal, which holds no characters.
+    test('six seigaiha rows and one character-free seal', async () => {
+        now = BY_KEY('bunkaNoHi').date
+        const { fx } = await mountScene(BY_KEY('bunkaNoHi'), { language: 'ja' })
+        await settle()
+        expect(fx.brand.querySelectorAll('.rt-bk-row').length).toBe(6)
+        expect(fx.brand.querySelectorAll('.rt-bk-seal').length).toBe(1)
+        expect(fx.brand.querySelector('.rt-bk-seal')!.querySelector('text')).toBeNull()
+    })
+
+    // Guards: the word box width rule (a kana run wider than the everyday box is set smaller, never wider) and the width variable.
+    test('a kana run wider than the word box is set smaller and the box width is kept', async () => {
+        now = BY_KEY('bunkaNoHi').date
+        mockRects(100)
+        vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(200)
+        const { fx } = await mountScene(BY_KEY('bunkaNoHi'), { language: 'ja' })
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        expect((word.querySelector('.rt-bk-ja') as HTMLElement).style.fontSize).toBe('0.5em')
+        expect(word.style.getPropertyValue('--rt-bk-w')).toBe('100px')
+    })
+
+    // Guards: a font-loading listener left on the document after the scene is gone.
+    test('every loadingdone listener the scene adds is removed on destroy', async () => {
+        now = BY_KEY('bunkaNoHi').date
+        const add = vi.fn()
+        const remove = vi.fn()
+        Object.defineProperty(document, 'fonts', {
+            configurable: true,
+            value: { load: vi.fn(() => Promise.reject(new Error('blocked'))), forEach: () => {}, addEventListener: add, removeEventListener: remove },
+        })
+        const { ctrl } = await mountScene(BY_KEY('bunkaNoHi'), { language: 'ja' })
+        await settle()
+        const added = add.mock.calls.filter((c: unknown[]) => c[0] === 'loadingdone').map((c: unknown[]) => c[1])
+        expect(added.length).toBeGreaterThan(0)
+        ctrl.destroy()
+        const removed = remove.mock.calls.filter((c: unknown[]) => c[0] === 'loadingdone').map((c: unknown[]) => c[1])
+        expect(added.every((fn: unknown) => removed.includes(fn))).toBe(true)
+    })
+})
+
+describe('stPatricksDay clovers, shamrock mark and tucked shamrock', () => {
+    // Guards: the node budget (eight drifting clovers, three mark leaves) and the description of the day.
+    test.each(WESTERN_LANGS)('%s: eight clovers, three leaves, a tucked shamrock and the day described in English', async (lang) => {
+        now = BY_KEY('stPatricksDay').date
+        const { fx } = await mountScene(BY_KEY('stPatricksDay'), { language: lang })
+        await settle()
+        expect(fx.anchor.querySelectorAll('.rt-sp-drift').length).toBe(8)
+        expect(fx.brand.querySelectorAll('.rt-sp-leaf').length).toBe(3)
+        const tuck = fx.host.querySelector('.rt-sw-word .rt-sp-tuck') as HTMLElement
+        expect(tuck.getAttribute('aria-hidden')).toBe('true')
+        const desc = fx.host.querySelector('.rt-sw-desc')!
+        expect(desc.textContent).toContain('Happy St. Patrick’s Day!')
+        expect(desc.querySelector('span')!.getAttribute('lang')).toBe('en')
+    })
+
+    // Guards: the emerald-cyan copy missing its text source in the final pose, or the shamrock and copy staying on the word.
+    test('the final pose paints "Risu" and a replay clears the copy and the shamrock', async () => {
+        now = BY_KEY('stPatricksDay').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('stPatricksDay'))
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        const risu = word.querySelector('.rt-sp-risu') as HTMLElement
+        expect(word.classList.contains('rt-sp-final')).toBe(true)
+        expect(risu.getAttribute('data-rt-sp-text')).toBe('Risu')
+        ctrl.destroy()
+        expect(word.querySelector('.rt-sp-tuck')).toBeNull()
+        expect(risu.hasAttribute('data-rt-sp-text')).toBe(false)
+        expect(risu.classList.contains('rt-sp-risu')).toBe(false)
+        expect(word.classList.contains('rt-sp-word')).toBe(false)
+    })
+})
+
+describe('easter greeting, egg and bunny ears', () => {
+    // Guards: the greeting not following the language, or its description not tagged with that language.
+    test.each([
+        ['en', 'Happy Easter!'],
+        ['de', 'Frohe Ostern!'],
+        ['es', '¡Felices Pascuas!'],
+    ])('%s greets with %s', async (lang, text) => {
+        now = BY_KEY('easter').date
+        const { fx } = await mountScene(BY_KEY('easter'), { language: lang })
+        await settle()
+        const desc = fx.host.querySelector('.rt-sw-desc')!
+        expect(desc.textContent).toContain(text)
+        expect(desc.querySelector('span')!.getAttribute('lang')).toBe(lang)
+    })
+
+    // Guards: the egg losing a chevron stripe (three) or the word losing an ear (two), and the ears being exposed to assistive tech.
+    test('three chevron stripes, two ears and an aria-hidden ear box', async () => {
+        now = BY_KEY('easter').date
+        const { fx } = await mountScene(BY_KEY('easter'))
+        await settle()
+        expect(fx.brand.querySelectorAll('.rt-ea-chev').length).toBe(3)
+        const ears = fx.host.querySelector('.rt-sw-word .rt-ea-ears') as HTMLElement
+        expect(ears.getAttribute('aria-hidden')).toBe('true')
+        expect(ears.querySelectorAll('.rt-ea-ear').length).toBe(2)
+    })
+
+    // Guards: the right ear flop being dropped from the timeline (it starts at 5800 ms), or the ears left on the word after teardown.
+    test('the right ear flops at 5800 ms and the final pose and a replay leave no ears behind', async () => {
+        now = BY_KEY('easter').date
+        const calls = trackAnimate()
+        const { ctrl, fx } = await mountScene(BY_KEY('easter'))
+        await settle()
+        expect(calls.filter((c) => c.el.matches('.rt-ea-ear-r')).map((c) => c.delay)).toEqual([5150, 5800])
+        await settle(BY_KEY('easter').playMs)
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        expect(word.classList.contains('rt-ea-final')).toBe(true)
+        ctrl.destroy()
+        expect(word.querySelector('.rt-ea-ears')).toBeNull()
+        expect(word.classList.contains('rt-ea-word')).toBe(false)
+    })
+})
+
+describe('summerSolstice fireflies, lantern and resting firefly', () => {
+    // Guards: the firefly budget rule (18 on a wide stage, 12 under 260 px) and the lantern losing a trapped spark (three).
+    test.each([
+        [400, 18],
+        [200, 12],
+    ])('a %i px stage shows %i fireflies and the lantern holds three sparks', async (width, flies) => {
+        now = BY_KEY('summerSolstice').date
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectOf(width))
+        const { fx } = await mountScene(BY_KEY('summerSolstice'))
+        await settle()
+        const shown = Array.from(fx.anchor.querySelectorAll<HTMLElement>('.rt-ss-fly')).filter((n) => n.style.display !== 'none')
+        expect(shown.length).toBe(flies)
+        expect(fx.brand.querySelectorAll('.rt-ss-spark').length).toBe(3)
+    })
+
+    // Guards: the resting firefly leaving the word box's tree (it must be aria-hidden and gone after teardown), and the final pose.
+    test('a firefly rests on the word, aria-hidden, in the final pose and a replay removes it', async () => {
+        now = BY_KEY('summerSolstice').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('summerSolstice'))
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        const rest = word.querySelector('.rt-ss-rest') as HTMLElement
+        expect(rest.getAttribute('aria-hidden')).toBe('true')
+        expect(word.classList.contains('rt-ss-final')).toBe(true)
+        ctrl.destroy()
+        expect(word.querySelector('.rt-ss-rest')).toBeNull()
+        expect(word.classList.contains('rt-ss-word')).toBe(false)
+    })
+})
+
+describe('thanksgiving greeting placement, leaves and sheaf', () => {
+    // Every HTML element measures 400 x 96 except the word and the greeting, so the room beside and below the word is explicit.
+    function mockGeometry(word: { top: number, width: number, height: number }): void {
+        const rect = (left: number, top: number, width: number, height: number): DOMRect =>
+            ({ x: left, y: top, left, top, right: left + width, bottom: top + height, width, height, toJSON: () => ({}) })
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            if (this.classList.contains('rt-sw-word')) return rect(20, word.top, word.width, word.height)
+            if (this.classList.contains('rt-tg-greet')) return rect(0, 0, 80, 14)
+            return rect(0, 0, 400, 96)
+        })
+    }
+
+    // Guards: the placement rule (beside the word with room, below it with room for 11 px text, otherwise in the word's place with
+    // the word fading out for the greeting).
+    test.each([
+        ['room beside the word', { top: 10, width: 100, height: 29 }, 'side', 0],
+        ['no room beside, room below', { top: 10, width: 330, height: 29 }, 'below', 0],
+        ['no room anywhere', { top: 60, width: 330, height: 30 }, 'over', 1],
+    ])('%s: %s placement and %i word fade', async (_name, word, mode, wordFades) => {
+        now = BY_KEY('thanksgiving').date
+        mockGeometry(word)
+        const calls = trackAnimate()
+        const { fx } = await mountScene(BY_KEY('thanksgiving'))
+        await settle()
+        expect(fx.anchor.querySelector('.rt-tg-sky')!.getAttribute('data-greet')).toBe(mode)
+        expect(calls.filter((c) => c.el.matches('.rt-sw-word')).length).toBe(wordFades)
+    })
+
+    // Guards: the node budget (ten leaves, three wheat stalks, five sheaf stalks) and the greeting text and description.
+    test('ten leaves, three wheat stalks, a five-stalk sheaf and the greeting described in English', async () => {
+        now = BY_KEY('thanksgiving').date
+        const { fx } = await mountScene(BY_KEY('thanksgiving'))
+        await settle()
+        expect(fx.anchor.querySelectorAll('.rt-tg-leaf').length).toBe(10)
+        expect(fx.anchor.querySelectorAll('.rt-tg-wheat').length).toBe(3)
+        expect(fx.brand.querySelectorAll('.rt-tg-stalk').length).toBe(5)
+        expect(fx.anchor.querySelector('.rt-tg-greet')!.textContent).toBe('Happy Thanksgiving')
+        expect(fx.host.querySelector('.rt-sw-desc')!.textContent).toContain('Happy Thanksgiving!')
+    })
+
+    // Guards: the perched leaf being exposed to assistive tech, the Tanium edge copy losing its text source, or either staying on the word.
+    test('the final pose perches a hidden leaf on the T and edges Tanium, and a replay clears both', async () => {
+        now = BY_KEY('thanksgiving').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('thanksgiving'))
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        const tan = word.querySelector('.rt-tg-tan') as HTMLElement
+        expect(word.classList.contains('rt-tg-final')).toBe(true)
+        expect(word.querySelector('.rt-tg-perch')!.getAttribute('aria-hidden')).toBe('true')
+        expect(tan.getAttribute('data-rt-tg-text')).toBe('Tanium')
+        ctrl.destroy()
+        expect(word.querySelector('.rt-tg-perch')).toBeNull()
+        expect(tan.hasAttribute('data-rt-tg-text')).toBe(false)
+        expect(tan.classList.contains('rt-tg-tan')).toBe(false)
+    })
+})
+
+describe('independenceDay fireworks, star and sparkler', () => {
+    // Guards: the node budget (three bursts, five star points, three twinkles) and the description of the day.
+    test('three fireworks, a five-point star, three twinkles and the day described in English', async () => {
+        now = BY_KEY('independenceDay').date
+        const { fx } = await mountScene(BY_KEY('independenceDay'))
+        await settle()
+        expect(fx.anchor.querySelectorAll('.rt-id-fw > g').length).toBe(3)
+        expect(fx.brand.querySelectorAll('.rt-id-pt').length).toBe(5)
+        expect(fx.brand.querySelectorAll('.rt-id-tw').length).toBe(3)
+        const desc = fx.host.querySelector('.rt-sw-desc')!
+        expect(desc.textContent).toContain('Happy 4th of July!')
+        expect(desc.querySelector('span')!.getAttribute('lang')).toBe('en')
+    })
+
+    // Guards: the twilight and the star being the only things shown (a final pose that leaves the fireworks stage visible).
+    test('the final pose hides the stage and keeps the glass badge with a hidden sparkler, and a replay clears the word', async () => {
+        now = BY_KEY('independenceDay').date
+        played.add(ymd(now))
+        const { ctrl, fx } = await mountScene(BY_KEY('independenceDay'))
+        await settle()
+        const word = fx.host.querySelector('.rt-sw-word') as HTMLElement
+        expect(word.classList.contains('rt-id-final')).toBe(true)
+        expect(fx.anchor.querySelector('.rt-id-sky')!.classList.contains('rt-id-final')).toBe(true)
+        expect(fx.brand.querySelector('.rt-id-glass')).not.toBeNull()
+        expect(word.querySelector('.rt-id-spark')!.getAttribute('aria-hidden')).toBe('true')
+        ctrl.destroy()
+        expect(word.querySelector('.rt-id-spark')).toBeNull()
+        expect(word.classList.contains('rt-id-word')).toBe(false)
+    })
+})
+
+describe('western scenes release their font-loading listeners', () => {
+    // Guards: a loadingdone listener left on the document after the scene is gone.
+    test.each(['stPatricksDay', 'easter', 'summerSolstice', 'thanksgiving', 'independenceDay'] as const)('%s removes every loadingdone listener it adds', async (key) => {
+        const c = BY_KEY(key)
+        now = c.date
+        const add = vi.fn()
+        const remove = vi.fn()
+        Object.defineProperty(document, 'fonts', {
+            configurable: true,
+            value: { load: vi.fn(() => Promise.reject(new Error('blocked'))), forEach: () => {}, addEventListener: add, removeEventListener: remove },
+        })
+        const { ctrl } = await mountScene(c)
+        await settle()
+        const added = add.mock.calls.filter((a: unknown[]) => a[0] === 'loadingdone').map((a: unknown[]) => a[1])
+        expect(added.length).toBeGreaterThan(0)
+        ctrl.destroy()
+        const removed = remove.mock.calls.filter((a: unknown[]) => a[0] === 'loadingdone').map((a: unknown[]) => a[1])
+        expect(added.every((fn: unknown) => removed.includes(fn))).toBe(true)
     })
 })

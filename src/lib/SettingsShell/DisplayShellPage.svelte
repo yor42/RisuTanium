@@ -17,6 +17,7 @@
     import QuoteBoxesRow from './display/QuoteBoxesRow.svelte'
     import ReduceCardEffectsRow from './display/ReduceCardEffectsRow.svelte'
     import ReducedMotionRow from './display/ReducedMotionRow.svelte'
+    import SeasonalLogoRow from './display/SeasonalLogoRow.svelte'
     import ThemeCards from './display/ThemeCards.svelte'
     import ShellSettingRow from './ShellSettingRow.svelte'
 
@@ -33,6 +34,7 @@
         LowPowerRow,
         ReduceCardEffectsRow,
         ReducedMotionRow,
+        SeasonalLogoRow,
     }
 
     // One context for every row, built like the legacy renderer's.

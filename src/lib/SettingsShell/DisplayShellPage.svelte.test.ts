@@ -647,6 +647,26 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
         expect(Object.keys(dbSnapshot()).filter((key) => /lowPower|reducedMotion/i.test(key))).toEqual([])
     })
 
+    // REPRODUCER (SL-5): on the base the shell Display page has no seasonal logo row.
+    test('the seasonal logo row is on the page, on by default, and writes this device only', async () => {
+        const { reloadSeasonalPrefs, seasonalLogoEnabled } = await import('src/ts/seasonal/seasonalPrefs.svelte')
+        reloadSeasonalPrefs()
+        const before = dbSnapshot()
+        const { target } = showPage()
+        await settle()
+        expect(row(target, 'display.seasonalLogo').querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(checkbox(target, 'display.seasonalLogo').checked).toBe(true)
+        checkbox(target, 'display.seasonalLogo').click()
+        await settle()
+        expect(localStorage.getItem('risutanium.seasonalLogo')).toBe('0')
+        expect(seasonalLogoEnabled()).toBe(false)
+        expect(checkbox(target, 'display.seasonalLogo').checked).toBe(false)
+        expect(changedKeys(before, dbSnapshot())).toEqual([])
+        checkbox(target, 'display.seasonalLogo').click()
+        await settle()
+        expect(localStorage.getItem('risutanium.seasonalLogo')).toBeNull()
+    })
+
     // REPRODUCER (T3.2): on the base the row does not exist.
     test('the reduce card effects row writes this device only and sets both card marks', async () => {
         const before = dbSnapshot()

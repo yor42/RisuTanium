@@ -1,0 +1,98 @@
+/*
+  Mid-Autumn scene styles. Every class is rt-ma-. Defines no shared tokens. Default rules = start pose; .rt-ma-final = final
+  pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root),
+  so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-ma-sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.rt-ma-sky.rt-ma-final { display: none; }
+.rt-ma-tint {
+  position: absolute; inset: 0; opacity: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgb(255 255 255 / 0.55) 0 0.8px, transparent 1.4px),
+    radial-gradient(circle at 58% 64%, rgb(255 255 255 / 0.45) 0 0.8px, transparent 1.4px),
+    linear-gradient(180deg, rgb(6 12 48 / 0.62) 0%, rgb(18 30 82 / 0.45) 66%, rgb(18 30 82 / 0) 100%);
+  /* Feathered left/right/bottom edges and a soft hole over the mark slot; static mask. */
+  --rt-ma-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 64px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%),
+    radial-gradient(circle at var(--rt-ma-mx, -100px) var(--rt-ma-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: var(--rt-ma-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-ma-mask);
+  mask-composite: intersect;
+}
+.rt-ma-moon {
+  position: absolute; opacity: 0; border-radius: 50%;
+  background: radial-gradient(circle at 38% 34%, #fffbe6 0%, #ffeaa6 45%, #f4c95d 100%);
+  /* Static halo: box-shadow is painted once with the layer; only transform/opacity animate. */
+  box-shadow: 0 0 22px 4px rgb(255 214 120 / 0.3);
+  will-change: transform, opacity;
+}
+.rt-ma-cloud { position: absolute; opacity: 0; will-change: transform, opacity; }
+.rt-ma-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-ma-cloud-fill { fill: #27306b; stroke: #8b93d8; stroke-width: 1.6; stroke-linejoin: round; }
+.rt-ma-cloud-curl { fill: none; stroke: #8b93d8; stroke-width: 1.6; stroke-linecap: round; }
+
+.rt-ma-lantern { position: absolute; opacity: 0; transform-origin: 50% 0; will-change: transform, opacity; }
+.rt-ma-lan-body { fill: #d62828; }
+.rt-ma-lan-glow { fill: #ff8a3d; opacity: 0.55; }
+.rt-ma-lan-rib { fill: none; stroke: #8e1414; stroke-width: 1; }
+.rt-ma-lan-cap { fill: #f2b632; }
+.rt-ma-lan-cord, .rt-ma-lan-tassel { fill: none; stroke: #f2b632; stroke-width: 1.2; stroke-linecap: round; }
+
+.rt-ma-greet {
+  position: absolute; opacity: 0; white-space: nowrap; transform-origin: 0 50%;
+  font-size: var(--rt-ma-fs, 24px); font-weight: 700; letter-spacing: 0.04em;
+  color: #fbbf24;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 0.35);
+}
+/* System CJK stacks: no web font is loaded for this scene. */
+.rt-ma-hans { font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Noto Sans SC", sans-serif; }
+.rt-ma-hant { font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Source Han Sans TC", "Noto Sans TC", sans-serif; }
+
+[data-rt-sw-tone="light"] .rt-ma-tint {
+  background: linear-gradient(180deg, rgb(30 58 138 / 0.22) 0%, rgb(59 76 160 / 0.12) 66%, rgb(59 76 160 / 0) 100%);
+}
+[data-rt-sw-tone="light"] .rt-ma-moon { box-shadow: 0 0 0 1px rgb(180 120 20 / 0.35), 0 0 18px 4px rgb(245 180 60 / 0.35); }
+[data-rt-sw-tone="light"] .rt-ma-cloud-fill { fill: #eef1fb; stroke: #7c86c4; }
+[data-rt-sw-tone="light"] .rt-ma-cloud-curl { stroke: #7c86c4; }
+[data-rt-sw-tone="light"] .rt-ma-greet { color: #b45309; text-shadow: 0 1px 0 rgb(255 255 255 / 0.7); }
+
+/* ---------- Mark slot ---------- */
+.rt-ma-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-ma-every, .rt-ma-cake { transform-box: view-box; transform-origin: 50% 50%; }
+.rt-ma-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-ma-ink { fill: #0f172a; }
+.rt-ma-cake { opacity: 0; }
+.rt-ma-rim-edge .rt-ma-c { fill: #7a4310; }
+.rt-ma-face-ring { fill: #9a5a17; }
+.rt-ma-emb-shadow path { fill: #7a4310; opacity: 0.8; }
+.rt-ma-emb-light path { fill: #ffe7a3; }
+.rt-ma-emb-face path { fill: #e0a23e; }
+.rt-ma-emb-face path:last-child { fill: #c4741f; }
+
+.rt-ma-mark.rt-ma-final .rt-ma-every { opacity: 0; }
+.rt-ma-mark.rt-ma-final .rt-ma-cake { opacity: 1; transform: none; }
+
+/* ---------- Word ---------- */
+.rt-ma-word { position: relative; }
+/* Hide a v1-style emoji dragon if the core ever renders one; the SVG motif replaces it. */
+.rt-ma-word .rt-sw-dragon { display: none; }
+.rt-ma-amber .rt-ma-risu {
+  background-image: linear-gradient(to bottom right, #fcd34d, #f59e0b);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+.rt-ma-amber .rt-ma-tan { color: #fbbf24; -webkit-text-fill-color: #fbbf24; }
+[data-rt-sw-tone="light"] .rt-ma-amber .rt-ma-risu { background-image: linear-gradient(to bottom right, #d97706, #92400e); }
+[data-rt-sw-tone="light"] .rt-ma-amber .rt-ma-tan { color: #b45309; -webkit-text-fill-color: #b45309; }
+
+/* Xiangyun motif: 0.82em x 0.505em, 0.04em right of the word box, its tail line on the baseline (0.895em from the
+   box top). Right extent 0.86em (20.6 px at 24 px); nothing above the word box. */
+.rt-ma-motif { position: absolute; left: calc(100% + 0.04em); top: 0.39em; width: 0.82em; height: 0.505em; pointer-events: none; }
+.rt-ma-motif-in { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 20% 80%; }
+.rt-ma-motif-fill { fill: rgb(251 191 36 / 0.22); stroke: #fbbf24; stroke-width: 1.6; stroke-linejoin: round; }
+.rt-ma-motif-curl { fill: none; stroke: #fbbf24; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+[data-rt-sw-tone="light"] .rt-ma-motif-fill { fill: rgb(180 83 9 / 0.14); stroke: #b45309; }
+[data-rt-sw-tone="light"] .rt-ma-motif-curl { stroke: #b45309; }
+.rt-ma-word.rt-ma-final .rt-ma-motif-in { opacity: 1; transform: none; }

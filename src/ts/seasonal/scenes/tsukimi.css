@@ -1,0 +1,184 @@
+/*
+  Tsukimi scene styles. Every class is rt-tk-; no shared tokens are defined. Default rules = start pose; .rt-tk-final = final
+  pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the root),
+  so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-tk-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  --rt-tk-susuki: #d9cfb4;
+  --rt-tk-ink: rgb(255 255 255 / 0.92);
+}
+.rt-tk-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, rgb(16 24 60 / 0.62) 0%, rgb(24 34 74 / 0.34) calc(var(--rt-tk-fade, 40px) * 0.55), rgb(24 34 74 / 0) var(--rt-tk-fade, 40px));
+  /* Static feathered mask with a soft hole over the mark slot (no filter). */
+  --rt-tk-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 40px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%),
+    radial-gradient(circle at var(--rt-tk-mx, -100px) var(--rt-tk-my, -100px), transparent 0 var(--rt-tk-h0, 15px), #000 var(--rt-tk-h1, 23px));
+  -webkit-mask-image: var(--rt-tk-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-tk-mask);
+  mask-composite: intersect;
+}
+/* Silver-gold moon: a static gradient disc and a static box-shadow halo (painted once; only transform/opacity move). */
+.rt-tk-moon {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle at 38% 36%, #ffffff 0%, #f3ecd8 45%, #e2cf98 82%, #d4b86a 100%);
+  box-shadow: 0 0 10px 2px rgb(240 228 190 / 0.35), 0 0 22px 6px rgb(240 228 190 / 0.12);
+  will-change: transform, opacity;
+}
+.rt-tk-stalk {
+  position: absolute;
+  opacity: 0;
+  transform-origin: 50% 100%;
+  will-change: transform, opacity;
+}
+.rt-tk-sway { width: 100%; height: 100%; transform-origin: 50% 100%; }
+.rt-tk-stalk-svg, .rt-tk-plume-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tk-leaf, .rt-tk-stem, .rt-tk-plume { fill: none; stroke: var(--rt-tk-susuki); stroke-linecap: round; }
+.rt-tk-stem { stroke-width: 1.3; }
+.rt-tk-leaf { stroke-width: 1.1; opacity: 0.8; }
+.rt-tk-plume { stroke-width: 1.7; }
+
+.rt-tk-textbox {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.rt-tk-text {
+  display: inline-block;
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Noto Sans JP", sans-serif;
+  font-weight: 700;
+  font-size: var(--rt-tk-fs, 24px);
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--rt-tk-ink);
+  transform-origin: 0 50%;
+  opacity: 0;
+}
+.rt-tk-sky.rt-tk-final { display: none; }
+
+[data-rt-sw-tone="light"] .rt-tk-sky { --rt-tk-susuki: #8a7a55; --rt-tk-ink: #0f172a; }
+[data-rt-sw-tone="light"] .rt-tk-wash {
+  background: linear-gradient(180deg, rgb(51 65 120 / 0.16) 0%, rgb(71 85 140 / 0.08) calc(var(--rt-tk-fade, 40px) * 0.55), rgb(71 85 140 / 0) var(--rt-tk-fade, 40px));
+}
+[data-rt-sw-tone="light"] .rt-tk-moon {
+  background: radial-gradient(circle at 38% 36%, #fffdf4 0%, #f2e2ae 50%, #ddb75a 100%);
+  box-shadow: 0 0 0 1.5px rgb(184 134 11 / 0.55), 0 0 14px 3px rgb(221 183 90 / 0.3);
+}
+
+/* ---------- Mark slot ---------- */
+.rt-tk-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  --rt-tk-every: #ffffff;
+  --rt-tk-rim: #ffe9a8;
+  --rt-tk-frame: #e9edf6;
+  --rt-tk-dango-edge: #c9b48a;
+  --rt-tk-tray: #d29a5c;
+  --rt-tk-base: #b97b40;
+  --rt-tk-cut: #5b3818;
+}
+[data-rt-sw-tone="light"] .rt-tk-mark {
+  --rt-tk-every: #0f172a;
+  --rt-tk-rim: #b8860b;
+  --rt-tk-frame: #4a5675;
+  --rt-tk-dango-edge: #b29d72;
+  --rt-tk-tray: #b7793c;
+  --rt-tk-base: #9a612b;
+  --rt-tk-cut: #4a2c12;
+}
+.rt-tk-every, .rt-tk-up { transform-box: view-box; transform-origin: 50% 45.2%; }   /* the centroid (0,0) */
+.rt-tk-ink { fill: var(--rt-tk-every); }
+.rt-tk-moonrim { fill: none; stroke: var(--rt-tk-rim); stroke-width: 2.5; stroke-opacity: 0.7; }
+.rt-tk-moondisc { transform-box: fill-box; transform-origin: 50% 50%; }
+.rt-tk-frame { fill: var(--rt-tk-frame); }
+/* Dango: warm off-white mochi gradient (fill attribute, #...-mochi) with a thin warm edge. */
+.rt-tk-d { stroke: var(--rt-tk-dango-edge); stroke-width: 1.3; }
+.rt-tk-tray { fill: var(--rt-tk-tray); }
+.rt-tk-base { fill: var(--rt-tk-base); }
+.rt-tk-cut { fill: var(--rt-tk-cut); }
+
+/* Start pose (before play): only the everyday mark. */
+.rt-tk-moondisc, .rt-tk-stand, .rt-tk-up, .rt-tk-d { opacity: 0; }
+
+.rt-tk-mark.rt-tk-final .rt-tk-every { opacity: 0; }
+.rt-tk-mark.rt-tk-final .rt-tk-moondisc,
+.rt-tk-mark.rt-tk-final .rt-tk-stand,
+.rt-tk-mark.rt-tk-final .rt-tk-up,
+.rt-tk-mark.rt-tk-final .rt-tk-d { opacity: 1; transform: none; }
+
+/* ---------- Word: silver-gold copy and the small susuki plume ---------- */
+.rt-tk-word {
+  --rt-tk-a-from: #eef2f8;
+  --rt-tk-a-to: #f0c45c;
+  --rt-tk-b: #f4e2ae;
+  --rt-tk-susuki: #d9cfb4;
+}
+[data-rt-sw-tone="light"] .rt-tk-word {
+  --rt-tk-a-from: #5b6476;
+  --rt-tk-a-to: #9a6a08;
+  --rt-tk-b: #6f5212;
+  --rt-tk-susuki: #8a7a55;
+}
+.rt-tk-gold {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 1.2em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.rt-tk-a, .rt-tk-b {
+  display: inline-block;
+  height: 1.2em;
+  vertical-align: top;
+  opacity: 0;
+  transform-origin: 0 55%;
+}
+.rt-tk-a {
+  background-image: linear-gradient(to bottom right, var(--rt-tk-a-from), var(--rt-tk-a-to));
+  background-size: var(--rt-sw-w, 6.21em) 1.2em;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-tk-b { color: var(--rt-tk-b); }
+
+/* Plume: right of the word box (+2 px gap, 0.5em wide = +14 px at 24 px), 0.25em above it. Omitted where the fit
+   column has no room right of the word (.rt-tk-plume-off, phones at 360/375). */
+.rt-tk-plumebox {
+  position: absolute;
+  left: calc(100% + 2px);
+  top: -0.25em;
+  width: 0.5em;
+  height: 1.45em;
+  pointer-events: none;
+}
+.rt-tk-plumebox.rt-tk-plume-off { display: none; }
+.rt-tk-plume-in { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 50% 100%; }
+.rt-tk-plumebox .rt-tk-leaf, .rt-tk-plumebox .rt-tk-stem, .rt-tk-plumebox .rt-tk-plume { stroke: var(--rt-tk-susuki); }
+
+.rt-tk-word.rt-tk-final .rt-sw-text { visibility: hidden; opacity: 0; }
+.rt-tk-word.rt-tk-final .rt-tk-a,
+.rt-tk-word.rt-tk-final .rt-tk-b,
+.rt-tk-word.rt-tk-final .rt-tk-plume-in { opacity: 1; transform: none; }
+
+/* Phones: a smaller halo, so the glow fades inside the stage instead of being cut at its right edge. */
+.rt-tk-sky[data-rt-tk-mode="narrow"] .rt-tk-moon { box-shadow: 0 0 6px 1px rgb(240 228 190 / 0.3); }
+[data-rt-sw-tone="light"] .rt-tk-sky[data-rt-tk-mode="narrow"] .rt-tk-moon { box-shadow: 0 0 0 1.2px rgb(184 134 11 / 0.55); }
