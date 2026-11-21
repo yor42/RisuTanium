@@ -44,7 +44,6 @@ vi.mock(import('../storage/database.svelte'), () => ({
 vi.mock(import('../globalApi.svelte'), () => ({
   aiWatermarkingLawApplies: () => false,
   getFileSrc: vi.fn(async (path: string) => `/served/${path}`),
-  setUsingSw: vi.fn(),
   readImage: vi.fn(),
 }) as unknown as typeof import('../globalApi.svelte'))
 

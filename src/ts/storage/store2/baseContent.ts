@@ -3,7 +3,7 @@ import type { Store2Backend, Store2Read } from './backend/types'
 import { unitDigest, type ReusableUnit } from './codec'
 import { classifyCommitRead } from './commitKey'
 import {
-    decodeFrame, FRAME_OVERHEAD, keyOfTail, readUnit, refOfFrame, refsOf, UNIT_TYPE,
+    decodeFrame, FRAME_OVERHEAD, keyOfTail, PARENT_UNIT_TYPES, readUnit, refOfFrame, refsOf, UNIT_TYPE,
     type RefTarget, type UnitType,
 } from './format'
 import { checkManifestKey, readBatch, TREE_READ_TYPES } from './tree'
@@ -68,9 +68,7 @@ interface Pending {
 }
 
 const NOT_INDEXED: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.order, UNIT_TYPE.legacyList])
-const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([
-    UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket,
-])
+const PARENT_TYPES: ReadonlySet<UnitType> = PARENT_UNIT_TYPES
 /** Manifest positions that are never read: the order unit holds entity ids and the legacy keep travels by value. */
 const MANIFEST_SKIPPED_PATHS: ReadonlySet<string> = new Set(['fixed.order', 'fixed.legacyKeep.unit'])
 

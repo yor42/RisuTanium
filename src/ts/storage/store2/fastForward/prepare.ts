@@ -1060,6 +1060,12 @@ export function prepareFastForward(input: PrepareInput): Prepared {
         return parked('task-presets')
     }
 
+    // Utility workspaces are not taken: a peer change to a workspace or its files changes this list's keys, and
+    // `advancePrevious` refuses the same change, so the fast-forward never builds a base without them.
+    if (!sameKeyLists(baseObjects.manifest.fixed.workspaces, nextObjects.manifest.fixed.workspaces)) {
+        return parked('workspaces')
+    }
+
     // Statics, by key.
     if (old.units.get('statics')?.key !== next.units.get('statics')?.key) {
         const decision = mergeStatics(baseObjects.statics?.value, liveField(db, 'statics'), nextObjects.statics?.value)

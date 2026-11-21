@@ -46,7 +46,6 @@ vi.mock(
             aiWatermarkingLawApplies: vi.fn(() => false),
             changeChatTo: vi.fn(),
             hubURL: '',
-            usingSw: false,
             getFetchLogs: vi.fn(() => []),
             getFetchData: vi.fn(() => ({})),
             aiLawApplies: vi.fn(() => false),

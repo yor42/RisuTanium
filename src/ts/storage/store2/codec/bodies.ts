@@ -3,7 +3,7 @@ import type { ContentBody } from '../format'
 import { CodecAssembleError } from './types'
 
 /**
- * Bodies of the content units (types 4, 5, 6, 9, 11 to 14, 16 to 18, 26). The
+ * Bodies of the content units (types 4, 5, 6, 9, 11 to 14, 16 to 18, 26, 29). The
  * format module fixes only the frame and `{ v }`; the shapes here are this
  * build's choice and are amendable until the format freeze. Every body is
  * `{ v: 1, ... }` and holds fields verbatim, so a field the build does not know
@@ -12,7 +12,7 @@ import { CodecAssembleError } from './types'
 
 /** Database fields that live outside the config root; every other field, known or not, is in it. */
 export const CONFIG_PARTITIONED_FIELDS = [
-    'characters', 'botPresets', 'taskPresets', 'plugins', 'pluginV2', 'modules', 'pluginCustomStorage', 'characterOrder', 'loadouts', 'statics',
+    'characters', 'botPresets', 'taskPresets', 'utilityWorkspaces', 'plugins', 'pluginV2', 'modules', 'pluginCustomStorage', 'characterOrder', 'loadouts', 'statics',
 ] as const
 
 /** The two plugin lists of a database; each plugin is one unit that names its list. */
@@ -47,6 +47,8 @@ export interface LoadoutsBody { v: 1, items: JsonValue[] }
 export interface PresetBody { v: 1, preset: JsonObject }
 export interface PluginBody { v: 1, list: PluginList, plugin: JsonObject }
 export interface PluginValueBody { v: 1, value: JsonValue }
+/** Type 29, one workspace file: exactly the text, so the unit's digest is a pure function of it. */
+export interface WorkspaceFileBody { v: 1, text: string }
 export interface ModuleBody { v: 1, module: JsonObject }
 /** `f` the character fields not held elsewhere; `a` the required moved fields the source did not have. */
 export interface CharacterCoreBody { v: 1, f: JsonObject, a?: string[] }

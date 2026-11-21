@@ -1,5 +1,3 @@
-import { language } from 'src/lang'
-import { alertConfirm } from 'src/ts/alert'
 import { type character, type groupChat, type loreBook } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { pickHashRand } from 'src/ts/util'
@@ -8,10 +6,6 @@ import { type MCPTool, MCPToolHandler, type MCPToolCallContext, type RPCToolCall
 import { getCharacterForRead, getCharacterForWrite, recheckCharacterForWrite } from './utils'
 
 export class CharacterHandler extends MCPToolHandler {
-  private promptAccess(tool: string, action: string) {
-    return alertConfirm(language.mcpAccessPrompt.replace('{{tool}}', tool).replace('{{action}}', action))
-  }
-
   getTools(): MCPTool[] {
     return [
       {
@@ -543,15 +537,6 @@ export class CharacterHandler extends MCPToolHandler {
       ]
     }
 
-    if (!(await this.promptAccess('risu-set-character-info', `modify character (${char.name}) information`))) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
-        },
-      ]
-    }
-
     const target = await recheckCharacterForWrite(id, ctx, char)
     if (!target) {
       return [
@@ -618,20 +603,6 @@ export class CharacterHandler extends MCPToolHandler {
         {
           type: 'text',
           text: `Error: The id pointed to a group chat, not a character.`,
-        },
-      ]
-    }
-
-    if (
-      !(await this.promptAccess(
-        'risu-set-character-lorebook',
-        `add/modify character (${char.name}) global lorebook (${name})`
-      ))
-    ) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
         },
       ]
     }
@@ -712,20 +683,6 @@ export class CharacterHandler extends MCPToolHandler {
         {
           type: 'text',
           text: `Error: The id pointed to a group chat, not a character.`,
-        },
-      ]
-    }
-
-    if (
-      !(await this.promptAccess(
-        'risu-delete-character-lorebook',
-        `delete character (${char.name}) global lorebook (${name})`
-      ))
-    ) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
         },
       ]
     }
@@ -831,20 +788,6 @@ export class CharacterHandler extends MCPToolHandler {
       ]
     }
 
-    if (
-      !(await this.promptAccess(
-        'risu-set-character-regex-scripts',
-        `add/modify character (${char.name}) regex script (${name})`
-      ))
-    ) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
-        },
-      ]
-    }
-
     const target = await recheckCharacterForWrite(id, ctx, char)
     if (!target) {
       return [
@@ -915,20 +858,6 @@ export class CharacterHandler extends MCPToolHandler {
         {
           type: 'text',
           text: `Error: The id pointed to a group chat, not a character.`,
-        },
-      ]
-    }
-
-    if (
-      !(await this.promptAccess(
-        'risu-delete-character-regex-scripts',
-        `delete character (${char.name}) regex script (${name})`
-      ))
-    ) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
         },
       ]
     }
@@ -1023,20 +952,6 @@ export class CharacterHandler extends MCPToolHandler {
       ]
     }
 
-    if (
-      !(await this.promptAccess(
-        'risu-delete-character-additional-assets',
-        `delete character (${char.name}) additional asset (${assetName})`
-      ))
-    ) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
-        },
-      ]
-    }
-
     const target = await recheckCharacterForWrite(id, ctx, char)
     if (!target) {
       return [
@@ -1127,15 +1042,6 @@ export class CharacterHandler extends MCPToolHandler {
         {
           type: 'text',
           text: `Error: The id pointed to a group chat, not a character.`,
-        },
-      ]
-    }
-
-    if (!(await this.promptAccess('risu-set-character-lua-script', `modify character (${char.name}) lua script`))) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
         },
       ]
     }

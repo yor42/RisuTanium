@@ -7,6 +7,13 @@ import type { UnitType } from '../format'
 export const CHUNK_MEMO_CHARACTER_CAP = 16 * 1024 * 1024
 export const CHUNK_MEMO_TOTAL_BUDGET = 64 * 1024 * 1024
 
+/**
+ * The workspace memo's caps: one workspace holds up to 25 MiB of text in 500 files and all workspaces up to 100 MiB, each
+ * charged at two bytes per unit plus the entry, so a full profile fits and past the caps eviction only costs a re-hash.
+ */
+export const WORKSPACE_MEMO_BUCKET_CAP = 2 * 25 * 1024 * 1024 + 500 * 96
+export const WORKSPACE_MEMO_TOTAL_BUDGET = 2 * 100 * 1024 * 1024 + 4 * 1024 * 1024
+
 /** What one remembered payload is charged: V8 keeps text at up to two bytes per unit; plus the entry and its string header. */
 export function chunkMemoChargeOf(payload: string): number {
     return 2 * payload.length + 96
@@ -101,6 +108,25 @@ export class ChunkMemo {
         bucket.charged += charge
         this.charged += charge
         return true
+    }
+
+    /**
+     * Forgets every entry whose identity `keep` refuses, so text of a removed unit is not pinned: each dropped entry's
+     * charge leaves its bucket and the total, and a bucket left empty is dropped. Lookup order of the kept entries is unchanged.
+     */
+    retainOnly(keep: (identity: string) => boolean): void {
+        for (const [key, bucket] of this.buckets) {
+            for (const [identity, held] of bucket.entries) {
+                if (!keep(identity)) {
+                    bucket.entries.delete(identity)
+                    bucket.charged -= held.charge
+                    this.charged -= held.charge
+                }
+            }
+            if (bucket.entries.size === 0) {
+                this.buckets.delete(key)
+            }
+        }
     }
 
     /** How many chunks are remembered and what they are charged in total: at most the total budget. */

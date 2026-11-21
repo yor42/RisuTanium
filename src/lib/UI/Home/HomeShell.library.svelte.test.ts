@@ -90,11 +90,18 @@ vi.mock('./HomeLibrary.svelte', () => ({
     },
 }))
 
+vi.mock('./homeJump', async (importActual) => {
+    const actual = await importActual<typeof import('./homeJump')>()
+    return { ...actual, jumpToSection: vi.fn(actual.jumpToSection) }
+})
+
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
 import { homeView, showHomeLanding, startHomeView } from './homeView.svelte'
 import { DBState, OpenRealmStore } from 'src/ts/stores.svelte'
+import { jumpToSection } from './homeJump'
+import { reducedMotionActive } from 'src/ts/chatShell/motionPrefs.svelte'
 
 type Slot = Record<string, unknown>
 
@@ -354,5 +361,77 @@ describe('touching the library engages it', () => {
         root.querySelector('aside[data-part="home-side"]')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
         root.querySelector('[data-part="home-head"]')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
         expect(homeView.libraryEngaged).toBe(false)
+    })
+})
+
+describe('the phone jump row', () => {
+    const row = (root: ParentNode) => root.querySelector<HTMLElement>('nav[data-part="home-jump"]')
+    const jumpLinks = (root: ParentNode) => Array.from(root.querySelectorAll<HTMLElement>('[data-part="home-jump-link"]'))
+
+    test('S4c-R1: two live and one trashed character at 360 give both entries, Characters counting only live ones', () => {
+        setWidth(360)
+        setCharacters([warm('a'), warm('b'), warm('c', { trashTime: 3 })])
+        const root = mountShell()
+        expect(row(root)).not.toBeNull()
+        expect(jumpLinks(root).map((b) => b.textContent?.trim())).toEqual([language.homeJumpCharacters(2), language.hub])
+    })
+
+    test('S4c-R2: every character trashed shows Characters (0)', () => {
+        setWidth(360)
+        setCharacters([warm('a', { trashTime: 3 }), warm('b', { trashTime: 3 })])
+        const root = mountShell()
+        expect(row(root)).not.toBeNull()
+        expect(jumpLinks(root)[0].textContent?.trim()).toBe(language.homeJumpCharacters(0))
+    })
+
+    test('S4c-R3: no row with Realm hidden, with no characters, or outside the phone band (guard)', () => {
+        setWidth(360)
+        setCharacters([warm('a')])
+        ;(DBState.db as unknown as Slot).hideRealm = true
+        expect(row(mountShell())).toBeNull()
+        setCharacters([])
+        expect(row(mountShell())).toBeNull()
+        for (const width of [900, 1280]) {
+            setWidth(width)
+            setCharacters([warm('a')])
+            expect(row(mountShell())).toBeNull()
+        }
+    })
+
+    test('S4c-R4: the Realm entry is present with the consent placeholder and does not wait for the hub fetch', () => {
+        setWidth(360)
+        setCharacters([warm('a')])
+        const root = mountShell()
+        expect(root.querySelector('[data-part="home-realm"]')).not.toBeNull()
+        expect(jumpLinks(root).map((b) => b.textContent?.trim())).toContain(language.hub)
+    })
+
+    test('S4c-U1: the Realm entry jumps to the panel heading in the landing scroller and focuses it', () => {
+        setWidth(360)
+        setCharacters([warm('a')])
+        const root = mountShell()
+        const heading = root.querySelector<HTMLElement>('[data-jump-target="realm"]')!
+        const scroller = root.querySelector('[data-part="home-body"]')!.parentElement!
+        vi.mocked(jumpToSection).mockClear()
+        // jsdom has no element scrolling; the real jumpToSection still runs, so the focus is real.
+        const scrollTo = vi.fn()
+        Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollTo })
+        jumpLinks(root).find((b) => b.textContent?.trim() === language.hub)!.click()
+        expect(jumpToSection).toHaveBeenCalledTimes(1)
+        const args = vi.mocked(jumpToSection).mock.calls[0][0]
+        expect(args.target).toBe(heading)
+        expect(args.scroller).toBe(scroller)
+        expect(args.reduced).toBe(reducedMotionActive())
+        expect(scrollTo).toHaveBeenCalledTimes(1)
+        expect(document.activeElement).toBe(heading)
+    })
+
+    test('S4c-U1: the Characters entry raises the library request the shell reveals', () => {
+        setWidth(360)
+        setCharacters([warm('a')])
+        const root = mountShell()
+        const before = homeView.libraryRequest
+        jumpLinks(root)[0].click()
+        expect(homeView.libraryRequest).toBe(before + 1)
     })
 })

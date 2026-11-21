@@ -383,3 +383,18 @@ describe('New', () => {
         expect(utilityConversation.runId).toBeNull()
     })
 })
+
+describe('no workspace (T20)', () => {
+    test('the request is the one a conversation without a workspace always sent', async () => {
+        h.request.mockResolvedValue({ type: 'success', result: 'ok' })
+
+        await sendUtility('p1', 'hello')
+
+        const arg = h.request.mock.calls[0][0]
+        expect(arg.tools).toEqual([])
+        expect('toolLoop' in arg).toBe(false)
+        expect(arg.useStreaming).toBe(true)
+        expect(arg.formated).toEqual([{ role: 'system', content: 'Fix it.' }, { role: 'user', content: 'hello' }])
+        expect(utilityConversation.workspaceId).toBeNull()
+    })
+})

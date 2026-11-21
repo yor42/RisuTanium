@@ -151,11 +151,14 @@ function countReleases(): { acquired: number, released: number } {
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountModules(): HTMLElement {
+async function mountModules(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ModuleSettings, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    // The window host reads the list's geometry in a microtask after mount; rows mount after that read.
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -223,7 +226,7 @@ describe('share of a module stub', () => {
         installDb([stubOf('Ma'), residentOf('Mb')])
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
         h.select = select
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[SHARE])
         expect(h.exported).toHaveLength(1)
         const exported = h.exported[0].module as RisuModule
@@ -238,7 +241,7 @@ describe('share of a module stub', () => {
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
         const counts = countReleases()
         h.select = 'offered-cancel'
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[SHARE])
         expect(h.offered).toEqual([{ cancel: ALERT_SELECT_CANCEL }])
         expect(h.exported).toHaveLength(0)
@@ -249,7 +252,7 @@ describe('share of a module stub', () => {
     test('a load failure exports nothing and names the module', async () => {
         installDb([stubOf('Ma')])
         acquire.registerModuleLoader(async () => { throw new Error('disk gone') })
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[SHARE])
         expect(h.exported).toHaveLength(0)
         expect(h.alertError).toHaveBeenCalledWith(language.moduleLoadFailed('Ma'))
@@ -258,7 +261,7 @@ describe('share of a module stub', () => {
     test('guard: a resident module is exported as the row object', async () => {
         const row = residentOf('Mb')
         installDb([row])
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Mb')[SHARE])
         expect(h.exported[0].module).toBe(DBState.db.modules[0])
     })
@@ -268,7 +271,7 @@ describe('share of a module stub', () => {
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
         const counts = countReleases()
         h.select = select
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[SHARE])
         expect(counts).toEqual({ acquired: 1, released: 1 })
     })
@@ -279,7 +282,7 @@ describe('convert to character of a module stub', () => {
         installDb([stubOf('Ma')])
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
         const counts = countReleases()
-        const target = mountModules()
+        const target = await mountModules()
         await click(conversionToggle(target))
         await click(rowButtons(target, 'Ma')[0])
         const pushed = DBState.db.characters as unknown as { lore: { content: string }[] }[]
@@ -291,7 +294,7 @@ describe('convert to character of a module stub', () => {
 
     test('a load failure pushes no character and shows no success message', async () => {
         installDb([stubOf('Ma')])
-        const target = mountModules()
+        const target = await mountModules()
         await click(conversionToggle(target))
         await click(rowButtons(target, 'Ma')[0])
         expect(DBState.db.characters).toHaveLength(0)
@@ -304,7 +307,7 @@ describe('module editor over a module stub', () => {
     test('editor-opens-on-loaded-module: the form receives the live loaded module, not the stub', async () => {
         installDb([stubOf('Ma'), residentOf('Mb')])
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[EDIT])
         expect(editorOpen(target)).toBe(true)
         const received = h.menu.props!.currentModule
@@ -316,7 +319,7 @@ describe('module editor over a module stub', () => {
     test('guard: an edit through the form\'s bound object lands in the live slot', async () => {
         installDb([stubOf('Ma')])
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[EDIT])
         h.menu.props!.currentModule.description = 'edited'
         flushSync()
@@ -327,7 +330,7 @@ describe('module editor over a module stub', () => {
         installDb([stubOf('Ma')])
         const slot = DBState.db.modules[0]
         acquire.registerModuleLoader(async () => { throw new Error('disk gone') })
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[EDIT])
         expect(editorOpen(target)).toBe(false)
         expect(h.menu.renders).toBe(0)
@@ -346,7 +349,7 @@ describe('module editor over a module stub', () => {
         })
         acquire.registerModuleLoader(loader)
         const counts = countReleases()
-        const target = mountModules()
+        const target = await mountModules()
         const edit = rowButtons(target, 'Ma')[EDIT]
         edit.click()
         edit.click()
@@ -373,7 +376,7 @@ describe('module editor over a module stub', () => {
         installDb([stubOf('Ma')])
         const gate = registerDeferred()
         const counts = countReleases()
-        const target = mountModules()
+        const target = await mountModules()
         rowButtons(target, 'Ma')[EDIT].click()
         await settle()
         await unmountAll()
@@ -387,7 +390,7 @@ describe('module editor over a module stub', () => {
         installDb([stubOf('Ma')])
         const gate = registerDeferred()
         const counts = countReleases()
-        const target = mountModules()
+        const target = await mountModules()
         rowButtons(target, 'Ma')[EDIT].click()
         await settle()
         await click(Array.from(target.querySelectorAll('div.flex.mr-2.mt-4 > button'))[0] as HTMLButtonElement)
@@ -406,7 +409,7 @@ describe('module editor over a module stub', () => {
             DBState.db.modules.splice(0, 1)
             return bodyOf('Ma')
         })
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[EDIT])
         expect(editorOpen(target)).toBe(false)
         expect(counts.acquired).toBe(1)
@@ -416,7 +419,7 @@ describe('module editor over a module stub', () => {
     test('editor-save-refinds-slot: a slot removed above the edited module while the editor is open does not misdirect the save', async () => {
         installDb([residentOf('Ma'), stubOf('Mb'), residentOf('Mc'), residentOf('Md')])
         registerInstalling({ 'id-Mb': bodyOf('Mb') })
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Mb')[EDIT])
         DBState.db.modules.splice(0, 1)
         flushSync()
@@ -427,7 +430,7 @@ describe('module editor over a module stub', () => {
 
     test('a module deleted while the editor is open is not written back', async () => {
         installDb([residentOf('Ma'), residentOf('Mb'), residentOf('Mc')])
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Mb')[EDIT])
         DBState.db.modules.splice(1, 1)
         flushSync()
@@ -437,7 +440,7 @@ describe('module editor over a module stub', () => {
 
     test('guard: saving an unchanged open editor keeps the module in its slot', async () => {
         installDb([residentOf('Ma'), residentOf('Mb')])
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Mb')[EDIT])
         await click(saveButton(target))
         expect(DBState.db.modules.map((m) => m.name)).toEqual(['Ma', 'Mb'])
@@ -448,7 +451,7 @@ describe('module editor over a module stub', () => {
         installDb([stubOf('Ma')])
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
         const counts = countReleases()
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[EDIT])
         expect(counts).toEqual({ acquired: 1, released: 0 })
         await click(saveButton(target))
@@ -459,7 +462,7 @@ describe('module editor over a module stub', () => {
         installDb([stubOf('Ma')])
         registerInstalling({ 'id-Ma': bodyOf('Ma') })
         const counts = countReleases()
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[EDIT])
         await unmountAll()
         expect(counts).toEqual({ acquired: 1, released: 1 })
@@ -467,9 +470,9 @@ describe('module editor over a module stub', () => {
 })
 
 describe('module list over a module stub', () => {
-    test('guard: stub-row-renders-list-fields: name, description and the MCP icon come from the stub', () => {
+    test('guard: stub-row-renders-list-fields: name, description and the MCP icon come from the stub', async () => {
         installDb([stubOf('Ma'), stubOf('Mm', { mcp: true })])
-        const target = mountModules()
+        const target = await mountModules()
         const names = Array.from(target.querySelectorAll('span.text-lg')).map((s) => s.textContent?.trim())
         expect(names).toEqual(['Ma', 'Mm'])
         expect(target.textContent).toContain('desc Ma')
@@ -481,7 +484,7 @@ describe('module list over a module stub', () => {
     test('guard: toggle-and-delete-do-not-load: enabling and removing a stub never call the loader', async () => {
         installDb([stubOf('Ma'), stubOf('Mb')])
         const loader = registerInstalling({})
-        const target = mountModules()
+        const target = await mountModules()
         await click(rowButtons(target, 'Ma')[GLOBE])
         expect(DBState.db.enabledModules).toEqual(['id-Ma'])
         await click(rowButtons(target, 'Ma')[REMOVE])

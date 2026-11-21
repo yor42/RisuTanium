@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The four radios of the backup chooser (format rtb and bin, scope full and partial) are named through aria-label
+ * The four radios of the backup chooser (format rtb and bin, scope full and, for .rtb, settings) are named through aria-label
  * equal to the visible choice text. REAL: BackupChooserSheet and PatternDialog. MOCKED: the Back handlers, as the
  * sibling test does.
  */
@@ -36,7 +36,7 @@ describe('BackupChooserSheet form control names', () => {
             language.settingsShellDataFormatRtb,
             language.settingsShellDataFormatBin,
             language.settingsShellDataScopeFull,
-            language.settingsShellDataScopePartial,
+            language.settingsShellDataScopeSettings,
         ])
         for (const radio of radios) {
             expect(radio.hasAttribute('aria-labelledby')).toBe(false)

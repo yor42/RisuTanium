@@ -140,7 +140,7 @@ If `VITE_RISU_LEGAL_CONFIGURED` is empty or unset at build time, the frontend sh
 
 These files set the variable to `TRUE`:
 
-- `.env.production`. The commands `pnpm build`, `pnpm buildsite`, `pnpm tauribuild` and `pnpm hono:build` read it.
+- `.env.production`. The commands `pnpm build`, `pnpm tauribuild` and `pnpm hono:build` read it.
 - `.env.development`. The command `pnpm dev` reads it.
 - The Docker build. See [Docker](#docker).
 

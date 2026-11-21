@@ -190,6 +190,20 @@ describe('the order of a successful restore (T-S1)', () => {
     })
 })
 
+describe('a settings-only file (T13)', () => {
+    const SETTINGS_END = { kind: 'settings', settings: { values: [] }, file: { name: 'a.rtb', size: 1, lastModified: 1 } } as unknown as RtbVerifyEnd
+
+    test('is refused with the hint and ends cancelled: nothing is copied, planned or installed, the hold is released false (guard; M7 fails it)', async () => {
+        const r = rig({ deps: { verify: async () => { return SETTINGS_END } } })
+        expect(await r.run()).toEqual(CANCELLED)
+        expect(r.errors).toEqual([language.rtbRestoreSettingsAtStart])
+        for (const step of ['copy', 'reread', 'plan', 'keep', 'snapshot', 'commit-start', 'mark', 'sides']) {
+            expect(r.log, step).not.toContain(step)
+        }
+        expect(r.releases).toEqual([false])
+        expect(r.log.at(-1)).toBe('busy-end')
+    })
+})
 describe('the gate (T-S2)', () => {
     test('a busy refusal at the gate ends cancelled before the marker, with the copied-kept message and no grant cleared (M5, M21)', async () => {
         const r = rig({ busy: [false, true] })

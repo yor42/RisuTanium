@@ -40,27 +40,28 @@ export async function getCharacterForRead(id: string, subject?: RunSubject): Pro
 }
 
 /**
- * Fork-specific internal API (CHORE-01): resolves a character for a MUTATING risuaccess tool. The tool
- * asks the user for confirmation next, and every write follows that awaited prompt, so the write goes
- * through `recheckCharacterForWrite` first; this only names the character the prompt is about.
+ * Fork-specific internal API (CHORE-01): resolves a character for a MUTATING risuaccess tool. The user's
+ * approval is asked at the gate before the handler runs, and a handler can still await a cold restore
+ * before it writes, so the write goes through `recheckCharacterForWrite` first; this only names the
+ * character the handler is about.
  */
 export function getCharacterForWrite(id: string, ctx: MCPToolCallContext): character | groupChat {
   return getCharacter(id, ctx.subject)
 }
 
 /**
- * Fork-specific internal API (CHORE-01): the character a mutating tool writes, resolved again after its
- * confirm prompt. Records its chaId in the per-call context (`touched`); the save marks of a whole call
+ * Fork-specific internal API (CHORE-01): the character a mutating tool writes, resolved again before the
+ * write. Records its chaId in the per-call context (`touched`); the save marks of a whole call
  * are flushed in one place, `RisuAccessClient.callTool`'s `finally` (client.ts), which also covers a
  * handler that throws after a partial write. A refused write records nothing.
  *
  * A call that carries a subject and no `id` resolves the subject again: null when it is gone or
- * ambiguous. The check that the result still has the chaId the prompt named is defensive only, since a
+ * ambiguous. The check that the result still has the chaId chosen earlier is defensive only, since a
  * subject's owner is found by its origin's chaId.
  *
- * Any other call finds the character in the list again: the character chosen before the prompt while
+ * Any other call finds the character in the list again: the character chosen earlier while
  * it is still there, else the sole holder of its chaId, because the character may have been restored,
- * replaced or deleted while the prompt was open. Null when none is found (the tool then reports that
+ * replaced or deleted since. Null when none is found (the tool then reports that
  * the character is gone). When that character is still an archived placeholder it is restored
  * from its unit first and the write goes to the restored character, found again by chaId; a failed
  * restore throws (reported as error text by `callTool`), leaves the placeholder unchanged and shows

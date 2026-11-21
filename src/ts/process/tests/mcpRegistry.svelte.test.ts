@@ -54,6 +54,8 @@ vi.mock('../../stores.svelte', () => {
     }
 })
 
+vi.mock('../mcp/toolApproval', () => ({ TOOL_SUMMARY_LIMIT: 800, askToolApproval: vi.fn(async () => 'once') }))
+
 vi.mock('../../alert', () => ({
     alertError: vi.fn(), alertToast: vi.fn(), alertInput: vi.fn(async () => ''), alertNormal: vi.fn(), alertSelect: vi.fn(async () => ''),
     alertConfirm: vi.fn(async () => true), alertClear: vi.fn(), alertModuleSelect: vi.fn(async () => -1), alertStore: writable({ type: '', msg: '' }), alertWait: vi.fn(),
@@ -521,15 +523,15 @@ describe('an activity lists and calls only its own module set', () => {
         expect(names(listedY)).toEqual(['tool_y'])
     })
 
-    // Fails an implementation that scans every registered client by name and reaches the first one that has the tool.
-    test('guard: a call by name with no subject reaches the selection\'s client, never another set\'s client with a same-named tool', async () => {
+    // Fails an implementation that ignores the routing URL and reaches another client that has a same-named tool.
+    test('guard: a call with a URL and no subject reaches that URL\'s client, never another set\'s client with a same-named tool', async () => {
         const modXo = mod('m-xo', 'https://x.other/mcp')
         install([[M_X], ['m-xo']], [modX, modXo])
         await mcp.getMCPTools()
         selectedCharID.set(1)
         await mcp.getMCPTools()
 
-        const result = await mcp.callTool('tool_x', {})
+        const result = await mcp.callTool('tool_x', {}, { mcpURL: 'https://x.other/mcp' })
 
         expect(textOf(result)).toContain('ok:https://x.other/mcp')
     })
@@ -750,12 +752,12 @@ describe('internal:risuai is callable from every set and listed only by the sets
         expect(f.risuInstances).toBe(1)
     })
 
-    test('guard: a call by name with no subject under a set that does not include it reaches it', async () => {
+    test('guard: a call with a URL and no subject under a set that does not include it reaches it', async () => {
         install(sets, [slow, modRisu, modY])
         selectedCharID.set(1)
         await mcp.getMCPTools()
 
-        const result = await mcp.callTool('risu-list-characters', {})
+        const result = await mcp.callTool('risu-list-characters', {}, { mcpURL: 'internal:risuai' })
 
         expect(textOf(result)).not.toContain('not found')
         expect(textOf(result)).toContain('Char0')
@@ -777,7 +779,7 @@ describe('a plugin MCP callback receives exactly the tool name and the arguments
 
         const tools = await mcp.getMCPTools(undefined, request)
         const withSubject = await mcp.callTool('plug_tool', { a: 1 }, { subject: request, mcpURL: 'plugin:p1' })
-        const withoutSubject = await mcp.callTool('plug_tool', { a: 1 })
+        const withoutSubject = await mcp.callTool('plug_tool', { a: 1 }, { mcpURL: 'plugin:p1' })
 
         expect(names(tools)).toEqual(['plug_tool'])
         expect(textOf(withSubject)).toBe('plug-ok')

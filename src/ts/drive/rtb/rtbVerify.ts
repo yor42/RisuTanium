@@ -19,12 +19,14 @@ import { WALK_PARENT_TYPES } from '../../storage/store2/rtb/rows'
 import { FRAME_FMT } from '../../storage/store2/format/versions'
 import { isKnownUnitType, UNIT_TYPE, type Ref } from '../../storage/store2/format'
 import { decodeInlayMeta, pairInlayEntries, type InlayPair } from './inlayEntries'
-import { sideDataName } from './entryNames'
+import { SETTINGS_DATA_ENTRY, sideDataName } from './entryNames'
 import type { RtbManifest } from './manifest'
 import { RtbCouldNotReadError, type RangeSource } from './rangeSource'
 import { classifyRtb, type NewerReason, type RtbNotice } from './rtbClassify'
 import type { SectionRow } from './sections'
 import { decideSideSections, type SideAction } from './sideDecision'
+import { decodeSideLines, SIDE_LINE_MAX_BYTES } from './sideLines'
+import { RTB_SIDE_TAGS } from './sideTags'
 import { decodeBlock } from './unitBlocks'
 import { readEntry, type ZipIndex } from './zip64Reader'
 
@@ -84,8 +86,23 @@ export interface VerifiedRtb {
     side: SidePlanItem[]
 }
 
+/**
+ * A verified settings-only file: the decoded lines of `settings/data.jsonl` and, when the file has the row, of
+ * `side.ui-prefs`. No key is repeated across the plain and the tagged lines of the settings entry.
+ */
+export interface VerifiedSettings {
+    manifest: RtbManifest
+    notice: RtbNotice
+    values: { key: string, value: unknown }[]
+    uiPrefs: { key: string, value: unknown }[] | null
+    /** Lines of the settings entry that sit under a tag; none of them is carried. */
+    taggedLines: { key: string, tag: string }[]
+}
+
 export type RtbVerdict =
     | { kind: 'ok', verified: VerifiedRtb }
+    /** A settings-only file; it is never a whole backup and no store2 restore step may take it. */
+    | { kind: 'settings', verified: VerifiedSettings }
     | { kind: 'not-an-rtb' }
     | { kind: 'encrypted' }
     | { kind: 'newer', item: NewerItem }
@@ -291,9 +308,74 @@ async function planSide(source: RangeSource, index: ZipIndex, rows: readonly Sec
     return items
 }
 
+type EntryBytes = { ok: true, bytes: Uint8Array } | { ok: false, reason: string }
+
+/** The inflated, CRC-checked bytes of the one entry named `name`, refused over `cap` before anything is allocated. */
+async function readOneEntry(source: RangeSource, index: ZipIndex, name: string, cap: number): Promise<EntryBytes> {
+    const found = index.find(name)
+    if (found.length !== 1) {
+        return { ok: false, reason: `${name} is not exactly one entry` }
+    }
+    const entry = index.entry(found[0])
+    if (entry.uncompressedSize > cap) {
+        return { ok: false, reason: `${name} declares ${entry.uncompressedSize} bytes, over the ${cap} byte limit` }
+    }
+    const bytes = new Uint8Array(entry.uncompressedSize)
+    let at = 0
+    const read = await readEntry(source, index, found[0], (chunk) => {
+        bytes.set(chunk, at)
+        at += chunk.length
+    })
+    if (read.ok === false) {
+        return { ok: false, reason: `${name}: ${read.finding.code}: ${read.finding.detail}` }
+    }
+    return { ok: true, bytes }
+}
+
+/**
+ * The verification of a settings-only file: its one data entry and, when present, the `side.ui-prefs` entry are read
+ * through and decoded. A damaged line, a bad CRC, an oversize entry or a key that appears twice in the settings entry
+ * (plain or tagged) makes the file damaged. Nothing is written.
+ */
+async function verifySettings(source: RangeSource, index: ZipIndex, rows: readonly SectionRow[], manifest: RtbManifest, notice: RtbNotice): Promise<RtbVerdict> {
+    const data = await readOneEntry(source, index, SETTINGS_DATA_ENTRY, SIDE_LINE_MAX_BYTES)
+    if (data.ok === false) {
+        return { kind: 'damaged', reason: data.reason }
+    }
+    const decoded = decodeSideLines(data.bytes, [])
+    if (decoded.kind === 'damaged') {
+        return { kind: 'damaged', reason: `${SETTINGS_DATA_ENTRY}: line ${decoded.line}: ${decoded.reason}` }
+    }
+    const seen = new Set<string>()
+    for (const { key } of [...decoded.values, ...decoded.skipped]) {
+        if (seen.has(key)) {
+            return { kind: 'damaged', reason: `${SETTINGS_DATA_ENTRY}: the key ${JSON.stringify(key)} appears more than once` }
+        }
+        seen.add(key)
+    }
+
+    let uiPrefs: VerifiedSettings['uiPrefs'] = null
+    if (rows.some((row) => row.id === 'side.ui-prefs')) {
+        const name = sideDataName('side.ui-prefs') as string
+        const prefs = await readOneEntry(source, index, name, SIDE_LINE_MAX_BYTES)
+        if (prefs.ok === false) {
+            return { kind: 'damaged', reason: prefs.reason }
+        }
+        const lines = decodeSideLines(prefs.bytes, RTB_SIDE_TAGS)
+        if (lines.kind === 'damaged') {
+            return { kind: 'damaged', reason: `${name}: line ${lines.line}: ${lines.reason}` }
+        }
+        uiPrefs = lines.values
+    }
+
+    return { kind: 'settings', verified: { manifest, notice, values: decoded.values, uiPrefs, taggedLines: decoded.skipped } }
+}
+
 async function verifyUnguarded(source: RangeSource, options: VerifyOptions): Promise<RtbVerdict> {
     const classified = await classifyRtb(source, options.manifestCap === undefined ? {} : { manifestCap: options.manifestCap })
     switch (classified.kind) {
+        case 'settings':
+            return verifySettings(source, classified.index, classified.rows, classified.manifest, classified.notice)
         case 'could-not-read':
             return { kind: 'could-not-read', message: classified.message }
         case 'not-an-rtb':

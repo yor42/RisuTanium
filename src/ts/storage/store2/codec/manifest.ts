@@ -1,4 +1,4 @@
-import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, REQ_WORKSPACES, unionReq, type ListRef, type Manifest, type Ref } from '../format'
 import { sameJsonValue } from './normalize'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 
@@ -32,6 +32,8 @@ export interface ManifestParts {
     taskPresets?: Ref[]
     plugins: Ref[]
     pluginStorageRefs: Ref[]
+    /** One Ref per utility workspace record; a non-empty list adds the `utility-workspaces` token, which a later write never lowers. */
+    workspaces?: Ref[]
 }
 
 /**
@@ -79,9 +81,13 @@ export function manifestStateEquals(next: Manifest, previous: Manifest | undefin
  */
 export function buildManifest(parts: ManifestParts): Manifest {
     const hasTaskPresets = parts.taskPresets !== undefined && parts.taskPresets.length > 0
+    const hasWorkspaces = parts.workspaces !== undefined && parts.workspaces.length > 0
     const manifest: Manifest = {
         fmt: 1,
-        req: unionReq(MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : [], parts.moduleBuckets?.length ? [REQ_MODULE_BUCKETS] : []),
+        req: unionReq(
+            MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : [],
+            parts.moduleBuckets?.length ? [REQ_MODULE_BUCKETS] : [], hasWorkspaces ? [REQ_WORKSPACES] : [],
+        ),
         seq: parts.seq,
         createdAt: parts.createdAt,
         shardCount: parts.shardCount,
@@ -105,6 +111,9 @@ export function buildManifest(parts: ManifestParts): Manifest {
     }
     if (parts.moduleBuckets !== undefined && parts.moduleBuckets.length > 0) {
         manifest.fixed.moduleBuckets = parts.moduleBuckets
+    }
+    if (hasWorkspaces && parts.workspaces !== undefined) {
+        manifest.fixed.workspaces = parts.workspaces
     }
     return manifest
 }

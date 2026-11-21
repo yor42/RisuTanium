@@ -107,7 +107,6 @@ beforeEach(() => {
   loads = []
   acquireSpy.releases = 0
   acquireSpy.calls = 0
-  vi.mocked(alertConfirm).mockResolvedValue(true)
   DBState.db.enabledModules = []
 })
 
@@ -140,6 +139,7 @@ test('risuaccess-edit-persists-in-live-slot: set lorebook, regex and lua on a st
   expect(DBState.db.modules[1].regex?.[0].in).toBe('editedIn')
   expect((DBState.db.modules[2].trigger?.[0].effect[0] as { code: string }).code).toBe('print("new")')
   expect(acquireSpy.releases).toBe(3)
+  expect(vi.mocked(alertConfirm)).not.toHaveBeenCalled()
 })
 
 test('risuaccess-load-failure-is-error-text: a loader rejection is the tool error naming the module, never a throw', async () => {

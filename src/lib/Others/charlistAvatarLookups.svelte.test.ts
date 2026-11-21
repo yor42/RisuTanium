@@ -113,7 +113,6 @@ vi.mock(
             aiWatermarkingLawApplies: vi.fn(() => false),
             changeChatTo: vi.fn(),
             hubURL: '',
-            usingSw: false,
             // AlertComp.svelte's own direct needs (its selectChar branch
             // never calls these, but the named imports must resolve).
             getFetchLogs: vi.fn(() => []),

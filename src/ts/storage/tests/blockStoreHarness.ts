@@ -3,8 +3,8 @@
  * (revisions, tombstones, 409s) or like the unversioned stores, records every
  * call and injects faults.
  *
- * Nothing here says anything about the real stores: the real Node server and
- * fake-indexeddb are exercised by their own tests.
+ * Nothing here says anything about the real stores: they are exercised by
+ * their own tests.
  */
 import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from 'src/ts/storage/store/contract'
 import {

@@ -115,6 +115,8 @@ class ResizeObserverStub {
     observe(): void {
         this.callback([{ contentRect: { width: 1200 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
+    // The windowed lists stop observing a row when it unmounts.
+    unobserve(): void {}
     disconnect(): void {}
 }
 

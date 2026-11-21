@@ -20,7 +20,7 @@ import type { SectionRow } from './rtb/sections'
 import type { RangeSource } from './rtb/rangeSource'
 import type { ZipIndex } from './rtb/zip64Reader'
 import { planAssets, type AssetPlanDeps, type AssetsPlan, type CreatableRule, type InlaysPlan, type SizedListing } from './rtb/rtbAssetPlan'
-import { verifyRtb, type NewerItem, type RtbVerdict, type SidePlanItem, type Store2Plan, type VerifyOptions } from './rtb/rtbVerify'
+import { verifyRtb, type NewerItem, type RtbVerdict, type SidePlanItem, type Store2Plan, type VerifiedSettings, type VerifyOptions } from './rtb/rtbVerify'
 import type { ImportSource } from '../importSource'
 import { nodePieceStore } from './assetPieces'
 import { ExportCancelledError } from '../exportCancel'
@@ -102,8 +102,16 @@ export type RtbPrepareCause =
     /** The person pressed Cancel before the point of no return, or the lock was refused. */
     | 'cancelled'
 
+/** A settings-only file that passed verification: nothing was written, no plan and no hold are carried, and no install or finish step applies. */
+export interface RtbSettingsFile {
+    kind: 'settings'
+    settings: VerifiedSettings
+    file: { name: string | null, size: number, lastModified: number | null }
+}
+
 export type RtbPrepareEnd =
     | { kind: 'ready', plan: RestorePlan, hold: RestoreHold }
+    | RtbSettingsFile
     | { kind: 'ended', outcome: 'canceled' | 'nothing-replaced' | 'failed', cause: RtbPrepareCause | null }
 
 /** The calls `prepareRtbRestore` makes outside the file; tests replace them to observe order and to keep the page out of it. */
@@ -270,7 +278,7 @@ export interface VerifiedRtb {
 }
 
 export type RtbVerifyDeps = Pick<RtbPrepareDeps, 'verify' | 'password' | 'assetDeps' | 'confirmScale' | 'confirm' | 'error' | 'wait'>
-export type RtbVerifyEnd = { kind: 'ok', verified: VerifiedRtb } | RtbEnded
+export type RtbVerifyEnd = { kind: 'ok', verified: VerifiedRtb } | RtbSettingsFile | RtbEnded
 
 /** The verification and prompt calls of the real page; the start-up restore uses the same ones. */
 export function realVerifyDeps(): RtbVerifyDeps {
@@ -337,6 +345,13 @@ export async function verifyAndConfirm(picked: PickedRtb, deps: RtbVerifyDeps, o
             console.warn(verdict.item)
             deps.error(language.rtbRestoreNewer(cut(describeNewer(verdict.item), NEWER_TEXT_CHARS)))
             return ended('nothing-replaced', 'newer')
+        case 'settings': {
+            // A settings-only file leaves here, before P.1, P.1b and the asset plan: it has no store2, assets or inlays to plan.
+            const cancelled = stopped()
+            return cancelled !== null
+                ? cancelled
+                : { kind: 'settings', settings: verdict.verified, file: { name: picked.name, size: picked.size, lastModified: picked.lastModified } }
+        }
         case 'ok':
             break
     }
@@ -617,6 +632,14 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
             cancel: options.cancel,
         })
         if (verifiedEnd.kind === 'ended') {
+            return verifiedEnd
+        }
+        if (verifiedEnd.kind === 'settings') {
+            // Not ready: the `finally` releases the hold, because a settings restore installs nothing. The apply that follows
+            // asks its own confirmation, so Cancel is locked here as it is before a copy.
+            if (options.cancel !== undefined && !options.cancel.lockCancel()) {
+                return ended('canceled', 'cancelled')
+            }
             return verifiedEnd
         }
         // The point of no return: the copy that follows is the first write of what the backup holds. A Cancel that came

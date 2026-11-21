@@ -73,7 +73,6 @@ vi.mock('src/ts/process/modules', () => ({
 vi.mock('src/ts/globalApi.svelte', () => ({
     aiWatermarkingLawApplies: () => false,
     getFileSrc: async (path: string) => `blob:${path}`,
-    setUsingSw: vi.fn(),
     readImage: vi.fn(),
 }))
 
