@@ -1,0 +1,145 @@
+/*
+  Thanksgiving scene styles. Every class is rt-tg-*; no shared tokens are defined. Default rules = start pose; .rt-tg-final =
+  final pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the
+  root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-tg-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+.rt-tg-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* Warm amber-russet breeze: low sun from the right, soft streaks painted in (static). */
+  background:
+    linear-gradient(170deg, rgb(255 209 102 / 0) 30%, rgb(255 209 102 / 0.08) 31%, rgb(255 209 102 / 0) 36%),
+    linear-gradient(172deg, rgb(255 180 90 / 0) 58%, rgb(255 180 90 / 0.07) 59%, rgb(255 180 90 / 0) 64%),
+    radial-gradient(ellipse 50% 90% at 100% 60%, rgb(245 158 11 / 0.2), rgb(245 158 11 / 0) 70%),
+    linear-gradient(180deg, rgb(120 53 15 / 0.34) 0%, rgb(194 65 12 / 0.2) 66%, rgb(194 65 12 / 0.08) 100%);
+  /* A soft elliptical hole over the word box (--rt-tg-wx/-wy centre, -rx/-ry radii, set by the scene), so the wash never dims
+     the wordmark; fully clear to 68% of the radii, full wash at the ellipse edge. */
+  --rt-tg-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 56px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 14px), transparent 100%),
+    radial-gradient(circle at var(--rt-tg-mx, -100px) var(--rt-tg-my, -100px), transparent 0 18px, #000 30px),
+    radial-gradient(var(--rt-tg-rx, 1px) var(--rt-tg-ry, 1px) at var(--rt-tg-wx, -100px) var(--rt-tg-wy, -100px), transparent 0 68%, #000 100%);
+  -webkit-mask-image: var(--rt-tg-mask);
+  -webkit-mask-composite: source-in, source-in, source-in;
+  mask-image: var(--rt-tg-mask);
+  mask-composite: intersect;
+}
+.rt-tg-leaf { position: absolute; width: 14px; height: 14px; will-change: transform; }
+.rt-tg-leafsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tg-wheat { position: absolute; width: 8.4px; height: 30px; will-change: transform; }
+.rt-tg-wheatsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-tg-wstem, .rt-tg-wawn { fill: none; stroke: #e9b949; stroke-linecap: round; }
+.rt-tg-wstem { stroke-width: 1.4; }
+.rt-tg-wawn { stroke-width: 0.7; opacity: 0.8; }
+.rt-tg-wgrain { fill: #f2c55c; }
+
+.rt-tg-greet {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: #fcd34d;
+  text-shadow: 0 1px 0 rgb(120 53 15 / 0.6);
+  transform-origin: 0 50%;
+}
+.rt-tg-greet--2 .rt-tg-greet-a, .rt-tg-greet--2 .rt-tg-greet-b { display: block; line-height: 1.1; }
+.rt-tg-greet--2 .rt-tg-greet-a { color: #fde68a; }
+
+.rt-tg-sky.rt-tg-final { display: none; }
+
+[data-rt-sw-tone="light"] .rt-tg-wash {
+  background:
+    radial-gradient(ellipse 50% 90% at 100% 60%, rgb(245 158 11 / 0.2), rgb(245 158 11 / 0) 70%),
+    linear-gradient(180deg, rgb(251 191 36 / 0.2) 0%, rgb(234 88 12 / 0.12) 66%, rgb(234 88 12 / 0.04) 100%);
+}
+[data-rt-sw-tone="light"] .rt-tg-wstem,
+[data-rt-sw-tone="light"] .rt-tg-wawn { stroke: #b7791f; }
+[data-rt-sw-tone="light"] .rt-tg-wgrain { fill: #c98a1e; }
+[data-rt-sw-tone="light"] .rt-tg-greet { color: #b45309; text-shadow: none; }
+[data-rt-sw-tone="light"] .rt-tg-greet--2 .rt-tg-greet-a { color: #c2410c; }
+
+/* ---------- Mark slot ---------- */
+.rt-tg-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* SVG transforms use the local user-space origin (the default): the sheaf and its stalks turn about the tie crossing
+   (0, -6), each ear about its base and the corner leaf about its centre (each parent translates to the origin). */
+.rt-tg-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-tg-ink { fill: #0f172a; }
+
+.rt-tg-harvest, .rt-tg-sheaf, .rt-tg-ear, .rt-tg-markleaf { opacity: 0; }
+.rt-tg-cu0 { stop-color: #fff6e6; }
+.rt-tg-cu1 { stop-color: #ffe2b8; }
+.rt-tg-frame { stroke: #c46a1c; stroke-width: 3; stroke-linejoin: round; }
+.rt-tg-mid { fill: #fff6e6; }
+.rt-tg-body { fill: #f0a53a; }
+.rt-tg-straw { fill: none; stroke: #e5b345; stroke-width: 3.2; stroke-linecap: round; }
+.rt-tg-grain { fill: #f6cf6a; stroke: #a86a14; stroke-width: 0.45; stroke-linejoin: round; }
+.rt-tg-tie { fill: none; stroke: #b45309; stroke-width: 6.5; stroke-linecap: round; }
+.rt-tg-markleaf-shape { fill: #d62b33; stroke: #7f1d1d; stroke-width: 0.5; stroke-linejoin: round; }
+
+[data-rt-sw-tone="light"] .rt-tg-cu0 { stop-color: #9a3412; }
+[data-rt-sw-tone="light"] .rt-tg-cu1 { stop-color: #6b240c; }
+[data-rt-sw-tone="light"] .rt-tg-frame { stroke: none; }
+[data-rt-sw-tone="light"] .rt-tg-mid { fill: #9a3412; }
+[data-rt-sw-tone="light"] .rt-tg-body { fill: #fde7c2; }
+[data-rt-sw-tone="light"] .rt-tg-straw { stroke: #b7791f; }
+[data-rt-sw-tone="light"] .rt-tg-grain { fill: #dca12c; stroke: #7a4a0c; }
+[data-rt-sw-tone="light"] .rt-tg-tie { stroke: #9a3412; }
+
+.rt-tg-mark.rt-tg-final .rt-tg-every { opacity: 0; }
+.rt-tg-mark.rt-tg-final .rt-tg-harvest { opacity: 1; }
+.rt-tg-mark.rt-tg-final .rt-tg-sheaf, .rt-tg-mark.rt-tg-final .rt-tg-ear, .rt-tg-mark.rt-tg-final .rt-tg-markleaf { opacity: 1; transform: none; }
+.rt-tg-mark.rt-tg-final .rt-tg-stalk { transform: rotate(var(--rt-tg-a, 0deg)); }
+
+/* ---------- Word ---------- */
+.rt-tg-word { position: relative; }
+.rt-tg-perch {
+  /* A 0.5em maple leaf resting on the T's crossbar (cap top ~0.18em below the box top): its stem end tucks into
+     the bar and the leaf tip reaches about 0.3em (7 px at 24 px) above the word box. */
+  position: absolute;
+  left: calc(var(--rt-tg-tx, 2.55em) - 0.25em);
+  top: -0.3em;
+  width: 0.5em;
+  height: 0.5em;
+  pointer-events: none;
+  z-index: 2;
+}
+.rt-tg-perch-fall { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 50% 80%; }
+.rt-tg-perch .rt-tg-leafsvg { transform: rotate(-18deg); }
+.rt-tg-perchleaf { fill: #ea580c; stroke: #7c2d12; stroke-width: 0.8; stroke-linejoin: round; }
+[data-rt-sw-tone="light"] .rt-tg-perchleaf { fill: #ea580c; stroke: #9a3412; }
+
+.rt-tg-word.rt-tg-final .rt-tg-perch-fall { opacity: 1; transform: none; }
+
+/* "Tanium" copper-gold edge: a stroke-only copy behind the glyphs (z-index -1 inside the word's isolated stacking
+   context), so only the outer half of the thin stroke shows and the letters keep their weight and colour. */
+.rt-tg-tan { position: relative; }
+.rt-tg-tan::after {
+  content: attr(data-rt-tg-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0.06em rgb(240 166 74 / 0.7);
+  background: none;
+  opacity: 0;
+  pointer-events: none;
+}
+[data-rt-sw-tone="light"] .rt-tg-tan::after {
+  -webkit-text-stroke-color: rgb(217 119 6 / 0.6);
+}
+.rt-tg-word.rt-tg-final .rt-tg-tan::after { opacity: 0.9; }

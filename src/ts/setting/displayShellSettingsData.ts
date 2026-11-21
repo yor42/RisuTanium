@@ -34,7 +34,7 @@ export type DisplaySectionId =
     | 'display.advanced';
 
 /** Shell components a row can name; the page maps each to its component. */
-export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReduceCardEffectsRow' | 'ReducedMotionRow';
+export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReduceCardEffectsRow' | 'ReducedMotionRow' | 'SeasonalLogoRow';
 
 /** A row that has no effect in the current state: it stays operable and says why. */
 export interface DimRule {
@@ -191,6 +191,7 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
             plain('display.textScreenBorder'),
             plain('display.textScreenRounded'),
             plain('display.textBorder'),
+            { kind: 'shell', id: 'display.seasonalLogo', component: 'SeasonalLogoRow' },
         ],
     },
     {

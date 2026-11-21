@@ -899,43 +899,111 @@ describe('readOobaChat (unit)', () => {
         }
     })
 
-    describe('swipesNotKept', () => {
+    describe('versions as swipes', () => {
         const versionsOf = (...contents: string[]) => ({ versions: contents.map((content) => ({ content })) })
-        const count = (character: unknown, entry: unknown, userEntry?: unknown) =>
-            readOobaChat(ooba([['hi', character]], [['hi', 'x']], { assistant_0: entry, user_0: userEntry })).swipesNotKept
+        const run = (character: unknown, entry: unknown, userEntry?: unknown) =>
+            readOobaChat(ooba([['hi', character]], [['hi', 'x']], { assistant_0: entry, user_0: userEntry }))
+        const characterLine = (result: ReturnType<typeof readOobaChat>) => result.messages.find((m) => !m.isUser)
 
-        test('a shown reply with more than one version is counted once per row', () => {
-            expect(count('yo', versionsOf('yo', 'alt'))).toBe(1)
+        // Regression reproducers: on the base the other versions are only counted, so `swipes` is absent.
+        test('the other versions of a shown reply are its swipes, in version order, and nothing is counted', () => {
+            const one = run('yo', versionsOf('yo', 'alt'))
+            expect(characterLine(one)).toStrictEqual({ isUser: false, mes: 'yo', swipes: { before: [], after: ['alt'] } })
+            expect(one.swipesNotKept).toBe(0)
             const r = readOobaChat(ooba(
                 [['a', 'b'], ['c', 'd']],
                 [['a', 'b'], ['c', 'd']],
                 { assistant_0: versionsOf('b', 'b2'), assistant_1: versionsOf('d', 'd2', 'd3') },
             ))
-            expect(r.swipesNotKept).toBe(2)
+            expect(r.messages.map((m) => m.swipes)).toEqual([undefined, { before: [], after: ['b2'] }, undefined, { before: [], after: ['d2', 'd3'] }])
+            expect(r.swipesNotKept).toBe(0)
         })
 
-        test('a shown reply with one version, no versions or malformed versions is not counted', () => {
-            expect(count('yo', versionsOf('yo'))).toBe(0)
-            expect(count('yo', { versions: 'x' })).toBe(0)
-            expect(count('yo', { versions: {} })).toBe(0)
-            expect(count('yo', {})).toBe(0)
-            expect(count('yo', undefined)).toBe(0)
+        test('the shown slot is current_version_index when it holds the cell, else the first equal version, else the shown reply goes first', () => {
+            const at = (index: unknown, ...contents: string[]) =>
+                characterLine(run('yo', { ...versionsOf(...contents), current_version_index: index }))?.swipes
+            expect(at(1, 'a', 'yo')).toEqual({ before: ['a'], after: [] })
+            expect(at(2, 'yo', 'x', 'yo')).toEqual({ before: ['yo', 'x'], after: [] })
+            expect(at(undefined, 'yo', 'x', 'yo')).toEqual({ before: [], after: ['x', 'yo'] })
+            expect(at(0, 'a', 'yo')).toEqual({ before: ['a'], after: [] })
+            expect(at(9, 'a', 'yo')).toEqual({ before: ['a'], after: [] })
+            expect(at(1, 'a', 'b')).toEqual({ before: [], after: ['a', 'b'] })
         })
 
-        test('an empty shown reply is counted only when another version holds text', () => {
-            expect(count('', versionsOf('', 'old'))).toBe(1)
-            expect(count('', versionsOf('', ''))).toBe(0)
-            expect(count('', versionsOf('old'))).toBe(0)
-            expect(count('', { versions: 'old' })).toBe(0)
-            expect(count('', undefined)).toBe(0)
+        // Compatibility guard (passes before and after): nothing besides the shown reply gives no swipes and no count.
+        test('a shown reply with one version, no versions or malformed versions has no swipes', () => {
+            for(const entry of [versionsOf('yo'), { versions: 'x' }, { versions: {} }, {}, undefined]){
+                const r = run('yo', entry)
+                expect(characterLine(r)).toStrictEqual({ isUser: false, mes: 'yo' })
+                expect(r.swipesNotKept).toBe(0)
+            }
         })
 
-        test('versions on the user entry are never counted', () => {
-            expect(count('yo', undefined, versionsOf('a', 'b', 'c'))).toBe(0)
+        test('empty and unreadable versions are dropped silently', () => {
+            const r = readOobaChat(ooba([['hi', 'yo']], [['hi', 'x']], { assistant_0: { versions: [{ content: '' }, { content: 'yo' }, 5, { content: 7 }, null, { content: 'z' }] } }))
+            expect(characterLine(r)?.swipes).toEqual({ before: [], after: ['z'] })
+            expect(r.swipesNotKept).toBe(0)
         })
 
-        test('a non-string character cell is not counted for its versions', () => {
-            expect(count(5, versionsOf('a', 'b'))).toBe(0)
+        test('an empty shown reply shows the first kept version and the rest follow', () => {
+            const first = run('', versionsOf('', 'old'))
+            expect(characterLine(first)).toStrictEqual({ isUser: false, mes: 'old' })
+            expect(first.swipesNotKept).toBe(0)
+            expect(characterLine(run('', versionsOf('', 'a', 'b')))).toStrictEqual({ isUser: false, mes: 'a', swipes: { before: [], after: ['b'] } })
+            expect(characterLine(run('', versionsOf('old')))?.mes).toBe('old')
+        })
+
+        // Compatibility guard (passes before and after): no kept version, no line and no count.
+        test('an empty shown reply without a kept version gives no line and no count', () => {
+            for(const entry of [versionsOf('', ''), { versions: 'old' }, undefined]){
+                const r = run('', entry)
+                expect(characterLine(r)).toBeUndefined()
+                expect(r.swipesNotKept).toBe(0)
+            }
+        })
+
+        test('a non-string character cell keeps no versions and is counted skipped', () => {
+            const r = run(5, versionsOf('a', 'b'))
+            expect(characterLine(r)).toBeUndefined()
+            expect(r.skipped).toBe(1)
+            expect(r.swipesNotKept).toBe(0)
+        })
+
+        const userRun = (internal: unknown, visible: unknown, entry: unknown, index?: unknown) =>
+            readOobaChat(ooba([[internal, 'r']], [[visible, 'r']], { user_0: entry === undefined ? undefined : { versions: entry, ...(index === undefined ? {} : { current_version_index: index }) } }))
+        const userLine = (result: ReturnType<typeof readOobaChat>) => result.messages.find((m) => m.isUser)
+
+        test('versions on the user entry are swipes of the user line, their visible text decoded like the visible cell', () => {
+            const r = userRun('hello', 'hello', [{ content: 'hi', visible_content: 'hi' }, { content: 'hello', visible_content: 'hello' }], 1)
+            expect(userLine(r)).toStrictEqual({ isUser: true, mes: 'hello', swipes: { before: ['hi'], after: [] } })
+            const escaped = userRun('hello', 'hello', [{ content: 'hello', visible_content: 'hello' }, { content: 'it\'s', visible_content: 'it&#x27;s' }], 0)
+            expect(userLine(escaped)?.swipes).toEqual({ before: [], after: ['it\'s'] })
+            expect(r.swipesNotKept).toBe(0)
+        })
+
+        test('a user version without visible text shows its raw internal text, and the slot is matched on the internal cell', () => {
+            const r = userRun('INJECTED typed', 'typed', [{ content: 'INJECTED old' }, { content: 'INJECTED typed' }], 1)
+            expect(userLine(r)).toStrictEqual({ isUser: true, mes: 'typed', swipes: { before: ['INJECTED old'], after: [] } })
+        })
+
+        test('an empty internal user cell never matches a version slot while the shown text is not empty', () => {
+            const r = userRun(5, 'typed', [{ content: 'a' }, { content: '' }])
+            expect(userLine(r)).toStrictEqual({ isUser: true, mes: 'typed', swipes: { before: [], after: ['a'] } })
+        })
+
+        test('an empty user cell with a kept version shows the first kept version', () => {
+            const r = userRun('', '', [{ content: '' }, { content: 'old' }, { content: 'older' }])
+            expect(userLine(r)).toStrictEqual({ isUser: true, mes: 'old', swipes: { before: [], after: ['older'] } })
+            expect(userLine(userRun('', '', [{ content: '' }]))).toBeUndefined()
+        })
+
+        // Compatibility guard (passes before and after): the marker row and an unreadable user cell hold no user line.
+        test('versions on the marker row or on an unreadable user cell are ignored', () => {
+            const marked = readOobaChat(ooba([[marker, 'Hello']], [['', 'Hello']], { user_0: { versions: [{ content: 'a' }, { content: 'b' }] } }))
+            expect(marked.messages).toEqual([{ isUser: false, mes: 'Hello' }])
+            const unreadable = readOobaChat(ooba([[7, 'r']], [['', 'r']], { user_0: { versions: [{ content: 'a' }, { content: 'b' }] } }))
+            expect(unreadable.messages).toEqual([{ isUser: false, mes: 'r' }])
+            expect(unreadable.skipped).toBe(0)
         })
     })
 })
@@ -1042,18 +1110,22 @@ describe('readAgnaiChat (unit)', () => {
         expect(result.swipesNotKept).toBe(0)
     })
 
-    test('a branched file imports the path to the newest tip and counts the messages off it', () => {
+    test('a branched file imports the path to the newest tip, keeps a retry sibling as a swipe and counts the rest', () => {
         const result = read(branched())
         expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
-        expect(result.swipesNotKept).toBe(2)
+        expect(result.messages[2].swipes).toEqual({ before: [], after: ['m-c3'] })
+        expect(result.swipesNotKept).toBe(1)
         expect(texts([...branched()].reverse())).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
-        expect(read([...branched()].reverse()).swipesNotKept).toBe(2)
+        const reversed = read([...branched()].reverse())
+        expect(reversed.messages[2].swipes).toEqual({ before: ['m-c3'], after: [] })
+        expect(reversed.swipesNotKept).toBe(1)
     })
 
-    test('fork and continue: the newer branch wins and the abandoned one is counted', () => {
+    test('fork and continue: the newer branch wins, the abandoned first reply is its swipe and its continuation is counted', () => {
         const result = read(withLeaf(forkAndContinue(), 'd4'))
         expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-a1', 'm-e5', 'm-f6'])
-        expect(result.swipesNotKept).toBe(2)
+        expect(result.messages[2].swipes).toEqual({ before: ['m-b2'], after: [] })
+        expect(result.swipesNotKept).toBe(1)
     })
 
     test('treeLeafId never changes the result', () => {
@@ -1067,7 +1139,8 @@ describe('readAgnaiChat (unit)', () => {
         const rows = [row('r0', undefined, 0), row('c3', 'r0', 5), row('b2', 'r0', 5)]
         const result = read(rows)
         expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-b2'])
-        expect(result.swipesNotKept).toBe(1)
+        expect(result.messages[1].swipes).toEqual({ before: ['m-c3'], after: [] })
+        expect(result.swipesNotKept).toBe(0)
     })
 
     test('a tip without a readable time makes the greatest file index win', () => {
@@ -1076,7 +1149,9 @@ describe('readAgnaiChat (unit)', () => {
         const root = row('r0', undefined, 0)
         expect(texts([root, dated, undated])).toEqual(['m-r0', 'm-y2'])
         expect(texts([root, undated, dated])).toEqual(['m-r0', 'm-x1'])
-        expect(read([root, undated, dated]).swipesNotKept).toBe(1)
+        const result = read([root, undated, dated])
+        expect(result.messages[1].swipes).toEqual({ before: ['m-y2'], after: [] })
+        expect(result.swipesNotKept).toBe(0)
     })
 
     test('an orphan subtree is its own component and the newest tip across components wins', () => {
@@ -1129,16 +1204,44 @@ describe('readAgnaiChat (unit)', () => {
 
         const longer = read([...base, null, row('d4', 'r0', 4)])
         expect(longer.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-d4'])
+        expect(longer.messages[1].swipes).toEqual({ before: ['m-a1'], after: [] })
         expect(longer.skipped).toBe(2)
-        expect(longer.swipesNotKept).toBe(2)
+        expect(longer.swipesNotKept).toBe(1)
     })
 
     test('an empty msg emits no line, is uncounted and keeps the chain', () => {
         expect(texts([row('a1', undefined, 0), row('b2', 'a1', 1, { msg: '' }), row('c3', 'b2', 2)])).toEqual(['m-a1', 'm-c3'])
         const offPath = read([row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: '' }), row('c3', 'a1', 3), row('d4', 'r0', 4)])
         expect(offPath.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-d4'])
-        expect(offPath.swipesNotKept).toBe(2)
+        expect(offPath.messages[1].swipes).toEqual({ before: ['m-a1'], after: [] })
+        expect(offPath.swipesNotKept).toBe(1)
         expect(read([row('a1', undefined, 0, { msg: '' }), row('b2', 'a1', 1, { msg: '' })])).toEqual({ messages: [], skipped: 0, swipesNotKept: 0 })
+    })
+
+    // Regression reproducer: the siblings follow file order, not creation time.
+    test('retry siblings are swipes in file order, whatever their creation times', () => {
+        const result = read([row('u0', undefined, 0, { userId: 'u' }), row('b', 'u0', 5), row('c', 'u0', 3)])
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-u0', 'm-b'])
+        expect(result.messages[1].swipes).toEqual({ before: [], after: ['m-c'] })
+        expect(result.swipesNotKept).toBe(0)
+    })
+
+    // Compatibility guard (passes before and after): a sibling from another speaker is not a swipe and stays counted.
+    test('a sibling from another speaker or another named character stays counted', () => {
+        const byUser = read([row('r0', undefined, 0), row('b', 'r0', 5), row('x', 'r0', 3, { userId: 'u1' })])
+        expect(byUser.messages[1].swipes).toBeUndefined()
+        expect(byUser.swipesNotKept).toBe(1)
+        const byName = read([row('r0', undefined, 0), row('b', 'r0', 5), row('y', 'r0', 3, { characterId: 'c-2', name: 'Ann' })])
+        expect(byName.messages[1].swipes).toBeUndefined()
+        expect(byName.swipesNotKept).toBe(1)
+    })
+
+    // Compatibility guard (passes before and after): a path child without a line has no position for its siblings.
+    test('a sibling of a path child that has no line stays counted', () => {
+        const result = read([row('r0', undefined, 0), row('b', 'r0', 5, { msg: '' }), row('c', 'r0', 3)])
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-r0'])
+        expect(result.messages[0].swipes).toBeUndefined()
+        expect(result.swipesNotKept).toBe(1)
     })
 
     test('an element that is not an object is skipped in every class', () => {
@@ -1214,7 +1317,7 @@ describe('readAgnaiChat (unit)', () => {
             expect(result.swipesNotKept).toBe(0)
         })
 
-        test('a spine with a side tip every ten nodes returns the spine and counts the side tips', () => {
+        test('a spine with a side tip every ten nodes returns the spine with the side tips as swipes and counts nothing', () => {
             const rows: Array<Record<string, unknown>> = []
             for(let index = 0; index < count; index++){
                 rows.push(row(`s${index}`, index === 0 ? undefined : `s${index - 1}`, index + 1))
@@ -1225,7 +1328,8 @@ describe('readAgnaiChat (unit)', () => {
             const result = read(rows)
             expect(result.messages).toHaveLength(count)
             expect(result.messages[count - 1].mes).toBe(`m-s${count - 1}`)
-            expect(result.swipesNotKept).toBe(count / 10)
+            expect(result.messages.filter((m) => m.swipes !== undefined)).toHaveLength(count / 10)
+            expect(result.swipesNotKept).toBe(0)
         })
 
         test('a ring is a loop: file order with nothing counted', () => {
@@ -1455,14 +1559,50 @@ describe('readKoboldChat (unit)', () => {
     })
 
     describe('swipes', () => {
-        test('a branch with messages after the shown prefix is counted; an equal or prefix branch is not', () => {
-            const settings = { opmode: 4, instruct_has_markdown: true }
-            const result = readKoboldChat({
-                prompt: '',
-                actions: [NLI + 'q', '\n{{[OUTPUT]}}\na'],
-                savedsettings: settings,
-                altbranches: [['', NLI + 'q'], ['', NLI + 'q', '\n{{[OUTPUT]}}\na'], ['', NLI + 'q', '\n{{[OUTPUT]}}\nother']],
-            })
+        const NLO = '\n{{[OUTPUT]}}\n'
+        const settings = { opmode: 4, instruct_has_markdown: true }
+        const withBranches = (altbranches: unknown[], actions: string[] = [NLI + 'q', NLO + 'a']) =>
+            readKoboldChat({ prompt: '', actions, savedsettings: settings, altbranches })
+
+        test('the first differing message of a branch is a swipe; an equal or prefix branch adds nothing', () => {
+            const result = withBranches([['', NLI + 'q'], ['', NLI + 'q', NLO + 'a'], ['', NLI + 'q', NLO + 'other']])
+            expect(result.messages[1].swipes).toEqual({ before: [], after: ['other'] })
+            expect(result.messages[0].swipes).toBeUndefined()
+            expect(result.swipesNotKept).toBe(0)
+        })
+
+        test('the null entry marks the shown branch: earlier branches go before the shown reply, later ones after', () => {
+            const result = withBranches([['', NLI + 'q', NLO + 'x'], null, ['', NLI + 'q', NLO + 'y']])
+            expect(result.messages[1].swipes).toEqual({ before: ['x'], after: ['y'] })
+            expect(result.swipesNotKept).toBe(0)
+        })
+
+        test('a repeated head at one position is one swipe and the rest of each branch is counted', () => {
+            const branch = (tail: string) => ['', NLI + 'q', NLO + 'x', NLI + 'q2', NLO + tail]
+            const result = withBranches([branch('r1'), branch('r2')])
+            expect(result.messages[1].swipes).toEqual({ before: [], after: ['x'] })
+            expect(result.swipesNotKept).toBe(4)
+        })
+
+        test('heads with one text at two different positions are both kept: the repeat rule is per position', () => {
+            const actions = [NLI + 'q', NLO + 'a', NLI + 'q2', NLO + 'b']
+            const result = withBranches([['', NLI + 'q', NLO + 'h'], ['', NLI + 'q', NLO + 'a', NLI + 'q2', NLO + 'h']], actions)
+            expect(result.messages[1].swipes).toEqual({ before: [], after: ['h'] })
+            expect(result.messages[3].swipes).toEqual({ before: [], after: ['h'] })
+            expect(result.swipesNotKept).toBe(0)
+        })
+
+        // Compatibility guard (passes before and after): a branch that only extends the shown story has no position to join.
+        test('a branch longer than the shown story keeps no swipe and counts its extra messages', () => {
+            const result = withBranches([['', NLI + 'q', NLO + 'a', NLI + 'q2', NLO + 'b']])
+            expect(result.messages.every((m) => m.swipes === undefined)).toBe(true)
+            expect(result.swipesNotKept).toBe(2)
+        })
+
+        // Compatibility guard (passes before and after): another speaker's head is not a reply to the shown message.
+        test('a head from another speaker is not a swipe and stays counted', () => {
+            const result = withBranches([['', NLI + 'q', NLI + 'u']])
+            expect(result.messages.every((m) => m.swipes === undefined)).toBe(true)
             expect(result.swipesNotKept).toBe(1)
         })
     })
@@ -1575,22 +1715,32 @@ describe('readCaiTurnsChat (unit)', () => {
         expect(readCaiTurnsChat(turns).messages.map((m) => m.mes)).toEqual(['first', 'second', 'third'])
     })
 
-    test('the shown reply is the primary candidate and no other candidate is read as the reply', () => {
+    test('the shown reply is the primary candidate and the other candidates are its swipes in array order', () => {
         const turn = caiChar('Mira', '', {
             candidates: [{ candidate_id: 'a', raw_content: 'older' }, { candidate_id: 'b', raw_content: 'shown' }, { candidate_id: 'c', raw_content: 'newer' }],
             primary: 'b',
         })
         const result = readCaiTurnsChat([turn])
         expect(result.messages.map((m) => m.mes)).toEqual(['shown'])
-        expect(result.swipesNotKept).toBe(1)
+        expect(result.messages[0].swipes).toEqual({ before: ['older'], after: ['newer'] })
+        expect(result.swipesNotKept).toBe(0)
     })
 
-    test('a character turn with alternates counts once, a human turn with alternates counts nothing', () => {
+    test('a character turn and a human turn keep their other candidates as swipes and count nothing', () => {
         const candidates = [{ candidate_id: 'a', raw_content: 'one' }, { candidate_id: 'b', raw_content: 'two' }, { candidate_id: 'c', raw_content: 'three' }]
-        expect(readCaiTurnsChat([caiChar('Mira', '', { candidates, primary: 'a' })]).swipesNotKept).toBe(1)
+        const character = readCaiTurnsChat([caiChar('Mira', '', { candidates, primary: 'a' })])
+        expect(character.messages[0].swipes).toEqual({ before: [], after: ['two', 'three'] })
+        expect(character.swipesNotKept).toBe(0)
         const human = readCaiTurnsChat([caiUser('', { candidates, primary: 'a' })])
-        expect(human.messages.map((m) => m.mes)).toEqual(['one'])
+        expect(human.messages.map((m) => [m.isUser, m.mes])).toEqual([[true, 'one']])
+        expect(human.messages[0].swipes).toEqual({ before: [], after: ['two', 'three'] })
         expect(human.swipesNotKept).toBe(0)
+    })
+
+    test('the shown reply sits at the primary candidate\'s own index even when an earlier candidate has the same text', () => {
+        const candidates = [{ candidate_id: 'a', raw_content: 'same' }, { candidate_id: 'b', raw_content: 'same' }, { candidate_id: 'c', raw_content: 'x' }]
+        const result = readCaiTurnsChat([caiChar('Mira', '', { candidates, primary: 'b' })])
+        expect(result.messages[0]).toMatchObject({ mes: 'same', swipes: { before: ['same'], after: ['x'] } })
     })
 
     test('a turn with no primary_candidate_id is skipped even when a candidate has no candidate_id', () => {
@@ -1600,14 +1750,30 @@ describe('readCaiTurnsChat (unit)', () => {
         expect(result.skipped).toBe(1)
     })
 
-    test('a blank alternate is not a swipe; an empty shown reply with a real alternate adds no message and still counts', () => {
+    test('a blank candidate is dropped silently; an empty shown reply shows the first non-blank candidate', () => {
         const blank = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: 'shown' }, { candidate_id: 'b', raw_content: '  ' }], primary: 'a' })
-        expect(readCaiTurnsChat([blank]).swipesNotKept).toBe(0)
+        const blankRead = readCaiTurnsChat([blank])
+        expect(blankRead.messages).toStrictEqual([{ isUser: false, mes: 'shown', name: 'Mira' }])
+        expect(blankRead.swipesNotKept).toBe(0)
         const emptyShown = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: '' }, { candidate_id: 'b', raw_content: 'other' }], primary: 'a' })
         const result = readCaiTurnsChat([emptyShown])
-        expect(result.messages).toEqual([])
-        expect(result.swipesNotKept).toBe(1)
+        expect(result.messages).toStrictEqual([{ isUser: false, mes: 'other', name: 'Mira' }])
+        expect(result.swipesNotKept).toBe(0)
         expect(result.skipped).toBe(0)
+        const several = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: ' ' }, { candidate_id: 'b', raw_content: 'x' }, { candidate_id: 'c', raw_content: 'y' }], primary: 'a' })
+        expect(readCaiTurnsChat([several]).messages[0]).toMatchObject({ mes: 'x', swipes: { before: [], after: ['y'] } })
+    })
+
+    test('every kept candidate that carries a picture is counted, a blank one is not a kept candidate', () => {
+        const turn = caiChar('Mira', '', {
+            candidates: [
+                { candidate_id: 'a', raw_content: 'x', tti_image_rel_path: 'img/1.png' },
+                { candidate_id: 'b', raw_content: 'y', tti_image_rel_path: 'img/2.png' },
+                { candidate_id: 'c', raw_content: '  ', tti_image_rel_path: 'img/3.png' },
+            ],
+            primary: 'a',
+        })
+        expect(readCaiTurnsChat([turn]).mediaNotKept).toBe(2)
     })
 
     test('a turn without a matching primary, without candidates or a non-object counts as skipped', () => {
@@ -1794,22 +1960,71 @@ describe('readDumperChats (unit)', () => {
         expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['Hello {{user}}, {{user}}!', 'I am {{user}}'])
     })
 
-    test('an alternate message is not imported and a run of consecutive alternates counts once', () => {
+    test('the alternates after a message of the same side are its swipes in stored order; an alternate after another side counts once per run', () => {
         const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
         const read = readDumperChats(dumperFile('Mira', [[
             dumperMsg('Mira', false, 'shown'), alt('a1'), alt('a2'), alt('a3'),
-            dumperMsg('Mira', true, 'reply'), alt('a4'), alt('  '),
+            dumperMsg('Mira', true, 'reply'), alt('a4'), alt('a5'), alt('  '),
         ]]), 'Mira')
-        expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['shown', 'reply'])
+        const lines = read.chats[0].messages
+        expect(lines.map((m) => m.mes)).toEqual(['shown', 'reply'])
+        expect(lines[0].swipes).toEqual({ before: [], after: ['a1', 'a2', 'a3'] })
+        expect(lines[1].swipes).toBeUndefined()
+        expect(read.chats[0].swipesNotKept).toBe(1)
+    })
+
+    test('human alternates are swipes of the human message before them; one after a character message counts once', () => {
+        const alt = (human: boolean, text: string) => dumperMsg('Mira', human, text, { is_alternative: true })
+        const own = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', true, 'q'), alt(true, 'q2'), alt(true, 'q3')]]), 'Mira')
+        expect(own.chats[0].messages[0]).toMatchObject({ isUser: true, mes: 'q', swipes: { before: [], after: ['q2', 'q3'] } })
+        expect(own.chats[0].swipesNotKept).toBe(0)
+        const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt(true, 'h1'), alt(true, 'h2')]]), 'Mira')
+        expect(read.chats[0].messages[0].swipes).toBeUndefined()
+        expect(read.chats[0].swipesNotKept).toBe(1)
+        const mixed = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt(false, 'a1'), alt(true, 'h1'), alt(false, 'a2')]]), 'Mira')
+        expect(mixed.chats[0].messages[0].swipes).toEqual({ before: [], after: ['a1', 'a2'] })
+        expect(mixed.chats[0].swipesNotKept).toBe(1)
+    })
+
+    // A shown message starts a new run, so a later unkept run counts again and the notice does not undercount.
+    test('two unkept runs separated by a shown message count twice', () => {
+        const alt = (human: boolean, text: string) => dumperMsg('Mira', human, text, { is_alternative: true })
+        const read = readDumperChats(dumperFile('Mira', [[
+            dumperMsg('Mira', false, 'shown'), alt(true, 'h1'), dumperMsg('Mira', true, 'q'), alt(false, 'c1'),
+        ]]), 'Mira')
+        expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['shown', 'q'])
+        expect(read.chats[0].messages.every((m) => m.swipes === undefined)).toBe(true)
         expect(read.chats[0].swipesNotKept).toBe(2)
     })
 
-    test('alternates of a human message are not swipes, and do not break a run of reply alternates', () => {
-        const alt = (human: boolean, text: string) => dumperMsg('Mira', human, text, { is_alternative: true })
-        const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt(true, 'h1'), alt(true, 'h2')]]), 'Mira')
+    test('an alternate attaches by side only: a different source name still joins and the message keeps its own name', () => {
+        const read = readDumperChats(dumperFile('Mira', [[
+            dumperMsg('Mira', false, 'shown'), dumperMsg('Other', false, 'a1', { is_alternative: true }),
+        ]]), 'Mira')
+        expect(read.chats[0].messages).toStrictEqual([{ isUser: false, mes: 'shown', name: 'Mira', swipes: { before: [], after: ['a1'] } }])
         expect(read.chats[0].swipesNotKept).toBe(0)
-        const mixed = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt(false, 'a1'), alt(true, 'h1'), alt(false, 'a2')]]), 'Mira')
-        expect(mixed.chats[0].swipesNotKept).toBe(1)
+    })
+
+    test('the redaction token is replaced in an alternate', () => {
+        const read = readDumperChats(dumperFile('Mira', [[
+            dumperMsg('Mira', false, 'shown'), dumperMsg('Mira', false, 'Hi [NAME_IN_MESSAGE_REDACTED]', { is_alternative: true }),
+        ]]), 'Mira')
+        expect(read.chats[0].messages[0].swipes).toEqual({ before: [], after: ['Hi {{user}}'] })
+    })
+
+    test('a blank message with same-side alternates takes the first alternate as its message', () => {
+        const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
+        const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, '  '), alt('x'), alt('y')]]), 'Mira')
+        expect(read.chats).toHaveLength(1)
+        expect(read.chats[0].messages).toStrictEqual([{ isUser: false, mes: 'x', name: 'Mira', swipes: { before: [], after: ['y'] } }])
+        expect(read.chats[0].swipesNotKept).toBe(0)
+    })
+
+    test('an alternate with no message before it is not kept and counts once per run', () => {
+        const alt = (human: boolean, text: string) => dumperMsg('Mira', human, text, { is_alternative: true })
+        const read = readDumperChats(dumperFile('Mira', [[alt(true, 'h0'), alt(true, 'h1'), dumperMsg('Mira', false, 'shown')]]), 'Mira')
+        expect(read.chats[0].messages).toStrictEqual([{ isUser: false, mes: 'shown', name: 'Mira' }])
+        expect(read.chats[0].swipesNotKept).toBe(1)
     })
 
     // Kills a truthy test of `src.is_human`: the string 'false' is truthy but is not the boolean true.
@@ -1819,10 +2034,11 @@ describe('readDumperChats (unit)', () => {
         expect(read.chats[0].messages.map((m) => [m.isUser, m.mes])).toEqual([[false, 'string flag'], [true, 'real']])
     })
 
-    test('a message that is not an object ends a run of alternates, so the next alternate counts again', () => {
+    test('a message that is not an object ends the run: the next alternate has no message before it and counts', () => {
         const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
         const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt('a1'), 'x', alt('a2')]]), 'Mira')
-        expect(read.chats[0].swipesNotKept).toBe(2)
+        expect(read.chats[0].messages[0].swipes).toEqual({ before: [], after: ['a1'] })
+        expect(read.chats[0].swipesNotKept).toBe(1)
         expect(read.chats[0].skipped).toBe(1)
     })
 
@@ -1830,6 +2046,81 @@ describe('readDumperChats (unit)', () => {
         const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'ok'), { src: { is_human: false } }, 'x', null]]), 'Mira')
         expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['ok'])
         expect(read.chats[0].skipped).toBe(3)
+    })
+})
+
+describe('swipes of each reader through buildTavernTree (unit)', () => {
+    const own = { userName: 'User', characterName: 'Solo' }
+    const NLI = '\n{{[INPUT]}}\n'
+    const NLO = '\n{{[OUTPUT]}}\n'
+    const instruct = { opmode: 4, instruct_has_markdown: true }
+    const ids = () => {
+        let n = 0
+        return () => `id${String(1000 + ++n)}`
+    }
+    const candidates = [{ candidate_id: 'a', raw_content: 'one' }, { candidate_id: 'b', raw_content: 'two' }]
+
+    // One file per format that holds an alternative, and the same file without it.
+    const formats: Array<[string, () => ReturnType<typeof readOobaChat>, () => ReturnType<typeof readOobaChat>]> = [
+        ['Ooba', () => readOobaChat({
+            internal: [['hi', 'yo'], ['more', 'end']],
+            visible: [['hi', 'yo'], ['more', 'end']],
+            metadata: { assistant_0: { versions: [{ content: 'old' }, { content: 'yo' }], current_version_index: 1 } },
+        }), () => readOobaChat({ internal: [['hi', 'yo'], ['more', 'end']], visible: [['hi', 'yo'], ['more', 'end']] })],
+        ['Agnai', () => readAgnaiChat({ messages: [
+            { _id: 'a1', msg: 'hello', userId: 'u' },
+            { _id: 'b2', parent: 'a1', msg: 'one', characterId: 'imported' },
+            { _id: 'c3', parent: 'a1', msg: 'two', characterId: 'imported' },
+        ] }), () => readAgnaiChat({ messages: [
+            { _id: 'a1', msg: 'hello', userId: 'u' },
+            { _id: 'b2', parent: 'a1', msg: 'one', characterId: 'imported' },
+        ] })],
+        ['Kobold', () => readKoboldChat({ prompt: '', actions: [NLI + 'q', NLO + 'a'], savedsettings: instruct, altbranches: [['', NLI + 'q', NLO + 'x']] }),
+            () => readKoboldChat({ prompt: '', actions: [NLI + 'q', NLO + 'a'], savedsettings: instruct })],
+        ['Lianne', () => readCaiTurnsChat([caiUser('next'), caiChar('Mira', '', { candidates, primary: 'a' })]),
+            () => readCaiTurnsChat([caiUser('next'), caiChar('Mira', 'one')])],
+        ['Morse', () => readMorseChats(caiMorseFile([caiMorseEntry({ name: 'Mira' }, [caiMorseChat([caiChar('Mira', '', { candidates, primary: 'a' }), caiUser('next')])])]), 'Mira').chats[0],
+            () => readMorseChats(caiMorseFile([caiMorseEntry({ name: 'Mira' }, [caiMorseChat([caiChar('Mira', 'one'), caiUser('next')])])]), 'Mira').chats[0]],
+        ['Dumper', () => readDumperChats(dumperFile('Mira', [[
+            dumperMsg('Mira', false, 'shown'), dumperMsg('Mira', false, 'a1', { is_alternative: true }), dumperMsg('Mira', true, 'next'),
+        ]]), 'Mira').chats[0], () => readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), dumperMsg('Mira', true, 'next')]]), 'Mira').chats[0]],
+    ]
+
+    // Regression reproducers: on the base no reader fills `swipes`, so no sibling exists to switch to.
+    test.each(formats)('%s: the kept alternative is a sibling the tree switches to and back from', (_label, withSwipe) => {
+        const result = withSwipe()
+        const position = result.messages.findIndex((m) => m.swipes !== undefined)
+        expect(position).toBeGreaterThanOrEqual(0)
+        const built = buildTavernTree(result, own, (text) => text, ids())
+        const chat = { id: 'chat', name: 'c', note: '', localLore: [], message: built.message, alt: built.alt } as unknown as Chat
+        expect(isChatAltReadable(chat)).toBe(true)
+        expect(treeLeaves(chat)?.unreachable).toEqual([])
+        const before = chat.message.map((m) => m.data)
+        const shownId = chat.message[position].chatId as string
+        const siblings = siblingsAt(chat, position)
+        expect(siblings.length).toBeGreaterThan(1)
+        const other = siblings.find((m) => m.chatId !== shownId)?.chatId as string
+        expect(switchTo(chat, position, other)).toBe(true)
+        expect(chat.message[position].chatId).toBe(other)
+        expect(switchTo(chat, position, shownId)).toBe(true)
+        expect(chat.message.map((m) => m.data)).toEqual(before)
+    })
+
+    // Compatibility guard (passes before and after): a file without an alternative gives a plain path.
+    test.each(formats)('%s: a file without an alternative gives no record and no chatId', (_label, _withSwipe, plain) => {
+        const built = buildTavernTree(plain(), own, (text) => text, ids())
+        expect(built.alt).toEqual([])
+        for(const message of built.message){
+            expect(message).not.toHaveProperty('chatId')
+        }
+    })
+
+    // Diagnostic of an unchanged export rule: a human CAI candidate swipe is one branch chat at .bin export.
+    test('a human CAI candidate swipe becomes one branch chat at export', () => {
+        const result = readCaiTurnsChat([caiUser('', { candidates, primary: 'a' }), caiChar('Mira', 'hi')])
+        const built = buildTavernTree(result, own, (text) => text, ids())
+        const chat = { id: 'chat', name: 'c', note: '', localLore: [], message: built.message, alt: built.alt } as unknown as Chat
+        expect(branchSummaryOf(chat)?.chats).toBe(1)
     })
 })
 

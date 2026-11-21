@@ -502,13 +502,17 @@ describe('regression reproducers: superseded snapshots are not processed', () =>
         const snapshots = cumulative(20)
         const source = eagerProducer()
         // Scheduled together inside the first pass, so they all expire in one timers phase, one task each, as native
-        // events do. The 20th closes the source.
+        // events do. The 20th closes the source. Blocking the thread past their 1 ms expiry before yielding makes every
+        // timer already due when the loop reaches the timers phase; without it a loaded machine can cross a millisecond
+        // boundary between phases and split the arrivals over several of them.
         const inputs = recordPasses({
             onFirst: () => {
                 for (const snapshot of snapshots.slice(1)) {
                     setTimeout(() => source.push(snapshot), 0)
                 }
                 setTimeout(() => source.close(), 0)
+                const due = performance.now() + 5
+                while (performance.now() < due) { /* block until every timer above is due */ }
             },
         })
         const { sent } = await startStreamingSend(source)
