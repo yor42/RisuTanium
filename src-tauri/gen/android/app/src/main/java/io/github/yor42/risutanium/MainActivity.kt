@@ -199,6 +199,11 @@ class MainActivity : TauriActivity() {
     if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
       OpenedFilesBridge.enqueue(intent)
       pendingTarget = targetOfIntent(intent)
+      // Debug only. The worker is serial, so a page request after this sees the keys gone, and the
+      // main thread does no Keystore work.
+      if (shouldDeleteVaultKeys(BuildConfig.DEBUG, intent.getBooleanExtra(EXTRA_DEBUG_DELETE_VAULT_KEYS, false))) {
+        VaultService.shared.deleteAllKeys({ VaultService.keystore.deleteAllVaultKeys() }, { Log.w("MainActivity", it) })
+      }
     }
   }
 
