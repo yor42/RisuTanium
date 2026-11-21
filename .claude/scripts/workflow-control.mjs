@@ -158,7 +158,7 @@ function testPath(file) { return /(^|\/)(tests?|__tests__)\//.test(file) || /\.(
 function codeWriter(d) { return d.mode === 'implement' && (d.allowedWrites?.length ?? 0) > 0 && schedulingClass(d) === 'code'; }
 function clerkPath(file) {
   return documentPath(file) && !/^(AGENTS\.md|CLAUDE\.md|Agents\/(Maintainer-Context|README|Decision-Index)\.md)$/i.test(file)
-    && !/^(\.claude|\.github|docs\/(workflow|wiki|branding))\//i.test(file)
+    && !/^(\.claude|\.github|docs\/(workflow|wiki|branding)|Agents\/mc)\//i.test(file)
     && !/^docs\/(Terms-of-Services|Privacy-Policy)\.md$/i.test(file);
 }
 export function normalizeResource(resource) {

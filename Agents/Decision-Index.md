@@ -2,6 +2,7 @@
 
 GENERATED NAVIGATION ONLY. Titles are literal MC headings, not summaries or supersession status.
 Maintainer-Context.md remains authoritative. Do not edit this table by hand.
+Entries merged but not yet folded live in `Agents/mc/*.md`; `-Check` lists them.
 
 Regenerate: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1`
 Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`

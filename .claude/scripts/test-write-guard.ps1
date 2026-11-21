@@ -166,6 +166,7 @@ Test-FixtureRegistrationDenial 'record-clerk repository non-Markdown registratio
 Test-FixtureRegistrationDenial 'case-variant repository non-Markdown registration' (Join-Path $fixture 'REPOSITORY/DOCS/NOTES.TXT') 'doc-writer'
 Test-FixtureRegistrationDenial 'ignored scratch directory in the repository registration' (Join-Path $repo '.claude/scratch/notes.txt') 'doc-writer'
 Test-FixtureRegistrationDenial 'directory named like Markdown registration' (Join-Path $repo 'docs/x.md/notes.txt') 'doc-writer'
+Test-FixtureRegistrationDenial 'record-clerk per-PR MC record file registration' (Join-Path $repo 'Agents/mc/481.md') 'record-clerk'
 Test-FixtureRegistrationDenial 'double extension ending outside Markdown registration' (Join-Path $repo 'Agents/notes.md.txt') 'record-clerk'
 Register-Fixture (Join-Path $repo 'docs/NOTES.MD') -Role 'doc-writer' -AgentId 'upper-md-doc'
 $passed++
