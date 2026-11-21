@@ -16,6 +16,45 @@ export interface ExternalDecoratorSource {
     selectiveLogic?: number
     secondary_keys?: string[]
     keysecondary?: string[]
+    /** SillyTavern: the insertion order; when present, weight is not the order. */
+    order?: number | null
+    /** Agnai: decides which matched entries survive the token budget. */
+    priority?: number | null
+    /** Agnai: decides the order of the surviving entries in the prompt. */
+    weight?: number | null
+}
+
+/** The fields of an external entry that can give its insertion order, in the order they are tried. */
+export interface ExternalOrderSource {
+    order?: number | null
+    weight?: number | null
+    priority?: number | null
+    contextConfig?: { budgetPriority?: number | null } | null
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === 'number' && Number.isFinite(value)
+}
+
+/**
+ * The insertion order of an imported entry: SillyTavern `order`, then Agnai
+ * `weight`, then Agnai `priority`, then NovelAI `budgetPriority`, else 0.
+ * Agnai places higher weight first and keeps higher priority under the budget,
+ * the same directions as the engine's order and priority, so weight is the
+ * order and a differing priority travels as `@@priority`.
+ */
+export function externalInsertOrder(entry: ExternalOrderSource): number {
+    if (isFiniteNumber(entry.order)) {
+        return entry.order
+    }
+    if (isFiniteNumber(entry.weight)) {
+        return entry.weight
+    }
+    if (isFiniteNumber(entry.priority)) {
+        return entry.priority
+    }
+    const budgetPriority = entry.contextConfig?.budgetPriority
+    return isFiniteNumber(budgetPriority) ? budgetPriority : 0
 }
 
 export interface ExternalDecorators {
@@ -32,8 +71,10 @@ const ROLE_NAMES = ['system', 'user', 'assistant']
 /**
  * Maps an external entry to RisuAI decorator lines. Only a numeric `position`
  * is read: 1 places after the description, 4 places at a depth. Any other
- * position, and a string position, gives no line. An entry without these
- * fields gives no lines and keeps its own `selective`.
+ * position, and a string position, gives no line. An Agnai entry whose weight
+ * is its insertion order keeps a differing integer priority as `@@priority`,
+ * the last line. An entry without these fields gives no lines and keeps its
+ * own `selective`.
  */
 export function externalEntryDecorators(entry: ExternalDecoratorSource): ExternalDecorators {
     const lines: string[] = []
@@ -75,6 +116,13 @@ export function externalEntryDecorators(entry: ExternalDecoratorSource): Externa
                 }
                 break
         }
+    }
+
+    // Weight became the insertion order, which is also the default budget
+    // priority, so Agnai's own priority is restored as a decorator.
+    if (!isFiniteNumber(entry.order) && isFiniteNumber(entry.weight)
+        && Number.isInteger(entry.priority) && entry.priority !== entry.weight) {
+        lines.push(`@@priority ${entry.priority}`)
     }
 
     return {

@@ -368,7 +368,7 @@ describe('select rows', () => {
 })
 
 describe('Reset and the shared value (S7, DD-083)', () => {
-    test('Reset turns a check off, a select to its first option and a text empty', async () => {
+    test('Reset removes a check and a select value and writes an empty text', async () => {
         install({ prompt: 'c=Check\ns=Pick=select=a,b\nt=Say=text', shared: { toggle_c: '1', toggle_s: '1', toggle_t: 'hello' } })
         const target = await show()
         await menuOf(target, 'c')
@@ -384,9 +384,29 @@ describe('Reset and the shared value (S7, DD-083)', () => {
         expect(q(row(target, 't'), '[data-part="toggle-reset"]')!.textContent).toBe('chatShellTogglesResetText')
         q(row(target, 't'), '[data-part="toggle-reset"]')!.click()
         flushSync()
-        expect(sharedValues()).toMatchObject({ toggle_c: '0', toggle_s: '0', toggle_t: '' })
+        expect(sharedValues()).toMatchObject({ toggle_t: '' })
+        expect('toggle_c' in sharedValues()).toBe(false)
+        expect('toggle_s' in sharedValues()).toBe(false)
         expect(status(target)).toBe('resetdone:Say')
         expect(h.mark).toHaveBeenCalledWith('char-a')
+    })
+
+    test('Reset in shared mode also removes a stale chat key and marks the owner; the row shows off again', async () => {
+        install({
+            prompt: 'p=Plain\ns=Pick=select=a,b', shared: { toggle_p: '1', toggle_s: '1' },
+            chatExtra: { GLGlobalVariables: { toggle_p: '1' } },
+        })
+        const target = await show()
+        expect(q(target, '[data-part="toggles-total"]')!.textContent).toBe('sum:2:2')
+        h.mark.mockClear()
+        await menuOf(target, 'p')
+        q(row(target, 'p'), '[data-part="toggle-reset"]')!.click()
+        flushSync()
+        expect('toggle_p' in sharedValues()).toBe(false)
+        expect(chat.GLGlobalVariables?.toggle_p).toBeUndefined()
+        expect(h.mark).toHaveBeenCalledWith('char-a')
+        expect(status(target)).toBe('resetdone:Plain')
+        expect(q(target, '[data-part="toggles-total"]')!.textContent).toBe('sum:2:1')
     })
 
     test('Clear on a chat-only text writes an empty chat value and the row shows the shared value', async () => {

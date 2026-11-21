@@ -265,7 +265,7 @@ describe('R-D3 the gutter marks', () => {
     })
 
     test('a mark carries its message as accessible text, with the line number', async () => {
-        await openText('a=A=select=x,y=tail\n')
+        await openText('a=A=text=x=tail\n')
         const mark = parts('studio-toggle-mark').find((candidate) => candidate.dataset.code === 'partsBeyondFour')
         expect(mark?.dataset.severity).toBe('warning')
         expect(mark?.querySelector('.sr-only')?.textContent).toBe('studioTgLineN(1): studioTgMarkPartsBeyondFour')
