@@ -764,14 +764,10 @@ export const languageChineseTraditional = {
         "secretRefInRequest": (name: string) => `請求中仍包含環境變數參照 ${name}，該請求未被傳送。`,
         "ttsAppKeyForeignHost": "此角色將 TTS 請求傳送到其他伺服器，因此未傳送應用程式全域的 OpenAI 金鑰。若要使用該伺服器，請在角色的 TTS 設定中輸入 API 金鑰。",
         "storageServerNeedsUpdate": "此伺服器版本過舊，不支援新的儲存格式：必須先更新或重新啟動後才能儲存或清理。請重新啟動 Node 伺服器（若尚未更新，請先更新），然後重新載入此頁面。",
-        "coldStorageRestoreFailed": "無法載入冷儲存資料。受影響角色的資料可能已永久遺失",
-        "coldStorageRestoreUnreadable": "暫時無法載入此角色。未做任何變更。請再試一次。",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `無法載入已封存的角色 ${characterName}：其冷儲存資料遺失或無效，可能已永久遺失。未做任何變更。`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `暫時無法載入已封存的角色 ${characterName}。未做任何變更。請再試一次。`,
-        "coldStorageRestoreUnavailable": "無法在此頁面開啟已封存的角色：此瀏覽器在此處不提供用於存放它們的儲存空間（例如在純 HTTP 位址下）。未做任何變更。",
-        "coldStorageRestoreDamaged": "無法讀取此角色的封存副本：它可能已損毀。未做任何變更，也未刪除任何內容。",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `${characterName} 的以下聊天的備選回覆無法讀取，已被略過：${chatNames}。對話本身已完整載入。`,
         "chatAltUnreadable": "無法讀取此聊天的備選回覆，因此無法重新產生或建立分支。未做任何變更。",

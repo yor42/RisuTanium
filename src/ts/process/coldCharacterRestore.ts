@@ -5,6 +5,7 @@ import { language } from "../../lang"
 import type { character, groupChat } from "../storage/database.svelte"
 import { readColdStorageItem, type ColdReadErrorKind, type ColdStorageReadResult } from "./coldstorage.svelte"
 import { applyStubStateOnRestore } from "./coldCharacter"
+import { namedRestoreFailureText, restoreFailureName } from "./coldRestoreText"
 import { noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 import { findChaIdHolders, retainOnLoad, retainOnRestore } from "./coldRetained"
 import { getResidency, residencyReadOf } from "../storage/store2/residencyActive"
@@ -159,36 +160,6 @@ export async function readColdCharacterCopy(stub: Slot): Promise<ColdCopyOutcome
  */
 export function restoreFailureReason(outcome: Exclude<ColdCopyOutcome, { status: 'ok' }>): ColdRestoreFailure {
     return outcome.status === 'unreadable' ? outcome.kind ?? 'unreadable' : outcome.status
-}
-
-/** The name a restore failure message gives `slot`: its own, else the shared fallback for a slot with none. */
-export function restoreFailureName(slot: Slot): string {
-    return slot.name || language.errors.coldStorageUnknownCharacterName
-}
-
-/**
- * The message naming the character `name` for `reason`. Every reason has its
- * own case, so a reason added to `ColdRestoreFailure` without a message fails
- * the type check instead of falling through to the possible-data-loss text.
- * Only `missing`, `mismatch` and `ambiguous` claim the data may be lost.
- */
-export function namedRestoreFailureText(name: string, reason: ColdRestoreFailure): string {
-    switch (reason) {
-        case 'unavailable':
-            return language.errors.coldStorageNamedRestoreUnavailable(name)
-        case 'damaged':
-            return language.errors.coldStorageNamedRestoreDamaged(name)
-        case 'unreadable':
-            return language.errors.coldStorageNamedRestoreUnreadable(name)
-        case 'missing':
-        case 'mismatch':
-        case 'ambiguous':
-            return language.errors.coldStorageNamedRestoreFailed(name)
-        default: {
-            const unhandled: never = reason
-            return unhandled
-        }
-    }
 }
 
 /** The refusal of a restore of `slot`, with the user-facing alert naming it unless the request is `quiet`. */

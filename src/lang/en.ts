@@ -769,14 +769,10 @@ export const languageEnglish = {
             `A request still contains the environment variable reference ${name}. It was not sent.`,
         ttsAppKeyForeignHost: "This character sends text-to-speech requests to another server, so the app-wide OpenAI key was not sent. Enter an API key in the character's text-to-speech settings to use that server.",
         storageServerNeedsUpdate: "This server is too old for the new storage format: it must be updated or restarted before it can save or clean up. Restart the Node server (update it first if you have not), then reload this page.",
-        coldStorageRestoreFailed: "Cold storage data could not be loaded. The affected character's data may be permanently lost.",
-        coldStorageRestoreUnreadable: "This character could not be loaded right now. Nothing was changed. Please try again.",
         coldStorageNamedRestoreFailed: (characterName: string) =>
             `The archived character ${characterName} could not be loaded: its cold storage data is missing or invalid, and may be permanently lost. Nothing was changed.`,
         coldStorageNamedRestoreUnreadable: (characterName: string) =>
             `The archived character ${characterName} could not be loaded right now. Nothing was changed. Please try again.`,
-        coldStorageRestoreUnavailable: "Archived characters can't be opened on this page: this browser offers no storage for them here (for example on a plain-HTTP address). Nothing was changed.",
-        coldStorageRestoreDamaged: "This character's archived copy could not be read: it may be damaged. Nothing was changed or deleted.",
         coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
             `The alternative replies of these chats of ${characterName} could not be read and were left out: ${chatNames}. The conversations themselves were loaded intact.`,
         chatAltUnreadable: "The alternative replies of this chat cannot be read, so it cannot be rerolled or branched. Nothing was changed.",

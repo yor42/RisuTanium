@@ -493,7 +493,7 @@ describe('GridCatalog: a cold pick keeps the grid open until the character has o
             calls[0].fail(error)
             await settle()
             expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', error)
-            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('Bob'))
             expect(endGrid).not.toHaveBeenCalled()
             expect(markCount(target)).toBe(0)
         })
@@ -800,7 +800,7 @@ describe('GridCatalog: a warm pick whose changeChar throws', { timeout: 60_000 }
 
             await settle()
             expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('Bob'))
             expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', error)
             await nextMacrotask()
             expect(unhandled).toEqual([])
@@ -862,7 +862,7 @@ describe('GridCatalog: a warm pick whose changeChar throws', { timeout: 60_000 }
             tiles(target)[0].click()
             await settle()
             expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('Ann'))
             expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', warmError)
             // Fixture self-check: the drop's supersede and the call's own bump both ran, so the counter really moved.
             expect(changeCharGeneration() - g0).toBe(2)
