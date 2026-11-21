@@ -147,7 +147,7 @@ The file format has limits.
 
 ### Chat alternatives (rerolls and candidate replies)
 
-The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. SillyTavern swipes import into the tree. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
+The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. Swipes from SillyTavern, Ooba, Agnai, Kobold Lite and Character.AI chat files import into the tree. For Agnai and Kobold Lite branches, only the first message where a branch differs is kept. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
 
 ### Chats stay separate
 
