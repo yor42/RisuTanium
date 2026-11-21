@@ -1,0 +1,29 @@
+{
+  "type": "character",
+  "name": "Alice",
+  "image": "assets/alice.png",
+  "chaId": "cha-loaded-trashed",
+  "chatPage": 0,
+  "creatorNotes": "A short note",
+  "tags": [
+    "a"
+  ],
+  "creator": "Top",
+  "chats": [
+    {
+      "id": "c1",
+      "name": "One",
+      "note": "",
+      "localLore": [],
+      "message": [
+        {
+          "role": "user",
+          "data": "hello",
+          "time": 1
+        }
+      ]
+    }
+  ],
+  "globalLore": [],
+  "trashTime": 1795262400000
+}

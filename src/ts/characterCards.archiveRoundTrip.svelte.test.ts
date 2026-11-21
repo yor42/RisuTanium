@@ -249,6 +249,7 @@ import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/pro
 import { resetRestoredBytesForTest } from 'src/ts/process/memory/restoredBytes'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { resetPutBackForTest } from 'src/ts/process/memory/characterPutBack'
+import { decodeUnitBytes, loadArchiveCase, unitCharacterOf } from 'src/ts/process/tests/archiveCapture/archiveFixtures'
 
 const enc = new TextEncoder()
 
@@ -346,26 +347,23 @@ describe('an imported card opened for the first time', () => {
         expect(tavern.cleanAfterOpen).toBe(false)
     })
 
-    test('guard: an archived import restores the card the live import would have produced, apart from the volatile fields', async () => {
-        const archived = await importAndOpen(v2Card, true)
-        const archivedChar = JSON.parse(JSON.stringify(slot(archived.index))) as Record<string, unknown>
-
-        installDb()
-        h.units.clear()
-        resetRetainedForTest()
-        noteBootArchiveSession(false)
-        const live = await importAndOpen(v2Card, false)
-        const liveChar = JSON.parse(JSON.stringify(slot(live.index))) as Record<string, unknown>
-
-        for (const volatile of ['lastInteraction', 'trashTime', 'creation_date', 'chaId', 'chats']) {
-            delete archivedChar[volatile]
-            delete liveChar[volatile]
+    test.each(['import-v2', 'import-v3', 'import-tavern'])('guard: the captured stub of %s, opened through changeChar, restores the unit\'s character apart from lastInteraction', async (id) => {
+        const archived = loadArchiveCase(id)
+        for (const unit of archived.units) {
+            h.units.set(unit.key, decodeUnitBytes(unit.bytes))
         }
-        expect(live.wasStub).toBe(false)
-        expect(archivedChar).toEqual(liveChar)
+        DBState.db.characters.push(JSON.parse(JSON.stringify(archived.stub)))
+
+        await changeChar(0)
+
+        const opened = JSON.parse(JSON.stringify(slot(0))) as Record<string, unknown>
+        const expected = JSON.parse(JSON.stringify(unitCharacterOf(archived.units[0]))) as Record<string, unknown>
+        delete opened.lastInteraction
+        delete expected.lastInteraction
+        expect(opened.coldstorage).toBeUndefined()
+        expect(opened).toEqual(expected)
     })
 })
-
 describe('the format step', () => {
     test.each(cards)('diagnostic: formatting %s twice gives the content of formatting it once', async (_name, card) => {
         noteBootArchiveSession(false)
