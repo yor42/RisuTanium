@@ -15,6 +15,7 @@ import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef, type PromptModuleScripts } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
 import { firstMessageOf } from "./firstMessage";
+import { readLatest, yieldTask } from "./latestSnapshot";
 import { sayTTS } from "./tts";
 import { beginInFlight } from "./inFlightWork";
 import { isTTSVoiceMode } from "./ttsModes";
@@ -2664,21 +2665,22 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     streamingFlushFrame = null
                     void flushStreamingDisplay().catch((error) => {
                         streamingFlushError ??= error
-                        void reader.cancel().catch(() => {})
+                        void snapshots.cancel()
                     })
                 })
             }, streamingDisplayFlushDelay)
         }
+        const snapshots = readLatest(reader, (value) => !!value)
         const abortReader = () => {
             streamAborted = true
-            void reader.cancel().catch(() => {})
+            void snapshots.cancel()
         }
         abortSignal.addEventListener('abort', abortReader, { once: true })
         try {
             while(streamAborted === false && replyGone === false){
-                let readed: ReadableStreamReadResult<{ [key: string]: string }>
+                let readed: Awaited<ReturnType<typeof snapshots.next>>
                 try {
-                    readed = await reader.read()
+                    readed = await snapshots.next()
                 }
                 catch(error){
                     if(abortSignal.aborted || streamAborted){
@@ -2687,7 +2689,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     }
                     throw error
                 }
-                if(readed.value){
+                if('value' in readed){
                     receivedStreamingResult = true
                     lastResponseChunk = readed.value
                     const firstChunkKey = Object.keys(lastResponseChunk)[0]
@@ -2703,7 +2705,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         pendingStreamingResult = result
                         // The display write waits for a frame a hidden page never runs: the received length lets the
                         // keep-alive count keep rising meanwhile. It is approximate because it precedes formatting and
-                        // the output scripts; the 'off' mode writes per chunk and stays exact (MC-1499, MC-1466).
+                        // the output scripts; the 'off' mode notes the exact processed length at each write (MC-1499, MC-1466).
                         if(streamedReplyId !== undefined){
                             noteStreamReceived(streamedReplyId, (prefix + result).length)
                         }
@@ -2712,6 +2714,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     else if(!(await processAndWriteReply(reformatContent(prefix + result)))){
                         replyGone = true
                         break
+                    }
+                    else if(!streamAborted){
+                        // One posted-message task, never a timer, frame or scheduler.yield: a hidden page must still finish
+                        // the reply, and native events queued during the pass must reach the snapshot reader first so the
+                        // next pass takes the newest snapshot. Superseded snapshots skip the scripts; unless Stop or a gone
+                        // reply ends the loop, the last snapshot is always written (MC-1451, MC-2990, MC-2991).
+                        await yieldTask()
                     }
                 }
                 if(readed.done){
@@ -2749,7 +2758,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     streamEndCtx.chat.activeStreamingDisplayOptimizationMode = undefined
                     streamEndCtx.owner.reloadKeys += 1
                 }
-                void reader.cancel().catch(() => {})
+                void snapshots.cancel()
                 // The reply text is settled here, and the post-reply steps below may wait on
                 // timers a hidden page does not run.
                 flushPageReplyEndWhenHidden(origin)
