@@ -30,7 +30,7 @@
     import { getNanoGPTModels, getNanoGPTSubscriptionModels, toModelGridItem as ngToGridItem } from "src/ts/model/nanogpt";
     import { getOllamaModels } from "src/ts/model/ollama";
     import { currentKeyForUi } from "src/ts/process/request/secretKey";
-    import { proxyUrlValue, setProxyUrl, setSlotKey, slotEditorValue } from "src/ts/connections/slotEditor";
+    import { proxyUrlValue, setProxyUrl, setSlotKey, slotEditorValue, slotKeyTemporarilyUnavailable } from "src/ts/connections/slotEditor";
     import ModelGrid from "src/lib/UI/ModelGrid.svelte";
     import NanoGPTDashboard from "src/lib/UI/NanoGPTDashboard.svelte";
     import NanoGPTProviderPicker from "src/lib/UI/NanoGPTProviderPicker.svelte";
@@ -184,7 +184,7 @@
 
     {#if modelInfo.provider === LLMProvider.GoogleCloud || subModelInfo.provider === LLMProvider.GoogleCloud}
         <span class="text-textcolor" id="{uid}-keyGoogle">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-        <KeyListInput labelId="{uid}-keyGoogle" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={() => slotEditorValue(DBState.db, 'google.accessToken'), (v) => { void setSlotKey(DBState.db, 'google.accessToken', v) }}/>
+        <KeyListInput labelId="{uid}-keyGoogle" marginBottom={true} size={"sm"} placeholder="..." hideText unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'google.accessToken')} bind:value={() => slotEditorValue(DBState.db, 'google.accessToken'), (v) => { void setSlotKey(DBState.db, 'google.accessToken', v) }}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.VertexAI || subModelInfo.provider === LLMProvider.VertexAI}
         <span class="text-textcolor" id="{uid}-f1">{language.settingsPage.projectId}</span>
@@ -193,6 +193,9 @@
         <TextInput labelId="{uid}-f2" marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.vertexClientEmail} oninput={clearVertexToken}/>
         <span class="text-textcolor" id="{uid}-f3">{fillLang(language.settingsPage.namePrivateKey, { name: 'Vertex' })}</span>
         <TextInput labelId="{uid}-f3" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={() => slotEditorValue(DBState.db, 'vertexPrivateKey'), (v) => { void setSlotKey(DBState.db, 'vertexPrivateKey', v) }} oninput={clearVertexToken}/>
+        {#if slotKeyTemporarilyUnavailable(DBState.db, 'vertexPrivateKey')}
+            <div class="text-textcolor2 text-xs mb-2">{language.vaultKeyTemporarilyUnavailableHint}</div>
+        {/if}
         <span class="text-textcolor" id="{uid}-vertexRegion">{language.settingsPage.region}</span>
         <SelectInput labelId="{uid}-vertexRegion" value={DBState.db.vertexRegion} onchange={(e) => {
             DBState.db.vertexRegion = e.currentTarget.value
@@ -211,30 +214,30 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelList || subModelInfo.provider === LLMProvider.NovelList}
         <span class="text-textcolor" id="{uid}-keyNovelList">NovelList {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyNovelList" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={() => slotEditorValue(DBState.db, 'novellistAPI'), (v) => { void setSlotKey(DBState.db, 'novellistAPI', v) }}/>
+        <KeyListInput labelId="{uid}-keyNovelList" hideText marginBottom={true} size={"sm"} placeholder="..." unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'novellistAPI')} bind:value={() => slotEditorValue(DBState.db, 'novellistAPI'), (v) => { void setSlotKey(DBState.db, 'novellistAPI', v) }}/>
     {/if}
     {#if DBState.db.aiModel.startsWith('mancer') || DBState.db.subModel.startsWith('mancer')}
         <span class="text-textcolor" id="{uid}-keyMancer">Mancer {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyMancer" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={() => slotEditorValue(DBState.db, 'mancerHeader'), (v) => { void setSlotKey(DBState.db, 'mancerHeader', v) }}/>
+        <KeyListInput labelId="{uid}-keyMancer" hideText marginBottom={true} size={"sm"} placeholder="..." unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'mancerHeader')} bind:value={() => slotEditorValue(DBState.db, 'mancerHeader'), (v) => { void setSlotKey(DBState.db, 'mancerHeader', v) }}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Anthropic || subModelInfo.provider === LLMProvider.Anthropic
             || modelInfo.provider === LLMProvider.AWS || subModelInfo.provider === LLMProvider.AWS }
         <span class="text-textcolor" id="{uid}-keyClaude">Claude {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyClaude" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={() => slotEditorValue(DBState.db, 'claudeAPIKey'), (v) => { void setSlotKey(DBState.db, 'claudeAPIKey', v) }}/>
+        <KeyListInput labelId="{uid}-keyClaude" hideText marginBottom={true} size={"sm"} placeholder="..." unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'claudeAPIKey')} bind:value={() => slotEditorValue(DBState.db, 'claudeAPIKey'), (v) => { void setSlotKey(DBState.db, 'claudeAPIKey', v) }}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Mistral || subModelInfo.provider === LLMProvider.Mistral}
         <span class="text-textcolor" id="{uid}-keyMistral">Mistral {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyMistral" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={() => slotEditorValue(DBState.db, 'mistralKey'), (v) => { void setSlotKey(DBState.db, 'mistralKey', v) }}/>
+        <KeyListInput labelId="{uid}-keyMistral" hideText marginBottom={true} size={"sm"} placeholder="..." unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'mistralKey')} bind:value={() => slotEditorValue(DBState.db, 'mistralKey'), (v) => { void setSlotKey(DBState.db, 'mistralKey', v) }}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelAI || subModelInfo.provider === LLMProvider.NovelAI}
         <span class="text-textcolor" id="{uid}-keyNovelAI">{fillLang(language.settingsPage.nameBearerToken, { name: 'NovelAI' })}</span>
-        <KeyListInput labelId="{uid}-keyNovelAI" bind:value={() => slotEditorValue(DBState.db, 'novelai.token'), (v) => { void setSlotKey(DBState.db, 'novelai.token', v) }}/>
+        <KeyListInput labelId="{uid}-keyNovelAI" unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'novelai.token')} bind:value={() => slotEditorValue(DBState.db, 'novelai.token'), (v) => { void setSlotKey(DBState.db, 'novelai.token', v) }}/>
     {/if}
     {#if DBState.db.aiModel === 'reverse_proxy' || DBState.db.subModel === 'reverse_proxy'}
         <span class="text-textcolor mt-2"><span id="{uid}-f4">URL</span> <Help key="forceUrl"/></span>
         <TextInput labelId="{uid}-f4" marginBottom={false} size={"sm"} bind:value={() => proxyUrlValue(DBState.db), (v) => { setProxyUrl(DBState.db, v) }} placeholder="https//..." />
         <span class="text-textcolor mt-4" id="{uid}-keyProxy"> {language.proxyAPIKey}</span>
-        <KeyListInput labelId="{uid}-keyProxy" hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={() => slotEditorValue(DBState.db, 'proxyKey'), (v) => { void setSlotKey(DBState.db, 'proxyKey', v) }} />
+        <KeyListInput labelId="{uid}-keyProxy" hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'proxyKey')} bind:value={() => slotEditorValue(DBState.db, 'proxyKey'), (v) => { void setSlotKey(DBState.db, 'proxyKey', v) }} />
         <span class="text-textcolor mt-4" id="{uid}-f5"> {language.proxyRequestModel}</span>
         <TextInput labelId="{uid}-f5" marginBottom={false} size={"sm"} bind:value={DBState.db.customProxyRequestModel} placeholder={language.name} />
         <span class="text-textcolor mt-4" id="{uid}-customApiFormat"> {language.format}</span>
@@ -263,7 +266,7 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.Cohere || subModelInfo.provider === LLMProvider.Cohere}
         <span class="text-textcolor mt-4" id="{uid}-keyCohere">Cohere {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyCohere" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, 'cohereAPIKey'), (v) => { void setSlotKey(DBState.db, 'cohereAPIKey', v) }} />
+        <KeyListInput labelId="{uid}-keyCohere" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'cohereAPIKey')} bind:value={() => slotEditorValue(DBState.db, 'cohereAPIKey'), (v) => { void setSlotKey(DBState.db, 'cohereAPIKey', v) }} />
     {/if}
     {#if usesOllamaLocal || usesOllamaCloud}
         {#if usesOllamaLocal}
@@ -303,7 +306,7 @@
         {/if}
 
             <span class="text-textcolor mt-4" id="{uid}-keyOllama">Ollama {language.apiKey}</span>
-            <KeyListInput labelId="{uid}-keyOllama" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, 'ollamaApiKey'), (v) => { void setSlotKey(DBState.db, 'ollamaApiKey', v) }} />
+            <KeyListInput labelId="{uid}-keyOllama" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'ollamaApiKey')} bind:value={() => slotEditorValue(DBState.db, 'ollamaApiKey'), (v) => { void setSlotKey(DBState.db, 'ollamaApiKey', v) }} />
 
             <span class="text-textcolor mt-4" id="{uid}-ollamaFormat">Ollama {language.format}</span>
             <SelectInput labelId="{uid}-ollamaFormat" value={DBState.db.ollamaRequestFormat.toString()} onchange={(e) => {
@@ -359,7 +362,7 @@
     {/if}
     {#if DBState.db.aiModel === 'nanogpt' || DBState.db.subModel === 'nanogpt'}
         <span class="text-textcolor mt-4" id="{uid}-keyNanoGPT">NanoGPT {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyNanoGPT" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, 'nanogptKey'), (v) => { void setSlotKey(DBState.db, 'nanogptKey', v) }} />
+        <KeyListInput labelId="{uid}-keyNanoGPT" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'nanogptKey')} bind:value={() => slotEditorValue(DBState.db, 'nanogptKey'), (v) => { void setSlotKey(DBState.db, 'nanogptKey', v) }} />
 
         <NanoGPTDashboard apiKey={currentKeyForUi('nanogptKey', DBState.db)} />
 
@@ -404,7 +407,7 @@
     {/if}
     {#if DBState.db.aiModel === 'openrouter' || DBState.db.subModel === 'openrouter'}
         <span class="text-textcolor mt-4" id="{uid}-keyOpenRouter">OpenRouter {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyOpenRouter" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, 'openrouterKey'), (v) => { void setSlotKey(DBState.db, 'openrouterKey', v) }} />
+        <KeyListInput labelId="{uid}-keyOpenRouter" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'openrouterKey')} bind:value={() => slotEditorValue(DBState.db, 'openrouterKey'), (v) => { void setSlotKey(DBState.db, 'openrouterKey', v) }} />
 
         <span class="text-textcolor mt-4">OpenRouter {language.model}</span>
         {#await getOpenRouterModels()}
@@ -423,17 +426,17 @@
     {/if}
     {#if modelInfo.provider === LLMProvider.OpenAI || subModelInfo.provider === LLMProvider.OpenAI}
         <span class="text-textcolor"><span id="{uid}-keyOpenAI">OpenAI {language.apiKey}</span> <Help key="oaiapikey"/></span>
-        <KeyListInput labelId="{uid}-keyOpenAI" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
+        <KeyListInput labelId="{uid}-keyOpenAI" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'openAIKey')} bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
     {/if}
 
     {#if modelInfo.keyIdentifier}
         <span class="text-textcolor" id="{uid}-keyModel">{modelInfo.name} {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyModel" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, `OaiCompAPIKeys:${modelInfo.keyIdentifier}`), (v) => { void setSlotKey(DBState.db, `OaiCompAPIKeys:${modelInfo.keyIdentifier}`, v) }} placeholder="..."/>
+        <KeyListInput labelId="{uid}-keyModel" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, `OaiCompAPIKeys:${modelInfo.keyIdentifier}`)} bind:value={() => slotEditorValue(DBState.db, `OaiCompAPIKeys:${modelInfo.keyIdentifier}`), (v) => { void setSlotKey(DBState.db, `OaiCompAPIKeys:${modelInfo.keyIdentifier}`, v) }} placeholder="..."/>
     {/if}
 
     {#if subModelInfo.keyIdentifier && subModelInfo.keyIdentifier !== modelInfo.keyIdentifier}
         <span class="text-textcolor" id="{uid}-keySubModel">{subModelInfo.name} {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keySubModel" hideText marginBottom={false} size={"sm"} bind:value={() => slotEditorValue(DBState.db, `OaiCompAPIKeys:${subModelInfo.keyIdentifier}`), (v) => { void setSlotKey(DBState.db, `OaiCompAPIKeys:${subModelInfo.keyIdentifier}`, v) }} placeholder="..."/>
+        <KeyListInput labelId="{uid}-keySubModel" hideText marginBottom={false} size={"sm"} unavailable={slotKeyTemporarilyUnavailable(DBState.db, `OaiCompAPIKeys:${subModelInfo.keyIdentifier}`)} bind:value={() => slotEditorValue(DBState.db, `OaiCompAPIKeys:${subModelInfo.keyIdentifier}`), (v) => { void setSlotKey(DBState.db, `OaiCompAPIKeys:${subModelInfo.keyIdentifier}`, v) }} placeholder="..."/>
     {/if}
 
     <div class="py-2 flex flex-col gap-2 mb-4">
@@ -479,7 +482,7 @@
 
     {#if DBState.db.aiModel.startsWith("horde") || DBState.db.subModel.startsWith("horde") }
         <span class="text-textcolor" id="{uid}-keyHorde">Horde {language.apiKey}</span>
-        <KeyListInput labelId="{uid}-keyHorde" hideText marginBottom={true} bind:value={() => slotEditorValue(DBState.db, 'hordeConfig.apiKey'), (v) => { void setSlotKey(DBState.db, 'hordeConfig.apiKey', v) }} />
+        <KeyListInput labelId="{uid}-keyHorde" hideText marginBottom={true} unavailable={slotKeyTemporarilyUnavailable(DBState.db, 'hordeConfig.apiKey')} bind:value={() => slotEditorValue(DBState.db, 'hordeConfig.apiKey'), (v) => { void setSlotKey(DBState.db, 'hordeConfig.apiKey', v) }} />
     {/if}
     {#if DBState.db.aiModel === 'textgen_webui' || DBState.db.subModel === 'textgen_webui'
         || DBState.db.aiModel === 'mancer' || DBState.db.subModel === 'mancer'}
