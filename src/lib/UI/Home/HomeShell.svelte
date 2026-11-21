@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick, untrack } from 'svelte'
+    import { onDestroy, tick, untrack } from 'svelte'
     import { LayoutGridIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import MainMenu from '../MainMenu.svelte'
@@ -116,12 +116,19 @@
         }
     })
 
+    // The re-aim of the latest jump (jumpToSection): a new reveal and the shell's destruction both end it.
+    let reaim: AbortController | null = null
+    onDestroy(() => reaim?.abort())
+
     // Brings the library into view: mounts it first when it is still deferred (the mount must be in the DOM before
     // anything is scrolled or focused), then scrolls to and focuses the target. The library section wins whenever
     // it exists, the Trash-only case included: the focus goes to the character's Studio control when a Studio
     // visit ended on it and the control is drawn, else to the library heading. With no library content the header
     // hero is the only content and takes both. Resolved inside this landing only.
     async function revealLibrary(focusChaId: string | null): Promise<void> {
+        reaim?.abort()
+        reaim = new AbortController()
+        const { signal } = reaim
         if (!libraryMounted) {
             libraryMounted = true
             await tick()
@@ -134,12 +141,12 @@
         if (section) {
             const control = focusChaId === null ? undefined : Array.from(section.querySelectorAll<HTMLElement>('[data-part="library-studio"]'))
                 .find((candidate) => candidate.getAttribute('data-cha-id') === focusChaId)
-            jumpToSection({ scroller, target: section, focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'), reduced })
+            jumpToSection({ scroller, target: section, focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'), reduced, signal })
             return
         }
         const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')
         if (hero) {
-            jumpToSection({ scroller, target: hero, focus: hero.querySelector<HTMLElement>('[data-jump-target="home-hero"]'), reduced })
+            jumpToSection({ scroller, target: hero, focus: hero.querySelector<HTMLElement>('[data-jump-target="home-hero"]'), reduced, signal })
         }
     }
 

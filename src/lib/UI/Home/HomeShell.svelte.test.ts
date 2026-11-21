@@ -176,6 +176,40 @@ describe('HomeShell', () => {
         expect(stubsOf(root)).toHaveLength(1)
     })
 
+    test('S4b-F2 the reveal re-aims on a resize of the scroller, and destroying the shell disconnects the re-aim', async () => {
+        const observers: Array<{ observed: Element[]; disconnect: ReturnType<typeof vi.fn>; callback: () => void }> = []
+        vi.stubGlobal('ResizeObserver', class {
+            observed: Element[] = []
+            disconnect = vi.fn()
+            constructor(readonly callback: () => void) {
+                observers.push(this)
+            }
+            observe(node: Element): void {
+                this.observed.push(node)
+            }
+        })
+        try {
+            const root = mountShell()
+            const section = sectionOf(root)!
+            markTop(section, 321)
+            libraryButton(root).click()
+            flushSync()
+            await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+            const reaim = observers.find((observer) => observer.observed.includes(scrollerOf(root)))!
+            expect(reaim.observed).toContain(section)
+
+            markTop(section, 400)
+            reaim.callback()
+            expect(scrollSpy).toHaveBeenCalledTimes(2)
+            expect(scrollSpy).toHaveBeenLastCalledWith({ top: 400, behavior: 'smooth' })
+
+            expect(reaim.disconnect).not.toHaveBeenCalled()
+            await unmount(mountedInstances.pop() as never)
+            expect(reaim.disconnect).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
     test('S4b-R1 with reduced motion on the root the scroll is instant', async () => {
         document.documentElement.classList.add('rm')
         const root = mountShell()

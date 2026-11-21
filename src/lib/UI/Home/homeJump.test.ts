@@ -114,3 +114,144 @@ describe('jumpToSection', () => {
         expect(log).toEqual(['scroll', 'focus:section'])
     })
 })
+
+/** A `ResizeObserver` stand-in that records its targets and lets the test deliver a resize. */
+class MockResizeObserver {
+    static instances: MockResizeObserver[] = []
+    observed: Element[] = []
+    disconnect = vi.fn()
+    constructor(private readonly callback: () => void) {
+        MockResizeObserver.instances.push(this)
+    }
+    observe(node: Element): void {
+        this.observed.push(node)
+    }
+    /** A disconnected observer delivers nothing, as a real one. */
+    fire(): void {
+        if (this.disconnect.mock.calls.length > 0) return
+        this.callback()
+    }
+}
+
+describe('jumpToSection re-aim', () => {
+    let tops: { target: number }
+    let log: string[]
+    let scroller: HTMLElement
+    let target: HTMLElement
+
+    beforeEach(() => {
+        vi.useFakeTimers()
+        MockResizeObserver.instances = []
+        vi.stubGlobal('ResizeObserver', MockResizeObserver)
+        log = []
+        tops = { target: 90 }
+        scroller = scrollerOf(log, { top: 40, scrollTop: 300 })
+        target = element(log, 90)
+        target.getBoundingClientRect = () => ({ top: tops.target } as DOMRect)
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+        vi.unstubAllGlobals()
+    })
+
+    test('S4b-F2 a resize after the jump re-issues the scroll with the target current offset, and never refocuses', () => {
+        jumpToSection({ scroller, target, reduced: false })
+        const observer = MockResizeObserver.instances[0]
+        expect(observer.observed).toEqual([scroller, target])
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+
+        tops.target = 150
+        observer.fire()
+
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(2)
+        expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 410, behavior: 'smooth' })
+        expect(target.focus).toHaveBeenCalledTimes(1)
+    })
+
+    test('S4b-F2 a resize that leaves the offset unchanged does not scroll again, and reduced motion stays instant', () => {
+        jumpToSection({ scroller, target, reduced: true })
+        const observer = MockResizeObserver.instances[0]
+
+        observer.fire()
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+
+        tops.target = 20
+        observer.fire()
+        expect(scroller.scrollTo).toHaveBeenLastCalledWith({ top: 280, behavior: 'instant' })
+    })
+
+    test.each(['wheel', 'touchstart', 'pointerdown', 'keydown'])('S4b-F2 a %s on the document ends the re-aim', (type) => {
+        jumpToSection({ scroller, target, reduced: false })
+        const observer = MockResizeObserver.instances[0]
+
+        document.dispatchEvent(new Event(type))
+        expect(observer.disconnect).toHaveBeenCalled()
+
+        tops.target = 150
+        observer.fire()
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+    })
+
+    test('S4b-F2 an input on the scroller ends the re-aim', () => {
+        jumpToSection({ scroller, target, reduced: false })
+        const observer = MockResizeObserver.instances[0]
+
+        scroller.dispatchEvent(new Event('wheel'))
+
+        expect(observer.disconnect).toHaveBeenCalled()
+    })
+
+    test('S4b-F2 the window end disconnects the observer and ends the re-aim', () => {
+        jumpToSection({ scroller, target, reduced: false })
+        const observer = MockResizeObserver.instances[0]
+
+        vi.advanceTimersByTime(999)
+        expect(observer.disconnect).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1)
+        expect(observer.disconnect).toHaveBeenCalledTimes(1)
+
+        tops.target = 150
+        observer.fire()
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+    })
+
+    test('S4b-F2 aborting the signal disconnects the observer and removes the input listeners', () => {
+        const removed: string[] = []
+        const controller = new AbortController()
+        jumpToSection({ scroller, target, reduced: false, signal: controller.signal })
+        const observer = MockResizeObserver.instances[0]
+        const removeDocument = vi.spyOn(document, 'removeEventListener').mockImplementation((type) => { removed.push(`document:${type}`) })
+        const removeScroller = vi.spyOn(scroller, 'removeEventListener').mockImplementation((type) => { removed.push(`scroller:${type}`) })
+        spied.push(removeDocument, removeScroller)
+
+        controller.abort()
+
+        expect(observer.disconnect).toHaveBeenCalledTimes(1)
+        for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+            expect(removed).toContain(`document:${type}`)
+            expect(removed).toContain(`scroller:${type}`)
+        }
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    test('S4b-F2 an already aborted signal never starts the re-aim, and the first scroll and focus still happen', () => {
+        const controller = new AbortController()
+        controller.abort()
+
+        expect(jumpToSection({ scroller, target, reduced: false, signal: controller.signal })).toBe(true)
+
+        expect(MockResizeObserver.instances).toHaveLength(0)
+        expect(log).toEqual(['scroll', 'focus:'])
+    })
+
+    test('S4b-F2 compatibility guard: without ResizeObserver the jump scrolls once and sets no timer', () => {
+        vi.unstubAllGlobals()
+        vi.stubGlobal('ResizeObserver', undefined)
+
+        expect(jumpToSection({ scroller, target, reduced: false })).toBe(true)
+
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+        expect(vi.getTimerCount()).toBe(0)
+    })
+})
