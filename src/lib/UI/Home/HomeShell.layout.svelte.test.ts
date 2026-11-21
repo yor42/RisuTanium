@@ -339,6 +339,9 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(classesOf(brand)).toContain('overflow-x-clip')
         // The clip margin keeps the replay focus ring (outline plus offset, 5 px) from being cut at the cell edge.
         expect(classesOf(brand)).toContain('[overflow-clip-margin:6px]')
+        // On an occasion day the cell pads its end by the scene contract's 22 px right overflow, so a final pose and the
+        // focus ring stay inside the clip box where the clip margin is not honoured (Android WebView).
+        expect(classesOf(brand)).toContain('data-seasonal-active:pe-[22px]')
         const word = brand.querySelector('[data-seasonal-host]')!
         expect(classesOf(word)).toContain('min-w-0')
         expect(word.querySelector('.rt-sw-sr')!.textContent).toBe('RisuTanium')
