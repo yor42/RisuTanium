@@ -26,7 +26,7 @@
     })
 </script>
 
-<header data-part="home-greeting" class="home-greeting w-full max-w-4xl px-6 text-left">
+<header data-part="home-greeting" class="home-greeting w-full text-left">
     <p data-part="home-eyebrow" class="home-greeting-eyebrow">{language.settingsShellModesNameRp}</p>
     <h1 class="home-greeting-title">{language[greetingKey(period)]}</h1>
 </header>

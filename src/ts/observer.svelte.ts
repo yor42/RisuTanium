@@ -1,4 +1,5 @@
 import { globalFetch } from "./globalApi.svelte";
+import { copyPlainText } from "./chatCopy";
 import { isWellFormedBgm, parseBgmControl, type BgmControl } from "./bgmControl";
 import { connectedMessageRoots, messageRootOf, onMessageRootsChanged } from "./messageRootRegistry";
 
@@ -36,7 +37,7 @@ function onCodeContextMenu(e:MouseEvent){
     copyOption.textContent = 'Copy'
     copyOption.setAttribute('class', 'px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer')
     copyOption.addEventListener('click', ()=>{
-        navigator.clipboard.writeText(node.textContent)
+        copyPlainText(node.textContent, () => {})
         menu.remove()
     })
 

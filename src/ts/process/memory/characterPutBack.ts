@@ -116,7 +116,7 @@ function clearPending(exit: CandidateExit): void {
     }
 }
 
-/** Whether this database may put characters back at all: archiving on and a block-format database. */
+/** Whether this database may put characters back at all: archiving on and a database at the block format version. */
 function putBackMayRun(): boolean {
     const db = DBState.db
     return !!db

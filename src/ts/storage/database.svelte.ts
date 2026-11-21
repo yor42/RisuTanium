@@ -991,6 +991,7 @@ export interface Database{
     classicMaxWidth: boolean,
     useChatSticker:boolean,
     useAdditionalAssetsPreview:boolean,
+    /** Kept for the upstream `.bin` round trip only; nothing reads it (CHORE-557). */
     usePlainFetch:boolean
     hypaMemory:boolean
     hypav2:boolean
@@ -1281,6 +1282,7 @@ export interface Database{
     claude1HourCaching:boolean
     rememberToolUsage:boolean
     simplifiedToolUse:boolean
+    /** Kept for the upstream `.bin` round trip only; nothing reads it (CHORE-557). */
     requestLocation:string
     newImageHandlingBeta?: boolean
     showFirstMessagePages:boolean

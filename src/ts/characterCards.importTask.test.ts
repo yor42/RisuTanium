@@ -233,7 +233,7 @@ async function runImport(): Promise<void> {
     const done = importCharacter()
     let ended = false
     void done.then(() => { ended = true }, () => { ended = true })
-    for (let i = 0; i < 400 && !ended; i++) {
+    for (const deadline = performance.now() + 10_000; !ended && performance.now() < deadline;) {
         if (taskResultShowing()) answerTask({ kind: 'ok' })
         await new Promise((resolve) => setTimeout(resolve, 0))
     }

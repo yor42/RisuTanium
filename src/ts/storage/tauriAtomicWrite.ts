@@ -140,7 +140,7 @@ export async function writeFileAtomic(path: string, bytes: Uint8Array): Promise<
  * rejects: a failure is logged and the files stay for the next boot.
  *
  * With `recursive`, every directory below `directory` is swept too; this is how
- * the block store's nested directories are covered, and the temp files of the
+ * the nested directories of pre-store2 block-format data are covered, and the temp files of the
  * durable write (`tauriDurableWrite.ts`) match the same pattern. A symbolic link
  * is never entered. A directory that cannot be listed is logged and skipped.
  */
@@ -170,7 +170,7 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
  * Every AppData directory a store write can put a temp file into, each swept
  * below recursively because keys under it may nest: `database/` (the main
  * file, numbered backups, the backup fingerprint, pre-conversion copies),
- * `remotes/`, `coldstorage/`, `blocks/` (generations nest), `assets/` and
+ * `remotes/`, `coldstorage/`, `blocks/` (pre-store2 block-format data, generations nest), `assets/` and
  * `modeldata/` (the cached model data files). A key without a slash lands in the AppData root itself, which is swept
  * without descending: the other directories are listed here, and nothing else
  * under the root holds store keys. The app pages send this list to the native sweep.

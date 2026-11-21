@@ -9,6 +9,7 @@
     import NumberInput from '../UI/GUI/NumberInput.svelte'
     import TextInput from '../UI/GUI/TextInput.svelte'
     import ModelList from '../UI/ModelList.svelte'
+    import { v4 } from 'uuid'
 
     // Every edit below assigns one field of the stored preset in place, so a key this build does not know stays on the
     // object through an edit of another field.
@@ -18,7 +19,7 @@
 
     function addPreset() {
         const preset: TaskPreset = {
-            id: crypto.randomUUID(),
+            id: v4(),
             name: '',
             instructions: '',
             model: '',
@@ -119,24 +120,24 @@
                 <span class="text-textcolor2">{language.utility.editor.model}</span>
                 <ModelList bind:value={preset.model} />
 
-                <span class="text-textcolor2">{language.utility.editor.temperature}</span>
+                <span id="task-preset-temperature-label" class="text-textcolor2">{language.utility.editor.temperature}</span>
                 <CheckInput
                     name={language.utility.editor.useGlobalTemperature}
                     check={preset.temperature === undefined}
                     onChange={(check) => setGlobalTemperature(preset, check)}
                 />
                 {#if preset.temperature !== undefined}
-                    <NumberInput id="task-preset-temperature" min={0} max={TASK_PRESET_TEMPERATURE_MAX} value={preset.temperature} onChange={(event) => setTemperature(preset, event.currentTarget.valueAsNumber)} />
+                    <NumberInput id="task-preset-temperature" labelId="task-preset-temperature-label" min={0} max={TASK_PRESET_TEMPERATURE_MAX} value={preset.temperature} onChange={(event) => setTemperature(preset, event.currentTarget.valueAsNumber)} />
                 {/if}
 
-                <span class="text-textcolor2">{language.utility.editor.maxTokens}</span>
+                <span id="task-preset-max-tokens-label" class="text-textcolor2">{language.utility.editor.maxTokens}</span>
                 <CheckInput
                     name={language.utility.editor.useGlobalMaxTokens}
                     check={preset.maxTokens === undefined}
                     onChange={(check) => setGlobalMaxTokens(preset, check)}
                 />
                 {#if preset.maxTokens !== undefined}
-                    <NumberInput id="task-preset-max-tokens" min={1} value={preset.maxTokens} onChange={(event) => setMaxTokens(preset, event.currentTarget.valueAsNumber)} />
+                    <NumberInput id="task-preset-max-tokens" labelId="task-preset-max-tokens-label" min={1} value={preset.maxTokens} onChange={(event) => setMaxTokens(preset, event.currentTarget.valueAsNumber)} />
                 {/if}
 
                 <div>

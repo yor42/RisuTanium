@@ -3,6 +3,7 @@ import { LLMFlags, LLMFormat, type LLMModel } from "src/ts/model/modellist"
 import { getDatabase, setDatabase } from "src/ts/storage/database.svelte"
 import { base64url, simplifySchema } from "src/ts/util"
 import { v4 } from "uuid"
+import { pkcs8FromPem, RsaKeyError, signRs256 } from "./rs256Signer"
 import { saveInlayedSignature, setInlayAsset, writeInlayImage, type InlaySignature } from "../files/inlays"
 import { extractJSON, getGeneralJSONSchema } from "../templates/jsonSchema"
 import { callTool, decodeToolCall, encodeToolCall } from "../mcp/mcp"
@@ -431,9 +432,6 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     }
 
     async function generateToken(email:string,key:string,persist:boolean = true){
-        if (!window.crypto || !window.crypto.subtle) {
-            throw new Error(language.errors.webCryptoUnavailable);
-        }
         // Input validation
         if (!email.includes("gserviceaccount.com")) {
             throw new Error(language.errors.vertexInvalidClientEmail);
@@ -441,15 +439,6 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         if (!key.includes("-----BEGIN PRIVATE KEY-----") ||
             !key.includes("-----END PRIVATE KEY-----")) {
             throw new Error(language.errors.vertexInvalidPrivateKey);
-        }
-
-        function str2ab(privateKey:string):ArrayBuffer {
-            const binaryString = atob(privateKey.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\\n/g, ""));
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            return bytes.buffer;
         }
 
         const time = Math.floor(Date.now() / 1000);
@@ -470,24 +459,18 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
         const encodedHeader = base64url(new TextEncoder().encode(JSON.stringify(header)));
         const encodedClaimSet = base64url(new TextEncoder().encode(JSON.stringify(claimSet)));
     
-        const cryptokey = await crypto.subtle.importKey(
-            "pkcs8",
-            str2ab(key),
-            {
-                name: "RSASSA-PKCS1-v1_5",
-                hash: { name: "SHA-256" },
-            },
-            false,
-            ["sign"]
-        );
-    
-        const signature = await crypto.subtle.sign(
-            "RSASSA-PKCS1-v1_5",
-            cryptokey,
-            new TextEncoder().encode(`${encodedHeader}.${encodedClaimSet}`)
-        );
+        // Only a malformed key is relabelled; network and token failures keep their own messages.
+        let signature: Uint8Array;
+        try {
+            signature = await signRs256(pkcs8FromPem(key), new TextEncoder().encode(`${encodedHeader}.${encodedClaimSet}`));
+        } catch (error) {
+            if (error instanceof RsaKeyError) {
+                throw new Error(language.errors.vertexInvalidPrivateKey);
+            }
+            throw error;
+        }
 
-        const jwt = `${encodedHeader}.${encodedClaimSet}.${base64url(new Uint8Array(signature))}`;
+        const jwt = `${encodedHeader}.${encodedClaimSet}.${base64url(signature)}`;
 
         const response = await fetch("https://oauth2.googleapis.com/token", {
             method: "POST",
@@ -796,7 +779,7 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
 
                 if(part.inlineData){
                     const imgHTML = new Image()
-                    const id = crypto.randomUUID()
+                    const id = v4()
 
                     if(part.inlineData.mimeType.startsWith('image/')){
 

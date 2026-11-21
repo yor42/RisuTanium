@@ -29,6 +29,7 @@
     import { ArrowLeft } from '@lucide/svelte'
     import { fillLang } from 'src/lang/fill'
     import { alertConfirm } from 'src/ts/alert'
+    import { copyPlainText } from 'src/ts/chatCopy'
     import { downloadFile } from 'src/ts/globalApi.svelte'
     import { validateTaskPreset } from 'src/ts/process/utility/taskPreset'
     import {
@@ -73,14 +74,10 @@
         return utilityMarkdown(utilityConversation.presetName ?? chosen?.name ?? null, utilityConversation.turns)
     }
 
-    async function copyMarkdown() {
-        try {
-            await navigator.clipboard.writeText(markdown())
-            notice = language.utility.copied
-        }
-        catch {
-            notice = language.utility.copyFailed
-        }
+    function copyMarkdown() {
+        copyPlainText(markdown(), (outcome) => {
+            notice = outcome.ok ? language.utility.copied : language.utility.copyFailed
+        })
     }
 
     async function saveMarkdown() {
@@ -100,8 +97,8 @@
 
         <div class="flex flex-wrap items-center gap-2">
             {#if presets.length > 0}
-                <span class="text-textcolor2">{language.utility.presetLabel}</span>
-                <SelectInput bind:value={presetId} className="min-w-48">
+                <span id="utility-preset-label" class="text-textcolor2">{language.utility.presetLabel}</span>
+                <SelectInput labelId="utility-preset-label" bind:value={presetId} className="min-w-48">
                     <option value="" disabled>{language.utility.presetLabel}</option>
                     {#each presets as preset (preset.id)}
                         <option value={preset.id}>

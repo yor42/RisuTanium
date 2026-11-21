@@ -208,6 +208,9 @@ hardware (`MC-003`, `MC-010`, `MC-131`). No phone or Pi figure exists for any of
   `bootstrap.ts`, the save loop, `internalBackup.ts`, `backuplocal.ts` and two in
   `bootArchivePass.ts` through its injected dependency; six is not confirmed either way.
 - **Keep `mainFileOutcome.ts`'s bracket around every main-file write, or its replacement.**
+  Retired 2026-11-21 (#173): `writeMainFile` and the block-store save loop are gone (#129) and no
+  save writes the main file, so the module and its read hook in `appStore.ts` were deleted. Kept
+  below as history.
   `appStore.writeMainFile` reports "begin" synchronously just before `store.write` and "confirm"
   just after it returned. `beginMainFileWrite` runs synchronously immediately before `store.write`,
   so the restores' rule of no await between the busy check and the write still holds. A write that

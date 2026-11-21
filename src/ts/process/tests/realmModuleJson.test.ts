@@ -3,8 +3,9 @@
  * tagged `risuModule`; the live slot is never written, the row (not its id) picks the module, a stub is loaded first, a
  * failed load resolves null after the user was told which module, and the usable module's release is always called.
  *
- * All rows are M: the helper is new, so before the change they fail at import. Their evidence is a named mutant applied
- * in a scratch copy (tag written onto the slot, module chosen by id, release skipped).
+ * Rows labelled M: the helper is new, so before the change they fail at import. Their evidence is a named mutant applied
+ * in a scratch copy (tag written onto the slot, module chosen by id, release skipped). The two MCP rows are R: they fail
+ * on the version that uploads an MCP module, whose URL is in `mcp` and in the description.
  *
  * The real `moduleUse.ts` runs; the loader behind `acquireModule` is a double that follows the real
  * contract (first holder of an id wins, a stub is replaced by a full body) and the surrounding services are recorders.
@@ -109,6 +110,16 @@ import { language } from 'src/lang'
 
 const resident = (id: string, name: string, extra: Record<string, unknown> = {}): Row => ({ id, name, description: `about ${name}`, ...extra })
 const stubOf = (id: string, name: string): Row => ({ id, name, [MODULE_STUB_KEY]: 1 })
+/** Synthetic: a token-bearing URL on a reserved host. */
+const MCP_URL = 'https://mcp.invalid/sse?token=SYNTHETIC'
+/** Shaped like an imported MCP server module: the URL is in `mcp` and copied into the description. */
+const mcpModule = (id: string): Row => ({
+    id,
+    name: 'Server',
+    description: 'MCP from ' + MCP_URL,
+    mcp: { url: MCP_URL },
+    lorebook: [{ comment: 'MCP Info', key: '', content: '', mode: 'normal', alwaysActive: true, insertorder: 100, secondkey: '', selective: false }],
+})
 
 beforeEach(() => {
     h.log = []
@@ -175,6 +186,29 @@ describe('realmModuleJson', () => {
         h.db.modules = [stubOf('s', 'Stubbed')]
         h.bodies.set('s', resident('s', 'Stubbed'))
         await realmModuleJson(0)
+        expect(h.released).toBe(1)
+    })
+
+    // R: on the base the payload is built and its JSON carries the URL, in `mcp` and in the description.
+    test('R: an MCP module is refused: null, the user is told, and no payload holds its URL', async () => {
+        const row = mcpModule('m')
+        h.db.modules = [row]
+        const before = structuredClone(row)
+        const payload = await realmModuleJson(0)
+        expect(payload?.json ?? '').not.toContain(MCP_URL)
+        expect(payload).toBeNull()
+        expect(h.log).toEqual(['error:' + language.errors.mcpModuleConversionUnsupported])
+        expect(row).toEqual(before)
+    })
+
+    // R: the refusal judges the loaded body; this stand-in lacks the flag, so only the body says MCP.
+    test('R: a stub whose loaded body is an MCP module is refused and still released once', async () => {
+        h.db.modules = [stubOf('m', 'Server')]
+        h.bodies.set('m', mcpModule('m'))
+        const payload = await realmModuleJson(0)
+        expect(payload?.json ?? '').not.toContain(MCP_URL)
+        expect(payload).toBeNull()
+        expect(h.log).toEqual(['error:' + language.errors.mcpModuleConversionUnsupported])
         expect(h.released).toBe(1)
     })
 

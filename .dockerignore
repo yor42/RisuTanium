@@ -44,6 +44,8 @@ docs
 !docs/design
 src-tauri
 util
+# vite.config.ts imports the dev:server plugin, so every build needs it.
+!util/devServerNode.mjs
 server/hono
 *.md
 t.py

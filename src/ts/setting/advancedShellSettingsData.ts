@@ -85,7 +85,6 @@ export const ADVANCED_SHELL_SECTIONS: readonly ShellSection[] = [
         rows: [
             relabelled('adv.genTime', 'settingsShellAdvGenTime', { hintKey: 'settingsShellAdvGenTimeHint' }),
             relabelled('adv.visionQual', 'settingsShellAdvVisionQual'),
-            relabelled('adv.reqLoc', 'settingsShellAdvReqLoc'),
             relabelled('adv.autoCont', 'settingsShellAdvAutoCont'),
             relabelled('adv.autoContinueMin', 'settingsShellAdvAutoContinueMin', { hintKey: 'settingsShellAdvAutoContinueMinHint' }),
             relabelled('adv.remIncomp', 'settingsShellAdvRemIncomp'),
@@ -205,7 +204,6 @@ export const ADVANCED_SHELL_SECTIONS: readonly ShellSection[] = [
         when: (db) => db.showUnrecommended === true,
         rows: [
             relabelled('adv.cot', 'settingsShellAdvCot'),
-            relabelled('adv.plainFetch', 'settingsShellAdvPlainFetch'),
             { kind: 'setting', item: { ...legacy('adv.depTrig'), labelKey: 'settingsShellAdvDepTrig' }, hintKey: 'settingsShellAdvMaybeDead' },
             { kind: 'setting', item: legacyMediaItem, hintKey: 'settingsShellAdvMaybeDead' },
         ],

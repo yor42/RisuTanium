@@ -370,7 +370,6 @@ export const languageEnglish = {
     settingsShellAdvGenTime: 'Replies per request',
     settingsShellAdvGenTimeHint: 'How many replies one request asks for, on models that support it. The app accepts 0 to 4096.',
     settingsShellAdvVisionQual: 'Image understanding quality',
-    settingsShellAdvReqLoc: 'Request region',
     settingsShellAdvAutoCont: 'Continue cut-off replies automatically',
     settingsShellAdvAutoContinueMin: 'Auto-continue minimum tokens',
     settingsShellAdvAutoContinueMinHint: 'Used together with automatic continuing',
@@ -436,7 +435,6 @@ export const languageEnglish = {
     settingsShellAdvGoogleTrans: 'New Google Translate',
     settingsShellAdvClaudeRet: 'Claude caching retrieval',
     settingsShellAdvCot: 'Chain of thought',
-    settingsShellAdvPlainFetch: 'Force plain fetch',
     settingsShellAdvDepTrig: 'Show deprecated trigger V1',
     settingsShellAdvLegacyMedia: 'Old way of finding media',
     settingsShellPersonaCount: (count: number) => count === 1 ? '1 persona' : `${count} personas`,
@@ -753,7 +751,6 @@ export const languageEnglish = {
         networkFetch: "This happens when the network is unstable or the server is down.",
         networkFetchWeb:
             "This can be a CORS error. this only happens when using web version due to limitations of the browser. try using desktop local version, or other version of RisuTanium.",
-        networkFetchPlain: "This can be a plain fetch error. try disabling force plain fetch option in settings.",
         androidHttpBlocked: "Android blocks this request because it uses an unencrypted http:// address. Use an https:// address instead.",
         requestTimedOut: "Request timed out",
         realmUploadNoAnswer: "RisuRealm did not respond, so nothing was uploaded. Check your connection and try again.",
@@ -1296,7 +1293,6 @@ export const languageEnglish = {
         imageCompression: "If enabled, it will compress images when exporting character. if animated images doesn't works, try disabling this option.",
         useExperimental: "If enabled, it will show some experimental features.",
         forceProxyAsOpenAI: "If enabled, it will force to use OpenAI format when using reverse proxy.",
-        forcePlainFetch: "If enabled, it will use browser fetch api instead of native http request. this can cause CORS errors.",
         autoFillRequestURL: "If enabled, it will autofill request url to match the current model.",
         localNetworkModeDesc:
             "Routes private/LAN model URLs through the local runtime path instead of browser direct fetch.\n\n" +
@@ -1810,6 +1806,7 @@ export const languageEnglish = {
     triggerInputLabels: {
         value: "Value",
         var: "Variable",
+        operandType: "{label} type",
         varName: "Variable Name",
         outputVar: "Output Variable",
         name: "Name",
@@ -1923,6 +1920,7 @@ export const languageEnglish = {
         modelNotSupported: "This model is not supported in the playground",
         modeAuto: "auto",
         modeManual: "manual",
+        imageTranslationMode: "Mode",
         loadingLower: "loading",
         videoNoDuration: "This video does not have a duration",
         convertingVideo: "Converting video to audio...",
@@ -2275,6 +2273,8 @@ export const languageEnglish = {
     homeLinkUtilityDescription: "Talk to a model through a saved task preset, with no character or chat.",
     homeLinkEmailTitle: "Email",
     homeLinkEmailDescription: "Contact the developer directly.",
+    homeCommunityHeading: "Community and source",
+    homeSideLabel: "Discover and community",
     homeSourceEmailForkLabel: "Contact the maintainer",
     homeSourceEmailUpstreamLabel: "Contact official support",
     backgroundHTML: "Background Embedding",
@@ -2328,6 +2328,7 @@ export const languageEnglish = {
     triggerMatchRegex: "Match with Regex",
     triggerMatchLoose: "Match Loosely",
     triggerMatchStrict: "Match Strictly",
+    triggerMatchMode: "Match mode",
     searchDepth: "Search Depth",
     equal: "Equal to",
     notEqual: "Not Equal to",
@@ -2989,7 +2990,6 @@ export const languageEnglish = {
     loadBackupLocal: "Load Backup Locally",
     genTimes: "Generation Choices",
     cot: "Chain of Thoughts",
-    forcePlainFetch: "Force Plain Fetch",
     autoFillRequestURL: "Autofill Request URL",
     newOAIHandle: "New OpenAI Handling",
     postEndInnerFormat: "Post End",
@@ -3258,6 +3258,7 @@ export const languageEnglish = {
     openAIAudioLeftOut: "Not sent to the model (it takes only WAV or MP3 audio): {names}",
     openAIAudioUnnamed: "an audio attachment",
     triggerOn: "Trigger On",
+    triggerEffectCategory: "Effect category",
     noConfig: "No Config",
     var: "Variable",
     condition: "Condition",
@@ -3534,7 +3535,6 @@ export const languageEnglish = {
     realmPrevPage: "Previous page",
     realmNextPage: "Next page",
     groupTalkLevel: (level: number) => `Talkativeness ${level} of 6`,
-    requestLocation: "Request Location",
     newImageHandlingBeta: "New Image Handling (Beta)",
     settingsExported: "Settings for bug report exported and copied to clipboard.",
     settingsReportDownloadStarted: "The bug-report settings download started, and they were copied to the clipboard.",
@@ -4013,6 +4013,29 @@ export const languageEnglish = {
     cleanColdStorage: "Clean Unused Archived Data and Assets",
     customSidebarConfig: "Custom Sidebar Configuration",
     cleanColdStorageConfirm: "This will permanently delete all unused archived (cold storage) data and all unused asset files, meaning images and audio that no character, module, persona or setting uses any more. Some of it may still be useful in the future, and it cannot be recovered. Do you want to continue?",
+    cleanUnusedFiles: "Clean Up Unused Files",
+    cleanUnusedFilesMeasuring: "Looking for unused files. This can take a while on a large library.",
+    cleanUnusedFilesDeleting: "Deleting unused files...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Delete ${count} unused file(s) (${size})? No character, module, persona, setting or restore point uses them. Close every other tab and window of this app first. This cannot be undone.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Delete ${count} unused file(s) (${size}) now?`
+            + (later > 0 ? ` ${later} more unused file(s) were found. On this server a file is deleted only after three clean-ups at least a day apart have found it unused, at most 500 at a time, so those are noted for later clean-ups.` : '')
+            + ` Close every other tab and device using this server first: pressing Yes confirms that none is open. This cannot be undone.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `No unused file can be deleted yet. ${later} unused file(s) were found. On this server a file is deleted only after three clean-ups at least a day apart have found it unused, at most 500 at a time. Note them now so a later clean-up can delete them? Close every other tab and device using this server first: pressing Yes confirms that none is open.`,
+    cleanUnusedFilesNodeWait: "Unused files were checked less than a day ago. On this server a file can be deleted only a day after the last check, so try again later. Nothing was deleted.",
+    cleanUnusedFilesNone: "No unused files were found. Nothing was deleted.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Deleted ${deleted} unused file(s).${kept > 0 ? ` ${kept} file(s) were kept because they were in use again or could not be deleted.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `The clean-up stopped because the app started using its data (saving, a chat, a restore or another tab). ${deleted} file(s) were deleted before it stopped. Try again later.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Clean-up cancelled. Nothing was deleted.' : `Clean-up cancelled. ${deleted} file(s) were deleted before it stopped.`,
+    cleanUnusedFilesOtherTab: "Another tab of this app is open. Close every other tab of this app, then try again. Nothing was deleted.",
+    cleanUnusedFilesNoTabCheck: "This page cannot check for other open tabs (it is not opened over HTTPS or localhost), so it cannot clean up unused files. Nothing was deleted.",
+    cleanUnusedFilesBusy: "Wait until saving, a running chat or the automatic clean-up has finished, then try again. Nothing was deleted.",
+    cleanUnusedFilesRefused: "The clean-up cannot run right now (the saved data is changing, being restored or could not be read). Nothing was deleted. Try again later, or reload the app first.",
     coldStorageCleanupNoLockConfirm: "Your browser can't check whether another tab of this app is open. If another tab of this app is open while the cleanup runs, that tab can lose data. Close every other tab of this app first, then continue. Continue anyway?",
     coldStorageCleanupNodeConfirm: "Do not run this cleanup while another device or browser is using the same server. Anything they save while it runs can be lost or deleted. Continue?",
     coldStorageCleanupCheckingTabs: "Checking for other open tabs of this app before cleaning up...",

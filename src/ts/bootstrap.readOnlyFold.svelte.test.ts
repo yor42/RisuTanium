@@ -213,6 +213,8 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 const { encodeRisuSaveLegacy, RisuSaveEncoder, decodeRisuSave } = await import('src/ts/storage/risuSave')
 
 const MAIN_KEY = 'database/database.bin'
+const SKIPPED_KEY = 'archivePassSkipped'
+const TOO_LARGE_KEY = 'archivePassTooLarge'
 const STRIKES_KEY = 'archivePassStrikes'
 const TOLD_KEY = 'archivePassPausedTold'
 const ENRICH_KEY = 'stubEnrichStrikes'
@@ -552,14 +554,12 @@ describe('loadData(): the read-only boot applies the boot repairs (T2-P5)', () =
 
 describe('loadData(): the read-only boot and the archive memo (T2-P6)', () => {
     /** The notice memo (skipped characters, too-large), the strike count and the told record, plus a key that is none of them. */
-    async function seedMemo(): Promise<typeof import('src/ts/storage/bootArchiveMemo')> {
-        const memo = await import('src/ts/storage/bootArchiveMemo')
-        memo.rememberSkipped(['b', 'c'])
-        memo.rememberTooLarge()
+    function seedMemo(): void {
+        localStorage.setItem(SKIPPED_KEY, JSON.stringify(['b', 'c']))
+        localStorage.setItem(TOO_LARGE_KEY, '1')
         localStorage.setItem(STRIKES_KEY, '2')
         localStorage.setItem(TOLD_KEY, '1')
         localStorage.setItem('unrelated-key', 'kept')
-        return memo
     }
 
     const decodes: [string, (extra: Record<string, unknown>) => Promise<Uint8Array>][] = [
@@ -570,15 +570,15 @@ describe('loadData(): the read-only boot and the archive memo (T2-P6)', () => {
     describe.each(decodes)('%s', (_label, build) => {
         test.each([[false], [true]])('T2-P6 guard: the setting off clears both memos, the strike count and the told record and leaves other keys (Tauri: %s)', async (tauri) => {
             const store = legacyStore({ main: await build({ archiveCharacters: false }) })
-            const memo = await seedMemo()
+            seedMemo()
             const run = await boot(tauri ? 'tauri' : 'node', store)
 
             await run.loadData()
             await settle()
 
             expect(get(run.loadedStore)).toBe(true)
-            expect(memo.readArchiveMemo().skipped.size).toBe(0)
-            expect(memo.readArchiveMemo().tooLarge).toBe(false)
+            expect(localStorage.getItem(SKIPPED_KEY)).toBeNull()
+            expect(localStorage.getItem(TOO_LARGE_KEY)).toBeNull()
             expect(localStorage.getItem(STRIKES_KEY)).toBeNull()
             expect(localStorage.getItem(TOLD_KEY)).toBeNull()
             expect(localStorage.getItem('unrelated-key')).toBe('kept')
@@ -589,15 +589,15 @@ describe('loadData(): the read-only boot and the archive memo (T2-P6)', () => {
             ['on', { archiveCharacters: true }],
         ] as const)('T2-P6 guard: a boot that reads the setting %s leaves both memos, the strike count and the told record alone', async (_state, extra) => {
             const store = legacyStore({ main: await build(extra) })
-            const memo = await seedMemo()
+            seedMemo()
             const run = await boot('node', store)
 
             await run.loadData()
             await settle()
 
             expect(get(run.loadedStore)).toBe(true)
-            expect([...memo.readArchiveMemo().skipped].sort()).toEqual(['b', 'c'])
-            expect(memo.readArchiveMemo().tooLarge).toBe(true)
+            expect(localStorage.getItem(SKIPPED_KEY)).toBe(JSON.stringify(['b', 'c']))
+            expect(localStorage.getItem(TOO_LARGE_KEY)).toBe('1')
             expect(localStorage.getItem(STRIKES_KEY)).toBe('2')
             expect(localStorage.getItem(TOLD_KEY)).toBe('1')
         })

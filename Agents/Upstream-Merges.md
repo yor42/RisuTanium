@@ -488,3 +488,29 @@ No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Lua written 
 ### Follow-ups
 
 - **Next merge:** `git log --no-merges 7ee467abc..upstream/main`; move the suffix in `appSubVer` and `version.json` only when upstream bumps.
+
+## 2026-11-21 — merge of upstream/main `6db4b681f`
+
+Merge commit: the commit that adds this entry. Parents: `3b7c85267` (fork `main` after PR #457, merged as `7070dff61`) and `6db4b681f`. Like the 2026-11-19 merge this is `git merge -s ours`: the tree is the fork's (`git diff --cached HEAD` was empty before this entry was added), and the merge only records upstream as merged. The adopted changes were ported by hand first in PR #457. After this merge, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `7ee467abc..6db4b681f`: 10 commits, 4 non-merge and 6 merges. Four merges are upstream's PR merges whose first-parent diff equals a triaged commit: `6db4b681f` (#1751) = `1baf4b2b9`, `9af898758` (#1643) = `524111403`, `b5bbc5647` (#1656) = `918d63543`, `e8a530dd6` (#1648) = `bd02ca878`. The other two, `6d8d8d16d` (into `918d63543`'s branch) and `feda0686f` (into `bd02ca878`'s branch), merge upstream `main` at `7be37f64f` into those feature branches and add no change of their own. Upstream did not bump its version, so the suffix stays `up2026.10.295` (`MC-440`). **Last upstream commit merged: `6db4b681f`.**
+
+**Why.** The maintainer chose the dispositions on 2026-11-21 after the triage and an independent verifier per commit (`MC-2975`), and the port-then-`-s ours` flow again (`MC-2976`, precedent `MC-2341`). A content merge was not used: it would have brought in upstream's timer-based `streamed_fetch` coalescing, which does not fit the fork's wake-driven pump (`MC-1451`).
+
+### Disposition
+
+| Upstream commit | Disposition | Reason / where |
+|---|---|---|
+| `1baf4b2b9` fix: skip onnxruntime-node install script (ORT GitHub 404) | TAKEN | `cbdc0e548` (PR #457, merged as `7070dff61`): `pnpm-workspace.yaml` allowBuilds `onnxruntime-node: false`. The fork had already set `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` in 4 workflows and the Dockerfile (`c8a257eba`, `MC-2279`); those lines stay. The allowBuilds setting also covers `server.sh`, which runs a plain `pnpm install`. |
+| `918d63543` feat: Add NAI 5 medium effort model | TAKEN | `cbdc0e548` (PR #457, merged as `7070dff61`): NAI settings add `nai-diffusion-5-full-medium` and drop the `nai-diffusion-2` dropdown option. A saved `nai-diffusion-2` value stays readable. No locale keys (raw model id). |
+| `bd02ca878` feat: Allow setting inlay name in Lua | TAKEN | `cbdc0e548` (PR #457, merged as `7070dff61`): Lua `generateImage` passes a non-empty string `options.name` to `writeInlayImage`. No length cap, as upstream. The fork's access-id gate, member gate, orientation check and runner resolution are kept. Tests in `triggerOriginWrites.svelte.test.ts`. |
+| `524111403` fix(tauri): coalesce streamed_fetch chunks per tick | NOT TAKEN → #455 | The fork's pump (`61abe7e57`, `MC-1451`) is wake-driven and leaves no backlog in `nativeFetchData`; the backlog builds in the request-module wrapper streams and the consumer loop instead. Upstream's 10 ms timer does not fit hidden-page delivery. Separate Tier 2 ticket #455, which needs a Note 9 measurement. |
+
+### Persistence
+
+No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Lua written for upstream that passes `generateImage` an `options.name` behaves the same in the fork.
+
+### Follow-ups
+
+- #455: streamed chunk coalescing (from upstream #1643).
+- **Next merge:** `git log --no-merges 6db4b681f..upstream/main`; move the suffix in `appSubVer` and `version.json` only when upstream bumps.

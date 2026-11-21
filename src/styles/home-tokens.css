@@ -7,7 +7,10 @@
    the band block sits on the landing element rather than on html[data-layout]. */
 :root {
   /* type */
+  --home-text-xs: 12px;
   --home-text-sm: 13px;
+  --home-text-md: 14px;
+  --home-text-lg: 17px;
   --home-text-xl: 22px;
   --home-text-2xl: 30px;
   --home-weight-regular: 400;
@@ -19,6 +22,29 @@
   --home-eyebrow-transform: none;
   --home-h1-size: var(--home-text-2xl);
   --home-h1-sm-size: var(--home-text-xl);
+
+  /* radius */
+  --home-radius-1: 4px;
+  --home-radius-3: 8px;
+  --home-radius-4: 10px;
+  --home-radius-5: 12px;
+
+  /* space */
+  --home-space-3: 6px;
+  --home-space-6: 12px;
+  --home-space-10: 20px;
+  --home-space-11: 24px;
+  --home-space-15: 48px;
+  --home-card-pad-lg: var(--home-space-10);
+
+  /* page and Realm panel */
+  --home-main-pad-top: 24px;
+  --home-main-pad-bottom: 48px;
+  --home-main-pad-x: 32px;
+  --home-side-width: 300px;
+  --home-page-max: 1240px;
+  --home-realm-min-height: 296px;
+  --home-realm-list-max: 150px;
 
   /* colour roles */
   --home-ink: var(--nexus-text);
@@ -35,8 +61,20 @@
   --home-leading-body: 1.6;
 }
 
+.home-root[data-layout="mid"] {
+  --home-main-pad-x: 24px;
+}
+
 .home-root[data-layout="phone"] {
   --home-h1-size: 24px;
+  --home-main-pad-top: 16px;
+  --home-main-pad-x: 16px;
+  --home-main-pad-bottom: 96px;
+}
+
+.home-root[data-layout="wide"] {
+  --home-realm-min-height: 380px;
+  --home-realm-list-max: 200px;
 }
 
 .home-root {

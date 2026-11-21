@@ -1508,6 +1508,45 @@ describe('Lua generateImage in a group run uses the runner, not the group', () =
         expect(generateAIImage).toHaveBeenCalled()
         expect(vi.mocked(generateAIImage).mock.calls[0][1]).toBe(member)
     })
+
+    // options.name names the written inlay only when it is a non-empty
+    // string; anything else leaves the name unset so writeInlayImage keeps
+    // its own default.
+    test.each([
+        ['a non-empty string name', '{ name = "sunset" }', 'sunset'],
+        ['no name', '{}', undefined],
+        ['an empty name', '{ name = "" }', undefined],
+        ['a non-string name', '{ name = 42 }', undefined],
+    ])('generateImage with %s passes that inlay name to writeInlayImage', async (_label, luaOptions, expectedName) => {
+        const member = makeCharacter('member-img-name', { lowLevelAccess: true })
+        const group = makeGroup('group-img-name', ['member-img-name'])
+        installDb([group, member])
+        selectedCharID.set(0)
+        const groupChat = group.chats[0]
+
+        member.triggerscript.push(trig('m', 'output', [{
+            type: 'triggerlua',
+            code: `function onOutput(id)\n  generateImage(id, "prompt", "", ${luaOptions})\nend`,
+        }]))
+
+        const { writeInlayImage } = await import('./files/inlays')
+        vi.mocked(writeInlayImage).mockClear()
+        vi.mocked(generateAIImage).mockResolvedValueOnce('data:image/png;base64,AAAA')
+        const globals = globalThis as { Image?: unknown }
+        const priorImage = globals.Image
+        globals.Image = class { src = '' }
+
+        const handle = beginWork(group, groupChat, member)
+        try {
+            await runTrigger(member, 'output', { chat: groupChat, origin: handle!.origin } as never)
+        } finally {
+            handle!.end()
+            globals.Image = priorImage
+        }
+
+        expect(writeInlayImage).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(writeInlayImage).mock.calls[0][1]?.name).toBe(expectedName)
+    })
 })
 
 describe('Lua upsertLocalLoreBook in a group run lands on the group\'s chat', () => {

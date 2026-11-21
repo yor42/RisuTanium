@@ -470,8 +470,8 @@
 <h2 class="text-4xl text-textcolor my-6 font-black relative">{language.subtitles}</h2>
 
 {#if mode === 'whisperLocal'}
-    <span class="text-textcolor text-lg mt-4">{language.sourceLanguage}</span>
-    <SelectInput value={sourceLang === null ? 'auto' : sourceLang}>
+    <span id="{uid}-source-language" class="text-textcolor text-lg mt-4">{language.sourceLanguage}</span>
+    <SelectInput labelId="{uid}-source-language" value={sourceLang === null ? 'auto' : sourceLang}>
         <OptionInput value="auto">{language.playground.auto}</OptionInput>
         {#each getLanguageCodes() as lang}
             <OptionInput value={lang.code}>{lang.name}</OptionInput>
@@ -486,8 +486,8 @@
 <span id="{uid}-prompt" class="text-textcolor text-lg mt-4">{language.prompt}</span>
 <TextAreaInput labelId="{uid}-prompt" bind:value={prompt} />
 
-<span class="text-textcolor text-lg mt-4">{language.type}</span>
-<SelectInput bind:value={mode} onchange={(e) => {
+<span id="{uid}-type" class="text-textcolor text-lg mt-4">{language.type}</span>
+<SelectInput labelId="{uid}-type" bind:value={mode} onchange={(e) => {
     if(mode === 'llm'){
         prompt = LLMModePrompt
     }

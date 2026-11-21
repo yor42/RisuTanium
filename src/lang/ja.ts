@@ -370,7 +370,6 @@ export const languageJapanese = {
     settingsShellAdvGenTime: "1回のリクエストあたりの返信数",
     settingsShellAdvGenTimeHint: "対応モデルで、1回のリクエストで求める返信の数です。アプリは0〜4096を受け付けます。",
     settingsShellAdvVisionQual: "画像認識の品質",
-    settingsShellAdvReqLoc: "リクエストのリージョン",
     settingsShellAdvAutoCont: "途中で切れた返信を自動で続ける",
     settingsShellAdvAutoContinueMin: "自動継続の最小トークン数",
     settingsShellAdvAutoContinueMinHint: "自動継続と組み合わせて使われます",
@@ -436,7 +435,6 @@ export const languageJapanese = {
     settingsShellAdvGoogleTrans: "新しいGoogle翻訳",
     settingsShellAdvClaudeRet: "Claudeのキャッシュ取得",
     settingsShellAdvCot: "思考の連鎖",
-    settingsShellAdvPlainFetch: "通常のfetchを強制",
     settingsShellAdvDepTrig: "非推奨のトリガーV1を表示",
     settingsShellAdvLegacyMedia: "メディアを探す従来の方法",
     settingsShellPersonaCount: (count: number) => `ペルソナ ${count} 件`,
@@ -754,7 +752,6 @@ export const languageJapanese = {
         networkFetch: "ネットワークが不安定であるか、サーバーがダウンしている場合に発生します。",
         networkFetchWeb:
             "CORSエラーの可能性があります。これはブラウザの制限により、ウェブ版の使用時にのみ発生します。デスクトップローカル版、またはRisuTaniumの他のバージョンをお試しください。",
-        networkFetchPlain: "プレーンfetchエラーの可能性があります。設定で「プレーンfetch強制」オプションを無効にしてみてください。",
         androidHttpBlocked: "Android は暗号化されていない http:// アドレスを使うこのリクエストをブロックします。代わりに https:// アドレスを使用してください。",
         requestTimedOut: "リクエストがタイムアウトしました。",
         realmUploadNoAnswer: "RisuRealm から応答がなかったため、何もアップロードされませんでした。接続を確認して、もう一度お試しください。",
@@ -1297,7 +1294,6 @@ export const languageJapanese = {
         imageCompression: "有効にすると、キャラクターのエクスポート時に画像を圧縮します。アニメーション画像が正常に動作しない場合は、このオプションを無効にしてみてください。",
         useExperimental: "有効にすると、一部の実験的機能が表示されます。",
         forceProxyAsOpenAI: "有効にすると、リバースプロキシの使用時にOpenAI形式の使用を強制します。",
-        forcePlainFetch: "有効にすると、ネイティブのHTTPリクエストの代わりにブラウザのFetch APIを使用します。これによりCORSエラーが発生する可能性があります。",
         autoFillRequestURL: "有効にすると、現在のモデルに合わせてリクエストURLを自動入力します。",
         localNetworkModeDesc:
             "プライベート／LANモデルのURLを、ブラウザからの直接フェッチではなくローカルランタイムパス経由でルーティングします。\n\n" +
@@ -1811,6 +1807,7 @@ export const languageJapanese = {
     triggerInputLabels: {
         value: "値",
         var: "変数",
+        operandType: "{label}の種類",
         varName: "変数名",
         outputVar: "出力変数",
         name: "名前",
@@ -1924,6 +1921,7 @@ export const languageJapanese = {
         modelNotSupported: "このモデルはプレイグラウンドでサポートされていません",
         modeAuto: "自動",
         modeManual: "手動",
+        imageTranslationMode: "モード",
         loadingLower: "読み込み中",
         videoNoDuration: "この動画には再生時間の情報がありません",
         convertingVideo: "動画を音声に変換中…",
@@ -2252,6 +2250,8 @@ export const languageJapanese = {
     homeGreetingAfternoon: "こんにちは",
     homeGreetingEvening: "こんばんは",
     homeGreetingNight: "まだ起きてますか？",
+    homeCommunityHeading: "コミュニティとソース",
+    homeSideLabel: "発見とコミュニティ",
     homeLinkDiscordTitle: "Discord",
     homeLinkDiscordDescription: "Discordサーバーに参加して、他のユーザーや開発者と交流しましょう。",
     homeLinkWebsiteTitle: "ウェブサイト",
@@ -2329,6 +2329,7 @@ export const languageJapanese = {
     triggerMatchRegex: "正規表現で一致",
     triggerMatchLoose: "あいまい一致",
     triggerMatchStrict: "厳密に一致",
+    triggerMatchMode: "一致モード",
     searchDepth: "検索深度",
     equal: "等しい",
     notEqual: "等しくない",
@@ -2990,7 +2991,6 @@ export const languageJapanese = {
     loadBackupLocal: "ローカルバックアップを読み込み",
     genTimes: "生成候補数",
     cot: "思考の連鎖",
-    forcePlainFetch: "プレーンFetchを強制",
     autoFillRequestURL: "リクエストURLを自動入力",
     newOAIHandle: "新しいOpenAI処理方式",
     postEndInnerFormat: "エンド後",
@@ -3258,6 +3258,7 @@ export const languageJapanese = {
     openAIAudioLeftOut: "モデルに送信されませんでした（WAVまたはMP3の音声のみ受け付けます）：{names}",
     openAIAudioUnnamed: "音声の添付ファイル",
     triggerOn: "発動条件",
+    triggerEffectCategory: "効果のカテゴリ",
     noConfig: "設定なし",
     var: "変数",
     condition: "条件",
@@ -3534,7 +3535,6 @@ export const languageJapanese = {
     realmPrevPage: "前のページ",
     realmNextPage: "次のページ",
     groupTalkLevel: (level: number) => `発言頻度 6段階中${level}`,
-    requestLocation: "リクエスト位置",
     newImageHandlingBeta: "新しい画像処理 (Beta)",
     settingsExported: "バグ報告用の設定をエクスポートし、クリップボードにコピーしました。",
     settingsReportDownloadStarted: "バグ報告用設定のダウンロードを開始し、設定をクリップボードにコピーしました。",
@@ -4014,6 +4014,29 @@ export const languageJapanese = {
     cleanColdStorage: "未使用のアーカイブデータとアセットをクリーンアップ",
     customSidebarConfig: "カスタムサイドバー設定",
     cleanColdStorageConfirm: "これにより、未使用のすべてのアーカイブ（コールドストレージ）データと、どのキャラクター、モジュール、ペルソナ、設定でも使われなくなった画像や音声などの未使用アセットファイルが完全に削除されます。これらは将来役に立つ可能性があっても復元できません。続行しますか？",
+    cleanUnusedFiles: "未使用ファイルをクリーンアップ",
+    cleanUnusedFilesMeasuring: "未使用ファイルを探しています。ライブラリが大きい場合は時間がかかることがあります。",
+    cleanUnusedFilesDeleting: "未使用ファイルを削除しています...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `未使用ファイル ${count}件(${size})を削除しますか？ キャラクター、モジュール、ペルソナ、設定、復元ポイントのいずれにも使われていないファイルです。先にこのアプリの他のタブとウィンドウをすべて閉じてください。この操作は元に戻せません。`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `未使用ファイル ${count}件(${size})を今すぐ削除しますか？`
+            + (later > 0 ? ` 未使用ファイルがさらに ${later}件見つかりました。このサーバーでは、1日以上あけた3回のクリーンアップで続けて未使用と判定されたファイルだけを、1回につき最大500件まで削除します。そのため、これらは今後のクリーンアップ用に記録されます。` : '')
+            + ` 先にこのサーバーを使用している他のタブとデバイスをすべて閉じてください。「はい」を押すと、開いているものがないことを確認したものとみなされます。この操作は元に戻せません。`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `削除できる未使用ファイルはまだありません。未使用ファイルが ${later}件見つかりました。このサーバーでは、1日以上あけた3回のクリーンアップで続けて未使用と判定されたファイルだけを、1回につき最大500件まで削除します。今後のクリーンアップで削除できるよう、今すぐ記録しますか？ 先にこのサーバーを使用している他のタブとデバイスをすべて閉じてください。「はい」を押すと、開いているものがないことを確認したものとみなされます。`,
+    cleanUnusedFilesNodeWait: "未使用ファイルは1日以内に確認済みです。このサーバーでは、前回の確認から1日経たないとファイルを削除できないため、後でもう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesNone: "未使用ファイルは見つかりませんでした。何も削除されていません。",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `未使用ファイル ${deleted}件を削除しました。${kept > 0 ? ` ${kept}件のファイルは、再び使用されていたか削除できなかったため残しました。` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `アプリがデータを使い始めたため(保存、チャット、復元、または別のタブ)、クリーンアップを中止しました。中止するまでに ${deleted}件のファイルを削除しました。後でもう一度お試しください。`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'クリーンアップをキャンセルしました。何も削除されていません。' : `クリーンアップをキャンセルしました。中止するまでに ${deleted}件のファイルを削除しました。`,
+    cleanUnusedFilesOtherTab: "このアプリの別のタブが開いています。このアプリの他のタブをすべて閉じてから、もう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesNoTabCheck: "このページでは他に開いているタブを確認できない(HTTPS または localhost で開かれていない)ため、未使用ファイルをクリーンアップできません。何も削除されていません。",
+    cleanUnusedFilesBusy: "保存、実行中のチャット、または自動クリーンアップが終わるまで待ってから、もう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesRefused: "現在クリーンアップを実行できません(保存データが変更中、復元中、または読み取れません)。何も削除されていません。後でもう一度お試しいただくか、先にアプリを再読み込みしてください。",
     coldStorageCleanupNoLockConfirm: "お使いのブラウザでは、本アプリの他のタブが開いているか確認できません。クリーンアップの実行中に本アプリの他のタブが開いていると、そのタブでデータが失われる可能性があります。本アプリの他のすべてのタブを閉じてから続行してください。それでも続行しますか？",
     coldStorageCleanupNodeConfirm: "他の端末やブラウザが同じサーバーを使用している間は、このクリーンアップを実行しないでください。実行中に保存された内容は失われるか削除される可能性があります。続行しますか？",
     coldStorageCleanupCheckingTabs: "クリーンアップの前に、本アプリの他の開いているタブを確認しています…",

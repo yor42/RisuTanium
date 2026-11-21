@@ -11,6 +11,7 @@
     import { selectedCharID } from "src/ts/stores.svelte";
 
     let submenu = $state(0)
+    const uid = $props.id()
 
     // An upstream card export writes `loreExt` as the card extensions, so the stored copy follows the option.
     function syncLoreExtFlag(name: 'risu_fullWordAsciiBoundary' | 'risu_cjkWordStart', on: boolean) {
@@ -106,10 +107,10 @@
                 syncLoreExtFlag('risu_cjkWordStart', on)
             }} name={language.cjkWordStart}><Help key="cjkWordStart"/></Check>
         </div>
-        <span class="text-textcolor mt-4 mb-2">{language.loreBookDepth}</span>
-        <NumberInput size="sm" min={0} max={20} bind:value={DBState.db.characters[$selectedCharID].loreSettings.scanDepth} />
-        <span class="text-textcolor">{language.loreBookToken}</span>
-        <NumberInput size="sm" min={0} max={4096} bind:value={DBState.db.characters[$selectedCharID].loreSettings.tokenBudget} />
+        <span id="{uid}-scan-depth" class="text-textcolor mt-4 mb-2">{language.loreBookDepth}</span>
+        <NumberInput size="sm" min={0} max={20} labelId="{uid}-scan-depth" bind:value={DBState.db.characters[$selectedCharID].loreSettings.scanDepth} />
+        <span id="{uid}-token-budget" class="text-textcolor">{language.loreBookToken}</span>
+        <NumberInput size="sm" min={0} max={4096} labelId="{uid}-token-budget" bind:value={DBState.db.characters[$selectedCharID].loreSettings.tokenBudget} />
     {:else}
         <div class="flex items-center mt-4">
             <Check check={true} onChange={() => {

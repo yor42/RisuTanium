@@ -33815,3 +33815,122 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 - "Own scroll area (Recommended)": the embedded library is a bounded section up to one screen tall with a sticky tab bar, and the list scrolls inside it. The list engine is unchanged.
 - "Line to the Trash (Recommended)": when every character is trashed, the tabs show one line pointing to the Trash instead of a second hero.
 - "Show (0) (Recommended)": the jump row's Characters entry shows the live count, including 0.
+
+### MC-2928 — #234 RisuRealm announcement sits after the Community list, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-053`, `MC-2821`, `#234`.
+
+**What the maintainer chose.** "After the list (Recommended)". The RisuRealm announcement is the last block of the side column, after the Community and source list, under its "Announcement from RisuRealm" heading, and hidden with Hide Realm. Inside the RisuRealm panel (the mockup's spot) it would grow the panel after load and push the list down, against MC-053. This supersedes the in-panel placement in the #234 plan.
+
+### MC-2929 — #234 the RisuRealm heading carries the upstream tag, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #234 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-054`, `MC-2832`, `#234`.
+
+**What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
+
+### MC-2930 — #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session on plan-s3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2820`, `MC-2833`, `MC-2836`, `#234`.
+
+**What the maintainer chose.**
+- "No snippet (Recommended)": when a loaded character's current chat is itself archived (its messages are not in memory), the card shows the name, chat name and time and no last line. Nothing is loaded.
+- "Snapshot (Recommended)": each card's chat name and last line are fixed together with the order when Home opens, and refresh on the next visit. Only removals, renames and pictures apply live, so no reply text streams into a card.
+
+### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
+
+- Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.
+
+**What the maintainer chose.**
+- "Keep refusal + guard (Recommended)": MCP modules keep the existing refusal (Download hidden, module .charx refuses), and the two module share clone points (.risum export, Realm module payload) gain a guard.
+- "Refuse MCP modules (Recommended)", over "Blank + scrub the URL": Gate 1 found the URL is also copied into the module's description, so the guard refuses an MCP module outright instead of blanking `mcp.url`.
+- "Keep as is (Recommended)": the plugin settings file (`<plugin>.settings.json`) is unchanged; its plaintext-warning confirm stays the guard, with no key-like name heuristic.
+- "No opt-in (Recommended)": share exports keep dropping API keys and endpoint URLs with no option to keep them; full backups (.bin, .rtb) are the way to move keys.
+
+### MC-2908 — CHORE-557 stage 2 folds into stage 4, 2026-11-21
+
+- Tag: decision (one AskUserQuestion answer to the #265 session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-876`, `MC-2344`, `#265`.
+- Facts put to the maintainer (read at origin/main 696ab524c): the base64 data-URL cache in `getFileSrc` is still the static build's main image path; its Blob/object-URL branch serves only the IndexedDB store's `readValue`; on Node-hosted pages every `assets/` and inlay body key already gets the `/api/asset` URL, so only other keys or a failed URL fall back to the cache.
+
+**What the maintainer chose.** "Fold into stage 4 (Recommended)": stage 4 removes the IndexedDB store, the Blob/object-URL branch, the byte-budgeted LRU cache and the oversized memo together, keeping a small uncached data-URL fallback for Node's rare non-route keys. The session moved on to stage 3.
+
+### MC-3000 — #461 Playground uses the toolbox icon, 2026-11-21
+
+- Tag: decisions (maintainer choice relayed by lane A). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#461`.
+
+**What the maintainer chose.** Playground's swirl icon (lucide `ShellIcon`) did not say what Playground is for, so every Playground entry (Home drawer, More menu, legacy rail) uses lucide's `ToolboxIcon`. The Dev tool keeps its wrench.
+
+### MC-2975 — Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21
+
+- Tag: decisions (maintainer with lane A, upstream triage). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2279`, `MC-1451`, `MC-2341`, `#454`, `#455`, `upstream 6db4b681f`.
+
+**What the maintainer chose.** Of upstream's four changes in the range (plus six merges of them):
+- `1baf4b2b9` (#1751), allowBuilds `onnxruntime-node: false`: TAKE. Set it in `pnpm-workspace.yaml` and keep the fork's `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` lines (MC-2279). It also covers `server.sh`, which runs a plain `pnpm install` without the variable.
+- `918d63543` (#1656), NAI `nai-diffusion-5-full-medium`: TAKE as upstream. Add the option and drop the `nai-diffusion-2` dropdown option; saved values stay readable.
+- `bd02ca878` (#1648), Lua `generateImage` `options.name` names the inlay: TAKE as upstream, with no length cap. Keep the fork's access-id gate, member gate and runner resolution.
+- `524111403` (#1643), Tauri `streamed_fetch` chunk coalescing: NOT TAKEN in this sync. It goes to a separate Tier 2 ticket (#455), because the fork's MC-1451 wake-driven pump leaves no backlog where upstream's timer coalesces.
+
+Triage evidence (one triager and one independent verifier per commit): lane A `b61\upstream-6db4b681f\triage.md`.
+
+### MC-2976 — Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2341`, `MC-2975`, `#454`.
+
+**What the maintainer chose.** The MC-2341 flow again (precedent PRs #137 and #144): one port PR for the taken items (`Refs #454`), then, after it merges, a `git merge -s ours upstream/main` PR that records the range in `Agents/Upstream-Merges.md` and closes #454. The merge PR is merged with a merge commit, not squash or rebase, so upstream's history stays linked.
+### MC-2858 — #163 manual clean-up: app and web delete at once, Node keeps its age rule, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `MC-2421`.
+
+**What the maintainer chose.** A manual press of the clean-up button on Tauri and IndexedDB (web) pages deletes right after the confirm, without the 24 h age record. Node keeps the 24 h / three-sighting age rule, because another tab or device may hold an uploaded but unsaved file.
+
+### MC-2859 — #342 plain-HTTP Node: the confirm is the no-other-tab attestation, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#342`, `#340`, `MC-2421`.
+
+**What the maintainer chose.** On a Node server without Web Locks (plain HTTP on LAN/VPN) the manual button is allowed: its confirm tells the user to close every other tab and device first, and pressing Yes is that attestation. The staging-marker refusal, record-before-delete and server revision checks stay. No server lease, no server code. Node keeps its 500-per-pass cap and the confirm says so. The automatic sweep still refuses there.
+
+### MC-2860 — #165 store2 inlays are deleted at once under strict checks, no new record, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `MC-316`.
+
+**What the maintainer chose.** The new store2 inlay pass deletes an unreferenced inlay at once when the inlay keep-set is complete, the inlay is not resident and the sole-tab or sole-page proof holds. No new saved record, so no storage-format change.
+
+### MC-2861 — #163, #165 and #342 ship as two PRs, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `#165`, `#342`.
+
+**What the maintainer chose.** PR 1 is the manual clean-up button for #163 and #342 plus the restored autoGcFullChain assertion from #165. PR 2 is the #165 inlay deleting pass.
+
+### MC-2862 — manual clean-up refuses after a boot that installed the profile, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`.
+
+**What the maintainer chose.** When this launch installed or restored the profile instead of starting from saved data, the button answers "cannot run right now ... reload the app first", keeping the rule that deletion follows a cold read.
+
+### MC-2863 — manual clean-up shows "size unknown" when size cannot be measured, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `MC-2421`.
+
+**What the maintainer chose.** Where no cheap size source exists or it fails, the confirm names the file count and says "size unknown"; the clean-up may still proceed.
+
+### MC-2864 — the drafted clean-up strings are accepted, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `#342`.
+
+**What the maintainer chose.** The 14 drafted English strings for the clean-up button (including the Node text naming three clean-ups a day apart, at most 500 at a time, and "pressing Yes confirms that none is open") are used as written; the maintainer may edit en.ts later.
+
+### MC-2965 — #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #443 session before planning). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2641`, `MC-2954`, `#443`, `#167`.
+
+**What the maintainer chose.**
+- "Yes, in this PR (Recommended)": the copy buttons that call `navigator.clipboard` with no fallback (Utility screen, settings JSON export, Realm link, code-block menu, Studio toggle) are fixed in #443 through `copyPlainText`, not ticketed separately.
+- "Add RSA fallback": Vertex AI service-account login works on plain HTTP instead of stopping with the Web Crypto error. The option named a new dependency; the session built an owned BigInt RSASSA-PKCS1-v1_5/SHA-256 signer instead (no package added), because PKCS#1 v1.5 is deterministic and the tests require byte equality with WebCrypto.
+
+### MC-2966 — #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21
+
+- Tag: decisions (three AskUserQuestion answers to the #443 session on plan r1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2965`, `#443`.
+
+**What the maintainer chose.**
+- "Honest failure (Recommended)": when both the clipboard API and `execCommand` fail, Utility and Realm show "copy failed", the settings JSON export shows only the export/download notice, the Studio toggle shows no "Copied", and the code-block menu stays silent. No new strings.
+- "Leftover, not this PR (Recommended)": the chat export "HTML embed" (rich `ClipboardItem` copy) stays unavailable on plain HTTP and is recorded as a leftover.
+- "Localized invalid-key (Recommended)": a malformed Vertex private key shows the existing `vertexInvalidPrivateKey` message on both the WebCrypto and the fallback path. Network and token-response errors are not relabelled.

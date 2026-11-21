@@ -1,7 +1,7 @@
 // The append-only attempt ledger and the pre-registered INVALID procedure of the S0 gate. It is the only place that
 // decides whether another attempt may run, and its schema has no field for a verdict number.
 //
-// Per builder (fulltext: GATE then GATE_R; idf: FALLBACK then FALLBACK_R):
+// The verdict builder rare: GATE then GATE_R (MC-2661); FALLBACK and FALLBACK_R stay reserved and unspent:
 //   - an attempt is always the whole attempt (all cells, both styles, from the first chats);
 //   - an INVALID attempt may be rerun on the SAME seed family only with a recorded defect (a reproducer test id plus the
 //     Gate 2 verdict path) and byte-identical settings (DEFECT, at most 2);
@@ -10,14 +10,14 @@
 //   - at most 3 attempts per builder; a NOISE rerun that is INVALID, a second NOISE rerun and a fourth attempt all end in
 //     MAINTAINER REPORT, which refuses every later attempt;
 //   - the first valid attempt (PASS, FAIL or INCONCLUSIVE) is final: no further attempt for that builder;
-//   - IDF runs only after the full-text builder's recorded GATE FAIL;
 //   - settings must be recorded by the orchestrator before any attempt.
 // INCONCLUSIVE and the maintainer: INCONCLUSIVE is a valid attempt and final for its settings. A larger run the maintainer
 // authorises is a new epoch: appendOverride records the maintainer's override with a NEW procedure block (new settings
 // sha256) and a fresh seed; it is not a NOISE rerun and does not use up the NOISE cap of the earlier epoch.
 import fs from 'node:fs';
 
-export const FAMILIES = { fulltext: { primary: 'GATE', rerun: 'GATE_R' }, idf: { primary: 'FALLBACK', rerun: 'FALLBACK_R' } };
+export const VERDICT_BUILDER = 'rare';
+export const FAMILIES = { rare: { primary: 'GATE', rerun: 'GATE_R' } };
 export const SEED_OF = { GATE: 610001, GATE_R: 620001, FALLBACK: 710001, FALLBACK_R: 720001 };
 export const CAPS = { noise: 1, defect: 2, attempts: 3 };
 export const VERDICT_LABELS = ['PASS', 'PASS (BORDERLINE)', 'FAIL', 'INCONCLUSIVE'];
@@ -94,10 +94,6 @@ export function checkAttempt(ledger, req) {
   if (!fam) return refuse('unknown builder');
   const st = builderState(ledger, req.builder);
   if (st.report) return refuse('MAINTAINER REPORT: no further attempt for ' + req.builder + ' until the maintainer answers');
-  if (req.builder === 'idf') {
-    const ft = builderState(ledger, 'fulltext');
-    if (!ft.valid || ft.valid.verdict !== 'FAIL') return refuse('FALLBACK requires a recorded GATE FAIL of the full-text builder');
-  }
   if (ledger.recordedSettings[req.builder] !== req.settingsSha && st.epochSha !== req.settingsSha) return refuse('settings hash not recorded');
   if (st.epochSha && req.settingsSha !== st.epochSha) return refuse('settings hash differs from the override');
   if (st.valid) return refuse('a verdict is already issued for ' + req.builder);

@@ -130,7 +130,7 @@ export async function loadData() {
                 // loss never affects the target. Atomic and chunked writes
                 // alike leave `risu-write-<id>.tmp` next to their key, so every
                 // directory a key can live in is swept, nested ones included
-                // (`blocks/<gen>/c/`, `assets/` subfolders), and the AppData
+                // (`assets/` subfolders, and `blocks/<gen>/c/` of pre-store2 data), and the AppData
                 // root itself (a key without a slash). A directory a write has
                 // not created yet is skipped.
                 await sweepAllWriteTemps()

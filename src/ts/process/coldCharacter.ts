@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from "uuid"
 import type { Chat, character, groupChat } from "../storage/database.svelte"
-import { isTrashPurgeDue } from "../storage/trashPurge"
 
 /**
  * The archived-character placeholder (the "stub"): what stands in the
@@ -14,20 +13,16 @@ import { isTrashPurgeDue } from "../storage/trashPurge"
  */
 
 /**
- * Value of `coldVersion` on a stub built by `buildColdStub` or rewritten by
- * `enrichLegacyStub`. A stub without it was made by the upstream application
- * and restores the same way. `isLegacyStub` treats a stub below it as not yet
- * up to date, so the boot archive pass rewrites each such stub once; raising it
- * makes every older stub be read from its unit and rewritten at the next boot
- * where the pass runs. Version 3 added `tags` and `creator`.
+ * Value of `coldVersion` on a stub built by `buildColdStub`. A stub without
+ * it was made by the upstream application and restores the same way. Version 3
+ * added `tags` and `creator`.
  */
 export const COLD_STUB_VERSION = 3
 
 /**
  * Lowest `coldVersion` whose `coldChatCount` `coldStubChatCount` trusts. It is
- * deliberately lower than `COLD_STUB_VERSION`: a stub that has not been
- * upgraded yet still shows its real chat count, and only the upgrade gate moves
- * with the current version.
+ * deliberately lower than `COLD_STUB_VERSION`: a stub from an earlier
+ * version still shows its real chat count.
  */
 export const COLD_STUB_CHAT_COUNT_VERSION = 2
 
@@ -139,7 +134,7 @@ export function stubTags(source: Slot): string[] {
  * and untruncated. It carries no message content. `trashTime` and
  * `lastInteraction` are left off when unset, so a saved stub has no such key.
  * It never throws on odd saved data, because one bad character must not stop
- * the archive pass: a group without a member list gets an empty one, and a
+ * a pass over many characters: a group without a member list gets an empty one, and a
  * description that is not a string gives an empty description.
  */
 export function buildColdStub(source: character, unitKey: string, coldStoragedChats: string[]): character
@@ -186,24 +181,12 @@ export function buildColdStub(source: Slot, unitKey: string, coldStoragedChats: 
 }
 
 /**
- * Whether the boot archive pass may turn `cha` into a stub: it is not one
- * already, and the startup purge, which runs after the pass in the same boot,
- * is not about to remove it (`isTrashPurgeDue`). A trashed character is
- * archivable; its stub carries its `trashTime` (`buildColdStub`), and the stub
- * is authoritative for the trash state (`applyStubStateOnRestore`).
- */
-export function isArchivableCharacter(cha: Slot, now: number): boolean {
-    return !cha.coldstorage && !isTrashPurgeDue(cha.trashTime, now)
-}
-
-/**
  * What a cold-storage unit holds for `source`: everything but `trashTime`. The
  * stub is the only carrier of the trash state on this fork. A unit that carried
  * one would bring it back when upstream opens the stub, because upstream
  * replaces the slot wholesale with the unit's character, and upstream's startup
  * purge could then delete a character the user had taken out of the trash. The
- * fork never reads a unit's `trashTime` (`applyStubStateOnRestore`,
- * `enrichLegacyStub`).
+ * fork never reads a unit's `trashTime` (`applyStubStateOnRestore`).
  */
 export function coldUnitCharacter<T extends Slot>(source: T): T {
     const copy = { ...source }
@@ -211,69 +194,8 @@ export function coldUnitCharacter<T extends Slot>(source: T): T {
     return copy
 }
 
-function isCurrentStub(stub: Slot): boolean {
-    return typeof stub.coldVersion === 'number' && stub.coldVersion >= COLD_STUB_VERSION
-}
-
 function hasTrustedChatCount(stub: Slot): boolean {
     return typeof stub.coldVersion === 'number' && stub.coldVersion >= COLD_STUB_CHAT_COUNT_VERSION
-}
-
-/**
- * Whether `slot` is a stub that is not up to date: a non-empty string
- * `coldstorage`, a `coldVersion` below `COLD_STUB_VERSION` or none (an older
- * archived character, whether the upstream application or an earlier version of
- * this one made it), and a `chaId` that may name a block and a unit (a non-empty
- * string without the `§` hidden-character prefix). `enrichLegacyStub` turns it
- * into a current stub.
- */
-export function isLegacyStub(slot: unknown): boolean {
-    if (typeof slot !== 'object' || slot === null) {
-        return false
-    }
-    const cha = slot as Slot
-    return typeof cha.coldstorage === 'string'
-        && cha.coldstorage.length > 0
-        && !isCurrentStub(cha)
-        && typeof cha.chaId === 'string'
-        && cha.chaId.length > 0
-        && !cha.chaId.startsWith('§')
-}
-
-/**
- * The current stub for `stub`, an older stub (`isLegacyStub`), from
- * `unitCharacter`, the character its unit holds (the caller has checked the two `chaId`s match).
- * Returns a new object; neither argument is modified.
- *
- * From the unit it takes the real `type`, a group's member list, the chat
- * count, the bounded description and, for a character, its tags and resolved
- * creator. `lastInteraction` is the newer of the stub's and the unit's (a
- * put-back refreshes the stub, not the unit), so the upgrade never moves it
- * backwards. Every other field is the stub's own, `trashTime` included, present
- * or absent: the stub is authoritative for the trash state, and a unit's
- * `trashTime` copied onto a stub that has none would let the startup purge
- * delete the character on the same boot. A group's member list comes from the
- * unit, so a list remapped by duplicate-id repair reverts here exactly as it
- * does on restore. It never throws on odd saved data, as `buildColdStub` does
- * not.
- */
-export function enrichLegacyStub<T extends Slot>(stub: T, unitCharacter: Slot): T {
-    const enriched = { ...stub } as unknown as ColdStubFields
-    enriched.type = unitCharacter.type === 'group' ? 'group' : 'character'
-    enriched.creatorNotes = stubDescription(unitCharacter.creatorNotes)
-    enriched.coldChatCount = Array.isArray(unitCharacter.chats) ? unitCharacter.chats.length : 0
-    enriched.coldVersion = COLD_STUB_VERSION
-    if (typeof unitCharacter.lastInteraction === 'number'
-        && (typeof enriched.lastInteraction !== 'number' || unitCharacter.lastInteraction > enriched.lastInteraction)) {
-        enriched.lastInteraction = unitCharacter.lastInteraction
-    }
-    if (unitCharacter.type === 'group') {
-        enriched.characters = Array.isArray(unitCharacter.characters) ? [...unitCharacter.characters] : []
-    } else {
-        enriched.tags = stubTags(unitCharacter)
-        enriched.creator = characterCreator(unitCharacter)
-    }
-    return enriched as unknown as T
 }
 
 /**

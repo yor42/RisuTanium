@@ -629,7 +629,7 @@ export async function runScripted(code:string, arg:{
                 }
             })
 
-            declareAPI('generateImage', async (id:string, value:string, negValue:string = '', options?:ImageGenerationOptions) => {
+            declareAPI('generateImage', async (id:string, value:string, negValue:string = '', options?:ImageGenerationOptions & { name?: string }) => {
                 if(!ScriptingLowLevelIds.has(id)){
                     return
                 }
@@ -652,7 +652,8 @@ export async function runScripted(code:string, arg:{
                 }
                 const imgHTML = new Image()
                 imgHTML.src = gen
-                const inlay = await writeInlayImage(imgHTML)
+                const name = typeof options?.name === 'string' && options.name ? options.name : undefined
+                const inlay = await writeInlayImage(imgHTML, { name })
                 return `{{inlay::${inlay}}}`
             })
 
@@ -1847,7 +1848,7 @@ class PyodideContext{
         if(this.inited){
             return;
         }
-        const id = crypto.randomUUID();
+        const id = v4();
         return new Promise<void>((resolve, reject) => {
             this.worker.onmessage = (event:MessageEvent) => {
                 if(event.data.id !== id){
@@ -1870,7 +1871,7 @@ class PyodideContext{
         });
     }
     async python(call:string){
-        const id = crypto.randomUUID();
+        const id = v4();
         return new Promise<any>((resolve, reject) => {
             this.worker.onmessage = (event:MessageEvent) => {
                 if(event.data.id !== id){
