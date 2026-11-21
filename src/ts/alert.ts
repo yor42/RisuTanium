@@ -90,8 +90,7 @@ export function alertError(msg: string | Error, opts?: { link?: alertData['link'
 
     //check if it's a known error
     if(msg.includes('Failed to fetch') || msg.includes("NetworkError when attempting to fetch resource.")){
-        submsg =    db.usePlainFetch ? language.errors.networkFetchPlain :
-                    (!isTauri && !isNodeServer) ? language.errors.networkFetchWeb : language.errors.networkFetch
+        submsg =    (!isTauri && !isNodeServer) ? language.errors.networkFetchWeb : language.errors.networkFetch
     }
 
     alertStoreImported.set({

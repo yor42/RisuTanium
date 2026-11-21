@@ -48,6 +48,12 @@ export async function realmModuleJson(index: number): Promise<{ json: string, na
         return null
     }
     try {
+        // Judged on the loaded body, which a stub row stands in for: an MCP module's URL may carry a token and is
+        // copied into its description, so no part of it is uploaded.
+        if (usable.module.mcp) {
+            alertError(language.errors.mcpModuleConversionUnsupported)
+            return null
+        }
         // The retained paths name this device's files and never leave it: the payload is a copy that lacks them.
         const payload = { ...usable.module, type: 'risuModule' }
         Reflect.deleteProperty(payload, ASSET_RETAINED_KEY)

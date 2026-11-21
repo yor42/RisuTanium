@@ -62,8 +62,8 @@
         <div class="seperator p-2">
             <span id="{uid}-name" class="text-textcolor mt-6">{language.name}</span>
             <TextInput size="sm" labelId="{uid}-name" bind:value={value.comment} />
-            <span class="text-textcolor mt-4">{language.type}</span>
-            <SelectInput bind:value={value.type}>
+            <span id="{uid}-type" class="text-textcolor mt-4">{language.type}</span>
+            <SelectInput labelId="{uid}-type" bind:value={value.type}>
                 <OptionInput value="start">{language.triggerStart}</OptionInput>
                 <OptionInput value="output">{language.triggerOutput}</OptionInput>
                 <OptionInput value="input">{language.triggerInput}</OptionInput>
@@ -90,7 +90,7 @@
                     {#if i > 0}
                         <hr class="border-selected my-4" />
                     {/if}
-                    <span class="text-textcolor2 text-sm">{language.type}
+                    <span class="text-textcolor2 text-sm"><span id="{uid}-c{i}-type">{language.type}</span>
                         <button aria-label={language.remove} class="float-right text-textcolor2 hover:text-textcolor" onclick={() => {
                             value.conditions.splice(i, 1)
                             value.conditions = value.conditions
@@ -98,7 +98,7 @@
                         }}><XIcon size={18} aria-hidden="true" /></button>
 
                     </span>
-                    <SelectInput bind:value={cond.type} size="sm" onchange={() => {
+                    <SelectInput labelId="{uid}-c{i}-type" bind:value={cond.type} size="sm" onchange={() => {
                         if(cond.type === 'exists'){
                             value.conditions[i] = {
                                 type: 'exists',
@@ -130,7 +130,7 @@
                     </SelectInput>
 
                     {#if cond.type === 'exists'}
-                        <SelectInput bind:value={cond.type2} size="sm">
+                        <SelectInput label={language.triggerMatchMode} bind:value={cond.type2} size="sm">
                             <OptionInput value="loose">{language.triggerMatchLoose}</OptionInput>
                             <OptionInput value="strict">{language.triggerMatchStrict}</OptionInput>
                             <OptionInput value="regex">{language.triggerMatchRegex}</OptionInput>
@@ -138,8 +138,8 @@
                         <span id="{uid}-c{i}-value" class="text-textcolor2 text-sm">{language.value}</span>
                         <TextAreaInput highlight labelId="{uid}-c{i}-value" bind:value={cond.value} />
 
-                        <span  class="text-textcolor2 text-sm">{language.searchDepth}</span>
-                        <NumberInput size="sm" bind:value={cond.depth} />
+                        <span id="{uid}-c{i}-depth" class="text-textcolor2 text-sm">{language.searchDepth}</span>
+                        <NumberInput size="sm" labelId="{uid}-c{i}-depth" bind:value={cond.depth} />
                     {/if}
                     {#if cond.type === 'var' || cond.type === 'chatindex' || cond.type === 'value'}
                         {#if cond.type === 'var'}
@@ -149,8 +149,8 @@
                         {#if cond.type === 'value'}
                             <TextAreaInput highlight size="sm" label={language.ifValue} bind:value={cond.var} />
                         {/if}
-                        <span  class="text-textcolor2 text-sm">{language.value}</span>
-                        <SelectInput bind:value={cond.operator} size="sm">
+                        <span id="{uid}-c{i}-operator" class="text-textcolor2 text-sm">{language.value}</span>
+                        <SelectInput labelId="{uid}-c{i}-operator" bind:value={cond.operator} size="sm">
                             <OptionInput value="true">{language.truthy}</OptionInput>
                             <OptionInput value="=">{language.equal}</OptionInput>
                             <OptionInput value="!=">{language.notEqual}</OptionInput>
@@ -198,7 +198,7 @@
                     {#if i > 0}
                         <hr class="border-selected my-4" />
                     {/if}
-                    <span class="text-textcolor2 text-sm">{language.type}
+                    <span class="text-textcolor2 text-sm"><span id="{uid}-e{i}-type">{language.type}</span>
                         <button aria-label={language.remove} class="float-right text-textcolor2 hover:text-textcolor" onclick={() => {
                             value.effect.splice(i, 1)
                             value.effect = value.effect
@@ -206,7 +206,7 @@
                         }}><XIcon size={18} aria-hidden="true" /></button>
 
                     </span>
-                    <SelectInput bind:value={effect.type} size="sm" onchange={() => {
+                    <SelectInput labelId="{uid}-e{i}-type" bind:value={effect.type} size="sm" onchange={() => {
                         if(effect.type === 'systemprompt'){
                             value.effect[i] = {
                                 type: 'systemprompt',
@@ -352,8 +352,8 @@
                     {/if}
 
                     {#if effect.type === 'systemprompt'}
-                        <span class="text-textcolor2 text-sm">{language.location}</span>
-                        <SelectInput bind:value={effect.location}>
+                        <span id="{uid}-e{i}-location" class="text-textcolor2 text-sm">{language.location}</span>
+                        <SelectInput labelId="{uid}-e{i}-location" bind:value={effect.location}>
                             <OptionInput value="start">{language.promptstart}</OptionInput>
                             <OptionInput value="historyend">{language.historyend}</OptionInput>
                             <OptionInput value="promptend">{language.promptend}</OptionInput>
@@ -364,8 +364,8 @@
                     {#if effect.type === 'setvar'}
                         <span id="{uid}-e{i}-var" class="text-textcolor2 text-sm">{language.varableName}</span>
                         <TextInput labelId="{uid}-e{i}-var" bind:value={effect.var} />
-                        <span class="text-textcolor2 text-sm">{language.operator}</span>
-                        <SelectInput bind:value={effect.operator} >
+                        <span id="{uid}-e{i}-operator" class="text-textcolor2 text-sm">{language.operator}</span>
+                        <SelectInput labelId="{uid}-e{i}-operator" bind:value={effect.operator} >
                             <OptionInput value="=">{language.TriggerSetToVar}</OptionInput>
                             <OptionInput value="+=">{language.TriggerAddToVar}</OptionInput>
                             <OptionInput value="-=">{language.TriggerSubToVar}</OptionInput>
@@ -402,8 +402,8 @@
                         <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
                     {#if effect.type === 'showAlert'}
-                        <span class="text-textcolor2 text-sm">{language.type}</span>
-                        <SelectInput bind:value={effect.alertType}>
+                        <span id="{uid}-e{i}-alert-type" class="text-textcolor2 text-sm">{language.type}</span>
+                        <SelectInput labelId="{uid}-e{i}-alert-type" bind:value={effect.alertType}>
                             <OptionInput value="normal">{language.normal}</OptionInput>
                             <OptionInput value="error">{language.error}</OptionInput>
                             <OptionInput value="input">{language.input}</OptionInput>
@@ -417,8 +417,8 @@
                         <TextInput labelId="{uid}-e{i}-result-var" bind:value={effect.inputVar} />
                     {/if}
                     {#if effect.type === 'impersonate'}
-                        <span class="text-textcolor2 text-sm">{language.role}</span>
-                        <SelectInput bind:value={effect.role} size="sm">
+                        <span id="{uid}-e{i}-role" class="text-textcolor2 text-sm">{language.role}</span>
+                        <SelectInput labelId="{uid}-e{i}-role" bind:value={effect.role} size="sm">
                             <OptionInput value="user">{language.user}</OptionInput>
                             <OptionInput value="char">{language.character}</OptionInput>
                         </SelectInput>

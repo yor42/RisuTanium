@@ -140,6 +140,7 @@ import { language } from 'src/lang'
 import { selectedCharID } from 'src/ts/stores.svelte'
 import { changeChatTo } from 'src/ts/globalApi.svelte'
 import { importChat } from './characters'
+import { siblingsAt } from './process/chatTree'
 
 //#region fixture helpers
 
@@ -545,76 +546,68 @@ describe('importChat -- SillyTavern JSONL field fidelity', () => {
         expect(noticeText()).toBe(language.successImport)
     })
 
-    // T7: regression reproducers by assertion on observables that exist on the base.
-    test('T7: dropped swipes change the notice and name the count', async () => {
-        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), userLine('b')])
+    // I-1: regression reproducer. The base writes no alt and the arrows reach only the shown reply.
+    test('I-1: the swipes of a character reply are kept as siblings and the shown one stays on the path', async () => {
+        await runImport([header, userLine('hi'), charLine('b', { swipes: ['a', 'b', 'c'], swipe_id: 1, send_date: '2024-07-12T01:31:37.123Z' })])
 
-        const text = noticeText()
-        expect(text).not.toBe(language.successImport)
-        expect(text).toContain('1 message')
-        expect(text).toContain('other swipes were not imported')
+        expect(importedMessages().map((m) => m.data)).toEqual(['hi', 'b'])
+        expect(importedChat().alt).toHaveLength(2)
+        expect(siblingsAt(importedChat(), 1).map((m) => m.data)).toEqual(['a', 'b', 'c'])
+        expect(noticeText()).toBe(language.successImport)
     })
 
-    test('T7: several swipe lines are counted together', async () => {
+    // I-2: regression reproducer. First-message swipes are root siblings.
+    test('I-2: the swipes of the first message are siblings of the root', async () => {
+        await runImport([header, charLine('g1', { swipes: ['g1', 'g2'], swipe_id: 0 }), userLine('hi')])
+
+        expect(importedChat().alt).toHaveLength(1)
+        expect(importedChat().alt?.[0].p).toBeNull()
+        expect(siblingsAt(importedChat(), 0).map((m) => m.data)).toEqual(['g1', 'g2'])
+    })
+
+    // I-3: regression reproducer. A user reply keeps its swipes too.
+    test('I-3: the swipes of a user line are kept as siblings of that position', async () => {
+        await runImport([header, charLine('g'), userLine('u1', { swipes: ['u0', 'u1'], swipe_id: 1 })])
+
+        expect(importedChat().alt).toHaveLength(1)
+        expect(importedChat().alt?.[0].m.role).toBe('user')
+        expect(siblingsAt(importedChat(), 1).map((m) => m.data)).toEqual(['u0', 'u1'])
+    })
+
+    // I-4: regression reproducer. The base reports the swipes as not kept.
+    test('I-4: a file whose only extra is swipes shows the plain success notice, and a skipped line keeps its own sentence', async () => {
         await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), charLine('b', { swipes: ['b', 'x'] }), charLine('c', { swipes: ['c', 'x'] })])
-
-        const text = noticeText()
-        expect(text).not.toBe(language.successImport)
-        expect(text).toContain('3 messages')
-        expect(text).toContain('other swipes were not imported')
-    })
-
-    test('T7: a skipped line and a swipe line show both sentences', async () => {
-        await runImport([header, charLine('a', { swipes: ['a', 'b'] }), '{broken', userLine('b')])
-
-        const text = noticeText()
-        expect(text).toContain(language.chatImportSkippedLines(1))
-        expect(text).toContain('other swipes were not imported')
-    })
-
-    test('T7: a single swipe line uses the singular sentence', async () => {
-        await runImport([header, charLine('a', { swipes: ['a', 'b'] })])
-
-        const text = noticeText()
-        expect(text).toContain('1 message')
-        expect(text).toContain('its other swipes')
-    })
-
-    // Green only: the exact strings use the new language keys, which the base lacks.
-    test('green-only: the exact swipe notice strings', async () => {
-        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), charLine('b', { swipes: ['b', 'x'] }), charLine('c', { swipes: ['c', 'x'] })])
-        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(3))
+        expect(noticeText()).toBe(language.successImport)
 
         vi.mocked(alertNormal).mockClear()
         testDb.db = { characters: [makeCharacter([])] } as unknown as Database
-        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), charLine('b', { swipes: ['b', 'x'] }), charLine('c', { swipes: ['c', 'x'] }), '{broken'])
-        expect(noticeText()).toBe(language.chatImportSkippedLines(1) + ' ' + language.chatImportSwipesNotKept(3))
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), '{broken', userLine('b')])
+        expect(noticeText()).toBe(language.chatImportSkippedLines(1))
     })
 
-    // T8: regression reproducers. An empty shown reply with other swipes still reports them.
-    test('T8: an empty-shown line with another non-empty swipe adds no message but is counted', async () => {
-        await runImport([header, charLine('a'), charLine('', { swipes: ['', 'x'] }), userLine('b')])
+    // I-5: regression reproducer. The base drops an empty-shown line and counts it.
+    test('I-5: an empty shown reply shows the first kept swipe and the rest are siblings', async () => {
+        await runImport([header, charLine('a'), charLine('', { swipes: ['', 'x', 'y'] }), userLine('b')])
 
-        expect(importedMessages()).toHaveLength(2)
-        const text = noticeText()
-        expect(text).toContain('1 message')
-        expect(text).toContain('other swipes were not imported')
-    })
-
-    test('T8: the Chub form of an empty-shown line is counted too', async () => {
-        await runImport([header, charLine('a'), charLine({ message: '' }, { swipes: [{ message: 'a' }, { message: 'b' }] })])
-
-        expect(importedMessages()).toHaveLength(1)
-        const text = noticeText()
-        expect(text).toContain('1 message')
-        expect(text).toContain('other swipes were not imported')
-    })
-
-    // Compatibility guard: passes before and after; nothing is lost, so no swipe notice.
-    test('T8: empty-shown lines whose swipes are all empty, or single, show the plain success notice', async () => {
-        await runImport([header, charLine('a'), charLine('', { swipes: ['', ''] }), charLine('', { swipes: ['x'] })])
-
+        expect(importedMessages().map((m) => m.data)).toEqual(['a', 'x', 'b'])
+        expect(siblingsAt(importedChat(), 1).map((m) => m.data)).toEqual(['x', 'y'])
         expect(noticeText()).toBe(language.successImport)
+    })
+
+    // Compatibility guard: passes before and after; an all-empty swipe line is dropped with no notice.
+    test('T8: empty-shown lines whose swipes are all empty show the plain success notice', async () => {
+        await runImport([header, charLine('a'), charLine('', { swipes: ['', ''] }), charLine('', { swipes: [] })])
+
+        expect(importedMessages().map((m) => m.data)).toEqual(['a'])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // I-6: regression reproducer. A record carries the formatting and fields of its line.
+    test('I-6: a swipe record is formatted and keeps the role, name and disabled flag of its line', async () => {
+        await runImport([header, charLine('{{user}} hello', { name: 'Narrator', is_system: true, swipes: ['{{user}} hello', '{{user}} hi'], swipe_id: 0 })])
+
+        expect(importedChat().alt).toHaveLength(1)
+        expect(importedChat().alt?.[0].m).toMatchObject({ role: 'char', data: 'User hi', name: 'Narrator', disabled: true })
     })
 
     // G1: guard. Passes before and after.
@@ -668,15 +661,16 @@ describe('importChat -- SillyTavern JSONL field fidelity', () => {
         expect(importedMessages().map((m) => m.name)).toEqual(['User', 'Solo'])
     })
 
-    // G3: guard. No swipe structure or foreign field is stored.
-    test('G3: a swipe line stores no swipe data and no foreign field', async () => {
-        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'], swipe_id: 1, extra: { x: 1 }, swipe_info: [{}] })])
+    // G3: regression reproducer (the base stores no tree id). No swipe structure, swipe_info or foreign field is stored on the path message.
+    test('G3: a swipe line stores no swipe data and no foreign field beyond the tree id', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'], swipe_id: 0, extra: { x: 1 }, swipe_info: [{}] })])
 
-        expect(Object.keys(importedMessages()[0]).sort()).toEqual(['data', 'role'])
+        expect(Object.keys(importedMessages()[0]).sort()).toEqual(['chatId', 'data', 'role'])
+        expect(Object.keys(importedChat().alt?.[0] ?? {}).sort()).toEqual(['a', 'm', 'p'])
     })
 
     // Regression reproducer: fails on the base, which writes only role and data.
-    test('G3: every field written together is exactly role, data, time, name and disabled', async () => {
+    test('G3: every field written together is exactly role, data, time, name, disabled and the tree id', async () => {
         await runImport([header, charLine('a', { name: 'Narrator', is_system: true, send_date: '2024-07-12T01:31:37.123Z', swipes: ['a', 'b'] })])
 
         expect(importedMessages()[0]).toStrictEqual({
@@ -685,10 +679,12 @@ describe('importChat -- SillyTavern JSONL field fidelity', () => {
             time: Date.UTC(2024, 6, 12, 1, 31, 37, 123),
             name: 'Narrator',
             disabled: true,
+            chatId: importedMessages()[0].chatId,
         })
+        expect(importedMessages()[0].chatId).toBeTruthy()
     })
 
-    // G5: guard. Swipes are counted only where something is lost.
+    // G5: guard. A skipped line is counted only as skipped.
     test('G5: a skipped line, a one-entry swipes array and extra adds no swipe notice', async () => {
         await runImport([header, charLine('a', { swipes: ['a'] }), charLine('b', { extra: {} }), charLine(5, { swipes: ['a', 'b'] })])
 
@@ -1108,12 +1104,27 @@ describe('importChat -- unchanged routing and the shared chat builder', () => {
         expect(changeChatTo).toHaveBeenCalledWith(0)
     })
 
-    test('G5: a skipped line with a swipe line shows both sentences', async () => {
+    test('G5: a skipped line with a swipe line shows only the skipped sentence', async () => {
         const swipeLine = JSON.stringify({ name: 'Solo', is_user: false, mes: 'a', swipes: ['a', 'b'] })
         await runFile('chat.jsonl', `${swipeLine}\n{bad`)
 
         expect(chatList()).toHaveLength(1)
-        expect(alertNormal).toHaveBeenCalledWith(language.chatImportSkippedLines(1) + ' ' + language.chatImportSwipesNotKept(1))
+        expect(alertNormal).toHaveBeenCalledWith(language.chatImportSkippedLines(1))
+    })
+
+    // G-O: guard (passes before and after). Other formats keep today's plain chat shape.
+    test('G-O: an Ooba and an Agnai import carry no alt and no chatId', async () => {
+        await runFile('ooba.json', JSON.stringify({ internal: oobaRows, visible: oobaRows }))
+        await runFile('agnai.json', JSON.stringify({ name: 'Exported', messages: [{ msg: 'hi', userId: 'u1' }] }))
+
+        expect(chatList()).toHaveLength(2)
+        for (const chat of chatList()) {
+            expect(chat).not.toHaveProperty('alt')
+            expect(chat.message.length).toBeGreaterThan(0)
+            for (const message of chat.message) {
+                expect(message).not.toHaveProperty('chatId')
+            }
+        }
     })
 
     // G7: guard (passes before and after). Nothing readable means no chat and no chat switch.

@@ -28,17 +28,6 @@ export interface RetainedRecord {
 }
 
 /**
- * Measurement builds only: a weak reference to the plain decoded object of a
- * record, which the reactive installed character wraps without copying. Kept
- * beside the record so that the record's shape is the same in every build.
- */
-const rawRefs = new WeakMap<RetainedRecord, WeakRef<object>>()
-
-export function rawRefOf(record: RetainedRecord): WeakRef<object> | undefined {
-    return rawRefs.get(record)
-}
-
-/**
  * The record of an installed character, by identity. A replaced slot is not
  * pinned by it, and a record is never found through a copy of the character.
  */
@@ -142,9 +131,6 @@ export function retainOnRestore(installed: Slot, stub: Slot, restored: Slot): vo
             noteFingerprint('restore-keyhash', performance.now() - fingerprintedAt, fp)
         }
         record = { chaId, stub, unitKey, fp, ...(keyHashes ? { keyHashes } : {}) }
-        if (MEASURE) {
-            rawRefs.set(record, new WeakRef<object>(restored))
-        }
     } catch (error) {
         // A character that cannot be fingerprinted stays loaded; the restore itself must not fail for it.
         console.error(error)
@@ -227,11 +213,6 @@ export function findChaIdHolders(chaId: string): number[] {
 /** How many restored characters are retained. */
 export function retainedCount(): number {
     return byChaId.size
-}
-
-/** True while any restored character is retained. */
-export function hasRetained(): boolean {
-    return byChaId.size > 0
 }
 
 /** Forgets `record`; its installed character stays where it is. */

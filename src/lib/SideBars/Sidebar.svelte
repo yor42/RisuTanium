@@ -20,7 +20,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import BarIcon from "./BarIcon.svelte";
     import {
-    ShellIcon,
+    ToolboxIcon,
     Settings,
     ListIcon,
     LayoutGridIcon,
@@ -299,7 +299,7 @@
     PlaygroundStore.set(1)
   }}
 >
-  <ShellIcon aria-hidden="true" />
+  <ToolboxIcon aria-hidden="true" />
   <span class="text-xs">{language.playground.playground}</span>
 </button>
 </div>
@@ -362,7 +362,7 @@
           selectedCharID.set(-1)
           PlaygroundStore.set(1)
         }}
-      ><ShellIcon aria-hidden="true" /></BarIcon>
+      ><ToolboxIcon aria-hidden="true" /></BarIcon>
       {#each additionalHamburgerMenu as menu}
         <div class="mt-2"></div>
         <BarIcon
@@ -426,7 +426,7 @@
           selectedCharID.set(-1)
           PlaygroundStore.set(1)
         }}
-      ><ShellIcon aria-hidden="true" /></BarIcon>
+      ><ToolboxIcon aria-hidden="true" /></BarIcon>
       {#each additionalHamburgerMenu as menu}
         <div class="mt-2"></div>
         <BarIcon

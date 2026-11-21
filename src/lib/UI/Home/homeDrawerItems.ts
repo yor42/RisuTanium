@@ -1,5 +1,5 @@
 import type { Component } from 'svelte'
-import { HomeIcon, LayoutGridIcon, Settings, ShellIcon } from '@lucide/svelte'
+import { HomeIcon, LayoutGridIcon, Settings, ToolboxIcon } from '@lucide/svelte'
 import { language } from 'src/lang'
 import { PlaygroundStore, additionalHamburgerMenu, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 import { openHomeLibrary } from './homeView.svelte'
@@ -30,7 +30,7 @@ export function homeDrawerItems(): HomeDrawerItem[] {
         {
             id: 'playground',
             label: language.playground.playground,
-            icon: ShellIcon,
+            icon: ToolboxIcon,
             plugin: null,
             current: false,
             run: () => {
