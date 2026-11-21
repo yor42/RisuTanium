@@ -649,6 +649,7 @@ export const languageJapanese = {
     patternTaskCount: (noun: string, done: number, total: number) => noun ? `${noun} ${done} / ${total}` : `${done} / ${total}`,
     patternTaskBytes: (done: string, total: string) => `${done} / ${total}`,
     patternTaskSlowHint: "処理中です。大きなファイルは時間がかかることがあります。",
+    alertWaitSlowHint: "処理中です。",
     patternTaskCancelUnsafe: "このステップは途中で止められません",
     patternTaskCancelling: "終了処理中",
     patternTaskCancelled: "キャンセルしました",

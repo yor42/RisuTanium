@@ -1,0 +1,59 @@
+/*
+  Alert shell: the legacy alert API (AlertComp) inside the pattern's layer, scrim and dialog.
+  Needs styles/pattern-tokens.css and pattern-dialog.css (the layer, the dialog, the severity edge and the --pm-* switches it defines).
+  Every value comes from a pattern or task token. The one literal length is the wide cap, commented where it is used.
+  The severity edge and mark column is the one bold element; the wait sweep is the only motion the app starts on its own,
+  and it becomes a steady tint under low power and reduced motion.
+*/
+
+/* ---- the dialog: wide variant for reports and tool content, and the edge of the plain tool wrappers ---- */
+/* The cap is the width the pre-pattern alert box had; no pattern token names a wider dialog. */
+[data-part="pattern-dialog"][data-alert-size="wide"] { width: min(48rem, 100%); }
+[data-part="pattern-dialog"][data-alert-plain] { display: flex; flex-direction: column; padding: var(--pattern-warn-padding); }
+[data-part="pattern-dialog"][data-pattern-severity="confirm"] { border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-warn-edge-confirm); }
+[data-part="pattern-dialog"][data-pattern-severity="notice"] { border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-warn-edge-notice); }
+
+/* ---- layout: the severity edge runs the full height; the tint paints only behind the head (the mark and the headline), never under the body ---- */
+[data-part="pattern-warn-root"][data-alert-root] { display: flex; flex-direction: row; align-items: stretch; padding: 0; gap: 0; background: none; }
+[data-part="pattern-warn-root"][data-alert-root][data-alert-headed] { flex-direction: column; }
+[data-part="pattern-alert-head"] { display: flex; align-items: center; gap: var(--pattern-warn-padding); padding: var(--pattern-warn-padding); background: var(--p-tint); min-width: 0; }
+[data-part="pattern-warn-root"][data-alert-root]:not([data-alert-headed]) > [data-part="pattern-alert-head"] { align-items: flex-start; }
+[data-part="pattern-alert-head"] > [data-part="pattern-warn-mark"] { flex: none; }
+
+/* ---- body: on the plain dialog surface ---- */
+[data-part="pattern-alert-body"] { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--pattern-warn-gap); min-width: 0; padding: var(--pattern-warn-padding); }
+[data-part="pattern-warn-root"][data-alert-headed] > [data-part="pattern-alert-body"] { padding-top: var(--pattern-warn-gap); }
+[data-part="pattern-alert-message"] { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-part="pattern-alert-choices"] { display: grid; gap: var(--pattern-warn-gap); }
+[data-part="pattern-alert-choices"] > .pattern-button, [data-part="pattern-alert-body"] > .pattern-button { width: 100%; }
+[data-part="pattern-alert-body"] > [data-part="pattern-warn-actions"] { margin-top: 0; }
+
+/* ---- wait: an indeterminate track with a sweep, and a determinate fill for progress; no number on a wait ---- */
+[data-part="pattern-alert-bar"] { position: relative; height: var(--pattern-task-bar-height); border-radius: var(--pattern-pill-radius); overflow: hidden; background: var(--pattern-task-bar-track); }
+[data-part="pattern-alert-bar-fill"] { position: absolute; inset: 0; border-radius: inherit; background: var(--pattern-task-bar-fill); transform-origin: left center; transform: scaleX(var(--p-fill, 0)); transition: transform var(--task-fill-dur) var(--task-fill-ease); }
+[data-part="pattern-alert-bar-sweep"] { position: absolute; inset: 0; border-radius: inherit; background: var(--pm-alert-sweep-bg); animation: var(--pm-alert-sweep-anim) var(--task-sweep-period) var(--pattern-ease) infinite; }
+
+[data-part="pattern-alert-head"] > [data-part="pattern-warn-mark"] { animation: pattern-glyph var(--d-glyph) var(--task-fill-ease) var(--l-glyph) both; }
+
+@keyframes pattern-alert-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+[data-part="pattern-layer"] {
+  --pm-alert-sweep-anim: pattern-alert-sweep;
+  --pm-alert-sweep-bg: linear-gradient(90deg, transparent, var(--pattern-task-bar-sweep), transparent);
+}
+[data-part="pattern-layer"][data-low-power] {
+  --pm-alert-sweep-anim: none; --pm-alert-sweep-bg: var(--pattern-task-bar-sweep);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not(.rm-off) [data-part="pattern-layer"] {
+    --pm-alert-sweep-anim: none; --pm-alert-sweep-bg: var(--pattern-task-bar-sweep);
+  }
+}
+:root.rm [data-part="pattern-layer"] {
+  --pm-alert-sweep-anim: none; --pm-alert-sweep-bg: var(--pattern-task-bar-sweep);
+}
+
+@media (forced-colors: active) {
+  [data-part="pattern-alert-bar"] { background: Canvas; border: 1px solid CanvasText; }
+  [data-part="pattern-alert-bar-fill"], [data-part="pattern-alert-bar-sweep"] { background: Highlight; forced-color-adjust: none; }
+}

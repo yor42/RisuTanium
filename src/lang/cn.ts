@@ -649,6 +649,7 @@ export const languageChinese = {
     "patternTaskCount": (noun: string, done: number, total: number) => noun ? `${noun} ${done} / ${total}` : `${done} / ${total}`,
     "patternTaskBytes": (done: string, total: string) => `${done} / ${total}`,
     "patternTaskSlowHint": "仍在处理中，大文件可能需要一些时间。",
+    "alertWaitSlowHint": "仍在处理中。",
     "patternTaskCancelUnsafe": "此步骤无法中途停止",
     "patternTaskCancelling": "正在收尾",
     "patternTaskCancelled": "已取消",

@@ -649,6 +649,7 @@ export const languageEnglish = {
     patternTaskCount: (noun: string, done: number, total: number) => noun ? `${noun} ${done} / ${total}` : `${done} / ${total}`,
     patternTaskBytes: (done: string, total: string) => `${done} / ${total}`,
     patternTaskSlowHint: 'Still working. Large files can take a while.',
+    alertWaitSlowHint: 'Still working.',
     patternTaskCancelUnsafe: "This step can't be stopped midway",
     patternTaskCancelling: 'Wrapping up',
     patternTaskCancelled: 'Cancelled',
