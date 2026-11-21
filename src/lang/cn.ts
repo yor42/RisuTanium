@@ -1776,6 +1776,7 @@ export const languageChinese = {
         "modelNotSupported": "Playground 不支持此模型",
         "modeAuto": "自动",
         "modeManual": "手动",
+        "imageTranslationMode": "模式",
         "loadingLower": "加载中",
         "videoNoDuration": "此视频没有时长信息",
         "convertingVideo": "正在将视频转换为音频...",

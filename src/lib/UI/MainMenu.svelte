@@ -5,7 +5,7 @@
     import { ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
     import { getVersionString, openURL } from "src/ts/globalApi.svelte";
     import { language } from "src/lang";
-    import { getRisuHub, type hubType } from "src/ts/characterCards";
+    import { createRealmPreview } from "./Realm/realmPreview.svelte";
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
     import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
     import RealmPreviewRow from "./Realm/RealmPreviewRow.svelte";
@@ -140,113 +140,8 @@
       }
     ];
 
-    // Five-state model replacing the old `{#await}` -- offline/pending/
-    // failed/empty/populated, the card list, the announcement string, and a
-    // load function the Retry control below calls -- so failure reads as
-    // distinguishable from empty (`MC-056`), pending is visibly announced
-    // (`MC-057`), and offline gets its own inert control (`MC-060`).
-    // Whether the upstream-services agreement still needs confirming is read
-    // directly from `$upstreamAccepted` in the template below, not tracked
-    // as a member of this type.
-    type HubPreviewStatus = 'offline' | 'pending' | 'failed' | 'empty' | 'populated';
-
-    let hubStatus: HubPreviewStatus = $state('pending');
-    let hubCards: hubType[] = $state([]);
-    let hubAnnouncement = $state('');
-
-    // Monotonic generation counter: guards every state write below (offline,
-    // pending, success and failure alike) so a superseded request's late
-    // resolution can never stomp a newer request's result.
-    let hubGeneration = 0;
-
-    async function loadHubPreview() {
-      // Captured, then written before the request-issuing await below:
-      // nothing else can run between the increment and this write (both
-      // happen synchronously), so it is always the newest generation at
-      // the moment it is written. Two calls can be in flight at once (the
-      // acceptance effect below, Retry, the online listener); this is what
-      // keeps a slower, superseded response from stomping a newer result.
-      const generation = ++hubGeneration;
-      hubStatus = 'pending';
-
-      // `getRisuHub` itself classifies "offline" (checked before any fetch
-      // is issued) alongside every other failure reason.
-      const result = await getRisuHub({
-        search: '',
-        page: 0,
-        nsfw: false,
-        sort: 'recommended'
-      });
-
-      if (generation !== hubGeneration) {
-        return;
-      }
-
-      if (result.ok !== true) {
-        if (result.reason === 'consent') {
-          // `getRisuHub` checks `isUpstreamAccepted()` before any await, in the same tick as
-          // this call, and already published that fresh, negative read into `upstreamAccepted`
-          // before returning this via `publishUpstreamAccepted()` (`src/ts/upstreamAgreement.ts`)
-          // -- the placeholder is showing again because `$upstreamAccepted` now agrees with
-          // storage, not because of anything this branch still needs to do.
-          return;
-        }
-        hubStatus = result.reason === 'offline' ? 'offline' : 'failed';
-        return;
-      }
-
-      // Only ever assign non-empty announcements: this reproduces the old
-      // module-global cache's "keep the previous value" behaviour now that
-      // the value lives in per-consumer $state instead.
-      if (result.additionalHTML) {
-        hubAnnouncement = result.additionalHTML;
-      }
-      hubCards = result.cards;
-      hubStatus = result.cards.length > 0 ? 'populated' : 'empty';
-    }
-
-    // `DBState.db` is reassigned wholesale on backup restore, plugin
-    // setDatabase and many command.ts paths. An effect that reads
-    // `DBState.db.hideRealm` directly would depend on the
-    // container and refetch on every one of those reassignments even when
-    // hideRealm itself didn't change. Deriving the boolean first means the
-    // effect depends on the value: Svelte 5 doesn't propagate a $derived
-    // recompute that lands on the same value, so a DBState.db swap that
-    // leaves hideRealm alone does not trigger a refetch.
-    const realmHidden = $derived(DBState.db.hideRealm);
-
-    // The one place this view loads in response to acceptance (MC-086, MC-087 #3, MC-087 #3a).
-    // Reruns whenever either dependency actually changes value -- including a revisit, such as
-    // hiding then unhiding -- since `upstreamAccepted` (a Svelte store) and `realmHidden` (a
-    // `$derived`) both skip notifying on a write that reconfirms their current value, so a rerun
-    // here always corresponds to a genuine transition.
-    $effect(() => {
-      if (!realmHidden && $upstreamAccepted) {
-        loadHubPreview();
-      }
-    });
-
-    // Recover automatically: leave the offline state and reload as soon as
-    // the browser reports connectivity again, instead of stranding the
-    // user until they find the (inert, in that state) retry control. All
-    // three checks stay required: `hubStatus === 'offline'` so a fetch that's
-    // already pending, failed or resolved isn't redundantly restarted;
-    // `realmHidden` so a whole-`DBState.db` swap (plugin setDatabase, backup
-    // restore, the command.ts paths named in the comment above) that turns
-    // hideRealm on while this component stays mounted doesn't fetch the hub
-    // for a user who opted out, since `hubStatus` is never reset by that
-    // swap on its own; and `$upstreamAccepted` so withdrawing consent while
-    // offline doesn't let a later `online` event load the preview for a user
-    // who has not agreed to upstream's terms.
-    $effect(() => {
-      function handleOnline() {
-        if (hubStatus === 'offline' && !realmHidden && $upstreamAccepted) {
-          loadHubPreview();
-        }
-      }
-      window.addEventListener('online', handleOnline);
-      return () => window.removeEventListener('online', handleOnline);
-    });
+    // The preview state lives in realmPreview.svelte.ts; it is created here so its effects belong to this component.
+    const preview = createRealmPreview(() => $upstreamAccepted);
 
     // Delegated click target for the card's browse action: a click
     // anywhere on the card that did not originate inside the scrollable
@@ -359,7 +254,7 @@
               </div>
             </button>
           {/if}
-          {#if !realmHidden}
+          {#if !preview.hidden}
             <!--
               Last grid child in DOM order (the fifth, or the sixth while the Utility card shows): on mobile every link card
               stacks above it, so the realm preview never pushes Related
@@ -402,7 +297,7 @@
               The ceiling belongs on the scrollable list, not the card: capping
               the list at a fixed height keeps the card's own intrinsic height
               (padding + header + description + that constant list height)
-              the same whether hubStatus is pending or populated, which is
+              the same whether preview.status is pending or populated, which is
               what actually stops MC-053's layout shift on fetch resolution.
               The card itself carries no unqualified max-height, so it stays
               an ordinary grid item and stretches to fill its grid area
@@ -435,7 +330,7 @@
                 >{language.hub}</button>
                 <span class="mt-1 block text-base leading-relaxed text-textcolor2">{language.hubDescription}</span>
               </div>
-              {#if hubStatus === 'populated'}
+              {#if preview.status === 'populated'}
                 <!--
                   The dark backing panel is a separate wrapper around the
                   scroller, not merged onto it, because the panel's own
@@ -447,7 +342,7 @@
                   compass icon bleeds, is left as plain card background.
                   Keeping the cap, min-h-0 and overflow-y-auto together on
                   the inner scroller is what holds the card's intrinsic
-                  height constant across hubStatus states — the panel is
+                  height constant across preview.status states — the panel is
                   purely a background, not a layout change.
                   data-realm-preview-list stays on the outer panel so
                   handleCardClick's delegated closest() check bails on
@@ -474,7 +369,7 @@
                          of hub results is dozens of cards. The clamp bounds
                          keyboard cost while this scrollable frame still
                          gives browsing value. -->
-                    {#each hubCards.slice(0, 10) as chara}
+                    {#each preview.cards.slice(0, 10) as chara}
                         <RealmPreviewRow onClick={() => {
                           $OpenRealmStore = true
                           if(DBState.db.realmDirectOpen){
@@ -505,20 +400,20 @@
                         }}
                       >{language.upstreamConsentShow}</button>
                     </div>
-                  {:else if hubStatus === 'pending'}
+                  {:else if preview.status === 'pending'}
                     <div class="h-8 w-8 rounded-full border-2 border-textcolor border-t-transparent animate-spin"></div>
                     <span>{language.loading}...</span>
-                  {:else if hubStatus === 'offline'}
+                  {:else if preview.status === 'offline'}
                     <span>{language.hubOffline}</span>
                     <button
                       aria-disabled="true"
                       class="risu-focus-ring min-h-11 cursor-not-allowed rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor opacity-50"
                       onclick={(event) => { event.stopPropagation(); }}
                     >{language.hubRetry}</button>
-                  {:else if hubStatus === 'failed'}
+                  {:else if preview.status === 'failed'}
                     <span>{language.hubLoadFailed}</span>
-                    <button class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={(event) => { event.stopPropagation(); loadHubPreview(); }}>{language.hubRetry}</button>
-                  {:else if hubStatus === 'empty'}
+                    <button class="risu-focus-ring min-h-11 rounded-md border border-darkborderc bg-darkbutton px-3 text-textcolor hover:bg-selected/50" onclick={(event) => { event.stopPropagation(); preview.load(); }}>{language.hubRetry}</button>
+                  {:else if preview.status === 'empty'}
                     <span>{language.hubEmpty}</span>
                   {/if}
                 </div>
@@ -530,9 +425,9 @@
           {/if}
       </div>
       <h3 class="mt-2 text-textcolor2">{language.homeVersion} {getVersionString()}</h3>
-      {#if hubAnnouncement && !realmHidden}
+      {#if preview.announcement && !preview.hidden}
         <!--
-          Gated on realmHidden, not just a non-empty string: this banner is
+          Gated on preview.hidden, not just a non-empty string: this banner is
           realm-server content too, so hideRealm hides the whole realm
           widget, announcement included, rather than leaving server-supplied
           HTML on screen after the user opts out.
@@ -553,7 +448,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- A keyboard Enter on a focused anchor dispatches a bubbling click, so this delegated handler already covers keyboard activation; see hubHtml.ts. -->
           <div onclick={handleHubHtmlClick}>
-            {@html sanitizeHubHtml(hubAnnouncement)}
+            {@html sanitizeHubHtml(preview.announcement)}
           </div>
         </div>
       {/if}

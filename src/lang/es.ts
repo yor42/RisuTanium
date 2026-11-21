@@ -1776,6 +1776,7 @@ export const languageSpanish = {
         "modelNotSupported": "Este modelo no es compatible con el Playground",
         "modeAuto": "automático",
         "modeManual": "manual",
+        "imageTranslationMode": "Modo",
         "loadingLower": "cargando",
         "videoNoDuration": "Este video no tiene información de duración",
         "convertingVideo": "Convirtiendo el video en audio...",

@@ -277,10 +277,10 @@
             <Help unrecommended key='customChainOfThought' />
         </Check>
     {/if}
-    <span class="text-textcolor mt-4">{language.maxThoughtTagDepth}</span>
-    <NumberInput bind:value={DBState.db.promptSettings.maxThoughtTagDepth}/>
-    <span class="text-textcolor mt-4">{language.groupOtherBotRole} <Help key="groupOtherBotRole"/></span>
-    <SelectInput bind:value={DBState.db.groupOtherBotRole}>
+    <span class="text-textcolor mt-4" id="{uid}-v1">{language.maxThoughtTagDepth}</span>
+    <NumberInput labelId="{uid}-v1" bind:value={DBState.db.promptSettings.maxThoughtTagDepth}/>
+    <span class="text-textcolor mt-4"><span id="{uid}-v2">{language.groupOtherBotRole}</span> <Help key="groupOtherBotRole"/></span>
+    <SelectInput labelId="{uid}-v2" bind:value={DBState.db.groupOtherBotRole}>
         <OptionInput value="user">User</OptionInput>
         <OptionInput value="system">System</OptionInput>
         <OptionInput value="assistant">assistant</OptionInput>
@@ -297,8 +297,8 @@
     <TextAreaInput labelId="{uid}-f6" placeholder={`<{{char}}\'s Message>\n{{slot}}\n</{{char}}\'s Message>`} bind:value={DBState.db.groupTemplate}/>
     <span class="text-textcolor mt-4"><span id="{uid}-f7">{language.systemContentReplacement}</span> <Help key="systemContentReplacement"/></span>
     <TextAreaInput labelId="{uid}-f7" bind:value={DBState.db.systemContentReplacement}/>
-    <span class="text-textcolor mt-4">{language.systemRoleReplacement} <Help key="systemRoleReplacement"/></span>
-    <SelectInput bind:value={DBState.db.systemRoleReplacement}>
+    <span class="text-textcolor mt-4"><span id="{uid}-v3">{language.systemRoleReplacement}</span> <Help key="systemRoleReplacement"/></span>
+    <SelectInput labelId="{uid}-v3" bind:value={DBState.db.systemRoleReplacement}>
         <OptionInput value="user">User</OptionInput>
         <OptionInput value="assistant">assistant</OptionInput>
     </SelectInput>
