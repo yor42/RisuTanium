@@ -1,9 +1,8 @@
 import { DBState } from "../stores.svelte"
 import { alertError } from "../alert"
-import { language } from "../../lang"
 import type { character, groupChat } from "../storage/database.svelte"
 import { applyCharacterDefaults } from "../storage/characterDefaults"
-import { findChaIdHolders, readColdCharacterCopy, restoreColdCharacter, restoreFailureReason, type ColdRestoreFailure } from "./coldCharacterRestore"
+import { findChaIdHolders, namedRestoreFailureText, readColdCharacterCopy, restoreColdCharacter, restoreFailureName, restoreFailureReason, type ColdRestoreFailure } from "./coldCharacterRestore"
 
 /**
  * How a plugin call or an MCP tool reaches an archived character (a stub in
@@ -28,38 +27,12 @@ export interface ColdAccessFailure {
 }
 
 /**
- * The named message for `reason`. Every reason has its own case, so a reason
- * added to `ColdRestoreFailure` without a message fails the type check instead
- * of falling through to the possible-data-loss text. Only `missing`,
- * `mismatch` and `ambiguous` claim the data may be lost.
- */
-function namedRestoreFailureText(name: string, reason: ColdRestoreFailure): string {
-    switch (reason) {
-        case 'unavailable':
-            return language.errors.coldStorageNamedRestoreUnavailable(name)
-        case 'damaged':
-            return language.errors.coldStorageNamedRestoreDamaged(name)
-        case 'unreadable':
-            return language.errors.coldStorageNamedRestoreUnreadable(name)
-        case 'missing':
-        case 'mismatch':
-        case 'ambiguous':
-            return language.errors.coldStorageNamedRestoreFailed(name)
-        default: {
-            const unhandled: never = reason
-            return unhandled
-        }
-    }
-}
-
-/**
  * Shows the user one alert naming `stub`, with the wording that fits `reason`,
  * and returns it as a failure. For a caller that restored with `quiet` and
  * reports the failure itself.
  */
 export function alertNamedRestoreFailure(stub: Slot, reason: ColdRestoreFailure): ColdAccessFailure {
-    const name = stub.name || language.errors.coldStorageUnknownCharacterName
-    const message = namedRestoreFailureText(name, reason)
+    const message = namedRestoreFailureText(restoreFailureName(stub), reason)
     alertError(message)
     return { status: 'failed', message }
 }
