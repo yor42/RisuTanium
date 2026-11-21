@@ -6,12 +6,9 @@
   and it becomes a steady tint under low power and reduced motion.
 */
 
-/* ---- the dialog: wide variant for reports and tool content, and the edge of the plain tool wrappers ---- */
+/* ---- the dialog: wide variant for reports and tool content ---- */
 /* The cap is the width the pre-pattern alert box had; no pattern token names a wider dialog. */
 [data-part="pattern-dialog"][data-alert-size="wide"] { width: min(48rem, 100%); }
-[data-part="pattern-dialog"][data-alert-plain] { display: flex; flex-direction: column; padding: var(--pattern-warn-padding); }
-[data-part="pattern-dialog"][data-pattern-severity="confirm"] { border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-warn-edge-confirm); }
-[data-part="pattern-dialog"][data-pattern-severity="notice"] { border-inline-start: var(--pattern-warn-edge-width) solid var(--pattern-warn-edge-notice); }
 
 /* ---- layout: the severity edge runs the full height; the tint paints only behind the head (the mark and the headline), never under the body ---- */
 [data-part="pattern-warn-root"][data-alert-root] { display: flex; flex-direction: row; align-items: stretch; padding: 0; gap: 0; background: none; }

@@ -3,21 +3,22 @@
     import { fillLang } from 'src/lang/fill'
     import { copyPlainText } from 'src/ts/chatCopy'
     import { downloadFile } from 'src/ts/downloadFile'
-    import Button from '../UI/GUI/Button.svelte'
 
     /**
      * The dialog of a finished reply that cannot be added to its chat. The name and the reply render as text, never as
      * markup. Copy and Save as .txt leave the dialog open; Discard answers `discard` without a confirm step; Later answers
-     * `later`. The copy outcome is shown inside the dialog: a toast would replace the prompt on the alert store.
+     * `later`. The copy outcome is shown inside the dialog: a toast would replace the prompt on the alert store. The title
+     * carries `titleId`, so the host dialog is named by the title alone and not by the whole body.
      */
     interface Props {
         name: string
         text: string
         title: string
+        titleId?: string
         onanswer: (message: 'discard' | 'later') => void
     }
 
-    let { name, text, title, onanswer }: Props = $props()
+    let { name, text, title, titleId, onanswer }: Props = $props()
 
     let status = $state('')
 
@@ -44,15 +45,17 @@
     }
 </script>
 
-<div class="flex flex-col gap-3 max-w-2xl" data-parked-reply>
-    <div class="text-textcolor text-lg">{title}</div>
-    <div class="text-textcolor2">{fillLang(language.parkedReplyBody, { name })}</div>
-    <div class="whitespace-pre-wrap break-words max-h-64 overflow-y-auto border border-darkborderc rounded-md bg-darkbg text-textcolor p-2" data-parked-reply-text>{text}</div>
-    <div class="text-textcolor2 text-sm min-h-5" role="status" data-parked-reply-status>{status}</div>
-    <div class="flex flex-wrap gap-2">
-        <Button styled="outlined" onclick={copy}>{language.copy}</Button>
-        <Button styled="outlined" onclick={saveTxt}>{language.parkedReplySaveTxt}</Button>
-        <Button styled="danger" onclick={() => onanswer('discard')}>{language.parkedReplyDiscard}</Button>
-        <Button onclick={() => onanswer('later')}>{language.parkedReplyLater}</Button>
+<div data-part="pattern-alert-stack" data-parked-reply>
+    <p id={titleId} data-part="pattern-alert-title">{title}</p>
+    <p data-part="pattern-alert-text">{fillLang(language.parkedReplyBody, { name })}</p>
+    <div data-part="pattern-alert-reply" data-parked-reply-text>{text}</div>
+    <div data-part="pattern-alert-reply-tools">
+        <button type="button" class="pattern-button" onclick={copy}>{language.copy}</button>
+        <button type="button" class="pattern-button" onclick={saveTxt}>{language.parkedReplySaveTxt}</button>
+        <span role="status" data-parked-reply-status>{status}</span>
     </div>
+</div>
+<div data-part="pattern-warn-actions" data-count="2">
+    <button type="button" class="pattern-button" onclick={() => onanswer('discard')}>{language.parkedReplyDiscard}</button>
+    <button type="button" class="pattern-button" data-variant="confirm" onclick={() => onanswer('later')}>{language.parkedReplyLater}</button>
 </div>
