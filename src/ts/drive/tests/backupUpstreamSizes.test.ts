@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * The size sources of the 100 MiB backup warning (`drive/backupUpstreamSizes.ts`): the threshold is strict, the
- * Node page asks the server once, the desktop page uses the listing it already has, and the browser pre-pass reads one
- * asset at a time and keeps only its size. Sizes are faked: a value reports a length it does not hold, so no test
+ * Node page asks the server once and the desktop page uses the listing it already has. Sizes are faked: a value reports a length it does not hold, so no test
  * allocates 100 MiB.
  *
  * Reproducers fail on the code before this module existed; "guard" tests state what must not move.
@@ -146,111 +145,5 @@ describe('findOversizeAssets, Node page', () => {
     test('guard: a failing listing is the caller\'s error, not an empty answer', async () => {
         const probe = storeOf({}, async () => { throw new Error('network') })
         await expect(findOversizeAssets({ ...base(probe.store), kind: 'node' })).rejects.toThrow('network')
-    })
-})
-
-describe('findOversizeAssets, browser pre-pass', () => {
-    const listedKeys = ['assets/small', 'assets/exact', 'assets/over', 'assets/gone', 'assets/broken', 'database/main']
-
-    function browserStore() {
-        return storeOf({ 'assets/small': 10, 'assets/exact': LIMIT, 'assets/over': LIMIT + 1, 'assets/gone': 'absent', 'assets/broken': 'error', 'database/main': LIMIT * 3 })
-    }
-
-    for (const kind of ['indexeddb', 'opfs-transitional'] as const) {
-        test(`reproducer (${kind}): reads each asset once, one at a time, and names only the ones strictly above 100 MiB`, async () => {
-            const probe = browserStore()
-            const seen: Array<[number, number]> = []
-            const found = await findOversizeAssets({
-                ...base(probe.store),
-                kind,
-                listedKeys,
-                onProgress: (done, total) => seen.push([done, total]),
-            })
-            expect(found).toEqual([{ key: 'assets/over', size: LIMIT + 1 }])
-            expect(probe.reads).toEqual(['assets/small', 'assets/exact', 'assets/over', 'assets/gone', 'assets/broken'])
-            expect(probe.maxInFlight()).toBe(1)
-            expect(probe.heldAfterRead()).toBe(0)
-            expect(seen).toEqual([[1, 5], [2, 5], [3, 5], [4, 5], [5, 5]])
-        })
-    }
-
-    /** A store that offers `readValue`: a Blob answers by its size, bytes by their length, and no whole `read` is made. */
-    function valueStore(values: Record<string, Blob | Uint8Array | null | 'error'>) {
-        const reads: string[] = []
-        const valueReads: string[] = []
-        const store = {
-            capabilities: { conditionalWrites: false },
-            async read(key: string) {
-                reads.push(key)
-                return { bytes: null, version: null }
-            },
-            async readValue(key: string) {
-                valueReads.push(key)
-                const value = values[key] ?? null
-                if (value === 'error') {
-                    throw new Error('unreadable')
-                }
-                return value
-            },
-        } as unknown as ByteStore
-        return { store, reads, valueReads }
-    }
-
-    /** A Blob that reports `size` bytes and holds none. */
-    function sizeLikeBlob(size: number): Blob {
-        const blob = new Blob([])
-        Object.defineProperty(blob, 'size', { value: size })
-        return blob
-    }
-
-    test('reproducer: a store with readValue is asked once per asset and a Blob is sized by its size without any read', async () => {
-        const probe = valueStore({
-            'assets/blob-over': sizeLikeBlob(LIMIT + 1),
-            'assets/blob-exact': sizeLikeBlob(LIMIT),
-            'assets/bytes-over': lengthLike(LIMIT + 7),
-            'assets/bytes-small': lengthLike(10),
-            'assets/gone': null,
-            'assets/broken': 'error',
-        })
-        const keys = ['assets/blob-over', 'assets/blob-exact', 'assets/bytes-over', 'assets/bytes-small', 'assets/gone', 'assets/broken']
-        const found = await findOversizeAssets({ ...base(probe.store), kind: 'indexeddb', listedKeys: keys })
-        expect(found).toEqual([{ key: 'assets/blob-over', size: LIMIT + 1 }, { key: 'assets/bytes-over', size: LIMIT + 7 }])
-        expect(probe.valueReads).toEqual(keys)
-        expect(probe.reads).toEqual([])
-    })
-
-    test('reproducer: a key upstream wrote that the store can address but not create is sized by a whole read, never by readValue', async () => {
-        const reads: string[] = []
-        const valueReads: string[] = []
-        const store = {
-            capabilities: { conditionalWrites: false },
-            async read(key: string) {
-                reads.push(key)
-                return { bytes: lengthLike(LIMIT + 3), version: null }
-            },
-            async readValue(key: string) {
-                valueReads.push(key)
-                throw new Error('readValue refuses a key the store cannot create')
-            },
-        } as unknown as ByteStore
-        const found = await findOversizeAssets({ ...base(store), kind: 'indexeddb', listedKeys: ['assets/.big.mp4'] })
-        expect(found).toEqual([{ key: 'assets/.big.mp4', size: LIMIT + 3 }])
-        expect(reads).toEqual(['assets/.big.mp4'])
-        expect(valueReads).toEqual([])
-    })
-
-    test('reproducer: a partial backup reads only its own keys', async () => {
-        const probe = browserStore()
-        const found = await findOversizeAssets({ ...base(probe.store), kind: 'indexeddb', keys: ['assets/over', 'assets/small', 'outside/file'], listedKeys })
-        expect(found).toEqual([{ key: 'assets/over', size: LIMIT + 1 }])
-        expect(probe.reads).toEqual(['assets/over', 'assets/small'])
-    })
-
-    test('reproducer: a cancel raised as the second asset is announced lets that read finish and stops before the third', async () => {
-        const probe = browserStore()
-        const cancel = new ExportCancelToken()
-        const run = findOversizeAssets({ ...base(probe.store), kind: 'indexeddb', listedKeys, cancel, onProgress: (done) => { if (done === 2) { cancel.cancel() } } })
-        await expect(run).rejects.toBeDefined()
-        expect(probe.reads).toEqual(['assets/small', 'assets/exact'])
     })
 })

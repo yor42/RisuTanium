@@ -7,14 +7,18 @@ import { alertConfirm, alertNormal } from 'src/ts/alert'
 import { restoreInProgress } from 'src/ts/drive/restoreInProgress'
 import { requestSaveNow } from 'src/ts/globalApi.svelte'
 import { isBusy } from 'src/ts/process/memory/busyActions'
+import { leavePackScheme } from 'src/ts/gui/colorscheme'
 import { DBState } from 'src/ts/stores.svelte'
 import type { LintError } from 'src/ts/themePack'
+import { cancelPackSchemeRequest, requestPackScheme } from 'src/ts/themePack/activePack.svelte'
+import { COLOUR_READY_AREAS } from 'src/ts/themePack/colourReady'
 import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type PackTileColours, type PackVerifyIcon } from 'src/ts/themePack/install'
 import { APPLIED_AREAS, intakePackBytes, type IntakeRefusal, type IntakeResult, type VerifiedPack } from 'src/ts/themePack/intake'
 import { createJudgeClient } from 'src/ts/themePack/judgeClient'
 import type { PackTile } from 'src/ts/themePack/manifest'
 import { checkPackIcon } from 'src/ts/themePack/packIcon'
 import { listThemePacks } from 'src/ts/themePack/packRecord'
+import { hasNoDeclarations, shapeOnlySheet, shapeTokenNames } from 'src/ts/themePack/shapeMode'
 import { deriveTileColours } from 'src/ts/themePack/tileColours'
 import { PACK_FILE_MAX_BYTES, PACK_MAX_UNPACKED_BYTES } from 'src/ts/themePack/zipTail'
 import { readPickedFileBytes, selectSingleFileObject } from 'src/ts/util'
@@ -151,11 +155,15 @@ interface SheetWarnings {
     warnings: readonly LintError[]
 }
 
-/** The accepted sheets that carry warnings, in area order. A judgement without the field throws, which the install reports as a failure before any write. */
+/** The accepted sheets that carry warnings, in area order; an area the pack has no sheet for is skipped. A present judgement without the field throws, which the install reports as a failure before any write. */
 function sheetWarningsOf(pack: VerifiedPack): SheetWarnings[] {
     const out: SheetWarnings[] = []
     for (const area of APPLIED_AREAS) {
-        const { warnings } = pack.sheets[area]
+        const judgement = pack.sheets[area]
+        if (judgement === undefined) {
+            continue
+        }
+        const { warnings } = judgement
         if (warnings.length > 0) {
             out.push({ sheet: `${area}.css`, warnings })
         }
@@ -163,13 +171,50 @@ function sheetWarningsOf(pack: VerifiedPack): SheetWarnings[] {
     return out
 }
 
-/** `sheetWarnings` shows only on an installed pack; every other outcome ignores it, so a failure after verify never shows notes about a pack that was not stored. */
-function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: readonly string[], sheetWarnings: readonly SheetWarnings[]): RowMessage | null {
+/**
+ * What this version does with the applied sheets of an accepted pack, as notice lines (MC-3125, MC-3127). A sheet of an area
+ * that is not colour-ready applies only its shape variant, so a sheet whose shape variant differs from its text keeps its
+ * colours held back. A pack with such a sheet whose applied texts all show nothing says so; a chat-only pack never gets that
+ * line, so its install result is unchanged.
+ */
+function applyNoticesOf(pack: VerifiedPack): string[] {
+    const held: string[] = []
+    let shows = false
+    let hasOtherArea = false
+    for (const area of APPLIED_AREAS) {
+        const judgement = pack.sheets[area]
+        if (judgement === undefined) {
+            continue
+        }
+        if (COLOUR_READY_AREAS.has(area)) {
+            shows = shows || !/^\s*$/.test(judgement.canonical)
+            continue
+        }
+        hasOtherArea = true
+        const shape = shapeOnlySheet(judgement.canonical, shapeTokenNames(area))
+        if (shape !== judgement.canonical) {
+            held.push(`${area}.css`)
+        }
+        shows = shows || !hasNoDeclarations(shape)
+    }
+    const lines: string[] = []
+    if (held.length > 0) {
+        lines.push(language.themePackColoursHeld(held.join(', ')))
+    }
+    if (hasOtherArea && !shows) {
+        lines.push(language.themePackShowsNothing)
+    }
+    return lines
+}
+
+/** `sheetWarnings` and `notices` show only on an installed pack; every other outcome ignores them, so a failure after verify never shows notes about a pack that was not stored. */
+function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: readonly string[], notices: readonly string[], sheetWarnings: readonly SheetWarnings[]): RowMessage | null {
     if (outcome.ok === true) {
         const lines = [language.themePackInstalled(outcome.record.name)]
         if (skippedAreas.length > 0) {
             lines.push(language.themePackSkippedAreas(skippedAreas.map((area) => `${area}.css`).join(', ')))
         }
+        lines.push(...notices)
         for (const { sheet, warnings } of sheetWarnings) {
             lines.push(language.themePackInstalledWithWarnings(sheet))
             for (const w of warnings) {
@@ -189,7 +234,7 @@ function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: reado
         case 'listUnreadable':
             return errorMessage(language.themePackListUnreadable)
         case 'readOnly':
-            return errorMessage(outcome.cause === 'opfs' ? language.opfsReadOnlyNotice : language.store2Boot.readOnlyRefusal)
+            return errorMessage(language.store2Boot.readOnlyRefusal)
         case 'refused':
             return outcome.refusal.kind === 'declinedLarge'
                 ? null
@@ -263,7 +308,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
             ok: false,
             kind: 'refused',
             refusal: { kind: 'intake', refusals: [{ code: 'packTooLarge', limitBytes: PACK_MAX_UNPACKED_BYTES }] },
-        }, [], []), d.notify)
+        }, [], [], []), d.notify)
         return
     }
     installFlowState.pending = true
@@ -271,6 +316,7 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
     try {
         const bytes = await d.readFile(file)
         let skippedAreas: readonly string[] = []
+        let notices: readonly string[] = []
         let sheetWarnings: readonly SheetWarnings[] = []
         const outcome = await d.install<InstallRefusal>({
             bytes,
@@ -299,13 +345,18 @@ export async function runThemePackInstall(deps?: Partial<InstallFlowDeps>): Prom
                     return { ok: false, refusal: { kind: 'declinedLarge' } }
                 }
                 skippedAreas = pack.skippedAreas
+                notices = applyNoticesOf(pack)
                 sheetWarnings = sheetWarningsOf(pack)
                 return icon === undefined ? { ok: true, manifest: pack.manifest, tile } : { ok: true, manifest: pack.manifest, tile, icon }
             },
             confirmReplace: (existing) => d.confirm(language.themePackReplaceConfirm(existing.name)),
+            // At this moment `activeThemePack` still names the pack being replaced, so the classification reads current
+            // state: replacing the active pack updates it, anything else is a turn-on (install always activates).
+            onActivate: ({ id, replacedId }) => requestPackScheme(id, replacedId !== null && replacedId === DBState.db.activeThemePack ? 'update' : 'turnOn'),
         })
-        publish(mapOutcome(outcome, skippedAreas, sheetWarnings), d.notify)
+        publish(mapOutcome(outcome, skippedAreas, notices, sheetWarnings), d.notify)
     } catch {
+        cancelPackSchemeRequest()
         publish(errorMessage(language.themePackInstallFailed), d.notify)
     } finally {
         installFlowState.pending = false
@@ -327,9 +378,16 @@ export async function removeThemePack(entry: unknown, name: string, deps?: Parti
         return 'declined'
     }
     const found = listThemePacks(DBState.db.themePacks).find((item) => item.entry === entry)
+    const entryId = typeof entry === 'object' && entry !== null && 'id' in entry ? entry.id : undefined
+    const wasActive = typeof entryId === 'string' && DBState.db.activeThemePack === entryId
     if (found === undefined || !removeThemePackAt(found.index, entry).ok) {
         publish(errorMessage(language.themePackRemoveChanged), d.notify)
         return 'changed'
+    }
+    if (wasActive) {
+        // Removing the active pack turns it off: the user's own scheme comes back, unless they picked another meanwhile.
+        cancelPackSchemeRequest()
+        leavePackScheme()
     }
     requestSaveNow()
     installFlowState.outcome = null
@@ -344,6 +402,12 @@ export function selectThemePack(id: string | undefined, deps?: Partial<InstallFl
         return 'busy'
     }
     installFlowState.outcome = null
+    if (id === undefined) {
+        cancelPackSchemeRequest()
+        leavePackScheme()
+    } else {
+        requestPackScheme(id, 'turnOn')
+    }
     setActiveThemePack(id)
     requestSaveNow()
     return 'selected'

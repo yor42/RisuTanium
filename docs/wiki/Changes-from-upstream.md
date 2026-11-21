@@ -45,7 +45,7 @@ What you see:
 - A recovery screen at startup if a save is damaged, and a list of earlier saved versions to restore from ("Load Internal Backup").
 - A visible indicator when a browser tab has stopped saving. A message names exactly which items the app could not save. Before, the loss was silent.
 - Older saves convert automatically. The app refuses a malformed older save, or offers it without the broken parts. It does not crash.
-- Web, desktop, and Node server all share one storage contract. The OPFS switch is gone. At startup, the app copies an OPFS profile back into the IndexedDB of the browser. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
+- The desktop app and the Node server share one storage contract. A page that neither Tauri nor the Node server serves has no storage for your data. The OPFS switch is gone, and the app no longer uses the browser's OPFS or IndexedDB. If an older build left data there, this build neither reads it nor deletes it. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
 - The Node server checks revisions before it writes. So two clients cannot silently overwrite each other.
 - Saving yields to the interface during long saves. On Android, a hidden page keeps saving.
 
@@ -147,7 +147,7 @@ The file format has limits.
 
 ### Chat alternatives (rerolls and candidate replies)
 
-The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. SillyTavern swipes import into the tree. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
+The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. Swipes from SillyTavern, Ooba, Agnai, Kobold Lite and Character.AI chat files import into the tree. For Agnai and Kobold Lite branches, only the first message where a branch differs is kept. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
 
 ### Chats stay separate
 
@@ -197,6 +197,7 @@ On Android, an image in a chat that is larger than 64 MiB shows as a box with it
 - **Keys and models:** `${NAME}` references to environment variables for keys (see [[API Keys from Environment Variables]]). A button to refresh model data. Context and pricing from OpenRouter. Deprecated models are tagged. Claude 5 Opus with adaptive thinking.
 - **Languages:** Spanish and Japanese. A machine drafted the Japanese, and no native speaker reviewed it.
 - **Utility mode:** A first slice (task presets and a run screen), shown on desktop only. It is early.
+- **Toggle defaults:** A toggle can start on, or on a chosen option, through a fifth field such as `key=Label===1` (see [[Modules]]). Upstream RisuAI ignores the fifth field, so the same card starts with the toggle off there and builds a different prompt until you change the toggle. Every upstream merge re-checks the destructuring line of upstream `parseToggleSyntax`; if upstream reads a 5th field, open a reconciliation ticket before the merge counts as ported.
 
 ### Model list
 
@@ -229,7 +230,7 @@ For details and routes, see [[Migrating from upstream]].
 | Execution of V2.1 plugins | The data stays. Nothing runs. |
 | The settings pages Global Lorebook and Global Regex | The pages are retired. |
 | Picture-in-picture keep-alive | A stored `pip` setting reads as `off`. |
-| OPFS storage switch | See Saving and storage. |
+| OPFS storage switch | Removed, along with browser storage (OPFS and IndexedDB). See Saving and storage. |
 | Desktop auto-updater | Off until the fork has its own releases. |
 
 ## Bugs fixed

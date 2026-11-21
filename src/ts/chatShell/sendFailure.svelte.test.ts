@@ -17,20 +17,21 @@ vi.mock(import('src/ts/process/composerActions.svelte'), () => ({
     regenerateNewest: regenerateNewestMock,
 }) as unknown as typeof import('src/ts/process/composerActions.svelte'))
 vi.mock(import('src/ts/model/modellist'), () => ({ getModelInfo: modelInfoMock }) as unknown as typeof import('src/ts/model/modellist'))
-vi.mock(import('src/ts/stores.svelte'), () => ({ DBState: dbBox }) as unknown as typeof import('src/ts/stores.svelte'))
+vi.mock(import('src/ts/stores.svelte'), () => ({ DBState: dbBox, selIdState: { selId: -1 } }) as unknown as typeof import('src/ts/stores.svelte'))
 
 import { failureOf, resetSendFailuresForTests, retrySendFailure, shellGenerationSource } from './sendFailure.svelte'
+import { absorbLegacyForTest } from '../connections/tests/legacyFixture'
 
 const ORIGIN = { chaId: 'cha-a', chatId: 'chat-a' }
 const OTHER = { chaId: 'cha-a', chatId: 'chat-b' }
 
 function install(overrides: Record<string, unknown> = {}): void {
-    dbBox.db = {
+    dbBox.db = absorbLegacyForTest({
         aiModel: 'claude-test', customModels: [], presetChain: '', fallbackModels: { model: [] },
         openAIKey: '', openrouterKey: '', claudeAPIKey: '', mistralKey: '', cohereAPIKey: '', OaiCompAPIKeys: {},
         google: { accessToken: '' }, novelai: { token: '' },
         ...overrides,
-    }
+    })
 }
 
 beforeEach(() => {

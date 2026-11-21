@@ -10,7 +10,7 @@
  */
 import { assetKeyOf } from '../../storage/store2/sweep/assetKey'
 import {
-    indexedDbAddressableViolation, indexedDbCreatableViolation, nodeAddressableViolation, nodeAssetRouteViolation,
+    nodeAddressableViolation, nodeAssetRouteViolation,
     nodeCreatableViolation, tauriAddressableViolation, tauriCreatableViolation, type FilePlatform,
 } from '../../storage/store/keyRules'
 import type { AppStoreKind } from '../../storage/store/appStore'
@@ -73,9 +73,6 @@ export function creatableViolation(rule: CreatableRule, key: string): string | n
             return tauriAddressableViolation(key, rule.platform) ?? tauriCreatableViolation(key)
         case 'node':
             return nodeAddressableViolation(key) ?? nodeCreatableViolation(key) ?? nodeAssetRouteViolation(key)
-        case 'indexeddb':
-        case 'opfs-transitional':
-            return indexedDbAddressableViolation(key) ?? indexedDbCreatableViolation(key)
     }
 }
 

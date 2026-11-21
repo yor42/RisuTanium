@@ -1,6 +1,6 @@
 import { BLOCKS_PREFIX, HEAD_KEY, LEGACY_MAIN_FILE_KEY, NUMBERED_BACKUP_PREFIX, PRE_BLOCKS_PREFIX } from '../../blockKeys'
 import type { ByteStore } from '../../store/contract'
-import { indexedDbAddressableViolation, nodeAddressableViolation, tauriAddressableViolation } from '../../store/keyRules'
+import { nodeAddressableViolation, tauriAddressableViolation } from '../../store/keyRules'
 import { unitDigest } from '../codec/reuse'
 import type { BuiltInstall } from '../firstLife'
 import { encodeUnit, isOldDataKey, UNIT_TYPE, type DeletionSnapshot, type DeletionSnapshotKind, type LegacyList } from '../format'
@@ -111,7 +111,6 @@ export async function observeOldData(source: OldDataSource): Promise<OldDataObse
 /** Whether every store the app runs on can address `key`: the strictest of their rules, so a key one store would refuse is never listed. */
 function storeCanAddress(key: string): boolean {
     return nodeAddressableViolation(key) === null
-        && indexedDbAddressableViolation(key) === null
         && tauriAddressableViolation(key, 'windows') === null
 }
 

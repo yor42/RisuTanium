@@ -8,6 +8,7 @@ import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./st
 import { applyUsageRetention } from "./usage/usageRetention";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
+import { takeConnectionsMigrated } from "./connections/migrate";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState } from "./stores.svelte";
@@ -81,8 +82,6 @@ const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 export async function loadData() {
     const loaded = get(loadedStore)
     if (!loaded) {
-        // Whether a page that only reads its legacy profile from OPFS must say so, posted once after the dispatch's own notices.
-        let opfsReadOnlyNotice = false
         // What a read-only legacy page installed that is not the whole current save (a partly decoded main file, or a
         // numbered backup), kept for the export and told once after the page may go live. Null for everything else.
         let legacyPartial: LegacyPartialSave | null = null
@@ -196,7 +195,6 @@ export async function loadData() {
                 // Informational notices are queued, not awaited: the boot goes on while the person reads them, and the
                 // notice queue shows them one at a time. An update question asked below takes the screen over a notice.
                 postStore2Notices(store2Notices)
-                postOpfsReadOnlyNotice(opfsReadOnlyNotice)
                 postLegacyPartialNotice(legacyPartial)
                 LoadingStatusState.text = "Checking Update..."
                 await checkRisuUpdate()
@@ -267,10 +265,6 @@ export async function loadData() {
                             }
                         }
                     }
-                    // A legacy profile this page only reads for another reason says so through the dispatch's own notice.
-                    if (store2Boot.reason === 'opfs-transitional') {
-                        opfsReadOnlyNotice = true
-                    }
                     if (!installed) {
                         const backups = await listBackupTimes()
                         let backupLoaded = false
@@ -295,13 +289,12 @@ export async function loadData() {
                 }
                 assertPageMayGoLive()
 
-                // The dispatch's notices and then the OPFS read-only notice are
+                // The dispatch's notices and then the legacy-partial notice are
                 // queued in that order. The notice queue shows them one at a
                 // time in FIFO order, never overwrites one with another, and
                 // ends each only by the person's own close. They are not
                 // awaited here: the boot goes on behind them.
                 postStore2Notices(store2Notices)
-                postOpfsReadOnlyNotice(opfsReadOnlyNotice)
                 postLegacyPartialNotice(legacyPartial)
 
                 // I6: a returning RisuAccount-sync profile (AutoStorage.Init()
@@ -532,14 +525,6 @@ async function readBackupBytes(backup: number): Promise<Uint8Array> {
         throw new Error(`The backup ${key} is not in storage`)
     }
     return bytes
-}
-
-/** Queues the read-only notice of a page that runs from OPFS; it does not wait for the person to close it. */
-function postOpfsReadOnlyNotice(shown: boolean): void {
-    if (!shown) {
-        return
-    }
-    queueNotice(language.opfsReadOnlyNotice)
 }
 
 /**
@@ -793,7 +778,10 @@ async function checkNewFormat(): Promise<void> {
     setDatabase(db);
     // Ids minted by any setDatabase of the boot, and the id of a preset the repair appended, exist only in memory
     // until the boot's normal save writes them; the mark makes it write, so the ids are the same on the next load.
-    if (takePresetIdsMinted()) {
+    // The connections migration rewrites the config and preset units the same way; the same mark persists it.
+    const presetIdsMinted = takePresetIdsMinted();
+    const connectionsMigrated = takeConnectionsMigrated();
+    if (presetIdsMinted || connectionsMigrated) {
         markBootWrite();
     }
     checkCharOrder();

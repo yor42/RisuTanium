@@ -42,12 +42,13 @@
     import BootScreen from './lib/Others/BootScreen.svelte';
     import { getBootScreen } from './ts/storage/store2/ui/bootScreen.svelte';
     import { chatSurface, installChatSurface } from './lib/ChatScreens/chatSurface.svelte';
-    import { installThemePackGate } from './ts/themePack/surfaceGate.svelte';
+    import { installThemePackGate, screenMasked } from './ts/themePack/surfaceGate.svelte';
     import { installChatOnScreen } from './ts/process/chatOnScreen.svelte';
     import { installReplyNotifications } from './ts/android/replyNotifications.svelte';
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
     import TaskHost from './lib/Nexus/pattern/TaskHost.svelte';
     import { coversPage } from './ts/alertEscape';
+    import { installAlertFocusReturn } from './ts/alertFocusReturn';
     import NexusBootScreen from './lib/Nexus/boot/NexusBootScreen.svelte';
     import { createLegacyBootTracker } from './lib/Nexus/boot/bootProgress';
 
@@ -68,8 +69,10 @@
     charGridOpen.set(false)
     // Settings and Studio each replace the sidebar and grid and hide the still-mounted chat surface.
     const covered = $derived($settingsOpen || $studioOpen)
-    // A theme pack's chat sheet is on only while the chat shell is declared and this cover is off.
-    installThemePackGate(() => covered)
+    // A theme pack's screen sheet is on only while its screen is declared and its own mask is off: chat sits under Settings and
+    // Studio, Studio shows only while it is open.
+    const screenState = $derived({ settingsOpen: $settingsOpen, studioOpen: $studioOpen })
+    installThemePackGate((area) => screenMasked(area, screenState))
     let aprilFools = $state(new Date().getMonth() === 3 && new Date().getDate() === 1)
     let aprilFoolsPage = $state(0)
     let keepingSessionAlive = $state(false)
@@ -118,6 +121,9 @@
             close: leaveStudio,
         }))
     })
+
+    // A covering alert hands focus back to the control that was focused when it opened, once it is gone.
+    $effect(() => installAlertFocusReturn())
 
     // The bars keep the boot canvas colour until the app has replaced the boot screen.
     $effect(() => {

@@ -15,6 +15,7 @@
  * must be preserved.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 import { writable } from 'svelte/store'
 
 //#region module mocks
@@ -86,9 +87,9 @@ vi.mock('../../globalApi.svelte', () => ({
     }),
 }))
 
-vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => h.db }))
+vi.mock('../../storage/database.svelte', () => ({ getDatabase: () => absorbLegacyForTest(h.db) }))
 vi.mock('../../stores.svelte', () => ({
-    get DBState() { return { db: h.db } },
+    get DBState() { return { db: absorbLegacyForTest(h.db) } },
     selectedCharID: writable(-1),
 }))
 vi.mock('../../alert', () => {

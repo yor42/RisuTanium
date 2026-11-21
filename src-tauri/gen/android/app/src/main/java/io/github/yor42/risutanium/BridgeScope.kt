@@ -15,7 +15,15 @@ const val HOST_OBJECT_NAME = "__risuTaniumHost"
 // on a WebView without message-listener support.
 const val EXTRA_FORCE_LEGACY_BRIDGES = "io.github.yor42.risutanium.FORCE_LEGACY_BRIDGES"
 
+// A debug-only launch extra that asks a fresh launch to delete every vault key, to exercise the
+// invalidated-key path.
+const val EXTRA_DEBUG_DELETE_VAULT_KEYS = "io.github.yor42.risutanium.DEBUG_DELETE_VAULT_KEYS"
+
 enum class BridgeMode { LISTENER, LEGACY }
+
+// The delete request counts only in a debug build, so a release build ignores the extra and no
+// production path ever removes a vault key.
+fun shouldDeleteVaultKeys(debugBuild: Boolean, requested: Boolean): Boolean = debugBuild && requested
 
 // LEGACY registers the separate host objects exactly as before. The force request counts only in a
 // debug build, so a release build ignores the extra.
@@ -32,6 +40,12 @@ fun acceptsBridgeMessage(isMainFrame: Boolean, sourceOrigin: String, appOrigin: 
 }
 
 private fun normalized(origin: String): String = if (origin.endsWith("/")) origin.dropLast(1) else origin
+
+// A vault request: the reply carries the same id and the method named here.
+interface VaultCommand {
+  val id: Int
+  val replyMethod: String
+}
 
 // One validated request from the page. Anything that does not fit a case below is dropped by the
 // caller without an effect, as a bad value never throws.
@@ -64,6 +78,19 @@ sealed class BridgeCommand {
   // The notices native posts for the reply that the positive token names; the arm is a JSON string for the same reason.
   data class ReplyNotificationsArmNative(val token: Int, val json: String) : BridgeCommand()
   data class ReplyNotificationsCancel(val key: String) : BridgeCommand()
+  data class VaultAvailable(override val id: Int) : BridgeCommand(), VaultCommand {
+    override val replyMethod: String get() = "keyVault.available"
+  }
+  data class VaultWrap(override val id: Int, val plain: String) : BridgeCommand(), VaultCommand {
+    override val replyMethod: String get() = "keyVault.wrap"
+  }
+  data class VaultUnwrap(override val id: Int, val envelope: String) : BridgeCommand(), VaultCommand {
+    override val replyMethod: String get() = "keyVault.unwrap"
+  }
+  // A known vault method with a wrong argument list and an id: answered with an `other` error.
+  data class KeyVaultMalformed(override val id: Int, val method: String) : BridgeCommand(), VaultCommand {
+    override val replyMethod: String get() = "keyVault.$method"
+  }
 }
 
 // Largest magnitude a double holds exactly as an integer.
@@ -93,7 +120,21 @@ fun toCommand(bridge: String, method: String, args: List<Any?>, id: Any?): Bridg
   "keepAlive" -> keepAliveCommand(method, args)
   "replyNotifications" -> replyNotificationsCommand(method, args)
   "openedFiles" -> openedFilesCommand(method, args, id)
+  "keyVault" -> keyVaultCommand(method, args, id)
   else -> null
+}
+
+// A call without an integer id has nobody to answer and is dropped; a known method with a wrong
+// argument list and an id is answered with an error, so the page never waits on it.
+private fun keyVaultCommand(method: String, args: List<Any?>, id: Any?): BridgeCommand? {
+  if (method != "available" && method != "wrap" && method != "unwrap") return null
+  val vaultId = intArg(id) ?: return null
+  val malformed = BridgeCommand.KeyVaultMalformed(vaultId, method)
+  return when (method) {
+    "available" -> if (args.isEmpty()) BridgeCommand.VaultAvailable(vaultId) else malformed
+    "wrap" -> (args.singleOrNull() as? String)?.let { BridgeCommand.VaultWrap(vaultId, it) } ?: malformed
+    else -> (args.singleOrNull() as? String)?.let { BridgeCommand.VaultUnwrap(vaultId, it) } ?: malformed
+  }
 }
 
 private fun systemBarsCommand(method: String, args: List<Any?>): BridgeCommand? {
@@ -210,6 +251,37 @@ fun encodeImeEvent(visible: Boolean, heightDp: Double): String {
 // sequence the reply includes; 0 means none.
 fun encodeTakeReply(id: Int, takeJson: String, through: Long): String {
   return "{\"id\":$id,\"result\":$takeJson,\"through\":$through}"
+}
+
+// A vault reply names its request's id and method. Success carries the value (an envelope, the
+// plaintext, or a JSON boolean for available); failure carries the code.
+fun encodeVaultReply(id: Int, method: String, result: VaultResult): String {
+  val head = "{\"id\":$id,\"method\":${jsonString(method)}"
+  return when (result) {
+    is VaultResult.Value -> "$head,\"vault\":\"ok\",\"value\":${jsonString(result.text)}}"
+    is VaultResult.Flag -> "$head,\"vault\":\"ok\",\"value\":${result.value}}"
+    is VaultResult.Error -> "$head,\"vault\":\"error\",\"code\":${jsonString(result.code.wire)}}"
+  }
+}
+
+// Quotes, backslashes, control characters and the line separators U+2028/2029 are escaped; every
+// other character, a supplementary one included, is passed through.
+private fun jsonString(value: String): String {
+  val out = StringBuilder(value.length + 2).append('"')
+  for (char in value) {
+    when {
+      char == '"' -> out.append("\\\"")
+      char == '\\' -> out.append("\\\\")
+      char < ' ' || char == '\u2028' || char == '\u2029' -> {
+        out.append("\\u")
+        val hex = Integer.toHexString(char.code)
+        for (pad in hex.length until 4) out.append('0')
+        out.append(hex)
+      }
+      else -> out.append(char)
+    }
+  }
+  return out.append('"').toString()
 }
 
 class PendingSnapshot<T>(val batches: List<T>, val through: Long)

@@ -139,25 +139,31 @@ afterEach(() => {
     delete window.__risuTaniumOpenedFiles
 })
 
+/** The key a first-run write put into the connection of provider, or undefined when that provider has none. */
+function connectionKeyOf(db: FakeDb, provider: string): string | undefined {
+    const conns = (db.connections ?? []) as Array<{ provider: string, key: string }>
+    return conns.find((conn) => conn.provider === provider)?.key
+}
+
 describe('provider, model and key', () => {
     test.each([
-        ['claude', 'claudeAPIKey'],
-        ['openai', 'openAIKey'],
-        ['openrouter', 'openrouterKey'],
-    ] as const)('%s writes the trimmed key only into %s', (provider, field) => {
+        ['claude', 'anthropic'],
+        ['openai', 'openai'],
+        ['openrouter', 'openrouter'],
+    ] as const)('%s writes the trimmed key only into the %s connection, never a legacy field', (provider, connectionProvider) => {
         const db = apply(freshDb(), choices({ provider, apiKey: 'K-1' }))
 
-        const keyFields = ['claudeAPIKey', 'openAIKey', 'openrouterKey'] as const
-        for (const other of keyFields) {
-            expect(db[other]).toBe(other === field ? 'K-1' : '')
+        for (const other of ['anthropic', 'openai', 'openrouter', 'google']) {
+            expect(connectionKeyOf(db, other)).toBe(other === connectionProvider ? 'K-1' : undefined)
         }
-        expect(db.google.accessToken).toBe('')
+        expect([db.claudeAPIKey, db.openAIKey, db.openrouterKey, db.google.accessToken]).toEqual(['', '', '', ''])
     })
 
-    test('gemini writes its key into google.accessToken and nowhere else, with the recommended model', () => {
+    test('gemini writes its key into the google connection and nowhere else, with the recommended model', () => {
         const db = apply(freshDb(), choices({ provider: 'gemini', apiKey: 'K-2' }))
 
-        expect(db.google.accessToken).toBe('K-2')
+        expect(connectionKeyOf(db, 'google')).toBe('K-2')
+        expect(db.google.accessToken).toBe('')
         expect(db.openAIKey).toBe('')
         expect(db.claudeAPIKey).toBe('')
         expect(db.aiModel).toBe(FIRST_RUN_MODELS.gemini)
@@ -187,6 +193,7 @@ describe('provider, model and key', () => {
         const db = apply(freshDb(), choices({ provider: 'horde', apiKey: 'ignored' }))
 
         expect([db.claudeAPIKey, db.openAIKey, db.openrouterKey, db.google.accessToken]).toEqual(['', '', '', ''])
+        expect(db.connections).toBeUndefined()
     })
 })
 
@@ -559,7 +566,7 @@ describe('finishing', () => {
         expect(box.flagAtThemeRefresh).toBeUndefined()
         expect(box.flagAtRedrain).toBe(true)
         expect(redrain).toHaveBeenCalledTimes(1)
-        expect(db.claudeAPIKey).toBe('K')
+        expect(connectionKeyOf(db, 'anthropic')).toBe('K')
     })
 
     test('without an opened-files hook the finish still sets the flag', () => {

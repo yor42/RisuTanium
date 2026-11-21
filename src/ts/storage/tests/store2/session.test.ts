@@ -41,7 +41,7 @@ import { crc32 } from 'src/ts/storage/blockFrame'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import {
-    Store2BackendFailureError, createMemoryBackend, createTauriBackend, type Store2Backend,
+    Store2BackendFailureError, createMemoryBackend, createNodeBackend, createTauriBackend, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
@@ -52,6 +52,8 @@ import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { bytesOf } from './backendConformance'
 import { createClock, hooked, parsedCommit, plantKey, seedStore, START_TIME, testEnv } from './commitFixtures'
 import { plantFence } from './fenceFixtures'
+import { flushConfirming } from './flushConfirmBackend'
+import { createNodeSemanticStore } from './replay/nodeSemanticStore'
 
 function reset(): void {
     h.fs.reset()
@@ -227,13 +229,15 @@ describe('Tauri re-flush on every page load', () => {
         expect((await reflushTopLevel(failing.backend)).commit).toBe('failed')
     })
 
-    test('other kinds do not re-flush', async () => {
-        const memory = createMemoryBackend()
-        await seedStore(memory, env)
-        const watched = hooked(memory)
+    test('a Node session does not re-flush', async () => {
+        const semantic = createNodeSemanticStore()
+        const backend = createNodeBackend(semantic.store)
+        await seedStore(backend, env)
+        const watched = hooked(backend)
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: watched.backend, upstreamMainFile: async () => false })
+        const session = await Store2Session.open(semantic.store, { kind: 'node', backend: watched.backend, upstreamMainFile: async () => false })
 
+        expect(session.decision.mode).not.toBe('read-only')
         expect(session.reflush).toBeNull()
         expect(watched.count('casCommit')).toBe(0)
         expect(watched.count('casFence')).toBe(0)
@@ -247,8 +251,9 @@ describe('session decisions', () => {
         const memory = createMemoryBackend()
         await seedStore(memory, env)
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
 
+        expect(session.idleReason).toBeNull()
         expect(session.decision).toEqual({ row: 5, mode: 'normal', fence: 'absent' })
         expect(session.tree?.status).toBe('ok')
         expect((await session.openGate('gc')).status).toBe('open')
@@ -256,9 +261,11 @@ describe('session decisions', () => {
 
     test('an empty store with an upstream main file converts and without one seeds', async () => {
         const { store } = await openTauri()
-        const converting = await Store2Session.open(store, { kind: 'indexeddb', backend: createMemoryBackend(), upstreamMainFile: async () => true })
-        const seeding = await Store2Session.open(store, { kind: 'indexeddb', backend: createMemoryBackend(), upstreamMainFile: async () => false })
+        const converting = await Store2Session.open(store, { kind: 'tauri', backend: flushConfirming(createMemoryBackend()).backend, upstreamMainFile: async () => true })
+        const seeding = await Store2Session.open(store, { kind: 'tauri', backend: flushConfirming(createMemoryBackend()).backend, upstreamMainFile: async () => false })
 
+        expect(converting.idleReason).toBeNull()
+        expect(seeding.idleReason).toBeNull()
         expect(converting.decision).toEqual({ row: 1, mode: 'first-life', action: 'convert' })
         expect(seeding.decision).toEqual({ row: 1, mode: 'first-life', action: 'seed' })
     })
@@ -271,7 +278,7 @@ describe('session decisions', () => {
             }
         } })
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: failing.backend, upstreamMainFile: async () => true })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(failing.backend).backend, upstreamMainFile: async () => true })
 
         expect(session.decision).toMatchObject({ row: 1, mode: 'blocked', reason: 'presence-unknown' })
     })
@@ -286,8 +293,9 @@ describe('session decisions', () => {
         }
         expect(stored.bytes).not.toBeNull()
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: orphan, upstreamMainFile: async () => true })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(orphan).backend, upstreamMainFile: async () => true })
 
+        expect(session.idleReason).toBeNull()
         expect(session.decision).toEqual({ row: 2, mode: 'recovery' })
     })
 
@@ -304,8 +312,9 @@ describe('session decisions', () => {
         }
         await partial.casCommit((await partial.readCommit()).token, (await memory.readCommit()).bytes as Uint8Array)
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: partial, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(partial).backend, upstreamMainFile: async () => false })
 
+        expect(session.idleReason).toBeNull()
         expect(manifestKeys).toHaveLength(1)
         expect(session.decision).toMatchObject({ row: 6, mode: 'recovery', tree: 'missing' })
     })
@@ -319,7 +328,7 @@ describe('session decisions', () => {
         new DataView(newer.buffer).setUint32(12, crc32(newer.subarray(0, 12)), true)
         await memory.casCommit((await memory.readCommit()).token, newer)
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
 
         expect(session.decision).toMatchObject({ row: 3, mode: 'read-only', source: 'commit-key' })
         expect(await session.openGate('gc')).toMatchObject({ status: 'refused', reason: 'commit-too-new' })
@@ -333,18 +342,10 @@ describe('session decisions', () => {
             }
         } })
 
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: failing.backend, upstreamMainFile: async () => false })
+        const session = await Store2Session.open((await openTauri()).store, { kind: 'tauri', backend: flushConfirming(failing.backend).backend, upstreamMainFile: async () => false })
 
         expect(session.decision).toMatchObject({ row: null, mode: 'blocked', reason: 'commit-unreadable' })
         expect(session.commitRead).toBeNull()
-    })
-
-    test('the transitional OPFS store is read-only with no backend and every gate refuses', async () => {
-        const session = await Store2Session.open((await openTauri()).store, { kind: 'opfs-transitional', backend: createMemoryBackend(), upstreamMainFile: async () => false })
-
-        expect(session.decision).toMatchObject({ row: null, mode: 'read-only', reason: 'opfs-transitional' })
-        expect(session.backend).toBeNull()
-        expect(await session.openGate('gc')).toMatchObject({ status: 'refused' })
     })
 
     test('a Node page whose store has no guarded operations is read-only', async () => {
@@ -382,16 +383,17 @@ describe('session decisions', () => {
             expect(peek(COMMIT_KEY)).toEqual(before)
         })
 
-        test('on the web no marker is cleared at open', async () => {
-            const memory = createMemoryBackend()
-            await plantMarker(memory, 'seed', OWNER)
-            const before = (await memory.readCommit()).bytes
+        test('on a Node page no marker is cleared at open', async () => {
+            const semantic = createNodeSemanticStore()
+            const backend = createNodeBackend(semantic.store)
+            await plantMarker(backend, 'seed', OWNER)
+            const before = (await backend.readCommit()).bytes
 
-            const session = await Store2Session.open((await openTauri()).store, { kind: 'indexeddb', backend: memory, upstreamMainFile: async () => false })
+            const session = await Store2Session.open(semantic.store, { kind: 'node', backend, upstreamMainFile: async () => false })
 
             expect(session.decision).toMatchObject({ row: 9, clear: 'foreign-path' })
             expect(session.startupClear).toBeNull()
-            expect((await memory.readCommit()).bytes).toEqual(before)
+            expect((await backend.readCommit()).bytes).toEqual(before)
         })
 
         test('a persisted owner id is written once and read back on the next load', async () => {

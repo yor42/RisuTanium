@@ -1,0 +1,123 @@
+/*
+  Seasonal scene: halloween. Every class is rt-hw-*. Default rules = start pose; .rt-hw-final = final pose. Tone: the host
+  stamps [data-rt-sw-tone] on the mark slot, stage and root, so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-hw-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;            /* bats leave through the stage edge, never outside it */
+  pointer-events: none;
+  contain: layout paint;
+}
+.rt-hw-tint {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* Static stars painted into the wash (no extra animated nodes). */
+  background:
+    radial-gradient(circle at 62% 16%, rgb(255 255 255 / 0.8) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 93% 62%, rgb(255 255 255 / 0.6) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 44% 70%, rgb(255 255 255 / 0.5) 0 0.8px, transparent 1.4px),
+    linear-gradient(180deg, rgb(14 4 40 / 0.5) 0%, rgb(42 12 76 / 0.36) 66%, rgb(42 12 76 / 0) 100%);
+  /* Feathered edges (review m-2): soft left, right and bottom instead of a box. A static mask, not a filter. */
+  /* The third layer leaves a soft hole over the mark slot (--rt-hw-mx/-my set by the scene), so the night never
+     dims the status mark or the jack-o'-lantern (review m-1). */
+  --rt-hw-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 64px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 18px), transparent 100%),
+    radial-gradient(circle at var(--rt-hw-mx, -100px) var(--rt-hw-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: var(--rt-hw-mask);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: var(--rt-hw-mask);
+  mask-composite: intersect;
+}
+/* Moon: placed by the scene only where its halo clears the word (never over it); static, fades with the tint. */
+.rt-hw-moon {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 226 160 / 0.95) 0 9px, rgb(255 200 120 / 0.2) 10px, rgb(255 200 120 / 0) 22px);
+}
+.rt-hw-narrow .rt-hw-moon { display: none; }
+.rt-hw-bat {
+  position: absolute;
+  width: 30px;
+  height: 18px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.rt-hw-batsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-hw-bat .rt-hw-batsvg path { fill: #7d68b0; }
+.rt-hw-wing { transform-box: fill-box; }
+.rt-hw-wing-l { transform-origin: 100% 40%; }
+.rt-hw-wing-r { transform-origin: 0% 40%; }
+
+.rt-hw-sky.rt-hw-final { display: none; }
+
+/* Light preset: a dusk wash instead of night, darker bats. */
+[data-rt-sw-tone="light"] .rt-hw-tint {
+  background: linear-gradient(180deg, rgb(91 33 182 / 0.22) 0%, rgb(124 58 237 / 0.12) 66%, rgb(124 58 237 / 0) 100%);
+}
+[data-rt-sw-tone="light"] .rt-hw-moon {
+  background: radial-gradient(circle, rgb(255 200 110 / 0.95) 0 9px, rgb(255 180 90 / 0.25) 10px, rgb(255 180 90 / 0) 22px);
+}
+[data-rt-sw-tone="light"] .rt-hw-bat .rt-hw-batsvg path { fill: #2e2445; }
+
+/* ---------- Mark slot ---------- */
+.rt-hw-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rt-hw-every, .rt-hw-pumpkin { transform-box: view-box; transform-origin: 50% 50%; }
+.rt-hw-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-hw-ink { fill: #0f172a; }
+
+.rt-hw-pumpkin { opacity: 0; }
+.rt-hw-skin { stroke: #b4470a; stroke-width: 2.5; }
+.rt-hw-ribs { fill: none; stroke: #c4500c; stroke-width: 3; stroke-linecap: round; opacity: 0.55; }
+.rt-hw-stem { fill: #4d7c2a; }
+.rt-hw-leaf { fill: #6aa338; }
+.rt-hw-carve { fill: #3a1405; }
+.rt-hw-glow { opacity: 0; }
+
+.rt-hw-mark.rt-hw-final .rt-hw-every { opacity: 0; }
+.rt-hw-mark.rt-hw-final .rt-hw-pumpkin { opacity: 1; transform: none; }
+.rt-hw-mark.rt-hw-final .rt-hw-glow { opacity: 1; }
+
+/* ---------- Word ---------- */
+.rt-hw-word { position: relative; }
+.rt-hw-perch {
+  /* The bat sits on the T's top: 0.84em x 0.504em, feet 0.2em below the word box top (NSN cap top ~0.18em). */
+  position: absolute;
+  left: calc(var(--rt-hw-tx, 2.55em) - 0.42em);
+  top: -0.3em;
+  width: 0.84em;
+  height: 0.504em;
+  pointer-events: none;
+  z-index: 2;
+}
+.rt-hw-perch-fly { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 50% 90%; }
+.rt-hw-perch .rt-hw-batsvg path { fill: #8e7bc8; }
+.rt-hw-perch .rt-hw-batsvg .rt-hw-bateyes { fill: #ffb547; }
+[data-rt-sw-tone="light"] .rt-hw-perch .rt-hw-batsvg path { fill: #2e2445; }
+[data-rt-sw-tone="light"] .rt-hw-perch .rt-hw-batsvg .rt-hw-bateyes { fill: #ffb547; }
+
+.rt-hw-word.rt-hw-final .rt-hw-perch-fly { opacity: 1; transform: none; }
+.rt-hw-word.rt-hw-final .rt-hw-perch .rt-hw-wing { transform: scale(0.55, 1); }
+
+/* "Tanium" candle flicker: a candle-coloured copy on ::after, only its opacity animates. */
+.rt-hw-tan { position: relative; }
+.rt-hw-tan::after {
+  content: attr(data-rt-hw-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #ffc56b;
+  -webkit-text-fill-color: #ffc56b;
+  background: none;
+  text-shadow: 0 0 0.3em rgb(255 150 40 / 0.85);
+  opacity: 0;
+  pointer-events: none;
+}
+[data-rt-sw-tone="light"] .rt-hw-tan::after {
+  color: #c2410c;
+  -webkit-text-fill-color: #c2410c;
+  text-shadow: 0 0 0.3em rgb(251 146 60 / 0.6);
+}

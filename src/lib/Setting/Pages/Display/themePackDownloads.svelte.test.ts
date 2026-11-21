@@ -49,12 +49,13 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({
         read: async (key: string) => ({ bytes: world.files.get(key) ?? null }),
     }),
-    pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
     return { DBState: state } as unknown as typeof import('src/ts/stores.svelte')
 })
+
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ leavePackScheme: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
 
 //#endregion
 
@@ -145,7 +146,7 @@ describe('I-1 the downloadable packs install through the real install flow', () 
             expect((record.fonts as { file: string, license: string }[]).map((font) => [font.file, font.license]))
                 .toEqual(pack.fontFiles.map((file) => [file, FONT_LICENSE]))
             expect(installFlowState.outcome === null ? null : [...installFlowState.outcome.lines])
-                .toEqual([language.themePackInstalled(pack.name), language.themePackSkippedAreas('home.css, settings.css, studio.css')])
+                .toEqual([language.themePackInstalled(pack.name), language.themePackSkippedAreas('home.css, settings.css'), language.themePackColoursHeld('studio.css')])
             expect(confirm).not.toHaveBeenCalled()
             expect(notify).not.toHaveBeenCalled()
         })

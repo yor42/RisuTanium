@@ -5,7 +5,7 @@ Start with [Live-State](Live-State.md) after compaction, then the task-relevant 
 | Document | Authority |
 |---|---|
 | GitHub issues and project board 1 (yor42/RisuTanium) | Ticket authority: scope, status, owner, trigger. Where Roadmap disagrees, the issue wins. |
-| [Maintainer-Context](Maintainer-Context.md) | Append-only maintainer facts/decisions under stable MC IDs; original entries override paraphrases. |
+| [Maintainer-Context](Maintainer-Context.md) | Append-only maintainer facts/decisions under stable MC IDs; original entries override paraphrases. Ticket PRs write new entries to [Agents/mc/](mc/README.md), which lane A folds in here (MC-3044). |
 | [Decision-Index](Decision-Index.md) | Generated navigation to raw MC headings; no decision summaries. |
 | [Roadmap](Roadmap.md) | Scope history keyed to issue numbers; not the live status (see GitHub issues). |
 | [Live-State](Live-State.md) | One current-state block with pointers to the latest lane handoffs; rewritten, not history. |

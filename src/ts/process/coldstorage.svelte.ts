@@ -1,4 +1,4 @@
-import { isTauri, isNodeServer } from "src/ts/platform"
+import { isNodeServer } from "src/ts/platform"
 import { DBState, selectedCharID } from "../stores.svelte"
 import { get } from "svelte/store"
 import type { ReadResult, StoreCondition } from "../storage/store/contract"
@@ -15,7 +15,7 @@ import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHe
 import { isWriting } from "./chatOrigin"
 import { isSafeColdStorageKey } from "./coldStorageKey"
 import { withoutColdValueForkOnly, type ForkOnlyChatLabel } from "../drive/exportAlternatives"
-import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./coldUnitLocation"
+import { coldUnitStoreKey, coldUnitStoreRefusal } from "./coldUnitLocation"
 import { beginChokePoint } from "./memory/busyActions"
 import { noteReadSize, noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 import { getResidency, isEntityUnitKey, noteResidencyRead } from "../storage/store2/residencyActive"
@@ -68,8 +68,7 @@ export async function getColdStorageItem(key:string) {
  *                    clearly "the item was never written" falls here on
  *                    purpose -- the whole point of this reader is that callers
  *                    must not treat an ambiguous failure as proof of data
- *                    loss. A failed read of the page's store is never retried
- *                    against the legacy OPFS file.
+ *                    loss.
  *
  * An `'error'` may carry a `kind` that says why a repeated read cannot be
  * expected to succeed. `kind` selects the text shown to the user and the
@@ -79,9 +78,6 @@ export async function getColdStorageItem(key:string) {
  * the same. The kinds:
  *   - `'unavailable'` -- the page has no storage for archived data: its byte
  *                        store cannot be opened (`AppStoreUnavailableError`).
- *                        A browser without `navigator.storage.getDirectory`
- *                        has no legacy unit files, so an absent unit there is
- *                        `'missing'`, not unavailable.
  *   - `'damaged'`     -- the key cannot be a storage name
  *                        (`isSafeColdStorageKey`) or the page's store refuses
  *                        it (`StoreInvalidKeyError`), so nothing was read, or
@@ -106,47 +102,6 @@ type ColdStorageBytesResult =
     | { status: 'ok', bytes: Uint8Array }
     | { status: 'missing' }
     | { status: 'error', error: unknown, kind?: ColdReadErrorKind }
-
-/**
- * Pure classification seam for the legacy OPFS unit files, with
- * `getDirectoryFn` injected. `missing` only for a `NotFoundError` thrown while
- * LOCATING OR OPENING THE FILE ITSELF -- i.e. from `getFileHandle(filename)` (called
- * without `{create: true}`, real OPFS's own way of saying "no such file")
- * or `getFile()` -- the name real OPFS's `DOMException` uses, and the name
- * this project's OPFS test mocks use. A `NotFoundError` thrown by
- * `getDirectoryFn()` itself (i.e. `navigator.storage.getDirectory()`) is
- * NOT about this file at all -- it would mean OPFS's root directory
- * couldn't be obtained, which says nothing about whether `filename` exists
- * -- so it (and every other error from either step, including
- * `TypeMismatchError` and `NotReadableError`) is `error`.
- */
-export async function classifyOpfsColdRead(
-    getDirectoryFn: () => Promise<{
-        getFileHandle: (name: string) => Promise<{
-            getFile: () => Promise<{ arrayBuffer: () => Promise<ArrayBuffer> }>
-        }>
-    }>,
-    filename: string,
-): Promise<ColdStorageBytesResult> {
-    let opfs: Awaited<ReturnType<typeof getDirectoryFn>>
-    try {
-        opfs = await getDirectoryFn()
-    } catch (error) {
-        return { status: 'error', error }
-    }
-
-    try {
-        const file = await opfs.getFileHandle(filename)
-        const f = await file.getFile()
-        const buf = await f.arrayBuffer()
-        return { status: 'ok', bytes: new Uint8Array(buf) }
-    } catch (error) {
-        if ((error as { name?: unknown })?.name === 'NotFoundError') {
-            return { status: 'missing' }
-        }
-        return { status: 'error', error }
-    }
-}
 
 /**
  * The version this page last read or wrote for each unit, for the stores that
@@ -213,11 +168,6 @@ export async function hasColdUnitInStore(key: string): Promise<boolean> {
     return await (await getAppStore()).has(coldUnitStoreKey(key))
 }
 
-/** Whether this page can hold legacy OPFS unit files at all: only the web build, and only in a browser that offers OPFS. */
-function legacyOpfsAvailable(): boolean {
-    return !isTauri && !isNodeServer && typeof navigator !== 'undefined' && typeof navigator.storage?.getDirectory === 'function'
-}
-
 async function readLocalColdStorageBytes(key: string): Promise<ColdStorageBytesResult> {
     // Decided before any backend is asked: a key the backends cannot hold may
     // read as an absent unit on one of them (a `/` on a POSIX desktop, an
@@ -245,15 +195,13 @@ async function readLocalColdStorageBytes(key: string): Promise<ColdStorageBytesR
         if (error instanceof StoreInvalidKeyError) {
             return { status: 'error', kind: 'damaged', error }
         }
-        // A browser whose IndexedDB cannot be used offers this page no storage
+        // A page served by neither Tauri nor the Node server offers no storage
         // for archived data; a repeated read cannot succeed. Matched by name,
         // not `instanceof`, so that a stand-in for the store selection module
         // that exports only `getAppStore` still works.
         if ((error as { name?: unknown } | null)?.name === 'AppStoreUnavailableError') {
             return { status: 'error', kind: 'unavailable', error }
         }
-        // A failed read never falls through to the legacy copy: it could be an
-        // older value of a unit the store holds.
         return { status: 'error', error }
     }
     if (stored.version !== null) {
@@ -262,14 +210,8 @@ async function readLocalColdStorageBytes(key: string): Promise<ColdStorageBytesR
     if (stored.bytes !== null) {
         return { status: 'ok', bytes: stored.bytes }
     }
-    // Absent from the store. Only the web build has anywhere else to look, and a
-    // browser without OPFS has no legacy file, so there the unit is absent. A
-    // `getDirectory` that exists and rejects (a private-browsing mode, a
-    // permission error) is a read error and keeps no kind.
-    if (!legacyOpfsAvailable()) {
-        return { status: 'missing' }
-    }
-    return await classifyOpfsColdRead(() => navigator.storage.getDirectory(), legacyOpfsUnitName(key))
+    // Absent from the store: the page's store is the only place a unit lives.
+    return { status: 'missing' }
 }
 
 /**
@@ -409,9 +351,9 @@ export async function writeColdStorageUnit(key:string, value:any):Promise<'writt
             return 'too-large'
         }
 
-        // Only the page's store is written, never a legacy OPFS file. On a store that
-        // enforces versions the write presents the version this page last saw for
-        // the unit, so a unit another device wrote in between is not overwritten.
+        // On a store that enforces versions the write presents the version this
+        // page last saw for the unit, so a unit another device wrote in between
+        // is not overwritten.
         try {
             const store = await getAppStore()
             const known = unitVersions.get(key)
@@ -450,13 +392,8 @@ export async function setColdStorageItem(key:string, value:any):Promise<boolean>
 }
 
 /**
- * Deletes units from the page's store and, on the web, their legacy OPFS files.
- * Returns the keys it could not delete. A unit is deleted only when both
- * deletions succeeded, and the legacy file goes first: when the file's removal
- * fails the store entry stays, and when the store's removal fails after the
- * file is gone the store still holds the newer value, so an older value is
- * never readable again. The caller has checked each key with
- * `isSafeColdStorageKey`. Deleting a unit forgets the version this page recorded
+ * Deletes units from the page's store. Returns the keys it could not delete.
+ * The caller has checked each key with `isSafeColdStorageKey`. Deleting a unit forgets the version this page recorded
  * for it, so a later write of the same key is not refused for a version the
  * deletion has outdated.
  */
@@ -476,34 +413,7 @@ export async function deleteColdStorageUnits(keys: readonly string[]): Promise<{
 
 async function deleteColdStorageUnitsNow(keys: readonly string[]): Promise<{ key: string, error: unknown }[]> {
     const failed: { key: string, error: unknown }[] = []
-    let removable = [...keys]
-    if (legacyOpfsAvailable()) {
-        let opfs: FileSystemDirectoryHandle | null = null
-        try {
-            opfs = await navigator.storage.getDirectory()
-        } catch (error) {
-            for (const key of removable) {
-                failed.push({ key, error })
-            }
-            removable = []
-        }
-        if (opfs) {
-            const remaining: string[] = []
-            for (const key of removable) {
-                try {
-                    await opfs.removeEntry(legacyOpfsUnitName(key))
-                    remaining.push(key)
-                } catch (error) {
-                    if ((error as { name?: unknown })?.name === 'NotFoundError') {
-                        remaining.push(key)
-                    } else {
-                        failed.push({ key, error })
-                    }
-                }
-            }
-            removable = remaining
-        }
-    }
+    const removable = [...keys]
     if (removable.length === 0) {
         return failed
     }

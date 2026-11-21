@@ -702,7 +702,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: a full backup on Tauri 
         expect(writtenEntries().map((e) => e.name)).toContain('database.risudat')
         const report = alertMdMock.mock.calls.map((c) => String(c[0])).join('\n')
         expect(report).not.toContain('dangling.mp3')
-        expect(taskHostView()?.result?.summary).toEqual(['Success'])
+        expect(taskHostView()?.result?.summary).toEqual([language.rtbExportSaved])
     })
 
     test('guard: a directory that is not a symlink is never read while a symlink beside it is', async () => {
@@ -746,7 +746,7 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: a full backup on Tauri 
         expect(await outcomeOf(SaveLocalBackup)).toBeNull()
 
         expect(sortedRecord(writtenAssets())).toEqual(sortedRecord(expectedAssets(['a.png', 'c.png'])))
-        expect(taskHostView()?.result?.summary).toEqual(['Success'])
+        expect(taskHostView()?.result?.summary).toEqual([language.rtbExportSaved])
     })
 
     test('guard: an asset with an unusual name that the store can list is kept under its bare name', async () => {
@@ -1289,7 +1289,6 @@ describe('a full backup carries the inlays of both stores and restores them', ()
         const flags = new Map<string, string>()
         await runInlayCopy({
             flags: { getItem: (key) => flags.get(key) ?? null, setItem: (key, value) => { flags.set(key, value) } },
-            estimate: async () => undefined,
             withTabLock: async (work) => { await work(); return true },
         })
         expect(appInlayKeys().length).toBeGreaterThan(0)

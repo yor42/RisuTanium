@@ -132,7 +132,7 @@ const FINAL_KEY = /^assets\/(?!incoming-)[^/]+\.png$/
 
 interface Path {
     name: string
-    kind: 'tauri' | 'indexeddb'
+    kind: 'tauri'
     start: () => Promise<string>
     /** Store calls that name the final key. */
     finalCalls: (calls: Calls) => string[]
@@ -153,7 +153,7 @@ const PATHS: Path[] = [
     },
     {
         name: 'saveAssetFromBlob (saveAssetBlobKept)',
-        kind: 'indexeddb',
+        kind: 'tauri',
         start: () => saveAssetFromBlob(new Blob([BYTES as unknown as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 }),
         finalCalls: (calls) => [...calls.has, ...calls.writeBlob].filter((key) => FINAL_KEY.test(key)),
     },

@@ -12,7 +12,7 @@
  * so one slot is enough; a writer waits for at most one unrelated delete.
  *
  * There is no timeout: a delete that never settles blocks same-page asset
- * writes. That is accepted because the native invoke and the IndexedDB delete
+ * writes. That is accepted because the native invoke and the Node request
  * always settle.
  *
  * This module imports nothing from the app so any writer can use it.

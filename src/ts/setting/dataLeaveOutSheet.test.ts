@@ -23,7 +23,8 @@ const FORK_CHAT: BinLeaveOutEntry = {
 const PRESETS: BinLeaveOutEntry = { kind: 'taskPresets', count: 2, names: ['Summarize', 'Translate'] }
 const PACKS: BinLeaveOutEntry = { kind: 'themePacks', count: 5, names: ['Navy'] }
 const USAGE: BinLeaveOutEntry = { kind: 'usageStats', count: 1 }
-const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, PACKS, USAGE]
+const CHRO: BinLeaveOutEntry = { kind: 'chroMemory', count: 1 }
+const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, PACKS, USAGE, CHRO]
 
 /** The count text each entry must put on a shown line. */
 function countText(entry: BinLeaveOutEntry): string {
@@ -33,6 +34,7 @@ function countText(entry: BinLeaveOutEntry): string {
         case 'taskPresets': return language.settingsShellDataLeaveOutTaskPresets(entry.count)
         case 'themePacks': return language.settingsShellDataLeaveOutThemePacks(entry.count)
         case 'usageStats': return language.settingsShellDataLeaveOutUsage
+        case 'chroMemory': return language.settingsShellDataKindChroMemory
     }
 }
 
@@ -45,8 +47,8 @@ function subsets(): BinLeaveOutEntry[][] {
 }
 
 describe('leaveOutSheetDef', () => {
-    test('there are 31 non-empty combinations of the five kinds', () => {
-        expect(subsets()).toHaveLength(31)
+    test('there are 63 non-empty combinations of the six kinds', () => {
+        expect(subsets()).toHaveLength(63)
     })
 
     test('for every combination at most VISIBLE_CONSEQUENCES lines, and every present kind is named on one of them', () => {
@@ -87,6 +89,12 @@ describe('leaveOutSheetDef', () => {
         expect(detail.some((line) => line.includes(language.settingsShellDataLeaveOutNamed(language.settingsShellDataKindTaskPresets, names.slice(0, 20), 5)))).toBe(true)
     })
 
+    test('B2 reproducer: ChroMemory is named on the app-data line and labelled in the result line', () => {
+        const lines = leaveOutSheetDef([CHRO]).consequences ?? []
+        expect(lines).toEqual(["This app's own data: ChroMemory settings"])
+        expect(leftOutKindLabels([CHRO])).toEqual(['ChroMemory settings'])
+    })
+
     test('the combined app-data line lists the present items in order', () => {
         const lines = leaveOutSheetDef([PRESETS, PACKS, USAGE]).consequences ?? []
         expect(lines).toEqual([
@@ -114,6 +122,7 @@ describe('leftOutKindLabels', () => {
             language.settingsShellDataKindTaskPresets,
             language.settingsShellDataKindThemePacks,
             language.settingsShellDataKindUsage,
+            language.settingsShellDataKindChroMemory,
         ])
     })
 })

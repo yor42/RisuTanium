@@ -553,6 +553,9 @@ describe('a card export on the task card', () => {
     })
 
     test('C10: the bytes of an export on the card equal those of the same card on the legacy route (byte identity guard)', async () => {
+        // The card embeds a seconds-resolution modification date; a real clock can cross a second between the two exports.
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
         const fileOf = async (arg: { writer?: LocalWriter }) => {
             world.writes = []
             await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3', ...arg })

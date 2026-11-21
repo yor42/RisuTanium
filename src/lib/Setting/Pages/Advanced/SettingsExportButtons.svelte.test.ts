@@ -44,7 +44,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
-    getDatabase: vi.fn(() => ({ aiModel: 'm', statics: { ...USAGE_STATICS }, usagePriceOverrides: OVERRIDES })),
+    getDatabase: vi.fn(() => ({ aiModel: 'm', statics: { ...USAGE_STATICS }, usagePriceOverrides: OVERRIDES, ltmEngine: true, ltmSettings: { budgetTokens: 1800, future: 1 } })),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
@@ -104,5 +104,14 @@ describe('the bug-report export', () => {
         expect(Object.hasOwn(report, 'usagePriceOverrides')).toBe(false)
         expect(text).not.toContain('u1|')
         expect(text).not.toContain('gpt-test')
+    })
+
+    test('P1 guard (passes before and after): the report keeps ltmEngine and ltmSettings unchanged, because neither name matches the key, proxy or hypa filters', async () => {
+        press(language.settingsPage.exportSettingsBugReport)
+        await vi.waitFor(() => expect(mocks.downloadFile).toHaveBeenCalledTimes(1))
+
+        const report = JSON.parse(new TextDecoder().decode(mocks.downloadFile.mock.calls[0][1])) as Record<string, unknown>
+        expect(report.ltmEngine).toBe(true)
+        expect(report.ltmSettings).toEqual({ budgetTokens: 1800, future: 1 })
     })
 })

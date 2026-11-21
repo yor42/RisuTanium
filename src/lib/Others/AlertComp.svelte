@@ -20,6 +20,7 @@
     import Button from '../UI/GUI/Button.svelte';
     import PeerConflicts from './PeerConflicts.svelte';
     import ParkedReplyPrompt from './ParkedReplyPrompt.svelte';
+    import UpdateOfferPrompt from './UpdateOfferPrompt.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
     import json from 'highlight.js/lib/languages/json';
@@ -39,8 +40,97 @@
     import { translateStackTrace } from "../../ts/sourcemap";
     import { getDetailedOSLabel, getFallbackOSLabel, getRisuEnvironmentLabel } from "src/ts/platform";
     import versionData from "../../../version.json";
+    import '../Nexus/pattern/pattern-dialog.css';
+    import '../Nexus/pattern/pattern-alert.css';
+    import PatternWarnMark from '../Nexus/pattern/PatternWarnMark.svelte';
+    import type { PatternSeverity } from '../Nexus/pattern/patternWarning';
+    import { motionPrefs } from 'src/ts/chatShell/motionPrefs.svelte';
 
     const uid = $props.id();
+
+    // Severity per alert type: the edge colour and the shape of the mark. A wait is a notice that also carries the sweep.
+    function severityOf(type: alertData['type']): PatternSeverity {
+        switch (type) {
+            case 'error':
+                return 'danger'
+            case 'ask':
+            case 'select':
+            case 'input':
+            case 'selectChar':
+            case 'addchar':
+            case 'chatOptions':
+            case 'pluginconfirm':
+            case 'patternSelect':
+            case 'patternInput':
+            case 'updateOffer':
+                return 'confirm'
+            case 'tos':
+            case 'staleAccountNotice':
+            case 'peerConflicts':
+            case 'parkedReply':
+                return 'caution'
+            default:
+                return 'notice'
+        }
+    }
+
+    // Types that ask for an answer or report a failure interrupt a screen reader's reading; the rest are plain dialogs.
+    const ALERT_DIALOG_TYPES = new Set<alertData['type']>(['error', 'ask', 'select', 'input', 'tos', 'staleAccountNotice'])
+    // Reports and tool content need more room than a message.
+    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer'])
+    // Types whose body has no message element of its own; the dialog is named and described by the body instead.
+    const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'requestdata', 'addchar', 'hypaV2', 'chatOptions', 'peerConflicts', 'parkedReply'])
+
+    function headingOf(type: alertData['type']): string | null {
+        switch (type) {
+            case 'error':
+                return language.error
+            case 'ask':
+                return language.confirm
+            case 'pluginconfirm':
+                return language.alertComp.pluginImport
+            case 'selectChar':
+                return language.select
+            case 'input':
+                return language.input
+            case 'updateOffer':
+                return language.updateAvailableTitle
+            default:
+                return null
+        }
+    }
+
+    function progressPercent(submsg: string | undefined): number {
+        const value = Number(submsg)
+        return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0
+    }
+
+    const PHONE_QUERY = '(max-width: 640px)'
+    // A wait that shows the same text this long says it is still working.
+    const WAIT_HINT_MS = 8000
+    const lowPower = $derived(motionPrefs.lowPower)
+    let layout = $state<'phone' | 'wide'>('wide')
+
+    // Phones get a bottom sheet through the pattern's own phone rules.
+    $effect(() => {
+        if (typeof window.matchMedia !== 'function') return
+        const query = window.matchMedia(PHONE_QUERY)
+        layout = query.matches ? 'phone' : 'wide'
+        const onChange = (event: MediaQueryListEvent) => (layout = event.matches ? 'phone' : 'wide')
+        query.addEventListener('change', onChange)
+        return () => query.removeEventListener('change', onChange)
+    })
+
+    // The wait's text is the key: a same-text re-emission keeps the running timer, a new text restarts it, and the
+    // hint goes with the wait.
+    const waitMessage = $derived($alertStore.type === 'wait' || $alertStore.type === 'wait2' ? $alertStore.msg : null)
+    let waitSlow = $state(false)
+    $effect(() => {
+        waitSlow = false
+        if (waitMessage === null) return
+        const timer = setTimeout(() => (waitSlow = true), WAIT_HINT_MS)
+        return () => clearTimeout(timer)
+    })
 
     // One hold per character row of the picker; a row gives it back when it leaves the viewport, the alert when it closes.
     const lookups = useCharImageLookups();
@@ -274,26 +364,42 @@
     }
 </script>
 
-{#snippet alertView(a: alertData)}
+{#snippet alertView(a: alertData, slot: 'held' | 'live')}
 {#if a.type !== 'none' &&  a.type !== 'toast' &&  a.type !== 'cardexport' && a.type !== 'branches' && a.type !== 'selectModule' && a.type !== 'pukmakkurit' && a.type !== 'requestlogs'}
-    <div class="absolute w-full h-full z-50 bg-black/50 flex justify-center items-center" class:vis={ a.type === 'wait2'}>
-        <div class="bg-darkbg p-4 break-any rounded-md flex flex-col max-w-3xl  max-h-full overflow-y-auto outline-none" tabindex="-1" data-alert-box>
-            {#if a.type === 'error'}
-                <h2 class="text-red-700 mt-0 mb-2 w-40 max-w-full">{language.error}</h2>
-            {:else if a.type === 'ask'}
-                <h2 class="text-green-700 mt-0 mb-2 w-40 max-w-full">{language.confirm}</h2>
-            {:else if a.type === 'pluginconfirm'}
-                <h2 class="text-green-700 mt-0 mb-2 w-40 max-w-full">{language.alertComp.pluginImport}</h2>
-            {:else if a.type === 'selectChar'}
-                <h2 class="text-green-700 mt-0 mb-2 w-40 max-w-full">{language.select}</h2>
-            {:else if a.type === 'input'}
-                <h2 class="text-green-700 mt-0 mb-2 w-40 max-w-full">{language.input}</h2>
-            {/if}
+    {@const severity = severityOf(a.type)}
+    {@const heading = headingOf(a.type)}
+    {@const headingId = `${uid}-${slot}-heading`}
+    {@const messageId = `${uid}-${slot}-message`}
+    {@const bodyId = `${uid}-${slot}-body`}
+    {@const hasMessage = a.type === 'select' ? a.msg.startsWith('__DISPLAY__') : !NO_MESSAGE_TYPES.has(a.type)}
+    {@const waiting = a.type === 'wait' || a.type === 'wait2'}
+    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined}>
+        <div data-part="pattern-scrim" aria-hidden="true"></div>
+        <div
+            data-part="pattern-dialog"
+            class="break-any"
+            tabindex="-1"
+            data-alert-box
+            data-alert-size={WIDE_TYPES.has(a.type) ? 'wide' : undefined}
+            role={ALERT_DIALOG_TYPES.has(a.type) ? 'alertdialog' : 'dialog'}
+            aria-modal="true"
+            aria-labelledby={heading !== null ? headingId : hasMessage ? messageId : bodyId}
+            aria-describedby={heading !== null && hasMessage ? messageId : undefined}
+        >
+        <div data-part="pattern-warn-root" data-alert-root data-alert-headed={heading !== null ? '' : undefined} data-form="sheet" data-pattern-severity={severity} data-alert-kind={waiting || a.type === 'progress' ? 'wait' : undefined}>
+            <!-- The severity tint paints under the mark and the headline only; the body sits on the plain surface. -->
+            <div data-part="pattern-alert-head">
+                <span data-part="pattern-warn-mark" aria-hidden="true"><PatternWarnMark {severity} /></span>
+                {#if heading !== null}
+                    <h2 id={headingId} data-part="pattern-warn-headline">{heading}</h2>
+                {/if}
+            </div>
+            <div id={bodyId} data-part="pattern-alert-body">
             {#if a.type === 'markdown'}
-                <div class="overflow-y-auto">
+                <div id={messageId} class="overflow-y-auto">
                     <span class="text-textcolor chattext prose chattext2" class:prose-invert={$ColorSchemeTypeStore === 'dark'}>
                         {#await ParseMarkdown(a.msg) then msg}
-                            {@html msg}                        
+                            {@html msg}
                         {/await}
                     </span>
                 </div>
@@ -301,7 +407,7 @@
                 <!-- svelte-ignore a11y_missing_attribute -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
 
-                <div class="text-textcolor">{language.upstreamAgreementPromptBefore}<a role="button" tabindex="0" class="risu-link risu-focus-ring underline transition-colors duration-200 cursor-pointer" onclick={() => {
+                <div id={messageId} class="text-textcolor">{language.upstreamAgreementPromptBefore}<a role="button" tabindex="0" class="risu-link risu-focus-ring underline transition-colors duration-200 cursor-pointer" onclick={() => {
                         openURL('https://account.sionyw.com/terms')
                     }}>{language.upstreamAgreementTermsOfService}</a>{language.upstreamAgreementPromptBetween}<a role="button" tabindex="0" class="risu-link risu-focus-ring underline transition-colors duration-200 cursor-pointer" onclick={() => {
                         openURL('https://account.sionyw.com/privacy')
@@ -313,7 +419,7 @@
                 {@const mainParts = mainPart.split('\n')}
                 {@const pluginName = mainParts[0]}
                 {@const warnings = mainParts.slice(1)}
-                <div class="plugin-confirm-content">
+                <div id={messageId} class="plugin-confirm-content">
                     <p class="plugin-name">{pluginName}</p>
                     {#if warnings.length > 0}
                         <ul class="warnings-list">
@@ -332,22 +438,26 @@
                 <ParkedReplyPrompt name={a.parkedReply?.name ?? ''} text={a.parkedReply?.text ?? ''} title={a.msg} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
+            {:else if a.type === 'updateOffer'}
+                <UpdateOfferPrompt offer={a.updateOffer ?? { currentVersion: '', version: '', notes: '' }} {messageId} onanswer={(message) => {
+                    alertStore.set({ type: 'none', msg: message })
+                }} />
             {:else if a.type !== 'select' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'chatOptions'}
-                <span id={a.type === 'input' ? `${uid}-alert-message` : undefined} class="text-gray-300 whitespace-pre-wrap">{displayAlertText(a, $busyRefusalLine)}</span>
+                <span id={messageId} data-part="pattern-alert-message">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}
-                    <span class="text-gray-500 text-sm">{a.submsg}</span>
+                    <span data-part="pattern-warn-detail">{a.submsg}</span>
                 {/if}
 
                 {#if a.type === 'error' && a.stackTrace}
-                    <div class="mt-4">
-                        <Button styled="outlined" size="sm" onclick={() => showDetails = !showDetails}>
+                    <div>
+                        <button type="button" class="pattern-button" onclick={() => showDetails = !showDetails}>
                             {showDetails ? language.hideErrorDetails : language.showErrorDetails}
                             {#if showDetails}
-                                <XIcon class="inline ml-2" />
+                                <XIcon size={16} />
                             {:else}
-                                <ChevronRightIcon class="inline ml-2" />
+                                <ChevronRightIcon size={16} />
                             {/if}
-                        </Button>
+                        </button>
                         {#if showDetails}
                             <div class="stack-trace-wrap">
                                 <button
@@ -369,50 +479,55 @@
                 {/if}
             {/if}
             {#if a.type === 'error' && a.link}
-                <Button styled="outlined" className="mt-4" onclick={() => {
+                <button type="button" class="pattern-button" onclick={() => {
                     const open = a.link?.open
                     alertStore.set({
                         type: 'none',
                         msg: ''
                     })
                     open?.()
-                }}>{a.link.label}</Button>
+                }}>{a.link.label}</button>
+            {/if}
+            {#if waiting}
+                <div data-part="pattern-alert-bar" aria-hidden="true">
+                    <div data-part="pattern-alert-bar-sweep"></div>
+                </div>
+                {#if waitSlow}
+                    <p data-part="pattern-warn-detail">{language.alertWaitSlowHint}</p>
+                {/if}
             {/if}
             {#if a.type === 'wait' && a.onCancel}
-                <div class="flex w-full">
-                    <Button styled="outlined" className="mt-4 grow" onclick={() => {
-                        a.onCancel?.()
-                    }}>{language.cancel}</Button>
-                </div>
+                <button type="button" class="pattern-button" onclick={() => {
+                    a.onCancel?.()
+                }}>{language.cancel}</button>
             {/if}
 
             {#if a.type === 'progress'}
-                <div class="w-full min-w-64 md:min-w-138 h-2 bg-darkbg border border-darkborderc rounded-md mt-6">
-                    <div class="h-full bg-linear-to-r from-blue-500 to-purple-800 saving-animation transition-[width]" style:width={a.submsg + '%'}></div>
+                {@const percent = progressPercent(a.submsg)}
+                <div data-part="pattern-alert-bar" role="progressbar" aria-labelledby={messageId} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}>
+                    <div data-part="pattern-alert-bar-fill" style:--p-fill={percent / 100}></div>
                 </div>
-                <div class="w-full flex justify-center mt-6">
-                    <span class="text-gray-500 text-sm">{a.submsg + '%'}</span>
-                </div>
+                <span data-part="pattern-warn-detail">{a.submsg + '%'}</span>
             {/if}
 
             {#if a.type === 'ask' || a.type === 'pluginconfirm'}
-                <div class="flex gap-2 w-full">
-                    <Button className="mt-4 grow" onclick={() => {
-                        alertStore.set({
-                            type: 'none',
-                            msg: 'yes'
-                        })
-                    }}>{language.alertComp.yes}</Button>
-                    <Button className="mt-4 grow" onclick={() => {
+                <div data-part="pattern-warn-actions" data-count="2">
+                    <button type="button" class="pattern-button" onclick={() => {
                         alertStore.set({
                             type: 'none',
                             msg: 'no'
                         })
-                    }}>{language.alertComp.no}</Button>
+                    }}>{language.alertComp.no}</button>
+                    <button type="button" class="pattern-button" data-variant="confirm" onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: 'yes'
+                        })
+                    }}>{language.alertComp.yes}</button>
                 </div>
             {:else if a.type === 'tos' && import.meta.env.VITE_RISU_LEGAL_CONFIGURED}
-                <div class="flex gap-2 w-full">
-                    <Button className="mt-4 grow" onclick={(event) => {
+                <div data-part="pattern-warn-actions" data-count="2">
+                    <button type="button" class="pattern-button" data-variant="confirm" onclick={(event) => {
                         if(consentPaused(event)){
                             return
                         }
@@ -420,8 +535,8 @@
                             type: 'none',
                             msg: UPSTREAM_AGREEMENT_ACCEPT
                         })
-                    }}>{language.upstreamAgreementAccept}</Button>
-                    <Button styled={'outlined'} className="mt-4 grow" onclick={(event) => {
+                    }}>{language.upstreamAgreementAccept}</button>
+                    <button type="button" class="pattern-button" onclick={(event) => {
                         if(consentPaused(event)){
                             return
                         }
@@ -429,52 +544,54 @@
                             type: 'none',
                             msg: UPSTREAM_AGREEMENT_DECLINE
                         })
-                    }}>{language.upstreamAgreementDecline}</Button>
+                    }}>{language.upstreamAgreementDecline}</button>
                 </div>
             {:else if a.type === 'select'}
                 {@const hasDisplay = a.msg.startsWith('__DISPLAY__')}
                 {@const cancel = offeredCancel(a)}
                 {#if hasDisplay}
                     {@const parts = a.msg.substring(11).split('||')}
-                    <div class="mb-4 text-textcolor">{parts[0]}</div>
-                    {#each parts.slice(1) as n, i}
-                        <Button className="mt-4" onclick={() => {
-                            alertStore.set({
-                                type: 'none',
-                                msg: i.toString()
-                            })
-                        }}>{n}</Button>
-                    {/each}
+                    <div id={messageId} data-part="pattern-alert-message">{parts[0]}</div>
+                    <div data-part="pattern-alert-choices">
+                        {#each parts.slice(1) as n, i}
+                            <button type="button" class="pattern-button" onclick={() => {
+                                alertStore.set({
+                                    type: 'none',
+                                    msg: i.toString()
+                                })
+                            }}>{n}</button>
+                        {/each}
+                    </div>
                 {:else}
                     {@const parts = a.msg.split('||')}
-                    {#each parts as n, i}
-                        <Button className="mt-4" onclick={() => {
-                            alertStore.set({
-                                type: 'none',
-                                msg: i.toString()
-                            })
-                        }}>{n}</Button>
-                    {/each}
-                {/if}
-                {#if cancel !== undefined && !cancelHasOwnButton(a)}
-                    <div class="flex w-full">
-                        <Button styled="outlined" className="mt-4 grow" onclick={() => {
-                            alertStore.set({
-                                type: 'none',
-                                msg: cancel
-                            })
-                        }}>{language.cancel}</Button>
+                    <div data-part="pattern-alert-choices">
+                        {#each parts as n, i}
+                            <button type="button" class="pattern-button" onclick={() => {
+                                alertStore.set({
+                                    type: 'none',
+                                    msg: i.toString()
+                                })
+                            }}>{n}</button>
+                        {/each}
                     </div>
                 {/if}
+                {#if cancel !== undefined && !cancelHasOwnButton(a)}
+                    <button type="button" class="pattern-button" onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            msg: cancel
+                        })
+                    }}>{language.cancel}</button>
+                {/if}
             {:else if a.type === 'error' || a.type === 'normal' || a.type === 'markdown'}
-               <Button className="mt-4" onclick={() => {
+               <button type="button" class="pattern-button" onclick={() => {
                     alertStore.set({
                         type: 'none',
                         msg: ''
                     })
-                }}>{language.alertComp.ok}</Button>
+                }}>{language.alertComp.ok}</button>
             {:else if a.type === 'staleAccountNotice'}
-               <Button className="mt-4" onclick={(event) => {
+               <button type="button" class="pattern-button" onclick={(event) => {
                     if(consentPaused(event)){
                         return
                     }
@@ -482,27 +599,27 @@
                         type: 'none',
                         msg: STALE_ACCOUNT_NOTICE_ACK
                     })
-                }}>{language.alertComp.ok}</Button>
+                }}>{language.alertComp.ok}</button>
             {:else if a.type === 'input'}
-                <TextInput value={a.defaultValue} id="alert-input" labelId="{uid}-alert-message" autocomplete="off" marginTop list="alert-input-list" />
-                <Button className="mt-4" onclick={() => {
-                    alertStore.set({
-                        type: 'none',
-                        //@ts-expect-error 'value' doesn't exist on Element, but target is HTMLInputElement here
-                        msg: document.querySelector('#alert-input')?.value
-                    })
-                }}>{language.alertComp.ok}</Button>
                 {@const cancel = offeredCancel(a)}
-                {#if cancel !== undefined}
-                    <div class="flex w-full">
-                        <Button styled="outlined" className="mt-4 grow" onclick={() => {
+                <TextInput value={a.defaultValue} id="alert-input" labelId={messageId} autocomplete="off" marginTop list="alert-input-list" />
+                <div data-part="pattern-warn-actions" data-count={cancel !== undefined ? 2 : 1}>
+                    <button type="button" class="pattern-button" data-variant="confirm" onclick={() => {
+                        alertStore.set({
+                            type: 'none',
+                            //@ts-expect-error 'value' doesn't exist on Element, but target is HTMLInputElement here
+                            msg: document.querySelector('#alert-input')?.value
+                        })
+                    }}>{language.alertComp.ok}</button>
+                    {#if cancel !== undefined}
+                        <button type="button" class="pattern-button" onclick={() => {
                             alertStore.set({
                                 type: 'none',
                                 msg: cancel
                             })
-                        }}>{language.cancel}</Button>
-                    </div>
-                {/if}
+                        }}>{language.cancel}</button>
+                    {/if}
+                </div>
                 {#if a.datalist}
                     <datalist id="alert-input-list">
                         {#each a.datalist as item}
@@ -839,13 +956,16 @@
                     </button>
                 </div>
             {/if}
+            </div>
+        </div>
         </div>
     </div>
 
 {:else if a.type === 'cardexport'}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div  class="fixed top-0 left-0 h-full w-full bg-black/50 flex flex-col z-50 items-center justify-center" role="button" tabindex="0" onclick={close}>
-        <div class="bg-darkbg rounded-md p-4 max-w-full flex flex-col w-2xl" role="button" tabindex="0" onclick={(e) => {
+    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} role="button" tabindex="0" onclick={close}>
+        <div data-part="pattern-scrim" aria-hidden="true"></div>
+        <div data-part="pattern-dialog" data-alert-plain data-alert-size="wide" data-pattern-severity="confirm" role="button" tabindex="0" onclick={(e) => {
             e.stopPropagation()
         }}>
             <h1 class="font-bold text-2xl w-full outline-none" tabindex="-1" data-alert-box>
@@ -951,7 +1071,8 @@
         </div>
     </div>
 {:else if a.type === 'branches'}
-    <div class="absolute w-full h-full z-50 bg-black/80 flex justify-center items-center overflow-x-auto overflow-y-auto outline-none" tabindex="-1" data-alert-box>
+    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} class="overflow-x-auto overflow-y-auto outline-none" tabindex="-1" data-alert-box>
+        <div data-part="pattern-scrim" aria-hidden="true"></div>
         {#if branchHover !== null}
             <div class="z-30 whitespace-pre-wrap p-4 text-textcolor bg-darkbg border-darkborderc border rounded-md absolute" style="top: {branchHover.y * 80 + 24}px; left: {(branchHover.x + 1) * 80 + 24}px">
                 {branchHover.content}
@@ -1024,8 +1145,9 @@
     </div>
 {:else if a.type === 'requestlogs'}
     {@const logs = getFetchLogs()}
-    <div class="fixed inset-0 z-50 bg-black/80 flex justify-center items-start overflow-y-auto p-4 outline-none" tabindex="-1" data-alert-box>
-        <div class="bg-darkbg rounded-lg w-full max-w-4xl my-4 flex flex-col max-h-[90vh]">
+    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} class="overflow-y-auto outline-none" tabindex="-1" data-alert-box>
+        <div data-part="pattern-scrim" aria-hidden="true"></div>
+        <div data-part="pattern-dialog" data-alert-size="wide" data-pattern-severity="notice" class="my-4 flex flex-col max-h-[90vh]">
             <div class="flex items-center justify-between p-4 border-b border-darkborderc sticky top-0 bg-darkbg z-10">
                 <h1 class="text-xl font-bold text-textcolor">{language.ShowLog}</h1>
                 <div class="flex items-center gap-2">
@@ -1172,12 +1294,12 @@
     {#if held}
         {#key held}
             <div style="display: contents" style:visibility={promptCovered ? 'hidden' : null} inert={promptCovered}>
-                {@render alertView(held)}
+                {@render alertView(held, 'held')}
             </div>
         {/key}
     {/if}
     {#if $alertStore !== held && $alertStore.type !== 'none'}
-        {@render alertView($alertStore)}
+        {@render alertView($alertStore, 'live')}
     {/if}
 </div>
 
@@ -1185,7 +1307,7 @@
     .plugin-confirm-content .plugin-name {
         font-size: 1.25rem;
         font-weight: bold;
-        color: white;
+        color: inherit;
     }
     .plugin-confirm-content .warnings-list {
         list-style-type: disc;
@@ -1193,14 +1315,14 @@
         margin-top: 0.5rem;
         margin-bottom: 0.5rem;
         padding-left: 1rem;
-        color: #f87171; /* red-400 */
+        color: inherit;
     }
     .plugin-confirm-content .warning-item {
         margin-bottom: 0.25rem;
     }
     .plugin-confirm-content .confirm-message {
         margin-top: 1rem;
-        color: #d1d5db; /* gray-300 */
+        color: inherit;
     }
     .break-any{
         word-break: normal;
@@ -1220,11 +1342,6 @@
 
     .toast-anime {
         animation: toastAnime 1s ease-out;
-    }
-
-    .vis{
-        opacity: 1 !important;
-        --tw-bg-opacity: 1 !important;
     }
 
     .stack-trace-wrap {

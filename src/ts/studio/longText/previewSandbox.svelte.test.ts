@@ -69,6 +69,7 @@ vi.mock(import('src/ts/util'), async () => {
         getPersonaPrompt: real.getPersonaPrompt,
         getUserIcon: real.getUserIcon,
         livePersona: real.livePersona,
+        parseToggleSyntax: real.parseToggleSyntax,
         pickHashRand: real.pickHashRand,
         replaceAsync: real.replaceAsync,
         findCharacterbyId: () => ({ name: 'Unknown Character' }),
@@ -468,5 +469,37 @@ describe('E2-U13 the engine reads of the live selection stay untouched', () => {
         selectedCharID.set(0)
         runPreview('{{setvar::a::1}}{{getvar::a}}', 'desc', sourceOf(), values())
         expect(get(selectedCharID)).toBe(0)
+    })
+})
+
+describe('E2-U14 an owner author defaults reach the preview (CHORE-570a)', () => {
+    const WHEN = '{{#when::toggle::k}}Y{{/when}}'
+
+    // regression reproducer: the base drops the owner's toggle text, so the unset toggle reads off
+    test('an owner default-on check shows its body while the preview holds no value', () => {
+        const source = sourceOf(liveCharacter({ customModuleToggle: 'k=K===1' }))
+        expect(textOf(WHEN, 'desc', source, values())).toBe('Y')
+        expect(textOf('{{getglobalvar::toggle_k}}', 'desc', source, values())).toBe('1')
+    })
+
+    // compatibility guard: a preview value is the shared slot, so it wins over the default
+    test('a preview value of 0 wins over the default', () => {
+        const source = sourceOf(liveCharacter({ customModuleToggle: 'k=K===1' }))
+        expect(textOf(WHEN, 'desc', source, values({ toggles: { toggle_k: '0' } }))).toBe('')
+        expect(textOf(WHEN, 'desc', source, values({ toggles: { toggle_k: '1' } }))).toBe('Y')
+    })
+
+    // compatibility guard: no default, no change
+    test('an owner toggle without a default stays off, and the live database is untouched', () => {
+        const live = liveCharacter({ customModuleToggle: 'k=K' })
+        installDb([live], { customPromptTemplateToggle: '', globalChatVariables: { toggle_a: '1' } })
+        const before = snapshot()
+        expect(textOf(WHEN, 'desc', sourceOf(live), values())).toBe('')
+        expect(snapshot()).toEqual(before)
+    })
+
+    test('the source copies the owner text as a string', () => {
+        expect(sourceOf(liveCharacter({ customModuleToggle: 'k=K===1' })).customModuleToggle).toBe('k=K===1')
+        expect(sourceOf(liveCharacter()).customModuleToggle).toBe('')
     })
 })

@@ -8,6 +8,7 @@
     import { readPickedFileBytes, selectSingleFile, selectSingleFileObject } from "src/ts/util";
     import { reportRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
+    import { setSlotKey, slotEditorValue } from 'src/ts/connections/slotEditor';
     import { saveAsset, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
     import { requestWavespeedModels } from "src/ts/process/wavespeedModels";
     import { wavespeedLorasToWrite } from "src/ts/process/wavespeedLoraSync";
@@ -38,11 +39,12 @@
         hypaV3PresetFileOf,
         renameHypaV3Preset,
     } from "src/ts/process/memory/hypaV3Presets";
-    import { memoryEngineOf, setMemoryEngine, type MemoryEngine } from "src/ts/process/memory/memoryEngine";
+    import { chroMemoryOn, legacyEngineFields, memoryEngineOf, setMemoryEngine, type MemoryEngine } from "src/ts/process/memory/memoryEngine";
 
     // One hold per reference image; they end with the page.
     const lookups = useCharImageLookups();
 
+    let lv = $derived(legacyEngineFields(DBState.db))
     let submenu = $state(DBState.db.useLegacyGUI ? -1 : 0);
     const uid = $props.id()
 
@@ -716,7 +718,7 @@
         
         {#if DBState.db.sdProvider === 'dalle'}
             <span class="text-textcolor" id="{uid}-keyDalle">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
-            <KeyListInput labelId="{uid}-keyDalle" size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
+            <KeyListInput labelId="{uid}-keyDalle" size="sm" marginBottom placeholder="sk-..." bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }}/>
 
             <span class="text-textcolor mt-4" id="{uid}-v22">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
             <SelectInput labelId="{uid}-v22" className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>
@@ -831,7 +833,7 @@
 
         {#if DBState.db.sdProvider === 'Imagen'}
             <span class="text-textcolor mt-2" id="{uid}-keyImagen">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-            <KeyListInput labelId="{uid}-keyImagen" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
+            <KeyListInput labelId="{uid}-keyImagen" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={() => slotEditorValue(DBState.db, 'google.accessToken'), (v) => { void setSlotKey(DBState.db, 'google.accessToken', v) }}/>
 
             <span class="text-textcolor" id="{uid}-v31">{language.model}</span>
             <SelectInput labelId="{uid}-v31" className="mb-4" bind:value={DBState.db.ImagenModel}>
@@ -1047,7 +1049,7 @@
     <TextInput labelId="{uid}-f22" size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
 
     <span class="text-textcolor" id="{uid}-keyTts">{fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })}</span>
-    <KeyListInput labelId="{uid}-keyTts" size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
+    <KeyListInput labelId="{uid}-keyTts" size="sm" marginBottom bind:value={() => slotEditorValue(DBState.db, 'openAIKey'), (v) => { void setSlotKey(DBState.db, 'openAIKey', v) }}/>
 
     <span class="text-textcolor mt-2" id="{uid}-f23">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
     <TextInput labelId="{uid}-f23" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
@@ -1086,16 +1088,20 @@
             <OptionInput value="hypaV2" >{language.HypaMemory} V2</OptionInput>
             <OptionInput value="hanuraiMemory" >{language.hanuraiMemory}</OptionInput>
             <OptionInput value="hypaV3" >{language.HypaMemory} V3</OptionInput>
+            <OptionInput value="chroMemory" >{language.chroMemory}</OptionInput>
         </SelectInput>
 
-        {#if DBState.db.hanuraiEnable}
+        {#if chroMemoryOn(DBState.db)}
+            <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.chroMemoryPreviewDesc}</span>
+        {/if}
+        {#if lv.hanuraiEnable}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.hanuraiDesc}</span>
             <span id="{uid}-v40">{language.hypaChunkSize}</span>
             <NumberInput labelId="{uid}-v40" size="sm" marginBottom bind:value={DBState.db.hanuraiTokens} min={100} />
             <div class="flex mb-4">
                 <Check bind:check={DBState.db.hanuraiSplit} name={language.settingsPage.textSpliting}/>
             </div>
-        {:else if DBState.db.hypav2}
+        {:else if lv.hypav2}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.hypaV2Desc}</span>
             <span class="text-textcolor mt-4" id="{uid}-v41">{language.SuperMemory} {language.model}</span>
             <SelectInput labelId="{uid}-v41" className="mt-2 mb-2" bind:value={DBState.db.supaModelType}>
@@ -1113,7 +1119,7 @@
             <NumberInput labelId="{uid}-v42" size="sm" marginBottom bind:value={DBState.db.hypaChunkSize} min={100} />
             <span class="text-textcolor" id="{uid}-v43">{language.hypaAllocatedTokens}</span>
             <NumberInput labelId="{uid}-v43" size="sm" marginBottom bind:value={DBState.db.hypaAllocatedTokens} min={100} />
-        {:else if DBState.db.hypaV3}
+        {:else if lv.hypaV3}
             <span class="max-w-full mb-6 text-sm text-wrap wrap-break-word text-textcolor2">{language.hypaV3Settings.descriptionLabel}</span>
             <span class="text-textcolor" id="{uid}-v44">{language.settingsPage.preset}</span>
             <select class={"risu-select border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 text-md px-4 py-2 mb-1"}
@@ -1326,7 +1332,7 @@
             {/if}
 
             <div class="mb-8"></div>
-        {:else if (DBState.db.supaModelType !== 'none' && DBState.db.hypav2 === false && DBState.db.hypaV3 === false)}
+        {:else if (lv.supaModelType !== 'none' && lv.hypav2 === false && lv.hypaV3 === false)}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.supaDesc}</span>
             <span class="text-textcolor mt-4" id="{uid}-v59">{language.SuperMemory} {language.model}</span>
             <SelectInput labelId="{uid}-v59" className="mt-2 mb-2" bind:value={DBState.db.supaModelType}>

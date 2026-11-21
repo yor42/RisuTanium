@@ -12,7 +12,7 @@ import { restoreInProgress } from '../drive/restoreInProgress'
 import { requestSaveNow, saveAsset } from '../globalApi.svelte'
 import { isBusy, withBusy } from '../process/memory/busyActions'
 import { getPageStorageMode } from '../storage/pageStorageMode'
-import { getAppStore, pageStoreIsOpfsTransitional } from '../storage/store/appStore'
+import { getAppStore } from '../storage/store/appStore'
 import { DBState } from '../stores.svelte'
 import { PACK_ARCHIVE_KEY, PACK_ICON_KEY } from './packRefs'
 import { listThemePacks, type PackManifestFields, type ThemePackRecordV1 } from './packRecord'
@@ -39,12 +39,17 @@ export interface InstallRequest<R> {
     confirmReplace: (existing: ThemePackRecordV1) => Promise<boolean>
     now?: () => number
     newId?: () => string
+    /**
+     * Called synchronously after the list write and just before the active id is set, so a caller registers its request
+     * before the write that queues the driver. `replacedId` is the record this install replaced, or null. A throw is ignored.
+     */
+    onActivate?: (next: { id: string; replacedId: string | null }) => void
 }
 
 export type InstallOutcome<R> =
     | { ok: true, record: ThemePackRecordV1, replaced: boolean }
     | { ok: false, kind: 'busy' | 'restoring' | 'declinedReplace' | 'filesDamaged' | 'listUnreadable' }
-    | { ok: false, kind: 'readOnly', cause: 'opfs' | 'mode' }
+    | { ok: false, kind: 'readOnly' }
     | { ok: false, kind: 'refused', refusal: R }
     | { ok: false, kind: 'writeFailed', error: unknown }
 
@@ -67,23 +72,9 @@ function refusalWhileOtherWork(): 'busy' | 'restoring' | null {
     return null
 }
 
-/**
- * Why the page cannot write, by the predicate and the order the page's other whole-class writers use (the mode is read
- * first, the store is asked whether it runs from OPFS this time, and the OPFS notice wins), without their alert. The
- * cause selects which existing notice the caller shows. A question the store cannot answer is not read-only.
- */
-async function readOnlyCause(): Promise<'opfs' | 'mode' | null> {
-    const modeReadOnly = getPageStorageMode().kind === 'read-only'
-    let opfs: boolean
-    try {
-        opfs = await pageStoreIsOpfsTransitional()
-    } catch {
-        opfs = false
-    }
-    if (opfs) {
-        return 'opfs'
-    }
-    return modeReadOnly ? 'mode' : null
+/** Whether the page cannot write, by the same predicate the page's other whole-class writers use, without their alert. */
+function pageIsReadOnly(): boolean {
+    return getPageStorageMode().kind === 'read-only'
 }
 
 /**
@@ -181,6 +172,7 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
     }
     const live = DBState.db.themePacks
     let replaced = false
+    let replacedId: string | null = null
     if (live === undefined) {
         DBState.db.themePacks = [record]
     } else if (!Array.isArray(live)) {
@@ -191,10 +183,14 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
         if (at >= 0) {
             live[at] = record
             replaced = true
+            replacedId = existing === null ? null : existing.id
         } else {
             live.push(record)
         }
     }
+    try {
+        request.onActivate?.({ id: record.id, replacedId })
+    } catch { }
     DBState.db.activeThemePack = record.id
     return { ok: true, record, replaced }
 }
@@ -205,9 +201,8 @@ export async function installThemePack<R>(request: InstallRequest<R>): Promise<I
         return { ok: false, kind: early }
     }
     // Before the intake runs, so a question it asks is never put on a page that will refuse. The mode is fixed for the page's session.
-    const readOnly = await readOnlyCause()
-    if (readOnly !== null) {
-        return { ok: false, kind: 'readOnly', cause: readOnly }
+    if (pageIsReadOnly()) {
+        return { ok: false, kind: 'readOnly' }
     }
     const stored = DBState.db.themePacks
     if (stored !== undefined && !Array.isArray(stored)) {

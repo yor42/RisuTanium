@@ -67,6 +67,58 @@
             drawerOpen = false
         }
     })
+
+    // The embedded library mounts after the landing has painted, so its mount cost is not part of the first
+    // frames: until then the section holds a placeholder of the same height. Once true it stays true for the
+    // shell's life (the Realm view and the library view unmount the landing body, not this component), so a
+    // return to the landing mounts the library at once.
+    let libraryMounted = $state(false)
+    let landingBody: HTMLElement | null = $state(null)
+    let placeholder: HTMLElement | null = $state(null)
+
+    // Triggers, each torn down when the library mounts and when the shell is destroyed: idle time, armed only
+    // after a double animation frame so the first paint is never delayed; and a scroll that brings the
+    // placeholder within half a screen. The nearness is never checked at arm time: a fresh scroller emits no
+    // scroll event, so a placeholder that starts in view waits for idle.
+    $effect(() => {
+        if (libraryMounted || !libraryShown || homeView.view === 'library' || $OpenRealmStore || !landingBody) return
+        const scroller = landingBody.firstElementChild
+        let firstFrame = 0
+        let secondFrame = 0
+        let idleHandle = 0
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const mountLibrary = () => {
+            libraryMounted = true
+        }
+        const onScroll = () => {
+            if (!placeholder || !scroller) return
+            const reach = scroller.getBoundingClientRect().bottom + 0.5 * scroller.clientHeight
+            if (placeholder.getBoundingClientRect().top < reach) mountLibrary()
+        }
+        firstFrame = requestAnimationFrame(() => {
+            secondFrame = requestAnimationFrame(() => {
+                scroller?.addEventListener('scroll', onScroll, { passive: true })
+                if (typeof requestIdleCallback === 'function') {
+                    idleHandle = requestIdleCallback(mountLibrary, { timeout: 2000 })
+                } else {
+                    timer = setTimeout(mountLibrary, 0)
+                }
+            })
+        })
+        return () => {
+            cancelAnimationFrame(firstFrame)
+            cancelAnimationFrame(secondFrame)
+            if (idleHandle && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleHandle)
+            if (timer !== undefined) clearTimeout(timer)
+            scroller?.removeEventListener('scroll', onScroll)
+        }
+    })
+
+    // An explicit library request (`openHomeLibrary`, `requestHomeLibrary`) leaves the library mounted, so the
+    // return to the landing shows it at once.
+    $effect(() => {
+        if (homeView.view === 'library') libraryMounted = true
+    })
 </script>
 
 <svelte:window bind:innerWidth={viewportWidth} />
@@ -112,7 +164,13 @@
                 data-jump-target="library"
                 class="mb-[var(--home-space-8)] text-[length:var(--home-text-lg)] font-bold tracking-[var(--home-tracking-h1)]"
             >{language.homeLibraryHeading}</h2>
-            <div class="flex min-h-0 flex-1 flex-col"><HomeLibrary embedded /></div>
+            <div class="flex min-h-0 flex-1 flex-col">
+                {#if libraryMounted}
+                    <HomeLibrary embedded />
+                {:else}
+                    <div bind:this={placeholder} data-part="home-library-placeholder" class="h-[100cqh]" aria-hidden="true"></div>
+                {/if}
+            </div>
         </section>
     {/if}
 {/snippet}
@@ -132,7 +190,7 @@
                 }}
             />
         {/if}
-        <div class="min-h-0 flex-1">
+        <div bind:this={landingBody} class="min-h-0 flex-1">
             <MainMenu header={homeHeader} stage={stories.length > 0 || libraryShown ? homeStage : undefined} />
         </div>
         {#if drawerOpen && phoneLanding}

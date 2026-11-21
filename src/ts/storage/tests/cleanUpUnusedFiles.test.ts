@@ -83,14 +83,12 @@ describe('cleanUpMessage (U2): every outcome has its message', () => {
 describe('cleanUpOfferedFor', () => {
     const session = (kind: Store2Session['kind']): Store2Session => ({ kind }) as Store2Session
 
-    test.each(['tauri', 'indexeddb', 'node'] as const)('a store2 page with a %s boot session is offered', (kind) => {
+    test.each(['tauri', 'node'] as const)('a store2 page with a %s boot session is offered', (kind) => {
         setStore2BootSession(session(kind))
         expect(cleanUpOfferedFor({ kind: 'store2' })).toBe(true)
     })
 
-    test('an opfs-transitional session and no session are not offered', () => {
-        setStore2BootSession(session('opfs-transitional'))
-        expect(cleanUpOfferedFor({ kind: 'store2' })).toBe(false)
+    test('no session is not offered', () => {
         setStore2BootSession(null)
         expect(cleanUpOfferedFor({ kind: 'store2' })).toBe(false)
     })
@@ -98,7 +96,7 @@ describe('cleanUpOfferedFor', () => {
     test('a page that is not store2 is never offered, whatever the session', () => {
         setStore2BootSession(session('node'))
         expect(cleanUpOfferedFor({ kind: 'unset' })).toBe(false)
-        expect(cleanUpOfferedFor({ kind: 'read-only', reason: 'opfs-transitional' })).toBe(false)
+        expect(cleanUpOfferedFor({ kind: 'read-only', reason: 'backend-unavailable' })).toBe(false)
     })
 })
 
@@ -123,7 +121,7 @@ describe('startCleanUpUnusedFiles', () => {
     test.each<[string, ManualCleanUpPlan, string]>([
         ['node with deletable files', { kind: 'node', deletable: 2, bytes: null, later: 5 }, language.cleanUnusedFilesConfirmNode(2, null, 5)],
         ['node with nothing deletable yet', { kind: 'node', deletable: 0, bytes: null, later: 5 }, language.cleanUnusedFilesNoteNode(5)],
-        ['indexeddb', { kind: 'indexeddb', deletable: 1, bytes: 10, later: 0 }, language.cleanUnusedFilesConfirm(1, 10)],
+        ['tauri', { kind: 'tauri', deletable: 1, bytes: 10, later: 0 },language.cleanUnusedFilesConfirm(1, 10)],
     ])('confirm text: %s', async (_name, plan, expected) => {
         engine.runManualCleanUp.mockImplementation(async (ui) => {
             await ui.confirm(plan)
@@ -138,7 +136,7 @@ describe('startCleanUpUnusedFiles', () => {
     test('a No closes the popup and shows no result message', async () => {
         engine.runManualCleanUp.mockImplementation(async (ui) => {
             alerts.alertConfirm.mockImplementationOnce(async () => false)
-            expect(await ui.confirm({ kind: 'indexeddb', deletable: 1, bytes: 1, later: 0 })).toBe(false)
+            expect(await ui.confirm({ kind: 'tauri', deletable: 1, bytes: 1, later: 0 })).toBe(false)
             return { status: 'declined' }
         })
 

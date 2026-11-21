@@ -458,6 +458,20 @@ describe('DBState changes through the real effects and scheduler', () => {
             expect(page.dirty).toBe(true)
         } finally { page.stop() }
     })
+    it('C4b Reset shape: delete of an existing globalChatVariables key records a setting mark; delete of an absent key records none', () => {
+        const page = freshWithOrder()
+        try {
+            const root = DBState.db as unknown as { globalChatVariables: Record<string, string> }
+            root.globalChatVariables = { toggle_reset: '1' }
+            page.snapshot(); hits.length = 0
+            delete root.globalChatVariables.toggle_absent
+            const afterAbsent = [...hits]
+            delete root.globalChatVariables.toggle_reset
+            expect(afterAbsent).toEqual([])
+            expect(hits).toContain('top:globalChatVariables')
+            expect(page.dirty).toBe(true)
+        } finally { page.stop() }
+    })
     it('C5 re-stamp on move: a held chat moved to B marks B on a later write with no traversal through B', () => {
         const page = freshWithOrder()
         try {

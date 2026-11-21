@@ -1,9 +1,11 @@
-// The main-thread side of the pack judge: implements intake's `PackJudge` over a module worker. Every call spawns its own
-// worker, posts only sheet text, and terminates the worker when the call settles. There is no main-thread fallback: a spawn
-// failure, a timeout, a worker error or an answer that does not pass `readJudgement` rejects, and intake turns every
-// rejection into `couldNotCheck`. The validator is imported as types only, so it never joins the main-thread bundle.
+// The main-thread side of the pack judge: a session over one module worker. The worker is spawned on the first request and
+// reused by every later request of the session; it posts only labelled sheet text, and `close()` terminates it. There is
+// no main-thread fallback, and the fail-closed rule is whole: a spawn failure, a timeout, a worker error, a malformed job
+// list, a missing, extra or malformed verdict, or an `ok: false` answer rejects the request and closes the session, and every
+// later request on a closed session rejects without spawning. Intake turns every rejection into `couldNotCheck`. The
+// validator is imported as types only, so it never joins the main-thread bundle.
 import type { AreaSheetJudgement, FontFaceBlock, LintError, PackSheetsJudgement, ResourceSpan } from './index'
-import type { PackJudge } from './intake'
+import { APPLIED_AREAS, type AppliedArea, type PackJudge } from './intake'
 import { spawnJudgeWorker } from './worker/spawnJudgeWorker'
 
 /** What the client needs of a worker: `Worker` satisfies it, and so does a test channel. */
@@ -12,9 +14,23 @@ export interface JudgeWorkerLike {
     terminate(): void
     addEventListener(type: 'message' | 'messageerror' | 'error', listener: (event: Event) => void): void
 }
-export interface JudgeRequest { id: number; sheets: { chat?: string } }
+/** One sheet to judge as `area`; `label` names its verdict in the answer. */
+export interface JudgeJob { label: string; area: AppliedArea; text: string }
+export interface JudgeRequest { id: number; jobs: readonly JudgeJob[] }
+/** One verdict per requested label. */
+export type JudgeResults = Readonly<Record<string, AreaSheetJudgement>>
+export interface JudgeSession {
+    /** Intake's judge: one job per sheet, labelled by its area, over this session's worker. */
+    readonly judge: PackJudge
+    /** Judges the jobs in one request; resolves only when every label has a verdict. */
+    jobs(list: readonly JudgeJob[]): Promise<JudgeResults>
+    /** Terminates the worker and rejects what is in flight. Idempotent. */
+    close(): void
+}
 
 export const JUDGE_TIMEOUT_MS = 60_000
+/** The most jobs one request may carry; the worker handler enforces the same number. */
+export const MAX_JUDGE_JOBS = 16
 
 export class JudgeUnavailableError extends Error {}
 export class JudgeTimeoutError extends Error {}
@@ -105,70 +121,228 @@ function readAreaSheet(value: unknown): AreaSheetJudgement | null {
     return { result: { ok, errors: errorList, name: typeof name === 'string' ? name : '' }, canonical: value.canonical, resources, fontFaceBlocks, warnings }
 }
 
-/** Narrows a worker answer into a fresh judgement, or null when any part is out of shape. Only the chat area is read. */
+/** Narrows a worker answer into a fresh judgement, or null when any part is out of shape. Only the applied areas are read. */
 export function readJudgement(value: unknown): PackSheetsJudgement | null {
     if (!isRecord(value) || typeof value.ok !== 'boolean' || !isRecord(value.areas)) {
         return null
     }
     const areas: PackSheetsJudgement['areas'] = {}
-    if (value.areas.chat !== undefined) {
-        const chat = readAreaSheet(value.areas.chat)
-        if (chat === null) {
-            return null
+    for (const area of APPLIED_AREAS) {
+        const sheet: unknown = Object.hasOwn(value.areas, area) ? value.areas[area] : undefined
+        if (sheet !== undefined) {
+            const read = readAreaSheet(sheet)
+            if (read === null) {
+                return null
+            }
+            areas[area] = read
         }
-        areas.chat = chat
     }
     return { ok: value.ok, areas }
 }
 
 let nextRequestId = 0
 
-export function createJudgeClient(options: { spawn?: () => JudgeWorkerLike; timeoutMs?: number } = {}): PackJudge {
+interface PendingRequest {
+    readonly labels: ReadonlySet<string>
+    readonly resolve: (results: JudgeResults) => void
+    readonly reject: (error: Error) => void
+    readonly timer: ReturnType<typeof setTimeout>
+    readonly mark: 'risu:judge:first' | 'risu:judge:next'
+    readonly startedAt: number
+}
+
+/** User Timing entries survive a production build and CDP can read them, so the judge's cost is measurable on a device. */
+function markJudgeTiming(name: string, start: number): void {
+    try {
+        performance.measure(name, { start, end: performance.now() })
+    } catch { }
+}
+
+/** Null when the list is acceptable: at most 16 jobs, unique non-empty string labels, string text, an applied area. */
+function jobsProblem(list: readonly JudgeJob[]): string | null {
+    if (list.length > MAX_JUDGE_JOBS) {
+        return `a judge request carries at most ${MAX_JUDGE_JOBS} jobs`
+    }
+    const labels = new Set<string>()
+    for (const job of list) {
+        if (!isRecord(job) || typeof job.label !== 'string' || job.label === '' || labels.has(job.label)) {
+            return 'a judge job needs a unique non-empty label'
+        }
+        labels.add(job.label)
+        if (typeof job.text !== 'string' || !(APPLIED_AREAS as readonly string[]).includes(job.area)) {
+            return 'a judge job needs string text and an applied area'
+        }
+    }
+    return null
+}
+
+/** One verdict per requested label and no other key, each read by own key and narrowed; null when anything is out of shape. */
+function readResults(value: unknown, labels: ReadonlySet<string>): JudgeResults | null {
+    if (!isRecord(value) || Object.keys(value).some((key) => !labels.has(key))) {
+        return null
+    }
+    const entries: Array<[string, AreaSheetJudgement]> = []
+    for (const label of labels) {
+        const read = Object.hasOwn(value, label) ? readAreaSheet(value[label]) : null
+        if (read === null) {
+            return null
+        }
+        entries.push([label, read])
+    }
+    return Object.fromEntries(entries)
+}
+
+export function openJudgeSession(options: { spawn?: () => JudgeWorkerLike; timeoutMs?: number } = {}): JudgeSession {
     const spawn = options.spawn ?? spawnJudgeWorker
     const timeoutMs = options.timeoutMs ?? JUDGE_TIMEOUT_MS
-    return (sheets) => new Promise<PackSheetsJudgement>((resolve, reject) => {
-        let worker: JudgeWorkerLike
-        try {
-            worker = spawn()
-        } catch (error) {
-            reject(new JudgeUnavailableError(`the judge worker could not start: ${String(error)}`))
+    const pending = new Map<number, PendingRequest>()
+    let worker: JudgeWorkerLike | null = null
+    let spawnedAt = 0
+    let posted = false
+    let closed = false
+
+    /** Closes the session once and rejects everything still in flight with `error`. */
+    function shutdown(error: Error): void {
+        if (closed) {
             return
         }
-        nextRequestId += 1
-        const id = nextRequestId
-        let settled = false
-        const timer = setTimeout(() => settle(() => reject(new JudgeTimeoutError(`the judge gave no answer within ${timeoutMs} ms`))), timeoutMs)
-        function settle(finish: () => void): void {
-            if (settled) {
-                return
-            }
-            settled = true
-            clearTimeout(timer)
-            worker.terminate()
-            finish()
+        closed = true
+        worker?.terminate()
+        const inFlight = [...pending.values()]
+        pending.clear()
+        for (const request of inFlight) {
+            clearTimeout(request.timer)
+            request.reject(error)
         }
-        worker.addEventListener('message', (event) => {
-            const data: unknown = (event as MessageEvent<unknown>).data
-            if (!isRecord(data) || data.id !== id) {
-                return
+    }
+
+    function onMessage(event: Event): void {
+        if (closed) {
+            return
+        }
+        const data: unknown = (event as MessageEvent<unknown>).data
+        if (!isRecord(data) || typeof data.id !== 'number') {
+            return
+        }
+        const request = pending.get(data.id)
+        if (request === undefined) {
+            return
+        }
+        pending.delete(data.id)
+        clearTimeout(request.timer)
+        markJudgeTiming(request.mark, request.startedAt)
+        if (data.ok !== true) {
+            const error = new Error(typeof data.error === 'string' ? data.error : 'the judge failed')
+            request.reject(error)
+            shutdown(error)
+            return
+        }
+        const results = readResults(data.results, request.labels)
+        if (results === null) {
+            const error = new JudgeProtocolError('the judge answered with a missing, extra or malformed verdict')
+            request.reject(error)
+            shutdown(error)
+            return
+        }
+        request.resolve(results)
+    }
+
+    function jobs(list: readonly JudgeJob[]): Promise<JudgeResults> {
+        if (closed) {
+            return Promise.reject(new JudgeUnavailableError('the judge session is closed'))
+        }
+        const problem = jobsProblem(list)
+        if (problem !== null) {
+            const error = new JudgeProtocolError(problem)
+            shutdown(error)
+            return Promise.reject(error)
+        }
+        return new Promise<JudgeResults>((resolve, reject) => {
+            if (worker === null) {
+                try {
+                    worker = spawn()
+                } catch (error) {
+                    const failure = new JudgeUnavailableError(`the judge worker could not start: ${String(error)}`)
+                    shutdown(failure)
+                    reject(failure)
+                    return
+                }
+                spawnedAt = performance.now()
+                worker.addEventListener('message', onMessage)
+                worker.addEventListener('messageerror', () => shutdown(new JudgeProtocolError('the judge answer could not be read')))
+                worker.addEventListener('error', () => shutdown(new JudgeUnavailableError('the judge worker failed')))
             }
-            if (data.ok === true) {
-                const judgement = readJudgement(data.judgement)
-                settle(() => judgement === null ? reject(new JudgeProtocolError('the judge answered with a malformed judgement')) : resolve(judgement))
-            } else {
-                settle(() => reject(new Error(typeof data.error === 'string' ? data.error : 'the judge failed')))
+            nextRequestId += 1
+            const id = nextRequestId
+            const first = !posted
+            posted = true
+            const timer = setTimeout(() => shutdown(new JudgeTimeoutError(`the judge gave no answer within ${timeoutMs} ms`)), timeoutMs)
+            pending.set(id, {
+                labels: new Set(list.map((job) => job.label)), resolve, reject, timer,
+                mark: first ? 'risu:judge:first' : 'risu:judge:next', startedAt: first ? spawnedAt : performance.now(),
+            })
+            const request: JudgeRequest = { id, jobs: list.map((job) => ({ label: job.label, area: job.area, text: job.text })) }
+            try {
+                worker.postMessage(request)
+            } catch (error) {
+                shutdown(new JudgeUnavailableError(`the judge request could not be sent: ${String(error)}`))
             }
         })
-        worker.addEventListener('messageerror', () => settle(() => reject(new JudgeProtocolError('the judge answer could not be read'))))
-        worker.addEventListener('error', () => settle(() => reject(new JudgeUnavailableError('the judge worker failed'))))
-        const request: JudgeRequest = { id, sheets: {} }
-        if (sheets.chat !== undefined) {
-            request.sheets.chat = sheets.chat
+    }
+
+    const judge: PackJudge = async (sheets) => {
+        const list: JudgeJob[] = []
+        for (const area of APPLIED_AREAS) {
+            const text = sheets[area]
+            if (text !== undefined) {
+                list.push({ label: area, area, text })
+            }
         }
+        const results = await jobs(list)
+        const areas: PackSheetsJudgement['areas'] = {}
+        let ok = true
+        for (const job of list) {
+            const verdict = results[job.label]
+            areas[job.area] = verdict
+            if (!verdict.result.ok) {
+                ok = false
+            }
+        }
+        return { ok, areas }
+    }
+
+    return { judge, jobs, close: () => shutdown(new JudgeUnavailableError('the judge session was closed')) }
+}
+
+/** The one-request session: each call spawns its own worker, judges once and terminates the worker. */
+export function createJudgeClient(options: { spawn?: () => JudgeWorkerLike; timeoutMs?: number } = {}): PackJudge {
+    return async (sheets) => {
+        const session = openJudgeSession(options)
         try {
-            worker.postMessage(request)
-        } catch (error) {
-            settle(() => reject(new JudgeUnavailableError(`the judge request could not be sent: ${String(error)}`)))
+            return await session.judge(sheets)
+        } finally {
+            session.close()
         }
-    })
+    }
+}
+
+/** Test seam: a session whose jobs run one by one through `judge`; a rejected or unanswered job rejects the whole request. */
+export function judgeSessionOverForTests(judge: PackJudge): JudgeSession {
+    let closed = false
+    async function jobs(list: readonly JudgeJob[]): Promise<JudgeResults> {
+        if (closed) {
+            throw new JudgeUnavailableError('the judge session is closed')
+        }
+        const entries: Array<[string, AreaSheetJudgement]> = []
+        for (const job of list) {
+            const judged = await judge({ [job.area]: job.text })
+            const verdict = judged?.areas?.[job.area]
+            if (verdict === undefined) {
+                throw new JudgeProtocolError('the judge gave no verdict for a job')
+            }
+            entries.push([job.label, verdict])
+        }
+        return Object.fromEntries(entries)
+    }
+    return { judge, jobs, close: () => { closed = true } }
 }

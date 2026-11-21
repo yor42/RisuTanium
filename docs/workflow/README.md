@@ -16,7 +16,7 @@ node .claude/scripts/workflow-control.mjs --help
 node .claude/scripts/workflow-control.mjs status
 ```
 
-To regenerate the deterministic decision-heading index after an authorized log append:
+To regenerate the deterministic decision-heading index after an authorized log append (lane A's fold PR; ticket PRs write `Agents/mc/<ticket>.md` and leave the index alone, see [records](records.md)):
 
 ```powershell
 pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1

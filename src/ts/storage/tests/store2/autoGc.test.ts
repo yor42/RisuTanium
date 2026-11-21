@@ -18,7 +18,7 @@ import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStor
 import { MEASURE } from 'src/ts/process/memory/measureFlag'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import type { ByteStore, GuardedOperations } from 'src/ts/storage/store/contract'
-import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
+import { createMemoryBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { encodeUnit, newUnitKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
@@ -27,7 +27,7 @@ import { formatGcMarkMs, meterGcBackend } from 'src/ts/storage/store2/gc/gcMeter
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { committerOf, createClock, seedStore, testEnv, treeRequest } from './commitFixtures'
-import { flushConfirming, type FlushConfirming } from './flushConfirmBackend'
+import { flushConfirming, nodeWorld, plantSeenUnits, type FlushConfirming, type NodeWorld } from './flushConfirmBackend'
 
 // The note of the export (`noteImportPhase`) is the established sink of the measurement builds; the real module needs a
 // browser page and its ring and storage gate are covered where it lives. This file pins what the pass hands to it.
@@ -95,7 +95,7 @@ async function openTauri(orphanCount: number): Promise<Page> {
     return { session, memory, over, orphans }
 }
 
-async function orphansLeft(page: Page): Promise<number> {
+async function orphansLeft(page: { memory: Store2Backend, orphans: string[] }): Promise<number> {
     const read = await page.memory.readUnits(page.orphans)
     return page.orphans.filter(key => read.get(key) !== null).length
 }
@@ -310,13 +310,19 @@ describe('shouldStop in the pass', () => {
     })
 })
 
-describe('the web pass: sole-tab proof and own base', () => {
-    interface WebPage extends Page {
+describe('the Node pass: sole-tab proof and own base', () => {
+    interface NodePage {
+        session: Store2Session
+        /** The Node world's backend: the store2 view of the same semantic store the session and the runner use. */
+        memory: Store2Backend
+        world: NodeWorld
+        over: FlushConfirming
+        orphans: string[]
         /** The manifest key the seeded commit key names as current. */
         base: string
     }
 
-    async function currentKeyOf(memory: MemoryBackend): Promise<string> {
+    async function currentKeyOf(memory: Store2Backend): Promise<string> {
         const parsed = classifyCommitRead(await memory.readCommit())
         if (parsed.status !== 'parsed' || parsed.value.current === null) {
             throw new Error('the seeded store has no current manifest')
@@ -324,99 +330,104 @@ describe('the web pass: sole-tab proof and own base', () => {
         return parsed.value.current.key
     }
 
-    async function openWeb(orphanCount: number): Promise<WebPage> {
-        const memory = createMemoryBackend()
-        await seedStore(memory, env)
+    /** `orphanCount` orphan units over the seeded tree in one Node world; `seen` records them as seen before, a day ago, so the aged pass may retire them. */
+    async function openNode(orphanCount: number, seen = true): Promise<NodePage> {
+        const world = nodeWorld()
+        await seedStore(world.backend, env)
         const orphans: string[] = []
         for (let i = 0; i < orphanCount; i++) {
             const key = newUnitKey(env)
-            await memory.putUnit(key, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan: key }))
+            await world.backend.putUnit(key, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan: key }))
             orphans.push(key)
         }
-        const over = flushConfirming(memory)
-        const session = await Store2Session.open(createMemoryByteStore(), { kind: 'indexeddb', backend: over.backend, upstreamMainFile: async () => false })
+        if (seen) {
+            await plantSeenUnits(world, orphans)
+        }
+        const over = flushConfirming(world.backend)
+        const session = await Store2Session.open(world.store, { kind: 'node', backend: over.backend, upstreamMainFile: async () => false })
+        expect(session.decision, 'the Node page boots normally on its seeded profile').toMatchObject({ mode: 'normal' })
         over.calls.length = 0
-        return { session, memory, over, orphans, base: await currentKeyOf(memory) }
+        return { session, memory: world.backend, world, over, orphans, base: await currentKeyOf(world.backend) }
     }
 
-    function webFacts(page: WebPage, overrides: Partial<AutoGcFacts> = {}): AutoGcFacts {
+    function nodeFacts(page: NodePage, overrides: Partial<AutoGcFacts> = {}): AutoGcFacts {
         return { ...CLEAN, ownBase: () => page.base, ...overrides }
     }
 
     const READS = ['readCommit', 'readUnits', 'listStore2']
 
-    test('reproducer: an alone, own-based web page deletes its orphans', async () => {
-        const page = await openWeb(30)
+    test('reproducer: an alone, own-based Node page deletes the orphans an earlier pass saw', async () => {
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
 
-        expect(await runAutoGc(page.session, webFacts(page))).toEqual({ status: 'done', deleted: 30, batches: 2 })
+        expect(await runAutoGc(page.session, nodeFacts(page), page.world.store)).toMatchObject({ status: 'done', deleted: 30, batches: 2 })
         expect(await orphansLeft(page)).toBe(0)
     })
 
-    test('reproducer: another tab refuses in the first round with no store2 read', async () => {
-        const page = await openWeb(30)
+    test('guard: the first aged pass over unseen orphans records them and deletes nothing', async () => {
+        const page = await openNode(30, false)
         vi.spyOn(console, 'info').mockImplementation(() => {})
 
-        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => 'others' }))
+        const result = await runAutoGc(page.session, nodeFacts(page), page.world.store)
+
+        expect(result).toMatchObject({ status: 'done', deleted: 0, age: { phase: 'recorded', candidates: 30 } })
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('reproducer: another tab refuses in the first round with no store2 read', async () => {
+        const page = await openNode(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, nodeFacts(page, { peers: async () => 'others' }), page.world.store)
 
         expect(result).toMatchObject({ status: 'refused', reason: 'other-tab' })
         expect(page.over.calls.filter(call => READS.includes(call))).toEqual([])
         expect(await orphansLeft(page)).toBe(30)
     })
 
-    test('reproducer: a host without Web Locks refuses no-web-locks with no read', async () => {
-        const page = await openWeb(30)
+    test('guard: a host without Web Locks does not refuse a Node page: the age bounds the reader the proof cannot cover', async () => {
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
 
-        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => 'unsupported' }))
+        const result = await runAutoGc(page.session, nodeFacts(page, { peers: async () => 'unsupported' }), page.world.store)
 
-        expect(result).toMatchObject({ status: 'refused', reason: 'no-web-locks' })
-        expect(page.over.calls.filter(call => READS.includes(call))).toEqual([])
-        expect(await orphansLeft(page)).toBe(30)
+        expect(result).toMatchObject({ status: 'done', deleted: 30, batches: 2 })
+        expect(result).not.toHaveProperty('stopped')
+        expect(await orphansLeft(page)).toBe(0)
     })
 
     test('reproducer: another tab after the first batch ends the pass with the applied batch kept', async () => {
-        const page = await openWeb(60)
+        const page = await openNode(60)
         vi.spyOn(console, 'info').mockImplementation(() => {})
 
-        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => page.over.count('removeBatch') >= 1 ? 'others' : 'alone' }))
+        const result = await runAutoGc(page.session, nodeFacts(page, { peers: async () => page.over.count('removeBatch') >= 1 ? 'others' : 'alone' }), page.world.store)
 
-        expect(result).toEqual({ status: 'done', deleted: 25, batches: 1, stopped: 'other-tab' })
+        expect(result).toMatchObject({ status: 'done', deleted: 25, batches: 1, stopped: 'other-tab' })
         expect(await orphansLeft(page)).toBe(35)
     })
 
     test('reproducer: another tab after the listing ends the pass before the first batch', async () => {
-        const page = await openWeb(30)
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
 
-        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => page.over.count('listStore2') >= 1 ? 'others' : 'alone' }))
+        const result = await runAutoGc(page.session, nodeFacts(page, { peers: async () => page.over.count('listStore2') >= 1 ? 'others' : 'alone' }), page.world.store)
 
-        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'other-tab' })
+        expect(result).toMatchObject({ status: 'done', deleted: 0, batches: 0, stopped: 'other-tab' })
         expect(await orphansLeft(page)).toBe(30)
     })
 
-    test('reproducer: a host that loses Web Locks after the listing ends the pass before the first batch', async () => {
-        const page = await openWeb(30)
-        vi.spyOn(console, 'info').mockImplementation(() => {})
-
-        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => page.over.count('listStore2') >= 1 ? 'unsupported' : 'alone' }))
-
-        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'other-tab' })
-        expect(await orphansLeft(page)).toBe(30)
-    })
-
-    test('guard: the proof is asked fresh at the round start and before each of three batches, never cached', async () => {
-        const page = await openWeb(60)
+    test('guard: the proof is asked fresh at the round start, before each of three batches and before the record write, never cached', async () => {
+        const page = await openNode(60)
         vi.spyOn(console, 'info').mockImplementation(() => {})
         const peers = vi.fn(async () => 'alone' as const)
 
-        await runAutoGc(page.session, webFacts(page, { peers }))
+        await runAutoGc(page.session, nodeFacts(page, { peers }), page.world.store)
 
-        expect(peers).toHaveBeenCalledTimes(4)
+        expect(peers).toHaveBeenCalledTimes(5)
     })
 
     test('guard: the proof is answered before the stop rule at each batch, so a page that turns busy in the proof stops yielded', async () => {
-        const page = await openWeb(30)
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
         let busy = false
         let asked = 0
@@ -428,9 +439,9 @@ describe('the web pass: sole-tab proof and own base', () => {
             return 'alone' as const
         }
 
-        const result = await runAutoGc(page.session, webFacts(page, { peers, isBusy: () => busy }))
+        const result = await runAutoGc(page.session, nodeFacts(page, { peers, isBusy: () => busy }), page.world.store)
 
-        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'yielded' })
+        expect(result).toMatchObject({ status: 'done', deleted: 0, batches: 0, stopped: 'yielded' })
     })
 
     test('guard: the app passes neither fact to the pass and never calls them', async () => {
@@ -447,45 +458,38 @@ describe('the web pass: sole-tab proof and own base', () => {
         expect(ownBase).not.toHaveBeenCalled()
     })
 
-    test('compatibility guard: an opfs-transitional session runs nothing, not even a read (passes before and after)', async () => {
-        const page = await openWeb(30)
-        const session = Object.create(page.session, { kind: { value: 'opfs-transitional' } }) as Store2Session
-
-        expect(await runAutoGc(session, webFacts(page))).toBeNull()
-        expect(page.over.calls).toEqual([])
-    })
-
     test('guard: a node session without a byte store, or with a store lacking the guarded routes or the server clock, is refused capability-missing before any store2 read', async () => {
-        const page = await openWeb(30)
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
-        const session = Object.create(page.session, { kind: { value: 'node' } }) as Store2Session
         const noClock: ByteStore = { ...createMemoryByteStore(), guarded: guardedStub({ serverNow: undefined }) }
 
         for (const store of [undefined, createMemoryByteStore(), noClock]) {
-            expect(await runAutoGc(session, webFacts(page), store)).toMatchObject({ status: 'refused', reason: 'capability-missing' })
+            expect(await runAutoGc(page.session, nodeFacts(page), store)).toMatchObject({ status: 'refused', reason: 'capability-missing' })
         }
         expect(page.over.calls).toEqual([])
     })
 
-    test('guard: the node deps carry the probe, the aged deps, the peer proof and the own base; the web has no aged deps', async () => {
-        const page = await openWeb(30)
-        const facts = webFacts(page)
+    test('guard: the node deps carry the probe, the aged deps, the peer proof and the own base; the tauri deps carry none of them', async () => {
+        const page = await openNode(30)
+        const facts = nodeFacts(page)
         const store: ByteStore = { ...createMemoryByteStore(), guarded: guardedStub({}) }
 
         const node = buildAutoGcDeps({ kind: 'node', backend: page.memory, idleReason: null }, facts, store)
-        const web = buildAutoGcDeps({ kind: 'indexeddb', backend: page.memory, idleReason: null }, facts, store)
+        const tauri = buildAutoGcDeps({ kind: 'tauri', backend: page.memory, idleReason: null }, facts, store)
 
         expect(node?.probe).toBeTypeOf('function')
         expect(node?.age).toBeDefined()
         expect(node?.peers).toBeTypeOf('function')
         expect(node?.ownBase).toBeTypeOf('function')
-        expect(web?.age).toBeUndefined()
-        expect(web?.probe).toBeUndefined()
+        expect(tauri?.age).toBeUndefined()
+        expect(tauri?.probe).toBeUndefined()
+        expect(tauri?.peers).toBeUndefined()
+        expect(tauri?.ownBase).toBeUndefined()
         expect(buildAutoGcDeps({ kind: 'node', backend: page.memory, idleReason: null }, facts)?.age, 'no store, no aged deps').toBeUndefined()
     })
 
     test('guard: an own base that is not the commit key\'s current refuses stale-base with exactly one read of the commit key', async () => {
-        const page = await openWeb(30)
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
         const peer = committerOf(page.memory, createClock(), 78)
         expect((await peer.commit(await page.memory.readCommit(), treeRequest(0, { tag: 'peer' }))).status).toBe('committed')
@@ -497,20 +501,20 @@ describe('the web pass: sole-tab proof and own base', () => {
         expect(parsed.value.current?.key, 'precondition: the own base is not the current').not.toBe(page.base)
         page.over.calls.length = 0
 
-        const result = await runAutoGc(page.session, webFacts(page))
+        const result = await runAutoGc(page.session, nodeFacts(page), page.world.store)
 
         expect(result).toMatchObject({ status: 'refused', reason: 'stale-base' })
         expect(page.over.count('readCommit')).toBe(1)
         expect(page.over.count('readUnits')).toBe(0)
-        expect(page.over.count('listStore2')).toBe(0)
+        expect(page.over.count('listStore2')).toBe(1)
         expect(await orphansLeft(page)).toBe(30)
     })
 
     test('guard: no settled own base (null) refuses stale-base before any unit read', async () => {
-        const page = await openWeb(30)
+        const page = await openNode(30)
         vi.spyOn(console, 'info').mockImplementation(() => {})
 
-        const result = await runAutoGc(page.session, webFacts(page, { ownBase: () => null }))
+        const result = await runAutoGc(page.session, nodeFacts(page, { ownBase: () => null }), page.world.store)
 
         expect(result).toMatchObject({ status: 'refused', reason: 'stale-base' })
         expect(page.over.count('readUnits')).toBe(0)
@@ -518,7 +522,7 @@ describe('the web pass: sole-tab proof and own base', () => {
     })
 
     test('reproducer: a rebuild round that finds another tab ends other-tab with one read of the commit key', async () => {
-        const page = await openWeb(60)
+        const page = await openNode(60)
         vi.spyOn(console, 'info').mockImplementation(() => {})
         let peerWrote = false
         page.over.before = async (name, count) => {
@@ -531,14 +535,14 @@ describe('the web pass: sole-tab proof and own base', () => {
         }
         const readsBefore = (): number => page.over.count('readCommit')
 
-        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => peerWrote ? 'others' : 'alone' }))
+        const result = await runAutoGc(page.session, nodeFacts(page, { peers: async () => peerWrote ? 'others' : 'alone' }), page.world.store)
 
-        expect(result).toEqual({ status: 'done', deleted: 25, batches: 1, stopped: 'other-tab' })
+        expect(result).toMatchObject({ status: 'done', deleted: 25, batches: 1, stopped: 'other-tab' })
         expect(readsBefore()).toBe(1)
     })
 
-    test('reproducer: a rebuild round with a stale own base ends refused, after one more read of the commit key and no listing', async () => {
-        const page = await openWeb(60)
+    test('reproducer: a rebuild round with a stale own base ends refused, after one more read of the commit key and one more listing', async () => {
+        const page = await openNode(60)
         vi.spyOn(console, 'info').mockImplementation(() => {})
         page.over.before = async (name, count) => {
             if (name === 'removeBatch' && count === 2) {
@@ -548,11 +552,12 @@ describe('the web pass: sole-tab proof and own base', () => {
             }
         }
 
-        const result = await runAutoGc(page.session, webFacts(page))
+        const result = await runAutoGc(page.session, nodeFacts(page), page.world.store)
 
         expect(result).toMatchObject({ status: 'done', deleted: 25, batches: 1, stopped: 'refused', refusal: { reason: 'stale-base' } })
         expect(page.over.count('readCommit')).toBe(2)
-        expect(page.over.count('listStore2')).toBe(1)
+        // The aged round lists before it reads the commit key, so the rebuild round lists once more.
+        expect(page.over.count('listStore2')).toBe(2)
     })
 })
 

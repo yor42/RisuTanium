@@ -137,6 +137,37 @@ function mountShell(): HTMLElement {
     return target
 }
 
+/**
+ * The deferral is driven for real, not bypassed: the animation-frame and idle schedulers are manual fakes,
+ * and this mounts the shell, runs the two frames that arm the triggers, then fires the idle callback.
+ */
+function mountLibraryShell(): HTMLElement {
+    const frames = new Map<number, () => void>()
+    let nextFrame = 1
+    let idle: (() => void) | null = null
+    vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+        frames.set(nextFrame, callback)
+        return nextFrame++
+    })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+        frames.delete(id)
+    })
+    vi.stubGlobal('requestIdleCallback', (callback: () => void) => {
+        idle = callback
+        return 1
+    })
+    vi.stubGlobal('cancelIdleCallback', () => {})
+    const root = mountShell()
+    for (let frame = 0; frame < 2; frame++) {
+        const due = Array.from(frames.values())
+        frames.clear()
+        due.forEach((callback) => callback())
+    }
+    idle?.()
+    flushSync()
+    return root
+}
+
 const section = (root: ParentNode) => root.querySelector<HTMLElement>('[data-part="home-library"]')
 const landing = (root: ParentNode) => root.querySelector<HTMLElement>('[data-part="home-landing"]')!
 
@@ -164,6 +195,7 @@ afterEach(async () => {
     resetBackHandlersForTests()
     showHomeLanding()
     startHomeView()
+    vi.unstubAllGlobals()
     setWidth(originalInnerWidth)
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
@@ -172,7 +204,7 @@ afterEach(async () => {
 describe('the embedded library section', () => {
     test('S4a-R1: three never-opened characters give the section with its heading and the library, before the side block', () => {
         setCharacters([warm('a'), warm('b'), warm('c')])
-        const root = mountShell()
+        const root = mountLibraryShell()
         const stage = root.querySelector('[data-part="home-stage"]')!
         const lib = section(root)
         expect(lib).not.toBeNull()
@@ -215,7 +247,10 @@ describe('the embedded library section', () => {
 
     test('S4a-U4: the section is bounded to one scroller height and the scroller is a size container', () => {
         setCharacters([warm('a')])
-        const root = mountShell()
+        const placeholderRoot = mountShell()
+        expect(section(placeholderRoot)!.className.split(/\s+/)).toEqual(expect.arrayContaining(['max-h-[100cqh]', 'flex-col', 'min-h-0']))
+        placeholderRoot.remove()
+        const root = mountLibraryShell()
         const classes = section(root)!.className.split(/\s+/)
         expect(classes).toContain('max-h-[100cqh]')
         expect(classes).toContain('flex-col')
@@ -261,7 +296,7 @@ describe('touching the library engages it', () => {
     })
 
     test('S4a-U6: mounting and settling alone does not engage, and a new creation starts disengaged', async () => {
-        const first = mountShell()
+        const first = mountLibraryShell()
         await new Promise((resolve) => setTimeout(resolve, 0))
         await new Promise((resolve) => setTimeout(resolve, 0))
         flushSync()
@@ -277,20 +312,20 @@ describe('touching the library engages it', () => {
     })
 
     test('S4a-R4: a pointerdown inside the section engages', () => {
-        const root = mountShell()
+        const root = mountLibraryShell()
         expect(homeView.libraryEngaged).toBe(false)
         stub(root).querySelector('[data-part="library-studio"]')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
         expect(homeView.libraryEngaged).toBe(true)
     })
 
     test('S4a-R4: a key press inside the section engages', () => {
-        const root = mountShell()
+        const root = mountLibraryShell()
         stub(root).querySelector('[data-part="library-studio"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
         expect(homeView.libraryEngaged).toBe(true)
     })
 
     test('S4a-R4: focus entering the section engages', () => {
-        const root = mountShell()
+        const root = mountLibraryShell()
         const control = stub(root).querySelector<HTMLElement>('[data-part="library-studio"]')!
         control.focus()
         if (!homeView.libraryEngaged) {
@@ -300,19 +335,19 @@ describe('touching the library engages it', () => {
     })
 
     test('S4a-R4: focus alone (a real focus call) engages without any other event', () => {
-        const root = mountShell()
+        const root = mountLibraryShell()
         stub(root).querySelector<HTMLElement>('[data-part="library-studio"]')!.focus()
         expect(homeView.libraryEngaged).toBe(true)
     })
 
     test('S4a-R4: a control that stops pointerdown propagation still engages (capture phase)', () => {
-        const root = mountShell()
+        const root = mountLibraryShell()
         stub(root).querySelector('[data-stop-propagation]')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
         expect(homeView.libraryEngaged).toBe(true)
     })
 
     test('S4a-R4: a control that stops keydown propagation still engages (capture phase)', () => {
-        const root = mountShell()
+        const root = mountLibraryShell()
         stub(root).querySelector('[data-stop-propagation]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))
         expect(homeView.libraryEngaged).toBe(true)
     })

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The abandoned-marker helper and the host probe: a foreign bulk marker is cleared only on a 'gone' answer, an own
- * marker is cleared without asking, and the web probe answers from a Web Locks snapshot plus this tab's own hold.
+ * marker is cleared without asking, and the host probe is none on Tauri and never proves a peer gone on Node.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { Store2BackendFailureError } from 'src/ts/storage/store2/backend'
@@ -10,7 +10,6 @@ import {
 } from 'src/ts/storage/store2/abandonedMarker'
 import { IMPORT_REPLACES_BASE, type Committer } from 'src/ts/storage/store2/commit'
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
-import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 import {
     COMMIT_BACKENDS, committerOf, createClock, expectInvariant, hooked, parsedCommit, peerWrite, seedStore, testEnv,
     treeRequest, type Hooks, type OpenedBackend,
@@ -233,7 +232,7 @@ describe('a bulk that failed partway leaves a marker whose staged units one GC p
         expect(staged).toHaveLength(3)
         const outcome = await clearAbandonedMarker(mine, await mine.readCommit(), async () => 'gone')
         expect(outcome.result?.status).toBe('cleared')
-        const result = await gcPass({ backend: entry.backend, kind: 'indexeddb', idleReason: () => null })
+        const result = await gcPass({ backend: entry.backend, kind: 'tauri', idleReason: () => null })
         expect(result.status).toBe('done')
         const left = (await entry.backend.listStore2()).filter(key => key.startsWith(marker?.prefix as string))
         expect(left).toEqual([])
@@ -241,72 +240,14 @@ describe('a bulk that failed partway leaves a marker whose staged units one GC p
 })
 
 describe('markerOwnerProbeFor', () => {
-    type Snapshot = Awaited<ReturnType<LockManager['query']>>
-    const presence = (mode: 'shared' | 'exclusive' = 'shared') => ({ name: STORAGE_TAB_LOCK_NAME, mode })
-
-    function web(snapshot: Snapshot | Error, holds = true) {
-        const query = vi.fn(async (): Promise<Snapshot> => {
-            if (snapshot instanceof Error) {
-                throw snapshot
-            }
-            return snapshot
-        })
-        const probe = markerOwnerProbeFor('indexeddb', { query, holdsOwnPresence: () => holds })
-        return { probe, query }
-    }
-
     const marker = { owner: 'peer', prefix: 'store2/g-0000000000000001-', startedAt: 1, label: 'bulk' as const }
 
-    test('one presence holder and no exclusive operation: gone', async () => {
-        expect(await web({ held: [presence()], pending: [] }).probe?.(marker)).toBe('gone')
-    })
-
-    test('two presence holders: alive', async () => {
-        expect(await web({ held: [presence(), presence()], pending: [] }).probe?.(marker)).toBe('alive')
-    })
-
-    test('an exclusive holder: alive', async () => {
-        expect(await web({ held: [presence('exclusive')], pending: [] }).probe?.(marker)).toBe('alive')
-    })
-
-    test('a pending exclusive request: alive', async () => {
-        expect(await web({ held: [presence()], pending: [presence('exclusive')] }).probe?.(marker)).toBe('alive')
-    })
-
-    test('no presence holder although this tab believes it holds one: unknown', async () => {
-        expect(await web({ held: [], pending: [] }).probe?.(marker)).toBe('unknown')
-    })
-
-    test('a throwing query: unknown', async () => {
-        expect(await web(new Error('query failed')).probe?.(marker)).toBe('unknown')
-    })
-
-    test('this tab does not hold its own presence: unknown, and the query is not called', async () => {
-        const { probe, query } = web({ held: [presence()], pending: [] }, false)
-        expect(await probe?.(marker)).toBe('unknown')
-        expect(query).not.toHaveBeenCalled()
-    })
-
-    test('this tab does not hold its own presence and two holders show: still unknown', async () => {
-        expect(await web({ held: [presence(), presence()], pending: [] }, false).probe?.(marker)).toBe('unknown')
-    })
-
-    test('the web without a lock query gets a probe that answers unknown', async () => {
-        const probe = markerOwnerProbeFor('indexeddb', { query: undefined, holdsOwnPresence: () => true })
-        expect(probe).not.toBeNull()
+    test('node answers unknown: it can never prove a peer gone', async () => {
+        const probe = markerOwnerProbeFor('node')
         expect(await probe?.(marker)).toBe('unknown')
     })
 
-    test('node answers unknown and never reads the locks', async () => {
-        const query = vi.fn(async (): Promise<Snapshot> => ({ held: [presence()], pending: [] }))
-        const holdsOwnPresence = vi.fn(() => true)
-        const probe = markerOwnerProbeFor('node', { query, holdsOwnPresence })
-        expect(await probe?.(marker)).toBe('unknown')
-        expect(query).not.toHaveBeenCalled()
-        expect(holdsOwnPresence).not.toHaveBeenCalled()
-    })
-
-    test.each(['tauri', 'opfs-transitional'] as const)('%s gets no probe', (kind) => {
-        expect(markerOwnerProbeFor(kind, { query: undefined, holdsOwnPresence: () => true })).toBeNull()
+    test.each(['tauri'] as const)('%s gets no probe', (kind) => {
+        expect(markerOwnerProbeFor(kind)).toBeNull()
     })
 })

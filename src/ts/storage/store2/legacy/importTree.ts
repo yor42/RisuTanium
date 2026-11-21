@@ -102,6 +102,10 @@ export interface ImportRequest {
      * The tree's own `usagePriceOverrides` key is removed either way.
      */
     usagePriceOverrides?: JsonObject
+    /** The page's own ChroMemory choice, carried as it is: a `.bin` has none. Absent: the imported profile has none; the tree's own key is removed either way. */
+    ltmEngine?: boolean
+    /** The page's own ChroMemory settings, kept by value. Absent: the imported profile has none; the tree's own key is removed either way. */
+    ltmSettings?: JsonValue
     /**
      * The content index of the base the import is built over, read before the plan. `importLegacyTree` reads one from the
      * commit key when absent, so a page import always reuses by content; the boot installer never passes one (it judges no
@@ -239,13 +243,13 @@ export function repairImportRoot(tree: Database): void {
 }
 
 /**
- * Sets the page's own task presets, installed theme packs, active theme pack, usage keys and price overrides on a
- * resolved database, which holds a copy of the file's root: a `.bin` carries none of them (its export leaves them out), so
+ * Sets the page's own task presets, installed theme packs, active theme pack, usage keys, price overrides and ChroMemory
+ * choice and settings on a resolved database, which holds a copy of the file's root: a `.bin` carries none of them (its export leaves them out), so
  * a key of that name in the file is dropped (for `statics`, its usage keys only), and only what `request` passes is set.
  * `resolveLegacyTree` has already removed `taskPresets`. Shared by the whole and the streamed prepare.
  */
 export function applyImportOverlay(
-    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>,
+    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings'>,
 ): void {
     if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
         // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
@@ -269,6 +273,15 @@ export function applyImportOverlay(
     if (request.usagePriceOverrides !== undefined) {
         // Stored overrides are plain JSON whose shape this build reads leniently, as the task presets above.
         database.usagePriceOverrides = structuredClone(request.usagePriceOverrides) as unknown as Database['usagePriceOverrides']
+    }
+    delete database.ltmEngine
+    delete database.ltmSettings
+    if (request.ltmEngine !== undefined) {
+        database.ltmEngine = request.ltmEngine
+    }
+    if (request.ltmSettings !== undefined) {
+        // The settings are plain JSON the reader narrows; the stored object keeps every key.
+        database.ltmSettings = structuredClone(request.ltmSettings)
     }
 }
 
@@ -361,7 +374,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * repair would replace.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'baseContent'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings' | 'baseContent'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {

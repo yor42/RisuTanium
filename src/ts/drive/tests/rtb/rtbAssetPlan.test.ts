@@ -70,7 +70,7 @@ function stub(over: Omit<Partial<AssetPlanDeps>, 'rule'> & { rule?: CreatableRul
         probePieceStore: async () => { calls.push('probe') },
         assetLimit: () => Number.MAX_SAFE_INTEGER,
         inlayLimit: () => Number.MAX_SAFE_INTEGER,
-        rule: async () => rule ?? { kind: 'indexeddb', platform: 'posix' },
+        rule: async () => rule ?? { kind: 'tauri', platform: 'posix' },
         sizedListing: async () => {
             calls.push('listing')
             if (listing instanceof Error) {
@@ -92,10 +92,9 @@ describe('uncreatable names (T9)', () => {
         const tauri = await planAssets(ok.index, ok.inlays, stub({ rule: { kind: 'tauri', platform: 'posix' } }).deps)
         // a segment that starts with a dot is refused by every store; one that ends with a dot only by the desktop's
         expect(tauri.assets.uncreatable.map((item) => item.key).sort()).toEqual([IDB_DOT, TAURI_DOT].sort())
-        const idb = await planAssets(ok.index, ok.inlays, stub({ rule: { kind: 'indexeddb', platform: 'posix' } }).deps)
-        expect(idb.assets.uncreatable.map((item) => item.key)).toEqual([IDB_DOT])
         // excluded from the copy, and a key that is also oversize is listed as uncreatable only
-        expect(namesOfCopy(idb.assets)).not.toContain(assetEntryName(IDB_DOT))
+        expect(namesOfCopy(tauri.assets)).not.toContain(assetEntryName(IDB_DOT))
+        expect(namesOfCopy(tauri.assets)).not.toContain(assetEntryName(TAURI_DOT))
         expect(node.assets.oversize.map((item) => item.key)).not.toContain(NODE_LONG)
         expect(node.assets.oversize.length).toBeGreaterThan(0)
     })
@@ -104,7 +103,7 @@ describe('uncreatable names (T9)', () => {
         expect(creatableViolation({ kind: 'node', platform: 'posix' }, `assets/${NODE_LONG}`)).not.toBeNull()
         expect(creatableViolation({ kind: 'node', platform: 'posix' }, `assets/${LITERAL}`)).toBeNull()
         expect(creatableViolation({ kind: 'tauri', platform: 'windows' }, `assets/${TAURI_DOT}`)).not.toBeNull()
-        expect(creatableViolation({ kind: 'opfs-transitional', platform: 'posix' }, `assets/${IDB_DOT}`)).not.toBeNull()
+        expect(creatableViolation({ kind: 'tauri', platform: 'posix' }, `assets/${IDB_DOT}`)).not.toBeNull()
     })
 })
 
@@ -209,10 +208,10 @@ describe('Node limits and oversize (T11)', () => {
 describe('scale figures (T12, plan part)', () => {
     test('copied bytes count write and compare items and inlays; present, oversize and uncreatable items are excluded (guard)', async () => {
         const listing: SizedListing = { kind: 'node-sized', items: [{ key: `assets/${HASH}`, size: sizeOf(HASH) }, { key: `assets/${LITERAL}`, size: sizeOf(LITERAL) }] }
-        const { assets: plan, inlays } = await planAssets(ok.index, ok.inlays, stub({ listing, rule: { kind: 'indexeddb', platform: 'posix' } }).deps)
-        const expected = Object.entries(assets).filter(([key]) => key !== HASH && key !== IDB_DOT).reduce((sum, [, bytes]) => sum + bytes.length, 0)
+        const { assets: plan, inlays } = await planAssets(ok.index, ok.inlays, stub({ listing }).deps)
+        const expected = Object.entries(assets).filter(([key]) => key !== HASH && key !== IDB_DOT && key !== TAURI_DOT).reduce((sum, [, bytes]) => sum + bytes.length, 0)
         expect(plan.copyBytes).toBe(expected)
-        expect(plan.copy.length).toBe(Object.keys(assets).length - 2)
+        expect(plan.copy.length).toBe(Object.keys(assets).length - 3)
         expect(inlays.copy.length).toBe(2)
         expect(inlays.copyBytes).toBe(encoder.encode('small').length + encoder.encode('a-much-longer-inlay-body-of-forty-bytes!!').length)
     })

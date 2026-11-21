@@ -18,16 +18,15 @@ import { inlaySweepKind, runInlaySweep, type InlaySweepEnv, type InlaySweepResul
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
- * deletion of old-format files (`oldData/delete.ts`), followed on the app, on the web and on a Node server (`tauri`,
- * `indexeddb` and `node` sessions) by one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only
- * when the sole-tab proof and the own-base rule hold, and otherwise logs one refusal line and deletes nothing; on Node the
+ * deletion of old-format files (`oldData/delete.ts`), followed on the app and on a Node server (`tauri` and `node`
+ * sessions) by one collector pass over the store2 leftovers (`gc/autoGc.ts`; on Node the
  * pass is aged: a unit is retired only on its third sighting a day apart, and it needs the server's guarded routes and
- * clock), followed on the app, on the web and on a Node server
- * (`tauri`, `indexeddb` and `node` sessions; the transitional OPFS page never lists `assets/`) by one asset
- * sweep (`sweep/run.ts`; on the web and on Node its tab check is the same sole-tab proof as the collector's, except that
+ * clock), followed on the app and on a Node server
+ * (`tauri` and `node` sessions) by one asset
+ * sweep (`sweep/run.ts`; on Node its tab check is the same sole-tab proof as the collector's, except that
  * the sweep also refuses where Web Locks are missing) that deletes stored assets nothing refers to once a record at least a
  * day old has named them (on Node, twice, each time at the asset's current revision, with the server's clock and guarded
- * routes), followed on the app and on the web (`tauri` and `indexeddb` sessions, never a Node server: MC-2865) by one inlay
+ * routes), followed on the app (`tauri` sessions, never a Node server: MC-2865) by one inlay
  * sweep (`sweep/inlayRun.ts`) that deletes stored inlays nothing refers to, with no age wait. All four run inside the one
  * registered step and each logs and swallows its own failure, so a failed deleter never keeps the next one from running.
  *
@@ -111,11 +110,11 @@ export function formatSweepResult(result: AssetSweepResult): string {
 }
 
 /**
- * Runs the asset sweep, or does nothing: only a `tauri`, `indexeddb` or `node` session with a backend on a store2 page, and
+ * Runs the asset sweep, or does nothing: only a `tauri` or `node` session with a backend on a store2 page, and
  * nothing is loaded or read before that is known. Throws what the pass throws; the caller logs and swallows it.
  */
 async function runStore2AssetSweep(env: MaintenanceEnv, session: Store2Session, facts?: SweepPageFacts): Promise<void> {
-    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node') || session.backend === null || getPageStorageMode().kind !== 'store2') {
+    if ((session.kind !== 'tauri' && session.kind !== 'node') || session.backend === null || getPageStorageMode().kind !== 'store2') {
         return
     }
     const live = facts ?? await loadSweepFacts()
@@ -128,7 +127,7 @@ async function runStore2AssetSweep(env: MaintenanceEnv, session: Store2Session, 
 }
 
 /** What the page contributes to the inlay sweep: the rest of the pass's environment is the session, the store and the pace. */
-export type InlayPageFacts = Pick<InlaySweepEnv, 'peers' | 'shouldStop' | 'saveMarks' | 'writtenThisPage' | 'legacyInlayIds' | 'residentInlays' | 'lock'>
+export type InlayPageFacts = Pick<InlaySweepEnv, 'shouldStop' | 'saveMarks' | 'writtenThisPage' | 'legacyInlayIds' | 'residentInlays' | 'lock'>
 
 /** The page's own modules, loaded when the inlay sweep first needs them so that installing the step costs nothing. */
 async function loadInlayFacts(): Promise<InlayPageFacts> {
@@ -143,7 +142,6 @@ async function loadInlayFacts(): Promise<InlayPageFacts> {
         import('./sweep/inlayResident'),
     ])
     return {
-        peers: () => soleTabAnswer({ query: liveLockQuery(), holdsOwnPresence: api.holdsOwnTabPresence }),
         shouldStop: () => busy.isBusy() || loop.isSaveLoopParked() || !api.isSaveClean() || restore.restoreInProgress(),
         saveMarks: () => api.getSaveMarkCount(),
         writtenThisPage: id => inlayStore.inlayWrittenThisPage(id),
@@ -172,7 +170,7 @@ export function formatInlaySweepResult(result: InlaySweepResult): string {
 }
 
 /**
- * Runs the inlay sweep, or does nothing: only a `tauri` or `indexeddb` session with a backend on a store2 page, and nothing
+ * Runs the inlay sweep, or does nothing: only a `tauri` session with a backend on a store2 page, and nothing
  * is loaded, read or logged before that is known. Throws what the pass throws; the caller logs and swallows it.
  */
 async function runStore2InlaySweep(env: MaintenanceEnv, session: Store2Session, facts?: InlayPageFacts): Promise<void> {
@@ -293,7 +291,7 @@ export interface ManualCleanUpUi {
 }
 
 export interface ManualCleanUpPlan {
-    kind: 'tauri' | 'indexeddb' | 'node'
+    kind: 'tauri' | 'node'
     /** Files the delete step can remove now. */
     deletable: number
     /** Their total stored size, or null when it could not be told. */
@@ -343,7 +341,7 @@ export async function runManualCleanUp(ui: ManualCleanUpUi, seams: ManualCleanUp
     try {
         const session = (seams.session ?? getStore2BootSession)()
         if (session === null || getPageStorageMode().kind !== 'store2' || session.backend === null || !bootDidNotInstall(session)
-            || (session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node')) {
+            || (session.kind !== 'tauri' && session.kind !== 'node')) {
             return { status: 'unavailable' }
         }
         const kind = session.kind

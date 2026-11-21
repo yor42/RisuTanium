@@ -1,0 +1,116 @@
+/*
+  Summer solstice scene styles. Every class is rt-ss-*; no shared tokens are defined. Default rules = start pose;
+  .rt-ss-final = final pose. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits
+  inside the root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Stage ---------- */
+.rt-ss-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;            /* fireflies stay inside the stage */
+  pointer-events: none;
+  contain: layout paint;
+}
+.rt-ss-wash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  /* The short night: deeper abyss blue over a faint emerald meadow glow. */
+  background:
+    radial-gradient(ellipse 60% 70% at 70% 100%, rgb(16 185 129 / 0.16), rgb(16 185 129 / 0) 70%),
+    linear-gradient(180deg, rgb(0 1 28 / 0.55) 0%, rgb(2 18 40 / 0.42) 60%, rgb(4 40 44 / 0.2) 100%);
+  /* A soft elliptical hole over the word box (--rt-ss-wx/-wy centre, -rx/-ry radii, set by the scene), so the wash never dims
+     the wordmark; fully clear to 68% of the radii, full wash at the ellipse edge. */
+  --rt-ss-mask: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 56px), transparent 100%),
+    linear-gradient(to bottom, #000 0, #000 calc(100% - 14px), transparent 100%),
+    radial-gradient(circle at var(--rt-ss-mx, -100px) var(--rt-ss-my, -100px), transparent 0 18px, #000 30px),
+    radial-gradient(var(--rt-ss-rx, 1px) var(--rt-ss-ry, 1px) at var(--rt-ss-wx, -100px) var(--rt-ss-wy, -100px), transparent 0 68%, #000 100%);
+  -webkit-mask-image: var(--rt-ss-mask);
+  -webkit-mask-composite: source-in, source-in, source-in;
+  mask-image: var(--rt-ss-mask);
+  mask-composite: intersect;
+}
+/* A firefly: 14 px box with a static painted glow (no filter); only transform and opacity animate. */
+.rt-ss-fly {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.rt-ss-fly-gold { background: radial-gradient(circle, #fffbe6 0 1.3px, #ffd166 1.9px 2.6px, rgb(255 209 102 / 0.38) 3.4px, rgb(255 209 102 / 0) 7px); }
+.rt-ss-fly-cyan { background: radial-gradient(circle, #f0fdff 0 1.2px, #7fe9ff 1.8px 2.5px, rgb(127 233 255 / 0.34) 3.3px, rgb(127 233 255 / 0) 7px); }
+
+.rt-ss-sky.rt-ss-final { display: none; }
+
+/* Light tone: a pale dusk veil, and deeper amber/teal fireflies with a light ring so they read on white. */
+[data-rt-sw-tone="light"] .rt-ss-wash {
+  background:
+    radial-gradient(ellipse 60% 70% at 70% 100%, rgb(16 185 129 / 0.16), rgb(16 185 129 / 0) 70%),
+    linear-gradient(180deg, rgb(30 41 99 / 0.16) 0%, rgb(30 64 99 / 0.1) 60%, rgb(20 90 80 / 0.06) 100%);
+}
+[data-rt-sw-tone="light"] .rt-ss-fly-gold { background: radial-gradient(circle, #fff7d6 0 1.2px, #e09a06 1.8px 2.7px, rgb(224 154 6 / 0.32) 3.5px, rgb(224 154 6 / 0) 7px); }
+[data-rt-sw-tone="light"] .rt-ss-fly-cyan { background: radial-gradient(circle, #ecfeff 0 1.2px, #0e93b0 1.8px 2.6px, rgb(14 147 176 / 0.3) 3.4px, rgb(14 147 176 / 0) 7px); }
+
+/* ---------- Mark slot ---------- */
+.rt-ss-mark { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* SVG transforms use the local user-space origin (the default): the settle and core pop turn about the centroid,
+   each spark about its own centre (its parent translates it to the origin). */
+.rt-ss-ink { fill: #fff; }
+[data-rt-sw-tone="light"] .rt-ss-ink { fill: #0f172a; }
+
+.rt-ss-lantern, .rt-ss-halo, .rt-ss-spark { opacity: 0; }
+.rt-ss-cage0 { stop-color: #4ade9b; }
+.rt-ss-cage1 { stop-color: #0b8a62; }
+.rt-ss-rim { fill: none; stroke: #ffd166; stroke-width: 3.2; stroke-linejoin: round; }
+.rt-ss-mid { fill: #0b6b4c; stroke: #ffd166; stroke-width: 1.6; stroke-linejoin: round; }
+.rt-ss-core { fill: #fff8d8; }
+.rt-ss-sparkdot { fill: #fffbe6; }
+.rt-ss-halo0 { stop-color: #ffd166; stop-opacity: 0.34; }
+.rt-ss-halo1 { stop-color: #ffd166; stop-opacity: 0.1; }
+.rt-ss-halo2 { stop-color: #ffd166; stop-opacity: 0; }
+
+[data-rt-sw-tone="light"] .rt-ss-cage0 { stop-color: #0f9f6e; }
+[data-rt-sw-tone="light"] .rt-ss-cage1 { stop-color: #065f46; }
+[data-rt-sw-tone="light"] .rt-ss-rim { stroke: #d99a0b; }
+[data-rt-sw-tone="light"] .rt-ss-mid { fill: #065f46; stroke: #d99a0b; }
+[data-rt-sw-tone="light"] .rt-ss-halo0 { stop-color: #f59e0b; stop-opacity: 0.22; }
+[data-rt-sw-tone="light"] .rt-ss-halo1 { stop-color: #f59e0b; stop-opacity: 0.07; }
+
+.rt-ss-mark.rt-ss-final .rt-ss-every { opacity: 0; }
+.rt-ss-mark.rt-ss-final .rt-ss-lantern { opacity: 1; }
+.rt-ss-mark.rt-ss-final .rt-ss-halo { opacity: 0.8; }
+.rt-ss-mark.rt-ss-final .rt-ss-spark { opacity: 1; transform: none; }
+
+/* ---------- Word: a firefly resting on the "m" ---------- */
+.rt-ss-word { position: relative; }
+.rt-ss-rest {
+  /* 0.62em x 0.362em (viewBox 24 x 14); its feet (viewBox y = 5, the box bottom) sit on the m's x-height top
+     (about 0.43em below the word box top), so the whole firefly stays inside the word box's top edge. */
+  position: absolute;
+  left: calc(var(--rt-ss-mx, 5.72em) - 0.31em);
+  top: calc(0.43em - 0.362em);
+  width: 0.62em;
+  height: 0.362em;
+  pointer-events: none;
+  z-index: 2;
+}
+.rt-ss-rest-fly { display: block; width: 100%; height: 100%; opacity: 0; transform-origin: 50% 90%; }
+.rt-ss-restsvg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-ss-ffbody, .rt-ss-ffhead { fill: #3d3a4a; }
+.rt-ss-ffcap { fill: #f08a4b; }
+.rt-ss-ffwings { fill: #d9e3f0; fill-opacity: 0.8; }
+.rt-ss-ffwing2 { fill-opacity: 0.45; }
+.rt-ss-fflegs { fill: none; stroke: #3d3a4a; stroke-width: 0.9; stroke-linecap: round; }
+.rt-ss-fftail { fill: #fff3b0; }
+.rt-ss-tailglow { opacity: 0.6; }
+[data-rt-sw-tone="light"] .rt-ss-ffbody,
+[data-rt-sw-tone="light"] .rt-ss-ffhead { fill: #2b2836; }
+[data-rt-sw-tone="light"] .rt-ss-fflegs { stroke: #2b2836; }
+[data-rt-sw-tone="light"] .rt-ss-ffwings { fill: #94a3b8; fill-opacity: 0.7; }
+[data-rt-sw-tone="light"] .rt-ss-fftail { fill: #f5b50a; }
+
+.rt-ss-word.rt-ss-final .rt-ss-rest-fly { opacity: 1; transform: none; }
+.rt-ss-word.rt-ss-final .rt-ss-tailglow { opacity: 0.85; }

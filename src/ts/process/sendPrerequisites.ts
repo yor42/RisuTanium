@@ -1,3 +1,4 @@
+import type { ConnectionSlot } from '../connections/connections'
 import { LLMProvider, ProviderNames } from '../model/types'
 
 /**
@@ -12,21 +13,16 @@ export interface SendModelInfo {
     keyIdentifier?: string
 }
 
-/** The settings the check reads, and nothing else; the database satisfies this shape. */
+/** The settings the check reads, and nothing else; the database satisfies this shape. Keys are asked through `hasKey`. */
 export interface SendPrerequisiteSettings {
     aiModel: string
     customModels?: ReadonlyArray<{ id: string }>
     presetChain?: string
     fallbackModels?: { model?: readonly string[] }
-    openAIKey?: string
-    openrouterKey?: string
-    claudeAPIKey?: string
-    mistralKey?: string
-    cohereAPIKey?: string
-    OaiCompAPIKeys?: Record<string, string>
-    google?: { accessToken?: string }
-    novelai?: { token?: string }
 }
+
+/** Whether a slot resolves to a connection holding a non-blank key. */
+export type SlotHasKey = (slot: ConnectionSlot) => boolean
 
 export interface SendRefusal {
     reason: 'key' | 'model'
@@ -48,7 +44,7 @@ function isBlank(value: unknown): boolean {
  * loop tries each fallback with its own credential). Each key row reads the field the request code reads when no
  * explicit key is passed.
  */
-export function checkSendPrerequisites(db: SendPrerequisiteSettings, modelInfo: (id: string) => SendModelInfo): SendRefusal | null {
+export function checkSendPrerequisites(db: SendPrerequisiteSettings, modelInfo: (id: string) => SendModelInfo, hasKey: SlotHasKey): SendRefusal | null {
     if (isBlank(db.aiModel)) {
         return { reason: 'model', fix: 'botSettings' }
     }
@@ -65,24 +61,24 @@ export function checkSendPrerequisites(db: SendPrerequisiteSettings, modelInfo: 
     const info = modelInfo(db.aiModel)
     const missing = (provider: string): SendRefusal => ({ reason: 'key', fix: 'botSettings', provider })
     if (info.keyIdentifier) {
-        return isBlank(db.OaiCompAPIKeys?.[info.keyIdentifier]) ? missing(info.keyIdentifier) : null
+        return hasKey(`OaiCompAPIKeys:${info.keyIdentifier}`) ? null : missing(info.keyIdentifier)
     }
     if (db.aiModel === 'openrouter') {
-        return isBlank(db.openrouterKey) ? missing('OpenRouter') : null
+        return hasKey('openrouterKey') ? null : missing('OpenRouter')
     }
     switch (info.provider) {
         case LLMProvider.OpenAI:
-            return isBlank(db.openAIKey) ? missing(providerName(info.provider)) : null
+            return hasKey('openAIKey') ? null : missing(providerName(info.provider))
         case LLMProvider.Anthropic:
-            return isBlank(db.claudeAPIKey) ? missing(providerName(info.provider)) : null
+            return hasKey('claudeAPIKey') ? null : missing(providerName(info.provider))
         case LLMProvider.GoogleCloud:
-            return isBlank(db.google?.accessToken) ? missing(providerName(info.provider)) : null
+            return hasKey('google.accessToken') ? null : missing(providerName(info.provider))
         case LLMProvider.Mistral:
-            return isBlank(db.mistralKey) ? missing(providerName(info.provider)) : null
+            return hasKey('mistralKey') ? null : missing(providerName(info.provider))
         case LLMProvider.Cohere:
-            return isBlank(db.cohereAPIKey) ? missing(providerName(info.provider)) : null
+            return hasKey('cohereAPIKey') ? null : missing(providerName(info.provider))
         case LLMProvider.NovelAI:
-            return isBlank(db.novelai?.token) ? missing(providerName(info.provider)) : null
+            return hasKey('novelai.token') ? null : missing(providerName(info.provider))
         default:
             return null
     }

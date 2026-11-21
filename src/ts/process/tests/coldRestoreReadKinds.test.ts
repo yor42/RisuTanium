@@ -7,8 +7,8 @@
  * real restore (`../coldCharacterRestore`), the real plugin and MCP access
  * functions (`../coldCharacterAccess`) and the real group-turn restore
  * (`../coldMemberRestore`) run over stand-ins for the storage underneath (an
- * page byte store per platform, and for the web an OPFS `navigator.storage`
- * holding legacy unit files) and a mocked alert. A pass here says nothing about a real browser, Node server or Tauri
+ * page byte store per platform, and for the web a `navigator.storage` that
+ * fails if it is ever called) and a mocked alert. A pass here says nothing about a real browser, Node server or Tauri
  * file system, and `v3.svelte.ts` and the MCP modules are not driven: they
  * call `readArchivedCharacter` and `restoreArchivedForWrite`, which are.
  *
@@ -41,8 +41,10 @@ const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: false },
     /** The page store's content on each platform: `coldstorage/<key>` (`coldstorage/<key>.json` on the desktop). */
     units: { node: new Map<string, Uint8Array>(), tauri: new Map<string, Uint8Array>(), web: new Map<string, Uint8Array>() },
-    /** While set, the page store cannot be opened, as when the browser has no usable IndexedDB. */
+    /** While set, the page store cannot be opened, as when the page is served by neither Tauri nor the Node server. */
     storeUnavailable: false,
+    /** While set, every read of the web page store throws it. */
+    webReadFailure: null as Error | null,
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -55,7 +57,12 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
     const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
     const platform = () => h.platform.isNodeServer ? 'node' : h.platform.isTauri ? 'tauri' : 'web'
     const store = createForageBackedStore({
-        getItem: async (key) => h.units[platform()].get(key) ?? null,
+        getItem: async (key) => {
+            if (h.webReadFailure && platform() === 'web') {
+                throw h.webReadFailure
+            }
+            return h.units[platform()].get(key) ?? null
+        },
         setItem: async (key, value) => { h.units[platform()].set(key, value) },
         keys: async () => Array.from(h.units[platform()].keys()),
         removeItem: async (key) => { h.units[platform()].delete(key) },
@@ -63,7 +70,7 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
     return {
         getAppStore: async () => {
             if (h.storeUnavailable) {
-                throw Object.assign(new Error('IndexedDB is not available in this browser.'), { name: 'AppStoreUnavailableError' })
+                throw Object.assign(new Error('This page is not served by Tauri or the Node server, so it has no storage.'), { name: 'AppStoreUnavailableError' })
             }
             return store
         },
@@ -115,56 +122,12 @@ import type { Database, character } from 'src/ts/storage/database.svelte'
 
 //#region stand-ins and fixtures
 
-type Backend = 'opfs' | 'node' | 'tauri'
-const BACKENDS: Backend[] = ['opfs', 'node', 'tauri']
+type Backend = 'web' | 'node' | 'tauri'
+const BACKENDS: Backend[] = ['web', 'node', 'tauri']
 
-class StandInNotFoundError extends Error {
-    name = 'NotFoundError'
-}
-
-class StandInSecurityError extends Error {
-    name = 'SecurityError'
-}
-
-class StandInNotReadableError extends Error {
-    name = 'NotReadableError'
-}
-
-const opfsFiles = new Map<string, Uint8Array>()
-let opfsFailure: Error | null = null
-
-const opfsDirectory = {
-    async getFileHandle(name: string) {
-        if (opfsFailure) {
-            throw opfsFailure
-        }
-        const bytes = opfsFiles.get(name)
-        if (!bytes) {
-            throw new StandInNotFoundError(`not found: ${name}`)
-        }
-        return {
-            async getFile() {
-                return { async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) } }
-            },
-        }
-    },
-}
-
-const opfsStorage = { getDirectory: async () => opfsDirectory }
-
-async function withNavigatorStorage<T>(storage: unknown, run: () => Promise<T>): Promise<T> {
-    const original = Object.getOwnPropertyDescriptor(navigator, 'storage')
-    Object.defineProperty(navigator, 'storage', { configurable: true, value: storage })
-    try {
-        return await run()
-    } finally {
-        if (original) {
-            Object.defineProperty(navigator, 'storage', original)
-        } else {
-            Reflect.deleteProperty(navigator, 'storage')
-        }
-    }
-}
+const getDirectoryMock = vi.fn(async () => {
+    throw new Error('the browser private file system must not be touched')
+})
 
 function selectBackend(backend: Backend): void {
     h.platform.isNodeServer = backend === 'node'
@@ -181,10 +144,10 @@ async function withStoreUnavailable<T>(run: () => Promise<T>): Promise<T> {
     }
 }
 
-/** Places a unit where the backend keeps it: the OPFS backend is a legacy unit file, the others the page store. */
+/** Places a unit where the backend keeps it in the page store. */
 function putBytes(backend: Backend, key: string, bytes: Uint8Array): void {
-    if (backend === 'opfs') {
-        opfsFiles.set('coldstorage_' + key + '.json', bytes)
+    if (backend === 'web') {
+        h.units.web.set('coldstorage/' + key, bytes)
     } else if (backend === 'node') {
         h.units.node.set('coldstorage/' + key, bytes)
     } else {
@@ -193,8 +156,8 @@ function putBytes(backend: Backend, key: string, bytes: Uint8Array): void {
 }
 
 function hasBytes(backend: Backend, key: string): boolean {
-    if (backend === 'opfs') {
-        return opfsFiles.has('coldstorage_' + key + '.json')
+    if (backend === 'web') {
+        return h.units.web.has('coldstorage/' + key)
     }
     return backend === 'node' ? h.units.node.has('coldstorage/' + key) : h.units.tauri.has('coldstorage/' + key + '.json')
 }
@@ -261,14 +224,14 @@ function expectDamagedWording(text: string): void {
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
-    selectBackend('opfs')
-    opfsFiles.clear()
-    opfsFailure = null
+    selectBackend('web')
     for (const platform of ['node', 'tauri', 'web'] as const) {
         h.units[platform].clear()
     }
     h.storeUnavailable = false
-    Object.defineProperty(navigator, 'storage', { configurable: true, value: opfsStorage })
+    h.webReadFailure = null
+    getDirectoryMock.mockClear()
+    Object.defineProperty(navigator, 'storage', { configurable: true, value: { getDirectory: getDirectoryMock } })
     vi.mocked(alertError).mockClear()
     vi.mocked(characterFormatUpdate).mockClear()
     vi.mocked(markCharacterForSave).mockClear()
@@ -276,6 +239,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    expect(getDirectoryMock).not.toHaveBeenCalled()
     Reflect.deleteProperty(navigator, 'storage')
     consoleErrorSpy.mockRestore()
 })
@@ -301,7 +265,7 @@ describe('opening an archived character with no storage on the page', () => {
     test.each(NO_STORAGE)('with %s the restore is refused as unavailable and says so, without claiming loss or asking for a retry', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, encodeUnit(LARGE_CHARACTER))
+        putBytes('web', UNIT, encodeUnit(LARGE_CHARACTER))
 
         const outcome = await withStoreUnavailable(() => restoreColdCharacter(stub))
 
@@ -310,7 +274,7 @@ describe('opening an archived character with no storage on the page', () => {
         expectNoStorageWording(alerts()[0])
         expect(alerts()[0]).toBe(language.errors.coldStorageNamedRestoreUnavailable(NAME))
         expectStubUntouched(stub)
-        expect(hasBytes('opfs', UNIT)).toBe(true)
+        expect(hasBytes('web', UNIT)).toBe(true)
     })
 
     test('a quiet restore reports the reason and shows nothing', async () => {
@@ -380,7 +344,7 @@ describe('opening an archived character whose copy does not decode', () => {
     test('a quiet restore reports the reason and shows nothing', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, new Uint8Array([1, 2, 3, 4]))
+        putBytes('web', UNIT, new Uint8Array([1, 2, 3, 4]))
 
         const outcome = await restoreColdCharacter(stub, { quiet: true })
 
@@ -391,7 +355,7 @@ describe('opening an archived character whose copy does not decode', () => {
     test('reading the archived character as a copy reports status unreadable with kind damaged and installs nothing', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, new Uint8Array([1, 2, 3, 4]))
+        putBytes('web', UNIT, new Uint8Array([1, 2, 3, 4]))
 
         const copy = await readColdCharacterCopy(stub)
 
@@ -403,7 +367,7 @@ describe('opening an archived character whose copy does not decode', () => {
     test('guard: the copy of a damaged read keeps the status unreadable that its consumers branch on', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, new Uint8Array([1, 2, 3, 4]))
+        putBytes('web', UNIT, new Uint8Array([1, 2, 3, 4]))
 
         const copy = await readColdCharacterCopy(stub)
 
@@ -413,12 +377,13 @@ describe('opening an archived character whose copy does not decode', () => {
 })
 
 describe('guard: a read that may work later keeps the retry wording, and the other refusals keep the data-loss wording', () => {
-    test('guard: a getDirectory that rejects is unreadable and asks to try again', async () => {
+    test('guard: a page store that cannot be read is unreadable and asks to try again', async () => {
         const stub = placeholder()
         installDb([stub])
-        const rejecting = { getDirectory: async () => { throw new StandInSecurityError('the operation is insecure') } }
+        putBytes('web', UNIT, encodeUnit(LARGE_CHARACTER))
+        h.webReadFailure = new Error('IndexedDB read failed')
 
-        const outcome = await withNavigatorStorage(rejecting, () => restoreColdCharacter(stub))
+        const outcome = await restoreColdCharacter(stub)
 
         expect(outcome).toEqual({ status: 'refused', reason: 'unreadable' })
         expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreUnreadable(NAME)])
@@ -427,25 +392,13 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         expectStubUntouched(stub)
     })
 
-    test('guard: a file that cannot be read is unreadable and asks to try again', async () => {
-        const stub = placeholder()
-        installDb([stub])
-        putBytes('opfs', UNIT, encodeUnit(LARGE_CHARACTER))
-        opfsFailure = new StandInNotReadableError('the file could not be read')
-
-        const outcome = await restoreColdCharacter(stub)
-
-        expect(outcome).toEqual({ status: 'refused', reason: 'unreadable' })
-        expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreUnreadable(NAME)])
-    })
-
-    test.each(['node', 'tauri'] as const)('guard: with navigator.storage removed a good %s unit still restores', async (backend) => {
+    test.each(['node', 'tauri'] as const)('guard: a good %s unit restores', async (backend) => {
         selectBackend(backend)
         const stub = placeholder()
         installDb([stub])
         putBytes(backend, UNIT, encodeUnit(LARGE_CHARACTER))
 
-        const outcome = await withNavigatorStorage(undefined, () => restoreColdCharacter(stub))
+        const outcome = await restoreColdCharacter(stub)
 
         expect(outcome.status).toBe('restored')
         expect(alerts()).toEqual([])
@@ -484,7 +437,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
     test('guard: a unit holding another character is refused as mismatch with the data-loss text', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, encodeUnit({ character: { chaId: 'someone-else', name: 'Else', type: 'character', chats: [] } }))
+        putBytes('web', UNIT, encodeUnit({ character: { chaId: 'someone-else', name: 'Else', type: 'character', chats: [] } }))
 
         const outcome = await restoreColdCharacter(stub)
 
@@ -495,7 +448,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
     test('guard: a unit that decodes but holds no character is refused as missing with the data-loss text', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, encodeUnit({ somethingElse: true }))
+        putBytes('web', UNIT, encodeUnit({ somethingElse: true }))
 
         const outcome = await restoreColdCharacter(stub)
 
@@ -507,7 +460,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
         const first = placeholder('member', 'cold-key-a')
         const second = placeholder('member', 'cold-key-b')
         installDb([first, second])
-        putBytes('opfs', 'cold-key-a', encodeUnit(LARGE_CHARACTER))
+        putBytes('web', 'cold-key-a', encodeUnit(LARGE_CHARACTER))
 
         const outcome = await restoreColdCharacter(first, { byChaId: true })
 
@@ -518,7 +471,7 @@ describe('guard: a read that may work later keeps the retry wording, and the oth
     test('guard: the copy of a plain read error is status unreadable with no kind', async () => {
         const stub = placeholder()
         installDb([stub])
-        opfsFailure = new StandInNotReadableError('the file could not be read')
+        h.webReadFailure = new Error('IndexedDB read failed')
 
         const copy = await readColdCharacterCopy(stub)
 
@@ -546,7 +499,7 @@ describe('the named wording for a plugin or MCP read of an archived character', 
     test.each(DAMAGED_BYTES)('%s fails with the named damaged text, shown once', async (_label, makeBytes) => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, makeBytes())
+        putBytes('web', UNIT, makeBytes())
 
         const result = await readArchivedCharacter(stub)
 
@@ -557,15 +510,15 @@ describe('the named wording for a plugin or MCP read of an archived character', 
         expect(message).toBe(language.errors.coldStorageNamedRestoreDamaged(NAME))
         expect(alerts()).toEqual([message])
         expectStubUntouched(stub)
-        expect(hasBytes('opfs', UNIT)).toBe(true)
+        expect(hasBytes('web', UNIT)).toBe(true)
     })
 
-    test('guard: a getDirectory that rejects fails with the named try-again text', async () => {
+    test('guard: a page store that cannot be read fails with the named try-again text', async () => {
         const stub = placeholder()
         installDb([stub])
-        const rejecting = { getDirectory: async () => { throw new StandInSecurityError('the operation is insecure') } }
+        h.webReadFailure = new Error('IndexedDB read failed')
 
-        const result = await withNavigatorStorage(rejecting, () => readArchivedCharacter(stub))
+        const result = await readArchivedCharacter(stub)
 
         expect(result).toEqual({ status: 'failed', message: language.errors.coldStorageNamedRestoreUnreadable(NAME) })
         expect((result as { message: string }).message).toMatch(TRY_AGAIN)
@@ -607,7 +560,7 @@ describe('the named wording for a plugin, MCP or group add-member write to an ar
     test.each(DAMAGED_BYTES)('%s fails the restore for a write with the named damaged text and leaves the stub', async (_label, makeBytes) => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, makeBytes())
+        putBytes('web', UNIT, makeBytes())
 
         const result = await restoreArchivedForWrite('member')
 
@@ -618,12 +571,12 @@ describe('the named wording for a plugin, MCP or group add-member write to an ar
         expectStubUntouched(stub)
     })
 
-    test('guard: a getDirectory that rejects fails the restore for a write with the named try-again text', async () => {
+    test('guard: a page store that cannot be read fails the restore for a write with the named try-again text', async () => {
         const stub = placeholder()
         installDb([stub])
-        const rejecting = { getDirectory: async () => { throw new StandInSecurityError('the operation is insecure') } }
+        h.webReadFailure = new Error('IndexedDB read failed')
 
-        const result = await withNavigatorStorage(rejecting, () => restoreArchivedForWrite('member'))
+        const result = await restoreArchivedForWrite('member')
 
         expect(result).toEqual({ status: 'failed', message: language.errors.coldStorageNamedRestoreUnreadable(NAME) })
     })
@@ -632,7 +585,7 @@ describe('the named wording for a plugin, MCP or group add-member write to an ar
         const full = { ...placeholder(), coldstorage: undefined } as unknown as character
         installDb([full])
 
-        const result = await withNavigatorStorage(undefined, () => restoreArchivedForWrite('member'))
+        const result = await restoreArchivedForWrite('member')
 
         expect(result).toEqual({ status: 'ready', character: full, index: 0 })
         expect(alerts()).toEqual([])
@@ -656,7 +609,7 @@ describe('the named wording when a group turn restores an archived member', () =
     test.each(DAMAGED_BYTES)('%s: the member is not restored, the named damaged text is shown once and the stub stays', async (_label, makeBytes) => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, makeBytes())
+        putBytes('web', UNIT, makeBytes())
 
         const restored = await restoreColdCharacterByChaId('member')
 
@@ -667,12 +620,12 @@ describe('the named wording when a group turn restores an archived member', () =
         expectStubUntouched(stub)
     })
 
-    test('guard: a getDirectory that rejects shows the named try-again text once', async () => {
+    test('guard: a page store that cannot be read shows the named try-again text once', async () => {
         const stub = placeholder()
         installDb([stub])
-        const rejecting = { getDirectory: async () => { throw new StandInSecurityError('the operation is insecure') } }
+        h.webReadFailure = new Error('IndexedDB read failed')
 
-        const restored = await withNavigatorStorage(rejecting, () => restoreColdCharacterByChaId('member'))
+        const restored = await restoreColdCharacterByChaId('member')
 
         expect(restored).toBe(false)
         expect(alerts()).toEqual([language.errors.coldStorageNamedRestoreUnreadable(NAME)])
@@ -699,7 +652,7 @@ describe('the MCP tools report the named wording when an archived character cann
     test('a read tool throws the named damaged text for a copy that does not decode', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, new Uint8Array([1, 2, 3, 4]))
+        putBytes('web', UNIT, new Uint8Array([1, 2, 3, 4]))
 
         const failure = await getCharacterForRead('member').then(() => null, (error: unknown) => error as Error)
 
@@ -709,12 +662,12 @@ describe('the MCP tools report the named wording when an archived character cann
         expectStubUntouched(stub)
     })
 
-    test('guard: a read tool throws the named try-again text when getDirectory rejects', async () => {
+    test('guard: a read tool throws the named try-again text when the page store cannot be read', async () => {
         const stub = placeholder()
         installDb([stub])
-        const rejecting = { getDirectory: async () => { throw new StandInSecurityError('the operation is insecure') } }
+        h.webReadFailure = new Error('IndexedDB read failed')
 
-        await expect(withNavigatorStorage(rejecting, () => getCharacterForRead('member'))).rejects.toThrow(language.errors.coldStorageNamedRestoreUnreadable(NAME))
+        await expect(getCharacterForRead('member')).rejects.toThrow(language.errors.coldStorageNamedRestoreUnreadable(NAME))
     })
 
     test('a write tool throws the named no-storage text, leaves the stub and records nothing', async () => {
@@ -732,7 +685,7 @@ describe('the MCP tools report the named wording when an archived character cann
     test('a write tool throws the named damaged text, leaves the stub and records nothing', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, new Uint8Array([1, 2, 3, 4]))
+        putBytes('web', UNIT, new Uint8Array([1, 2, 3, 4]))
         const ctx = toolContext()
 
         await expect(recheckCharacterForWrite('member', ctx, stub)).rejects.toThrow(/may be damaged/i)
@@ -805,7 +758,7 @@ describe('a stored character that lacks default fields, reached by a plugin or a
 
     test('reproducer: restoring for a write installs a character that has the default fields', async () => {
         installDb([placeholder()])
-        putBytes('opfs', UNIT, encodeUnit(bareUnit()))
+        putBytes('web', UNIT, encodeUnit(bareUnit()))
 
         const result = await restoreArchivedForWrite('member')
 
@@ -818,7 +771,7 @@ describe('a stored character that lacks default fields, reached by a plugin or a
 
     test('guard: restoring for a write keeps a field the unit already holds', async () => {
         installDb([placeholder()])
-        putBytes('opfs', UNIT, encodeUnit({ character: { ...bareUnit().character, globalLore: [{ key: 'k', comment: 'c', content: 'x', mode: 'normal', insertorder: 1, alwaysActive: false, secondkey: '', selective: false }] } }))
+        putBytes('web', UNIT, encodeUnit({ character: { ...bareUnit().character, globalLore: [{ key: 'k', comment: 'c', content: 'x', mode: 'normal', insertorder: 1, alwaysActive: false, secondkey: '', selective: false }] } }))
 
         await restoreArchivedForWrite('member')
 
@@ -828,7 +781,7 @@ describe('a stored character that lacks default fields, reached by a plugin or a
     test('reproducer: reading an archived character returns a copy that has the default fields, and changes nothing stored', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, encodeUnit(bareUnit()))
+        putBytes('web', UNIT, encodeUnit(bareUnit()))
         const stubBefore = JSON.stringify(stub)
 
         const result = await readArchivedCharacter(stub)
@@ -840,13 +793,13 @@ describe('a stored character that lacks default fields, reached by a plugin or a
         expect(slot(0)).toBe(stub)
         expect(JSON.stringify(stub)).toBe(stubBefore)
         expect(vi.mocked(markCharacterForSave)).not.toHaveBeenCalled()
-        expect(hasBytes('opfs', UNIT)).toBe(true)
+        expect(hasBytes('web', UNIT)).toBe(true)
     })
 
     test('guard: the copy for an export stays verbatim, without the default fields', async () => {
         const stub = placeholder()
         installDb([stub])
-        putBytes('opfs', UNIT, encodeUnit(bareUnit()))
+        putBytes('web', UNIT, encodeUnit(bareUnit()))
 
         const result = await readColdCharacterCopy(stub)
 

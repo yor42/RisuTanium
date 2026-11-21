@@ -5,7 +5,9 @@
  * are the real ones, so an open restore run is the page's own signal, not a flag of the test. `navigator` is stubbed per
  * case with a lock manager whose query answers what the case sets.
  *
- * Over a real `indexeddb` (or `tauri`) session on a seeded memory backend that holds 30 orphans. A mocked lock manager says
+ * Over a `node` session (one Node world: the semantic store and the backend over it, with the aged dependencies) or a `tauri`
+ * session on a seeded backend that holds 30 orphans. A Node pass is aged, so its first pass records and deletes nothing; a
+ * run that is not refused and reports its age phase is what shows the page facts let the pass go. A mocked lock manager says
  * nothing about a browser's.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -47,7 +49,8 @@ vi.mock(import('src/ts/drive/storeImport'), () => ({
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { beginRestoreRun } from 'src/ts/drive/restoreInProgress'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
-import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
+import type { ByteStore } from 'src/ts/storage/store/contract'
+import { createMemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { encodeUnit, newUnitKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { runAutoGc } from 'src/ts/storage/store2/gc/autoGc'
@@ -56,20 +59,23 @@ import { Store2Session } from 'src/ts/storage/store2/session'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
-import { flushConfirming } from './flushConfirmBackend'
+import { flushConfirming, nodeWorld } from './flushConfirmBackend'
 
 const env = testEnv(createClock(), 77)
 const SHARED = { name: STORAGE_TAB_LOCK_NAME, mode: 'shared' }
 
 interface Opened {
     session: Store2Session
-    memory: MemoryBackend
+    memory: Store2Backend
+    /** The page's byte store: the Node world's for a node session, none for a tauri one. */
+    store: ByteStore | undefined
     orphans: string[]
     base: string
 }
 
-async function open(kind: 'indexeddb' | 'tauri'): Promise<Opened> {
-    const memory = createMemoryBackend()
+async function open(kind: 'node' | 'tauri'): Promise<Opened> {
+    const world = kind === 'node' ? nodeWorld() : null
+    const memory = world?.backend ?? createMemoryBackend()
     const db = {
         formatversion: 5, botPresetsId: 0, botPresets: [{ name: 'test-preset' }], modules: [], loadouts: [], plugins: [],
         pluginCustomStorage: {}, mainPrompt: 'live', characters: [],
@@ -85,8 +91,11 @@ async function open(kind: 'indexeddb' | 'tauri'): Promise<Opened> {
     if (parsed.status !== 'parsed' || parsed.value.current === null) {
         throw new Error('The seeded store has no current manifest.')
     }
-    const session = await Store2Session.open(createMemoryByteStore(), { kind, backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
-    return { session, memory, orphans, base: parsed.value.current.key }
+    const session = world === null
+        ? await Store2Session.open(createMemoryByteStore(), { kind, backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
+        : await Store2Session.open(world.store, { kind, backend: memory, upstreamMainFile: async () => false })
+    expect(session.decision, 'the page boots normally on its seeded profile').toMatchObject({ mode: 'normal' })
+    return { session, memory, store: world?.store, orphans, base: parsed.value.current.key }
 }
 
 async function left(opened: Opened): Promise<number> {
@@ -104,7 +113,7 @@ function stubNavigatorLocks(locks: unknown): void {
 }
 
 async function run(opened: Opened): Promise<GcResult | null> {
-    return await runAutoGc(opened.session)
+    return await runAutoGc(opened.session, undefined, opened.store)
 }
 
 beforeEach(() => {
@@ -134,17 +143,20 @@ describe('the live facts of the clean-up pass', () => {
         expect(await left(opened)).toBe(30)
     })
 
-    test('guard (d): one presence holder, the own claim true and the own base the current deletes the orphans', async () => {
-        const opened = await open('indexeddb')
+    test('guard (d): one presence holder, the own claim true and the own base the current lets the aged pass run: it records all 30 orphans and is neither refused nor stopped', async () => {
+        const opened = await open('node')
         stubLocks(async () => ({ held: [SHARED], pending: [] }))
         page.ownBase = opened.base
 
-        expect(await run(opened)).toEqual({ status: 'done', deleted: 30, batches: 2 })
-        expect(await left(opened)).toBe(0)
+        const result = await run(opened)
+
+        expect(result).toMatchObject({ status: 'done', deleted: 0, age: { phase: 'recorded', candidates: 30, recordedItems: 30 } })
+        expect(result).not.toHaveProperty('stopped')
+        expect(await left(opened)).toBe(30)
     })
 
     test('reproducer (b): a page whose own presence claim is false refuses other-tab', async () => {
-        const opened = await open('indexeddb')
+        const opened = await open('node')
         stubLocks(async () => ({ held: [SHARED], pending: [] }))
         page.ownBase = opened.base
         page.ownPresence = false
@@ -154,7 +166,7 @@ describe('the live facts of the clean-up pass', () => {
     })
 
     test('reproducer (e): no presence holder in the snapshot, with the own claim true, refuses other-tab', async () => {
-        const opened = await open('indexeddb')
+        const opened = await open('node')
         stubLocks(async () => ({ held: [], pending: [] }))
         page.ownBase = opened.base
 
@@ -165,17 +177,20 @@ describe('the live facts of the clean-up pass', () => {
     test.each([
         ['locks undefined (plain HTTP)', undefined],
         ['locks null (a test host)', null],
-    ])('guard (c): %s refuses no-web-locks, read at call time and not from a support flag', async (_name, locks) => {
-        const opened = await open('indexeddb')
+    ])('guard (c): %s does not refuse a Node page (the age bounds the unproven reader), read at call time and not from a support flag', async (_name, locks) => {
+        const opened = await open('node')
         stubNavigatorLocks(locks)
         page.ownBase = opened.base
 
-        expect(await run(opened)).toMatchObject({ status: 'refused', reason: 'no-web-locks' })
+        const result = await run(opened)
+
+        expect(result).toMatchObject({ status: 'done', deleted: 0, age: { phase: 'recorded', candidates: 30 } })
+        expect(result).not.toHaveProperty('stopped')
         expect(await left(opened)).toBe(30)
     })
 
     test('guard (f): an own base that is not the commit key\'s current refuses stale-base', async () => {
-        const opened = await open('indexeddb')
+        const opened = await open('node')
         stubLocks(async () => ({ held: [SHARED], pending: [] }))
         page.ownBase = 'not-the-current-manifest'
 
@@ -184,7 +199,7 @@ describe('the live facts of the clean-up pass', () => {
     })
 
     test('guard (g): no settled own base (null) refuses stale-base', async () => {
-        const opened = await open('indexeddb')
+        const opened = await open('node')
         stubLocks(async () => ({ held: [SHARED], pending: [] }))
         page.ownBase = null
 

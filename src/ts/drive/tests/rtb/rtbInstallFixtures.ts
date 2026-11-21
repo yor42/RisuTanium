@@ -161,7 +161,7 @@ export async function planOfBytes(bytes: Uint8Array, options: PlanOptions = {}):
         probePieceStore: async () => { },
         assetLimit: () => options.node?.assetLimit ?? Number.MAX_SAFE_INTEGER,
         inlayLimit: () => options.node?.inlayLimit ?? Number.MAX_SAFE_INTEGER,
-        rule: async () => options.rule ?? { kind: 'indexeddb', platform: 'posix' },
+        rule: async () => options.rule ?? { kind: 'tauri', platform: 'posix' },
         sizedListing: async () => options.listing ?? null,
     }
     const { assets, inlays } = await planAssets(verdict.verified.index, verdict.verified.inlays, deps)

@@ -1,6 +1,5 @@
-import { getAppStore, pageStoreIsIndexedDb, pageStoreIsOpfsTransitional } from 'src/ts/storage/store/appStore'
+import { getAppStore } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
-import { WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { getPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { isAppInitiatedReload } from 'src/ts/reloadGuard'
 import { busyKinds } from '../memory/busyActions'
@@ -39,23 +38,18 @@ import {
  *   old store or whose body cannot be read.
  *   Only a failure of the app store write leaves the copy unfinished for the
  *   next start, and repeated write failures end this start's copy; a quota
- *   failure or too little free space ends it at once.
+ *   failure ends it at once.
  * - Completion is recorded with the residual ids; a recorded start lists and
  *   reads nothing.
  */
 
 const DONE_KEY = 'inlayCopyDone'
 const LOCK_NAME = 'risu-inlay-copy'
-const MIB = 1024 * 1024
-const MIN_HEADROOM_BYTES = 64 * MIB
-const HEADROOM_FRACTION = 0.1
 const MAX_CONSECUTIVE_FAILURES = 3
 
 export interface InlayCopyEnvironment {
     /** Where the completion record is kept; `null` when there is no storage. */
     flags: Pick<Storage, 'getItem' | 'setItem'> | null
-    /** The browser's storage estimate; `undefined` when it has none. */
-    estimate: () => Promise<{ quota?: number, usage?: number } | undefined>
     /** Runs `work` unless another tab of this browser is copying; resolves `false` then. */
     withTabLock: (work: () => Promise<void>) => Promise<boolean>
 }
@@ -67,7 +61,7 @@ export type InlayCopyOutcome =
     | 'not-run'
     /** Another tab is copying. */
     | 'busy'
-    /** This start's copy ended early: a quota failure, too little room, or repeated write failures. */
+    /** This start's copy ended early: a quota failure, or repeated write failures. */
     | 'stopped'
     /** Every entry is copied or residue, and completion is recorded. */
     | 'done'
@@ -77,7 +71,6 @@ export type InlayCopyOutcome =
 export function browserEnvironment(): InlayCopyEnvironment {
     return {
         flags: typeof localStorage === 'undefined' ? null : localStorage,
-        estimate: async () => navigator.storage?.estimate?.(),
         withTabLock: async (work) => {
             const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
             if (!locks) {
@@ -123,16 +116,7 @@ function valueSize(value: InlayAsset): number | null {
     return typeof value.data === 'string' ? value.data.length * 3 : null
 }
 
-export async function hasRoom(env: InlayCopyEnvironment, size: number): Promise<boolean> {
-    const estimate = await env.estimate()
-    if (!estimate || typeof estimate.quota !== 'number' || typeof estimate.usage !== 'number') {
-        return true
-    }
-    const headroom = Math.max(MIN_HEADROOM_BYTES, estimate.quota * HEADROOM_FRACTION)
-    return estimate.quota - estimate.usage - size >= headroom
-}
-
-type EntryOutcome = 'copied' | 'skipped' | 'residue' | 'failed' | 'no-room' | 'quota'
+type EntryOutcome = 'copied' | 'skipped' | 'residue' | 'failed' | 'quota'
 
 /** The ids this page copied into the app store; the cleanup pass leaves their old entries to a later start. */
 const copiedThisPage = new Set<string>()
@@ -141,12 +125,12 @@ export function resetInlayCopyForTests(): void {
     copiedThisPage.clear()
 }
 
-async function copyEntry(store: ByteStore, id: string, checkRoom: ((size: number) => Promise<boolean>) | null): Promise<EntryOutcome> {
-    return await withInlayLock(id, () => copyEntryLocked(store, id, checkRoom))
+async function copyEntry(store: ByteStore, id: string): Promise<EntryOutcome> {
+    return await withInlayLock(id, () => copyEntryLocked(store, id))
 }
 
 /** `copyEntry` for a caller that already holds `withInlayLock(id)`. */
-async function copyEntryLocked(store: ByteStore, id: string, checkRoom: ((size: number) => Promise<boolean>) | null): Promise<EntryOutcome> {
+async function copyEntryLocked(store: ByteStore, id: string): Promise<EntryOutcome> {
     let value: InlayAsset | null | undefined
     try {
         value = await legacyInlayStore.getItem<InlayAsset | null>(id)
@@ -164,16 +148,8 @@ async function copyEntryLocked(store: ByteStore, id: string, checkRoom: ((size: 
     if (size === null || size > inlayAttachmentLimit(value.type)) {
         return 'residue'
     }
-    // A string body is encoded whole before it is stored, so on the browser's plain store it keeps the bound a whole
-    // value has there however far the store limit rises; a Blob body is stored by slices and is not held back.
-    if (typeof value.data === 'string' && size > WEB_ASSET_LIMIT_BYTES && await pageStoreIsIndexedDb()) {
-        return 'residue'
-    }
     if (await hasAppInlay(store, id)) {
         return 'skipped'
-    }
-    if (checkRoom !== null && !(await checkRoom(size))) {
-        return 'no-room'
     }
     try {
         // The old entry stays, so an object URL already rendered from it stays valid; the next render reads the app store record.
@@ -200,7 +176,7 @@ export async function runInlayCopy(env: InlayCopyEnvironment = browserEnvironmen
             return 'settled'
         }
         const store = await getAppStore()
-        if (await pageStoreIsOpfsTransitional() || getPageStorageMode().kind === 'read-only') {
+        if (getPageStorageMode().kind === 'read-only') {
             return 'not-run'
         }
         let outcome: InlayCopyOutcome = 'not-run'
@@ -222,8 +198,6 @@ async function copyAll(store: ByteStore, env: InlayCopyEnvironment): Promise<Inl
         console.warn('The old inlay store could not be listed:', error)
         return 'not-run'
     }
-    const webStore = await pageStoreIsIndexedDb()
-    const checkRoom = webStore ? (size: number) => hasRoom(env, size) : null
     const { keys: listed } = await listAppInlayKeys(store)
     const residual: string[] = []
     let incomplete = false
@@ -235,12 +209,12 @@ async function copyAll(store: ByteStore, env: InlayCopyEnvironment): Promise<Inl
         }
         let result: EntryOutcome
         try {
-            result = await copyEntry(store, id, checkRoom)
+            result = await copyEntry(store, id)
         } catch (error) {
             console.warn('An inlay could not be copied:', error)
             result = 'failed'
         }
-        if (result === 'quota' || result === 'no-room') {
+        if (result === 'quota') {
             return 'stopped'
         }
         if (result === 'residue') {
@@ -370,7 +344,7 @@ async function oldValueLength(value: InlayAsset): Promise<number | null> {
     return (await inlayBodyOf(value.data))?.bytes.length ?? null
 }
 
-async function cleanEntryLocked(store: ByteStore, id: string, checkRoom: ((size: number) => Promise<boolean>) | null): Promise<CleanupStep> {
+async function cleanEntryLocked(store: ByteStore, id: string): Promise<CleanupStep> {
     if (copiedThisPage.has(id)) {
         return { kind: 'skipped' }
     }
@@ -398,7 +372,7 @@ async function cleanEntryLocked(store: ByteStore, id: string, checkRoom: ((size:
         return { kind: 'failed' }
     }
     if (record === null) {
-        const outcome = await copyEntryLocked(store, id, checkRoom)
+        const outcome = await copyEntryLocked(store, id)
         if (outcome === 'copied') {
             return { kind: 'copied' }
         }
@@ -456,7 +430,6 @@ async function cleanOldStore(store: ByteStore, env: InlayCopyEnvironment): Promi
         }
         return 'settled'
     }
-    const checkRoom = (await pageStoreIsIndexedDb()) ? (size: number) => hasRoom(env, size) : null
     let consecutiveFailures = 0
     try {
         for (const id of candidates) {
@@ -465,7 +438,7 @@ async function cleanOldStore(store: ByteStore, env: InlayCopyEnvironment): Promi
             }
             let step: CleanupStep
             try {
-                step = await withInlayLock(id, () => cleanEntryLocked(store, id, checkRoom))
+                step = await withInlayLock(id, () => cleanEntryLocked(store, id))
             } catch (error) {
                 console.warn('An old inlay entry could not be cleaned up:', error)
                 step = { kind: 'failed' }
@@ -498,7 +471,7 @@ async function cleanOldStore(store: ByteStore, env: InlayCopyEnvironment): Promi
 export async function runInlayOldStoreCleanup(env: InlayCopyEnvironment = browserEnvironment()): Promise<InlayCleanupOutcome> {
     try {
         const store = await getAppStore()
-        if (await pageStoreIsOpfsTransitional() || getPageStorageMode().kind === 'read-only') {
+        if (getPageStorageMode().kind === 'read-only') {
             return 'not-run'
         }
         let outcome: InlayCleanupOutcome = 'not-run'

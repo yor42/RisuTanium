@@ -313,7 +313,7 @@ vi.mock('src/ts/drive/exportModules', async (importOriginal) => {
 // The assets are listed and read through the page's byte store; `world.files` is what it holds.
 vi.mock(import('src/ts/storage/store/appStore'), async () => {
     const { appStoreModuleOver, forageOverMap } = await import('src/ts/storage/tests/appStoreMock')
-    return { ...appStoreModuleOver(() => forageOverMap(world.files)), getAppStoreKind: async () => 'indexeddb' } as unknown as typeof import('src/ts/storage/store/appStore')
+    return { ...appStoreModuleOver(() => forageOverMap(world.files)), getAppStoreKind: async () => 'node' } as unknown as typeof import('src/ts/storage/store/appStore')
 })
 
 //#endregion
@@ -469,7 +469,7 @@ describe('a full backup on the web', () => {
         expect((await outcome).status).toBe('saved')
         expect(taskHostView()?.state).toBe('done')
         expect(taskHostView()?.result?.headline).toBe(language.backupTaskDone)
-        expect(taskHostView()?.result?.summary).toEqual([downloadNotice('Success')])
+        expect(taskHostView()?.result?.summary).toEqual([downloadNotice(language.rtbExportSaved)])
         expect(alertNormal).not.toHaveBeenCalled()
     })
 
@@ -805,7 +805,25 @@ describe('endings', () => {
         expect(atConfirm).toEqual([false, false])
         expect(taskHostView()?.title).toBe(language.backupTaskPartialTitle)
         expect(taskHostView()?.steps.map((step) => step.label)).not.toContain(language.backupStepInlays)
-        expect(taskHostView()?.result?.summary).toEqual([downloadNotice('Success'), language.partialBackupInlaysNotIncluded])
+        expect(taskHostView()?.result?.summary).toEqual([downloadNotice(language.rtbExportSaved), language.partialBackupInlaysNotIncluded])
+    })
+
+    test('BK9 (c) (R) on Tauri the done summary of a full clean save is the rtbExportSaved line, not a bare "Success"', async () => {
+        platformBox.isTauri = true
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        expect(taskHostView()?.result?.summary).toEqual([language.rtbExportSaved])
+    })
+
+    test('BK9 (d) (R) on Tauri the done summary of a partial clean save is the rtbExportSaved line plus the inlays sentence', async () => {
+        platformBox.isTauri = true
+
+        const outcome = await SavePartialLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        expect(taskHostView()?.result?.summary).toEqual([language.rtbExportSaved, language.partialBackupInlaysNotIncluded])
     })
 
     test('BK14 (R) no wait is ever posted and no card text carries a percent sign over a full run', async () => {

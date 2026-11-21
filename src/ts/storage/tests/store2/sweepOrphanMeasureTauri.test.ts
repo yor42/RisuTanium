@@ -119,10 +119,10 @@ describe('the console action chooses the probe by store kind and operating syste
     })
 
     test('reproducer: a store that is not the Tauri files store never uses the probe, whatever the OS', async () => {
-        const { handle } = await handleFor('indexeddb')
+        const { handle } = await handleFor('node')
 
         const report = await handle.orphans()
 
-        expect(report).toMatchObject({ status: 'done', storeKind: 'indexeddb', bytesSource: 'read' })
+        expect(report).toMatchObject({ status: 'done', storeKind: 'node', bytesSource: 'read' })
     })
 })

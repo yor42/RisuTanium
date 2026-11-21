@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../alert', () => ({ alertError: vi.fn() }))
 vi.mock('../globalApi.svelte', () => ({ globalFetch: vi.fn(), readImage: vi.fn() }))
-vi.mock('../kei/kei', () => ({ keiServerURL: '' }))
 vi.mock('../storage/database.svelte', () => ({ getDatabase: vi.fn() }))
 vi.mock('../stores.svelte', () => ({ CharEmotion: { set: vi.fn() } }))
 vi.mock('./processzip', () => ({ processZip: vi.fn() }))
@@ -11,10 +10,11 @@ vi.mock('./request/request', () => ({ requestChatData: vi.fn() }))
 import { applyImageOrientation, generateAIImage } from './stableDiff'
 import { getDatabase, type character } from '../storage/database.svelte'
 import { globalFetch } from '../globalApi.svelte'
+import { absorbLegacyForTest } from '../connections/tests/legacyFixture'
 
 describe('DALL-E reads one line of a multi-line OpenAI key', () => {
   test('the request carries the current line and never the whole value', async () => {
-    vi.mocked(getDatabase).mockReturnValue({ sdProvider: 'dalle', openAIKey: 'sk-test-A\nsk-test-B', dallEQuality: '' } as unknown as ReturnType<typeof getDatabase>)
+    vi.mocked(getDatabase).mockReturnValue(absorbLegacyForTest({ sdProvider: 'dalle', openAIKey: 'sk-test-A\nsk-test-B', dallEQuality: '' }) as unknown as ReturnType<typeof getDatabase>)
     vi.mocked(globalFetch).mockResolvedValue({ ok: true, data: { data: [{ b64_json: 'AAAA' }] } } as unknown as Awaited<ReturnType<typeof globalFetch>>)
 
     const image = await generateAIImage('a prompt', {} as character, '', 'inlay')

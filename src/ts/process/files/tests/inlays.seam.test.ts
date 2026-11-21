@@ -185,7 +185,6 @@ describe('the copy of the old store on a store that keeps Blobs', () => {
         flags = new Map()
         env = {
             flags: { getItem: (key) => flags.get(key) ?? null, setItem: (key, value) => { flags.set(key, value) } },
-            estimate: async () => undefined,
             withTabLock: async (work) => { await work(); return true },
         }
     })

@@ -199,3 +199,19 @@ describe('setDatabase preset list and active index', () => {
         expect(loaded.hypaV3PresetId).toBe(2)
     })
 })
+
+describe('setDatabase ChroMemory keys', () => {
+    test('guard: a database without the keys gets none (passes before and after)', () => {
+        setDatabase({ pluginCustomStorage: {} } as unknown as Database)
+        const db = getDatabase()
+        expect(Object.hasOwn(db, 'ltmEngine')).toBe(false)
+        expect(Object.hasOwn(db, 'ltmSettings')).toBe(false)
+    })
+
+    test('guard: a bad-shaped value is left byte-identical (passes before and after)', () => {
+        setDatabase({ ltmEngine: 'x', ltmSettings: 'bad', pluginCustomStorage: {} } as unknown as Database)
+        const db = getDatabase()
+        expect(db.ltmEngine).toBe('x')
+        expect(db.ltmSettings).toBe('bad')
+    })
+})

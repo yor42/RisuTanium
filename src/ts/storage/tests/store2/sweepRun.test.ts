@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The deleting pass of the asset sweep (`store2/sweep/run.ts`): the two-pass age rule, the keep-set members, the refusals and
- * stops, the per-delete checks, the deletion hold and the freshness probe of both backend kinds.
+ * stops, the per-delete checks, the deletion hold and the freshness probe of a Tauri page. The Node page's pass has its own file (`sweepRunNode.test.ts`).
  *
  * Stand-ins: the closure is real frames in the memory backend read through the production reader; the page store is a memory
  * byte store; the page's live facts (resident names, written names, other tabs, stop conditions) are functions of the test.
@@ -45,7 +45,7 @@ interface World {
     env: AssetSweepEnv
 }
 
-function newWorld(kind: AppStoreKind = 'indexeddb', over: Partial<AssetSweepEnv> = {}): World {
+function newWorld(kind: AppStoreKind = 'tauri', over: Partial<AssetSweepEnv> = {}): World {
     const backend = createMemoryBackend()
     const store = createMemoryByteStore()
     const world: World = {
@@ -143,7 +143,7 @@ function orphanNames(count: number): string[] {
 }
 
 /** Current, retained and pinned manifests each refer to one asset, the config to another; `orphans` are stored and referred to by nothing. */
-async function libraryWorld(orphans: readonly string[], kind: AppStoreKind = 'indexeddb', over: Partial<AssetSweepEnv> = {}): Promise<World> {
+async function libraryWorld(orphans: readonly string[], kind: AppStoreKind = 'tauri', over: Partial<AssetSweepEnv> = {}): Promise<World> {
     const world = newWorld(kind, over)
     const current = await addManifest(world, { config: ['cfg.png'], characters: [{ u: 'a'.repeat(26), assets: ['cur.png'] }] }, 1)
     const retained = await addManifest(world, { characters: [{ u: 'b'.repeat(26), assets: ['ret.png'] }] }, 2)
@@ -306,7 +306,7 @@ describe('what ends the pass before any delete', () => {
     })
 
     test('C15: a count above the limit, and a store that cannot count, delete nothing and write nothing', async () => {
-        const world = await libraryWorld(['orphan.png'], 'indexeddb', { limit: 3 })
+        const world = await libraryWorld(['orphan.png'], 'tauri', { limit: 3 })
         world.store.countPrefix = async () => 5
 
         expect(await runAssetSweep(world.env)).toEqual({ status: 'refused', reason: 'over-limit' })
@@ -335,7 +335,7 @@ describe('what ends the pass before any delete', () => {
         expect(has(world, 'orphan.png')).toBe(true)
     })
 
-    test.each(['indexeddb', 'tauri'] as const)('C16: a commit key that moves between the gate and the record write writes no record (%s)', async (kind) => {
+    test.each(['tauri'] as const)('C16: a commit key that moves between the gate and the record write writes no record (%s)', async (kind) => {
         const world = await libraryWorld(['orphan.png'], kind)
         const openGate = world.openGate
         world.openGate = async deleter => {
@@ -350,22 +350,6 @@ describe('what ends the pass before any delete', () => {
         expect(world.store.writes).toEqual([])
     })
 
-    // A Node page runs the sweep (sweepRunNode.test.ts); only the transitional OPFS page still skips it.
-    test.each([['opfs-transitional']] as const)('C12: a %s page reads, lists, writes and deletes nothing and never opens the gate', async (kind) => {
-        const world = await libraryWorld(['orphan.png'], kind)
-        const openGate = vi.fn(world.openGate)
-        world.openGate = openGate
-        world.store.reads.length = 0
-
-        expect(await runAssetSweep(world.env)).toEqual({ status: 'skipped' })
-
-        expect(openGate).not.toHaveBeenCalled()
-        expect(world.store.reads).toEqual([])
-        expect(world.store.lists).toEqual([])
-        expect(world.store.writes).toEqual([])
-        expect(world.store.deletes).toEqual([])
-    })
-
     test('C12: a page with no backend is skipped without a read', async () => {
         const world = await libraryWorld(['orphan.png'], 'tauri')
         const session: AssetSweepSession = { kind: 'tauri', backend: null, idleReason: null, openGate: world.openGate }
@@ -376,7 +360,7 @@ describe('what ends the pass before any delete', () => {
 })
 
 describe('what the pass keeps at the moment of each delete', () => {
-    test.each(['indexeddb', 'tauri'] as const)('C8: an asset this page wrote after the keep-set was built is kept, also under another case (%s)', async (kind) => {
+    test.each(['tauri'] as const)('C8: an asset this page wrote after the keep-set was built is kept, also under another case (%s)', async (kind) => {
         const world = await libraryWorld(['late.png', 'other.png'], kind)
         await recordThenAge(world)
         // `now` is read once per round, after the keep-set is built.
@@ -441,32 +425,6 @@ describe('what the pass keeps at the moment of each delete', () => {
 })
 
 describe('what ends the pass between and at deletes', () => {
-    test('C10: other tabs ask before every delete on the web: the second delete is refused and the pass stops with one delete and no record', async () => {
-        const world = await libraryWorld(['o1.png', 'o2.png', 'o3.png'])
-        await recordThenAge(world)
-        let calls = 0
-        world.env.peers = async () => {
-            calls++
-            return calls >= 3 ? 'others' : 'alone'
-        }
-
-        const result = done(await runAssetSweep(world.env))
-
-        expect(result).toMatchObject({ stopped: 'other-tab', deleted: 1, recorded: false })
-        expect(world.store.deletes).toEqual(['assets/o1.png'])
-        expect(world.store.writes).toEqual([])
-    })
-
-    test.each([['unsupported', 'no-web-locks'], ['others', 'other-tab']] as const)('C10: a web page whose tab query says %s reads and deletes nothing', async (answer, reason) => {
-        const world = await libraryWorld(['o1.png'])
-        world.env.peers = async () => answer
-        world.store.reads.length = 0
-
-        expect(await runAssetSweep(world.env)).toEqual({ status: 'refused', reason })
-        expect(world.store.reads).toEqual([])
-        expect(world.store.lists).toEqual([])
-    })
-
     test('C10: a Tauri page never asks about other tabs', async () => {
         const world = await libraryWorld(['o1.png'], 'tauri')
         const peers = vi.fn(async () => 'others' as const)
@@ -512,7 +470,7 @@ describe('what ends the pass between and at deletes', () => {
         expect(has(world, orphans[25])).toBe(true)
     })
 
-    test.each(['indexeddb', 'tauri'] as const)('C6: a fence that appears between batches stops the pass before the next batch (%s)', async (kind) => {
+    test.each(['tauri'] as const)('C6: a fence that appears between batches stops the pass before the next batch (%s)', async (kind) => {
         const orphans = orphanNames(26)
         const world = await libraryWorld(orphans, kind)
         await recordThenAge(world)
@@ -527,7 +485,7 @@ describe('what ends the pass between and at deletes', () => {
         expect(world.store.writes).toEqual([])
     })
 
-    test.each(['indexeddb', 'tauri'] as const)('C7: a commit between batches rebuilds the keep-set, so an asset the new commit refers to survives (%s)', async (kind) => {
+    test.each(['tauri'] as const)('C7: a commit between batches rebuilds the keep-set, so an asset the new commit refers to survives (%s)', async (kind) => {
         const orphans = orphanNames(26)
         const world = await libraryWorld(orphans, kind)
         await recordThenAge(world)
@@ -543,7 +501,7 @@ describe('what ends the pass between and at deletes', () => {
         expect(await readSweepRecord(world.store)).toMatchObject({ status: 'ok', value: { at: world.now, items: [] } })
     })
 
-    test.each(['indexeddb', 'tauri'] as const)('C7: a commit key that moves in every round ends the pass after two rounds with nothing deleted (%s)', async (kind) => {
+    test.each(['tauri'] as const)('C7: a commit key that moves in every round ends the pass after two rounds with nothing deleted (%s)', async (kind) => {
         const world = await libraryWorld(['o1.png'], kind)
         await recordThenAge(world)
         const openGate = world.openGate
@@ -675,7 +633,7 @@ function planned(result: AssetSweepResult) {
 
 describe('the manual clean-up entry', () => {
     test('RR1: a manual delete runs over the automatic limit and with an unknown count, and writes no record', async () => {
-        const world = await libraryWorld(['orphan.png'], 'indexeddb', { limit: 3 })
+        const world = await libraryWorld(['orphan.png'], 'tauri', { limit: 3 })
         world.store.countPrefix = async () => 5
 
         const over = done(await deleteOf(world, ['orphan.png']))
@@ -695,7 +653,7 @@ describe('the manual clean-up entry', () => {
         expect(world.store.writes).toEqual([])
     })
 
-    test.each(['tauri', 'indexeddb'] as const)('RR2: a manual delete with no record deletes on the first run and writes none (%s)', async (kind) => {
+    test.each(['tauri'] as const)('RR2: a manual delete with no record deletes on the first run and writes none (%s)', async (kind) => {
         const world = await libraryWorld(['orphan.png'], kind)
 
         const result = done(await deleteOf(world, ['orphan.png']))
@@ -717,20 +675,18 @@ describe('the manual clean-up entry', () => {
         expect(has(world, 'b.png')).toBe(true)
     })
 
-    test('G10: a manual delete of an indexeddb or tauri page leaves an existing record as it was', async () => {
-        for (const kind of ['indexeddb', 'tauri'] as const) {
-            const world = await libraryWorld(['orphan.png'], kind)
-            await recordThenAge(world)
-            const before = await world.store.read(SWEEP_KEY)
+    test('G10: a manual delete of a tauri page leaves an existing record as it was', async () => {
+        const world = await libraryWorld(['orphan.png'], 'tauri')
+        await recordThenAge(world)
+        const before = await world.store.read(SWEEP_KEY)
 
-            expect(done(await deleteOf(world, ['orphan.png']))).toMatchObject({ deleted: 1, recorded: false })
+        expect(done(await deleteOf(world, ['orphan.png']))).toMatchObject({ deleted: 1, recorded: false })
 
-            expect(world.store.writes).toEqual([])
-            expect((await world.store.read(SWEEP_KEY)).bytes).toEqual(before.bytes)
-        }
+        expect(world.store.writes).toEqual([])
+        expect((await world.store.read(SWEEP_KEY)).bytes).toEqual(before.bytes)
     })
 
-    test.each(['tauri', 'indexeddb'] as const)('G6: a commit between batches rebuilds, the filter is worked out again and the asset the new commit names survives (%s)', async (kind) => {
+    test.each(['tauri'] as const)('G6: a commit between batches rebuilds, the filter is worked out again and the asset the new commit names survives (%s)', async (kind) => {
         const orphans = orphanNames(26)
         const world = await libraryWorld(orphans, kind)
         world.env.pace = async () => {
@@ -789,13 +745,14 @@ describe('the manual clean-up entry', () => {
 
     test('G5: a manual delete keeps an asset this page wrote after the keep-set and a name that became resident for a later batch', async () => {
         const written = await libraryWorld(['late.png', 'other.png'])
-        // The first answer opens the round; the later ones come before each delete, after the keep-set was built.
+        // The stop check is asked at the round start, at the batch start and then before each delete: the third answer is the
+        // first delete's, after the keep-set was built.
         let asked = 0
-        written.env.peers = async () => {
-            if (++asked > 1) {
+        written.env.shouldStop = () => {
+            if (++asked >= 3) {
                 written.written.add('assets/LATE.png')
             }
-            return 'alone'
+            return false
         }
 
         expect(done(await deleteOf(written, ['late.png', 'other.png']))).toMatchObject({ deleted: 1, keptLive: 1 })
@@ -812,20 +769,7 @@ describe('the manual clean-up entry', () => {
         expect(has(resident, orphans[25])).toBe(true)
     })
 
-    test('G7: a web manual delete refuses unsupported and others before any read', async () => {
-        for (const [answer, reason] of [['unsupported', 'no-web-locks'], ['others', 'other-tab']] as const) {
-            const world = await libraryWorld(['o1.png'])
-            world.env.peers = async () => answer
-            world.store.reads.length = 0
-
-            expect(await deleteOf(world, ['o1.png'])).toEqual({ status: 'refused', reason })
-            expect(await planOf(world)).toEqual({ status: 'refused', reason })
-            expect(world.store.reads).toEqual([])
-            expect(world.store.lists).toEqual([])
-        }
-    })
-
-    test.each(['tauri', 'indexeddb'] as const)('G11: the plan names exactly what the delete step removes and reads only (%s)', async (kind) => {
+    test.each(['tauri'] as const)('G11: the plan names exactly what the delete step removes and reads only (%s)', async (kind) => {
         const world = await libraryWorld(['a.png', 'b.png'], kind)
 
         const plan = planned(await planOf(world))
@@ -853,7 +797,7 @@ describe('the manual clean-up entry', () => {
 describe('peersAllow', () => {
     const manuals = [undefined, { step: 'plan' }, { step: 'delete', approved: new Set<string>() }] as const
 
-    test.each(['indexeddb', 'node'] as const)('G14: the answer table of a %s page', (kind) => {
+    test.each(['node'] as const)('G14: the answer table of a %s page', (kind) => {
         for (const manual of manuals) {
             expect(peersAllow(kind, 'alone', manual)).toBe('go')
             expect(peersAllow(kind, 'others', manual)).toBe('other-tab')

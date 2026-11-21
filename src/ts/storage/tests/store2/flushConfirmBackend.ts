@@ -8,7 +8,11 @@
  * `listStore2` or `removeBatch` after a point) and can interleave a write at an exact call. A mocked success here is not
  * evidence of native backend behaviour.
  */
-import type { Store2Backend, Store2WriteResult } from 'src/ts/storage/store2/backend'
+import type { ByteStore } from 'src/ts/storage/store/contract'
+import { createNodeBackend, type Store2Backend, type Store2WriteResult } from 'src/ts/storage/store2/backend'
+import { encodeUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { GC_AGE_KEY } from 'src/ts/storage/store2/gc/unitAge'
+import { createNodeSemanticStore, type NodeSemanticStore } from './replay/nodeSemanticStore'
 
 export interface FlushConfirming {
     /** What the page's session is opened over. */
@@ -55,4 +59,42 @@ export function flushConfirming(inner: Store2Backend): FlushConfirming {
         before: null,
     }
     return control
+}
+
+/** One Node world: the byte store a Node page holds and the store2 backend over that same store. */
+export interface NodeWorld {
+    /** The semantic model of the server behind `store`, for planting and inspecting files without a request. */
+    readonly semantic: NodeSemanticStore
+    /** The page's byte store: the semantic store with the server clock the aged deletion reads. */
+    readonly store: ByteStore
+    /** What the session is opened over and what the deleter runs on; it shares revisions with `store`. */
+    readonly backend: Store2Backend
+}
+
+/**
+ * Test-only: a Node page's store and backend over one `createNodeSemanticStore()`. The model has the guarded routes but no
+ * server clock or revision listing, so the store adds `serverNow` from the test's own clock and `listRevisions` from the
+ * model's revisions; every deleter that needs the aged dependencies
+ * (`buildNodeGcAge`) therefore runs instead of being refused `capability-missing`. A pass here says nothing about the
+ * real server's clock.
+ */
+export function nodeWorld(): NodeWorld {
+    const semantic = createNodeSemanticStore()
+    const { guarded } = semantic.store
+    if (guarded === undefined) {
+        throw new Error('The Node semantic store offers no guarded operations.')
+    }
+    const store: ByteStore = {
+        ...semantic.store,
+        // The revisions the model holds, as the server lists them under a prefix.
+        listRevisions: async prefix => semantic.list(prefix).map(key => ({ key, rev: semantic.peek(key).revision })),
+        guarded: { ...guarded, serverNow: async () => Date.now() },
+    }
+    return { semantic, store, backend: createNodeBackend(store) }
+}
+
+/** An earlier pass's record naming each of `keys` as seen before, dated `ageMs` ago: the next aged pass may retire them. */
+export async function plantSeenUnits(world: NodeWorld, keys: readonly string[], ageMs: number = 25 * 60 * 60 * 1000): Promise<void> {
+    const items = keys.map((key): [string, null, number] => [key, null, 1])
+    await world.store.write(GC_AGE_KEY, encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - ageMs, items }), 'unconditional')
 }

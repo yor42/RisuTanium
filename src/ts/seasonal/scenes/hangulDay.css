@@ -1,0 +1,120 @@
+/*
+  Seasonal scene: hangulDay. Everything is scoped to rt-hg-* classes the scene adds. The final pose is the static
+  .rt-hg-final state; WAAPI animations (fill: both) cover the timeline. Tone: the host stamps [data-rt-sw-tone] on the
+  stage, the mark slot and the root (the word sits inside the root), so every light rule keys on that ancestor attribute.
+*/
+
+/* ---------- Families ---------- */
+/* EBS Hunminjeongeum SemiBold is declared by the host's font loader (font-display: block, capped). The scene applies
+   .rt-hg-ebs only after ctx.fonts.ready() resolved true, so the block period never hides text. The face's square body
+   draws about 80% of NanumSquare Neo's height at the same size, hence 1.12em to match the everyday wordmark. */
+.rt-hg-ebs {
+  font-family: 'EBS Hunminjeongeum', 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 400;
+  font-size: 1.12em;
+  line-height: calc(1.2em / 1.12);
+  letter-spacing: 0.01em;
+  font-synthesis: none;
+}
+.rt-hg-fb {
+  font-family: 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 900;
+  font-size: 1em;
+  line-height: 1.2em;
+  letter-spacing: 0;
+  font-synthesis: none;
+}
+
+/* ---------- Word: the first half in the everyday gradient, the second in ink ---------- */
+.rt-hg-word { --rt-hg-ink: rgb(255 255 255 / 0.92); }
+[data-rt-sw-tone="light"] .rt-hg-word { --rt-hg-ink: #0f172a; }
+
+.rt-hg-ko {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 1.2em;           /* of the word's font size when .rt-hg-fb; recomputed below for .rt-hg-ebs */
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.rt-hg-ko.rt-hg-ebs { height: calc(1.2em / 1.12); }
+.rt-hg-a, .rt-hg-b {
+  opacity: 0;
+  display: inline-block;
+  transform-origin: 0 55%;
+}
+.rt-hg-a {
+  background-image: linear-gradient(to bottom right, var(--nexus-core-from, #00a1ad), var(--nexus-core-to, #587bff));
+  background-size: var(--rt-hg-w, 4em) 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-hg-b { color: var(--rt-hg-ink); }
+
+/* Final pose: only the Korean wordmark is painted; the everyday text stays in the DOM (host-owned) but is hidden. */
+.rt-hg-word.rt-hg-final .rt-sw-text { visibility: hidden; opacity: 0; }
+.rt-hg-word.rt-hg-final .rt-hg-a,
+.rt-hg-word.rt-hg-final .rt-hg-b { opacity: 1; transform: none; }
+
+/* ---------- Stage: date line ---------- */
+.rt-hg-datebox {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  --rt-hg-date-ink: rgb(255 255 255 / 0.92);
+  --rt-hg-date-ink-2: rgb(255 255 255 / 0.68);
+}
+[data-rt-sw-tone="light"] .rt-hg-datebox {
+  --rt-hg-date-ink: #0f172a;
+  --rt-hg-date-ink-2: #475569;
+}
+.rt-hg-date {
+  display: inline-block;
+  font-size: var(--rt-hg-fs, 24px);
+  white-space: nowrap;
+  transform-origin: 0 50%;
+  opacity: 0;
+}
+.rt-hg-date.rt-hg-ebs { font-size: calc(var(--rt-hg-fs, 24px) * 1.12); }
+.rt-hg-date-num { color: var(--rt-hg-date-ink-2); }
+.rt-hg-date-day { color: var(--rt-hg-date-ink); }
+.rt-hg-datebox.rt-hg-final { display: none; }
+
+/* ---------- Mark slot: ink strokes and the dot ---------- */
+.rt-hg-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  --rt-hg-mark-ink: #f4efe6;          /* paper white on the dark canvas */
+  --rt-hg-every: #ffffff;
+}
+[data-rt-sw-tone="light"] .rt-hg-mark {
+  --rt-hg-mark-ink: #1c1917;          /* ink */
+  --rt-hg-every: #0f172a;
+}
+.rt-hg-every { transform-box: view-box; transform-origin: 50% 45.2%; }   /* the centroid (0,0) in the -73 -66 146 146 box */
+.rt-hg-dot { transform-box: fill-box; transform-origin: 50% 50%; }
+.rt-hg-every-ink { fill: var(--rt-hg-every); }
+.rt-hg-brush { fill: var(--rt-hg-mark-ink); }
+/* The reveal line inside each stroke's mask: white, wider (20) than the brush's widest point (16.8), round caps. */
+.rt-hg-stroke {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 20;
+  stroke-linecap: round;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+.rt-hg-dot { opacity: 0; }
+
+.rt-hg-mark.rt-hg-final .rt-hg-every { opacity: 0; }
+.rt-hg-mark.rt-hg-final .rt-hg-stroke { stroke-dashoffset: 0; }
+.rt-hg-mark.rt-hg-final .rt-hg-dot { opacity: 1; transform: none; }
+
+/* Under reduced motion the host never calls play(), so only the static final rules above apply. */

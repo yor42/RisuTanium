@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { injectAppStore, type AppStoreKind } from 'src/ts/storage/store/appStore'
-import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { chokePointInFlight, resetBusyActionsForTest } from '../../memory/busyActions'
 import { inlayBodyKey, inlayMetaKey } from '../inlayKeys'
 import { legacyInlayStore, readAppInlay } from '../inlayStore'
@@ -89,7 +89,7 @@ beforeEach(() => {
     h.os = 'windows'
     resetBusyActionsForTest()
     appStore = createMemoryByteStore()
-    injectAppStore(appStore, 'indexeddb')
+    injectAppStore(appStore, 'tauri')
 })
 
 /** The page runs on `kind`; a Node store records whether its server takes pieces. */
@@ -318,13 +318,8 @@ describe('the attachment size limit', () => {
     const GIB = 1024 * 1024 * 1024
     const MIB = 1024 * 1024
 
-    test('the attachment bound itself is 1 GiB; the IndexedDB store takes it, the transitional OPFS store keeps 200 MiB below it (reproducer: IndexedDB was 200 MiB before)', () => {
+    test('the attachment bound itself is 1 GiB', () => {
         expect(inlayLimits.attachmentBytes).toBe(GIB)
-        expect(WEB_ASSET_LIMIT_BYTES).toBe(200 * MIB)
-        useStoreKind('indexeddb')
-        expect(inlayAttachmentLimit()).toBe(GIB)
-        useStoreKind('opfs-transitional')
-        expect(inlayAttachmentLimit()).toBe(200 * MIB)
     })
 
     test('the desktop and Android store takes an inlay up to 1 GiB (reproducer: 200 MiB or 100 MiB before)', () => {
@@ -372,7 +367,7 @@ describe('the attachment size limit', () => {
     })
 
     test.each([false, true])('one byte over the limit is refused and writes nothing (Node: %s)', async (node) => {
-        useStoreKind(node ? 'node' : 'indexeddb', false)
+        useStoreKind(node ? 'node' : 'tauri', false)
         const limit = inlayAttachmentLimit()
         const fake = { name: 'clip.mp4', data: { byteLength: limit + 1 } as unknown as Uint8Array }
         const result = await postInlayAsset(fake)
@@ -382,7 +377,7 @@ describe('the attachment size limit', () => {
     })
 
     test.each([false, true])('a file exactly at the limit is accepted (Node: %s)', async (node) => {
-        useStoreKind(node ? 'node' : 'indexeddb', false)
+        useStoreKind(node ? 'node' : 'tauri', false)
         const saved = inlayLimits.attachmentBytes
         inlayLimits.attachmentBytes = 8
         try {

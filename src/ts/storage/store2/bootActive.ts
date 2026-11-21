@@ -20,7 +20,7 @@ import type { Store2Session } from './session'
  * record write, and a stale answer stops the pass; (3) the age record's intersection rule bounds a ghost write: it can
  * only delay a removal, never make a young asset look old, and the window between the probe and a removal is accepted
  * because batches are small. This applies to the automatic pass; a manual Tauri run writes no record, so (2) alone
- * protects it; (4) Node and IndexedDB have no stale-page notion, their compare tokens decide, so (1) alone
+ * protects it; (4) Node has no stale-page notion, its compare tokens decide, so (1) alone
  * applies.
  */
 
@@ -36,7 +36,7 @@ export interface Store2BootEnv {
 }
 
 /** Why a legacy profile is opened without any write. */
-export type Store2LegacyReadOnlyReason = 'opfs-transitional' | 'server-capability' | 'backend-unavailable'
+export type Store2LegacyReadOnlyReason = 'server-capability' | 'backend-unavailable'
 
 /** A notice the dispatch raises through its UI port. Informational ones are fire-and-forget. */
 export type Store2BootNotice =

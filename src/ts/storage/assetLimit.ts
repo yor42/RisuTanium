@@ -1,6 +1,6 @@
 import type { AppStoreKind } from './store/appStore'
 import type { ByteStore } from './store/contract'
-import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from './nodeBodyLimit'
+import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES } from './nodeBodyLimit'
 
 /**
  * The page's selected store and its kind, as `appStore.ts` last reported them. `appStore.ts` reports from its selection
@@ -19,18 +19,11 @@ export function selectedStoreIsNode(): boolean {
     return selected?.kind === 'node'
 }
 
-/** Whether the page's selected store is the browser's plain IndexedDB store; `false` before a selection and for a store injected without a kind. */
-export function selectedStoreIsIndexedDb(): boolean {
-    return selected?.kind === 'indexeddb'
-}
-
 /**
  * The largest asset or inlay body the page's selected store takes, in bytes. It is decided by the store kind
  * `appStore.ts` chose, never by the platform: the desktop and Android store writes and reads in pieces, so it takes
  * the Node server's asset limit; the Node store takes it only while it has recorded that its server takes pieces
- * (it reads the record, it never probes) and otherwise one request, the body limit; the browser's plain IndexedDB store
- * keeps large values as Blobs and writes, reads and exports them in slices, so it takes the same 1 GiB; the transitional
- * OPFS store still holds a value whole and keeps the smaller web limit. Before a store is selected, and for a store injected without a kind,
+ * (it reads the record, it never probes) and otherwise one request, the body limit. Before a store is selected, and for a store injected without a kind,
  * the smallest limit applies: nothing saves an asset before the selection, and a smaller bound is safe.
  */
 export function storeAssetLimitBytes(): number {
@@ -42,9 +35,5 @@ export function storeAssetLimitBytes(): number {
             return NODE_ASSET_LIMIT_BYTES
         case 'node':
             return selected.store.piecesRecorded?.() === true ? NODE_ASSET_LIMIT_BYTES : NODE_BODY_LIMIT_BYTES
-        case 'indexeddb':
-            return NODE_ASSET_LIMIT_BYTES
-        case 'opfs-transitional':
-            return WEB_ASSET_LIMIT_BYTES
     }
 }

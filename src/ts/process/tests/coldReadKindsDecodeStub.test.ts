@@ -42,12 +42,11 @@ vi.mock(import('src/ts/platform'), () => ({
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
 
-// The page store holds no unit, so every read falls through to the legacy OPFS
-// file whose bytes the stubbed decompressor then fails on.
+// The page store holds the same bytes for every unit, which the stubbed decompressor then fails on.
 vi.mock(import('src/ts/storage/store/appStore'), async () => {
     const { createForageBackedStore } = await import('src/ts/storage/tests/forageBackedStore')
     const store = createForageBackedStore({
-        getItem: async () => null,
+        getItem: async () => STORED_BYTES,
         setItem: async () => { },
         keys: async () => [],
         removeItem: async () => { },
@@ -78,16 +77,6 @@ import type { Database } from 'src/ts/storage/database.svelte'
 
 const STORED_BYTES = new Uint8Array([9, 9, 9, 9])
 
-const opfsDirectory = {
-    async getFileHandle() {
-        return {
-            async getFile() {
-                return { async arrayBuffer() { return STORED_BYTES.buffer.slice(0) } }
-            },
-        }
-    },
-}
-
 type Decompressor = (data: Uint8Array, callback: (error: unknown, result: Uint8Array | null) => void) => void
 
 function failWith(error: unknown): Decompressor {
@@ -114,12 +103,10 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
     h.decompress.mockReset()
-    Object.defineProperty(navigator, 'storage', { configurable: true, value: { getDirectory: async () => opfsDirectory } })
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
-    Reflect.deleteProperty(navigator, 'storage')
     consoleErrorSpy.mockRestore()
     selectedCharID.set(-1)
 })

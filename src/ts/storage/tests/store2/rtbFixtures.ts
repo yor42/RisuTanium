@@ -503,7 +503,6 @@ export function rtbDeps(options: RtbDepsOptions): { deps: RtbExportDeps, writer:
     const iris = options.iris ?? {}
     const deps: RtbExportDeps = {
         pageMode: () => ({ kind: 'store2' }),
-        opfsTransitional: async () => false,
         session: () => ({ committer: {} as never, backend: options.backend }),
         openWriter: async (session) => {
             writer.cancel = session.cancel

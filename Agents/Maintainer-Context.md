@@ -10041,6 +10041,7 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Per the amendment 5 review (`risu-b715\freeze\amend5-review.md`, `opus-reviewer` `[EDITORIAL]`, per the orchestrator's addendum; not opened by this pass): paired per rep the pack saved 38 and 34 ms against 28 and 28 ms for concurrent writes and is also better at p95; at p50 the two are comparable (34 and 31 against 29 and 31 ms). Concurrent unit writes change the merged stage 1b Tauri backend `commitOrdinary` (`src/ts/storage/store2/backend/tauri.ts`) and need their own Gate 2 when built, the commit key waiting until every unit write settles flushed; the Node backend already writes units in parallel.
 - Not measured (devE): raw-body IPC and the batch command, which the Android release build refused (see Live-State, 2026-10-14 freeze update); power-loss behaviour; other devices.
 - The sequence of choices is the maintainer's; the label "about 125 ms" is the brief's figure for the concurrent-write variant (devE p50 131.8 and 122.2 ms).
+
 ### MC-297 — Main Campaign, 2026-10-15: the protocol-model round E residuals (five combination gaps) are accepted as named known gaps for stage 2
 
 - **Tag:** decision (`AskUserQuestion` answers by option label, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
@@ -34164,6 +34165,12 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 
 **What the maintainer chose.** "Include all 24 (Recommended)". The package has 24 occasions: Independence Day (Jul 4, `en` only) was added on 2026-10-17 after MC-2826's count of 23 was written. It is ported with the other 23.
 
+### MC-3006 — #438 Pack off returns to the scheme picked just before the latest Theme pack entry, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion after Note 9 row SC-DV d). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2938`, `MC-2950`, `#503`.
+
+**What the maintainer chose.** Each entry into the Theme pack scheme records the scheme in effect just before it. Turning the pack on from Light, picking Dark, then clicking the Theme pack tile again and turning the pack off returns to Dark (the latest own pick), not Light. Refines `MC-2950`.
+
 ### MC-2475 — #292 typing-step task split off into its own ticket #301, 2026-11-20
 
 - Tag: decisions (maintainer via AskUserQuestion in the uis3-authoring session, #292 A1). Date: 2026-11-20. Exact times: UNKNOWN. Source: lane A decisions log line 3681; b66\tickets\uis3-authoring\i292\answers-292.md; b61\handoffs\uis3-authoring.md:20. Related: `#292`, `#301`, `MC-2476`.
@@ -35631,3 +35638,345 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer answers via AskUserQuestion in the vault session, relayed at lane A decisions log line 4125). Date: 2026-11-21. Exact times: UNKNOWN. Source: lane A decisions log line 4125; `b61\issues-1121\v1.md:1`; `b61\issues-1121\v2.md:6`. Related: `DS-047`.
 
 **What the maintainer chose (lane A decisions log line 4125).** Keep no reveal: keys stay masked (DS-047), and the user can only replace or clear a key.
+
+### MC-2614 — #346 picker focus: helper only, AlertComp focus return in S7, 2026-11-20
+
+- Tag: decisions (maintainer answer logged by lane A, progress-popups b11). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#346`, `#247`, `MC-2460`, `MC-2507`.
+
+**What the maintainer chose.** "Helper only; AlertComp in S7". #346 covers only the picker helper returning focus to the opener on an empty or cancelled pick, plus a Home regression test. AlertComp focus return on close (rail +, Characters +, Data Restore from file, Persona and folder image pickers ending on BODY) folds into the S7 stage of #247, with no new ticket. Routing correction, same day: "S7" means #247 stage S7 (MC-2460/MC-2507), not UI-S7; AlertComp focus return is owned by progress-popups, and ui-lane X1 touches only the AlertComp prose-invert binding. The question text and the rejected options were not recorded.
+
+### MC-2619 — #247 S6 export ends on the task card, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 plan). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2620`, `MC-2622`, `MC-2626`.
+
+**What the maintainer chose.** OPQ-S6-1 = "(A) on the card". An export ends on the task card: success = result card "Exported" + today's sentence + OK; failure = fail card "Your data wasn't changed" + error. The rejected options were not recorded.
+
+### MC-2620 — #247 S6 card without Cancel reuses the existing stop line, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 plan). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2619`, `MC-2614`.
+
+**What the maintainer chose.** OPQ-S6-2 = "(A) existing 'This step can't be stopped midway' line". A card without Cancel reuses that line; no new string. The rejected options were not recorded.
+
+### MC-2621 — #247 S6 export Cancel wording depends on the file, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 plan). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2619`, `MC-2623`.
+
+**What the maintainer chose.** OPQ-S6-3 = "(A) depends on file". Cancel shows "Cancelled" + "If a file was saved, it is incomplete: delete it and do not use it." when a file was kept, otherwise "Nothing was changed". The rejected options were not recorded.
+
+### MC-2622 — #247 S6 instant flows get no card, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 plan). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2614`.
+
+**What the maintainer chose.** OPQ-S6-5 = "(A) no card for instant flows; their notices are restyled in S7". Instant flows (chat, preset, lorebook and plugin import; chat JSON and preset export) get no card. The rejected options were not recorded.
+
+### MC-2623 — #247 S6a replaced export card stays silent unless a kept incomplete file remains, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 r2). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2624`, `MC-2680`.
+
+**What the maintainer chose.** OPQ-S6-9 = "(A) warn only if a kept incomplete file was left". A replaced export card stays silent, except when it ends with a kept incomplete file; then today's legacy incomplete-file warning is posted. The rejected options were not recorded.
+
+### MC-2624 — #247 S6a export fail card shows the message only, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 r2). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2623`.
+
+**What the maintainer chose.** OPQ-S6-10 = "(A) message only; stack and network hint to the console". The export fail card shows the message only (JSON for non-Error values). The stack and the 'Failed to fetch' network hint go to the console only. The rejected options were not recorded.
+
+### MC-2626 — #247 S6a export failure before any card posts today's error notice, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6 r3, OPQ-S6-11). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2619`.
+
+**What the maintainer chose.** OPQ-S6-11 = "(A) a failure before any card was shown posts today's error notice (alertError), no card; S7 restyles it". Examples in the source: a desktop or Android save-dialog call failing, or a PNG re-encode failing. The rejected options were not recorded.
+
+### MC-2679 — #247 S6c a save with a report closes the card and keeps today's notice, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6c grilling, OPQ-S6c-1). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2680`, `MC-2623`.
+
+**What the maintainer chose.** MC-2679 (OPQ-S6c-1, U1/U8) -> "(A)": a save with a report (missing assets, left-out items, repair note, `.rtb` unsaved changes excluded or omissions) closes the card and shows today's report notice unchanged. A clean save ends on the done card. The rejected options were not recorded.
+
+### MC-2680 — #247 S6c report notice posts even when the card was replaced, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6c grilling). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2679`, `MC-2623`.
+
+**What the maintainer chose.** MC-2680 (U6) -> "(A)": when the card was replaced by a newer task, a save with a report still posts today's report notice. This is an explicit exception to MC-2623, because the notice names data missing from the file. The rejected options were not recorded.
+
+### MC-2681 — #247 S6c peer-park export keeps the legacy dialog and notices, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6c grilling, OPQ-S6c-2). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2679`.
+
+**What the maintainer chose.** MC-2681 (OPQ-S6c-2, U2) -> "(A)": the peer-park export ("Export this tab first", the automatic export of a parked tab) keeps today's dialog and notices, with no card. Recorded as a known inconsistency. The rejected options were not recorded.
+
+### MC-2682 — #247 S6c Android backgrounding mid-export is a known limit, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6c grilling). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2679`.
+
+**What the maintainer chose.** MC-2682 (U3) -> "(A)": Android backgrounding mid-export is a known limit (a killed run ends with no message and may leave an incomplete file). Add one phone leg: Home during "Write file", return, record what shows. The rejected options were not recorded.
+
+### MC-2799 — #247 S6c plain prompts cover the card; only the leave-out sheet and native save dialogs step aside, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6c grilling, U4). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2355`, `MC-2682`.
+
+**What the maintainer chose.** MC-2799 (U4) -> the card steps aside ONLY for the leave-out sheet and for native save dialogs / SAF pickers. For plain confirm prompts (4 GiB, upstream-oversize, incomplete data, gesture), the card stays up and the prompt covers it through the existing TaskHost yield, if the prompt is fully usable that way (focus, Back/Escape, TalkBack, and not inert). If it is not usable for a prompt, that prompt keeps the step-aside, and the plan says which and why. Limit recorded in the source: the announcement is the same as today and is not device-verified; device legs DV-S6c-1 Leg B and DV-S6c-5 Leg D (TalkBack) are required. The rejected options were not recorded.
+
+### MC-2800 — #247 S6c desktop 'Success' literal left for S7, 2026-11-20
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6c grilling, U7). Date: 2026-11-20. Exact times: UNKNOWN. Related: `#247`, `MC-2799`.
+
+**What the maintainer chose.** MC-2800 (U7, Risk 12) -> "leave the desktop 'Success' literal for S7". No new string in S6c. The rejected options were not recorded.
+
+### MC-2801 — #247 S6d terminal restore notices stay blocking waits, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6d, OPQ-S6-7). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2802`.
+
+**What the maintainer chose.** MC-2801 (OPQ-S6-7) -> "(A)": restore terminal notices ('reload or restart', 'restore unconfirmed', the pre-reload 'done') stay today's blocking waits with no OK. Only the running phases move onto the card. The rejected options were not recorded.
+
+### MC-2802 — #247 S6d start-up .rtb restore stays unchanged (MC-2334 boot exclusion), 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6d). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2334`, `#247`, `MC-2803`, `MC-2801`.
+
+**What the maintainer chose.** MC-2802 (MC-2334 boot exclusion) -> "the start-up .rtb restore (rtbBootRestore) stays as it is today. Only restores started from Settings or the Data page get the card." Amended by MC-2803 (Welcome restore included). The rejected options were not recorded.
+
+### MC-2803 — #247 S6d Welcome restore gets the restore card, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6d, OPQ-S6d-1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2802`.
+
+**What the maintainer chose.** MC-2803 (OPQ-S6d-1) -> "(A)": the Welcome restore (`restoreFromBinFileAtFirstRun`) gets the same card. This amends MC-2802's "Settings or the Data page" wording to include Welcome. The rejected options were not recorded.
+
+### MC-2804 — #247 S6d Android "open with" restore gets the card, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6d, OPQ-S6d-2). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2805`.
+
+**What the maintainer chose.** MC-2804 (OPQ-S6d-2) -> "(A)": the Android "open with" restore gets the card via S6d-4, with Cancel only during the start-up clean-up wait, removed before the file is opened. The rejected options were not recorded.
+
+### MC-2805 — #247 S6d Cancel during the clean-up ends on a cancelled card, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6d, OPQ-S6d-2b). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2354`, `MC-2922`.
+
+**What the maintainer chose.** MC-2805 (OPQ-S6d-2b) -> "(A)": a Cancel during the clean-up ends on the cancelled card "Cancelled · Nothing was changed" with OK (as MC-2354 does for imports). The rejected options were not recorded.
+
+### MC-2806 — #247 S6d refusal or failure before commit shows today's error notice, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S6d, OPQ-S6d-3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** MC-2806 (OPQ-S6d-3) -> "(A)": a refusal or failure before commit closes the card and shows today's error notice unchanged. No restore result card. The rejected options were not recorded.
+
+### MC-2807 — #247 S6d restore card offers Cancel until the point of no return, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2922`, `MC-2808`.
+
+**What the maintainer chose.** MC-2807 (U1) -> "(B)": a restore card offers Cancel during the steps before the point of no return (save-first, check, read, other tabs), then locks it (reusing the S6d-4 `lockCancel` idea). Staged copies must be cleaned up on that Cancel. The text of option (A) was not recorded.
+
+### MC-2808 — #247 S6d backgrounding or a kill mid-restore is a known limit, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U2). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2682`, `MC-2807`.
+
+**What the maintainer chose.** MC-2808 (U2) -> "(A)": backgrounding or a kill mid-restore is a known limit (before commit nothing changed; after commit today's unconfirmed/store2 recovery applies). Add one phone leg: Home during "Copy files", return, record what shows. The rejected options were not recorded.
+
+### MC-2918 — #247 S6d a newer task may replace a running restore card, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2355`, `#247`.
+
+**What the maintainer chose.** MC-2918 (U3) -> "(A)": a newer task may replace a running restore card (MC-2355 as is). One line in the PR body names the short interactive window. The rejected options were not recorded.
+
+### MC-2919 — #247 S6d restore bytes shown for every copy, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U4). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** MC-2919 (U4) -> "(A)": bytes for every copy (.bin and .rtb), the same basis as today's percent. The .rtb verify stays number-free. The rejected options were not recorded.
+
+### MC-2920 — #247 S6d restore save step wording, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** MC-2920 (U5) -> the save step reads "Save your current data first". The rejected options were not recorded.
+
+### MC-2921 — #247 S6d split restore titles, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2920`.
+
+**What the maintainer chose.** MC-2921 (U5) -> split titles: "Restoring a backup" (file), "Restoring from a restore point" (restore point), "Restoring an older backup" (numbered backup). The rejected options were not recorded.
+
+### MC-2922 — #247 S6d pre-commit Cancel ends on the cancelled card, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion after grilling, progress-popups S6d, U1 ending). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2805`, `MC-2807`.
+
+**What the maintainer chose.** MC-2922 (U1 ending) -> a pre-commit Cancel ends on the cancelled card "Cancelled · Nothing was changed" with OK, the same as MC-2805. The rejected options were not recorded.
+
+### MC-2923 — #247 S7 backup-saved copy reuses the existing notice, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** Option label "Saved to chosen place". OPQ-S7-1 = "(A)" reuse `rtbExportSaved` "Backup saved to the location you chose." (MC-2923). The rejected options were not recorded.
+
+### MC-2924 — #247 S7 boot-route restore wait reuses checking and copying strings with a percent, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-2). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2802`.
+
+**What the maintainer chose.** Option label "Reuse .rtb strings". OPQ-S7-2 = "(A)" reuse `rtbRestoreChecking`/`rtbRestoreCopying` with an integer percent on the boot route (MC-2924). The rejected options were not recorded.
+
+### MC-2925 — #247 S7 remove the internalBackupWaitingForCleanup string, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** Option label "Remove it". OPQ-S7-3 = "(A)" remove `internalBackupWaitingForCleanup` from en.ts and the 7 locales in S7-1 (MC-2925). The rejected options were not recorded.
+
+### MC-2926 — #247 S7 legacy waits stay waits in the restyled shell, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-4). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-2801`.
+
+**What the maintainer chose.** Option label "Sweep + 8 s hint". OPQ-S7-4 = "(A)" legacy waits stay waits in the restyled shell, with the sweep and the 8 s "still working" hint; 1 new key (MC-2926). The rejected options were not recorded.
+
+### MC-2927 — #247 S7 confirm button placement and style, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** Option label "No left, Yes right". OPQ-S7-5 = "(A)" "No left (neutral), Yes right (accent fill)" (MC-2927). The rejected options were not recorded.
+
+### MC-3045 — #247 S7 type headings stay as the headline, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-6). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** Option label "Keep as headline". OPQ-S7-6 = "(A)" keep the type headings as the headline beside the mark (MC-3045). The rejected options were not recorded.
+
+### MC-3046 — #247 S7 shell now, tool-dialog redesign later as S7d, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-7). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-3049`.
+
+**What the maintainer chose.** Option label "Full redesign later". OPQ-S7-7 = "(B)", NOT the recommendation: "shell now, plus a full per-dialog redesign of the tool dialogs as a later stage (S7d)" (MC-3046). The text of the recommended option (A) was not recorded.
+
+### MC-3047 — #247 S7 alertToast moves to the app's ToastHost, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-8). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-3052`.
+
+**What the maintainer chose.** Option label "Move to ToastHost". OPQ-S7-8 = "(B)", NOT the recommendation: route `alertToast` to the app's ToastHost (stacking, timers and announcement change) (MC-3047). The text of the recommended option (A) was not recorded.
+
+### MC-3048 — #247 S7 bottom sheet at 640 px and below, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-9). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`.
+
+**What the maintainer chose.** Option label "Bottom sheet ≤640 px". OPQ-S7-9 = "(A)" bottom sheet at <=640 px (MC-3048). The rejected options were not recorded.
+
+### MC-3049 — #247 S7 split into two PRs plus a later S7d stage, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-10). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-3046`, `MC-3047`.
+
+**What the maintainer chose.** Option label "Two PRs". OPQ-S7-10 = "(A)" two PRs: S7-1 copy + focus return + MC-2507 guards; S7-2 restyle (now including the toast move); the S7d tool-dialog redesign follows as its own stage (MC-3049). The rejected options were not recorded.
+
+### MC-3050 — #247 S7 alertToast posts info at every call site, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-11). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-3047`.
+
+**What the maintainer chose.** Option label "Info for all". OPQ-S7-11 = "(A)" alertToast posts `info` at every call site (MC-3050). The rejected options were not recorded.
+
+### MC-3051 — #484 .rtb restore byte line during large inlay writes is a known limit, follow-up #491, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, #484 device ruling). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#484`, `#491`, `#247`.
+
+**What the maintainer chose.** "Accept + follow-up (Recommended)": merge #484 with this as a stated known limit, and file a follow-up ticket for byte progress during large inlay writes (filed as #491). Observed on a 2.53 GiB .rtb restore: the byte line moves at least every 0.82 s while each large inlay is read, but holds 52-61 s while each of the 4 large inlays is written (about 75% of the 5-minute copy); the step name, the sweep and the 8 s "still working" hint stay visible. Showing bytes there needs a native write-path change. Not chosen: "Accept, no ticket"; "Fix before merge".
+
+### MC-3052 — #247 storage-full toast repeats about once a minute, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, progress-popups S7, OPQ-S7-12). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#247`, `MC-115`, `MC-288`, `MC-3047`.
+
+**What the maintainer chose.** Option label "First, then each minute". OPQ-S7-12 = "(A)" storage-full toast at the first failed attempt, then about once a minute (every 12th attempt at the 5 s wait) (MC-3052). Context: no earlier MC deliberately set the every-attempt repeat; it was a code default pinned by reportFailure.test.ts. MC-115 called the toast reappearing "every few seconds" a problem, and MC-288 is a related one-time-notice precedent. The rejected options were not recorded.
+
+### MC-3069 — #495 `.rtb` carries connection keys in plain form in a side entry, re-encrypted on restore, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3057`, `MC-772` item 2, `MC-687`, `MC-698`, `#495`.
+
+**What the maintainer chose.** "Plain keys in a side entry (Recommended)". `.rtb` export copies stored units byte for byte, so Keystore-encrypted connection keys would otherwise travel encrypted and be unreadable on another device. Export therefore decrypts connection keys into a separate entry in the archive (sealed by the `.rtb` password when one is set), and restore re-encrypts them under the restoring device's key. `MC-772` item 2 (full backups keep keys) stands for `.rtb`. Rejected: carrying the encrypted keys and asking the user to re-enter every key after a restore on another device.
+
+### MC-3070 — #495 Keystore encryption covers connection keys only, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3057`, `#492`, `#153`, `#495`.
+
+**What the maintainer chose.** "Connection keys only (Recommended)". V5 encrypts the keys of `db.connections` (the store #492 adds). The other key fields (TTS, image, translator, memory and embedding, about 35) stay plain until Vault V4 moves them into connections, which encrypts them automatically. Rejected: encrypting every legacy key field in place now (store2 save encoder, every load path and about 35 direct readers).
+
+### MC-3071 — #495 older plaintext copies are left to normal cleanup, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-350`, `#495`.
+
+**What the maintainer chose.** "Leave to normal cleanup (Recommended)". After keys on an existing install are encrypted, store2 restore points and legacy `dbbackup-*.bin` files still hold earlier plain copies until normal retention removes them. Nothing is purged; the PR states the limit. Rejected: a one-time purge action (destructive, loses those restore points).
+
+### MC-3072 — #495 Android OS backup stays on; transferred keys need re-entry, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-350`, `MC-3069`, `#495`.
+
+**What the maintainer chose.** "Leave backup on (Recommended)". The manifest keeps Android's default Auto Backup and device transfer. The Keystore key never transfers, so a transferred or restored app shows "키 다시 입력 필요" on each affected connection, and nothing is overwritten. `.rtb` is the way to move keys. Rejected: a manifest rule turning OS backup off (also drops chats from phone transfer).
+
+### MC-3073 — #495 when the Keystore cannot encrypt, the key is saved plain, the user is told, and encryption is retried, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3078`, `MC-3077`, `#495`.
+
+**What the maintainer chose.** "Keep plain, notify, retry (Recommended)". If the Keystore cannot encrypt when a key is saved (key generation fails, or an old WebView without the secure message channel), the key is saved plain as today, a one-time notice says so, and encryption is retried later once the Keystore works. A typed key is never lost. Rejected: refusing to save the key.
+
+### MC-3074 — #495 export warns about keys it cannot decrypt and writes them empty, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3076`, `MC-772` item 2, `MC-175`, `#495`.
+
+**What the maintainer chose.** "Warn, export without it (Recommended)". When a connection key cannot be decrypted (Keystore key lost after an OS transfer or reset), `.bin` and `.rtb` export name those connections in a warning before export starts and write their keys empty. Ciphertext is never written where upstream would read it as a key. Rejected: blocking export until the keys are re-entered or cleared.
+
+### MC-3075 — #495 connection keys are decrypted at startup; no plain hint is stored, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3058`, `#495`.
+
+**What the maintainer chose.** "Decrypt at startup (Recommended)". Nothing extra is stored for the masked display (`•••• 7f3a`); all connection keys are decrypted into memory at boot, and the hint and the has-key checks come from memory. Rejected: persisting the last 4 characters in plain beside the ciphertext.
+
+### MC-3076 — #495 the unreadable-key export warning is a confirm; cancel writes nothing, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3074`, `#495`.
+
+**What the maintainer chose.** "Confirm; cancel writes nothing (Recommended)". The `MC-3074` warning works like the other pre-export prompts: it names the connections, and cancelling writes no file. Rejected: an OK-only notice after which export always continues.
+
+### MC-3077 — #495 vault notices show once and again only when the situation changes, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `MC-3075`, `#495`.
+
+**What the maintainer chose.** "Once, again on change (Recommended)". The "saved plain for now" notice shows once per device until encryption succeeds; the "these connections need their key re-entered" notice shows when the set of affected connections changes. Rejected: both notices on every app start.
+
+### MC-3078 — #495 encryption of a plain-kept key is retried at each boot and each key edit, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `#495`.
+
+**What the maintainer chose.** "Each boot and key edit (Recommended)". The `MC-3073` retry runs at every app start and whenever a key is written; the save loop is not changed. Rejected: retrying on every background save pass.
+
+### MC-3110 — #495 a key that is only temporarily undecryptable shows nothing; only a send that hits it fails, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3075`, `MC-3077`, `#495`.
+
+**What the maintainer chose.** "Nothing; error only on send (Recommended)". When the Keystore is only slow or briefly unavailable at startup (not lost), a saved connection key that cannot be decrypted yet still counts as present, gets no boot notice and is never marked "키 다시 입력 필요"; decryption is retried on the next use, and a send that still cannot get the key fails with an error saying the key is temporarily unavailable. Rejected: also showing a boot notice naming those connections.
+
+### MC-3111 — #495 export retries a temporarily undecryptable key once, then names it in the confirm, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3074`, `MC-3076`, `MC-3110`, `#495`.
+
+**What the maintainer chose.** "Retry, then name it in confirm (Recommended)". At `.bin` or `.rtb` export, a connection key that is only temporarily undecryptable is retried once; if it still cannot be read, the `MC-3074` confirm names it as "cannot be read right now", and it is exported empty unless the user cancels and tries later. Rejected: aborting the export with an error.
+
+### MC-3112 — #495 a newly typed key is held in memory until encrypted; it is saved plain only if the app leaves first, 2026-11-21
+
+- Tag: decisions (maintainer answer to the #495 session through AskUserQuestion, Gate 1 finding F5). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-3073`, `MC-3071`, `#495`.
+
+**What the maintainer chose.** "Memory first, plain only on exit (Recommended)". On Android, a typed connection key is held in memory until encryption and its verification finish, and only the encrypted form is saved. If the app is hidden or closed before encryption finishes, the key is saved plain so it is never lost, and the next boot encrypts it; plaintext reaches disk only in that race. Rejected: accepting that a background save may write the plain key once and keep it in a store2 restore point; and holding the key in memory only, losing it if the app dies before encryption finishes.
+
+### MC-3011 — #284 closed as covered; toggle default syntax split to #467 with the hold lifted, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion in the #284 session). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570`, `CHORE-570a`, `MC-1746`, `MC-1740`, `#284`, `#467`, PR #107.
+
+**What the maintainer chose.** (1) "Close; file 570a held": #284 is closed as covered, because renamed toggles keep their saved setting through the Studio toggle builder carry (PR #107, S3d2; Update all from #286 and #292). The classic character settings and module menu toggle textareas stay without carry; Studio is where renames carry. The default-value syntax moves to a new issue, #467. (2) "Lift and design now": the MC-1746 hold on the default-value syntax is lifted and #467 is designed now. Amends MC-1746.
+
+### MC-3012 — #467 toggle defaults: reach, types, syntax, Reset, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, all "Recommended"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-175`, `MC-350`, `MC-1094`.
+
+**What the maintainer chose.** (1) Reach: an unset toggle behaves as its author default everywhere, in panels and prompts (CBS `getglobalvar`, `#when`, `tis`, `@var`, Lua `getGlobalVar`, prompt-info). Nothing new is saved; the default is applied when the value is read. (2) Types: checkbox and select only; text and textarea keep empty as their default. (3) Syntax: a 5th `=` field, which upstream ignores; a select default names its option by text (`mood=Mood=select=calm,angry=angry`), a checkbox default is `1` (`nsfw=NSFW===1`). (4) Reset removes the user value, so the toggle follows the author default again. Amends MC-1094 confirmation 3 (reset = off / first option / empty).
+
+### MC-3013 — #467 Reset in chat-only scope and on toggles without a default, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, both "Recommended"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-3012`, `MC-1094`.
+
+**What the maintainer chose.** (1) With the chat-only scope on, Reset removes only the chat's own value; the toggle then shows the all-chats value if one is set, else the author default. (2) Reset makes every checkbox and select toggle unset, with or without an author default, so prompts read `null` instead of `0` after a Reset.
+
+### MC-3014 — #467 the upstream prompt difference is accepted; authors are warned, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, "Accept, warn authors (Recommended)"). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-570a`, `#467`, `MC-175`, `MC-091`.
+
+**What the maintainer chose.** A default-on toggle is off in upstream RisuAI, which ignores the 5th field, so the same card builds a different prompt there until the user touches the toggle. This is accepted. Studio's default field and the toggle help text tell authors that upstream ignores defaults.

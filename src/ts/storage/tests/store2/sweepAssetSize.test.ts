@@ -3,8 +3,7 @@
  * The size of the assets the manual clean-up offers to delete (`store2/sweep/assetSize.ts`): the source each store kind
  * offers, the rule that no asset body goes through `read`, the stop between names and the pace.
  *
- * What is a stand-in: the IndexedDB source is a memory byte store with a `readValue` double, and the Tauri probe is a `sizeOf`
- * double (it is not the native ranged read). The Node listing is the real `listSized` of `createNodeHttpStore` against the
+ * What is a stand-in: the Tauri probe is a `sizeOf` double (it is not the native ranged read). The Node listing is the real `listSized` of `createNodeHttpStore` against the
  * real server process.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -22,19 +21,6 @@ afterEach(async () => {
 const never = (): boolean => false
 
 describe('the source of the size', () => {
-    test('S1 indexeddb: the readValue sizes of a Blob and of bytes add up, and a vanished name counts 0', async () => {
-        const store = createMemoryByteStore()
-        const values = new Map<string, Blob | Uint8Array>([
-            ['assets/a.png', new Blob([new Uint8Array(11)])],
-            ['assets/b.png', new Uint8Array(4)],
-        ])
-        store.readValue = async key => values.get(key) ?? null
-
-        const sized = await sizeAssets({ kind: 'indexeddb', store, names: ['a.png', 'b.png', 'gone.png'], shouldStop: never })
-
-        expect(sized).toEqual({ status: 'sized', bytes: 15 })
-    })
-
     test('S1 node: one real listSized answer sums the names, and a name the listing omits counts 0', async () => {
         const fixture = await startNodeServer()
         servers.push(fixture)
@@ -62,32 +48,25 @@ describe('the source of the size', () => {
     test('S1 no source: a kind without one answers null, so does a source that rejects or answers null', async () => {
         const plain = createMemoryByteStore()
         plain.files.set('assets/a.png', new Uint8Array(3))
-        const rejecting = createMemoryByteStore()
-        rejecting.readValue = async () => { throw new Error('boom') }
         const nodeNull = createMemoryByteStore()
         nodeNull.listSized = async () => null
 
-        expect(await sizeAssets({ kind: 'indexeddb', store: plain, names: ['a.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
         expect(await sizeAssets({ kind: 'node', store: plain, names: ['a.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
         expect(await sizeAssets({ kind: 'tauri', store: plain, names: ['a.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
-        expect(await sizeAssets({ kind: 'indexeddb', store: rejecting, names: ['a.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
         expect(await sizeAssets({ kind: 'node', store: nodeNull, names: ['a.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
         expect(await sizeAssets({ kind: 'tauri', store: plain, names: ['a.png'], shouldStop: never, sizeOf: async () => { throw new Error('boom') } })).toEqual({ status: 'sized', bytes: null })
     })
 })
 
 describe('no asset body is read', () => {
-    test('S2: with the members present or absent, store.read is never asked for an asset', async () => {
+    test('S2: with the listing absent or the probe answering, store.read is never asked for an asset', async () => {
         const store = createMemoryByteStore()
         store.files.set('assets/a.png', new Uint8Array(3))
         store.files.set('assets/b.png', new Uint8Array(4))
-        store.readValue = async key => store.files.get(key) ?? null
 
-        expect(await sizeAssets({ kind: 'indexeddb', store, names: ['a.png', 'b.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: 7 })
-        store.readValue = undefined
-        expect(await sizeAssets({ kind: 'indexeddb', store, names: ['a.png', 'b.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
         store.listSized = undefined
         expect(await sizeAssets({ kind: 'node', store, names: ['a.png', 'b.png'], shouldStop: never })).toEqual({ status: 'sized', bytes: null })
+        expect(await sizeAssets({ kind: 'tauri', store, names: ['a.png', 'b.png'], shouldStop: never, sizeOf: async key => store.files.get(key)?.length ?? null })).toEqual({ status: 'sized', bytes: 7 })
 
         expect(store.reads.filter(key => key.startsWith('assets/'))).toEqual([])
     })

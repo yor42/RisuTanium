@@ -13,6 +13,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { absorbLegacyForTest } from '../../connections/tests/legacyFixture'
 
 //#region module mocks
 
@@ -26,7 +27,7 @@ vi.mock(import('../../alert'), () => ({
 
 vi.mock(import('../../storage/database.svelte'), () => ({
     getCurrentCharacter: vi.fn(() => null),
-    getDatabase: vi.fn(() => dbHolder.db),
+    getDatabase: vi.fn(() => absorbLegacyForTest(dbHolder.db)),
 }) as unknown as typeof import('../../storage/database.svelte'))
 
 vi.mock(import('../../translator/translator'), () => ({

@@ -168,12 +168,6 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     remove: vi.fn(async () => { }),
 }))
 
-vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
-    ...await importOriginal(),
-    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
-    takeStorageFallbackNotice: () => null,
-}))
-
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
         staleAccountProfile: false,
@@ -245,7 +239,12 @@ async function boot(tauri: boolean, fault: Fault): Promise<Run> {
     const store: MemoryByteStore = createMemoryByteStore()
     // A module makes the profile one the archive notice is told to; an empty profile is switched on without it.
     store.files.set('database/database.bin', encodeRisuSaveLegacy({ ...baseDb(), modules: [{ id: 'ida', name: 'Module ida', description: '', lorebook: [], regex: [], trigger: [], assets: [] }] }))
-    const kind = tauri ? 'tauri' : 'indexeddb'
+    const kind = tauri ? 'tauri' : 'node'
+    if (kind === 'node') {
+        // A Node server answers the capability probe; without it the page opens read-only and no store2 boot runs.
+        const unused = async () => { throw new Error('not used') }
+        store.guarded = { probe: async () => ({ checkOnly: true, retire: true, pieces: false }), writeChecked: unused, removeChecked: unused, retireChecked: unused }
+    }
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     injectAppStore(store, kind)
     const dispatch = await registerRealDispatch({ kind, acknowledgeAlerts: true })
@@ -287,6 +286,12 @@ async function settle(): Promise<void> {
 }
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()

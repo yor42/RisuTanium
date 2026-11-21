@@ -1,39 +1,58 @@
 // The worker side of the pack judge: turns one request message into one answer. It is the only run-time importer of the
-// validator on the judge path, so the main-thread modules stay free of it. Only the applied areas' sheets are judged; any
-// other key of the request is ignored and never reaches the validator.
-import { judgePackSheets, type PackSheetsJudgement } from '../index'
+// validator on the judge path, so the main-thread modules stay free of it. A request carries labelled jobs; only the jobs of
+// applied areas are judged and answered, and a job of any other area is dropped and never reaches the validator.
+import { judgeAreaSheet, type AreaSheetJudgement } from '../index'
 import { APPLIED_AREAS, type AppliedArea } from '../intake'
 
 export type JudgeResponse =
-    | { id: number; ok: true; judgement: PackSheetsJudgement }
+    | { id: number; ok: true; results: Record<string, AreaSheetJudgement> }
     | { id: number; ok: false; error: string }
+
+/** The most jobs one request may carry. */
+export const MAX_JUDGE_JOBS = 16
+
+interface JudgeJobInput {
+    readonly label: string
+    readonly area: string
+    readonly text: string
+}
 
 interface JudgeInput {
     readonly id: number
-    readonly sheets: Partial<Record<AppliedArea, string>>
+    readonly jobs: readonly JudgeJobInput[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Narrows a request message: a safe-integer id and an object of sheets. Only the applied areas' string sheets survive. */
+function isAppliedArea(area: string): area is AppliedArea {
+    return (APPLIED_AREAS as readonly string[]).includes(area)
+}
+
+/** Narrows a request message: a safe-integer id and at most 16 jobs, each a unique non-empty label with a string area and text. */
 function readRequest(message: unknown): JudgeInput | null {
     if (!isRecord(message)) {
         return null
     }
-    const { id, sheets } = message
-    if (typeof id !== 'number' || !Number.isSafeInteger(id) || !isRecord(sheets)) {
+    const { id, jobs } = message
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || !Array.isArray(jobs) || jobs.length > MAX_JUDGE_JOBS) {
         return null
     }
-    const kept: Partial<Record<AppliedArea, string>> = {}
-    for (const area of APPLIED_AREAS) {
-        const sheet = Object.hasOwn(sheets, area) ? sheets[area] : undefined
-        if (typeof sheet === 'string') {
-            kept[area] = sheet
+    const read: JudgeJobInput[] = []
+    const labels = new Set<string>()
+    for (const job of jobs) {
+        if (!isRecord(job)) {
+            return null
         }
+        const { label, area, text } = job
+        if (typeof label !== 'string' || label === '' || labels.has(label) || typeof area !== 'string' || typeof text !== 'string') {
+            return null
+        }
+        labels.add(label)
+        read.push({ label, area, text })
     }
-    return { id, sheets: kept }
+    return { id, jobs: read }
 }
 
 /** Never throws: a malformed request answers id -1, and a validator throw answers `ok: false` with its text. */
@@ -43,7 +62,14 @@ export function handleJudgeRequest(message: unknown): JudgeResponse {
         return { id: -1, ok: false, error: 'malformed judge request' }
     }
     try {
-        return { id: request.id, ok: true, judgement: judgePackSheets(request.sheets) }
+        const entries: Array<[string, AreaSheetJudgement]> = []
+        for (const job of request.jobs) {
+            if (isAppliedArea(job.area)) {
+                entries.push([job.label, judgeAreaSheet(job.area, job.text, undefined, job.area)])
+            }
+        }
+        // `fromEntries` defines each label as an own data property, so no label can reach a prototype.
+        return { id: request.id, ok: true, results: Object.fromEntries(entries) }
     } catch (error) {
         if (import.meta.env.DEV) {
             console.error('theme pack judge failed', error)

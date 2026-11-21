@@ -3,6 +3,10 @@ name: Desktop test build
 # Manual only. Builds the six desktop targets and uploads the installers as workflow
 # artifacts. No release or tag is created. The installers are unsigned. This repository is
 # public, so anyone who can read it can download the artifacts until they expire.
+#
+# No updater signing key is passed here: tauri.test-build.conf.json turns createUpdaterArtifacts
+# off, because the build fails without the private key while it is on. Only release-desktop.yml
+# signs updates.
 on:
   workflow_dispatch: {}
 
@@ -96,7 +100,7 @@ jobs:
       # .env.production (on); nothing here sets or overrides it.
       - uses: tauri-apps/tauri-action@v1
         with:
-          args: --target ${{ matrix.settings.target }}
+          args: --target ${{ matrix.settings.target }} --config src-tauri/tauri.test-build.conf.json
           tauriScript: pnpm tauri
 
       # The .app bundle is a directory and is skipped; the dmg carries it.

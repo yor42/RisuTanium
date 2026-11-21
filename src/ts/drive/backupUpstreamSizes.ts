@@ -1,7 +1,6 @@
 import type { ByteStore } from '../storage/store/contract'
 import type { AppStoreKind } from '../storage/store/appStore'
 import type { ExportCancelToken } from '../exportCancel'
-import { assetOrInlayBodyKeyViolation } from '../storage/store/keyRules'
 
 /**
  * The largest asset an upstream Node server takes in one request (MC-223, MC-532 2). A backup holding
@@ -17,27 +16,6 @@ export interface SizedKey {
 
 export function isOversizeForUpstream(size: number): boolean {
     return size > UPSTREAM_NODE_ASSET_LIMIT_BYTES
-}
-
-/**
- * The size of the value of `key`, or `null` when it cannot be read. The bytes are dropped before this returns. A store
- * that offers `readValue` loads the value once and a Blob answers by its size without being read into memory.
- */
-async function storedSizeOf(store: ByteStore, key: string): Promise<number | null> {
-    try {
-        if (store.readValue !== undefined && assetOrInlayBodyKeyViolation(key) === null) {
-            const value = await store.readValue(key)
-            if (value === null) {
-                return null
-            }
-            return value instanceof Blob ? value.size : value.length
-        }
-        const { bytes } = await store.read(key)
-        return bytes === null ? null : bytes.length
-    } catch (error) {
-        console.error(error)
-        return null
-    }
 }
 
 export interface OversizeAssetQuery {
@@ -59,9 +37,6 @@ export interface OversizeAssetQuery {
  * - the desktop and Android apps: the sized listing the export already made;
  * - the Node page: one `min-size` listing. A server that cannot answer it (an older fork or an upstream server) cannot
  *   hold such an asset either, so nothing is oversize there;
- * - the browser stores (IndexedDB, transitional OPFS): each asset is read once, one at a time, and only its size is
- *   kept, so at most one asset's bytes are held and each is dropped before the next is read. A key that cannot be read
- *   is not named here; the export reports it as missing when it reaches it.
  * A desktop page whose sized listing failed has no source and names nothing.
  */
 export async function findOversizeAssets(query: OversizeAssetQuery): Promise<SizedKey[]> {
@@ -70,21 +45,8 @@ export async function findOversizeAssets(query: OversizeAssetQuery): Promise<Siz
     if (query.kind === 'tauri') {
         return (query.sized ?? []).filter((item) => judged(item.key) && isOversizeForUpstream(item.size)).map((item) => ({ key: item.key, size: item.size }))
     }
-    if (query.kind === 'node') {
-        const listed = await query.store.listSized?.('assets/', UPSTREAM_NODE_ASSET_LIMIT_BYTES) ?? null
-        return (listed ?? []).filter((item) => judged(item.key))
-    }
-    const candidates = (query.keys ?? query.listedKeys).filter((key) => key.startsWith('assets/'))
-    const oversize: SizedKey[] = []
-    for (let i = 0; i < candidates.length; i++) {
-        query.cancel.throwIfCancelled()
-        query.onProgress?.(i + 1, candidates.length)
-        const size = await storedSizeOf(query.store, candidates[i])
-        if (size !== null && isOversizeForUpstream(size)) {
-            oversize.push({ key: candidates[i], size })
-        }
-    }
-    return oversize
+    const listed = await query.store.listSized?.('assets/', UPSTREAM_NODE_ASSET_LIMIT_BYTES) ?? null
+    return (listed ?? []).filter((item) => judged(item.key))
 }
 
 /** `bytes` as MiB with one decimal, for the prompt that names an item over the upstream limit. */

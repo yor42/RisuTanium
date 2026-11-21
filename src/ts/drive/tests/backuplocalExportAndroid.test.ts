@@ -905,7 +905,7 @@ describe('an Android export reads a large asset in pieces', () => {
         })
 
         test('an Android page whose store is not the files store keeps the whole read', async () => {
-            injectRestoreStore(createTauriFilesStore({ platform: 'posix' }), 'indexeddb')
+            injectRestoreStore(createTauriFilesStore({ platform: 'posix' }), 'node')
             fakeFs.plant('assets/z-large.bin', patterned(5 * MIB, 9))
 
             const outcome = await SaveLocalBackup()

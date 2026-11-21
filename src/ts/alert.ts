@@ -1,4 +1,5 @@
 import { get, writable } from "svelte/store"
+import { untrack } from "svelte"
 import { language } from "../lang"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getDatabase, type MessageGenerationInfo } from "./storage/database.svelte"
@@ -6,6 +7,7 @@ import { alertStore as alertStoreImported } from "./stores.svelte"
 import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
 import { taskActionSettled, taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
+import { postToast, toastHost } from "./toast/toastHost.svelte"
 
 /** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
 export interface PeerConflictRowView {
@@ -17,12 +19,19 @@ export interface PeerConflictRowView {
     note: string | null
 }
 
+/** What an update offer shows. Every field is untrusted remote text. */
+export interface UpdateOffer {
+    currentVersion: string
+    version: string
+    notes: string
+}
+
 export interface alertData{
     type: 'error'|'normal'|'none'|'ask'|'wait'|'selectChar'
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
@@ -32,11 +41,13 @@ export interface alertData{
     peerConflicts?: PeerConflictRowView[],
     /** The reply of a `parkedReply` prompt: the character's name and the reply text, both shown as text. Its answer is `discard` or `later`. */
     parkedReply?: { name: string, text: string },
+    /** The update of an `updateOffer` prompt: the installed version, the offered version and the release notes. All three come from a remote file and render as text only. Its answer is `install` or `later`. */
+    updateOffer?: UpdateOffer,
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */
     onCancel?: () => void
-    /** Set on a select or input prompt whose caller offered a cancel: the answer its Cancel button, Back and Escape write. */
+    /** Set on a select or input prompt whose caller offered a cancel, and always on an `updateOffer` prompt: the answer its Cancel button, Back and Escape write. */
     cancelAnswer?: string
     /** Set on an error alert that has a place to fix it: a button that closes the alert, then runs `open`. */
     link?: { label: string, open: () => void }
@@ -247,6 +258,20 @@ export async function alertSelect(msg:string[], display?:string, options?:Prompt
     return await askPrompt(data)
 }
 
+/**
+ * Asks whether to install an update. Any answer other than `install`, including Escape and Back,
+ * is `later`; nothing here installs.
+ */
+export async function alertUpdateOffer(offer: UpdateOffer): Promise<'install' | 'later'>{
+    const answer = await askPrompt({
+        type: 'updateOffer',
+        msg: '',
+        updateOffer: offer,
+        cancelAnswer: 'later',
+    })
+    return answer === 'install' ? 'install' : 'later'
+}
+
 export async function alertErrorWait(msg:string){
     alertStoreImported.set({
         'type': 'wait2',
@@ -266,11 +291,16 @@ export function doingAlert(){
     return taskShown() || promptWaiting() || (get(alertStoreImported).type !== 'none' && get(alertStoreImported).type !== 'toast' && get(alertStoreImported).type !== 'wait')
 }
 
+/**
+ * Posts an `info` toast to the app's toast host; it never touches the alert store, so an alert that is open stays as it is.
+ * A text an `info` toast already shows, held covered or paused included, is not posted again: a producer that repeats the
+ * same text keeps one entry and one announcement. The read is untracked so a calling effect never subscribes to the list.
+ */
 export function alertToast(msg:string){
-    alertStoreImported.set({
-        'type': 'toast',
-        'msg': msg
-    })
+    if (untrack(() => toastHost.visible).some((toast) => toast.kind === 'info' && toast.text === msg)) {
+        return
+    }
+    postToast({ kind: 'info', text: msg })
 }
 
 /**

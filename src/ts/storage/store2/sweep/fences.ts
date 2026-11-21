@@ -97,7 +97,7 @@ export function checkFences(input: FenceInput): FenceResult {
 
 /**
  * An opaque version of a key: the Node revision (an absent key that once existed
- * has a revision too), an IndexedDB or Tauri stamp, or null for a key that has
+ * has a revision too), a Tauri stamp, or null for a key that has
  * never existed. Equal tokens mean the key is unchanged.
  */
 export type VersionToken = string | number | null
