@@ -143,7 +143,7 @@ describe('the accepted file', () => {
         expect(ok.store2.blocks.byteLength).toBeLessThanOrEqual(9 * ok.index.count)
     })
 
-    test('assets, inlays and the eight side sections are carried into the verdict (guard)', async () => {
+    test('assets, inlays and the nine side sections are carried into the verdict (guard)', async () => {
         const file = await writeRtbFile({
             world,
             assets: { [`${'a1'.repeat(32)}.png`]: encoder.encode('asset') },
@@ -152,7 +152,7 @@ describe('the accepted file', () => {
         })
         const ok = verified(await verify(file.bytes))
         expect(ok.inlays.map((pair) => pair.id)).toEqual([INLAY_ID])
-        expect(ok.side.length).toBe(8)
+        expect(ok.side.length).toBe(9)
         expect(ok.side.find((item) => item.action.id === 'side.iris')?.precheck).toBe('ok')
         expect(await namesOf(file.bytes)).toContain(assetEntryName(`${'a1'.repeat(32)}.png`))
     })

@@ -18,7 +18,7 @@ import { defaultKeyEnv, randomId26, type KeyEnv } from '../../storage/store2/for
 import { FRAME_FMT } from '../../storage/store2/format/versions'
 import type { InlayRecord } from '../../process/files/inlayStore'
 import { assetEntryName } from './assetName'
-import { MANIFEST_ENTRY, MIMETYPE_ENTRY, SIDE_SECTION_IDS, sideDataName } from './entryNames'
+import { CONNECTION_KEYS_ID, MANIFEST_ENTRY, MIMETYPE_ENTRY, SIDE_SECTION_IDS, sideDataName } from './entryNames'
 import { checkEntryPath } from './entryPath'
 import { encodeInlayMeta, inlayEntryNames, RtbInlayNameError } from './inlayEntries'
 import { DEFAULT_MANIFEST_CAP, type OmittedEntry } from './manifest'
@@ -245,7 +245,8 @@ function checkedRefs(rawRefs: readonly string[], req: readonly string[]): string
     return refs
 }
 
-async function writeSideSection(zip: Zip64Writer, name: string, records: AsyncIterable<SideRecord>, registry: SideTagRegistry, limit: number): Promise<number> {
+/** `null` when `omitWhenEmpty` and the section has no lines: nothing is written for it. */
+async function writeSideSection(zip: Zip64Writer, name: string, records: AsyncIterable<SideRecord>, registry: SideTagRegistry, limit: number, omitWhenEmpty: boolean): Promise<number | null> {
     const iterator = records[Symbol.asyncIterator]()
     const held: Uint8Array[] = []
     let heldBytes = 0
@@ -265,6 +266,9 @@ async function writeSideSection(zip: Zip64Writer, name: string, records: AsyncIt
         }
         if (!spill) {
             const joined = concat(held)
+            if (omitWhenEmpty && joined.length === 0) {
+                return null
+            }
             await zip.addBuffered(name, 8, joined, joined.length)
             return joined.length
         }
@@ -358,8 +362,18 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
         }
         const name = sideDataName(id) as string
         let bytes: number
-        if (side !== undefined && 'records' in side) {
-            bytes = await writeSideSection(zip, name, side.records, input.sideTags ?? [], limit)
+        if (id === CONNECTION_KEYS_ID) {
+            // Built from live connections: with no lines there is no row, no entry and no manifest row, so a file
+            // without wrapped keys is byte-identical to one written before this section existed.
+            const written = side !== undefined && 'records' in side
+                ? await writeSideSection(zip, name, side.records, input.sideTags ?? [], limit, true)
+                : null
+            if (written === null) {
+                continue
+            }
+            bytes = written
+        } else if (side !== undefined && 'records' in side) {
+            bytes = await writeSideSection(zip, name, side.records, input.sideTags ?? [], limit, false) ?? 0
         } else {
             await zip.addBuffered(name, 8, EMPTY, 0)
             bytes = 0

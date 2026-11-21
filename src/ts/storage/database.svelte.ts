@@ -9,7 +9,7 @@ import {
     isMalformedStore, nextConnectionId, presetProxyRef, proxyName, storedConnections, uniqueName,
     type Connection,
 } from '../connections/connections';
-import { setConnectionKey } from '../connections/keyAccess';
+import { connectionKeyForUi, setConnectionKey } from '../connections/keyAccess';
 import { migrateConnectionsOnLoad } from '../connections/migrate';
 import { downloadFile, saveAsset as saveImageGlobal } from '../globalApi.svelte';
 import { defaultAutoSuggestPrompt, defaultJailbreak, defaultMainPrompt } from './defaultPrompts';
@@ -2623,7 +2623,7 @@ async function absorbImportedProxy(db:Database, pre:{proxyKey?:unknown, proxyCon
         return
     }
     const conns = storedConnections(db)
-    let target = conns.find((conn) => conn.provider === 'reverse_proxy' && (conn.url ?? '') === '' && conn.key === key)
+    let target = conns.find((conn) => conn.provider === 'reverse_proxy' && (conn.url ?? '') === '' && connectionKeyForUi(conn) === key)
     if(!target){
         const created:Connection = {
             id: nextConnectionId(conns),
@@ -2634,7 +2634,8 @@ async function absorbImportedProxy(db:Database, pre:{proxyKey?:unknown, proxyCon
         }
         db.connections = [...conns, created]
         target = storedConnections(db).find((conn) => conn.id === created.id) ?? created
-        await setConnectionKey(target, key)
+        // Not awaited: on Android the key is served from memory while it is wrapped, and the preset must not wait for it.
+        void setConnectionKey(target, key)
     }
     pre.proxyConnectionId = target.id
     pre.proxyKey = ''

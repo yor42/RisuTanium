@@ -29,11 +29,14 @@ function fullLegacy(): StoredDatabase {
     } as unknown as StoredDatabase
 }
 
+/** The reader of a database whose connections hold plain keys only. */
+const plainKeys = { keyOf: (conn: { key: string }) => conn.key, late: () => [] as string[] }
+
 async function translate(live: StoredDatabase): Promise<StoredDatabase> {
     const plain = structuredClone(live)
     const state = keyStateOf(plain)
     migrateConnections(state)
-    await writeLegacyFromConnections(state, plain)
+    writeLegacyFromConnections(state, plain, plainKeys)
     return plain
 }
 
@@ -126,7 +129,7 @@ describe('migrate then translate', () => {
         const plain = { ...live }
         const state = keyStateOf(plain)
         migrateConnections(state)
-        await writeLegacyFromConnections(state, plain)
+        writeLegacyFromConnections(state, plain, plainKeys)
         expect(live).toEqual(before)
         expect(plain.google.accessToken).toBe('g-key')
         expect(plain.botPresets).not.toBe(live.botPresets)

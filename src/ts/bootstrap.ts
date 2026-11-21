@@ -9,6 +9,8 @@ import { applyUsageRetention } from "./usage/usageRetention";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { takeConnectionsMigrated } from "./connections/migrate";
+import { whenVaultReady } from "./connections/keyVaultStore.svelte";
+import { vaultBoot, type VaultBootHandle } from "./connections/vaultBoot";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState } from "./stores.svelte";
@@ -376,6 +378,13 @@ export async function loadData() {
             }
             LoadingStatusState.text = "Checking For Format Update..."
             await checkNewFormat()
+            // Starts the connection-key vault right after the last boot `setDatabase`; its budget bounds the wait before `loadedStore`.
+            let vault: VaultBootHandle | undefined
+            try {
+                vault = vaultBoot()
+            } catch (error) {
+                console.error(error)
+            }
             const db = getDatabase();
 
             LoadingStatusState.text = "Updating States..."
@@ -400,7 +409,9 @@ export async function loadData() {
             if (db.botSettingAtStart) {
                 botMakerMode.set(true)
             }
+            await whenVaultReady()
             loadedStore.set(true)
+            void vault?.afterLoad()
             selectedCharID.set(-1)
             startObserveDom()
             assignIds()

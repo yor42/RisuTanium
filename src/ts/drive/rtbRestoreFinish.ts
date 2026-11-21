@@ -75,6 +75,7 @@ const SIDE_NAME_KEYS: Readonly<Record<SideSectionId, keyof typeof language.rtbRe
     'side.plugin-permissions': 'pluginPermissions',
     'side.mcp-tool-calls': 'mcpToolCalls',
     'side.ui-prefs': 'uiPrefs',
+    'side.connection-keys': 'connectionKeys',
 }
 
 const SIDE_ORDER: readonly string[] = SIDE_SECTION_IDS
