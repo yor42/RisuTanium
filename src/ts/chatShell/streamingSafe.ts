@@ -304,7 +304,7 @@ export async function createToSafeHtml(modelShortName: string, charArg: Paramete
     return async (source: string) => {
         let parsed = source
         if (displayOptions) {
-            try { parsed = scripts.risuChatParser(source, displayOptions) } catch (error) { recordCaughtError('chat.parse', error); parsed = source }
+            try { parsed = scripts.risuChatParser(source, { ...displayOptions }) } catch (error) { recordCaughtError('chat.parse', error); parsed = source }
         }
         // Every text this factory converts is part of a streamed partial reply, so it bypasses the script cache.
         const displayed = await parser.ParseMarkdown(parsed, charArg, 'notrim', chatID, cbsConditions, 'bypass')

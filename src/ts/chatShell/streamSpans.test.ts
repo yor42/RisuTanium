@@ -11,7 +11,7 @@ vi.mock('../stores.svelte', () => ({ DBState: { db: control.db } }))
 vi.mock('../process/modules', () => ({ getModuleRegexScripts: (...args: unknown[]) => control.moduleSpy(...args) }))
 vi.mock('../util', () => ({ findCharacterbyId: () => undefined }))
 
-import { buildProbes, cbsIntervals, deriveScriptFlags, leadLiteral, MAX_PROBES, parseProbe, type SpanRules } from './streamSpans'
+import { buildProbes, cbsIntervals, deriveScriptFlags, leadLiteral, MAX_PROBES, parseProbe, splitAtOpenCbsSpan, type SpanRules } from './streamSpans'
 import { createSpanRules, renderOpenParagraphSource, splitStreamingText } from './streamingSafe'
 
 const ST: SpanRules = { probes: [{ lead: '<st>', regex: /<st>[\s\S]*?<\/st>/y, ignoreCase: false }] }
@@ -51,6 +51,27 @@ describe('CBS span hold in the splitter', () => {
 
     test('interval offsets: closed and open spans carry their start and end', () => {
         expect(cbsIntervals('ab {{#if 1}}x{{/if}} {{#each a as b}}')).toEqual([{ q: 3, e: 20 }, { q: 21, e: Infinity }])
+    })
+})
+
+describe('splitAtOpenCbsSpan', () => {
+    // Unit guards of a new export: they fail on the pre-change base only because the export is missing.
+    test('T-H1 text without an open block is all head', () => {
+        expect(splitAtOpenCbsSpan('A\n\nB')).toEqual({ head: 'A\n\nB', held: '' })
+        expect(splitAtOpenCbsSpan('A {{#if 1}}x{{/if}} B')).toEqual({ head: 'A {{#if 1}}x{{/if}} B', held: '' })
+        expect(splitAtOpenCbsSpan('')).toEqual({ head: '', held: '' })
+    })
+
+    test('T-H2 an open block is held from its opener on, the opener included', () => {
+        expect(splitAtOpenCbsSpan('A\n\n{{#if 1}}\n\nB\n\nC')).toEqual({ head: 'A\n\n', held: '{{#if 1}}\n\nB\n\nC' })
+    })
+
+    test('T-H3 a closed block before the open one stays in the head', () => {
+        expect(splitAtOpenCbsSpan('a {{#if 1}}x{{/if}} b {{#each a as b}}c')).toEqual({ head: 'a {{#if 1}}x{{/if}} b ', held: '{{#each a as b}}c' })
+    })
+
+    test('T-H4 nesting is held from the outer opener and a stray closer is ignored', () => {
+        expect(splitAtOpenCbsSpan('x {{/if}} y {{#when::z}}a {{#if 1}}b')).toEqual({ head: 'x {{/if}} y ', held: '{{#when::z}}a {{#if 1}}b' })
     })
 })
 

@@ -63,6 +63,15 @@ export function cbsIntervals(text: string): SpanInterval[] {
     return intervals
 }
 
+// The text cut at the opener of the CBS block that is still open: `head` is what comes before it and `held` is the
+// opener and everything after. Only the last interval can be open. With no open block `held` is empty, and always
+// `head + held === text`.
+export function splitAtOpenCbsSpan(text: string): { head: string, held: string } {
+    const open = cbsIntervals(text).find((interval) => interval.e === Infinity)
+    if (!open) return { head: text, held: '' }
+    return { head: text.slice(0, open.q), held: text.slice(open.q) }
+}
+
 function escapeLiteral(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
