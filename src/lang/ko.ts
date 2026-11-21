@@ -1663,6 +1663,7 @@ export const languageKorean = {
     "triggerInputLabels": {
         "value": "값",
         "var": "변수",
+        "operandType": "{label} 유형",
         "varName": "변수명",
         "outputVar": "출력 변수",
         "name": "이름",
@@ -3108,6 +3109,7 @@ export const languageKorean = {
     "openAIAudioLeftOut": "WAV나 MP3 오디오만 받는 모델이라 보내지 않았어요: {names}",
     "openAIAudioUnnamed": "오디오 첨부 파일",
     "triggerOn": "활성화 조건",
+    "triggerEffectCategory": "효과 분류",
     "noConfig": "설정 없음",
     "var": "변수",
     "condition": "조건",
@@ -3848,6 +3850,29 @@ export const languageKorean = {
     cleanColdStorage: "사용하지 않는 보관 데이터 및 에셋 정리",
     customSidebarConfig: "사이드바 커스텀 설정",
     cleanColdStorageConfirm: "이 작업은 사용하지 않는 모든 보관(콜드 스토리지) 데이터와 사용하지 않는 모든 에셋 파일(더 이상 어떤 캐릭터, 모듈, 페르소나, 설정에서도 사용하지 않는 이미지와 오디오)을 영구적으로 삭제합니다. 일부는 나중에 유용할 수 있으며, 삭제된 데이터는 복구할 수 없습니다. 계속하시겠습니까?",
+    cleanUnusedFiles: "사용하지 않는 파일 정리",
+    cleanUnusedFilesMeasuring: "사용하지 않는 파일을 찾는 중입니다. 라이브러리가 크면 시간이 오래 걸릴 수 있습니다.",
+    cleanUnusedFilesDeleting: "사용하지 않는 파일을 삭제하는 중...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? '크기 알 수 없음' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 미만' : `약 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `사용하지 않는 파일 ${count}개(${size})를 삭제하시겠습니까? 어떤 캐릭터, 모듈, 페르소나, 설정, 복원 지점에서도 사용하지 않는 파일입니다. 먼저 이 앱의 다른 탭과 창을 모두 닫으세요. 삭제한 파일은 복구할 수 없습니다.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? '크기 알 수 없음' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 미만' : `약 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `사용하지 않는 파일 ${count}개(${size})를 지금 삭제하시겠습니까?`
+            + (later > 0 ? ` 사용하지 않는 파일이 ${later}개 더 발견되었습니다. 이 서버에서는 하루 이상 간격을 둔 정리에서 세 번 연속 사용하지 않는 것으로 확인된 파일만, 한 번에 최대 500개까지 삭제하므로, 이 파일들은 이후 정리를 위해 기록해 둡니다.` : '')
+            + ` 먼저 이 서버를 사용하는 다른 탭과 기기를 모두 닫으세요. 예를 누르면 열려 있는 곳이 없음을 확인한 것으로 간주합니다. 삭제한 파일은 복구할 수 없습니다.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `아직 삭제할 수 있는 사용하지 않는 파일이 없습니다. 사용하지 않는 파일이 ${later}개 발견되었습니다. 이 서버에서는 하루 이상 간격을 둔 정리에서 세 번 연속 사용하지 않는 것으로 확인된 파일만, 한 번에 최대 500개까지 삭제합니다. 이후 정리에서 삭제할 수 있도록 지금 기록해 두시겠습니까? 먼저 이 서버를 사용하는 다른 탭과 기기를 모두 닫으세요. 예를 누르면 열려 있는 곳이 없음을 확인한 것으로 간주합니다.`,
+    cleanUnusedFilesNodeWait: "사용하지 않는 파일을 하루도 지나기 전에 확인했습니다. 이 서버에서는 마지막 확인 후 하루가 지나야 파일을 삭제할 수 있으니 나중에 다시 시도하세요. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesNone: "사용하지 않는 파일이 없습니다. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `사용하지 않는 파일 ${deleted}개를 삭제했습니다.${kept > 0 ? ` 파일 ${kept}개는 다시 사용 중이거나 삭제할 수 없어 남겨 두었습니다.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `앱이 데이터를 사용하기 시작하여(저장, 채팅, 복원 또는 다른 탭) 정리가 중단되었습니다. 중단되기 전에 파일 ${deleted}개를 삭제했습니다. 나중에 다시 시도하세요.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? '정리를 취소했습니다. 아무것도 삭제하지 않았습니다.' : `정리를 취소했습니다. 중단되기 전에 파일 ${deleted}개를 삭제했습니다.`,
+    cleanUnusedFilesOtherTab: "이 앱의 다른 탭이 열려 있습니다. 이 앱의 다른 탭을 모두 닫은 뒤 다시 시도하세요. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesNoTabCheck: "이 페이지는 열려 있는 다른 탭을 확인할 수 없어(HTTPS 또는 localhost로 열려 있지 않음) 사용하지 않는 파일을 정리할 수 없습니다. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesBusy: "저장, 진행 중인 채팅 또는 자동 정리가 끝날 때까지 기다린 뒤 다시 시도하세요. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesRefused: "지금은 정리를 실행할 수 없습니다(저장된 데이터가 변경 중이거나 복원 중이거나 읽을 수 없음). 아무것도 삭제하지 않았습니다. 나중에 다시 시도하거나 먼저 앱을 새로고침하세요.",
     coldStorageCleanupNoLockConfirm: "브라우저가 이 앱의 다른 탭이 열려 있는지 확인할 수 없습니다. 정리가 실행되는 동안 이 앱의 다른 탭이 열려 있으면 해당 탭에서 데이터가 손실될 수 있습니다. 먼저 이 앱의 다른 탭을 모두 닫은 뒤 계속하세요. 그래도 계속하시겠습니까?",
     coldStorageCleanupNodeConfirm: "같은 서버를 다른 기기나 브라우저에서 사용 중일 때는 이 정리를 실행하지 마세요. 정리가 실행되는 동안 그쪽에서 저장한 내용은 손실되거나 삭제될 수 있습니다. 계속하시겠습니까?",
     coldStorageCleanupCheckingTabs: "정리하기 전에 이 앱의 다른 열린 탭을 확인하는 중...",

@@ -541,3 +541,103 @@ describe('a young record', () => {
         expect(await present(world, 'orphan.png')).toBe(true)
     })
 })
+
+describe('the manual clean-up entry on a Node page', () => {
+    const planOf = (world: World, over: Partial<AssetSweepEnv> = {}) => runAssetSweep(envOf(world, { ...over, manual: { step: 'plan' } }))
+    const deleteOf = (world: World, approved: readonly string[], over: Partial<AssetSweepEnv> = {}) =>
+        runAssetSweep(envOf(world, { ...over, manual: { step: 'delete', approved: new Set(approved) } }))
+
+    test('RR4: a manual delete on a plain-HTTP page (peers unsupported) deletes the approved third-sighting asset and records', async () => {
+        const world = await openWorld()
+        const revs = await plantAssets(world, ['orphan.png'])
+        await plantMarked(world, ['orphan.png'], revs)
+
+        const result = done(await deleteOf(world, ['orphan.png'], { peers: async () => 'unsupported' }))
+
+        expect(result).toMatchObject({ phase: 'swept', deleted: 1, recorded: true })
+        expect(await present(world, 'orphan.png')).toBe(false)
+        expect((await recordOf(world))?.items).toEqual([])
+    })
+
+    test('G11: the plan on unsupported counts what is deletable now and what is later, and reads only', async () => {
+        const world = await openWorld()
+        const revs = await plantAssets(world, ['aged.png', 'new.png'])
+        await plantMarked(world, ['aged.png'], revs)
+        const before = await recordBytes(world)
+
+        const plan = await planOf(world, { peers: async () => 'unsupported' })
+
+        expect(plan).toEqual({ status: 'planned', phase: 'swept', candidates: 2, deletable: ['aged.png'], later: 1 })
+        expect(await recordBytes(world)).toEqual(before)
+        expect(await present(world, 'aged.png') && await present(world, 'new.png')).toBe(true)
+
+        const result = done(await deleteOf(world, ['aged.png'], { peers: async () => 'unsupported' }))
+        expect(result).toMatchObject({ deleted: 1, recorded: true })
+        expect(await present(world, 'new.png')).toBe(true)
+    })
+
+    test('G11: a record a newer build wrote refuses the plan', async () => {
+        const world = await openWorld()
+        await world.store.write(SWEEP_KEY, encodeUnit(UNIT_TYPE.sweepRecord, { v: 2, at: 1, items: [] }), 'unconditional')
+
+        expect(await planOf(world)).toEqual({ status: 'refused', reason: 'record-too-new' })
+    })
+
+    test('G8: others refuses a manual delete, and another tab that appears before the second delete stops it with one deleted and no record', async () => {
+        const world = await openWorld()
+        const revs = await plantAssets(world, ['first.png', 'second.png'])
+        await plantMarked(world, ['first.png', 'second.png'], revs)
+
+        expect(await deleteOf(world, ['first.png', 'second.png'], { peers: async () => 'others' })).toEqual({ status: 'refused', reason: 'other-tab' })
+        expect(await present(world, 'first.png') && await present(world, 'second.png')).toBe(true)
+
+        let asked = 0
+        const result = done(await deleteOf(world, ['first.png', 'second.png'], { peers: async () => (++asked <= 2 ? 'alone' : 'others') }))
+
+        expect(result).toMatchObject({ deleted: 1, stopped: 'other-tab', recorded: false })
+        expect(await present(world, 'second.png')).toBe(true)
+    })
+
+    test('G9a: a young record ends a manual delete before the listing and leaves the record as it was', async () => {
+        const world = await openWorld()
+        const revs = await plantAssets(world, ['orphan.png'])
+        await plantRecord(world, Date.now(), [['orphan.png', revs.get('orphan.png') ?? -1, SEEN_BEFORE]])
+        const before = await recordBytes(world)
+        const listing = vi.spyOn(world.store, 'listRevisions')
+
+        const result = done(await deleteOf(world, ['orphan.png']))
+
+        expect(result).toMatchObject({ phase: 'young', deleted: 0, recorded: false })
+        expect(listing).not.toHaveBeenCalled()
+        expect(await recordBytes(world)).toEqual(before)
+    })
+
+    test('G9b: a manual delete keeps the Node age rule: an asset named once unmarked is marked, not deleted', async () => {
+        const world = await openWorld()
+        const revs = await plantAssets(world, ['orphan.png'])
+        const rev = revs.get('orphan.png') ?? -1
+        await plantRecord(world, Date.now() - DAY - HOUR, [['orphan.png', rev]])
+
+        const result = done(await deleteOf(world, ['orphan.png']))
+
+        expect(result).toMatchObject({ phase: 'swept', deleted: 0, recorded: true })
+        expect(await present(world, 'orphan.png')).toBe(true)
+        expect((await recordOf(world))?.items).toEqual([['orphan.png', rev, SEEN_BEFORE]])
+    })
+
+    test('G3: a marker opened by another committer refuses a manual delete staging and keeps the asset', async () => {
+        const world = await openWorld()
+        const revs = await plantAssets(world, ['orphan.png'])
+        await plantMarked(world, ['orphan.png'], revs)
+        const counted = countingHold(async (call) => {
+            if (call === 1) {
+                expect((await world.peer.openHeldBulk?.(await world.peer.readCommit(), { label: 'bulk' }))?.status).toBe('opened')
+            }
+        })
+
+        const result = await deleteOf(world, ['orphan.png'], { hold: counted.hold })
+
+        expect(result).toEqual({ status: 'refused', reason: 'staging' })
+        expect(await present(world, 'orphan.png')).toBe(true)
+    })
+})

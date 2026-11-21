@@ -5,11 +5,15 @@
  * No application module is mocked: the data imports only the legacy Accessibility and Advanced lists.
  */
 import { describe, expect, test, vi } from 'vitest'
+import type { SettingContext } from './types'
+
+const offer = vi.hoisted(() => ({ cleanUp: true }))
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
     isNodeServer: false,
 }) as unknown as typeof import('src/ts/platform'))
+vi.mock('src/ts/storage/cleanUpUnusedFiles', () => ({ cleanUpOfferedFor: () => offer.cleanUp }))
 
 import { languageEnglish } from 'src/lang/en'
 import { accessibilitySettingsItems } from './accessibilitySettingsData'
@@ -37,8 +41,9 @@ describe('Data page sections', () => {
 
     test('the rows come in the specified order and every one is found by the section lookup', () => {
         expect(dataShellRowIds()).toEqual([
-            'data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'acc.goCharacterOnImport', 'adv.coldstorage',
+            'data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'data.cleanUp', 'acc.goCharacterOnImport', 'adv.coldstorage',
         ])
+        expect(dataSectionOfRow('data.cleanUp')).toBe('data.transfer')
         expect(dataSectionOfRow('data.restoreSnapshot')).toBe('data.backup')
         expect(dataSectionOfRow('acc.goCharacterOnImport')).toBe('data.transfer')
         expect(dataSectionOfRow('adv.coldstorage')).toBe('data.storage')
@@ -56,8 +61,22 @@ describe('Data page rows', () => {
         )
     })
 
-    test('the four action items are buttons with a keyword list and an English label', () => {
-        expect(DATA_ACTION_ITEMS.map((item) => item.id)).toEqual(['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset'])
+    test('the clean-up row and its search item share one offer rule, so a hidden row is not a search hit', () => {
+        const ctx = {} as unknown as SettingContext
+        const row = DATA_SHELL_SECTIONS.flatMap((section) => section.rows).find((candidate) => candidate.kind !== 'setting' && candidate.id === 'data.cleanUp')
+        const item = dataActionItem('data.cleanUp')
+        expect(row?.kind).toBe('shell')
+        const rowCondition = row?.kind === 'shell' ? row.condition : undefined
+        for (const offered of [true, false]) {
+            offer.cleanUp = offered
+            expect(rowCondition?.(ctx), `row ${offered}`).toBe(offered)
+            expect(item.condition?.(ctx), `item ${offered}`).toBe(offered)
+        }
+        offer.cleanUp = true
+    })
+
+    test('the five action items are buttons with a keyword list and an English label', () => {
+        expect(DATA_ACTION_ITEMS.map((item) => item.id)).toEqual(['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'data.cleanUp'])
         for (const item of DATA_ACTION_ITEMS) {
             expect(item.type, item.id).toBe('button')
             expect(item.keywords?.length, item.id).toBeGreaterThan(0)
