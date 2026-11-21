@@ -1405,6 +1405,8 @@ function wrapToolStream(
                         resRec.body.pipeTo(transtream.writable).catch(() => {})
 
                         reader = transtream.readable.getReader()
+                        // A follow-up stream that yields no chunk must end the reply, not replay this round's calls.
+                        lastValue = initStreamState()
 
                         if(db.simplifiedToolUse) {
                             prefix += callCodes.join('\n\n')
