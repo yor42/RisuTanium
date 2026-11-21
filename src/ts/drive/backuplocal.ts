@@ -1237,7 +1237,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
     }
-    session.progress.done([downloadNotice('Success')])
+    session.progress.done([downloadNotice(language.rtbExportSaved)])
     return { status: 'saved', notices: [], omitted, inlays: inlayResult }
 }
 
@@ -1534,7 +1534,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         session.progress.notice('markdown', message)
         return { status: 'saved', notices: [message], omitted, inlays: null, suggestedName }
     }
-    session.progress.done([downloadNotice('Success'), language.partialBackupInlaysNotIncluded])
+    session.progress.done([downloadNotice(language.rtbExportSaved), language.partialBackupInlaysNotIncluded])
     return { status: 'saved', notices: [], omitted, inlays: null, suggestedName }
 }
 
@@ -2041,8 +2041,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 const walk = await indexBackupEntries(file, {
                     oversizeBodyBytes: assetLimit ?? undefined,
                     onProgress: (scanned, total) => {
-                        const percent = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
-                        const progressText = `Checking local backup... (${percent}%)`;
+                        const percent = total > 0 ? Math.floor((scanned / total) * 100) : 100
+                        const progressText = language.rtbRestoreChecking(percent);
                         const changed = progressText !== lastWalkProgressText;
                         lastWalkProgressText = progressText;
                         progress.bytes('check', scanned, total, changed ? progressText : null);
@@ -2305,7 +2305,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                             noteImportPhase(`copy ${visitedEntries} of ${backupEntries.length} entries`);
                         }
                         const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
-                        const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
+                        const progressText = language.rtbRestoreCopying(Math.floor((entryEnd / file.size) * 100));
                         const textChanged = progressText !== lastProgressText;
                         lastProgressText = progressText;
                         progress.bytes('copy', copyDone, file.size, textChanged ? progressText : null);

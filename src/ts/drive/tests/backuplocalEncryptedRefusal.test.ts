@@ -192,6 +192,7 @@ import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { isAppInitiatedReload } from '../../reloadGuard'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
+import { armTrigger, expectEveryTriggerFired, isRestoreCheckText, isRestoreCopyText } from './restoreWaitText'
 import { StoreInvalidKeyError } from '../../storage/store/errors'
 import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -282,15 +283,19 @@ interface SliceReads {
 
 /**
  * Switches `reads` to its copy phase when the restore shows the copy pass's
- * first progress text ("Loading local Backup..."), which `LoadLocalBackup`
+ * first progress text (`rtbRestoreCopying`), which `LoadLocalBackup`
  * does after the walk resolved and before the copy pass reads anything. This
  * is the phase seam of the time-divergent doubles: what a pass reads depends on
  * the pass, never on how many reads an earlier pass happened to make.
+ * The trigger is armed, so a test whose double never reaches the copy phase fails
+ * unless it declares `{ expect: 'never' }`.
  */
-function switchToCopyPhaseOnCopyProgress(reads: SliceReads): void {
+function switchToCopyPhaseOnCopyProgress(reads: SliceReads, opts?: { expect?: 'fires' | 'never' }): void {
+    const trigger = armTrigger('copy phase', opts)
     alertMocks.alertWait.mockImplementation((text: unknown) => {
-        if (typeof text === 'string' && text.startsWith('Loading local Backup')) {
+        if (typeof text === 'string' && isRestoreCopyText(text)) {
             reads.phase = 'copy'
+            trigger.hit()
         }
     })
 }
@@ -578,6 +583,8 @@ beforeEach(() => {
         return el
     })
 })
+
+afterEach(expectEveryTriggerFired)
 
 afterEach(() => {
     overrideBackupWindowBytes(null)
@@ -1000,7 +1007,7 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         // A successful restore reloads instead of showing a "Success" alert,
         // and marks that reload app-initiated so the app's own "Leave site?"
         // guard lets it through.
-        expect(alertMocks.alertNormal).not.toHaveBeenCalledWith('Success')
+        expect(alertMocks.alertNormal).not.toHaveBeenCalledWith(language.rtbExportSaved)
         expect(alertMocks.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
         expect(isAppInitiatedReload()).toBe(true)
     })
@@ -1122,9 +1129,9 @@ describe('the restore shows its progress text (I2)', () => {
 
     test('updates the progress text only when the shown percentage changes', async () => {
         // The three small entries in front of the large one each end below
-        // 0.01% of the file, so they show the same percentage; so do the
-        // large entry and the database behind it, which end within 0.01% of
-        // the file's end.
+        // 1% of the file, so they show the same integer percent; the large
+        // entry ends within 1% of the file's end, so it shows 99, and the
+        // database behind it shows 100.
         const entries = [
             assetEntry(1, 't0.png'),
             assetEntry(1, 't1.png'),
@@ -1137,7 +1144,7 @@ describe('the restore shows its progress text (I2)', () => {
         let end = 0
         for (const entry of entries) {
             end += entry.length
-            const text = `Loading local Backup... (${((end / bytes.length) * 100).toFixed(2)}%)`
+            const text = language.rtbRestoreCopying(Math.floor((end / bytes.length) * 100))
             if (expectedTexts[expectedTexts.length - 1] !== text) {
                 expectedTexts.push(text)
             }
@@ -1147,9 +1154,33 @@ describe('the restore shows its progress text (I2)', () => {
 
         const loadingTexts = alertMocks.alertWait.mock.calls
             .map((call) => String(call[0]))
-            .filter((text) => text.startsWith('Loading local Backup...'))
-        expect(expectedTexts).toEqual(['Loading local Backup... (0.00%)', 'Loading local Backup... (100.00%)'])
+            .filter(isRestoreCopyText)
+        expect(expectedTexts).toEqual([language.rtbRestoreCopying(0), language.rtbRestoreCopying(99), language.rtbRestoreCopying(100)])
         expect(loadingTexts).toEqual(expectedTexts)
+    })
+
+    test('shows each walk percentage at most once, as an integer', async () => {
+        // The walk reports once per entry, so 250 small entries report far more often than the percent changes.
+        const entryCount = 250
+        const entries: Uint8Array[] = []
+        for (let index = 0; index < entryCount; index++) {
+            entries.push(assetEntry(1, `w${index}.png`))
+        }
+        entries.push(databaseEntry())
+
+        await loadBackupBytes(concatChunks(entries))
+
+        const checkTexts = alertMocks.alertWait.mock.calls
+            .map((call) => String(call[0]))
+            .filter(isRestoreCheckText)
+        // Every text that looks like the walk text (same words, before the percent) is an integer-percent one.
+        const walkWords = language.rtbRestoreChecking(0).slice(0, language.rtbRestoreChecking(0).indexOf('('))
+        const walkLike = alertMocks.alertWait.mock.calls.map((call) => String(call[0])).filter((text) => text.startsWith(walkWords))
+        expect(walkLike).toEqual(checkTexts)
+        expect(checkTexts.length).toBeGreaterThan(1)
+        expect(checkTexts.length).toBeLessThanOrEqual(101)
+        expect(checkTexts.every((text, index) => index === 0 || text !== checkTexts[index - 1])).toBe(true)
+        expect(checkTexts.at(-1)).toBe(language.rtbRestoreChecking(100))
     })
 })
 

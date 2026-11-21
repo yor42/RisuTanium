@@ -3760,7 +3760,6 @@ export const languageKorean = {
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupWriteFailed": "백업을 저장할 수 없었습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupListFailed": "백업 목록을 읽을 수 없었습니다. 아무것도 변경되지 않았습니다.",
-    "internalBackupWaitingForCleanup": "백업을 불러오기 전에 시작 시 정리 작업을 마무리하는 중입니다...",
     "internalBackupPartialConfirm": "이 백업은 일부가 손상되었습니다. 손상되지 않은 부분만 불러올 수 있으며, 다음 항목은 제외됩니다:",
     "internalBackupPartialConfirmKeep": "먼저 현재 데이터가 가장 최근 내부 백업으로 보관되므로, 같은 목록에서 다시 되돌릴 수 있습니다. 손상되지 않은 부분을 불러오시겠습니까?",
     "internalBackupLeftOutPresets": "모든 프리셋 (대신 기본 프리셋이 사용됩니다)",

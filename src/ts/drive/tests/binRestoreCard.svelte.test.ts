@@ -413,6 +413,7 @@ vi.doMock('src/ts/drive/inlayBackupImport', async (importOriginal) => {
 import { EMPTY_LANDED_END, resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from 'src/ts/drive/tests/store2ShellStub'
 import 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
+import { isRestoreCheckText, isRestoreCopyText } from 'src/ts/drive/tests/restoreWaitText'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
@@ -560,7 +561,7 @@ const L = {
 /** The legacy wait texts of the page restore; none may be posted on the card route. */
 function legacyWaitTexts(): string[] {
     return alertWaitMock.mock.calls.map((call) => String(call[0])).filter((text) =>
-        text.startsWith('Checking local backup') || text.startsWith('Loading local Backup')
+        isRestoreCheckText(text) || isRestoreCopyText(text)
         || text === language.backupRestoreReadingDatabase || text === language.backupRestoreLoading
         || text === language.restoreCheckingOtherTabs || text === language.store2RestoreSaving
         || text === language.backupRestoreFinishingFiles)
@@ -606,7 +607,7 @@ afterEach(() => {
 })
 
 describe('a .bin restore on the task card', () => {
-    // RR: base shows `Checking local backup...`, `Loading local Backup...` and the other legacy waits, with no card.
+    // RR: base shows the `rtbRestoreChecking` and `rtbRestoreCopying` texts and the other legacy waits, with no card.
     test('BR-T1: the steps run in order with bytes on check and copy, Cancel offered through read and locked from copy, and no legacy wait', async () => {
         const page = await bootPage('tauri')
 
@@ -747,7 +748,8 @@ describe('a .bin restore on the task card', () => {
 
         await LoadPickedLocalBackup(new File([smallBin() as unknown as Uint8Array<ArrayBuffer>], 'backup.bin'))
 
-        expect(legacyWaitTexts().some((text) => text.startsWith('Checking local backup'))).toBe(true)
+        expect(legacyWaitTexts().some(isRestoreCheckText)).toBe(true)
+        expect(legacyWaitTexts().some(isRestoreCopyText)).toBe(true)
         expect(legacyWaitTexts()).toContain(language.backupRestoreLoading)
         expect(shownDuring.length).toBeGreaterThan(0)
         expect(shownDuring.every((shown) => !shown)).toBe(true)
@@ -796,7 +798,8 @@ describe('a .bin restore on the task card', () => {
 
         expect(end).toEqual({ kind: 'finished', result: { status: 'reclassify' } })
         expect(install).toHaveBeenCalledTimes(1)
-        expect(legacyWaitTexts().some((text) => text.startsWith('Checking local backup'))).toBe(true)
+        expect(legacyWaitTexts().some(isRestoreCheckText)).toBe(true)
+        expect(legacyWaitTexts().some(isRestoreCopyText)).toBe(true)
         expect(legacyWaitTexts()).toContain(language.backupRestoreLoading)
         expect(shownDuring.length).toBeGreaterThan(0)
         expect(shownDuring.every((shown) => !shown)).toBe(true)

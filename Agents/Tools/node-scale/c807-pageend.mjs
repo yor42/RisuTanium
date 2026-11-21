@@ -78,6 +78,18 @@ function langTemplatePrefix(src, key) {
 
 const exactly = (text) => new RegExp('^' + normText(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')
 
+/** The literal text a template-literal function of one percent parameter wraps around `${...}`, as `[prefix, suffix]`. */
+function langPercentParts(src, key) {
+  const re = new RegExp('(?:"' + key + '"|' + key + '):\\s*\\([^)]*\\)\\s*=>\\s*`([^$`]*)\\$\\{[^}]*\\}([^$`]*)`')
+  const m = re.exec(src)
+  if (m === null) throw new Error('language percent template not found: ' + key)
+  return [m[1], m[2]].map((part) => normText(part.replace(/\\n/g, ' ').replace(/\\(.)/g, '$1')))
+}
+
+/** Matches the template's text with an integer percent in place of its parameter. */
+const withIntegerPercent = ([prefix, suffix]) =>
+  new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\d+' + suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')
+
 /**
  * The text table of the import path, read from the text of src/lang/en.ts and ko.ts (the files are TypeScript; their literals are
  * read, not executed). `answer` stays the size, time and space warnings' closing question ("Continue?"), as the c806 answerer has it.
@@ -85,13 +97,13 @@ const exactly = (text) => new RegExp('^' + normText(text).replace(/[.*+?^${}()|[
 export function tableFromLangSource(sources) {
   const each = (fn) => sources.map(fn)
   const progressStatic = [
-    // backuplocal.ts LoadLocalBackup, between the file change and the import's done
-    /^Checking local backup\.\.\. \(\d+(?:\.\d+)?%\)$/,
+    // backuplocal.ts LoadLocalBackup, between the file change and the import's done; the walk and copy texts are
+    // language keys with an integer percent, read from each language file below
     /^Reading the database in the backup\.\.\.$/,
-    /^Loading local Backup\.\.\. \(\d+(?:\.\d+)?%\)$/,
     /^Finishing copying files\.\.\.$/,
     /^Loading backup\.\.\.$/,
   ]
+  const walkAndCopy = each((s) => ['rtbRestoreChecking', 'rtbRestoreCopying'].map((key) => withIntegerPercent(langPercentParts(s, key)))).flat()
   const tabs = each((s) => normText(langString(s, 'restoreCheckingOtherTabs', 4)))
   const done = each((s) => normText(langString(s, 'store2ImportDone', 4)))
   return {
@@ -101,7 +113,7 @@ export function tableFromLangSource(sources) {
     unconfirmedTexts: each((s) => normText(langString(s, 'store2ImportUnconfirmed', 4))),
     blockedTitles: each((s) => normText(langString(s, 'blockedTitle', 8))),
     detailsHeadings: each((s) => normText(langString(s, 'blockedDetailsHeading', 8))),
-    progress: [...progressStatic, ...tabs.map(exactly), ...done.map(exactly)],
+    progress: [...progressStatic, ...walkAndCopy, ...tabs.map(exactly), ...done.map(exactly)],
   }
 }
 //#endregion

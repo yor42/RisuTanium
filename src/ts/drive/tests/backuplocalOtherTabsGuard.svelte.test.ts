@@ -36,6 +36,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { language } from 'src/lang'
 import { alertWait } from '../../alert'
+import { armTrigger, expectEveryTriggerFired, isRestoreCopyText } from './restoreWaitText'
 import type { Database } from '../../storage/database.svelte'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from '../../storage/tests/fakeWebLocks'
 import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -298,14 +299,17 @@ function makeFakeFile(bytes: Uint8Array): File {
  * A real File whose `slice()` reads `walkBytes` in the walk phase (the pre-read walk) and `restoreBytes` in the
  * copy phase (the restore pass) -- models a file that changes between the two, matching
  * `backuplocalEncryptedRefusal.test.ts`'s own harness for the same reason. The phase switches when the copy pass
- * shows its first progress text, which `LoadLocalBackup` does after the walk resolved and before the copy reads.
+ * shows its first copy progress text (`rtbRestoreCopying`), which `LoadLocalBackup` does after the walk resolved and
+ * before the copy reads. The trigger is armed, so a double that never reaches the copy phase fails the test.
  */
 function fileWithTimeDivergentSlice(walkBytes: Uint8Array, restoreBytes: Uint8Array, name = 'backup.bin'): File {
     const base = new File([asBlobPart(walkBytes)], name)
     let copyPhase = false
+    const trigger = armTrigger('copy phase')
     vi.mocked(alertWait).mockImplementation((msg: string) => {
-        if (msg.startsWith('Loading local Backup')) {
+        if (isRestoreCopyText(msg)) {
             copyPhase = true
+            trigger.hit()
         }
         return { type: 'wait', msg }
     })
@@ -488,6 +492,8 @@ beforeEach(async () => {
     vi.mocked(tabA.alertModule.alertNormal).mockClear()
 })
 
+afterEach(expectEveryTriggerFired)
+
 afterEach(() => {
     vi.mocked(alertWait).mockReset()
     vi.doUnmock(import('../../platform'))
@@ -616,7 +622,7 @@ describe('J4: a successful restore reloads instead of showing Success', () => {
         await loadBackupBytes(tabA.loadLocalBackup, fixture)
 
         expect(tabA.reloadGuard.isAppInitiatedReload()).toBe(true)
-        expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith('Success')
+        expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith(language.rtbExportSaved)
         expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
         expect(shell.commits).toHaveLength(1)
         expectNoSaveFirstWait(tabA)
