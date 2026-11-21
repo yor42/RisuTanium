@@ -574,6 +574,10 @@
                 <PlaygroundMenu />
             {/await}
         {/if}
+    {:else if !currentCharacter || currentCharacter.coldstorage}
+        <!-- An archived placeholder holds no chat and no first messages: the chat below reads both. `changeChar`
+             restores an archived character before it selects it, so only a selection written around it lands here. -->
+        <div class="h-full w-full"></div>
     {:else}
         <div class="h-full w-full flex flex-col-reverse overflow-y-auto relative default-chat-screen" onscroll={(e) => {
             // A hidden list reports zero metrics, which would read as scrolled to the top and grow the loaded pages.
