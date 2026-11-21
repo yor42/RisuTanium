@@ -172,6 +172,10 @@ describe('HomeDrawer focus after close', () => {
     const AFTER_WINDOW_MS = 2000
     const LATE_CLICK_MS = 485
 
+    // Each mounted landing greeting holds exactly one pending timeout of its own, so the queue is
+    // expected to hold that many and nothing else: a leaked hold timer still shows as an extra.
+    const greetingTimers = (): number => document.querySelectorAll('[data-part="home-greeting"]').length
+
     beforeEach(() => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     })
@@ -180,7 +184,7 @@ describe('HomeDrawer focus after close', () => {
     // the window's end, so running the clock past it must drain the timer queue.
     afterEach(async () => {
         await vi.advanceTimersByTimeAsync(AFTER_WINDOW_MS)
-        expect(vi.getTimerCount()).toBe(0)
+        expect(vi.getTimerCount()).toBe(greetingTimers())
         vi.useRealTimers()
     })
 
@@ -266,7 +270,7 @@ describe('HomeDrawer focus after close', () => {
         // Zero-delay timers other code scheduled on the focus change fire here; the hold's 750 ms
         // window timer is not due, so only a leaked hold timer can remain.
         await advance(0)
-        expect(vi.getTimerCount()).toBe(0)
+        expect(vi.getTimerCount()).toBe(greetingTimers())
     })
 
     // Resource guard: an early stop removes the hold's document listeners, both the focusin and the
@@ -355,7 +359,7 @@ describe('HomeDrawer focus after close', () => {
         expect(() => resizeTo(900)).not.toThrow()
         await advance(AFTER_WINDOW_MS)
         expect(menuButtonOf(root)).toBeNull()
-        expect(vi.getTimerCount()).toBe(0)
+        expect(vi.getTimerCount()).toBe(greetingTimers())
     })
 })
 

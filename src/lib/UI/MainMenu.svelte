@@ -10,7 +10,6 @@
     import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
     import RealmPreviewRow from "./Realm/RealmPreviewRow.svelte";
     import SourceDisclosure, { type Destination } from "./SourceDisclosure.svelte";
-    import Title from "./Title.svelte";
     import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
     import { utilityOpen, utilityVisible } from "../Utility/utilityGate";
     import type { Snippet } from "svelte";
@@ -268,8 +267,6 @@
 </script>
 <div class="h-full w-full flex flex-col overflow-y-auto items-center">
     {#if !$OpenRealmStore}
-      <Title />
-      <h3 class="text-textcolor2 mt-1">{language.homeVersion} {getVersionString()}</h3>
       {#if header}
         {@render header()}
       {/if}
@@ -532,6 +529,7 @@
             </div>
           {/if}
       </div>
+      <h3 class="mt-2 text-textcolor2">{language.homeVersion} {getVersionString()}</h3>
       {#if hubAnnouncement && !realmHidden}
         <!--
           Gated on realmHidden, not just a non-empty string: this banner is
