@@ -13,7 +13,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ByteStore, ReadResult } from 'src/ts/storage/store/contract'
 import { createMemoryByteStore } from '../../files/tests/memoryByteStore'
-import { indexedDbCreatableViolation, nodeCreatableViolation, tauriCreatableViolation } from 'src/ts/storage/store/keyRules'
+import { nodeCreatableViolation, tauriCreatableViolation } from 'src/ts/storage/store/keyRules'
 import type { StdioSpec } from '../stdioSpec'
 
 const h = vi.hoisted(() => ({
@@ -77,7 +77,6 @@ describe('key placement', () => {
     test('guard: the key is creatable on every store and outside every listed or swept prefix', () => {
         expect(tauriCreatableViolation(KEY)).toBeNull()
         expect(nodeCreatableViolation(KEY)).toBeNull()
-        expect(indexedDbCreatableViolation(KEY)).toBeNull()
         for (const prefix of ['assets/', 'remotes/', 'blocks/', 'database/', 'coldstorage/', 'inlays/', 'store2/']) {
             expect(KEY.startsWith(prefix)).toBe(false)
         }

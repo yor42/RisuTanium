@@ -74,13 +74,7 @@ function entry(name: string, index = 0, portrait = false): ExportAssetEntry {
     return { index, key: key(name), name, portrait }
 }
 
-/** A Blob that reports a size and holds no bytes. */
-class SizedBlob extends Blob {
-    constructor(private readonly reported: number) { super([]) }
-    get size() { return this.reported }
-}
-
-type Source = 'tauri' | 'web' | 'node'
+type Source = 'tauri' | 'node'
 
 function storeFor(source: Source): () => Promise<ByteStore | null> {
     env.desktop = source === 'tauri'
@@ -97,10 +91,6 @@ function storeFor(source: Source): () => Promise<ByteStore | null> {
         : null
     const store = {
         read: vi.fn(async () => ({ bytes: null })),
-        readValue: async (name: string) => {
-            const size = env.sizes.get(name)
-            return size === undefined ? null : new SizedBlob(size)
-        },
     } as unknown as ByteStore
     return async () => store
 }
@@ -155,7 +145,7 @@ describe('listExportAssets (new behaviour)', () => {
 })
 
 describe('preflightExport sizes (new behaviour)', () => {
-    for (const source of ['tauri', 'web', 'node'] as Source[]) {
+    for (const source of ['tauri', 'node'] as Source[]) {
         test(`${source}: exactly 64 MiB is not large and one byte more is`, async () => {
             const getStore = storeFor(source)
             env.sizes.set(key('edge'), LARGE_EXPORT_ASSET_BYTES)

@@ -331,8 +331,8 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
 
 /**
  * How a Blob inlay of the app store reaches the page without being read into
- * memory: the store's own URL, else an object URL over the Blob the store holds.
- * `null` when neither applies, and the render reads the bytes instead, except for a
+ * memory: the store's own URL.
+ * `null` when the store gives none, and the render reads the bytes instead, except for a
  * Blob video that Android would read whole above its limit, which the render
  * withholds. A store that cannot give a URL (the Node server without an asset
  * token) is skipped. An image the platform withholds never reaches here: the
@@ -351,17 +351,6 @@ async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promis
             return { render: { type, url, source: 'store-url' }, objectUrl: null }
         } catch {
             // No URL for this key on this page: the Blob or the bytes are used.
-        }
-    }
-    if(store.readBlob !== undefined){
-        try {
-            const blob = await store.readBlob(record.body)
-            if(blob !== null && blob.size === record.len){
-                const url = objectUrlOfInlayBlob(type, record.fields.ext, blob)
-                return { render: { type, url, source: 'stored-blob' }, objectUrl: url }
-            }
-        } catch {
-            // The Blob cannot be had: the bytes are read.
         }
     }
     return null

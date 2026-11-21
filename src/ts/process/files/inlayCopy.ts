@@ -324,15 +324,6 @@ function backupOrReloadInProgress(): boolean {
 
 /** The length of the body a record names, read from the store; `null` when the body is absent. */
 async function storedBodyLength(store: ByteStore, record: InlayRecord): Promise<number | null> {
-    const blob = await store.readBlob?.(record.body) ?? null
-    if (blob !== null) {
-        // A Blob handle's size comes from metadata; its first and last byte are read to prove the body is there.
-        if (blob.size > 0) {
-            await blob.slice(0, 1).arrayBuffer()
-            await blob.slice(blob.size - 1).arrayBuffer()
-        }
-        return blob.size
-    }
     const bytes = (await store.read(record.body)).bytes
     return bytes === null ? null : bytes.length
 }

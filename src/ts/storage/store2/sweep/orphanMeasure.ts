@@ -51,7 +51,7 @@ export interface OrphanTier {
     sample: string[]
 }
 
-export type OrphanBytesSource = 'stat' | 'listSized' | 'readValue' | 'read'
+export type OrphanBytesSource = 'stat' | 'listSized' | 'read'
 
 export type AssetOrphanReport =
     | { status: 'refused', stage: 'gate', reason: GateRefusal, detail: string }
@@ -113,19 +113,6 @@ async function chooseSizeSource(env: AssetOrphanEnv): Promise<SizeSource> {
             // The answer holds only keys above the minimum, so a key it omits is empty (or gone since the listing), not absent.
             const sizes = new Map(sized.map(entry => [entry.key, entry.size]))
             return { source: 'listSized', sizeOf: async name => sizes.get(`${ASSETS_PREFIX}${name}`) ?? 0 }
-        }
-    }
-    if (store.readValue !== undefined) {
-        const readValue = store.readValue.bind(store)
-        return {
-            source: 'readValue',
-            sizeOf: async name => {
-                const value = await readValue(`${ASSETS_PREFIX}${name}`)
-                if (value === null) {
-                    return null
-                }
-                return value instanceof Uint8Array ? value.length : value.size
-            },
         }
     }
     return {

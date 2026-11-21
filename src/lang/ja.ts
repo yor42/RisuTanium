@@ -3773,7 +3773,6 @@ export const languageJapanese = {
     backupSaveProgress: (done: number, total: number) => `ローカルバックアップを保存中… (${done} / ${total})`,
     backupSavePartialProgress: (done: number, total: number) => `部分ローカルバックアップを保存中… (${done} / ${total})`,
     backupSaveDownloading: (sent: string, total: string) => `ローカルバックアップを保存中… ダウンロード中 (${sent} / ${total})`,
-    backupCheckingAssetSizes: (done: number, total: number) => `アセットのサイズを確認中… (${done} / ${total})`,
     backupSaveInlays: (done: number, total: number) => `ローカルバックアップのチャット画像を保存中… (${done} / ${total})`,
     backupSaveColdData: (done: number, total: number) => `ローカルバックアップのコールドストレージデータを保存中… (${done} / ${total})`,
     backupSavePartialColdData: (done: number, total: number) => `部分ローカルバックアップのコールドストレージデータを保存中… (${done} / ${total})`,
@@ -4371,8 +4370,6 @@ export const languageJapanese = {
     byafSeveralCharacters: "このBackyardアーカイブには複数のキャラクターが含まれており、本アプリではインポートできないため、インポートされませんでした。",
     cardImageTooLarge: (limitMiB: number) =>
         `このカードの画像は制限の${limitMiB} MBを超えているため、カードはインポートされませんでした。`,
-    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) =>
-        `「${fileName}」はこのブラウザで保存可能な${limitMiB} MBを超えているため、保存されませんでした。`,
     assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
         const quoted = fileNames.slice(0, 20).map((name) => `「${name}」`)
         const more = fileNames.length - quoted.length
