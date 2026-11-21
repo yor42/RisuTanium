@@ -3838,6 +3838,29 @@ export const languageVietnamese = {
     cleanColdStorage: "Dọn dẹp Dữ liệu Lưu trữ và Tệp Tài sản Không sử dụng",
     customSidebarConfig: "Cấu hình Thanh bên Tùy chỉnh",
     cleanColdStorageConfirm: "Thao tác này sẽ xóa vĩnh viễn toàn bộ dữ liệu lưu trữ (bộ nhớ lạnh) không sử dụng và toàn bộ tệp tài sản không sử dụng, tức là hình ảnh và âm thanh mà không nhân vật, mô-đun, persona hay cài đặt nào còn sử dụng. Một số có thể vẫn hữu ích trong tương lai, và không thể khôi phục. Bạn có muốn tiếp tục không?",
+    cleanUnusedFiles: "Dọn dẹp Tệp Không sử dụng",
+    cleanUnusedFilesMeasuring: "Đang tìm các tệp không sử dụng. Việc này có thể mất khá nhiều thời gian nếu thư viện lớn.",
+    cleanUnusedFilesDeleting: "Đang xóa các tệp không sử dụng...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'chưa rõ dung lượng' : bytes < 0.1 * 1024 * 1024 ? 'dưới 0.1 MiB' : `khoảng ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Xóa ${count} tệp không sử dụng (${size})? Không có nhân vật, mô-đun, persona, cài đặt hay điểm khôi phục nào sử dụng chúng. Hãy đóng mọi thẻ và cửa sổ khác của ứng dụng này trước. Không thể hoàn tác thao tác này.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'chưa rõ dung lượng' : bytes < 0.1 * 1024 * 1024 ? 'dưới 0.1 MiB' : `khoảng ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Xóa ${count} tệp không sử dụng (${size}) ngay bây giờ?`
+            + (later > 0 ? ` Đã tìm thấy thêm ${later} tệp không sử dụng. Trên máy chủ này, một tệp chỉ bị xóa sau khi ba lần dọn dẹp cách nhau ít nhất một ngày đều thấy nó không được sử dụng, tối đa 500 tệp mỗi lần, nên các tệp này được ghi nhận cho những lần dọn dẹp sau.` : '')
+            + ` Hãy đóng mọi thẻ và thiết bị khác đang dùng máy chủ này trước: nhấn CÓ nghĩa là xác nhận không còn cái nào đang mở. Không thể hoàn tác thao tác này.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `Hiện chưa có tệp không sử dụng nào có thể xóa. Đã tìm thấy ${later} tệp không sử dụng. Trên máy chủ này, một tệp chỉ bị xóa sau khi ba lần dọn dẹp cách nhau ít nhất một ngày đều thấy nó không được sử dụng, tối đa 500 tệp mỗi lần. Ghi nhận chúng ngay bây giờ để lần dọn dẹp sau có thể xóa? Hãy đóng mọi thẻ và thiết bị khác đang dùng máy chủ này trước: nhấn CÓ nghĩa là xác nhận không còn cái nào đang mở.`,
+    cleanUnusedFilesNodeWait: "Các tệp không sử dụng đã được kiểm tra chưa đầy một ngày trước. Trên máy chủ này, tệp chỉ có thể bị xóa sau lần kiểm tra cuối một ngày, vì vậy hãy thử lại sau. Chưa có gì bị xóa.",
+    cleanUnusedFilesNone: "Không tìm thấy tệp không sử dụng nào. Chưa có gì bị xóa.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Đã xóa ${deleted} tệp không sử dụng.${kept > 0 ? ` ${kept} tệp được giữ lại vì chúng lại được sử dụng hoặc không thể xóa.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `Quá trình dọn dẹp đã dừng vì ứng dụng bắt đầu sử dụng dữ liệu của nó (lưu, một cuộc trò chuyện, khôi phục hoặc một thẻ khác). Đã xóa ${deleted} tệp trước khi dừng. Hãy thử lại sau.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Đã hủy dọn dẹp. Chưa có gì bị xóa.' : `Đã hủy dọn dẹp. Đã xóa ${deleted} tệp trước khi dừng.`,
+    cleanUnusedFilesOtherTab: "Một thẻ khác của ứng dụng này đang mở. Hãy đóng mọi thẻ khác của ứng dụng này rồi thử lại. Chưa có gì bị xóa.",
+    cleanUnusedFilesNoTabCheck: "Trang này không thể kiểm tra các thẻ khác đang mở (nó không được mở qua HTTPS hoặc localhost), nên không thể dọn dẹp tệp không sử dụng. Chưa có gì bị xóa.",
+    cleanUnusedFilesBusy: "Hãy đợi cho đến khi việc lưu, cuộc trò chuyện đang chạy hoặc việc dọn dẹp tự động hoàn tất, rồi thử lại. Chưa có gì bị xóa.",
+    cleanUnusedFilesRefused: "Hiện không thể chạy dọn dẹp (dữ liệu đã lưu đang thay đổi, đang được khôi phục hoặc không đọc được). Chưa có gì bị xóa. Hãy thử lại sau, hoặc tải lại ứng dụng trước.",
     coldStorageCleanupNoLockConfirm: "Trình duyệt của bạn không thể kiểm tra xem có tab khác của ứng dụng này đang mở hay không. Nếu một tab khác của ứng dụng này đang mở trong khi quá trình dọn dẹp chạy, tab đó có thể mất dữ liệu. Hãy đóng mọi tab khác của ứng dụng này trước, rồi tiếp tục. Vẫn tiếp tục chứ?",
     coldStorageCleanupNodeConfirm: "Không chạy việc dọn dẹp này khi một thiết bị hoặc trình duyệt khác đang dùng cùng máy chủ. Mọi thứ họ lưu trong lúc dọn dẹp chạy có thể bị mất hoặc bị xóa. Tiếp tục chứ?",
     coldStorageCleanupCheckingTabs: "Đang kiểm tra các tab khác của ứng dụng này đang mở trước khi dọn dẹp...",
