@@ -38,7 +38,7 @@ vi.mock(import('src/ts/setting/utils'), async (importOriginal) => ({
     getFullSettingsData: () => [{ id: 'test.keyed', type: 'check', labelKey: 'visionQuality', fallbackLabel: 'Keyed Fallback' }] as unknown as SettingItem[],
 }))
 vi.mock('src/ts/alert', () => ({ alertConfirm: vi.fn(async () => true) }))
-vi.mock('../UI/ModelList.svelte', () => ({ default: () => {} }))
+vi.mock('./UI/ModelList.svelte', () => ({ default: () => {} }))
 vi.mock('src/ts/gui/guisize', () => ({ textAreaSize: writable(0), textAreaTextSize: writable(1) }))
 vi.mock('src/ts/gui/highlight', () => ({ highlighter: vi.fn(), getNewHighlightId: vi.fn(() => 1), removeHighlight: vi.fn(), AllCBS: ['random', 'randint'] }))
 vi.mock('src/ts/platform', async (importOriginal) => ({ ...await importOriginal<typeof import('src/ts/platform')>(), isMobile: false }))
