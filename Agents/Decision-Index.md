@@ -2340,3 +2340,5 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |
 | [MC-2975](Maintainer-Context.md#mc-2975--upstream-7ee467abc6db4b681f-dispositions-2026-11-21) | Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21 |
 | [MC-2976](Maintainer-Context.md#mc-2976--upstream-6db4b681f-sync-flow-port-pr-then-a--s-ours-merge-pr-2026-11-21) | Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21 |
+| [MC-2965](Maintainer-Context.md#mc-2965--443-plain-http-scope-copy-buttons-in-vertex-service-account-login-gets-a-fallback-signer-2026-11-21) | #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21 |
+| [MC-2966](Maintainer-Context.md#mc-2966--443-plan-answers-honest-copy-failure-html-embed-left-out-one-invalid-key-message-2026-11-21) | #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21 |
