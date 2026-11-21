@@ -763,14 +763,10 @@ export const languageChinese = {
         "secretRefInRequest": (name: string) => `请求中仍包含环境变量引用 ${name}，该请求未被发送。`,
         "ttsAppKeyForeignHost": "此角色将 TTS 请求发送到其他服务器，因此未发送应用全局的 OpenAI 密钥。要使用该服务器，请在角色的 TTS 设置中输入 API 密钥。",
         "storageServerNeedsUpdate": "此服务器版本过旧，不支持新的存储格式：必须先更新或重启后才能保存或清理。请重启 Node 服务器（如尚未更新，请先更新），然后重新加载此页面。",
-        "coldStorageRestoreFailed": "无法加载冷存储数据。受影响角色的数据可能已永久丢失。",
-        "coldStorageRestoreUnreadable": "暂时无法加载此角色。未做任何更改。请重试。",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `无法加载已归档的角色 ${characterName}：其冷存储数据缺失或无效，可能已永久丢失。未做任何更改。`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `暂时无法加载已归档的角色 ${characterName}。未做任何更改。请重试。`,
-        "coldStorageRestoreUnavailable": "无法在此页面打开已归档的角色：此浏览器在此处不提供用于存放它们的存储空间（例如在纯 HTTP 地址下）。未做任何更改。",
-        "coldStorageRestoreDamaged": "无法读取此角色的归档副本：它可能已损坏。未做任何更改，也未删除任何内容。",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `${characterName} 的以下聊天的备选回复无法读取，已被略过：${chatNames}。对话本身已完整加载。`,
         "chatAltUnreadable": "无法读取此聊天的备选回复，因此无法重新生成或创建分支。未做任何更改。",

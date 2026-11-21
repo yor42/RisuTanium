@@ -769,14 +769,10 @@ export const languageJapanese = {
             `リクエストに環境変数の参照 ${name} がまだ含まれています。送信されませんでした。`,
         ttsAppKeyForeignHost: "このキャラクターはTTSリクエストを別のサーバーに送信するため、アプリ全体のOpenAIキーは送信されませんでした。そのサーバーを使用するには、キャラクターのTTS設定でAPIキーを入力してください。",
         storageServerNeedsUpdate: "このサーバーは新しいストレージ形式に対して古すぎます：保存やクリーンアップを行う前に、更新または再起動する必要があります。Nodeサーバーを再起動し（まだ更新していない場合は先に更新してください）、このページを再読み込みしてください。",
-        coldStorageRestoreFailed: "コールドストレージのデータを読み込めませんでした。対象のキャラクターのデータが永久に失われた可能性があります。",
-        coldStorageRestoreUnreadable: "このキャラクターは現在読み込めません。何も変更されていません。もう一度お試しください。",
         coldStorageNamedRestoreFailed: (characterName: string) =>
             `アーカイブされたキャラクター ${characterName} を読み込めませんでした：コールドストレージのデータが見つからないか無効であり、永久に失われた可能性があります。何も変更されていません。`,
         coldStorageNamedRestoreUnreadable: (characterName: string) =>
             `アーカイブされたキャラクター ${characterName} は現在読み込めません。何も変更されていません。もう一度お試しください。`,
-        coldStorageRestoreUnavailable: "アーカイブされたキャラクターはこのページでは開けません：このブラウザではここでのストレージが提供されていません（例：通常のHTTPアドレスなど）。何も変更されていません。",
-        coldStorageRestoreDamaged: "このキャラクターのアーカイブされたコピーを読み込めませんでした：破損している可能性があります。何も変更または削除されていません。",
         coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
             `${characterName}の次のチャットの代替の返信を読み込めなかったため、除外しました：${chatNames}。会話自体は問題なく読み込まれています。`,
         chatAltUnreadable: "このチャットの代替の返信を読み込めないため、再生成やブランチ作成はできません。何も変更されていません。",

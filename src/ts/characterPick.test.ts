@@ -24,11 +24,21 @@ const { changeCharSpy, alertErrorSpy, recordErrorSpy } = vi.hoisted(() => ({
 vi.mock('./characters', () => ({ changeChar: changeCharSpy }))
 vi.mock('./alert', () => ({ alertError: alertErrorSpy }))
 vi.mock('./caughtErrors', () => ({ recordCaughtError: recordErrorSpy }))
+vi.mock('./stores.svelte', () => ({ DBState: { db: { characters: [] } } }))
 
 import { language } from '../lang'
 import { changeCharOrAlert } from './characterPick'
+import { DBState } from './stores.svelte'
+import type { character } from './storage/database.svelte'
 
 beforeEach(() => {
+    DBState.db.characters = [
+        { name: 'Other' },
+        { name: 'Other' },
+        { name: 'Other' },
+        { name: 'Picked Name' },
+        { name: '' },
+    ] as character[]
     changeCharSpy.mockReset()
     alertErrorSpy.mockReset()
     recordErrorSpy.mockReset()
@@ -47,10 +57,31 @@ describe('changeCharOrAlert', () => {
         expect(await changeCharOrAlert('list.pick', 3)).toBe('error')
 
         expect(alertErrorSpy).toHaveBeenCalledTimes(1)
-        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('Picked Name'))
         expect(recordErrorSpy).toHaveBeenCalledTimes(1)
         expect(recordErrorSpy.mock.calls[0][0]).toBe('list.pick')
         expect(recordErrorSpy.mock.calls[0][1]).toBe(error)
+    })
+
+    test('a nameless slot and an index with no slot use the unknown-name fallback and still never reject', async () => {
+        changeCharSpy.mockRejectedValue(new Error('boom'))
+
+        expect(await changeCharOrAlert('list.pick', 4)).toBe('error')
+        expect(await changeCharOrAlert('list.pick', 99)).toBe('error')
+
+        const fallback = language.errors.coldStorageNamedRestoreUnreadable(language.errors.coldStorageUnknownCharacterName)
+        expect(alertErrorSpy.mock.calls).toEqual([[fallback], [fallback]])
+    })
+
+    test('the alert names the slot picked, even when the list changes while the restore is pending', async () => {
+        changeCharSpy.mockImplementationOnce(async () => {
+            DBState.db.characters.splice(0, 1)
+            throw new Error('boom')
+        })
+
+        expect(await changeCharOrAlert('list.pick', 3)).toBe('error')
+
+        expect(alertErrorSpy.mock.calls).toEqual([[language.errors.coldStorageNamedRestoreUnreadable('Picked Name')]])
     })
 
     test('a synchronous throw resolves error, alerts once and records it', async () => {
