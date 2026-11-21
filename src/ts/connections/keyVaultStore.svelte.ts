@@ -70,6 +70,10 @@ const readable = new Map<string, string>()
 const reentry = new Set<string>()
 const inflight = new Map<string, Promise<VaultResult<string>>>()
 const wrapping = new Set<string>()
+/** The running wrap loops, so an export can wait for typed keys to settle. */
+const pumps = new Set<Promise<void>>()
+/** Restored keys whose plain this boot holds and still has to wrap once the store is loaded. */
+const stagedWraps: Array<{ envelope: string, plain: string }> = []
 let seqCounter = 0
 let breaker = false
 let bootOpen = false
@@ -305,7 +309,11 @@ export function writeConnectionKey(conn: Connection, value: string, plainOnly: b
     }
     pending.set(id, { seq: ++seqCounter, plain: value, expect: expectOf(conn) })
     bump()
-    return pump(active, id)
+    const run = pump(active, id)
+    pumps.add(run)
+    const done = (): void => { pumps.delete(run) }
+    void run.then(done, done)
+    return run
 }
 
 /** At most one wrap in flight per connection; a stale result is dropped and only the latest value is posted next. */
@@ -463,6 +471,7 @@ export async function wrapPlainKeysAfterLoad(isRef: (line: string) => boolean): 
     if (active === undefined || active.platform === 'none' || active.isReadOnlyPage()) {
         return
     }
+    await wrapStagedKeys(active)
     const todo = active.listConnections()
         .filter((conn) => conn.key !== '' && !isReferenceOnlyKey(conn.key, isRef))
         .map((conn) => ({ id: conn.id, expect: expectOf(conn), plain: conn.key }))
@@ -502,6 +511,223 @@ export async function wrapPlainKeysAfterLoad(isRef: (line: string) => boolean): 
     }
 }
 
+/**
+ * What an export learned about wrapped keys before its writer opened, keyed by envelope. `values` holds
+ * the plains the snapshot unwrapped; `unreadable` and `unavailableNow` are the envelopes it could not
+ * read (this device can never read them, or cannot right now), and the `*Names` are the connections
+ * carrying them, for the one confirm.
+ */
+export interface ExportKeySnapshot {
+    values: Map<string, string>
+    unreadable: Set<string>
+    unavailableNow: Set<string>
+    unreadableNames: string[]
+    unavailableNames: string[]
+}
+
+/** The synchronous key reader of a writer that is already open: it never calls the vault. */
+export interface ExportKeyReader {
+    keyOf(conn: Connection): string
+    /** The connections whose wrapped key was first found unreadable after the snapshot, once each. */
+    late(): string[]
+}
+
+/** Waits for the running wrap loops; each is bounded by the vault watchdog. */
+async function settlePendingWrites(): Promise<void> {
+    while (pumps.size > 0) {
+        await Promise.allSettled([...pumps])
+    }
+}
+
+/**
+ * Reads every wrapped key of `connections` that is not readable yet, before an export opens its writer.
+ * Typed keys settle first. A transient failure is retried once (not while the watchdog is stalled); an
+ * envelope that is still unreadable is `unavailableNow`, one that can never be read here is `unreadable`.
+ */
+export async function exportKeySnapshot(connections: readonly Connection[]): Promise<ExportKeySnapshot> {
+    await settlePendingWrites()
+    const carriers = new Map<string, Connection[]>()
+    for (const conn of connections) {
+        const envelope = wrappedOf(conn)
+        if (conn.key !== '' || envelope === undefined || readable.has(envelope)) {
+            continue
+        }
+        const list = carriers.get(envelope) ?? []
+        list.push(conn)
+        carriers.set(envelope, list)
+    }
+    const snapshot: ExportKeySnapshot = {
+        values: new Map<string, string>(),
+        unreadable: new Set<string>(),
+        unavailableNow: new Set<string>(),
+        unreadableNames: [],
+        unavailableNames: [],
+    }
+    await Promise.all([...carriers.keys()].map(async (envelope) => {
+        if (envelopeNeedsReentry(envelope)) {
+            snapshot.unreadable.add(envelope)
+            return
+        }
+        let result = await unwrapEnvelope(envelope)
+        if (!result.ok && isTransient(codeOf(result)) && !watchdogFired()) {
+            result = await unwrapEnvelope(envelope)
+        }
+        if (result.ok) {
+            snapshot.values.set(envelope, result.value)
+        } else if (isPermanent(codeOf(result))) {
+            snapshot.unreadable.add(envelope)
+        } else {
+            snapshot.unavailableNow.add(envelope)
+        }
+    }))
+    const named = new Set<string>()
+    for (const [envelope, list] of carriers) {
+        const into = snapshot.unreadable.has(envelope) ? snapshot.unreadableNames : snapshot.unavailableNow.has(envelope) ? snapshot.unavailableNames : null
+        for (const conn of list) {
+            if (into !== null && !named.has(conn.id)) {
+                named.add(conn.id)
+                into.push(conn.name)
+            }
+        }
+    }
+    return snapshot
+}
+
+/**
+ * The reader over a snapshot, keyed by envelope and never by object: the writers hand it projection
+ * copies. A non-empty plain key wins, then the snapshot, then a plain a swap has since put in `readable`.
+ * It never reads `pending` (an export reflects the database). An envelope in none of those, and not
+ * already named by the confirm, is recorded once per connection for the export's report.
+ */
+export function exportKeyReader(snapshot: ExportKeySnapshot): ExportKeyReader {
+    const late = new Map<string, string>()
+    return {
+        keyOf(conn) {
+            if (conn.key !== '') {
+                return conn.key
+            }
+            const envelope = wrappedOf(conn)
+            if (envelope === undefined) {
+                return ''
+            }
+            const plain = snapshot.values.get(envelope) ?? readable.get(envelope)
+            if (plain !== undefined) {
+                return plain
+            }
+            if (!snapshot.unreadable.has(envelope) && !snapshot.unavailableNow.has(envelope) && !late.has(conn.id)) {
+                late.set(conn.id, conn.name)
+            }
+            return ''
+        },
+        late: () => [...late.values()],
+    }
+}
+
+/** A restored key staged for this device: its own envelope (`w`) or the plain (`p`) to wrap at boot. */
+export type StagedKey = { id: string, w: string } | { id: string, p: string }
+
+/** Wraps and verifies `plain` for a restore's staging record; null off `vault` or when the wrap fails. */
+export async function wrapForStaging(plain: string): Promise<string | null> {
+    if (platform() !== 'vault') {
+        return null
+    }
+    const wrapped = await wrapAndVerify(plain)
+    return wrapped.ok ? wrapped.value : null
+}
+
+/**
+ * Boot step 1: applies the staged records of a restore, keyed by the envelope the restored database
+ * holds. A carrier is a live connection with that envelope and no plain key (a plain key was typed since
+ * and wins). Nothing is cleared here: a crash before the save applies again, and an edit changes the
+ * envelope so a stale record never lands. Returns the envelopes whose record can be deleted (no carrier,
+ * or a record that could not be read).
+ */
+export function applyStagedKeys(records: ReadonlyMap<string, StagedKey | null>): { drop: string[] } {
+    const active = host
+    const drop: string[] = []
+    if (active === undefined) {
+        return { drop }
+    }
+    let wrote = false
+    let touched = false
+    for (const [envelope, record] of records) {
+        const carriers = active.listConnections().filter((conn) => wrappedOf(conn) === envelope)
+        if (record === null || carriers.length === 0) {
+            drop.push(envelope)
+            continue
+        }
+        for (const conn of carriers) {
+            if (conn.key !== '') {
+                continue
+            }
+            if ('w' in record) {
+                conn.keyWrapped = record.w
+                wrote = true
+            } else if (active.platform === 'vault') {
+                readable.set(envelope, record.p)
+                touched = true
+                if (!stagedWraps.some((item) => item.envelope === envelope)) {
+                    stagedWraps.push({ envelope, plain: record.p })
+                }
+            } else {
+                conn.key = record.p
+                removeWrapped(conn)
+                wrote = true
+            }
+        }
+    }
+    if (wrote || touched) {
+        bump()
+    }
+    if (wrote) {
+        active.markBootWrite()
+    }
+    return { drop }
+}
+
+/**
+ * Wraps the plains of staged `{p}` records on `vault`, after the store is loaded. Each swap needs the
+ * connection to be unchanged since the step began; a failed wrap keeps the plain key and gives the
+ * keep-plain notice. A tripped breaker posts nothing: the record stays and the next boot tries again.
+ */
+async function wrapStagedKeys(active: VaultHost): Promise<void> {
+    const todo = stagedWraps.splice(0)
+    if (active.platform !== 'vault') {
+        return
+    }
+    for (const item of todo) {
+        if (breaker) {
+            return
+        }
+        const targets = active.listConnections().filter((conn) => conn.key === '' && wrappedOf(conn) === item.envelope).map((conn) => conn.id)
+        if (targets.length === 0) {
+            continue
+        }
+        const wrapped = await wrapAndVerify(item.plain)
+        const wrapCode = codeOf(wrapped)
+        if (wrapCode === 'timeout' || wrapCode === 'unavailable') {
+            breaker = true
+        }
+        for (const id of targets) {
+            const conn = active.findConnection(id)
+            if (conn === undefined || !matches(conn, { key: '', keyWrapped: item.envelope })) {
+                continue
+            }
+            if (wrapped.ok) {
+                readable.set(wrapped.value, item.plain)
+                conn.keyWrapped = wrapped.value
+                active.notify.wrapped()
+                active.markBootWrite()
+            } else {
+                // The plain key stays and no envelope: the plain-key wrap that follows retries once and gives the notice.
+                conn.key = item.plain
+                removeWrapped(conn)
+            }
+        }
+        bump()
+    }
+}
+
 /** Resets every piece of state; tests only. */
 export function resetVaultStoreForTest(): void {
     host = undefined
@@ -510,6 +736,8 @@ export function resetVaultStoreForTest(): void {
     reentry.clear()
     inflight.clear()
     wrapping.clear()
+    pumps.clear()
+    stagedWraps.length = 0
     seqCounter = 0
     breaker = false
     bootOpen = false

@@ -4045,6 +4045,12 @@ export const languageKorean = {
     vaultNeedsReentryLabel: `키 다시 입력 필요`,
     vaultKeyTemporarilyUnavailable: `저장된 키를 지금은 읽을 수 없습니다. 잠시 후 다시 시도하세요.`,
     vaultKeyTemporarilyUnavailableHint: `키를 일시적으로 사용할 수 없습니다. 복호화되면 표시됩니다.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `이 기기에서 다음 항목의 저장된 키를 읽을 수 없습니다: ${names}. 백업에는 해당 키가 빈 값으로 담기며, 이 기기에 저장된 키는 그대로 유지됩니다. 해당 키 없이 백업을 만드시겠습니까?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `다음 항목의 저장된 키를 지금은 읽을 수 없어 백업에 해당 키가 빈 값으로 담깁니다: ${names}. 해당 키 없이 백업을 만드시겠습니까?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `백업을 쓰는 동안 다음 연결 키를 읽을 수 없어 빈 값으로 담겼습니다: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuTanium이 캐릭터 목록을 복구한 뒤 백업을 불러왔습니다: ${[
             dropped > 0 ? `캐릭터가 아닌 항목 ${dropped}개를 제외했습니다` : '',
@@ -4162,7 +4168,7 @@ export const languageKorean = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- 백업을 만들 때 제외된 데이터: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- 이 기기에 보관 중이며 복원되지 않은 데이터: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- 이 기기에 보관 중이며 완전히 기록하지 못한 데이터: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Iris 대화", googleSearch: "Google 검색 키", hypaVector: "기억 검색 데이터", pluginSafe: "플러그인 데이터", pluginSafeLs: "플러그인 설정", pluginPermissions: "플러그인 권한", mcpToolCalls: "MCP 도구 호출", uiPrefs: "인터페이스 설정" },
+    rtbRestoreSideNames: { iris: "Iris 대화", googleSearch: "Google 검색 키", hypaVector: "기억 검색 데이터", pluginSafe: "플러그인 데이터", pluginSafeLs: "플러그인 설정", pluginPermissions: "플러그인 권한", mcpToolCalls: "MCP 도구 호출", uiPrefs: "인터페이스 설정", connectionKeys: "연결 키" },
     backupFileNotRecognized: "이 파일은 이 앱에서 복원할 수 있는 백업(업스트림 RisuAI .bin 또는 RisuTanium .rtb 백업)이 아니거나, 끝부분이 잘려 있습니다. 아무것도 복원되지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>

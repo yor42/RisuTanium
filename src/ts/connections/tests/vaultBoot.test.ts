@@ -67,6 +67,24 @@ const edges = vi.hoisted(() => ({
     registered: 0,
 }))
 
+const staging = vi.hoisted(() => ({
+    data: new Map<string, unknown>(),
+    removed: [] as string[],
+}))
+
+vi.mock('localforage', () => ({
+    default: {
+        createInstance: () => ({
+            ready: async () => {},
+            keys: async () => [...staging.data.keys()],
+            getItem: async (key: string) => (staging.data.has(key) ? staging.data.get(key) : null),
+            setItem: async (key: string, value: unknown) => { staging.data.set(key, value); return value },
+            removeItem: async (key: string) => { staging.removed.push(key); staging.data.delete(key) },
+            clear: async () => { staging.data.clear() },
+        }),
+    },
+}))
+
 vi.mock('src/ts/android/keyVault', () => ({
     wrapKey: fake.wrapKey,
     unwrapKey: fake.unwrapKey,
@@ -152,6 +170,8 @@ beforeEach(() => {
     edges.notices.length = 0
     edges.bootWrites = 0
     edges.registered = 0
+    staging.data.clear()
+    staging.removed.length = 0
     localStorage.clear()
 })
 
@@ -207,6 +227,48 @@ describe('vaultBoot on Android with the channel', () => {
         expect(fake.s.wraps).toEqual([])
         expect(connB.key).toBe('SYNTH-PLAIN-B')
         expect(connB.keyWrapped).toBeUndefined()
+        expect(edges.bootWrites).toBe(0)
+    })
+})
+
+describe('vaultBoot step 1: the staged keys of a .rtb restore', () => {
+    function seed(): { wCarrier: Connection, pCarrier: Connection, wNew: string } {
+        const envW = fake.enc('SYNTH-OLD-W')
+        const envP = fake.enc('SYNTH-OLD-P')
+        const wNew = fake.enc('SYNTH-STAGED-W')
+        const wCarrier = mkConn({ id: 'conn-w', name: 'W', keyWrapped: envW })
+        const pCarrier = mkConn({ id: 'conn-p', name: 'P', keyWrapped: envP })
+        setConnections([wCarrier, pCarrier])
+        staging.data.set(envW, { id: 'conn-w', w: wNew })
+        staging.data.set(envP, { id: 'conn-p', p: 'SYNTH-STAGED-P' })
+        return { wCarrier, pCarrier, wNew }
+    }
+
+    it('applies a {w} record and a {p} record before step 2 unwraps, so only the new envelope is posted', async () => {
+        const { wCarrier, pCarrier, wNew } = seed()
+
+        vaultBoot()
+        await vi.advanceTimersByTimeAsync(0)
+        await whenVaultReady()
+
+        expect(wCarrier.keyWrapped).toBe(wNew)
+        expect(fake.s.unwraps).toEqual([wNew])
+        expect(connectionKeyForUi(wCarrier)).toBe('SYNTH-STAGED-W')
+        expect(connectionKeyForUi(pCarrier)).toBe('SYNTH-STAGED-P')
+    })
+
+    it('a read-only page applies nothing from the staging store', async () => {
+        edges.readOnly = true
+        const { wCarrier, pCarrier } = seed()
+        const before = wCarrier.keyWrapped
+
+        vaultBoot()
+        await vi.advanceTimersByTimeAsync(0)
+        await whenVaultReady()
+
+        expect(wCarrier.keyWrapped).toBe(before)
+        expect(connectionKeyForUi(pCarrier)).toBe('SYNTH-OLD-P')
+        expect(staging.removed).toEqual([])
         expect(edges.bootWrites).toBe(0)
     })
 })

@@ -23,13 +23,22 @@ export const RESERVED_ROW_PREFIX: Readonly<Record<string, string>> = {
     [INLAYS_ID]: 'i/',
 }
 
-const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plugin-safe-ls', 'plugin-permissions', 'mcp-tool-calls', 'ui-prefs'] as const
+const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plugin-safe-ls', 'plugin-permissions', 'mcp-tool-calls', 'ui-prefs', 'connection-keys'] as const
 
-/** The eight optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). */
+/** The nine optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). */
 export const SIDE_SECTION_IDS: readonly string[] = SIDE_NAMES.map((name) => `side.${name}`)
 
-/** The id of one of the eight version 1 side sections. */
+/** The id of one of the nine version 1 side sections. */
 export type SideSectionId = `side.${typeof SIDE_NAMES[number]}`
+
+/**
+ * The section of Keystore-wrapped connection keys. It is built from the live connections, not read from a
+ * store, and is written only when it has lines: a file without wrapped keys has no row and no entry.
+ */
+export const CONNECTION_KEYS_ID = 'side.connection-keys'
+
+/** The side sections read from a store on export (every one but the connection keys). */
+export type StoreSideSectionId = Exclude<SideSectionId, typeof CONNECTION_KEYS_ID>
 
 const SIDE_NAME_SET: ReadonlySet<string> = new Set<string>(SIDE_NAMES)
 

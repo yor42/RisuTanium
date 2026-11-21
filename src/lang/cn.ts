@@ -4045,6 +4045,12 @@ export const languageChinese = {
     "vaultNeedsReentryLabel": `需要重新输入密钥`,
     "vaultKeyTemporarilyUnavailable": `暂时无法读取已保存的密钥，请稍后再试。`,
     "vaultKeyTemporarilyUnavailableHint": `密钥暂时不可用；解密后会显示。`,
+    "vaultExportUnreadableKeys": (names: string) =>
+        `此设备无法读取以下项目已保存的密钥:${names}。备份中这些密钥将为空,此设备上已保存的密钥保持不变。是否在不含这些密钥的情况下创建备份?`,
+    "vaultExportKeysUnavailableNow": (names: string) =>
+        `以下项目已保存的密钥目前无法读取,因此备份中这些密钥将为空:${names}。是否在不含这些密钥的情况下创建备份?`,
+    "vaultExportKeysLeftOutLate": (names: string) =>
+        `写入备份时无法读取以下连接密钥,因此备份中这些密钥为空:${names}。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuTanium 修复角色列表后已加载此备份：${[
             dropped > 0 ? `${dropped} 个不是角色的条目已被排除` : '',
@@ -4162,7 +4168,7 @@ export const languageChinese = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- 创建备份时未包含的数据：${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此设备上、未被恢复的数据：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此设备上、未能完整写入的数据：${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置" },
+    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置", connectionKeys: "连接密钥" },
     "backupFileNotRecognized": "此文件不是此应用可恢复的备份（上游 RisuAI 的 .bin 或 RisuTanium 的 .rtb 备份），或者文件不完整。未恢复任何内容。您当前的数据没有更改。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>

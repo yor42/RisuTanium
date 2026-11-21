@@ -4189,6 +4189,12 @@ export const languageJapanese = {
     vaultNeedsReentryLabel: `キーの再入力が必要です`,
     vaultKeyTemporarilyUnavailable: `保存済みのキーを今は読み取れません。しばらくしてからもう一度お試しください。`,
     vaultKeyTemporarilyUnavailableHint: `キーは一時的に利用できません。復号されると表示されます。`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `このデバイスでは次の保存済みキーを読み取れません: ${names}。バックアップにはこれらのキーが空の状態で含まれ、このデバイスに保存されているキーは変更されません。これらのキーなしでバックアップを作成しますか?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `次の保存済みキーは現在読み取れないため、バックアップにはこれらのキーが空の状態で含まれます: ${names}。これらのキーなしでバックアップを作成しますか?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `バックアップの書き込み中に次の接続キーを読み取れなかったため、空の状態で含まれています: ${names}。`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuTaniumがキャラクターリストを修復した後にバックアップが読み込まれました：${[
             dropped > 0 ? `キャラクターではない${dropped}件のエントリを除外` : '',
@@ -4307,7 +4313,7 @@ export const languageJapanese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- バックアップの作成時に含まれなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- この端末に保持され、復元されなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- この端末に保持され、完全には書き込めなかったデータ：${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定" },
+    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定", connectionKeys: "接続キー" },
     backupFileNotRecognized: "このファイルは、このアプリで復元できるバックアップ（アップストリームのRisuAIの.binまたはRisuTaniumの.rtbバックアップ）ではないか、途中で切れています。何も復元されませんでした。現在のデータは変更されていません。",
     coldStorageCleanupDateUnknown: "日付不明",
     coldStorageCleanupKeptConfirm: (dates: string) =>

@@ -4064,6 +4064,12 @@ export const languageGerman = {
     "vaultNeedsReentryLabel": `Schlüssel muss erneut eingegeben werden`,
     "vaultKeyTemporarilyUnavailable": `Der gespeicherte Schlüssel kann gerade nicht gelesen werden. Versuchen Sie es gleich noch einmal.`,
     "vaultKeyTemporarilyUnavailableHint": `Schlüssel vorübergehend nicht verfügbar; er erscheint, sobald er entschlüsselt ist.`,
+    "vaultExportUnreadableKeys": (names: string) =>
+        `Dieses Gerät kann den gespeicherten Schlüssel von folgenden Einträgen nicht lesen: ${names}. Die Sicherung würde diese Schlüssel leer enthalten; die auf diesem Gerät gespeicherten Schlüssel bleiben unverändert. Sicherung ohne sie erstellen?`,
+    "vaultExportKeysUnavailableNow": (names: string) =>
+        `Der gespeicherte Schlüssel von folgenden Einträgen kann gerade nicht gelesen werden, daher würde die Sicherung diese Schlüssel leer enthalten: ${names}. Sicherung ohne sie erstellen?`,
+    "vaultExportKeysLeftOutLate": (names: string) =>
+        `Diese Verbindungsschlüssel konnten beim Schreiben der Sicherung nicht gelesen werden, daher enthält sie sie leer: ${names}.`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `Das Backup wurde geladen, nachdem RisuTanium seine Charakterliste repariert hat: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'Eintrag, der kein Charakter ist, wurde' : 'Einträge, die keine Charaktere sind, wurden'} ausgelassen` : '',
@@ -4181,7 +4187,7 @@ export const languageGerman = {
     "rtbRestoreLineOmittedEntries": (names: string[]) => `- Daten, ohne die das Backup erstellt wurde: ${names.join(', ')}`,
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht wiederhergestellt wurden: ${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht vollständig geschrieben werden konnten: ${names.join(', ')}`,
-    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen" },
+    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen", connectionKeys: "Verbindungsschlüssel" },
     "backupFileNotRecognized": "Diese Datei ist kein Backup, das diese App wiederherstellen kann (ein .bin von Upstream-RisuAI oder ein .rtb-Backup von RisuTanium), oder sie ist abgeschnitten. Es wurde nichts wiederhergestellt. Ihre aktuellen Daten wurden nicht geändert.",
     "coldStorageCleanupDateUnknown": "Datum unbekannt",
     "coldStorageCleanupKeptConfirm": (dates: string) =>

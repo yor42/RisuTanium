@@ -256,6 +256,20 @@ describe('T34b hide fallback', () => {
         expect(conn.key).toBe('')
         expect(typeof conn.keyWrapped).toBe('string')
     })
+
+    it('writes nothing and requests no save for a pending entry whose connection was changed directly', async () => {
+        install('vault')
+        fake.s.hold = true
+        const conn = db.connections[0]
+        void setConnectionKey(conn, 'SYNTH-KEY-1234')
+        await tick()
+        conn.key = 'SYNTH-DIRECT-EDIT'
+        vaultLeaveFlush()
+        expect(conn.key).toBe('SYNTH-DIRECT-EDIT')
+        expect(calls.save).toBe(0)
+        await releaseHeld()
+        await releaseHeld()
+    })
 })
 
 describe('key states', () => {

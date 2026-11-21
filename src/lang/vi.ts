@@ -4044,6 +4044,12 @@ export const languageVietnamese = {
     vaultNeedsReentryLabel: `Cần nhập lại khóa`,
     vaultKeyTemporarilyUnavailable: `Hiện chưa thể đọc khóa đã lưu. Hãy thử lại sau giây lát.`,
     vaultKeyTemporarilyUnavailableHint: `Khóa tạm thời không khả dụng; khóa sẽ hiển thị sau khi được giải mã.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `Thiết bị này không thể đọc khóa đã lưu của: ${names}. Bản sao lưu sẽ chứa các khóa đó ở dạng trống, còn các khóa đã lưu trên thiết bị này vẫn giữ nguyên. Tạo bản sao lưu mà không có chúng?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `Hiện không thể đọc khóa đã lưu của: ${names}, nên bản sao lưu sẽ chứa các khóa đó ở dạng trống. Tạo bản sao lưu mà không có chúng?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `Không thể đọc các khóa kết nối này khi ghi bản sao lưu, nên bản sao lưu chứa chúng ở dạng trống: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `Bản sao lưu đã được tải sau khi RisuTanium sửa danh sách nhân vật: ${[
             dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : '',
@@ -4161,7 +4167,7 @@ export const languageVietnamese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Dữ liệu mà bản sao lưu đã được tạo mà không có: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng chưa được khôi phục: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng không thể ghi đầy đủ: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện" },
+    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện", connectionKeys: "khóa kết nối" },
     backupFileNotRecognized: "Tệp này không phải là bản sao lưu mà ứng dụng này có thể khôi phục (.bin của RisuAI thượng nguồn hoặc bản sao lưu .rtb của RisuTanium), hoặc bị cắt cụt. Không có gì được khôi phục. Dữ liệu hiện tại của bạn không bị thay đổi.",
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>

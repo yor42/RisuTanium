@@ -566,7 +566,8 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
 /**
  * A credential that is a `${NAME}` reference and cannot be read ends this model's attempt: no
  * retry on the same model (the variable will not appear by itself), and the next fallback
- * model, which may use another credential, is still tried. A wrapped key that is temporarily unreadable\r\n * ends the attempt the same way, with its own message, so it never surfaces as a provider auth error or a throw.
+ * model, which may use another credential, is still tried. A wrapped key that is temporarily unreadable
+ * ends the attempt the same way, with its own message, so it never surfaces as a provider auth error or a throw.
  */
 export async function requestChatDataMain(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
     // Each call is one attempt with its own meter, whatever meter a reused argument object still carries.

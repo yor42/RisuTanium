@@ -7,6 +7,7 @@
  * synchronously and resolves when the boot's unwraps settle or after `VAULT_BOOT_BUDGET_MS`, so
  * `loadedStore` never waits longer than that. Nothing here throws into boot.
  */
+import localforage from 'localforage'
 import { language } from 'src/lang'
 import { queueNotice } from '../alertPrompts'
 import { hostChannelPresent } from '../android/hostBridge'
@@ -17,6 +18,8 @@ import { secretRefName } from '../secretRefPattern'
 import { getDatabase } from '../storage/database.svelte'
 import { getPageStorageMode } from '../storage/pageStorageMode'
 import { isAndroidTransport } from '../storage/tauriByteTransport'
+import { RESTORED_KEYS_STORE } from '../drive/rtb/sideStoreConfig'
+import { applyRestoredKeys } from './restoredKeys'
 import { storedConnections } from './connections'
 import { createVaultNotifier } from './vaultNotifier'
 import {
@@ -50,6 +53,18 @@ function buildHost(): VaultHost {
     }
 }
 
+/** Boot step 1: the keys a .rtb restore staged. Never throws, so step 2 always runs; a read-only page never saves, so it applies nothing. */
+async function applyStaging(): Promise<void> {
+    try {
+        if (getPageStorageMode().kind === 'read-only') {
+            return
+        }
+        await applyRestoredKeys(localforage.createInstance(RESTORED_KEYS_STORE))
+    } catch (error) {
+        console.error(error)
+    }
+}
+
 const isReferenceLine = (line: string): boolean => secretRefName(line) !== null
 
 export interface VaultBootHandle {
@@ -69,6 +84,7 @@ export function vaultBoot(): VaultBootHandle {
         console.error(error)
     }
     beginVaultBoot(async () => {
+        await applyStaging()
         await unwrapAllForBoot()
     }, VAULT_BOOT_BUDGET_MS)
     return {
