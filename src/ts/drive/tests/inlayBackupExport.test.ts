@@ -140,7 +140,7 @@ beforeEach(() => {
     legacy.values.clear()
     legacy.failKeys = false
     store = createMemoryByteStore({ blobs: true })
-    injectAppStore(store, 'indexeddb')
+    injectAppStore(store, 'tauri')
     ranged.store = store
     ranged.calls.length = 0
     ranged.failKeys.clear()

@@ -768,9 +768,9 @@ describe('new behaviour: result mapping', () => {
             healthy(loop)
         })
 
-        test('a foreign marker whose owner the host proves gone is cleared and the bulk lands with no report', async () => {
+        test('a foreign marker whose owner a probe answers gone is cleared and the bulk lands with no report', async () => {
             const db = clone(buildSmall(BULK_ROWS))
-            const kit = await startStore2({ db, kind: 'indexeddb' })
+            const kit = await startStore2({ db, kind: 'node' })
             await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
             const asked: string[] = []
             kit.context.markerOwnerProbe = async (marker) => {
@@ -787,9 +787,9 @@ describe('new behaviour: result mapping', () => {
             healthy(loop)
         })
 
-        test('a foreign marker whose owner may be alive stays: the refusal is reported and the data stays marked', async () => {
+        test('a foreign marker whose owner a probe answers alive stays: the refusal is reported and the data stays marked', async () => {
             const db = clone(buildSmall(BULK_ROWS))
-            const kit = await startStore2({ db, kind: 'indexeddb' })
+            const kit = await startStore2({ db, kind: 'node' })
             await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
             kit.context.markerOwnerProbe = async () => 'alive'
             const loop = runLoop(kit, db)
@@ -804,7 +804,7 @@ describe('new behaviour: result mapping', () => {
 
         test('a peer that dies after the reports began: the next refusal clears its marker and the save lands with one report', async () => {
             const db = clone(buildSmall(BULK_ROWS))
-            const kit = await startStore2({ db, kind: 'indexeddb' })
+            const kit = await startStore2({ db, kind: 'node' })
             await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
             const loop = runLoop(kit, db)
             kit.context.markerOwnerProbe = async () => (loop.failures.length >= 1 ? 'gone' : 'alive')
@@ -851,8 +851,8 @@ describe('new behaviour: result mapping', () => {
 
         const isPrompted = (failure: { error: unknown }): boolean => (failure.error as Store2CommitRefusedError).prompted === true
 
-        /** A page that no host probe can vouch for (Node, or web with no Web Locks proof) over a dead page's bulk marker. */
-        async function unprovenWorld(kind: 'node' | 'indexeddb', answers: Array<'wait' | 'clear' | Error>, held: boolean) {
+        /** A Node page that no host probe can vouch for, over a dead page's bulk marker. */
+        async function unprovenWorld(kind: 'node', answers: Array<'wait' | 'clear' | Error>, held: boolean) {
             const db = clone(buildSmall(BULK_ROWS))
             const peer = createPeerDouble()
             peer.foreignAnswers.push(...answers)
@@ -867,7 +867,7 @@ describe('new behaviour: result mapping', () => {
             return { db, kit, peer, loop, releaseHold }
         }
 
-        test.each(['node', 'indexeddb'] as const)('new behaviour: on %s with no proof, the question is asked after the quiet retries and Clear lets the save land', async (kind) => {
+        test.each(['node'] as const)('new behaviour: on %s with no proof, the question is asked after the quiet retries and Clear lets the save land', async (kind) => {
             const world = await unprovenWorld(kind, ['clear'], false)
             const marker = (await world.kit.commitKey()).staging
             const baseline = world.loop.merges
@@ -885,7 +885,7 @@ describe('new behaviour: result mapping', () => {
             healthy(world.loop)
         })
 
-        test.each(['node', 'indexeddb'] as const)('new behaviour: on %s Wait keeps the marker, the question covers every report while up and is never asked again', async (kind) => {
+        test.each(['node'] as const)('new behaviour: on %s Wait keeps the marker, the question covers every report while up and is never asked again', async (kind) => {
             const world = await unprovenWorld(kind, ['wait'], true)
             editEverything(world.db, world.loop)
             await until(() => world.loop.failures.length >= 7, 'seven reports while the question is up', 8000)
@@ -933,7 +933,7 @@ describe('new behaviour: result mapping', () => {
 
         test.each([
             ['tauri with no probe', 'tauri', null],
-            ['indexeddb with an alive owner', 'indexeddb', 'alive'],
+            ['node with an alive owner', 'node', 'alive'],
         ] as const)('guard: %s asks nothing and clears nothing', async (_name, kind, answer) => {
             const db = clone(buildSmall(BULK_ROWS))
             const peer = createPeerDouble()
@@ -952,14 +952,14 @@ describe('new behaviour: result mapping', () => {
             healthy(loop)
         })
 
-        test('guard: an owner proven gone whose clears keep failing asks nothing and reports unprompted', async () => {
+        test('guard: an owner a probe answers gone whose clears keep failing asks nothing and reports unprompted', async () => {
             const db = clone(buildSmall(BULK_ROWS))
             const peer = createPeerDouble()
             peer.foreignAnswers.push('clear')
             let armed = false
             const kit = await startStore2({
                 db,
-                kind: 'indexeddb',
+                kind: 'node',
                 peer,
                 hooks: {
                     before: (name) => {
@@ -1202,7 +1202,7 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
     }
 
     test('non-Node with unsaved edits: Reload is first and the default, Save mine is offered', async () => {
-        const { kit, loop } = await parkedDirty()
+        const { kit, loop } = await parkedDirty({ kind: 'tauri' })
         expect(kit.peer.asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'save-mine'] })
         expect(kit.peer.asked[0].saveMineUnavailable).toBeUndefined()
         await until(() => kit.peer.reloads === 1, 'the reload', 4000)
@@ -2258,7 +2258,7 @@ describe('the carry rule at the loop: Save mine and bulk passes never write over
     }
 
     async function collect(kit: Store2Kit): Promise<void> {
-        const result = await gcPass({ backend: kit.memory, kind: 'indexeddb', idleReason: () => null })
+        const result = await gcPass({ backend: kit.memory, kind: 'tauri', idleReason: () => null })
         expect(result.status).toBe('done')
     }
 

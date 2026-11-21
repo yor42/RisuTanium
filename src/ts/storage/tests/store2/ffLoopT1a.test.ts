@@ -262,7 +262,7 @@ describe('writes that name no new tree, and parks that stay', () => {
         await page.commitEdit((db) => { trash(db, 3, Date.now()) })
         await until(() => b.peer.asked.length >= 1, 'the question', 8000)
         expect(b.peer.asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true })
-        expect(b.peer.asked[0].offers).toEqual(['reload', 'save-mine'])
+        expect(b.peer.asked[0].offers).toEqual(['reload', 'export-first'])
         expect(b.db.characterOrder).toContain('added-here')
         expect(b.db.characterOrder).toContain(chaIdOf(b.db, 3))
     })
@@ -301,7 +301,7 @@ describe('check A and the ff-revert park', () => {
         const b = await bootB(memory)
         b.context.fastForward = createFastForward({
             backend: memory,
-            kind: 'indexeddb',
+            kind: 'node',
             lists: fakeLists,
             env: defaultKeyEnv,
             apply: (steps) => {

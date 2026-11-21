@@ -9,10 +9,10 @@ import { checkFences } from './fences'
 import { gateFreshness, type GateFreshness } from './fresh'
 import { decideInlayDeletions } from './inlayRule'
 import { buildInlayKeepSet, legacyFilesOf } from './keepSet'
-import { peersAllow, type AssetSweepSession, type SweepPeers } from './run'
+import type { AssetSweepSession } from './run'
 
 /**
- * The deleting pass of the inlay sweep on a store2 page (`tauri` and `indexeddb` kinds; every other kind, the Node server
+ * The deleting pass of the inlay sweep on a store2 page (`tauri` kind only; every other kind, the Node server
  * included, reads and writes nothing: MC-2865). It deletes an `inlays/m-<id>` metadata and the bodies of that id only when
  * all of these hold:
  *
@@ -22,8 +22,7 @@ import { peersAllow, type AssetSweepSession, type SweepPeers } from './run'
  *   The legacy store is only listed here, never written; an id becomes deletable once the verified clean-up of the copy-in
  *   has removed its legacy entry. A legacy listing that fails refuses the round;
  * - the deleter gate is open, the fences are clear and, per batch, the commit key and the fence are still what the gate
- *   read; a Tauri page is the sole page (the same-bytes `casCommit` probe of the batch), a web page proves it is the sole
- *   tab before the round and before every delete. `unsupported` refuses: an automatic pass has no attestation;
+ *   read; a Tauri page is the sole page (the same-bytes `casCommit` probe of the batch). `unsupported` refuses: an automatic pass has no attestation;
  * - at that very delete: no stop condition holds, the save marks and the database object are what the resident walk
  *   saw, and this page did not write the id.
  *
@@ -46,7 +45,7 @@ import { peersAllow, type AssetSweepSession, type SweepPeers } from './run'
 
 /** Whether a page of this store kind runs the pass: the Node server never does (MC-2865). */
 export function inlaySweepKind(kind: AppStoreKind): boolean {
-    return kind === 'tauri' || kind === 'indexeddb'
+    return kind === 'tauri'
 }
 
 /** What the resident walk found, and whether it still speaks for the page's database. */
@@ -61,8 +60,6 @@ export interface InlaySweepEnv {
     session: AssetSweepSession
     /** The page's byte store: `inlays/`. */
     store: ByteStore
-    /** Whether this page is the sole tab; a failed query answers `others`. */
-    peers(): Promise<SweepPeers>
     /** A data action, a parked save loop, unsaved changes or a restore: the pass ends before its next delete. */
     shouldStop(): boolean
     /** The page's save-mark count; it only grows, so a changed count means the database changed. */
@@ -178,15 +175,8 @@ function stopOf(freshness: Exclude<GateFreshness, 'fresh' | 'moved'>): InlaySwee
 /** One scan and delete round: a commit key that moved ends it with `rebuild`. */
 async function runRound(env: InlaySweepEnv, backend: Store2Backend, tally: Tally): Promise<'finished' | 'rebuild'> {
     const { session, store } = env
-    const needsPeers = session.kind !== 'tauri'
     if (env.shouldStop()) {
         throw stopped(tally, 'yielded')
-    }
-    if (needsPeers) {
-        const verdict = peersAllow(session.kind, await env.peers(), undefined)
-        if (verdict !== 'go') {
-            throw refused(verdict)
-        }
     }
     const marks = env.saveMarks()
     const gate = await session.openGate('inlay-cleanup')
@@ -270,9 +260,6 @@ async function runRound(env: InlaySweepEnv, backend: Store2Backend, tally: Tally
         }
         tally.batches++
         for (const id of deletes.slice(start, start + REMOVE_BATCH_MAX)) {
-            if (needsPeers && peersAllow(session.kind, await env.peers(), undefined) !== 'go') {
-                throw stopped(tally, 'other-tab')
-            }
             const mayDelete = (): InlayVeto | null => {
                 if (env.shouldStop()) {
                     return 'stop'

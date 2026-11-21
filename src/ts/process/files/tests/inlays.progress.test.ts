@@ -55,7 +55,7 @@ let store: MemoryByteStore
 beforeEach(() => {
     resetBusyActionsForTest()
     store = createMemoryByteStore({ blobs: true })
-    injectAppStore(store, 'indexeddb')
+    injectAppStore(store, 'tauri')
 })
 
 /** Makes the store's `writeBlob` call its progress callback with `steps`, the way a store that reports does, and then store the Blob. */

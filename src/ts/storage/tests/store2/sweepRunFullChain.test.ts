@@ -6,9 +6,11 @@
  * real snapshot shape; the sole-tab proof, `busyActions`, `restoreInProgress` and `assetDeleteHold` are the real ones, so a
  * registered data action or an open restore run is the page's own signal, not a flag of the test.
  *
- * Over a real `indexeddb` session on the seeded memory backend and a page store that holds an orphan a record 25 hours old
- * names. Each case runs the whole step: the live `shouldStop` is true under a busy entry, under a backup load and under an
- * open restore run, and false with none of them. A mocked backend says nothing about a native one.
+ * Over a real `tauri` session on the seeded memory backend (flush-confirming) and a page store that holds an orphan a record
+ * 25 hours old names. Each case runs the whole step: the live `shouldStop` is true under a busy entry, under a backup load and
+ * under an open restore run, and false with none of them. The sole-tab proof is asked only by a Node page, so its cases open a
+ * `node` session over one Node world (the semantic store of the server, the backend over it and the same store as the page
+ * store) and an orphan the store lists at a revision. A mocked backend says nothing about a native one.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -57,7 +59,10 @@ import { beginRestoreRun } from 'src/ts/drive/restoreInProgress'
 import { isAssetDeletionHeld, resetAssetDeleteHoldForTests } from 'src/ts/storage/assetDeleteHold'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { getStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
+import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createMemoryBackend } from 'src/ts/storage/store2/backend'
+import { encodeUnit, SWEEP_KEY, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { SEEN_BEFORE } from 'src/ts/storage/store2/sweep/ageRecord'
 import { formatSweepResult, resetMaintenanceForTests, startStore2Maintenance, type MaintenanceSeams } from 'src/ts/storage/store2/maintenance'
 import type { OldDataDeletionResult } from 'src/ts/storage/store2/oldData/delete'
 import { Store2Session } from 'src/ts/storage/store2/session'
@@ -65,11 +70,12 @@ import { writeSweepRecord } from 'src/ts/storage/store2/sweep'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
+import { flushConfirming, nodeWorld } from './flushConfirmBackend'
 
 const HOUR = 60 * 60 * 1000
 const ORPHAN = 'orphan-chain.png'
 const QUIET_INLAYS: MaintenanceSeams['inlayFacts'] = {
-    peers: async () => 'alone', shouldStop: () => true, saveMarks: () => 0, writtenThisPage: () => false,
+    shouldStop: () => true, saveMarks: () => 0, writtenThisPage: () => false,
     legacyInlayIds: async () => [], residentInlays: async () => null, lock: (_id, work) => work(),
 }
 const COMPLETED: OldDataDeletionResult = { status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }
@@ -110,14 +116,38 @@ afterEach(() => {
     resetAssetDeleteHoldForTests()
 })
 
-async function openIndexedDbSession(): Promise<Store2Session> {
+const SEED_DB = {
+    formatversion: 5, botPresetsId: 0, botPresets: [{ name: 'test-preset' }], modules: [], loadouts: [], plugins: [],
+    pluginCustomStorage: {}, mainPrompt: 'chain', characters: [],
+}
+
+/** A `tauri` session over the seeded store; the backend confirms its flushes, so the session is not idle. */
+async function openTauriSession(): Promise<Store2Session> {
     const backend = createMemoryBackend()
-    const db = {
-        formatversion: 5, botPresetsId: 0, botPresets: [{ name: 'test-preset' }], modules: [], loadouts: [], plugins: [],
-        pluginCustomStorage: {}, mainPrompt: 'chain', characters: [],
+    await seedTree(backend, SEED_DB as unknown as Database, testEnv(createClock(), 3))
+    const session = await Store2Session.open(createMemoryByteStore(), { kind: 'tauri', backend: flushConfirming(backend).backend, upstreamMainFile: async () => false })
+    expect(session.idleReason, 'a flush-confirming tauri session is not idle').toBeNull()
+    return session
+}
+
+/** A `node` session over the seeded store of one Node world; the page store is the world's store. */
+async function openNodeWorld(): Promise<{ store: ByteStore, session: Store2Session }> {
+    const { store, backend } = nodeWorld()
+    await seedTree(backend, SEED_DB as unknown as Database, testEnv(createClock(), 3))
+    const session = await Store2Session.open(store, { kind: 'node', backend, upstreamMainFile: async () => false })
+    expect(session.decision, 'the Node page boots normally on its seeded profile').toMatchObject({ mode: 'normal' })
+    return { store, session }
+}
+
+/** The store's assets, each recorded 25 hours ago as seen before at the revision the store lists. */
+async function plantNodeOrphans(store: ByteStore, names: readonly string[]): Promise<void> {
+    for (const name of names) {
+        await store.write(`assets/${name}`, new Uint8Array([7, name.length]), 'unconditional')
     }
-    await seedTree(backend, db as unknown as Database, testEnv(createClock(), 3))
-    return Store2Session.open(createMemoryByteStore(), { kind: 'indexeddb', backend, upstreamMainFile: async () => false })
+    const rows = await store.listRevisions?.('assets/') ?? []
+    const revisions = new Map(rows.map(row => [row.key.slice('assets/'.length), row.rev ?? -1]))
+    const items = names.map((name): [string, number, number] => [name, revisions.get(name) ?? -1, SEEN_BEFORE])
+    await store.write(SWEEP_KEY, encodeUnit(UNIT_TYPE.sweepRecord, { v: 1, at: Date.now() - 25 * HOUR, items }), 'unconditional')
 }
 
 async function plantedStore(): Promise<MemoryByteStore> {
@@ -128,8 +158,8 @@ async function plantedStore(): Promise<MemoryByteStore> {
 }
 
 /** Runs the step once with the live facts and returns the sweep's log line. */
-async function runStep(store: MemoryByteStore): Promise<string> {
-    const session = await openIndexedDbSession()
+async function runStep(store: ByteStore, opened?: Store2Session): Promise<string> {
+    const session = opened ?? await openTauriSession()
     const info = vi.spyOn(console, 'info').mockImplementation(() => { })
     const error = vi.spyOn(console, 'error').mockImplementation(() => { })
     // A case may run the step twice: the spies are shared, the calls are this run's.
@@ -249,72 +279,75 @@ describe('the live facts of the asset sweep', () => {
         expect(`assets/${present[0]}`).toBe(page.written[0])
     })
 
-    test('guard: another tab ends a web pass before it lists anything', async () => {
+    test('guard: a Tauri page never asks for the sole-tab proof: other tabs and a missing lock manager do not stop its pass', async () => {
         const store = await plantedStore()
-        store.lists.length = 0
         page.holders = 2
-
-        const line = await runStep(store)
-
-        expect(line).toBe('store2 asset sweep: status=refused reason=other-tab')
-        expect(store.lists).toEqual([])
-        expect(store.files.has(`assets/${ORPHAN}`)).toBe(true)
-    })
-
-    test('guard: a page without Web Locks refuses the pass before it lists anything', async () => {
-        const store = await plantedStore()
-        store.lists.length = 0
         page.locks = 'absent'
 
         const line = await runStep(store)
 
-        expect(line).toBe('store2 asset sweep: status=refused reason=no-web-locks')
-        expect(store.lists).toEqual([])
-        expect(store.files.has(`assets/${ORPHAN}`)).toBe(true)
+        expect(line).toContain('status=done phase=swept')
+        expect(line).toContain('deleted=1')
+        expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
+    })
+})
+
+describe('the live sole-tab proof of a Node page', () => {
+    /** Whether the sweep read the asset listing: it lists the revisions of `assets/` once it has begun a round. */
+    function assetListings(store: ByteStore): () => number {
+        const listed = vi.spyOn(store, 'list')
+        const revisions = store.listRevisions === undefined ? null : vi.spyOn(store as Required<ByteStore>, 'listRevisions')
+        return () => [...listed.mock.calls, ...(revisions?.mock.calls ?? [])].filter(call => call[0] === 'assets/').length
+    }
+
+    test.each<[string, () => void, string]>([
+        ['another tab holds a presence lock', () => { page.holders = 2 }, 'other-tab'],
+        ['the page has no lock manager', () => { page.locks = 'absent' }, 'no-web-locks'],
+        ['the own presence claim is false although the snapshot shows one holder', () => { page.ownPresence = false }, 'other-tab'],
+        ['the snapshot shows no presence holder although the own claim is true', () => { page.holders = 0 }, 'other-tab'],
+    ])('guard: when %s the pass ends refused before it lists the assets', async (_name, setup, reason) => {
+        const { store, session } = await openNodeWorld()
+        await plantNodeOrphans(store, [ORPHAN])
+        const listings = assetListings(store)
+        setup()
+
+        const line = await runStep(store, session)
+
+        expect(line).toBe(`store2 asset sweep: status=refused reason=${reason}`)
+        expect(listings()).toBe(0)
+        expect(await store.has(`assets/${ORPHAN}`)).toBe(true)
     })
 
-    test('new behaviour: a page whose own presence claim is false refuses even when the snapshot shows one holder', async () => {
-        const store = await plantedStore()
-        store.lists.length = 0
-        page.ownPresence = false
-        page.holders = 1
+    test('control: with one holder and the own claim true the same pass deletes the orphan', async () => {
+        const { store, session } = await openNodeWorld()
+        await plantNodeOrphans(store, [ORPHAN])
 
-        const line = await runStep(store)
+        const line = await runStep(store, session)
 
-        expect(line).toBe('store2 asset sweep: status=refused reason=other-tab')
-        expect(store.lists).toEqual([])
-        expect(store.files.has(`assets/${ORPHAN}`)).toBe(true)
-    })
-
-    test('new behaviour: a snapshot with no presence holder is not alone, even with the own claim true', async () => {
-        const store = await plantedStore()
-        store.lists.length = 0
-        page.ownPresence = true
-        page.holders = 0
-
-        const line = await runStep(store)
-
-        expect(line).toBe('store2 asset sweep: status=refused reason=other-tab')
-        expect(store.lists).toEqual([])
-        expect(store.files.has(`assets/${ORPHAN}`)).toBe(true)
+        expect(line).toContain('status=done phase=swept')
+        expect(line).toContain('deleted=1')
+        expect(await store.has(`assets/${ORPHAN}`)).toBe(false)
     })
 
     test('new behaviour: an own claim that goes false after the first delete stops the pass before the second', async () => {
-        const store = await plantedStore()
+        const { store, session } = await openNodeWorld()
         const second = 'orphan-second.png'
-        store.files.set(`assets/${second}`, new Uint8Array([2]))
-        await writeSweepRecord(store, { v: 1, at: Date.now() - 25 * HOUR, items: [[ORPHAN, null], [second, null]] })
-        const remove = store.delete.bind(store)
-        vi.spyOn(store, 'delete').mockImplementation(async (key, condition) => {
+        await plantNodeOrphans(store, [ORPHAN, second])
+        const guarded = store.guarded
+        if (guarded === undefined) {
+            throw new Error('The Node store offers no guarded operations.')
+        }
+        const remove = guarded.removeChecked.bind(guarded)
+        vi.spyOn(guarded, 'removeChecked').mockImplementation(async (entries, checkOnly) => {
             page.ownPresence = false
-            return remove(key, condition)
+            return remove(entries, checkOnly)
         })
 
-        const line = await runStep(store)
+        const line = await runStep(store, session)
 
         expect(line).toContain('deleted=1')
         expect(line).toContain('stopped=other-tab')
-        const present = [ORPHAN, second].filter(name => store.files.has(`assets/${name}`))
-        expect(present, 'exactly one orphan survives').toHaveLength(1)
+        const held = await Promise.all([ORPHAN, second].map(name => store.has(`assets/${name}`)))
+        expect(held.filter(Boolean), 'exactly one orphan survives').toHaveLength(1)
     })
 })

@@ -195,7 +195,7 @@ async function readLocalColdStorageBytes(key: string): Promise<ColdStorageBytesR
         if (error instanceof StoreInvalidKeyError) {
             return { status: 'error', kind: 'damaged', error }
         }
-        // A browser whose IndexedDB cannot be used offers this page no storage
+        // A page served by neither Tauri nor the Node server offers no storage
         // for archived data; a repeated read cannot succeed. Matched by name,
         // not `instanceof`, so that a stand-in for the store selection module
         // that exports only `getAppStore` still works.

@@ -249,7 +249,7 @@ describe('the answer is judged again against the newest tree (P5b) and on a node
 
     test('P6 a node page asks the same dialog: no automatic export, no Save mine, and the resolution is an ordinary commit', async () => {
         opened = await openNamed('node')
-        const w = await mergeWorld({ backend: opened.backend, kind: 'node' })
+        const w = await mergeWorld({ backend: opened.backend })
         const { b } = w
         expect(b.context.session.kind).toBe('node')
         const held = resolver(w, () => 'theirs')

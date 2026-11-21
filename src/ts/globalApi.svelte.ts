@@ -741,7 +741,7 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
  * File's snapshot ends the save as `AssetSourceChangedError`, with nothing stored.
  *
  * Limits. Storage of up to twice the file is held for the duration of the save. A crash or a closed tab during the save
- * leaves the temporary key; on a `tauri` or `indexeddb` store2 page the asset sweep deletes it once two passes at least a
+ * leaves the temporary key; on a `tauri` store2 page the asset sweep deletes it once two passes at least a
  * day apart found it, and until then a full backup exports it (a Node server keeps it; CHORE-836). An orphan of 100 MiB or more can appear by its raw key in the upstream-size prompt. After the final write, a value of
  * the right size, Blob or bytes, completes the save, so a concurrent same-content `saveAsset` that replaced the Blob with
  * bytes or a Blob leaves both saves with a valid key. Only a Blob of the wrong size is deleted; an absent key, or bytes of another

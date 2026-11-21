@@ -20,7 +20,7 @@ import { deriveConfigAssets } from 'src/ts/storage/store2/lists'
 import { buildClosureAssetKeepSet } from 'src/ts/storage/store2/sweep'
 import { commitKeyOf, listHolds, Tree } from './store2/sweepFixtures'
 import {
-    assetOrInlayBodyKeyViolation, indexedDbAddressableViolation, indexedDbCreatableViolation, nodeAddressableViolation,
+    assetOrInlayBodyKeyViolation, indexedDbCreatableViolation, nodeAddressableViolation,
     nodeAssetRouteViolation, nodeCreatableViolation, tauriAddressableViolation, tauriCreatableViolation, NODE_MAX_WRITE_KEY_BYTES,
     utf8ByteLength,
 } from 'src/ts/storage/store/keyRules'
@@ -346,7 +346,6 @@ describe('the pack archive key against the store key rules', () => {
         expect(tauriCreatableViolation(PACK_ARCHIVE)).toBeNull()
         expect(indexedDbCreatableViolation(PACK_ARCHIVE)).toBeNull()
         expect(nodeAddressableViolation(PACK_ARCHIVE)).toBeNull()
-        expect(indexedDbAddressableViolation(PACK_ARCHIVE)).toBeNull()
         expect(tauriAddressableViolation(PACK_ARCHIVE, 'windows')).toBeNull()
         expect(tauriAddressableViolation(PACK_ARCHIVE, 'posix')).toBeNull()
         expect(nodeAssetRouteViolation(PACK_ARCHIVE)).toBeNull()

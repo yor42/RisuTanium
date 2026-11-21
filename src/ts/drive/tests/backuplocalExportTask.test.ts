@@ -313,7 +313,7 @@ vi.mock('src/ts/drive/exportModules', async (importOriginal) => {
 // The assets are listed and read through the page's byte store; `world.files` is what it holds.
 vi.mock(import('src/ts/storage/store/appStore'), async () => {
     const { appStoreModuleOver, forageOverMap } = await import('src/ts/storage/tests/appStoreMock')
-    return { ...appStoreModuleOver(() => forageOverMap(world.files)), getAppStoreKind: async () => 'indexeddb' } as unknown as typeof import('src/ts/storage/store/appStore')
+    return { ...appStoreModuleOver(() => forageOverMap(world.files)), getAppStoreKind: async () => 'node' } as unknown as typeof import('src/ts/storage/store/appStore')
 })
 
 //#endregion

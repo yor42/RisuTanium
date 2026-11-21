@@ -39,7 +39,8 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
 import type { OpenedBackend } from './fenceFixtures'
-import { ffSetup, ffTeardown, openNamed, scenarioR25, scenarioR29, scenarioR30 } from './ffFixtures'
+import { bootB, ffSetup, ffTeardown, ffWorldOver, openNamed, ownEdit, personalityOf, scenarioR25, scenarioR29, scenarioR30, signal, takenBy } from './ffFixtures'
+import { parsedKey, runLoopOver } from './lineFixtures'
 
 /**
  * The fast-forward rows over the real Node server (a child process, through the same fixture as the Node backend
@@ -80,11 +81,44 @@ describe('the node variants', () => {
         await scenarioR30('node', await node())
     })
 
+    test('R30 node two pages alternating disjoint commits: each takes the other\'s commit before its own and neither parks', async () => {
+        const backend = await node()
+        const { page } = await ffWorldOver(backend)
+        const a = await bootB(backend)
+        const loopA = runLoopOver(a.context, a.db)
+        const b = await bootB(backend)
+        const loopB = runLoopOver(b.context, b.db)
+        // The other page's boot resets the page-global registrations; the first page keeps running over its own context.
+        const hops = [
+            { who: a, loop: loopA, other: b, otherLoop: loopB, index: 0, text: 'a1' },
+            { who: b, loop: loopB, other: a, otherLoop: loopA, index: 1, text: 'b1' },
+            { who: a, loop: loopA, other: b, otherLoop: loopB, index: 0, text: 'a2' },
+            { who: b, loop: loopB, other: a, otherLoop: loopA, index: 1, text: 'b2' },
+            { who: a, loop: loopA, other: b, otherLoop: loopB, index: 0, text: 'a3' },
+            { who: b, loop: loopB, other: a, otherLoop: loopA, index: 1, text: 'b3' },
+        ]
+        for (const hop of hops) {
+            await takenBy(hop.who, backend)
+            await ownEdit(hop.loop, hop.who, hop.index, hop.text)
+            signal(hop.otherLoop)
+            await takenBy(hop.other, backend)
+        }
+        for (const p of [a, b]) {
+            expect(p.peer.asked).toEqual([])
+            expect(p.peer.clean).toEqual([])
+        }
+        expect(loopA.crashed).toEqual([])
+        expect(loopB.crashed).toEqual([])
+        const final = await page.freeze()
+        expect(personalityOf(final.db, 0)).toBe('a3')
+        expect(personalityOf(final.db, 1)).toBe('b3')
+        expect(a.context.encoder.manifestKey).toBe((await parsedKey(backend)).current?.key)
+    })
+
     test('the page under test is a node session with a fast-forward', async () => {
-        const { bootB, ffWorldOver } = await import('./ffFixtures')
         const backend = await node()
         await ffWorldOver(backend)
-        const b = await bootB(backend, 'node')
+        const b = await bootB(backend)
         expect(b.context.session.kind).toBe('node')
         expect(b.context.fastForward).toBeDefined()
     })

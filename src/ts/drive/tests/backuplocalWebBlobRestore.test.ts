@@ -263,7 +263,7 @@ beforeEach(async () => {
         },
         readBlob: async (key) => keptBlobs.get(key) ?? null,
     }
-    injectRestoreStore(restoreStore, 'indexeddb')
+    injectRestoreStore(restoreStore, 'tauri')
 
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)
@@ -307,12 +307,12 @@ function expectCommitted(): void {
 }
 
 /**
- * Makes the page a store2 page over the page's store of kind `indexeddb`, where the restore ends at the stubbed commit,
+ * Makes the page a store2 page over the page's store of kind `tauri`, where the restore ends at the stubbed commit,
  * and has each row of the describe assert the restore waited for no save first: `saveFirst` returned at its clean check.
  */
 function onStore2Page(): void {
     beforeEach(() => {
-        useStore2RestorePage(restoreStore, 'indexeddb')
+        useStore2RestorePage(restoreStore, 'tauri')
     })
     afterEach(() => {
         expect(alertMocks.alertWait.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
