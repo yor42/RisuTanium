@@ -30,7 +30,7 @@ vi.mock('src/ts/platform', () => ({
 
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
-import { fieldNameProblems, unnamedControls } from 'src/lib/a11yNames.test-helpers'
+import { fieldNameProblems, hideClosedColorPickerDialogs, unnamedControls } from 'src/lib/a11yNames.test-helpers'
 import SettingNumber from './SettingNumber.svelte'
 import SettingSelect from './SettingSelect.svelte'
 import SettingSlider from './SettingSlider.svelte'
@@ -121,10 +121,7 @@ describe('setting wrapper value-control names', () => {
         const target = render(SettingColor, { ...colorItem, bindKey: 'theme' })
         DBState.db.theme = '#112233'
         flushSync()
-        // The library renders its closed dialog's controls and hides them with CSS, which jsdom does not apply; they are out of scope.
-        for (const dialog of Array.from(target.querySelectorAll('[role="dialog"]'))) {
-            dialog.setAttribute('aria-hidden', 'true')
-        }
+        hideClosedColorPickerDialogs(target)
         expect(fieldNameProblems(target, [{ name: language.textColor }])).toEqual([])
     })
 })

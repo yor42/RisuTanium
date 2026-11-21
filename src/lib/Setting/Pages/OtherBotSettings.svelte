@@ -303,8 +303,8 @@
 
 {#if submenu === 3 || submenu === -1}
     <Accordion name={language.imageGeneration} styled disabled={submenu !== -1}>
-        <span class="text-textcolor mt-2">{language.imageGeneration} {language.provider} <Help key="sdProvider"/></span>
-        <SelectInput className="mt-2 mb-4" bind:value={DBState.db.sdProvider}>
+        <span class="text-textcolor mt-2"><span id="{uid}-v1">{language.imageGeneration} {language.provider}</span> <Help key="sdProvider"/></span>
+        <SelectInput labelId="{uid}-v1" className="mt-2 mb-4" bind:value={DBState.db.sdProvider}>
             <OptionInput value="" >{language.none}</OptionInput>
             <OptionInput value="webui" >Stable Diffusion WebUI</OptionInput>
             <OptionInput value="novelai" >Novel AI</OptionInput>
@@ -330,16 +330,16 @@
             {/if}
             <span class="text-textcolor mt-2" id="{uid}-f1">WebUI {language.providerURL}</span>
             <TextInput labelId="{uid}-f1" size="sm" marginBottom placeholder="https://..." bind:value={DBState.db.webUiUrl}/>
-            <span class="text-textcolor">Steps</span>
-            <NumberInput size="sm" marginBottom min={0} max={100} bind:value={DBState.db.sdSteps}/>
+            <span class="text-textcolor" id="{uid}-v2">Steps</span>
+            <NumberInput labelId="{uid}-v2" size="sm" marginBottom min={0} max={100} bind:value={DBState.db.sdSteps}/>
 
-            <span class="text-textcolor">CFG Scale</span>
-            <NumberInput size="sm" marginBottom min={0} max={20} bind:value={DBState.db.sdCFG}/>
+            <span class="text-textcolor" id="{uid}-v3">CFG Scale</span>
+            <NumberInput labelId="{uid}-v3" size="sm" marginBottom min={0} max={20} bind:value={DBState.db.sdCFG}/>
 
-            <span class="text-textcolor">{language.settingsPage.width}</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
-            <span class="text-textcolor">{language.settingsPage.height}</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.height}/>
+            <span class="text-textcolor" id="{uid}-v4">{language.settingsPage.width}</span>
+            <NumberInput labelId="{uid}-v4" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
+            <span class="text-textcolor" id="{uid}-v5">{language.settingsPage.height}</span>
+            <NumberInput labelId="{uid}-v5" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.height}/>
             <span class="text-textcolor" id="{uid}-f2">Sampler</span>
             <TextInput labelId="{uid}-f2" size="sm" marginBottom bind:value={DBState.db.sdConfig.sampler_name}/>
 
@@ -347,10 +347,10 @@
                 <Check bind:check={DBState.db.sdConfig.enable_hr} name={fillLang(language.settingsPage.enableName, { name: 'Hires' })}/>
             </div>
             {#if DBState.db.sdConfig.enable_hr === true}
-                <span class="text-textcolor">denoising_strength</span>
-                <NumberInput size="sm" marginBottom  min={0} max={10} bind:value={DBState.db.sdConfig.denoising_strength}/>
-                <span class="text-textcolor">hr_scale</span>
-                <NumberInput size="sm" marginBottom  min={0} max={10} bind:value={DBState.db.sdConfig.hr_scale}/>
+                <span class="text-textcolor" id="{uid}-v6">denoising_strength</span>
+                <NumberInput labelId="{uid}-v6" size="sm" marginBottom  min={0} max={10} bind:value={DBState.db.sdConfig.denoising_strength}/>
+                <span class="text-textcolor" id="{uid}-v7">hr_scale</span>
+                <NumberInput labelId="{uid}-v7" size="sm" marginBottom  min={0} max={10} bind:value={DBState.db.sdConfig.hr_scale}/>
                 <span class="text-textcolor" id="{uid}-f3">Upscaler</span>
                 <TextInput labelId="{uid}-f3" size="sm" marginBottom bind:value={DBState.db.sdConfig.hr_upscaler}/>
             {/if}
@@ -362,8 +362,8 @@
             <span class="text-textcolor" id="{uid}-f5">{language.apiKey}</span>
             <TextInput labelId="{uid}-f5" size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
 
-            <span class="text-textcolor">{language.model}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.NAIImgModel} >
+            <span class="text-textcolor" id="{uid}-v8">{language.model}</span>
+            <SelectInput labelId="{uid}-v8" className="mb-4" bind:value={DBState.db.NAIImgModel} >
                 <OptionInput value="nai-diffusion-5-full" >nai-diffusion-5-full</OptionInput>
                 <OptionInput value="nai-diffusion-5-curated" >nai-diffusion-5-curated</OptionInput>
                 <OptionInput value="nai-diffusion-4-5-full" >nai-diffusion-4-5-full</OptionInput>
@@ -376,17 +376,17 @@
 
             </SelectInput>
 
-            <span class="text-textcolor">{language.settingsPage.width}</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.width}/>
-            <span class="text-textcolor">{language.settingsPage.height}</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.height}/>
-            <span class="text-textcolor">Sampler</span>
+            <span class="text-textcolor" id="{uid}-v9">{language.settingsPage.width}</span>
+            <NumberInput labelId="{uid}-v9" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.width}/>
+            <span class="text-textcolor" id="{uid}-v10">{language.settingsPage.height}</span>
+            <NumberInput labelId="{uid}-v10" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.height}/>
+            <span class="text-textcolor" id="{uid}-v11">Sampler</span>
 
             {#if DBState.db.NAIImgModel === 'nai-diffusion-4-full'
             || DBState.db.NAIImgModel === 'nai-diffusion-4-curated-preview'
             || DBState.db.NAIImgModel === 'nai-diffusion-4-5-full'
             || DBState.db.NAIImgModel === 'nai-diffusion-4-5-curated'}
-                <SelectInput className="mb-4" bind:value={DBState.db.NAIImgConfig.sampler}>
+                <SelectInput labelId="{uid}-v11" className="mb-4" bind:value={DBState.db.NAIImgConfig.sampler}>
                     <OptionInput value="k_euler_ancestral" >Euler Ancestral</OptionInput>
                     <OptionInput value="k_dpmpp_2s_ancestral" >DPM++ 2S Ancestral</OptionInput>
                     <OptionInput value="k_dpmpp_2m_sde" >DPM++ 2M SDE</OptionInput>
@@ -395,7 +395,7 @@
                     <OptionInput value="k_dpmpp_sde" >DPM++ SDE</OptionInput>
                 </SelectInput>
             {:else}
-                <SelectInput className="mb-4" bind:value={DBState.db.NAIImgConfig.sampler}>
+                <SelectInput labelId="{uid}-v11" className="mb-4" bind:value={DBState.db.NAIImgConfig.sampler}>
                     <OptionInput value="k_euler_ancestral" >Euler Ancestral</OptionInput>
                     <OptionInput value="k_dpmpp_2s_ancestral" >DPM++ 2S Ancestral</OptionInput>
                     <OptionInput value="k_dpmpp_sde" >DPM++ SDE</OptionInput>
@@ -406,23 +406,23 @@
                 </SelectInput>
             {/if}
 
-            <span class="text-textcolor">Noise Schedule</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.NAIImgConfig.noise_schedule}>
+            <span class="text-textcolor" id="{uid}-v12">Noise Schedule</span>
+            <SelectInput labelId="{uid}-v12" className="mb-4" bind:value={DBState.db.NAIImgConfig.noise_schedule}>
                 <OptionInput value="native" >native</OptionInput>
                 <OptionInput value="karras" >karras</OptionInput>
                 <OptionInput value="exponential" >exponential</OptionInput>
                 <OptionInput value="polyexponential" >polyexponential</OptionInput>
             </SelectInput>
 
-            <span class="text-textcolor">steps</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.steps}/>
-            <span class="text-textcolor">CFG scale</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.scale}/>
-            <span class="text-textcolor">CFG rescale</span>
-            <NumberInput size="sm" marginBottom min={0} max={1} bind:value={DBState.db.NAIImgConfig.cfg_rescale}/>
+            <span class="text-textcolor" id="{uid}-v13">steps</span>
+            <NumberInput labelId="{uid}-v13" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.steps}/>
+            <span class="text-textcolor" id="{uid}-v14">CFG scale</span>
+            <NumberInput labelId="{uid}-v14" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.NAIImgConfig.scale}/>
+            <span class="text-textcolor" id="{uid}-v15">CFG rescale</span>
+            <NumberInput labelId="{uid}-v15" size="sm" marginBottom min={0} max={1} bind:value={DBState.db.NAIImgConfig.cfg_rescale}/>
 
-            <span class="text-textcolor">{language.settingsPage.imageReference}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.NAIImgConfig.reference_mode}>
+            <span class="text-textcolor" id="{uid}-v16">{language.settingsPage.imageReference}</span>
+            <SelectInput labelId="{uid}-v16" className="mb-4" bind:value={DBState.db.NAIImgConfig.reference_mode}>
                 <OptionInput value="" >{language.none}</OptionInput>
                 <OptionInput value="vibe" >{language.settingsPage.vibeTransfer}</OptionInput>
                 {#if DBState.db.NAIImgModel === 'nai-diffusion-4-5-full' || DBState.db.NAIImgModel === 'nai-diffusion-4-5-curated'}
@@ -507,8 +507,8 @@
 
                 {#if DBState.db.NAIImgConfig.vibe_data}
 
-                    <span class="text-textcolor">Vibe Model</span>
-                    <SelectInput className="mb-2" bind:value={DBState.db.NAIImgConfig.vibe_model_selection} onchange={(e) => {
+                    <span class="text-textcolor" id="{uid}-v17">Vibe Model</span>
+                    <SelectInput labelId="{uid}-v17" className="mb-2" bind:value={DBState.db.NAIImgConfig.vibe_model_selection} onchange={(e) => {
                         // When vibe model changes, set InfoExtracted to the first value
                         if (DBState.db.NAIImgConfig.vibe_data?.encodings &&
                             DBState.db.NAIImgConfig.vibe_model_selection &&
@@ -534,8 +534,8 @@
                         {/if}
                     </SelectInput>
 
-                    <span class="text-textcolor">Information Extracted</span>
-                    <SelectInput className="mb-2" bind:value={DBState.db.NAIImgConfig.InfoExtracted}>
+                    <span class="text-textcolor" id="{uid}-v18">Information Extracted</span>
+                    <SelectInput labelId="{uid}-v18" className="mb-2" bind:value={DBState.db.NAIImgConfig.InfoExtracted}>
                         {#if DBState.db.NAIImgConfig.vibe_model_selection && DBState.db.NAIImgConfig.vibe_data.encodings[DBState.db.NAIImgConfig.vibe_model_selection]}
                             {#each Object.entries(DBState.db.NAIImgConfig.vibe_data.encodings[DBState.db.NAIImgConfig.vibe_model_selection]) as [key, value]}
                                 <OptionInput value={value.params.information_extracted}>{value.params.information_extracted}</OptionInput>
@@ -543,8 +543,8 @@
                         {/if}
                     </SelectInput>
 
-                    <span class="text-textcolor">Reference Strength Multiple</span>
-                    <SliderInput marginBottom min={0} max={1} step={0.1} fixed={2} bind:value={DBState.db.NAIImgConfig.reference_strength_multiple[0]} />
+                    <span class="text-textcolor" id="{uid}-v19">Reference Strength Multiple</span>
+                    <SliderInput labelId="{uid}-v19" marginBottom min={0} max={1} step={0.1} fixed={2} bind:value={DBState.db.NAIImgConfig.reference_strength_multiple[0]} />
                 {/if}
             {/if}
 
@@ -704,10 +704,10 @@
                 <span class="text-textcolor2 text-xs block">{language.settingsPage.leaveBlankDefaultImage}</span>
 
 
-                <span class="text-textcolor mt-2">Strength</span>
-                <SliderInput min={0} max={0.99} step={0.01} fixed={2} bind:value={DBState.db.NAIImgConfig.strength}/>
-                <span class="text-textcolor mt-2">Noise</span>
-                <SliderInput min={0} max={0.99} step={0.01} fixed={2} bind:value={DBState.db.NAIImgConfig.noise}/>
+                <span class="text-textcolor mt-2" id="{uid}-v20">Strength</span>
+                <SliderInput labelId="{uid}-v20" min={0} max={0.99} step={0.01} fixed={2} bind:value={DBState.db.NAIImgConfig.strength}/>
+                <span class="text-textcolor mt-2" id="{uid}-v21">Noise</span>
+                <SliderInput labelId="{uid}-v21" min={0} max={0.99} step={0.01} fixed={2} bind:value={DBState.db.NAIImgConfig.noise}/>
 
 
             {/if}
@@ -719,8 +719,8 @@
             <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
             <KeyListInput size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
 
-            <span class="text-textcolor mt-4">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
-            <SelectInput className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>
+            <span class="text-textcolor mt-4" id="{uid}-v22">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
+            <SelectInput labelId="{uid}-v22" className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>
                 <OptionInput value="standard" >{language.settingsPage.standard}</OptionInput>
                 <OptionInput value="hd" >HD</OptionInput>
             </SelectInput>
@@ -731,8 +731,8 @@
             <span class="text-textcolor" id="{uid}-f6">{fillLang(language.settingsPage.nameApiKey, { name: 'Stability' })}</span>
             <TextInput labelId="{uid}-f6" size="sm" marginBottom placeholder="..." bind:value={DBState.db.stabilityKey}/>
 
-            <span class="text-textcolor">{fillLang(language.settingsPage.nameModel, { name: 'Stability' })}</span>
-            <SelectInput className="mt-2 mb-4" bind:value={DBState.db.stabilityModel}>
+            <span class="text-textcolor" id="{uid}-v23">{fillLang(language.settingsPage.nameModel, { name: 'Stability' })}</span>
+            <SelectInput labelId="{uid}-v23" className="mt-2 mb-4" bind:value={DBState.db.stabilityModel}>
                 <OptionInput value="ultra" >SD Ultra</OptionInput>
                 <OptionInput value="core" >SD Core</OptionInput>
                 <OptionInput value="sd3-large" >SD3 Large</OptionInput>
@@ -740,8 +740,8 @@
             </SelectInput>
 
             {#if DBState.db.stabilityModel === 'core'}
-                <span class="text-textcolor">{fillLang(language.settingsPage.nameStyle, { name: 'SD Core' })}</span>
-                <SelectInput className="mt-2 mb-4" bind:value={DBState.db.stabllityStyle}>
+                <span class="text-textcolor" id="{uid}-v24">{fillLang(language.settingsPage.nameStyle, { name: 'SD Core' })}</span>
+                <SelectInput labelId="{uid}-v24" className="mt-2 mb-4" bind:value={DBState.db.stabllityStyle}>
                     <OptionInput value="" >{language.settingsPage.unspecified}</OptionInput>
                     <OptionInput value="3d-model" >3D Model</OptionInput>
                     <OptionInput value="analog-film" >Analog Film</OptionInput>
@@ -776,8 +776,8 @@
                 }}><HardDriveUploadIcon size={24} aria-hidden="true"/></button>
             </div>
 
-            <span class="text-textcolor">{language.settingsPage.timeoutSec}</span>
-            <NumberInput size="sm" marginBottom bind:value={DBState.db.comfyConfig.timeout} min={1} max={120} />
+            <span class="text-textcolor" id="{uid}-v25">{language.settingsPage.timeoutSec}</span>
+            <NumberInput labelId="{uid}-v25" size="sm" marginBottom bind:value={DBState.db.comfyConfig.timeout} min={1} max={120} />
         {/if}
 
         {#if DBState.db.sdProvider === 'comfy'}
@@ -798,21 +798,21 @@
             <TextInput labelId="{uid}-f13" size="sm" marginBottom placeholder={language.settingsPage.nodeIdExample} bind:value={DBState.db.comfyConfig.negNodeID}/>
             <span class="text-textcolor" id="{uid}-f14">{language.settingsPage.positiveNodeField}</span>
             <TextInput labelId="{uid}-f14" size="sm" marginBottom placeholder={language.settingsPage.nodeFieldExample} bind:value={DBState.db.comfyConfig.negInputName}/>
-            <span class="text-textcolor">{language.settingsPage.timeoutSec}</span>
-            <NumberInput size="sm" marginBottom bind:value={DBState.db.comfyConfig.timeout} min={1} max={120} />
+            <span class="text-textcolor" id="{uid}-v26">{language.settingsPage.timeoutSec}</span>
+            <NumberInput labelId="{uid}-v26" size="sm" marginBottom bind:value={DBState.db.comfyConfig.timeout} min={1} max={120} />
         {/if}
 
         {#if DBState.db.sdProvider === 'fal'}
             <span class="text-textcolor" id="{uid}-f15">{fillLang(language.settingsPage.nameApiKey, { name: 'Fal.ai' })}</span>
             <TextInput labelId="{uid}-f15" size="sm" marginBottom placeholder="..." bind:value={DBState.db.falToken}/>
 
-            <span class="text-textcolor mt-4">{language.settingsPage.width}</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
-            <span class="text-textcolor mt-4">{language.settingsPage.height}</span>
-            <NumberInput size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.height}/>
+            <span class="text-textcolor mt-4" id="{uid}-v27">{language.settingsPage.width}</span>
+            <NumberInput labelId="{uid}-v27" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.width}/>
+            <span class="text-textcolor mt-4" id="{uid}-v28">{language.settingsPage.height}</span>
+            <NumberInput labelId="{uid}-v28" size="sm" marginBottom min={0} max={2048} bind:value={DBState.db.sdConfig.height}/>
 
-            <span class="text-textcolor mt-4">{language.model}</span>
-            <SelectInput className="mt-2" bind:value={DBState.db.falModel}>
+            <span class="text-textcolor mt-4" id="{uid}-v29">{language.model}</span>
+            <SelectInput labelId="{uid}-v29" className="mt-2" bind:value={DBState.db.falModel}>
                 <OptionInput value="fal-ai/flux/dev" >Flux[Dev]</OptionInput>
                 <OptionInput value="fal-ai/flux-lora" >Flux[Dev] with Lora</OptionInput>
                 <OptionInput value="fal-ai/flux-pro" >Flux[Pro]</OptionInput>
@@ -823,8 +823,8 @@
                 <span class="text-textcolor mt-4"><span id="{uid}-f16">{language.settingsPage.loraModelUrl}</span> <Help key="urllora" /></span>
                 <TextInput labelId="{uid}-f16" size="sm" marginBottom bind:value={DBState.db.falLora}/>
 
-                <span class="text-textcolor mt-4">{language.settingsPage.loraWeight}</span>
-                <SliderInput fixed={2} min={0}  max={2} step={0.01} bind:value={DBState.db.falLoraScale}/>
+                <span class="text-textcolor mt-4" id="{uid}-v30">{language.settingsPage.loraWeight}</span>
+                <SliderInput labelId="{uid}-v30" fixed={2} min={0}  max={2} step={0.01} bind:value={DBState.db.falLoraScale}/>
             {/if}
 
 
@@ -834,8 +834,8 @@
             <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
             <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
 
-            <span class="text-textcolor">{language.model}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.ImagenModel}>
+            <span class="text-textcolor" id="{uid}-v31">{language.model}</span>
+            <SelectInput labelId="{uid}-v31" className="mb-4" bind:value={DBState.db.ImagenModel}>
                 <OptionInput value="imagen-4.0-generate-001" >Imagen 4</OptionInput>
                 <OptionInput value="imagen-4.0-ultra-generate-001" >Imagen 4 Ultra</OptionInput>
                 <OptionInput value="imagen-4.0-fast-generate-001" >Imagen 4 Fast</OptionInput>
@@ -843,15 +843,15 @@
             </SelectInput>
 
             {#if DBState.db.ImagenModel === 'imagen-4.0-generate-001' || DBState.db.ImagenModel === 'imagen-4.0-ultra-generate-001'}
-                <span class="text-textcolor">{language.settingsPage.imagenImageSize}</span>
-                <SelectInput className="mb-4" bind:value={DBState.db.ImagenImageSize}>
+                <span class="text-textcolor" id="{uid}-v32">{language.settingsPage.imagenImageSize}</span>
+                <SelectInput labelId="{uid}-v32" className="mb-4" bind:value={DBState.db.ImagenImageSize}>
                     <OptionInput value="1K" >1K</OptionInput>
                     <OptionInput value="2K" >2K</OptionInput>
                 </SelectInput>
             {/if}
 
-            <span class="text-textcolor">{language.settingsPage.aspectRatio}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.ImagenAspectRatio}>
+            <span class="text-textcolor" id="{uid}-v33">{language.settingsPage.aspectRatio}</span>
+            <SelectInput labelId="{uid}-v33" className="mb-4" bind:value={DBState.db.ImagenAspectRatio}>
                 <OptionInput value="1:1" >1:1</OptionInput>
                 <OptionInput value="3:4" >3:4</OptionInput>
                 <OptionInput value="4:3" >4:3</OptionInput>
@@ -859,8 +859,8 @@
                 <OptionInput value="16:9" >16:9</OptionInput>
             </SelectInput>
 
-            <span class="text-textcolor">{language.settingsPage.personGeneration}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.ImagenPersonGeneration}>
+            <span class="text-textcolor" id="{uid}-v34">{language.settingsPage.personGeneration}</span>
+            <SelectInput labelId="{uid}-v34" className="mb-4" bind:value={DBState.db.ImagenPersonGeneration}>
                 <OptionInput value="allow_all" >{language.settingsPage.allowAll}</OptionInput>
                 <OptionInput value="allow_adult" >{language.settingsPage.allowAdult}</OptionInput>
                 <OptionInput value="dont_allow" >{language.settingsPage.dontAllow}</OptionInput>
@@ -877,8 +877,8 @@
             <span class="text-textcolor" id="{uid}-f19">{language.model}</span>
             <TextInput labelId="{uid}-f19" size="sm" marginBottom placeholder="dall-e-3" bind:value={DBState.db.openaiCompatImage.model}/>
 
-            <span class="text-textcolor">{language.settingsPage.imageSize}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.openaiCompatImage.size}>
+            <span class="text-textcolor" id="{uid}-v35">{language.settingsPage.imageSize}</span>
+            <SelectInput labelId="{uid}-v35" className="mb-4" bind:value={DBState.db.openaiCompatImage.size}>
                 <OptionInput value="1024x1024" >1024x1024</OptionInput>
                 <OptionInput value="1536x1024" >1536x1024</OptionInput>
                 <OptionInput value="1024x1536" >1024x1536</OptionInput>
@@ -886,8 +886,8 @@
                 <OptionInput value="256x256" >256x256</OptionInput>
             </SelectInput>
 
-            <span class="text-textcolor">{language.settingsPage.quality}</span>
-            <SelectInput className="mb-4" bind:value={DBState.db.openaiCompatImage.quality}>
+            <span class="text-textcolor" id="{uid}-v36">{language.settingsPage.quality}</span>
+            <SelectInput labelId="{uid}-v36" className="mb-4" bind:value={DBState.db.openaiCompatImage.quality}>
                 <OptionInput value="auto" >{language.optAuto}</OptionInput>
                 <OptionInput value="low" >{language.optLow}</OptionInput>
                 <OptionInput value="medium" >{language.optMedium}</OptionInput>
@@ -914,7 +914,7 @@
               size="sm"
               marginBottom
             />
-            <SelectInput className="mb-4" bind:value={DBState.db.wavespeedImage.model} onchange={handleModelChange}>
+            <SelectInput label={language.model} className="mb-4" bind:value={DBState.db.wavespeedImage.model} onchange={handleModelChange}>
                 <OptionInput value="" >{language.settingsPage.selectModel}</OptionInput>
                 {#if wavespeedModels.length > 0}
                     {#each getFilteredModels() as model}
@@ -939,6 +939,7 @@
                       bind:value={lora.path}
                     />
                     <SliderInput
+                      label={fillLang(language.settingsPage.loraWeightIndexed, { index: index + 1 })}
                       marginBottom
                       min={0}
                       max={4}
@@ -956,9 +957,9 @@
                 </span>
             {/if}
 
-            <span class="text-textcolor">{language.settingsPage.imageReference}</span>
+            <span class="text-textcolor" id="{uid}-v37">{language.settingsPage.imageReference}</span>
             {#if wavespeedModels.find(m => m.model_id === DBState.db.wavespeedImage.model)?.supportsImageInput}
-                <SelectInput className="mb-4" bind:value={DBState.db.wavespeedImage.reference_mode}>
+                <SelectInput labelId="{uid}-v37" className="mb-4" bind:value={DBState.db.wavespeedImage.reference_mode}>
                     <OptionInput value="" >{language.none}</OptionInput>
                     <OptionInput value="image" >{language.settingsPage.uploadImage}</OptionInput>
                     <OptionInput value="character" >{language.settingsPage.useCharacterImage}</OptionInput>
@@ -1063,9 +1064,9 @@
 
 {#if submenu === 2 || submenu === -1}
 <Accordion name={language.emotionImage} styled disabled={submenu !== -1}>
-    <span class="text-textcolor mt-2">{language.emotionMethod}</span>
+    <span class="text-textcolor mt-2" id="{uid}-v38">{language.emotionMethod}</span>
 
-    <SelectInput className="mt-2 mb-4" bind:value={DBState.db.emotionProcesser}>
+    <SelectInput labelId="{uid}-v38" className="mt-2 mb-4" bind:value={DBState.db.emotionProcesser}>
         <OptionInput value="submodel" >{language.optAxModel}</OptionInput>
         <OptionInput value="embedding" >MiniLM-L6-v2</OptionInput>
     </SelectInput>
@@ -1074,9 +1075,9 @@
 
 {#if submenu === 0 || submenu === -1}
     <Accordion name={language.longTermMemory} styled disabled={submenu !== -1}>
-        <span class="text-textcolor mt-4">{language.type}</span>
+        <span class="text-textcolor mt-4" id="{uid}-v39">{language.type}</span>
 
-        <SelectInput className="mb-4" value={memoryEngineOf(DBState.db)} onchange={(v) => {
+        <SelectInput labelId="{uid}-v39" className="mb-4" value={memoryEngineOf(DBState.db)} onchange={(v) => {
             //@ts-expect-error 'value' doesn't exist on EventTarget, but target is HTMLSelectElement here
             const value: MemoryEngine = v.target.value
             setMemoryEngine(DBState.db, value)
@@ -1090,15 +1091,15 @@
 
         {#if DBState.db.hanuraiEnable}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.hanuraiDesc}</span>
-            <span>{language.hypaChunkSize}</span>
-            <NumberInput size="sm" marginBottom bind:value={DBState.db.hanuraiTokens} min={100} />
+            <span id="{uid}-v40">{language.hypaChunkSize}</span>
+            <NumberInput labelId="{uid}-v40" size="sm" marginBottom bind:value={DBState.db.hanuraiTokens} min={100} />
             <div class="flex mb-4">
                 <Check bind:check={DBState.db.hanuraiSplit} name={language.settingsPage.textSpliting}/>
             </div>
         {:else if DBState.db.hypav2}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.hypaV2Desc}</span>
-            <span class="text-textcolor mt-4">{language.SuperMemory} {language.model}</span>
-            <SelectInput className="mt-2 mb-2" bind:value={DBState.db.supaModelType}>
+            <span class="text-textcolor mt-4" id="{uid}-v41">{language.SuperMemory} {language.model}</span>
+            <SelectInput labelId="{uid}-v41" className="mt-2 mb-2" bind:value={DBState.db.supaModelType}>
                 <OptionInput value="distilbart">{fillLang(language.settingsPage.distilbartFreeLocal, { name: 'distilbart-cnn-6-6' })}</OptionInput>
                 <OptionInput value="instruct35">OpenAI 3.5 Turbo Instruct</OptionInput>
                 <OptionInput value="subModel">{language.submodel}</OptionInput>
@@ -1109,14 +1110,16 @@
             {/if}
             <span class="text-textcolor"><span id="{uid}-f27">{language.summarizationPrompt}</span> <Help key="summarizationPrompt" /></span>
             <TextAreaInput labelId="{uid}-f27" size="sm" bind:value={DBState.db.supaMemoryPrompt} placeholder={language.settingsPage.leaveBlankDefault}/>
-            <span class="text-textcolor">{language.hypaChunkSize}</span>
-            <NumberInput size="sm" marginBottom bind:value={DBState.db.hypaChunkSize} min={100} />
-            <span class="text-textcolor">{language.hypaAllocatedTokens}</span>
-            <NumberInput size="sm" marginBottom bind:value={DBState.db.hypaAllocatedTokens} min={100} />
+            <span class="text-textcolor" id="{uid}-v42">{language.hypaChunkSize}</span>
+            <NumberInput labelId="{uid}-v42" size="sm" marginBottom bind:value={DBState.db.hypaChunkSize} min={100} />
+            <span class="text-textcolor" id="{uid}-v43">{language.hypaAllocatedTokens}</span>
+            <NumberInput labelId="{uid}-v43" size="sm" marginBottom bind:value={DBState.db.hypaAllocatedTokens} min={100} />
         {:else if DBState.db.hypaV3}
             <span class="max-w-full mb-6 text-sm text-wrap wrap-break-word text-textcolor2">{language.hypaV3Settings.descriptionLabel}</span>
-            <span class="text-textcolor">{language.settingsPage.preset}</span>
+            <span class="text-textcolor" id="{uid}-v44">{language.settingsPage.preset}</span>
             <select class={"risu-select border border-darkborderc focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent focus:ring-borderc focus:ring-2 focus:outline-hidden transition-colors duration-200 text-md px-4 py-2 mb-1"}
+                aria-labelledby="{uid}-v44"
+                aria-describedby="{uid}-v44"
                 bind:value={DBState.db.hypaV3PresetId}
             >
                 {#each DBState.db.hypaV3Presets as preset, i}
@@ -1237,8 +1240,8 @@
             {#if DBState.db.hypaV3Presets?.[DBState.db.hypaV3PresetId]?.settings}
                 {@const settings = DBState.db.hypaV3Presets[DBState.db.hypaV3PresetId].settings}
 
-                <span class="text-textcolor">{language.SuperMemory} {language.model}</span>
-                <SelectInput className="mb-4" bind:value={settings.summarizationModel}>
+                <span class="text-textcolor" id="{uid}-v45">{language.SuperMemory} {language.model}</span>
+                <SelectInput labelId="{uid}-v45" className="mb-4" bind:value={settings.summarizationModel}>
                     <OptionInput value="subModel">{language.submodel}</OptionInput>
                     {#if "gpu" in navigator}
                         <OptionInput value="Qwen3-1.7B-q4f32_1-MLC">Qwen3 1.7B (GPU)</OptionInput>
@@ -1255,34 +1258,34 @@
                     <TextAreaInput labelId="{uid}-f29" size="sm" placeholder={language.hypaV3Settings.supaMemoryPromptPlaceHolder} bind:value={settings.reSummarizationPrompt} />
                 </div>
                 {#await getMaxMemoryRatio() then maxMemoryRatio}
-                <span class="text-textcolor">{language.hypaV3Settings.maxMemoryTokensRatioLabel}</span>
-                <NumberInput marginBottom disabled size="sm" value={maxMemoryRatio} />
+                <span class="text-textcolor" id="{uid}-v46">{language.hypaV3Settings.maxMemoryTokensRatioLabel}</span>
+                <NumberInput labelId="{uid}-v46" marginBottom disabled size="sm" value={maxMemoryRatio} />
                 {:catch error}
                 <span class="mb-4 text-draculared">{language.hypaV3Settings.maxMemoryTokensRatioError}</span>
                 {/await}
-                <span class="text-textcolor">{language.hypaV3Settings.memoryTokensRatioLabel} <Help key="hypaV3MemoryTokensRatio"/></span>
-                <SliderInput marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.memoryTokensRatio} />
-                <span class="text-textcolor">{language.hypaV3Settings.extraSummarizationRatioLabel} <Help key="hypaV3ExtraSummarizationRatio"/></span>
-                <SliderInput marginBottom min={0} max={1 - settings.memoryTokensRatio} step={0.01} fixed={2} bind:value={settings.extraSummarizationRatio} />
-                <span class="text-textcolor">{language.hypaV3Settings.maxChatsPerSummaryLabel} <Help key="hypaV3MaxChatsPerSummary"/></span>
-                <NumberInput marginBottom size="sm" min={1} bind:value={settings.maxChatsPerSummary} />
-                <span class="text-textcolor">{language.hypaV3Settings.queryChatCountLabel} <Help key="hypaV3QueryChatCount"/></span>
-                <NumberInput marginBottom size="sm" min={1} max={20} bind:value={settings.queryChatCount} />
+                <span class="text-textcolor"><span id="{uid}-v47">{language.hypaV3Settings.memoryTokensRatioLabel}</span> <Help key="hypaV3MemoryTokensRatio"/></span>
+                <SliderInput labelId="{uid}-v47" marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.memoryTokensRatio} />
+                <span class="text-textcolor"><span id="{uid}-v48">{language.hypaV3Settings.extraSummarizationRatioLabel}</span> <Help key="hypaV3ExtraSummarizationRatio"/></span>
+                <SliderInput labelId="{uid}-v48" marginBottom min={0} max={1 - settings.memoryTokensRatio} step={0.01} fixed={2} bind:value={settings.extraSummarizationRatio} />
+                <span class="text-textcolor"><span id="{uid}-v49">{language.hypaV3Settings.maxChatsPerSummaryLabel}</span> <Help key="hypaV3MaxChatsPerSummary"/></span>
+                <NumberInput labelId="{uid}-v49" marginBottom size="sm" min={1} bind:value={settings.maxChatsPerSummary} />
+                <span class="text-textcolor"><span id="{uid}-v50">{language.hypaV3Settings.queryChatCountLabel}</span> <Help key="hypaV3QueryChatCount"/></span>
+                <NumberInput labelId="{uid}-v50" marginBottom size="sm" min={1} max={20} bind:value={settings.queryChatCount} />
                 <span class="text-textcolor"><span id="{uid}-f30">{language.hypaV3Settings.summaryChunkSeparatorLabel}</span> <Help key="hypaV3SummaryChunkSeparator"/></span>
                 <TextInput labelId="{uid}-f30" marginBottom size="sm" bind:value={settings.summaryChunkSeparator} />
-                <span class="text-textcolor">{language.hypaV3Settings.recentMemoryRatioLabel} <Help key="hypaV3RecentMemoryRatio"/></span>
-                <SliderInput marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.recentMemoryRatio} />
-                <span class="text-textcolor">{language.hypaV3Settings.similarMemoryRatioLabel} <Help key="hypaV3SimilarMemoryRatio"/></span>
-                <SliderInput marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.similarMemoryRatio} />
-                <span class="text-textcolor">{language.hypaV3Settings.randomMemoryRatioLabel} <Help key="hypaV3RandomMemoryRatio"/></span>
-                <NumberInput marginBottom disabled size="sm" value={parseFloat((1 - settings.recentMemoryRatio - settings.similarMemoryRatio).toFixed(2))} />
+                <span class="text-textcolor"><span id="{uid}-v51">{language.hypaV3Settings.recentMemoryRatioLabel}</span> <Help key="hypaV3RecentMemoryRatio"/></span>
+                <SliderInput labelId="{uid}-v51" marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.recentMemoryRatio} />
+                <span class="text-textcolor"><span id="{uid}-v52">{language.hypaV3Settings.similarMemoryRatioLabel}</span> <Help key="hypaV3SimilarMemoryRatio"/></span>
+                <SliderInput labelId="{uid}-v52" marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.similarMemoryRatio} />
+                <span class="text-textcolor"><span id="{uid}-v53">{language.hypaV3Settings.randomMemoryRatioLabel}</span> <Help key="hypaV3RandomMemoryRatio"/></span>
+                <NumberInput labelId="{uid}-v53" marginBottom disabled size="sm" value={parseFloat((1 - settings.recentMemoryRatio - settings.similarMemoryRatio).toFixed(2))} />
                 <div class="mb-2 flex items-center">
                     <Check name={language.hypaV3Settings.recencyWeightingLabel} bind:check={settings.enableRecencyWeighting} />
                     <Help key="hypaV3RecencyWeighting"/>
                 </div>
                 {#if settings.enableRecencyWeighting}
-                    <span class="text-textcolor">{language.hypaV3Settings.recencyHalfLifeDaysLabel} <Help key="hypaV3RecencyHalfLifeDays"/></span>
-                    <NumberInput marginBottom size="sm" min={1} bind:value={settings.recencyHalfLifeDays} />
+                    <span class="text-textcolor"><span id="{uid}-v54">{language.hypaV3Settings.recencyHalfLifeDaysLabel}</span> <Help key="hypaV3RecencyHalfLifeDays"/></span>
+                    <NumberInput labelId="{uid}-v54" marginBottom size="sm" min={1} bind:value={settings.recencyHalfLifeDays} />
                 {/if}
                 <div class="mb-2 flex items-center">
                     <Check name={language.hypaV3Settings.preserveOrphanedMemoryLabel} bind:check={settings.preserveOrphanedMemory} />
@@ -1306,14 +1309,14 @@
                         <Help key="hypaV3AlwaysToggleOn"/>
                     </div>
                     {#if settings.useExperimentalImpl}
-                        <span class="text-textcolor">{language.settingsPage.summarizationRequestsPerMinute} <Help key="hypaV3SummarizationRequestsPerMinute"/></span>
-                        <NumberInput marginBottom size="sm" min={1} bind:value={settings.summarizationRequestsPerMinute} />
-                        <span class="text-textcolor">{language.settingsPage.summarizationMaxConcurrent} <Help key="hypaV3SummarizationMaxConcurrent"/></span>
-                        <NumberInput marginBottom size="sm" min={1} max={10} bind:value={settings.summarizationMaxConcurrent} />
-                        <span class="text-textcolor">{language.settingsPage.embeddingRequestsPerMinute} <Help key="hypaV3EmbeddingRequestsPerMinute"/></span>
-                        <NumberInput marginBottom size="sm" min={1} bind:value={settings.embeddingRequestsPerMinute} />
-                        <span class="text-textcolor">{language.settingsPage.embeddingMaxConcurrent} <Help key="hypaV3EmbeddingMaxConcurrent"/></span>
-                        <NumberInput marginBottom size="sm" min={1} max={10} bind:value={settings.embeddingMaxConcurrent} />
+                        <span class="text-textcolor"><span id="{uid}-v55">{language.settingsPage.summarizationRequestsPerMinute}</span> <Help key="hypaV3SummarizationRequestsPerMinute"/></span>
+                        <NumberInput labelId="{uid}-v55" marginBottom size="sm" min={1} bind:value={settings.summarizationRequestsPerMinute} />
+                        <span class="text-textcolor"><span id="{uid}-v56">{language.settingsPage.summarizationMaxConcurrent}</span> <Help key="hypaV3SummarizationMaxConcurrent"/></span>
+                        <NumberInput labelId="{uid}-v56" marginBottom size="sm" min={1} max={10} bind:value={settings.summarizationMaxConcurrent} />
+                        <span class="text-textcolor"><span id="{uid}-v57">{language.settingsPage.embeddingRequestsPerMinute}</span> <Help key="hypaV3EmbeddingRequestsPerMinute"/></span>
+                        <NumberInput labelId="{uid}-v57" marginBottom size="sm" min={1} bind:value={settings.embeddingRequestsPerMinute} />
+                        <span class="text-textcolor"><span id="{uid}-v58">{language.settingsPage.embeddingMaxConcurrent}</span> <Help key="hypaV3EmbeddingMaxConcurrent"/></span>
+                        <NumberInput labelId="{uid}-v58" marginBottom size="sm" min={1} max={10} bind:value={settings.embeddingMaxConcurrent} />
                     {:else}
                         <div class="mb-2 flex items-center">
                             <Check name={language.hypaV3Settings.enableSimilarityCorrectionLabel} bind:check={settings.enableSimilarityCorrection} />
@@ -1326,14 +1329,14 @@
             <div class="mb-8"></div>
         {:else if (DBState.db.supaModelType !== 'none' && DBState.db.hypav2 === false && DBState.db.hypaV3 === false)}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.supaDesc}</span>
-            <span class="text-textcolor mt-4">{language.SuperMemory} {language.model}</span>
-            <SelectInput className="mt-2 mb-2" bind:value={DBState.db.supaModelType}>
+            <span class="text-textcolor mt-4" id="{uid}-v59">{language.SuperMemory} {language.model}</span>
+            <SelectInput labelId="{uid}-v59" className="mt-2 mb-2" bind:value={DBState.db.supaModelType}>
                 <OptionInput value="distilbart" >{fillLang(language.settingsPage.distilbartFreeLocal, { name: 'distilbart-cnn-6-6' })}</OptionInput>
                 <OptionInput value="instruct35" >OpenAI 3.5 Turbo Instruct</OptionInput>
                 <OptionInput value="subModel" >{language.submodel}</OptionInput>
             </SelectInput>
-            <span class="text-textcolor">{language.maxSupaChunkSize}</span>
-            <NumberInput size="sm" marginBottom bind:value={DBState.db.maxSupaChunkSize} min={100} />
+            <span class="text-textcolor" id="{uid}-v60">{language.maxSupaChunkSize}</span>
+            <NumberInput labelId="{uid}-v60" size="sm" marginBottom bind:value={DBState.db.maxSupaChunkSize} min={100} />
             {#if DBState.db.supaModelType === 'davinci' || DBState.db.supaModelType === 'curie' || DBState.db.supaModelType === 'instruct35'}
                 <span class="text-textcolor" id="{uid}-f31">{fillLang(language.settingsPage.nameKey, { name: `${language.SuperMemory} OpenAI` })}</span>
                 <TextInput labelId="{uid}-f31" size="sm" marginBottom bind:value={DBState.db.supaMemoryKey}/>
@@ -1347,8 +1350,8 @@
             </div>
         {/if}
 
-        <span class="text-textcolor">{language.embedding} <Help key="embedding"/></span>
-        <SelectInput className="mb-4" bind:value={DBState.db.hypaModel}>
+        <span class="text-textcolor"><span id="{uid}-v61">{language.embedding}</span> <Help key="embedding"/></span>
+        <SelectInput labelId="{uid}-v61" className="mb-4" bind:value={DBState.db.hypaModel}>
             {#if 'gpu' in navigator}
                 <OptionInput value="MiniLMGPU">MiniLM L6 v2 (GPU)</OptionInput>
                 <OptionInput value="nomicGPU">Nomic Embed Text v1.5 (GPU)</OptionInput>

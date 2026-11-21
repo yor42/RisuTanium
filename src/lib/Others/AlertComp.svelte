@@ -297,9 +297,9 @@
                 <!-- svelte-ignore a11y_missing_attribute -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
 
-                <div class="text-textcolor">{language.upstreamAgreementPromptBefore}<a role="button" tabindex="0" class="risu-link transition-colors duration-200 cursor-pointer" onclick={() => {
+                <div class="text-textcolor">{language.upstreamAgreementPromptBefore}<a role="button" tabindex="0" class="risu-link risu-focus-ring underline transition-colors duration-200 cursor-pointer" onclick={() => {
                         openURL('https://account.sionyw.com/terms')
-                    }}>{language.upstreamAgreementTermsOfService}</a>{language.upstreamAgreementPromptBetween}<a role="button" tabindex="0" class="risu-link transition-colors duration-200 cursor-pointer" onclick={() => {
+                    }}>{language.upstreamAgreementTermsOfService}</a>{language.upstreamAgreementPromptBetween}<a role="button" tabindex="0" class="risu-link risu-focus-ring underline transition-colors duration-200 cursor-pointer" onclick={() => {
                         openURL('https://account.sionyw.com/privacy')
                     }}>{language.upstreamAgreementPrivacyPolicy}</a>{language.upstreamAgreementPromptAfter}</div>
             {:else if a.type === 'pluginconfirm'}

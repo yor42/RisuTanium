@@ -205,6 +205,14 @@ describe("AlertComp 'tos' block: the document links", () => {
         }
     })
 
+    test('regression reproducer: the links are underlined and carry the app focus ring, so they do not rely on colour alone', () => {
+        expect(links.length).toBe(2)
+        for (const link of links) {
+            expect(link.classList.contains('underline')).toBe(true)
+            expect(link.classList.contains('risu-focus-ring')).toBe(true)
+        }
+    })
+
     test.each(colorSchemeList)('%s: the links read at 4.5:1 on the dialog surface, which is the scheme darkbg', (name) => {
         applyScheme(name)
         const m = modelOf()

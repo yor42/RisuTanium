@@ -513,8 +513,9 @@ describe('clear and retention controls (G)', () => {
         const target = await render()
         const select = retentionSelect(target)
         const described = select.getAttribute('aria-describedby')
-        expect(described).toBe('usage-retention-help')
-        expect(target.querySelector(`#${described}`)?.textContent).toBe(text.retentionHelp)
+        expect(described).toBe('usage-retention-label usage-retention-help')
+        expect(select.getAttribute('aria-labelledby')).toBe('usage-retention-label')
+        expect(target.querySelector('#usage-retention-help')?.textContent).toBe(text.retentionHelp)
 
         const plain = document.createElement('div')
         document.body.appendChild(plain)

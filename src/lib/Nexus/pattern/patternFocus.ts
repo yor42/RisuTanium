@@ -24,9 +24,39 @@ function isTabbable(element: HTMLElement): boolean {
     return true
 }
 
-/** The controls inside `root` that Tab reaches, in document order. */
+function namedRadio(element: HTMLElement): HTMLInputElement | null {
+    return element instanceof HTMLInputElement && element.type === 'radio' && element.name !== '' ? element : null
+}
+
+/**
+ * The controls inside `root` that Tab reaches, in document order. A named radio group is one stop, as in the browser:
+ * its checked radio, or its first radio when none is checked. Groups are scoped by form owner, or by the tree root
+ * when the radio has no form. Unnamed radios each stay a stop.
+ */
 export function tabbables(root: HTMLElement): HTMLElement[] {
-    return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isTabbable)
+    const candidates = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(isTabbable)
+    const stops = new Map<string, HTMLInputElement>()
+    const owners = new Map<Node, number>()
+    const groupKey = (radio: HTMLInputElement): string => {
+        const owner: Node = radio.form ?? radio.getRootNode()
+        let id = owners.get(owner)
+        if (id === undefined) {
+            id = owners.size
+            owners.set(owner, id)
+        }
+        return `${id}\u0000${radio.name}`
+    }
+    for (const element of candidates) {
+        const radio = namedRadio(element)
+        if (!radio) continue
+        const key = groupKey(radio)
+        const kept = stops.get(key)
+        if (!kept || (radio.checked && !kept.checked)) stops.set(key, radio)
+    }
+    return candidates.filter((element) => {
+        const radio = namedRadio(element)
+        return !radio || stops.get(groupKey(radio)) === radio
+    })
 }
 
 /**

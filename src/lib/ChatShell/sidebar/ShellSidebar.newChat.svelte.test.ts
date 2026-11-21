@@ -323,9 +323,11 @@ describe('the sort control', () => {
         selectedCharID.set(0)
         render()
         const select = target.querySelector<HTMLSelectElement>('[data-part="sidebar-sort"]')!
-        expect(select.getAttribute('aria-label')).toBe(language.chatShellSortLabel)
-        const description = target.querySelector(`#${select.getAttribute('aria-describedby')}`)
-        expect(description?.textContent?.trim()).toBe(language.chatShellOnThisDevice)
+        const nameId = select.getAttribute('aria-labelledby')!
+        expect(target.querySelector(`[id="${nameId}"]`)?.textContent?.trim()).toBe(language.chatShellSortLabel)
+        const [firstId, helpId] = select.getAttribute('aria-describedby')!.split(' ')
+        expect(firstId).toBe(nameId)
+        expect(target.querySelector(`[id="${helpId}"]`)?.textContent?.trim()).toBe(language.chatShellOnThisDevice)
         expect(select.value).toBe('recent')
         select.value = 'manual'
         select.dispatchEvent(new Event('change', { bubbles: true }))

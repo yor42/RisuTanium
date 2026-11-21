@@ -14,6 +14,7 @@
     let tokens = $state(0);
     let MonacoComponent: (typeof MonacoEditorType)|null = $state(null)
     let showToggles = $state(false)
+    const uid = $props.id()
 
     let chatParserValue = $derived.by(() => {
         if(!previewing){
@@ -75,7 +76,10 @@
             <div class="flex items-center gap-2">
                 {#if ['markdown', 'cbs'].includes(languageMode)}
                     {#if !previewing}
+                        <span id="{uid}-language-label" class="sr-only">{language.language}</span>
                         <select
+                            aria-labelledby="{uid}-language-label"
+                            aria-describedby="{uid}-language-label"
                             bind:value={languageMode}
                             class="risu-select bg-bgcolor border-none rounded px-2 py-1 text-sm"
                         >
