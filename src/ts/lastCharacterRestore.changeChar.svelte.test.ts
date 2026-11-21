@@ -341,7 +341,7 @@ describe('the restore of an archived last character, through the real changeChar
         expect(localStorage.getItem(LAST_CHARACTER_KEY)).toBe('{"chaId":"alpha"}')
     })
 
-    test('I1-L: the library is open, not a mere landing, when the restore is superseded', async () => {
+    test('I1-L: the library is engaged, not a mere landing, when the restore is superseded', async () => {
         writeLastChaId('alpha')
         const end = startLastCharacterRestore()
         await drain()
@@ -350,7 +350,7 @@ describe('the restore of an archived last character, through the real changeChar
         await landAlpha()
         await end
 
-        expect(homeView.view).toBe('library')
+        expect(homeView.libraryEngaged).toBe(true)
         expect(get(selectedCharID)).toBe(-1)
     })
 
@@ -397,17 +397,5 @@ describe('the restore of an archived last character, through the real changeChar
         expect(readSpy).not.toHaveBeenCalled()
         expect(get(selectedCharID)).toBe(-1)
         expect(await end).toBe('skipped')
-    })
-
-    test('S4a-R5: the full view alone, without the engaged flag, does not supersede (the flag is the signal)', async () => {
-        writeLastChaId('alpha')
-        const end = startLastCharacterRestore()
-        await drain()
-
-        homeView.view = 'library'
-        await landAlpha()
-
-        expect(await end).toBe('selected')
-        expect(get(selectedCharID)).toBe(1)
     })
 })

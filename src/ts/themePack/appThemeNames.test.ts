@@ -6,8 +6,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { APP_THEME_NAMES, TAILWIND_DEFAULT_NAMES, allowedTokenNames, declaredTokenNames, isColourSchemeInlineName, reservedNameReason } from './appThemeNames'
-import { effective } from './engine'
+import { effective, isPackSettable } from './engine'
 import { lintAreaPack, type ThemeArea } from './index'
+import { HOME_REGISTRY } from './registries/home'
+import { REG5B } from './registries/settings5b'
 import { STUDIO_REGISTRY } from './registries/studio'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -145,5 +147,33 @@ describe('R-e: a pack declares no app theme name', () => {
     it('accepts the tokens of the area, in both areas', () => {
         expect(refused('chat', ':root{--nexus-text:#f0f0f0}')).toBe(false)
         expect(refused('studio', ':root{--nexus-text:#f0f0f0}')).toBe(false)
+    })
+})
+
+// MC-3128 / MC-3129: the ten app shape tokens join the settable names of every area; nothing else about the sets moves.
+describe('S2: the app shape tokens in the reserved and allowed name sets', () => {
+    const STEPS = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']
+    const SHAPE = [...STEPS.map((step) => `--ui-radius-${step}`), '--ui-radius', '--ui-border-width']
+    // |A_tok(area)| before S2; the ten shape names are the whole delta, and the --ui- namespace holds nothing else.
+    const SIZE_BEFORE = { chat: 207, studio: 310 }
+
+    it('G9: T holds the radius and hairline names the scale now maps, and no --ui- name', () => {
+        const mapped = ['--default-border-width', '--border-width-1', '--radius', ...STEPS.map((step) => `--radius-${step}`)]
+        for (const name of mapped) expect(APP_THEME_NAMES.has(name), name).toBe(true)
+        expect([...APP_THEME_NAMES].filter((name) => /^--(radius(-(xs|sm|md|lg|xl|2xl|3xl|4xl))?|default-border-width|border-width-1)$/.test(name)).sort()).toEqual([...mapped].sort())
+        for (const name of SHAPE) expect(APP_THEME_NAMES.has(name) || TAILWIND_DEFAULT_NAMES.has(name), name).toBe(false)
+    })
+
+    for (const area of ['chat', 'studio'] as const) {
+        it(`G11: ${area} gains exactly the ten shape names`, () => {
+            const allowed = allowedTokenNames(area)
+            expect([...allowed].filter((name) => name.startsWith('--ui-')).sort()).toEqual([...SHAPE].sort())
+            expect(allowed.size).toBe(SIZE_BEFORE[area] + SHAPE.length)
+            for (const name of SHAPE) expect(reservedNameReason(name), name).toBe('')
+        })
+    }
+
+    it.each([['settings', REG5B], ['home', HOME_REGISTRY]] as const)('G11: %s makes each shape name pack-settable', (_area, registry) => {
+        for (const name of SHAPE) expect(isPackSettable(name, registry), name).toBe(true)
     })
 })

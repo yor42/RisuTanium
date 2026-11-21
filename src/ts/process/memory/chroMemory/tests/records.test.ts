@@ -14,11 +14,11 @@ describe('rawHash', () => {
 describe('rawHashOf', () => {
     test('new rule: reuses the hash for unchanged data and rehashes a replaced text on the same object', () => {
         const msg = { data: 'first text' }
-        const h = rawHashOf(msg)
+        const h = rawHashOf(msg, msg.data)
         expect(h).toBe(rawHash('first text'))
-        expect(rawHashOf(msg)).toBe(h)
+        expect(rawHashOf(msg, msg.data)).toBe(h)
         msg.data = 'second text'
-        expect(rawHashOf(msg)).toBe(rawHash('second text'))
+        expect(rawHashOf(msg, msg.data)).toBe(rawHash('second text'))
     })
 })
 
@@ -34,8 +34,8 @@ describe('createSendCapture', () => {
         const capture = createSendCapture()
         const a: OpenAIChat = { role: 'user', content: 'a' }
         const b: OpenAIChat = { role: 'assistant', content: 'b' }
-        const ra: CapturedMessage = { msg: { chatId: 'x', role: 'user', data: 'a' }, chatIndex: 0, name: 'Bot', preWrap: 'a' }
-        const rb: CapturedMessage = { msg: { chatId: 'y', role: 'char', data: 'b' }, chatIndex: 1, name: 'Bot', preWrap: 'b' }
+        const ra: CapturedMessage = { msg: { chatId: 'x', role: 'user', data: 'a' }, chatIndex: 0, name: 'Bot', preWrap: 'a', data: 'a' }
+        const rb: CapturedMessage = { msg: { chatId: 'y', role: 'char', data: 'b' }, chatIndex: 1, name: 'Bot', preWrap: 'b', data: 'b' }
         expect(capture.newest).toBeNull()
         capture.add(a, ra)
         capture.add(b, rb)
@@ -47,11 +47,18 @@ describe('createSendCapture', () => {
 
 describe('recordOf and firstRecordOf', () => {
     test('new rule: the char name is the captured name and the user name is the given one', () => {
-        const user = recordOf({ msg: { chatId: 'u1', role: 'user', data: 'hi' }, chatIndex: 4, name: 'ignored', preWrap: 'hi' }, 'Alice')
+        const user = recordOf({ msg: { chatId: 'u1', role: 'user', data: 'hi' }, chatIndex: 4, name: 'ignored', preWrap: 'hi', data: 'hi' }, 'Alice')
         expect(user).toEqual({ chatId: 'u1', index: 4, role: 'user', name: 'Alice', rawHash: rawHash('hi'), preWrap: 'hi' })
-        const bot = recordOf({ msg: { role: 'char', data: 'yo' }, chatIndex: 5, name: 'Bot', preWrap: 'yo' }, 'Alice')
+        const bot = recordOf({ msg: { role: 'char', data: 'yo' }, chatIndex: 5, name: 'Bot', preWrap: 'yo', data: 'yo' }, 'Alice')
         expect(bot.name).toBe('Bot')
         expect(bot.chatId).toBe('')
+    })
+
+    test('RC1 regression reproducer: the record hashes the text captured at loop time, not a later msg.data', () => {
+        const msg = { chatId: 'c1', role: 'user' as const, data: 'captured text' }
+        const ref: CapturedMessage = { msg, chatIndex: 0, name: 'Bot', preWrap: 'captured text', data: msg.data }
+        msg.data = 'rewritten after capture'
+        expect(recordOf(ref, 'Alice').rawHash).toBe(rawHash('captured text'))
     })
 
     test('new rule: the first message record is #first at index -1 with no name prefix', () => {

@@ -117,10 +117,28 @@ vi.mock(import('src/ts/alert'), () => ({
     alertWait: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
-const libraryStub = vi.hoisted(() => (anchor: Comment, props?: { embedded?: boolean }) => {
+// The characters whose Studio control the stand-in draws, as the List tab draws one for a row in view.
+const drawnControls = vi.hoisted(() => ({ chaIds: [] as string[], listed: false, listHeight: 698 }))
+const libraryStub = vi.hoisted(() => (anchor: Comment) => {
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'library-stub')
-    marker.setAttribute('data-embedded', String(props?.embedded === true))
+    // `listed` puts the controls in a scrolling list (the List tab's window) whose visible box ends above them.
+    const holder = document.createElement('div')
+    if (drawnControls.listed) {
+        holder.setAttribute('data-testid', 'library-list')
+        holder.style.overflowY = 'auto'
+        Object.defineProperty(holder, 'clientHeight', { configurable: true, get: () => drawnControls.listHeight })
+        holder.getBoundingClientRect = () => ({ top: 0, bottom: 698 } as DOMRect)
+    }
+    marker.appendChild(holder)
+    for (const chaId of drawnControls.chaIds) {
+        const control = document.createElement('button')
+        control.setAttribute('data-part', 'library-studio')
+        control.setAttribute('data-cha-id', chaId)
+        // The control moves up as the list scrolls, as a laid-out control does.
+        if (drawnControls.listed) control.getBoundingClientRect = () => ({ top: 760 - holder.scrollTop, bottom: 784 - holder.scrollTop } as DOMRect)
+        holder.appendChild(control)
+    }
     anchor.parentNode!.insertBefore(marker, anchor)
     // The stand-in sits at the block's own anchor, so the block would not remove it; remove it with the component.
     onDestroy(() => marker.remove())
@@ -196,7 +214,7 @@ vi.mock(import('src/ts/chatShell/shellSwitch.svelte'), () => ({
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
-import { homeView, showHomeLanding } from './homeView.svelte'
+import { homeView, openHomeLibrary, startHomeView, takeHomeReturnFocus } from './homeView.svelte'
 import { openStudioFromHome, resetHomeStudioForTests } from './homeStudio.svelte'
 import { DBState, OpenRealmStore, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 import { removeChar } from 'src/ts/characters'
@@ -262,10 +280,14 @@ async function settleChunk(): Promise<void> {
     }
 }
 
-// The full view is the stand-in without the `embedded` prop; the landing's embedded library never counts.
-const libraryShown = (root: HTMLElement): boolean => root.querySelector('[data-testid="library-stub"][data-embedded="false"]') !== null
-const landingShown = (root: HTMLElement): boolean => root.textContent?.includes('test-version') === true
+const scrollSpy = vi.fn()
+const sectionOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-library"]')
+// The landing scroller is the MainMenu root: the parent of the page body. The reveal scrolls it, never the document.
+const scrollerOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-body"]')?.parentElement ?? null
+const landingShown = (root: HTMLElement): boolean => root.querySelector('[data-part="home-landing"]') !== null
 const opener = (): HTMLElement => document.body.appendChild(document.createElement('button'))
+const controlOf = (root: HTMLElement, chaId: string): HTMLElement | null =>
+    root.querySelector(`[data-part="library-studio"][data-cha-id="${chaId}"]`)
 
 beforeEach(() => {
     localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
@@ -276,8 +298,13 @@ beforeEach(() => {
     setStudioEnabled(true)
     settingsOpen.set(false)
     selectedCharID.set(-1)
-    showHomeLanding()
+    startHomeView()
     installDb()
+    scrollSpy.mockClear()
+    drawnControls.chaIds = []
+    drawnControls.listed = false
+    drawnControls.listHeight = 698
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     stopBackLayers = $effect.root(() => {
         installStudioBack()
     })
@@ -296,7 +323,8 @@ afterEach(async () => {
     resetStudioScreenForTests()
     resetHomeStudioForTests()
     selectedCharID.set(-1)
-    showHomeLanding()
+    startHomeView()
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     setStudioEnabled(false)
     localStorage.clear()
     resetUpstreamAgreementForTests()
@@ -304,23 +332,30 @@ afterEach(async () => {
 
 //#endregion
 
-describe('the library after a Home-opened Studio', () => {
-    test('F T6b: a shell that already exists shows the library when a trash closes Studio in the same flush', async () => {
+describe('the landing library after a Home-opened Studio', () => {
+    test('S4b-R3 (c) F T6b: a shell that already exists reveals the library, focus on the character control, when a trash closes Studio in the same flush', async () => {
+        drawnControls.chaIds = ['one']
         expect(openStudioFromHome(1, opener())).toBe(true)
         const root = mountShell()
         expect(landingShown(root)).toBe(true)
         flushSync()
+        // The scroll offset is the target's top edge, so a marked top tells which section the reveal aimed at.
+        sectionOf(root)!.getBoundingClientRect = () => ({ top: 321 } as DOMRect)
 
         await removeChar(1, 'one')
         flushSync()
 
         expect(get(studioOpen)).toBe(false)
-        expect(homeView.view).toBe('library')
-        await vi.waitFor(() => expect(libraryShown(root)).toBe(true), { timeout: 5000 })
-        expect(landingShown(root)).toBe(false)
+        expect(homeView.libraryEngaged).toBe(true)
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(landingShown(root)).toBe(true)
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
+        expect(document.activeElement).toBe(controlOf(root, 'one'))
     })
 
-    test('F T6c: a shell created in the same stretch as the close shows the library', async () => {
+    test('S4b-R3 (a) F T6c: a shell created in the same stretch as the close reveals the library with the focus on the control', async () => {
+        drawnControls.chaIds = ['one']
         expect(openStudioFromHome(1, opener())).toBe(true)
         flushSync()
 
@@ -328,11 +363,129 @@ describe('the library after a Home-opened Studio', () => {
         const root = mountShell()
 
         expect(get(selectedCharID)).toBe(-1)
-        expect(homeView.view).toBe('library')
-        await vi.waitFor(() => expect(libraryShown(root)).toBe(true), { timeout: 5000 })
+        expect(homeView.libraryEngaged).toBe(true)
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(landingShown(root)).toBe(true)
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+        expect(document.activeElement).toBe(controlOf(root, 'one'))
     })
 
-    test('F T6e: with the real Back and the natural scheduled flush, the creating flush runs before the tick clear, so the recreated shell shows the library; a creation after the tick starts at the landing', async () => {
+    test('S4b-R3 (f) the Studio control below its scrolling list is brought into view in that list; the landing scroller is not touched by it', async () => {
+        drawnControls.chaIds = ['one']
+        drawnControls.listed = true
+        expect(openStudioFromHome(1, opener())).toBe(true)
+        flushSync()
+
+        closeStudio()
+        const root = mountShell()
+
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        const list = root.querySelector<HTMLElement>('[data-testid="library-list"]')!
+        expect(document.activeElement).toBe(controlOf(root, 'one'))
+        expect(list.scrollTop).toBe(784 - 698)
+        expect(scrollSpy.mock.contexts.every((context) => context === scrollerOf(root))).toBe(true)
+    })
+
+    test('S4b-F4 the list shrinking after the focus (the sidebar column returning) re-brings the control into view in that list', async () => {
+        const observers: Array<{ callback: () => void, observed: Element[] }> = []
+        vi.stubGlobal('ResizeObserver', class {
+            record = { callback: () => {}, observed: [] as Element[] }
+            constructor(callback: () => void) {
+                this.record.callback = callback
+                observers.push(this.record)
+            }
+            observe(node: Element): void { this.record.observed.push(node) }
+            disconnect(): void {}
+        })
+        try {
+            drawnControls.chaIds = ['one']
+            drawnControls.listed = true
+            expect(openStudioFromHome(1, opener())).toBe(true)
+            flushSync()
+
+            closeStudio()
+            const root = mountShell()
+
+            await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+            const list = root.querySelector<HTMLElement>('[data-testid="library-list"]')!
+            expect(list.scrollTop).toBe(784 - 698)
+            expect(observers).toHaveLength(1)
+            expect(observers[0].observed).toContain(list)
+
+            drawnControls.listHeight = 666
+            observers[0].callback()
+
+            expect(list.scrollTop).toBe(784 - 666)
+            expect(scrollSpy.mock.contexts.every((context) => context === scrollerOf(root))).toBe(true)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    test('S4b-R3 (b) with no control drawn for the character the focus falls back to the library heading', async () => {
+        expect(openStudioFromHome(1, opener())).toBe(true)
+        flushSync()
+
+        closeStudio()
+        const root = mountShell()
+
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(document.activeElement).toBe(sectionOf(root)!.querySelector('h2'))
+    })
+
+    test('S4b-R3 (d) A-S4b-8: the visit character is gone and no library content is left, so the hero heading takes the focus', async () => {
+        expect(openStudioFromHome(1, opener())).toBe(true)
+        flushSync()
+
+        DBState.db.characters = []
+        selectedCharID.set(-1)
+        closeStudio()
+        const root = mountShell()
+
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(sectionOf(root)).toBeNull()
+        const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')
+        expect(hero).not.toBeNull()
+        expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
+        expect(document.activeElement).toBe(hero!.querySelector('[data-jump-target="home-hero"]'))
+    })
+
+    test('S4b-T19a a chaId with selector characters finds its control by attribute value, not as markup', async () => {
+        const odd = '"] [x'
+        drawnControls.chaIds = ['zero', odd]
+        DBState.db.characters.push(warmCharacter(odd))
+        expect(openStudioFromHome(3, opener())).toBe(true)
+        flushSync()
+
+        closeStudio()
+        const root = mountShell()
+
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        const control = Array.from(root.querySelectorAll('[data-part="library-studio"]'))
+            .find((candidate) => candidate.getAttribute('data-cha-id') === odd)
+        expect(control).toBeDefined()
+        expect(document.activeElement).toBe(control)
+    })
+
+    test('S4b-T19 the focus request is taken once: it is gone after the reveal and a later request without one moves no focus', async () => {
+        drawnControls.chaIds = ['one']
+        expect(openStudioFromHome(1, opener())).toBe(true)
+        flushSync()
+        closeStudio()
+        const root = mountShell()
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(document.activeElement).toBe(controlOf(root, 'one'))
+        expect(takeHomeReturnFocus()).toBeNull()
+
+        ;(document.activeElement as HTMLElement).blur()
+        openHomeLibrary()
+        flushSync()
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(2), { timeout: 5000 })
+        expect(document.activeElement).toBe(sectionOf(root)!.querySelector('h2'))
+    })
+    test('S4b-R3 (e) F T6e: with the real Back and the natural scheduled flush, the creating flush runs before the tick clear, so the recreated shell reveals the library; a creation after the tick starts at the top', async () => {
+        drawnControls.chaIds = ['one']
         // DefaultChatScreen's Home branch: the shell exists exactly while nothing is selected.
         const target = newTarget()
         const selected = fromStore(selectedCharID)
@@ -363,16 +516,20 @@ describe('the library after a Home-opened Studio', () => {
 
             expect(get(studioOpen)).toBe(false)
             expect(get(selectedCharID)).toBe(-1)
-            await vi.waitFor(() => expect(libraryShown(target)).toBe(true), { timeout: 5000 })
-            expect(landingShown(target)).toBe(false)
+            await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+            expect(landingShown(target)).toBe(true)
+            expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(target))
+            expect(document.activeElement).toBe(controlOf(target, 'one'))
 
             await tick()
+            scrollSpy.mockClear()
+            drawnControls.chaIds = []
             const later = mountShell()
-            expect(homeView.view).toBe('landing')
+            expect(homeView.libraryEngaged).toBe(false)
             expect(landingShown(later)).toBe(true)
-            expect(libraryShown(later)).toBe(false)
             await settleChunk()
-            expect(libraryShown(later)).toBe(false)
+            expect(scrollSpy).not.toHaveBeenCalled()
+            expect(homeView.libraryEngaged).toBe(false)
         } finally {
             stopHost()
             if (shell !== null) {

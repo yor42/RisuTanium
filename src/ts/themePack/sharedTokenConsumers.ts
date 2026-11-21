@@ -2,6 +2,7 @@
 // the two screens that reads one of them (var(--name)) restyles with the pack. This is the reviewed list of those files, per
 // token; a file that reads a token through one derived token (`--X: ... var(--token)` in a stylesheet) is listed too. sharedTokenConsumers.test.ts recomputes it from the source and prints the expected constant on a mismatch, so a new
 // outside reader fails until it is reviewed. It documents the effect of the token layer; it is not a claim of the validator.
+// The --ui-* shape tokens are read through the Tailwind scale in src/styles.css, so their reach is every `rounded*` and hairline utility app-wide, including chat-message content classes through the `@apply` rules (.x-risu-risu-inlay-image, .x-risu-risu-comment, .x-risu-tool-call, .x-risu-button-default, .x-risu-risu-error).
 
 /** Token name to the source files outside the chat and Studio screens that read it, sorted. */
 export const SHARED_TOKEN_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
@@ -70,4 +71,14 @@ export const SHARED_TOKEN_CONSUMERS: Readonly<Record<string, readonly string[]>>
     '--studio-size-touch-lg': ['src/styles/studio-tokens.css'],
     '--studio-warm-rgb': ['src/styles/studio-tokens.css'],
     '--studio-well-rgb': ['src/styles/studio-tokens.css'],
+    '--ui-border-width': ['src/styles.css'],
+    '--ui-radius': ['src/styles.css'],
+    '--ui-radius-2xl': ['src/styles.css'],
+    '--ui-radius-3xl': ['src/styles.css'],
+    '--ui-radius-4xl': ['src/styles.css'],
+    '--ui-radius-lg': ['src/styles.css'],
+    '--ui-radius-md': ['src/styles.css'],
+    '--ui-radius-sm': ['src/styles.css'],
+    '--ui-radius-xl': ['src/styles.css'],
+    '--ui-radius-xs': ['src/styles.css'],
 }

@@ -530,10 +530,11 @@ describe('Back while the Studio chunk is loading', () => {
         }
     })
 
-    test('T10: a press in the window on the Home entry leaves the Home end state: library, selection cleared, return focus', async () => {
+    test('T10: a press in the window on the Home entry leaves the Home end state: library requested, selection cleared, return focus', async () => {
         setStudioEnabled(true)
         DBState.db.characters = [{ chaId: 'cha-1', type: 'character' }] as never
         showHomeLanding()
+        const requestsBefore = homeView.libraryRequest
         await showApp()
         const beneath = registerBeneath()
 
@@ -546,7 +547,8 @@ describe('Back while the Studio chunk is loading', () => {
         dispatchBack()
         expect(beneath).not.toHaveBeenCalled()
         expect(get(studioOpen)).toBe(false)
-        expect(homeView.view).toBe('library')
+        expect(homeView.libraryRequest).toBe(requestsBefore + 1)
+        expect(homeView.libraryEngaged).toBe(true)
         expect(get(selectedCharID)).toBe(-1)
         expect(takeHomeReturnFocus()).toBe('cha-1')
 

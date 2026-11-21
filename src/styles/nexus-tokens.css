@@ -74,6 +74,17 @@
   --color-accent-tint-strong: rgb(var(--nexus-accent-rgb) / 0.14);
   --radius-field: 14px;                       /* text fields */
   --radius-sheet: 20px;                       /* the top corners of a bottom sheet */
+  /* ---- App shape tokens: the Tailwind radius and hairline scale reads these (styles.css), and a pack may set them within bounds (engine.ts). Defaults equal Tailwind's own values. ---- */
+  --ui-radius-xs: 0.125rem;
+  --ui-radius-sm: 0.25rem;
+  --ui-radius-md: 0.375rem;
+  --ui-radius-lg: 0.5rem;
+  --ui-radius-xl: 0.75rem;
+  --ui-radius-2xl: 1rem;
+  --ui-radius-3xl: 1.5rem;
+  --ui-radius-4xl: 2rem;
+  --ui-radius: 0.25rem;                       /* the bare `rounded` utility */
+  --ui-border-width: 1px;                     /* every hairline: `border` and the default border width */
 
   /* ---- Roles that chat, Settings and Home share. A pack states each once. ----
      Touch size and the focus ring agree across those areas. Warm is the --nexus-warm colour as a channel.
