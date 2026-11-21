@@ -1,5 +1,3 @@
-import { language } from 'src/lang'
-import { alertConfirm } from 'src/ts/alert'
 import { DBState } from 'src/ts/stores.svelte'
 import { pickHashRand } from 'src/ts/util'
 import type { RisuModule } from 'src/ts/process/modules'
@@ -41,10 +39,6 @@ export class ModuleHandler extends MCPToolHandler {
     } finally {
       acquired.release()
     }
-  }
-
-  private promptAccess(tool: string, action: string) {
-    return alertConfirm(language.mcpAccessPrompt.replace('{{tool}}', tool).replace('{{action}}', action))
   }
 
   getTools(): MCPTool[] {
@@ -441,15 +435,6 @@ export class ModuleHandler extends MCPToolHandler {
   async setModuleInfo(id: string, data: any): Promise<RPCToolCallContent[]> {
     return this.withModule(id, async (module) => {
 
-      if (!(await this.promptAccess('risu-set-module-info', `modify module (${module.name}) information`))) {
-        return [
-          {
-            type: 'text',
-            text: 'Access denied by user.',
-          },
-        ]
-      }
-
       const allowedFields = [
         'name',
         'description',
@@ -553,15 +538,6 @@ export class ModuleHandler extends MCPToolHandler {
   ): Promise<RPCToolCallContent[]> {
     return this.withModule(id, async (module) => {
 
-      if (!(await this.promptAccess('risu-set-module-lorebook', `add/modify module (${module.name}) lorebook (${name})`))) {
-        return [
-          {
-            type: 'text',
-            text: 'Access denied by user.',
-          },
-        ]
-      }
-
       if (!module.lorebook) {
         module.lorebook = []
       }
@@ -620,15 +596,6 @@ export class ModuleHandler extends MCPToolHandler {
 
   async deleteModuleLorebook(id: string, name: string): Promise<RPCToolCallContent[]> {
     return this.withModule(id, async (module) => {
-
-      if (!(await this.promptAccess('risu-delete-module-lorebook', `delete module (${module.name}) lorebook (${name})`))) {
-        return [
-          {
-            type: 'text',
-            text: 'Access denied by user.',
-          },
-        ]
-      }
 
       if (!module.lorebook) {
         module.lorebook = []
@@ -694,15 +661,6 @@ export class ModuleHandler extends MCPToolHandler {
   ): Promise<RPCToolCallContent[]> {
     return this.withModule(id, async (module) => {
 
-      if (!(await this.promptAccess('risu-set-module-regex-script', `add/modify module (${module.name}) regex script (${name})`))) {
-        return [
-          {
-            type: 'text',
-            text: 'Access denied by user.',
-          },
-        ]
-      }
-
       if (!module.regex) {
         module.regex = []
       }
@@ -750,15 +708,6 @@ export class ModuleHandler extends MCPToolHandler {
 
   async deleteModuleRegexScript(id: string, name: string): Promise<RPCToolCallContent[]> {
     return this.withModule(id, async (module) => {
-
-      if (!(await this.promptAccess('risu-delete-module-regex-script', `delete module (${module.name}) regex script (${name})`))) {
-        return [
-          {
-            type: 'text',
-            text: 'Access denied by user.',
-          },
-        ]
-      }
 
       if (!module.regex) {
         module.regex = []
@@ -813,15 +762,6 @@ export class ModuleHandler extends MCPToolHandler {
 
   async setModuleLuaScript(id: string, code: string): Promise<RPCToolCallContent[]> {
     return this.withModule(id, async (module) => {
-
-      if (!(await this.promptAccess('risu-set-module-lua-script', `modify module (${module.name}) lua script`))) {
-        return [
-          {
-            type: 'text',
-            text: 'Access denied by user.',
-          },
-        ]
-      }
 
       const firstTrigger = module.trigger?.[0]
       if (firstTrigger?.effect?.[0]?.type === 'triggerlua') {

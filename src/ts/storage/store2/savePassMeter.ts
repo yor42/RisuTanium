@@ -1361,7 +1361,7 @@ export function finishSavePass(
 
 const ENTITY_ID_PREFIXES: readonly string[] = ['char:', 'chat:']
 const FIXED_GROUP_BY_PREFIX: readonly (readonly [string, FixedGroup])[] = [
-    ['preset:', 'botPreset'], ['taskPreset:', 'none'], ['plugin:', 'plugins'], ['psv:', 'pluginCustomStorage'], ['bucket:', 'pluginCustomStorage'],
+    ['preset:', 'botPreset'], ['taskPreset:', 'none'], ['ws:', 'none'], ['wsf:', 'none'], ['plugin:', 'plugins'], ['psv:', 'pluginCustomStorage'], ['bucket:', 'pluginCustomStorage'],
     ['al:config', 'configLists'], ['il:config', 'configLists'],
 ]
 const FIXED_GROUP_BY_IDENTITY: Readonly<Record<string, FixedGroup>> = { loadouts: 'loadouts', config: 'none', statics: 'none', order: 'none' }

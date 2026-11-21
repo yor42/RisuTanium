@@ -9,7 +9,7 @@ import type { UnitSource } from './codec/types'
 import { classifyCommitRead } from './commitKey'
 import {
     keyOfRef, readUnit, UNIT_TYPE,
-    type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType,
+    type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType, type WorkspaceRecord,
 } from './format'
 import type { StoredTree } from './previousOfTree'
 import { checkManifestKey, readBatch } from './tree'
@@ -19,7 +19,7 @@ import { checkManifestKey, readBatch } from './tree'
  * codec's own unit check, and kept as framed bytes so `previousOfTree` can register digests and the first save finds
  * every untouched unit unchanged. A unit is judged by what its role allows:
  *   fixed units (manifest, shards, config, lists of the config, statics, order, loadouts, module index and its units,
- *   presets, plugins, plugin-storage buckets and values) cannot be replaced by an empty value, so one that is missing
+ *   presets, plugins, plugin-storage buckets and values, workspace records and their files) cannot be replaced by an empty value, so one that is missing
  *   or damaged makes the read `structure`;
  *   leaves (an entity's core, lore, scripts, lists, chat cores and chat chunks, and a task preset) are `flagged`, and the tree still
  *   reads `ok`;
@@ -260,6 +260,8 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
             ref, type: UNIT_TYPE.taskPreset, count: null,
             role: { kind: 'leaf', flag: (key, why): FlaggedLeaf => ({ kind: 'task-preset', position, key, why }) },
         })),
+        // A workspace record is a parent: absent or damaged, the tree is `structure`, as for a plugin-storage bucket.
+        ...(manifest.fixed.workspaces ?? []).map((ref): Wanted => ({ ref, type: UNIT_TYPE.workspace, role: fixed, count: null })),
         ...manifest.fixed.plugins.map((ref): Wanted => ({ ref, type: UNIT_TYPE.plugin, role: fixed, count: null })),
         ...manifest.fixed.pluginStorage.refs.map((ref): Wanted => ({ ref, type: UNIT_TYPE.pluginStorageBucket, role: fixed, count: null })),
         ...manifest.shards.map((ref): Wanted => ({ ref, type: UNIT_TYPE.shard, role: fixed, count: null })),
@@ -289,6 +291,13 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
         const bucket = first.bodies.get(keyOfRef(ref)) as PluginBucket | undefined
         for (const entry of bucket?.entries ?? []) {
             second.push({ ref: entry.ref, type: UNIT_TYPE.pluginStorageValue, role: fixed, count: null })
+        }
+    }
+    // The files a workspace record names; a record that did not check names none, and its own finding stands.
+    for (const ref of manifest.fixed.workspaces ?? []) {
+        const record = first.bodies.get(keyOfRef(ref)) as WorkspaceRecord | undefined
+        for (const file of record?.files ?? []) {
+            second.push({ ref: file.ref, type: UNIT_TYPE.workspaceFile, role: fixed, count: null })
         }
     }
     const shards = manifest.shards.map(ref => first.bodies.get(keyOfRef(ref)) as Shard | undefined)

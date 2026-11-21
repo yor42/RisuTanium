@@ -11,13 +11,14 @@
  *   stays in its slot. A missing unit answers with error text and the user gets
  *   one alert naming the character.
  * - The write tools restore a stub first, then write into the restored
- *   character found again by `chaId` after the confirm prompt, and the write
+ *   character found again by `chaId`, and the write
  *   persists. A failed restore writes nothing, reports an error (never
  *   "Successfully ..."), leaves the stub alone and shows one alert naming the
  *   character.
- * - A character restored or deleted while the confirm prompt is open is
+ * - A character restored or deleted while the user's approval is pending at the
+ *   gate (`authorizeToolCall`, which `callMCPTool` runs before the client) is
  *   handled: the write lands on the live character, or the tool reports that
- *   the character is gone (the tool's existing character-gone error).
+ *   the character is not found. The handlers ask nothing themselves.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 
@@ -28,7 +29,7 @@ vi.mock(import('src/ts/lite'), () => ({}))
 
 const alertConfirmMock = vi.hoisted(() => vi.fn(async () => true))
 const readColdStorageItemMock = vi.hoisted(() => vi.fn())
-/** Every text shown to the user, except the confirm prompt and progress notices. */
+/** Every text shown to the user, except the approval prompt and progress notices. */
 const notices = vi.hoisted(() => ({ texts: [] as string[] }))
 
 vi.mock(import('src/ts/alert'), () => {
@@ -99,6 +100,7 @@ import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/t
 import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { restoreColdCharacter } from 'src/ts/process/coldCharacterRestore'
 import type { RunSubject } from 'src/ts/process/chatOrigin'
+import { authorizeToolCall } from '../../toolAuthorize'
 
 //#region fixtures
 
@@ -106,8 +108,8 @@ type CharacterFixture = Database['characters'][number]
 type ColdCharacter = character & { coldstorage?: string }
 
 const HERO_NAME = 'Archived Hero'
-/** The text of the error a write tool answers with when its character is gone after the prompt. */
-const CHARACTER_GONE_TEXT = 'character no longer exists'
+/** The text of the error a write tool answers with when its character is gone after the approval. */
+const NOT_FOUND_TEXT = 'not found'
 
 function makeChat(id: string, text: string) {
     return { id, message: [{ role: 'user', data: text, time: 1 }], note: '', name: id, localLore: [] }
@@ -229,7 +231,13 @@ async function tick(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-/** Lets the call reach its confirm prompt. */
+/** Runs a tool call the way `callMCPTool` does: the gate decides first, then the client runs the tool. */
+async function callGated(client: RisuAccessClient, name: string, args: Record<string, unknown>, callCtx?: { subject?: RunSubject }) {
+    const refusal = await authorizeToolCall(name, args, { subject: callCtx?.subject, mcpURL: 'internal:risuai' })
+    return refusal ?? await client.callTool(name, args, callCtx)
+}
+
+/** Lets the call reach its approval prompt. */
 async function untilPrompted(): Promise<void> {
     for (let i = 0; i < 50 && alertConfirmMock.mock.calls.length === 0; i++) {
         await tick()
@@ -417,13 +425,13 @@ describe('risuaccess write tools on an archived character', () => {
         expect(notices.texts).toHaveLength(1)
     })
 
-    test('a character restored by another path while the confirm prompt is open receives the write in the list', async () => {
+    test('a character restored by another path while the approval is pending receives the write in the list', async () => {
         installDb()
         const gate = deferred<boolean>()
         alertConfirmMock.mockImplementationOnce(() => gate.promise)
         const client = new RisuAccessClient()
 
-        const call = client.callTool('risu-set-character-lorebook', { id: 'hero', name: 'entry2', content: 'added by tool' })
+        const call = callGated(client, 'risu-set-character-lorebook', { id: 'hero', name: 'entry2', content: 'added by tool' })
         await untilPrompted()
         const outcome = await restoreColdCharacter(DBState.db.characters[1])
         expect(outcome.status).toBe('restored')
@@ -439,7 +447,7 @@ describe('risuaccess write tools on an archived character', () => {
     test.each([
         ['an archived character', true],
         ['a full character', false],
-    ])('%s deleted while the confirm prompt is open makes the write fail with the character-gone error', async (_label, archived) => {
+    ])('%s deleted while the approval is pending makes the write fail with the not-found error', async (_label, archived) => {
         installDb()
         if (!archived) {
             const outcome = await restoreColdCharacter(DBState.db.characters[1])
@@ -449,17 +457,17 @@ describe('risuaccess write tools on an archived character', () => {
         alertConfirmMock.mockImplementationOnce(() => gate.promise)
         const client = new RisuAccessClient()
 
-        const call = client.callTool('risu-set-character-lorebook', { id: 'hero', name: 'entry2', content: 'added by tool' })
+        const call = callGated(client, 'risu-set-character-lorebook', { id: 'hero', name: 'entry2', content: 'added by tool' })
         await untilPrompted()
         DBState.db.characters.splice(1, 1)
         gate.resolve(true)
         const text = textOf(await call)
 
-        expect(text).toContain(CHARACTER_GONE_TEXT)
+        expect(text).toContain(NOT_FOUND_TEXT)
         expect(text).not.toContain('Successfully')
     })
 
-    test('guard: a write addressed by subject whose character is deleted while the prompt is open fails with the character-gone error', async () => {
+    test('guard: a write addressed by subject whose character is deleted while the approval is pending fails with the not-found error', async () => {
         installDb()
         const outcome = await restoreColdCharacter(DBState.db.characters[1])
         expect(outcome.status).toBe('restored')
@@ -470,13 +478,13 @@ describe('risuaccess write tools on an archived character', () => {
         alertConfirmMock.mockImplementationOnce(() => gate.promise)
         const client = new RisuAccessClient()
 
-        const call = client.callTool('risu-set-character-lorebook', { id: '', name: 'entry2', content: 'added by tool' }, { subject })
+        const call = callGated(client, 'risu-set-character-lorebook', { id: '', name: 'entry2', content: 'added by tool' }, { subject })
         await untilPrompted()
         alive = false
         gate.resolve(true)
         const text = textOf(await call)
 
-        expect(text).toContain(CHARACTER_GONE_TEXT)
+        expect(text).toContain(NOT_FOUND_TEXT)
     })
 
     test('guard: a write to a full character does not read a unit and reports success', async () => {

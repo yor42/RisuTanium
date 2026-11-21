@@ -2,7 +2,7 @@ import { Store2BackendError, Store2NotBinaryError } from './backend/errors'
 import type { Store2Backend } from './backend/types'
 import { isStore2Key } from '../store/keyRules'
 import {
-    keyOfTail, parseStore2Key, readUnit, refOfFrame, refsOf, UNIT_TYPE, type Manifest, type ModuleIndexRoot, type UnitType,
+    keyOfTail, PARENT_UNIT_TYPES, parseStore2Key, readUnit, refOfFrame, refsOf, UNIT_TYPE, type Manifest, type ModuleIndexRoot, type UnitType,
 } from './format'
 import { moduleIndexLayoutMatches } from './codec/modules'
 
@@ -25,6 +25,7 @@ export const TREE_READ_TYPES: Readonly<Record<string, UnitType>> = {
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
     'fixed.moduleBuckets[]': UNIT_TYPE.moduleBucket,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
+    'fixed.workspaces[]': UNIT_TYPE.workspace,
     'fixed.configAl': UNIT_TYPE.assetList,
     'fixed.il': UNIT_TYPE.inlayList,
 }
@@ -69,7 +70,7 @@ export interface ParentNode {
     body: object
 }
 
-const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket])
+const PARENT_TYPES: ReadonlySet<UnitType> = PARENT_UNIT_TYPES
 
 /** A parse of one unit under one expected type, shared by every manifest that names the unit. */
 export type ParseMemo = Map<string, ReturnType<typeof readUnit>>

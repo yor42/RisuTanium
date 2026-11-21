@@ -921,6 +921,11 @@ export interface Database{
     presetFolders?:PresetFolder[]
     /** Desktop-only Utility task presets. Absent unless the user has made one; a fork-only field that no `.bin` or config carries. */
     taskPresets?:TaskPreset[]
+    /**
+     * Utility workspaces: text files kept in the database. Absent until the user makes one; a fork-only field that no `.bin` carries.
+     * A file read back with a damaged unit has no `text` and keeps its recorded `size`.
+     */
+    utilityWorkspaces?:UtilityWorkspace[]
     /** Installed theme packs, read only through `readPackRecord`. Absent until the first install; a fork-only field that no `.bin` carries. */
     themePacks?:unknown[]
     /** The active theme pack's record id, or a built-in theme's `builtin:<slug>`. Absent until a pack is activated; fork-only, never in a `.bin`. */
@@ -1712,6 +1717,22 @@ export interface groupChat{
 export interface PresetFolder{
     id:string
     name:string
+}
+
+/** One text file of a utility workspace. `size` is the UTF-8 byte length of the text; a file whose unit could not be read has no `text`. */
+export interface UtilityWorkspaceFile{
+    id:string
+    path:string
+    text?:string
+    size:number
+    mtime:number
+}
+
+export interface UtilityWorkspace{
+    id:string
+    name:string
+    createdAt:number
+    files:UtilityWorkspaceFile[]
 }
 
 export interface botPreset{

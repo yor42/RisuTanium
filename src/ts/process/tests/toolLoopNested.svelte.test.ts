@@ -65,6 +65,8 @@ vi.mock('../../stores.svelte', () => {
     }
 })
 
+vi.mock('../mcp/toolApproval', () => ({ TOOL_SUMMARY_LIMIT: 800, askToolApproval: vi.fn(async () => 'once') }))
+
 vi.mock('../../alert', () => ({
     alertError: vi.fn((message: string) => { h.alerts.push(message) }), alertToast: vi.fn(), alertInput: vi.fn(async () => h.inputAnswer), alertNormal: vi.fn(), alertSelect: vi.fn(async () => ''),
     alertConfirm: vi.fn(async () => true),
@@ -446,12 +448,12 @@ describe('a nested runLLM under the cap, and one outside any turn, still work', 
         expect(String(result.result)).toContain('outer done')
     })
 
-    test('guard: S2-G5 runLLM called with no context (the Playground shape) runs one nested request', async () => {
+    test('guard: S2-G5 runLLM called with only its URL (no subject, no turn state) runs one nested request', async () => {
         const outer = outerOf('A1')
         await installWithAiAccess(outer)
         h.responder = (_index, interceptor) => textAnswer(kindOf(interceptor), 'inner only')
 
-        const out = await mcp.callTool('runLLM', RUN_LLM_ARGS)
+        const out = await mcp.callTool('runLLM', RUN_LLM_ARGS, { mcpURL: 'internal:aiaccess' })
 
         expect(h.requests).toHaveLength(1)
         expect(JSON.parse((out[0] as { text: string }).text)).toEqual({ success: true, message: 'inner only' })

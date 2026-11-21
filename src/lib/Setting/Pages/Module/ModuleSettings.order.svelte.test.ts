@@ -92,12 +92,15 @@ function installDb(modules: RisuModule[]): void {
 interface Mounted { target: HTMLElement, app: Record<string, unknown>, unmounted: boolean }
 let mounted: Mounted[] = []
 
-function mountModules(): Mounted {
+async function mountModules(): Promise<Mounted> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ModuleSettings, { target, props: {} }) as unknown as Record<string, unknown>
     const entry = { target, app, unmounted: false }
     mounted.push(entry)
+    flushSync()
+    // The window host reads the list's geometry in a microtask after mount; rows mount after that read.
+    await Promise.resolve()
     flushSync()
     return entry
 }
@@ -149,15 +152,15 @@ afterEach(async () => {
 //#endregion
 
 describe('the modules list order', () => {
-    test('regression reproducer: rows follow the array order, not the name order', () => {
+    test('regression reproducer: rows follow the array order, not the name order', async () => {
         installDb([makeModule('B'), makeModule('A'), makeModule('C')])
-        const { target } = mountModules()
+        const { target } = await mountModules()
         expect(rowNames(target)).toEqual(['B', 'A', 'C'])
     })
 
     test('guard: the search filters the rows and keeps the array order', async () => {
         installDb([makeModule('Bx'), makeModule('A'), makeModule('Cx')])
-        const { target } = mountModules()
+        const { target } = await mountModules()
         const search = target.querySelector('input') as HTMLInputElement
         search.value = 'x'
         search.dispatchEvent(new Event('input', { bubbles: true }))
@@ -165,9 +168,9 @@ describe('the modules list order', () => {
         expect(rowNames(target)).toEqual(['Bx', 'Cx'])
     })
 
-    test('guard: the list never reorders db.modules', () => {
+    test('guard: the list never reorders db.modules', async () => {
         installDb([makeModule('B'), makeModule('A')])
-        mountModules()
+        await mountModules()
         expect(DBState.db.modules.map((m) => m.name)).toEqual(['B', 'A'])
     })
 })
@@ -175,7 +178,7 @@ describe('the modules list order', () => {
 describe('the chat refresh when the module editor closes', () => {
     test('regression reproducer: closing the edit editor with its button refreshes once', async () => {
         installDb([makeModule('A'), makeModule('B')])
-        const { target } = mountModules()
+        const { target } = await mountModules()
         await openEditor(target, 'B')
         expect(get(reload.pointer)).toBe(0)
         await confirmEditor(target)
@@ -184,7 +187,7 @@ describe('the chat refresh when the module editor closes', () => {
 
     test('regression reproducer: closing the create editor with its button refreshes once', async () => {
         installDb([makeModule('A')])
-        const { target } = mountModules()
+        const { target } = await mountModules()
         await openCreator(target)
         expect(get(reload.pointer)).toBe(0)
         await confirmEditor(target)
@@ -193,7 +196,7 @@ describe('the chat refresh when the module editor closes', () => {
 
     test('regression reproducer: destroying the component while the edit editor is open refreshes once', async () => {
         installDb([makeModule('A'), makeModule('B')])
-        const entry = mountModules()
+        const entry = await mountModules()
         await openEditor(entry.target, 'A')
         await destroy(entry)
         expect(get(reload.pointer)).toBe(1)
@@ -201,7 +204,7 @@ describe('the chat refresh when the module editor closes', () => {
 
     test('regression reproducer: destroying the component while the create editor is open refreshes once', async () => {
         installDb([makeModule('A')])
-        const entry = mountModules()
+        const entry = await mountModules()
         await openCreator(entry.target)
         await destroy(entry)
         expect(get(reload.pointer)).toBe(1)
@@ -209,14 +212,14 @@ describe('the chat refresh when the module editor closes', () => {
 
     test('guard: destroying the component with no editor open does not refresh', async () => {
         installDb([makeModule('A')])
-        const entry = mountModules()
+        const entry = await mountModules()
         await destroy(entry)
         expect(get(reload.pointer)).toBe(0)
     })
 
     test('regression reproducer: closing the editor by its button and then destroying the component refreshes once in total', async () => {
         installDb([makeModule('A'), makeModule('B')])
-        const entry = mountModules()
+        const entry = await mountModules()
         await openEditor(entry.target, 'A')
         await confirmEditor(entry.target)
         await destroy(entry)

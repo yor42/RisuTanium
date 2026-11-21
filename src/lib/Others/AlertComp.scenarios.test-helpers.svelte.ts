@@ -471,7 +471,7 @@ export function registerAlertCompFocusSuite(): void {
             vi.mocked(getChatBranches).mockReturnValueOnce([{ x: 0, y: 1, chatId: 0, connectX: -1, multiChild: false }] as never)
             const target = mountAlertComp()
             await show({ type: 'branches', msg: '' })
-            target.querySelector('[role="table"]')?.dispatchEvent(new MouseEvent('mouseenter'))
+            target.querySelector('[data-part="pattern-alert-tree-node"]')?.dispatchEvent(new MouseEvent('mouseenter'))
             await settle()
             expect(target.textContent, 'the tooltip while the view is open').toContain('Tooltip text')
 

@@ -9,7 +9,7 @@ import {
     type AltRecord, type AssetList, type ChatAltUnit, type ChatChunk, type ChatCore, type ChatEntry, type ChunkRef, type CommitKey, type ContentBody,
     type DeletionSnapshot, type DeletionSnapshotKind, type FenceRecord, type InlayList, type LegacyKeepFile, type LegacyList, type ListRef, type Manifest, type ModuleEntry,
     type ModuleIndexRoot, type ModuleBucket, type PluginBucket, type Ref, type Shard, type SnapshotPointer, type ShardEntry, type StagingLabel, type SweepRecord,
-    type UnitBody,
+    type UnitBody, type WorkspaceRecord,
 } from './types'
 import { ASSET_REF_V, BODY_V, FRAME_FMT, IL_REF_V, KNOWN_REQ, MODULE_INDEX_V, UNIT_TYPE, type UnitType } from './versions'
 
@@ -70,7 +70,7 @@ export const KNOWN_FIELDS = {
     commitPin: ['key', 'reason'],
     commitStaging: ['owner', 'prefix', 'startedAt', 'label'],
     manifest: ['fmt', 'req', 'seq', 'createdAt', 'shardCount', 'shards', 'fixed'],
-    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'moduleBuckets', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'legacyKeep'],
+    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'moduleBuckets', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'workspaces', 'legacyKeep'],
     manifestPluginStorage: ['buckets', 'refs'],
     manifestLegacyKeep: ['unit', 'v', 'files'],
     manifestLegacyKeepFile: ['key', 'status'],
@@ -82,6 +82,8 @@ export const KNOWN_FIELDS = {
     chatEntry: ['cid', 'core', 'chunks', 'alt'],
     moduleIndex: ['v', 'entries', 'handles'],
     moduleBucket: ['v', 'entries'],
+    workspace: ['v', 'ws', 'files'],
+    workspaceFile: ['id', 'path', 'size', 'mtime', 'ref'],
     moduleEntry: ['id', 'unit', 'al', 'il', 'name', 'description', 'namespace', 'icon', 'hideIcon', 'lowLevelAccess', 'mcp', 'hasToggle', 'dsp'],
     fenceRecord: ['v', 'at', 'priorCommits', 'keys', 'priorFences'],
     deletionSnapshot: ['v', 'kind', 'upstream', 'keys'],
@@ -400,6 +402,13 @@ function readManifest(raw: JsonObject): Manifest {
             bad('fixed.moduleBuckets is empty.')
         }
         fixed.moduleBuckets = moduleBuckets
+    }
+    // Like task presets: an empty or absent list reads as none.
+    if (fixedRaw.workspaces !== undefined) {
+        const workspaces = arr(fixedRaw.workspaces, 'fixed.workspaces').map((value, index) => readTailedRef(value, `fixed.workspaces[${index}]`))
+        if (workspaces.length > 0) {
+            fixed.workspaces = workspaces
+        }
     }
     return {
         ...extras(raw, KNOWN_FIELDS.manifest),
@@ -807,7 +816,28 @@ export function parsePluginBucket(value: JsonValue): Parsed<PluginBucket> {
     })
 }
 
-/** Types 4, 5, 6, 9, 11 to 14, 16 to 18, 26: a plain object with a numeric `v` this build knows. */
+/** Type 28. The shape is a format choice of this build (see `WorkspaceRecord`); `ws` is kept whole, every field of it. */
+export function parseWorkspace(value: JsonValue): Parsed<WorkspaceRecord> {
+    return plain(() => {
+        const raw = obj(value, 'workspace record')
+        gateV(raw, 'workspace record')
+        const ws = obj(raw.ws, 'ws')
+        const files = arr(raw.files, 'files').map((entry, index) => {
+            const o = obj(entry, `files[${index}]`)
+            return {
+                ...extras(o, KNOWN_FIELDS.workspaceFile),
+                id: str(o.id, `files[${index}].id`),
+                path: str(o.path, `files[${index}].path`),
+                size: int(o.size, `files[${index}].size`),
+                mtime: num(o.mtime, `files[${index}].mtime`),
+                ref: readTailedRef(o.ref, `files[${index}].ref`),
+            }
+        })
+        return { ...extras(raw, KNOWN_FIELDS.workspace), v: 1, ws, files }
+    })
+}
+
+/** Types 4, 5, 6, 9, 11 to 14, 16 to 18, 26, 29: a plain object with a numeric `v` this build knows. */
 export function parseContentBody(value: JsonValue): Parsed<ContentBody> {
     return plain(() => {
         const raw = obj(value, 'unit body')
@@ -834,6 +864,7 @@ export function parseUnitBody(type: UnitType, value: JsonValue): Parsed<UnitBody
         case UNIT_TYPE.fenceRecord: return parseFenceRecord(value)
         case UNIT_TYPE.deletionSnapshot: return parseDeletionSnapshot(value)
         case UNIT_TYPE.pluginStorageBucket: return parsePluginBucket(value)
+        case UNIT_TYPE.workspace: return parseWorkspace(value)
         default: return parseContentBody(value)
     }
 }

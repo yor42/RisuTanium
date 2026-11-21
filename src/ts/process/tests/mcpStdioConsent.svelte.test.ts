@@ -88,6 +88,8 @@ vi.mock('../../stores.svelte', () => {
     }
 })
 
+vi.mock('../mcp/toolApproval', () => ({ TOOL_SUMMARY_LIMIT: 800, askToolApproval: vi.fn(async () => 'once') }))
+
 vi.mock('../../alert', () => ({
     alertError: vi.fn(), alertToast: vi.fn(), alertInput: vi.fn(async () => h.typedUrl), alertNormal: vi.fn(), alertSelect: vi.fn(async () => ''),
     alertConfirm: vi.fn(async (message: string) => {

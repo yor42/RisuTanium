@@ -3,13 +3,13 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     carryUnknownFields, KNOWN_FIELDS, randomId26, UNIT_TYPE,
-    type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type ChatEntry, type ContentBody, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType, type WorkspaceRecord,
 } from '../format'
 import {
     CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
     SCRIPT_FIELDS, VOLATILE_CHARACTER_FIELDS,
     type CharacterCoreBody, type ConfigBody, type FieldBagBody, type LoadoutsBody, type OrderBody, type PluginBody,
-    type PluginList, type PluginValueBody, type PresetBody, type StaticsBody,
+    type PluginList, type PluginValueBody, type PresetBody, type StaticsBody, type WorkspaceFileBody,
 } from './bodies'
 import { assembleChat, chunkMessageJson, splitChat } from './chat'
 import { overflowInlayList } from '../lists/inlayList'
@@ -220,6 +220,7 @@ export class Encoder {
         this.sink = new UnitSink(options.env, previous, options.keys, {
             ...(MEASURE && split !== undefined ? { split } : {}),
             ...(options.chunkMemo !== undefined ? { chunkMemo: options.chunkMemo } : {}),
+            ...(options.workspaceMemo !== undefined ? { workspaceMemo: options.workspaceMemo } : {}),
             ...(options.content !== undefined ? { content: options.content } : {}),
         })
     }
@@ -230,6 +231,11 @@ export class Encoder {
 
     putReusing(identity: string, type: UnitType, body: object, family: string, prewritten?: ReadonlyMap<object, string>): EncodedUnit {
         return this.sink.putReusing(identity, type, body, family, prewritten)
+    }
+
+    /** `put` for a unit whose body is `{ v: 1, text }`, taken through the workspace memo when there is one. */
+    putText(identity: string, type: UnitType, text: string, body: object): EncodedUnit {
+        return this.sink.putText(identity, type, text, body)
     }
 
     /** `put` for a unit whose body holds Refs of other units. */
@@ -568,6 +574,106 @@ export function emitPluginStorage(normalized: NormalizedPluginStorage, encoder: 
 
 export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject } {
     return emitPluginStorage(normalizePluginStorage(db, false), encoder)
+}
+
+/** The utility workspaces as plain JSON: each workspace's own fields apart from its files, and its files with their text. */
+export interface NormalizedWorkspaces {
+    readonly items: readonly {
+        id: string
+        /** The workspace's fields except `files`; unknown fields stay. */
+        ws: JsonObject
+        files: readonly {
+            id: string
+            /** The file's record fields except `text`: `id`, `path`, `size`, `mtime` and any field this build does not know. */
+            fields: JsonObject
+            text: string | undefined
+        }[]
+    }[]
+}
+
+/** An id that names a unit identity (`ws:<id>`, `wsf:<id>:<id>`): a non-empty string that holds no `:`, so an identity splits one way. */
+function workspaceIdOf(value: unknown, where: string): string {
+    if (typeof value !== 'string' || value === '' || value.includes(':')) {
+        throw new CodecInputError(`${where}.id is not a non-empty string without ":".`)
+    }
+    return value
+}
+
+/**
+ * Reads the workspaces out of the live database; nothing here touches an `Encoder`, and a fault is never skipped: a
+ * workspace that cannot be read fails the pass, as a plugin does. A file without `text` is legal here (the boot read
+ * gives a damaged file none); the emit decides what happens to it.
+ */
+export function normalizeWorkspaces(db: Database): NormalizedWorkspaces {
+    const seen = new Set<string>()
+    const items = listOrEmpty(db.utilityWorkspaces, 'utilityWorkspaces').map((value, index) => {
+        const where = `utilityWorkspaces[${index}]`
+        const plain = plainObject(value, where)
+        const id = workspaceIdOf(plain.id, where)
+        if (seen.has(id)) {
+            throw new CodecInputError(`${where} repeats the workspace id ${id}.`)
+        }
+        seen.add(id)
+        const seenFiles = new Set<string>()
+        const files = listOrEmpty(plain.files, `${where}.files`).map((entry, fileIndex) => {
+            const fileWhere = `${where}.files[${fileIndex}]`
+            const file = plainObject(entry, fileWhere)
+            const fileId = workspaceIdOf(file.id, fileWhere)
+            if (seenFiles.has(fileId)) {
+                throw new CodecInputError(`${fileWhere} repeats the file id ${fileId}.`)
+            }
+            seenFiles.add(fileId)
+            if (typeof file.path !== 'string') {
+                throw new CodecInputError(`${fileWhere}.path is not a string.`)
+            }
+            if (typeof file.size !== 'number' || !Number.isSafeInteger(file.size) || file.size < 0) {
+                throw new CodecInputError(`${fileWhere}.size is not a whole number.`)
+            }
+            if (typeof file.mtime !== 'number' || !Number.isFinite(file.mtime)) {
+                throw new CodecInputError(`${fileWhere}.mtime is not a number.`)
+            }
+            const text = file.text
+            if (text !== undefined && typeof text !== 'string') {
+                throw new CodecInputError(`${fileWhere}.text is not a string.`)
+            }
+            return { id: fileId, fields: omitFields(file, ['text']), text: typeof text === 'string' ? text : undefined }
+        })
+        return { id, ws: omitFields(plain, ['files']), files }
+    })
+    return { items }
+}
+
+/**
+ * One type 29 unit per file, then the workspace's type 28 record over their Refs (`putParent`; children precede their
+ * parent in the units). A file is keyed by its own id, so a rename or move rewrites only the record. A file with
+ * `text` goes through the workspace memo. A file without it (damaged at boot) is never written empty: the previous
+ * encoding's type 29 unit under its key is carried and its Ref kept in the record. With no such unit the file is left
+ * out and reported in `skippedItems` when the pass skips items; any other pass fails, as a plugin value does.
+ */
+export function emitWorkspaces(normalized: NormalizedWorkspaces, encoder: Encoder): Ref[] {
+    return normalized.items.map((item) => {
+        const files = item.files.flatMap((file): WorkspaceRecord['files'][number][] => {
+            const identity = `wsf:${item.id}:${file.id}`
+            if (file.text === undefined) {
+                const held = encoder.previous?.units.get(identity)
+                if (held !== undefined && held.type === UNIT_TYPE.workspaceFile) {
+                    encoder.carried.set(identity, held)
+                    return [{ ...file.fields, ref: refTuple(held.ref) } as WorkspaceRecord['files'][number]]
+                }
+                const cause = new CodecInputError(`The workspace file ${item.id}/${file.id} has no text to store.`)
+                if (!encoder.skipItems) {
+                    throw cause
+                }
+                encoder.skippedItems.push({ scope: 'workspaces', key: identity, label: quoted(String(file.fields.path)), saved: false, cause })
+                return []
+            }
+            const body: WorkspaceFileBody = { v: 1, text: file.text }
+            const unit = encoder.putText(identity, UNIT_TYPE.workspaceFile, file.text, body)
+            return [{ ...file.fields, ref: refTuple(unit.ref) } as WorkspaceRecord['files'][number]]
+        })
+        const record: WorkspaceRecord = { v: 1, ws: item.ws, files }
+        return refTuple(encoder.putParent(`ws:${item.id}`, UNIT_TYPE.workspace, record).ref)
+    })
 }
 
 /** The first three elements of a Ref and of a ListRef (tail, bytes, crc) agree. */
@@ -930,6 +1036,8 @@ export interface FrontParts {
     taskPresets: Ref[]
     plugins: { refs: Ref[], plain: JsonObject[] }
     pluginStorage: { refs: Ref[], plain: JsonObject }
+    /** One type 28 record per utility workspace, each over its type 29 file units; empty when the database has none. */
+    workspaces: Ref[]
     /** The bot preset list is the previous encoding's, so `config.botPresetsId` must not name any stored preset (see `finishTree`). */
     botPresetsCarried: boolean
 }
@@ -947,6 +1055,7 @@ interface NormalizedFront {
     readonly taskPresets: NormalizedPresets
     readonly plugins: NormalizedPlugins
     readonly pluginStorage: NormalizedPluginStorage
+    readonly workspaces: NormalizedWorkspaces
 }
 
 /**
@@ -979,7 +1088,8 @@ function normalizeFront(db: Database, encoder: Encoder): NormalizedFront {
     const taskPresets = normalizePresets(db.taskPresets ?? [], 'taskPresets', skip)
     const plugins = normalizePlugins(db)
     const pluginStorage = normalizePluginStorage(db, skip)
-    return { presets, taskPresets, plugins, pluginStorage }
+    const workspaces = normalizeWorkspaces(db)
+    return { presets, taskPresets, plugins, pluginStorage, workspaces }
 }
 
 /**
@@ -1047,7 +1157,8 @@ export function encodeFront(db: Database, encoder: Encoder): FrontParts {
     const task = emitPresets(normalized.taskPresets, 'taskPresets', encoder)
     const plugins = emitPlugins(normalized.plugins, encoder)
     const pluginStorage = emitPluginStorage(normalized.pluginStorage, encoder)
-    return { presets: bot.refs, presetPlain: bot.plain, taskPresets: task.refs, plugins, pluginStorage, botPresetsCarried: bot.carried }
+    const workspaces = emitWorkspaces(normalized.workspaces, encoder)
+    return { presets: bot.refs, presetPlain: bot.plain, taskPresets: task.refs, plugins, pluginStorage, workspaces, botPresetsCarried: bot.carried }
 }
 
 /** The module index as the manifest names it and as the next encode carries unknown fields from it. */
@@ -1280,7 +1391,7 @@ export function finishTree(
         split.section = 'finish'
     }
     const shardsStarted = MEASURE && split !== undefined ? split.now() : 0
-    const { presets, presetPlain, taskPresets, plugins, pluginStorage } = front
+    const { presets, presetPlain, taskPresets, plugins, pluginStorage, workspaces } = front
     const shardCount = shardCountFor(entries.length, encoder.previous?.objects?.manifest?.shardCount)
     const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, shardCount), encoder.stableChats)
     const previousShards = encoder.previous?.objects?.shards
@@ -1346,6 +1457,7 @@ export function finishTree(
         taskPresets,
         plugins: plugins.refs,
         pluginStorageRefs: pluginStorage.refs,
+        workspaces,
     }))
     encoder.parents.set('manifest', { type: UNIT_TYPE.manifest, body: manifest })
     const manifestUnit = encoder.sink.putFresh('manifest', UNIT_TYPE.manifest, manifest, 'manifest')

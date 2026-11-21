@@ -1,7 +1,7 @@
 import { repairDatabaseIds } from '../../../process/chatIds'
 import type { TaskPreset } from '../../../process/utility/taskPreset'
 import type { JsonObject, JsonValue } from '../../blockFrame'
-import type { Database } from '../../database.svelte'
+import type { Database, UtilityWorkspace } from '../../database.svelte'
 import { repairBotPresetsId } from '../../botPresetRepair'
 import { repairCharacterTree, summarizeRepair, type RepairRefusal } from '../../characterTreeRepair'
 import { completeRestoredTree } from '../../treeToBlockSet'
@@ -81,6 +81,11 @@ export interface ImportRequest {
      * tree. Absent or empty: the imported profile has none. The tree's own `taskPresets` key is removed either way.
      */
     taskPresets?: readonly JsonObject[]
+    /**
+     * The page's own utility workspaces, kept by value: a `.bin` carries none, so the list the page holds is set on the imported
+     * tree. Absent or empty: the imported profile has none. The tree's own `utilityWorkspaces` key is removed either way.
+     */
+    utilityWorkspaces?: readonly JsonObject[]
     /**
      * The page's own installed theme packs, kept by value: a `.bin` carries none, so the list the page holds is set on the
      * imported tree. Absent or empty: the imported profile has none. The tree's own `themePacks` key is removed either way.
@@ -249,11 +254,15 @@ export function repairImportRoot(tree: Database): void {
  * `resolveLegacyTree` has already removed `taskPresets`. Shared by the whole and the streamed prepare.
  */
 export function applyImportOverlay(
-    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings'>,
+    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'utilityWorkspaces' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings'>,
 ): void {
     if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
         // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
         database.taskPresets = request.taskPresets.map(preset => structuredClone(preset) as unknown as TaskPreset)
+    }
+    if (request.utilityWorkspaces !== undefined && request.utilityWorkspaces.length > 0) {
+        // Plain JSON the codec reads field by field; the stored object keeps every key.
+        database.utilityWorkspaces = request.utilityWorkspaces.map(workspace => structuredClone(workspace) as unknown as UtilityWorkspace)
     }
     delete database.themePacks
     delete database.activeThemePack
@@ -374,7 +383,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * repair would replace.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings' | 'baseContent'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'utilityWorkspaces' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides' | 'ltmEngine' | 'ltmSettings' | 'baseContent'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
