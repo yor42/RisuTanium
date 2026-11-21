@@ -251,7 +251,6 @@ vi.mock('src/ts/globalApi.svelte', async (importOriginal) => ({
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: vi.fn(async () => ({
         read: vi.fn(async () => ({ bytes: null })),
-        readValue: vi.fn(async () => null),
     })),
     getAppStoreKind: vi.fn(async () => 'tauri'),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
@@ -313,7 +312,7 @@ beforeEach(() => {
     vi.mocked(save).mockClear()
     vi.mocked(alertError).mockClear()
     resetTaskHostForTests()
-    noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
+    noteSelectedStore('tauri', { read: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
     vi.spyOn(console, 'error').mockImplementation(() => { })
     // The card export falls back to the stand-in image when the icon is not in storage.

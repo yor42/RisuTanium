@@ -10,8 +10,7 @@
  * through `__avatarThumbTestHooks.setNativePreview`.
  *
  * The over-limit size is declared, never materialised: a mocked stat, a piece
- * `total`, a `Content-Range` total, or a Blob subclass with a declared `size`
- * and a real `slice`. Fixtures are built byte by byte in the layout a camera
+ * `total` or a `Content-Range` total. Fixtures are built byte by byte in the layout a camera
  * writes (Exif 2.32: JFIF, an Exif APP1 holding IFD0 and IFD1 with a JPEG
  * thumbnail, then the main frame), in both byte orders.
  *
@@ -234,32 +233,6 @@ function textHeavyPng(): Uint8Array {
 
 function gif(totalLen: number): Uint8Array {
     return concat(ascii('GIF89a'), new Uint8Array(totalLen - 6))
-}
-
-/** A Blob that declares a huge size, slices for real and counts whole reads. */
-class HugeBlob extends Blob {
-    wholeReads = 0
-    readonly content: Uint8Array
-    private readonly declared: number
-
-    constructor(real: Uint8Array, declared: number) {
-        super([real as BlobPart])
-        this.content = real
-        this.declared = declared
-    }
-
-    get size(): number {
-        return this.declared
-    }
-
-    slice(start?: number, end?: number): Blob {
-        return new Blob([this.content.slice(start ?? 0, end ?? this.content.length) as BlobPart])
-    }
-
-    async arrayBuffer(): Promise<ArrayBuffer> {
-        this.wholeReads++
-        return this.content.slice().buffer as ArrayBuffer
-    }
 }
 
 //#endregion
@@ -943,114 +916,7 @@ describe('Node-hosted page: a ranged GET of at most 256 KiB', () => {
     })
 })
 
-describe('web store: sizes come from the stored value, never from a whole read', () => {
-    let blob: HugeBlob
-
-    /** The store holds `value`; a generator that ignores `readValue` and reads whole gets the same bytes from `readImage`. */
-    function storeWith(value: Blob | Uint8Array | null, readValue = vi.fn(async (_key: string) => value)) {
-        appState.store = { readValue }
-        if (value instanceof HugeBlob) {
-            readImageMock.mockImplementation(async () => value.content)
-        } else if (value instanceof Uint8Array) {
-            readImageMock.mockImplementation(async () => value)
-        }
-        return readValue
-    }
-
-    test('reproducer: an IndexedDB Blob over the limit gives the embedded thumbnail from a slice, with no whole read', async () => {
-        blob = new HugeBlob(exifJpeg(), OVER)
-        storeWith(blob)
-
-        expect(await getAvatarThumbSrc('assets/cam.jpg')).toBe('thumb:embedded')
-
-        expect(blob.wholeReads).toBe(0)
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(renderedKinds()).toEqual(['embedded'])
-    })
-
-    test('reproducer: an IndexedDB Blob PNG over the limit gets one decode from an object URL that is revoked', async () => {
-        blob = new HugeBlob(stillPng(), OVER)
-        storeWith(blob)
-        const created: string[] = []
-        const revoked: string[] = []
-        const originalCreate = URL.createObjectURL
-        const originalRevoke = URL.revokeObjectURL
-        URL.createObjectURL = ((value: Blob) => {
-            const url = originalCreate(value)
-            created.push(url)
-            return url
-        }) as typeof URL.createObjectURL
-        URL.revokeObjectURL = ((url: string) => {
-            revoked.push(url)
-            originalRevoke(url)
-        }) as typeof URL.revokeObjectURL
-        try {
-            expect(await getAvatarThumbSrc('assets/huge.png')).toBe('thumb:url')
-        } finally {
-            URL.createObjectURL = originalCreate
-            URL.revokeObjectURL = originalRevoke
-        }
-
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(blob.wholeReads).toBe(0)
-        expect(renderedKinds()).toEqual(['url'])
-        expect((renderMock.mock.calls[0][0] as { url: string }).url.startsWith('blob:')).toBe(true)
-        expect(created.length).toBe(1)
-        expect(revoked).toEqual(created)
-    })
-
-    test('spec: a byte value over the limit is loaded once and gives the embedded thumbnail from its prefix', async () => {
-        __avatarThumbTestHooks.setLimits({ boundedAboveBytes: SCAN })
-        const readValue = storeWith(exifJpeg({ padTo: 300 * 1024 }))
-
-        expect(await getAvatarThumbSrc('assets/cam.jpg')).toBe('thumb:embedded')
-
-        expect(readValue).toHaveBeenCalledTimes(1)
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(renderedKinds()).toEqual(['embedded'])
-    })
-
-    test('spec: a byte value over the limit without an embedded thumbnail gets one object-URL decode', async () => {
-        __avatarThumbTestHooks.setLimits({ boundedAboveBytes: SCAN })
-        const readValue = storeWith(stillPng())
-
-        expect(await getAvatarThumbSrc('assets/a.png')).toBe('thumb:url')
-
-        expect(readValue).toHaveBeenCalledTimes(1)
-        expect(readImageMock).not.toHaveBeenCalled()
-    })
-
-    test('spec: a byte value within the limit is decoded from bytes, loaded once', async () => {
-        const readValue = storeWith(stillPng())
-
-        expect(await getAvatarThumbSrc('assets/a.png')).toBe('thumb:bytes')
-
-        expect(readValue).toHaveBeenCalledTimes(1)
-        expect(readImageMock).not.toHaveBeenCalled()
-    })
-
-    test('guard: a key the store can address but not create is read whole, never through readValue', async () => {
-        const readValue = storeWith(null)
-        const loc = addFile('assets/a\\b.png', stillPng(100 * 1024))
-
-        expect(await getAvatarThumbSrc(loc)).toBe('thumb:bytes')
-
-        expect(readValue).not.toHaveBeenCalled()
-        expect(readImageMock).toHaveBeenCalledTimes(1)
-    })
-
-    test('spec: such a key above the limit is loaded once and then gets the bounded rules', async () => {
-        __avatarThumbTestHooks.setLimits({ boundedAboveBytes: SCAN })
-        const readValue = storeWith(null)
-        const loc = addFile('assets/a\\b.jpg', exifJpeg({ padTo: 300 * 1024 }))
-
-        expect(await getAvatarThumbSrc(loc)).toBe('thumb:embedded')
-
-        expect(readValue).not.toHaveBeenCalled()
-        expect(readImageMock).toHaveBeenCalledTimes(1)
-        expect(renderedKinds()).toEqual(['embedded'])
-    })
-
+describe('a store with no size source', () => {
     test('guard: a store that offers no size source reads the avatar whole, as before', async () => {
         appState.store = {}
         const loc = addFile('assets/a.png', stillPng(100 * 1024))
@@ -1060,13 +926,15 @@ describe('web store: sizes come from the stored value, never from a whole read',
         expect(readImageMock).toHaveBeenCalledTimes(1)
     })
 
-    test('reproducer: a value read that fails gives null with nothing stored and no whole read', async () => {
-        appState.store = { readValue: vi.fn(async () => { throw new Error('the database is closed') }) }
+    test('guard: an avatar above the limit on a store with no size source is read whole once and then gets the bounded rules', async () => {
+        __avatarThumbTestHooks.setLimits({ boundedAboveBytes: SCAN })
+        appState.store = {}
+        const loc = addFile('assets/cam.jpg', exifJpeg({ padTo: 300 * 1024 }))
 
-        expect(await getAvatarThumbSrc('assets/a.png')).toBeNull()
+        expect(await getAvatarThumbSrc(loc)).toBe('thumb:embedded')
 
-        expect(readImageMock).not.toHaveBeenCalled()
-        expect(store.setItem).not.toHaveBeenCalled()
+        expect(readImageMock).toHaveBeenCalledTimes(1)
+        expect(renderedKinds()).toEqual(['embedded'])
     })
 })
 

@@ -2,7 +2,6 @@ import { isNodeServer } from "src/ts/platform"
 import { pieceStoreOrNull } from "../globalApi.svelte"
 import { getAppStoreKind } from "../storage/store/appStore"
 import type { ByteStore } from "../storage/store/contract"
-import { assetOrInlayBodyKeyViolation } from "../storage/store/keyRules"
 import { isDesktopTransport, readRangedPieces, statStoredSize, transportKind } from "../storage/tauriByteTransport"
 import { nodePieceOpener, openFirstPiece, type PieceOpener, type ReadPiece } from "./inlayBackupExport"
 
@@ -84,65 +83,19 @@ export async function nodeAssetPieceSource(): Promise<AssetPieceSource | null> {
     return store === null ? null : { open: nodePieceOpener(store), node: true }
 }
 
-/** The size of the slices a Blob-valued browser asset is exported in. */
-export const WEB_BLOB_EXPORT_PIECE_BYTES = 4 * 1024 * 1024
-
-/**
- * The browser store's piece source, or `null` for a store that does not offer `readValue`. One `readValue` loads the
- * asset once: a Blob is read in slices so its bytes are never held whole, bytes come as one piece, and an absent key
- * yields nothing (`missing`). A read that fails after the first piece raises `BackupAssetChangedError` in
- * `writeAssetStreamed`, so an asset is never silently left out of the file once its entry has begun.
- */
-export function webBlobPieceSource(store: ByteStore): AssetPieceSource | null {
-    const readValue = store.readValue?.bind(store)
-    if (readValue === undefined) {
-        return null
-    }
-    return {
-        node: false,
-        open: async function* (key: string): AsyncGenerator<ReadPiece, void, undefined> {
-            if (assetOrInlayBodyKeyViolation(key) !== null) {
-                // A key upstream wrote that the store can address but not create has no Blob form: read it whole.
-                const { bytes } = await store.read(key)
-                if (bytes !== null) {
-                    yield { bytes, total: bytes.length }
-                }
-                return
-            }
-            const value = await readValue(key)
-            if (value === null) {
-                return
-            }
-            if (!(value instanceof Blob)) {
-                yield { bytes: value, total: value.length }
-                return
-            }
-            if (value.size === 0) {
-                yield { bytes: new Uint8Array(0), total: 0 }
-                return
-            }
-            for (let start = 0; start < value.size; start += WEB_BLOB_EXPORT_PIECE_BYTES) {
-                const bytes = new Uint8Array(await value.slice(start, Math.min(start + WEB_BLOB_EXPORT_PIECE_BYTES, value.size)).arrayBuffer())
-                yield { bytes, total: value.size }
-            }
-        },
-    }
-}
-
 /**
  * The piece source an asset export reads through, with the kind of store it came from and that store, so the size
  * of an asset and its pieces always come from one choice.
  */
 export interface ExportAssetSource {
-    kind: 'tauri' | 'node' | 'web'
+    kind: 'tauri' | 'node'
     pieces: AssetPieceSource
     store: ByteStore
 }
 
 /**
  * The source an asset export uses, in the order the backup export chooses: the app's files store, then the Node
- * server's pieces, then the browser store's `readValue`. `null` where none applies (a store without
- * `readValue`), which keeps the whole-read path.
+ * server's pieces. `null` where neither applies, which keeps the whole-read path.
  */
 export async function exportAssetPieceSource(store: ByteStore): Promise<ExportAssetSource | null> {
     const tauri = await exportTauriPieceSource()
@@ -150,11 +103,7 @@ export async function exportAssetPieceSource(store: ByteStore): Promise<ExportAs
         return { kind: 'tauri', pieces: tauri, store }
     }
     const node = await nodeAssetPieceSource()
-    if (node !== null) {
-        return { kind: 'node', pieces: node, store }
-    }
-    const web = webBlobPieceSource(store)
-    return web === null ? null : { kind: 'web', pieces: web, store }
+    return node === null ? null : { kind: 'node', pieces: node, store }
 }
 
 /**
@@ -211,9 +160,8 @@ export async function openExportAssetPieces(
 
 /**
  * The stored size of `key` through the same source its pieces will come from, or `null` when it is unknown: no
- * source, an absent key, or any error while sizing. The Tauri store answers from its file metadata; the browser
- * store from one `readValue` (a Blob's size, or the bytes' length); the Node store from its first piece, which is
- * then closed.
+ * source, an absent key, or any error while sizing. The Tauri store answers from its file metadata; the Node store
+ * from its first piece, which is then closed.
  */
 export async function assetStoredSize(key: string, source: ExportAssetSource | null): Promise<number | null> {
     if (source === null) {
@@ -222,17 +170,6 @@ export async function assetStoredSize(key: string, source: ExportAssetSource | n
     try {
         if (source.kind === 'tauri') {
             return await statStoredSize(key)
-        }
-        if (source.kind === 'web') {
-            const readValue = source.store.readValue?.bind(source.store)
-            if (readValue === undefined || assetOrInlayBodyKeyViolation(key) !== null) {
-                return null
-            }
-            const value = await readValue(key)
-            if (value === null) {
-                return null
-            }
-            return value instanceof Blob ? value.size : value.length
         }
         const opened = await openFirstPiece(source.pieces.open, key)
         if (opened === null) {

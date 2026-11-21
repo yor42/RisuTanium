@@ -3630,7 +3630,6 @@ export const languageVietnamese = {
     "backupSaveProgress": (done: number, total: number) => `Đang lưu bản sao lưu cục bộ... (${done} / ${total})`,
     "backupSavePartialProgress": (done: number, total: number) => `Đang lưu bản sao lưu cục bộ một phần... (${done} / ${total})`,
     "backupSaveDownloading": (sent: string, total: string) => `Đang lưu bản sao lưu cục bộ... đang tải xuống (${sent} / ${total})`,
-    "backupCheckingAssetSizes": (done: number, total: number) => `Đang kiểm tra kích thước tài sản... (${done} / ${total})`,
     "backupSaveInlays": (done: number, total: number) => `Đang lưu ảnh trong cuộc trò chuyện của bản sao lưu cục bộ... (${done} / ${total})`,
     "backupSaveColdData": (done: number, total: number) => `Đang lưu dữ liệu bộ nhớ lạnh của bản sao lưu cục bộ... (${done} / ${total})`,
     "backupSavePartialColdData": (done: number, total: number) => `Đang lưu dữ liệu bộ nhớ lạnh của bản sao lưu cục bộ một phần... (${done} / ${total})`,
@@ -4221,7 +4220,6 @@ export const languageVietnamese = {
     byafUnsupportedVersion: "Kho lưu trữ Backyard này dùng phiên bản định dạng mà ứng dụng không đọc được nên không được nhập.",
     byafSeveralCharacters: "Kho lưu trữ Backyard này chứa nhiều hơn một nhân vật, ứng dụng không thể nhập nên không được nhập.",
     cardImageTooLarge: (limitMiB: number) => `Ảnh của thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
-    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `Tệp "${fileName}" lớn hơn ${limitMiB} MB mà trình duyệt này có thể lưu trữ nên không được lưu.`,
     assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
         const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
         const more = fileNames.length - quoted.length

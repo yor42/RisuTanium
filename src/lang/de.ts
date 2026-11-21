@@ -3632,7 +3632,6 @@ export const languageGerman = {
     "backupSaveProgress": (done: number, total: number) => `Lokales Backup wird gespeichert... (${done} von ${total})`,
     "backupSavePartialProgress": (done: number, total: number) => `Teilweises lokales Backup wird gespeichert... (${done} von ${total})`,
     "backupSaveDownloading": (sent: string, total: string) => `Lokales Backup wird gespeichert... Download läuft (${sent} von ${total})`,
-    "backupCheckingAssetSizes": (done: number, total: number) => `Asset-Größen werden geprüft... (${done} von ${total})`,
     "backupSaveInlays": (done: number, total: number) => `Chat-Bilder des lokalen Backups werden gespeichert... (${done} von ${total})`,
     "backupSaveColdData": (done: number, total: number) => `Kaltlager-Daten des lokalen Backups werden gespeichert... (${done} von ${total})`,
     "backupSavePartialColdData": (done: number, total: number) => `Kaltlager-Daten des teilweisen lokalen Backups werden gespeichert... (${done} von ${total})`,
@@ -4241,7 +4240,6 @@ export const languageGerman = {
     "byafUnsupportedVersion": "Dieses Backyard-Archiv verwendet eine Formatversion, die diese App nicht lesen kann, und wurde daher nicht importiert.",
     "byafSeveralCharacters": "Dieses Backyard-Archiv enthält mehr als einen Charakter, was diese App nicht importieren kann, und wurde daher nicht importiert.",
     "cardImageTooLarge": (limitMiB: number) => `Das Bild dieser Karte ist größer als das Limit von ${limitMiB} MB, daher wurde die Karte nicht importiert.`,
-    "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `"${fileName}" ist größer als die ${limitMiB} MB, die dieser Browser speichern kann, und wurde daher nicht gespeichert.`,
     "assetFilesTooLargeForLimit": (fileNames: string[], limitMiB: number) => {
         const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
         const more = fileNames.length - quoted.length
