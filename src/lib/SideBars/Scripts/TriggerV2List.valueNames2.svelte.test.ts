@@ -161,7 +161,7 @@ describe('TriggerV2List effect editors (second half) name their value controls',
 
     test('message, alert, display, request and search effects', () => {
         checkRows([
-            row({ type: 'v2ConcatString' }, names(op('A'), op('B')), ['A', 'B', L.outputVar]),
+            row({ type: 'v2ConcatString' }, names(op(L.operandA), op(L.operandB)), [L.operandA, L.operandB, L.outputVar]),
             row({ type: 'v2GetLastUserMessage' }, names(), [L.outputVar]),
             row({ type: 'v2GetLastCharMessage' }, names(), [L.outputVar]),
             row({ type: 'v2GetFirstMessage' }, names(), [L.outputVar]),

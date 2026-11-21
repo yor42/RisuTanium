@@ -1664,6 +1664,8 @@ export const languageVietnamese = {
         "value": "Giá trị",
         "var": "Biến",
         "operandType": "Loại {label}",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Tên biến",
         "outputVar": "Biến đầu ra",
         "name": "Tên",

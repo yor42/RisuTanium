@@ -1664,6 +1664,8 @@ export const languageKorean = {
         "value": "값",
         "var": "변수",
         "operandType": "{label} 유형",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "변수명",
         "outputVar": "출력 변수",
         "name": "이름",

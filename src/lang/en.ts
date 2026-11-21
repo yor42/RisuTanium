@@ -1796,6 +1796,8 @@ export const languageEnglish = {
         value: "Value",
         var: "Variable",
         operandType: "{label} type",
+        operandA: "A",
+        operandB: "B",
         varName: "Variable Name",
         outputVar: "Output Variable",
         name: "Name",

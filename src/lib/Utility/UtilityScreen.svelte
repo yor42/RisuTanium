@@ -152,10 +152,12 @@
             {/each}
         </div>
 
+        <span id="utility-input-label" class="sr-only">{language.utility.messagePlaceholder}</span>
         <textarea
             class="min-h-24 w-full resize-y rounded-md border border-darkborderc bg-transparent px-4 py-2 text-textcolor focus:border-borderc focus:outline-hidden focus:ring-2 focus:ring-borderc"
             placeholder={language.utility.messagePlaceholder}
-            aria-label={language.utility.messagePlaceholder}
+            aria-labelledby="utility-input-label"
+            aria-describedby="utility-input-label"
             data-testid="utility-input"
             bind:value={draft}
         ></textarea>
