@@ -1,7 +1,7 @@
 /**
  * The Connections page writers over the real key-vault store and a fake vault. `setConnectionKey`
  * never rejects for a vault failure: a failed wrap resolves after storing the typed key plain and
- * raising the keep-plain notice, so a key write is "stored" either way and only an unexpected throw
+ * raising the keep-plain notice once typing pauses, so a key write is "stored" either way and only an unexpected throw
  * reaches the `keyWrite` path. Compatibility guards: they pass with or without the vault-state page
  * changes, since those changed no writer. Keys and envelopes are synthetic. A mocked vault is not
  * evidence of native Keystore behaviour.
@@ -34,7 +34,7 @@ import { storedConnections } from '../connections'
 import { addConnection, clearKey, needsKey, replaceKey } from '../connectionEditor'
 import { connectionKeyHint } from '../connectionHint'
 import { connectionKeyForUi, connectionNeedsReentry } from '../keyAccess'
-import { installVaultHost, resetVaultStoreForTest, unwrapEnvelope } from '../keyVaultStore.svelte'
+import { installVaultHost, KEEP_PLAIN_DEFER_MS, resetVaultStoreForTest, unwrapEnvelope } from '../keyVaultStore.svelte'
 
 let db: Database
 let keepPlain = 0
@@ -80,7 +80,8 @@ describe('key writes over the vault', () => {
         const result = await addConnection(db, { provider: 'openai', name: 'OpenAI', key: 'sk-test-AAAA1234' })
         expect(result).toEqual({ ok: true, id: 'conn-1' })
         expect(storedConnections(db)[0]).toStrictEqual({ id: 'conn-1', name: 'OpenAI', provider: 'openai', key: 'sk-test-AAAA1234' })
-        expect(keepPlain).toBe(1)
+        expect(keepPlain).toBe(0)
+        await vi.waitFor(() => expect(keepPlain).toBe(1), { timeout: KEEP_PLAIN_DEFER_MS + 1000 })
     })
 
     it('a failed wrap on replace resolves ok, stores the key plain, drops the old envelope and the needsKey flag', async () => {
@@ -91,7 +92,8 @@ describe('key writes over the vault', () => {
         expect(result).toEqual({ ok: true })
         expect(storedConnections(db)[0]).toStrictEqual({ id: 'conn-1', name: 'OpenAI', provider: 'openai', key: 'sk-test-BBBB5678' })
         expect(needsKey.has('conn-1')).toBe(false)
-        expect(keepPlain).toBe(1)
+        expect(keepPlain).toBe(0)
+        await vi.waitFor(() => expect(keepPlain).toBe(1), { timeout: KEEP_PLAIN_DEFER_MS + 1000 })
     })
 
     it('replacing a key that can never be read here makes the connection readable again', async () => {
