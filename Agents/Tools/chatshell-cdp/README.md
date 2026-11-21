@@ -56,13 +56,14 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 
 ## Setup
 
-The recipe below (serve a prebuilt `dist`, restore a synthetic `.bin`) was run once from scratch through step 5 of the restore on 2026-11-14/15 (Windows 11, Chrome 157, web build e500f4a44); the notice in step 6 was seen, but its dismissal was not saved. Step 7 comes from a later run, which saved its scripts and screenshots.
+The recipe below (serve a prebuilt `dist`, restore a synthetic `.bin`) was run once from scratch through step 5 of the restore on 2026-11-14/15 (Windows 11, Chrome 157, web build e500f4a44); the notice in step 6 was seen, but its dismissal was not saved. Step 7 comes from a later run, which saved its scripts and screenshots. Both runs served `dist` with a plain static server. A page served that way no longer gets storage (the app refuses to load it), so that recipe is retired. The Node-server recipe below has not been run from scratch yet: TODO(evidence).
 
-### Serve a prebuilt web build
+### Serve a prebuilt build through the Node server
 
 - Build `dist` once in the worktree under test (`pnpm build`, under the full-run slot), or reuse an existing `dist`. Never run `pnpm install` or write `.vite` through a `node_modules` junction.
-- Serve `dist` read-only from 127.0.0.1 with any small static server that falls back to `index.html` for unknown paths, sends `cache-control: no-store` and serves `.wasm` as `application/wasm`. No server script ships in this folder. A server that checks the requested path against the root by text prefix must include the path separator, or a sibling directory with the same prefix passes.
-- Run the server as a background job and record its PID, then check that `http://127.0.0.1:6293/` answers 200.
+- Make an empty scratch folder under `%TEMP%`, outside every repository. `server/node/server.cjs` serves `dist` from `<cwd>/dist` and keeps the app's data in `<cwd>/save`, so the folder must hold `dist`. Put a copy of the built `dist` there, or a directory junction named `dist` that points to the worktree's `dist`. Never junction `node_modules`.
+- Start the server from that folder as a background job with `PORT=6293` and `HOST=127.0.0.1` (unset, the server listens on every interface): `node <worktree>\server\node\server.cjs` (this is what `pnpm runserver` runs). The server loads its own modules relative to its file, so the worktree's `node_modules` is used and the scratch folder needs none. Record the PID. Alternatively run `pnpm dev:server` in the worktree with `RISU_DEV_SERVER_DIR=<scratch>`: it starts the Node server in that folder (port `RISU_DEV_NODE_PORT`, default 6001, bound to 127.0.0.1) and Vite beside it; Vite is the page to open.
+- Check that `http://127.0.0.1:6293/` answers 200. Whether the page asks for a password on first open is TODO(evidence): the server has a password-setup route and `/api/test_auth` answers `unset` while no password exists, but the first-open flow was not traced.
 - Then start `launch-chrome.mjs` as a background job, the mock on 9471 if a probe can send, and `netlog.mjs` for diagnostic runs.
 - The new profile starts empty, which is expected; the restore below fills it. Refusals of Chrome's own traffic, `fonts.googleapis.com`, `openrouter.ai` and `raw.githubusercontent.com` in `proxy-refusals.jsonl` are expected.
 
