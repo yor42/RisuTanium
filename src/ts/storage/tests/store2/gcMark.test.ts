@@ -76,6 +76,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
     const I = UNIT_TYPE.moduleIndex
     const B = UNIT_TYPE.pluginStorageBucket
     const K = UNIT_TYPE.moduleBucket
+    const W = UNIT_TYPE.workspace
 
     const shardKey = newShardKey(fx.env)
     let shardRef = options.shared?.shard
@@ -134,11 +135,15 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
         bucketRef = (await leaf(fx, UNIT_TYPE.pluginStorageBucket, { v: 1, entries: [{ k: 'a', ref: value }] })).ref
     }
 
+    const wsFile = await put(W, 'files[].ref', UNIT_TYPE.workspaceFile, { v: 1, text: tag })
+    const workspace = await put(M, 'fixed.workspaces[]', W, {
+        v: 1, ws: { id: `w-${tag}`, name: 'n', createdAt: 1 }, files: [{ id: 'f', path: 'a.md', size: 1, mtime: 1, ref: wsFile }],
+    })
     const preset = await put(M, 'fixed.presets[]', UNIT_TYPE.preset)
     const taskPreset = await put(M, 'fixed.taskPresets[]', UNIT_TYPE.taskPreset)
     const body: Manifest = {
         fmt: 1,
-        req: bucketRefs === undefined ? ['task-presets'] : ['module-buckets', 'task-presets'],
+        req: bucketRefs === undefined ? ['task-presets', 'utility-workspaces'] : ['module-buckets', 'task-presets', 'utility-workspaces'],
         seq: 1,
         createdAt: 1,
         shardCount: 1,
@@ -156,6 +161,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
             taskPresets: [taskPreset],
             plugins: [await put(M, 'fixed.plugins[]', UNIT_TYPE.plugin)],
             pluginStorage: { buckets: 1, refs: [bucketRef] },
+            workspaces: [workspace],
             legacyKeep: {
                 unit: await put(M, 'fixed.legacyKeep.unit', UNIT_TYPE.legacyList, {
                     v: 1, iv: 1, files: [], h: '', l: [], i: { v: 1, u: [], h: '', o: [] },

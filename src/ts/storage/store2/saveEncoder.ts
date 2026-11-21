@@ -7,7 +7,7 @@ import {
     type AcknowledgedVerdict, type EncodedTree, type OverlaidFields, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
     type ScopedPlan, type SkippedCharacter, type VerdictBase,
 } from './codec'
-import { ChunkMemo } from './codec/chunkMemo'
+import { ChunkMemo, WORKSPACE_MEMO_BUCKET_CAP, WORKSPACE_MEMO_TOTAL_BUDGET } from './codec/chunkMemo'
 import { isModuleStub } from '../moduleStub'
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
 import { MEASURE } from '../../process/memory/measureFlag'
@@ -199,6 +199,8 @@ export interface SaveEncoder {
     shadowStats(): { entries: number, charged: number }
     /** How many chunk texts the chunk memo remembers and what they are charged: at most the memo's own total budget. */
     chunkMemoStats(): { entries: number, charged: number }
+    /** How many workspace file texts the workspace memo remembers and what they are charged; only adopted units' texts stay. */
+    workspaceMemoStats(): { entries: number, charged: number }
     /**
      * Whether a cold stub would make a full pass refuse it, load it or write it: its handle is not held, it names a
      * unit other than the entry's, its id is shared, its entry is missing or its overlaid entry differs from the
@@ -482,6 +484,15 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
     let shadowsCharged = 0
     // The saved chunk texts, for the page's whole life: a pure cache of text -> digest, so no acknowledgement resets it.
     const chunkMemo = new ChunkMemo()
+    // The saved workspace file texts. Unlike the chunk memo it is pruned at every adoption (`adopt`): a deleted file's or
+    // workspace's text must not stay pinned, and a carried or scoped-out file keeps its entry because `previous` holds it.
+    const workspaceMemo = new ChunkMemo(WORKSPACE_MEMO_BUCKET_CAP, WORKSPACE_MEMO_TOTAL_BUDGET)
+
+    /** Makes `next` the acknowledged encoding and drops the workspace memo entries it does not hold. */
+    function adopt(next: PreviousEncoding): void {
+        previous = next
+        workspaceMemo.retainOnly(identity => next.units.has(identity))
+    }
 
     function dropShadow(chaId: string | null): void {
         const held = chaId === null ? undefined : shadows.get(chaId)
@@ -536,7 +547,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             }
             const scoped = await planScopedEncode(
                 db,
-                { env, lists: options.lists, seq: 0, createdAt: now(), previous: request.rewriteAll === true ? withoutDigests(base) : base, chunkMemo },
+                { env, lists: options.lists, seq: 0, createdAt: now(), previous: request.rewriteAll === true ? withoutDigests(base) : base, chunkMemo, workspaceMemo },
                 MEASURE && split !== null ? { ...scope, split } : scope,
             )
             if (MEASURE) {
@@ -573,7 +584,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                         throw new SavePlanError('The acknowledged encoding moved since this plan was made.')
                     }
                     const acknowledgeStarted = MEASURE && split !== null ? split.now() : 0
-                    previous = previousFrom(built)
+                    adopt(previousFrom(built))
                     const acknowledgeMs = MEASURE && split !== null ? split.now() - acknowledgeStarted : 0
                     pending = null
                     resetShadows()
@@ -597,7 +608,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             if (pending === null || currentKey !== pending.manifestKey) {
                 return false
             }
-            previous = previousFrom(pending)
+            adopt(previousFrom(pending))
             pending = null
             resetShadows()
             return true
@@ -607,7 +618,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 throw new SavePlanError('The acknowledged encoding cannot be fast-forwarded while an attempt is pending.')
             }
             manifestKeyOf(next)
-            previous = next
+            adopt(next)
             fastForwarded = true
             resetShadows()
         },
@@ -725,7 +736,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             try {
                 const scoped = await planScopedEncode(
                     db,
-                    { env, lists: options.lists, seq: 0, createdAt: now(), previous, chunkMemo },
+                    { env, lists: options.lists, seq: 0, createdAt: now(), previous, chunkMemo, workspaceMemo },
                     { modules: false, characters: new Set<string>(), skipUnsavableCharacters: true, skipUnsavableItems: true },
                 )
                 return scoped.unchanged && scoped.skipped.length === 0 && scoped.skippedItems.length === 0 ? 'clean' : 'dirty'
@@ -743,6 +754,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         },
         shadowStats: () => ({ entries: shadows.size, charged: shadowsCharged }),
         chunkMemoStats: () => chunkMemo.stats(),
+        workspaceMemoStats: () => workspaceMemo.stats(),
         stubsNeedFullPass(db) {
             try {
                 return stubsNeedFullPassOver(db, previous)

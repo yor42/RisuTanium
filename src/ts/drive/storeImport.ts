@@ -23,7 +23,7 @@ import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { importableTaskPresets } from '../process/utility/taskPreset'
-import { toPlainJson } from '../storage/store2/codec/normalize'
+import { isJsonObject, toPlainJson } from '../storage/store2/codec/normalize'
 import type { JsonObject, JsonValue } from '../storage/blockFrame'
 import { usageCarryOf } from '../usage/usageLedger'
 import { noteMeasurePhase } from './importPhaseRing'
@@ -653,6 +653,16 @@ function pageThemePacks(db: Database): { themePacks: readonly JsonValue[] | unde
 }
 
 /**
+ * The page's utility workspaces as the import keeps them: plain objects read through the reactive proxy (a copy that does
+ * not follow later edits, every key and every file's text kept). A `.bin` carries none, so the profile keeps the page's own.
+ * An absent or non-list value gives none, and an item that is not an object is left out.
+ */
+function pageWorkspaces(db: Database): JsonObject[] {
+    const plain = toPlainJson(db.utilityWorkspaces)
+    return Array.isArray(plain) ? plain.filter(isJsonObject) : []
+}
+
+/**
  * The page's usage ledger keys and price overrides as the import keeps them: plain values read through the reactive proxy
  * (a copy that does not follow later edits). Each is present only when the page holds some.
  */
@@ -699,6 +709,8 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // A `.bin` carries no task presets, so the profile keeps the page's own, by value and as they are now (an unsaved edit
     // included). Taken once: every attempt imports the same list.
     const taskPresets = importableTaskPresets(getDatabase().taskPresets)
+    // The same for the utility workspaces: a `.bin` leaves them out, so the profile keeps the page's own, by value.
+    const utilityWorkspaces = pageWorkspaces(getDatabase())
     // The same for the installed theme packs and the active pack id: neither is in a `.bin`, so the profile keeps the
     // page's own, by value (a copy that is structured-cloneable and does not follow later edits).
     const { themePacks, activeThemePack } = pageThemePacks(getDatabase())
@@ -735,7 +747,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         }
         const streamRequest = stream === undefined
             ? null
-            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
+            : { stream, reader: request.reader, lists, taskPresets, utilityWorkspaces, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource | null = null
         // What the streamed prepare decided when it did not hand the file back to the whole path.
@@ -775,7 +787,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 }
                 outcome = await importLegacyTree(
                     {
-                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings,
+                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, utilityWorkspaces, themePacks, activeThemePack, usageStatics, usagePriceOverrides, ltmEngine, ltmSettings,
                         baseContent,
                     },
                     hooks,

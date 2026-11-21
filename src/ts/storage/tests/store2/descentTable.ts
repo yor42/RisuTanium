@@ -15,6 +15,7 @@ export const TEST_DESCENT: Readonly<Record<string, UnitType>> = {
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
     'fixed.moduleBuckets[]': UNIT_TYPE.moduleBucket,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
+    'fixed.workspaces[]': UNIT_TYPE.workspace,
 }
 
 /** The unit types whose bodies name further units: the manifest and every type `TEST_DESCENT` descends into. */
