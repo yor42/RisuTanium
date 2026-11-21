@@ -100,6 +100,10 @@ export function loadPolicy(root = defaultRoot) {
   root = canonicalRoot(root);
   const p = read(path.join(root, '.claude/workflow-policy.json'));
   if (p.version !== 1 || p.maxCorrectionAttempts !== 1 || p.nativePaidUsage !== false || p.openrouter.perJobUSD !== 0.5 || p.openrouter.perDayUSD !== 5 || p.openrouter.perMonthUSD !== 30) throw Error('Unsupported or unsafe policy');
+  // MC-2748 fixes the health-check window at 7 days and limits opt-in to Codex and Antigravity; a policy
+  // written before those fields existed gets the same values.
+  p.routeHealthMaxAgeDays ??= 7; p.optInProviders ??= ['codex', 'agy'];
+  if (p.routeHealthMaxAgeDays !== 7 || !Array.isArray(p.optInProviders) || p.optInProviders.some(x => !['codex', 'agy'].includes(x))) throw Error('Unsupported or unsafe policy');
   return p;
 }
 export function loadState(root = defaultRoot) {
@@ -120,6 +124,26 @@ export function mutateState(root, expectedGeneration, action) {
     return result;
   } finally { releaseLock(lock, held); }
 }
+// A policy revision bump would otherwise freeze every caller until the shared state names the new revision.
+// The state moves only from the predecessor the policy itself names, under the state lock, and an
+// already-adopted state is left alone so a repeated call is harmless.
+export function adoptRevision({ root = defaultRoot, from }) {
+  const p = loadPolicy(root); const file = stateFile(root); const lock = `${file}.lock`;
+  if (!from || p.previousRevision !== from) throw Error('The policy does not name that revision as its predecessor');
+  const held = acquireLock(lock);
+  try {
+    const s = read(file); const loaded = s.generation;
+    if (!Number.isInteger(loaded)) throw Error('State generation is not an integer');
+    if (s.policyRevision === p.revision) return { adopted: false, revision: p.revision, generation: loaded };
+    if (s.policyRevision !== from) throw Error('State is not at the named predecessor revision');
+    s.policyRevision = p.revision;
+    // A frozen state stays frozen on its old activeRevision; only an active one moves with the policy.
+    if (s.activeRevision === from) s.activeRevision = p.revision;
+    s.generation++;
+    atomicWrite(file, s, () => { if (!ownsLock(lock, held.token) || read(file).generation !== loaded) throw Error('Concurrent state write'); });
+    return { adopted: true, from, revision: p.revision, activeRevision: s.activeRevision, generation: s.generation };
+  } finally { releaseLock(lock, held); }
+}
 export async function paidActivation(root, policy) {
   root = canonicalRoot(root);
   if (!policy.openrouter.enabled) return { active: false, reasons: ['Paid activation disabled pending verified provider bounds/rates/key cap'] };
@@ -130,10 +154,22 @@ export async function paidActivation(root, policy) {
     return await module.paidAssessment({ config, apiKeyAvailable: !!process.env.OPENROUTER_API_KEY, ledgerPath: path.join(root, policy.openrouter.ledgerFile) });
   } catch { return { active: false, reasons: ['Paid activation evidence missing or invalid'] }; }
 }
-function available(s, key, now) {
+const dayMs = 24 * 60 * 60 * 1000;
+// A marker without a provider reset time expires routeHealthMaxAgeDays after it was observed; one with no
+// observation date never expires on its own and needs a refresh or a passed health check.
+function available(s, key, now, maxAgeMs) {
   const h = s.routeHealth[key];
-  return !h || (h.resetAt && Date.parse(h.resetAt) <= now);
+  if (!h || h.reason === 'passed') return true;
+  if (h.resetAt) return Date.parse(h.resetAt) <= now;
+  return Date.parse(h.observedAt) + maxAgeMs <= now;
 }
+// A health-check probe exists to re-test a route marked unavailable, so only a provider-observed future
+// reset (quota) holds it back.
+const probeAvailable = (s, key, now) => { const h = s.routeHealth[key]; return !h?.resetAt || Date.parse(h.resetAt) <= now; };
+const freshCheck = (s, key, now, maxAgeMs) => {
+  const h = s.routeHealth[key]; const age = now - Date.parse(h?.checkedAt);
+  return h?.reason === 'passed' && age >= 0 && age < maxAgeMs;
+};
 const classes = new Set(['code', 'records', 'device', 'documents']);
 const isWindows = process.platform === 'win32';
 const pathKey = value => {
@@ -204,7 +240,7 @@ function validateScheduling(d) {
     } else if (!/^[a-f0-9]{64}$/i.test(d.artifact?.sha256 ?? '') || !d.artifact?.sourceRevision) throw Error('Device run requires pinned artifact hash and source revision');
   }
 }
-export async function selectRoute({ root = defaultRoot, jobId, mode, role, workClass, testOnly = false, legacy = false, escalation, gate, effortReason, changedContracts = [], scoutEffort = 'medium', now = Date.now() }) {
+export async function selectRoute({ root = defaultRoot, jobId, mode, role, workClass, testOnly = false, legacy = false, escalation, gate, effortReason, changedContracts = [], scoutEffort = 'medium', optIn = null, healthCheck = false, now = Date.now() }) {
   safeId(jobId); const p = loadPolicy(root); const s = loadState(root);
   if (!['scout', 'implement', 'review'].includes(mode)) throw Error('Invalid mode');
   if (changedContracts.some(c => !p.criticalContracts.includes(c))) throw Error('Unknown critical contract');
@@ -244,9 +280,25 @@ export async function selectRoute({ root = defaultRoot, jobId, mode, role, workC
     if (role && role !== p.scheduling.testPrimary.role || changedContracts.length) throw Error('Test primary writes test files only and cannot carry critical contracts');
     routes = [p.scheduling.testPrimary];
   }
+  // MC-2748: native routes serve every ordinary dispatch whatever the policy order. An external route is
+  // used only when the dispatch names it in optIn and it passed a route-health check inside the window;
+  // the health-check probe itself is the one opt-in allowed without a passed check.
+  const maxAgeMs = p.routeHealthMaxAgeDays * dayMs;
+  if (healthCheck && optIn == null) throw Error('A route-health check names its provider in optIn');
+  if (optIn != null) {
+    if (!p.optInProviders.includes(optIn)) throw Error('Opt-in names Codex or Antigravity only');
+    if (healthCheck && mode === 'implement') throw Error('A route-health check is a read-only scout or review probe');
+    const candidates = routes.filter(route => route.provider === optIn);
+    if (!candidates.length) throw Error(`No ${optIn} route is eligible for this dispatch`);
+    if (!healthCheck && !freshCheck(s, optIn, now, maxAgeMs)) throw Error(`${optIn} opt-in needs a passed route-health check younger than ${p.routeHealthMaxAgeDays} days`);
+    routes = candidates;
+  } else {
+    for (const route of routes) if (route.provider !== 'claude') blocked.push(`${route.provider}: opt-in only`);
+    routes = routes.filter(route => route.provider === 'claude');
+  }
   for (const route of routes) {
     const key = route.provider;
-    if (!available(s, key, now)) { blocked.push(`${key}: cached unavailable`); continue; }
+    if (!(healthCheck ? probeAvailable(s, key, now) : available(s, key, now, maxAgeMs))) { blocked.push(`${key}: cached unavailable`); continue; }
     if (job?.failedRoutes?.includes(key)) { blocked.push(`${key}: bounded correction exhausted`); continue; }
     if (route.provider === 'openrouter') {
       const check = await paidActivation(root, p);
@@ -270,10 +322,12 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
   if (!input.question || !input.acceptance || !input.owner || !input.inputIdentity) throw Error('Dispatch needs question, acceptance, owner and inputIdentity');
   const changedContracts = input.changedContracts ?? [];
   const workClass = schedulingClass(input);
-  const route = await selectRoute({ root, jobId: input.logicalJobId, mode: input.mode, role: input.role, workClass, testOnly: input.testOnly === true, escalation: input.escalation, gate: input.gate, effortReason: input.effortReason, changedContracts, scoutEffort: input.effort ?? 'medium' });
+  if (input.optIn != null && typeof input.optIn !== 'string' || input.healthCheck != null && typeof input.healthCheck !== 'boolean') throw Error('optIn is a provider name and healthCheck a boolean');
+  const optIn = input.optIn ?? null; const healthCheck = input.healthCheck === true;
+  const route = await selectRoute({ root, jobId: input.logicalJobId, mode: input.mode, role: input.role, workClass, testOnly: input.testOnly === true, escalation: input.escalation, gate: input.gate, effortReason: input.effortReason, changedContracts, scoutEffort: input.effort ?? 'medium', optIn, healthCheck });
   if (!route.provider) throw Error(`No eligible route; park: ${route.blocked.join(', ')}`);
   if (input.provider && input.provider !== route.provider || input.model && input.model !== route.model || input.effort && input.effort !== route.effort) throw Error('Dispatch does not match eligible policy route');
-  const d = { ...input, provider: route.provider, model: route.model, effort: route.effort, role: route.role ?? input.role, requestedRole: input.role ?? null, timeoutMinutes: input.timeoutMinutes ?? route.timeoutMinutes, changedContracts, workClass, schedulingAmendment: p.scheduling.amendment, policyRevision: p.revision, repoRoot: input.repoRoot ?? root, coordinatorRoot: root };
+  const d = { ...input, optIn, healthCheck, provider: route.provider, model: route.model, effort: route.effort, role: route.role ?? input.role, requestedRole: input.role ?? null, timeoutMinutes: input.timeoutMinutes ?? route.timeoutMinutes, changedContracts, workClass, schedulingAmendment: p.scheduling.amendment, policyRevision: p.revision, repoRoot: input.repoRoot ?? root, coordinatorRoot: root };
   if (!Number.isInteger(d.timeoutMinutes) || d.timeoutMinutes < 1 || d.timeoutMinutes > p.timeouts.maximum) throw Error('Timeout outside policy');
   for (const list of ['readScope', 'allowedWrites']) {
     d[list] ??= []; if (!Array.isArray(d[list])) throw Error('Dispatch paths must be arrays');
@@ -295,8 +349,9 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
   try { return mutateState(root, state.generation, s => {
     if (s.activation !== 'active' || s.activeRevision !== p.revision) throw Error('Workflow is frozen');
     if (s.dispatches[d.id] || fs.existsSync(path.join(dispatchDir(root), `${d.id}.json`))) throw Error('Dispatch ID already used');
-    const job = s.jobs[d.logicalJobId] ?? { mode: d.mode, role: d.requestedRole, changedContracts, correctionCount: 0, failedRoutes: [], attempts: [] };
+    const job = s.jobs[d.logicalJobId] ?? { mode: d.mode, role: d.requestedRole, changedContracts, correctionCount: 0, failedRoutes: [], attempts: [], optIn: d.optIn };
     if (job.role !== d.requestedRole) throw Error('Logical job role changed');
+    if ((job.optIn ?? null) !== d.optIn) throw Error('Logical job cannot change its opt-in route');
     const priorClass = job.workClass ?? (job.attempts.length ? schedulingClass(s.dispatches[job.attempts[0]]) : d.workClass);
     if (priorClass !== d.workClass) throw Error('Logical job cannot change scheduling class');
     if (job.attempts.some(id => active.has(s.dispatches[id].status))) throw Error('Duplicate live logical job');
@@ -324,7 +379,7 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
       if (!prior || active.has(prior.status) || prior.owner === d.owner) throw Error('Independent review requires a finished different owner');
     }
     atomicWrite(receipt, d); wroteReceipt = true;
-    s.dispatches[d.id] = { hash: digest(d), logicalJobId: d.logicalJobId, mode: d.mode, provider: d.provider, model: d.model, role: d.role, owner: d.owner, workdir: d.workdir, repoRoot: d.repoRoot, allowedWrites: d.allowedWrites, workClass: d.workClass, resources: d.resources, status: 'registered' };
+    s.dispatches[d.id] = { hash: digest(d), logicalJobId: d.logicalJobId, mode: d.mode, provider: d.provider, model: d.model, role: d.role, owner: d.owner, workdir: d.workdir, repoRoot: d.repoRoot, allowedWrites: d.allowedWrites, workClass: d.workClass, resources: d.resources, healthCheck: d.healthCheck, status: 'registered' };
     job.workClass = d.workClass; job.attempts.push(d.id); job.status = 'registered'; s.jobs[d.logicalJobId] = job;
     return d;
   }); } catch (e) { if (wroteReceipt) { try { fs.unlinkSync(receipt); } catch {} } throw e; }
@@ -332,8 +387,11 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
 export async function validateDispatch(d, { root = defaultRoot, claim = false } = {}) {
   const p = loadPolicy(root); const s = loadState(root); const entry = s.dispatches[safeId(d.id)];
   if (s.activation !== 'active' || s.activeRevision !== p.revision) throw Error('Workflow frozen');
-  if (!entry || entry.hash !== digest(d) || digest(savedDispatch(root, d.id)) !== entry.hash || d.policyRevision !== p.revision || entry.status !== 'registered') throw Error('Unregistered, changed, stale or already consumed dispatch');
-  const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, testOnly: d.testOnly === true, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort });
+  // A receipt registered under the predecessor revision stays claimable across an adopted revision bump;
+  // its route is recomputed under the current policy below and must still match.
+  const knownRevision = d.policyRevision === p.revision || (p.previousRevision != null && d.policyRevision === p.previousRevision);
+  if (!entry || entry.hash !== digest(d) || digest(savedDispatch(root, d.id)) !== entry.hash || !knownRevision || entry.status !== 'registered') throw Error('Unregistered, changed, stale or already consumed dispatch');
+  const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, testOnly: d.testOnly === true, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort, optIn: d.optIn ?? null, healthCheck: d.healthCheck === true });
   if (route.provider !== d.provider || route.model !== d.model) throw Error('Route changed before dispatch');
   if (claim) mutateState(root, s.generation, next => { if (next.dispatches[d.id].status !== 'registered') throw Error('Dispatch already claimed'); next.dispatches[d.id].status = 'running'; });
   return d;
@@ -345,7 +403,16 @@ export function finishDispatch({ root = defaultRoot, id, status, reason, resetAt
   return mutateState(root, null, s => {
     const entry = s.dispatches[safeId(id)]; if (!entry || !active.has(entry.status)) throw Error('No live dispatch');
     const job = s.jobs[entry.logicalJobId]; entry.status = status; entry.evidence = evidence ?? null; job.status = status;
-    if (reason === 'quota' || reason === 'unavailable') {
+    if (entry.healthCheck) {
+      // The probe's outcome is the route-health record: completed passes the route for the window, anything
+      // else marks it unavailable. A probe is never corrected; the next check is a new probe.
+      const observedAt = new Date().toISOString();
+      if (status === 'completed' && !evidence) throw Error('A passed route-health check needs its evidence');
+      s.routeHealth[entry.provider] = status === 'completed'
+        ? { reason: 'passed', checkedAt: observedAt, evidence, dispatch: id }
+        : { reason: reason === 'quota' ? 'quota' : 'unavailable', resetAt: resetAt ?? null, evidence: evidence ?? 'route-health check did not pass', observedAt };
+      job.needsCorrection = false;
+    } else if (reason === 'quota' || reason === 'unavailable') {
       s.routeHealth[entry.provider] = { reason, resetAt: resetAt ?? null, evidence: evidence ?? 'host error; explicit refresh required', observedAt: new Date().toISOString() };
       job.needsCorrection = false;
     } else if (status !== 'completed') {
@@ -369,7 +436,7 @@ export function checkDevice({ root = defaultRoot, claim, result, required = fals
 }
 export async function hook(payload, { root = defaultRoot } = {}) {
   const s = loadState(root); const p = loadPolicy(root);
-  if (['SessionStart', 'SubagentStart'].includes(payload.hook_event_name)) return { hookSpecificOutput: { hookEventName: payload.hook_event_name, additionalContext: `Workflow ${p.revision}; activation=${s.activation}; generation=${s.generation}. Rules: AGENTS.md, CLAUDE.md and docs/workflow (governance v2). Current state is in Agents/Live-State.md, the latest lane handoff and GitHub project board 1 (issues on yor42/RisuTanium), not in this hook. Routing is native first (MC-2748); the policy still lists external routes first until #387, so never run workflow-control refresh for codex or agy. One session, worktree and PR per ticket. Preserve accepted scoped receipts and parked checks named in your brief. Register every Agent dispatch; use [workflow-dispatch:ID] in prompt. Paid fallback currently ${p.openrouter.enabled ? 'requires activation proof' : 'disabled until verified cost bounds'}.` } };
+  if (['SessionStart', 'SubagentStart'].includes(payload.hook_event_name)) return { hookSpecificOutput: { hookEventName: payload.hook_event_name, additionalContext: `Workflow ${p.revision}; activation=${s.activation}; generation=${s.generation}. Rules: AGENTS.md, CLAUDE.md and docs/workflow (governance v2). Current state is in Agents/Live-State.md, the latest lane handoff and GitHub project board 1 (issues on yor42/RisuTanium), not in this hook. Routing is native first (MC-2748): ordinary dispatches take the native role; Codex or agy only with optIn on the dispatch after a passed route-health check younger than ${p.routeHealthMaxAgeDays} days (docs/workflow/routing.md). One session, worktree and PR per ticket. Preserve accepted scoped receipts and parked checks named in your brief. Register every Agent dispatch; use [workflow-dispatch:ID] in prompt. Paid fallback currently ${p.openrouter.enabled ? 'requires activation proof' : 'disabled until verified cost bounds'}.` } };
   if (payload.hook_event_name !== 'PreToolUse' || payload.tool_name !== 'Agent') throw Error('Unexpected governance event');
   const match = payload.tool_input?.prompt?.match(/\[workflow-dispatch:([a-zA-Z0-9_.-]+)\]/);
   if (!match) throw Error('Register bounded dispatch first; native Agent requires [workflow-dispatch:ID]');
@@ -390,10 +457,11 @@ export async function main(args = process.argv.slice(2)) {
     const { jobs, dispatches, ...summary } = s;
     return { ...summary, jobCount: Object.keys(jobs).length, dispatchCount: Object.keys(dispatches).length, liveDispatches: Object.entries(dispatches).filter(([, entry]) => active.has(entry.status)).map(([id, entry]) => ({ id, ...entry })) };
   }
-  if (command === 'route') return selectRoute({ root, jobId: a.job, mode: a.mode, role: a.role, workClass: a['work-class'], testOnly: a['test-only'] === 'true', gate: a.gate, effortReason: a['effort-reason'], escalation: a.trigger ? { kind: a.trigger, evidence: a.evidence } : undefined, changedContracts: a.contracts?.split(',').filter(Boolean), scoutEffort: a.effort });
+  if (command === 'route') return selectRoute({ root, jobId: a.job, mode: a.mode, role: a.role, workClass: a['work-class'], testOnly: a['test-only'] === 'true', gate: a.gate, effortReason: a['effort-reason'], escalation: a.trigger ? { kind: a.trigger, evidence: a.evidence } : undefined, changedContracts: a.contracts?.split(',').filter(Boolean), scoutEffort: a.effort, optIn: a['opt-in'] ?? null, healthCheck: a['health-check'] === 'true' });
   if (command === 'register') return registerDispatch(read(a.file), { root });
   if (command === 'finish' || command === 'failure') return finishDispatch({ root, id: a.id, status: a.status ?? 'failed', reason: a.reason, resetAt: a.reset, evidence: a.evidence });
   if (command === 'refresh') return mutateState(root, null, s => { if (!['codex', 'agy', 'openrouter', 'claude'].includes(a.provider)) throw Error('Invalid provider'); delete s.routeHealth[a.provider]; return { refreshed: a.provider }; });
+  if (command === 'adopt-revision') return adoptRevision({ root, from: a.from });
   if (command === 'device') return checkDevice({ root, claim: a.claim, result: a.result, required: a.required === 'true', evidence: a.evidence });
   if (command === 'state') return mutateState(root, Number(a.generation), s => {
     const patch = read(a.file); const allowed = ['batch', 'stage', 'queue', 'acceptedReceipts', 'pendingClaims', 'parkedChecks', 'integrations', 'cutoverEvidence', 'activation', 'activeRevision'];
@@ -404,7 +472,7 @@ export async function main(args = process.argv.slice(2)) {
     let input = ''; for await (const chunk of process.stdin) input += chunk;
     return hook(JSON.parse(input), { root });
   }
-  return { usage: ['status', 'route --job ID --mode scout|implement|review [--role ROLE] [--work-class code|records|device|documents]', 'register --file ABS_DISPATCH_JSON', 'finish --id ID --status completed|partial|failed --evidence PATH', 'failure --id ID --reason quota|unavailable|failed [--reset ISO] --evidence PATH', 'refresh --provider NAME', 'state --file PATCH_JSON --generation N', 'device --claim ID --result pass|inconclusive|fail --required true --evidence PATH'], notes: 'No model invocation. State and dispatch locks fail closed; inspect owner before removing abandoned locks.' };
+  return { usage: ['status', 'route --job ID --mode scout|implement|review [--role ROLE] [--work-class code|records|device|documents] [--opt-in codex|agy [--health-check true]]', 'register --file ABS_DISPATCH_JSON', 'finish --id ID --status completed|partial|failed --evidence PATH', 'failure --id ID --reason quota|unavailable|failed [--reset ISO] --evidence PATH', 'refresh --provider NAME', 'adopt-revision --from PREVIOUS_REVISION', 'state --file PATCH_JSON --generation N', 'device --claim ID --result pass|inconclusive|fail --required true --evidence PATH'], notes: 'No model invocation. State and dispatch locks fail closed; inspect owner before removing abandoned locks.' };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().then(value => console.log(JSON.stringify(value, null, 2))).catch(error => { console.error(`Workflow blocked: ${error.message}`); process.exitCode = process.argv[2] === 'hook' ? 2 : 1; });

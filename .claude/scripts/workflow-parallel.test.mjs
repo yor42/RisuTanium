@@ -8,6 +8,8 @@ import { execFileSync } from 'node:child_process';
 import { registerDispatch, validateDispatch, selectRoute, finishDispatch, loadState, mutateState, hook, schedulingClass, normalizeResource, canonicalRoot } from './workflow-control.mjs';
 import { exportSnapshot } from '../../Agents/Tools/external/workspace.mjs';
 import { prepareWorker } from '../../Agents/Tools/external/worker.mjs';
+// The committed state snapshot is not the live state and may lag a policy revision; fixtures take the revision from the policy.
+const policyRevision = () => JSON.parse(fs.readFileSync(new URL('../workflow-policy.json', import.meta.url), 'utf8')).revision;
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'risu-parallel-'));
@@ -15,7 +17,7 @@ function fixture(t) {
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true }); fs.mkdirSync(path.join(root, 'Agents'));
   fs.copyFileSync(new URL('../workflow-policy.json', import.meta.url), path.join(root, '.claude/workflow-policy.json'));
   const state = JSON.parse(fs.readFileSync(new URL('../../Agents/Workflow-State.json', import.meta.url)));
-  Object.assign(state, { generation: 0, activation: 'active', activeRevision: state.policyRevision, jobs: {}, dispatches: {}, routeHealth: {}, integrations: [] });
+  Object.assign(state, { generation: 0, activation: 'active', policyRevision: policyRevision(), activeRevision: policyRevision(), jobs: {}, dispatches: {}, routeHealth: {}, integrations: [] });
   fs.writeFileSync(path.join(root, 'Agents/Workflow-State.json'), JSON.stringify(state));
   const make = (id, extra = {}) => {
     const manifestFile = path.join(root, `${id}.manifest.json`); fs.writeFileSync(manifestFile, '{}');
