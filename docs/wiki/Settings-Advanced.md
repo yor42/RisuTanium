@@ -45,7 +45,6 @@ These points apply across the whole page:
 | **Request Retrys when Fail** | `requestRetrys` | The number of times that the app retries a failed request. | 2 | 0–20 | always |
 | **Generation Choices** | `genTime` | The number of responses to generate on models that support it. The app treats every response after the first as a cached reroll. This can lower the cost. But it can also raise the cost if you use it without rerolling. | 1 | 0–4096 | always |
 | **Vision Quality** | `gptVisionQuality` | The quality of the model that detects images. Higher quality is more accurate, but it uses more tokens. | Low | Low, High | always |
-| **Request Location** | `requestLocation` | Adds a `risu-location` header to outgoing proxied requests: Default (no header), EU (GDPR), or US (FedRAMP). | Default | Default, EU (GDPR), US (FedRAMP) | web build only (not shown on Node-server or Tauri builds) |
 | **Autofill Request URL** | `autofillRequestUrl` | Fills in the request URL automatically to match the current model, when the model is set to reverse proxy. | true | none | always |
 | **Local Network Mode (Experimental)** (not translated, fallback label) | `localNetworkMode` | Routes private or LAN model URLs through the local runtime path instead of the direct fetch of the browser. This avoids the private-network and CORS restrictions of the browser. It controls the timeout field below. | false | none | always |
 | **Local Network Timeout (sec)** (not translated, fallback label) | `localNetworkTimeoutSec` | The timeout that applies to local-network requests. | 600 | 30–3600 | only when **Local Network Mode** is on |
@@ -125,7 +124,6 @@ Fork difference: Upstream has three more rows in this group: **Kei Server URL**,
 | Setting | Field | What it does | Default | Range/options | Shown when |
 |---|---|---|---|---|---|
 | **Chain of Thoughts** | `chainOfThought` | Adds a chain-of-thought prompt to the prompt. Its help text (shown through the help icon in the deprecation style) says that the toggle is no longer recommended. It says to put chain-of-thought prompting in other prompt entries instead. | not set (off) | none | **Show Unrecommended** on |
-| **Force Plain Fetch** | `usePlainFetch` | Forces the plain `fetch` API of the browser instead of the proxy or HTTP path of the platform. The help text warns that this can cause CORS errors. | not set (off) | none | **Show Unrecommended** on |
 | **Show Deprecated Trigger V1** | `showDeprecatedTriggerV1` | Shows the button for the editing of legacy V1 triggers even when no V1 triggers exist. | not set (off) | none | **Show Unrecommended** on |
 
 <!-- src/ts/setting/advancedSettingsData.ts:122,181-183; src/lang/en.ts:144,154,170,193 -->

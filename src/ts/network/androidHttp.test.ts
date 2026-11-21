@@ -31,7 +31,6 @@ type PlainInput = Parameters<typeof decidePlainFetch>[0]
 const base: PlainInput = {
     knownHost: false,
     isTauri: true,
-    usePlainFetch: false,
     plainFetchForce: false,
     plainFetchDeforce: false,
     localNetworkRoute: false,
@@ -51,20 +50,15 @@ afterEach(() => {
 
 describe('U1 decidePlainFetch', () => {
     test.each([
-        ['android http, the setting on', { android: true, protocol: 'http:', usePlainFetch: true }, false],
         ['android http, plainFetchForce on', { android: true, protocol: 'http:', plainFetchForce: true }, false],
-        ['android http, both on', { android: true, protocol: 'http:', usePlainFetch: true, plainFetchForce: true }, false],
         ['android http, neither', { android: true, protocol: 'http:' }, false],
-        ['android https, the setting on', { android: true, protocol: 'https:', usePlainFetch: true }, true],
         ['android https, plainFetchForce on', { android: true, protocol: 'https:', plainFetchForce: true }, true],
         ['android https, neither', { android: true, protocol: 'https:' }, false],
-        ['desktop http, the setting on', { protocol: 'http:', usePlainFetch: true }, true],
         ['desktop http, plainFetchForce on', { protocol: 'http:', plainFetchForce: true }, true],
-        ['desktop https, the setting on', { usePlainFetch: true }, true],
         ['desktop http, neither', { protocol: 'http:' }, false],
-        ['android https, deforce', { android: true, usePlainFetch: true, plainFetchDeforce: true }, false],
-        ['desktop, deforce', { usePlainFetch: true, plainFetchDeforce: true }, false],
-        ['desktop, the local-network route', { usePlainFetch: true, localNetworkRoute: true }, false],
+        ['android https, deforce', { android: true, plainFetchForce: true, plainFetchDeforce: true }, false],
+        ['desktop, deforce', { plainFetchForce: true, plainFetchDeforce: true }, false],
+        ['desktop, the local-network route', { plainFetchForce: true, localNetworkRoute: true }, false],
         ['web, a known local host', { isTauri: false, knownHost: true }, true],
         ['web, a known local host, deforce', { isTauri: false, knownHost: true, plainFetchDeforce: true }, false],
         ['tauri, a known local host alone', { knownHost: true }, false],
@@ -74,22 +68,22 @@ describe('U1 decidePlainFetch', () => {
 
     test('without Android it equals the existing rule for every input', () => {
         const flags = [false, true]
-        for (const knownHost of flags) for (const isTauri of flags) for (const usePlainFetch of flags)
+        for (const knownHost of flags) for (const isTauri of flags)
         for (const plainFetchForce of flags) for (const plainFetchDeforce of flags) for (const localNetworkRoute of flags)
         for (const protocol of ['http:', 'https:'] as const) {
-            const existing = ((knownHost && !isTauri) || usePlainFetch || plainFetchForce) && !plainFetchDeforce && !localNetworkRoute
-            expect(plainRule({ knownHost, isTauri, usePlainFetch, plainFetchForce, plainFetchDeforce, localNetworkRoute, protocol })).toBe(existing)
+            const existing = ((knownHost && !isTauri) || plainFetchForce) && !plainFetchDeforce && !localNetworkRoute
+            expect(plainRule({ knownHost, isTauri, plainFetchForce, plainFetchDeforce, localNetworkRoute, protocol })).toBe(existing)
         }
     })
 
     test('on Android only the http scheme is exempt, whatever else is set', () => {
         const flags = [false, true]
-        for (const knownHost of flags) for (const isTauri of flags) for (const usePlainFetch of flags)
+        for (const knownHost of flags) for (const isTauri of flags)
         for (const plainFetchForce of flags) for (const plainFetchDeforce of flags) for (const localNetworkRoute of flags) {
-            const rest = { knownHost, isTauri, usePlainFetch, plainFetchForce, plainFetchDeforce, localNetworkRoute, android: true }
+            const rest = { knownHost, isTauri, plainFetchForce, plainFetchDeforce, localNetworkRoute, android: true }
             expect(plainRule({ ...rest, protocol: 'http:' })).toBe(false)
             expect(plainRule({ ...rest, protocol: 'https:' })).toBe(
-                ((knownHost && !isTauri) || usePlainFetch || plainFetchForce) && !plainFetchDeforce && !localNetworkRoute)
+                ((knownHost && !isTauri) || plainFetchForce) && !plainFetchDeforce && !localNetworkRoute)
         }
     })
 })

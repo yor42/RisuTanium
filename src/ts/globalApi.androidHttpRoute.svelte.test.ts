@@ -1,8 +1,10 @@
 /**
  * The route `globalFetch` takes for an `http:` request on Android: the WebView fetch (the plain route) is refused by the
- * release build's cleartext policy, so an Android http request never takes it, whatever Force Plain Fetch says. Everything
+ * release build's cleartext policy, so an Android http request never takes it, whatever a request forces. Everything
  * else keeps its route: https on Android, every protocol on desktop and the web, and the deforce, local-network and
- * untrusted routes.
+ * untrusted routes. A saved Force Plain Fetch (`usePlainFetch`, kept only for `.bin` round trips) is ignored on every
+ * platform (CHORE-557 stage 3, MC-2347); the "ignored" rows are regression reproducers that fail before stage 3, where
+ * the saved value sent the request to the plain route.
  *
  * Drives the REAL `globalFetch` with the module mocks of `globalApi.untrustedNative.svelte.test.ts` (copied, not shared:
  * each suite mocks its own graph) and a box for the operating-system plugin. The WebView fetch, the HTTP plugin and the
@@ -54,7 +56,8 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
-    DBState: { db: {} },
+    // The proxy headers read DBState.db, the route rule getDatabase(): both see the same box.
+    DBState: { get db() { return box.db } },
     selectedCharID: writable(-1),
     selIdState: { selId: -1 },
     alertStore: writable({ type: 'none', msg: '' }),
@@ -338,26 +341,62 @@ describe('an http request on Android never takes the plain route', () => {
     })
 })
 
-describe('every other request keeps its route', () => {
-    test('G1 https on Android with Force Plain Fetch on takes the plain route', async () => {
+describe('a saved Force Plain Fetch is ignored', () => {
+    test('S1 https on Android goes through the HTTP plugin', async () => {
         box.db = { usePlainFetch: true }
 
         const result = await globalFetch(URL_HTTPS, { body: { a: 1 } })
 
-        expect(plain).toHaveBeenCalledTimes(1)
-        expect(httpMock).not.toHaveBeenCalled()
+        expect(plain).not.toHaveBeenCalled()
+        expect(httpMock).toHaveBeenCalledTimes(1)
         expect(result.ok).toBe(true)
     })
 
-    test.each([
-        ['desktop', 'windows'],
-        ['a page without the operating-system plugin', 'throw'],
-    ])('G2 http on %s with Force Plain Fetch on takes the plain route', async (_label, os) => {
-        box.os = os
+    test('S2 http on desktop goes through the HTTP plugin', async () => {
+        box.os = 'windows'
         box.db = { usePlainFetch: true }
-        platform.isTauri = os !== 'throw'
 
         const result = await globalFetch(URL_HTTP_PUBLIC, { body: { a: 1 } })
+
+        expect(plain).not.toHaveBeenCalled()
+        expect(httpMock).toHaveBeenCalledTimes(1)
+        expect(result.ok).toBe(true)
+    })
+
+    test('S3 a page without the operating-system plugin posts to its own /proxy2, never to the provider or the upstream hub', async () => {
+        box.os = 'throw'
+        box.db = { usePlainFetch: true, requestLocation: 'eu' }
+        platform.isTauri = false
+
+        await globalFetch(URL_HTTP_PUBLIC, { body: { a: 1 } })
+
+        expect(httpMock).not.toHaveBeenCalled()
+        expect(plain).toHaveBeenCalledTimes(1)
+        const [target, init] = plain.mock.calls[0] as [string, RequestInit]
+        expect(target).toBe('/proxy2')
+        expect(decodeURIComponent((init.headers as Record<string, string>)['risu-url'])).toBe(URL_HTTP_PUBLIC)
+        expect(init.headers).not.toHaveProperty('risu-location')
+    })
+
+    test('S4 with the setting off, a page without the operating-system plugin still posts to its own /proxy2, not the upstream hub', async () => {
+        box.os = 'throw'
+        box.db = { requestLocation: 'fedramp' }
+        platform.isTauri = false
+
+        await globalFetch(URL_HTTP_PUBLIC, { body: { a: 1 } })
+
+        expect(plain).toHaveBeenCalledTimes(1)
+        const [target, init] = plain.mock.calls[0] as [string, RequestInit]
+        expect(target).toBe('/proxy2')
+        expect(init.headers).not.toHaveProperty('risu-location')
+    })
+})
+
+describe('every other request keeps its route', () => {
+    test('G1 https on Android with plainFetchForce on one request takes the plain route (compatibility guard: passes before and after)', async () => {
+        box.db = {}
+
+        const result = await globalFetch(URL_HTTPS, { body: { a: 1 }, plainFetchForce: true })
 
         expect(plain).toHaveBeenCalledTimes(1)
         expect(httpMock).not.toHaveBeenCalled()
