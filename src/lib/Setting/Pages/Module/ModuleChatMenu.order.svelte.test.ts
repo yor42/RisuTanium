@@ -57,11 +57,14 @@ function installDb(modules: RisuModule[]): void {
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-function mountMenu(): HTMLElement {
+async function mountMenu(): Promise<HTMLElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ModuleChatMenu, { target, props: {} }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
+    flushSync()
+    // The window host reads the list's geometry in a microtask after mount; rows mount after that read.
+    await Promise.resolve()
     flushSync()
     return target
 }
@@ -81,15 +84,15 @@ afterEach(async () => {
 //#endregion
 
 describe('the chat module picker order', () => {
-    test('regression reproducer: rows follow the array order, not the name order', () => {
+    test('regression reproducer: rows follow the array order, not the name order', async () => {
         installDb([makeModule('B'), makeModule('A'), makeModule('C')])
-        const target = mountMenu()
+        const target = await mountMenu()
         expect(rowNames(target)).toEqual(['B', 'A', 'C'])
     })
 
     test('guard: the search filters the rows and keeps the array order', async () => {
         installDb([makeModule('Bx'), makeModule('A'), makeModule('Cx')])
-        const target = mountMenu()
+        const target = await mountMenu()
         const search = target.querySelector('input') as HTMLInputElement
         search.value = 'x'
         search.dispatchEvent(new Event('input', { bubbles: true }))
@@ -99,16 +102,16 @@ describe('the chat module picker order', () => {
 
     test('regression reproducer: toggling the second row in array order toggles that row\'s module', async () => {
         installDb([makeModule('B'), makeModule('A'), makeModule('C')])
-        const target = mountMenu()
+        const target = await mountMenu()
         const toggle = rows(target)[1].querySelectorAll('button')
         ;(toggle[toggle.length - 1] as HTMLButtonElement).click()
         await settle()
         expect(DBState.db.characters[0].chats[0].modules).toEqual(['id-A'])
     })
 
-    test('guard: the picker never reorders db.modules', () => {
+    test('guard: the picker never reorders db.modules', async () => {
         installDb([makeModule('B'), makeModule('A')])
-        mountMenu()
+        await mountMenu()
         expect(DBState.db.modules.map((m) => m.name)).toEqual(['B', 'A'])
     })
 })

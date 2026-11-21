@@ -5,6 +5,7 @@
     import MainMenu from '../MainMenu.svelte'
     import HomeEmptyHero from './HomeEmptyHero.svelte'
     import HomeGreeting from './HomeGreeting.svelte'
+    import HomeJumpRow from './HomeJumpRow.svelte'
     import HomeLibrary from './HomeLibrary.svelte'
     import '../../../styles/home-tokens.css'
     import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
@@ -12,7 +13,7 @@
     import HomeStoryShelf from './HomeStoryShelf.svelte'
     import HomeTopBar from './HomeTopBar.svelte'
     import { homeChrome } from './homeChrome.svelte'
-    import { hasLibraryContent } from './homeEmpties'
+    import { hasLibraryContent, liveCharacterCount } from './homeEmpties'
     import { homeBand } from './homeLayout'
     import { freezeStories, resolveFrozen } from './homeStories'
     import { jumpToSection, revealInScrollContainer, scrollContainerOf } from './homeJump'
@@ -162,6 +163,22 @@
         }
     }
 
+    // The jump row's RisuRealm entry: the same mechanism as the library reveal, on the panel's heading. Resolved
+    // inside this landing only; the panel is absent while the Realm view is open, and then nothing happens.
+    function jumpToRealm(): void {
+        reaim?.abort()
+        reaim = new AbortController()
+        const root = landingRoot
+        if (!root) return
+        const scroller = landingBody?.firstElementChild instanceof HTMLElement ? landingBody.firstElementChild : null
+        jumpToSection({
+            scroller,
+            target: root.querySelector<HTMLElement>('[data-jump-target="realm"]'),
+            reduced: reducedMotionActive(),
+            signal: reaim.signal,
+        })
+    }
+
     // Each explicit request (`openHomeLibrary`, `requestHomeLibrary`) reveals the library. The counter value read
     // at creation is not a request: a shell created after the Studio visit's window starts at the top. A shell
     // created by that visit's end reveals once instead (`resumedLibrary`).
@@ -187,6 +204,7 @@
 
 {#snippet homeHeader()}
     <HomeGreeting />
+    <HomeJumpRow {band} realmShown={!DBState.db.hideRealm} {libraryShown} liveCount={liveCharacterCount(DBState.db.characters)} onjumprealm={jumpToRealm} />
     <!-- On the phone the drawer carries the Characters entry. With no library content the hero is the only
          content, so there is no Characters button; the drawer keeps its entry (MC-2931). -->
     {#if band !== 'phone' && libraryShown}

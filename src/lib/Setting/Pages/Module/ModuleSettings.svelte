@@ -16,6 +16,9 @@
     import { convertModuleToCharacter } from "src/ts/interchangeability";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
     import { useModuleRow } from "src/ts/process/moduleUse";
+    import { createWindowHost } from "src/ts/windowing/windowHost.svelte";
+    import WindowedSegment from "src/lib/UI/Windowed/WindowedSegment.svelte";
+    import { matchingModulePositions, moduleListScroller, moduleRowKeys } from "./moduleListWindow";
     let tempModule:RisuModule = $state({
         name: '',
         description: '',
@@ -30,13 +33,19 @@
     let charConversionMode = $state(false)
     const uid = $props.id()
 
-    // Rows follow the order of db.modules; the search only filters.
-    function filterModules(modules:RisuModule[], search:string){
-        return modules.filter((v) => {
-            if(search === '') return true
-            return v.name.toLowerCase().includes(search.toLowerCase())
-        })
-    }
+    // Rows follow the order of db.modules; the search only filters. Only the rows near the scroller's
+    // view are mounted; a row is keyed by its module, so the search never changes a key.
+    const rowKeys = $derived(moduleRowKeys(DBState.db.modules))
+    const moduleByKey = $derived(new Map(rowKeys.map((key, i) => [key, DBState.db.modules[i]])))
+    const shownKeys = $derived(matchingModulePositions(DBState.db.modules, moduleSearch).map((i) => rowKeys[i]))
+    // About one row with a one-line description; each mounted row is measured.
+    const MODULE_ROW_FALLBACK_PX = 77
+    let listElement = $state<HTMLElement | null>(null)
+    const windowHost = createWindowHost({
+        root: () => listElement,
+        scroller: () => (listElement ? moduleListScroller(listElement) : null),
+    })
+    onDestroy(() => windowHost.dispose())
 
     // The editor (modes 1 and 2) changes modules while open without refreshing the chat;
     // closing it, by a button or by this component being destroyed, refreshes once.
@@ -66,11 +75,14 @@
 
     <TextInput className="mt-4" placeholder={language.search} label={language.search} bind:value={moduleSearch} />
 
-    <div class="contain w-full max-w-full mt-4 flex flex-col border-selected border-1 rounded-md flex-1 overflow-y-auto">
+    <div class="contain w-full max-w-full mt-4 flex flex-col border-selected border-1 rounded-md flex-1 overflow-y-auto" bind:this={listElement}>
         {#if DBState.db.modules.length === 0}
             <div class="text-textcolor2 p-3">{language.noModules}</div>
         {:else}
-            {#each filterModules(DBState.db.modules, moduleSearch) as rmodule, i}
+            <WindowedSegment host={windowHost} keys={shownKeys} height={{ fallback: MODULE_ROW_FALLBACK_PX }} class="flex flex-col">
+            {#snippet item(key, i)}
+            {@const rmodule = moduleByKey.get(key)}
+            {#if rmodule}
                 {#if i !== 0}
                     <div class="border-t-1 border-selected"></div>
                 {/if}
@@ -216,7 +228,9 @@
                 <div class="mt-1 mb-3 pl-3">
                     <span class="text-sm text-textcolor2">{rmodule.description || language.settingsPage.noDescriptionProvided}</span>
                 </div>
-            {/each}
+            {/if}
+            {/snippet}
+            </WindowedSegment>
         {/if}
     </div>
 

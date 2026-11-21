@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { hasLibraryContent, hasLiveCharacter, personaChipName } from './homeEmpties'
+import { hasLibraryContent, hasLiveCharacter, liveCharacterCount, personaChipName } from './homeEmpties'
 
 type Slot = { chaId?: string, trashTime?: number }
 
@@ -31,6 +31,22 @@ describe('hasLiveCharacter', () => {
 
     test.each(cases)('%s', (_name, characters, expected) => {
         expect(hasLiveCharacter(characters)).toBe(expected)
+    })
+})
+
+describe('liveCharacterCount', () => {
+    const cases: [string, readonly (Slot | null | undefined)[] | undefined, number][] = [
+        ['an undefined list', undefined, 0],
+        ['an empty list', [], 0],
+        ['null and undefined slots', [null, undefined], 0],
+        ['trashed characters', [slot('a', { trashTime: 3 }), slot('b', { trashTime: 4 })], 0],
+        ['hidden system characters', [slot('§playground'), slot('§temp')], 0],
+        ['live characters among trashed, hidden and null slots', [slot('a'), slot('b', { trashTime: 3 }), slot('§temp'), null, slot('c')], 2],
+        ['a live group counts once', [{ chaId: 'g1' }, slot('a')], 2],
+    ]
+
+    test.each(cases)('%s', (_name, characters, expected) => {
+        expect(liveCharacterCount(characters)).toBe(expected)
     })
 })
 
