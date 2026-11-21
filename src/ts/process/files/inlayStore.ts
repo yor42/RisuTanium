@@ -13,6 +13,7 @@ import {
     INLAY_BODY_PREFIX,
     INLAY_PREFIX,
     inlayBodyKey,
+    inlayIdFromBodyKey,
     inlayIdFromMetaKey,
     inlayMetaKey,
     newBodyToken,
@@ -128,6 +129,22 @@ export async function withInlayLock<T>(id: string, work: () => Promise<T>): Prom
             idTails.delete(id)
         }
     }
+}
+
+const inlaysWrittenThisPage = new Set<string>()
+
+function noteInlayWritten(id: string): void {
+    inlaysWrittenThisPage.add(id)
+}
+
+/** Whether `writeAppInlay` was entered for `id` on this page, whatever its outcome; the set only grows. */
+export function inlayWrittenThisPage(id: string): boolean {
+    return inlaysWrittenThisPage.has(id)
+}
+
+/** Empties the set of written ids; for tests only. */
+export function resetInlaysWrittenForTests(): void {
+    inlaysWrittenThisPage.clear()
 }
 
 function stringToBytes(text: string): { repr: 'string' | 'string16', bytes: Uint8Array } {
@@ -299,6 +316,7 @@ export async function writeAppInlay(store: ByteStore, id: string, value: object 
     if (metaKey === null || bodyKey === null) {
         throw new InlayKeyError(id)
     }
+    noteInlayWritten(id)
     const revoke = options.revokeRendered ?? true
     let prepared: PreparedBody | null
     try {
@@ -402,6 +420,70 @@ export async function removeAppInlay(store: ByteStore, id: string): Promise<void
         if (record !== null) {
             await store.delete(record.body, 'unconditional')
         }
+    })
+}
+
+/** Why `removeUnusedAppInlay` left an inlay: a stop condition, a changed database or a write by this page. */
+export type InlayVeto = 'stop' | 'changed' | 'written'
+
+export type RemoveUnusedInlayResult =
+    | { status: 'removed', bodies: number, bodyFailures: number, foreignBody: boolean }
+    | { status: 'kept', reason: 'unreadable' }
+    | { status: 'kept', reason: 'vetoed', veto: InlayVeto }
+
+/**
+ * Removes the inlay `id` for a deleting pass: the metadata first (the commit point, so a live metadata never names a
+ * missing body), then the body the record names, then the other bodies listed for the id. The caller holds
+ * `withInlayLock(id)`. `mayDelete` runs synchronously after the metadata is read and right before the metadata delete,
+ * with no await between them; a veto leaves every key. A metadata that is absent, damaged or of a newer version is
+ * kept. A failed metadata delete throws before any body is touched; a failed body delete is counted and the rest go
+ * on. A record whose body is not one of this id's bodies never has that body deleted. The render cached for `id` is
+ * dropped (and its object URL revoked) only once the metadata delete succeeded; an inlay that is kept keeps its
+ * render, which a staged attachment's preview may still show.
+ */
+export async function removeUnusedAppInlay(store: ByteStore, id: string, listedBodies: readonly string[], mayDelete: () => InlayVeto | null): Promise<RemoveUnusedInlayResult> {
+    const metaKey = inlayMetaKey(id)
+    if (metaKey === null) {
+        return { status: 'kept', reason: 'unreadable' }
+    }
+    return await inFlight(async (): Promise<RemoveUnusedInlayResult> => {
+        let record: InlayRecord | null
+        try {
+            record = await readRecord(store, id)
+        } catch {
+            record = null
+        }
+        if (record === null) {
+            return { status: 'kept', reason: 'unreadable' }
+        }
+        const veto = mayDelete()
+        if (veto !== null) {
+            return { status: 'kept', reason: 'vetoed', veto }
+        }
+        await store.delete(metaKey, 'unconditional')
+        dropInlayRender(id)
+        let bodies = 0
+        let bodyFailures = 0
+        let foreignBody = false
+        const remove = async (key: string): Promise<void> => {
+            try {
+                await store.delete(key, 'unconditional')
+                bodies++
+            } catch {
+                bodyFailures++
+            }
+        }
+        if (inlayIdFromBodyKey(record.body) === id) {
+            await remove(record.body)
+        } else {
+            foreignBody = true
+        }
+        for (const key of listedBodies) {
+            if (key !== record.body) {
+                await remove(key)
+            }
+        }
+        return { status: 'removed', bodies, bodyFailures, foreignBody }
     })
 }
 
