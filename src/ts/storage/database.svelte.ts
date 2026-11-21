@@ -2643,7 +2643,7 @@ async function absorbImportedProxy(db:Database, pre:{proxyKey?:unknown, proxyCon
 export async function importPreset(f:{
     name:string
     data:Uint8Array
-}|null = null){
+}|null = null):Promise<{cancelled: true}|void>{
     if(!f){
         f = await selectSingleFile(["json", "preset", "risupreset", "risup"])
     }
@@ -2660,8 +2660,22 @@ export async function importPreset(f:{
         }
         const decoded = await decodeMsgpack(fflate.decompressSync(data))
         console.log(decoded)
+        if(typeof decoded !== 'object' || decoded === null){
+            throw new Error(language.errors.presetFileUnknown)
+        }
+        if(decoded.type === 'presetBundle' && decoded.presetVersion === 2){
+            //The intake reads DBState.db when it runs: `db` below is not initialized on this path.
+            return (await import('./presetBundleFlow')).importPresetBundle(
+                decoded,
+                (raw) => trustImportedPreset(DBState.db, presetFromTemplate(raw)),
+                () => DBState.db
+            )
+        }
         if((decoded.presetVersion === 0 || decoded.presetVersion === 2) && decoded.type === 'preset'){
             pre = {...presetTemplate,...decodeMsgpack(Buffer.from(await decryptBuffer(decoded.preset ?? decoded.pres, 'risupreset')))}
+        }
+        if(pre === undefined){
+            throw new Error(language.errors.presetFileUnknown)
         }
     }
     else{
@@ -2731,10 +2745,28 @@ export async function importPreset(f:{
         }
         return
     }
-    pre.name ??= "Imported"
     if(!Array.isArray(db.botPresets)){
         db.botPresets = []
     }
+    db.botPresets.push(await trustImportedPreset(db, pre))
+}
+
+/** The preset a `.risup` file carries over the defaults, with its prompt template normalized, before the trust rule runs. */
+function presetFromTemplate(raw:Record<string, unknown>):botPreset{
+    const merged:botPreset = {...presetTemplate,...raw}
+    if(merged.promptTemplate !== undefined){
+        merged.promptTemplate = normalizePromptTemplate(merged.promptTemplate) ?? undefined
+    }
+    return merged
+}
+
+/**
+ * The trust rule every imported preset passes before it joins the user's list: single import and bundle import both
+ * run it, and no import path writes a preset without it. The order matters: the proxy key is blanked when it is a
+ * whole reference before it can join the user's store as a connection.
+ */
+async function trustImportedPreset(db:Database, pre:botPreset):Promise<botPreset>{
+    pre.name ??= "Imported"
     //An imported preset never chooses where the user's stored keys and headers are sent. This holds
     //for every model, sub-model, auxiliary or fallback model and format, because selecting the preset
     //copies these fields into the working settings and a later model switch can consume any of them,
@@ -2750,7 +2782,7 @@ export async function importPreset(f:{
     pre.proxyKey = typeof pre.proxyKey === 'string' ? blankSecretRef(pre.proxyKey) : ''
     await absorbImportedProxy(db, pre)
     pre.openAIKey = ''
-    db.botPresets.push(freshPresetMeta(pre, {keepFolder: false}))
+    return freshPresetMeta(pre, {keepFolder: false})
 }
 
 function normalizePromptRole(role: unknown): 'user'|'bot'|'system'|null {
