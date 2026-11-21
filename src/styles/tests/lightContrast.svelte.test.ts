@@ -89,6 +89,7 @@ import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
 import { buildAppliedText, commitPackSheet, resetPackSheetForTests } from 'src/ts/themePack/apply'
 import { judgeAreaSheet } from 'src/ts/themePack/index'
 import { declareSurface, installThemePackGate, resetThemePackGateForTests } from 'src/ts/themePack/surfaceGate.svelte'
+import { chatCommitInput } from 'src/ts/themePack/fixtures/packCommit'
 import type { TaskToastInit } from 'src/ts/toast/toastHost.svelte'
 import Button from 'src/lib/UI/GUI/Button.svelte'
 import MultiLangDisplay from 'src/lib/UI/GUI/MultiLangDisplay.svelte'
@@ -406,7 +407,7 @@ describe('the task toast text', () => {
                 const builtin = BUILTIN_PACKS.find((p) => p.id === variant)!
                 const judged = judgeAreaSheet('chat', builtin.chatCss, undefined, 'chat')
                 expect(judged.result.ok).toBe(true)
-                expect(commitPackSheet({ text: buildAppliedText(judged, () => ''), blobs: [] })).toEqual({ ok: true })
+                expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
             }
             rules = compileRules(withPackElement(toastSheets, document.querySelector<HTMLStyleElement>('style[data-theme-pack]')))
         })

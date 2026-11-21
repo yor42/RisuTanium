@@ -180,6 +180,7 @@ import { updateColorScheme } from '../../ts/gui/colorscheme'
 import { packBaseTone } from '../../ts/gui/surfaceTone'
 import { BUILTIN_PACKS } from '../../ts/themePack/builtins'
 import { buildAppliedText, commitPackSheet, resetPackSheetForTests } from '../../ts/themePack/apply'
+import { chatCommitInput } from '../../ts/themePack/fixtures/packCommit'
 import { judgeAreaSheet } from '../../ts/themePack/index'
 import { installThemePackGate, resetThemePackGateForTests, syncThemePackMedia } from '../../ts/themePack/surfaceGate.svelte'
 import { setShellEnabled } from '../../ts/chatShell/shellSwitch.svelte'
@@ -320,7 +321,7 @@ function pack(id: string) {
 async function commitJudged(css: string): Promise<void> {
     const judged = judgeAreaSheet('chat', css, undefined, 'chat')
     expect(judged.result.ok, JSON.stringify(judged.result)).toBe(true)
-    expect(commitPackSheet({ text: buildAppliedText(judged, () => ''), blobs: [] })).toEqual({ ok: true })
+    expect(commitPackSheet(chatCommitInput(buildAppliedText(judged, () => '')))).toEqual({ ok: true })
     await settle()
 }
 

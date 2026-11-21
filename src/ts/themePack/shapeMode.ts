@@ -7,6 +7,7 @@
 // judge's declaration allowlist later is stripped until it is classified here. The scope allowlist is a strict superset of
 // SHAPE_PROPERTY; shapeMode.test.ts pins the partition.
 import { decls } from './csslit'
+import type { AppliedArea } from './intake'
 
 /** The properties of the judge's declaration allowlist that carry no colour, image or gradient. Everything else on that allowlist counts as paint. */
 export const SHAPE_PROPERTY: readonly RegExp[] = [
@@ -52,6 +53,30 @@ export const SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([
     '--thread-max-width', '--transcript-padding-bottom', '--transcript-padding-top', '--transcript-padding-top-strip', '--transcript-padding-x',
 ])
 
+/**
+ * Studio's live geometry tokens: the names src/lib/Studio reads, each only as the size of a geometry utility (never in a paint
+ * property), so a pack value in them cannot add a colour. shapeMode.test.ts scans the consumers and pins the set.
+ */
+const STUDIO_GEOMETRY_TOKEN_NAMES: readonly string[] = ['--studio-form-row-height', '--studio-size-touch', '--studio-tree-width']
+const STUDIO_SHAPE_TOKEN_NAMES: ReadonlySet<string> = new Set([...SHAPE_TOKEN_NAMES, ...STUDIO_GEOMETRY_TOKEN_NAMES])
+
+/**
+ * The custom properties an applied area's shape variant keeps. Chat keeps its own list. Studio keeps the chat list, which its
+ * allowlist also accepts, and its geometry tokens; a test pins both against `allowedTokenNames('studio')`.
+ */
+export function shapeTokenNames(area: AppliedArea): ReadonlySet<string> {
+    return area === 'studio' ? STUDIO_SHAPE_TOKEN_NAMES : SHAPE_TOKEN_NAMES
+}
+
+/** True when the text declares nothing: empty, comment-only, or only rule blocks emptied by the shape strip. */
+export function hasNoDeclarations(text: string): boolean {
+    try {
+        return decls(text).length === 0
+    } catch {
+        return true
+    }
+}
+
 const ROOT_SELECTOR = /^(:root|html)$/i
 // Anything that fetches or draws an image. Only list-style and cursor can carry one among the shape properties.
 const IMAGE_VALUE = /(?:^|[^\w-])(?:url|image|image-set|-webkit-image-set|cross-fade|element|paint)\(|-gradient\(/i
@@ -76,8 +101,8 @@ function selectorList(selector: string): string[] {
     return parts.map((part) => part.trim())
 }
 
-function keepsCustomProperty(name: string): boolean {
-    return SHAPE_TOKEN_NAMES.has(name) || name.startsWith('--pack-')
+function keepsCustomProperty(name: string, names: ReadonlySet<string>): boolean {
+    return names.has(name) || name.startsWith('--pack-')
 }
 
 /**
@@ -91,14 +116,14 @@ function keepsCustomProperty(name: string): boolean {
  * - A `@font-face` block is kept whole: a font is typography.
  * Deterministic and never throws; a sheet the walker cannot read gives `''`, which applies nothing.
  */
-export function shapeOnlySheet(canonical: string): string {
+export function shapeOnlySheet(canonical: string, names: ReadonlySet<string> = SHAPE_TOKEN_NAMES): string {
     try {
         const cuts: Array<[number, number]> = []
         for (const decl of decls(canonical)) {
             if (decl.ctx.at.some((prelude) => /^@font-face\b/i.test(prelude))) continue
             let keep: boolean
             if (decl.prop.startsWith('--')) {
-                keep = keepsCustomProperty(decl.prop)
+                keep = keepsCustomProperty(decl.prop, names)
             } else if (!decl.ctx.keyframes && selectorList(decl.ctx.selector).every((part) => ROOT_SELECTOR.test(part))) {
                 keep = false
             } else {

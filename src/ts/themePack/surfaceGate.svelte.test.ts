@@ -12,8 +12,9 @@ import {
     installThemePackGate,
     registerThemePackElement,
     resetThemePackGateForTests,
+    screenMasked,
     setThemePackElementBase,
-    shownSurface,
+    shownScreen,
     syncThemePackMedia,
 } from './surfaceGate.svelte'
 
@@ -34,24 +35,24 @@ afterEach(() => {
     document.head.innerHTML = ''
 })
 
-describe('shownSurface', () => {
+describe('shownScreen', () => {
     test('is null while no gate is installed, even with a declaration', () => {
         declareSurface('chat')
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('is null with the gate installed and nothing declared', () => {
         installThemePackGate(() => cover.on)
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('is chat when declared and not covered', () => {
         installThemePackGate(() => cover.on)
         declareSurface('chat')
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 
     test('is null while covered and chat again after the cover lifts', () => {
@@ -59,10 +60,10 @@ describe('shownSurface', () => {
         declareSurface('chat')
         cover.on = true
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         cover.on = false
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 
     test('is null after the release', () => {
@@ -71,7 +72,7 @@ describe('shownSurface', () => {
         flushSync()
         release()
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('two declarations then one release stay chat', () => {
@@ -81,7 +82,7 @@ describe('shownSurface', () => {
         flushSync()
         first()
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 
     test('a double release is a no-op', () => {
@@ -91,7 +92,7 @@ describe('shownSurface', () => {
         first()
         first()
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 
     test('a second install keeps the first cover', () => {
@@ -100,7 +101,7 @@ describe('shownSurface', () => {
         declareSurface('chat')
         cover.on = true
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('a release that outlives a reset does not touch the new count', () => {
@@ -111,7 +112,7 @@ describe('shownSurface', () => {
         declareSurface('chat')
         stale()
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 })
 
@@ -383,6 +384,99 @@ describe('the light base: the attribute value and the tone follow the base the e
         syncThemePackMedia()
         expect(value()).toBe('')
         expect(get(packBaseTone)).toBe('dark')
+    })
+})
+
+describe('S4a the studio screen: at most one screen sheet is on, and the mask is per area', () => {
+    const ATTRIBUTE = 'data-theme-pack-base'
+
+    function sheet(area: string, base: 'dark' | 'light' | null): HTMLStyleElement {
+        const element = document.createElement('style')
+        element.setAttribute('data-theme-pack', area)
+        element.setAttribute('media', 'not all')
+        document.head.appendChild(element)
+        registerThemePackElement(element, area, base)
+        return element
+    }
+
+    test('G1: a studio element is on while studio is declared and not masked', () => {
+        installThemePackGate(() => false)
+        const studio = sheet('studio', null)
+        declareSurface('studio')
+        syncThemePackMedia()
+        expect(studio.getAttribute('media')).toBe('all')
+    })
+
+    test('G2: screenMasked masks chat while settings or studio is open, and studio while settings is open or studio is closed', () => {
+        const open = (settingsOpen: boolean, studioOpen: boolean) => ({ settingsOpen, studioOpen })
+        expect(screenMasked('chat', open(false, false))).toBe(false)
+        expect(screenMasked('chat', open(true, false))).toBe(true)
+        expect(screenMasked('chat', open(false, true))).toBe(true)
+        expect(screenMasked('chat', open(true, true))).toBe(true)
+        expect(screenMasked('studio', open(false, false))).toBe(true)
+        expect(screenMasked('studio', open(false, true))).toBe(false)
+        expect(screenMasked('studio', open(true, true))).toBe(true)
+        expect(screenMasked('studio', open(true, false))).toBe(true)
+    })
+
+    test('G3: with chat and studio both declared and unmasked, only studio is on', () => {
+        installThemePackGate(() => false)
+        const chat = sheet('chat', 'dark')
+        const studio = sheet('studio', null)
+        declareSurface('chat')
+        declareSurface('studio')
+        syncThemePackMedia()
+        expect(studio.getAttribute('media')).toBe('all')
+        expect(chat.getAttribute('media')).toBe('not all')
+        expect(shownScreen()).toBe('studio')
+    })
+
+    test('G4: a null-base studio element on beside an off light chat element sets no base attribute and no tone', () => {
+        installThemePackGate(() => false)
+        sheet('chat', 'light')
+        const studio = sheet('studio', null)
+        declareSurface('chat')
+        declareSurface('studio')
+        syncThemePackMedia()
+        expect(studio.getAttribute('media')).toBe('all')
+        expect(document.documentElement.hasAttribute(ATTRIBUTE)).toBe(false)
+        expect(get(packBaseTone)).toBeNull()
+    })
+
+    test('a declared studio whose mask is true is off, and the area under it shows chat', () => {
+        installThemePackGate((area) => area === 'studio')
+        const chat = sheet('chat', 'dark')
+        const studio = sheet('studio', null)
+        declareSurface('chat')
+        declareSurface('studio')
+        syncThemePackMedia()
+        expect(studio.getAttribute('media')).toBe('not all')
+        expect(chat.getAttribute('media')).toBe('all')
+        expect(shownScreen()).toBe('chat')
+    })
+
+    test('the mask is asked for the area it decides: chat masked, studio shown', () => {
+        installThemePackGate((area) => area === 'chat')
+        const chat = sheet('chat', 'dark')
+        const studio = sheet('studio', null)
+        declareSurface('chat')
+        declareSurface('studio')
+        syncThemePackMedia()
+        expect(studio.getAttribute('media')).toBe('all')
+        expect(chat.getAttribute('media')).toBe('not all')
+    })
+
+    test('a released studio leaves chat on at the next sync', () => {
+        installThemePackGate(() => false)
+        const chat = sheet('chat', 'dark')
+        const studio = sheet('studio', null)
+        declareSurface('chat')
+        const release = declareSurface('studio')
+        syncThemePackMedia()
+        release()
+        flushSync()
+        expect(studio.getAttribute('media')).toBe('not all')
+        expect(chat.getAttribute('media')).toBe('all')
     })
 })
 
