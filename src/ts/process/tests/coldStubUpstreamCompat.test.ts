@@ -14,7 +14,8 @@
  */
 import { describe, test, expect } from 'vitest'
 import type { character } from '../../storage/database.svelte'
-import { buildColdStub, coldUnitCharacter } from '../coldCharacter'
+import { coldUnitCharacter } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 import { isTrashPurgeDue } from '../../storage/trashPurge'
 
 // Upstream's purge age. It is a literal of the model, not this fork's constant:

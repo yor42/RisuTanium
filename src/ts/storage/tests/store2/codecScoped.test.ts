@@ -6,7 +6,7 @@ import {
     type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation, type PreviousEncoding,
 } from '../../store2/codec'
 import { planWholeTreeInstall } from '../../store2/legacy/install'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import type { character, Database } from '../../database.svelte'
 import { REQ_CHAT_ALT, REQ_MODULE_BUCKETS, UNIT_TYPE, type ShardEntry } from '../../store2/format'
 import {

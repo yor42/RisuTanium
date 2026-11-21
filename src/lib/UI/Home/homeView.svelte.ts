@@ -9,14 +9,26 @@ import { afterFlush } from '../../../ts/afterFlush'
  */
 export type HomeViewName = 'landing' | 'library'
 
-export const homeView: { view: HomeViewName } = $state({ view: 'landing' })
+/**
+ * `libraryEngaged` is the Home library's own signal, separate from `view`: the library is embedded in the
+ * landing, so a user can be in it while `view` is still the landing. It is true once, during this HomeShell
+ * visit, the library was opened, requested or touched, and a pending last-character restore reads it (a
+ * restore must never win over the user). `view === 'library'` implies it. Reset by every `startHomeView`.
+ */
+export const homeView: { view: HomeViewName, libraryEngaged: boolean } = $state({ view: 'landing', libraryEngaged: false })
 
 // A library requested by the end of a Home-opened Studio visit, not yet used by a HomeShell creation.
 // Deliberately not reactive: it is read once, at creation.
 let pendingResume = false
 
+/** Marks the library as used this visit: a touch inside the embedded section, or any entry into the library. */
+export function engageHomeLibrary(): void {
+    homeView.libraryEngaged = true
+}
+
 export function openHomeLibrary(): void {
     homeView.view = 'library'
+    engageHomeLibrary()
 }
 
 export function showHomeLanding(): void {
@@ -32,6 +44,7 @@ export function showHomeLanding(): void {
  */
 export function requestHomeLibrary(): void {
     homeView.view = 'library'
+    engageHomeLibrary()
     pendingResume = true
     void afterFlush().then(() => {
         pendingResume = false
@@ -70,5 +83,6 @@ export function startHomeView(): HomeViewName {
     pendingResume = false
     if (view === 'landing') returnFocusChaId = null
     homeView.view = view
+    homeView.libraryEngaged = view === 'library'
     return view
 }

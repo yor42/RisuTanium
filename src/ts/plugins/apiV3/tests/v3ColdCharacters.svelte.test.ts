@@ -243,7 +243,7 @@ import { DBState, selectedCharID } from '../../../stores.svelte'
 import { registerDbChangeEffects } from '../../../storage/dbChangeEffects.svelte'
 import { RisuSaveEncoder, decodeRisuSave } from '../../../storage/risuSave'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../../storage/characterSaveMarks'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { restoreColdCharacter } from '../../../process/coldCharacterRestore'
 
 //#region fixtures

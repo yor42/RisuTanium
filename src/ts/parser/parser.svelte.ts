@@ -32,6 +32,7 @@ import { escapeHtmlText } from '../htmlEscape'
 import { formatMiB } from '../drive/backupUpstreamSizes'
 import { registerGuiReloadHook } from '../guiReloadHooks'
 import { untrack } from 'svelte'
+import { sha256Hex } from '../assetHash'
 
 const markdownItOptions = {
     html: true,
@@ -519,11 +520,10 @@ function getEmoSrc(emoArr: string[][], emoPaths: AssetPaths) {
 
 // Only short URLs (a file or asset-protocol URL, a service-worker URL, an
 // asset-route URL) accumulate here. A `data:` result is never added, whichever
-// branch of getFileSrc made it: it already sits in getFileSrc's own budgeted
-// cache in globalApi.svelte.ts, so pinning a second permanent copy here would
-// make this Map unbounded. A `blob:` result is never added either: its asset
-// can be deleted, which revokes the URL, and a pinned copy would then outlive
-// it while getFileSrc answers from its own map in constant time. An empty
+// branch of getFileSrc made it: it holds the whole payload, so pinning it here
+// would make this Map unbounded; getFileSrc reads it afresh on each call. A
+// `blob:` result is never added either: its asset can be deleted, which
+// revokes the URL, and a pinned copy would then outlive it. An empty
 // result (no URL could be made) is not kept either, so the next call asks
 // again. The key carries the use: a URL made for a media element must never
 // answer a `'whole'` request for the same path, which may have been withheld.
@@ -1306,7 +1306,7 @@ function decodeStyleContent(hexText:string):{css?:string, fallback?:string}{
 }
 
 export async function hasher(data:Uint8Array){
-    return Buffer.from(await crypto.subtle.digest("SHA-256", data as any)).toString('hex');
+    return sha256Hex(data)
 }
 
 export type CbsConditions = {

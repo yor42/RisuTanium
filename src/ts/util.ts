@@ -540,54 +540,36 @@ export function getAuthorNoteDefaultText(){
 // same key reuses the same nonce. They stay byte-compatible so existing .risup, rcc and
 // translator preset files, including upstream's, still open. Never use them for .rtb or
 // any secret; a secret needs a separate helper with a random IV and a real key derivation.
-export async function encryptBuffer(data:Uint8Array, keys:string){
+// The bytes do not depend on the backend: the key, the zero nonce and the empty AAD are fixed.
+export async function encryptBuffer(data:Uint8Array, keys:string):Promise<ArrayBuffer>{
+    const { selectAead } = await import('./drive/rtb/sealed/aead')
+    const { sha256 } = await import('@noble/hashes/sha2.js')
+    const aead = selectAead()
     // hash the key to get a fixed length key value
-    const keyArray = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(keys))
-
-    const key = await window.crypto.subtle.importKey(
-        "raw",
-        keyArray,
-        "AES-GCM",
-        false,
-        ["encrypt", "decrypt"]
-    )
-
-    // use web crypto api to encrypt the data
-    const result = await window.crypto.subtle.encrypt(
-        {
-            name: "AES-GCM",
-            iv: new Uint8Array(12),
-        },
-        key,
-        asBuffer(data)
-    )
-
-    return result
+    const key = await aead.importKey(sha256(new TextEncoder().encode(keys)))
+    return exactArrayBuffer(await aead.seal(key, new Uint8Array(12), data, new Uint8Array(0)))
 }
 
-export async function decryptBuffer(data:Uint8Array, keys:string){
+export async function decryptBuffer(data:Uint8Array, keys:string):Promise<ArrayBuffer>{
+    const { selectAead } = await import('./drive/rtb/sealed/aead')
+    const { sha256 } = await import('@noble/hashes/sha2.js')
+    const aead = selectAead()
     // hash the key to get a fixed length key value
-    const keyArray = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(keys))
+    const key = await aead.importKey(sha256(new TextEncoder().encode(keys)))
+    const result = await aead.open(key, new Uint8Array(12), data, new Uint8Array(0))
+    if(result === null){
+        // WebCrypto's name for an authentication failure, so both backends reject alike
+        throw new DOMException('The operation failed for an operation-specific reason', 'OperationError')
+    }
+    return exactArrayBuffer(result)
+}
 
-    const key = await window.crypto.subtle.importKey(
-        "raw",
-        keyArray,
-        "AES-GCM",
-        false,
-        ["encrypt", "decrypt"]
-    )
-
-    // use web crypto api to encrypt the data
-    const result = await window.crypto.subtle.decrypt(
-        {
-            name: "AES-GCM",
-            iv: new Uint8Array(12),
-        },
-        key,
-        asBuffer(data)
-    )
-
-    return result
+/** An ArrayBuffer holding exactly the bytes of the view, never a larger or offset backing buffer. */
+function exactArrayBuffer(bytes:Uint8Array):ArrayBuffer{
+    if(bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength){
+        return bytes.buffer
+    }
+    return bytes.slice().buffer
 }
 
 export function toState<T>(t:T):Writable<T>{

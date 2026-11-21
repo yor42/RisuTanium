@@ -517,6 +517,21 @@ export const languageEnglish = {
     replyNotificationsSetting: 'Reply notifications',
     replyNotificationsHelp: 'Get a notification when a reply finishes in a chat you are not looking at.',
     replyNotificationsBlocked: 'Notifications are off for RisuTanium in Android settings. Tap the switch to open them.',
+    seasonalLogoSetting: 'Seasonal logo',
+    seasonalLogoHelp: 'Animate the top-bar logo on holidays and special days. It plays once a day; tap the logo to replay it.',
+    seasonalReplayHint: 'Replay the animation',
+    seasonalSkipHint: 'Skip the animation',
+    seasonalSantaHat: 'Santa hat, a hidden game',
+    seasonalGameTitle: 'Santa hat game',
+    seasonalGameClose: 'Close',
+    seasonalGameScore: 'Score',
+    seasonalGameTime: 'Time',
+    seasonalGamePlay: 'Play',
+    seasonalGamePlayAgain: 'Play again',
+    seasonalGameTarget: 'Santa hat target',
+    seasonalGameHint: 'Hit the hat as often as you can in 20 seconds. Escape closes.',
+    seasonalGameTimeUp: 'Time is up, score',
+    seasonalGameClosed: 'Santa hat game closed',
     keepAliveSpeaking: 'Reading the reply aloud',
     keepAliveImage: 'Generating an image…',
     keepAliveTranslating: 'Translating…',
@@ -713,6 +728,17 @@ export const languageEnglish = {
     backupNounItems: 'Items',
     backupTaskDone: 'Backup saved',
     backupTaskFailed: "Couldn't save the backup",
+    restoreTaskTitle: 'Restoring a backup',
+    restorePointTaskTitle: 'Restoring from a restore point',
+    restoreOldTaskTitle: 'Restoring an older backup',
+    restoreStepSave: 'Save your current data first',
+    restoreStepRead: 'Read the backup',
+    restoreStepTabs: 'Check other tabs',
+    restoreStepCopy: 'Copy files',
+    restoreStepFinishFiles: 'Finish copying files',
+    restoreStepLoad: 'Load the backup',
+    restoreStepFinish: 'Restore other settings',
+    restoreStepCleanup: 'Finish start-up clean-up',
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done} saved, ${found} found so far` : `${done} saved, ${found} found so far`,
     formating: {
         main: "Main Prompt",
@@ -757,14 +783,10 @@ export const languageEnglish = {
             `A request still contains the environment variable reference ${name}. It was not sent.`,
         ttsAppKeyForeignHost: "This character sends text-to-speech requests to another server, so the app-wide OpenAI key was not sent. Enter an API key in the character's text-to-speech settings to use that server.",
         storageServerNeedsUpdate: "This server is too old for the new storage format: it must be updated or restarted before it can save or clean up. Restart the Node server (update it first if you have not), then reload this page.",
-        coldStorageRestoreFailed: "Cold storage data could not be loaded. The affected character's data may be permanently lost.",
-        coldStorageRestoreUnreadable: "This character could not be loaded right now. Nothing was changed. Please try again.",
         coldStorageNamedRestoreFailed: (characterName: string) =>
             `The archived character ${characterName} could not be loaded: its cold storage data is missing or invalid, and may be permanently lost. Nothing was changed.`,
         coldStorageNamedRestoreUnreadable: (characterName: string) =>
             `The archived character ${characterName} could not be loaded right now. Nothing was changed. Please try again.`,
-        coldStorageRestoreUnavailable: "Archived characters can't be opened on this page: this browser offers no storage for them here (for example on a plain-HTTP address). Nothing was changed.",
-        coldStorageRestoreDamaged: "This character's archived copy could not be read: it may be damaged. Nothing was changed or deleted.",
         coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
             `The alternative replies of these chats of ${characterName} could not be read and were left out: ${chatNames}. The conversations themselves were loaded intact.`,
         chatAltUnreadable: "The alternative replies of this chat cannot be read, so it cannot be rerolled or branched. Nothing was changed.",
@@ -1795,6 +1817,9 @@ export const languageEnglish = {
     triggerInputLabels: {
         value: "Value",
         var: "Variable",
+        operandType: "{label} type",
+        operandA: "A",
+        operandB: "B",
         varName: "Variable Name",
         outputVar: "Output Variable",
         name: "Name",
@@ -2263,6 +2288,11 @@ export const languageEnglish = {
     homeLinkEmailDescription: "Contact the developer directly.",
     homeCommunityHeading: "Community and source",
     homeSideLabel: "Discover and community",
+    homeStoriesHeading: "Continue your story",
+    homeStoryJustNow: "just now",
+    homeStoryArchived: "Archived",
+    homeLibraryHeading: "Characters",
+    homeLibraryAllTrashed: "All characters are in the Trash.",
     homeSourceEmailForkLabel: "Contact the maintainer",
     homeSourceEmailUpstreamLabel: "Contact official support",
     backgroundHTML: "Background Embedding",
@@ -3254,6 +3284,7 @@ export const languageEnglish = {
     openAIAudioLeftOut: "Not sent to the model (it takes only WAV or MP3 audio): {names}",
     openAIAudioUnnamed: "an audio attachment",
     triggerOn: "Trigger On",
+    triggerEffectCategory: "Effect category",
     noConfig: "No Config",
     var: "Variable",
     condition: "Condition",
@@ -3997,17 +4028,32 @@ export const languageEnglish = {
     coldStorage: "Archive characters and modules at startup",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `To keep memory use low, this app now stores each character's full data separately at startup and loads it only when you open that character. Nothing is deleted, and your characters look and work as before. You can turn this off in ${settings} > ${advancedSettings} > ${toggle}. Turning it off archives nothing new, and characters that are already archived still open normally.`,
-    archiveCharactersStoppedNotice: (characterName: string) =>
-        `Archiving stopped for this start after two characters in a row could not be stored separately; the second was "${characterName}". Those characters stay fully loaded in the main save, and the characters archived before them are not affected. The remaining characters were left as they are.`,
-    archiveCharactersSkippedNotice: (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `These characters could not be stored separately: ${characterNames}${otherCount > 0 ? ` and ${otherCount} more` : ''}. They stay fully loaded and work as before, and this app will not try to archive them again at startup. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
-    archiveCharactersTooLargeNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `Your save is too large for the self-hosted server to archive characters into, so nothing was archived and your save was left as it is. Everything works as before. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
-    archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `Archiving characters at startup is paused on this device because it did not finish twice in a row. Nothing was lost, and characters that are already archived still load when you open them. Until you resume it, nothing new is archived at startup. To try again, turn off ${settings} > ${advancedSettings} > ${toggle} and then turn it back on.`,
     cleanColdStorage: "Clean Unused Archived Data and Assets",
     customSidebarConfig: "Custom Sidebar Configuration",
     cleanColdStorageConfirm: "This will permanently delete all unused archived (cold storage) data and all unused asset files, meaning images and audio that no character, module, persona or setting uses any more. Some of it may still be useful in the future, and it cannot be recovered. Do you want to continue?",
+    cleanUnusedFiles: "Clean Up Unused Files",
+    cleanUnusedFilesMeasuring: "Looking for unused files. This can take a while on a large library.",
+    cleanUnusedFilesDeleting: "Deleting unused files...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Delete ${count} unused file(s) (${size})? No character, module, persona, setting or restore point uses them. Close every other tab and window of this app first. This cannot be undone.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Delete ${count} unused file(s) (${size}) now?`
+            + (later > 0 ? ` ${later} more unused file(s) were found. On this server a file is deleted only after three clean-ups at least a day apart have found it unused, at most 500 at a time, so those are noted for later clean-ups.` : '')
+            + ` Close every other tab and device using this server first: pressing Yes confirms that none is open. This cannot be undone.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `No unused file can be deleted yet. ${later} unused file(s) were found. On this server a file is deleted only after three clean-ups at least a day apart have found it unused, at most 500 at a time. Note them now so a later clean-up can delete them? Close every other tab and device using this server first: pressing Yes confirms that none is open.`,
+    cleanUnusedFilesNodeWait: "Unused files were checked less than a day ago. On this server a file can be deleted only a day after the last check, so try again later. Nothing was deleted.",
+    cleanUnusedFilesNone: "No unused files were found. Nothing was deleted.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Deleted ${deleted} unused file(s).${kept > 0 ? ` ${kept} file(s) were kept because they were in use again or could not be deleted.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `The clean-up stopped because the app started using its data (saving, a chat, a restore or another tab). ${deleted} file(s) were deleted before it stopped. Try again later.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Clean-up cancelled. Nothing was deleted.' : `Clean-up cancelled. ${deleted} file(s) were deleted before it stopped.`,
+    cleanUnusedFilesOtherTab: "Another tab of this app is open. Close every other tab of this app, then try again. Nothing was deleted.",
+    cleanUnusedFilesNoTabCheck: "This page cannot check for other open tabs (it is not opened over HTTPS or localhost), so it cannot clean up unused files. Nothing was deleted.",
+    cleanUnusedFilesBusy: "Wait until saving, a running chat or the automatic clean-up has finished, then try again. Nothing was deleted.",
+    cleanUnusedFilesRefused: "The clean-up cannot run right now (the saved data is changing, being restored or could not be read). Nothing was deleted. Try again later, or reload the app first.",
     coldStorageCleanupNoLockConfirm: "Your browser can't check whether another tab of this app is open. If another tab of this app is open while the cleanup runs, that tab can lose data. Close every other tab of this app first, then continue. Continue anyway?",
     coldStorageCleanupNodeConfirm: "Do not run this cleanup while another device or browser is using the same server. Anything they save while it runs can be lost or deleted. Continue?",
     coldStorageCleanupCheckingTabs: "Checking for other open tabs of this app before cleaning up...",
@@ -4039,11 +4085,6 @@ export const languageEnglish = {
     forkPrivacyPolicy: "Privacy Policy",
     forkLegalLinksLabel: "Legal documents",
     opfsCopyBackProgress: (done: number, total: number) => `Moving your data to browser storage... (${done} / ${total}). Keep this tab open until it finishes.`,
-    opfsFallbackNoticeTab: "Your data could not be moved to browser storage this time, because another tab of this app is open or this browser cannot check for other tabs. RisuTanium is running from your existing data, and nothing was lost. Close the other tabs; it will try again the next time the app starts.",
-    opfsFallbackNoticeSpace: "Your data could not be moved to browser storage this time, because there is not enough free storage space. RisuTanium is running from your existing data, and nothing was lost. Free up some space; it will try again the next time the app starts.",
-    opfsFallbackNoticeNoIndexedDb: "Your data could not be moved to browser storage this time, because this browser cannot use IndexedDB. RisuTanium is running from your existing data, and nothing was lost. It will try again the next time the app starts.",
-    opfsFallbackNoticeError: (detail: string) => `Your data could not be moved to browser storage this time: ${detail}. RisuTanium is running from your existing data, and nothing was lost. It will try again the next time the app starts.`,
-    browserStorageUnavailable: "This browser could not open the storage RisuTanium keeps your data in, so nothing was loaded and nothing was changed. Reload the page. If this message keeps appearing, this browser cannot store RisuTanium's data (private browsing and very old browsers can cause this): open RisuTanium in another browser, or outside private browsing.",
     saveReadFailed: "RisuTanium could not read your saved data from storage, so it opened nothing and changed nothing. Reload the page to try again. If this keeps happening, check that the disk or the server the data is on can be reached.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'the pointer to your current save'
@@ -4085,6 +4126,7 @@ export const languageEnglish = {
     saveSeedFailed: "RisuTanium could not create the first save, so it opened nothing and changed nothing. Reload the page to try again.",
     saveLeftoverNotice: "RisuTanium found unused save data left behind by an interrupted save or restore. It does no harm. You can remove it in the clean-up in the settings.",
     saveMainFileLeftNotice: "Your data has moved to a new format, but the old save file is too large for this server to move aside. An upstream version of RisuAI opening the same data may open that old file. The clean-up in the settings keeps it safe until you delete it.",
+    staticBuildUnsupported: "RisuTanium no longer runs from a plain web host. Use the Android or desktop app, or the page the RisuTanium Node server serves.",
     opfsReadOnlyNotice: "RisuTanium is running from a temporary copy of your data this time, so it will not save changes, and restoring a backup or cleaning up storage is not available. Your data is not lost. Close other tabs of this app and restart it so the data can be moved to browser storage.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 character" : `${count} characters`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 other part this version cannot read" : `${count} other parts this version cannot read`,

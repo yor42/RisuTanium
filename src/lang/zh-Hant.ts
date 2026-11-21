@@ -517,6 +517,21 @@ export const languageChineseTraditional = {
     "replyNotificationsSetting": "回覆通知",
     "replyNotificationsHelp": "當你未檢視的聊天完成回覆時收到通知。",
     "replyNotificationsBlocked": "Android 設定中已關閉 RisuTanium 的通知。點按開關即可開啟設定。",
+    "seasonalLogoSetting": "節日標誌",
+    "seasonalLogoHelp": "在節假日和特別的日子讓頂欄標誌播放動畫。每天播放一次,點按標誌可重播。",
+    "seasonalReplayHint": "重播動畫",
+    "seasonalSkipHint": "跳過動畫",
+    "seasonalSantaHat": "聖誕帽,隱藏小遊戲",
+    "seasonalGameTitle": "聖誕帽小遊戲",
+    "seasonalGameClose": "關閉",
+    "seasonalGameScore": "得分",
+    "seasonalGameTime": "時間",
+    "seasonalGamePlay": "開始",
+    "seasonalGamePlayAgain": "再玩一次",
+    "seasonalGameTarget": "聖誕帽目標",
+    "seasonalGameHint": "在 20 秒內盡可能多地點中聖誕帽。按 Esc 可關閉。",
+    "seasonalGameTimeUp": "時間到,得分",
+    "seasonalGameClosed": "聖誕帽小遊戲已關閉",
     "keepAliveSpeaking": "正在朗讀回覆",
     "keepAliveImage": "正在產生圖片…",
     "keepAliveTranslating": "正在翻譯…",
@@ -713,6 +728,17 @@ export const languageChineseTraditional = {
     "backupNounItems": "項目",
     "backupTaskDone": "備份已儲存",
     "backupTaskFailed": "無法儲存備份",
+    "restoreTaskTitle": "正在還原備份",
+    "restorePointTaskTitle": "正在從還原點還原",
+    "restoreOldTaskTitle": "正在還原舊版備份",
+    "restoreStepSave": "先儲存目前資料",
+    "restoreStepRead": "讀取備份",
+    "restoreStepTabs": "檢查其他分頁",
+    "restoreStepCopy": "複製檔案",
+    "restoreStepFinishFiles": "完成檔案複製",
+    "restoreStepLoad": "載入備份",
+    "restoreStepFinish": "還原其他設定",
+    "restoreStepCleanup": "完成啟動清理",
     "patternTaskCountFound": (noun: string, done: number, found: number) => noun ? `${noun} 已儲存 ${done} 項，目前已發現 ${found} 項` : `已儲存 ${done} 項，目前已發現 ${found} 項`,
     "chatShellTranslationClose": "關閉翻譯編輯器",
     "formating": {
@@ -752,14 +778,10 @@ export const languageChineseTraditional = {
         "secretRefInRequest": (name: string) => `請求中仍包含環境變數參照 ${name}，該請求未被傳送。`,
         "ttsAppKeyForeignHost": "此角色將 TTS 請求傳送到其他伺服器，因此未傳送應用程式全域的 OpenAI 金鑰。若要使用該伺服器，請在角色的 TTS 設定中輸入 API 金鑰。",
         "storageServerNeedsUpdate": "此伺服器版本過舊，不支援新的儲存格式：必須先更新或重新啟動後才能儲存或清理。請重新啟動 Node 伺服器（若尚未更新，請先更新），然後重新載入此頁面。",
-        "coldStorageRestoreFailed": "無法載入冷儲存資料。受影響角色的資料可能已永久遺失",
-        "coldStorageRestoreUnreadable": "暫時無法載入此角色。未做任何變更。請再試一次。",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `無法載入已封存的角色 ${characterName}：其冷儲存資料遺失或無效，可能已永久遺失。未做任何變更。`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `暫時無法載入已封存的角色 ${characterName}。未做任何變更。請再試一次。`,
-        "coldStorageRestoreUnavailable": "無法在此頁面開啟已封存的角色：此瀏覽器在此處不提供用於存放它們的儲存空間（例如在純 HTTP 位址下）。未做任何變更。",
-        "coldStorageRestoreDamaged": "無法讀取此角色的封存副本：它可能已損毀。未做任何變更，也未刪除任何內容。",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `${characterName} 的以下聊天的備選回覆無法讀取，已被略過：${chatNames}。對話本身已完整載入。`,
         "chatAltUnreadable": "無法讀取此聊天的備選回覆，因此無法重新產生或建立分支。未做任何變更。",
@@ -1708,6 +1730,9 @@ export const languageChineseTraditional = {
     "triggerInputLabels": {
         "value": "值",
         "var": "變數",
+        "operandType": "{label}類型",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "變數名稱",
         "outputVar": "輸出變數",
         "name": "名稱",
@@ -2151,6 +2176,11 @@ export const languageChineseTraditional = {
     "homeGreetingNight": "還沒睡嗎？",
     "homeCommunityHeading": "社群與原始碼",
     "homeSideLabel": "探索與社群",
+    "homeStoriesHeading": "繼續你的故事",
+    "homeStoryJustNow": "剛剛",
+    "homeStoryArchived": "已封存",
+    "homeLibraryHeading": "角色",
+    "homeLibraryAllTrashed": "所有角色都在垃圾桶中。",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "加入我們的 Discord 伺服器，與其他使用者和開發者交流。",
     "homeLinkWebsiteTitle": "網站",
@@ -3161,6 +3191,7 @@ export const languageChineseTraditional = {
     "openAIAudioLeftOut": "未傳送給模型（僅接受 WAV 或 MP3 音訊）：{names}",
     "openAIAudioUnnamed": "一個音訊附件",
     "triggerOn": "Trigger 時機",
+    "triggerEffectCategory": "效果類別",
     "noConfig": "無設定",
     "var": "變數",
     "condition": "條件",
@@ -3897,17 +3928,32 @@ export const languageChineseTraditional = {
     "coldStorage": "啟動時封存角色和模組",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `為了維持較低的記憶體用量，本應用程式現在會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。不會刪除任何內容，您的角色外觀與運作方式都和以往相同。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中關閉此功能。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `由於連續兩個角色無法單獨儲存，本次啟動的封存已停止；第二個是「${characterName}」。這些角色仍完整保留在主存檔中並維持完全載入，在它們之前已封存的角色不受影響。其餘角色維持原樣。`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `以下角色無法單獨儲存：${characterNames}${otherCount > 0 ? ` 等另外 ${otherCount} 個` : ''}。它們仍維持完全載入，並像之前一樣正常運作，本應用程式在啟動時不會再嘗試封存它們。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `您的存檔過大，自架伺服器無法將角色封存到其中，因此未封存任何內容，您的存檔也維持原樣。一切照常運作。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `本裝置上的啟動時角色封存已暫停，因為它連續兩次未能完成。沒有任何內容遺失，已封存的角色在您開啟時仍會正常載入。在恢復之前，啟動時不會再封存任何新角色。若要重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
     "cleanColdStorage": "清理未使用的封存資料與資源",
     "customSidebarConfig": "自訂側邊欄配置",
     "cleanColdStorageConfirm": "這將永久刪除所有未使用的封存（冷儲存）資料，以及所有未使用的資源檔案，即不再被任何角色、模組、人設或設定使用的圖片和音訊。其中部分內容未來可能仍然有用，且刪除後無法復原。是否要繼續？",
+    "cleanUnusedFiles": "清理未使用的檔案",
+    "cleanUnusedFilesMeasuring": "正在尋找未使用的檔案。如果資料庫很大，可能需要較長時間。",
+    "cleanUnusedFilesDeleting": "正在刪除未使用的檔案...",
+    "cleanUnusedFilesConfirm": (count: number, bytes: number | null) => {
+        const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小於 0.1 MiB' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `要刪除 ${count} 個未使用的檔案（${size}）嗎？沒有任何角色、模組、人設、設定或還原點使用它們。請先關閉本應用程式的所有其他分頁和視窗。此操作無法復原。`
+    },
+    "cleanUnusedFilesConfirmNode": (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小於 0.1 MiB' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `現在要刪除 ${count} 個未使用的檔案（${size}）嗎？`
+            + (later > 0 ? ` 另外還發現了 ${later} 個未使用的檔案。在此伺服器上，只有經過至少相隔一天的三次清理都發現某個檔案未被使用後才會刪除它，且每次最多刪除 500 個，因此這些檔案會被記錄下來，留待以後的清理。` : '')
+            + ` 請先關閉所有使用此伺服器的其他分頁和裝置：按下「是」即表示確認沒有任何一個仍處於開啟狀態。此操作無法復原。`
+    },
+    "cleanUnusedFilesNoteNode": (later: number) => `目前還沒有可以刪除的未使用檔案。已發現 ${later} 個未使用的檔案。在此伺服器上，只有經過至少相隔一天的三次清理都發現某個檔案未被使用後才會刪除它，且每次最多刪除 500 個。要現在記錄它們，以便以後的清理可以刪除嗎？請先關閉所有使用此伺服器的其他分頁和裝置：按下「是」即表示確認沒有任何一個仍處於開啟狀態。`,
+    "cleanUnusedFilesNodeWait": "不到一天前剛檢查過未使用的檔案。在此伺服器上，檔案只能在上次檢查一天之後才能刪除，請稍後再試。未刪除任何內容。",
+    "cleanUnusedFilesNone": "未發現未使用的檔案。未刪除任何內容。",
+    "cleanUnusedFilesDone": (deleted: number, kept: number) => `已刪除 ${deleted} 個未使用的檔案。${kept > 0 ? ` 有 ${kept} 個檔案被保留，因為它們再次被使用或無法刪除。` : ''}`,
+    "cleanUnusedFilesStopped": (deleted: number) => `清理已停止，因為應用程式開始使用其資料（儲存、聊天、還原或另一個分頁）。停止前已刪除 ${deleted} 個檔案。請稍後再試。`,
+    "cleanUnusedFilesCancelled": (deleted: number) => deleted === 0 ? '清理已取消。未刪除任何內容。' : `清理已取消。停止前已刪除 ${deleted} 個檔案。`,
+    "cleanUnusedFilesOtherTab": "本應用程式的另一個分頁處於開啟狀態。請關閉本應用程式的所有其他分頁，然後重試。未刪除任何內容。",
+    "cleanUnusedFilesNoTabCheck": "此頁面無法檢查其他已開啟的分頁（它不是透過 HTTPS 或 localhost 開啟的），因此無法清理未使用的檔案。未刪除任何內容。",
+    "cleanUnusedFilesBusy": "請等待儲存、正在執行的聊天或自動清理完成後再重試。未刪除任何內容。",
+    "cleanUnusedFilesRefused": "目前無法執行清理（已儲存的資料正在變更、正在還原或無法讀取）。未刪除任何內容。請稍後再試，或先重新載入應用程式。",
     "coldStorageCleanupNoLockConfirm": "您的瀏覽器無法檢查是否已開啟此應用程式的其他分頁。如果在清理執行期間此應用程式的其他分頁處於開啟狀態，該分頁可能會遺失資料。請先關閉此應用程式的所有其他分頁，然後再繼續。仍要繼續嗎？",
     "coldStorageCleanupNodeConfirm": "當另一台裝置或瀏覽器正在使用同一個伺服器時，請勿執行此清理。它們在清理執行期間儲存的任何內容都可能遺失或被刪除。是否繼續？",
     "coldStorageCleanupCheckingTabs": "清理前正在檢查此應用程式是否還有其他已開啟的分頁...",
@@ -3940,11 +3986,6 @@ export const languageChineseTraditional = {
     "forkPrivacyPolicy": "隱私政策",
     "forkLegalLinksLabel": "法律文件",
     "opfsCopyBackProgress": (done: number, total: number) => `正在將您的資料移至瀏覽器儲存空間... (${done} / ${total})。請在完成前保持此分頁開啟。`,
-    "opfsFallbackNoticeTab": "本次未能將您的資料移至瀏覽器儲存空間，因為本應用程式的另一個分頁已開啟，或此瀏覽器無法檢查其他分頁。RisuTanium 正在使用您現有的資料執行，沒有任何資料遺失。請關閉其他分頁；應用程式下次啟動時會再次嘗試。",
-    "opfsFallbackNoticeSpace": "本次未能將您的資料移至瀏覽器儲存空間，因為可用儲存空間不足。RisuTanium 正在使用您現有的資料執行，沒有任何資料遺失。請釋放一些儲存空間；應用程式下次啟動時會再次嘗試。",
-    "opfsFallbackNoticeNoIndexedDb": "本次未能將您的資料移至瀏覽器儲存空間，因為此瀏覽器無法使用 IndexedDB。RisuTanium 正在使用您現有的資料執行，沒有任何資料遺失。應用程式下次啟動時會再次嘗試。",
-    "opfsFallbackNoticeError": (detail: string) => `本次未能將您的資料移至瀏覽器儲存空間：${detail}。RisuTanium 正在使用您現有的資料執行，沒有任何資料遺失。應用程式下次啟動時會再次嘗試。`,
-    "browserStorageUnavailable": "此瀏覽器無法開啟 RisuTanium 用來保存您資料的儲存空間，因此沒有載入任何內容，也沒有變更任何內容。請重新載入頁面。若此訊息持續出現，表示此瀏覽器無法儲存 RisuTanium 的資料（無痕模式或私密瀏覽，以及過舊的瀏覽器，都可能造成這種情況）：請改用其他瀏覽器開啟 RisuTanium，或在非無痕／非私密瀏覽的視窗中開啟。",
     "saveReadFailed": "RisuTanium 無法從儲存空間讀取您儲存的資料，因此沒有開啟任何內容，也沒有變更任何內容。請重新載入頁面後再試一次。若問題持續發生，請檢查資料所在的磁碟或伺服器是否可以連線。",
     "saveDamageItem": (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '指向目前存檔的指標'
@@ -3986,6 +4027,7 @@ export const languageChineseTraditional = {
     "saveSeedFailed": "RisuTanium 無法建立第一個存檔，因此沒有開啟任何內容，也沒有變更任何內容。請重新載入頁面後再試一次。",
     "saveLeftoverNotice": "RisuTanium 發現了因儲存或還原被中斷而遺留的未使用存檔資料。這些資料無害，您可以在設定中的清理裡將其移除。",
     "saveMainFileLeftNotice": "您的資料已遷移到新格式，但舊的存檔檔案過大，此伺服器無法將其移開。開啟同一份資料的上游版本 RisuAI 可能會開啟那個舊檔案。在您將其刪除之前，設定中的清理會妥善保留它。",
+    "staticBuildUnsupported": "RisuTanium 不再支援從一般網頁主機執行。請使用 Android 應用程式或桌面應用程式，或使用 RisuTanium Node 伺服器提供的頁面。",
     "opfsReadOnlyNotice": "RisuTanium 這次是在您資料的暫時副本上執行，因此不會儲存變更，也無法還原備份或清理儲存空間。您的資料沒有遺失。請關閉此應用程式的其他分頁並重新啟動，以便將資料遷移到瀏覽器儲存空間。",
     "legacyPartialCharacters": (count: number) => count === 1 ? "1 個角色" : `${count} 個角色`,
     "legacyPartialUnreadable": (count: number) => count === 1 ? "另外 1 個此版本無法讀取的部分" : `另外 ${count} 個此版本無法讀取的部分`,

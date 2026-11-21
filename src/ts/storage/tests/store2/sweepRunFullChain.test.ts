@@ -58,7 +58,7 @@ import { isAssetDeletionHeld, resetAssetDeleteHoldForTests } from 'src/ts/storag
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { getStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
 import { createMemoryBackend } from 'src/ts/storage/store2/backend'
-import { formatSweepResult, resetMaintenanceForTests, startStore2Maintenance } from 'src/ts/storage/store2/maintenance'
+import { formatSweepResult, resetMaintenanceForTests, startStore2Maintenance, type MaintenanceSeams } from 'src/ts/storage/store2/maintenance'
 import type { OldDataDeletionResult } from 'src/ts/storage/store2/oldData/delete'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { writeSweepRecord } from 'src/ts/storage/store2/sweep'
@@ -68,6 +68,10 @@ import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 
 const HOUR = 60 * 60 * 1000
 const ORPHAN = 'orphan-chain.png'
+const QUIET_INLAYS: MaintenanceSeams['inlayFacts'] = {
+    peers: async () => 'alone', shouldStop: () => true, saveMarks: () => 0, writtenThisPage: () => false,
+    legacyInlayIds: async () => [], residentInlays: async () => null, lock: (_id, work) => work(),
+}
 const COMPLETED: OldDataDeletionResult = { status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }
 
 beforeEach(() => {
@@ -138,6 +142,9 @@ async function runStep(store: MemoryByteStore): Promise<string> {
             session: () => session,
             startTrigger: run => { fire = run; return { arm: () => { }, stop: () => { } } },
             deletion: async () => COMPLETED,
+            // This file is about the asset sweep's live facts; the inlay sweep's page yields at once (its live facts have
+            // their own file, `inlaySweepLiveFacts.test.ts`).
+            inlayFacts: QUIET_INLAYS,
         },
     )
     ;(fire as (() => void) | null)?.()

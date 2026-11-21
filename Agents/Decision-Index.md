@@ -2335,11 +2335,294 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2837](Maintainer-Context.md#mc-2837--234-library-stage-answers-restore-cancel-scroll-area-all-trashed-line-zero-count-2026-11-20) | #234 library stage answers: restore cancel, scroll area, all-trashed line, zero count, 2026-11-20 |
 | [MC-2928](Maintainer-Context.md#mc-2928--234-risurealm-announcement-sits-after-the-community-list-2026-11-21) | #234 RisuRealm announcement sits after the Community list, 2026-11-21 |
 | [MC-2929](Maintainer-Context.md#mc-2929--234-the-risurealm-heading-carries-the-upstream-tag-2026-11-21) | #234 the RisuRealm heading carries the upstream tag, 2026-11-21 |
+| [MC-2930](Maintainer-Context.md#mc-2930--234-story-shelf-no-snippet-for-an-archived-chat-card-text-is-a-snapshot-2026-11-21) | #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21 |
+| [MC-2931](Maintainer-Context.md#mc-2931--234-embedded-library-characters-controls-with-no-library-mockup-tiles-as-a-follow-up-2026-11-21) | #234 embedded library: Characters controls with no library; mockup tiles as a follow-up, 2026-11-21 |
 | [MC-2955](Maintainer-Context.md#mc-2955--442-module-share-secrets-refuse-mcp-modules-at-share-points-plugin-settings-file-unchanged-no-keep-keys-opt-in-2026-11-21) | #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21 |
 | [MC-2908](Maintainer-Context.md#mc-2908--chore-557-stage-2-folds-into-stage-4-2026-11-21) | CHORE-557 stage 2 folds into stage 4, 2026-11-21 |
+| [MC-2909](Maintainer-Context.md#mc-2909--a-plain-web-host-shows-one-refusal-and-stores-nothing-2026-11-21) | A plain web host shows one refusal and stores nothing, 2026-11-21 |
+| [MC-2910](Maintainer-Context.md#mc-2910--the-dead-optional-blob-contract-goes-in-stage-4-2026-11-21) | The dead optional Blob contract goes in stage 4, 2026-11-21 |
+| [MC-2911](Maintainer-Context.md#mc-2911--the-refusal-uses-the-existing-error-alert-2026-11-21) | The refusal uses the existing error alert, 2026-11-21 |
+| [MC-2912](Maintainer-Context.md#mc-2912--the-refusal-shows-in-english-only-2026-11-21) | The refusal shows in English only, 2026-11-21 |
+| [MC-2913](Maintainer-Context.md#mc-2913--data-an-old-static-build-left-in-the-browser-stays-untouched-2026-11-21) | Data an old static build left in the browser stays untouched, 2026-11-21 |
+| [MC-2914](Maintainer-Context.md#mc-2914--the-hono-static-host-retires-in-stage-5-2026-11-21) | The Hono static host retires in stage 5, 2026-11-21 |
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |
 | [MC-2975](Maintainer-Context.md#mc-2975--upstream-7ee467abc6db4b681f-dispositions-2026-11-21) | Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21 |
 | [MC-2976](Maintainer-Context.md#mc-2976--upstream-6db4b681f-sync-flow-port-pr-then-a--s-ours-merge-pr-2026-11-21) | Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21 |
+| [MC-2938](Maintainer-Context.md#mc-2938--438-pack-default-colours-become-the-users-scheme-2026-11-21) | #438 Pack default colours become the user's scheme, 2026-11-21 |
+| [MC-2939](Maintainer-Context.md#mc-2939--438-the-users-chat-background-wins-over-the-pack-canvas-2026-11-21) | #438 The user's chat background wins over the pack canvas, 2026-11-21 |
+| [MC-2940](Maintainer-Context.md#mc-2940--438-pack-method-app-wide-shape-tokens-plus-part-css-critical-prompts-tokens-only-2026-11-21) | #438 Pack method app-wide: shape tokens plus part CSS, critical prompts tokens-only, 2026-11-21 |
+| [MC-2941](Maintainer-Context.md#mc-2941--438-pack-scope-every-new-shell-plus-popups-toasts-and-dialogs-2026-11-21) | #438 Pack scope: every new shell plus popups, toasts and dialogs, 2026-11-21 |
+| [MC-2942](Maintainer-Context.md#mc-2942--438-pack-effects-admitted-with-reduced-motion-and-reduced-effects-fallbacks-2026-11-21) | #438 Pack effects admitted with reduced-motion and reduced-effects fallbacks, 2026-11-21 |
+| [MC-2944](Maintainer-Context.md#mc-2944--438-area-model-per-area-sheets-all-on-at-once-2026-11-21) | #438 Area model: per-area sheets, all on at once, 2026-11-21 |
+| [MC-2945](Maintainer-Context.md#mc-2945--438-extend-risutheme-v1-additively-no-installed-pack-on-the-phone-2026-11-21) | #438 Extend .risutheme v1 additively; no installed pack on the phone, 2026-11-21 |
+| [MC-2946](Maintainer-Context.md#mc-2946--438-colours-declared-in-a-pack-sheet-become-its-default-scheme-2026-11-21) | #438 Colours declared in a pack sheet become its default scheme, 2026-11-21 |
+| [MC-2947](Maintainer-Context.md#mc-2947--438-critical-popups-are-the-mc-691-list-2026-11-21) | #438 Critical popups are the MC-691 list, 2026-11-21 |
+| [MC-2948](Maintainer-Context.md#mc-2948--438-pack-colours-get-their-own-theme-pack-scheme-tile-2026-11-21) | #438 Pack colours get their own "Theme pack" scheme tile, 2026-11-21 |
+| [MC-2949](Maintainer-Context.md#mc-2949--438-a-module-background-embedding-counts-as-the-users-chat-background-2026-11-21) | #438 A module background embedding counts as the user's chat background, 2026-11-21 |
+| [MC-2950](Maintainer-Context.md#mc-2950--438-turning-the-pack-off-restores-the-pre-pack-scheme-2026-11-21) | #438 Turning the pack off restores the pre-pack scheme, 2026-11-21 |
+| [MC-2951](Maintainer-Context.md#mc-2951--438-pack-text-over-a-user-wallpaper-accepted-limitation-2026-11-21) | #438 Pack text over a user wallpaper: accepted limitation, 2026-11-21 |
+| [MC-2952](Maintainer-Context.md#mc-2952--438-a-bin-carries-the-pre-pack-scheme-2026-11-21) | #438 A .bin carries the pre-pack scheme, 2026-11-21 |
+| [MC-2953](Maintainer-Context.md#mc-2953--438-active-pack-update-refreshes-colours-only-while-following-2026-11-21) | #438 Active-pack update refreshes colours only while following, 2026-11-21 |
+| [MC-3001](Maintainer-Context.md#mc-3001--438-a-pack-gets-a-default-scheme-only-if-it-declares-the-core-colours-2026-11-21) | #438 A pack gets a default scheme only if it declares the core colours, 2026-11-21 |
+| [MC-3002](Maintainer-Context.md#mc-3002--438-non-chat-area-sheets-may-carry-colours-2026-11-21) | #438 Non-chat area sheets may carry colours, 2026-11-21 |
+| [MC-3003](Maintainer-Context.md#mc-3003--438-pack-images-and-gradients-count-as-paint-2026-11-21) | #438 Pack images and gradients count as paint, 2026-11-21 |
+| [MC-3004](Maintainer-Context.md#mc-3004--438-non-core-scheme-fields-come-from-the-judged-base-2026-11-21) | #438 Non-core scheme fields come from the judged base, 2026-11-21 |
+| [MC-3005](Maintainer-Context.md#mc-3005--438-pack-canvas-parts-yield-to-the-users-background-bubbles-keep-fills-2026-11-21) | #438 Pack canvas parts yield to the user's background, bubbles keep fills, 2026-11-21 |
+| [MC-2858](Maintainer-Context.md#mc-2858--163-manual-clean-up-app-and-web-delete-at-once-node-keeps-its-age-rule-2026-11-21) | #163 manual clean-up: app and web delete at once, Node keeps its age rule, 2026-11-21 |
+| [MC-2859](Maintainer-Context.md#mc-2859--342-plain-http-node-the-confirm-is-the-no-other-tab-attestation-2026-11-21) | #342 plain-HTTP Node: the confirm is the no-other-tab attestation, 2026-11-21 |
+| [MC-2860](Maintainer-Context.md#mc-2860--165-store2-inlays-are-deleted-at-once-under-strict-checks-no-new-record-2026-11-21) | #165 store2 inlays are deleted at once under strict checks, no new record, 2026-11-21 |
+| [MC-2861](Maintainer-Context.md#mc-2861--163-165-and-342-ship-as-two-prs-2026-11-21) | #163, #165 and #342 ship as two PRs, 2026-11-21 |
+| [MC-2862](Maintainer-Context.md#mc-2862--manual-clean-up-refuses-after-a-boot-that-installed-the-profile-2026-11-21) | manual clean-up refuses after a boot that installed the profile, 2026-11-21 |
+| [MC-2863](Maintainer-Context.md#mc-2863--manual-clean-up-shows-size-unknown-when-size-cannot-be-measured-2026-11-21) | manual clean-up shows "size unknown" when size cannot be measured, 2026-11-21 |
+| [MC-2864](Maintainer-Context.md#mc-2864--the-drafted-clean-up-strings-are-accepted-2026-11-21) | the drafted clean-up strings are accepted, 2026-11-21 |
+| [MC-2965](Maintainer-Context.md#mc-2965--443-plain-http-scope-copy-buttons-in-vertex-service-account-login-gets-a-fallback-signer-2026-11-21) | #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21 |
+| [MC-2966](Maintainer-Context.md#mc-2966--443-plan-answers-honest-copy-failure-html-embed-left-out-one-invalid-key-message-2026-11-21) | #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21 |
+| [MC-2987](Maintainer-Context.md#mc-2987--173-f-arch-delete-the-old-character-archive-path-after-capturing-its-output-2026-11-21) | #173 F-ARCH: delete the old character-archive path after capturing its output, 2026-11-21 |
+| [MC-2865](Maintainer-Context.md#mc-2865--165-the-automatic-store2-inlay-pass-skips-node-2026-11-21) | #165 the automatic store2 inlay pass skips Node, 2026-11-21 |
+| [MC-2866](Maintainer-Context.md#mc-2866--165-the-clean-up-unused-files-button-stays-files-only-2026-11-21) | #165 the Clean Up Unused Files button stays files-only, 2026-11-21 |
+| [MC-2867](Maintainer-Context.md#mc-2867--165-studio-undo-history-and-body-only-residue-are-accepted-limits-2026-11-21) | #165 Studio undo history and body-only residue are accepted limits, 2026-11-21 |
+| [MC-2990](Maintainer-Context.md#mc-2990--455-under-load-the-default-streaming-mode-runs-output-scripts-only-on-the-newest-reply-text-2026-11-21) | #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21 |
+| [MC-2991](Maintainer-Context.md#mc-2991--455-one-posted-message-task-yield-per-pass-is-allowed-in-the-reply-loop-gated-on-a-note-9-hidden-page-row-2026-11-21) | #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21 |
+| [MC-3079](Maintainer-Context.md#mc-3079--424-seasonal-scenes-a-faithful-ts-port-loaded-per-day-2026-11-21) | #424 seasonal scenes: a faithful TS port, loaded per day, 2026-11-21 |
+| [MC-3080](Maintainer-Context.md#mc-3080--424-the-seasonal-logo-toggle-is-saved-on-this-device-only-2026-11-21) | #424 the Seasonal logo toggle is saved on this device only, 2026-11-21 |
+| [MC-3081](Maintainer-Context.md#mc-3081--424-the-top-bar-logo-grows-to-the-prototype-size-every-day-2026-11-21) | #424 the top-bar logo grows to the prototype size every day, 2026-11-21 |
+| [MC-3082](Maintainer-Context.md#mc-3082--424-ports-all-24-occasions-independence-day-included-2026-11-21) | #424 ports all 24 occasions, Independence Day included, 2026-11-21 |
+| [MC-2475](Maintainer-Context.md#mc-2475--292-typing-step-task-split-off-into-its-own-ticket-301-2026-11-20) | #292 typing-step task split off into its own ticket #301, 2026-11-20 |
+| [MC-2476](Maintainer-Context.md#mc-2476--292-refresh-gap-after-update-all-shows-old-list-with-update-all-disabled-2026-11-20) | #292 refresh gap after Update all shows old list with Update all disabled, 2026-11-20 |
+| [MC-2477](Maintainer-Context.md#mc-2477--300-and-297-filed-as-follow-up-issues-from-progress-popups-and-hidden-reply-gaps-2026-11-20) | #300 and #297 filed as follow-up issues from progress-popups and hidden-reply gaps, 2026-11-20 |
+| [MC-2478](Maintainer-Context.md#mc-2478--ui-s2-backup-scope-screen-plus-bin-summary-sheet-2026-11-20) | UI-S2 backup scope: Screen plus .bin summary sheet, 2026-11-20 |
+| [MC-2479](Maintainer-Context.md#mc-2479--ui-s2-row-moves-cold-storage-switch-and-gocharacteronimport-go-to-data-2026-11-20) | UI-S2 row moves: cold-storage switch and goCharacterOnImport go to Data, 2026-11-20 |
+| [MC-2480](Maintainer-Context.md#mc-2480--progress-popups-s4-background-offer-only-for-in-app-starts-2026-11-20) | Progress-popups S4 background offer only for in-app starts, 2026-11-20 |
+| [MC-2481](Maintainer-Context.md#mc-2481--progress-popups-s4-new-import-during-background-run-both-run-2026-11-20) | Progress-popups S4 new import during background run: both run, 2026-11-20 |
+| [MC-2482](Maintainer-Context.md#mc-2482--progress-popups-s4-replaced-shown-running-card-ends-silently-2026-11-20) | Progress-popups S4 replaced shown running card ends silently, 2026-11-20 |
+| [MC-2483](Maintainer-Context.md#mc-2483--progress-popups-s4-no-auto-open-of-imported-character-after-background-import-2026-11-20) | Progress-popups S4 no auto-open of imported character after background import, 2026-11-20 |
+| [MC-2484](Maintainer-Context.md#mc-2484--290-ships-alone-in-a-small-pr-179-gets-its-own-pr-later-2026-11-20) | #290 ships alone in a small PR; #179 gets its own PR later, 2026-11-20 |
+| [MC-2485](Maintainer-Context.md#mc-2485--179-relink-is-a-button-on-the-existing-file-gone-notice-2026-11-20) | #179 relink is a button on the existing file gone notice, 2026-11-20 |
+| [MC-2486](Maintainer-Context.md#mc-2486--kept-file-relink-re-adds-the-row-as-a-new-undoable-step-2026-11-20) | Kept-file relink re-adds the row as a new undoable step, 2026-11-20 |
+| [MC-2487](Maintainer-Context.md#mc-2487--surviving-identical-kept-file-confirmed-only-by-a-session-held-hash-2026-11-20) | Surviving identical kept file confirmed only by a session-held hash, 2026-11-20 |
+| [MC-2488](Maintainer-Context.md#mc-2488--ui-s6-stays-closed-n9-1-and-n9-12-become-low-priority-pre-release-checks-2026-11-20) | UI-S6 stays closed; N9-1 and N9-12 become low-priority pre-release checks, 2026-11-20 |
+| [MC-2489](Maintainer-Context.md#mc-2489--248-nexus-focus-ring-pair-capped-at-width-4-px-and-offset-6-px-2026-11-20) | #248 nexus focus-ring pair capped at width 4 px and offset 6 px, 2026-11-20 |
+| [MC-2490](Maintainer-Context.md#mc-2490--248-settings-pattern-focus-width-gets-a-1-px-floor-2026-11-20) | #248 Settings pattern-focus-width gets a 1 px floor, 2026-11-20 |
+| [MC-2491](Maintainer-Context.md#mc-2491--studio-size-ring-and-home-focus-tokens-stay-1-to-8-px-2026-11-20) | Studio size ring and Home focus tokens stay 1 to 8 px, 2026-11-20 |
+| [MC-2492](Maintainer-Context.md#mc-2492--249-inherited-colour-kept-as-recorded-residue-closed-without-code-2026-11-20) | #249 inherited colour kept as recorded residue, closed without code, 2026-11-20 |
+| [MC-2493](Maintainer-Context.md#mc-2493--theme-pack-judge-gaps-only-os-break-or-softlock-blocks-others-become-warnings-2026-11-20) | Theme-pack judge gaps: only OS-break or softlock blocks, others become warnings, 2026-11-20 |
+| [MC-2494](Maintainer-Context.md#mc-2494--ui-s2-data-page-rtb-start-skips-rtbexportconfirm-legacy-keeps-it-2026-11-20) | UI-S2 Data page .rtb Start skips rtbExportConfirm, legacy keeps it, 2026-11-20 |
+| [MC-2495](Maintainer-Context.md#mc-2495--ui-s2-partial-bin-on-data-page-uses-an-inline-line-not-two-confirms-2026-11-20) | UI-S2 partial .bin on Data page uses an inline line, not two confirms, 2026-11-20 |
+| [MC-2496](Maintainer-Context.md#mc-2496--ui-s2-left-out-repeat-after-a-saved-bin-is-a-polite-line-2026-11-20) | UI-S2 left-out repeat after a saved .bin is a polite line, 2026-11-20 |
+| [MC-2497](Maintainer-Context.md#mc-2497--292-accepted-with-a-narrow-phone-miss-303-filed-as-low-priority-follow-up-2026-11-20) | #292 accepted with a narrow phone miss; #303 filed as low-priority follow-up, 2026-11-20 |
+| [MC-2498](Maintainer-Context.md#mc-2498--progress-popups-s4-modules-round-with-replace-never-offers-background-2026-11-20) | Progress-popups S4 Modules round with Replace never offers background, 2026-11-20 |
+| [MC-2499](Maintainer-Context.md#mc-2499--ui-s7-q1-default-look-retune-built-in-slate-default-toward-nexus-2026-11-20) | UI-S7 Q1 default look: retune built-in slate Default toward Nexus, 2026-11-20 |
+| [MC-2500](Maintainer-Context.md#mc-2500--ui-s7-q3-a-theme-pack-sits-on-its-fixed-base-2026-11-20) | UI-S7 Q3 a theme pack sits on its fixed base, 2026-11-20 |
+| [MC-2501](Maintainer-Context.md#mc-2501--ui-s7-q6-names-for-all-classic-screens-in-three-batches-2026-11-20) | UI-S7 Q6 names for all classic screens in three batches, 2026-11-20 |
+| [MC-2502](Maintainer-Context.md#mc-2502--ui-s7-q7-one-system-first-scheme-mapping-b1-before-the-home-build-2026-11-20) | UI-S7 Q7 one system first: scheme mapping B1 before the Home build, 2026-11-20 |
+| [MC-2503](Maintainer-Context.md#mc-2503--ui-s7-q2-tribute-packs-banana-cocoa-only-d2-waits-for-reference-pictures-2026-11-20) | UI-S7 Q2 tribute packs: Banana Cocoa only, D2 waits for reference pictures, 2026-11-20 |
+| [MC-2504](Maintainer-Context.md#mc-2504--ui-s7-q4-light-packs-app-supplies-a-light-transcript-base-none-refused-2026-11-20) | UI-S7 Q4 light packs: app supplies a light transcript base, none refused, 2026-11-20 |
+| [MC-2505](Maintainer-Context.md#mc-2505--ui-s7-q5-shell-glyphs-replaced-with-lucide-icons-mc-1698-tab-shape-2026-11-20) | UI-S7 Q5 shell glyphs replaced with Lucide icons, MC-1698 tab shape, 2026-11-20 |
+| [MC-2506](Maintainer-Context.md#mc-2506--ui-s7-q2b-classic-chat-gets-full-polish-under-stage-h-2026-11-20) | UI-S7 Q2b classic chat gets full polish under stage H, 2026-11-20 |
+| [MC-2507](Maintainer-Context.md#mc-2507--305-takes-s7-26-boot-notice-alertcomp-x-buttons-and-s7-27-go-to-247-2026-11-20) | #305 takes S7-26 boot notice; AlertComp X buttons and S7-27 go to #247, 2026-11-20 |
+| [MC-2508](Maintainer-Context.md#mc-2508--179-closed-as-not-worth-building-cleanup-removes-studioassetusekeptfile-2026-11-20) | #179 closed as not worth building; cleanup removes studioAssetUseKeptFile, 2026-11-20 |
+| [MC-2509](Maintainer-Context.md#mc-2509--progress-popups-s4-modules-background-offer-only-after-last-duplicate-decision-2026-11-20) | Progress-popups S4 Modules background offer only after last duplicate decision, 2026-11-20 |
+| [MC-2510](Maintainer-Context.md#mc-2510--ui-s7-b1-built-in-default-retuned-to-palette-a-dusk-nexus-2026-11-20) | UI-S7 B1 built-in Default retuned to palette "A Dusk Nexus", 2026-11-20 |
+| [MC-2511](Maintainer-Context.md#mc-2511--ui-s7-b1-boot-screens-and-held-android-bars-use-the-new-default-canvas-2026-11-20) | UI-S7 B1 boot screens and held Android bars use the new Default canvas, 2026-11-20 |
+| [MC-2512](Maintainer-Context.md#mc-2512--307-progress-popups-f2-talkback-announcements-filed-after-s4-with-300-2026-11-20) | #307 progress-popups F2 TalkBack announcements filed after S4 with #300, 2026-11-20 |
+| [MC-2513](Maintainer-Context.md#mc-2513--progress-popups-s4-no-background-offer-while-a-replaced-modules-round-runs-2026-11-20) | Progress-popups S4 no background offer while a replaced Modules round runs, 2026-11-20 |
+| [MC-2514](Maintainer-Context.md#mc-2514--node-gc-s2-s-n3-48-h-gate-replaced-by-deterministic-asset-sweep-chain-test-2026-11-20) | Node-GC S2 S-N3 48 h gate replaced by deterministic asset-sweep chain test, 2026-11-20 |
+| [MC-2515](Maintainer-Context.md#mc-2515--pr-340-two-origin-pc-smoke-s-n5-blocks-merge-2026-11-20) | PR #340 two-origin PC smoke S-N5 blocks merge, 2026-11-20 |
+| [MC-2516](Maintainer-Context.md#mc-2516--ui-s7-d2-banana-cocoa-reference-pictures-location-2026-11-20) | UI-S7 D2 Banana Cocoa reference pictures location, 2026-11-20 |
+| [MC-2517](Maintainer-Context.md#mc-2517--ui-s7-b2-classic-surface-colours-deferred-to-later-design-2026-11-20) | UI-S7 B2 classic-surface colours deferred to later design, 2026-11-20 |
+| [MC-2518](Maintainer-Context.md#mc-2518--309-and-310-theme-pack-gaps-filed-as-unscheduled-issues-2026-11-20) | #309 and #310 theme-pack gaps filed as unscheduled issues, 2026-11-20 |
+| [MC-2519](Maintainer-Context.md#mc-2519--177-closed-as-done-built-in-packs-already-on-main-2026-11-20) | #177 closed as done, built-in packs already on main, 2026-11-20 |
+| [MC-2520](Maintainer-Context.md#mc-2520--311-build-scratch-white-and-office-sheet-packs-instead-of-archiving-2026-11-20) | #311 build Scratch White and Office Sheet packs instead of archiving, 2026-11-20 |
+| [MC-2521](Maintainer-Context.md#mc-2521--311-both-packs-ship-as-css-built-ins-and-downloadable-risutheme-files-2026-11-20) | #311 both packs ship as CSS built-ins and downloadable .risutheme files, 2026-11-20 |
+| [MC-2522](Maintainer-Context.md#mc-2522--311-scratch-white-school-notebook-palette-light-only-2026-11-20) | #311 Scratch White school-notebook palette, light only, 2026-11-20 |
+| [MC-2523](Maintainer-Context.md#mc-2523--311-office-sheet-classic-document-look-light-only-2026-11-20) | #311 Office Sheet classic-document look, light only, 2026-11-20 |
+| [MC-2524](Maintainer-Context.md#mc-2524--311-both-packs-cover-all-four-areas-2026-11-20) | #311 both packs cover all four areas, 2026-11-20 |
+| [MC-2525](Maintainer-Context.md#mc-2525--312-app-wide-talkback-name-loss-as-its-own-later-ticket-2026-11-20) | #312 app-wide TalkBack name loss as its own later ticket, 2026-11-20 |
+| [MC-2526](Maintainer-Context.md#mc-2526--297-305-169-154-215-225-226-four-parallel-ticket-sessions-approved-2026-11-20) | #297 #305 #169 #154 #215 #225 #226 four parallel ticket sessions approved, 2026-11-20 |
+| [MC-2527](Maintainer-Context.md#mc-2527--313-always-on-prose-invert-defect-filed-as-unscheduled-issue-2026-11-20) | #313 always-on prose-invert defect filed as unscheduled issue, 2026-11-20 |
+| [MC-2528](Maintainer-Context.md#mc-2528--pr-348-argon2id-default-for-encrypted-rtb-exports-128-mib-3-passes-2026-11-20) | PR #348 Argon2id default for encrypted rtb exports 128 MiB, 3 passes, 2026-11-20 |
+| [MC-2529](Maintainer-Context.md#mc-2529--pr-348-restore-password-prompt-gets-a-show-password-toggle-2026-11-20) | PR #348 restore password prompt gets a Show password toggle, 2026-11-20 |
+| [MC-2530](Maintainer-Context.md#mc-2530--pr-348-wrong-restore-password-asks-again-until-cancel-2026-11-20) | PR #348 wrong restore password asks again until Cancel, 2026-11-20 |
+| [MC-2531](Maintainer-Context.md#mc-2531--pr-348-copy-stage-authentication-failure-shows-damaged-message-2026-11-20) | PR #348 copy-stage authentication failure shows damaged message, 2026-11-20 |
+| [MC-2532](Maintainer-Context.md#mc-2532--pr-348-kdf-out-of-memory-restore-failure-gets-its-own-message-2026-11-20) | PR #348 KDF out-of-memory restore failure gets its own message, 2026-11-20 |
+| [MC-2533](Maintainer-Context.md#mc-2533--269-268-227-228-230-closed-with-accepted-gaps-2026-11-20) | #269 #268 #227 #228 #230 closed with accepted gaps, 2026-11-20 |
+| [MC-2534](Maintainer-Context.md#mc-2534--311-built-in-scratch-white-names-no-font-2026-11-20) | #311 built-in Scratch White names no font, 2026-11-20 |
+| [MC-2535](Maintainer-Context.md#mc-2535--311-validator-audit-runs-in-parallel-while-packs-use-todays-validator-2026-11-20) | #311 validator audit runs in parallel while packs use today's validator, 2026-11-20 |
+| [MC-2536](Maintainer-Context.md#mc-2536--311-downloadable-scratch-white-paper-texture-under-gpl-30-2026-11-20) | #311 downloadable Scratch White paper texture under GPL-3.0, 2026-11-20 |
+| [MC-2537](Maintainer-Context.md#mc-2537--311-downloadable-packs-live-in-theme-packs-at-the-repo-root-2026-11-20) | #311 downloadable packs live in theme-packs at the repo root, 2026-11-20 |
+| [MC-2538](Maintainer-Context.md#mc-2538--315-316-317-318-validator-audit-picks-filed-as-issues-2026-11-20) | #315 #316 #317 #318 validator audit picks filed as issues, 2026-11-20 |
+| [MC-2539](Maintainer-Context.md#mc-2539--tab-s9-e11-talkback-run-dropped-note-9-runs-cover-it-2026-11-20) | Tab S9 E11 TalkBack run dropped, Note 9 runs cover it, 2026-11-20 |
+| [MC-2540](Maintainer-Context.md#mc-2540--311-scratch-white-v1-ships-without-paper-texture-2026-11-20) | #311 Scratch White v1 ships without paper texture, 2026-11-20 |
+| [MC-2541](Maintainer-Context.md#mc-2541--uil-n12-one-noto-sans-cjk-font-fetch-allowed-for-test-use-2026-11-20) | UIL-N12 one Noto Sans CJK font fetch allowed for test use, 2026-11-20 |
+| [MC-2542](Maintainer-Context.md#mc-2542--317-unbundled-font-family-warns-listed-symbol-fonts-refused-2026-11-20) | #317 unbundled font family warns, listed symbol fonts refused, 2026-11-20 |
+| [MC-2543](Maintainer-Context.md#mc-2543--317-no-new-font-fallback-rule-warning-names-a-generic-family-2026-11-20) | #317 no new font fallback rule, warning names a generic family, 2026-11-20 |
+| [MC-2544](Maintainer-Context.md#mc-2544--317-pack-with-warnings-still-installs-warnings-listed-after-installed-2026-11-20) | #317 pack with warnings still installs, warnings listed after Installed, 2026-11-20 |
+| [MC-2545](Maintainer-Context.md#mc-2545--317-and-318-ship-as-one-pr-with-two-commits-2026-11-20) | #317 and #318 ship as one PR with two commits, 2026-11-20 |
+| [MC-2546](Maintainer-Context.md#mc-2546--319-own-gradient-credit-gap-filed-as-separate-follow-up-warning-2026-11-20) | #319 own-gradient credit gap filed as separate follow-up warning, 2026-11-20 |
+| [MC-2547](Maintainer-Context.md#mc-2547--317-318-font-warning-also-covers-chat-font-token-and-quoted-generics-2026-11-20) | #317 #318 font warning also covers chat font token and quoted generics, 2026-11-20 |
+| [MC-2548](Maintainer-Context.md#mc-2548--322-nested-percentage-widths-filed-as-warning-follow-up-2026-11-20) | #322 nested percentage widths filed as warning follow-up, 2026-11-20 |
+| [MC-2549](Maintainer-Context.md#mc-2549--325-pre-release-font-pack-memory-ticket-filed-2026-11-20) | #325 pre-release font pack memory ticket filed, 2026-11-20 |
+| [MC-2550](Maintainer-Context.md#mc-2550--326-request-log-redacts-api-keys-and-secrets-filed-as-follow-up-2026-11-20) | #326 request log redacts API keys and secrets, filed as follow-up, 2026-11-20 |
+| [MC-2551](Maintainer-Context.md#mc-2551--225-usage-stats-manual-clear-and-off-by-default-auto-retention-2026-11-20) | #225 usage stats manual clear and off-by-default auto-retention, 2026-11-20 |
+| [MC-2552](Maintainer-Context.md#mc-2552--225-q1-to-q4-answers-on-clear-all-and-retention-2026-11-20) | #225 Q1 to Q4 answers on clear-all and retention, 2026-11-20 |
+| [MC-2553](Maintainer-Context.md#mc-2553--226-accept-over-count-limitation-l2-class-pinned-by-diagnostic-test-d1-2026-11-20) | #226 accept over-count limitation L2 class, pinned by diagnostic test D1, 2026-11-20 |
+| [MC-2554](Maintainer-Context.md#mc-2554--226-both-sides-below-base-merge-as-mine-plus-theirs-with-floor-0-2026-11-20) | #226 both sides below base merge as mine plus theirs with floor 0, 2026-11-20 |
+| [MC-2555](Maintainer-Context.md#mc-2555--307-takes-the-data-page-bin-summary-headline-talkback-fix-2026-11-20) | #307 takes the Data page .bin summary headline TalkBack fix, 2026-11-20 |
+| [MC-2556](Maintainer-Context.md#mc-2556--240-focus-ring-shares-the-accent-search-at-451-or-better-2026-11-20) | #240 focus ring shares the accent search at 4.5:1 or better, 2026-11-20 |
+| [MC-2557](Maintainer-Context.md#mc-2557--b3-stays-small-other-24-classic-rings-ride-later-batches-2026-11-20) | B3 stays small; other 24 classic rings ride later batches, 2026-11-20 |
+| [MC-2558](Maintainer-Context.md#mc-2558--module-amber-and-violet-become-derived-scheme-roles-31-minimum-2026-11-20) | Module amber and violet become derived scheme roles, 3:1 minimum, 2026-11-20 |
+| [MC-2559](Maintainer-Context.md#mc-2559--332-selected-primary-button-fill-becomes-its-own-small-ticket-2026-11-20) | #332 selected primary Button fill becomes its own small ticket, 2026-11-20 |
+| [MC-2560](Maintainer-Context.md#mc-2560--312-folds-into-ui-s7-a2-and-a3-2026-11-20) | #312 folds into UI-S7 A2 and A3, 2026-11-20 |
+| [MC-2561](Maintainer-Context.md#mc-2561--333-takes-triggerv2-per-effect-fields-as-a-separate-follow-up-2026-11-20) | #333 takes TriggerV2 per-effect fields as a separate follow-up, 2026-11-20 |
+| [MC-2562](Maintainer-Context.md#mc-2562--334-takes-a-d0c-talkback-diagnostic-then-input-naming-2026-11-20) | #334 takes a D0c TalkBack diagnostic, then input naming, 2026-11-20 |
+| [MC-2563](Maintainer-Context.md#mc-2563--under-a-pack-pack-colours-win-for-transcript-italics-bold-and-quotes-2026-11-20) | Under a pack, pack colours win for transcript italics, bold and quotes, 2026-11-20 |
+| [MC-2564](Maintainer-Context.md#mc-2564--335-retunes-high-contrast-light-branch-text-colours-2026-11-20) | #335 retunes High contrast light-branch text colours, 2026-11-20 |
+| [MC-2565](Maintainer-Context.md#mc-2565--313-stays-a-classic-prose-change-composer-stays-full-width-2026-11-20) | #313 stays a classic prose change; composer stays full width, 2026-11-20 |
+| [MC-2566](Maintainer-Context.md#mc-2566--266-closed-as-ui-s2-complete-with-the-gaps-noted-2026-11-20) | #266 closed as UI-S2 complete with the gaps noted, 2026-11-20 |
+| [MC-2567](Maintainer-Context.md#mc-2567--337-filed-for-the-pack-transcript-canvas-follow-up-2026-11-20) | #337 filed for the pack transcript canvas follow-up, 2026-11-20 |
+| [MC-2568](Maintainer-Context.md#mc-2568--d1-merges-only-after-337-lands-or-in-one-train-with-it-2026-11-20) | D1 merges only after #337 lands or in one train with it, 2026-11-20 |
+| [MC-2569](Maintainer-Context.md#mc-2569--under-a-pack-italics-and-quotes-take-the-packs-judged-text-colour-2026-11-20) | Under a pack, italics and quotes take the pack's judged text colour, 2026-11-20 |
+| [MC-2570](Maintainer-Context.md#mc-2570--validator-stage-v1-not-adopted-now-revisit-with-d2-2026-11-20) | Validator stage V1 not adopted now; revisit with D2, 2026-11-20 |
+| [MC-2571](Maintainer-Context.md#mc-2571--undo-moves-imported-characters-to-trash-modules-removed-assets-kept-2026-11-20) | Undo moves imported characters to Trash; modules removed; assets kept, 2026-11-20 |
+| [MC-2572](Maintainer-Context.md#mc-2572--no-undo-when-an-actions-round-replaced-a-module-2026-11-20) | No Undo when an action's round replaced a module, 2026-11-20 |
+| [MC-2573](Maintainer-Context.md#mc-2573--no-undo-for-an-action-that-imported-a-preset-2026-11-20) | No Undo for an action that imported a preset, 2026-11-20 |
+| [MC-2574](Maintainer-Context.md#mc-2574--a-backgrounded-action-never-offers-undo-2026-11-20) | A backgrounded action never offers Undo, 2026-11-20 |
+| [MC-2575](Maintainer-Context.md#mc-2575--undo-10-s-window-pauses-for-pointer-focus-hidden-tab-or-yield-2026-11-20) | Undo 10 s window pauses for pointer, focus, hidden tab or yield, 2026-11-20 |
+| [MC-2576](Maintainer-Context.md#mc-2576--undo-feedback-is-a-plain-counts-toast-expiry-not-announced-2026-11-20) | Undo feedback is a plain counts toast; expiry not announced, 2026-11-20 |
+| [MC-2577](Maintainer-Context.md#mc-2577--finish-card-undo-covers-all-rounds-failure-cards-offer-none-as-first-recorded-2026-11-20) | Finish card Undo covers all rounds; failure cards offer none as first recorded, 2026-11-20 |
+| [MC-2578](Maintainer-Context.md#mc-2578--337-pack-wins-over-wallpaper-and-text-screen-overlay-2026-11-20) | #337 pack wins over wallpaper and text-screen overlay, 2026-11-20 |
+| [MC-2579](Maintainer-Context.md#mc-2579--337-pack-canvas-also-covers-card-and-module-backgrounds-2026-11-20) | #337 pack canvas also covers card and module backgrounds, 2026-11-20 |
+| [MC-2580](Maintainer-Context.md#mc-2580--later-retry-round-card-keeps-undo-silent-close-shows-none-2026-11-20) | Later Retry round card keeps Undo; silent close shows none, 2026-11-20 |
+| [MC-2581](Maintainer-Context.md#mc-2581--cancelled-retry-card-keeps-undo-while-items-remain-2026-11-20) | Cancelled Retry card keeps Undo while items remain, 2026-11-20 |
+| [MC-2582](Maintainer-Context.md#mc-2582--first-round-failure-card-offers-undo-for-files-already-added-2026-11-20) | First-round failure card offers Undo for files already added, 2026-11-20 |
+| [MC-2583](Maintainer-Context.md#mc-2583--undo-has-no-expiry-it-stays-on-the-result-card-until-the-card-closes-2026-11-20) | Undo has no expiry; it stays on the result card until the card closes, 2026-11-20 |
+| [MC-2584](Maintainer-Context.md#mc-2584--newer-task-card-replacing-a-result-card-ends-its-undo-2026-11-20) | Newer task card replacing a result card ends its Undo, 2026-11-20 |
+| [MC-2585](Maintainer-Context.md#mc-2585--310-closed-with-no-code-part-scoped-token-already-refused-2026-11-20) | #310 closed with no code; part-scoped token already refused, 2026-11-20 |
+| [MC-2586](Maintainer-Context.md#mc-2586--309-warns-on-a---pack-helper-set-on-bare-html-2026-11-20) | #309 warns on a --pack helper set on bare html, 2026-11-20 |
+| [MC-2587](Maintainer-Context.md#mc-2587--322-warns-when-compounded-percentage-widths-leave-under-240-px-2026-11-20) | #322 warns when compounded percentage widths leave under 240 px, 2026-11-20 |
+| [MC-2588](Maintainer-Context.md#mc-2588--chromemory-search-plus-optional-notes-2026-11-20) | ChroMemory search plus optional notes, 2026-11-20 |
+| [MC-2589](Maintainer-Context.md#mc-2589--chromemory-keyword-search-by-default-vectors-opt-in-2026-11-20) | ChroMemory keyword search by default; vectors opt-in, 2026-11-20 |
+| [MC-2590](Maintainer-Context.md#mc-2590--chromemory-search-covers-chat-and-lore-2026-11-20) | ChroMemory search covers chat and lore, 2026-11-20 |
+| [MC-2591](Maintainer-Context.md#mc-2591--who-knows-what-fields-reserved-decision-deferred-2026-11-20) | Who-knows-what fields reserved; decision deferred, 2026-11-20 |
+| [MC-2592](Maintainer-Context.md#mc-2592--phones-try-a-worker-for-local-embeddings-first-2026-11-20) | Phones try a Worker for local embeddings first, 2026-11-20 |
+| [MC-2593](Maintainer-Context.md#mc-2593--keep-per-message-trim-snippets-go-in-the-memory-slot-2026-11-20) | Keep per-message trim; snippets go in the memory slot, 2026-11-20 |
+| [MC-2594](Maintainer-Context.md#mc-2594--budget-cut-lore-recalls-only-keyword-misses-2026-11-20) | Budget-cut lore recalls only keyword misses, 2026-11-20 |
+| [MC-2595](Maintainer-Context.md#mc-2595--chromemory-bin-export-shows-no-memory-plus-a-warning-naming-the-engine-2026-11-20) | ChroMemory .bin export shows no memory plus a warning naming the engine, 2026-11-20 |
+| [MC-2596](Maintainer-Context.md#mc-2596--chromemory-hand-written-pins-dropped-2026-11-20) | ChroMemory hand-written pins dropped, 2026-11-20 |
+| [MC-2597](Maintainer-Context.md#mc-2597--chromemory-recalled-lore-uses-only-the-unused-lore-budget-2026-11-20) | ChroMemory recalled lore uses only the unused lore budget, 2026-11-20 |
+| [MC-2598](Maintainer-Context.md#mc-2598--chromemory-aggregate-only-bin-analyzer-with-no-text-names-or-keys-2026-11-20) | ChroMemory aggregate-only .bin analyzer with no text, names or keys, 2026-11-20 |
+| [MC-2599](Maintainer-Context.md#mc-2599--the-ltm-engine-is-named-chromemory-2026-11-20) | The LTM engine is named ChroMemory, 2026-11-20 |
+| [MC-2600](Maintainer-Context.md#mc-2600--chromemory-recalled-lore-cap-of-5000-tokens-by-default-user-raisable-2026-11-20) | ChroMemory recalled-lore cap of 5,000 tokens by default, user-raisable, 2026-11-20 |
+| [MC-2601](Maintainer-Context.md#mc-2601--chromemory-notes-start-from-now-backfill-only-by-a-call-count-button-2026-11-20) | ChroMemory notes start from now; backfill only by a call-count button, 2026-11-20 |
+| [MC-2602](Maintainer-Context.md#mc-2602--chromemory-spec-lives-in-docsdesign-commit-needs-its-own-confirmation-2026-11-20) | ChroMemory spec lives in docs/design, commit needs its own confirmation, 2026-11-20 |
+| [MC-2603](Maintainer-Context.md#mc-2603--chromemory-memory-dashboard-menu-recorded-as-a-feature-idea-not-staged-2026-11-20) | ChroMemory Memory dashboard menu recorded as a feature idea, not staged, 2026-11-20 |
+| [MC-2604](Maintainer-Context.md#mc-2604--332-on-selected-text-role-for-the-selected-primary-button-2026-11-20) | #332 on-selected text role for the selected primary Button, 2026-11-20 |
+| [MC-2605](Maintainer-Context.md#mc-2605--352-alertcomp-tab-second-selection-cue-and-aria-pressed-as-a-follow-up-2026-11-20) | #352 AlertComp tab second selection cue and aria-pressed as a follow-up, 2026-11-20 |
+| [MC-2606](Maintainer-Context.md#mc-2606--313-prose-invert-ships-in-x1-now-2026-11-20) | #313 prose-invert ships in X1 now, 2026-11-20 |
+| [MC-2607](Maintainer-Context.md#mc-2607--335-standard-light-quote-colours-included-in-the-high-contrast-retune-2026-11-20) | #335 Standard light quote colours included in the High contrast retune, 2026-11-20 |
+| [MC-2608](Maintainer-Context.md#mc-2608--chore-128-ui-encryption-as-a-password-checkbox-under-the-rtb-option-2026-11-20) | CHORE-128 UI encryption as a password checkbox under the rtb option, 2026-11-20 |
+| [MC-2609](Maintainer-Context.md#mc-2609--chore-128-ui-password-typed-twice-must-match-and-be-non-empty-2026-11-20) | CHORE-128 UI password typed twice, must match and be non-empty, 2026-11-20 |
+| [MC-2610](Maintainer-Context.md#mc-2610--chore-128-ui-plain-http-slowness-line-under-the-checkbox-2026-11-20) | CHORE-128 UI plain-HTTP slowness line under the checkbox, 2026-11-20 |
+| [MC-2611](Maintainer-Context.md#mc-2611--358-restore-password-prompt-moves-onto-patterndialog-with-a-focus-trap-2026-11-20) | #358 restore password prompt moves onto PatternDialog with a focus trap, 2026-11-20 |
+| [MC-2612](Maintainer-Context.md#mc-2612--326-redacted-secrets-show-a-literal-token-keeping-the-last-4-characters-2026-11-20) | #326 redacted secrets show a literal token keeping the last 4 characters, 2026-11-20 |
+| [MC-2613](Maintainer-Context.md#mc-2613--326-secret-named-response-body-fields-are-redacted-too-2026-11-20) | #326 secret-named response body fields are redacted too, 2026-11-20 |
+| [MC-2615](Maintainer-Context.md#mc-2615--chore-128-ui-bad-password-at-start-keeps-the-chooser-open-with-a-reason-2026-11-20) | CHORE-128 UI bad password at Start keeps the chooser open with a reason, 2026-11-20 |
+| [MC-2616](Maintainer-Context.md#mc-2616--chore-128-ui-enter-in-the-chooser-password-fields-does-nothing-2026-11-20) | CHORE-128 UI Enter in the chooser password fields does nothing, 2026-11-20 |
+| [MC-2617](Maintainer-Context.md#mc-2617--chore-128-ui-make-rtb-instead-after-the-leave-out-sheet-stays-plain-2026-11-20) | CHORE-128 UI Make .rtb instead after the leave-out sheet stays plain, 2026-11-20 |
+| [MC-2618](Maintainer-Context.md#mc-2618--chore-128-ui-plain-http-slowness-line-shows-whether-or-not-ticked-2026-11-20) | CHORE-128 UI plain-HTTP slowness line shows whether or not ticked, 2026-11-20 |
+| [MC-2625](Maintainer-Context.md#mc-2625--360-ui-s7-d1-merged-with-cost-follow-up-after-pc-d5-tripwire-fail-2026-11-20) | #360 UI-S7 D1 merged with cost follow-up after PC-D5 tripwire fail, 2026-11-20 |
+| [MC-2627](Maintainer-Context.md#mc-2627--ltm-s0-gate-sets-m4-and-real-shaped-four-cells-must-pass-2026-11-20) | LTM S0 gate sets: M4 and real-shaped, four cells must pass, 2026-11-20 |
+| [MC-2628](Maintainer-Context.md#mc-2628--ltm-s0-gate-at-32k-context-with-16k-64k-and-128k-reported-2026-11-20) | LTM S0 gate at 32k context, with 16k, 64k and 128k reported, 2026-11-20 |
+| [MC-2629](Maintainer-Context.md#mc-2629--ltm-s0-baseline-uses-engine-split-pieces-newest-first-2026-11-20) | LTM S0 baseline uses engine split pieces, newest first, 2026-11-20 |
+| [MC-2630](Maintainer-Context.md#mc-2630--ltm-s0-budget-may-exceed-1200-up-to-the-15-cap-cost-shown-2026-11-20) | LTM S0 budget may exceed 1200 up to the 15% cap, cost shown, 2026-11-20 |
+| [MC-2631](Maintainer-Context.md#mc-2631--ltm-s0-inconclusive-counts-as-not-a-pass-maintainer-asked-2026-11-20) | LTM S0 INCONCLUSIVE counts as not a pass; maintainer asked, 2026-11-20 |
+| [MC-2632](Maintainer-Context.md#mc-2632--ltm-s0-keeps-the-500-character-query-tail-and-measures-the-loss-2026-11-20) | LTM S0 keeps the 500-character query tail and measures the loss, 2026-11-20 |
+| [MC-2633](Maintainer-Context.md#mc-2633--ltm-s0-real-derived-numbers-stay-in-scratch-records-say-real-shaped-2026-11-20) | LTM S0 real-derived numbers stay in scratch, records say real-shaped, 2026-11-20 |
+| [MC-2634](Maintainer-Context.md#mc-2634--334-unlabelled-controls-reuse-existing-keys-new-keys-only-if-none-fits-2026-11-20) | #334 unlabelled controls reuse existing keys; new keys only if none fits, 2026-11-20 |
+| [MC-2635](Maintainer-Context.md#mc-2635--334-use-this-value-checkbox-takes-its-field-label-no-new-string-2026-11-20) | #334 use-this-value checkbox takes its field label, no new string, 2026-11-20 |
+| [MC-2636](Maintainer-Context.md#mc-2636--334-double-read-on-swipe-accepted-2026-11-20) | #334 double read on swipe accepted, 2026-11-20 |
+| [MC-2637](Maintainer-Context.md#mc-2637--334-stages-4-and-5-wait-for-a2-and-a3-pr2-to-merge-2026-11-20) | #334 stages 4 and 5 wait for A2 and A3 PR2 to merge, 2026-11-20 |
+| [MC-2638](Maintainer-Context.md#mc-2638--334-colour-picker-library-internals-out-of-scope-accepted-limitation-2026-11-20) | #334 colour-picker library internals out of scope, accepted limitation, 2026-11-20 |
+| [MC-2639](Maintainer-Context.md#mc-2639--ui-s7-b3b-opq-1-cbs-button-hover-keeps-borderc-fill-with-on-borderc-text-2026-11-20) | UI-S7 B3b OPQ-1 CBS button hover keeps borderc fill with on-borderc text, 2026-11-20 |
+| [MC-2640](Maintainer-Context.md#mc-2640--ui-s7-b3b-opq-2-amber-and-violet-siblings-routed-to-other-tickets-2026-11-20) | UI-S7 B3b OPQ-2 amber and violet siblings routed to other tickets, 2026-11-20 |
+| [MC-2641](Maintainer-Context.md#mc-2641--167-chore-840-plain-http-node-page-gets-a-software-p-256-key-pair-2026-11-20) | #167 CHORE-840 plain-HTTP Node page gets a software P-256 key pair, 2026-11-20 |
+| [MC-2642](Maintainer-Context.md#mc-2642--ltm-s0-ask-and-allude-turns-must-each-pass-in-all-four-cells-2026-11-20) | LTM S0 ask and allude turns must each pass in all four cells, 2026-11-20 |
+| [MC-2653](Maintainer-Context.md#mc-2653--ltm-s0-control-defects-fixed-and-tune-rerun-on-seed-510001-2026-11-20) | LTM S0 control defects fixed and tune rerun on seed 510001, 2026-11-20 |
+| [MC-2654](Maintainer-Context.md#mc-2654--korean-real-length-ideal-query-shortfall-lets-tune-pick-smaller-pieces-or-budget-2026-11-20) | Korean real-length ideal-query shortfall lets tune pick smaller pieces or budget, 2026-11-20 |
+| [MC-2655](Maintainer-Context.md#mc-2655--only-the-full-text-builder-carries-the-s0-verdict-idf-report-only-2026-11-20) | Only the full-text builder carries the S0 verdict, idf report-only, 2026-11-20 |
+| [MC-2656](Maintainer-Context.md#mc-2656--423-s3-hybrid-search-ships-on-api-embeddings-first-2026-11-21) | #423 S3 hybrid search ships on API embeddings first, 2026-11-21 |
+| [MC-2657](Maintainer-Context.md#mc-2657--423-unreachable-api-embedding-means-keyword-only-for-that-send-2026-11-21) | #423 unreachable API embedding means keyword-only for that send, 2026-11-21 |
+| [MC-2658](Maintainer-Context.md#mc-2658--423-keyword-search-stays-default-local-model-preselected-for-vectors-2026-11-21) | #423 keyword search stays default, local model preselected for vectors, 2026-11-21 |
+| [MC-2659](Maintainer-Context.md#mc-2659--401-s0-stops-without-gate-run-after-tune-predicts-fail-2026-11-21) | #401 S0 stops without gate run after tune predicts FAIL, 2026-11-21 |
+| [MC-2660](Maintainer-Context.md#mc-2660--401-findings-note-before-any-s0-code-change-2026-11-21) | #401 findings note before any S0 code change, 2026-11-21 |
+| [MC-2661](Maintainer-Context.md#mc-2661--401-s0-keyword-gate-uses-rare-word-builder-allude-carried-to-s3-2026-11-21) | #401 S0 keyword gate uses rare-word builder, allude carried to S3, 2026-11-21 |
+| [MC-2662](Maintainer-Context.md#mc-2662--401-final-settings-failure-walks-to-next-larger-cleared-budget-2026-11-21) | #401 final-settings failure walks to next larger cleared budget, 2026-11-21 |
+| [MC-2663](Maintainer-Context.md#mc-2663--354-custom-quote-follows-colour-scheme-and-setdatabase-stops-refilling-null-2026-11-20) | #354 Custom quote follows colour scheme and setDatabase stops refilling null, 2026-11-20 |
+| [MC-2664](Maintainer-Context.md#mc-2664--353-standard-light-italic-uses-literal-5f6066-2026-11-20) | #353 Standard light italic uses literal #5f6066, 2026-11-20 |
+| [MC-2665](Maintainer-Context.md#mc-2665--374-list-markers-use-currentcolor-on-every-prose-surface-and-scheme-2026-11-20) | #374 list markers use currentColor on every prose surface and scheme, 2026-11-20 |
+| [MC-2666](Maintainer-Context.md#mc-2666--355-danger-button-hover-fill-becomes-red-600-2026-11-20) | #355 danger button hover fill becomes red-600, 2026-11-20 |
+| [MC-2667](Maintainer-Context.md#mc-2667--364-task-toast-contrast-fixed-in-x2-3-not-deferred-to-247-s7-2026-11-20) | #364 task toast contrast fixed in X2-3, not deferred to #247 S7, 2026-11-20 |
+| [MC-2668](Maintainer-Context.md#mc-2668--395-sheets-win-over-overlay-sidebar-sidebar-refuses-to-open-while-a-sheet-is-open-2026-11-20) | #395 sheets win over overlay sidebar, sidebar refuses to open while a sheet is open, 2026-11-20 |
+| [MC-2669](Maintainer-Context.md#mc-2669--334-scheme-type-screen-reader-name-for-light-and-dark-select-2026-11-20) | #334 'Scheme type' screen-reader name for Light and Dark select, 2026-11-20 |
+| [MC-2670](Maintainer-Context.md#mc-2670--334-category-screen-reader-name-for-hypav3-bulk-edit-filter-2026-11-20) | #334 'Category' screen-reader name for HypaV3 bulk-edit filter, 2026-11-20 |
+| [MC-2671](Maintainer-Context.md#mc-2671--334-bias-row-number-and-wavespeed-model-select-sr-only-names-2026-11-21) | #334 bias row number and WaveSpeed model select sr-only names, 2026-11-21 |
+| [MC-2672](Maintainer-Context.md#mc-2672--334-wavespeed-lora-weight-sliders-named-by-new-key-loraweightindexed-2026-11-21) | #334 WaveSpeed LoRA weight sliders named by new key loraWeightIndexed, 2026-11-21 |
+| [MC-2673](Maintainer-Context.md#mc-2673--346-commit-merge-main-push-and-pr-approved-2026-11-20) | #346 commit, merge main, push and PR approved, 2026-11-20 |
+| [MC-2674](Maintainer-Context.md#mc-2674--367-merge-approved-once-ci-is-green-2026-11-20) | #367 merge approved once CI is green, 2026-11-20 |
+| [MC-2675](Maintainer-Context.md#mc-2675--progress-popups-s6a-commit-push-and-pr-approved-for-pr-377-2026-11-20) | Progress-popups S6a commit, push and PR approved for PR #377, 2026-11-20 |
+| [MC-2676](Maintainer-Context.md#mc-2676--mc-2744-autonomy-rule-confirmed-for-progress-popups-2026-11-20) | MC-2744 autonomy rule confirmed for progress-popups, 2026-11-20 |
+| [MC-2677](Maintainer-Context.md#mc-2677--successful-realm-share-closes-the-progress-card-silently-2026-11-20) | Successful Realm share closes the progress card silently, 2026-11-20 |
+| [MC-2678](Maintainer-Context.md#mc-2678--screenshot-failure-card-shows-the-error-text-2026-11-20) | Screenshot failure card shows the error text, 2026-11-20 |
+| [MC-2684](Maintainer-Context.md#mc-2684--357-fold-the-overlap-fix-into-the-abandon-work-2026-11-20) | #357 fold the overlap fix into the abandon work, 2026-11-20 |
+| [MC-2685](Maintainer-Context.md#mc-2685--276-maintainer-answered-close-it-session-then-reopened-the-issue-2026-11-20) | #276 maintainer answered Close it, session then reopened the issue, 2026-11-20 |
+| [MC-2703](Maintainer-Context.md#mc-2703--device-row-gh-issue-comments-approved-one-short-comment-per-row-2026-11-20) | Device-row gh issue comments approved, one short comment per row, 2026-11-20 |
+| [MC-2705](Maintainer-Context.md#mc-2705--tab-s9-e11-dropped-by-maintainer-after-guard-exit-95-2026-11-20) | Tab S9 E11 dropped by maintainer after guard exit 95, 2026-11-20 |
+| [MC-2714](Maintainer-Context.md#mc-2714--device-guard-emulator-5580-am-start-limited-to-own-package-activity-2026-11-20) | Device-guard emulator-5580 am start limited to own package activity, 2026-11-20 |
+| [MC-2715](Maintainer-Context.md#mc-2715--note-9-danger-scan-adds-second-decoding-pass-and-telephony-schemes-2026-11-20) | Note 9 danger scan adds second decoding pass and telephony schemes, 2026-11-20 |
+| [MC-2716](Maintainer-Context.md#mc-2716--routed-kit-scripts-run-only-on-the-two-spare-note-9-serials-2026-11-20) | Routed kit scripts run only on the two spare Note 9 serials, 2026-11-20 |
+| [MC-2717](Maintainer-Context.md#mc-2717--note-9-adb-forward-and-reverse-allowed-only-in-three-exact-forms-2026-11-20) | Note 9 adb forward and reverse allowed only in three exact forms, 2026-11-20 |
+| [MC-2718](Maintainer-Context.md#mc-2718--note-9-profile-device-prep-deviceidle-whitelist-calls-route-as-plain-calls-2026-11-20) | Note 9 profile device-prep deviceidle whitelist calls route as plain calls, 2026-11-20 |
+| [MC-2719](Maintainer-Context.md#mc-2719--kit-gate-at-start-stops-routed-scripts-on-non-note-9-serials-2026-11-20) | Kit gate at start stops routed scripts on non-Note 9 serials, 2026-11-20 |
+| [MC-2720](Maintainer-Context.md#mc-2720--emulator-5580-am-start-accepts-only-the-app-package-activity-2026-11-20) | emulator-5580 am start accepts only the app package activity, 2026-11-20 |
+| [MC-2721](Maintainer-Context.md#mc-2721--emulator-5580-am-start-also-requires-own-package-flag-naming-the-app-2026-11-20) | emulator-5580 am start also requires own-package flag naming the app, 2026-11-20 |
+| [MC-2722](Maintainer-Context.md#mc-2722--restricted-serial-am-start-scope-unchanged-residual-documented-2026-11-20) | Restricted serial am start scope unchanged, residual documented, 2026-11-20 |
+| [MC-2723](Maintainer-Context.md#mc-2723--trust-boundary-is-one-unmodified-checkout-residuals-documented-2026-11-20) | Trust boundary is one unmodified checkout, residuals documented, 2026-11-20 |
+| [MC-2724](Maintainer-Context.md#mc-2724--file-chooser-paths-limited-to-download-or-app-files-folder-2026-11-20) | File chooser paths limited to Download or app files folder, 2026-11-20 |
+| [MC-2725](Maintainer-Context.md#mc-2725--file-chooser-verb-taps-via-adb-input-at-the-probed-centre-2026-11-20) | File-chooser verb taps via adb input at the probed centre, 2026-11-20 |
+| [MC-2726](Maintainer-Context.md#mc-2726--file-chooser-verb-exits-98-after-two-counted-failures-per-run-2026-11-20) | File-chooser verb exits 98 after two counted failures per run, 2026-11-20 |
+| [MC-2734](Maintainer-Context.md#mc-2734--155-drops-the-separate-models-checkbox-and-always-shows-aux-selectors-2026-11-20) | #155 drops the separate-models checkbox and always shows aux selectors, 2026-11-20 |
+| [MC-2735](Maintainer-Context.md#mc-2735--155-keys-always-masked-and-aux-selectors-in-one-fixed-place-2026-11-20) | #155 keys always masked and aux selectors in one fixed place, 2026-11-20 |
+| [MC-2736](Maintainer-Context.md#mc-2736--159-closed-with-reduced-transparency-and-edge-swipe-toggle-dropped-2026-11-20) | #159 closed with reduced transparency and edge-swipe toggle dropped, 2026-11-20 |
+| [MC-2737](Maintainer-Context.md#mc-2737--211-loadouts-fault-keeps-the-last-saved-list-with-notice-and-retry-2026-11-20) | #211 loadouts fault keeps the last-saved list with notice and retry, 2026-11-20 |
+| [MC-2738](Maintainer-Context.md#mc-2738--211-ships-as-its-own-pr-with-designer-and-opus-gates-2026-11-20) | #211 ships as its own PR with designer and Opus gates, 2026-11-20 |
+| [MC-2739](Maintainer-Context.md#mc-2739--155-empty-per-function-aux-slot-falls-back-to-the-auxiliary-model-2026-11-20) | #155 empty per-function aux slot falls back to the Auxiliary Model, 2026-11-20 |
+| [MC-2740](Maintainer-Context.md#mc-2740--155-per-function-aux-selectors-at-end-of-model-tab-2026-11-20) | #155 per-function aux selectors at end of Model tab, 2026-11-20 |
+| [MC-2813](Maintainer-Context.md#mc-2813--256-closed-by-hand-with-usage_key_cap-kept-at-1000-2026-11-20) | #256 closed by hand with USAGE_KEY_CAP kept at 1000, 2026-11-20 |
+| [MC-2814](Maintainer-Context.md#mc-2814--ltm-chromemory-embeddings-use-api-providers-first-with-local-as-fallback-2026-11-20) | LTM ChroMemory embeddings use API providers first with local as fallback, 2026-11-20 |
+| [MC-2815](Maintainer-Context.md#mc-2815--note-9-guard-stays-as-is-with-13-zones-and-stop-rules-2026-11-20) | Note 9 guard stays as is with 13 zones and stop rules, 2026-11-20 |
+| [MC-2816](Maintainer-Context.md#mc-2816--finish-the-note-9-file-chooser-verb-2026-11-20) | Finish the Note 9 file-chooser verb, 2026-11-20 |
+| [MC-2817](Maintainer-Context.md#mc-2817--234-new-home-build-starts-now-in-a-new-session-2026-11-20) | #234 NEW home build starts now in a new session, 2026-11-20 |
+| [MC-2838](Maintainer-Context.md#mc-2838--334-playground-image-translation-mode-select-named-mode-2026-11-21) | #334 playground image translation mode select named Mode, 2026-11-21 |
+| [MC-2839](Maintainer-Context.md#mc-2839--334-trigger-v1-match-mode-select-named-match-mode-2026-11-21) | #334 Trigger V1 match-mode select named Match mode, 2026-11-21 |
+| [MC-2840](Maintainer-Context.md#mc-2840--334-trigger-v2-operand-selects-named-from-the-operand-label-2026-11-21) | #334 Trigger V2 operand selects named from the operand label, 2026-11-21 |
+| [MC-2841](Maintainer-Context.md#mc-2841--334-trigger-v2-mobile-effect-category-select-named-effect-category-2026-11-21) | #334 Trigger V2 mobile effect-category select named Effect category, 2026-11-21 |
+| [MC-2848](Maintainer-Context.md#mc-2848--401-closed-on-s0-verdict-and-402-s1-made-ready-2026-11-21) | #401 closed on S0 verdict and #402 S1 made ready, 2026-11-21 |
+| [MC-2878](Maintainer-Context.md#mc-2878--175-grilling-questions-pq-1-to-pq-4-answered-with-the-recommended-options-2026-11-21) | #175 grilling questions PQ-1 to PQ-4 answered with the recommended options, 2026-11-21 |
+| [MC-2943](Maintainer-Context.md#mc-2943--439-boot-restore-progress-follow-up-after-247-s6d-2026-11-21) | #439 boot restore progress follow-up after #247 S6d, 2026-11-21 |
+| [MC-2954](Maintainer-Context.md#mc-2954--442-to-452-ticketed-from-the-deferred-parts-survey-remainders-2026-11-21) | #442 to #452 ticketed from the deferred-parts survey remainders, 2026-11-21 |
+| [MC-2988](Maintainer-Context.md#mc-2988--458-move-risusaveencoder-into-test-fixtures-with-no-app-behaviour-change-2026-11-21) | #458 move RisuSaveEncoder into test fixtures with no app behaviour change, 2026-11-21 |
+| [MC-2989](Maintainer-Context.md#mc-2989--459-read-swipes-from-other-importers-through-the-same-seam-2026-11-21) | #459 read swipes from other importers through the same seam, 2026-11-21 |
+| [MC-3021](Maintainer-Context.md#mc-3021--476-bundles-334-leftovers-with-352-into-one-accessibility-ticket-2026-11-21) | #476 bundles #334 leftovers with #352 into one accessibility ticket, 2026-11-21 |
+| [MC-3022](Maintainer-Context.md#mc-3022--476-taken-next-by-ui-lane-270-and-231-re-scoped-after-438-2026-11-21) | #476 taken next by ui-lane, #270 and #231 re-scoped after #438, 2026-11-21 |
+| [MC-3023](Maintainer-Context.md#mc-3023--334-stays-closed-after-the-accessibility-cleanup-relay-2026-11-21) | #334 stays closed after the accessibility cleanup relay, 2026-11-21 |
+| [MC-3024](Maintainer-Context.md#mc-3024--333-closed-by-hand-with-a-link-to-469-2026-11-21) | #333 closed by hand with a link to #469, 2026-11-21 |
+| [MC-3025](Maintainer-Context.md#mc-3025--485-the-ordinary-open-path-names-the-character-in-all-four-restore-failure-alerts-2026-11-21) | #485 the ordinary open path names the character in all four restore-failure alerts, 2026-11-21 |
+| [MC-3026](Maintainer-Context.md#mc-3026--438-while-a-packs-own-colour-scheme-is-on-message-text-uses-the-packs-message-colour-2026-11-21) | #438 while a pack's own colour scheme is on, message text uses the pack's message colour, 2026-11-21 |
+| [MC-3044](Maintainer-Context.md#mc-3044--481-per-pr-mc-record-files-instead-of-a-merge-union-driver-2026-11-21) | #481 per-PR MC record files instead of a merge union driver, 2026-11-21 |
+| [MC-3055](Maintainer-Context.md#mc-3055--492-build-connections-as-the-vault-with-no-interim-key-hub-2026-11-21) | #492 build Connections as the Vault with no interim key hub, 2026-11-21 |
+| [MC-3056](Maintainer-Context.md#mc-3056--connections-stays-under-models-and-presets-plus-its-own-settings-row-2026-11-21) | Connections stays under Models and presets plus its own Settings row, 2026-11-21 |
+| [MC-3057](Maintainer-Context.md#mc-3057--495-android-keystore-at-rest-encryption-as-a-vault-stage-2026-11-21) | #495 Android Keystore at-rest encryption as a Vault stage, 2026-11-21 |
+| [MC-3058](Maintainer-Context.md#mc-3058--vault-keeps-no-key-reveal-or-copy-replace-or-clear-only-2026-11-21) | Vault keeps no key reveal or copy, replace or clear only, 2026-11-21 |
 | [MC-3011](Maintainer-Context.md#mc-3011--284-closed-as-covered-toggle-default-syntax-split-to-467-with-the-hold-lifted-2026-11-21) | #284 closed as covered; toggle default syntax split to #467 with the hold lifted, 2026-11-21 |
 | [MC-3012](Maintainer-Context.md#mc-3012--467-toggle-defaults-reach-types-syntax-reset-2026-11-21) | #467 toggle defaults: reach, types, syntax, Reset, 2026-11-21 |
 | [MC-3013](Maintainer-Context.md#mc-3013--467-reset-in-chat-only-scope-and-on-toggles-without-a-default-2026-11-21) | #467 Reset in chat-only scope and on toggles without a default, 2026-11-21 |

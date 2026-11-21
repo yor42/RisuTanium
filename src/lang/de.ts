@@ -517,6 +517,21 @@ export const languageGerman = {
     "replyNotificationsSetting": "Antwortbenachrichtigungen",
     "replyNotificationsHelp": "Erhalte eine Benachrichtigung, wenn in einem Chat, den du gerade nicht ansiehst, eine Antwort fertig ist.",
     "replyNotificationsBlocked": "Benachrichtigungen für RisuTanium sind in den Android-Einstellungen ausgeschaltet. Tippe auf den Schalter, um sie zu öffnen.",
+    "seasonalLogoSetting": "Saisonales Logo",
+    "seasonalLogoHelp": "Animiert das Logo in der oberen Leiste an Feiertagen und besonderen Tagen. Es läuft einmal pro Tag; tippe auf das Logo, um es erneut abzuspielen.",
+    "seasonalReplayHint": "Animation erneut abspielen",
+    "seasonalSkipHint": "Animation überspringen",
+    "seasonalSantaHat": "Weihnachtsmütze, ein verstecktes Spiel",
+    "seasonalGameTitle": "Weihnachtsmützen-Spiel",
+    "seasonalGameClose": "Schließen",
+    "seasonalGameScore": "Punkte",
+    "seasonalGameTime": "Zeit",
+    "seasonalGamePlay": "Spielen",
+    "seasonalGamePlayAgain": "Nochmal spielen",
+    "seasonalGameTarget": "Ziel Weihnachtsmütze",
+    "seasonalGameHint": "Triff die Mütze in 20 Sekunden so oft du kannst. Mit Escape schließt du das Spiel.",
+    "seasonalGameTimeUp": "Die Zeit ist um, Punkte",
+    "seasonalGameClosed": "Weihnachtsmützen-Spiel geschlossen",
     "keepAliveSpeaking": "Antwort wird vorgelesen",
     "keepAliveImage": "Bild wird generiert…",
     "keepAliveTranslating": "Wird übersetzt…",
@@ -713,6 +728,17 @@ export const languageGerman = {
     "backupNounItems": "Elemente",
     "backupTaskDone": "Backup gespeichert",
     "backupTaskFailed": "Backup konnte nicht gespeichert werden",
+    "restoreTaskTitle": "Backup wird wiederhergestellt",
+    "restorePointTaskTitle": "Wiederherstellung aus einem Wiederherstellungspunkt",
+    "restoreOldTaskTitle": "Älteres Backup wird wiederhergestellt",
+    "restoreStepSave": "Zuerst aktuelle Daten speichern",
+    "restoreStepRead": "Backup lesen",
+    "restoreStepTabs": "Andere Tabs prüfen",
+    "restoreStepCopy": "Dateien kopieren",
+    "restoreStepFinishFiles": "Dateikopie abschließen",
+    "restoreStepLoad": "Backup laden",
+    "restoreStepFinish": "Weitere Einstellungen wiederherstellen",
+    "restoreStepCleanup": "Aufräumen beim Start abschließen",
     "patternTaskCountFound": (noun: string, done: number, found: number) => noun ? `${noun} ${done} gespeichert, bisher ${found} gefunden` : `${done} gespeichert, bisher ${found} gefunden`,
     "chatShellTranslationClose": "Übersetzungseditor schließen",
     "formating": {
@@ -752,14 +778,10 @@ export const languageGerman = {
         "secretRefInRequest": (name: string) => `Eine Anfrage enthält noch den Verweis auf die Umgebungsvariable ${name}. Sie wurde nicht gesendet.`,
         "ttsAppKeyForeignHost": "Dieser Charakter sendet TTS-Anfragen an einen anderen Server, daher wurde der appweite OpenAI-Schlüssel nicht gesendet. Geben Sie in den TTS-Einstellungen des Charakters einen API-Schlüssel ein, um diesen Server zu verwenden.",
         "storageServerNeedsUpdate": "Dieser Server ist für das neue Speicherformat zu alt: Er muss aktualisiert oder neu gestartet werden, bevor er speichern oder aufräumen kann. Starten Sie den Node-Server neu (aktualisieren Sie ihn vorher, falls noch nicht geschehen) und laden Sie diese Seite dann neu.",
-        "coldStorageRestoreFailed": "Kaltlagerdaten konnten nicht geladen werden. Die Daten des betroffenen Charakters können dauerhaft verloren sein.",
-        "coldStorageRestoreUnreadable": "Dieser Charakter konnte gerade nicht geladen werden. Es wurde nichts verändert. Versuchen Sie es bitte erneut.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `Der archivierte Charakter ${characterName} konnte nicht geladen werden: Seine Kaltlagerdaten fehlen oder sind ungültig und können dauerhaft verloren sein. Es wurde nichts verändert.`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `Der archivierte Charakter ${characterName} konnte gerade nicht geladen werden. Es wurde nichts verändert. Versuchen Sie es bitte erneut.`,
-        "coldStorageRestoreUnavailable": "Archivierte Charaktere können auf dieser Seite nicht geöffnet werden: Dieser Browser bietet hier keinen Speicher dafür (zum Beispiel bei einer einfachen HTTP-Adresse). Es wurde nichts verändert.",
-        "coldStorageRestoreDamaged": "Die archivierte Kopie dieses Charakters konnte nicht gelesen werden: Sie ist möglicherweise beschädigt. Es wurde nichts verändert oder gelöscht.",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `Die alternativen Antworten der folgenden Chats von ${characterName} konnten nicht gelesen werden und wurden ausgelassen: ${chatNames}. Die Unterhaltungen selbst wurden unversehrt geladen.`,
         "chatAltUnreadable": "Die alternativen Antworten dieses Chats können nicht gelesen werden, daher kann er nicht neu generiert oder verzweigt werden. Es wurde nichts verändert.",
@@ -1663,6 +1685,9 @@ export const languageGerman = {
     "triggerInputLabels": {
         "value": "Wert",
         "var": "Variable",
+        "operandType": "{label}-Typ",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Variablenname",
         "outputVar": "Ausgabevariable",
         "name": "Name",
@@ -2106,6 +2131,11 @@ export const languageGerman = {
     "homeGreetingNight": "Noch wach?",
     "homeCommunityHeading": "Community und Quellcode",
     "homeSideLabel": "Entdecken und Community",
+    "homeStoriesHeading": "Deine Geschichte fortsetzen",
+    "homeStoryJustNow": "gerade eben",
+    "homeStoryArchived": "Archiviert",
+    "homeLibraryHeading": "Charaktere",
+    "homeLibraryAllTrashed": "Alle Charaktere befinden sich im Papierkorb.",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Treten Sie unserem Discord-Server bei, um mit anderen Nutzern und dem Entwickler zu chatten.",
     "homeLinkWebsiteTitle": "Website",
@@ -3117,6 +3147,7 @@ export const languageGerman = {
     "openAIAudioLeftOut": "Nicht an das Modell gesendet (es akzeptiert nur WAV- oder MP3-Audio): {names}",
     "openAIAudioUnnamed": "ein Audioanhang",
     "triggerOn": "Trigger ein",
+    "triggerEffectCategory": "Effektkategorie",
     "noConfig": "Keine Konfiguration",
     "var": "Variable",
     "condition": "Bedingung",
@@ -3872,17 +3903,32 @@ export const languageGerman = {
     "coldStorage": "Charaktere und Module beim Start archivieren",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Um den Speicherverbrauch niedrig zu halten, speichert die App nun beim Start die vollständigen Daten jedes Charakters separat und lädt sie erst, wenn Sie diesen Charakter öffnen. Es wird nichts gelöscht, und Ihre Charaktere sehen aus und funktionieren wie bisher. Sie können dies unter ${settings} > ${advancedSettings} > ${toggle} ausschalten. Wenn Sie es ausschalten, werden keine neuen Charaktere archiviert, und bereits archivierte Charaktere lassen sich weiterhin normal öffnen.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `Das Archivieren wurde für diesen Start gestoppt, nachdem zwei Charaktere hintereinander nicht separat gespeichert werden konnten; der zweite war „${characterName}". Diese Charaktere bleiben vollständig geladen im Haupt-Speicherstand, und die davor archivierten Charaktere sind nicht betroffen. Die übrigen Charaktere wurden unverändert gelassen.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `Diese Charaktere konnten nicht separat gespeichert werden: ${characterNames}${otherCount > 0 ? ` und ${otherCount} weitere` : ''}. Sie bleiben vollständig geladen und funktionieren wie bisher, und die App versucht beim Start nicht erneut, sie zu archivieren. Um es auf diesem Gerät erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Ihr Speicherstand ist zu groß für das Archivieren von Charakteren auf dem selbst gehosteten Server, daher wurde nichts archiviert und Ihr Speicherstand blieb unverändert. Alles funktioniert wie bisher. Um es auf diesem Gerät erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Das Archivieren von Charakteren beim Start ist auf diesem Gerät pausiert, weil es zweimal hintereinander nicht abgeschlossen wurde. Es ist nichts verloren gegangen, und bereits archivierte Charaktere werden weiterhin geladen, wenn Sie sie öffnen. Bis Sie es fortsetzen, wird beim Start nichts Neues archiviert. Um es erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
     "cleanColdStorage": "Nicht verwendete archivierte Daten und Assets bereinigen",
     "customSidebarConfig": "Benutzerdefinierte Seitenleisten-Konfiguration",
     "cleanColdStorageConfirm": "Dadurch werden alle nicht verwendeten archivierten Daten (Kaltlager) und alle nicht verwendeten Asset-Dateien dauerhaft gelöscht, also Bilder und Audiodateien, die kein Charakter, kein Modul, keine Persona und keine Einstellung mehr verwendet. Manches davon könnte in Zukunft noch nützlich sein, und es kann nicht wiederhergestellt werden. Möchten Sie fortfahren?",
+    "cleanUnusedFiles": "Nicht verwendete Dateien bereinigen",
+    "cleanUnusedFilesMeasuring": "Nicht verwendete Dateien werden gesucht. Bei einer großen Bibliothek kann das eine Weile dauern.",
+    "cleanUnusedFilesDeleting": "Nicht verwendete Dateien werden gelöscht...",
+    "cleanUnusedFilesConfirm": (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'Größe unbekannt' : bytes < 0.1 * 1024 * 1024 ? 'unter 0.1 MiB' : `etwa ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `${count} nicht verwendete Datei(en) (${size}) löschen? Kein Charakter, kein Modul, keine Persona, keine Einstellung und kein Wiederherstellungspunkt verwendet sie. Schließen Sie zuerst alle anderen Tabs und Fenster dieser App. Dies kann nicht rückgängig gemacht werden.`
+    },
+    "cleanUnusedFilesConfirmNode": (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'Größe unbekannt' : bytes < 0.1 * 1024 * 1024 ? 'unter 0.1 MiB' : `etwa ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `${count} nicht verwendete Datei(en) (${size}) jetzt löschen?`
+            + (later > 0 ? ` Es wurden ${later} weitere nicht verwendete Datei(en) gefunden. Auf diesem Server wird eine Datei erst gelöscht, nachdem drei Bereinigungen im Abstand von mindestens einem Tag sie als nicht verwendet erkannt haben, höchstens 500 auf einmal; diese werden daher für spätere Bereinigungen vorgemerkt.` : '')
+            + ` Schließen Sie zuerst alle anderen Tabs und Geräte, die diesen Server verwenden: Mit JA bestätigen Sie, dass keines davon geöffnet ist. Dies kann nicht rückgängig gemacht werden.`
+    },
+    "cleanUnusedFilesNoteNode": (later: number) => `Es kann noch keine nicht verwendete Datei gelöscht werden. Es wurden ${later} nicht verwendete Datei(en) gefunden. Auf diesem Server wird eine Datei erst gelöscht, nachdem drei Bereinigungen im Abstand von mindestens einem Tag sie als nicht verwendet erkannt haben, höchstens 500 auf einmal. Sollen sie jetzt vorgemerkt werden, damit eine spätere Bereinigung sie löschen kann? Schließen Sie zuerst alle anderen Tabs und Geräte, die diesen Server verwenden: Mit JA bestätigen Sie, dass keines davon geöffnet ist.`,
+    "cleanUnusedFilesNodeWait": "Die nicht verwendeten Dateien wurden vor weniger als einem Tag geprüft. Auf diesem Server kann eine Datei erst einen Tag nach der letzten Prüfung gelöscht werden, versuchen Sie es daher später erneut. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesNone": "Es wurden keine nicht verwendeten Dateien gefunden. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesDone": (deleted: number, kept: number) => `${deleted} nicht verwendete Datei(en) gelöscht.${kept > 0 ? ` ${kept} Datei(en) wurden behalten, weil sie wieder verwendet wurden oder nicht gelöscht werden konnten.` : ''}`,
+    "cleanUnusedFilesStopped": (deleted: number) => `Die Bereinigung wurde angehalten, weil die App begonnen hat, ihre Daten zu verwenden (Speichern, ein Chat, eine Wiederherstellung oder ein anderer Tab). ${deleted} Datei(en) wurden vor dem Anhalten gelöscht. Versuchen Sie es später erneut.`,
+    "cleanUnusedFilesCancelled": (deleted: number) => deleted === 0 ? 'Bereinigung abgebrochen. Es wurde nichts gelöscht.' : `Bereinigung abgebrochen. ${deleted} Datei(en) wurden vor dem Anhalten gelöscht.`,
+    "cleanUnusedFilesOtherTab": "Ein anderer Tab dieser App ist geöffnet. Schließen Sie alle anderen Tabs dieser App und versuchen Sie es dann erneut. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesNoTabCheck": "Diese Seite kann nicht auf andere geöffnete Tabs prüfen (sie wurde nicht über HTTPS oder localhost geöffnet) und kann daher keine nicht verwendeten Dateien bereinigen. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesBusy": "Warten Sie, bis das Speichern, ein laufender Chat oder die automatische Bereinigung beendet ist, und versuchen Sie es dann erneut. Es wurde nichts gelöscht.",
+    "cleanUnusedFilesRefused": "Die Bereinigung kann derzeit nicht ausgeführt werden (die gespeicherten Daten ändern sich, werden wiederhergestellt oder konnten nicht gelesen werden). Es wurde nichts gelöscht. Versuchen Sie es später erneut oder laden Sie die App zuerst neu.",
     "coldStorageCleanupNoLockConfirm": "Ihr Browser kann nicht prüfen, ob ein anderer Tab dieser App geöffnet ist. Ist während der Bereinigung ein anderer Tab dieser App geöffnet, können in diesem Tab Daten verloren gehen. Schließen Sie zuerst alle anderen Tabs dieser App und fahren Sie dann fort. Trotzdem fortfahren?",
     "coldStorageCleanupNodeConfirm": "Führen Sie diese Bereinigung nicht aus, während ein anderes Gerät oder ein anderer Browser denselben Server verwendet. Alles, was dort während der Bereinigung gespeichert wird, kann verloren gehen oder gelöscht werden. Fortfahren?",
     "coldStorageCleanupCheckingTabs": "Es wird geprüft, ob weitere Tabs dieser App geöffnet sind, bevor die Bereinigung beginnt...",
@@ -3915,11 +3961,6 @@ export const languageGerman = {
     "forkPrivacyPolicy": "Datenschutzerklärung",
     "forkLegalLinksLabel": "Rechtliche Dokumente",
     "opfsCopyBackProgress": (done: number, total: number) => `Ihre Daten werden in den Browserspeicher verschoben... (${done} / ${total}). Lassen Sie diesen Tab geöffnet, bis der Vorgang abgeschlossen ist.`,
-    "opfsFallbackNoticeTab": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil ein anderer Tab dieser App geöffnet ist oder dieser Browser andere Tabs nicht prüfen kann. RisuTanium läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Schließen Sie die anderen Tabs; beim nächsten Start der App wird es erneut versucht.",
-    "opfsFallbackNoticeSpace": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil nicht genügend freier Speicherplatz vorhanden ist. RisuTanium läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Geben Sie etwas Speicherplatz frei; beim nächsten Start der App wird es erneut versucht.",
-    "opfsFallbackNoticeNoIndexedDb": "Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden, weil dieser Browser IndexedDB nicht verwenden kann. RisuTanium läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Beim nächsten Start der App wird es erneut versucht.",
-    "opfsFallbackNoticeError": (detail: string) => `Ihre Daten konnten diesmal nicht in den Browserspeicher verschoben werden: ${detail}. RisuTanium läuft mit Ihren vorhandenen Daten, und es ist nichts verloren gegangen. Beim nächsten Start der App wird es erneut versucht.`,
-    "browserStorageUnavailable": "Dieser Browser konnte den Speicher, in dem RisuTanium Ihre Daten ablegt, nicht öffnen. Deshalb wurde nichts geladen und nichts verändert. Laden Sie die Seite neu. Wenn diese Meldung weiterhin erscheint, kann dieser Browser die Daten von RisuTanium nicht speichern (der private Modus und sehr alte Browser können die Ursache sein): Öffnen Sie RisuTanium in einem anderen Browser oder außerhalb des privaten Modus.",
     "saveReadFailed": "RisuTanium konnte Ihre gespeicherten Daten nicht aus dem Speicher lesen und hat deshalb nichts geöffnet und nichts verändert. Laden Sie die Seite neu, um es erneut zu versuchen. Wenn das weiterhin passiert, prüfen Sie, ob der Datenträger oder der Server, auf dem die Daten liegen, erreichbar ist.",
     "saveDamageItem": (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'der Zeiger auf Ihren aktuellen Speicherstand'
@@ -3961,6 +4002,7 @@ export const languageGerman = {
     "saveSeedFailed": "RisuTanium konnte den ersten Speicherstand nicht anlegen und hat deshalb nichts geöffnet und nichts verändert. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "saveLeftoverNotice": "RisuTanium hat nicht verwendete Speicherdaten gefunden, die ein unterbrochenes Speichern oder Wiederherstellen zurückgelassen hat. Sie schaden nicht. Sie können sie in der Bereinigung in den Einstellungen entfernen.",
     "saveMainFileLeftNotice": "Ihre Daten wurden in ein neues Format überführt, aber die alte Speicherdatei ist zu groß, als dass dieser Server sie beiseiteschieben könnte. Eine Upstream-Version von RisuAI, die dieselben Daten öffnet, könnte diese alte Datei öffnen. Die Bereinigung in den Einstellungen bewahrt sie sicher auf, bis Sie sie löschen.",
+    "staticBuildUnsupported": "RisuTanium läuft nicht mehr von einem gewöhnlichen Webhost. Verwenden Sie die Android- oder Desktop-App oder die Seite, die der RisuTanium-Node-Server ausliefert.",
     "opfsReadOnlyNotice": "RisuTanium läuft diesmal mit einer temporären Kopie Ihrer Daten und speichert deshalb keine Änderungen; das Wiederherstellen eines Backups oder das Bereinigen des Speichers ist nicht verfügbar. Ihre Daten sind nicht verloren. Schließen Sie andere Tabs dieser App und starten Sie sie neu, damit die Daten in den Browser-Speicher überführt werden können.",
     "legacyPartialCharacters": (count: number) => count === 1 ? "1 Charakter" : `${count} Charaktere`,
     "legacyPartialUnreadable": (count: number) => count === 1 ? "1 weiterer Teil, den diese Version nicht lesen kann" : `${count} weitere Teile, die diese Version nicht lesen kann`,

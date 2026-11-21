@@ -176,7 +176,7 @@ import { doingChat } from 'src/ts/process/index.svelte'
 import { alertError } from 'src/ts/alert'
 import { setCharacterByIndex } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { changeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
 
@@ -392,10 +392,19 @@ describe('changeChar on an archived character -- what the user is told', () => {
         await changeChar(1)
 
         expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageRestoreFailed)
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreFailed('member name'))
         expect(slot(1).coldstorage).toBe('unit-member')
         expect(get(selectedCharID)).toBe(-1)
         expect(vi.mocked(setCharacterByIndex)).not.toHaveBeenCalled()
+    })
+
+    test('a stub with no name is named by the unknown-character text, once', async () => {
+        installDb([warmCharacter('before'), upstreamStub('member', 'unit-member', { name: '' })])
+        readColdStorageItemMock.mockResolvedValue({ status: 'missing' })
+
+        await changeChar(1)
+
+        expect(vi.mocked(alertError).mock.calls).toEqual([[language.errors.coldStorageNamedRestoreFailed(language.errors.coldStorageUnknownCharacterName)]])
     })
 
     test('a read error asks to try again, never claims the data may be lost, and leaves the placeholder and the selection alone', async () => {
@@ -404,11 +413,11 @@ describe('changeChar on an archived character -- what the user is told', () => {
 
         await changeChar(1)
 
-        const unreadable = language.errors.coldStorageRestoreUnreadable
+        const unreadable = language.errors.coldStorageNamedRestoreUnreadable('member name')
         expect(typeof unreadable).toBe('string')
         expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
         expect(vi.mocked(alertError)).toHaveBeenCalledWith(unreadable)
-        expect(vi.mocked(alertError)).not.toHaveBeenCalledWith(language.errors.coldStorageRestoreFailed)
+        expect(vi.mocked(alertError)).not.toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreFailed('member name'))
         expect(slot(1).coldstorage).toBe('unit-member')
         expect(get(selectedCharID)).toBe(-1)
         expect(vi.mocked(setCharacterByIndex)).not.toHaveBeenCalled()
@@ -421,7 +430,7 @@ describe('changeChar on an archived character -- what the user is told', () => {
         await changeChar(1)
 
         expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageRestoreFailed)
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreFailed('member name'))
         expect(slot(1).coldstorage).toBe('unit-member')
         expect(slot(1).chaId).toBe('member')
         expect(get(selectedCharID)).toBe(-1)
@@ -714,8 +723,8 @@ describe('changeChar on an archived character -- which call selects', () => {
 
 describe('changeChar on an archived character -- a read that cannot succeed here', () => {
     test.each([
-        ['no storage on the page', 'unavailable', /offers no storage/i, () => language.errors.coldStorageRestoreUnavailable],
-        ['a copy that cannot be read', 'damaged', /may be damaged/i, () => language.errors.coldStorageRestoreDamaged],
+        ['no storage on the page', 'unavailable', /offers no storage/i, () => language.errors.coldStorageNamedRestoreUnavailable('member name')],
+        ['a copy that cannot be read', 'damaged', /may be damaged/i, () => language.errors.coldStorageNamedRestoreDamaged('member name')],
     ] as const)('%s shows its own text once, never claims loss or asks for a retry, and leaves the placeholder and the selection alone', async (_label, kind, wording, expectedText) => {
         installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
         readColdStorageItemMock.mockResolvedValue({ status: 'error', error: new Error('cannot be used here'), kind })
@@ -740,7 +749,7 @@ describe('changeChar on an archived character -- a read that cannot succeed here
         await changeChar(1)
 
         expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
-        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+        expect(vi.mocked(alertError)).toHaveBeenCalledWith(language.errors.coldStorageNamedRestoreUnreadable('member name'))
         expect(String(vi.mocked(alertError).mock.calls[0][0])).toMatch(/try again/i)
     })
 

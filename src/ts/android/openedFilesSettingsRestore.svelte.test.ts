@@ -39,6 +39,8 @@ const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
 const alertWaitMock = vi.hoisted(() => vi.fn())
+// Forwards to the real `requestSaveNow`; it only records whether the restore's save-first step asked for a save.
+const requestSaveNowMock = vi.hoisted(() => vi.fn())
 const reloadMark = vi.hoisted(() => ({ marked: false }))
 const importedMock = vi.hoisted(() => vi.fn(async (_batch: unknown): Promise<void> => { }))
 const noticeMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<void> => { }))
@@ -113,10 +115,15 @@ vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(
 
 // The real module with one answer fixed: a clean page, so the restore's save-first step returns at its clean check and
 // the unsaved-edits question does not take one of the planned confirmations.
-vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
-    ...await importOriginal(),
-    isSaveClean: () => true,
-}))
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => {
+    const original = await importOriginal()
+    requestSaveNowMock.mockImplementation(original.requestSaveNow)
+    return {
+        ...original,
+        isSaveClean: () => true,
+        requestSaveNow: requestSaveNowMock,
+    }
+})
 
 vi.mock(import('src/ts/storage/readOnlyPage'), () => ({
     refuseOnReadOnlyPage: async () => false,
@@ -388,6 +395,7 @@ beforeEach(async () => {
     setDatabaseMock.mockReset()
     alertErrorMock.mockReset()
     alertWaitMock.mockReset()
+    requestSaveNowMock.mockClear()
     alertConfirmMock.mockReset().mockResolvedValue(true)
     noticeMock.mockClear()
     importedMock.mockClear()
@@ -409,8 +417,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-    // The restore's save-first step returned at its clean check; it never waited out its bound.
-    expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+    // The restore's save-first step returned at its clean check; it never asked for a save or waited out its bound.
+    expect(requestSaveNowMock).not.toHaveBeenCalled()
     stopRefusalWatch()
     resetStartupCleanupForTests()
     delete window.__risuTaniumOpenedFilesHost

@@ -19,6 +19,18 @@ export function hasLiveCharacter(characters: readonly (CharacterSlot | null | un
 }
 
 /**
+ * True when at least one slot is something the library lists, the Trash included: present and not a
+ * hidden system character. False is the only state in which the Create/Import hero is the sole
+ * content. An undefined list counts as empty.
+ */
+export function hasLibraryContent(characters: readonly (CharacterSlot | null | undefined)[] | undefined): boolean {
+    if (!characters) {
+        return false
+    }
+    return characters.some((c) => !!c && !isHiddenSystemCharacter(c))
+}
+
+/**
  * The name the persona chip shows, or null when the persona counts as unnamed: an empty name or the
  * default 'User' after trimming (a persona deliberately named "User" is indistinguishable and shows
  * the set-up label too). The name is the stored username, which the Personas page edits directly.

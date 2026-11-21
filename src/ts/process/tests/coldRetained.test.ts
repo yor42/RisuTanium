@@ -20,7 +20,6 @@ import {
     contentFingerprint,
     differingKeys,
     dropLoaded,
-    dropRetained,
     hasLoaded,
     loadedRecordOf,
     pruneRetained,
@@ -31,7 +30,7 @@ import {
     retainedRecordOf,
     retainedUnitKeys,
 } from '../coldRetained'
-import { buildColdStub } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 
 type Slot = Database['characters'][number]
 
@@ -150,20 +149,18 @@ describe('retainOnRestore', () => {
         error.mockRestore()
     })
 
-    test('acceptance: dropRetained forgets the record, and a record whose installed character left the list is pruned', () => {
+    test('acceptance: a record whose installed character left the list is pruned, and the others survive the prune', () => {
         const a = full('a')
         const b = full('b')
         install(a, b)
         retainOnRestore(a, stubOf(a, 'unit-a'), a)
         retainOnRestore(b, stubOf(b, 'unit-b'), b)
 
-        dropRetained(retainedRecordOf(a)!)
-        expect(retainedRecordOf(a)).toBeUndefined()
-        expect(retainedCount()).toBeGreaterThan(0)
-
         DBState.db.characters.splice(1, 1)
         pruneRetained()
-        expect(retainedCount()).toBe(0)
+        expect(retainedRecordOf(a)).toBeDefined()
+        expect(retainedRecordOf(b)).toBeUndefined()
+        expect(retainedCount()).toBe(1)
     })
 })
 

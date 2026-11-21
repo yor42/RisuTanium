@@ -215,3 +215,44 @@ describe('colour text', () => {
         expect(compositeHex('#ffffff80', '#000000')).toBe('#808080')
     })
 })
+
+describe('the opt-in importance tiers', () => {
+    const IMPORTANT = { important: true }
+    const colourOf = (m: CascadeModel): string | undefined => m.prop(document.querySelector('p')!, 'color')
+
+    test('CM-I1: an important author rule beats a normal inline declaration, and the suffix is stripped', () => {
+        mount('<p style="color:#222222"></p>')
+        expect(colourOf(model('p{color:#111111 !important}', IMPORTANT))).toBe('#111111')
+    })
+
+    test('CM-I2: an important inline declaration beats an important author rule of any specificity', () => {
+        mount('<div id="a"><div class="b"><p style="color:#222222 !important"></p></div></div>')
+        expect(colourOf(model('#a .b p{color:#111111 !important}', IMPORTANT))).toBe('#222222')
+    })
+
+    test('CM-I3: important declarations in an earlier layer win, normal ones in a later layer win', () => {
+        mount('<p></p>')
+        expect(colourOf(model('@layer a { p{color:#111111 !important} } p{color:#333333 !important}', IMPORTANT))).toBe('#111111')
+        expect(colourOf(model('@layer a { p{color:#111111} } p{color:#333333}', IMPORTANT))).toBe('#333333')
+    })
+
+    test('CM-I4: an important inline background reset removes an important author background colour', () => {
+        mount('<p style="background: none !important"></p>')
+        const reset = model('p{background-color:#123456 !important}', IMPORTANT).painted(document.querySelector('p')!)
+        expect(reset['background-color']).toBeUndefined()
+        document.body.innerHTML = '<p></p>'
+        expect(model('p{background-color:#123456 !important}', IMPORTANT).painted(document.querySelector('p')!)['background-color']).toBe('#123456ff')
+    })
+
+    test('CM-I5: without the option the inline declaration is last and !important stays recorded as unmodelled (compatibility guard: passes before and after)', () => {
+        mount('<p style="color:#222222"></p>')
+        const m = new CascadeModel(compileRules([{ name: 'test', css: 'p{color:#111111 !important}' }]))
+        expect(colourOf(m)).toBe('#222222')
+        expect(m.unmodelled).toContain('test: !important in p')
+    })
+
+    test('CM-I6: with the option !important is no longer unmodelled', () => {
+        mount('<p style="color:#222222"></p>')
+        expect(model('p{color:#111111 !important}', IMPORTANT).unmodelled.filter((entry) => entry.includes('!important'))).toEqual([])
+    })
+})

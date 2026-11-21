@@ -517,6 +517,21 @@ export const languageSpanish = {
     replyNotificationsSetting: "Notificaciones de respuestas",
     replyNotificationsHelp: "Recibe una notificación cuando termine una respuesta en un chat que no estás viendo.",
     replyNotificationsBlocked: "Las notificaciones de RisuTanium están desactivadas en los ajustes de Android. Toca el interruptor para abrirlos.",
+    seasonalLogoSetting: "Logo festivo",
+    seasonalLogoHelp: "Anima el logo de la barra superior en festivos y días especiales. Se reproduce una vez al día; toca el logo para repetirlo.",
+    seasonalReplayHint: "Repetir la animación",
+    seasonalSkipHint: "Saltar la animación",
+    seasonalSantaHat: "Gorro de Papá Noel, un juego oculto",
+    seasonalGameTitle: "Juego del gorro de Papá Noel",
+    seasonalGameClose: "Cerrar",
+    seasonalGameScore: "Puntuación",
+    seasonalGameTime: "Tiempo",
+    seasonalGamePlay: "Jugar",
+    seasonalGamePlayAgain: "Jugar de nuevo",
+    seasonalGameTarget: "Objetivo gorro de Papá Noel",
+    seasonalGameHint: "Pulsa el gorro tantas veces como puedas en 20 segundos. Escape lo cierra.",
+    seasonalGameTimeUp: "Se acabó el tiempo, puntuación",
+    seasonalGameClosed: "Juego del gorro de Papá Noel cerrado",
     keepAliveSpeaking: "Leyendo la respuesta en voz alta",
     keepAliveImage: "Generando una imagen…",
     keepAliveTranslating: "Traduciendo…",
@@ -713,6 +728,17 @@ export const languageSpanish = {
     backupNounItems: "Elementos",
     backupTaskDone: "Respaldo guardado",
     backupTaskFailed: "No se pudo guardar el respaldo",
+    restoreTaskTitle: "Restaurando un respaldo",
+    restorePointTaskTitle: "Restaurando desde un punto de restauración",
+    restoreOldTaskTitle: "Restaurando un respaldo anterior",
+    restoreStepSave: "Guardar primero tus datos actuales",
+    restoreStepRead: "Leer el respaldo",
+    restoreStepTabs: "Comprobar otras pestañas",
+    restoreStepCopy: "Copiar archivos",
+    restoreStepFinishFiles: "Terminar de copiar archivos",
+    restoreStepLoad: "Cargar el respaldo",
+    restoreStepFinish: "Restaurar el resto de ajustes",
+    restoreStepCleanup: "Terminar la limpieza de inicio",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done} guardados, ${found} encontrados hasta ahora` : `${done} guardados, ${found} encontrados hasta ahora`,
     chatShellTranslationClose: "Cerrar el editor de traducción",
     "formating": {
@@ -752,14 +778,10 @@ export const languageSpanish = {
         "secretRefInRequest": (name: string) => `Una solicitud aún contiene la referencia a la variable de entorno ${name}. No se envió.`,
         "ttsAppKeyForeignHost": "Este personaje envía las solicitudes de TTS a otro servidor, por lo que no se envió la clave de OpenAI de toda la aplicación. Introduce una clave de API en los ajustes de TTS del personaje para usar ese servidor.",
         "storageServerNeedsUpdate": "Este servidor es demasiado antiguo para el nuevo formato de almacenamiento: debe actualizarse o reiniciarse antes de poder guardar o limpiar. Reinicia el servidor Node (actualízalo primero si aún no lo has hecho) y luego recarga esta página.",
-        "coldStorageRestoreFailed": "No se pudieron cargar los datos del almacenamiento frío. Los datos del personaje afectado pueden haberse perdido permanentemente.",
-        "coldStorageRestoreUnreadable": "No se pudo cargar este personaje en este momento. No se cambió nada. Inténtalo de nuevo.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `No se pudo cargar el personaje archivado ${characterName}: los datos de su almacenamiento frío faltan o no son válidos, y pueden haberse perdido permanentemente. No se cambió nada.`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `No se pudo cargar el personaje archivado ${characterName} en este momento. No se cambió nada. Inténtalo de nuevo.`,
-        "coldStorageRestoreUnavailable": "Los personajes archivados no se pueden abrir en esta página: este navegador no ofrece aquí almacenamiento para ellos (por ejemplo, en una dirección HTTP sin cifrar). No se cambió nada.",
-        "coldStorageRestoreDamaged": "No se pudo leer la copia archivada de este personaje: puede estar dañada. No se cambió ni se eliminó nada.",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `No se pudieron leer las respuestas alternativas de estos chats de ${characterName} y se omitieron: ${chatNames}. Las conversaciones en sí se cargaron intactas.`,
         "chatAltUnreadable": "No se pueden leer las respuestas alternativas de este chat, así que no se puede regenerar ni ramificar. No se cambió nada.",
@@ -1663,6 +1685,9 @@ export const languageSpanish = {
     "triggerInputLabels": {
         "value": "Valor",
         "var": "Variable",
+        "operandType": "Tipo de {label}",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Nombre de Variable",
         "outputVar": "Variable de Salida",
         "name": "Nombre",
@@ -2106,6 +2131,11 @@ export const languageSpanish = {
     "homeGreetingNight": "¿Sigues despierto?",
     "homeCommunityHeading": "Comunidad y código fuente",
     "homeSideLabel": "Descubrir y comunidad",
+    "homeStoriesHeading": "Continúa tu historia",
+    "homeStoryJustNow": "ahora mismo",
+    "homeStoryArchived": "Archivado",
+    "homeLibraryHeading": "Personajes",
+    "homeLibraryAllTrashed": "Todos los personajes están en la Papelera.",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Únete a nuestro servidor de Discord para chatear con otros usuarios y con el desarrollador.",
     "homeLinkWebsiteTitle": "Sitio web",
@@ -3117,6 +3147,7 @@ export const languageSpanish = {
     "openAIAudioLeftOut": "No se envió al modelo (solo acepta audio WAV o MP3): {names}",
     "openAIAudioUnnamed": "un archivo de audio adjunto",
     "triggerOn": "Trigger Activado",
+    "triggerEffectCategory": "Categoría de efecto",
     "noConfig": "Sin Configuración",
     "var": "Variable",
     "condition": "Condición",
@@ -3855,17 +3886,32 @@ export const languageSpanish = {
     coldStorage: "Archivar personajes y módulos al iniciar",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Para mantener bajo el uso de memoria, la aplicación ahora guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. No se elimina nada y tus personajes se ven y funcionan igual que antes. Puedes desactivarlo en ${settings} > ${advancedSettings} > ${toggle}. Si lo desactivas, no se archiva ningún personaje nuevo y los personajes ya archivados se siguen abriendo con normalidad.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `El archivado se detuvo en este inicio después de que dos personajes seguidos no se pudieran guardar por separado; el segundo fue "${characterName}". Esos personajes permanecen totalmente cargados en el guardado principal y los personajes archivados antes no se ven afectados. El resto de los personajes se dejó como estaba.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `Estos personajes no se pudieron guardar por separado: ${characterNames}${otherCount > 0 ? ` y ${otherCount} más` : ''}. Siguen totalmente cargados y funcionan como antes, y la aplicación no intentará archivarlos de nuevo al iniciar. Para volver a intentarlo en este dispositivo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Tu guardado es demasiado grande para que el servidor autoalojado archive personajes en él, así que no se archivó nada y tu guardado se dejó como estaba. Todo funciona como antes. Para volver a intentarlo en este dispositivo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `El archivado de personajes al iniciar está en pausa en este dispositivo porque no se completó dos veces seguidas. No se perdió nada y los personajes ya archivados se siguen cargando cuando los abres. Mientras no lo reanudes, no se archiva nada nuevo al iniciar. Para volver a intentarlo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
     cleanColdStorage: "Limpiar Datos Archivados y Activos No Utilizados",
     customSidebarConfig: "Configuración Personalizada de la Barra Lateral",
     cleanColdStorageConfirm: "Esto eliminará permanentemente todos los datos archivados (almacenamiento frío) no utilizados y todos los archivos de activos no utilizados, es decir, las imágenes y el audio que ya no usa ningún personaje, módulo, persona ni ajuste. Parte de ello podría ser útil en el futuro y no se puede recuperar. ¿Quieres continuar?",
+    cleanUnusedFiles: "Limpiar Archivos No Utilizados",
+    cleanUnusedFilesMeasuring: "Buscando archivos no utilizados. Puede tardar un rato si la biblioteca es grande.",
+    cleanUnusedFilesDeleting: "Eliminando archivos no utilizados...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'tamaño desconocido' : bytes < 0.1 * 1024 * 1024 ? 'menos de 0.1 MiB' : `unos ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `¿Eliminar ${count} archivo(s) no utilizado(s) (${size})? Ningún personaje, módulo, persona, ajuste ni punto de restauración los usa. Cierra primero todas las demás pestañas y ventanas de esta aplicación. Esta acción no se puede deshacer.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'tamaño desconocido' : bytes < 0.1 * 1024 * 1024 ? 'menos de 0.1 MiB' : `unos ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `¿Eliminar ahora ${count} archivo(s) no utilizado(s) (${size})?`
+            + (later > 0 ? ` Se encontraron ${later} archivo(s) no utilizado(s) más. En este servidor un archivo se elimina solo después de que tres limpiezas separadas por al menos un día lo hayan encontrado sin usar, con un máximo de 500 a la vez, por lo que estos quedan anotados para limpiezas posteriores.` : '')
+            + ` Cierra primero todas las demás pestañas y dispositivos que usen este servidor: al pulsar SÍ confirmas que ninguno está abierto. Esta acción no se puede deshacer.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `Todavía no se puede eliminar ningún archivo no utilizado. Se encontraron ${later} archivo(s) no utilizado(s). En este servidor un archivo se elimina solo después de que tres limpiezas separadas por al menos un día lo hayan encontrado sin usar, con un máximo de 500 a la vez. ¿Anotarlos ahora para que una limpieza posterior pueda eliminarlos? Cierra primero todas las demás pestañas y dispositivos que usen este servidor: al pulsar SÍ confirmas que ninguno está abierto.`,
+    cleanUnusedFilesNodeWait: "Los archivos no utilizados se comprobaron hace menos de un día. En este servidor un archivo solo se puede eliminar un día después de la última comprobación, así que inténtalo de nuevo más tarde. No se eliminó nada.",
+    cleanUnusedFilesNone: "No se encontraron archivos no utilizados. No se eliminó nada.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Se eliminaron ${deleted} archivo(s) no utilizado(s).${kept > 0 ? ` Se conservaron ${kept} archivo(s) porque volvieron a usarse o no se pudieron eliminar.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `La limpieza se detuvo porque la aplicación empezó a usar sus datos (guardado, un chat, una restauración u otra pestaña). Se eliminaron ${deleted} archivo(s) antes de detenerse. Inténtalo de nuevo más tarde.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Limpieza cancelada. No se eliminó nada.' : `Limpieza cancelada. Se eliminaron ${deleted} archivo(s) antes de detenerse.`,
+    cleanUnusedFilesOtherTab: "Hay otra pestaña de esta aplicación abierta. Cierra todas las demás pestañas de esta aplicación y vuelve a intentarlo. No se eliminó nada.",
+    cleanUnusedFilesNoTabCheck: "Esta página no puede comprobar si hay otras pestañas abiertas (no se abrió mediante HTTPS ni localhost), por lo que no puede limpiar los archivos no utilizados. No se eliminó nada.",
+    cleanUnusedFilesBusy: "Espera a que terminen el guardado, un chat en curso o la limpieza automática y vuelve a intentarlo. No se eliminó nada.",
+    cleanUnusedFilesRefused: "La limpieza no se puede ejecutar ahora (los datos guardados están cambiando, restaurándose o no se pudieron leer). No se eliminó nada. Inténtalo de nuevo más tarde o recarga primero la aplicación.",
     coldStorageCleanupNoLockConfirm: "Tu navegador no puede comprobar si hay otra pestaña de esta aplicación abierta. Si hay otra pestaña de esta aplicación abierta mientras se ejecuta la limpieza, esa pestaña puede perder datos. Cierra primero todas las demás pestañas de esta aplicación y luego continúa. ¿Continuar de todos modos?",
     coldStorageCleanupNodeConfirm: "No ejecutes esta limpieza mientras otro dispositivo o navegador esté usando el mismo servidor. Todo lo que guarden mientras se ejecuta puede perderse o eliminarse. ¿Continuar?",
     coldStorageCleanupCheckingTabs: "Comprobando si hay otras pestañas abiertas de esta aplicación antes de limpiar...",
@@ -3898,11 +3944,6 @@ export const languageSpanish = {
     forkPrivacyPolicy: "Política de Privacidad",
     forkLegalLinksLabel: "Documentos legales",
     opfsCopyBackProgress: (done: number, total: number) => `Moviendo tus datos al almacenamiento del navegador... (${done} / ${total}). Mantén esta pestaña abierta hasta que termine.`,
-    opfsFallbackNoticeTab: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque hay otra pestaña de esta aplicación abierta o este navegador no puede comprobar si hay otras pestañas. RisuTanium se está ejecutando con tus datos existentes y no se ha perdido nada. Cierra las demás pestañas; se volverá a intentar la próxima vez que se inicie la aplicación.",
-    opfsFallbackNoticeSpace: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque no hay suficiente espacio de almacenamiento libre. RisuTanium se está ejecutando con tus datos existentes y no se ha perdido nada. Libera algo de espacio; se volverá a intentar la próxima vez que se inicie la aplicación.",
-    opfsFallbackNoticeNoIndexedDb: "Esta vez no se pudieron mover tus datos al almacenamiento del navegador, porque este navegador no puede usar IndexedDB. RisuTanium se está ejecutando con tus datos existentes y no se ha perdido nada. Se volverá a intentar la próxima vez que se inicie la aplicación.",
-    opfsFallbackNoticeError: (detail: string) => `Esta vez no se pudieron mover tus datos al almacenamiento del navegador: ${detail}. RisuTanium se está ejecutando con tus datos existentes y no se ha perdido nada. Se volverá a intentar la próxima vez que se inicie la aplicación.`,
-    browserStorageUnavailable: "Este navegador no pudo abrir el almacenamiento donde RisuTanium guarda tus datos, así que no se cargó nada y no se cambió nada. Recarga la página. Si este mensaje sigue apareciendo, este navegador no puede almacenar los datos de RisuTanium (la navegación privada y los navegadores muy antiguos pueden causar esto): abre RisuTanium en otro navegador o fuera de la navegación privada.",
     saveReadFailed: "RisuTanium no pudo leer tus datos guardados desde el almacenamiento, así que no abrió nada y no cambió nada. Recarga la página para intentarlo de nuevo. Si esto sigue ocurriendo, comprueba que se pueda acceder al disco o al servidor donde están los datos.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'el puntero a tu guardado actual'
@@ -3944,6 +3985,7 @@ export const languageSpanish = {
     saveSeedFailed: "RisuTanium no pudo crear el primer guardado, así que no abrió nada y no cambió nada. Recarga la página para intentarlo de nuevo.",
     saveLeftoverNotice: "RisuTanium encontró datos de guardado sin usar que dejó un guardado o una restauración interrumpidos. No causan ningún daño. Puedes eliminarlos en la limpieza de los ajustes.",
     saveMainFileLeftNotice: "Tus datos pasaron a un formato nuevo, pero el archivo de guardado antiguo es demasiado grande para que este servidor lo aparte. Otra versión de RisuAI upstream que abra los mismos datos podría abrir ese archivo antiguo. La limpieza de los ajustes lo mantiene a salvo hasta que lo borres.",
+    staticBuildUnsupported: "RisuTanium ya no funciona desde un alojamiento web común. Usa la aplicación de Android o de escritorio, o la página que sirve el servidor Node de RisuTanium.",
     opfsReadOnlyNotice: "Esta vez RisuTanium se está ejecutando desde una copia temporal de tus datos, así que no guardará los cambios, y restaurar un respaldo o limpiar el almacenamiento no está disponible. Tus datos no se han perdido. Cierra las demás pestañas de esta aplicación y reiníciala para que los datos se puedan pasar al almacenamiento del navegador.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 personaje" : `${count} personajes`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 parte más que esta versión no puede leer" : `${count} partes más que esta versión no puede leer`,

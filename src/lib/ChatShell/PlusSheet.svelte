@@ -224,11 +224,12 @@
                     merged.height = Math.max(1, canvases.reduce((height, canvas) => height + canvas.height, 0))
                     const context = merged.getContext('2d')
                     if (!context) throw new Error('Canvas unavailable')
-                    const shellStyle = getComputedStyle(document.querySelector('.default-chat-screen') ?? document.body)
+                    const shell = document.querySelector('.default-chat-screen')
+                    const shellStyle = getComputedStyle(shell ?? document.body)
                     context.fillStyle = shellStyle.backgroundColor
                     context.fillRect(0, 0, merged.width, merged.height)
-                    // Under a theme pack the shell is drawn as the pack canvas over its black base; the export draws the same two layers, so its backdrop equals the transcript backdrop, a translucent canvas included.
-                    if (get(packBaseTone) !== null) {
+                    // Under a theme pack with no user background, the shell is drawn as the pack canvas over its black base, so the export draws the same two layers. With a user background, the shell's own backdrop is the export backdrop.
+                    if (get(packBaseTone) !== null && shell?.hasAttribute('data-user-background') !== true) {
                         context.fillStyle = shellStyle.getPropertyValue('--nexus-canvas').trim()
                         context.fillRect(0, 0, merged.width, merged.height)
                     }

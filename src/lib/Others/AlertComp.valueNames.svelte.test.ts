@@ -160,12 +160,6 @@ afterEach(async () => {
     alertStore.set({ type: 'none', msg: '' } as never)
 })
 
-/**
- * Out-of-scope unnamed control of the export dialog: its icon-only close button. It is matched by its icon
- * marker because the describing string carries a build-dependent style hash.
- */
-const KNOWN_UNNAMED_MARKERS = ['lucide-x']
-
 describe('AlertComp value control names', () => {
     test('the character export format select is named by its visible label', () => {
         DBState.db = {
@@ -179,7 +173,6 @@ describe('AlertComp value control names', () => {
         v3.click()
         flushSync()
         expect(fieldNameProblems(target, [{ name: language.format }])).toEqual([])
-        const unnamed = unnamedControls(target, { fields: true, values: true })
-        expect(unnamed.map((entry) => KNOWN_UNNAMED_MARKERS.find((marker) => entry.includes(marker)))).toEqual(KNOWN_UNNAMED_MARKERS)
+        expect(unnamedControls(target, { fields: true, values: true })).toEqual([])
     })
 })

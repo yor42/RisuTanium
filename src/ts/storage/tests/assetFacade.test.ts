@@ -647,16 +647,16 @@ describe('getFileSrc', () => {
         },
     )
 
-    test('new behaviour: the data URL is made from the bytes the store read', async () => {
+    test('new behaviour: the data URL is made from the bytes the store read, one uncached read per call', async () => {
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
         handle.files.set(PNG_KEY, PNG)
         appStore.injectAppStore(handle.store)
 
         expect(await api.getFileSrc(PNG_KEY)).toBe(`data:image/png;base64,${Buffer.from(PNG).toString('base64')}`)
-        await api.getFileSrc(PNG_KEY)
+        expect(await api.getFileSrc(PNG_KEY)).toBe(`data:image/png;base64,${Buffer.from(PNG).toString('base64')}`)
 
-        expect(handle.read).toHaveBeenCalledTimes(1)
+        expect(handle.read).toHaveBeenCalledTimes(2)
     })
 
     test('guard: without a service worker a missing asset gives the empty data URL', async () => {

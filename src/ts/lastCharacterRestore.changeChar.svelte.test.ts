@@ -181,10 +181,12 @@ vi.mock(import('src/ts/caughtErrors'), () => ({
 import { flushSync } from 'svelte'
 import { DBState, selectedCharID, settingsOpen, OpenRealmStore, PlaygroundStore, CustomGUISettingMenuStore, botMakerMode } from 'src/ts/stores.svelte'
 import { alertError } from 'src/ts/alert'
-import { buildColdStub, coldUnitCharacter } from 'src/ts/process/coldCharacter'
+import { coldUnitCharacter } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { resetRetainedForTest } from 'src/ts/process/coldRetained'
 import { resetChatOnScreenForTests } from 'src/ts/process/chatOnScreen.svelte'
 import { studioOpen } from 'src/ts/studio/studioOpen'
+import { charGridOpen } from 'src/ts/charGridOpen'
 import { utilityOpen } from 'src/lib/Utility/utilityGate'
 import { homeView, openHomeLibrary, showHomeLanding } from 'src/lib/UI/Home/homeView.svelte'
 import { LAST_CHARACTER_KEY, writeLastChaId } from './lastCharacterMemory'
@@ -259,6 +261,7 @@ async function landAlpha(): Promise<void> {
 function resetSurfaces(): void {
     settingsOpen.set(false)
     studioOpen.set(false)
+    charGridOpen.set(false)
     utilityOpen.set(false)
     OpenRealmStore.set(false)
     PlaygroundStore.set(0)
@@ -266,6 +269,7 @@ function resetSurfaces(): void {
     botMakerMode.set(false)
     selectedCharID.set(-1)
     showHomeLanding()
+    homeView.libraryEngaged = false
     flushSync()
 }
 
@@ -319,6 +323,7 @@ describe('the restore of an archived last character, through the real changeChar
         ['Settings', () => settingsOpen.set(true)],
         ['Utility (I1-U)', () => utilityOpen.set(true)],
         ['the Hub (I1-H)', () => OpenRealmStore.set(true)],
+        ["the Sidebar rail's character grid (#480)", () => charGridOpen.set(true)],
         ['the Home library through the real openHomeLibrary (I1-L)', () => openHomeLibrary()],
     ]
 
@@ -356,5 +361,53 @@ describe('the restore of an archived last character, through the real changeChar
         expect(await startLastCharacterRestore()).toBe('skipped')
         expect(readSpy).not.toHaveBeenCalled()
         expect(get(selectedCharID)).toBe(-1)
+    })
+
+    test('#480: a restore that starts with the rail\'s character grid already open does not pick at all', async () => {
+        writeLastChaId('alpha')
+        charGridOpen.set(true)
+
+        expect(await startLastCharacterRestore()).toBe('skipped')
+        expect(readSpy).not.toHaveBeenCalled()
+        expect(get(selectedCharID)).toBe(-1)
+    })
+
+    // The embedded library is not a view: touching it sets the engaged flag, which is the only signal
+    // the restore reads.
+    test('S4a-R5: the library engaged while the unit read is pending: the selection stays at Home after the read lands', async () => {
+        writeLastChaId('alpha')
+        const end = startLastCharacterRestore()
+        await drain()
+
+        homeView.libraryEngaged = true
+        await landAlpha()
+
+        expect(await end).toBe('superseded')
+        expect(get(selectedCharID)).toBe(-1)
+        expect(slot(1).lastInteraction).toBe(LONG_AGO)
+        expect(localStorage.getItem(LAST_CHARACTER_KEY)).toBe('{"chaId":"alpha"}')
+    })
+
+    test('S4a-R6: a restore that starts with the library already engaged does not pick at all', async () => {
+        writeLastChaId('alpha')
+        homeView.libraryEngaged = true
+
+        const end = startLastCharacterRestore()
+        await drain()
+        expect(readSpy).not.toHaveBeenCalled()
+        expect(get(selectedCharID)).toBe(-1)
+        expect(await end).toBe('skipped')
+    })
+
+    test('S4a-R5: the full view alone, without the engaged flag, does not supersede (the flag is the signal)', async () => {
+        writeLastChaId('alpha')
+        const end = startLastCharacterRestore()
+        await drain()
+
+        homeView.view = 'library'
+        await landAlpha()
+
+        expect(await end).toBe('selected')
+        expect(get(selectedCharID)).toBe(1)
     })
 })

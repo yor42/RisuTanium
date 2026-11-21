@@ -150,6 +150,8 @@
     let lastClickTime = 0
     let { value = $bindable([]), lowLevelAble = false }: Props = $props();
     const uid = $props.id()
+    /** Screen-reader-only name of the Value/Variable select that sits under an operand's visible label. */
+    const operandName = (label: string) => fillLang(language.triggerInputLabels.operandType, { label })
     let selectedIndex = $state(0);
     let selectedEffectIndex = $state(-1);
     let selectedTriggerIndices = $state<number[]>([]);
@@ -2614,10 +2616,10 @@
                             </div>
                         </div>
                         <div class="p-2 flex flex-col h-full min-h-18">
-                            <span class="block text-textcolor2">{language.triggerOn}</span>
+                            <span id="{uid}-trigger-on" class="block text-textcolor2">{language.triggerOn}</span>
                             {#if value && value[selectedIndex] && selectedIndex >= 0 && selectedIndex < value.length}
                                 <div class="flex-1 min-h-10 flex">
-                                    <SelectInput className="flex-1" bind:value={value[selectedIndex].type}>
+                                    <SelectInput labelId="{uid}-trigger-on" className="flex-1" bind:value={value[selectedIndex].type}>
                                     <OptionInput value="start">{language.triggerStart}</OptionInput>
                                     <OptionInput value="output">{language.triggerOutput}</OptionInput>
                                     <OptionInput value="input">{language.triggerInput}</OptionInput>
@@ -2875,7 +2877,7 @@
                             {/each}
                         </div>
                         <div class="p-4 border-b border-darkborderc md:hidden">
-                            <SelectInput bind:value={selectedCategory}>
+                            <SelectInput label={language.triggerEffectCategory} bind:value={selectedCategory}>
                                 {#each getAvailableCategories() as category}
                                     <OptionInput value={category}>{language.triggerCategories[category] || category}</OptionInput>
                                 {/each}
@@ -2940,10 +2942,10 @@
                         </h2>
                     </div>
                     {#if editTrigger.type === 'v2SetVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.varName}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.operator}</span>
-                        <SelectInput bind:value={editTrigger.operator}>
+                        <span id="{uid}-var-name" class="block text-textcolor">{language.triggerInputLabels.varName}</span>
+                        <TextInput labelId="{uid}-var-name" bind:value={editTrigger.var} />
+                        <span id="{uid}-operator" class="block text-textcolor">{language.triggerInputLabels.operator}</span>
+                        <SelectInput labelId="{uid}-operator" bind:value={editTrigger.operator}>
                             <OptionInput value="=">{language.triggerInputLabels.operatorSet}</OptionInput>
                             <OptionInput value="+=">{language.triggerInputLabels.operatorAdd}</OptionInput>
                             <OptionInput value="-=">{language.triggerInputLabels.operatorSubtract}</OptionInput>
@@ -2951,25 +2953,25 @@
                             <OptionInput value="/=">{language.triggerInputLabels.operatorDivide}</OptionInput>
                             <OptionInput value="%=">{language.triggerInputLabels.operatorModulo}</OptionInput>
                         </SelectInput>
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2If' || editTrigger.type === 'v2IfAdvanced'}
-                        
-                        <span class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.varName : 'A'}</span>
+
+                        <span id="{uid}-source" class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.varName : language.triggerInputLabels.operandA}</span>
                         {#if editTrigger.type === 'v2IfAdvanced'}
-                            <SelectInput bind:value={editTrigger.sourceType}>
+                            <SelectInput label={operandName(language.triggerInputLabels.operandA)} bind:value={editTrigger.sourceType}>
                                 <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                                 <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                             </SelectInput>
                         {/if}
-                        <TextInput bind:value={editTrigger.source} />
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
 
-                        <span class="block text text-textcolor">{language.triggerInputLabels.condition}</span>
-                        <SelectInput bind:value={editTrigger.condition} onchange={(e) => {
+                        <span id="{uid}-condition" class="block text text-textcolor">{language.triggerInputLabels.condition}</span>
+                        <SelectInput labelId="{uid}-condition" bind:value={editTrigger.condition} onchange={(e) => {
                             if(e.currentTarget.value === '≡'){
                                 const trg = editTrigger as triggerV2IfAdvanced
                                 trg.condition = '≡'
@@ -2993,25 +2995,25 @@
                             {/if}
                         </SelectInput>
 
-                        <span class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.value : 'B'}</span>
+                        <span id="{uid}-target" class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.value : language.triggerInputLabels.operandB}</span>
                         {#if editTrigger.condition === '≡'}
-                            <SelectInput bind:value={editTrigger.target}>
+                            <SelectInput labelId="{uid}-target" bind:value={editTrigger.target}>
                                 <OptionInput value="true">{language.triggerInputLabels.boolTrue}</OptionInput>
                                 <OptionInput value="false">{language.triggerInputLabels.boolFalse}</OptionInput>
                                 <OptionInput value="null">{language.triggerInputLabels.boolNull}</OptionInput>
                             </SelectInput>
                         {:else}
-                            <SelectInput bind:value={editTrigger.targetType}>
+                            <SelectInput label={operandName(editTrigger.type === 'v2If' ? language.triggerInputLabels.value : language.triggerInputLabels.operandB)} bind:value={editTrigger.targetType}>
                                 <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                                 <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                             </SelectInput>
-                            <TextInput bind:value={editTrigger.target} />
+                            <TextInput labelId="{uid}-target" bind:value={editTrigger.target} />
                         {/if}
 
                         <CheckInput bind:check={addElse} name={language.triggerInputLabels.addElse} className="mt-4"/>
                     {:else if editTrigger.type === 'v2RunTrigger'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.trigger}</span>
-                        <SelectInput bind:value={editTrigger.target}>
+                        <span id="{uid}-trigger" class="block text-textcolor">{language.triggerInputLabels.trigger}</span>
+                        <SelectInput labelId="{uid}-trigger" bind:value={editTrigger.target}>
                             {#each value as trigger, i}
                                 {#if i === 0}
                                     <!-- Header, skip the first trigger -->
@@ -3021,952 +3023,952 @@
                             {/each}
                         </SelectInput>
                     {:else if editTrigger.type === 'v2ConsoleLog'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
 
                     {:else if editTrigger.type === 'v2ShowAlert'}
-                        <span>{language.triggerInputLabels.alertContent}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.alertContent}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.alertContent)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2RunLLM'}
-                        <span>{language.triggerInputLabels.prompt}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.prompt}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.prompt)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
 
-                        <span>{language.triggerInputLabels.model}</span>
-                        <SelectInput bind:value={editTrigger.model}>
+                        <span id="{uid}-model">{language.triggerInputLabels.model}</span>
+                        <SelectInput labelId="{uid}-model" bind:value={editTrigger.model}>
                             <OptionInput value="model">{language.triggerInputLabels.modelMain}</OptionInput>
                             <OptionInput value="submodel">{language.triggerInputLabels.modelSub}</OptionInput>
                         </SelectInput>
 
                         <CheckInput bind:check={editTrigger.streaming} name={language.streaming}/>
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2CheckSimilarity'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2CutChat'}
-                        <span>{language.triggerInputLabels.start}</span>
-                        <SelectInput bind:value={editTrigger.startType}>
+                        <span id="{uid}-start">{language.triggerInputLabels.start}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.start)} bind:value={editTrigger.startType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.start} />
-                        <span>{language.triggerInputLabels.end}</span>
-                        <SelectInput bind:value={editTrigger.endType}>
+                        <TextInput labelId="{uid}-start" bind:value={editTrigger.start} />
+                        <span id="{uid}-end">{language.triggerInputLabels.end}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.end)} bind:value={editTrigger.endType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.end} />
-                        
+                        <TextInput labelId="{uid}-end" bind:value={editTrigger.end} />
+
                     {:else if editTrigger.type === 'v2Command'}
-                        <span>{language.triggerInputLabels.cmd}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.cmd}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.cmd)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2SystemPrompt'}
-                        <span>{language.triggerInputLabels.location}</span>
-                        <SelectInput bind:value={editTrigger.location}>
+                        <span id="{uid}-location">{language.triggerInputLabels.location}</span>
+                        <SelectInput labelId="{uid}-location" bind:value={editTrigger.location}>
                             <OptionInput value="start">{language.triggerInputLabels.sysStart}</OptionInput>
                             <OptionInput value="historyend">{language.triggerInputLabels.sysHistoryEnd}</OptionInput>
                             <OptionInput value="promptend">{language.triggerInputLabels.sysPromptEnd}</OptionInput>
                         </SelectInput>
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2Impersonate'}
-                        <span>{language.triggerInputLabels.role}</span>
-                        <SelectInput bind:value={editTrigger.role}>
+                        <span id="{uid}-role">{language.triggerInputLabels.role}</span>
+                        <SelectInput labelId="{uid}-role" bind:value={editTrigger.role}>
                             <OptionInput value="user">{language.triggerInputLabels.roleUser}</OptionInput>
                             <OptionInput value="char">{language.triggerInputLabels.roleChar}</OptionInput>
                         </SelectInput>
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2ModifyChat'}
-                        <span>{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2LoopNTimes'}
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2GetLastMessage'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2GetMessageAtIndex'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2GetMessageCount'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2ModifyLorebook'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.target}</span>
-                        <SelectInput bind:value={editTrigger.targetType}>
+                        <span id="{uid}-target" class="block text-textcolor">{language.triggerInputLabels.target}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.target)} bind:value={editTrigger.targetType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.target} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <TextInput labelId="{uid}-target" bind:value={editTrigger.target} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2GetLorebook'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.target}</span>
-                        <SelectInput bind:value={editTrigger.targetType}>
+                        <span id="{uid}-target" class="block text-textcolor">{language.triggerInputLabels.target}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.target)} bind:value={editTrigger.targetType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.target} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-target" bind:value={editTrigger.target} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2GetLorebookCountNew'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2GetLorebookEntry'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2SetLorebookActivation'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
                         <CheckInput bind:check={editTrigger.value} name={language.triggerInputLabels.alwaysActive} className="mt-4" />
                     {:else if editTrigger.type === 'v2GetLorebookIndexViaName'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.name}</span>
-                        <SelectInput bind:value={editTrigger.nameType}>
+                        <span id="{uid}-name" class="block text-textcolor">{language.triggerInputLabels.name}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.name)} bind:value={editTrigger.nameType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.name} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-name" bind:value={editTrigger.name} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2Random'}
-                        <span class="block text text-textcolor">{language.triggerInputLabels.min}</span>
-                        <SelectInput bind:value={editTrigger.minType}>
+                        <span id="{uid}-min" class="block text text-textcolor">{language.triggerInputLabels.min}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.min)} bind:value={editTrigger.minType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.min} />
-                        <span class="block text text-textcolor">{language.triggerInputLabels.max}</span>
-                        <SelectInput bind:value={editTrigger.maxType}>
+                        <TextInput labelId="{uid}-min" bind:value={editTrigger.min} />
+                        <span id="{uid}-max" class="block text text-textcolor">{language.triggerInputLabels.max}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.max)} bind:value={editTrigger.maxType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.max} />
+                        <TextInput labelId="{uid}-max" bind:value={editTrigger.max} />
 
-                        <span class="block text text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetCharAt'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span>{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-index">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
-                    
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
+
 
                     {:else if editTrigger.type === 'v2GetCharCount'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
-                    
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
+
                     {:else if editTrigger.type === 'v2ImgGen'}
-                        <span>{language.triggerInputLabels.prompt}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.prompt}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.prompt)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
 
-                        <span>{language.triggerInputLabels.negPrompt}</span>
-                        <SelectInput bind:value={editTrigger.negValueType}>
+                        <span id="{uid}-neg-value">{language.triggerInputLabels.negPrompt}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.negPrompt)} bind:value={editTrigger.negValueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.negValue} />
+                        <TextAreaInput labelId="{uid}-neg-value" highlight bind:value={editTrigger.negValue} />
 
-                        <span>{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2ToLowerCase'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2ToUpperCase'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2SetCharAt'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span>{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-index">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2SplitString'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span>{language.triggerInputLabels.delimiter}</span>
-                        <SelectInput bind:value={editTrigger.delimiterType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-delimiter">{language.triggerInputLabels.delimiter}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.delimiter)} bind:value={editTrigger.delimiterType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                             <OptionInput value="regex">{language.triggerInputLabels.regex}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.delimiter} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-delimiter" bind:value={editTrigger.delimiter} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2JoinArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span>{language.triggerInputLabels.delimiter}</span>
-                        <SelectInput bind:value={editTrigger.delimiterType}>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-delimiter">{language.triggerInputLabels.delimiter}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.delimiter)} bind:value={editTrigger.delimiterType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.delimiter} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-delimiter" bind:value={editTrigger.delimiter} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2GetCharacterDesc'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2SetCharacterDesc'}
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight  bind:value={editTrigger.value} />
+                        <TextAreaInput highlight labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2GetPersonaDesc'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2SetPersonaDesc'}
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight  bind:value={editTrigger.value} />
+                        <TextAreaInput highlight labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2ExtractRegex'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
-                        <span>{language.triggerInputLabels.regex}</span>
-                        <SelectInput bind:value={editTrigger.regexType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.value} />
+                        <span id="{uid}-regex">{language.triggerInputLabels.regex}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.regex)} bind:value={editTrigger.regexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.regex} />
+                        <TextInput labelId="{uid}-regex" bind:value={editTrigger.regex} />
 
-                        <span>{language.triggerInputLabels.resultFormat}</span>
-                        <SelectInput bind:value={editTrigger.resultType}>
+                        <span id="{uid}-result-format">{language.triggerInputLabels.resultFormat}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.resultFormat)} bind:value={editTrigger.resultType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.result} />
+                        <TextInput labelId="{uid}-result-format" bind:value={editTrigger.result} />
 
-                        <span>{language.triggerInputLabels.flags}</span>
-                        <SelectInput bind:value={editTrigger.flagsType}>
+                        <span id="{uid}-flags">{language.triggerInputLabels.flags}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.flags)} bind:value={editTrigger.flagsType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.flags} />
+                        <TextInput labelId="{uid}-flags" bind:value={editTrigger.flags} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2MakeArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
 
                     {:else if editTrigger.type === 'v2GetArrayVarLength'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2GetArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2SetArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2PushArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2PopArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2ShiftArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
 
                     {:else if editTrigger.type === 'v2UnshiftArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
                     {:else if editTrigger.type === 'v2SpliceArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.start}</span>
-                        <SelectInput bind:value={editTrigger.startType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-start" class="block text-textcolor">{language.triggerInputLabels.start}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.start)} bind:value={editTrigger.startType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.start} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.itemType}>
+                        <TextInput labelId="{uid}-start" bind:value={editTrigger.start} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.itemType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.item} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.item} />
                     {:else if editTrigger.type === 'v2SliceArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.start}</span>
-                        <SelectInput bind:value={editTrigger.startType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-start" class="block text-textcolor">{language.triggerInputLabels.start}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.start)} bind:value={editTrigger.startType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.start} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.end}</span>
-                        <SelectInput bind:value={editTrigger.endType}>
+                        <TextInput labelId="{uid}-start" bind:value={editTrigger.start} />
+                        <span id="{uid}-end" class="block text-textcolor">{language.triggerInputLabels.end}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.end)} bind:value={editTrigger.endType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.end} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-end" bind:value={editTrigger.end} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetIndexOfValueInArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
 
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2RemoveIndexFromArrayVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
                     {:else if editTrigger.type === 'v2ConcatString'}
-                        <span class="block text-textcolor">A</span>
-                        <SelectInput bind:value={editTrigger.source1Type}>
+                        <span id="{uid}-source" class="block text-textcolor">{language.triggerInputLabels.operandA}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.operandA)} bind:value={editTrigger.source1Type}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source1} />
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source1} />
 
-                        <span class="block text-textcolor">B</span>
-                        <SelectInput bind:value={editTrigger.source2Type}>
+                        <span id="{uid}-target" class="block text-textcolor">{language.triggerInputLabels.operandB}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.operandB)} bind:value={editTrigger.source2Type}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source2} />
+                        <TextInput labelId="{uid}-target" bind:value={editTrigger.source2} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetLastUserMessage'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetLastCharMessage'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetFirstMessage'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetAlertInput'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.alertContent}</span>
-                        <SelectInput bind:value={editTrigger.displayType}>
+                        <span id="{uid}-alert-content" class="block text-textcolor">{language.triggerInputLabels.alertContent}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.alertContent)} bind:value={editTrigger.displayType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.display} />
+                        <TextInput labelId="{uid}-alert-content" bind:value={editTrigger.display} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetAlertSelect'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.alertContent}</span>
-                        <SelectInput bind:value={editTrigger.displayType}>
+                        <span id="{uid}-alert-content" class="block text-textcolor">{language.triggerInputLabels.alertContent}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.alertContent)} bind:value={editTrigger.displayType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.display} />
+                        <TextInput labelId="{uid}-alert-content" bind:value={editTrigger.display} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.options} <Help key="v2GetAlertSelect" /></span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span class="block text-textcolor"><span id="{uid}-options">{language.triggerInputLabels.options}</span> <Help key="v2GetAlertSelect" /></span>
+                        <SelectInput label={operandName(language.triggerInputLabels.options)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-options" bind:value={editTrigger.value} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetDisplayState'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2SetDisplayState'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2Wait'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2GetRequestState'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetRequestStateRole'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2SetRequestState'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2SetRequestStateRole'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2GetRequestStateLength'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2QuickSearchChat'}
-                        <span class="block text-textcolor">{language.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.value}</span>
+                        <SelectInput label={operandName(language.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.value}</OptionInput>
                             <OptionInput value="var">{language.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
-                        <span class="block text-textcolor">{language.condition}</span>
-                        <SelectInput bind:value={editTrigger.condition}>
+                        <span id="{uid}-condition" class="block text-textcolor">{language.condition}</span>
+                        <SelectInput labelId="{uid}-condition" bind:value={editTrigger.condition}>
                             <OptionInput value="loose">{language.sidebarUi.conditionLoose}</OptionInput>
                             <OptionInput value="strict">{language.sidebarUi.conditionStrict}</OptionInput>
                             <OptionInput value="regex">{language.sidebarUi.conditionRegex}</OptionInput>
                         </SelectInput>
 
-                        <span class="block text-textcolor">{language.depth}</span>
-                        <SelectInput bind:value={editTrigger.depthType}>
+                        <span id="{uid}-depth" class="block text-textcolor">{language.depth}</span>
+                        <SelectInput label={operandName(language.depth)} bind:value={editTrigger.depthType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.depth} />
+                        <TextInput labelId="{uid}-depth" bind:value={editTrigger.depth} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2Tokenize'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetAllLorebooks'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetLorebookByName'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.name}</span>
-                        <SelectInput bind:value={editTrigger.nameType}>
+                        <span id="{uid}-name" class="block text-textcolor">{language.triggerInputLabels.name}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.name)} bind:value={editTrigger.nameType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.name} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-name" bind:value={editTrigger.name} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetLorebookByIndex'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2CreateLorebook'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.name}</span>
-                        <SelectInput bind:value={editTrigger.nameType}>
+                        <span id="{uid}-name" class="block text-textcolor">{language.triggerInputLabels.name}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.name)} bind:value={editTrigger.nameType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.name} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.activationKeys}</span>
-                        <SelectInput bind:value={editTrigger.keyType}>
+                        <TextInput labelId="{uid}-name" bind:value={editTrigger.name} />
+                        <span id="{uid}-activation-keys" class="block text-textcolor">{language.triggerInputLabels.activationKeys}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.activationKeys)} bind:value={editTrigger.keyType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.key} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.prompt}</span>
-                        <SelectInput bind:value={editTrigger.contentType}>
+                        <TextInput labelId="{uid}-activation-keys" bind:value={editTrigger.key} />
+                        <span id="{uid}-prompt" class="block text-textcolor">{language.triggerInputLabels.prompt}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.prompt)} bind:value={editTrigger.contentType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput bind:value={editTrigger.content} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.insertOrder}</span>
-                        <SelectInput bind:value={editTrigger.insertOrderType}>
+                        <TextAreaInput labelId="{uid}-prompt" bind:value={editTrigger.content} />
+                        <span id="{uid}-insert-order" class="block text-textcolor">{language.triggerInputLabels.insertOrder}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.insertOrder)} bind:value={editTrigger.insertOrderType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.insertOrder} />
+                        <TextInput labelId="{uid}-insert-order" bind:value={editTrigger.insertOrder} />
                     {:else if editTrigger.type === 'v2ModifyLorebookByIndex'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.name}</span>
-                        <SelectInput bind:value={editTrigger.nameType}>
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
+                        <span id="{uid}-name" class="block text-textcolor">{language.triggerInputLabels.name}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.name)} bind:value={editTrigger.nameType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.name} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.activationKeys}</span>
-                        <SelectInput bind:value={editTrigger.keyType}>
+                        <TextInput labelId="{uid}-name" bind:value={editTrigger.name} />
+                        <span id="{uid}-activation-keys" class="block text-textcolor">{language.triggerInputLabels.activationKeys}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.activationKeys)} bind:value={editTrigger.keyType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.key} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.prompt}</span>
-                        <SelectInput bind:value={editTrigger.contentType}>
+                        <TextInput labelId="{uid}-activation-keys" bind:value={editTrigger.key} />
+                        <span id="{uid}-prompt" class="block text-textcolor">{language.triggerInputLabels.prompt}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.prompt)} bind:value={editTrigger.contentType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput bind:value={editTrigger.content} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.insertOrder}</span>
-                        <SelectInput bind:value={editTrigger.insertOrderType}>
+                        <TextAreaInput labelId="{uid}-prompt" bind:value={editTrigger.content} />
+                        <span id="{uid}-insert-order" class="block text-textcolor">{language.triggerInputLabels.insertOrder}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.insertOrder)} bind:value={editTrigger.insertOrderType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.insertOrder} />
+                        <TextInput labelId="{uid}-insert-order" bind:value={editTrigger.insertOrder} />
                     {:else if editTrigger.type === 'v2DeleteLorebookByIndex'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
                     {:else if editTrigger.type === 'v2SetLorebookAlwaysActive'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <SelectInput bind:value={editTrigger.indexType}>
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.index)} bind:value={editTrigger.indexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.index} />
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
                         <CheckInput bind:check={editTrigger.value} name={language.triggerInputLabels.alwaysActive} className="mt-4" />
                     {:else if editTrigger.type === 'v2UpdateChatAt'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.index}</span>
-                        <TextInput bind:value={editTrigger.index} />
+                        <span id="{uid}-index" class="block text-textcolor">{language.triggerInputLabels.index}</span>
+                        <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
                     {:else if editTrigger.type === 'v2RegexTest'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
-                        <span>{language.triggerInputLabels.regex}</span>
-                        <SelectInput bind:value={editTrigger.regexType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.value} />
+                        <span id="{uid}-regex">{language.triggerInputLabels.regex}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.regex)} bind:value={editTrigger.regexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.regex} />
+                        <TextInput labelId="{uid}-regex" bind:value={editTrigger.regex} />
 
-                        <span>{language.triggerInputLabels.flags}</span>
-                        <SelectInput bind:value={editTrigger.flagsType}>
+                        <span id="{uid}-flags">{language.triggerInputLabels.flags}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.flags)} bind:value={editTrigger.flagsType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.flags} />
+                        <TextInput labelId="{uid}-flags" bind:value={editTrigger.flags} />
 
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar} <Help key="v2RegexTest" /></span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span class="block text-textcolor"><span id="{uid}-output-var">{language.triggerInputLabels.outputVar}</span> <Help key="v2RegexTest" /></span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetReplaceGlobalNote'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2SetReplaceGlobalNote'}
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput highlight labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2GetAuthorNote'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2SetAuthorNote'}
-                        <span>{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-value">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.value} />
+                        <TextAreaInput highlight labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2MakeDictVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
                     {:else if editTrigger.type === 'v2GetDictVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.key}</span>
-                        <SelectInput bind:value={editTrigger.keyType}>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-key" class="block text-textcolor">{language.triggerInputLabels.key}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.key)} bind:value={editTrigger.keyType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.key} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-key" bind:value={editTrigger.key} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2SetDictVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.key}</span>
-                        <SelectInput bind:value={editTrigger.keyType}>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-key" class="block text-textcolor">{language.triggerInputLabels.key}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.key)} bind:value={editTrigger.keyType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.key} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <TextInput labelId="{uid}-key" bind:value={editTrigger.key} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2DeleteDictKey'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.key}</span>
-                        <SelectInput bind:value={editTrigger.keyType}>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-key" class="block text-textcolor">{language.triggerInputLabels.key}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.key)} bind:value={editTrigger.keyType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.key} />
+                        <TextInput labelId="{uid}-key" bind:value={editTrigger.key} />
                     {:else if editTrigger.type === 'v2HasDictKey'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.key}</span>
-                        <SelectInput bind:value={editTrigger.keyType}>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-key" class="block text-textcolor">{language.triggerInputLabels.key}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.key)} bind:value={editTrigger.keyType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.key} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-key" bind:value={editTrigger.key} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2ClearDict'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <TextInput bind:value={editTrigger.var} />
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
                     {:else if editTrigger.type === 'v2GetDictSize'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetDictKeys'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2GetDictValues'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.var}</span>
-                        <SelectInput bind:value={editTrigger.varType}>
+                        <span id="{uid}-var" class="block text-textcolor">{language.triggerInputLabels.var}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.var)} bind:value={editTrigger.varType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-var" bind:value={editTrigger.var} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2Calculate'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.expression} <Help key="v2Calculate" /></span>
-                        <SelectInput bind:value={editTrigger.expressionType}>
+                        <span class="block text-textcolor"><span id="{uid}-expression">{language.triggerInputLabels.expression}</span> <Help key="v2Calculate" /></span>
+                        <SelectInput label={operandName(language.triggerInputLabels.expression)} bind:value={editTrigger.expressionType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextAreaInput highlight bind:value={editTrigger.expression} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextAreaInput highlight labelId="{uid}-expression" bind:value={editTrigger.expression} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2ReplaceString'}
-                        <span>{language.triggerInputLabels.source}</span>
-                        <SelectInput bind:value={editTrigger.sourceType}>
+                        <span id="{uid}-source">{language.triggerInputLabels.source}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.source)} bind:value={editTrigger.sourceType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.source} />
-                        <span>{language.triggerInputLabels.regex}</span>
-                        <SelectInput bind:value={editTrigger.regexType}>
+                        <TextInput labelId="{uid}-source" bind:value={editTrigger.source} />
+                        <span id="{uid}-regex">{language.triggerInputLabels.regex}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.regex)} bind:value={editTrigger.regexType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.regex} />
-                        <span>{language.triggerInputLabels.resultFormat}</span>
-                        <SelectInput bind:value={editTrigger.resultType}>
+                        <TextInput labelId="{uid}-regex" bind:value={editTrigger.regex} />
+                        <span id="{uid}-result-format">{language.triggerInputLabels.resultFormat}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.resultFormat)} bind:value={editTrigger.resultType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.result} />
-                        <span>{language.triggerInputLabels.replacement}</span>
-                        <SelectInput bind:value={editTrigger.replacementType}>
+                        <TextInput labelId="{uid}-result-format" bind:value={editTrigger.result} />
+                        <span id="{uid}-replacement">{language.triggerInputLabels.replacement}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.replacement)} bind:value={editTrigger.replacementType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.replacement} />
-                        <span>{language.triggerInputLabels.flags}</span>
-                        <SelectInput bind:value={editTrigger.flagsType}>
+                        <TextInput labelId="{uid}-replacement" bind:value={editTrigger.replacement} />
+                        <span id="{uid}-flags">{language.triggerInputLabels.flags}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.flags)} bind:value={editTrigger.flagsType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.flags} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
-                        <TextInput bind:value={editTrigger.outputVar} />
+                        <TextInput labelId="{uid}-flags" bind:value={editTrigger.flags} />
+                        <span id="{uid}-output-var" class="block text-textcolor">{language.triggerInputLabels.outputVar}</span>
+                        <TextInput labelId="{uid}-output-var" bind:value={editTrigger.outputVar} />
                     {:else if editTrigger.type === 'v2Comment'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <TextInput bind:value={editTrigger.value} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2DeclareLocalVar'}
-                        <span class="block text-textcolor">{language.triggerInputLabels.varName}</span>
-                        <TextInput bind:value={editTrigger.var} />
-                        <span class="block text-textcolor">{language.triggerInputLabels.value}</span>
-                        <SelectInput bind:value={editTrigger.valueType}>
+                        <span id="{uid}-var-name" class="block text-textcolor">{language.triggerInputLabels.varName}</span>
+                        <TextInput labelId="{uid}-var-name" bind:value={editTrigger.var} />
+                        <span id="{uid}-value" class="block text-textcolor">{language.triggerInputLabels.value}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.value)} bind:value={editTrigger.valueType}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
-                        <TextInput bind:value={editTrigger.value} />
+                        <TextInput labelId="{uid}-value" bind:value={editTrigger.value} />
                     {:else}
                         <span>{language.noConfig}</span>
                     {/if}

@@ -178,7 +178,10 @@ let mounted: Mounted[] = []
 function mountComponent(component: typeof GridCatalog | typeof HomeLibrary): HTMLElement {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(component, { target, props: {} }) as unknown as Record<string, unknown>
+    // Each branch is typed against its own props: the two components no longer share an empty props type.
+    const app = (component === HomeLibrary
+        ? mount(HomeLibrary, { target, props: {} })
+        : mount(GridCatalog, { target, props: {} })) as unknown as Record<string, unknown>
     mounted.push({ target, app })
     flushSync()
     return target

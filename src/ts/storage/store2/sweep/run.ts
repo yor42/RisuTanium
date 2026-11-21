@@ -1,9 +1,8 @@
 import type { ByteStore, CheckOnlyEntry, GuardedOperations } from '../../store/contract'
 import { StoreVersionConflictError } from '../../store/errors'
 import { AssetDeleteHoldOverlapError } from '../../assetDeleteHold'
-import { Store2BackendError, Store2CommitConflictError, Store2StalePageError } from '../backend/errors'
 import {
-    REMOVE_BATCH_MAX, bytesTokenOf, revisionTokenOf, tokenMatches, type CompareToken, type Store2Backend,
+    REMOVE_BATCH_MAX, revisionTokenOf, type Store2Backend,
 } from '../backend/types'
 import type { GateOpen, GateRefusal } from '../boot'
 import { COMMIT_KEY, FENCE_KEY, SWEEP_KEY } from '../format'
@@ -13,6 +12,7 @@ import { ageOf, decideAge, type AgeCandidate, type AgeClock, type AgeDecision, t
 import { AssetKeySet } from './assetKey'
 import { createBackendClosureReader } from './backendReader'
 import { checkFences } from './fences'
+import { gateFreshness } from './fresh'
 import { buildClosureAssetKeepSet, legacyFilesOf } from './keepSet'
 import { decideAutoSweep, type AssetCount } from './limit'
 import { SWEEP_FUTURE_SKEW_MS, SWEEP_MIN_AGE_MS } from './params'
@@ -42,15 +42,46 @@ import { readSweepRecord, writeSweepRecord } from './record'
  * gate, listing or closure read), then the gate is opened, then the assets are listed with their revisions: a commit
  * that lands after the gate conflicts with every delete and with the record write, and an asset written or touched after
  * the listing has a revision the delete does not carry. A Node page refuses `'unsupported'` (plain HTTP, no Web Locks,
- * so no sole-tab proof) and the sweep never proceeds on it, whereas the aged unit pass does proceed there under its
+ * so no sole-tab proof) and the automatic sweep never proceeds on it, whereas the aged unit pass does proceed there under its
  * minimum age: the two passes differ here on purpose (PQ-1).
  *
  * The one data write is the age record. A stopped pass writes none. The pass is silent: it reports counts and reasons,
  * never an asset name.
+ *
+ * The manual entry (`env.manual`) is the same round with two differences. First, `decideAutoSweep` is not consulted, so an
+ * over-limit or unknown count is allowed; every other refusal, stop and per-delete check stays. Second, a `plan` step
+ * stops right after the age decision and returns what a following `delete` step would remove, with no batch, no hold, no
+ * delete and no record write; a `delete` step removes only the names of its `approved` set that this round's own decision
+ * also deletes, worked out again in every round, so the delete set never grows beyond what the person confirmed. The age
+ * differs by kind. A Tauri or IndexedDB manual round deletes every fresh candidate at once and writes no record (it still
+ * reads the record, so a newer build's record refuses), which leaves the per-batch `casCommit` probe as its only
+ * ghost-write protection; the window between the probe and the removal is accepted because batches are small. A Node
+ * manual round keeps the third-sighting rule, the revision binding and the record cap unchanged. A Node page accepts
+ * `'unsupported'` (plain HTTP, no Web Locks) only for a manual round: the plan step only reads, and the delete step is
+ * started only after the person's confirmation, which is the attestation that no other tab or device is open.
  */
 
 /** What a web page learns about other tabs of the app (the answer of the sole-tab proof, `soleTabAnswer`). */
 export type SweepPeers = 'alone' | 'others' | 'unsupported'
+
+/** The manual entry: `plan` reads only; `delete` removes the approved names that the round's own decision also deletes. */
+export type ManualSweep =
+    | { step: 'plan' }
+    | { step: 'delete', approved: ReadonlySet<string> }
+
+/**
+ * Whether the page's tab answer lets the pass go on. `unsupported` passes only on a Node page in a manual round; every
+ * other page and the automatic pass refuse it, and `others` always refuses.
+ */
+export function peersAllow(kind: AssetSweepSession['kind'], answer: SweepPeers, manual: ManualSweep | undefined): 'go' | 'no-web-locks' | 'other-tab' {
+    if (answer === 'alone') {
+        return 'go'
+    }
+    if (answer === 'others') {
+        return 'other-tab'
+    }
+    return kind === 'node' && manual !== undefined ? 'go' : 'no-web-locks'
+}
 
 /** The pieces of the session the pass reads live: a copy would freeze `idleReason`. */
 export type AssetSweepSession = Pick<Store2Session, 'kind' | 'backend' | 'openGate' | 'idleReason'>
@@ -85,6 +116,8 @@ export interface AssetSweepEnv {
      * only: a Node pass without it, or whose sample rejects, ends `no-server-time` before it deletes or writes anything.
      */
     sampleClock?(): Promise<AgeClock>
+    /** Present only for the manual clean-up; absent means the automatic pass. */
+    manual?: ManualSweep
 }
 
 export type SweepStopReason =
@@ -98,6 +131,14 @@ export type SweepRefusalReason =
 
 export type AssetSweepResult =
     | { status: 'skipped' }
+    | {
+        /** The manual `plan` step: what a `delete` step would remove now (`deletable`) and what only a later pass can (`later`). */
+        status: 'planned'
+        phase: AgePhase | null
+        candidates: number
+        deletable: readonly string[]
+        later: number
+    }
     | {
         status: 'refused'
         reason: SweepRefusalReason
@@ -135,6 +176,11 @@ interface Tally {
     recorded: boolean
 }
 
+/** What the `plan` step hands back besides the tally: the names its decision deletes. */
+interface PlanOut {
+    deletable: string[]
+}
+
 /** Control flow of the pass: the result that ends it. */
 class Ended extends Error {
     constructor(readonly result: AssetSweepResult) {
@@ -151,58 +197,17 @@ function stopped(tally: Tally, reason: SweepStopReason): Ended {
     return new Ended({ status: 'done', ...tally, stopped: reason })
 }
 
-/** Whether a read token is the gate's revision token: the same kind and the same revision, never the revision alone. */
-function sameRevision(gateToken: CompareToken, read: CompareToken): boolean {
-    return gateToken.kind === 'revision' && read.kind === 'revision' && gateToken.revision === read.revision
-}
-
 /**
  * Whether the commit key and the fence are still what the gate read, in the check that precedes a batch or the record
- * write. A moved commit key is `moved` (rebuild the keep-set); a moved fence, a stale page or a failed probe ends the pass.
- * A Node page compares the revisions of the gate's tokens (a token of another kind counts as moved) and never byte
- * tokens, which a revision token cannot be compared with.
+ * write. A moved commit key is `moved` (rebuild the keep-set); a moved fence, a stale page, a failed probe or an idle
+ * session ends the pass. The checks are `gateFreshness`.
  */
 async function checkFresh(env: AssetSweepEnv, gate: GateOpen, backend: Store2Backend, tally: Tally): Promise<'fresh' | 'moved'> {
-    const { session } = env
-    const node = session.kind === 'node'
-    try {
-        const fence = await backend.readFence()
-        if (node ? !sameRevision(gate.fenceToken, fence.token) : !tokenMatches(gate.fenceToken, fence.bytes)) {
-            throw stopped(tally, 'fence-conflict')
-        }
-        if (session.kind === 'tauri') {
-            const bytes = bytesTokenOf(gate.commitToken).bytes
-            if (bytes === null) {
-                throw stopped(tally, 'probe-failed')
-            }
-            // The same bytes under the gate's own token: it succeeds only while the commit key is unchanged, and the
-            // native gate refuses it when a newer page has registered.
-            await backend.casCommit(gate.commitToken, bytes)
-        } else {
-            const commit = await backend.readCommit()
-            if (node ? !sameRevision(gate.commitToken, commit.token) : !tokenMatches(gate.commitToken, commit.bytes)) {
-                return 'moved'
-            }
-        }
-    } catch (error) {
-        if (error instanceof Ended) {
-            throw error
-        }
-        if (error instanceof Store2CommitConflictError) {
-            return 'moved'
-        }
-        if (error instanceof Store2StalePageError) {
-            throw stopped(tally, 'stale-page')
-        }
-        if (error instanceof Store2BackendError) {
-            throw stopped(tally, 'probe-failed')
-        }
-        throw error
+    const freshness = await gateFreshness(env.session, gate, backend)
+    if (freshness === 'fresh' || freshness === 'moved') {
+        return freshness
     }
-    if (session.idleReason !== null) {
-        throw stopped(tally, 'idle')
-    }
-    return 'fresh'
+    throw stopped(tally, freshness)
 }
 
 /** The names under `assets/` (top level only), their count and, on Node, the revision each is listed at (null: none is known). */
@@ -302,20 +307,17 @@ async function removeAtRevision(store: ByteStore, key: string, ifVersion: number
 }
 
 /** One scan and delete round: a commit key that moved ends it with `rebuild`. */
-async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally): Promise<'finished' | 'rebuild'> {
-    const { session, store } = env
+async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally, plan: PlanOut): Promise<'finished' | 'rebuild'> {
+    const { session, store, manual } = env
     const web = session.kind === 'indexeddb'
     const node = session.kind === 'node'
     if (env.shouldStop()) {
         throw stopped(tally, 'yielded')
     }
     if (web || node) {
-        const peers = await env.peers()
-        if (peers === 'unsupported') {
-            throw refused('no-web-locks')
-        }
-        if (peers === 'others') {
-            throw refused('other-tab')
+        const verdict = peersAllow(session.kind, await env.peers(), manual)
+        if (verdict !== 'go') {
+            throw refused(verdict)
         }
     }
     // The age is judged before anything else is read: a young record ends the round with no gate, listing or closure read.
@@ -337,9 +339,11 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
     } catch {
         throw refused('listing-failed')
     }
-    const limit = decideAutoSweep(listed.count, env.limit)
-    if (!limit.auto) {
-        throw refused(limit.reason === 'over-limit' ? 'over-limit' : 'unknown-count')
+    if (manual === undefined) {
+        const limit = decideAutoSweep(listed.count, env.limit)
+        if (!limit.auto) {
+            throw refused(limit.reason === 'over-limit' ? 'over-limit' : 'unknown-count')
+        }
     }
 
     const reader = createBackendClosureReader(backend)
@@ -389,22 +393,35 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
         if (recordRead.status === 'io-failed') {
             throw refused('record-io-failed')
         }
-        const record: RecordRead = recordRead
-        decision = decideAge({
-            record,
-            candidates,
-            now: (env.now ?? Date.now)(),
-            backend: session.kind === 'tauri' ? 'tauri' : 'indexeddb',
-            keep,
-            minAgeMs: env.minAgeMs,
-        })
+        if (manual !== undefined) {
+            // The person's confirmation replaces the age wait: every fresh candidate is deletable and no record is written.
+            decision = {
+                phase: 'swept',
+                delete: [...new Set(candidates.map(candidate => candidate.name))].map(name => ({ name, ifVersion: null })),
+                nextRecord: null,
+            }
+        } else {
+            const record: RecordRead = recordRead
+            decision = decideAge({
+                record,
+                candidates,
+                now: (env.now ?? Date.now)(),
+                backend: session.kind === 'tauri' ? 'tauri' : 'indexeddb',
+                keep,
+                minAgeMs: env.minAgeMs,
+            })
+        }
     }
     tally.phase = decision.phase
     if (decision.phase === 'young') {
         return 'finished'
     }
+    if (manual?.step === 'plan') {
+        plan.deletable = decision.delete.map(deletion => deletion.name)
+        return 'finished'
+    }
 
-    const deletes = decision.delete
+    const deletes = manual?.step === 'delete' ? decision.delete.filter(deletion => manual.approved.has(deletion.name)) : decision.delete
     const written = new AssetKeySet()
     let writtenSeen = 0
     for (let start = 0; start < deletes.length; start += REMOVE_BATCH_MAX) {
@@ -429,7 +446,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
         let moved = false
         try {
             for (const { name, ifVersion } of deletes.slice(start, start + REMOVE_BATCH_MAX)) {
-                if ((web || node) && await env.peers() !== 'alone') {
+                if ((web || node) && peersAllow(session.kind, await env.peers(), manual) !== 'go') {
                     throw stopped(tally, 'other-tab')
                 }
                 // One synchronous run from the stop check to the registration of the hold; no await may enter it.
@@ -500,7 +517,7 @@ async function runRound(env: AssetSweepEnv, backend: Store2Backend, tally: Tally
         // The record is bound to the version it was read at and to the commit key and fence the gate saw, and is never
         // retried: a conflict or an unknown outcome leaves the record as it was. Nothing is awaited between the last stop
         // check and the send.
-        if (await env.peers() !== 'alone') {
+        if (peersAllow(session.kind, await env.peers(), manual) !== 'go') {
             throw stopped(tally, 'other-tab')
         }
         if (env.shouldStop()) {
@@ -526,6 +543,7 @@ export async function runAssetSweep(env: AssetSweepEnv): Promise<AssetSweepResul
         return { status: 'skipped' }
     }
     const tally: Tally = { phase: null, candidates: 0, deleted: 0, failed: 0, keptLive: 0, batches: 0, recorded: false }
+    const plan: PlanOut = { deletable: [] }
     try {
         for (let round = 0; round < MAX_ROUNDS; round++) {
             // Read live: the session's backend is the flush tracker, never a copy.
@@ -533,7 +551,12 @@ export async function runAssetSweep(env: AssetSweepEnv): Promise<AssetSweepResul
             if (backend === null) {
                 throw refused('no-backend')
             }
-            if (await runRound(env, backend, tally) === 'finished') {
+            if (await runRound(env, backend, tally, plan) === 'finished') {
+                if (env.manual?.step === 'plan') {
+                    // Only Node has later passes: the other kinds delete every candidate at once.
+                    const later = session.kind === 'node' && tally.phase !== 'young' ? Math.max(0, tally.candidates - plan.deletable.length) : 0
+                    return { status: 'planned', phase: tally.phase, candidates: tally.candidates, deletable: plan.deletable, later }
+                }
                 return { status: 'done', ...tally }
             }
         }

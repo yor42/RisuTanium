@@ -517,6 +517,21 @@ export const languageJapanese = {
     replyNotificationsSetting: "返信の通知",
     replyNotificationsHelp: "見ていないチャットで返信が完了したときに通知を受け取ります。",
     replyNotificationsBlocked: "Androidの設定でRisuTaniumの通知がオフになっています。スイッチをタップして設定を開いてください。",
+    seasonalLogoSetting: "季節限定ロゴ",
+    seasonalLogoHelp: "祝日や特別な日に、トップバーのロゴをアニメーションさせます。1日1回再生され、ロゴをタップすると再生し直せます。",
+    seasonalReplayHint: "アニメーションを再生し直す",
+    seasonalSkipHint: "アニメーションをスキップ",
+    seasonalSantaHat: "サンタ帽、隠しゲーム",
+    seasonalGameTitle: "サンタ帽ゲーム",
+    seasonalGameClose: "閉じる",
+    seasonalGameScore: "スコア",
+    seasonalGameTime: "時間",
+    seasonalGamePlay: "プレイ",
+    seasonalGamePlayAgain: "もう一度プレイ",
+    seasonalGameTarget: "サンタ帽のターゲット",
+    seasonalGameHint: "20秒間でできるだけ多く帽子をタップしましょう。Escapeキーで閉じます。",
+    seasonalGameTimeUp: "時間切れ、スコア",
+    seasonalGameClosed: "サンタ帽ゲームを閉じました",
     keepAliveSpeaking: "応答を読み上げ中",
     keepAliveImage: "画像を生成中…",
     keepAliveTranslating: "翻訳中…",
@@ -713,6 +728,17 @@ export const languageJapanese = {
     backupNounItems: "項目",
     backupTaskDone: "バックアップを保存しました",
     backupTaskFailed: "バックアップを保存できませんでした",
+    restoreTaskTitle: "バックアップを復元中",
+    restorePointTaskTitle: "復元ポイントから復元中",
+    restoreOldTaskTitle: "以前のバックアップを復元中",
+    restoreStepSave: "先に現在のデータを保存",
+    restoreStepRead: "バックアップを読み取り",
+    restoreStepTabs: "他のタブを確認",
+    restoreStepCopy: "ファイルをコピー",
+    restoreStepFinishFiles: "ファイルのコピーを完了",
+    restoreStepLoad: "バックアップを読み込み",
+    restoreStepFinish: "その他の設定を復元",
+    restoreStepCleanup: "起動時のクリーンアップを完了",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}件保存済み、これまでに${found}件見つかりました` : `${done}件保存済み、これまでに${found}件見つかりました`,
     chatShellTranslationClose: "翻訳エディターを閉じる",
     formating: {
@@ -758,14 +784,10 @@ export const languageJapanese = {
             `リクエストに環境変数の参照 ${name} がまだ含まれています。送信されませんでした。`,
         ttsAppKeyForeignHost: "このキャラクターはTTSリクエストを別のサーバーに送信するため、アプリ全体のOpenAIキーは送信されませんでした。そのサーバーを使用するには、キャラクターのTTS設定でAPIキーを入力してください。",
         storageServerNeedsUpdate: "このサーバーは新しいストレージ形式に対して古すぎます：保存やクリーンアップを行う前に、更新または再起動する必要があります。Nodeサーバーを再起動し（まだ更新していない場合は先に更新してください）、このページを再読み込みしてください。",
-        coldStorageRestoreFailed: "コールドストレージのデータを読み込めませんでした。対象のキャラクターのデータが永久に失われた可能性があります。",
-        coldStorageRestoreUnreadable: "このキャラクターは現在読み込めません。何も変更されていません。もう一度お試しください。",
         coldStorageNamedRestoreFailed: (characterName: string) =>
             `アーカイブされたキャラクター ${characterName} を読み込めませんでした：コールドストレージのデータが見つからないか無効であり、永久に失われた可能性があります。何も変更されていません。`,
         coldStorageNamedRestoreUnreadable: (characterName: string) =>
             `アーカイブされたキャラクター ${characterName} は現在読み込めません。何も変更されていません。もう一度お試しください。`,
-        coldStorageRestoreUnavailable: "アーカイブされたキャラクターはこのページでは開けません：このブラウザではここでのストレージが提供されていません（例：通常のHTTPアドレスなど）。何も変更されていません。",
-        coldStorageRestoreDamaged: "このキャラクターのアーカイブされたコピーを読み込めませんでした：破損している可能性があります。何も変更または削除されていません。",
         coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
             `${characterName}の次のチャットの代替の返信を読み込めなかったため、除外しました：${chatNames}。会話自体は問題なく読み込まれています。`,
         chatAltUnreadable: "このチャットの代替の返信を読み込めないため、再生成やブランチ作成はできません。何も変更されていません。",
@@ -1796,6 +1818,9 @@ export const languageJapanese = {
     triggerInputLabels: {
         value: "値",
         var: "変数",
+        operandType: "{label}の種類",
+        operandA: "A",
+        operandB: "B",
         varName: "変数名",
         outputVar: "出力変数",
         name: "名前",
@@ -2240,6 +2265,11 @@ export const languageJapanese = {
     homeGreetingNight: "まだ起きてますか？",
     homeCommunityHeading: "コミュニティとソース",
     homeSideLabel: "発見とコミュニティ",
+    homeStoriesHeading: "物語の続きから",
+    homeStoryJustNow: "たった今",
+    homeStoryArchived: "アーカイブ済み",
+    homeLibraryHeading: "キャラクター",
+    homeLibraryAllTrashed: "すべてのキャラクターがゴミ箱に入っています。",
     homeLinkDiscordTitle: "Discord",
     homeLinkDiscordDescription: "Discordサーバーに参加して、他のユーザーや開発者と交流しましょう。",
     homeLinkWebsiteTitle: "ウェブサイト",
@@ -3254,6 +3284,7 @@ export const languageJapanese = {
     openAIAudioLeftOut: "モデルに送信されませんでした（WAVまたはMP3の音声のみ受け付けます）：{names}",
     openAIAudioUnnamed: "音声の添付ファイル",
     triggerOn: "発動条件",
+    triggerEffectCategory: "効果のカテゴリ",
     noConfig: "設定なし",
     var: "変数",
     condition: "条件",
@@ -3998,17 +4029,32 @@ export const languageJapanese = {
     coldStorage: "起動時にキャラクターとモジュールをアーカイブ",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `メモリ使用量を抑えるため、本アプリは起動時に各キャラクターの全データを個別に保管し、そのキャラクターを開いたときにのみ読み込むようになりました。何も削除されておらず、キャラクターは以前と同様に表示され動作します。この設定は ${settings} > ${advancedSettings} > ${toggle} で無効にできます。無効にしても新しくアーカイブされることはなく、すでにアーカイブされているキャラクターも通常どおり開くことができます。`,
-    archiveCharactersStoppedNotice: (characterName: string) =>
-        `2体のキャラクターを連続して個別に保管できなかったため、今回の起動でのアーカイブ処理を停止しました（2体目は「${characterName}」）。これらのキャラクターはメインセーブに完全に読み込まれた状態を維持し、それ以前にアーカイブされたキャラクターに影響はありません。残りのキャラクターはそのまま残されています。`,
-    archiveCharactersSkippedNotice: (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `次のキャラクターを個別に保管できませんでした：${characterNames}${otherCount > 0 ? `、他${otherCount}件` : ''}。これらは完全に読み込まれた状態を維持して以前と同様に動作し、本アプリが起動時に再度アーカイブを試みることはありません。この端末で再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
-    archiveCharactersTooLargeNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `セーブデータが大きすぎるため、セルフホストサーバーにキャラクターをアーカイブできませんでした。そのため何もアーカイブされず、セーブデータはそのまま維持されています。すべて以前と同様に動作します。この端末で再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
-    archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
-        `2回連続で完了しなかったため、この端末での起動時キャラクターアーカイブを一時停止しています。データは失われておらず、すでにアーカイブされたキャラクターも開く際に読み込まれます。再開するまで、起動時に新しくアーカイブされることはありません。再試行するには、${settings} > ${advancedSettings} > ${toggle} をオフにしてから再度オンにしてください。`,
     cleanColdStorage: "未使用のアーカイブデータとアセットをクリーンアップ",
     customSidebarConfig: "カスタムサイドバー設定",
     cleanColdStorageConfirm: "これにより、未使用のすべてのアーカイブ（コールドストレージ）データと、どのキャラクター、モジュール、ペルソナ、設定でも使われなくなった画像や音声などの未使用アセットファイルが完全に削除されます。これらは将来役に立つ可能性があっても復元できません。続行しますか？",
+    cleanUnusedFiles: "未使用ファイルをクリーンアップ",
+    cleanUnusedFilesMeasuring: "未使用ファイルを探しています。ライブラリが大きい場合は時間がかかることがあります。",
+    cleanUnusedFilesDeleting: "未使用ファイルを削除しています...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `未使用ファイル ${count}件(${size})を削除しますか？ キャラクター、モジュール、ペルソナ、設定、復元ポイントのいずれにも使われていないファイルです。先にこのアプリの他のタブとウィンドウをすべて閉じてください。この操作は元に戻せません。`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `未使用ファイル ${count}件(${size})を今すぐ削除しますか？`
+            + (later > 0 ? ` 未使用ファイルがさらに ${later}件見つかりました。このサーバーでは、1日以上あけた3回のクリーンアップで続けて未使用と判定されたファイルだけを、1回につき最大500件まで削除します。そのため、これらは今後のクリーンアップ用に記録されます。` : '')
+            + ` 先にこのサーバーを使用している他のタブとデバイスをすべて閉じてください。「はい」を押すと、開いているものがないことを確認したものとみなされます。この操作は元に戻せません。`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `削除できる未使用ファイルはまだありません。未使用ファイルが ${later}件見つかりました。このサーバーでは、1日以上あけた3回のクリーンアップで続けて未使用と判定されたファイルだけを、1回につき最大500件まで削除します。今後のクリーンアップで削除できるよう、今すぐ記録しますか？ 先にこのサーバーを使用している他のタブとデバイスをすべて閉じてください。「はい」を押すと、開いているものがないことを確認したものとみなされます。`,
+    cleanUnusedFilesNodeWait: "未使用ファイルは1日以内に確認済みです。このサーバーでは、前回の確認から1日経たないとファイルを削除できないため、後でもう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesNone: "未使用ファイルは見つかりませんでした。何も削除されていません。",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `未使用ファイル ${deleted}件を削除しました。${kept > 0 ? ` ${kept}件のファイルは、再び使用されていたか削除できなかったため残しました。` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `アプリがデータを使い始めたため(保存、チャット、復元、または別のタブ)、クリーンアップを中止しました。中止するまでに ${deleted}件のファイルを削除しました。後でもう一度お試しください。`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'クリーンアップをキャンセルしました。何も削除されていません。' : `クリーンアップをキャンセルしました。中止するまでに ${deleted}件のファイルを削除しました。`,
+    cleanUnusedFilesOtherTab: "このアプリの別のタブが開いています。このアプリの他のタブをすべて閉じてから、もう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesNoTabCheck: "このページでは他に開いているタブを確認できない(HTTPS または localhost で開かれていない)ため、未使用ファイルをクリーンアップできません。何も削除されていません。",
+    cleanUnusedFilesBusy: "保存、実行中のチャット、または自動クリーンアップが終わるまで待ってから、もう一度お試しください。何も削除されていません。",
+    cleanUnusedFilesRefused: "現在クリーンアップを実行できません(保存データが変更中、復元中、または読み取れません)。何も削除されていません。後でもう一度お試しいただくか、先にアプリを再読み込みしてください。",
     coldStorageCleanupNoLockConfirm: "お使いのブラウザでは、本アプリの他のタブが開いているか確認できません。クリーンアップの実行中に本アプリの他のタブが開いていると、そのタブでデータが失われる可能性があります。本アプリの他のすべてのタブを閉じてから続行してください。それでも続行しますか？",
     coldStorageCleanupNodeConfirm: "他の端末やブラウザが同じサーバーを使用している間は、このクリーンアップを実行しないでください。実行中に保存された内容は失われるか削除される可能性があります。続行しますか？",
     coldStorageCleanupCheckingTabs: "クリーンアップの前に、本アプリの他の開いているタブを確認しています…",
@@ -4040,11 +4086,6 @@ export const languageJapanese = {
     forkPrivacyPolicy: "プライバシーポリシー",
     forkLegalLinksLabel: "法的文書",
     opfsCopyBackProgress: (done: number, total: number) => `データをブラウザストレージに移動しています… (${done} / ${total})。完了するまでこのタブを開いたままにしてください。`,
-    opfsFallbackNoticeTab: "本アプリの他のタブが開いているか、またはこのブラウザで他のタブの確認ができないため、今回はデータをブラウザストレージに移動できませんでした。RisuTaniumは既存のデータから実行されており、何も失われていません。他のタブを閉じてください。次回のアプリ起動時に再試行されます。",
-    opfsFallbackNoticeSpace: "ストレージの空き容量が不足しているため、今回はデータをブラウザストレージに移動できませんでした。RisuTaniumは既存のデータから実行されており、何も失われていません。空き容量を増やしてください。次回のアプリ起動時に再試行されます。",
-    opfsFallbackNoticeNoIndexedDb: "このブラウザでIndexedDBを使用できないため、今回はデータをブラウザストレージに移動できませんでした。RisuTaniumは既存のデータから実行されており、何も失われていません。次回のアプリ起動時に再試行されます。",
-    opfsFallbackNoticeError: (detail: string) => `今回はデータをブラウザストレージに移動できませんでした：${detail}。RisuTaniumは既存のデータから実行されており、何も失われていません。次回のアプリ起動時に再試行されます。`,
-    browserStorageUnavailable: "このブラウザはRisuTaniumがデータを保持しているストレージを開くことができなかったため、何も読み込まれず、何も変更されませんでした。ページを再読み込みしてください。このメッセージが引き続き表示される場合、このブラウザではRisuTaniumのデータを保存できません（プライベートブラウジングや非常に古いブラウザが原因の可能性があります）。別のブラウザで開くか、プライベートブラウジング以外でRisuTaniumを開いてください。",
     saveReadFailed: "RisuTaniumはストレージからセーブデータを読み込むことができなかったため、何も開かず、何も変更しませんでした。ページを再読み込みして再試行してください。この現象が続く場合は、データが存在するディスクまたはサーバーにアクセスできるか確認してください。",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '現在のセーブへのポインタ'
@@ -4086,6 +4127,7 @@ export const languageJapanese = {
     saveSeedFailed: "RisuTaniumは最初のセーブデータを作成できなかったため、何も開かず、何も変更しませんでした。ページを再読み込みして再試行してください。",
     saveLeftoverNotice: "RisuTaniumは、中断された保存または復元によって取り残された未使用のセーブデータを検出しました。害はありません。設定のクリーンアップから削除できます。",
     saveMainFileLeftNotice: "データは新しい形式に移行されましたが、古いセーブファイルが大きすぎるため、このサーバーで退避させることができませんでした。同じデータを開くアップストリーム版のRisuAIがその古いファイルを開いてしまう可能性があります。削除するまで、設定のクリーンアップで安全に保持されます。",
+    staticBuildUnsupported: "RisuTaniumは通常のWebホストからは動作しなくなりました。Androidアプリまたはデスクトップアプリか、RisuTanium Nodeサーバーが提供するページをご利用ください。",
     opfsReadOnlyNotice: "今回はデータのテンポラリコピーからRisuTaniumが実行されているため、変更は保存されず、バックアップの復元やストレージのクリーンアップも利用できません。データは失われていません。データをブラウザストレージに移動できるよう、本アプリの他のタブを閉じて再起動してください。",
     legacyPartialCharacters: (count: number) => count === 1 ? "キャラクター1体" : `キャラクター${count}体`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "このバージョンでは読み取れないその他の部分1件" : `このバージョンでは読み取れないその他の部分${count}件`,

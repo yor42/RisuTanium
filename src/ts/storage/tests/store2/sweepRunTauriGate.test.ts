@@ -204,3 +204,19 @@ describe('a Tauri page whose probe is not the first write', () => {
         expect(await rig.store.has('assets/o1.png')).toBe(true)
     })
 })
+
+describe('a manual clean-up on a superseded Tauri page', () => {
+    test('G12: a page that a newer page superseded between batches deletes nothing more and writes no record', async () => {
+        const orphans = orphanNames(26)
+        const rig = await newRig(orphans)
+        rig.env.pace = async () => {
+            await rig.store.pageGate!.registerPage()
+        }
+
+        const result = done(await runAssetSweep({ ...rig.env, manual: { step: 'delete', approved: new Set(orphans) } }))
+
+        expect(result).toMatchObject({ stopped: 'stale-page', deleted: 25, recorded: false })
+        expect(await rig.store.has(`assets/${orphans[25]}`)).toBe(true)
+        expect((await rig.store.read(SWEEP_KEY)).bytes).toBeNull()
+    })
+})

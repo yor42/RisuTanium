@@ -16,7 +16,7 @@
 
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi, onTestFinished } from 'vitest'
 import { language } from 'src/lang'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
@@ -55,6 +55,13 @@ vi.mock('../Realm/RealmMain.svelte', () => ({
 }))
 
 vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
+vi.mock('src/ts/characters', () => ({
+    getCharImage: vi.fn(async () => ''),
+    archivedMemberIds: () => [],
+    changeCharGeneration: () => 0,
+    supersedeChangeChar: vi.fn(),
+}))
+vi.mock('src/ts/characterPick', () => ({ changeCharOrAlert: vi.fn() }))
 
 vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 
@@ -156,7 +163,27 @@ describe('HomeShell layout', () => {
         expect(mark!.getAttribute('aria-hidden')).toBe('true')
     })
 
-    test('T-A2: at 900 the layout is mid and the Characters button stays in the content, outside the top bar', () => {
+    // Class guard (MC-3081): the mark is 32 px (28 px under 640 px) and the seasonal logo finds its bar, brand cell and
+    // mark through data attributes; the status mark stays idle and static on Home.
+    test('T-A1c: the brand mark is 32 px, 28 px under 640 px, and carries the seasonal hooks', () => {
+        const root = mountShellAt(1280)
+        const bar = topBarOf(root)!
+        const brand = bar.querySelector('[data-part="home-brand"]')!
+        const mark = brand.querySelector('svg')!
+        expect(mark.getAttribute('width')).toBe('32')
+        expect(mark.classList.contains('size-8')).toBe(true)
+        expect(mark.classList.contains('max-[639.98px]:size-7')).toBe(true)
+        expect(mark.getAttribute('data-status')).toBe('idle')
+        expect(mark.hasAttribute('data-seasonal-mark')).toBe(true)
+        expect(brand.hasAttribute('data-seasonal-brand')).toBe(true)
+        expect(bar.hasAttribute('data-seasonal-anchor')).toBe(true)
+    })
+
+    test('T-A2: at 900 the layout is mid and the Characters button stays in the content, outside the top bar, given library content (MC-2931)', () => {
+        DBState.db.characters = [{ chaId: 'lib-1', name: 'Lib' }] as unknown as typeof DBState.db.characters
+        onTestFinished(() => {
+            Reflect.deleteProperty(DBState.db, 'characters')
+        })
         const root = mountShellAt(900)
         const landing = landingOf(root)
         expect(landing).not.toBeNull()
@@ -303,16 +330,19 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(switcherWrapper).not.toContain('-ml-10')
     })
 
-    // Class guard: the wordmark truncates instead of overflowing onto the switcher; the full text
-    // stays in the DOM and the mark stays decorative.
-    test.each([360, 900, 1280])('T-F4: at %i the wordmark truncates, the mark keeps its size and the text is complete', (width) => {
+    // Class guard: the wordmark box is clipped by the brand cell instead of overflowing onto the switcher; the full text
+    // stays in the DOM (one accessible name node) and the mark stays decorative.
+    test.each([360, 900, 1280])('T-F4: at %i the wordmark is clipped, the mark keeps its size and the text is complete', (width) => {
         const root = mountShellAt(width)
         const brand = topBarOf(root)!.querySelector('[data-part="home-brand"]')!
         expect(classesOf(brand)).toContain('min-w-0')
-        const word = brand.querySelector('span')!
+        expect(classesOf(brand)).toContain('overflow-x-clip')
+        // The clip margin keeps the replay focus ring (outline plus offset, 5 px) from being cut at the cell edge.
+        expect(classesOf(brand)).toContain('[overflow-clip-margin:6px]')
+        const word = brand.querySelector('[data-seasonal-host]')!
         expect(classesOf(word)).toContain('min-w-0')
-        expect(classesOf(word)).toContain('truncate')
-        expect(word.textContent).toBe('RisuTanium')
+        expect(word.querySelector('.rt-sw-sr')!.textContent).toBe('RisuTanium')
+        expect(word.querySelector('.rt-sw-text')!.getAttribute('aria-hidden')).toBe('true')
         const mark = brand.querySelector('svg')!
         expect(classesOf(mark)).toContain('shrink-0')
         expect(mark.getAttribute('aria-hidden')).toBe('true')
@@ -327,7 +357,7 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(barClasses).toContain('pl-14')
         expect(barClasses).toContain('pr-4')
         expect(barClasses).not.toContain('pr-14')
-        expect(gridColumnsOf(bar)).toEqual(['minmax(5.75rem,1fr)', 'minmax(0,auto)'])
+        expect(gridColumnsOf(bar)).toEqual(['minmax(6rem,1fr)', 'minmax(0,auto)'])
 
         const switcherWrapper = classesOf(switcherWrapperOf(root))
         expect(switcherWrapper).toContain('col-span-2')
@@ -370,17 +400,16 @@ describe('HomeShell top bar centring and wordmark', () => {
     })
 
     // Class guards (MC-1443), not layout proofs: jsdom cannot evaluate container queries. In mid and
-    // wide the brand cell is the container and the wordmark is visually hidden below 3.75rem; the
+    // wide the brand cell is the container and the wordmark is visually hidden below 4rem (32 px mark, 8 px gap, 24 px word); the
     // text stays in the DOM, so the brand keeps its text alternative.
-    test.each([768, 900, 1280])('T-H1: at %i the brand cell is a container and the wordmark hides below 3.75rem', (width) => {
+    test.each([768, 900, 1280])('T-H1: at %i the brand cell is a container and the wordmark hides below 4rem', (width) => {
         const root = mountShellAt(width)
         const brand = topBarOf(root)!.querySelector('[data-part="home-brand"]')!
         expect(classesOf(brand)).toContain('@container')
-        const word = brand.querySelector('span')!
-        expect(classesOf(word)).toContain('@max-[3.75rem]:sr-only')
-        expect(classesOf(word)).not.toContain('@max-[3.75rem]:hidden')
-        expect(classesOf(word)).toContain('truncate')
-        expect(word.textContent).toBe('RisuTanium')
+        const word = brand.querySelector('[data-seasonal-host]')!
+        expect(classesOf(word)).toContain('@max-[4rem]:sr-only')
+        expect(classesOf(word)).not.toContain('@max-[4rem]:hidden')
+        expect(word.querySelector('.rt-sw-sr')!.textContent).toBe('RisuTanium')
         expect(word.hasAttribute('aria-hidden')).toBe(false)
     })
 
@@ -389,7 +418,7 @@ describe('HomeShell top bar centring and wordmark', () => {
         const root = mountShellAt(360)
         const brand = topBarOf(root)!.querySelector('[data-part="home-brand"]')!
         expect(classesOf(brand)).not.toContain('@container')
-        expect(classesOf(brand.querySelector('span')).some((c) => c.startsWith('@max-'))).toBe(false)
+        expect(classesOf(brand.querySelector('[data-seasonal-host]')).some((c) => c.startsWith('@max-'))).toBe(false)
     })
 
     // Class guard, red on the base (the base first track has a zero minimum): the mid first-track minimum keeps the wordmark
@@ -398,7 +427,9 @@ describe('HomeShell top bar centring and wordmark', () => {
         const root = mountShellAt(width)
         const first = gridColumnsOf(topBarOf(root)!)[0]
         const minimumRem = Number(/^minmax\(([\d.]+)rem,/.exec(first)![1])
-        expect(minimumRem).toBeGreaterThanOrEqual(3.75)
+        // 32 px mark + 8 px gap + 24 px word is the hide threshold (4rem); the minimum keeps a 56 px word.
+        expect(minimumRem).toBeGreaterThanOrEqual(4)
+        expect(minimumRem).toBeGreaterThanOrEqual((32 + 8 + 56) / 16)
     })
 
     // Class guards: the chip is capped inside the bar and a stored name's label truncates, so a long

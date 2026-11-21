@@ -39,7 +39,7 @@ vi.mock(import('src/ts/alert'), () => ({
 }) as unknown as typeof import('src/ts/alert'))
 
 vi.mock(import('src/ts/characterCards'), () => ({
-    importCharacterFile: vi.fn(async (_file: unknown, _run: unknown, progress: { tasked: boolean }) => {
+    importCharacterFile: vi.fn(async (_file: unknown, progress: { tasked: boolean }) => {
         h.seen.push({ who: 'card', tasked: progress.tasked, running: !!taskHostViewNow() && !taskResultShowingNow(), busy: busyKindsNow() })
         return { kind: 'imported', index: 0 }
     }),

@@ -517,6 +517,21 @@ export const languageVietnamese = {
     replyNotificationsSetting: "Thông báo phản hồi",
     replyNotificationsHelp: "Nhận thông báo khi phản hồi hoàn tất trong cuộc trò chuyện bạn không xem.",
     replyNotificationsBlocked: "Thông báo của RisuTanium đang tắt trong cài đặt Android. Chạm vào công tắc để mở cài đặt.",
+    seasonalLogoSetting: "Logo theo mùa",
+    seasonalLogoHelp: "Làm logo trên thanh trên cùng chuyển động vào các ngày lễ và ngày đặc biệt. Hiệu ứng chỉ chạy một lần mỗi ngày; chạm vào logo để xem lại.",
+    seasonalReplayHint: "Xem lại hiệu ứng",
+    seasonalSkipHint: "Bỏ qua hiệu ứng",
+    seasonalSantaHat: "Mũ ông già Noel, một trò chơi ẩn",
+    seasonalGameTitle: "Trò chơi mũ ông già Noel",
+    seasonalGameClose: "Đóng",
+    seasonalGameScore: "Điểm",
+    seasonalGameTime: "Thời gian",
+    seasonalGamePlay: "Chơi",
+    seasonalGamePlayAgain: "Chơi lại",
+    seasonalGameTarget: "Mục tiêu mũ ông già Noel",
+    seasonalGameHint: "Chạm vào chiếc mũ càng nhiều lần càng tốt trong 20 giây. Nhấn Escape để đóng.",
+    seasonalGameTimeUp: "Hết giờ, điểm",
+    seasonalGameClosed: "Đã đóng trò chơi mũ ông già Noel",
     keepAliveSpeaking: "Đang đọc phản hồi",
     keepAliveImage: "Đang tạo hình ảnh…",
     keepAliveTranslating: "Đang dịch…",
@@ -713,6 +728,17 @@ export const languageVietnamese = {
     backupNounItems: "Mục",
     backupTaskDone: "Đã lưu bản sao lưu",
     backupTaskFailed: "Không thể lưu bản sao lưu",
+    restoreTaskTitle: "Đang khôi phục bản sao lưu",
+    restorePointTaskTitle: "Đang khôi phục từ điểm khôi phục",
+    restoreOldTaskTitle: "Đang khôi phục bản sao lưu cũ",
+    restoreStepSave: "Lưu dữ liệu hiện tại trước",
+    restoreStepRead: "Đọc bản sao lưu",
+    restoreStepTabs: "Kiểm tra các tab khác",
+    restoreStepCopy: "Sao chép tệp",
+    restoreStepFinishFiles: "Hoàn tất sao chép tệp",
+    restoreStepLoad: "Tải bản sao lưu",
+    restoreStepFinish: "Khôi phục các cài đặt khác",
+    restoreStepCleanup: "Hoàn tất dọn dẹp khi khởi động",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} đã lưu ${done}, đã tìm thấy ${found} cho đến nay` : `Đã lưu ${done}, đã tìm thấy ${found} cho đến nay`,
     chatShellTranslationClose: "Đóng trình chỉnh sửa bản dịch",
     "formating": {
@@ -752,14 +778,10 @@ export const languageVietnamese = {
         "secretRefInRequest": (name: string) => `Yêu cầu vẫn còn chứa tham chiếu biến môi trường ${name}. Yêu cầu đã không được gửi.`,
         "ttsAppKeyForeignHost": "Nhân vật này gửi yêu cầu TTS đến một máy chủ khác, nên khóa OpenAI dùng chung cho toàn ứng dụng đã không được gửi. Để dùng máy chủ đó, hãy nhập khóa API trong phần cài đặt TTS của nhân vật.",
         "storageServerNeedsUpdate": "Máy chủ này quá cũ so với định dạng lưu trữ mới: cần cập nhật hoặc khởi động lại trước khi có thể lưu hoặc dọn dẹp. Hãy khởi động lại máy chủ Node (cập nhật trước nếu bạn chưa làm) rồi tải lại trang này.",
-        "coldStorageRestoreFailed": "Không thể tải dữ liệu bộ nhớ lạnh. Dữ liệu của nhân vật bị ảnh hưởng có thể đã bị mất vĩnh viễn.",
-        "coldStorageRestoreUnreadable": "Hiện không thể tải nhân vật này. Không có gì bị thay đổi. Hãy thử lại.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `Không thể tải nhân vật đã lưu trữ ${characterName}: dữ liệu bộ nhớ lạnh của nhân vật này bị thiếu hoặc không hợp lệ và có thể đã bị mất vĩnh viễn. Không có gì bị thay đổi.`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `Hiện không thể tải nhân vật đã lưu trữ ${characterName}. Không có gì bị thay đổi. Hãy thử lại.`,
-        "coldStorageRestoreUnavailable": "Không thể mở các nhân vật đã lưu trữ trên trang này: trình duyệt này không cung cấp bộ nhớ cho chúng ở đây (ví dụ trên địa chỉ HTTP thông thường). Không có gì bị thay đổi.",
-        "coldStorageRestoreDamaged": "Không thể đọc bản đã lưu trữ của nhân vật này: bản đó có thể đã bị hỏng. Không có gì bị thay đổi hoặc bị xóa.",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `Không thể đọc các phản hồi thay thế của những cuộc trò chuyện sau của ${characterName} nên đã bỏ qua chúng: ${chatNames}. Bản thân các cuộc trò chuyện đã được tải nguyên vẹn.`,
         "chatAltUnreadable": "Không thể đọc các phản hồi thay thế của cuộc trò chuyện này, nên không thể tạo lại hoặc rẽ nhánh. Không có gì bị thay đổi.",
@@ -1663,6 +1685,9 @@ export const languageVietnamese = {
     "triggerInputLabels": {
         "value": "Giá trị",
         "var": "Biến",
+        "operandType": "Loại {label}",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Tên biến",
         "outputVar": "Biến đầu ra",
         "name": "Tên",
@@ -2106,6 +2131,11 @@ export const languageVietnamese = {
     "homeGreetingNight": "Vẫn chưa ngủ à?",
     "homeCommunityHeading": "Cộng đồng và mã nguồn",
     "homeSideLabel": "Khám phá và cộng đồng",
+    "homeStoriesHeading": "Tiếp tục câu chuyện của bạn",
+    "homeStoryJustNow": "vừa xong",
+    "homeStoryArchived": "Đã lưu trữ",
+    "homeLibraryHeading": "Nhân vật",
+    "homeLibraryAllTrashed": "Tất cả nhân vật đều nằm trong Thùng rác.",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Tham gia máy chủ Discord của chúng tôi để trò chuyện với người dùng khác và nhà phát triển.",
     "homeLinkWebsiteTitle": "Trang web",
@@ -3115,6 +3145,7 @@ export const languageVietnamese = {
     "openAIAudioLeftOut": "Không gửi cho mô hình (chỉ nhận âm thanh WAV hoặc MP3): {names}",
     "openAIAudioUnnamed": "một tệp âm thanh đính kèm",
     "triggerOn": "Kích hoạt bật",
+    "triggerEffectCategory": "Danh mục hiệu ứng",
     "noConfig": "Không có cấu hình",
     "var": "Biến",
     "condition": "Điều kiện",
@@ -3852,17 +3883,32 @@ export const languageVietnamese = {
     coldStorage: "Lưu trữ nhân vật và mô-đun khi khởi động",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Để giữ mức sử dụng bộ nhớ thấp, ứng dụng hiện lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Không có gì bị xóa, và các nhân vật của bạn trông và hoạt động như trước. Bạn có thể tắt tính năng này trong ${settings} > ${advancedSettings} > ${toggle}. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `Việc lưu trữ đã dừng cho lần khởi động này vì hai nhân vật liên tiếp không thể được lưu riêng; nhân vật thứ hai là "${characterName}". Các nhân vật đó vẫn được tải đầy đủ trong bản lưu chính, và các nhân vật đã được lưu trữ trước đó không bị ảnh hưởng. Các nhân vật còn lại được giữ nguyên.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `Không thể lưu riêng các nhân vật sau: ${characterNames}${otherCount > 0 ? ` và ${otherCount} nhân vật khác` : ''}. Các nhân vật này vẫn được tải đầy đủ và hoạt động như trước, và ứng dụng sẽ không thử lưu trữ chúng lại khi khởi động. Để thử lại trên thiết bị này, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Bản lưu của bạn quá lớn để máy chủ tự lưu trữ có thể lưu trữ nhân vật vào, nên không có gì được lưu trữ và bản lưu của bạn được giữ nguyên. Mọi thứ vẫn hoạt động như trước. Để thử lại trên thiết bị này, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Việc lưu trữ nhân vật khi khởi động đã bị tạm dừng trên thiết bị này vì nó không hoàn tất hai lần liên tiếp. Không có gì bị mất, và các nhân vật đã được lưu trữ vẫn được tải khi bạn mở chúng. Cho đến khi bạn tiếp tục lại, sẽ không có nhân vật mới nào được lưu trữ khi khởi động. Để thử lại, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
     cleanColdStorage: "Dọn dẹp Dữ liệu Lưu trữ và Tệp Tài sản Không sử dụng",
     customSidebarConfig: "Cấu hình Thanh bên Tùy chỉnh",
     cleanColdStorageConfirm: "Thao tác này sẽ xóa vĩnh viễn toàn bộ dữ liệu lưu trữ (bộ nhớ lạnh) không sử dụng và toàn bộ tệp tài sản không sử dụng, tức là hình ảnh và âm thanh mà không nhân vật, mô-đun, persona hay cài đặt nào còn sử dụng. Một số có thể vẫn hữu ích trong tương lai, và không thể khôi phục. Bạn có muốn tiếp tục không?",
+    cleanUnusedFiles: "Dọn dẹp Tệp Không sử dụng",
+    cleanUnusedFilesMeasuring: "Đang tìm các tệp không sử dụng. Việc này có thể mất khá nhiều thời gian nếu thư viện lớn.",
+    cleanUnusedFilesDeleting: "Đang xóa các tệp không sử dụng...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'chưa rõ dung lượng' : bytes < 0.1 * 1024 * 1024 ? 'dưới 0.1 MiB' : `khoảng ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Xóa ${count} tệp không sử dụng (${size})? Không có nhân vật, mô-đun, persona, cài đặt hay điểm khôi phục nào sử dụng chúng. Hãy đóng mọi thẻ và cửa sổ khác của ứng dụng này trước. Không thể hoàn tác thao tác này.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'chưa rõ dung lượng' : bytes < 0.1 * 1024 * 1024 ? 'dưới 0.1 MiB' : `khoảng ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `Xóa ${count} tệp không sử dụng (${size}) ngay bây giờ?`
+            + (later > 0 ? ` Đã tìm thấy thêm ${later} tệp không sử dụng. Trên máy chủ này, một tệp chỉ bị xóa sau khi ba lần dọn dẹp cách nhau ít nhất một ngày đều thấy nó không được sử dụng, tối đa 500 tệp mỗi lần, nên các tệp này được ghi nhận cho những lần dọn dẹp sau.` : '')
+            + ` Hãy đóng mọi thẻ và thiết bị khác đang dùng máy chủ này trước: nhấn CÓ nghĩa là xác nhận không còn cái nào đang mở. Không thể hoàn tác thao tác này.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `Hiện chưa có tệp không sử dụng nào có thể xóa. Đã tìm thấy ${later} tệp không sử dụng. Trên máy chủ này, một tệp chỉ bị xóa sau khi ba lần dọn dẹp cách nhau ít nhất một ngày đều thấy nó không được sử dụng, tối đa 500 tệp mỗi lần. Ghi nhận chúng ngay bây giờ để lần dọn dẹp sau có thể xóa? Hãy đóng mọi thẻ và thiết bị khác đang dùng máy chủ này trước: nhấn CÓ nghĩa là xác nhận không còn cái nào đang mở.`,
+    cleanUnusedFilesNodeWait: "Các tệp không sử dụng đã được kiểm tra chưa đầy một ngày trước. Trên máy chủ này, tệp chỉ có thể bị xóa sau lần kiểm tra cuối một ngày, vì vậy hãy thử lại sau. Chưa có gì bị xóa.",
+    cleanUnusedFilesNone: "Không tìm thấy tệp không sử dụng nào. Chưa có gì bị xóa.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Đã xóa ${deleted} tệp không sử dụng.${kept > 0 ? ` ${kept} tệp được giữ lại vì chúng lại được sử dụng hoặc không thể xóa.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `Quá trình dọn dẹp đã dừng vì ứng dụng bắt đầu sử dụng dữ liệu của nó (lưu, một cuộc trò chuyện, khôi phục hoặc một thẻ khác). Đã xóa ${deleted} tệp trước khi dừng. Hãy thử lại sau.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Đã hủy dọn dẹp. Chưa có gì bị xóa.' : `Đã hủy dọn dẹp. Đã xóa ${deleted} tệp trước khi dừng.`,
+    cleanUnusedFilesOtherTab: "Một thẻ khác của ứng dụng này đang mở. Hãy đóng mọi thẻ khác của ứng dụng này rồi thử lại. Chưa có gì bị xóa.",
+    cleanUnusedFilesNoTabCheck: "Trang này không thể kiểm tra các thẻ khác đang mở (nó không được mở qua HTTPS hoặc localhost), nên không thể dọn dẹp tệp không sử dụng. Chưa có gì bị xóa.",
+    cleanUnusedFilesBusy: "Hãy đợi cho đến khi việc lưu, cuộc trò chuyện đang chạy hoặc việc dọn dẹp tự động hoàn tất, rồi thử lại. Chưa có gì bị xóa.",
+    cleanUnusedFilesRefused: "Hiện không thể chạy dọn dẹp (dữ liệu đã lưu đang thay đổi, đang được khôi phục hoặc không đọc được). Chưa có gì bị xóa. Hãy thử lại sau, hoặc tải lại ứng dụng trước.",
     coldStorageCleanupNoLockConfirm: "Trình duyệt của bạn không thể kiểm tra xem có tab khác của ứng dụng này đang mở hay không. Nếu một tab khác của ứng dụng này đang mở trong khi quá trình dọn dẹp chạy, tab đó có thể mất dữ liệu. Hãy đóng mọi tab khác của ứng dụng này trước, rồi tiếp tục. Vẫn tiếp tục chứ?",
     coldStorageCleanupNodeConfirm: "Không chạy việc dọn dẹp này khi một thiết bị hoặc trình duyệt khác đang dùng cùng máy chủ. Mọi thứ họ lưu trong lúc dọn dẹp chạy có thể bị mất hoặc bị xóa. Tiếp tục chứ?",
     coldStorageCleanupCheckingTabs: "Đang kiểm tra các tab khác của ứng dụng này đang mở trước khi dọn dẹp...",
@@ -3895,11 +3941,6 @@ export const languageVietnamese = {
     forkPrivacyPolicy: "Chính sách Quyền riêng tư",
     forkLegalLinksLabel: "Tài liệu pháp lý",
     opfsCopyBackProgress: (done: number, total: number) => `Đang chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt... (${done} / ${total}). Hãy giữ tab này mở cho đến khi hoàn tất.`,
-    opfsFallbackNoticeTab: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì một tab khác của ứng dụng này đang mở hoặc trình duyệt này không thể kiểm tra các tab khác. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Hãy đóng các tab khác; ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
-    opfsFallbackNoticeSpace: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì không đủ dung lượng lưu trữ trống. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Hãy giải phóng bớt dung lượng; ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
-    opfsFallbackNoticeNoIndexedDb: "Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt, vì trình duyệt này không thể sử dụng IndexedDB. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.",
-    opfsFallbackNoticeError: (detail: string) => `Lần này không thể chuyển dữ liệu của bạn sang bộ lưu trữ của trình duyệt: ${detail}. RisuTanium đang chạy bằng dữ liệu hiện có của bạn và không có gì bị mất. Ứng dụng sẽ thử lại vào lần khởi động tiếp theo.`,
-    browserStorageUnavailable: "Trình duyệt này không thể mở nơi lưu trữ mà RisuTanium dùng để giữ dữ liệu của bạn, nên chưa có gì được tải và không có gì bị thay đổi. Hãy tải lại trang. Nếu thông báo này tiếp tục xuất hiện, trình duyệt này không thể lưu trữ dữ liệu của RisuTanium (chế độ duyệt web riêng tư và các trình duyệt quá cũ có thể gây ra điều này): hãy mở RisuTanium trong trình duyệt khác, hoặc bên ngoài chế độ duyệt web riêng tư.",
     saveReadFailed: "RisuTanium không thể đọc dữ liệu đã lưu của bạn từ bộ nhớ, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại. Nếu sự cố này tiếp tục xảy ra, hãy kiểm tra xem có thể truy cập được ổ đĩa hoặc máy chủ chứa dữ liệu hay không.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? 'con trỏ tới bản lưu hiện tại của bạn'
@@ -3941,6 +3982,7 @@ export const languageVietnamese = {
     saveSeedFailed: "RisuTanium không thể tạo bản lưu đầu tiên, nên đã không mở gì và không thay đổi gì. Hãy tải lại trang để thử lại.",
     saveLeftoverNotice: "RisuTanium đã tìm thấy dữ liệu lưu không dùng đến bị bỏ lại bởi một lần lưu hoặc khôi phục bị gián đoạn. Dữ liệu này không gây hại. Bạn có thể xóa nó trong phần dọn dẹp ở cài đặt.",
     saveMainFileLeftNotice: "Dữ liệu của bạn đã được chuyển sang định dạng mới, nhưng tệp lưu cũ quá lớn để máy chủ này dời sang một bên. Một phiên bản RisuAI thượng nguồn mở cùng dữ liệu có thể mở tệp cũ đó. Phần dọn dẹp ở cài đặt sẽ giữ nó an toàn cho đến khi bạn xóa nó.",
+    staticBuildUnsupported: "RisuTanium không còn chạy từ một máy chủ web thông thường. Hãy dùng ứng dụng Android hoặc ứng dụng máy tính, hoặc trang do máy chủ RisuTanium Node cung cấp.",
     opfsReadOnlyNotice: "Lần này RisuTanium đang chạy từ một bản sao tạm thời của dữ liệu của bạn, nên sẽ không lưu các thay đổi, và việc khôi phục bản sao lưu hoặc dọn dẹp bộ nhớ không khả dụng. Dữ liệu của bạn không bị mất. Hãy đóng các tab khác của ứng dụng này và khởi động lại để dữ liệu có thể được chuyển sang bộ nhớ trình duyệt.",
     legacyPartialCharacters: (count: number) => count === 1 ? "1 nhân vật" : `${count} nhân vật`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "1 phần khác mà phiên bản này không thể đọc" : `${count} phần khác mà phiên bản này không thể đọc`,

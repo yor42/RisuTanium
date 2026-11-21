@@ -130,7 +130,7 @@ describe('the Welcome restore entry', () => {
 
         expect(confirmMock.mock.calls.map((call) => call[0])).toEqual([language.backupLoadConfirm, language.backupLoadConfirm2])
         expect(routerLoaderMock).toHaveBeenCalledTimes(1)
-        expect(routerLoaderMock.mock.calls[0]).toEqual([{}, { firstRun: true, onPicked: expect.any(Function) }])
+        expect(routerLoaderMock.mock.calls[0]).toEqual([{}, { firstRun: true, card: true, onPicked: expect.any(Function) }])
         expect(directLoaderMock).not.toHaveBeenCalled()
         expect(restorePhase()).toBe('none')
     })
@@ -194,7 +194,7 @@ describe('the Welcome restore entry', () => {
         await restoreFromBinFile()
 
         expect(routerLoaderMock).toHaveBeenCalledTimes(1)
-        expect(routerLoaderMock.mock.calls[0]).toEqual([])
+        expect(routerLoaderMock.mock.calls[0]).toEqual([{}, { card: true }])
     })
 })
 

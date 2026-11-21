@@ -23,6 +23,8 @@ import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import '../../polyfill'
 import { redactResolved, resetSecretRefState } from '../../secretRef'
+import { language } from '../../../lang'
+import { fillLang } from '../../../lang/fill'
 
 //#region module mocks
 
@@ -154,6 +156,7 @@ vi.mock('../../secretRef', async (importOriginal) => {
 //#endregion
 
 let pem = ''
+let publicKey: CryptoKey
 
 type Result = { type: string, result: unknown, noRetry?: boolean }
 let requestChatData: (arg: Record<string, unknown>, model: string, abortSignal?: AbortSignal | null) => Promise<Result>
@@ -169,6 +172,7 @@ beforeAll(async () => {
 
     const pair = await crypto.subtle.generateKey(
         { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify'])
+    publicKey = pair.publicKey
     const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey))
     let binary = ''
     for (const byte of der) { binary += String.fromCharCode(byte) }
@@ -474,3 +478,159 @@ describe('Vertex service-account key as a reference', () => {
 })
 
 //#endregion
+
+describe('Vertex token minting on a page without crypto.subtle', () => {
+    const realCrypto = globalThis.crypto
+    const realSubtle = realCrypto.subtle
+    const vertexDb = (key: string) => ({ aiModel: 'gemini-2.5-flash-vertex', vertexPrivateKey: key, requestRetrys: 0 })
+    const noSubtle = () => {
+        vi.stubGlobal('crypto', { getRandomValues: realCrypto.getRandomValues.bind(realCrypto) })
+        expect((globalThis.crypto as { subtle?: unknown }).subtle).toBeUndefined()
+    }
+    // The setup file's other global stubs must stay in place, so only `crypto` is put back.
+    afterEach(() => { vi.stubGlobal('crypto', realCrypto) })
+
+    /** The rejection of `requestChatData`; `ask()` would drop the reason. */
+    const rejectionOf = () => requestChatData({ formated: messages(), bias: {}, useStreaming: false, noMultiGen: true, tools: [] }, 'model', null)
+        .then(() => null, (error: unknown) => error)
+    const oauthCalls = () => h.calls.filter((call) => call.url.includes('oauth2.googleapis.com'))
+    const pemOf = (der: Uint8Array) => {
+        let binary = ''
+        for (const byte of der) { binary += String.fromCharCode(byte) }
+        return `-----BEGIN PRIVATE KEY-----\n${btoa(binary).replace(/(.{64})/g, '$1\n')}\n-----END PRIVATE KEY-----\n`
+    }
+    const pemBytes = () => Uint8Array.from(atob(pem.replace(/-----[A-Z ]+-----|\s/g, '')), (c) => c.charCodeAt(0))
+    const malformedKeys = async (): Promise<Array<[string, string]>> => {
+        const ec = await realSubtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+        return [
+            ['truncated DER', pemOf(pemBytes().slice(0, -1))],
+            ['EC PKCS#8', pemOf(new Uint8Array(await realSubtle.exportKey('pkcs8', ec.privateKey)))],
+        ]
+    }
+    const invalidKeyMessage = () => language.errors.vertexInvalidPrivateKey
+    const fromBase64url = (text: string) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+    const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+
+    async function expectSignedToken(db: Record<string, unknown>) {
+        installDb(db)
+        noSubtle()
+
+        await ask()
+
+        const oauth = oauthCalls()
+        expect(oauth).toHaveLength(1)
+        const jwt = new URLSearchParams(oauth[0].body).get('assertion') ?? ''
+        const [encodedHeader, encodedClaims, encodedSignature] = jwt.split('.')
+        expect(JSON.parse(new TextDecoder().decode(fromBase64url(encodedHeader)))).toEqual({ alg: 'RS256', typ: 'JWT' })
+        const signed = new TextEncoder().encode(`${encodedHeader}.${encodedClaims}`)
+        const signature = fromBase64url(encodedSignature)
+        expect(await realSubtle.verify('RSASSA-PKCS1-v1_5', publicKey, signature, signed)).toBe(true)
+        const key = await realSubtle.importKey('pkcs8', pemBytes(), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
+        expect(hex(signature)).toBe(hex(new Uint8Array(await realSubtle.sign('RSASSA-PKCS1-v1_5', key, signed))))
+        const sent = h.calls.find((call) => call.url.includes('aiplatform.googleapis.com'))
+        expect(sent?.headers['authorization']).toBe('Bearer MINTED-access-token')
+    }
+
+    test('a referenced key is exchanged for a token without crypto.subtle, and the JWT verifies', async () => {
+        await expectSignedToken(vertexDb('${RISU_PEM_PLAIN}'))
+    })
+
+    test('a plain key is exchanged for a token without crypto.subtle, and the JWT verifies', async () => {
+        await expectSignedToken(vertexDb(pem))
+    })
+
+    test('a malformed key is reported as an invalid private key without crypto.subtle', async () => {
+        for (const [label, key] of await malformedKeys()) {
+            h.calls.length = 0
+            installDb(vertexDb(key))
+            noSubtle()
+
+            const error = await rejectionOf()
+
+            expect((error as Error | null)?.message, label).toBe(invalidKeyMessage())
+            expect(oauthCalls(), label).toHaveLength(0)
+        }
+    })
+
+    test('a malformed key is reported as an invalid private key with crypto.subtle', async () => {
+        for (const [label, key] of await malformedKeys()) {
+            h.calls.length = 0
+            installDb(vertexDb(key))
+
+            const error = await rejectionOf()
+
+            expect((error as Error | null)?.message, label).toBe(invalidKeyMessage())
+            expect(oauthCalls(), label).toHaveLength(0)
+        }
+    })
+
+    test('a key body that is not base64 is reported as an invalid private key on both paths', async () => {
+        const key = '-----BEGIN PRIVATE KEY-----\nab$cd\n-----END PRIVATE KEY-----\n'
+        for (const withSubtle of [true, false]) {
+            h.calls.length = 0
+            installDb(vertexDb(key))
+            if (!withSubtle) { noSubtle() }
+
+            const error = await rejectionOf()
+
+            expect((error as Error | null)?.message, String(withSubtle)).toBe(invalidKeyMessage())
+            expect(oauthCalls()).toHaveLength(0)
+            vi.stubGlobal('crypto', realCrypto)
+        }
+    })
+
+    describe('guard: failures outside the key keep their own messages', () => {
+        const oauthAnswer = (answer: () => unknown) => {
+            const original = globalThis.fetch
+            globalThis.fetch = vi.fn(async (url: string, init?: { headers?: unknown, body?: unknown }) => {
+                record('fetch', url, init?.headers, init?.body)
+                if (String(url).includes('oauth2.googleapis.com')) { return answer() }
+                return { json: async () => ({}), status: 200, ok: true, text: async () => '' }
+            }) as unknown as typeof globalThis.fetch
+            return () => { globalThis.fetch = original }
+        }
+
+        test('a token endpoint error status', async () => {
+            installDb(vertexDb(pem))
+            const restore = oauthAnswer(() => ({ ok: false, status: 500, json: async () => ({ e: 'srv' }) }))
+            try {
+                const error = await rejectionOf()
+                expect((error as Error).message).toBe(fillLang(language.errors.googleTokenRefreshFailed, { error: '{"e":"srv"}' }))
+            }
+            finally { restore() }
+        })
+
+        test('a network failure', async () => {
+            installDb(vertexDb(pem))
+            const failure = new TypeError('net down')
+            const restore = oauthAnswer(() => { throw failure })
+            try {
+                expect(await rejectionOf()).toBe(failure)
+            }
+            finally { restore() }
+        })
+
+        test('a response without an access token', async () => {
+            installDb(vertexDb(pem))
+            const restore = oauthAnswer(() => ({ ok: true, status: 200, json: async () => ({}) }))
+            try {
+                const error = await rejectionOf()
+                expect((error as Error).message).toBe(language.errors.googleNoAccessToken)
+            }
+            finally { restore() }
+        })
+
+        test('a WebCrypto sign failure is not relabelled as a key problem', async () => {
+            installDb(vertexDb(pem))
+            vi.stubGlobal('crypto', {
+                getRandomValues: realCrypto.getRandomValues.bind(realCrypto),
+                subtle: { importKey: realSubtle.importKey.bind(realSubtle), sign: async () => { throw new DOMException('x', 'OperationError') } },
+            })
+
+            const error = await rejectionOf()
+
+            expect((error as { name?: string }).name).toBe('OperationError')
+            expect((error as Error).message).not.toBe(invalidKeyMessage())
+        })
+    })
+})

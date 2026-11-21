@@ -351,7 +351,7 @@ beforeEach(() => {
     sharedShowRealmFrameStore.set('')
     dbState.current = baseDb()
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])

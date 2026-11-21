@@ -24,7 +24,9 @@ const engines = vi.hoisted(() => ({
     restoreFile: vi.fn(),
     restoreInternal: vi.fn(),
     dataset: vi.fn(),
+    cleanUp: vi.fn(),
 }))
+const offer = vi.hoisted(() => ({ cleanUp: true }))
 
 vi.mock(import('../../ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Database })
@@ -64,6 +66,10 @@ vi.mock('src/ts/drive/settingsRestore', () => ({
     restoreFromInternalBackup: engines.restoreInternal,
 }))
 vi.mock('src/ts/storage/exportAsDataset', () => ({ exportAsDataset: engines.dataset }))
+vi.mock('src/ts/storage/cleanUpUnusedFiles', () => ({
+    cleanUpOfferedFor: () => offer.cleanUp,
+    startCleanUpUnusedFiles: engines.cleanUp,
+}))
 
 import { language } from '../../lang'
 import type { BackupExportOptions } from '../../ts/drive/backuplocal'
@@ -119,6 +125,8 @@ beforeEach(() => {
     engines.restoreFile.mockResolvedValue(undefined)
     engines.restoreInternal.mockResolvedValue(undefined)
     engines.dataset.mockResolvedValue(undefined)
+    engines.cleanUp.mockResolvedValue(undefined)
+    offer.cleanUp = true
 })
 
 afterEach(() => {
@@ -133,10 +141,17 @@ describe('the page', () => {
         expect(target.querySelector('[data-part="data-page"]')).not.toBeNull()
         const headings = [...target.querySelectorAll('[data-part="settings-section-heading"]')].map((el) => el.textContent?.trim())
         expect(headings).toEqual([language.settingsShellDataBackup, language.settingsShellDataTransfer, language.settingsShellDataStorage])
-        expect(target.querySelectorAll('[data-part="data-action"]')).toHaveLength(4)
-        for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'acc.goCharacterOnImport', 'adv.coldstorage']) {
+        expect(target.querySelectorAll('[data-part="data-action"]')).toHaveLength(5)
+        for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'data.cleanUp', 'acc.goCharacterOnImport', 'adv.coldstorage']) {
             expect(target.querySelector(`[data-setting-row="${id}"]`), id).not.toBeNull()
         }
+    })
+
+    test('the clean-up row is absent where the clean-up is not offered', () => {
+        offer.cleanUp = false
+        const target = show()
+        expect(target.querySelector('[data-setting-row="data.cleanUp"]')).toBeNull()
+        expect(target.querySelectorAll('[data-part="data-action"]')).toHaveLength(4)
     })
 })
 
@@ -361,7 +376,7 @@ describe('the backup chooser', () => {
 describe('the action rows', () => {
     test('S1-R10: each row calls its function once', async () => {
         show()
-        for (const [id, spy] of [['data.restoreFile', engines.restoreFile], ['data.restoreSnapshot', engines.restoreInternal], ['data.dataset', engines.dataset]] as const) {
+        for (const [id, spy] of [['data.restoreFile', engines.restoreFile], ['data.restoreSnapshot', engines.restoreInternal], ['data.dataset', engines.dataset], ['data.cleanUp', engines.cleanUp]] as const) {
             rowButton(id)!.click()
             await settle()
             expect(spy, id).toHaveBeenCalledTimes(1)
@@ -375,17 +390,19 @@ describe('the action rows', () => {
         rowButton('data.restoreFile')!.click()
         await settle()
         expect(dataSheetState.running).toBe(true)
-        for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset']) {
+        for (const id of ['data.backup', 'data.restoreFile', 'data.restoreSnapshot', 'data.dataset', 'data.cleanUp']) {
             expect(rowButton(id)!.getAttribute('aria-disabled'), id).toBe('true')
         }
         rowButton('data.restoreFile')!.click()
         rowButton('data.restoreSnapshot')!.click()
         rowButton('data.dataset')!.click()
+        rowButton('data.cleanUp')!.click()
         rowButton('data.backup')!.click()
         await settle()
         expect(engines.restoreFile).toHaveBeenCalledTimes(1)
         expect(engines.restoreInternal).not.toHaveBeenCalled()
         expect(engines.dataset).not.toHaveBeenCalled()
+        expect(engines.cleanUp).not.toHaveBeenCalled()
         expect(dialog()).toBeNull()
         release()
         await settle()

@@ -5,6 +5,7 @@
     import { fillLang } from "src/lang/fill";
     import { alertConfirm, alertInput, alertNormal } from "src/ts/alert";
     import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
+    import { copyPlainText } from "src/ts/chatCopy";
     import { hubURL, type hubType, downloadRisuHub, getRealmInfo } from "src/ts/characterCards";
     import { askUpstreamAgreement } from "src/ts/upstreamAgreement";
 
@@ -193,10 +194,11 @@
                 }}>
                     {language.realmImportAndChat}
                 </button>
-                <button type="button" class="risu-focus-ring flex min-h-11 items-center justify-center gap-2 rounded-md border border-darkborderc bg-darkbutton px-4 text-textcolor hover:bg-selected/50" onclick={(async (e) => {
+                <button type="button" class="risu-focus-ring flex min-h-11 items-center justify-center gap-2 rounded-md border border-darkborderc bg-darkbutton px-4 text-textcolor hover:bg-selected/50" onclick={((e) => {
                     e.stopPropagation()
-                    await navigator.clipboard.writeText(`https://realm.risuai.net/character/${openedData.id}`)
-                    alertNormal(language.clipboardSuccess)
+                    copyPlainText(`https://realm.risuai.net/character/${openedData.id}`, (outcome) => {
+                        alertNormal(outcome.ok ? language.clipboardSuccess : language.copyFailed)
+                    })
                 })}>
                     <PaperclipIcon size={18} aria-hidden="true" />
                     {language.realmCopyLink}

@@ -53,11 +53,7 @@ function hasMention(text: string): boolean {
 
 const OWN_PRODUCT_KEYS = [
     'iris.introTip',
-    'browserStorageUnavailable',
-    'opfsFallbackNoticeTab',
-    'opfsFallbackNoticeSpace',
-    'opfsFallbackNoticeNoIndexedDb',
-    'opfsFallbackNoticeError',
+    'staticBuildUnsupported',
     'opfsReadOnlyNotice',
     'personasRepairedNotice',
     'restoreRepairedNotice',

@@ -517,6 +517,21 @@ export const languageKorean = {
     replyNotificationsSetting: "답변 알림",
     replyNotificationsHelp: "보고 있지 않은 채팅에서 답변이 끝나면 알림을 받습니다.",
     replyNotificationsBlocked: "Android 설정에서 RisuTanium의 알림이 꺼져 있습니다. 스위치를 눌러 설정을 여세요.",
+    seasonalLogoSetting: "시즌 로고",
+    seasonalLogoHelp: "공휴일과 특별한 날에 상단 바의 로고에 애니메이션을 보여 줘요. 하루에 한 번 재생되며, 로고를 누르면 다시 볼 수 있어요.",
+    seasonalReplayHint: "애니메이션 다시 재생",
+    seasonalSkipHint: "애니메이션 건너뛰기",
+    seasonalSantaHat: "산타 모자, 숨겨진 게임",
+    seasonalGameTitle: "산타 모자 게임",
+    seasonalGameClose: "닫기",
+    seasonalGameScore: "점수",
+    seasonalGameTime: "시간",
+    seasonalGamePlay: "시작",
+    seasonalGamePlayAgain: "다시 하기",
+    seasonalGameTarget: "산타 모자 목표",
+    seasonalGameHint: "20초 안에 모자를 최대한 많이 맞혀 보세요. Esc 키를 누르면 닫혀요.",
+    seasonalGameTimeUp: "시간 종료, 점수",
+    seasonalGameClosed: "산타 모자 게임이 닫혔습니다",
     keepAliveSpeaking: "답변 읽는 중",
     keepAliveImage: "이미지 생성 중…",
     keepAliveTranslating: "번역 중…",
@@ -713,6 +728,17 @@ export const languageKorean = {
     backupNounItems: "항목",
     backupTaskDone: "백업을 저장했습니다",
     backupTaskFailed: "백업을 저장하지 못했습니다",
+    restoreTaskTitle: "백업 복원 중",
+    restorePointTaskTitle: "복원 지점에서 복원 중",
+    restoreOldTaskTitle: "이전 백업 복원 중",
+    restoreStepSave: "먼저 현재 데이터 저장",
+    restoreStepRead: "백업 읽기",
+    restoreStepTabs: "다른 탭 확인",
+    restoreStepCopy: "파일 복사",
+    restoreStepFinishFiles: "파일 복사 마무리",
+    restoreStepLoad: "백업 불러오기",
+    restoreStepFinish: "나머지 설정 복원",
+    restoreStepCleanup: "시작 시 정리 작업 마무리",
     patternTaskCountFound: (noun: string, done: number, found: number) => noun ? `${noun} ${done}개 저장됨, 지금까지 ${found}개 발견` : `${done}개 저장됨, 지금까지 ${found}개 발견`,
     chatShellTranslationClose: "번역 편집기 닫기",
     "formating": {
@@ -752,14 +778,10 @@ export const languageKorean = {
         "secretRefInRequest": (name: string) => `요청에 환경 변수 참조 ${name}이(가) 아직 남아 있습니다. 전송되지 않았습니다.`,
         "ttsAppKeyForeignHost": "이 캐릭터는 음성 읽기(TTS) 요청을 다른 서버로 보내므로 앱 전체 OpenAI 키는 전송되지 않았습니다. 해당 서버를 사용하려면 캐릭터의 음성 읽기(TTS) 설정에 API 키를 입력하세요.",
         "storageServerNeedsUpdate": "이 서버는 새 저장소 형식을 지원하지 않는 이전 버전입니다. 저장하거나 정리하려면 먼저 서버를 업데이트하거나 다시 시작해야 합니다. Node 서버를 다시 시작(아직 업데이트하지 않았다면 먼저 업데이트)한 다음 이 페이지를 새로고침하세요.",
-        "coldStorageRestoreFailed": "콜드 스토리지 데이터를 불러올 수 없습니다. 해당 캐릭터의 데이터가 영구적으로 손실되었을 수 있습니다.",
-        "coldStorageRestoreUnreadable": "지금은 이 캐릭터를 불러올 수 없습니다. 변경된 내용은 없습니다. 다시 시도하세요.",
         "coldStorageNamedRestoreFailed": (characterName: string) =>
             `보관된 캐릭터 ${characterName}을(를) 불러올 수 없습니다. 콜드 스토리지 데이터가 없거나 올바르지 않으며, 영구적으로 손실되었을 수 있습니다. 변경된 내용은 없습니다.`,
         "coldStorageNamedRestoreUnreadable": (characterName: string) =>
             `보관된 캐릭터 ${characterName}을(를) 지금은 불러올 수 없습니다. 변경된 내용은 없습니다. 다시 시도하세요.`,
-        "coldStorageRestoreUnavailable": "이 페이지에서는 보관된 캐릭터를 열 수 없습니다. 이 브라우저는 여기서 보관된 캐릭터를 위한 저장소를 제공하지 않습니다 (예: 일반 HTTP 주소). 변경된 내용은 없습니다.",
-        "coldStorageRestoreDamaged": "이 캐릭터의 보관된 사본을 읽을 수 없습니다. 손상되었을 수 있습니다. 변경되거나 삭제된 내용은 없습니다.",
         "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
             `${characterName}의 다음 채팅에 있는 다른 답변을 읽을 수 없어 제외했습니다: ${chatNames}. 대화 자체는 온전히 불러왔습니다.`,
         "chatAltUnreadable": "이 채팅의 다른 답변을 읽을 수 없어 재생성하거나 분기할 수 없습니다. 변경된 내용은 없습니다.",
@@ -1663,6 +1685,9 @@ export const languageKorean = {
     "triggerInputLabels": {
         "value": "값",
         "var": "변수",
+        "operandType": "{label} 유형",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "변수명",
         "outputVar": "출력 변수",
         "name": "이름",
@@ -2106,6 +2131,11 @@ export const languageKorean = {
     "homeGreetingNight": "아직 안 주무세요?",
     "homeCommunityHeading": "커뮤니티와 소스",
     "homeSideLabel": "디스커버리와 커뮤니티",
+    "homeStoriesHeading": "이야기 이어가기",
+    "homeStoryJustNow": "방금",
+    "homeStoryArchived": "보관됨",
+    "homeLibraryHeading": "캐릭터",
+    "homeLibraryAllTrashed": "모든 캐릭터가 휴지통에 있습니다.",
     "homeLinkDiscordTitle": "디스코드",
     "homeLinkDiscordDescription": "디스코드 서버에 참여해 다른 사용자, 개발자와 대화해 보세요.",
     "homeLinkWebsiteTitle": "웹사이트",
@@ -3116,6 +3146,7 @@ export const languageKorean = {
     "openAIAudioLeftOut": "WAV나 MP3 오디오만 받는 모델이라 보내지 않았어요: {names}",
     "openAIAudioUnnamed": "오디오 첨부 파일",
     "triggerOn": "활성화 조건",
+    "triggerEffectCategory": "효과 분류",
     "noConfig": "설정 없음",
     "var": "변수",
     "condition": "조건",
@@ -3853,17 +3884,32 @@ export const languageKorean = {
     coldStorage: "시작 시 캐릭터와 모듈 보관",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `메모리 사용량을 낮게 유지하기 위해, 이 앱은 이제 시작할 때 각 캐릭터의 전체 데이터를 별도로 저장하고 해당 캐릭터를 열 때만 불러옵니다. 삭제되는 데이터는 없으며, 캐릭터는 이전과 동일하게 보이고 동작합니다. ${settings} > ${advancedSettings} > ${toggle}에서 이 기능을 끌 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `이번 시작 시 보관이 중단되었습니다. 캐릭터 두 개가 연속으로 별도로 저장되지 못했으며, 두 번째는 "${characterName}" 캐릭터였습니다. 해당 캐릭터들은 기본 저장 데이터에 그대로 완전히 불러온 상태로 남아 있으며, 그 이전에 보관된 캐릭터에는 영향이 없습니다. 나머지 캐릭터는 그대로 두었습니다.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `다음 캐릭터를 별도로 저장할 수 없었습니다: ${characterNames}${otherCount > 0 ? ` 외 ${otherCount}개` : ''}. 이 캐릭터들은 완전히 불러온 상태로 유지되며 이전과 동일하게 동작하고, 앱은 시작할 때 이 캐릭터들을 다시 보관하려 하지 않습니다. 이 기기에서 다시 시도하려면 ${settings} > ${advancedSettings} > ${toggle}을(를) 껐다가 다시 켜세요.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `저장 데이터가 너무 커서 셀프 호스팅 서버에 캐릭터를 보관할 수 없었으므로, 아무것도 보관되지 않았고 저장 데이터는 그대로 두었습니다. 모든 것이 이전과 동일하게 동작합니다. 이 기기에서 다시 시도하려면 ${settings} > ${advancedSettings} > ${toggle}을(를) 껐다가 다시 켜세요.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `이 기기에서 시작 시 캐릭터 보관이 두 번 연속으로 끝나지 않아 일시 중지되었습니다. 삭제되거나 잃은 데이터는 없으며, 이미 보관된 캐릭터는 열 때 그대로 불러옵니다. 재개하기 전까지는 시작 시 새로 보관되는 캐릭터가 없습니다. 다시 시도하려면 ${settings} > ${advancedSettings} > ${toggle}을(를) 껐다가 다시 켜세요.`,
     cleanColdStorage: "사용하지 않는 보관 데이터 및 에셋 정리",
     customSidebarConfig: "사이드바 커스텀 설정",
     cleanColdStorageConfirm: "이 작업은 사용하지 않는 모든 보관(콜드 스토리지) 데이터와 사용하지 않는 모든 에셋 파일(더 이상 어떤 캐릭터, 모듈, 페르소나, 설정에서도 사용하지 않는 이미지와 오디오)을 영구적으로 삭제합니다. 일부는 나중에 유용할 수 있으며, 삭제된 데이터는 복구할 수 없습니다. 계속하시겠습니까?",
+    cleanUnusedFiles: "사용하지 않는 파일 정리",
+    cleanUnusedFilesMeasuring: "사용하지 않는 파일을 찾는 중입니다. 라이브러리가 크면 시간이 오래 걸릴 수 있습니다.",
+    cleanUnusedFilesDeleting: "사용하지 않는 파일을 삭제하는 중...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? '크기 알 수 없음' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 미만' : `약 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `사용하지 않는 파일 ${count}개(${size})를 삭제하시겠습니까? 어떤 캐릭터, 모듈, 페르소나, 설정, 복원 지점에서도 사용하지 않는 파일입니다. 먼저 이 앱의 다른 탭과 창을 모두 닫으세요. 삭제한 파일은 복구할 수 없습니다.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? '크기 알 수 없음' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 미만' : `약 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `사용하지 않는 파일 ${count}개(${size})를 지금 삭제하시겠습니까?`
+            + (later > 0 ? ` 사용하지 않는 파일이 ${later}개 더 발견되었습니다. 이 서버에서는 하루 이상 간격을 둔 정리에서 세 번 연속 사용하지 않는 것으로 확인된 파일만, 한 번에 최대 500개까지 삭제하므로, 이 파일들은 이후 정리를 위해 기록해 둡니다.` : '')
+            + ` 먼저 이 서버를 사용하는 다른 탭과 기기를 모두 닫으세요. 예를 누르면 열려 있는 곳이 없음을 확인한 것으로 간주합니다. 삭제한 파일은 복구할 수 없습니다.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `아직 삭제할 수 있는 사용하지 않는 파일이 없습니다. 사용하지 않는 파일이 ${later}개 발견되었습니다. 이 서버에서는 하루 이상 간격을 둔 정리에서 세 번 연속 사용하지 않는 것으로 확인된 파일만, 한 번에 최대 500개까지 삭제합니다. 이후 정리에서 삭제할 수 있도록 지금 기록해 두시겠습니까? 먼저 이 서버를 사용하는 다른 탭과 기기를 모두 닫으세요. 예를 누르면 열려 있는 곳이 없음을 확인한 것으로 간주합니다.`,
+    cleanUnusedFilesNodeWait: "사용하지 않는 파일을 하루도 지나기 전에 확인했습니다. 이 서버에서는 마지막 확인 후 하루가 지나야 파일을 삭제할 수 있으니 나중에 다시 시도하세요. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesNone: "사용하지 않는 파일이 없습니다. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `사용하지 않는 파일 ${deleted}개를 삭제했습니다.${kept > 0 ? ` 파일 ${kept}개는 다시 사용 중이거나 삭제할 수 없어 남겨 두었습니다.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `앱이 데이터를 사용하기 시작하여(저장, 채팅, 복원 또는 다른 탭) 정리가 중단되었습니다. 중단되기 전에 파일 ${deleted}개를 삭제했습니다. 나중에 다시 시도하세요.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? '정리를 취소했습니다. 아무것도 삭제하지 않았습니다.' : `정리를 취소했습니다. 중단되기 전에 파일 ${deleted}개를 삭제했습니다.`,
+    cleanUnusedFilesOtherTab: "이 앱의 다른 탭이 열려 있습니다. 이 앱의 다른 탭을 모두 닫은 뒤 다시 시도하세요. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesNoTabCheck: "이 페이지는 열려 있는 다른 탭을 확인할 수 없어(HTTPS 또는 localhost로 열려 있지 않음) 사용하지 않는 파일을 정리할 수 없습니다. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesBusy: "저장, 진행 중인 채팅 또는 자동 정리가 끝날 때까지 기다린 뒤 다시 시도하세요. 아무것도 삭제하지 않았습니다.",
+    cleanUnusedFilesRefused: "지금은 정리를 실행할 수 없습니다(저장된 데이터가 변경 중이거나 복원 중이거나 읽을 수 없음). 아무것도 삭제하지 않았습니다. 나중에 다시 시도하거나 먼저 앱을 새로고침하세요.",
     coldStorageCleanupNoLockConfirm: "브라우저가 이 앱의 다른 탭이 열려 있는지 확인할 수 없습니다. 정리가 실행되는 동안 이 앱의 다른 탭이 열려 있으면 해당 탭에서 데이터가 손실될 수 있습니다. 먼저 이 앱의 다른 탭을 모두 닫은 뒤 계속하세요. 그래도 계속하시겠습니까?",
     coldStorageCleanupNodeConfirm: "같은 서버를 다른 기기나 브라우저에서 사용 중일 때는 이 정리를 실행하지 마세요. 정리가 실행되는 동안 그쪽에서 저장한 내용은 손실되거나 삭제될 수 있습니다. 계속하시겠습니까?",
     coldStorageCleanupCheckingTabs: "정리하기 전에 이 앱의 다른 열린 탭을 확인하는 중...",
@@ -3896,11 +3942,6 @@ export const languageKorean = {
     forkPrivacyPolicy: "개인정보 처리방침",
     forkLegalLinksLabel: "법적 문서",
     opfsCopyBackProgress: (done: number, total: number) => `데이터를 브라우저 저장소로 옮기는 중입니다... (${done} / ${total}). 완료될 때까지 이 탭을 열어 두세요.`,
-    opfsFallbackNoticeTab: "이번에는 이 앱의 다른 탭이 열려 있거나 이 브라우저가 다른 탭을 확인할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 다른 탭을 닫아 주세요. 앱을 다음에 시작할 때 다시 시도합니다.",
-    opfsFallbackNoticeSpace: "이번에는 여유 저장 공간이 부족해서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 저장 공간을 확보해 주세요. 앱을 다음에 시작할 때 다시 시도합니다.",
-    opfsFallbackNoticeNoIndexedDb: "이번에는 이 브라우저에서 IndexedDB를 사용할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.",
-    opfsFallbackNoticeError: (detail: string) => `이번에는 데이터를 브라우저 저장소로 옮기지 못했습니다: ${detail}. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.`,
-    browserStorageUnavailable: "이 브라우저가 RisuTanium이 데이터를 보관하는 저장소를 열지 못해 아무것도 불러오지 못했고, 아무것도 변경되지 않았습니다. 페이지를 새로고침하세요. 이 메시지가 계속 나타난다면 이 브라우저는 RisuTanium의 데이터를 저장할 수 없는 환경입니다 (시크릿 모드나 매우 오래된 브라우저가 원인일 수 있습니다). 다른 브라우저에서 RisuTanium을 열거나, 시크릿 모드가 아닌 창에서 여세요.",
     saveReadFailed: "RisuTanium이 저장소에서 저장된 데이터를 읽지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요. 계속 이런 일이 발생하면 데이터가 있는 디스크나 서버에 접근할 수 있는지 확인하세요.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '현재 저장본을 가리키는 포인터'
@@ -3942,6 +3983,7 @@ export const languageKorean = {
     saveSeedFailed: "RisuTanium이 첫 저장본을 만들지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요.",
     saveLeftoverNotice: "RisuTanium이 중단된 저장 또는 복원 작업으로 남겨진, 사용하지 않는 저장 데이터를 발견했습니다. 해롭지 않으며, 설정의 정리에서 제거할 수 있습니다.",
     saveMainFileLeftNotice: "데이터가 새 형식으로 이동했지만, 이전 저장 파일이 너무 커서 이 서버가 옆으로 옮기지 못했습니다. 같은 데이터를 여는 업스트림 버전의 RisuAI가 그 이전 파일을 열 수 있습니다. 설정의 정리는 삭제하기 전까지 그 파일을 안전하게 보관합니다.",
+    staticBuildUnsupported: "RisuTanium은 더 이상 일반 웹 호스트에서 실행되지 않아요. Android 앱이나 데스크톱 앱, 또는 RisuTanium Node 서버가 제공하는 페이지를 사용해 주세요.",
     opfsReadOnlyNotice: "RisuTanium이 이번에는 데이터의 임시 사본으로 실행 중이므로 변경 사항을 저장하지 않으며, 백업 복원이나 저장소 정리도 사용할 수 없습니다. 데이터는 사라지지 않았습니다. 이 앱의 다른 탭을 닫고 다시 시작하면 데이터를 브라우저 저장소로 옮길 수 있습니다.",
     legacyPartialCharacters: (count: number) => count === 1 ? "캐릭터 1개" : `캐릭터 ${count}개`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "이 버전에서 읽을 수 없는 기타 부분 1개" : `이 버전에서 읽을 수 없는 기타 부분 ${count}개`,

@@ -5,6 +5,7 @@ import { registerBackHandler } from 'src/ts/backHandlers'
 import { recordCaughtError } from 'src/ts/caughtErrors'
 import { changeChar, changeCharGeneration, characterFormatUpdate, supersedeChangeChar } from 'src/ts/characters'
 import { restoreColdCharacter, type ColdRestoreOutcome } from 'src/ts/process/coldCharacterRestore'
+import { namedRestoreFailureText, restoreFailureName } from 'src/ts/process/coldRestoreText'
 import type { character, groupChat } from 'src/ts/storage/database.svelte'
 import { DBState, MobileGUI, selIdState, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 import { studioClosingToCharacterEditor } from 'src/ts/studio/classicLinks.svelte'
@@ -187,7 +188,7 @@ async function openArchivedStudioFromHome(stub: character | groupChat, opener: H
         console.error('Open in Studio could not load the character:', error)
         recordCaughtError('home.studio', error)
         if (isCurrentRequest(request) && changeCharGeneration() === request.generation) {
-            alertError(language.errors.coldStorageRestoreUnreadable)
+            alertError(namedRestoreFailureText(restoreFailureName(stub), 'unreadable'))
         }
         clearIfPending(request)
         return false

@@ -134,7 +134,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
-import { fieldNameProblems, unnamedControls } from '../a11yNames.test-helpers'
+import { controlName, fieldNameProblems, unnamedControls } from '../a11yNames.test-helpers'
 import GridCatalog from './GridCatalog.svelte'
 
 type CharacterFixture = Database['characters'][number]
@@ -169,10 +169,9 @@ afterEach(async () => {
     mounted = []
 })
 
-// The back button and the search text field: not value controls, so outside #334.
+// The back button: not a value control, so outside #334. The search field is named, so it is not listed.
 const KNOWN_UNNAMED: string[] = [
     '<button class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0" svg="lucide-icon lucide lucide-arrow-left">',
-    '<input type=text class="border border-darkborderc peer focus:border-borderc rounded-md shadow-xs text-textcolor bg-transparent risu-focus-ring transition-colors duration-200 svelte-tfapsj text-lg px-6 py-3 w-full">',
 ]
 
 describe('GridCatalog value-control names', { timeout: 60_000 }, () => {
@@ -199,5 +198,6 @@ describe('GridCatalog value-control names', { timeout: 60_000 }, () => {
         await settle()
         expect(fieldNameProblems(target, [{ name: language.othersUi.sortLabel }])).toEqual([])
         expect(unnamedControls(target, { fields: true, values: true })).toEqual(KNOWN_UNNAMED)
+        expect(controlName(target.querySelector('input[type=text]')!)).toBe(language.search)
     })
 })

@@ -103,7 +103,15 @@ vi.mock('src/ts/gui/highlight', () => ({
 vi.mock('src/ts/hotkey', () => ({
     hotkeyMatches: vi.fn(() => false),
 }))
-vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({ default: () => {} }))
+// The real KeyListInput is covered by its own test; here the stub records the `labelId` the page
+// passes, as a non-form marker so the control counts of the other tests stay unchanged.
+vi.mock('src/lib/UI/GUI/KeyListInput.svelte', () => ({
+    default: (anchor: Comment, props: { labelId?: string }) => {
+        const marker = document.createElement('span')
+        marker.setAttribute('data-key-list-label', props.labelId ?? '')
+        anchor.before(marker)
+    },
+}))
 
 import { language } from 'src/lang'
 import { fillLang } from 'src/lang/fill'
@@ -330,6 +338,32 @@ describe('OtherBotSettings image generation value controls are named', () => {
             ...[1, 2, 3].map((index) => fillLang(language.settingsPage.loraWeightIndexed, { index })),
             language.settingsPage.imageReference, ...EMOTION_AND_ENGINE, EMBEDDING,
         ))
+    })
+})
+
+/** The visible label text each KeyListInput on the page is pointed at, in document order. */
+function keyListLabels(target: HTMLElement): string[] {
+    return Array.from(target.querySelectorAll('[data-key-list-label]')).map((marker) => {
+        const label = document.getElementById(marker.getAttribute('data-key-list-label') ?? '')
+        return label === null ? '' : (label.textContent ?? '').replace(/\s+/g, ' ').trim()
+    })
+}
+
+describe('OtherBotSettings key lists are named by their visible labels', () => {
+    const tts = fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })
+
+    test('no image provider key: only the TTS OpenAI key', async () => {
+        expect(keyListLabels(await render({ sdProvider: 'webui' }))).toEqual([tts])
+    })
+
+    test('Dall-E: its API key label, then the TTS key label', async () => {
+        const target = await render({ sdProvider: 'dalle' })
+        expect(keyListLabels(target)).toEqual([fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' }), tts])
+    })
+
+    test('Imagen: its API key label, then the TTS key label', async () => {
+        const target = await render({ sdProvider: 'Imagen' })
+        expect(keyListLabels(target)).toEqual([fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' }), tts])
     })
 })
 

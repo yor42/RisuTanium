@@ -323,6 +323,42 @@ describe('creation sites', () => {
     })
 })
 
+describe('a plain-HTTP page without crypto.subtle', () => {
+    const realCrypto = globalThis.crypto
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+    })
+
+    function stubNoSubtle(): void {
+        vi.stubGlobal('crypto', { getRandomValues: realCrypto.getRandomValues.bind(realCrypto) })
+        expect((globalThis.crypto as { subtle?: unknown }).subtle).toBeUndefined()
+    }
+
+    test('T6 a .risup exported without subtle imports again', async () => {
+        installDb(2, 0)
+        stubNoSubtle()
+        const out = await downloadPreset(1, 'return')
+        expect(out.buf).not.toBeNull()
+        await importPreset({ name: 'P1_preset.risup', data: out.buf as Uint8Array })
+        expect(DBState.db.botPresets).toHaveLength(3)
+        expect(DBState.db.botPresets[2].name).toBe('P1')
+    })
+
+    test('T7 a .risup made by upstream WebCrypto imports without subtle', async () => {
+        installDb(1, 0)
+        // Upstream's exact producer, run before the stub is installed.
+        const keyArray = await realCrypto.subtle.digest('SHA-256', new TextEncoder().encode('risupreset'))
+        const key = await realCrypto.subtle.importKey('raw', keyArray, 'AES-GCM', false, ['encrypt', 'decrypt'])
+        const sealed = new Uint8Array(await realCrypto.subtle.encrypt({ name: 'AES-GCM', iv: new Uint8Array(12) }, key, encodeMsgpack(foreignFile())))
+        const body = fflate.compressSync(encodeMsgpack({ presetVersion: 2, type: 'preset', preset: sealed }))
+        const data = await encodeRPack(body)
+        stubNoSubtle()
+        await importPreset({ name: 'foreign_preset.risup', data })
+        expect(DBState.db.botPresets[1].name).toBe('Foreign')
+    })
+})
+
 describe('a single-preset export', () => {
     test('A7 downloadPreset leaves out id, folder and slot, and the stored preset keeps them', async () => {
         installDb(2, 0)
