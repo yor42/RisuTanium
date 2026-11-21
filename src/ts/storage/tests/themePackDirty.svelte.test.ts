@@ -108,7 +108,20 @@ describe('the generic top-level change effect alone (no write hook)', () => {
         flushSync()
         expect(markChanged).toHaveBeenCalledWith(true)
     })
-})
+
+    test('T14: adding themePackSchemeSnapshot marks the page dirty, and so does deleting it', () => {
+        const markChanged = startEffects()
+        const scheme = { bgcolor: '#101010', darkbg: '#202020', borderc: '#303030', selected: '#404040', draculared: '#505050', textcolor: '#606060', textcolor2: '#707070', darkBorderc: '#808080', darkbutton: '#909090', type: 'dark' }
+
+        dbFields().themePackSchemeSnapshot = { name: 'ocean', scheme }
+        flushSync()
+        expect(markChanged).toHaveBeenCalledWith(true)
+        markChanged.mockClear()
+
+        delete dbFields().themePackSchemeSnapshot
+        flushSync()
+        expect(markChanged).toHaveBeenCalledWith(true)
+    })})
 
 describe('the explicit write hook alone', () => {
     afterAll(() => {
@@ -156,4 +169,14 @@ describe('the explicit write hook alone', () => {
 
         expect(marks).toContainEqual({ kind: 'setting', key: 'activeThemePack' })
     })
-})
+
+    test('T14: the snapshot key add and its delete each reach the sink as a setting mark of that key', async () => {
+        const { state, marks } = await hookedState()
+
+        state.db.themePackSchemeSnapshot = { name: 'ocean', scheme: {} }
+        expect(marks).toContainEqual({ kind: 'setting', key: 'themePackSchemeSnapshot' })
+        marks.length = 0
+
+        delete state.db.themePackSchemeSnapshot
+        expect(marks).toContainEqual({ kind: 'setting', key: 'themePackSchemeSnapshot' })
+    })})

@@ -195,6 +195,7 @@ export const languageChinese = {
         "slate-light": "石板浅色",
         "lite": "轻量",
         "nexus": "Nexus",
+        "theme-pack": "主题包",
     },
     "settingsShellStepNames": {
         "tiniest": "极小",

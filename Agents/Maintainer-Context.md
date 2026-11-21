@@ -10041,6 +10041,7 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Per the amendment 5 review (`risu-b715\freeze\amend5-review.md`, `opus-reviewer` `[EDITORIAL]`, per the orchestrator's addendum; not opened by this pass): paired per rep the pack saved 38 and 34 ms against 28 and 28 ms for concurrent writes and is also better at p95; at p50 the two are comparable (34 and 31 against 29 and 31 ms). Concurrent unit writes change the merged stage 1b Tauri backend `commitOrdinary` (`src/ts/storage/store2/backend/tauri.ts`) and need their own Gate 2 when built, the commit key waiting until every unit write settles flushed; the Node backend already writes units in parallel.
 - Not measured (devE): raw-body IPC and the batch command, which the Android release build refused (see Live-State, 2026-10-14 freeze update); power-loss behaviour; other devices.
 - The sequence of choices is the maintainer's; the label "about 125 ms" is the brief's figure for the concurrent-write variant (devE p50 131.8 and 122.2 ms).
+
 ### MC-297 — Main Campaign, 2026-10-15: the protocol-model round E residuals (five combination gaps) are accepted as named known gaps for stage 2
 
 - **Tag:** decision (`AskUserQuestion` answers by option label, as relayed by the orchestrator) and notes that are not the maintainer's words, labelled as such
@@ -34163,6 +34164,12 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer answer to the #424 session through AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2826`, `#424`.
 
 **What the maintainer chose.** "Include all 24 (Recommended)". The package has 24 occasions: Independence Day (Jul 4, `en` only) was added on 2026-10-17 after MC-2826's count of 23 was written. It is ported with the other 23.
+
+### MC-3006 — #438 Pack off returns to the scheme picked just before the latest Theme pack entry, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion after Note 9 row SC-DV d). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2938`, `MC-2950`, `#503`.
+
+**What the maintainer chose.** Each entry into the Theme pack scheme records the scheme in effect just before it. Turning the pack on from Light, picking Dark, then clicking the Theme pack tile again and turning the pack off returns to Dark (the latest own pick), not Light. Refines `MC-2950`.
 
 ### MC-2475 — #292 typing-step task split off into its own ticket #301, 2026-11-20
 

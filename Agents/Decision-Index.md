@@ -2387,6 +2387,7 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3080](Maintainer-Context.md#mc-3080--424-the-seasonal-logo-toggle-is-saved-on-this-device-only-2026-11-21) | #424 the Seasonal logo toggle is saved on this device only, 2026-11-21 |
 | [MC-3081](Maintainer-Context.md#mc-3081--424-the-top-bar-logo-grows-to-the-prototype-size-every-day-2026-11-21) | #424 the top-bar logo grows to the prototype size every day, 2026-11-21 |
 | [MC-3082](Maintainer-Context.md#mc-3082--424-ports-all-24-occasions-independence-day-included-2026-11-21) | #424 ports all 24 occasions, Independence Day included, 2026-11-21 |
+| [MC-3006](Maintainer-Context.md#mc-3006--438-pack-off-returns-to-the-scheme-picked-just-before-the-latest-theme-pack-entry-2026-11-21) | #438 Pack off returns to the scheme picked just before the latest Theme pack entry, 2026-11-21 |
 | [MC-2475](Maintainer-Context.md#mc-2475--292-typing-step-task-split-off-into-its-own-ticket-301-2026-11-20) | #292 typing-step task split off into its own ticket #301, 2026-11-20 |
 | [MC-2476](Maintainer-Context.md#mc-2476--292-refresh-gap-after-update-all-shows-old-list-with-update-all-disabled-2026-11-20) | #292 refresh gap after Update all shows old list with Update all disabled, 2026-11-20 |
 | [MC-2477](Maintainer-Context.md#mc-2477--300-and-297-filed-as-follow-up-issues-from-progress-popups-and-hidden-reply-gaps-2026-11-20) | #300 and #297 filed as follow-up issues from progress-popups and hidden-reply gaps, 2026-11-20 |

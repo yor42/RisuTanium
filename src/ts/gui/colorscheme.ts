@@ -267,9 +267,72 @@ export function updateCustomColorScheme(){
 }
 
 /**
+ * The fork-only scheme name of an active theme pack's own colours. It is never a preset key and never `custom`, so
+ * every pick, edit and import writer replaces it, and upstream paints the stored copy under it.
+ */
+export const PACK_SCHEME_NAME = 'theme-pack'
+
+/** The scheme in effect before the theme-pack scheme was entered, kept so turning the pack off can restore it. */
+export interface ThemePackSchemeSnapshot {
+    name: string
+    scheme: ColorScheme
+}
+
+const SCHEME_COLOUR_FIELDS = ['bgcolor', 'darkbg', 'borderc', 'selected', 'draculared', 'textcolor', 'textcolor2', 'darkBorderc', 'darkbutton'] as const
+
+function isColorSchemeValue(value: unknown): value is ColorScheme{
+    if(typeof value !== 'object' || value === null){
+        return false
+    }
+    const record = value as Record<string, unknown>
+    return SCHEME_COLOUR_FIELDS.every((field) => typeof record[field] === 'string') && (record.type === 'light' || record.type === 'dark')
+}
+
+/** Narrows a persisted snapshot: a non-empty name other than the pack scheme and a full scheme, else null. */
+export function readSchemeSnapshot(value: unknown): ThemePackSchemeSnapshot | null{
+    if(typeof value !== 'object' || value === null){
+        return null
+    }
+    const record = value as Record<string, unknown>
+    if(typeof record.name !== 'string' || record.name === '' || record.name === PACK_SCHEME_NAME || !isColorSchemeValue(record.scheme)){
+        return null
+    }
+    return { name: record.name, scheme: record.scheme }
+}
+
+/**
+ * The scheme that turning the pack off restores, from the snapshot: a preset name gives the current preset table entry,
+ * `custom` gives the Custom slot, any other name gives its saved copy, and a missing or invalid snapshot gives `default`.
+ * Pure: it never writes. The pack-off restore and the `.bin` export copy share it, so a `.bin` shows exactly the
+ * scheme that turning the pack off restores.
+ */
+export function schemeWithoutPack(db: Pick<Database, 'colorSchemeName' | 'colorScheme' | 'customColorScheme' | 'themePackSchemeSnapshot'>): { colorSchemeName: string, colorScheme: ColorScheme }{
+    const snapshot = readSchemeSnapshot(db.themePackSchemeSnapshot)
+    if(snapshot === null){
+        return { colorSchemeName: 'default', colorScheme: safeStructuredClone(defaultColorScheme) }
+    }
+    if(Object.hasOwn(colorShemes, snapshot.name)){
+        return { colorSchemeName: snapshot.name, colorScheme: safeStructuredClone(colorShemes[snapshot.name as keyof typeof colorShemes]) }
+    }
+    if(snapshot.name === 'custom'){
+        return { colorSchemeName: 'custom', colorScheme: safeStructuredClone(db.customColorScheme ?? defaultColorScheme) }
+    }
+    return { colorSchemeName: snapshot.name, colorScheme: safeStructuredClone(snapshot.scheme) }
+}
+
+let packSchemeProvider: (() => ColorScheme | null) | null = null
+
+/** The theme-pack driver registers the applied pack's live default here, so this module imports nothing from the pack code. */
+export function setPackSchemeProvider(provider: (() => ColorScheme | null) | null): void{
+    packSchemeProvider = provider
+}
+
+/**
  * The scheme that is painted. A built-in `colorSchemeName` reads the current preset table, so a
  * saved copy made by an older build never pins old colours; the saved copy stays as stored and is
- * never written here. Custom, unknown and prototype names fall back to the saved copy, and lite
+ * never written here. Under `theme-pack` the applied pack's default paints live, and the stored
+ * copy is the fallback before the pack is read, in Safe Mode, with a missing or broken pack, on a
+ * downgrade and upstream. Custom, unknown and prototype names fall back to the saved copy, and lite
  * mode always reports the lite scheme. The result may be a shared table object: callers must not
  * mutate it and must clone it before handing it out.
  */
@@ -280,7 +343,50 @@ export function effectiveColorScheme(db: Pick<Database, 'colorSchemeName' | 'col
     if(typeof db.colorSchemeName === 'string' && Object.hasOwn(colorShemes, db.colorSchemeName)){
         return colorShemes[db.colorSchemeName as keyof typeof colorShemes]
     }
+    if(db.colorSchemeName === PACK_SCHEME_NAME){
+        const live = packSchemeProvider?.()
+        if(live){
+            return live
+        }
+    }
     return db.colorScheme ?? defaultColorScheme
+}
+
+/**
+ * Enters the theme-pack scheme: every value is computed first, then the snapshot (only when entering from another
+ * scheme), the stored copy and, last, the name are written. A throw while computing writes nothing, and a throw between
+ * the writes leaves the user's own name in place, so the one stale field is never consulted. `customColorScheme` is
+ * never touched.
+ */
+export function enterPackScheme(scheme: ColorScheme): void{
+    const copy = safeStructuredClone(scheme)
+    const snapshot: ThemePackSchemeSnapshot | null = DBState.db.colorSchemeName !== PACK_SCHEME_NAME
+        ? { name: DBState.db.colorSchemeName, scheme: safeStructuredClone(DBState.db.colorScheme ?? defaultColorScheme) }
+        : null
+    if(snapshot !== null){
+        DBState.db.themePackSchemeSnapshot = snapshot
+    }
+    DBState.db.colorScheme = copy
+    DBState.db.colorSchemeName = PACK_SCHEME_NAME
+    updateColorScheme()
+    updateTextThemeAndCSS()
+}
+
+/**
+ * Leaves the theme-pack scheme. While the name is still `theme-pack` the snapshot scheme is restored; if the user picked
+ * another scheme meanwhile, no scheme field is written and that pick wins. The snapshot key is always deleted.
+ */
+export function leavePackScheme(): void{
+    if(DBState.db.colorSchemeName === PACK_SCHEME_NAME){
+        const own = schemeWithoutPack(DBState.db)
+        DBState.db.colorScheme = own.colorScheme
+        DBState.db.colorSchemeName = own.colorSchemeName
+        delete DBState.db.themePackSchemeSnapshot
+        updateColorScheme()
+        updateTextThemeAndCSS()
+        return
+    }
+    delete DBState.db.themePackSchemeSnapshot
 }
 
 export function updateColorScheme(){

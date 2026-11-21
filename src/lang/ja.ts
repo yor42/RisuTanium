@@ -195,6 +195,7 @@ export const languageJapanese = {
         "slate-light": "スレート ライト",
         "lite": "Lite",
         "nexus": "Nexus",
+        "theme-pack": "テーマパック",
     },
     settingsShellStepNames: {
         "tiniest": "最小",

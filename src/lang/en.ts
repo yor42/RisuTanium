@@ -195,6 +195,7 @@ export const languageEnglish = {
         'slate-light': 'Slate Light',
         lite: 'Lite',
         nexus: 'Nexus',
+        'theme-pack': 'Theme pack',
     },
     settingsShellStepNames: {
         tiniest: 'Tiniest',

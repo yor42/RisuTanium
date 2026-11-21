@@ -18,7 +18,8 @@ let installed = false
 let cover: () => boolean = () => false
 let stopRoot: (() => void) | null = null
 const declared: Record<GatedArea, number> = { chat: 0 }
-const registry = new Map<HTMLStyleElement, { area: string, base: SchemeTone }>()
+// A null base marks shape mode: the element is on, but no fixed base applies.
+const registry = new Map<HTMLStyleElement, { area: string, base: SchemeTone | null }>()
 // Declarations change this signal; the gate effect reads it. It is written under `untrack` so a caller that declares
 // from inside its own `$effect` never reads what it writes.
 let version = $state(0)
@@ -52,8 +53,9 @@ export function shownSurface(): GatedArea | null {
 }
 
 /**
- * The root attribute that selects the pack's fixed base. Present exactly while a registered element is on; its value is
- * empty for the dark base and `light` for the light base.
+ * The root attribute that selects the pack's fixed base. Present exactly while a registered element with a base is on
+ * (colour mode); its value is empty for the dark base and `light` for the light base. An element registered with a null
+ * base (shape mode) sets neither the attribute nor the base tone.
  */
 const BASE_ATTRIBUTE = 'data-theme-pack-base'
 
@@ -67,7 +69,7 @@ export function syncThemePackMedia(): void {
     let base: SchemeTone = 'dark'
     for (const [element, entry] of registry) {
         const wanted = entry.area === shown ? 'all' : 'not all'
-        if (wanted === 'all') {
+        if (wanted === 'all' && entry.base !== null) {
             on = true
             base = entry.base
         }
@@ -96,10 +98,18 @@ export function installThemePackGate(coveredNow: () => boolean): void {
     })
 }
 
-/** Registers a stylesheet element the apply code created; the returned function unregisters it on removal. */
-export function registerThemePackElement(element: HTMLStyleElement, area: string, base: SchemeTone = 'dark'): () => void {
+/** Registers a stylesheet element the apply code created; the returned function unregisters it on removal. A null base is shape mode. */
+export function registerThemePackElement(element: HTMLStyleElement, area: string, base: SchemeTone | null = 'dark'): () => void {
     registry.set(element, { area, base })
     return () => { registry.delete(element) }
+}
+
+/** Re-registers a registered element under another base (colour mode or shape mode); the caller then syncs the gate. */
+export function setThemePackElementBase(element: HTMLStyleElement, base: SchemeTone | null): void {
+    const entry = registry.get(element)
+    if (entry !== undefined) {
+        registry.set(element, { area: entry.area, base })
+    }
 }
 
 /** Test seam: drops the gate, the declarations and the registry so a later mount starts clean. */
