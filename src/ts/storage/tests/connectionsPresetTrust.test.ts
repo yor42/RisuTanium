@@ -109,7 +109,7 @@ function installPage(extra: Record<string, unknown>): Page {
     return page
 }
 
-function importJson(preset: Record<string, unknown>): Promise<void> {
+function importJson(preset: Record<string, unknown>): Promise<unknown> {
     return importPreset({ name: 'shared.json', data: new TextEncoder().encode(JSON.stringify(preset)) })
 }
 
