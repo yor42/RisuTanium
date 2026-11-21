@@ -1,0 +1,277 @@
+/*
+  Seasonal logo host styles. Every class is prefixed rt-sw- so it cannot collide with app styles. Generic UI colours
+  (wordmark ink, game panel, focus ring) come from the app theme tokens; scene art colours stay literal in the scenes.
+
+  Layout stability (font load and font failure): the word box has a fixed size in em (the NanumSquare Neo Heavy
+  advance), and metric-matched fallback faces keep fallback text close to the same width and baseline. Swapping or
+  failing the font never moves the status mark, the mode switcher or the top bar.
+*/
+
+/* NanumSquare Neo Heavy by NAVER, SIL OFL 1.1; the license travels next to the font file. */
+@font-face {
+  font-family: 'NanumSquare Neo Logo';
+  src: url('../../etc/fonts/NanumSquareNeo/NanumSquareNeoTTF-eHv.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Metric-matched fallbacks. NanumSquare Neo Heavy at 1em: "RisuTanium" 6.207em, ascent 0.85, descent 0.26.
+   size-adjust = NSN width / local width; overrides = NSN metric / size-adjust. */
+@font-face {
+  font-family: 'RT SW Fallback Segoe';
+  src: local('Segoe UI Black'), local('SegoeUI-Black');
+  font-weight: 900;
+  size-adjust: 106.9%;
+  ascent-override: 79.5%;
+  descent-override: 24.3%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'RT SW Fallback Arial';
+  src: local('Arial Black'), local('Arial-Black');
+  font-weight: 900;
+  size-adjust: 97.1%;
+  ascent-override: 87.5%;
+  descent-override: 26.8%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'RT SW Fallback Hangul';
+  src: local('Malgun Gothic Bold'), local('MalgunGothicBold'), local('Apple SD Gothic Neo Heavy'), local('AppleSDGothicNeo-Heavy');
+  font-weight: 900;
+  unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3;
+  size-adjust: 94.8%;
+  ascent-override: 89.7%;
+  descent-override: 27.4%;
+  line-gap-override: 0%;
+}
+
+/* ---------- Tone ----------
+   The host stamps data-rt-sw-tone on the layers it creates. Only the greeting link needs a per-tone value (amber-400
+   is 1.7:1 on a light surface); the rest follows the theme tokens. */
+.rt-sw, .rt-sw-greet-row, .rt-sw-stage, .rt-sw-markslot, .rt-sw-game {
+  --rt-sw-ink: var(--color-textcolor);
+  --rt-sw-ink-2: var(--color-textcolor2);
+  --rt-sw-ring: var(--risu-theme-role-focus-ring, #6f7fc8);
+  --rt-sw-amber: #fbbf24;
+  --rt-sw-amber-hover: #fcd34d;
+}
+:is(.rt-sw, .rt-sw-greet-row, .rt-sw-stage, .rt-sw-markslot, .rt-sw-game)[data-rt-sw-tone="light"] {
+  --rt-sw-amber: #b45309;
+  --rt-sw-amber-hover: #92400e;
+}
+
+/* ---------- Root ---------- */
+.rt-sw-host { display: inline-flex; min-width: 0; }
+.rt-sw {
+  --rt-sw-w: 6.21em;                /* reserved word width; a scene may override it on .rt-sw-word */
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75em;
+  font-family: var(--rt-sw-family, 'NanumSquare Neo Logo', 'RT SW Fallback Segoe', 'RT SW Fallback Arial', 'RT SW Fallback Hangul', "Segoe UI", system-ui, sans-serif);
+  font-weight: 900;
+  font-style: normal;
+  font-size: 24px;                  /* 24 px top-bar wordmark, 20 px under 640 px */
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--rt-sw-ink);
+  font-synthesis: none;
+}
+@media (max-width: 639.98px) { .rt-sw { font-size: 20px; } }
+.rt-sw:focus { outline: none; }
+.rt-sw:focus-visible { outline: 2px solid var(--rt-sw-ring); outline-offset: 3px; border-radius: 4px; }
+
+.rt-sw-sr, .rt-sw-desc {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ---------- Word box (reserved size) and the interactive over-layer ---------- */
+.rt-sw-wrap { position: relative; display: inline-block; flex: none; height: 1.2em; line-height: 1.2em; }
+.rt-sw-word {
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  width: var(--rt-sw-w);
+  height: 1.2em;
+  line-height: 1.2em;
+  overflow: visible;
+  vertical-align: top;
+  border-radius: 4px;
+  -webkit-tap-highlight-color: transparent;
+}
+.rt-sw-word[role="button"] { cursor: pointer; }
+.rt-sw-word:focus { outline: none; }
+.rt-sw-word:focus-visible { outline: 2px solid var(--rt-sw-ring); outline-offset: 3px; }
+.rt-sw-text { display: inline-block; height: 1.2em; }
+.rt-sw-a, .rt-sw-b { display: inline-block; height: 1.2em; vertical-align: top; }
+/* Over-layer: exactly the word box, same font-size; only game elements receive pointer events. */
+.rt-sw-over { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+
+/* Everyday paint: the Risu gradient spans the whole word box, Tanium takes the ink. */
+.rt-sw-a {
+  background-image: linear-gradient(to bottom right, #00a1ad, #587bff);
+  background-size: var(--rt-sw-w) 1.2em;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rt-sw-b { color: var(--rt-sw-ink); }
+
+/* ---------- Stage and mark slot (created only while an occasion with a scene is mounted) ---------- */
+.rt-sw-stage {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+  contain: layout paint;
+}
+/* Wrapped top bar: the host clips the stage to the brand row plus 12 px; a static 6 px mask feathers that cut so a
+   scene's full-height sky never ends in a hard line above the mode switcher. */
+.rt-sw-stage[data-wrapped="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
+}
+.rt-sw-markslot {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  overflow: visible;
+  transition: opacity 300ms ease;
+}
+.rt-sw-markslot > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-sw-markslot-off { opacity: 0; }
+/* The status mark under the seasonal mark: hidden visually only (its svg is aria-hidden already). */
+.rt-sw-status-host { transition: opacity 300ms ease; }
+.rt-sw-status-under { opacity: 0; }
+/* A running (non-idle) status sits above the stage (z-index 20), so a scene's sky or tint never dims it. */
+.rt-sw-status-raised { position: relative; z-index: 21; }
+.rt-sw-status-host[data-rt-sw-still], .rt-sw-markslot[data-motion="still"] { transition: none; }
+
+/* ---------- Christmas game hat (scene element upgraded by ctx.attachGame) ---------- */
+.rt-sw-game-hat {
+  translate: var(--rt-sw-hop-x, 0em) var(--rt-sw-hop-y, 0em);
+  transition: translate 220ms cubic-bezier(0.3, 0.7, 0.4, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.rt-sw-game-hat[data-rt-sw-game="active"] { pointer-events: auto; cursor: pointer; }
+.rt-sw-game-hat[data-rt-sw-game="inactive"] { pointer-events: none; }
+.rt-sw-game-hat[hidden] { display: none !important; }
+/* Hit area at least 24 x 24 CSS px without changing the art box. */
+.rt-sw-game-hat[data-rt-sw-game="active"]::before { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
+.rt-sw-game-hat:focus { outline: none; }
+.rt-sw-game-hat:focus-visible { outline: 2px solid var(--rt-sw-ring); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- Anniversary greeting (host-owned link-like button; calls onLink, never navigates) ---------- */
+.rt-sw-greet {
+  position: relative;
+  flex: none;
+  padding: 2px 4px;
+  margin: 0 0 0 -4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: italic 300 14px/1.2 "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0;
+  color: var(--rt-sw-amber);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+.rt-sw-greet:hover { color: var(--rt-sw-amber-hover); text-decoration-color: currentColor; }
+.rt-sw-greet:focus { outline: none; }
+.rt-sw-greet:focus-visible { outline: 2px solid var(--rt-sw-ring); outline-offset: 1px; }
+.rt-sw-greet-short { display: none; }
+.rt-sw-compact .rt-sw-greet-long { display: none; }
+.rt-sw-compact .rt-sw-greet-short { display: inline; }
+.rt-sw-greet-row { margin: 0 var(--rt-sw-panel-inset, 16px); padding: 0; line-height: 1.2; }
+.rt-sw-greet-row .rt-sw-greet { margin-left: -4px; min-height: 24px; }
+
+/* ---------- Still, reduced motion, low power: final pose, no transitions ---------- */
+:is(.rt-sw, .rt-sw-stage, .rt-sw-markslot, .rt-sw-greet-row, .rt-sw-game):is([data-motion="still"], [data-low-power]),
+:is(.rt-sw, .rt-sw-stage, .rt-sw-markslot, .rt-sw-greet-row, .rt-sw-game):is([data-motion="still"], [data-low-power]) * {
+  animation: none !important;
+  transition: none !important;
+}
+/* Safety net before the host sets data-motion. */
+@media (prefers-reduced-motion: reduce) {
+  :is(.rt-sw, .rt-sw-stage, .rt-sw-markslot, .rt-sw-greet-row, .rt-sw-game):not([data-motion="full"]) * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- Christmas game panel (non-modal region below the top bar) ---------- */
+.rt-sw-game {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 5;
+  max-width: 42rem;
+  margin: 8px var(--rt-sw-panel-inset, 16px) 4px;
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--color-darkborderc);
+  background: var(--color-darkbg);
+  color: var(--rt-sw-ink);
+  font: 15px/1.45 system-ui, sans-serif;
+}
+.rt-sw-game *, .rt-sw-game *::before { box-sizing: border-box; }
+.rt-sw-game-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rt-sw-game-title { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0; }
+.rt-sw-game-stats { display: flex; gap: 20px; margin: 8px 0 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rt-sw-game-stats span { min-width: 6.5em; }
+.rt-sw-game-hint { margin: 10px 0 0; font-size: 13px; color: var(--rt-sw-ink-2); }
+.rt-sw-game-track {
+  position: relative;
+  height: 64px;
+  border-radius: 12px;
+  border: 1px dashed var(--color-darkborderc);
+  overflow: hidden;
+}
+.rt-sw-game-target {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  width: 64px;
+  height: 50px;
+  padding: 2px;
+  margin: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  transform: translateX(var(--rt-sw-target-x, 0px));
+  transition: transform 140ms cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.rt-sw-game-target svg { display: block; width: 100%; height: 100%; }
+.rt-sw-game-target[data-idle] svg { filter: grayscale(1); opacity: 0.75; }
+.rt-sw-game-actions { display: flex; gap: 8px; margin-top: 12px; }
+.rt-sw-game-btn {
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--color-darkborderc);
+  background: var(--color-darkbutton);
+  color: var(--rt-sw-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rt-sw-game-btn:disabled { cursor: default; opacity: 0.6; }
+.rt-sw-game-target:focus, .rt-sw-game-btn:focus { outline: none; }
+.rt-sw-game-target:focus-visible, .rt-sw-game-btn:focus-visible { outline: 2px solid var(--rt-sw-ring); outline-offset: 2px; }
+
+@media (forced-colors: active) {
+  .rt-sw-a { background: none; color: CanvasText; -webkit-background-clip: border-box; background-clip: border-box; }
+  .rt-sw-word:focus-visible, .rt-sw-game-hat:focus-visible, .rt-sw-greet:focus-visible,
+  .rt-sw-game-target:focus-visible, .rt-sw-game-btn:focus-visible { outline-color: Highlight; }
+  .rt-sw-game { border-color: CanvasText; background: Canvas; }
+}
