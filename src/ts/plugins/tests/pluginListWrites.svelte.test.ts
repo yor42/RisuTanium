@@ -262,7 +262,7 @@ vi.mock(import('../../process/ttsHooks'), () => ({
 import { getV2PluginAPIs, importPlugin, updatePlugin, loadPlugins } from '../plugins.svelte'
 import { makeRisuaiAPIV3, loadV3Plugins } from '../apiV3/v3.svelte'
 import { DBState, hotReloading } from '../../stores.svelte'
-import { buildColdStub } from '../../process/coldCharacter'
+import { buildColdStub } from '../../process/tests/coldStubFixture'
 
 //#region fixtures
 

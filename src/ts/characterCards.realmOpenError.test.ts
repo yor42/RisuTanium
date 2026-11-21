@@ -7,7 +7,7 @@
  * unhandled rejection, and the translated import-failed message never applies either.
  *
  * The real `characterCards.ts`, `characterPick.ts` and `pngChunk.ts` run on synthetic cards; `changeChar` is a
- * scripted stand-in whose behaviour each test sets. Module mocks follow characterCards.archiveImport.test.ts.
+ * scripted stand-in whose behaviour each test sets. Module mocks follow characterCards.importIndex.test.ts.
  *
  * Labels: "regression reproducer" fails on the base for the defect it names; "guard" passes with or without the change.
  */

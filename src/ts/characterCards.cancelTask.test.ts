@@ -6,7 +6,7 @@
  *
  * The real `characterCards.ts`, `dropImport.ts`, `modules.ts`, `processzip.ts`, `importBatch.ts`, `alertTask.svelte.ts` and
  * fflate run on synthetic files; the embedded module of the charx case is written by the real `exportModuleLegacy` and
- * `CharXWriter`. The store seams (`saveAsset`, `saveAssetFromPieces`, `importPreset`, `archiveCharacterNow` and the
+ * `CharXWriter`. The store seams (`saveAsset`, `saveAssetFromPieces`, `importPreset` and the
  * `push` of the character and module lists) are recorders, so a test reads which write happened and when. A mocked store
  * says nothing about native storage.
  *
@@ -35,7 +35,6 @@ const h = vi.hoisted(() => {
         modules: [] as Array<Record<string, unknown>>,
         files: [] as File[],
         opened: new Map<string, Uint8Array>(),
-        archive: false,
         uuid: 0,
         assets: new Map<string, Uint8Array>(),
         /** called before each read of a hooked file; may press Cancel */
@@ -182,22 +181,13 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     } as unknown as typeof import('src/ts/globalApi.svelte')
 })
 
-vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
-    archiveCharacterNow: vi.fn(async () => {
-        h.note('archiveCharacterNow')
-        //The producer's shape: the placed stub rides along with its unit keys (coldCharacterArchive's success result).
-        const stub = { chaId: 'archived-chaid', name: 'archived', coldstorage: 'unit-1' }
-        return { ok: true, index: 0, chaId: stub.chaId, stub, unitKey: 'unit-1', previousUnitKey: null }
-    }),
-}) as unknown as typeof import('src/ts/process/coldCharacterArchive'))
-
 vi.mock(import('src/ts/media'), () => ({
     compressImage: vi.fn(async (d: unknown) => d),
     getImageType: vi.fn(() => 'png'),
 }) as unknown as typeof import('src/ts/media'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
-    DBState: { get db() { return { characters: h.characters, modules: h.modules, archiveCharacters: h.archive } } },
+    DBState: { get db() { return { characters: h.characters, modules: h.modules } } },
     HideIconStore: { set: vi.fn() },
     ReloadGUIPointer: { set: vi.fn() },
     SettingsMenuIndex: { set: vi.fn() },
@@ -242,7 +232,6 @@ import { IMPORT_STEPS, ImportCancelled, makeImportProgress } from 'src/ts/import
 import { importDroppedFile } from 'src/ts/dropImport'
 import { exportModuleLegacy, type RisuModule } from 'src/ts/process/modules'
 import { CharXWriter } from 'src/ts/process/processzip'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { risumBytes } from 'src/ts/process/tests/risumFixtures'
 import { answerTask, requestTaskCancel, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
 import type { TaskClock, TaskView } from 'src/lib/Nexus/pattern/taskProgress'
@@ -497,10 +486,8 @@ function resetRun(pressAt: number | null = null): void {
 beforeEach(() => {
     h.assets = new Map()
     h.opened = new Map()
-    h.archive = false
     //The setup stub is a JSON round trip, which cannot clone `undefined`; the production helper can.
     vi.stubGlobal('safeStructuredClone', structuredClone)
-    resetBootArchiveStateForTest()
     resetRun()
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'log').mockImplementation((message?: unknown) => {
@@ -511,7 +498,6 @@ beforeEach(() => {
 afterEach(() => {
     resetTaskHostForTests()
     setTaskClockForTests(null)
-    resetBootArchiveStateForTest()
     vi.restoreAllMocks()
 })
 
@@ -634,30 +620,22 @@ describe('gate dominance: a Cancel at the last checkpoint before the write gate 
     //Mutants shown killed: M-b12 (YAML, old card), M-b13 (JSON base64), M-b14 (PNG spec), M-b15 (PNG tavern), M-b22
     //(picker preset), M-b25 (drop preset). The module-push gates and the embedded module's gate are pinned below at a
     //fixed structural seam, because removing them moves a self-calibrated press point.
-    const cases = flows.flatMap((flow) => flow.character ? [[flow, false], [flow, true]] as const : [[flow, false]] as const)
-    test.each(cases)('R-b14: %s writes nothing when Cancel is pressed just before its gate (archive %s)', async (flow, archive) => {
-        const arrange = () => {
-            h.archive = archive
-            noteBootArchiveSession(archive)
-        }
-        arrange()
+    test.each(flows)('R-b14: $label writes nothing when Cancel is pressed just before its gate', async (flow) => {
         const control = await flow.run()
         expect(control.at(-1)?.result?.headline, 'the flow imports when nobody presses Cancel').toBe(language.importTaskImported(1))
         expect(h.writes.length, 'the flow reached a store write').toBeGreaterThan(0)
         const firstWrite = h.firstWriteAt as number
         expect(firstWrite).toBeGreaterThan(2)
         if (flow.character) {
-            //The write that adds the character is the one the archive switch selects.
-            expect(h.writes).toContain(archive ? 'archiveCharacterNow' : 'characters.push')
+            expect(h.writes).toContain('characters.push')
         }
 
         resetRun(firstWrite - 2)
-        arrange()
         const cards = await flow.run()
 
         expect(h.pressed, 'Cancel was pressed').toBe(true)
         expect(cards.at(-1)?.cancelled).toBe(true)
-        //Zero calls on saveAsset, saveAssetFromPieces, archiveCharacterNow, importPreset and both list pushes.
+        //Zero calls on saveAsset, saveAssetFromPieces, importPreset and both list pushes.
         expect(h.writes).toEqual([])
         expect(h.characters).toHaveLength(0)
         expect(h.modules).toHaveLength(0)
@@ -753,7 +731,7 @@ describe('a Cancel that ends a PNG scan without a runner', () => {
                 h.pressed = true
             }
         }
-        const outcome = await importCharacterFile({ name: 'card.png', data: file }, null, progress)
+        const outcome = await importCharacterFile({ name: 'card.png', data: file }, progress)
 
         expect(h.pressed).toBe(true)
         expect(outcome.kind).toBe('failed')
@@ -763,13 +741,11 @@ describe('a Cancel that ends a PNG scan without a runner', () => {
 })
 
 describe('Retry after a character was added', () => {
-    //(RR-m) M-b18: `committed()` is dropped in `addImportedCharacter`, on the live push and on the archive return. The failure
+    //(RR-m) M-b18: `committed()` is dropped in `addImportedCharacter`, on the live push. The failure
     //is injected after the character is added: the success line reads `language.importedCharacter`, which throws once here.
     //The item is then failed with its marker set, so the data state is unknown and Retry is not offered; without the marker
     //Retry would add the character a second time.
-    test.each([false, true])('R-b13b: an item that fails after its character was added reports the data as changed and Retry does not run it again (archive %s)', async (archive) => {
-        h.archive = archive
-        noteBootArchiveSession(archive)
+    test('R-b13b: an item that fails after its character was added reports the data as changed and Retry does not run it again', async () => {
         const original = Object.getOwnPropertyDescriptor(language, 'importedCharacter') as PropertyDescriptor
         let thrown = false
         Object.defineProperty(language, 'importedCharacter', {
@@ -787,9 +763,9 @@ describe('Retry after a character was added', () => {
             const cards = await runCards(() => importCharacter(), true)
 
             expect(thrown).toBe(true)
-            //The character is added once, by the live push or by the archive write; Retry never adds it again.
-            expect(h.writes).toEqual([archive ? 'archiveCharacterNow' : 'characters.push'])
-            expect(h.characters).toHaveLength(archive ? 0 : 1)
+            //The character is added once, by the live push; Retry never adds it again.
+            expect(h.writes).toEqual(['characters.push'])
+            expect(h.characters).toHaveLength(1)
             expect(cards).toHaveLength(1)
             expect(cards[0].failure?.dataState).toBe('unknown')
             //The late failure follows the commit, so the action's record holds the character: the card offers Undo, not Retry.

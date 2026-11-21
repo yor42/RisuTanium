@@ -37,7 +37,8 @@ import { newManifestKey, newShardKey, newUnitKey } from '../../store2/format/key
 import { previousOfTree } from '../../store2/previousOfTree'
 import { createSaveEncoder, type SaveEncoder } from '../../store2/saveEncoder'
 import { readTreeBytes } from '../../store2/treeBytes'
-import { buildColdStub, stubDescription } from '../../../process/coldCharacter'
+import { stubDescription } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { createClock, seedTree, testEnv } from '../store2SaveKit'
 import { buildT4, encodeWith, fakeLists, seededEnv, type Obj } from './codecFixtures'
 

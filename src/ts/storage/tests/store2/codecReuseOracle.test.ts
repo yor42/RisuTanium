@@ -8,7 +8,7 @@ import {
 import { ChunkMemo } from '../../store2/codec/chunkMemo'
 import { createKeyMint, type KeyMint } from '../../store2/commit'
 import { UNIT_TYPE } from '../../store2/format'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { createClock, testEnv } from '../store2SaveKit'
 import { buildSmall, buildT5Chat, encodeWith, fakeLists, seededEnv, type Obj } from './codecFixtures'
 

@@ -1,0 +1,34 @@
+{
+  "type": "character",
+  "name": "Alice",
+  "image": "assets/alice.png",
+  "chaId": "cha-pointer-chat",
+  "creatorNotes": "A short note",
+  "coldstorage": "00000000-0000-4000-8000-0000000000cc",
+  "coldStoragedChats": [
+    "00000000-0000-4000-8000-0000000000e1"
+  ],
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000001101",
+      "message": [
+        {
+          "time": 1795262400000,
+          "data": "",
+          "role": "char"
+        }
+      ],
+      "note": "",
+      "name": "",
+      "localLore": []
+    }
+  ],
+  "chatPage": 0,
+  "firstMsgIndex": 0,
+  "coldVersion": 3,
+  "coldChatCount": 1,
+  "tags": [
+    "a"
+  ],
+  "creator": "Top"
+}

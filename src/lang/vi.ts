@@ -1675,6 +1675,8 @@ export const languageVietnamese = {
         "value": "Giá trị",
         "var": "Biến",
         "operandType": "Loại {label}",
+        "operandA": "A",
+        "operandB": "B",
         "varName": "Tên biến",
         "outputVar": "Biến đầu ra",
         "name": "Tên",
@@ -2118,6 +2120,9 @@ export const languageVietnamese = {
     "homeGreetingNight": "Vẫn chưa ngủ à?",
     "homeCommunityHeading": "Cộng đồng và mã nguồn",
     "homeSideLabel": "Khám phá và cộng đồng",
+    "homeStoriesHeading": "Tiếp tục câu chuyện của bạn",
+    "homeStoryJustNow": "vừa xong",
+    "homeStoryArchived": "Đã lưu trữ",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Tham gia máy chủ Discord của chúng tôi để trò chuyện với người dùng khác và nhà phát triển.",
     "homeLinkWebsiteTitle": "Trang web",
@@ -3857,14 +3862,6 @@ export const languageVietnamese = {
     coldStorage: "Lưu trữ nhân vật và mô-đun khi khởi động",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Để giữ mức sử dụng bộ nhớ thấp, ứng dụng hiện lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Không có gì bị xóa, và các nhân vật của bạn trông và hoạt động như trước. Bạn có thể tắt tính năng này trong ${settings} > ${advancedSettings} > ${toggle}. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.`,
-    "archiveCharactersStoppedNotice": (characterName: string) =>
-        `Việc lưu trữ đã dừng cho lần khởi động này vì hai nhân vật liên tiếp không thể được lưu riêng; nhân vật thứ hai là "${characterName}". Các nhân vật đó vẫn được tải đầy đủ trong bản lưu chính, và các nhân vật đã được lưu trữ trước đó không bị ảnh hưởng. Các nhân vật còn lại được giữ nguyên.`,
-    "archiveCharactersSkippedNotice": (characterNames: string, otherCount: number, settings: string, advancedSettings: string, toggle: string) =>
-        `Không thể lưu riêng các nhân vật sau: ${characterNames}${otherCount > 0 ? ` và ${otherCount} nhân vật khác` : ''}. Các nhân vật này vẫn được tải đầy đủ và hoạt động như trước, và ứng dụng sẽ không thử lưu trữ chúng lại khi khởi động. Để thử lại trên thiết bị này, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersTooLargeNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Bản lưu của bạn quá lớn để máy chủ tự lưu trữ có thể lưu trữ nhân vật vào, nên không có gì được lưu trữ và bản lưu của bạn được giữ nguyên. Mọi thứ vẫn hoạt động như trước. Để thử lại trên thiết bị này, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
-    "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
-        `Việc lưu trữ nhân vật khi khởi động đã bị tạm dừng trên thiết bị này vì nó không hoàn tất hai lần liên tiếp. Không có gì bị mất, và các nhân vật đã được lưu trữ vẫn được tải khi bạn mở chúng. Cho đến khi bạn tiếp tục lại, sẽ không có nhân vật mới nào được lưu trữ khi khởi động. Để thử lại, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
     cleanColdStorage: "Dọn dẹp Dữ liệu Lưu trữ và Tệp Tài sản Không sử dụng",
     customSidebarConfig: "Cấu hình Thanh bên Tùy chỉnh",
     cleanColdStorageConfirm: "Thao tác này sẽ xóa vĩnh viễn toàn bộ dữ liệu lưu trữ (bộ nhớ lạnh) không sử dụng và toàn bộ tệp tài sản không sử dụng, tức là hình ảnh và âm thanh mà không nhân vật, mô-đun, persona hay cài đặt nào còn sử dụng. Một số có thể vẫn hữu ích trong tương lai, và không thể khôi phục. Bạn có muốn tiếp tục không?",

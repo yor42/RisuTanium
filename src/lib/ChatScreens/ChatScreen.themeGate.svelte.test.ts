@@ -37,6 +37,7 @@ vi.mock('src/ts/stores.svelte', () => ({
     selIdState: selection,
     selectedCharID,
     CharEmotion: writable({}),
+    moduleBackgroundEmbedding: writable(''),
 }))
 vi.mock('../../ts/util', () => ({ getCustomBackground: async () => '', getEmotion: () => '' }))
 vi.mock('./DefaultChatScreen.svelte', () => ({

@@ -124,8 +124,8 @@ describe('TriggerV2List effect editors (first half) name their value controls', 
         ])
         check(open(0), names(L.operator, op(L.value)), [L.varName, L.value])
         check(open(1), names(L.condition, op(L.value)), [L.varName, L.value])
-        check(open(2), names(op('A'), L.condition, op('B')), ['A', 'B'])
-        check(open(3), names(op('A'), L.condition, 'B'), ['A'])
+        check(open(2), names(op(L.operandA), L.condition, op(L.operandB)), [L.operandA, L.operandB])
+        check(open(3), names(op(L.operandA), L.condition, L.operandB), [L.operandA])
     })
 
     test('v2RunTrigger, v2ConsoleLog, v2ShowAlert, v2RunLLM, v2CheckSimilarity', () => {

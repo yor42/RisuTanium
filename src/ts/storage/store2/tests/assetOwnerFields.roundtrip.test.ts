@@ -6,14 +6,15 @@
  * after. A guard fails when a later change makes the unit encode, the archive, the restore, the stub carry or the module
  * load drop or rename either field, or lets a stub hold a value that only the owner's body may hold.
  *
- * The character is the one the real importer (`importCharacterFile`) builds from a v3 card; both fields are then set on
- * it. The archive (`archiveCharacterNow`), the stub (`buildColdStub`), the restore (`restoreColdCharacter`) and, for the
- * full character, the unit encode and assemble (the real codec split) run for real. The module is saved by the real encoder over a real module list
+ * The character is the committed capture of the real writer for a v3 card the real importer built, with both fields set
+ * (`archiveCapture/README.md`, cases `owner-fields` and `render-when-complete`). Its stub and unit bytes are loaded as
+ * they were written; the unit encode and assemble (the real codec split) and the restore (`restoreColdCharacter`) run for
+ * real over them. The module is saved by the real encoder over a real module list
  * derivation, replaced by the stub `moduleStubOf` mints, carried by the encoder's next pass, and loaded by the real
  * `loadModuleStubsOf` through a store2 boot over a memory backend.
  *
  * What is replaced: the page's byte store under the cold units, asset storage, alerts, the RPack layer and the database
- * object the importer writes to. A pass says nothing about a real backend's bytes on disk.
+ * object. A pass says nothing about a real backend's bytes on disk.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -200,11 +201,8 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
     return { getAppStore: async () => store } as unknown as typeof import('src/ts/storage/store/appStore')
 })
 
-import { importCharacterFile } from 'src/ts/characterCards'
-import { archiveCharacterNow } from 'src/ts/process/coldCharacterArchive'
 import { restoreColdCharacter } from 'src/ts/process/coldCharacterRestore'
 import { loadModuleStubsOf } from 'src/ts/process/moduleLoader'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import { resetRetainedForTest } from 'src/ts/process/coldRetained'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { assembleDatabase, IDENTITY, moduleHandles, unitMapSource } from 'src/ts/storage/store2/codec'
@@ -222,6 +220,7 @@ import { asDatabase, buildSmall, encodeWith, seededEnv } from 'src/ts/storage/te
 import { bootThroughDispatch, createClock, savedDatabase, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
+import { loadArchiveCase, placeUnits, unitCharacterOf, type ArchivedCase } from 'src/ts/process/tests/archiveCapture/archiveFixtures'
 
 const FOLDER_VALUE: Obj = { v: 1, additional: { order: ['Faces', 'Poses'], of: [['smile', 'Faces'], ['wave', 'Poses']] } }
 const RETAINED_VALUE: string[] = ['assets/' + 'ab'.repeat(32) + '.png', 'assets/' + 'cd'.repeat(32) + '.png']
@@ -237,8 +236,6 @@ beforeEach(() => {
     h.db.modules.length = 0
     resetRetainedForTest()
     resetCharacterSaveMarksForTest()
-    resetBootArchiveStateForTest()
-    noteBootArchiveSession(true)
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -253,34 +250,22 @@ afterEach(() => {
     resetPageStorageModeForTests()
 })
 
-/** The character the real importer builds from a v3 card, with both owner fields set the way the feature sets them. */
-async function importedCharacterWithBothFields(): Promise<Obj> {
-    const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Field Holder', description: 'd', first_mes: 'hi', character_version: '1', extensions: { risuai: {} } } }
-    const outcome = await importCharacterFile({ name: 'card.json', data: new TextEncoder().encode(JSON.stringify(card)) })
-    expect(outcome.kind).toBe('imported')
-    expect(h.db.characters).toHaveLength(1)
-    const character = h.db.characters[0]
-    const extentions = (character.extentions ?? {}) as Obj
-    Object.assign(extentions, { [ASSET_FOLDER_KEY]: clone(FOLDER_VALUE) })
-    Object.assign(character, { extentions, [ASSET_RETAINED_KEY]: clone(RETAINED_VALUE) })
-    return character
+/** Installs the captured case: its units in the page store and its stub as the list's only slot. */
+function installCaptured(id: string): { archived: ArchivedCase, stub: Obj } {
+    const archived = loadArchiveCase(id)
+    placeUnits(h.units, archived.units)
+    h.db.characters.push(clone(archived.stub) as unknown as Obj)
+    return { archived, stub: h.db.characters[0] }
 }
 
 describe('an archived character keeps both owner fields in its unit', () => {
-    test('guard: archive, stub, unit encode and restore return the folder document and the retained paths deep-equal, and the stub holds neither', async () => {
-        const character = await importedCharacterWithBothFields()
-        const chaId = character.chaId as string
-        expect((character.extentions as Obj)[ASSET_FOLDER_KEY]).toStrictEqual(FOLDER_VALUE)
-        expect(character[ASSET_RETAINED_KEY]).toStrictEqual(RETAINED_VALUE)
-        const loaded = clone(character)
+    test('guard: the captured stub holds neither field, the unit encodes, assembles and restores with the folder document and the retained paths deep-equal', async () => {
+        const { archived, stub } = installCaptured('owner-fields')
+        const loaded = unitCharacterOf(archived.units[0]) as unknown as Obj
+        const chaId = archived.chaId
+        expect((loaded.extentions as Obj)[ASSET_FOLDER_KEY]).toStrictEqual(FOLDER_VALUE)
+        expect(loaded[ASSET_RETAINED_KEY]).toStrictEqual(RETAINED_VALUE)
 
-        const result = await archiveCharacterNow({ kind: 'loaded', character: character as never })
-
-        expect(result.ok).toBe(true)
-        if (result.ok === false) {
-            return
-        }
-        const stub = h.db.characters[result.index]
         expect(stub.coldstorage).toBeTruthy()
         // The unit stays authoritative: neither value is copied onto the stub that stands for the character in the list.
         expect(stub).not.toHaveProperty(ASSET_RETAINED_KEY)
@@ -297,7 +282,7 @@ describe('an archived character keeps both owner fields in its unit', () => {
         const restored = await restoreColdCharacter(stub as never)
 
         expect(restored.status).toBe('restored')
-        const full = h.db.characters[result.index]
+        const full = h.db.characters[0]
         expect(full.coldstorage).toBeUndefined()
         expect((full.extentions as Obj)[ASSET_FOLDER_KEY]).toStrictEqual(FOLDER_VALUE)
         expect(full[ASSET_RETAINED_KEY]).toStrictEqual(RETAINED_VALUE)
@@ -305,20 +290,13 @@ describe('an archived character keeps both owner fields in its unit', () => {
 })
 
 describe('an archived character keeps the render-when-complete key in its unit', () => {
-    test('guard: archive, unit encode and restore return the key, and the stub that stands for the character holds none', async () => {
+    test('guard: the captured unit holds the key, it encodes, assembles and restores, and the stub that stands for the character holds none', async () => {
         const key = 'risutanium_render_when_complete'
-        const character = await importedCharacterWithBothFields()
-        character[key] = true
-        const chaId = character.chaId as string
-        const loaded = clone(character)
+        const { archived, stub } = installCaptured('render-when-complete')
+        const loaded = unitCharacterOf(archived.units[0]) as unknown as Obj
+        const chaId = archived.chaId
+        expect(loaded[key]).toBe(true)
 
-        const result = await archiveCharacterNow({ kind: 'loaded', character: character as never })
-
-        expect(result.ok).toBe(true)
-        if (result.ok === false) {
-            return
-        }
-        const stub = h.db.characters[result.index]
         expect(stub).not.toHaveProperty(key)
 
         const base = buildSmall(1) as unknown as Obj
@@ -329,10 +307,9 @@ describe('an archived character keeps the render-when-complete key in its unit',
         const restored = await restoreColdCharacter(stub as never)
 
         expect(restored.status).toBe('restored')
-        expect(h.db.characters[result.index][key]).toBe(true)
+        expect(h.db.characters[0][key]).toBe(true)
     })
 })
-
 function moduleBody(id: string, extra: Obj = {}): Obj {
     return {
         id, name: `Module ${id}`, description: `about ${id}`, regex: [], trigger: [], assets: [],

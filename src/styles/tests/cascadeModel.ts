@@ -93,6 +93,11 @@ export interface ModelEnv {
     hovered?: Element | null
     /** Matches exactly `@media (hover: hover)`; `(hover: none)`, `(any-hover: ...)` and the pointer queries stay false. */
     hoverMedia?: boolean
+    /**
+     * Models the importance tiers of author and inline declarations: normal rules, normal inline, important rules
+     * (layer order reversed), important inline. Without it `!important` is recorded in `unmodelled` and ordered like a normal declaration.
+     */
+    important?: boolean
 }
 
 export type PseudoName = '::before' | '::after' | '::marker'
@@ -123,6 +128,7 @@ export interface RuleSet {
     unmodelled: string[]
 }
 
+const IMPORTANT_SUFFIX = /\s*!important\s*$/
 const FOCUS_ATTR = 'data-cm-focus'
 const FOCUS_WITHIN_ATTR = 'data-cm-focus-within'
 const HOVER_ATTR = 'data-cm-hover'
@@ -434,7 +440,7 @@ export class CascadeModel {
     constructor(set: RuleSet, env: ModelEnv = {}) {
         this.set = set
         this.env = env
-        this.unmodelled = set.unmodelled
+        this.unmodelled = env.important ? set.unmodelled.filter((entry) => !/: !important in /.test(entry)) : set.unmodelled
         for (const el of document.querySelectorAll(`[${FOCUS_ATTR}]`)) el.removeAttribute(FOCUS_ATTR)
         for (const el of document.querySelectorAll(`[${FOCUS_WITHIN_ATTR}]`)) el.removeAttribute(FOCUS_WITHIN_ATTR)
         for (const el of document.querySelectorAll(`[${HOVER_ATTR}]`)) el.removeAttribute(HOVER_ATTR)
@@ -495,12 +501,23 @@ export class CascadeModel {
         }
         hits.sort((x, y) => x.rule.layer - y.rule.layer || compareSpec(x.spec, y.spec) || x.rule.order - y.rule.order)
         const entries: Entry[] = []
-        for (const h of hits) for (const d of h.rule.decls) entries.push({ prop: d.prop, value: d.value })
+        const inlineDecls: DeclRec[] = []
         if (pseudo === null) {
             const inline = el.getAttribute('style')
-            if (inline) {
-                for (const d of declsOf(postcss.parse(`x{${inline}}`).first as Rule)) entries.push({ prop: d.prop, value: d.value })
-            }
+            if (inline) inlineDecls.push(...declsOf(postcss.parse(`x{${inline}}`).first as Rule))
+        }
+        if (this.env.important) {
+            // Important declarations in an earlier layer win, so the important tier orders layers descending with unlayered first.
+            const importantHits = [...hits].sort((x, y) => y.rule.layer - x.rule.layer || compareSpec(x.spec, y.spec) || x.rule.order - y.rule.order)
+            const important = (d: DeclRec): boolean => IMPORTANT_SUFFIX.test(d.value)
+            const plain = (d: DeclRec): Entry => ({ prop: d.prop, value: d.value.replace(IMPORTANT_SUFFIX, '') })
+            for (const h of hits) for (const d of h.rule.decls) if (!important(d)) entries.push(plain(d))
+            for (const d of inlineDecls) if (!important(d)) entries.push(plain(d))
+            for (const h of importantHits) for (const d of h.rule.decls) if (important(d)) entries.push(plain(d))
+            for (const d of inlineDecls) if (important(d)) entries.push(plain(d))
+        } else {
+            for (const h of hits) for (const d of h.rule.decls) entries.push({ prop: d.prop, value: d.value })
+            for (const d of inlineDecls) entries.push({ prop: d.prop, value: d.value })
         }
 
         const data: NodeData = { entries, customs: new Map() }

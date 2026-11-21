@@ -1,0 +1,26 @@
+{
+  "spec": "chara_card_v2",
+  "spec_version": "2.0",
+  "data": {
+    "name": "Two",
+    "description": "d",
+    "personality": "p",
+    "scenario": "s",
+    "first_mes": "hi",
+    "mes_example": "",
+    "creator_notes": "n",
+    "system_prompt": "",
+    "post_history_instructions": "after",
+    "alternate_greetings": [
+      "a"
+    ],
+    "tags": [
+      "x"
+    ],
+    "creator": "me",
+    "character_version": "1",
+    "extensions": {
+      "risuai": {}
+    }
+  }
+}

@@ -55,6 +55,13 @@ vi.mock('../Realm/RealmMain.svelte', () => ({
 }))
 
 vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
+vi.mock('src/ts/characters', () => ({
+    getCharImage: vi.fn(async () => ''),
+    archivedMemberIds: () => [],
+    changeCharGeneration: () => 0,
+    supersedeChangeChar: vi.fn(),
+}))
+vi.mock('src/ts/characterPick', () => ({ changeCharOrAlert: vi.fn() }))
 
 vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 

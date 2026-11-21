@@ -72,10 +72,31 @@ const relativeOf = (file: string): string => path.relative(ROOT, file).replace(/
 
 const scanned = [...walk(SRC), path.resolve(ROOT, 'index.html')].map((file) => ({ rel: relativeOf(file), text: fs.readFileSync(file, 'utf8') }))
 
+// The only app !important paint allowed: the canvas yield to the user's own chat background (MC-2939, MC-3005). While the user has a
+// background, the chat-shell, chat-transcript and chat-message-list backgrounds must beat any pack paint on those parts, a pack's
+// !important included, so the yield is an inline !important by design. Each entry must still hit, so a moved or renamed yield fails here
+// instead of leaving a stale exemption; any other hit, in these files or elsewhere, still fails AP1.
+const CANVAS_YIELD_EXEMPT = [
+    'src/lib/ChatShell/ChatShell.svelte: H2: style:background-color|important',
+    'src/lib/ChatShell/ShellMessageList.svelte: H2: style:background-color|important',
+    'src/ts/gui/chatBackground.ts: H1: `background: ${colour} !important',
+]
+// The scan reports one hit per rule per file, so an exemption alone would mask a second important declaration in the same file. Each
+// exempt file therefore pins its exact count of important markers: the yield's own declarations and nothing else.
+const CANVAS_YIELD_MARKERS: Record<string, number> = {
+    'src/lib/ChatShell/ChatShell.svelte': 2,
+    'src/lib/ChatShell/ShellMessageList.svelte': 2,
+    'src/ts/gui/chatBackground.ts': 1,
+}
+const importantMarkers = (text: string): number => (text.toLowerCase().match(/[!|]\s*important/g) ?? []).length
+
 describe('AP: the app source writes no important colour or fill', () => {
-    it('AP1: the live tree has no hit', () => {
+    it('AP1: the live tree has no hit outside the canvas yield', () => {
         const hits = scanned.flatMap((f) => scan(f.text).map((h) => `${f.rel}: ${h}`))
-        expect(hits).toEqual([])
+        expect(hits.filter((h) => !CANVAS_YIELD_EXEMPT.includes(h))).toEqual([])
+        expect(CANVAS_YIELD_EXEMPT.filter((h) => !hits.includes(h))).toEqual([])
+        const counts = Object.fromEntries(Object.keys(CANVAS_YIELD_MARKERS).map((rel) => [rel, importantMarkers(scanned.find((f) => f.rel === rel)?.text ?? '')]))
+        expect(counts).toEqual(CANVAS_YIELD_MARKERS)
     })
 
     it('AP2: the scan covers the source tree', () => {

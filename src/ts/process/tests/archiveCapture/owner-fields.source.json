@@ -1,0 +1,91 @@
+{
+  "name": "Field Holder",
+  "firstMessage": "hi",
+  "desc": "d",
+  "notes": "",
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000000801",
+      "message": [],
+      "note": "",
+      "name": "Chat 1",
+      "localLore": []
+    }
+  ],
+  "chatPage": 0,
+  "emotionImages": [],
+  "bias": [],
+  "globalLore": [],
+  "viewScreen": "none",
+  "chaId": "00000000-0000-4000-8000-000000000802",
+  "sdData": {},
+  "utilityBot": false,
+  "customscript": [],
+  "exampleMessage": "",
+  "creatorNotes": "",
+  "systemPrompt": "",
+  "postHistoryInstructions": "",
+  "alternateGreetings": [],
+  "tags": [],
+  "creator": "",
+  "characterVersion": "1",
+  "personality": "",
+  "scenario": "",
+  "firstMsgIndex": -1,
+  "removedQuotes": false,
+  "additionalData": {
+    "tag": [],
+    "character_version": "1"
+  },
+  "additionalAssets": [],
+  "replaceGlobalNote": "",
+  "triggerscript": [],
+  "private": false,
+  "additionalText": "",
+  "virtualscript": "",
+  "extentions": {
+    "risutanium_asset_folders": {
+      "v": 1,
+      "additional": {
+        "order": [
+          "Faces",
+          "Poses"
+        ],
+        "of": [
+          [
+            "smile",
+            "Faces"
+          ],
+          [
+            "wave",
+            "Poses"
+          ]
+        ]
+      }
+    }
+  },
+  "largePortrait": false,
+  "lorePlus": false,
+  "inlayViewScreen": false,
+  "vits": null,
+  "ttsMode": "normal",
+  "imported": true,
+  "source": [],
+  "ccAssets": [],
+  "lowLevelAccess": false,
+  "defaultVariables": "",
+  "chatFolders": [],
+  "prebuiltAssetCommand": "",
+  "prebuiltAssetExclude": [],
+  "prebuiltAssetStyle": "",
+  "customModuleToggle": {},
+  "hideChatIcon": false,
+  "group_only_greetings": [],
+  "nickname": "",
+  "creation_date": 0,
+  "modification_date": 0,
+  "risutanium_asset_retained": [
+    "assets/abababababababababababababababababababababababababababababababab.png",
+    "assets/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd.png"
+  ]
+}

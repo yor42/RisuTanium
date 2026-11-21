@@ -1,19 +1,25 @@
 // @vitest-environment jsdom
 /**
- * While a chat theme pack is on, the whole chat shell sits on the pack canvas over opaque black: the transcript backdrop
- * is the canvas flattened over black (DD-242), the parent's text-screen overlay and the user's wallpaper do not show,
- * the card background is invisible and the Screenshot export draws the same two layers (#337). Nothing is persisted.
+ * While a chat theme pack is on and the user has no background of their own, the whole chat shell sits on the pack
+ * canvas over opaque black: the transcript backdrop is the canvas flattened over black (DD-242), and the Screenshot
+ * export draws the same two layers (#337). A background the user chose (a resolved custom image, the selected card's
+ * background HTML or a module background) always shows: the text-screen overlay stays, the card is never hidden, the
+ * export draws no canvas, and the pack's own backgrounds on the shell, transcript and message list yield, even with
+ * `!important`, through an inline `!important` background on those three parts (MC-2939, MC-3005). Message bubbles and
+ * every other part keep the pack's paint. Nothing is persisted.
  *
  * REAL: ChatScreen.svelte, ChatShell.svelte, BackgroundDom.svelte, PlusSheet.svelte, the surface gate, the judge,
  * `buildAppliedText`, `commitPackSheet`, `updateColorScheme`, the token files and the Tailwind output.
- * MODELLED: browser style computation (CascadeModel over the compiled component CSS, with the real `svelte-*` hash read
- * from the mounted element) and the canvas 2D context (a recording source-over fake), so the export tests prove the fill
- * sequence and the composite, not native pixels.
- * MOCKED: the stores and database, the parts and sheets the shell loads, the parser (it returns its input) and the
- * classic screen (a stand-in that records the props it receives).
+ * MODELLED: browser style computation (CascadeModel with importance tiers over the compiled component CSS, with the real
+ * `svelte-*` hash read from the mounted element) and the canvas 2D context (a recording source-over fake), so the export
+ * tests prove the fill sequence and the composite, not native pixels.
+ * MOCKED: the stores and database, the parts and sheets the shell loads (the message list is a stand-in that keeps the
+ * props it receives), the parser (it returns its input) and the classic screen (a stand-in that records the props it
+ * receives).
  *
- * R1 to R6 are regression reproducers: against the stage before the paint they fail on assertions. G1 to G8 are
- * compatibility guards that pass before and after.
+ * R rows and B rows marked as reproducers fail on assertions against the stage before the background split. G rows and
+ * the rows marked as guards pass before and after. The wallpaper, overlay and card rows that used to assert "hidden under
+ * a pack" are inverted on purpose: the user's background wins.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
@@ -28,6 +34,7 @@ import {
 const h = vi.hoisted(() => ({
     downloadFile: vi.fn(),
     classicStyles: [] as string[],
+    listProps: null as { canvasYield?: boolean } | null,
 }))
 
 vi.mock('../../ts/stores.svelte', async () => {
@@ -92,7 +99,8 @@ vi.mock('../ChatShell/ShellComposer.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/PersonaSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/ShellNotices.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/ShellFloatingButtons.svelte', () => ({ default: () => ({}) }))
-vi.mock('../ChatShell/ShellMessageList.svelte', () => ({ default: () => ({}) }))
+// Svelte 5 props are live getters, so a later read of the kept object sees the current value.
+vi.mock('../ChatShell/ShellMessageList.svelte', () => ({ default: (_anchor: Comment, props: { canvasYield?: boolean }) => { h.listProps = props; return {} } }))
 vi.mock('../ChatShell/ActionSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/CustomizeButtonsSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatShell/ThisChatSheet.svelte', () => ({ default: () => ({}) }))
@@ -110,9 +118,10 @@ vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ failureOf: () => null,
 vi.mock('../Setting/settingsRoute', () => ({ openSettingsForFix: vi.fn() }))
 vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn(), sendContinue: vi.fn(async () => {}), reroll: vi.fn(async () => {}) }))
 vi.mock('../ChatScreens/NotificationsOffNotice.svelte', () => ({ default: () => ({}) }))
-// The wallpaper has the real producer's shape (getCustomBackground in util.ts).
+// The wallpaper has the real producer's shape (getCustomBackground in util.ts), including its missing-file branch: a value
+// whose file is gone resolves to an empty string.
 vi.mock('../../ts/util', () => ({
-    getCustomBackground: async (value: string) => (value ? 'background: url("blob:wall"); background-size: cover;' : ''),
+    getCustomBackground: async (value: string) => (value && value !== 'gone' ? 'background: url("blob:wall"); background-size: cover;' : ''),
     getEmotion: () => '',
     findCharacterbyId: vi.fn(),
     selectSingleFile: vi.fn(),
@@ -187,6 +196,10 @@ const CARD = '<style>.r337{color:#123456}</style><div style="position:fixed;inse
 // because the worst case it judges over a translucent canvas is lighter than the opaque one.
 const TRANSLUCENT = BUILTIN_PACKS.find((p) => p.id === 'builtin:origin-navy')!.chatCss
     .replace(/--nexus-canvas:\s*#21222c;/, '--nexus-canvas: rgb(33 34 44 / 0.6);\n  --color-on-accent: #000000;')
+// A judged sheet that paints the shell and the transcript with `!important`; the transcript fill equals the pack canvas,
+// so the contrast the judge checks is the one Origin Navy already passes.
+const IMPORTANT_CANVAS = BUILTIN_PACKS.find((p) => p.id === 'builtin:origin-navy')!.chatCss
+    + '\n[data-part="chat-shell"] { background-color: #21222c !important; }\n[data-part="chat-transcript"] { background-color: #21222c !important; }'
 // jsdom's `style.cssText` keeps only the colour and the border and drops the text shadow, radius and padding, so those
 // three options are left off here; they travel in the same inline declaration list as the two that are kept.
 const OVERLAY_ON = { textScreenColor: '#ff0000', textBorder: false, textScreenRounded: false, textScreenBorder: '#00ff00' }
@@ -217,6 +230,7 @@ beforeEach(() => {
     selectedCharID.set(0)
     moduleBackgroundEmbedding.set('')
     h.classicStyles.length = 0
+    h.listProps = null
     h.downloadFile.mockClear()
     resetTaskHostForTests()
     let tick = 0
@@ -253,6 +267,8 @@ afterEach(async () => {
 
 interface ChatOptions {
     wallpaper?: boolean
+    // A custom background value whose file may be missing; it overrides `wallpaper`.
+    customBackground?: string
     overlay?: boolean
     classicMaxWidth?: boolean
     card?: string
@@ -268,7 +284,7 @@ function fixtureCharacter() {
 /** The real ChatScreen with the real ChatShell, on the database the options describe. */
 async function mountChat(options: ChatOptions = {}): Promise<HTMLElement> {
     Object.assign(DBState.db, options.overlay ? OVERLAY_ON : OVERLAY_OFF)
-    DBState.db.customBackground = options.wallpaper ? 'wall' : ''
+    DBState.db.customBackground = options.customBackground ?? (options.wallpaper ? 'wall' : '')
     DBState.db.classicMaxWidth = options.classicMaxWidth === true
     DBState.db.theme = options.theme ?? ''
     fixtureCharacter().backgroundHTML = options.card ?? ''
@@ -330,7 +346,7 @@ function modelNow(): CascadeModel {
         { name: 'ChatShell', css: componentCss(SHELL_FILE, hashOf(shellOf())) },
         { name: 'ChatScreen', css: componentCss(SCREEN_FILE, hashOf(areaOf())) },
     ]
-    return new CascadeModel(compileRules(withPackElement(sheets, packElement())))
+    return new CascadeModel(compileRules(withPackElement(sheets, packElement())), { important: true })
 }
 
 function rgbaOfHex8(text: string): Rgba {
@@ -370,7 +386,7 @@ const rgba = (text: string): Rgba => parseConcrete(text)!
 // ---- regression reproducers
 
 describe('R: under a chat pack the shell paints the pack canvas over black', () => {
-    test('R1 (S1): Origin Navy under the light scheme paints one canvas gradient over black, not the scheme white', async () => {
+    test('B8 (guard, R1): with no user background Origin Navy under the light scheme paints one canvas gradient over black, not the scheme white', async () => {
         setScheme('light')
         await mountChat()
         expect(modelNow().custom(document.documentElement, '--nexus-canvas')).toBe('#ffffff')
@@ -382,19 +398,22 @@ describe('R: under a chat pack the shell paints the pack canvas over black', () 
         expect(hex8(composite(painted))).toBe('#21222cff')
     })
 
-    test('R2 (S2): Banana Cocoa drops the wallpaper overlay and every extra it carries', async () => {
+    test('B2 (reproducer, was R2): Banana Cocoa keeps the wallpaper overlay, now important, and every extra it carries', async () => {
         setScheme('light')
         await mountChat({ wallpaper: true, overlay: true })
         expect(squash(styleOf(shellOf()))).toContain('background:rgba(255,0,0,0.5)')
         expect(squash(styleOf(shellOf()))).toContain('border:0.3remsolidrgb(0,255,0)')
         await commitBuiltin('builtin:banana-cocoa')
-        expect(styleOf(shellOf()).trim()).toBe('')
-        expect(hex8(composite(modelNow().painted(shellOf())))).toBe('#b2c7daff')
+        expect(squash(styleOf(shellOf()))).toContain('background:rgba(255,0,0,0.5)!important')
+        expect(squash(styleOf(shellOf()))).toContain('border:0.3remsolidrgb(0,255,0)')
+        const painted = modelNow().painted(shellOf())
+        expect(painted['background-image']).toBeUndefined()
+        expect(hex8(composite(painted))).toBe('#ff000080')
     })
 
-    test('R3 (S3): a translucent canvas is painted over black, the backdrop the judge flattens it onto', async () => {
+    test('B9 (guard, was R3): with no user background a translucent canvas is painted over black, the backdrop the judge flattens it onto', async () => {
         setScheme('light')
-        await mountChat({ wallpaper: true })
+        await mountChat()
         await commitJudged(TRANSLUCENT)
         const actual = composite(modelNow().painted(shellOf()))
         expectRgba(actual, srcOver(rgba('rgb(33 34 44 / 0.6)'), [0, 0, 0, 1]))
@@ -420,7 +439,7 @@ describe('R: under a chat pack the shell paints the pack canvas over black', () 
         expect(judged.result.ok).toBe(false)
     })
 
-    test('R4 (S4a): the card background is invisible and stays mounted with its style rules', async () => {
+    test('B1 (reproducer, was R4): a card background is visible, stays mounted, and neither the area nor the shell paints the canvas', async () => {
         setScheme('light')
         await mountChat({ card: CARD })
         expect(wrapperOf()).not.toBeNull()
@@ -428,16 +447,46 @@ describe('R: under a chat pack the shell paints the pack canvas over black', () 
         const wrapper = wrapperOf()!
         expect(wrapper.querySelector('style')?.textContent).toContain('.r337')
         const model = modelNow()
-        expect(model.prop(wrapper, 'opacity')).toBe('0')
-        expect(model.prop(wrapper, 'visibility')).toBe('hidden')
+        expect(model.prop(wrapper, 'opacity')).toBeUndefined()
+        expect(model.prop(wrapper, 'visibility')).toBeUndefined()
+        expect(squash(styleOf(shellOf()))).toBe('background:none!important;')
+        const shell = model.painted(shellOf())
+        expect(shell['background-color']).toBeUndefined()
+        expect(shell['background-image']).toBeUndefined()
+        expect(model.painted(areaOf()!)['background-color']).toBeUndefined()
+        expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(true)
     })
 
-    test('R5 (S4b, S5a): the max-width gutters take the canvas, and the overlay follows a pack applied after mount', async () => {
+    test('B3 (reproducer): a module background counts as a user background', async () => {
+        setScheme('light')
+        moduleBackgroundEmbedding.set('<div class="m2949">m</div>')
+        await mountChat()
+        await commitBuiltin('builtin:origin-navy')
+        const model = modelNow()
+        expect(wrapperOf()).not.toBeNull()
+        expect(model.prop(wrapperOf()!, 'opacity')).toBeUndefined()
+        expect(squash(styleOf(shellOf()))).toBe('background:none!important;')
+        expect(model.painted(shellOf())['background-color']).toBeUndefined()
+        expect(model.painted(areaOf()!)['background-color']).toBeUndefined()
+    })
+
+    test('B4 (reproducer, was R5): a wallpaper keeps the overlay on the shell and leaves the max-width gutters unpainted', async () => {
         setScheme('light')
         await mountChat({ classicMaxWidth: true, wallpaper: true })
         expect(squash(styleOf(shellOf()))).toContain('background:rgba(0,0,0,0.8)')
         await commitBuiltin('builtin:origin-navy')
-        expect(styleOf(shellOf()).trim()).toBe('')
+        expect(squash(styleOf(shellOf()))).toContain('background:rgba(0,0,0,0.8)!important')
+        const area = areaOf()!
+        expect(area.classList.contains('chat-area')).toBe(true)
+        const painted = modelNow().painted(area)
+        expect(painted['background-color']).toBeUndefined()
+        expect(painted['background-image']).toBeUndefined()
+    })
+
+    test('B11 (guard, was R5): with no user background the max-width gutters take the canvas', async () => {
+        setScheme('light')
+        await mountChat({ classicMaxWidth: true })
+        await commitBuiltin('builtin:origin-navy')
         const area = areaOf()!
         expect(area.classList.contains('chat-area')).toBe(true)
         const painted = modelNow().painted(area)
@@ -445,17 +494,19 @@ describe('R: under a chat pack the shell paints the pack canvas over black', () 
         expect(hex8(composite(painted))).toBe('#21222cff')
     })
 
-    test('R5b (S5c): uncovering the chat removes the overlay again', async () => {
+    test('B5 (reproducer, was R5b): covering the chat keeps the overlay, and it is important again only while the pack shows', async () => {
         await mountChat({ wallpaper: true })
         await commitBuiltin('builtin:origin-navy')
+        expect(squash(styleOf(shellOf()))).toContain('background:rgba(0,0,0,0.8)')
         covered = true
         syncThemePackMedia()
         await settle()
         expect(squash(styleOf(shellOf()))).toContain('background:rgba(0,0,0,0.8)')
+        expect(styleOf(shellOf())).not.toContain('!important')
         covered = false
         syncThemePackMedia()
         await settle()
-        expect(styleOf(shellOf()).trim()).toBe('')
+        expect(squash(styleOf(shellOf()))).toContain('background:rgba(0,0,0,0.8)!important')
     })
 })
 
@@ -617,12 +668,23 @@ async function exportScreenshot(): Promise<RecordingContext> {
 }
 
 describe('R6: under a pack the exported backdrop is the canvas flattened over black', () => {
-    test('R6a (S10): Banana Cocoa under the light scheme with the wallpaper on exports #b2c7da', async () => {
+    test('B6 (reproducer, was R6a): Banana Cocoa with a wallpaper exports one fill, the overlay, and no canvas', async () => {
         setScheme('light')
         await mountChat({ wallpaper: true })
         await commitBuiltin('builtin:banana-cocoa')
         const context = await exportScreenshot()
-        expectRgba(context.pixel, [...rgba('#b2c7da').slice(0, 3), 1] as Rgba)
+        expect(context.fills).toHaveLength(1)
+        expect(context.pixel[3]).toBeCloseTo(0.8, 2)
+        expectRgba([context.pixel[0], context.pixel[1], context.pixel[2], 0.8], [0, 0, 0, 0.8])
+    })
+
+    test('B7 (reproducer): a card background alone exports one transparent fill', async () => {
+        setScheme('light')
+        await mountChat({ card: CARD })
+        await commitBuiltin('builtin:origin-navy')
+        const context = await exportScreenshot()
+        expect(context.fills).toHaveLength(1)
+        expect(context.pixel).toEqual([0, 0, 0, 0])
     })
 
     test('R6b (S10): Origin Navy under the light scheme exports #21222c', async () => {
@@ -633,12 +695,125 @@ describe('R6: under a pack the exported backdrop is the canvas flattened over bl
         expectRgba(context.pixel, [...rgba('#21222c').slice(0, 3), 1] as Rgba)
     })
 
-    test('R6c (S10): a translucent canvas exports as the flatten over black, fully opaque', async () => {
+    test('R6c (guard, B12): with no user background a translucent canvas exports as the flatten over black, fully opaque', async () => {
         setScheme('light')
-        await mountChat({ wallpaper: true })
+        await mountChat()
         await commitJudged(TRANSLUCENT)
         const context = await exportScreenshot()
         expectRgba(context.pixel, srcOver(rgba('rgb(33 34 44 / 0.6)'), [0, 0, 0, 1]))
+    })
+})
+
+describe('B: the user background wins over the pack canvas parts', () => {
+    test('B13a (guard): a whitespace-only card is not a background, so the canvas paints', async () => {
+        setScheme('light')
+        await mountChat({ card: '  \n ' })
+        await commitBuiltin('builtin:origin-navy')
+        const model = modelNow()
+        expect(model.painted(areaOf()!)['background-color']).toBe('#000000ff')
+        expect(model.painted(shellOf())['background-image']).toBe('linear-gradient(#21222cff, #21222cff)')
+    })
+
+    test('B13b (guard): a custom background whose file is gone resolves to nothing, so the canvas paints and the shell has no overlay', async () => {
+        setScheme('light')
+        await mountChat({ customBackground: 'gone' })
+        await commitBuiltin('builtin:origin-navy')
+        expect(styleOf(shellOf()).trim()).toBe('')
+        expect(modelNow().painted(areaOf()!)['background-color']).toBe('#000000ff')
+    })
+
+    test('B14 (guard): another character\'s card is not a background of the selected chat', async () => {
+        setScheme('light')
+        await mountChat({ card: CARD })
+        DBState.db.characters.push({ ...fixtureCharacter(), chaId: 'b', name: 'Other', backgroundHTML: '' })
+        selectedCharID.set(1)
+        await settle()
+        await commitBuiltin('builtin:origin-navy')
+        expect(wrapperOf()).toBeNull()
+        expect(modelNow().painted(areaOf()!)['background-color']).toBe('#000000ff')
+    })
+
+    test('B18 (reproducer): Scratch White with a card background paints no paper over the card', async () => {
+        setScheme('light')
+        await mountChat({ card: CARD })
+        await commitBuiltin('builtin:scratch-white')
+        const model = modelNow()
+        const transcript = model.painted(transcriptOf())
+        expect(transcript['background-color']).toBeUndefined()
+        expect(transcript['background-image']).toBeUndefined()
+        expect(model.prop(wrapperOf()!, 'opacity')).toBeUndefined()
+        expect(model.prop(wrapperOf()!, 'visibility')).toBeUndefined()
+        expect(squash(styleOf(shellOf()))).toBe('background:none!important;')
+        expect(model.painted(shellOf())['background-color']).toBeUndefined()
+        expect(model.painted(shellOf())['background-image']).toBeUndefined()
+        expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(true)
+    })
+
+    test('B19 (reproducer): Scratch White with a wallpaper and overlay shows the overlay and no paper', async () => {
+        setScheme('light')
+        await mountChat({ wallpaper: true, overlay: true })
+        await commitBuiltin('builtin:scratch-white')
+        const model = modelNow()
+        expect(model.painted(transcriptOf())['background-color']).toBeUndefined()
+        expect(model.painted(transcriptOf())['background-image']).toBeUndefined()
+        expect(squash(styleOf(shellOf()))).toContain('background:rgba(255,0,0,0.5)!important')
+        expect(squash(styleOf(shellOf()))).toContain('border:0.3remsolidrgb(0,255,0)')
+        expect(hex8(composite(model.painted(shellOf())))).toBe('#ff000080')
+    })
+
+    test('B20 (reproducer): a pack that paints the shell and the transcript with !important still yields to the wallpaper', async () => {
+        setScheme('light')
+        await mountChat({ wallpaper: true })
+        await commitJudged(IMPORTANT_CANVAS)
+        const model = modelNow()
+        expect(model.painted(transcriptOf())['background-color']).toBeUndefined()
+        expect(hex8(composite(model.painted(shellOf())))).toBe('#000000cc')
+    })
+
+    test('B21 (reproducer): the same pack exports one fill, the overlay, with no canvas', async () => {
+        setScheme('light')
+        await mountChat({ wallpaper: true })
+        await commitJudged(IMPORTANT_CANVAS)
+        const context = await exportScreenshot()
+        expect(context.fills).toHaveLength(1)
+        expect(context.pixel[3]).toBeCloseTo(0.8, 2)
+        expectRgba([context.pixel[0], context.pixel[1], context.pixel[2], 0.8], [0, 0, 0, 0.8])
+    })
+
+    test('B22 (reproducer): the transcript override follows the pack and never erases what the scroll holds write', async () => {
+        setScheme('light')
+        await mountChat({ card: CARD })
+        await commitBuiltin('builtin:origin-navy')
+        expect(squash(styleOf(transcriptOf()))).toContain('background-color:transparent!important;background-image:none!important')
+        transcriptOf().style.setProperty('overflow-anchor', 'none')
+        expect(commitPackSheet(null)).toEqual({ ok: true })
+        await settle()
+        expect(styleOf(transcriptOf())).not.toContain('background')
+        expect(squash(styleOf(transcriptOf()))).toContain('overflow-anchor:none')
+        await commitBuiltin('builtin:origin-navy')
+        expect(squash(styleOf(transcriptOf()))).toContain('background-color:transparent!important;background-image:none!important')
+        expect(squash(styleOf(transcriptOf()))).toContain('overflow-anchor:none')
+    })
+
+    test('B23 (reproducer): the message list is told to yield exactly while the user background and a pack are both on', async () => {
+        setScheme('light')
+        await mountChat({ card: CARD })
+        await commitBuiltin('builtin:origin-navy')
+        expect(h.listProps?.canvasYield).toBe(true)
+        expect(commitPackSheet(null)).toEqual({ ok: true })
+        await settle()
+        expect(h.listProps?.canvasYield).toBe(false)
+    })
+
+    test('B24a (guard, passes before and after): with no pack a card background leaves the shell and the transcript without inline style', async () => {
+        await mountChat({ card: CARD })
+        expect(styleOf(shellOf())).toBe('')
+        expect(transcriptOf().hasAttribute('style')).toBe(false)
+    })
+
+    test('B24b (guard, passes before and after): with no pack a wallpaper adds no important declaration', async () => {
+        await mountChat({ wallpaper: true })
+        expect(styleOf(shellOf())).not.toContain('!important')
     })
 })
 
