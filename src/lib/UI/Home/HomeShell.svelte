@@ -15,7 +15,7 @@
     import { hasLibraryContent } from './homeEmpties'
     import { homeBand } from './homeLayout'
     import { freezeStories, resolveFrozen } from './homeStories'
-    import { jumpToSection } from './homeJump'
+    import { jumpToSection, revealInScrollContainer } from './homeJump'
     import { engageHomeLibrary, homeView, openHomeLibrary, startHomeView, takeHomeReturnFocus } from './homeView.svelte'
     import { reducedMotionActive } from 'src/ts/chatShell/motionPrefs.svelte'
 
@@ -142,6 +142,8 @@
             const control = focusChaId === null ? undefined : Array.from(section.querySelectorAll<HTMLElement>('[data-part="library-studio"]'))
                 .find((candidate) => candidate.getAttribute('data-cha-id') === focusChaId)
             jumpToSection({ scroller, target: section, focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'), reduced, signal })
+            // The focus never scrolls, so a Studio control deep in the library's own list is brought into view there.
+            if (control) revealInScrollContainer(control, section)
             return
         }
         const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')

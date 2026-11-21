@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { jumpToSection } from './homeJump'
+import { jumpToSection, revealInScrollContainer } from './homeJump'
 
 const spied: Array<{ mockRestore: () => void }> = []
 const scrollIntoViewSpy = vi.fn()
@@ -253,5 +253,69 @@ describe('jumpToSection re-aim', () => {
 
         expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
         expect(vi.getTimerCount()).toBe(0)
+    })
+})
+
+describe('revealInScrollContainer', () => {
+    /** A section holding a scrolling list holding a control; rects are fixed, the landing scroller is separate. */
+    function listFixture({ listTop = 100, listHeight = 200, controlTop = 0, controlHeight = 24, scrollTop = 0 } = {}) {
+        const landing = document.createElement('div')
+        landing.scrollTop = 55
+        const section = document.createElement('section')
+        const list = document.createElement('div')
+        list.style.overflowY = 'auto'
+        const row = document.createElement('div')
+        const control = document.createElement('button')
+        row.appendChild(control)
+        list.appendChild(row)
+        section.appendChild(list)
+        landing.appendChild(section)
+        document.body.appendChild(landing)
+        list.scrollTop = scrollTop
+        Object.defineProperty(list, 'clientHeight', { configurable: true, value: listHeight })
+        list.getBoundingClientRect = () => ({ top: listTop, bottom: listTop + listHeight } as DOMRect)
+        control.getBoundingClientRect = () => ({ top: listTop + controlTop, bottom: listTop + controlTop + controlHeight } as DOMRect)
+        return { landing, section, list, control }
+    }
+
+    test('S4b-U7 a control below the list box raises the list scrollTop by the overflow, nothing else moves', () => {
+        const { landing, section, list, control } = listFixture({ controlTop: 260, scrollTop: 10 })
+
+        revealInScrollContainer(control, section)
+
+        expect(list.scrollTop).toBe(10 + 284 - 200)
+        expect(landing.scrollTop).toBe(55)
+        expect(scrollIntoViewSpy).not.toHaveBeenCalled()
+    })
+
+    test('S4b-U7 a control above the list box lowers the list scrollTop to it', () => {
+        const { landing, section, list, control } = listFixture({ controlTop: -30, scrollTop: 90 })
+
+        revealInScrollContainer(control, section)
+
+        expect(list.scrollTop).toBe(60)
+        expect(landing.scrollTop).toBe(55)
+        expect(scrollIntoViewSpy).not.toHaveBeenCalled()
+    })
+
+    test('S4b-U7 a control already inside the list box changes nothing', () => {
+        const { landing, section, list, control } = listFixture({ controlTop: 50, scrollTop: 10 })
+
+        revealInScrollContainer(control, section)
+
+        expect(list.scrollTop).toBe(10)
+        expect(landing.scrollTop).toBe(55)
+        expect(scrollIntoViewSpy).not.toHaveBeenCalled()
+    })
+
+    test('S4b-U7 with no scrolling ancestor up to the section nothing is touched', () => {
+        const { landing, section, list, control } = listFixture({ controlTop: 260 })
+        list.style.overflowY = 'visible'
+        landing.style.overflowY = 'auto'
+
+        revealInScrollContainer(control, section)
+
+        expect(list.scrollTop).toBe(0)
+        expect(landing.scrollTop).toBe(55)
     })
 })

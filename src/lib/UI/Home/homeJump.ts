@@ -55,3 +55,30 @@ export function jumpToSection({ scroller, target, focus = target, reduced, signa
     }
     return true
 }
+
+/**
+ * Brings a focused control into view inside the list that scrolls it. The library section is bounded to the
+ * landing's height and its list scrolls inside it, and `jumpToSection` focuses with `preventScroll`, so a control
+ * deep in that list stays below the visible area. The container is the nearest ancestor from the control up to
+ * `section` (the section itself only when it scrolls) whose computed `overflow-y` is `auto` or `scroll`. Rects are
+ * measured relative to the container, so the result is independent of the landing scroll, and the move is the
+ * minimal one ('nearest'): nothing when the control is already visible. Only that container's `scrollTop`
+ * changes, instantly; the landing scroller and the document never move, and `scrollIntoView` is never used.
+ * Does nothing when no such container exists.
+ */
+export function revealInScrollContainer(control: HTMLElement, section: HTMLElement): void {
+    let container: HTMLElement | null = control.parentElement
+    while (container) {
+        const overflowY = getComputedStyle(container).overflowY
+        if (overflowY === 'auto' || overflowY === 'scroll') break
+        if (container === section) return
+        container = container.parentElement
+    }
+    if (!container || !section.contains(container)) return
+    const box = container.getBoundingClientRect()
+    const rect = control.getBoundingClientRect()
+    const above = rect.top - box.top
+    const overflow = rect.bottom - box.top - container.clientHeight
+    if (overflow > 0) container.scrollTop += overflow
+    else if (above < 0) container.scrollTop += above
+}

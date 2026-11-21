@@ -118,15 +118,25 @@ vi.mock(import('src/ts/alert'), () => ({
 }) as unknown as typeof import('src/ts/alert'))
 
 // The characters whose Studio control the stand-in draws, as the List tab draws one for a row in view.
-const drawnControls = vi.hoisted(() => ({ chaIds: [] as string[] }))
+const drawnControls = vi.hoisted(() => ({ chaIds: [] as string[], listed: false }))
 const libraryStub = vi.hoisted(() => (anchor: Comment) => {
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'library-stub')
+    // `listed` puts the controls in a scrolling list (the List tab's window) whose visible box ends above them.
+    const holder = document.createElement('div')
+    if (drawnControls.listed) {
+        holder.setAttribute('data-testid', 'library-list')
+        holder.style.overflowY = 'auto'
+        Object.defineProperty(holder, 'clientHeight', { configurable: true, value: 698 })
+        holder.getBoundingClientRect = () => ({ top: 0, bottom: 698 } as DOMRect)
+    }
+    marker.appendChild(holder)
     for (const chaId of drawnControls.chaIds) {
         const control = document.createElement('button')
         control.setAttribute('data-part', 'library-studio')
         control.setAttribute('data-cha-id', chaId)
-        marker.appendChild(control)
+        if (drawnControls.listed) control.getBoundingClientRect = () => ({ top: 760, bottom: 784 } as DOMRect)
+        holder.appendChild(control)
     }
     anchor.parentNode!.insertBefore(marker, anchor)
     // The stand-in sits at the block's own anchor, so the block would not remove it; remove it with the component.
@@ -291,6 +301,7 @@ beforeEach(() => {
     installDb()
     scrollSpy.mockClear()
     drawnControls.chaIds = []
+    drawnControls.listed = false
     Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     stopBackLayers = $effect.root(() => {
         installStudioBack()
@@ -356,6 +367,22 @@ describe('the landing library after a Home-opened Studio', () => {
         expect(scrollSpy.mock.contexts[0]).toBe(scrollerOf(root))
         expect(scrollSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
         expect(document.activeElement).toBe(controlOf(root, 'one'))
+    })
+
+    test('S4b-R3 (f) the Studio control below its scrolling list is brought into view in that list; the landing scroller is not touched by it', async () => {
+        drawnControls.chaIds = ['one']
+        drawnControls.listed = true
+        expect(openStudioFromHome(1, opener())).toBe(true)
+        flushSync()
+
+        closeStudio()
+        const root = mountShell()
+
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        const list = root.querySelector<HTMLElement>('[data-testid="library-list"]')!
+        expect(document.activeElement).toBe(controlOf(root, 'one'))
+        expect(list.scrollTop).toBe(784 - 698)
+        expect(scrollSpy.mock.contexts.every((context) => context === scrollerOf(root))).toBe(true)
     })
 
     test('S4b-R3 (b) with no control drawn for the character the focus falls back to the library heading', async () => {
