@@ -123,6 +123,8 @@ Seeds: TUNE 510001, GATE 610001, GATE-R 620001 (rare noise rerun), FALLBACK 7100
 
 The gate runs only when the tune predicts PASS (MC-2661). The tune re-checks its lower-bound rule at the exact final settings (`evidence.finalFlag`), and `record-settings` and every gate run (FIRST, NOISE, DEFECT and OVERRIDE) refuse settings unless `evidence.budgetFlag` and `evidence.finalFlag` are null and `evidence.oracleFlag` is null or absent; settings without evidence are refused. The digest covers the evidence, so a flag cannot be edited away.
 
+When the final-settings check fails, selection walks to the next larger budget that cleared at the budget step (`evidence.budgetClears`) and redoes the oracle recheck and the later steps (queries, tau, snippet floor, F, final check) with the same rules, until the final settings clear or no clearing budget remains (MC-2662). `evidence.finalWalk` lists every budget tried with its `finalOk`, `L` and `rareShare` (`k` for idf); the returned settings are the last one tried, and `finalFlag` stays set if none cleared.
+
 Commands (run from the repository root; the aggregates and every output path must lie outside both checkouts, and real quantiles are never printed):
 
 ```powershell
