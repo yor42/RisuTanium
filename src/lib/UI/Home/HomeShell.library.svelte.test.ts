@@ -7,8 +7,8 @@
  * structure that bounds its height.
  *
  * REAL: `HomeShell`, `MainMenu`, `HomeStoryShelf`, `HomeEmptyHero`, `homeView`. MOCKED: the module set
- * of `HomeShell.stories.svelte.test.ts`, with `./HomeLibrary.svelte` a stand-in that records its
- * `embedded` prop and renders a Studio control and a control whose pointerdown stops propagation.
+ * of `HomeShell.stories.svelte.test.ts`, with `./HomeLibrary.svelte` a stand-in that renders a Studio
+ * control and a control whose pointerdown stops propagation.
  */
 
 import { flushSync, mount, unmount } from 'svelte'
@@ -75,10 +75,9 @@ vi.mock('../Realm/RealmMain.svelte', () => ({
 vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
 
 vi.mock('./HomeLibrary.svelte', () => ({
-    default: (anchor: Comment, props: { embedded?: boolean } | undefined) => {
+    default: (anchor: Comment) => {
         const root = document.createElement('div')
         root.setAttribute('data-testid', 'library-stub')
-        root.setAttribute('data-embedded', String(props?.embedded === true))
         const plain = document.createElement('button')
         plain.setAttribute('data-part', 'library-studio')
         plain.setAttribute('data-cha-id', 'a')
@@ -212,9 +211,7 @@ describe('the embedded library section', () => {
         const heading = lib!.querySelector('h2')!
         expect(heading.textContent).toBe(language.homeLibraryHeading)
         expect(lib!.getAttribute('aria-labelledby')).toBe(heading.id)
-        const stub = lib!.querySelector('[data-testid="library-stub"]')!
-        expect(stub).not.toBeNull()
-        expect(stub.getAttribute('data-embedded')).toBe('true')
+        expect(lib!.querySelector('[data-testid="library-stub"]')).not.toBeNull()
         const side = root.querySelector('aside[data-part="home-side"]')!
         expect(lib!.compareDocumentPosition(side) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     })
