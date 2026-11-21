@@ -179,8 +179,8 @@
     <p class="text-textcolor2 text-sm mt-4 mb-2" data-testid="api-key-env-ref-note">{language.settingsPage.apiKeyEnvRefNote}</p>
 
     {#if modelInfo.provider === LLMProvider.GoogleCloud || subModelInfo.provider === LLMProvider.GoogleCloud}
-        <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-        <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
+        <span class="text-textcolor" id="{uid}-keyGoogle">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
+        <KeyListInput labelId="{uid}-keyGoogle" marginBottom={true} size={"sm"} placeholder="..." hideText bind:value={DBState.db.google.accessToken}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.VertexAI || subModelInfo.provider === LLMProvider.VertexAI}
         <span class="text-textcolor" id="{uid}-f1">{language.settingsPage.projectId}</span>
@@ -206,31 +206,31 @@
         </SelectInput>    
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelList || subModelInfo.provider === LLMProvider.NovelList}
-        <span class="text-textcolor">NovelList {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.novellistAPI}/>
+        <span class="text-textcolor" id="{uid}-keyNovelList">NovelList {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyNovelList" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.novellistAPI}/>
     {/if}
     {#if DBState.db.aiModel.startsWith('mancer') || DBState.db.subModel.startsWith('mancer')}
-        <span class="text-textcolor">Mancer {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mancerHeader}/>
+        <span class="text-textcolor" id="{uid}-keyMancer">Mancer {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyMancer" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mancerHeader}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Anthropic || subModelInfo.provider === LLMProvider.Anthropic
             || modelInfo.provider === LLMProvider.AWS || subModelInfo.provider === LLMProvider.AWS }
-        <span class="text-textcolor">Claude {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.claudeAPIKey}/>
+        <span class="text-textcolor" id="{uid}-keyClaude">Claude {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyClaude" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.claudeAPIKey}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.Mistral || subModelInfo.provider === LLMProvider.Mistral}
-        <span class="text-textcolor">Mistral {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mistralKey}/>
+        <span class="text-textcolor" id="{uid}-keyMistral">Mistral {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyMistral" hideText marginBottom={true} size={"sm"} placeholder="..." bind:value={DBState.db.mistralKey}/>
     {/if}
     {#if modelInfo.provider === LLMProvider.NovelAI || subModelInfo.provider === LLMProvider.NovelAI}
-        <span class="text-textcolor">{fillLang(language.settingsPage.nameBearerToken, { name: 'NovelAI' })}</span>
-        <KeyListInput bind:value={DBState.db.novelai.token}/>
+        <span class="text-textcolor" id="{uid}-keyNovelAI">{fillLang(language.settingsPage.nameBearerToken, { name: 'NovelAI' })}</span>
+        <KeyListInput labelId="{uid}-keyNovelAI" bind:value={DBState.db.novelai.token}/>
     {/if}
     {#if DBState.db.aiModel === 'reverse_proxy' || DBState.db.subModel === 'reverse_proxy'}
         <span class="text-textcolor mt-2"><span id="{uid}-f4">URL</span> <Help key="forceUrl"/></span>
         <TextInput labelId="{uid}-f4" marginBottom={false} size={"sm"} bind:value={DBState.db.forceReplaceUrl} placeholder="https//..." />
-        <span class="text-textcolor mt-4"> {language.proxyAPIKey}</span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
+        <span class="text-textcolor mt-4" id="{uid}-keyProxy"> {language.proxyAPIKey}</span>
+        <KeyListInput labelId="{uid}-keyProxy" hideText marginBottom={false} size={"sm"} placeholder={language.settingsPage.proxyKeyPlaceholder} bind:value={DBState.db.proxyKey} />
         <span class="text-textcolor mt-4" id="{uid}-f5"> {language.proxyRequestModel}</span>
         <TextInput labelId="{uid}-f5" marginBottom={false} size={"sm"} bind:value={DBState.db.customProxyRequestModel} placeholder={language.name} />
         <span class="text-textcolor mt-4" id="{uid}-customApiFormat"> {language.format}</span>
@@ -258,8 +258,8 @@
         </SelectInput>
     {/if}
     {#if modelInfo.provider === LLMProvider.Cohere || subModelInfo.provider === LLMProvider.Cohere}
-        <span class="text-textcolor mt-4">Cohere {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.cohereAPIKey} />
+        <span class="text-textcolor mt-4" id="{uid}-keyCohere">Cohere {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyCohere" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.cohereAPIKey} />
     {/if}
     {#if usesOllamaLocal || usesOllamaCloud}
         {#if usesOllamaLocal}
@@ -298,8 +298,8 @@
             {/await}
         {/if}
 
-            <span class="text-textcolor mt-4">Ollama {language.apiKey}</span>
-            <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
+            <span class="text-textcolor mt-4" id="{uid}-keyOllama">Ollama {language.apiKey}</span>
+            <KeyListInput labelId="{uid}-keyOllama" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.ollamaApiKey} />
 
             <span class="text-textcolor mt-4" id="{uid}-ollamaFormat">Ollama {language.format}</span>
             <SelectInput labelId="{uid}-ollamaFormat" value={DBState.db.ollamaRequestFormat.toString()} onchange={(e) => {
@@ -354,8 +354,8 @@
         {/if}
     {/if}
     {#if DBState.db.aiModel === 'nanogpt' || DBState.db.subModel === 'nanogpt'}
-        <span class="text-textcolor mt-4">NanoGPT {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptKey} />
+        <span class="text-textcolor mt-4" id="{uid}-keyNanoGPT">NanoGPT {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyNanoGPT" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.nanogptKey} />
 
         <NanoGPTDashboard apiKey={currentKey('nanogptKey', DBState.db)} />
 
@@ -399,8 +399,8 @@
         {/if}
     {/if}
     {#if DBState.db.aiModel === 'openrouter' || DBState.db.subModel === 'openrouter'}
-        <span class="text-textcolor mt-4">OpenRouter {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openrouterKey} />
+        <span class="text-textcolor mt-4" id="{uid}-keyOpenRouter">OpenRouter {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyOpenRouter" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openrouterKey} />
 
         <span class="text-textcolor mt-4">OpenRouter {language.model}</span>
         {#await getOpenRouterModels()}
@@ -418,18 +418,18 @@
         </SelectInput>
     {/if}
     {#if modelInfo.provider === LLMProvider.OpenAI || subModelInfo.provider === LLMProvider.OpenAI}
-        <span class="text-textcolor">OpenAI {language.apiKey} <Help key="oaiapikey"/></span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openAIKey} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
+        <span class="text-textcolor"><span id="{uid}-keyOpenAI">OpenAI {language.apiKey}</span> <Help key="oaiapikey"/></span>
+        <KeyListInput labelId="{uid}-keyOpenAI" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.openAIKey} placeholder="sk-XXXXXXXXXXXXXXXXXXXX"/>
     {/if}
 
     {#if modelInfo.keyIdentifier}
-        <span class="text-textcolor">{modelInfo.name} {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[modelInfo.keyIdentifier]} placeholder="..."/>
+        <span class="text-textcolor" id="{uid}-keyModel">{modelInfo.name} {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyModel" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[modelInfo.keyIdentifier]} placeholder="..."/>
     {/if}
 
     {#if subModelInfo.keyIdentifier && subModelInfo.keyIdentifier !== modelInfo.keyIdentifier}
-        <span class="text-textcolor">{subModelInfo.name} {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[subModelInfo.keyIdentifier]} placeholder="..."/>
+        <span class="text-textcolor" id="{uid}-keySubModel">{subModelInfo.name} {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keySubModel" hideText marginBottom={false} size={"sm"} bind:value={DBState.db.OaiCompAPIKeys[subModelInfo.keyIdentifier]} placeholder="..."/>
     {/if}
 
     <div class="py-2 flex flex-col gap-2 mb-4">
@@ -474,8 +474,8 @@
     {/if}
 
     {#if DBState.db.aiModel.startsWith("horde") || DBState.db.subModel.startsWith("horde") }
-        <span class="text-textcolor">Horde {language.apiKey}</span>
-        <KeyListInput hideText marginBottom={true} bind:value={DBState.db.hordeConfig.apiKey} />
+        <span class="text-textcolor" id="{uid}-keyHorde">Horde {language.apiKey}</span>
+        <KeyListInput labelId="{uid}-keyHorde" hideText marginBottom={true} bind:value={DBState.db.hordeConfig.apiKey} />
     {/if}
     {#if DBState.db.aiModel === 'textgen_webui' || DBState.db.subModel === 'textgen_webui'
         || DBState.db.aiModel === 'mancer' || DBState.db.subModel === 'mancer'}
