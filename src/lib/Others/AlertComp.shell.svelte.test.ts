@@ -254,6 +254,9 @@ const SHARED_BOX: Array<[alertData['type'], alertData, Severity, Role]> = [
     ['markdown', { type: 'markdown', msg: 'Some **text**' }, 'notice', 'dialog'],
     ['requestdata', { type: 'requestdata', msg: '' }, 'notice', 'dialog'],
     ['hypaV2', { type: 'hypaV2', msg: '' }, 'notice', 'dialog'],
+    ['requestlogs', { type: 'requestlogs', msg: '' }, 'notice', 'dialog'],
+    ['branches', { type: 'branches', msg: '' }, 'notice', 'dialog'],
+    ['cardexport', { type: 'cardexport', msg: '', submsg: '' }, 'confirm', 'dialog'],
     ['tos', { type: 'tos', msg: 'tos' }, 'caution', 'alertdialog'],
     ['staleAccountNotice', { type: 'staleAccountNotice', msg: 'stale' }, 'caution', 'alertdialog'],
     ['peerConflicts', { type: 'peerConflicts', msg: 'Conflicts', peerConflicts: [] }, 'caution', 'dialog'],
@@ -318,8 +321,6 @@ describe('AlertComp.svelte: the shared box is the pattern dialog', () => {
         const palette = /^(?:[a-z-]+:)*(?:text|bg|border|ring|from|to|via|fill|stroke)-(?:gray|red|green|blue|stone|amber|yellow|cyan|purple|slate|zinc|neutral|orange|white|black)(?:-\d+)?(?:\/\d+)?$/
         const found: string[] = []
         for (const [type, alert] of SHARED_BOX) {
-            // Tool dialogs keep their inner markup until their own redesign; only the shell around them is checked elsewhere.
-            if (['requestdata', 'hypaV2', 'addchar', 'chatOptions', 'selectChar', 'peerConflicts', 'parkedReply'].includes(type)) continue
             resetAlertPromptsForTests()
             alertStore.set({ type: 'none', msg: '' } as never)
             const target = mountAlertComp()
@@ -347,7 +348,7 @@ describe('AlertComp.svelte: the shared box is the pattern dialog', () => {
             await unmount(mountedInstances.pop() as never)
             target.remove()
         }
-        expect(wide.sort()).toEqual(['addchar', 'chatOptions', 'hypaV2', 'markdown', 'parkedReply', 'peerConflicts', 'presetBundle', 'requestdata', 'selectChar', 'updateOffer'])
+        expect(wide.sort()).toEqual(['addchar', 'branches', 'cardexport', 'chatOptions', 'hypaV2', 'markdown', 'parkedReply', 'peerConflicts', 'presetBundle', 'requestdata', 'requestlogs', 'selectChar', 'updateOffer'])
     })
 
     test('an update offer is named by its heading and described by the version list, the only element with the message id', async () => {

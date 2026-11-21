@@ -14,6 +14,25 @@ export type ToolLoopState = {
     rounds: number
     capped: boolean
     readonly signal: AbortSignal | null
+    /**
+     * The workspace this run's `internal:workspace` tools act on. Set only by the run that owns the workspace;
+     * never taken from tool arguments. A call to a workspace tool without it is refused before any prompt.
+     */
+    workspace?: ToolLoopWorkspace
+    /**
+     * The `(name, url)` pairs this run advertised, as `advertisedToolKey` keys. When present, a call outside the
+     * set is refused; a run that does not set it is bounded by the provider's own advertised-name check.
+     */
+    advertised?: ReadonlySet<string>
+}
+
+export type ToolLoopWorkspace = {
+    readonly id: string
+}
+
+/** The key under which a run's advertised tool is recorded and looked up. */
+export function advertisedToolKey(name: string, url: string): string {
+    return `${url}\n${name}`
 }
 
 export type ToolLoopArg = Pick<RequestDataArgumentExtended, 'abortSignal' | 'toolLoop'>

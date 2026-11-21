@@ -162,15 +162,58 @@ function ensureWatching(): void {
     stopWatching = alertStore.subscribe(onValue)
 }
 
+export interface AskPromptOptions {
+    /** When it aborts, the prompt is withdrawn from the queue or the screen and resolves with its `cancelAnswer` (empty when it has none). */
+    signal?: AbortSignal | null
+}
+
+/**
+ * Takes a prompt back without anyone answering it. Queued: removed. Shown: closed with its cancel
+ * answer, skipping the answer guard. Covered: no longer current, so the cover's close does not bring
+ * it back and moves on to the next prompt. Other prompts are untouched.
+ */
+function withdrawPrompt(prompt: WaitingPrompt): void {
+    const cancel = prompt.data.cancelAnswer ?? ''
+    const queued = queue.indexOf(prompt)
+    if (queued !== -1) {
+        queue.splice(queued, 1)
+        prompt.resolve(cancel)
+        publishIdle()
+        return
+    }
+    if (current !== prompt) {
+        return
+    }
+    if (get(alertStore) === prompt.data) {
+        prompt.guardUntil = 0
+        alertStore.set({ type: 'none', msg: cancel })
+        return
+    }
+    current = null
+    prompt.resolve(cancel)
+    publishIdle()
+}
+
 /**
  * Puts a prompt up and resolves with the `msg` of the `none` that answers it.
  * With no other prompt waiting it is the store's value when this returns,
  * replacing whatever notice was up. Otherwise it waits its turn.
  */
-export function askPrompt(data: alertData): Promise<string> {
+export function askPrompt(data: alertData, options?: AskPromptOptions): Promise<string> {
     ensureWatching()
-    return new Promise<string>((resolve) => {
+    const signal = options?.signal ?? null
+    return new Promise<string>((settle) => {
+        if (signal?.aborted === true) {
+            settle(data.cancelAnswer ?? '')
+            return
+        }
+        const onAbort = () => withdrawPrompt(prompt)
+        const resolve = (answer: string) => {
+            signal?.removeEventListener('abort', onAbort)
+            settle(answer)
+        }
         const prompt: WaitingPrompt = { data, resolve, guardUntil: 0 }
+        signal?.addEventListener('abort', onAbort, { once: true })
         if (current === null && !isPromptType(get(alertStore).type)) {
             current = prompt
             // A press meant for whatever was on screen must not answer this prompt.

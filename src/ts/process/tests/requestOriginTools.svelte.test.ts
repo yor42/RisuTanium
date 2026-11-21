@@ -72,6 +72,8 @@ vi.mock('../../stores.svelte', () => {
     }
 })
 
+vi.mock('../mcp/toolApproval', () => ({ TOOL_SUMMARY_LIMIT: 800, askToolApproval: vi.fn(async () => 'once') }))
+
 vi.mock('../../alert', () => ({
     alertError: vi.fn(), alertToast: vi.fn(), alertInput: vi.fn(async () => ''), alertNormal: vi.fn(), alertSelect: vi.fn(async () => ''),
     alertConfirm: vi.fn(async () => true), alertClear: vi.fn(), alertModuleSelect: vi.fn(async () => -1), alertStore: writable({ type: '', msg: '' }), alertWait: vi.fn(),
@@ -591,21 +593,66 @@ describe('risuaccess with no id acts on the call\'s subject', () => {
         expect(nameOf(0)).toBe('Renamed')
     })
 
-    test('guard: a switch to another character while the write prompt is open still writes the subject\'s character, and the prompt names it', async () => {
-        const { alertConfirm } = await import('../../alert')
+    /** Runs a risuaccess call the way `callMCPTool` does: the app-wide gate decides first, then the client runs the tool. */
+    async function callGated(tool: string, args: Record<string, unknown>, subject: ReturnType<typeof subjectAt>) {
+        const { authorizeToolCall } = await import('../mcp/toolAuthorize')
+        const refusal = await authorizeToolCall(tool, args, { subject, mcpURL: 'internal:risuai' })
+        return refusal ?? await (await risuClient()).callTool(tool, args, { subject })
+    }
+
+    /** Makes the next approval run `during` while the question is open, then answer `decision`. */
+    async function approvalDoes(during: () => void, decision: 'once' | 'deny' = 'once') {
+        const { askToolApproval } = await import('../mcp/toolApproval')
+        vi.mocked(askToolApproval).mockImplementationOnce(async () => { during(); return decision })
+        return vi.mocked(askToolApproval)
+    }
+
+    test('guard: a switch to another character while the approval is open still writes the subject\'s character, and the approval names the call', async () => {
         const A = makeChar('a', 'AliceName', [chat('cA')], [])
         const B = makeChar('b', 'SentinelBob', [chat('cB')], [])
         installDb([A, B]); selectedCharID.set(0)
         const subject = subjectAt(0)
-        const prompts: string[] = []
-        vi.mocked(alertConfirm).mockImplementationOnce(async (message: string) => { prompts.push(message); selectedCharID.set(1); return true })
+        const asked = await approvalDoes(() => selectedCharID.set(1))
+        const callsBefore = asked.mock.calls.length
 
-        await (await risuClient()).callTool('risu-set-character-info', { id: '', data: { name: 'Renamed' } }, { subject })
+        await callGated('risu-set-character-info', { id: '', data: { name: 'Renamed' } }, subject)
 
-        expect(prompts).toHaveLength(1)
-        expect(prompts[0]).toContain('AliceName')
+        expect(asked.mock.calls).toHaveLength(callsBefore + 1)
+        const request = asked.mock.calls[callsBefore][0] as { url: string, summary: string }
+        expect(request.summary).toContain('AliceName')
+        expect(request.summary).toContain('risu-set-character-info')
+        expect(request.summary).toContain('Renamed')
         expect(nameOf(0)).toBe('Renamed')
         expect(nameOf(1)).toBe('SentinelBob')
+    })
+
+    test('the approval names the character a chaId argument selects, whatever the selection', async () => {
+        const A = makeChar('a', 'AliceName', [chat('cA')], [])
+        const B = makeChar('b', 'SentinelBob', [chat('cB')], [])
+        installDb([A, B]); selectedCharID.set(0)
+        const asked = await approvalDoes(() => {})
+        const callsBefore = asked.mock.calls.length
+
+        await callGated('risu-set-character-lua-script', { id: 'b', code: 'x' }, subjectAt(0))
+
+        const request = asked.mock.calls[callsBefore][0] as { summary: string }
+        expect(request.summary).toContain('modify character (SentinelBob) lua script')
+        expect(request.summary).not.toContain('AliceName')
+    })
+
+    test('a denied approval writes nothing, marks nothing for save and answers with the refusal, even after a switch to another character', async () => {
+        const A = makeChar('a', 'AliceName', [chat('cA')], [])
+        const B = makeChar('b', 'SentinelBob', [chat('cB')], [])
+        installDb([A, B]); selectedCharID.set(0)
+        const subject = subjectAt(0)
+        await approvalDoes(() => selectedCharID.set(1), 'deny')
+
+        const result = await callGated('risu-set-character-info', { id: '', data: { name: 'Renamed' } }, subject)
+
+        expect(textOf(result)).toBe('Denied by the user: risu-set-character-info')
+        expect(nameOf(0)).toBe('AliceName')
+        expect(nameOf(1)).toBe('SentinelBob')
+        expect(h.marks).toEqual([])
     })
 
     type CharacterFixture = { globalLore: Array<{ content: string }>, customscript: Array<{ in: string, out: string }>, additionalAssets: unknown[], triggerscript: Array<{ effect: Array<{ code: string }> }>, name: string }
@@ -632,19 +679,17 @@ describe('risuaccess with no id acts on the call\'s subject', () => {
         })
     }
 
-    // Every write that prompts before it writes re-resolves the subject's character after the prompt.
-    test.each(NO_ID_WRITES)('%s, with its character slot replaced during the confirm prompt, writes the live object and marks its character', async (tool, args, landed) => {
-        const { alertConfirm } = await import('../../alert')
+    // Every write is approved at the gate before the handler resolves the subject's character, so a replacement during the approval is the live object the handler writes.
+    test.each(NO_ID_WRITES)('%s, with its character slot replaced during the approval, writes the live object and marks its character', async (tool, args, landed) => {
         installDb([writableChar()]); selectedCharID.set(0)
         const subject = subjectAt(0)
         const detached = DBState.db.characters[0]
         const before = JSON.stringify(detached)
-        vi.mocked(alertConfirm).mockImplementationOnce(async () => {
+        await approvalDoes(() => {
             DBState.db.characters[0] = JSON.parse(JSON.stringify(DBState.db.characters[0]))
-            return true
         })
 
-        const result = await (await risuClient()).callTool(tool, args, { subject })
+        const result = await callGated(tool, args, subject)
 
         expect(textOf(result)).toContain('Successfully')
         expect(landed(DBState.db.characters[0] as unknown as CharacterFixture)).toBe(true)
@@ -652,17 +697,16 @@ describe('risuaccess with no id acts on the call\'s subject', () => {
         expect(h.marks).toEqual(['a'])
     })
 
-    test.each(NO_ID_WRITES)('%s, with its character removed while the prompt was open, answers with an error, changes nothing and marks nothing for save', async (tool, args) => {
-        const { alertConfirm } = await import('../../alert')
+    test.each(NO_ID_WRITES)('%s, with its character removed while the approval was open, answers with an error, changes nothing and marks nothing for save', async (tool, args) => {
         installDb([writableChar(), makeChar('b', 'SentinelBob', [chat('cB')], [])]); selectedCharID.set(0)
         const subject = subjectAt(0)
         const detached = DBState.db.characters[0]
         const before = JSON.stringify(detached)
-        vi.mocked(alertConfirm).mockImplementationOnce(async () => { DBState.db.characters.splice(0, 1); return true })
+        await approvalDoes(() => { DBState.db.characters.splice(0, 1) })
 
-        const result = await (await risuClient()).callTool(tool, args, { subject })
+        const result = await callGated(tool, args, subject)
 
-        expect(textOf(result)).toMatch(/^Error: The character\b.*\bexist/)
+        expect(textOf(result)).toMatch(NOT_FOUND)
         expect(JSON.stringify(detached)).toBe(before)
         expect(h.marks).toEqual([])
     })

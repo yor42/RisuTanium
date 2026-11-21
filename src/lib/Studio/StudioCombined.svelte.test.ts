@@ -51,6 +51,7 @@ vi.mock('../../lang', async () => {
 })
 
 import { resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
+import { setWindowGeometryForTests, type WindowGeometry } from '../../ts/windowing/windowHost.svelte'
 import StudioCombined, { combinedKeyOf, combinedKindOf } from './StudioCombined.svelte'
 
 let app: ReturnType<typeof mount> | undefined
@@ -165,14 +166,78 @@ describe('3d lore entry', () => {
     })
 })
 
-describe('3d long lists', () => {
-    test('only a page of rows is drawn and Show more draws the next', () => {
+describe('3d long lists are windowed', () => {
+    const ROWS = 1000
+    const BAND_PX = 500
+    // A real row is 44 px; a band of 500 px holds about a dozen, and the overscan at most about as many again.
+    const MOUNT_LIMIT = 40
+
+    function longLore(count: number): ReturnType<typeof inputOf> {
+        const input = inputOf(false)
+        const globalLore = Array.from({ length: count }, (_, index) => ({ comment: `lore ${index}`, key: `k${index}`, mode: 'normal' }))
+        input.character = { ...input.character, globalLore, chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }
+        return input
+    }
+
+    // The list's own element sits `top` px from the band's top; everything else reads as zero.
+    function geometryAt(top: () => number): WindowGeometry {
+        return {
+            rectOf: (element) => ({ top: element instanceof HTMLElement && element.dataset.part === 'studio-combined-rows' ? top() : 0, height: 0 }),
+            viewport: () => BAND_PX,
+            scrollBy: () => {},
+            schedule: (callback) => {
+                callback()
+                return () => {}
+            },
+        }
+    }
+
+    // The segment reads its top after it binds, so its rows mount one flush after the list.
+    async function settle(): Promise<void> {
+        await Promise.resolve()
+        flushSync()
+        await Promise.resolve()
+        flushSync()
+    }
+
+    afterEach(() => setWindowGeometryForTests(undefined))
+
+    test('a thousand lore entries mount only the rows near the band, with spacers for the rest', async () => {
+        setWindowGeometryForTests(geometryAt(() => 0))
+        show(longLore(ROWS), 'lore')
+        await settle()
+        const ids = rowElements().map((element) => element.dataset.itemId)
+        expect(ids.length).toBeGreaterThan(0)
+        expect(ids.length).toBeLessThanOrEqual(MOUNT_LIMIT)
+        expect(ids[0]).toBe('cha-1/lore:0')
+        expect(part('studio-combined-rows')?.querySelector('[data-window-spacer]')).not.toBeNull()
+        expect(part('studio-combined-more')).toBeNull()
+        const wrapper = rowElements()[0].closest('[data-window-key]')
+        expect(wrapper?.getAttribute('aria-setsize')).toBe(String(ROWS))
+        expect(wrapper?.getAttribute('aria-posinset')).toBe('1')
+    })
+
+    test('the last entry is reached by scrolling, with no Show more step, and keeps its merged number', async () => {
+        // The list scrolled to its end: its top sits a full list height above the band, less one band.
+        setWindowGeometryForTests(geometryAt(() => -(ROWS * 44 - BAND_PX)))
+        show(longLore(ROWS), 'lore')
+        await settle()
+        const ids = rowElements().map((element) => element.dataset.itemId)
+        expect(ids.length).toBeLessThanOrEqual(MOUNT_LIMIT)
+        expect(ids).toContain(`cha-1/lore:${ROWS - 1}`)
+        expect(ids).not.toContain('cha-1/lore:0')
+        const last = rowElements().find((element) => element.dataset.itemId === `cha-1/lore:${ROWS - 1}`)!
+        expect(last.querySelector('[data-part="studio-combined-ordinal"]')?.textContent).toBe(String(ROWS))
+        expect(last.closest('[data-window-key]')?.getAttribute('aria-posinset')).toBe(String(ROWS))
+    })
+
+    test('a long regex list is windowed the same way', async () => {
+        setWindowGeometryForTests(geometryAt(() => 0))
         const input = inputOf(false)
         input.character = { ...input.character, customscript: regexEntries(250, 'many') }
         show(input, 'regex')
-        expect(rowElements().length).toBe(100)
-        part('studio-combined-more')?.click()
-        flushSync()
-        expect(rowElements().length).toBe(200)
+        await settle()
+        expect(rowElements().length).toBeLessThanOrEqual(MOUNT_LIMIT)
+        expect(rowElements()[0].dataset.itemId).toBe('0/regex:0')
     })
 })

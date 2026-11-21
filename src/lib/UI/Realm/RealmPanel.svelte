@@ -42,7 +42,7 @@
   onclick={handleCardClick}
   class="relative flex min-h-[var(--home-realm-min-height)] cursor-pointer flex-col gap-[var(--home-space-6)] rounded-b-[var(--home-radius-5)] border-t-2 border-t-borderc bg-darkbg p-[var(--home-card-pad-lg)] transition-colors hover:bg-selected/30"
 >
-  <h3 class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[length:var(--home-text-lg)] font-bold">
+  <h3 tabindex="-1" data-jump-target="realm" class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[length:var(--home-text-lg)] font-bold">
     <button
       class="risu-focus-ring min-h-11 w-fit max-w-full border-0 bg-transparent p-0 text-left text-textcolor [overflow-wrap:break-word] hover:underline"
       aria-label={language.hubBrowseMore}

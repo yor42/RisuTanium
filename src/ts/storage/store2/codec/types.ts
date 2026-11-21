@@ -88,7 +88,7 @@ export class ModuleSetUnsavableError extends CodecInputError {
 }
 
 /** What an item the pass went on without belongs to; the label of a `moduleSet` item is made by the save loop. */
-export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder'
+export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'settings' | 'pluginData' | 'loadouts' | 'statics' | 'characterOrder' | 'workspaces'
 
 /** A part of the database a pass could not read as plain JSON and went on without. */
 export interface SkippedItem {
@@ -308,6 +308,11 @@ export interface EncodeOptions {
      * previous unit has the remembered digest is taken without being framed. Absent, every chunk is framed.
      */
     chunkMemo?: ChunkMemo
+    /**
+     * The saved texts of workspace files: a file whose text is the remembered one and whose previous unit has the
+     * remembered digest is taken without being framed. The save encoder prunes it to each adopted encoding's units.
+     */
+    workspaceMemo?: ChunkMemo
     /**
      * The stored units an import takes by content (see `ContentIndex`). An import-only rule: it never accompanies
      * `previous`, so every entity id of the encode is new.

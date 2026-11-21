@@ -18,7 +18,7 @@ import { defaultKeyEnv, randomId26, type KeyEnv } from '../../storage/store2/for
 import { FRAME_FMT } from '../../storage/store2/format/versions'
 import type { InlayRecord } from '../../process/files/inlayStore'
 import { assetEntryName } from './assetName'
-import { CONNECTION_KEYS_ID, MANIFEST_ENTRY, MIMETYPE_ENTRY, SIDE_SECTION_IDS, sideDataName } from './entryNames'
+import { CONNECTION_KEYS_ID, MANIFEST_ENTRY, MIMETYPE_ENTRY, SETTINGS_DATA_ENTRY, SETTINGS_ID, SETTINGS_PREFIX, SIDE_SECTION_IDS, sideDataName } from './entryNames'
 import { checkEntryPath } from './entryPath'
 import { encodeInlayMeta, inlayEntryNames, RtbInlayNameError } from './inlayEntries'
 import { DEFAULT_MANIFEST_CAP, type OmittedEntry } from './manifest'
@@ -436,25 +436,103 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
         throw new RangeError('the input names no source')
     }
     const omitted: OmittedEntry[] = [...(input.omitted ?? []), ...summaryOmitted, ...(late?.omitted ?? []), ...own]
-    const manifest: WrittenManifest = {
-        rtb: 1,
+    return finishWithManifest(zip, {
         writer: input.writer,
         createdAt,
-        snapshot: {
-            id: snapshotId,
-            parent: input.snapshot?.parent ?? null,
-            lineage: (input.snapshot?.lineage ?? []).slice(0, MAX_WRITE_LINEAGE),
-        },
+        snapshotId,
+        snapshot: input.snapshot,
         source,
-        sections: rows,
+        rows,
         omitted,
+        manifestCap: input.manifestCap,
+    })
+}
+
+/** The manifest, the central directory and the end records: the tail every writer of a file shares. */
+async function finishWithManifest(zip: Zip64Writer, parts: {
+    writer: RtbWriteInput['writer']
+    createdAt: number
+    snapshotId: string
+    snapshot: RtbWriteInput['snapshot']
+    source: RtbSource
+    rows: WrittenRow[]
+    omitted: OmittedEntry[]
+    manifestCap: number | undefined
+}): Promise<RtbWriteResult> {
+    const manifest: WrittenManifest = {
+        rtb: 1,
+        writer: parts.writer,
+        createdAt: parts.createdAt,
+        snapshot: {
+            id: parts.snapshotId,
+            parent: parts.snapshot?.parent ?? null,
+            lineage: (parts.snapshot?.lineage ?? []).slice(0, MAX_WRITE_LINEAGE),
+        },
+        source: parts.source,
+        sections: parts.rows,
+        omitted: parts.omitted,
     }
     const manifestBytes = encoder.encode(JSON.stringify(manifest))
-    const cap = input.manifestCap ?? DEFAULT_MANIFEST_CAP
+    const cap = parts.manifestCap ?? DEFAULT_MANIFEST_CAP
     if (manifestBytes.length > cap) {
         throw new RangeError(`the manifest is ${manifestBytes.length} bytes, over the ${cap} byte limit`)
     }
     await zip.addBuffered(MANIFEST_ENTRY, 8, manifestBytes, manifestBytes.length)
     await zip.finish({ firstCentral: MANIFEST_ENTRY, validate: selfCheck })
-    return { manifest, snapshotId, createdAt, manifestBytes: manifestBytes.length, length: zip.position }
+    return { manifest, snapshotId: parts.snapshotId, createdAt: parts.createdAt, manifestBytes: manifestBytes.length, length: zip.position }
+}
+
+export interface SettingsWriteInput {
+    sink: ZipSink
+    writer: RtbWriteInput['writer']
+    /** Milliseconds; read once, at the start of the export. */
+    clock?: () => number
+    keyEnv?: KeyEnv
+    /** The carried settings, one record per key, written in the order given. */
+    settings: AsyncIterable<SideRecord> | Iterable<SideRecord>
+    /** The `side.ui-prefs` records; the row is written only when this is given. */
+    uiPrefs?: AsyncIterable<SideRecord> | Iterable<SideRecord>
+    source: RtbSource
+    bufferLimit?: number
+    manifestCap?: number
+}
+
+async function* asAsync<T>(items: AsyncIterable<T> | Iterable<T>): AsyncGenerator<T> {
+    yield* items
+}
+
+/**
+ * Writes a settings-only file: `mimetype`, `settings/data.jsonl`, the optional `s/ui-prefs/data.jsonl`, then the
+ * manifest. Its section table holds the reserved `settings` row and no store2, assets or inlays row, so a reader
+ * that does not know the row refuses the file as damaged before it writes anything.
+ */
+export async function writeSettingsRtb(input: SettingsWriteInput): Promise<RtbWriteResult> {
+    const createdAt = (input.clock ?? Date.now)()
+    const snapshotId = randomId26(input.keyEnv ?? defaultKeyEnv)
+    const limit = input.bufferLimit ?? DEFAULT_BUFFER_LIMIT
+    const zip = new Zip64Writer({ sink: input.sink, createdAt, bufferLimit: input.bufferLimit })
+    const rows: WrittenRow[] = []
+
+    const mime = encoder.encode(RTB_MIMETYPE)
+    await zip.addBuffered(MIMETYPE_ENTRY, 0, mime, mime.length)
+
+    const settingsBytes = await writeSideSection(zip, SETTINGS_DATA_ENTRY, asAsync(input.settings), [], limit, false) ?? 0
+    rows.push({ id: SETTINGS_ID, v: 1, required: true, prefix: SETTINGS_PREFIX, entries: 1, bytes: settingsBytes })
+
+    if (input.uiPrefs !== undefined) {
+        const name = sideDataName('side.ui-prefs') as string
+        const bytes = await writeSideSection(zip, name, asAsync(input.uiPrefs), [], limit, false) ?? 0
+        rows.push({ id: 'side.ui-prefs', v: 1, required: false, prefix: name.slice(0, name.lastIndexOf('/') + 1), entries: 1, bytes })
+    }
+
+    return finishWithManifest(zip, {
+        writer: input.writer,
+        createdAt,
+        snapshotId,
+        snapshot: undefined,
+        source: input.source,
+        rows,
+        omitted: [],
+        manifestCap: input.manifestCap,
+    })
 }

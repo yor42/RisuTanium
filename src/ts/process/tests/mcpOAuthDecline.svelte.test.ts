@@ -58,6 +58,8 @@ vi.mock('../../stores.svelte', () => {
     }
 })
 
+vi.mock('../mcp/toolApproval', () => ({ TOOL_SUMMARY_LIMIT: 800, askToolApproval: vi.fn(async () => 'once') }))
+
 vi.mock('../../alert', () => ({
     alertError: h.alertError, alertToast: vi.fn(), alertInput: vi.fn(async () => h.typedUrl), alertNormal: h.alertNormal, alertSelect: vi.fn(async () => ''),
     alertConfirm: vi.fn(async (message: string) => {
@@ -361,24 +363,21 @@ describe('a chat-time activity on a live client whose session is lost', () => {
         expect(calls().length).toBe(before)
     })
 
-    test('a non-routed tool call that is declined resolves to the not-found text', async () => {
+    test('a tool call without a routing URL is refused and touches no client', async () => {
         install([['m1']], [{ id: 'm1', name: 'M', description: '', mcp: { url: SERVER } }])
         fullOAuth()
         world.initializeBound = 4
         serverLive()
-        await mcp.callMCPTool('t', {})
+        await mcp.callMCPTool('t', {}, { mcpURL: SERVER })
         serverLosesSession()
-        const dropped = await settle(mcp.callMCPTool('t', {}))
-        expect(dropped.ok).toBe(true)
-
-        const declined = await settle(mcp.callMCPTool('t', {}))
-
-        expect(declined.ok && declined.value).toEqual([{ type: 'text', text: 'Tool t not found on any MCP' }])
-        expect(helperCalls()).toEqual([])
-        expect(h.prompts).toHaveLength(1)
-
         const before = calls().length
-        await mcp.callMCPTool('t', {})
+        const promptsBefore = h.prompts.length
+
+        const refused = await settle(mcp.callMCPTool('t', {}))
+
+        expect(refused.ok && JSON.stringify(refused.value)).toContain('without a server')
+        expect(helperCalls()).toEqual([])
+        expect(h.prompts).toHaveLength(promptsBefore)
         expect(calls().length).toBe(before)
     })
 

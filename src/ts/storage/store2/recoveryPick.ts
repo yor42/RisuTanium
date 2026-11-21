@@ -5,7 +5,7 @@ import { sameBytes, type Store2Backend, type Store2Read, type Store2WriteResult 
 import { classifyCommitRead, nextCommitKey, withLine, withReplaced } from './commitKey'
 import {
     assetRefKey, decodeFrame, defaultKeyEnv, encodeUnit, keyOfTail, newStagedKey, newStagedManifestKey, parseStore2Key,
-    readUnit, refOfFrame, refsOf, REFS_TABLE, splitHashStems, UNIT_TYPE,
+    PARENT_UNIT_TYPES, readUnit, refOfFrame, refsOf, REFS_TABLE, splitHashStems, UNIT_TYPE,
     type AssetList, type CommitKey, type InlayList, type KeyEnv, type Manifest, type Ref, type RefRow, type RefTarget, type SnapshotPointer, type UnitBody, type UnitType,
 } from './format'
 import { INLAY_META_PREFIX, encodeInlayId } from '../../process/files/inlayKeys'
@@ -61,6 +61,7 @@ export const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'fixed.taskPresets[]': UNIT_TYPE.taskPreset,
     'fixed.plugins[]': UNIT_TYPE.plugin,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
+    'fixed.workspaces[]': UNIT_TYPE.workspace,
     'fixed.legacyKeep.unit': UNIT_TYPE.legacyList,
     'entries[].core': UNIT_TYPE.characterCore,
     'entries[].lore': UNIT_TYPE.lore,
@@ -72,10 +73,11 @@ export const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'entries[].chats[].alt[]': UNIT_TYPE.chatAlt,
     'entries[].unit': UNIT_TYPE.module,
     'entries[].ref': UNIT_TYPE.pluginStorageValue,
+    'files[].ref': UNIT_TYPE.workspaceFile,
 }
 
 /** The unit types whose bodies name further units: the walk descends into these and copies everything else as bytes. */
-const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket])
+const PARENT_TYPES: ReadonlySet<UnitType> = PARENT_UNIT_TYPES
 
 /** The `ref`-mode positions the walk must know a type for; a position `REFS_TABLE` gains without a row in `PATH_TYPES` fails here, not silently. */
 export function unmappedRefPaths(): string[] {

@@ -27,11 +27,12 @@ function parentPositions(table: Readonly<Record<string, UnitType>>): [string, Un
 const EXPECTED = parentPositions(TEST_DESCENT)
 
 describe('descent tables', () => {
-    test('guard: the test table holds the four parent positions of a manifest', () => {
+    test('guard: the test table holds the five parent positions of a manifest', () => {
         expect(EXPECTED).toEqual([
             ['fixed.moduleBuckets[]', UNIT_TYPE.moduleBucket],
             ['fixed.moduleIndex', UNIT_TYPE.moduleIndex],
             ['fixed.pluginStorage.refs[]', UNIT_TYPE.pluginStorageBucket],
+            ['fixed.workspaces[]', UNIT_TYPE.workspace],
             ['shards[]', UNIT_TYPE.shard],
         ])
         expect(Object.keys(TEST_DESCENT)).toHaveLength(EXPECTED.length)
@@ -51,7 +52,7 @@ describe('descent tables', () => {
 
     test('guard: the test parent types are the manifest and every type of the test table, and the types that hold refs other than the commit key', () => {
         expect([...TEST_PARENT_TYPES].sort((a, b) => a - b)).toEqual([
-            UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket,
+            UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket, UNIT_TYPE.workspace,
         ].sort((a, b) => a - b))
         const holdingRefs = new Set(REFS_TABLE.map(row => row.type))
         holdingRefs.delete(UNIT_TYPE.commit)

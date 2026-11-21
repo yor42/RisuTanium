@@ -15,6 +15,8 @@ import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
 import { pickedRtbOf, pickedRtbOfSource, runRtbRestore, type RtbRestoreDeps } from 'src/ts/drive/rtbRestoreEntry'
 import { importSourceOfBytes } from 'src/ts/importSource'
 import type { PickedRtb, RestorePlan, RtbPrepareEnd } from 'src/ts/drive/rtbRestorePlan'
+import { verifyRtb, type VerifiedSettings } from 'src/ts/drive/rtb/rtbVerify'
+import { settingsFile } from './rtb/settingsFileKit'
 
 vi.mock('src/ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
@@ -189,5 +191,53 @@ describe('pickedRtbOfSource', () => {
         const described = pickedRtbOfSource({ source, name: 'My Backup.bin', lastModified: 1234 })
         expect(described).toEqual({ name: 'My Backup.bin', size: 11, lastModified: 1234, source })
         expect(described.source).toBe(source)
+    })
+})
+
+describe('a settings-only file (T13)', () => {
+    async function verifiedSettings(): Promise<VerifiedSettings> {
+        const verdict = await verifyRtb((await settingsFile({ settings: [{ key: 'theme', value: 'waifu' }] })).source)
+        if (verdict.kind !== 'settings') {
+            throw new Error('the written file did not verify as settings')
+        }
+        return verdict.verified
+    }
+
+    test('the preparation\'s settings end goes to applySettings only: no install, no finish, the busy entry ends, its outcome is passed on (guard; M6 and a missing branch fail it)', async () => {
+        const settings = await verifiedSettings()
+        const applied: Array<{ settings: VerifiedSettings, run: unknown, busy: boolean }> = []
+        const run = calls({
+            prepare: async () => ({ kind: 'settings', settings, file: { name: 'a.rtb', size: 1, lastModified: 1 } }),
+            applySettings: async (verified, options) => { applied.push({ settings: verified, run: options, busy: isBusy() }); return { outcome: 'committed' } },
+        })
+        expect(await runRtbRestore(picked, run.deps, { firstRun: true, card: true })).toEqual({ outcome: 'committed', cause: null })
+        expect(run.log).toEqual([])
+        expect(applied).toHaveLength(1)
+        expect(applied[0].settings).toBe(settings)
+        // The busy entry is still held while the apply runs, because its save runs under it; the card is not passed on.
+        expect(applied[0].busy).toBe(true)
+        expect(applied[0].run).toEqual({ firstRun: true })
+        expect(isBusy()).toBe(false)
+    })
+
+    test.each(['canceled', 'nothing-replaced', 'unknown'] as const)('an apply that ends %s maps to that outcome with no cause (guard)', async (outcome) => {
+        const settings = await verifiedSettings()
+        const run = calls({
+            prepare: async () => ({ kind: 'settings', settings, file: { name: 'a.rtb', size: 1, lastModified: 1 } }),
+            applySettings: async () => ({ outcome }),
+        })
+        expect(await runRtbRestore(picked, run.deps)).toEqual({ outcome, cause: null })
+        expect(run.log).toEqual([])
+    })
+
+    test('an apply that rejects propagates after the busy entry ended, and nothing was installed (guard)', async () => {
+        const settings = await verifiedSettings()
+        const run = calls({
+            prepare: async () => ({ kind: 'settings', settings, file: { name: 'a.rtb', size: 1, lastModified: 1 } }),
+            applySettings: async () => { throw new Error('apply failed') },
+        })
+        await expect(runRtbRestore(picked, run.deps)).rejects.toThrow('apply failed')
+        expect(isBusy()).toBe(false)
+        expect(run.log).toEqual([])
     })
 })
