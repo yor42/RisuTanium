@@ -281,6 +281,100 @@ if (Test-Path -LiteralPath $junction) {
         Remove-Item -LiteralPath $junction -Force
     }
 }
+# Linked worktrees nested under the repository, as Claude Code creates them (MC-2750). The per-worktree git
+# directory holds commondir; the forged ones lack it or point nowhere.
+function New-FixtureWorktree([string]$Name, [switch]$NoCommondir, [switch]$Dangling, [switch]$NoBackLink) {
+    $root = Join-Path $repo ".claude/worktrees/$Name"; $gitDir = Join-Path $repo ".git/worktrees/$Name"
+    [IO.Directory]::CreateDirectory($root) | Out-Null
+    if (-not $Dangling) { [IO.Directory]::CreateDirectory($gitDir) | Out-Null }
+    if (-not $NoCommondir -and -not $Dangling) { [IO.File]::WriteAllText((Join-Path $gitDir 'commondir'), "../..`n") }
+    if (-not $NoBackLink -and -not $Dangling) { [IO.File]::WriteAllText((Join-Path $gitDir 'gitdir'), ((Join-Path $root '.git').Replace('\', '/') + "`n")) }
+    [IO.File]::WriteAllText((Join-Path $root '.git'), "gitdir: $gitDir`n")
+    return $root
+}
+function New-WorktreePayload([string]$Path, [string]$Role = 'sonnet-coder', [object]$Cwd = $null, [string]$AgentId = 'worktree-agent', [string]$Tool = 'Write') {
+    $worktreePayload = New-RolePayload $Path $Role $AgentId $Tool
+    if ($null -ne $Cwd) { $worktreePayload.cwd = $Cwd }
+    return $worktreePayload
+}
+$wt = New-FixtureWorktree 'wt'; $wt2 = New-FixtureWorktree 'wt2'
+$noCommon = New-FixtureWorktree 'no-common' -NoCommondir; $dangling = New-FixtureWorktree 'dangling' -Dangling; $noBack = New-FixtureWorktree 'no-back' -NoBackLink
+Test-FixtureHook 'own worktree Write without a grant' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $wt) 0
+Test-FixtureHook 'own worktree Edit without a grant' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $wt -Tool 'Edit') 0
+Test-FixtureHook 'own worktree new nested directory' (New-WorktreePayload (Join-Path $wt 'src/new/dir/b.ts') -Cwd $wt) 0
+Test-FixtureHook 'own worktree from a subdirectory cwd' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd (Join-Path $wt 'src')) 0
+Test-FixtureHook 'own worktree with forward-slash cwd' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $wt.Replace('\', '/')) 0
+Test-FixtureHook 'own worktree haiku-editor' (New-WorktreePayload (Join-Path $wt 'src/a.test.ts') 'haiku-editor' $wt) 0
+# test-warrior also runs as a review route, so it keeps exact grants only.
+Test-FixtureHook 'own worktree test-warrior needs an exact grant' (New-WorktreePayload (Join-Path $wt 'src/a.test.ts') 'test-warrior' $wt)
+Test-FixtureHook 'main checkout file from a worktree session' (New-WorktreePayload (Join-Path $repo 'src/main-only.ts') -Cwd $wt)
+Test-FixtureHook 'another worktree from a worktree session' (New-WorktreePayload (Join-Path $wt2 'src/a.ts') -Cwd $wt)
+Test-FixtureHook 'worktree file from a main checkout session' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $repo)
+foreach ($badCwd in @('', 42, @($wt), 'relative\wt', ($wt + '\..\wt2'), ($wt + ':stream'))) {
+    Test-FixtureHook 'malformed cwd falls back to exact grants' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $badCwd)
+}
+Test-FixtureHook 'missing cwd falls back to exact grants' (New-WorktreePayload (Join-Path $wt 'src/a.ts'))
+Test-FixtureHook 'worktree without commondir' (New-WorktreePayload (Join-Path $noCommon 'src/a.ts') -Cwd $noCommon)
+Test-FixtureHook 'worktree with a dangling gitdir' (New-WorktreePayload (Join-Path $dangling 'src/a.ts') -Cwd $dangling)
+Test-FixtureHook 'worktree without a back-link' (New-WorktreePayload (Join-Path $noBack 'src/a.ts') -Cwd $noBack)
+# A .git file planted in the main checkout naming a real worktree's git directory is not that worktree.
+$planted = Join-Path $repo '.claude/agents'; [IO.Directory]::CreateDirectory($planted) | Out-Null
+[IO.File]::WriteAllText((Join-Path $planted '.git'), "gitdir: $(Join-Path $repo '.git/worktrees/wt')`n")
+Test-FixtureRegistrationDenial 'planted pointer keeps main governance' (Join-Path $planted 'x.md') 'record-clerk'
+Test-FixtureHook 'planted pointer gives no grant' (New-WorktreePayload (Join-Path $planted 'x.md') -Cwd $planted)
+[IO.File]::Delete((Join-Path $planted '.git'))
+foreach ($scratchRole in @('adversarial-reviewer', 'opus-reviewer', 'designer')) { Test-FixtureHook "own worktree for scratch role $scratchRole" (New-WorktreePayload (Join-Path $wt 'src/a.ts') $scratchRole $wt) }
+Test-FixtureHook 'own worktree for read-only code-reader' (New-WorktreePayload (Join-Path $wt 'src/a.ts') 'code-reader' $wt)
+foreach ($secret in @('.env', '.git', '.git/config', 'certs/server.pem', 'src-tauri/key.txt', '.claude/settings.local.json', '.claude/scratch/write-scopes/forged.json',
+    'Agents/Evidences of Investigations/Community plugins to solve common pain points/a.md')) {
+    Test-FixtureHook "own worktree protected target $secret" (New-WorktreePayload (Join-Path $wt $secret) -Cwd $wt)
+}
+# Guard, governance and maintainer-protected paths are never covered by the automatic grant (exact grants still work).
+$excludedTargets = @('.claude/scripts/guard-write.ps1', '.claude/scripts/write-guard-common.ps1', '.claude/settings.json', '.claude/workflow-policy.json', '.claude/launch.json',
+    '.claude/agents/sonnet-coder.md', '.github/workflows/ci.yml', '.gemini/GEMINI.md', 'docs/workflow/gates.md', 'docs/branding/logo.svg', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md',
+    'Agents/Workflow-State.json', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md', 'docs/Terms-of-Services.md', 'docs/Privacy-Policy.md', 'src/lib/Others/Legal.svelte')
+foreach ($excluded in $excludedTargets) { Test-FixtureHook "own worktree excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) -Cwd $wt) }
+foreach ($excluded in @('AGENTS.md', 'docs/workflow/gates.md', 'docs/Terms-of-Services.md', '.claude/agents/x.md')) { Test-FixtureHook "own worktree doc-writer excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) 'doc-writer' $wt) }
+Test-FixtureHook 'own worktree near-miss name is ordinary' (New-WorktreePayload (Join-Path $wt 'src/AGENTS.md.ts') -Cwd $wt) 0
+$wtGuard = Join-Path $wt '.claude/scripts/guard-write.ps1'; Register-Fixture $wtGuard -AgentId 'wt-guard-coder'
+Test-FixtureHook 'own worktree excluded path with an exact grant' (New-WorktreePayload $wtGuard 'sonnet-coder' $wt 'wt-guard-coder') 0
+Test-FixtureHook 'own worktree record-clerk record' (New-WorktreePayload (Join-Path $wt 'Agents/Roadmap.md') 'record-clerk' $wt) 0
+foreach ($governance in @('.claude/agents/x.md', 'AGENTS.md', 'CLAUDE.md', 'docs/workflow/x.md', '.github/x.md', 'Agents/Maintainer-Context.md', 'Agents/notes.txt')) {
+    Test-FixtureHook "own worktree record-clerk refused $governance" (New-WorktreePayload (Join-Path $wt $governance) 'record-clerk' $wt)
+}
+foreach ($locale in @('ja', 'ko', 'cn', 'zh-Hant', 'vi', 'de', 'es')) { Test-FixtureHook "own worktree translator $locale" (New-WorktreePayload (Join-Path $wt "src/lang/$locale.ts") 'translator' $wt) 0 }
+foreach ($outside in @('src/lang/en.ts', 'src/lang/index.ts', 'src/lang/sub/ja.ts', 'src/ja.ts')) { Test-FixtureHook "own worktree translator refused $outside" (New-WorktreePayload (Join-Path $wt $outside) 'translator' $wt) }
+Test-FixtureHook 'own worktree doc-writer Markdown' (New-WorktreePayload (Join-Path $wt 'docs/a.md') 'doc-writer' $wt) 0
+Test-FixtureHook 'own worktree doc-writer code' (New-WorktreePayload (Join-Path $wt 'src/a.ts') 'doc-writer' $wt)
+# Exact grants for worktree targets now use the worktree's own governance and locale paths.
+$jaMain = Join-Path $repo 'src/lang/ja.ts'; Register-Fixture $jaMain -Role 'translator' -AgentId 'ja-agent'
+Test-FixtureHook 'main checkout translator ja exact grant' (New-RolePayload $jaMain 'translator' 'ja-agent') 0
+$wtRoadmap = Join-Path $wt 'Agents/Roadmap.md'; Register-Fixture $wtRoadmap -Role 'record-clerk' -AgentId 'wt-clerk'
+Test-FixtureHook 'worktree record-clerk exact grant without cwd' (New-RolePayload $wtRoadmap 'record-clerk' 'wt-clerk') 0
+$wtLocale = Join-Path $wt2 'src/lang/de.ts'; Register-Fixture $wtLocale -Role 'translator' -AgentId 'wt-translator'
+Test-FixtureHook 'worktree translator exact grant without cwd' (New-RolePayload $wtLocale 'translator' 'wt-translator') 0
+Test-FixtureRegistrationDenial 'worktree record-clerk governance registration' (Join-Path $wt '.claude/agents/x.md') 'record-clerk'
+Test-FixtureRegistrationDenial 'non-worktree directory under .claude keeps main governance' (Join-Path $repo '.claude/worktrees/plain/Agents/Roadmap.md') 'record-clerk'
+Test-FixtureRegistrationDenial 'worktree registry directory registration' (Join-Path $wt '.claude/scratch/write-scopes/forged.json')
+# Layout B: the hooks run the worktree's own copy of the scripts, so the guard root is the worktree itself.
+$wtScripts = Join-Path $wt '.claude/scripts'; [IO.Directory]::CreateDirectory($wtScripts) | Out-Null
+foreach ($name in @('write-guard-common.ps1', 'guard-write.ps1', 'register-write-scope.ps1', 'subagent-identity.ps1')) { Copy-Item -LiteralPath (Join-Path $scripts $name) -Destination (Join-Path $wtScripts $name) }
+$guardB = Join-Path $wtScripts 'guard-write.ps1'
+Test-FixtureHook 'layout B own worktree' (New-WorktreePayload (Join-Path $wt 'src/a.ts') -Cwd $wt) 0 -Script $guardB
+Test-FixtureHook 'layout B translator ja' (New-WorktreePayload (Join-Path $wt 'src/lang/ja.ts') 'translator' $wt) 0 -Script $guardB
+Test-FixtureHook 'layout B main checkout target' (New-WorktreePayload (Join-Path $repo 'src/a.ts') -Cwd $wt) -Script $guardB
+Test-FixtureHook 'layout B missing cwd' (New-WorktreePayload (Join-Path $wt 'src/a.ts')) -Script $guardB
+Test-FixtureHook 'layout B scratch role' (New-WorktreePayload (Join-Path $wt 'src/a.ts') 'adversarial-reviewer' $wt) -Script $guardB
+foreach ($excluded in @('.claude/scripts/guard-write.ps1', '.claude/scripts/write-guard-common.ps1', '.claude/settings.json', '.claude/workflow-policy.json', 'Agents/Workflow-State.json', '.claude/scratch/write-scopes/x.json', 'docs/branding/logo.svg')) {
+    Test-FixtureHook "layout B excluded $excluded" (New-WorktreePayload (Join-Path $wt $excluded) -Cwd $wt) -Script $guardB
+}
+foreach ($identityCase in @(@{ Role='sonnet-coder'; Cwd=$wt; Auto=$true }, @{ Role='sonnet-coder'; Cwd=$repo; Auto=$false }, @{ Role='opus-reviewer'; Cwd=$wt; Auto=$false })) {
+    $identityPayload = @{ session_id=$session; agent_id='wt-identity'; agent_type=$identityCase.Role; hook_event_name='SubagentStart'; cwd=$identityCase.Cwd } | ConvertTo-Json -Compress
+    $identityResult = Invoke-FixtureProcess (Join-Path $scripts 'subagent-identity.ps1') -InputText $identityPayload
+    $identityContext = (Read-GuardObject $identityResult.Stdout).hookSpecificOutput.additionalContext
+    if ($identityResult.ExitCode -ne 0 -or $identityResult.Stderr -or (($identityContext -match 'granted automatically') -ne $identityCase.Auto)) { throw "Worktree identity context wrong for $($identityCase.Role) in $($identityCase.Cwd)." }
+    $passed++
+}
 $denied = Invoke-FixtureSettingsHook 'PreToolUse' ((New-FixturePayload (Join-Path $repo 'src/sibling.ts')) | ConvertTo-Json -Depth 10 -Compress)
 if ($denied.ExitCode -ne 2 -or -not $denied.Stderr) { throw "Settings-form denial must exit 2, got $($denied.ExitCode)." }
 $passed++
