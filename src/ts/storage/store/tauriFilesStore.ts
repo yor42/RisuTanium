@@ -54,7 +54,7 @@ function isFrozenSafeKey(key: string): boolean {
  * two stores that offer `openWriter` (the Node store is the other), a write that
  * arrives in pieces over the chunk commands, so the caller never holds the whole file.
  * `writeBlob` is built on that writer: it reads the Blob one slice at a time for an
- * inlay body key or a key under `assets/`, and keeps no Blob (there is no `readBlob`).
+ * inlay body key or a key under `assets/`, and keeps no Blob.
  *
  * It also offers `pageGate` (`tauriGateTransport.ts`): registration with the native
  * page-generation gate and the generation-checked write and removal of the store2

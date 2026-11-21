@@ -290,10 +290,7 @@ vi.mock('src/ts/drive/backupUpstreamSizes', async (importOriginal) => {
     const real = await importOriginal<typeof import('src/ts/drive/backupUpstreamSizes')>()
     return {
         ...real,
-        findOversizeAssets: vi.fn(async (query: Parameters<typeof real.findOversizeAssets>[0]) => {
-            query.onProgress?.(1, 1)
-            return world.upstreamOversize
-        }),
+        findOversizeAssets: vi.fn(async () => world.upstreamOversize),
     }
 })
 

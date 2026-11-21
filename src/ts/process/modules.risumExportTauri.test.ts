@@ -311,7 +311,6 @@ vi.mock('src/ts/globalApi.svelte', async (importOriginal) => ({
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: vi.fn(async () => ({
         read: vi.fn(async () => ({ bytes: null })),
-        readValue: vi.fn(async () => null),
     })),
     getAppStoreKind: vi.fn(async () => 'tauri'),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
@@ -422,7 +421,7 @@ beforeEach(() => {
     world.log = []
     world.offered = []
     world.cardAtSave = []
-    noteSelectedStore('tauri', { read: vi.fn(), readValue: vi.fn() } as unknown as ByteStore)
+    noteSelectedStore('tauri', { read: vi.fn() } as unknown as ByteStore)
     alertStore.set({ type: 'none', msg: '' })
     resetTaskHostForTests()
     shown = []

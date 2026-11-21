@@ -12,9 +12,6 @@ export type StoredSize = number | null | undefined
 /** A chunk of keys is requested at a time, so a cancel stops between chunks. */
 export const SIZE_CHUNK_KEYS = 8
 
-/** On the web each size is a whole `readValue`, so one read runs at a time. */
-export const WEB_SIZE_CONCURRENCY = 1
-
 /** The Tauri and Node stores answer from metadata or a first piece. */
 export const NATIVE_SIZE_CONCURRENCY = 8
 
@@ -39,14 +36,10 @@ export interface AssetSizeJob {
     ensure(paths: readonly string[], signal: AbortSignal, onSettled?: (path: string, size: number | null) => void): Promise<boolean>
 }
 
-function concurrencyOf(source: ExportAssetSource | null): number {
-    return source?.kind === 'web' ? WEB_SIZE_CONCURRENCY : NATIVE_SIZE_CONCURRENCY
-}
-
 export function createAssetSizeJob(options: AssetSizeJobOptions): AssetSizeJob {
     const source = options.source
     const sizeOf = options.sizeOf ?? assetStoredSize
-    const limit = concurrencyOf(source)
+    const limit = NATIVE_SIZE_CONCURRENCY
     const cache = new Map<string, number | null>()
     const inFlight = new Map<string, Promise<void>>()
     const waiting: (() => void)[] = []

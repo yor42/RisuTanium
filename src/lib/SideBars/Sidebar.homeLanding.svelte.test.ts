@@ -2,10 +2,9 @@
 
 /**
  * The three Home buttons of `Sidebar.svelte` (the rail's Home button, and the Home entry of the
- * hamburger menu at the top and at the bottom) return Home to its landing view, so a library left
- * open does not hide the landing the button promises. The view is reset after the selection writes,
- * never before: the order of the `selectedCharID`, `PlaygroundStore` and `OpenRealmStore` writes is
- * unchanged, and the Home view still reads `library` while each of them is written.
+ * hamburger menu at the top and at the bottom) land on Home's landing and drop a pending Studio-return
+ * focus request, so a request left over cannot reach a later reveal. The order of the `selectedCharID`,
+ * `PlaygroundStore` and `OpenRealmStore` writes is unchanged.
  *
  * Mounts the REAL `Sidebar.svelte`; the module mocks follow `Sidebar.closeButton.svelte.test.ts`.
  */
@@ -115,7 +114,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
 
 import { DBState, OpenRealmStore, PlaygroundStore, selectedCharID } from '../../ts/stores.svelte'
 import { language } from '../../lang'
-import { homeView, openHomeLibrary, showHomeLanding } from '../UI/Home/homeView.svelte'
+import { requestHomeReturnFocus, showHomeLanding, takeHomeReturnFocus } from '../UI/Home/homeView.svelte'
 import Sidebar from './Sidebar.svelte'
 import { resetRailMemory } from './sidebarDnd.testKit'
 
@@ -149,7 +148,7 @@ function mountSidebar(dbExtra: Record<string, unknown>): HTMLElement {
     return target
 }
 
-/** Sets the three stores to values the Home button changes, then logs each write with the Home view at that moment. */
+/** Sets the three stores to values the Home button changes, then logs each write. */
 function armLog(): void {
     selectedCharID.set(3)
     PlaygroundStore.set(1)
@@ -162,7 +161,7 @@ function armLog(): void {
                     first = false
                     return
                 }
-                writes.push(`${name}=${String(value)} view=${homeView.view}`)
+                writes.push(`${name}=${String(value)}`)
             }),
         )
     }
@@ -172,9 +171,9 @@ function armLog(): void {
 }
 
 const EXPECTED_WRITES = [
-    'selectedCharID=-1 view=library',
-    'PlaygroundStore=0 view=library',
-    'OpenRealmStore=false view=library',
+    'selectedCharID=-1',
+    'PlaygroundStore=0',
+    'OpenRealmStore=false',
 ]
 
 beforeEach(() => {
@@ -196,16 +195,16 @@ afterEach(async () => {
     showHomeLanding()
 })
 
-describe('Sidebar Home buttons return Home to the landing', () => {
+describe('Sidebar Home buttons land on Home and drop a pending return focus', () => {
     test('(F) the rail Home button, after the selection writes', () => {
         const target = mountSidebar({ menuSideBar: true })
         armLog()
-        openHomeLibrary()
+        requestHomeReturnFocus('pending')
         const home = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.includes(language.home))!
         home.click()
         flushSync()
         expect(writes).toEqual(EXPECTED_WRITES)
-        expect(homeView.view).toBe('landing')
+        expect(takeHomeReturnFocus()).toBeNull()
     })
 
     test('(F) the hamburger menu Home entry at the top, after the selection writes', () => {
@@ -214,12 +213,12 @@ describe('Sidebar Home buttons return Home to the landing', () => {
         toggle.click()
         flushSync()
         armLog()
-        openHomeLibrary()
+        requestHomeReturnFocus('pending')
         const entries = target.querySelectorAll<HTMLButtonElement>('div.absolute.w-20 button.ico')
         entries[1].click()
         flushSync()
         expect(writes).toEqual(EXPECTED_WRITES)
-        expect(homeView.view).toBe('landing')
+        expect(takeHomeReturnFocus()).toBeNull()
     })
 
     test('(F) the hamburger menu Home entry at the bottom, after the selection writes', () => {
@@ -228,11 +227,11 @@ describe('Sidebar Home buttons return Home to the landing', () => {
         toggle.click()
         flushSync()
         armLog()
-        openHomeLibrary()
+        requestHomeReturnFocus('pending')
         const entries = target.querySelectorAll<HTMLButtonElement>('div.absolute.w-20 button.ico')
         entries[1].click()
         flushSync()
         expect(writes).toEqual(EXPECTED_WRITES)
-        expect(homeView.view).toBe('landing')
+        expect(takeHomeReturnFocus()).toBeNull()
     })
 })

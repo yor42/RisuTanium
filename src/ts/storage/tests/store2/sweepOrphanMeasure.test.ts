@@ -398,19 +398,6 @@ describe('the stored size comes from the first source the store offers', () => {
         expect(report.notInHead?.bytes).toBe(3 + 4 + 8)
     })
 
-    test('reproducer: readValue gives a Blob its size without loading the bytes through read', async () => {
-        const world = await memberWorld()
-        world.store.files.delete('assets/orphan.png')
-        world.store.blobs.set('assets/orphan.png', new Blob([new Uint8Array(11)]))
-        world.store.readValue = async key => world.store.blobs.get(key) ?? world.store.files.get(key) ?? null
-
-        const report = done(await measureAssetOrphans(world.env))
-
-        expect(report.bytesSource).toBe('readValue')
-        expect(report.notInHead?.bytes).toBe(3 + 4 + 11)
-        expect(world.store.reads).toEqual([])
-    })
-
     test('guard: with no optional member the last resort reads the bytes, and a name gone since the listing is vanished', async () => {
         const world = await memberWorld()
         const list = world.store.list

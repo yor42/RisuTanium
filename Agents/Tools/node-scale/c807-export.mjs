@@ -112,7 +112,6 @@ export function langTemplatePattern(src, key) {
 // interpolated parts match any text. The asset loop's line may carry the skipped-assets suffix on a second line.
 const EXPORT_PROGRESS_SOURCES = [
   { key: 'backupSaveWait', note: 'writeLocalBackup, first wait' },
-  { key: 'backupCheckingAssetSizes', note: 'upstreamOversizeNames onProgress' },
   { key: 'backupSaveDownloading', note: 'serverExportOpener onProgress' },
   { key: 'backupSaveProgress', suffix: '(?: .*)?', note: 'asset loop' },
   { key: 'backupSaveInlays', note: 'writeInlaysToBackup onProgress' },

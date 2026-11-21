@@ -1,6 +1,6 @@
 // Deterministic synthetic upstream-compatible .bin generator (MC-471). Plain Node ESM, no src/ imports.
 //
-//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units|home-1000-shelf|home-1000-noshelf|home-500-shelf [--dry-run] [--p3-modules]
+//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units|home-1000-shelf|home-1000-noshelf|home-500-shelf [--dry-run] [--p3-modules] [--ltm-bench [short|long]]
 //
 // Writes <out> (the .bin) and <out>.manifest.json (the expectations synth-bin-verify.mjs compares an exported .bin against).
 //
@@ -32,6 +32,15 @@
 // enabledModules still names the first three regular modules, and every other module is unreferenced, so boot 2 can mint
 // stubs. The root archiveCharacters is never written: bootDispatch sets it true at the first boot where it is absent.
 // The extra modules take no assets and no icon and draw ids from their own sequence, so the asset plan is unchanged.
+//
+// --ltm-bench [short|long] (any scale; for the ChroMemory device rows, spec 9) appends one character, "LTM Bench", after the
+// regular characters, with two chats of 2000 and 5000 messages, and sets root maxContext (and each preset's) to 32768, S0's
+// gate context. The message lengths, in characters, follow spec 9: short is median 220, p90 900, max 4000; long is median 1000,
+// p90 3000, max 8000 (one message per chat is exactly the maximum). 40% of the messages are Hangul text; every word comes from a
+// seeded synthetic vocabulary, so no real text is in the file. Without the flag the .bin and the manifest are byte-identical to
+// what this file wrote before the flag existed. The manifest records the flag as ltmBench. A .bin cannot carry ltmEngine (the
+// importer drops the file's own settings keys), so the engine is chosen in Settings after the import. The device scale's 500
+// characters and its mock endpoint stay as they are.
 //
 // Usage (the round trip on a store2 page):
 //   1. Generate: --scale small for a quick pass, --scale mid for the MC-471 totals. --dry-run prints the plan and writes nothing.
@@ -243,11 +252,17 @@ function realPathOfExisting(target) {
 }
 
 function parseArguments(argv) {
-  const opt = { out: '', seed: 1337, scale: '', dryRun: false, p3Modules: false }
+  const opt = { out: '', seed: 1337, scale: '', dryRun: false, p3Modules: false, ltmBench: null }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--dry-run') { opt.dryRun = true; continue }
     if (arg === '--p3-modules') { opt.p3Modules = true; continue }
+    if (arg === '--ltm-bench') {
+      // the mode is optional: short unless the next argument names one
+      const next = argv[i + 1]
+      if (LTM_BENCH_MODES.includes(next)) { opt.ltmBench = next; i++ } else opt.ltmBench = 'short'
+      continue
+    }
     const value = argv[i + 1]
     if (value === undefined) throw new Error(`${arg} needs a value`)
     i++
@@ -373,9 +388,73 @@ function produceAsset(spec, emit) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// --ltm-bench: one character with two long chats, all text from a seeded synthetic vocabulary
+
+const LTM_BENCH_MODES = ['short', 'long']
+const LTM_BENCH_CHAT_MESSAGES = [2000, 5000]
+const LTM_BENCH_MAX_CONTEXT = 32768
+const LTM_BENCH_HANGUL_SHARE = 0.4
+// Message length in characters: the median, the 90th percentile and the maximum of spec 9.
+const LTM_BENCH_LENGTHS = { short: { median: 220, p90: 900, max: 4000 }, long: { median: 1000, p90: 3000, max: 8000 } }
+const LTM_BENCH_MIN_LENGTH = 12
+
+/** Length at quantile `u`, log-linear between (0, minimum), (0.5, median), (0.9, p90) and (1, max). */
+function ltmBenchLength(u, lengths) {
+  const points = [[0, LTM_BENCH_MIN_LENGTH], [0.5, lengths.median], [0.9, lengths.p90], [1, lengths.max]]
+  let upper = 1
+  while (upper < points.length - 1 && points[upper][0] < u) upper++
+  const [lowU, lowLength] = points[upper - 1]
+  const [highU, highLength] = points[upper]
+  return Math.max(LTM_BENCH_MIN_LENGTH, Math.min(lengths.max, Math.round(lowLength * (highLength / lowLength) ** ((u - lowU) / (highU - lowU)))))
+}
+
+/** The messages of one bench chat: roles alternate (char first), 40% of the messages are Hangul, one is exactly the maximum length. */
+function ltmBenchMessages(seed, mode, chat, chatIndex) {
+  const rnd = mulberry32((seed ^ 0x2B2B2B2B) + chatIndex * 7919)
+  const lengths = LTM_BENCH_LENGTHS[mode]
+  const syllables = ['ka', 'lo', 'mi', 'ren', 'tha', 'vel', 'dor', 'an', 'is', 'ul', 'ex', 'or', 'qui', 'na', 'be', 'sha']
+  const words = Array.from({ length: 3000 }, () => {
+    let word = ''
+    for (let n = 1 + Math.floor(rnd() * 3); n > 0; n--) word += syllables[Math.floor(rnd() * syllables.length)]
+    return word
+  })
+  const hangulWords = Array.from({ length: 800 }, () => {
+    let word = ''
+    for (let n = 1 + Math.floor(rnd() * 3); n > 0; n--) word += String.fromCharCode(0xAC00 + Math.floor(rnd() * 11172))
+    return word
+  })
+  const text = (length, hangul) => {
+    const list = hangul ? hangulWords : words
+    const parts = []
+    let size = 0
+    for (let sentence = 0; size < length; sentence++) {
+      const wordCount = 6 + Math.floor(rnd() * 9)
+      for (let w = 0; w < wordCount && size < length; w++) {
+        const word = list[Math.floor(rnd() * list.length)] + (w === wordCount - 1 ? '.' : '')
+        parts.push(word)
+        size += word.length + 1
+      }
+    }
+    return parts.join(' ').slice(0, length)
+  }
+  const count = chat.messages
+  const hangulFlags = Array.from({ length: count }, (_, m) => m < Math.round(count * LTM_BENCH_HANGUL_SHARE))
+  for (let k = count - 1; k > 0; k--) {
+    const j = Math.floor(rnd() * (k + 1))
+    ;[hangulFlags[k], hangulFlags[j]] = [hangulFlags[j], hangulFlags[k]]
+  }
+  return Array.from({ length: count }, (_, m) => {
+    const length = m === 7 ? lengths.max : ltmBenchLength(rnd(), lengths)
+    const entry = { role: m % 2 === 0 ? 'char' : 'user', data: text(length, hangulFlags[m]), time: T + m * 60000 }
+    if (m % 5 === 0) entry.chatId = `${chat.id}-m${m}`
+    return entry
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // plan: sizes, kinds and references, all from one seeded sequence; no bytes are produced here
 
-function buildPlan(seed, cfg, p3Modules) {
+function buildPlan(seed, cfg, p3Modules, ltmBenchMode) {
   const rnd = mulberry32(seed)
   const { hex, uuid, gauss } = makeRandomHelpers(rnd)
   const assets = []
@@ -578,7 +657,13 @@ function buildPlan(seed, cfg, p3Modules) {
   }))
   const pluginIndexId = uuid()
   const loadouts = Array.from({ length: cfg.loadouts }, () => ({ id: uuid() }))
-  return { assets, characters, modules, misc, groups, pluginValues, pluginIndexId, loadouts, p3 }
+  // The bench character draws from a sequence of its own, so every other draw is the same with or without the flag.
+  let ltmBench = null
+  if (ltmBenchMode) {
+    const benchUuid = makeRandomHelpers(mulberry32((seed ^ 0x1B1B1B1B) >>> 0)).uuid
+    ltmBench = { mode: ltmBenchMode, chaId: benchUuid(), chats: LTM_BENCH_CHAT_MESSAGES.map((messages) => ({ id: benchUuid(), messages })) }
+  }
+  return { assets, characters, modules, misc, groups, pluginValues, pluginIndexId, loadouts, p3, ltmBench }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -745,6 +830,21 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       chats: [{ id: `${full.chaId}-stub-chat`, message: [{ time: T, data: '', role: 'char' }], note: '', name: '', localLore: [] }],
     }
   })
+  // --ltm-bench: the bench character follows the regular characters in list order, so the whole-tree hashes see it in place.
+  if (plan.ltmBench) {
+    const bench = plan.ltmBench
+    const chats = bench.chats.map((chat, c) => ({ id: chat.id, name: `Chat ${c + 1}`, note: '', localLore: [], message: ltmBenchMessages(seed, bench.mode, chat, c) }))
+    const benchCharacter = {
+      type: 'character', chaId: bench.chaId, name: 'LTM Bench', chatPage: 0, firstMsgIndex: -1,
+      ...(cfg.storySlots === undefined ? { lastInteraction: T + (plan.characters.length + plan.groups.length) * 1000 } : {}),
+      desc: 'Synthetic character for the ChroMemory device rows.', firstMessage: 'Hello.', notes: '', alternateGreetings: [],
+      image: '', additionalAssets: [], emotionImages: [], chats,
+      customscript: [], globalLore: [], triggerscript: [], viewScreen: 'none', bias: [], characterVersion: '', creator: '', utilityBot: false,
+      scenario: '', systemPrompt: '', tags: [],
+    }
+    if (withProjections) addCharacterProjections(benchCharacter, chats)
+    characters.push(benchCharacter)
+  }
   const groups = plan.groups.map((planned) => {
     const memberIds = planned.members.map((index) => plan.characters[index].chaId)
     const chats = planned.chats.map((chat, c) => buildChat(1000 + planned.index + c, chat, c, memberIds))
@@ -788,7 +888,9 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   const personas = misc.personas.map((p, i) => (i === 0
     ? { id: p.id, name: SETTINGS_VALUES.username, personaPrompt: SETTINGS_VALUES.personaPrompt, icon: refOf(misc.userIcon), note: SETTINGS_VALUES.userNote }
     : { id: p.id, name: `Persona ${i}`, personaPrompt: text(300), icon: refOf(p.icon), note: '' }))
-  const botPresets = misc.presets.map((p, i) => ({ id: p.id, name: `Synthetic Preset ${i}`, temperature: 80, maxContext: 4000, maxResponse: 300, image: p.image, localNetworkMode: false, localNetworkTimeoutSec: 600, ...pick(cfg.rootSettings, cfg.presetSettings) }))
+  // setPreset copies the preset's maxContext over the root's, so the bench raises both.
+  const presetMaxContext = plan.ltmBench ? LTM_BENCH_MAX_CONTEXT : 4000
+  const botPresets = misc.presets.map((p, i) => ({ id: p.id, name: `Synthetic Preset ${i}`, temperature: 80, maxContext: presetMaxContext, maxResponse: 300, image: p.image, localNetworkMode: false, localNetworkTimeoutSec: 600, ...pick(cfg.rootSettings, cfg.presetSettings) }))
   // The first untrashed characters of the list move into folders; every other untrashed character or group stays in the
   // order by id. A trashed character is in no order entry (checkCharOrder leaves it out).
   const everyone = [...characters, ...groups]
@@ -825,7 +927,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   const database = {
     formatversion: 5, characters: everyone, characterOrder, personas, modules, botPresets, loadouts, statics, pluginCustomStorage,
     userIcon: refOf(misc.userIcon), customBackground: refOf(misc.customBackground),
-    ...SETTINGS_VALUES, ...cfg.rootSettings, enabledModules: modules.slice(0, 3).map((module) => module.id),
+    ...SETTINGS_VALUES, ...cfg.rootSettings, ...(plan.ltmBench ? { maxContext: LTM_BENCH_MAX_CONTEXT } : {}), enabledModules: modules.slice(0, 3).map((module) => module.id),
   }
   // archiveCharacters stays unset in every output: bootDispatch sets it true at the first boot where it is absent.
   if (plan.p3) database.moduleIntergration = plan.p3.integrationNamespace
@@ -889,9 +991,9 @@ function summarize(plan, extra) {
   }
   const assetBytes = plan.assets.reduce((sum, a) => sum + a.size, 0)
   return {
-    characters: plan.characters.length + plan.groups.length, groups: plan.groups.length, stubs: plan.characters.filter((c) => c.stub).length,
+    characters: plan.characters.length + plan.groups.length + (plan.ltmBench ? 1 : 0), groups: plan.groups.length, stubs: plan.characters.filter((c) => c.stub).length,
     trashed: plan.characters.filter((c) => c.trashed).length,
-    chats: plan.characters.reduce((sum, c) => sum + c.chats.length, 0) + plan.groups.reduce((sum, g) => sum + g.chats.length, 0),
+    chats: plan.characters.reduce((sum, c) => sum + c.chats.length, 0) + plan.groups.reduce((sum, g) => sum + g.chats.length, 0) + (plan.ltmBench ? plan.ltmBench.chats.length : 0),
     modules: plan.modules.length, pluginValues: plan.pluginValues.length, loadouts: plan.loadouts.length,
     pluginMapped: { small: plan.pluginValues.filter((p) => p.mode === 'small').length, large: plan.pluginValues.filter((p) => p.mode === 'large').length },
     assets: plan.assets.length, assetBytes, assetGiB: +(assetBytes / (1024 * MIB)).toFixed(3),
@@ -908,7 +1010,7 @@ function encodeDatabaseEntry(packr, database) {
 function main() {
   const opt = parseArguments(process.argv.slice(2))
   const cfg = SCALES[opt.scale]
-  const plan = buildPlan(opt.seed, cfg, opt.p3Modules)
+  const plan = buildPlan(opt.seed, cfg, opt.p3Modules, opt.ltmBench)
   const packr = new Packr({ useRecords: false })
 
   if (opt.dryRun) {
@@ -989,6 +1091,7 @@ function main() {
     assets: Object.fromEntries(plan.assets.map((a) => [a.name, { sha256: a.sha256, bytes: a.size, kind: a.kind }])),
     characters: projections.characters, chats: projections.chats, modules: projections.modules, parts: projections.parts,
     ...(projections.p3 ? { p3Modules: projections.p3 } : {}),
+    ...(plan.ltmBench ? { ltmBench: { mode: plan.ltmBench.mode, chaId: plan.ltmBench.chaId, chatMessages: plan.ltmBench.chats.map((c) => c.messages), maxContext: LTM_BENCH_MAX_CONTEXT } } : {}),
   }
   fs.writeFileSync(opt.out + '.manifest.json', JSON.stringify(manifest))
   console.log(JSON.stringify({ out: opt.out, manifest: opt.out + '.manifest.json', fileBytes, entries: entryCount, ...manifest.counts }, null, 2))

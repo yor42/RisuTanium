@@ -95,7 +95,7 @@ vi.mock(import('src/lib/Utility/utilityGate'), async () => {
 })
 
 vi.mock(import('src/lib/UI/Home/homeView.svelte'), () => ({
-    homeView: { view: 'landing' },
+    homeView: { libraryEngaged: false, libraryRequest: 0 },
 }) as unknown as typeof import('src/lib/UI/Home/homeView.svelte'))
 
 vi.mock(import('src/ts/chatShell/chatOpen'), () => ({
@@ -219,7 +219,7 @@ beforeEach(() => {
     studioOpen.set(false)
     utilityOpen.set(false)
     OpenRealmStore.set(false)
-    homeView.view = 'landing'
+    homeView.libraryEngaged = false
     selectedCharID.set(-1)
     installCharacters()
 })
@@ -272,7 +272,7 @@ describe('the target a tap opens', () => {
         expect(openChatMock).not.toHaveBeenCalled()
     })
 
-    test('MC-1376: a warm tap with Settings, Studio, Utility, the Realm and the library open closes none of them', async () => {
+    test('MC-1376: a warm tap with Settings, Studio, Utility and the Realm open closes none of them', async () => {
         installLaunchTarget(hostWith(vi.fn()))
         answer(null)
         await startLaunchNavigation()
@@ -280,7 +280,6 @@ describe('the target a tap opens', () => {
         studioOpen.set(true)
         utilityOpen.set(true)
         OpenRealmStore.set(true)
-        homeView.view = 'library'
 
         answer({ chaId: 'alpha', chatId: 'alpha-chat' })
         await vi.waitFor(() => expect(openChatMock).toHaveBeenCalledTimes(1))
@@ -290,7 +289,6 @@ describe('the target a tap opens', () => {
         expect(get(studioOpen)).toBe(true)
         expect(get(utilityOpen)).toBe(true)
         expect(get(OpenRealmStore)).toBe(true)
-        expect(homeView.view).toBe('library')
     })
 })
 
