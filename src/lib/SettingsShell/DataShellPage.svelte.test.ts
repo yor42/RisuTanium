@@ -20,6 +20,7 @@ const engines = vi.hoisted(() => ({
     saveBin: vi.fn(),
     savePartial: vi.fn(),
     startRtb: vi.fn(),
+    startSettingsRtb: vi.fn(),
     liveConfirm: vi.fn(),
     restoreFile: vi.fn(),
     restoreInternal: vi.fn(),
@@ -59,6 +60,7 @@ vi.mock('src/ts/drive/backuplocal', () => ({
 }))
 vi.mock('src/ts/drive/rtbExportEntry', () => ({
     startRtbExport: engines.startRtb,
+    startSettingsRtbExport: engines.startSettingsRtb,
     liveRtbEntryDeps: () => ({ confirm: engines.liveConfirm }),
 }))
 vi.mock('src/ts/drive/settingsRestore', () => ({
@@ -121,6 +123,7 @@ beforeEach(() => {
     engines.saveBin.mockResolvedValue({ status: 'saved', notices: [] })
     engines.savePartial.mockResolvedValue({ status: 'saved', notices: [] })
     engines.startRtb.mockResolvedValue(null)
+    engines.startSettingsRtb.mockResolvedValue(null)
     engines.liveConfirm.mockResolvedValue(false)
     engines.restoreFile.mockResolvedValue(undefined)
     engines.restoreInternal.mockResolvedValue(undefined)
@@ -156,19 +159,50 @@ describe('the page', () => {
 })
 
 describe('the backup chooser', () => {
-    test('S1-R7: .rtb is preselected, scope is disabled with its note, and .bin enables it', async () => {
+    test('R1: .rtb is preselected with {Everything, Settings only}; .bin offers {Everything, Without character assets}', async () => {
         show()
         await openChooser()
         expect(dialog()?.getAttribute('role')).toBe('alertdialog')
         expect(document.querySelectorAll('input[type="radio"]')).toHaveLength(4)
         expect(radio('format', 'rtb').checked).toBe(true)
-        expect(radio('scope', 'full').disabled).toBe(true)
-        expect(radio('scope', 'partial').disabled).toBe(true)
-        expect(dialog()?.textContent).toContain(language.settingsShellDataScopeBinOnly)
-        await pick('format', 'bin')
+        expect(radio('scope', 'full').checked).toBe(true)
         expect(radio('scope', 'full').disabled).toBe(false)
+        expect(radio('scope', 'settings').disabled).toBe(false)
+        expect(document.querySelector('input[type="radio"][name$="-scope"][value="partial"]')).toBeNull()
+        expect(dialog()?.textContent).not.toContain(language.settingsShellDataScopeSettingsHint)
+        await pick('scope', 'settings')
+        expect(dialog()?.textContent).toContain(language.settingsShellDataScopeSettingsHint)
+        await pick('format', 'bin')
+        expect(radio('scope', 'full').checked).toBe(true)
         expect(radio('scope', 'partial').disabled).toBe(false)
-        expect(dialog()?.textContent).not.toContain(language.settingsShellDataScopeBinOnly)
+        expect(document.querySelector('input[type="radio"][name$="-scope"][value="settings"]')).toBeNull()
+        expect(dialog()?.textContent).not.toContain(language.settingsShellDataScopeSettingsHint)
+        expect(dialog()?.textContent).toContain(language.settingsShellDataScopeRtbOnly)
+    })
+
+    test('R1: a settings-only pick made under .rtb is not carried into a .bin answer', async () => {
+        show()
+        await openChooser()
+        await pick('scope', 'settings')
+        await pick('format', 'bin')
+        start().click()
+        await settle()
+        expect(engines.saveBin).toHaveBeenCalledTimes(1)
+        expect(engines.savePartial).not.toHaveBeenCalled()
+        expect(engines.startSettingsRtb).not.toHaveBeenCalled()
+    })
+
+    test('R1: Settings only starts the settings export, never the full one', async () => {
+        show()
+        await openChooser()
+        await pick('scope', 'settings')
+        start().click()
+        await settle()
+        expect(engines.startSettingsRtb).toHaveBeenCalledTimes(1)
+        expect(engines.startSettingsRtb.mock.calls[0][1]).toEqual({ password: undefined })
+        expect(engines.startRtb).not.toHaveBeenCalled()
+        expect(engines.saveBin).not.toHaveBeenCalled()
+        expect(dialog()).toBeNull()
     })
 
     test('S1-R7: .bin with the partial scope shows the hint and calls the partial save once, as explained', async () => {
