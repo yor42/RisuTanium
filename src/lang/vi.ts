@@ -2092,6 +2092,8 @@ export const languageVietnamese = {
     "homeGreetingAfternoon": "Chào buổi chiều",
     "homeGreetingEvening": "Chào buổi tối",
     "homeGreetingNight": "Vẫn chưa ngủ à?",
+    "homeCommunityHeading": "Cộng đồng và mã nguồn",
+    "homeSideLabel": "Khám phá và cộng đồng",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Tham gia máy chủ Discord của chúng tôi để trò chuyện với người dùng khác và nhà phát triển.",
     "homeLinkWebsiteTitle": "Trang web",

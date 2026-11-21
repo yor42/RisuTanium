@@ -2092,6 +2092,8 @@ export const languageGerman = {
     "homeGreetingAfternoon": "Guten Tag",
     "homeGreetingEvening": "Guten Abend",
     "homeGreetingNight": "Noch wach?",
+    "homeCommunityHeading": "Community und Quellcode",
+    "homeSideLabel": "Entdecken und Community",
     "homeLinkDiscordTitle": "Discord",
     "homeLinkDiscordDescription": "Treten Sie unserem Discord-Server bei, um mit anderen Nutzern und dem Entwickler zu chatten.",
     "homeLinkWebsiteTitle": "Website",

@@ -2,14 +2,13 @@
     import { DBState } from 'src/ts/stores.svelte';
     import Hub from "./Realm/RealmMain.svelte";
     import { OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
-    import { ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
-    import { getVersionString, openURL } from "src/ts/globalApi.svelte";
+    import { Compass, Wrench } from "@lucide/svelte";
     import { language } from "src/lang";
     import { createRealmPreview } from "./Realm/realmPreview.svelte";
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
     import { askUpstreamAgreement, upstreamAccepted } from "src/ts/upstreamAgreement";
     import RealmPreviewRow from "./Realm/RealmPreviewRow.svelte";
-    import SourceDisclosure, { type Destination } from "./SourceDisclosure.svelte";
+    import CommunityList from "./CommunityList.svelte";
     import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
     import { utilityOpen, utilityVisible } from "../Utility/utilityGate";
     import type { Snippet } from "svelte";
@@ -17,7 +16,7 @@
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     interface Props {
-      // Rendered under the version line while the Realm full view is closed.
+      // Rendered above the side block while the Realm full view is closed.
       header?: Snippet;
     }
 
@@ -35,110 +34,8 @@
       ),
     );
 
-    // Discriminated on `kind` rather than a bare optional `href`, so a
-    // disclosure entry can never also carry a direct-navigate href and vice
-    // versa -- `MC-065` records that this looked like a one-line change and
-    // was not one, precisely because the GitHub card's root element has to
-    // change shape (see the shared class constants and the {#each} below).
-    //
-    // `upstream` on the `link` variant and `destinations`/`icon` on the
-    // `disclosure` variant are additions, not a reshape of the union
-    // itself: `upstream` drives the same grey marker treatment
-    // `SourceDisclosure` already renders per-destination, generalised here
-    // to the Discord and Website cards per `MC-054` ("the upstream label
-    // generalises... to every home-screen link owned by upstream").
-    // `destinations`/`icon` let the Email card reuse `SourceDisclosure` for
-    // its two addresses instead of duplicating the disclosure machinery.
-    type RelatedLink =
-      | {
-          kind: 'link';
-          title: string;
-          description: string;
-          href: string;
-          logoIcon: "globe" | "mail" | "paper-airplane";
-          upstream?: boolean;
-        }
-      | {
-          kind: 'disclosure';
-          title: string;
-          description: string;
-          destinations?: Destination[];
-          icon?: typeof MailIcon;
-        };
-
     const relatedLinkIconClass =
       "h-40 w-40 md:h-44 md:w-44 origin-right -rotate-12 opacity-[0.12] transition-all duration-500 group-hover:scale-105 group-hover:opacity-[0.22]";
-
-    // Expressed once and composed by both branches of the {#each} below
-    // (the plain link <button>, and the disclosure's outer <div> plus its
-    // inner trigger <button>) rather than copy-pasted, so the two card
-    // shapes cannot drift the first time either is restyled.
-    //
-    // relatedCardClass carries the card's visual chrome -- border, rounded
-    // corners, background, overflow clipping (which the decorative icon's
-    // bleed-past-the-edge relies on) and the hover lift/border/background/
-    // shadow motion every card in this grid shares.
-    //
-    // relatedCardTriggerClass carries the sizing: `min-h-[140px]` and
-    // `flex flex-col justify-center` are what give a link card its
-    // collapsed footprint, and `group`+`relative` are what the decorative
-    // icon's `group-hover` and `absolute` positioning need from their
-    // nearest ancestor. For the plain link card, chrome and trigger sizing
-    // sit on the same root <button>. For the disclosure, only the trigger
-    // sizing sits on the inner <button>; the chrome sits on the outer
-    // <div> so the revealed list stays inside the same bordered card
-    // rather than looking like an unstyled panel bolted beneath it.
-    const relatedCardClass =
-      "rounded-2xl border border-borderc/10 bg-darkbg overflow-hidden p-6 transition-all duration-300 hover:-translate-y-1 hover:border-borderc/30 hover:bg-selected/50 hover:shadow-xl hover:shadow-darkbg/50";
-    const relatedCardTriggerClass =
-      "group relative flex min-h-[140px] w-full flex-col justify-center text-left";
-
-    // Fork entries first, matching the GitHub disclosure's own ordering:
-    // this build's own address is the more likely destination for someone
-    // looking at this build.
-    const emailDestinations: Destination[] = [
-      { label: language.homeSourceEmailForkLabel, href: "mailto:yoonch1022@naver.com", upstream: false },
-      { label: language.homeSourceEmailUpstreamLabel, href: "mailto:support@risuai.net", upstream: true }
-    ];
-
-    const relatedLinks: RelatedLink[] = [
-      {
-        kind: 'link',
-        title: language.homeLinkDiscordTitle,
-        description: language.homeLinkDiscordDescription,
-        href: "https://discord.gg/Exy3NrqkGm",
-        logoIcon: "paper-airplane",
-        // Upstream's own Discord, with no fork equivalent (`MC-054`).
-        upstream: true
-      },
-      {
-        kind: 'link',
-        title: language.homeLinkWebsiteTitle,
-        description: language.homeLinkWebsiteDescription,
-        href: "https://risuai.net",
-        logoIcon: "globe",
-        // Upstream's own website, with no fork equivalent (`MC-054`).
-        upstream: true
-      },
-      {
-        // The Source & Issues disclosure (`MC-065`): four fixed GitHub
-        // destinations rendered by SourceDisclosure.svelte, not a
-        // direct-navigate href.
-        kind: 'disclosure',
-        title: language.homeLinkGithubTitle,
-        description: language.homeLinkGithubDescription
-      },
-      {
-        // The Email card is a disclosure too, for the same reason the
-        // GitHub card is: there are two addresses (fork and upstream), not
-        // one, and a plain link can only ever carry one href.
-        kind: 'disclosure',
-        title: language.homeLinkEmailTitle,
-        description: language.homeLinkEmailDescription,
-        destinations: emailDestinations,
-        icon: MailIcon
-      }
-    ];
 
     // The preview state lives in realmPreview.svelte.ts; it is created here so its effects belong to this component.
     const preview = createRealmPreview(() => $upstreamAccepted);
@@ -168,108 +65,35 @@
     {/if}
     <div class="w-full flex p-4 flex-col text-textcolor max-w-4xl">
       {#if !$OpenRealmStore}
-        <div class="grid w-full grid-cols-1 gap-4 p-2 md:grid-cols-2 lg:grid-cols-3">
-          {#each relatedLinks as relatedLink}
-            {#if relatedLink.kind === 'disclosure'}
-              <!--
-                The disclosure entry's root is a <div>, not a <button>: its
-                revealed region is a list of <a href> links, and links
-                cannot live inside a <button> -- nested interactive content
-                is invalid, and the parser would implicitly close an open
-                <button> at the next <button> start tag, silently
-                fragmenting the DOM. The realm card below already documents
-                this exact constraint for the same reason.
-              -->
-              <SourceDisclosure
-                title={relatedLink.title}
-                description={relatedLink.description}
-                cardClass={relatedCardClass}
-                triggerClass={relatedCardTriggerClass}
-                iconClass={relatedLinkIconClass}
-                destinations={relatedLink.destinations}
-                icon={relatedLink.icon}
-              />
-            {:else}
-              <button
-                class={`${relatedCardClass} ${relatedCardTriggerClass}`}
-                onclick={() => {
-                  openURL(relatedLink.href)
-                }}
-              >
-                <div class="relative z-10 w-[68%] sm:w-[70%]">
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-2xl font-bold tracking-tight text-textcolor break-keep">{relatedLink.title}</h2>
-                        {#if relatedLink.upstream}
-                            <!--
-                              Decorative pill, aria-hidden: this button
-                              carries no aria-label (that would replace,
-                              not add to, its accessible name -- dropping
-                              the description below from what a screen
-                              reader announces). The sr-only span after
-                              the description instead joins the marker to
-                              the name that title and description already
-                              build, so the announced order is title,
-                              description, marker.
-                            -->
-                            <span aria-hidden="true" class="rounded-full bg-textcolor2/20 px-2 py-0.5 text-xs text-textcolor/70">
-                                {language.homeSourceUpstreamLabel}
-                            </span>
-                        {/if}
-                    </div>
-                    <span class="mt-2 block text-base leading-relaxed text-textcolor2">
-                      {relatedLink.description}
-                    </span>
-                    {#if relatedLink.upstream}
-                        <span class="sr-only">({language.homeSourceUpstreamLabel})</span>
-                    {/if}
-                </div>
-
-                <div aria-hidden="true" class="pointer-events-none absolute -right-12 top-1/2 -translate-y-1/2 text-textcolor">
-                    {#if relatedLink.logoIcon === "globe"}
-                      <GlobeIcon class={relatedLinkIconClass} strokeWidth={1} />
-                    {:else if relatedLink.logoIcon === "mail"}
-                      <MailIcon class={relatedLinkIconClass} strokeWidth={1} />
-                    {:else if relatedLink.logoIcon === "paper-airplane"}
-                      <Send class={relatedLinkIconClass} strokeWidth={1} />
-                    {/if}
-                </div>
-              </button>
-            {/if}
-          {/each}
+        <!--
+          One column, in this order: the Utility row, the RisuRealm card, the
+          Community and source list (version at its foot), then the
+          announcement. Nothing here is placed by a grid, so the announcement
+          arriving after the fetch appends below everything and moves no
+          other block.
+        -->
+        <aside data-part="home-side" aria-label={language.homeSideLabel} class="flex flex-col gap-6">
           {#if utilityVisible($pageStorageModeStore)}
-            <!-- Reads the reactive page-mode store, so the card follows the mode after mount: the app mounts before boot decides it. -->
+            <!-- Reads the reactive page-mode store, so the row follows the mode after mount: the app mounts before boot decides it. -->
             <button
-              class={`${relatedCardClass} ${relatedCardTriggerClass}`}
+              type="button"
+              class="risu-focus-ring flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--home-radius-3)] px-2 py-2 text-left text-textcolor hover:bg-darkbutton"
               data-testid="utility-card"
               onclick={() => {
                 $utilityOpen = true
               }}
             >
-              <div class="relative z-10 w-[68%] sm:w-[70%]">
-                <h2 class="text-2xl font-bold tracking-tight text-textcolor break-keep">{language.homeLinkUtilityTitle}</h2>
-                <span class="mt-2 block text-base leading-relaxed text-textcolor2">{language.homeLinkUtilityDescription}</span>
-              </div>
-              <div aria-hidden="true" class="pointer-events-none absolute -right-12 top-1/2 -translate-y-1/2 text-textcolor">
-                <Wrench class={relatedLinkIconClass} strokeWidth={1} />
-              </div>
+              <span aria-hidden="true" data-part="home-row-icon" class="shrink-0 text-[color:var(--home-ink-2)]">
+                <Wrench class="h-4 w-4" strokeWidth={1.5} />
+              </span>
+              <span data-part="home-utility-text" class="flex max-w-full flex-1 flex-col [overflow-wrap:break-word]">
+                <span class="text-[length:var(--home-text-md)] font-bold">{language.homeLinkUtilityTitle}</span>
+                <span class="text-[length:var(--home-text-sm)] text-[color:var(--home-ink-2)]">{language.homeLinkUtilityDescription}</span>
+              </span>
             </button>
           {/if}
           {#if !preview.hidden}
             <!--
-              Last grid child in DOM order (the fifth, or the sixth while the Utility card shows): on mobile every link card
-              stacks above it, so the realm preview never pushes Related
-              Links below the fold; on desktop it sits beside and below the
-              link cards.
-
-              lg:col-span-1 is load-bearing, not redundant: both the md: and
-              lg: breakpoints are live at >=1024px, and md:col-span-2 emits
-              the `grid-column` shorthand (sets both start and end) while
-              lg:col-start-3 is a longhand that only overrides the start.
-              Without an lg: span reset, the end stays `span 2` and the card
-              spills into a fabricated fourth column track. Verified by
-              compiling this exact class list through the repo's own
-              tailwindcss build rather than assumed.
-
               This div is deliberately not a <button>: realmDirectOpen is a
               persisted setting whose help text promises that clicking a
               character in the preview opens that character, and this file
@@ -285,11 +109,10 @@
               stop their own click's propagation to keep their own
               meaning), opens RisuRealm — see handleCardClick above — and
               the hover lift, brighter-on-hover background and decorative
-              icon mirror the other Related Links cards' treatment so the
-              whole card reads as clickable. A click handler on a div is
-              mouse-only, so the title below is its own focusable button
-              carrying the browse label, keeping a keyboard path into the
-              same action.
+              icon make the whole card read as clickable. A click handler on
+              a div is mouse-only, so the title below is its own focusable
+              button carrying the browse label, keeping a keyboard path into
+              the same action.
             -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -299,25 +122,18 @@
               (padding + header + description + that constant list height)
               the same whether preview.status is pending or populated, which is
               what actually stops MC-053's layout shift on fetch resolution.
-              The card itself carries no unqualified max-height, so it stays
-              an ordinary grid item and stretches to fill its grid area
-              instead of falling short of it. min-h-0 on the list is still
-              required: without it the flex item refuses to shrink below its
-              own content and overflow-y-auto never engages.
+              The card itself carries no unqualified max-height. min-h-0 on
+              the list is still required: without it the flex item refuses to
+              shrink below its own content and overflow-y-auto never engages.
 
               lg:min-h-[380px] is not cosmetic. The list's cap grows to
               lg:max-h-[200px] below (see that comment), and the card's
-              required height must stay under whatever height is actually
-              available at each breakpoint or the fetch-time shift comes
-              back — a bigger cap needs a bigger floor to still fit inside.
-              At lg the grid area is driven by the neighbouring link cards'
-              wrapped descriptions and comfortably clears 380px in current
-              measurements; below lg the card is a full-width single-row
-              item sitting at the plain 296px floor, so it keeps the smaller
-              cap instead of forcing a tall solid block onto tablet widths.
+              required height must stay under the floor at each breakpoint or
+              the fetch-time shift comes back — a bigger cap needs a bigger
+              floor to still fit inside.
             -->
             <div
-              class="group relative flex min-h-[296px] lg:min-h-[380px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-borderc/10 border-t-borderc bg-darkbg p-6 transition-all duration-300 hover:-translate-y-1 hover:border-borderc/30 hover:border-t-borderc hover:bg-selected/50 hover:shadow-xl hover:shadow-darkbg/50 md:col-span-2 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:row-span-2"
+              class="group relative flex min-h-[296px] lg:min-h-[380px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-borderc/10 border-t-borderc bg-darkbg p-6 transition-all duration-300 hover:-translate-y-1 hover:border-borderc/30 hover:border-t-borderc hover:bg-selected/50 hover:shadow-xl hover:shadow-darkbg/50"
               onclick={handleCardClick}
             >
               <div class="relative z-10 mb-2 flex flex-col">
@@ -353,11 +169,11 @@
                   width does not work. The cap and the card's lg:min-h-[380px]
                   above move together — the cap must stay small enough that
                   the card's required height (padding + header + description
-                  + this cap) never exceeds the height actually available at
-                  that breakpoint, or the card grows past its floor and
+                  + this cap) never exceeds the card's floor at that
+                  breakpoint, or the card grows past its floor and
                   MC-053's fetch-time shift comes straight back. 150 clears
                   the smaller-breakpoint floor of 296; 200 needs the taller
-                  380 floor at lg to still clear the available grid area.
+                  380 floor at lg to still clear.
                   Raising either number without raising its partner
                   reintroduces the shift — verify both again with real
                   measurements before changing either.
@@ -423,36 +239,34 @@
               </div>
             </div>
           {/if}
-      </div>
-      <h3 class="mt-2 text-textcolor2">{language.homeVersion} {getVersionString()}</h3>
-      {#if preview.announcement && !preview.hidden}
-        <!--
-          Gated on preview.hidden, not just a non-empty string: this banner is
-          realm-server content too, so hideRealm hides the whole realm
-          widget, announcement included, rather than leaving server-supplied
-          HTML on screen after the user opts out.
+          <CommunityList />
+          {#if preview.announcement && !preview.hidden}
+            <!--
+              Gated on preview.hidden, not just a non-empty string: this banner is
+              realm-server content too, so hideRealm hides the whole realm
+              widget, announcement included, rather than leaving server-supplied
+              HTML on screen after the user opts out.
 
-          This wrapper and the heading below it are new decoration around
-          the sanitized sink, not a change to it: the content is HTML from
-          upstream's realm server, rendered unlabelled it could be misread
-          as a first-party message, so the heading names the source. The
-          container borrows the link cards' shape (rounded-2xl, border,
-          bg-darkbg, padding) so it reads as a deliberate element, but
-          carries no hover lift and is not itself clickable — only the
-          links the sanitizer allows inside it are, through the existing
-          delegated handler.
-        -->
-        <div class="mt-4 rounded-2xl border border-borderc/10 bg-darkbg p-6">
-          <h2 class="mb-2 text-base font-bold tracking-tight text-textcolor">{language.hubAnnouncementTitle}</h2>
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <!-- A keyboard Enter on a focused anchor dispatches a bubbling click, so this delegated handler already covers keyboard activation; see hubHtml.ts. -->
-          <div onclick={handleHubHtmlClick}>
-            {@html sanitizeHubHtml(preview.announcement)}
-          </div>
-        </div>
-      {/if}
-
+              This wrapper and the heading below it are new decoration around
+              the sanitized sink, not a change to it: the content is HTML from
+              upstream's realm server, rendered unlabelled it could be misread
+              as a first-party message, so the heading names the source. The
+              container carries no hover lift and is not itself clickable — only
+              the links the sanitizer allows inside it are, through the existing
+              delegated handler. It is the side block's last child, after the
+              Community list, so its arrival moves nothing above it.
+            -->
+            <div class="rounded-2xl border border-borderc/10 bg-darkbg p-6">
+              <h2 class="mb-2 text-base font-bold tracking-tight text-textcolor">{language.hubAnnouncementTitle}</h2>
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- A keyboard Enter on a focused anchor dispatches a bubbling click, so this delegated handler already covers keyboard activation; see hubHtml.ts. -->
+              <div onclick={handleHubHtmlClick}>
+                {@html sanitizeHubHtml(preview.announcement)}
+              </div>
+            </div>
+          {/if}
+        </aside>
       {:else}
         <Hub />
       {/if}
