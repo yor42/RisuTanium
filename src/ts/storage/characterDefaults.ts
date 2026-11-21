@@ -3,9 +3,9 @@ import type { Database } from "./database.svelte"
 
 /**
  * The per-character rules the application applies to a decoded character
- * before it uses it. They live here, apart from `bootstrap.ts`, so that the
- * boot archive pass can give a character the same shape the running
- * application would give it, without importing the boot module's graph.
+ * before it uses it. They live here, apart from `bootstrap.ts`, so that other
+ * modules can give a character the same shape the running application would
+ * give it, without importing the boot module's graph.
  *
  * This module's only runtime import is `uuid`.
  */

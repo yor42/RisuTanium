@@ -15,7 +15,7 @@ vi.mock(import('src/ts/platform'), () => ({
     get isNodeServer() { return platform.isNodeServer },
 }) as unknown as typeof import('src/ts/platform'))
 
-import { coldUnitKeyOfStoreKey, coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitKeyOfName, legacyOpfsUnitName } from '../coldUnitLocation'
+import { coldUnitKeyOfStoreKey, coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from '../coldUnitLocation'
 
 const UUID = '3f2b8c1e-5a47-4d9e-8b61-0c7a9d2e4f10'
 
@@ -66,16 +66,6 @@ describe('the page store key of a unit', () => {
 describe('the legacy OPFS file name', () => {
     test('guard: it is coldstorage_<key>.json in the OPFS root', () => {
         expect(legacyOpfsUnitName(UUID)).toBe(`coldstorage_${UUID}.json`)
-        expect(legacyOpfsUnitKeyOfName(`coldstorage_${UUID}.json`)).toBe(UUID)
-    })
-
-    test.each([
-        ['a hex-named store file', '636f6c6473746f726167652f61'],
-        ['a name with no key', 'coldstorage_.json'],
-        ['a different suffix', `coldstorage_${UUID}.bin`],
-        ['a different prefix', `unit_${UUID}.json`],
-    ])('new behaviour: %s is not a legacy unit file', (_label, name) => {
-        expect(legacyOpfsUnitKeyOfName(name)).toBeNull()
     })
 })
 

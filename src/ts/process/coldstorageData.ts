@@ -51,8 +51,8 @@ export function isColdChat(chat: Pick<Chat, 'message'> | null | undefined): bool
 
 /**
  * The keys of the chat units `cha` already points at: one per chat whose first
- * message is still a cold-storage pointer. Shared by the boot archive pass and
- * the one-character archive, which both build a stub's `coldStoragedChats`.
+ * message is still a cold-storage pointer. The one-character archive builds a
+ * stub's `coldStoragedChats` from it.
  */
 export function pointerChatKeys(cha: character | groupChat): string[] {
     const keys: string[] = []
