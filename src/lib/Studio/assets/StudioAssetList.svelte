@@ -128,7 +128,6 @@
     import { ASSET_FOLDER_KEY } from '../../../ts/studio/assets/assetOwnerKeys'
     import { assetPresentationOf, assetRowExt, type AssetPresentation, type UsedInPort } from '../../../ts/studio/assets/assetPresentation'
     import { assetPoolKey, folderNameKey, folderOf, readFolderDoc } from '../../../ts/studio/assets/folderCodec'
-    import { createRowMount } from '../../../ts/studio/assets/rowMount.svelte'
     import type { DuplicateGroup } from '../../../ts/studio/assets/duplicateGroups'
     import type { MergeSource } from '../../../ts/studio/assets/mergeCommit'
     import { countChatMentions, countEnablingCharacters } from '../../../ts/studio/assets/mergeCounts'
@@ -144,6 +143,10 @@
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../../ts/studio/history/studioHistoryService.svelte'
     import { DBState } from '../../../ts/stores.svelte'
     import type { ToastHost } from '../../../ts/toast/toastHost.svelte'
+    import { pruneHeights } from '../../../ts/windowing/listWindow'
+    import { createWindowHost } from '../../../ts/windowing/windowHost.svelte'
+    import WindowedSegment from '../../UI/Windowed/WindowedSegment.svelte'
+    import { FOCUS_ADD, focusTargetAfterRemoval } from './assetRemovalFocus'
     import StudioAssetBulkBar from './StudioAssetBulkBar.svelte'
     import StudioAssetFinder, { type FinderArray, type FinderRow } from './StudioAssetFinder.svelte'
     import StudioAssetFolderHeader from './StudioAssetFolderHeader.svelte'
@@ -336,19 +339,58 @@
     const visibleIds = $derived(new Set(groups.map((group) => group.id)))
     // The rows that are on screen, in the order they show.
     const shownRows = $derived(groups.flatMap((group) => (group.expanded ? group.rows : [])))
-    // The one rule of what is displayed: a row is displayed exactly when its key is here. The row's flag, its player, the
-    // focus rule and the removal walk all read this set, never the filter or the fold on their own.
+    // The one rule of what is displayed: a row is displayed exactly when its key is here. The segments' keys, the focus
+    // rule and the trigger lookup all read this set, never the filter or the fold on their own.
     const displayedKeys = $derived(new Set(shownRows.map((row) => row.key)))
     // The selection is computed, never written by an effect: the ticked keys that are still on screen.
     const selectedRows = $derived(shownRows.filter((row) => picked[row.key] === true))
 
-    // The first mount is chunked: the rows the list starts with mount a few at a time, then every row stays mounted and
-    // the filter and the folds only hide. Rows that arrive later mount in one flush, so a write never defers anything.
-    const rowMount = createRowMount({
-        initialKeys: untrack(() => shownRows.map((row) => row.key)),
-        shownKeys: () => shownRows.map((row) => row.key),
+    // The page holds only the displayed rows near the band, plus the pinned ones: every folder is one windowed segment
+    // over the list's section, inside the detail's own scroller. The host is created here and stopped with the list.
+    const windowHost = createWindowHost({ root: () => container ?? null })
+    onDestroy(() => windowHost.dispose())
+    // The measured heights of the rows, one map for every segment, dropped only with the row's key.
+    const rowHeights = new Map<string, number>()
+    $effect(() => {
+        const live = new Set(rows.map((row) => row.key))
+        untrack(() => pruneHeights(rowHeights, live))
     })
-    onDestroy(() => rowMount.dispose())
+    // The height a row has before it is measured: padding 16 + border 2 + the taller of the 64 px thumbnail and the
+    // name field with its meta line.
+    const ASSET_ROW_FALLBACK_PX = 86
+    // A segment mounts the keys of its folder's displayed rows: none while the folder is folded or the filter leaves it empty.
+    const NO_KEYS: readonly string[] = []
+    const segmentKeys = $derived(new Map(groups.map((group) => [group.id, group.expanded ? group.rows.map((row) => row.key) : NO_KEYS])))
+    // The snippet of a segment hands over a key: one lookup table per flush, never a search per mounted row.
+    const rowByKey = $derived(new Map(rows.map((row) => [row.key, row])))
+    // The last row seen under each key. A removed row's DOM outlives its data until the flush finishes, and a browser blurs
+    // its field in that gap: the row's props and callbacks then still read this row instead of an undefined one, and the
+    // list's own guards (rename's key and name check) refuse the write.
+    const lastRowByKey = new Map<string, ListRow>()
+    function rowOfKey(key: string): ListRow | undefined {
+        const row = rowByKey.get(key)
+        if (row !== undefined) lastRowByKey.set(key, row)
+        return row ?? lastRowByKey.get(key)
+    }
+    // Once the flush has removed the row's DOM, its memo goes.
+    $effect(() => {
+        const live = rowByKey
+        untrack(() => {
+            for (const key of lastRowByKey.keys()) {
+                if (!live.has(key)) lastRowByKey.delete(key)
+            }
+        })
+    })
+    // Rows that stay mounted wherever the band is: the open menu's row and the displayed rows that play a preview.
+    const pinnedKeys = $derived.by((): string[] => {
+        const pins: string[] = []
+        if (menuKey !== null) pins.push(menuKey)
+        for (const key of Object.keys(previewed)) {
+            const shown = rowByKey.get(key)?.presentation.shown
+            if (displayedKeys.has(key) && (shown === 'audio' || shown === 'video')) pins.push(key)
+        }
+        return pins
+    })
 
     const moveChoices = $derived.by((): MoveChoice[] => [{ value: null, label: language.studioAssetNoFolder }, ...folderNames.map((name) => ({ value: name, label: name }))])
 
@@ -400,12 +442,35 @@
         })
     }
 
+    // Focuses the trigger of a displayed row. A row that is in the page takes focus at once. A displayed row the window
+    // does not hold gives focus to the list first, so it never falls to the page, then asks the window to bring the row
+    // in and takes the trigger only if focus is still on the list: a click or key in between keeps its own focus.
+    // A row that is not displayed has no trigger and leaves focus on the list.
+    async function focusRowTrigger(key: string): Promise<void> {
+        const mountedTrigger = moreButtonOf(key)
+        if (mountedTrigger) {
+            mountedTrigger.focus()
+            return
+        }
+        const list = container
+        if (!list) return
+        if (!displayedKeys.has(key)) {
+            list.focus()
+            return
+        }
+        list.focus({ preventScroll: true })
+        await afterFlush()
+        const element = await windowHost.reveal(key)
+        if (document.activeElement !== list) return
+        element?.querySelector<HTMLElement>('[data-part="studio-asset-row-more"]')?.focus()
+    }
+
     // Runs in the flush of the write that removed the row, which ends before any history action looks for lost focus: the
     // focused row that is gone, or no longer displayed, hands focus to the next displayed row's trigger, else the previous
-    // row's, else Add, else the list itself. A hidden row stays in the page, so the page's own focus is not the sign: focus
-    // inside the list on a row that is not displayed counts as lost, and focus anywhere else stays, so the page never
-    // receives it and an undo or redo elsewhere moves nothing. A change that takes one row out as another comes in keeps
-    // the length and is not seen here; the hidden element keeps focus until the browser drops it, as a removed one did.
+    // row's, else Add, else the list itself. The target is chosen from the keys, so a row the window does not hold counts.
+    // A row that is not displayed is not in the page, so the page's own focus is not the sign: focus inside the list that
+    // is not on a displayed row counts as lost, and focus anywhere else stays, so the page never receives it and an undo
+    // or redo elsewhere moves nothing.
     function moveFocusAfterRemoval(keys: string[]): void {
         const key = focusedKey
         if (key === null || !container) return
@@ -414,35 +479,12 @@
         const active = document.activeElement
         const lost = active === null || active === document.body || !active.isConnected || (!displayedKeys.has(key) && container.contains(active))
         if (!lost) return
-        // One pass over the list: the triggers of the displayed rows that are mounted. While the first mount runs, a
-        // displayed row may have no node yet, and the walk goes on to the next one that has.
-        const triggers = new Map<string, HTMLElement>()
-        for (const row of Array.from(container.querySelectorAll<HTMLElement>('[data-part="studio-asset-row"]'))) {
-            const rowKey = row.dataset.rowKey
-            const more = row.querySelector<HTMLElement>('[data-part="studio-asset-row-more"]')
-            if (rowKey !== undefined && more !== null && displayedKeys.has(rowKey)) triggers.set(rowKey, more)
+        const target = focusTargetAfterRemoval(knownKeys, keys, key)
+        if (target === FOCUS_ADD) {
+            ;(container.querySelector<HTMLElement>('[data-part="studio-asset-add"]') ?? container).focus()
+            return
         }
-        const firstTrigger = (candidates: readonly string[]): HTMLElement | null => {
-            for (const candidate of candidates) {
-                const found = triggers.get(candidate)
-                if (found) return found
-            }
-            return null
-        }
-        const survivors = new Set(keys)
-        const at = knownKeys.indexOf(key)
-        let target: HTMLElement | null
-        if (survivors.has(key)) {
-            // Rows over one file are keyed by their order, so the key of a removed row can name the row after it, which
-            // inherited the node whose menu item held the focus. Position decides: the row now at the old place is the next one.
-            const place = Math.min(Math.max(at, 0), keys.length - 1)
-            target = firstTrigger([...keys.slice(place), ...keys.slice(0, place).reverse()])
-        } else {
-            const next = knownKeys.slice(at + 1).filter((candidate) => survivors.has(candidate))
-            const previous = knownKeys.slice(0, Math.max(at, 0)).reverse().filter((candidate) => survivors.has(candidate))
-            target = firstTrigger(next) ?? firstTrigger(previous) ?? container.querySelector<HTMLElement>('[data-part="studio-asset-add"]')
-        }
-        ;(target ?? container).focus()
+        void focusRowTrigger(target)
     }
 
     $effect(() => {
@@ -593,10 +635,6 @@
         // The keys of the removed row and the rows over its file behind it, read before the write changes the rows.
         const sharing = rows.filter((other) => other.path === row.path && other.index >= row.index).map((other) => other.key)
         const lastPicture = lastPictureLine([row])
-        // While the first mount runs, the rows next to the removed one mount in the delete's own flush, so the focus move
-        // after it finds a trigger to take. After the first mount this changes nothing.
-        const place = shownRows.findIndex((other) => other.key === row.key)
-        if (place >= 0) rowMount.release([shownRows[place + 1]?.key, shownRows[place - 1]?.key].filter((key): key is string => key !== undefined))
         const result = service.assetDelete(owner, arrayId, [row.index])
         if (result.ok === false) {
             refusal = refusalTextOf(result)
@@ -829,8 +867,9 @@
     function moveRow(row: ListRow, folder: string | null): void {
         menuKey = null
         moveNames([row.name], folder)
-        // The row may have moved to another group: its trigger is found again once the flush has drawn it.
-        void afterFlush().then(() => (moreButtonOf(row.key) ?? container)?.focus())
+        // The row may have moved to another group, far from the window: its trigger is found again once the flush has
+        // drawn it, or the window is asked to bring it in. A move into a folded folder leaves focus on the list.
+        void afterFlush().then(() => focusRowTrigger(row.key))
     }
 
     function moveNote(row: ListRow): string | null {
@@ -1015,8 +1054,45 @@
     }
 </script>
 
+{#snippet assetItem(key: string)}
+    {@const row = rowOfKey(key)}
+    {#if row}
+        {@const previewing = previewed[row.key] === true}
+        {@const use = wantedUse(row, previewing)}
+        <StudioAssetRow
+            rowKey={row.key}
+            name={row.name}
+            ext={row.ext}
+            shown={row.presentation.shown}
+            size={sizes[row.path]}
+            thumbUrl={row.presentation.shown === 'thumb' ? rowAssetUrl(urls[row.index], row.path, use) : undefined}
+            mediaUrl={previewing ? rowAssetUrl(urls[row.index], row.path, use) : undefined}
+            {previewing}
+            excludeShown={previewSetting}
+            excluded={excludedPaths.includes(row.path)}
+            {editable}
+            menuOpen={menuKey === row.key}
+            renamedFrom={renamedFrom[row.key] ?? null}
+            joinNote={joinNotes[row.key] ?? null}
+            {usedIn}
+            moveChoices={editable ? moveChoices : []}
+            moveNote={() => moveNote(row)}
+            {selecting}
+            selected={picked[row.key] === true}
+            oncommit={(value) => rename(row, value)}
+            ondelete={() => remove(row)}
+            onpreview={() => preview(row)}
+            ontoggleexclude={() => toggleExclude(row)}
+            onmenutoggle={() => toggleMenu(row)}
+            onmenuclose={() => closeMenu(row)}
+            onmove={(folder) => moveRow(row, folder)}
+            onselect={(on) => pick(row, on)}
+        />
+    {/if}
+{/snippet}
+
 {#if present && !hidden}
-    <section bind:this={container} tabindex="-1" data-part="studio-asset-list" data-rows-pending={rowMount.done ? undefined : 'true'} aria-busy={busy ? 'true' : undefined} class="flex flex-col gap-3 outline-none" onfocusin={onFocusIn} onfocusout={onFocusOut}>
+    <section bind:this={container} tabindex="-1" data-part="studio-asset-list" aria-busy={busy ? 'true' : undefined} class="flex flex-col gap-3 outline-none" onfocusin={onFocusIn} onfocusout={onFocusOut}>
         {#if busy && !loadFailed}
             <p data-part="studio-asset-loading" class="text-sm text-textcolor2">{language.studioFormLoading}</p>
         {/if}
@@ -1138,42 +1214,17 @@
                             oncancelrename={() => { renamingFolder = null }}
                         />
                     {/if}
-                    <ul data-part="studio-asset-rows" hidden={!group.expanded} class="flex flex-col gap-2">
-                        {#each group.held.filter((row) => rowMount.mounted(row.key)) as row (row.key)}
-                            {@const previewing = previewed[row.key] === true}
-                            {@const use = wantedUse(row, previewing)}
-                            <StudioAssetRow
-                                rowKey={row.key}
-                                name={row.name}
-                                ext={row.ext}
-                                shown={row.presentation.shown}
-                                size={sizes[row.path]}
-                                thumbUrl={row.presentation.shown === 'thumb' ? rowAssetUrl(urls[row.index], row.path, use) : undefined}
-                                mediaUrl={previewing ? rowAssetUrl(urls[row.index], row.path, use) : undefined}
-                                {previewing}
-                                displayed={displayedKeys.has(row.key)}
-                                excludeShown={previewSetting}
-                                excluded={excludedPaths.includes(row.path)}
-                                {editable}
-                                menuOpen={menuKey === row.key}
-                                renamedFrom={renamedFrom[row.key] ?? null}
-                                joinNote={joinNotes[row.key] ?? null}
-                                {usedIn}
-                                moveChoices={editable ? moveChoices : []}
-                                moveNote={() => moveNote(row)}
-                                {selecting}
-                                selected={picked[row.key] === true}
-                                oncommit={(value) => rename(row, value)}
-                                ondelete={() => remove(row)}
-                                onpreview={() => preview(row)}
-                                ontoggleexclude={() => toggleExclude(row)}
-                                onmenutoggle={() => toggleMenu(row)}
-                                onmenuclose={() => closeMenu(row)}
-                                onmove={(folder) => moveRow(row, folder)}
-                                onselect={(on) => pick(row, on)}
-                            />
-                        {/each}
-                    </ul>
+                    <WindowedSegment
+                        host={windowHost}
+                        tag="ul"
+                        data-part="studio-asset-rows"
+                        hidden={!group.expanded}
+                        class="flex flex-col gap-2"
+                        keys={segmentKeys.get(group.id) ?? NO_KEYS}
+                        height={{ fallback: ASSET_ROW_FALLBACK_PX, heights: rowHeights }}
+                        pinned={pinnedKeys}
+                        item={assetItem}
+                    />
                 </section>
             {/each}
         {/if}

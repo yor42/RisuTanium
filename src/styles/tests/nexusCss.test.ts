@@ -7,6 +7,11 @@
  * line must belong to a `nexus`-named rule or to a custom property the pre output never
  * declares. A later change that edits `src/styles.css` on purpose re-baselines the fixture
  * and `BASE_STYLES_BLOB` in the same diff.
+ *
+ * S2 (MC-3128): the Tailwind radius and hairline scale reads the --ui-* app shape tokens, whose defaults equal the pre theme
+ * values. `s2Remapped` resolves the eleven remapped Tailwind names on the pre side and the ten --ui-* names on the post side,
+ * each against its own output's declarations, so the two sides compare by resolved value: a changed default, a wrong mapping or
+ * a plain `@theme` leaves lines unmatched. Nothing else is resolved and no other theme name may be absent.
  */
 import { createHash } from 'node:crypto'
 import { readFileSync, realpathSync } from 'node:fs'
@@ -187,6 +192,49 @@ function disallowedAddedLines(pre: string[], post: string[], added: boolean[]): 
     return bad
 }
 
+const SCALE_STEPS = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']
+// The Tailwind names the S2 scale remaps: eleven theme variables, present only on the pre side.
+const S2_REMAPPED_TW = [...SCALE_STEPS.map((step) => `--radius-${step}`), '--radius', '--default-border-width', '--border-width-1']
+// The app shape tokens they now read, declared in nexus-tokens.css with the pre values as defaults.
+const S2_APP = [...SCALE_STEPS.map((step) => `--ui-radius-${step}`), '--ui-radius', '--ui-border-width']
+
+function declaredValues(lines: string[], names: readonly string[]): Map<string, string> {
+    const wanted = new Set(names)
+    const values = new Map<string, string>()
+    for (const line of lines) {
+        const m = /^\s*(--[\w-]+)\s*:\s*(.*?);\s*$/.exec(line)
+        if (!m || !wanted.has(m[1])) continue
+        if (values.has(m[1]) && values.get(m[1]) !== m[2]) throw new Error(`${m[1]} is declared twice with different values`)
+        values.set(m[1], m[2])
+    }
+    return values
+}
+
+// Exactly `var(--name)`: a reference with a fallback is never resolved.
+function resolveNames(line: string, values: Map<string, string>): string {
+    return line.replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values.get(name) ?? whole)
+}
+
+/**
+ * Brings both sides to resolved values. Pre: the eleven Tailwind names read their own declared value, and their declaration
+ * lines may be absent from the post side. Post: the ten --ui-* names read the value the post output declares. `complete`
+ * (default) fails when the post output declares no default for one of the ten.
+ */
+function s2Remapped(pre: string[], post: string[], complete = true): { pre: string[], post: string[] } {
+    const preValues = declaredValues(pre, S2_REMAPPED_TW)
+    const postValues = declaredValues(post, S2_APP)
+    const missing = S2_APP.filter((name) => !postValues.has(name))
+    if (complete && missing.length > 0) throw new Error(`the post output declares no default for ${missing.join(', ')}`)
+    const absent = new Set(S2_REMAPPED_TW)
+    return {
+        pre: pre.filter((line) => {
+            const m = /^\s*(--[\w-]+)\s*:/.exec(line)
+            return !(m && absent.has(m[1]))
+        }).map((line) => resolveNames(line, preValues)),
+        post: post.map((line) => resolveNames(line, postValues)),
+    }
+}
+
 describe('UI-S0 stylesheet imports are additive', () => {
     test('T-CSS-0: the frozen baseline is the base blob of src/styles.css', () => {
         expect(gitBlobId(readFileSync(fixturePath, 'utf8'))).toBe(BASE_STYLES_BLOB)
@@ -194,18 +242,20 @@ describe('UI-S0 stylesheet imports are additive', () => {
 
     test('T-CSS-1: the pre output reappears in order and every added line is allowed', async () => {
         const pre = await compileSide(readFileSync(fixturePath, 'utf8'), S0_NEW_PATHS)
-        const post = await compileSide(readFileSync(livePath, 'utf8'), [])
+        const compiledPost = await compileSide(readFileSync(livePath, 'utf8'), [])
         expect(pre.length).toBeGreaterThan(1000)
-        const { unmatched, added } = unmatchedPreLines(pre, post)
+        const same = s2Remapped(pre, compiledPost)
+        const { unmatched, added } = unmatchedPreLines(same.pre, same.post)
         expect(added.filter(Boolean).length).toBeGreaterThan(0)
         expect(unmatched).toEqual([])
-        expect(disallowedAddedLines(pre, post, added)).toEqual([])
+        expect(disallowedAddedLines(same.pre, same.post, added)).toEqual([])
     }, 60000)
 
     test('the pattern tokens come after the Nexus tokens they reference', async () => {
         const pre = await compileSide(readFileSync(fixturePath, 'utf8'), S0_NEW_PATHS)
-        const post = await compileSide(readFileSync(livePath, 'utf8'), [])
-        const { added } = unmatchedPreLines(pre, post)
+        const same = s2Remapped(pre, await compileSide(readFileSync(livePath, 'utf8'), []))
+        const post = same.post
+        const { added } = unmatchedPreLines(same.pre, post)
         const firstAdded = (name: string) => post.findIndex((line, i) => added[i] && line.trim().startsWith(name))
         expect(firstAdded('--nexus-')).toBeGreaterThanOrEqual(0)
         expect(firstAdded('--pattern-')).toBeGreaterThan(firstAdded('--nexus-'))
@@ -228,5 +278,38 @@ describe('classifier self-checks', () => {
         expect(run([':root {', '  --a: 1;', '}', 'body {', '  color: blue;', '}', '.keep {', '  color: red;', '}']).bad).toEqual(['body {', 'color: blue;'])
         expect(run([':root {', '  --a: 1;', '}', ':root {', '  --a: 2;', '}', '.keep {', '  color: red;', '}']).bad).toEqual(['--a: 2;'])
         expect(run([':root {', '  --a: 1;', '}', '.keep {', '  color: blue;', '}']).unmatched).toEqual(['  color: red;'])
+    })
+
+    // The S2 normalisation, on small fixtures shaped like the compiled output.
+    const verdictOf = (prePart: string[], postPart: string[]) => {
+        const same = s2Remapped(prePart, postPart, false)
+        const { unmatched, added } = unmatchedPreLines(same.pre, same.post)
+        return { unmatched, bad: disallowedAddedLines(same.pre, same.post, added) }
+    }
+    const radiusPre = (value: string) => ['@layer theme {', '  :root, :host {', `    --radius-md: ${value};`, '  }', '}', '.rounded-md {', '  border-radius: var(--radius-md);', '}']
+    const radiusPost = (value: string) => ['@layer theme {', '  :root, :host {', '  }', '}', ':root {', `  --ui-radius-md: ${value};`, '}', '.rounded-md {', '  border-radius: var(--ui-radius-md);', '}']
+
+    test('SC-1: a remapped step matches by its resolved value', () => {
+        expect(verdictOf(radiusPre('0.375rem'), radiusPost('0.375rem'))).toEqual({ unmatched: [], bad: [] })
+    })
+
+    test('SC-2: a remapped step with a different value is caught', () => {
+        expect(verdictOf(radiusPre('0.375rem'), radiusPost('0.4rem'))).toEqual({ unmatched: ['  border-radius: 0.375rem;'], bad: ['border-radius: 0.4rem;'] })
+    })
+
+    test('SC-3: a variable that is not remapped is never resolved', () => {
+        const prePart = ['@layer theme {', '  :root, :host {', '    --spacing-x: 4px;', '  }', '}', '.p {', '  padding: var(--spacing-x);', '}']
+        const postPart = ['@layer theme {', '  :root, :host {', '    --spacing-x: 4px;', '  }', '}', ':root {', '  --other: 4px;', '}', '.p {', '  padding: var(--other);', '}']
+        expect(verdictOf(prePart, postPart)).toEqual({ unmatched: ['  padding: var(--spacing-x);'], bad: ['padding: var(--other);'] })
+    })
+
+    test('SC-4: only the remapped theme names may be absent from the post side', () => {
+        const prePart = ['@layer theme {', '  :root, :host {', '    --radius-md: 0.375rem;', '    --spacing: 0.25rem;', '  }', '}']
+        const postPart = ['@layer theme {', '  :root, :host {', '  }', '}']
+        expect(verdictOf(prePart, postPart)).toEqual({ unmatched: ['    --spacing: 0.25rem;'], bad: [] })
+    })
+
+    test('a post output without the ten defaults fails the comparison itself', () => {
+        expect(() => s2Remapped(radiusPre('0.375rem'), radiusPost('0.375rem'))).toThrow(/no default for/)
     })
 })

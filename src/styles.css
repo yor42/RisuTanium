@@ -93,8 +93,6 @@
   --container-80vw: 80vw;
   --container-100vw: 100vw;
 
-  --border-width-1: 1px;
-
   --width-110: 28rem;
   --width-124: 32rem;
   --width-138: 36rem;
@@ -121,6 +119,25 @@
   --height-138: 36rem;
 
   --default-ring-color: rgb(59 130 246 / 0.5);
+}
+
+/*
+  The app's radius and hairline scale reads the --ui-* shape tokens (nexus-tokens.css holds the defaults, which equal
+  Tailwind's own values). `inline` keeps utilities reading var(--ui-*) directly, so a theme pack sheet reshapes every
+  rounded and border utility while it is on. --default-border-width is the bare `border` hairline; --border-width-1 is the `border-1` step.
+*/
+@theme inline {
+  --radius-xs: var(--ui-radius-xs);
+  --radius-sm: var(--ui-radius-sm);
+  --radius-md: var(--ui-radius-md);
+  --radius-lg: var(--ui-radius-lg);
+  --radius-xl: var(--ui-radius-xl);
+  --radius-2xl: var(--ui-radius-2xl);
+  --radius-3xl: var(--ui-radius-3xl);
+  --radius-4xl: var(--ui-radius-4xl);
+  --radius: var(--ui-radius);
+  --default-border-width: var(--ui-border-width);
+  --border-width-1: var(--ui-border-width);
 }
 
 /*
