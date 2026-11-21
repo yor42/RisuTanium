@@ -1,6 +1,6 @@
 import type { IndexedUnit } from './chatIndex'
 
-/** The S0 header, used for counting only in S1a; the injected wording belongs to S1b. */
+/** The injected heading (fixed English, MC-3202). */
 export const HEADER = 'Earlier in this chat'
 /** The pack walk stops when fewer than this many tokens remain. */
 export const MIN_LEFT = 8
@@ -28,6 +28,8 @@ export interface PackResult {
     slots: number
     counted: number
     capped: boolean
+    /** Picks removed after the walk, lowest ranked first, to make the block fit `limit`. */
+    droppedForFit: number
 }
 
 export interface PackArgs {
@@ -41,6 +43,12 @@ export interface PackArgs {
     maxCounts: number
     /** Line text to countText result; passed only on a deterministic counter. */
     cache?: Map<string, number>
+    /** The walk's starting run; it takes one slot. Default: the header's count plus one. */
+    headCount?: () => Promise<number>
+    /** Slots kept back from the walk for block counts. Default 1. */
+    reserve?: number
+    /** The block must also fit this; the walk still admits lines by `budget`. Default `budget`. */
+    limit?: number
 }
 
 const lineOf = (l: PackLine): string => `[#${l.label}] ${l.name}: ${l.text}`
@@ -50,13 +58,18 @@ const lineOf = (l: PackLine): string => `[#${l.label}] ${l.name}: ${l.text}`
  * not, uses one slot, so which lines are visited never depends on what the
  * cache holds; `counted` reports the counter calls actually made. One slot is
  * always kept for the block count, so the walk visits at most maxCounts - 2
- * lines.
+ * lines. After the walk, picks drop lowest ranked first, on the walk's own
+ * estimate and without a count, until the estimate fits; the block is then
+ * counted and drops one more pick per failed count.
  */
 export async function packUnits(args: PackArgs): Promise<PackResult> {
     const { budget, maxCounts, cache } = args
+    const reserve = args.reserve ?? 1
+    const fit = Math.min(budget, args.limit ?? budget)
     let slots = 0
     let counted = 0
     let capped = false
+    let droppedForFit = 0
     const countLine = async (text: string): Promise<number> => {
         slots++
         const hit = cache?.get(text)
@@ -66,13 +79,21 @@ export async function packUnits(args: PackArgs): Promise<PackResult> {
         cache?.set(text, v)
         return v
     }
-    const result = (picks: PackLine[], pickTokens: number[], block: string, T: number): PackResult => ({ picks, pickTokens, block, T, slots, counted, capped })
+    const result = (picks: PackLine[], pickTokens: number[], block: string, T: number): PackResult => ({ picks, pickTokens, block, T, slots, counted, capped, droppedForFit })
 
-    let run = (await countLine(HEADER)) + 1
+    let run: number
+    if (args.headCount) {
+        slots++
+        counted++
+        run = await args.headCount()
+    } else {
+        run = (await countLine(HEADER)) + 1
+    }
+    const head = run
     let picks: PackLine[] = []
     let pickTokens: number[] = []
     for (let i = 0; ; i++) {
-        if (slots + 2 > maxCounts) {
+        if (slots + 1 + reserve > maxCounts) {
             capped = true
             break
         }
@@ -93,6 +114,14 @@ export async function packUnits(args: PackArgs): Promise<PackResult> {
         return [HEADER, ...sorted.map(lineOf)].join('\n')
     }
     for (;;) {
+        let estimate = head + pickTokens.reduce((a, b) => a + b, 0)
+        while (picks.length && estimate > fit) {
+            estimate -= pickTokens[pickTokens.length - 1]
+            picks = picks.slice(0, -1)
+            pickTokens = pickTokens.slice(0, -1)
+            droppedForFit++
+        }
+        if (!picks.length) return result([], [], '', 0)
         if (slots + 1 > maxCounts) {
             capped = true
             return result([], [], '', 0)
@@ -101,9 +130,10 @@ export async function packUnits(args: PackArgs): Promise<PackResult> {
         slots++
         counted++
         const T = await args.countBlock(block)
-        if (T <= budget) return result(picks, pickTokens, block, T)
+        if (T <= fit) return result(picks, pickTokens, block, T)
         picks = picks.slice(0, -1)
         pickTokens = pickTokens.slice(0, -1)
+        droppedForFit++
         if (!picks.length) return result([], [], '', 0)
     }
 }

@@ -57,7 +57,8 @@
 {#if empty}
     <section data-part="home-empty-hero" aria-labelledby={headingId} class="mt-4 w-full">
         <div class="rounded-2xl border border-borderc/10 bg-darkbg p-6 text-center">
-            <h2 id={headingId} class="text-2xl font-bold tracking-tight text-textcolor break-keep">{language.homeEmptyHeading}</h2>
+            <!-- Focus target for the Home Characters entries when the hero is the only content (MC-2931); not in the tab order. -->
+            <h2 id={headingId} tabindex="-1" data-jump-target="home-hero" class="text-2xl font-bold tracking-tight text-textcolor break-keep">{language.homeEmptyHeading}</h2>
             <p class="mt-2 text-textcolor2">{language.homeEmptyBody}</p>
             <div class="mt-4 flex flex-wrap justify-center gap-2">
                 <button

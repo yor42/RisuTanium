@@ -15,7 +15,7 @@
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
-    import { legacyEngineFields } from "../../ts/process/memory/memoryEngine";
+    import { chroMemoryOn, legacyEngineFields } from "../../ts/process/memory/memoryEngine";
     import { runChatScreenshot } from "src/ts/chatScreenshot";
     import { alertError, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
@@ -1106,9 +1106,11 @@
                     {/each}
 
                     {#if DBState.db.showMenuHypaMemoryModal}
-                        {#if (lv.supaModelType !== 'none' && lv.hypav2) || lv.hypaV3}
+                        {#if chroMemoryOn(DBState.db) || (lv.supaModelType !== 'none' && lv.hypav2) || lv.hypaV3}
                             <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
-                                if (lv.hypav2) {
+                                if (chroMemoryOn(DBState.db)) {
+                                    $hypaV3ModalOpen = true
+                                } else if (lv.hypav2) {
                                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data ??= {
                                         lastMainChunkID: 0,
                                         mainChunks: [],
@@ -1123,7 +1125,7 @@
                             }}>
                                 <BrainIcon aria-hidden="true" />
                                 <span class="ml-2">
-                                    {lv.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}
+                                    {chroMemoryOn(DBState.db) ? language.chroMemoryModal : lv.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}
                                 </span>
                             </div>
                         {/if}

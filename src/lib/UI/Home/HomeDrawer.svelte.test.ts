@@ -67,7 +67,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: (_anchor: Comment) => {} }))
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
-import { homeView, showHomeLanding } from './homeView.svelte'
+import { homeView, startHomeView } from './homeView.svelte'
 import { DBState, OpenRealmStore, PlaygroundStore, additionalHamburgerMenu, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 
 const mountedInstances: unknown[] = []
@@ -140,13 +140,17 @@ function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
     return event
 }
 
+// jsdom has no scrollTo. The reveal scrolls the landing scroller (the MainMenu root, the parent of the page body); a marked target top tells which section it aimed at.
+const scrollSpy = vi.fn()
 const pluginCallback = additionalHamburgerMenu[0].callback as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
     localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
     resetUpstreamAgreementForTests()
     resetBackHandlersForTests()
-    showHomeLanding()
+    startHomeView()
+    scrollSpy.mockClear()
+    Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     pluginCallback.mockReset()
 })
 
@@ -163,7 +167,8 @@ afterEach(async () => {
     document.body.replaceChildren()
     setViewportWidth(originalInnerWidth)
     resetBackHandlersForTests()
-    showHomeLanding()
+    startHomeView()
+    delete (Element.prototype as { scrollTo?: unknown }).scrollTo
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
 })
@@ -436,17 +441,53 @@ describe('HomeDrawer', () => {
         expect(contentCharactersButtonOf(mid)).not.toBeNull()
     })
 
-    test('T-B2: the Characters item opens the library and closes the drawer with no layer left', () => {
+    test('T-B2 S4b-R2: the Characters item reveals the library in the landing, closes the drawer with no layer left, and focuses the heading', async () => {
+        DBState.db.characters = [{ chaId: 'lib-1', name: 'Lib' }] as unknown as typeof DBState.db.characters
+        onTestFinished(() => {
+            Reflect.deleteProperty(DBState.db, 'characters')
+        })
         const root = mountShellAt(360)
+        root.querySelector<HTMLElement>('[data-part="home-library"]')!.getBoundingClientRect = () => ({ top: 321 } as DOMRect)
         openDrawer(root)
         expect(modalLayerCount()).toBe(1)
         itemNamed(language.character)!.click()
         flushSync()
-        expect(homeView.view).toBe('library')
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(drawerOf()).toBeNull()
         expect(modalLayerCount()).toBe(0)
+        expect(root.querySelector('[data-part="home-landing"]')).not.toBeNull()
+        const section = root.querySelector<HTMLElement>('[data-part="home-library"]')!
+        expect(scrollSpy.mock.contexts[0]).toBe(root.querySelector('[data-part="home-body"]')!.parentElement)
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 321, behavior: 'smooth' })
+        expect(document.activeElement).toBe(section.querySelector('h2'))
+        expect(homeView.libraryEngaged).toBe(true)
     })
 
+    test('S4b-R2z (MC-2931): with no characters the drawer still lists Characters; it scrolls to the hero and focuses its heading', async () => {
+        DBState.db.characters = [] as unknown as typeof DBState.db.characters
+        onTestFinished(() => {
+            Reflect.deleteProperty(DBState.db, 'characters')
+        })
+        const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+        onTestFinished(() => focusSpy.mockRestore())
+        const root = mountShellAt(360)
+        root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')!.getBoundingClientRect = () => ({ top: 654 } as DOMRect)
+        openDrawer(root)
+        itemNamed(language.character)!.click()
+        flushSync()
+        await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(drawerOf()).toBeNull()
+        expect(modalLayerCount()).toBe(0)
+        expect(root.querySelector('[data-part="home-landing"]')).not.toBeNull()
+        expect(root.querySelector('[data-part="home-library"]')).toBeNull()
+        const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')!
+        expect(scrollSpy.mock.contexts[0]).toBe(root.querySelector('[data-part="home-body"]')!.parentElement)
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 654, behavior: 'smooth' })
+        const heading = hero.querySelector<HTMLElement>('[data-jump-target="home-hero"]')!
+        expect(document.activeElement).toBe(heading)
+        expect(focusSpy.mock.contexts).toContain(heading)
+        expect(focusSpy.mock.calls[focusSpy.mock.contexts.indexOf(heading)][0]).toEqual({ preventScroll: true })
+    })
     test('T-B3: Back closes only the drawer and returns focus to the menu button; the next Back shows the quit toast', () => {
         const showToast = vi.fn()
         installBackGuard({ showToast })

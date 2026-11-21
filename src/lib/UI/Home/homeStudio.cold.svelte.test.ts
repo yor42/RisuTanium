@@ -242,7 +242,7 @@ import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScr
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { studioOpen } from 'src/ts/studio/studioOpen'
 import { cancelHomeStudioOpen, openStudioFromHome, resetHomeStudioForTests, startStudioFromHome } from './homeStudio.svelte'
-import { homeView, openHomeLibrary, showHomeLanding } from './homeView.svelte'
+import { homeView, openHomeLibrary, startHomeView } from './homeView.svelte'
 
 //#region fixtures
 
@@ -362,7 +362,7 @@ beforeEach(() => {
     MobileGUI.set(false)
     settingsOpen.set(false)
     selectedCharID.set(-1)
-    showHomeLanding()
+    startHomeView()
     installArchive()
     holdReads()
     stopBackLayers = $effect.root(() => {
@@ -469,7 +469,7 @@ describe('the open of an archived character', () => {
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
         expect(slot(1).coldstorage).toBeUndefined()
-        expect(homeView.view).toBe('library')
+        expect(homeView.libraryEngaged).toBe(true)
         // The next Back reaches no handler of this request.
         expect(dispatchBack()).toBe(false)
         expect(liveBack()).toBe(0)
@@ -689,7 +689,7 @@ describe('a load that fails', () => {
         expect(slot(1).coldstorage).toBe('unit-alpha')
         expect(get(selectedCharID)).toBe(-1)
         expect(get(studioOpen)).toBe(false)
-        expect(homeView.view).toBe('library')
+        expect(homeView.libraryEngaged).toBe(true)
         expect(liveBack()).toBe(0)
         expect(dispatchBack()).toBe(false)
     })

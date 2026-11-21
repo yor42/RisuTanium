@@ -8,6 +8,8 @@ export interface CapturedMessage {
     chatIndex: number
     name: string
     preWrap: string
+    /** The message text reference at capture; the record hashes this, not a later `msg.data`. */
+    data: string
 }
 
 export interface FirstMessageSource {
@@ -66,13 +68,12 @@ export function rawHash(data: string): string {
 
 const hashMemo = new WeakMap<object, { data: string, hash: string }>()
 
-/** Reuses the stored hash while the message still holds the text it was hashed from; weak keys keep no message alive. */
-export function rawHashOf(msg: { data: string }): string {
-    const data = msg.data
-    const entry = hashMemo.get(msg)
+/** Reuses the stored hash while the key was last hashed from this same text; weak keys keep no message alive. */
+export function rawHashOf(key: object, data: string): string {
+    const entry = hashMemo.get(key)
     if (entry && entry.data === data) return entry.hash
     const hash = rawHash(data)
-    hashMemo.set(msg, { data, hash })
+    hashMemo.set(key, { data, hash })
     return hash
 }
 
@@ -90,7 +91,7 @@ export function recordOf(ref: CapturedMessage, userName: string): MessageRecord 
         index: ref.chatIndex,
         role: ref.msg.role,
         name: ref.msg.role === 'char' ? ref.name : userName,
-        rawHash: rawHashOf(ref.msg),
+        rawHash: rawHashOf(ref.msg, ref.data),
         preWrap: ref.preWrap,
     }
 }
