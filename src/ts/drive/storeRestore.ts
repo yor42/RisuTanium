@@ -21,6 +21,7 @@ import {
     type Store2ImportEnd,
 } from './storeImport'
 import { emptyImportFacts, numberedBackupTarget, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from './operationEnd'
+import { cardRestoreProgress, legacyRestoreProgress, restoreOldCardDef, restorePointCardDef, type RestoreProgress } from './restoreProgress'
 
 /**
  * The internal-backup load of a store2 page: the person picks one of the page's restore points, or one of the old
@@ -42,6 +43,8 @@ export interface StoreRestoreOptions {
     reload: (releaseExclusiveHold: ExclusiveHoldRelease | null) => Promise<void>
     /** How long the save before the list may wait. */
     saveBoundMs?: number
+    /** Shows the running phases on the task card, with Cancel until the point of no return, instead of wait dialogs. */
+    card?: true
 }
 
 /** The longest the save before the list may take; past it the restore goes on and asks about the edits left. */
@@ -148,10 +151,27 @@ export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promi
         return endBeforePick('nothing-replaced', 'no-writable-session')
     }
 
+    // A restore that was handed over to the older-backup card replaces `progress`, so the backstop reads the holder.
+    const holder = { progress: options.card === true ? cardRestoreProgress(restorePointCardDef()) : legacyRestoreProgress() }
+    try {
+        return await pickAndRestore(committer, backend, options, holder)
+    } finally {
+        holder.progress.leave()
+    }
+}
+
+async function pickAndRestore(committer: Committer, backend: Store2Backend, options: StoreRestoreOptions, holder: { progress: RestoreProgress }): Promise<OperationEnd<ImportFacts>> {
+    const cancelBeforePick = (): OperationEnd<ImportFacts> => {
+        holder.progress.cancelled()
+        return endBeforePick('canceled')
+    }
     let rows: RestorePointRow[]
     let oldTimes: number[]
     try {
-        await saveFirst(options.saveBoundMs ?? SAVE_FIRST_BOUND_MS)
+        await saveFirst(options.saveBoundMs ?? SAVE_FIRST_BOUND_MS, options.card === true ? { quiet: true } : undefined)
+        if (holder.progress.cancelRequested) {
+            return cancelBeforePick()
+        }
         const listed = await listRestorePoints(backend, await backend.readCommit())
         if (listed.status !== 'ok') {
             alertError(language.internalBackupListFailed)
@@ -159,6 +179,9 @@ export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promi
         }
         rows = listed.rows
         oldTimes = await listBackupTimes()
+        if (holder.progress.cancelRequested) {
+            return cancelBeforePick()
+        }
     } catch (error) {
         console.error(error)
         alertError(language.internalBackupListFailed)
@@ -184,9 +207,10 @@ export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promi
     try {
         if (target.kind === 'point') {
             const label = rowLabel(target.row)
-            return endOfRun('restore-point', label, target, await restoreChosen(target.row, committer, backend, busy, options))
+            return endOfRun('restore-point', label, target, await restoreChosen(target.row, committer, backend, busy, options, holder.progress))
         }
-        return endOfRun('restore-numbered', numberedBackupTarget(target.time), target, await restoreOldChosen(target.time, committer, backend, busy, options))
+        holder.progress = holder.progress.handOver(restoreOldCardDef(), 'read')
+        return endOfRun('restore-numbered', numberedBackupTarget(target.time), target, await restoreOldChosen(target.time, committer, backend, busy, options, holder.progress))
     } finally {
         busy.end()
     }
@@ -214,10 +238,18 @@ interface ExclusiveRun {
  * from this page's pre-restore state must never overwrite the restored
  * profile.
  */
-async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => Promise<RunEnd>): Promise<RunEnd> {
+async function runExclusively(busy: BusyHandle, progress: RestoreProgress, perform: (run: ExclusiveRun) => Promise<RunEnd>): Promise<RunEnd> {
+    // A Cancel accepted before the lock ends the run before the hold is taken: nothing was written and nothing is held.
+    const cancelExit = (): RunEnd => {
+        progress.cancelled()
+        return { outcome: 'canceled', cause: null }
+    }
     // Work can start while the picker is open.
     if (refuseBackupLoadWhileBusy(busy)) {
         return nothingReplaced('busy')
+    }
+    if (progress.cancelRequested) {
+        return cancelExit()
     }
 
     // Nothing else on this browser origin may write the profile while the commit
@@ -233,7 +265,7 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
             }
         } else {
             await tabPresenceLockAcquired
-            alertWait(language.restoreCheckingOtherTabs)
+            progress.phase('tabs', language.restoreCheckingOtherTabs)
             run.releaseExclusiveHold = await acquireExclusiveStorageMigrationLock(RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS)
             if (!run.releaseExclusiveHold) {
                 // A reload already in flight needs no message: this page is
@@ -251,6 +283,10 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
         if (!run.releaseExclusiveHold) {
             releaseDbWriteLock = await dbWriteLock.acquire()
         }
+        // Inside the `try`, so the `finally` releases the hold or `dbWriteLock` taken above.
+        if (progress.cancelRequested) {
+            return cancelExit()
+        }
 
         // The loop cannot commit from here on. The turn inside the guard is a safeguard, not a
         // requirement: a save that was finishing when the lock came free ends its
@@ -263,17 +299,23 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
         if (refuseBackupLoadWhileBusy(busy)) {
             return nothingReplaced('busy')
         }
+        // The point of no return: `perform` writes first. A Cancel that came before is refused here, a later one is refused by the card.
+        if (!progress.lockCancel()) {
+            return cancelExit()
+        }
 
         return await perform(run)
     } catch (error) {
         console.error(error)
         if (run.landed) {
             alertWait(language.restoreSavedReloadOrRestart)
+            progress.leave()
             return { outcome: 'committed', cause: null }
         } else if (run.started) {
             // An error after the restore began leaves the outcome unknown, exactly like an unconfirmed write.
             run.staysClosed = true
             alertStore.set({ type: 'wait', msg: language.store2RestoreUnconfirmed })
+            progress.leave()
             if (run.releaseExclusiveHold) {
                 await run.releaseExclusiveHold(true)
             }
@@ -283,6 +325,8 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
             return { outcome: 'failed', cause: null }
         }
     } finally {
+        // First, so no release await below leaves the card up after the run's outcome.
+        progress.leave()
         if (!run.staysClosed) {
             if (releaseDbWriteLock) {
                 releaseDbWriteLock()
@@ -294,15 +338,17 @@ async function runExclusively(busy: BusyHandle, perform: (run: ExclusiveRun) => 
     }
 }
 
-async function restoreChosen(row: RestorePointRow, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<RunEnd> {
-    return await runExclusively(busy, async (run) => {
-        alertWait(language.backupRestoreLoading)
+async function restoreChosen(row: RestorePointRow, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions, progress: RestoreProgress): Promise<RunEnd> {
+    return await runExclusively(busy, progress, async (run) => {
+        progress.phase('load', language.backupRestoreLoading)
         run.started = true
         const outcome = await restorePoint(committer, backend, row.key)
         switch (outcome.status) {
             case 'restored':
                 run.landed = true
                 run.staysClosed = true
+                // After the flags that keep the write lock closed, in the segment of the first surface below.
+                progress.leave()
                 if (outcome.flushed === false) {
                     // The commit key is written but the device did not confirm it reached disk. The page
                     // reloads all the same: the start-up re-flush writes the commit key again before anything else.
@@ -330,6 +376,7 @@ async function restoreChosen(row: RestorePointRow, committer: Committer, backend
                 // this page until a reload shows which state is current.
                 run.staysClosed = true
                 alertStore.set({ type: 'wait', msg: language.store2RestoreUnconfirmed })
+                progress.leave()
                 if (run.releaseExclusiveHold) {
                     await run.releaseExclusiveHold(true)
                 }
@@ -370,13 +417,21 @@ async function readOldBackup(time: number): Promise<Uint8Array | null> {
  * root damage refuses it whole), and what a salvage leaves out is named and confirmed. The archived units it points at
  * are the page's own legacy units. A failed write, a decline or a refusal leaves the page as it was.
  */
-async function restoreOldChosen(time: number, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions): Promise<RunEnd> {
+async function restoreOldChosen(time: number, committer: Committer, backend: Store2Backend, busy: BusyHandle, options: StoreRestoreOptions, progress: RestoreProgress): Promise<RunEnd> {
+    const cancelExit = (): RunEnd => {
+        progress.cancelled()
+        return { outcome: 'canceled', cause: null }
+    }
     if (refuseBackupLoadWhileBusy(busy)) {
         return nothingReplaced('busy')
     }
+    progress.phase('read', null)
     const bytes = await readOldBackup(time)
     if (bytes === null) {
         return nothingReplaced()
+    }
+    if (progress.cancelRequested) {
+        return cancelExit()
     }
     if (!await confirmDatabaseSize(bytes.length, false)) {
         return { outcome: 'canceled', cause: null }
@@ -385,6 +440,9 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
     let omitted: ImportFacts['omitted']
     try {
         const decoded = await decodeNumberedBackup(bytes)
+        if (progress.cancelRequested) {
+            return cancelExit()
+        }
         if (!await confirmLeftOut(decoded.omitted)) {
             return { outcome: 'canceled', cause: null }
         }
@@ -395,8 +453,8 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
         return nothingReplaced()
     }
 
-    return await runExclusively(busy, async (run) => {
-        alertWait(language.backupRestoreLoading)
+    return await runExclusively(busy, progress, async (run) => {
+        progress.phase('load', language.backupRestoreLoading)
         run.started = true
         const end: Store2ImportEnd = await commitStore2Import({
             target: { committer, backend },
@@ -409,6 +467,7 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
                 return nothingReplaced(end.cause)
             case 'unconfirmed':
                 run.staysClosed = true
+                progress.leave()
                 if (run.releaseExclusiveHold) {
                     await run.releaseExclusiveHold(true)
                 }
@@ -416,6 +475,7 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
             case 'landed':
                 run.landed = true
                 run.staysClosed = true
+                progress.leave()
                 await announceStore2Import(end, [], () => options.reload(run.releaseExclusiveHold))
                 return { outcome: 'committed', cause: null, facts: { flushed: end.flushed, repair: end.repair, incomplete: end.incomplete, omitted } }
         }

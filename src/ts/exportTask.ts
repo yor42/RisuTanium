@@ -70,6 +70,11 @@ export interface ExportTask<S extends string = ExportStep> {
     readonly bytes: ProgressSink
     /** Throws ExportCancelledError after a Cancel; a no-op without a token. */
     throwIfCancelled(): void
+    /**
+     * The point of no return: false when a Cancel came first (or the run ended), true otherwise. From a true return on the
+     * card offers no Cancel, also when `holdAside` brings it back. An export never calls it.
+     */
+    lockCancel(reason?: string): boolean
     done(summary: string | readonly string[]): void
     cancelled(fileKept: boolean): void
     failed(error: unknown, fileKept: boolean): void
@@ -96,6 +101,8 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
     // A card `holdAside` took down that has not come back yet, and whether a newer task held the slot when it was due back.
     let held = false
     let displaced = false
+    // Set by `lockCancel`: a card that `comeBack` opens after the lock must offer no Cancel.
+    let cancelLocked = false
     let stepIndex = 0
     const stepIds: readonly string[] = def?.steps?.map((step) => step.id) ?? EXPORT_STEPS
 
@@ -117,7 +124,7 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
                 { label: language.exportStepAssets, noun: language.importNounAssets, mark: 'transfer_out' },
                 { label: language.exportStepWrite },
             ],
-            onCancel: active === null ? undefined : () => active.cancel(),
+            onCancel: active === null || cancelLocked ? undefined : () => active.cancel(),
         })
     }
 
@@ -183,6 +190,12 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
         },
         throwIfCancelled() {
             token?.throwIfCancelled()
+        },
+        lockCancel(reason) {
+            if (ended || token?.cancelled) return false
+            cancelLocked = true
+            shown()?.lockCancel(reason)
+            return token?.cancelled !== true
         },
         done(summary) {
             comeBack()

@@ -73,6 +73,11 @@ export interface RtbCopyDeps {
     /** The largest entry compared by CRC-32 and, without a pipeline, written whole. */
     chunkMax: number
     yieldBudget(): YieldBudget
+    /**
+     * Reports the bytes copied so far out of the total, at each entry's end and at each chunk of the entry being read, in
+     * place of the percent wait. Without it the copy reports only through `wait`, at whole-file percent changes.
+     */
+    bytes?(done: number, total: number): void
     error(text: string): void
     wait(text: string): void
 }
@@ -178,11 +183,23 @@ function progress(state: CopyState, bytes: number): void {
     if (state.totalBytes <= 0) {
         return
     }
+    if (state.deps.bytes !== undefined) {
+        state.deps.bytes(state.doneBytes, state.totalBytes)
+        return
+    }
     const percent = Math.min(100, Math.floor(state.doneBytes * 100 / state.totalBytes))
     if (percent !== state.lastPercent) {
         state.lastPercent = percent
         state.deps.wait(language.rtbRestoreCopying(percent))
     }
+}
+
+/** A chunk of the entry being copied was read: only a run that reports bytes moves its line inside an entry. */
+function reading(state: CopyState, readOfEntry: number): void {
+    if (state.deps.bytes === undefined || state.totalBytes <= 0) {
+        return
+    }
+    state.deps.bytes(Math.min(state.doneBytes + readOfEntry, state.totalBytes), state.totalBytes)
 }
 
 /**
@@ -249,6 +266,7 @@ async function writeSmall(state: CopyState, i: number, key: string, name: string
             }
             data.set(chunk, at)
             at += chunk.length
+            reading(state, at)
         })
         if (read.ok === false) {
             return corruptEntry(read.finding)
@@ -279,8 +297,14 @@ async function writeLarge(state: CopyState, i: number, key: string, name: string
     } catch (error) {
         return classifyWriteError(state, error, name, false)
     }
+    let readOfEntry = 0
     try {
-        const read = await readEntry(plan.source, plan.index, i, (chunk) => writer.write(chunk.slice()))
+        const read = await readEntry(plan.source, plan.index, i, (chunk) => {
+            const written = writer.write(chunk.slice())
+            readOfEntry += chunk.length
+            reading(state, readOfEntry)
+            return written
+        })
         if (read.ok === false) {
             await writer.abort()
             return corruptEntry(read.finding)
@@ -410,8 +434,13 @@ async function copyInlay(state: CopyState, pair: InlayPair, ordinal: number): Pr
         return { cause: 'could-not-read', text: language.backupFileChangedWhileReading, kept: false }
     }
     const pieces: Blob[] = []
+    let readOfBody = 0
     try {
-        const read = await readEntry(plan.source, plan.index, bodyIndex[0], (chunk) => { pieces.push(new Blob([chunk.slice()])) })
+        const read = await readEntry(plan.source, plan.index, bodyIndex[0], (chunk) => {
+            pieces.push(new Blob([chunk.slice()]))
+            readOfBody += chunk.length
+            reading(state, readOfBody)
+        })
         if (read.ok === false) {
             return corruptEntry(read.finding)
         }
