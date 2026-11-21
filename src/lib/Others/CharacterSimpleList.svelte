@@ -118,8 +118,8 @@
         {@const busy = opening?.(index) ?? false}
         {@const studioShown = studio?.available(index) ?? false}
         <!-- The row button; with a Studio control beside it the divider line moves to the wrapper, so it runs under both. -->
-        {#snippet rowButton(divided: boolean, hooked: boolean)}
-            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} data-part={studio && hooked ? 'library-row' : undefined} aria-busy={busy ? 'true' : undefined} onclick={() => {
+        {#snippet rowButton(divided: boolean)}
+            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} data-part="library-row" aria-busy={busy ? 'true' : undefined} onclick={() => {
                 if (onpick) {
                     onpick(index)
                     return
@@ -141,7 +141,7 @@
         {/snippet}
         {#if studio && studioShown}
             <div class="flex items-center gap-1 border-t-darkborderc" class:border-t={position !== 1} data-part="library-row">
-                {@render rowButton(false, false)}
+                {@render rowButton(false)}
                 <button
                     class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected"
                     data-part="library-studio"
@@ -154,7 +154,7 @@
                 </button>
             </div>
         {:else}
-            {@render rowButton(position !== 1, true)}
+            {@render rowButton(position !== 1)}
         {/if}
     {/if}
 {/snippet}

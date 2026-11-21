@@ -360,13 +360,15 @@ describe('GridCatalog cast-sheet hooks (S4d-U1)', { timeout: 60_000 }, () => {
         })
     })
 
-    test('the App host has no hook, no scoped class, and the same class lists as the Home variant markup', async () => {
+    // The hooks are plain literals in both variants (the theme-pack part list reads only literals); the look stays Home-only
+    // because every rule descends from the scoped root class, which the App host never carries.
+    test('the App host has no scoped class, the same hooks, and the same class lists as the Home variant markup', async () => {
         DBState.db = buildDb(threeCharacters())
         const app = await classSnapshot('app')
         const home = await classSnapshot('home')
         expect(app.rootClass).toBe(false)
-        expect(app.hooks).toBe(0)
-        expect(app.listRows).toBe(0)
+        expect(app.hooks).toBe(home.hooks)
+        expect(app.listRows).toBe(3)
         expect(app.head).toBe('mx-4 mb-6 flex flex-col shrink-0')
         expect(app.views).toEqual(home.views)
         expect(app.tile).toBe(home.tile)

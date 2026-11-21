@@ -61,4 +61,8 @@
         border-color: var(--nexus-edge);
         border-radius: var(--home-radius-5);
     }
+    /* A Simple row with a Studio control is hooked on its wrapper and its row button: only the wrapper is ruled. */
+    :global(.home-library [data-part="library-row"] [data-part="library-row"]) {
+        border-width: 0;
+    }
 </style>
