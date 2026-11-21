@@ -9,6 +9,7 @@
     import { fillLang } from "src/lang/fill";
     import { removeSidebarItem, sidebarItemUndoAction } from "src/ts/setting/sidebarItemUndo";
     import { postUndoToast } from "src/ts/toast/toastHost.svelte";
+    import { v4 } from "uuid";
 
 
     let configPage: "list" | "add" | "addSettingsSubmenu" = $state("list");
@@ -104,7 +105,7 @@
             <Button
                 onclick={() => {
                     DBState.db.customSidebarItems.push({
-                        id: crypto.randomUUID(),
+                        id: v4(),
                         type: "model",
                         subType: "none",
                         label: language.model,
@@ -118,7 +119,7 @@
             <Button
                 onclick={() => {
                     DBState.db.customSidebarItems.push({
-                        id: crypto.randomUUID(),
+                        id: v4(),
                         type: "preset",
                         subType: "none",
                         label: language.presets,
@@ -132,7 +133,7 @@
             <Button
                 onclick={() => {
                     DBState.db.customSidebarItems.push({
-                        id: crypto.randomUUID(),
+                        id: v4(),
                         type: "loadout",
                         subType: "none",
                         label: language.loadouts,
@@ -146,7 +147,7 @@
             <Button
                 onclick={() => {
                     DBState.db.customSidebarItems.push({
-                        id: crypto.randomUUID(),
+                        id: v4(),
                         type: "persona",
                         subType: "none",
                         label: language.persona,
@@ -190,7 +191,7 @@
                     <Button
                         onclick={() => {
                             DBState.db.customSidebarItems.push({
-                                id: crypto.randomUUID(),
+                                id: v4(),
                                 type: "setting",
                                 subType: type.id,
                                 label: getLabel(type) || type.id,

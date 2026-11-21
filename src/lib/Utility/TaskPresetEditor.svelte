@@ -9,6 +9,7 @@
     import NumberInput from '../UI/GUI/NumberInput.svelte'
     import TextInput from '../UI/GUI/TextInput.svelte'
     import ModelList from '../UI/ModelList.svelte'
+    import { v4 } from 'uuid'
 
     // Every edit below assigns one field of the stored preset in place, so a key this build does not know stays on the
     // object through an edit of another field.
@@ -18,7 +19,7 @@
 
     function addPreset() {
         const preset: TaskPreset = {
-            id: crypto.randomUUID(),
+            id: v4(),
             name: '',
             instructions: '',
             model: '',

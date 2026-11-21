@@ -1847,7 +1847,7 @@ class PyodideContext{
         if(this.inited){
             return;
         }
-        const id = crypto.randomUUID();
+        const id = v4();
         return new Promise<void>((resolve, reject) => {
             this.worker.onmessage = (event:MessageEvent) => {
                 if(event.data.id !== id){
@@ -1870,7 +1870,7 @@ class PyodideContext{
         });
     }
     async python(call:string){
-        const id = crypto.randomUUID();
+        const id = v4();
         return new Promise<any>((resolve, reject) => {
             this.worker.onmessage = (event:MessageEvent) => {
                 if(event.data.id !== id){

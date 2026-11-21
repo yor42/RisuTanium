@@ -2,6 +2,7 @@ import { beginChokePoint } from "src/ts/process/memory/busyActions";
 import { MEASURE } from "src/ts/process/memory/measureFlag";
 import { startPluginRecord } from "../pluginCostMeter";
 import { isPlainResult } from "./pluginCopy.svelte";
+import { v4 } from "uuid";
 
 type MsgType =
     | 'CALL_ROOT'
@@ -467,7 +468,7 @@ await (async function() {
 export class SandboxHost {
     private iframe: HTMLIFrameElement;
     private apiFactory: any;
-    private nonce = crypto.randomUUID();
+    private nonce = v4();
     private csp = `connect-src 'none'; script-src 'nonce-${this.nonce}' 'wasm-unsafe-eval'; frame-src 'none'; object-src 'none'; style-src * 'unsafe-inline'; default-src 'none'; img-src * data: blob:; font-src * data: blob:; media-src * data: blob:; base-uri 'none';`;
 
     private instanceRegistry = new Map<string, any>();

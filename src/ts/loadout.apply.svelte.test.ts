@@ -179,6 +179,25 @@ describe('makeLoadout', () => {
         expect(made.presetName).toBe('Beta Renamed')
         expect(made.presetId).toBe('id-b')
     })
+
+    /**
+     * U1 regression reproducer: a plain-HTTP origin has no `crypto.randomUUID`. `uuid` captures the native function when
+     * it is first evaluated, so this proves `makeLoadout` no longer calls `crypto.randomUUID`; it does not prove the
+     * library's own `getRandomValues` fallback.
+     */
+    test('U1 regression reproducer: a loadout gets a distinct v4 id without crypto.randomUUID', () => {
+        Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined })
+        try {
+            const first = makeLoadout({ name: 'One' })
+            const second = makeLoadout({ name: 'Two' })
+
+            expect(first.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+            expect(second.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+            expect(first.id).not.toBe(second.id)
+        } finally {
+            delete (crypto as { randomUUID?: unknown }).randomUUID
+        }
+    })
 })
 
 describe('applyLoadout keeps the saved loadout a snapshot', () => {

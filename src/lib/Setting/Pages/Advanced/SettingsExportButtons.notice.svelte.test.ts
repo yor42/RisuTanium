@@ -101,4 +101,43 @@ describe('the bug-report settings export notice', () => {
         expect(mocks.writeText).not.toHaveBeenCalled()
         expect(mocks.alertNormal).not.toHaveBeenCalled()
     })
+
+    test('regression reproducer: C2 with no clipboard API the text is copied through execCommand and the notice shows', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        const copied: string[] = []
+        Object.defineProperty(document, 'execCommand', {
+            value: vi.fn(() => {
+                copied.push(document.querySelector('textarea')?.value ?? '')
+                return true
+            }),
+            configurable: true,
+        })
+        await clickBugReport()
+
+        expect(copied).toHaveLength(1)
+        expect(JSON.parse(copied[0])).toMatchObject({ aiModel: 'm' })
+        expect(mocks.alertNormal).toHaveBeenCalledWith(language.settingsReportDownloadStarted)
+    })
+
+    test('regression reproducer: C7 when no copy path works the notice claims only the download', async () => {
+        mocks.writeText.mockRejectedValueOnce(new Error('denied'))
+        Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true })
+        await clickBugReport()
+
+        expect(mocks.alertNormal).toHaveBeenCalledTimes(1)
+        expect(mocks.alertNormal).toHaveBeenCalledWith(language.exportDownloadStarted)
+        expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.settingsReportDownloadStarted)
+        expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.settingsExported)
+    })
+
+    test('regression reproducer: C7 on desktop the failed copy shows the saved-export text, not the clipboard claim', async () => {
+        platformBox.isTauri = true
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true })
+        await clickBugReport()
+
+        expect(mocks.alertNormal).toHaveBeenCalledTimes(1)
+        expect(mocks.alertNormal).toHaveBeenCalledWith(language.successExport)
+        expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.settingsExported)
+    })
 })

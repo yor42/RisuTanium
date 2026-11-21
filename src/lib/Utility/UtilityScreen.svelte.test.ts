@@ -317,6 +317,44 @@ describe('New, Copy and Save', () => {
         expect(writeText.mock.calls[0][0]).toContain('fixed')
     })
 
+    test('(R) C1: Copy as Markdown copies through execCommand when the clipboard API is absent', async () => {
+        h.request.mockResolvedValue({ type: 'success', result: 'fixed' })
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        const copied: string[] = []
+        Object.defineProperty(document, 'execCommand', {
+            value: vi.fn(() => {
+                copied.push(document.querySelector<HTMLTextAreaElement>('textarea[readonly]')?.value ?? '')
+                return true
+            }),
+            configurable: true,
+        })
+        const root = open(UtilityScreen)
+        await pickAndSend(root, 'hello')
+        await vi.waitFor(() => expect(utilityConversation.runId).toBeNull())
+        flushSync()
+
+        buttonWithText(root, language.utility.copyMarkdown).click()
+        await vi.waitFor(() => expect(root.textContent).toContain(language.utility.copied))
+
+        expect(copied).toEqual([utilityMarkdown('Fixer', utilityConversation.turns)])
+        expect(root.textContent).not.toContain(language.utility.copyFailed)
+    })
+
+    test('(R) C1b: when no copy path works the notice says the copy failed', async () => {
+        h.request.mockResolvedValue({ type: 'success', result: 'fixed' })
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+        Object.defineProperty(document, 'execCommand', { value: vi.fn(() => false), configurable: true })
+        const root = open(UtilityScreen)
+        await pickAndSend(root, 'hello')
+        await vi.waitFor(() => expect(utilityConversation.runId).toBeNull())
+        flushSync()
+
+        buttonWithText(root, language.utility.copyMarkdown).click()
+        await vi.waitFor(() => expect(root.textContent).toContain(language.utility.copyFailed))
+
+        expect(root.textContent).not.toContain(language.utility.copied)
+    })
+
     test('(R) Save as .md downloads the transcript under the .md name', async () => {
         h.request.mockResolvedValue({ type: 'success', result: 'fixed' })
         const root = open(UtilityScreen)
