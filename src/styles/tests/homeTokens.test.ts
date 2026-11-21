@@ -169,6 +169,27 @@ describe('a pack value reaches the landing (S1-G5)', () => {
         expect(model.custom(h1, '--home-radius-3')).toBe('8px')
     })
 
+    test('(g) S2b2-G5: the page and Realm tokens resolve per band on a landing child, and the S2b-2 band blocks restate the registry', () => {
+        const expected = {
+            wide: { '--home-realm-min-height': '380px', '--home-realm-list-max': '200px', '--home-main-pad-x': '32px' },
+            mid: { '--home-realm-min-height': '296px', '--home-realm-list-max': '150px', '--home-main-pad-x': '24px' },
+            phone: { '--home-realm-min-height': '296px', '--home-realm-list-max': '150px', '--home-main-pad-x': '16px' },
+        } as const
+        for (const [band, values] of Object.entries(expected)) {
+            document.body.innerHTML = `<div class="home-root" data-layout="${band}"><section></section></div>`
+            const section = document.querySelector('section')!
+            const model = modelWith('')
+            for (const [name, value] of Object.entries(values)) expect(model.custom(section, name), `${band} ${name}`).toBe(value)
+        }
+        document.body.innerHTML = '<div class="home-root" data-layout="phone"><section></section></div>'
+        const phone = document.querySelector('section')!
+        const phoneModel = modelWith('')
+        expect(phoneModel.custom(phone, '--home-main-pad-top')).toBe('16px')
+        expect(phoneModel.custom(phone, '--home-main-pad-bottom')).toBe('96px')
+        expect(app.get(':root')?.get('--home-text-lg')).toBe('17px')
+        expect(app.get(':root')?.get('--home-card-pad-lg')).toBe('var(--home-space-10)')
+    })
+
     test('(e) the Korean block outranks a pack plain :root value', () => {
         const h1 = h1Under('wide', 'ko')
         const model = modelWith(':root{--home-tracking-h1:0.05em}')

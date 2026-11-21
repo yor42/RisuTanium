@@ -117,7 +117,7 @@ function accept(): void {
 /** The Realm card: the grid child that owns the clickable preview/status area. */
 function realmCard(target: HTMLElement): HTMLElement {
     const title = Array.from(target.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === language.hubBrowseMore)
-    const card = title?.closest('.group') as HTMLElement | null
+    const card = title?.closest('[data-part="home-realm"]') as HTMLElement | null
     if (!card) {
         throw new Error('Realm card not found')
     }
