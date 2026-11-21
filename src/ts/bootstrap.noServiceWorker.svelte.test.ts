@@ -251,6 +251,12 @@ const fetchedUrls: string[] = []
 let reloadSpy: ReturnType<typeof vi.spyOn>
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()

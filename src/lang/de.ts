@@ -650,6 +650,7 @@ export const languageGerman = {
     "patternTaskCount": (noun: string, done: number, total: number) => noun ? `${noun} ${done} / ${total}` : `${done} / ${total}`,
     "patternTaskBytes": (done: string, total: string) => `${done} / ${total}`,
     "patternTaskSlowHint": "Noch in Arbeit. Große Dateien können eine Weile dauern.",
+    "alertWaitSlowHint": "Noch in Arbeit.",
     "patternTaskCancelUnsafe": "Dieser Schritt kann nicht mittendrin gestoppt werden",
     "patternTaskCancelling": "Wird abgeschlossen",
     "patternTaskCancelled": "Abgebrochen",

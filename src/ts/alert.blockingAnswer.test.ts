@@ -38,7 +38,6 @@ import {
     alertNormal,
     alertNormalWait,
     alertSelect,
-    alertToast,
     alertWait,
     waitAlert,
 } from './alert'
@@ -48,6 +47,11 @@ import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from './alertPrompts'
 //#region helpers
 
 const NONE: alertData = { type: 'none', msg: '' }
+
+/** The raw `toast` value AlertComp's toast branch shows: these tests pin how the alert store protocol treats a toast cover, not what `alertToast` does. */
+function putToast(msg: string): void {
+    alertStore.set({ type: 'toast', msg })
+}
 
 /** What the user's answer writes: the alert ends and its `msg` is the answer. */
 function answer(msg: string): void {
@@ -131,7 +135,7 @@ describe('a blocking alert answered, then a toast put up in the same tick', () =
 
         await pastGuard()
         answer('no')
-        alertToast('Alert Closed')
+        putToast('Alert Closed')
 
         expect(await within(answered, 200)).toBe(false)
         expect(get(alertStore).type).toBe('toast')
@@ -142,7 +146,7 @@ describe('a blocking alert answered, then a toast put up in the same tick', () =
 
         await pastGuard()
         answer('yes')
-        alertToast('Alert Closed')
+        putToast('Alert Closed')
 
         expect(await within(answered, 200)).toBe(true)
         expect(get(alertStore).type).toBe('toast')
@@ -153,7 +157,7 @@ describe('a blocking alert answered, then a toast put up in the same tick', () =
 
         await pastGuard()
         answer('1')
-        alertToast('Alert Closed')
+        putToast('Alert Closed')
 
         expect(await within(answered, 200)).toBe('1')
         expect(get(alertStore).type).toBe('toast')
@@ -164,7 +168,7 @@ describe('a blocking alert answered, then a toast put up in the same tick', () =
 
         await pastGuard()
         answer('["module-a"]')
-        alertToast('Alert Closed')
+        putToast('Alert Closed')
 
         expect(await within(answered, 200)).toBe('["module-a"]')
         expect(get(alertStore).type).toBe('toast')
@@ -232,7 +236,7 @@ describe('waitAlert', () => {
     })
 
     test('guard: a toast in front of a waiter holds it until the toast is gone', async () => {
-        alertToast('a toast')
+        putToast('a toast')
         const waiting = waitAlert()
 
         expect(await settledWithin(waiting, 40)).toBe(false)

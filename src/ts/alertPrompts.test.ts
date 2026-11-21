@@ -64,7 +64,6 @@ import {
     alertSelect,
     alertSelectChar,
     alertStaleAccountNotice,
-    alertToast,
     alertWait,
     alertStore as alertStoreWrapper,
     STALE_ACCOUNT_NOTICE_ACK,
@@ -77,6 +76,11 @@ import { UPSTREAM_AGREEMENT_ACCEPT } from './upstreamAgreement'
 //#region helpers
 
 const NONE: alertData = { type: 'none', msg: '' }
+
+/** The raw `toast` value AlertComp's toast branch shows: these tests pin how the alert store protocol treats a toast cover, not what `alertToast` does. */
+function putToast(msg: string): void {
+    alertStore.set({ type: 'toast', msg })
+}
 
 /** Just past the 400 ms during which an answer to a returning or next-in-turn prompt is discarded. */
 const GUARD_MS = 401
@@ -147,7 +151,7 @@ const COVERS: CoverSpec[] = [
     {
         name: 'a toast whose animation ends',
         type: 'toast',
-        put: () => { alertToast('Saved') },
+        put: () => { putToast('Saved') },
         close: () => { alertStore.set(NONE) },
     },
     {
@@ -229,7 +233,7 @@ describe('a prompt that another alert covers', () => {
         const asked = shown()
 
         alertNormal('First notice')
-        alertToast('A toast over the notice')
+        putToast('A toast over the notice')
         expect.soft(shown().type, 'the second cover replaces the first').toBe('toast')
         alertStore.set(NONE)
         await settle()
@@ -729,7 +733,7 @@ describe('boot notices from the queue', () => {
     })
 
     describe.each([
-        { name: 'a toast', put: () => { alertToast('Saved') }, close: () => { closeNotice() } },
+        { name: 'a toast', put: () => { putToast('Saved') }, close: () => { closeNotice() } },
         { name: 'an error', put: () => { alertError('Something failed') }, close: () => { answer('yes') } },
         { name: 'a markdown alert', put: () => { alertStoreWrapper.set({ type: 'markdown', msg: '# Notes' }) }, close: () => { closeNotice() } },
         { name: 'a notice that is not from the queue', put: () => { alertNormal('Other') }, close: () => { closeNotice() } },
@@ -755,7 +759,7 @@ describe('boot notices from the queue', () => {
         queueNotice('same')
         queueNotice('same')
 
-        alertToast('Saved')
+        putToast('Saved')
         closeNotice()
         expect.soft(shownNotice(), 'the first notice after the toast').toBe('same')
         closeNotice()
@@ -773,7 +777,7 @@ describe('boot notices from the queue', () => {
         queueNotice('N1')
         queueNotice('N2')
         idle.length = 0
-        alertToast('Saved')
+        putToast('Saved')
         closeNotice()
         closeNotice()
         expect.soft(get(alertIdle), 'idle with a notice still queued').toBe(false)
@@ -934,7 +938,7 @@ describe('boot notices from the queue', () => {
     test('new rule: a notice survives a wait and a toast over it, code closing the wait changes nothing, and only the person closes it', async () => {
         queueNotice('N1')
         alertWait('W')
-        alertToast('T')
+        putToast('T')
         closeNotice()
         expect.soft(shownNotice(), 'the notice after the toast ended').toBe('N1')
         const writes = recordWrites()

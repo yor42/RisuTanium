@@ -88,6 +88,12 @@ const closeAlert = () => alertStore.set({ type: 'none', msg: '' })
 
 let order: string[] = []
 
+// A toast the test posted must not outlive it: the host is a singleton whose timers outlast the test.
+afterEach(async () => {
+    const { resetToastHostForTests } = await import('src/ts/toast/toastHost.svelte')
+    resetToastHostForTests()
+})
+
 beforeEach(() => {
     h.didFirstSetup = true
     queued = []
