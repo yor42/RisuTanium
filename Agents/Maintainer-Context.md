@@ -34063,3 +34063,21 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 **Question.** The old character-archive path (`coldCharacterArchive.ts`, `archiveGate.ts`, `bootArchiveState.ts`, the import-archive branch in `characterCards.ts`) can no longer run in any build: its boot flag is always off, and import, restore and Android data only read archived characters. It still produced the old-format archive fixtures several compatibility tests use. Delete it, or keep it frozen as test-only code and park the item?
 
 **What the maintainer chose.** Option A, delete it in two steps. First capture the real writer's output as committed fixtures and move the compatibility tests onto them (`MC-329`, producer-built fixtures). Then delete the engine, the gate, the boot archive state, the `characterCards.ts` import branch and its plumbing, the archive-only retained helpers, `buildColdStub`'s production copy, and the four orphan archive notice keys in all 8 locale files. Every reader stays: restore, conversion, export, Android MVP data (`MC-350`) and upstream stubs. Tier 2. The final PR closes `#173`. Not chosen: B, keep it frozen as test-only and park the item.
+
+### MC-2865 — #165 the automatic store2 inlay pass skips Node, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `MC-2860`, `MC-2858`.
+
+**What the maintainer chose.** The automatic inline-image clean-up runs on Tauri and browser storage (IndexedDB) only. On a Node server the no-other-tab check sees only this browser's tabs, and another device may hold an attached but unsaved image with no age record to protect it, so unused inlays on Node stay and cost space only.
+
+### MC-2866 — #165 the Clean Up Unused Files button stays files-only, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `#163`, `MC-2864`.
+
+**What the maintainer chose.** The manual clean-up button does not run the inline-image pass; its counts and approved texts stay as they are.
+
+### MC-2867 — #165 Studio undo history and body-only residue are accepted limits, 2026-11-21
+
+- Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#165`, `MC-2860`.
+
+**What the maintainer chose.** (1) A Studio undo step that names an inlay the pass has deleted is a named known limitation: a later Undo shows a missing image, the text stays intact. (2) Inlay bodies without listed metadata and stale bodies of kept ids are recorded as a leftover (space only), with no ticket; removing them needs an age-safe rule that MC-2860 rules out for now.

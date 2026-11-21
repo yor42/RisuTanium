@@ -2371,3 +2371,6 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2965](Maintainer-Context.md#mc-2965--443-plain-http-scope-copy-buttons-in-vertex-service-account-login-gets-a-fallback-signer-2026-11-21) | #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21 |
 | [MC-2966](Maintainer-Context.md#mc-2966--443-plan-answers-honest-copy-failure-html-embed-left-out-one-invalid-key-message-2026-11-21) | #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21 |
 | [MC-2987](Maintainer-Context.md#mc-2987--173-f-arch-delete-the-old-character-archive-path-after-capturing-its-output-2026-11-21) | #173 F-ARCH: delete the old character-archive path after capturing its output, 2026-11-21 |
+| [MC-2865](Maintainer-Context.md#mc-2865--165-the-automatic-store2-inlay-pass-skips-node-2026-11-21) | #165 the automatic store2 inlay pass skips Node, 2026-11-21 |
+| [MC-2866](Maintainer-Context.md#mc-2866--165-the-clean-up-unused-files-button-stays-files-only-2026-11-21) | #165 the Clean Up Unused Files button stays files-only, 2026-11-21 |
+| [MC-2867](Maintainer-Context.md#mc-2867--165-studio-undo-history-and-body-only-residue-are-accepted-limits-2026-11-21) | #165 Studio undo history and body-only residue are accepted limits, 2026-11-21 |
