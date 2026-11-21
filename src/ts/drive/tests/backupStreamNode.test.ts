@@ -249,6 +249,7 @@ import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore, type FetchLike } from 'src/ts/storage/store/nodeHttpStore'
 import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectRestoreStore } from './restoreSupport'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from 'src/ts/storage/tests/nodeServerFixture'
@@ -407,6 +408,7 @@ async function expectServerSinkEquals(world: World, first: { status: string }, r
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     h.platform.isTauri = false
     h.platform.isNodeServer = true
     sink.writes.length = 0
@@ -469,7 +471,9 @@ describe('export of a large asset on a Node store with pieces', () => {
             expect(outcome.cause).toBeInstanceOf(ExportReadError)
         }
         expect(sink.closed).toBe(false)
-        expect(alerts.error).toHaveLength(1)
+        expect(alerts.error).toEqual([])
+        expect(taskHostView()?.state).toBe('failed')
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedFileKept("'assets/big.png'"))
     })
 
     test('new behaviour: a first range that fails once is re-sent and the export completes with the asset', async () => {

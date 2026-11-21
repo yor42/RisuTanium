@@ -282,6 +282,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, exportThisTabBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { setColdStorageItem } from 'src/ts/process/coldstorage.svelte'
 import { formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
@@ -464,6 +465,7 @@ async function mintedUuids(): Promise<Array<string | null>> {
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     backupSink.writes.length = 0
     backupSink.failWrites = false
@@ -909,7 +911,8 @@ describe.each([
 
         expect(outcome.status).toBe('failed')
         expect(outcome.status === 'failed' ? String(outcome.cause) : '').toContain('the output stream is down')
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(taskHostView()?.state).toBe('failed')
     })
 
     test('reproducer: a report the person must read is carried as a notice', async () => {

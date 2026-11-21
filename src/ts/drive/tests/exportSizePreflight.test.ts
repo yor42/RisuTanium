@@ -277,6 +277,7 @@ import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions, type
 import { UPSTREAM_HARD_LIMIT_BYTES } from 'src/ts/drive/exportInline'
 import { endOfExport } from 'src/ts/drive/operationEnd'
 import { language } from 'src/lang'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -420,6 +421,7 @@ describe('the limit', () => {
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     backupSink.writes.length = 0
     backupSink.opened = 0
@@ -630,8 +632,8 @@ describe('SaveLocalBackup, assets sized by the desktop listing', () => {
         if (outcome.status !== 'failed') {
             throw new Error(`the export ended ${outcome.status}`)
         }
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        const shown = String(alertErrorMock.mock.calls[0][0])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        const shown = String(taskHostView()?.failure?.detail)
         const expectedByFile = { kept: language.backupFailedFileKept(null), deleted: language.backupFailedFileDeleted(null), untouched: language.backupFailedNothingWritten() }
         expect(shown).toBe(expectedByFile[outcome.file])
         expect(endOfExport('export', outcome)).toMatchObject({ outcome: 'failed', detail: { file: outcome.file } })

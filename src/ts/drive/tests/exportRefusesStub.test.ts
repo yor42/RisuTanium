@@ -284,6 +284,7 @@ import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE, ModuleStubRefusal } from 'src/ts/storage/moduleStub'
 import { language } from 'src/lang'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 
 //#region helpers
@@ -340,6 +341,7 @@ function databaseWith(withStub: boolean): Database {
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     backupSink.writes.length = 0
     backupSink.opened = 0
@@ -409,8 +411,8 @@ describe.each([
         expect((outcome.cause as ModuleStubRefusal).where).toBe(functionName)
         expect(outcome.file).toBe('untouched')
         // The generic wording only: the module's name stays in the error message for the console.
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        const shown = String(alertErrorMock.mock.calls[0][0])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        const shown = String(taskHostView()?.failure?.detail)
         expect(shown).toBe(language.backupFailedNothingWritten())
         expect(shown).not.toContain(MODULE_NAME)
         // Nothing started: the cold collection, the store listing and reads, the writer and the file.

@@ -316,6 +316,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { coldUnitCharacter } from 'src/ts/process/coldCharacter'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -472,6 +473,7 @@ function watchStubStarts(): StartSeen[] {
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     sink.chunks.length = 0
     sink.onWrite = null
@@ -568,7 +570,8 @@ describe.each([
 
         expect(outcome.status).toBe('failed')
         expect(outcome.status === 'failed' ? String(outcome.cause) : '').toContain('the output stream is down')
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(taskHostView()?.state).toBe('failed')
         expect(sink.closedFile).toBeNull()
         const written = entriesOf(sink.chunks.reduce((all, chunk) => {
             const next = new Uint8Array(all.length + chunk.length)

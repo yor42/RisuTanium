@@ -275,6 +275,7 @@ import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
 import type { Residency } from 'src/ts/storage/store2/residency'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { language } from 'src/lang'
+import { resetTaskHostForTests, taskHostView } from 'src/ts/alertTask.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 
 //#region helpers
@@ -375,6 +376,7 @@ function databaseWith(stub: Record<string, unknown> | null): Database {
 //#endregion
 
 beforeEach(() => {
+    resetTaskHostForTests()
     platformBox.isTauri = false
     backupSink.writes.length = 0
     backupSink.opened = 0
@@ -528,7 +530,8 @@ describe.each([
         expect(outcome.cause).toBeInstanceOf(ModuleStubRefusal)
         expect((outcome.cause as ModuleStubRefusal).where).toBe(functionName)
         expect(outcome.file).toBe('untouched')
-        expect(String(alertErrorMock.mock.calls[0][0])).toBe(language.backupFailedNothingWritten())
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(taskHostView()?.failure?.detail).toBe(language.backupFailedNothingWritten())
         expect(backupSink.opened).toBe(0)
         expect(backupSink.writes).toEqual([])
     })

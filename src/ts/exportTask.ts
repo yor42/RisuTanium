@@ -1,7 +1,7 @@
 import { language } from 'src/lang'
 import type { BrandStatus } from 'src/lib/Nexus/brand/brandStatus'
 import { alertError, alertNormal, waitUnreadNotice } from './alert'
-import { alertTask, type TaskHandle } from './alertTask.svelte'
+import { alertTask, taskShown, type TaskHandle } from './alertTask.svelte'
 import { ExportCancelledError, type ExportCancelToken } from './exportCancel'
 import { exportErrorText, exportFileState, withFileIncompleteSentence, type ExportByteWriter } from './exportWriters'
 import type { ProgressSink } from './progressSink'
@@ -36,6 +36,8 @@ export interface ExportTaskDef<S extends string = ExportStep> {
     readonly failedHeadline?: string
     /** The text of the legacy error notice when the run has no card to settle (never shown, or stepped aside) and kept no incomplete file; the error itself goes to the console. Defaults to the error. */
     readonly legacyErrorText?: string
+    /** The legacy notice of a cancel that kept a file, when no card of the run is shown. Defaults to the export cancelled-file-incomplete notice. */
+    readonly cancelledFileKeptNotice?: string
 }
 
 export interface ExportTask<S extends string = ExportStep> {
@@ -55,15 +57,24 @@ export interface ExportTask<S extends string = ExportStep> {
      * task, or ended), so only a card this call took down makes the run a stepped-aside one.
      */
     stepAside(): void
+    /**
+     * Takes a shown card out of the slot while `ask` runs, for a surface the TaskHost yield cannot cover: a sheet drawn
+     * inside the page, which the card would make inert, or a native dialog. The card comes back, at its step, at the
+     * run's next report or ending, never by itself: a run that ends with `close` never shows it again. Does nothing to
+     * a card that is not shown (never opened, replaced, or ended); then it only runs `ask`.
+     */
+    holdAside<T>(ask: () => Promise<T>): Promise<T>
     /** Assets written / assets total. */
     readonly count: ProgressSink
     /** One large streamed asset: bytes / its size. */
     readonly bytes: ProgressSink
     /** Throws ExportCancelledError after a Cancel; a no-op without a token. */
     throwIfCancelled(): void
-    done(summary: string): void
+    done(summary: string | readonly string[]): void
     cancelled(fileKept: boolean): void
     failed(error: unknown, fileKept: boolean): void
+    /** An ending whose text is final and names the file's state itself; the caller already logged the error. */
+    failedWith(detail: string, fileKept: boolean): void
     /** The one catch body of every export run: classifies, aborts on failure, reads the file state, ends. */
     endOnError(error: unknown, target: ExportTarget | undefined): void
     close(): void
@@ -82,11 +93,45 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
     let handle: TaskHandle | null = null
     let ended = false
     let aside = false
+    // A card `holdAside` took down that has not come back yet, and whether a newer task held the slot when it was due back.
+    let held = false
+    let displaced = false
     let stepIndex = 0
     const stepIds: readonly string[] = def?.steps?.map((step) => step.id) ?? EXPORT_STEPS
 
     const shown = (): TaskHandle | null => (handle !== null && !handle.detached ? handle : null)
-    const replaced = (): boolean => handle !== null && handle.detached
+    const replaced = (): boolean => displaced || (handle !== null && handle.detached)
+
+    /** The card of this run, as `open` and the return of a held card both build it. */
+    const openCard = (card: ExportTaskDef<string>): TaskHandle => {
+        const active = token
+        return alertTask({
+            title: card.title,
+            subtitle: card.subtitle,
+            steps: card.steps?.map((step) => ({
+                label: step.label,
+                ...(step.noun === undefined ? {} : { noun: step.noun }),
+                ...(step.mark === undefined ? {} : { mark: step.mark }),
+            })) ?? [
+                { label: language.exportStepPrepare },
+                { label: language.exportStepAssets, noun: language.importNounAssets, mark: 'transfer_out' },
+                { label: language.exportStepWrite },
+            ],
+            onCancel: active === null ? undefined : () => active.cancel(),
+        })
+    }
+
+    /** Brings a held card back at its step, unless a newer task holds the slot: that task is never replaced, and the run is then a replaced one. */
+    const comeBack = (): void => {
+        if (!held || ended || def === null) return
+        held = false
+        if (taskShown()) {
+            displaced = true
+            return
+        }
+        handle = openCard(def)
+        if (stepIndex > 0) handle.setStep(stepIndex)
+    }
 
     const task: ExportTask<string> = {
         get token() {
@@ -99,27 +144,14 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
             token ??= next
         },
         open() {
-            if (def === null || ended || aside || handle !== null) return
-            const active = token
-            handle = alertTask({
-                title: def.title,
-                subtitle: def.subtitle,
-                steps: def.steps?.map((step) => ({
-                    label: step.label,
-                    ...(step.noun === undefined ? {} : { noun: step.noun }),
-                    ...(step.mark === undefined ? {} : { mark: step.mark }),
-                })) ?? [
-                    { label: language.exportStepPrepare },
-                    { label: language.exportStepAssets, noun: language.importNounAssets, mark: 'transfer_out' },
-                    { label: language.exportStepWrite },
-                ],
-                onCancel: active === null ? undefined : () => active.cancel(),
-            })
+            if (def === null || ended || aside || held || handle !== null) return
+            handle = openCard(def)
         },
         step(next) {
+            comeBack()
             const index = stepIds.indexOf(next)
             const active = shown()
-            if (active === null || ended || index <= stepIndex) return
+            if (active === null || ended || index < 0 || index <= stepIndex) return
             stepIndex = index
             active.setStep(index)
         },
@@ -131,32 +163,48 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
             aside = true
             active.close()
         },
+        holdAside(ask) {
+            const active = shown()
+            if (active !== null && !ended) {
+                // Closing detaches the entry, so the handle goes too, as in `stepAside`.
+                handle = null
+                held = true
+                active.close()
+            }
+            return ask()
+        },
         count(done, total) {
+            comeBack()
             if (!ended) shown()?.setCount(done, total)
         },
         bytes(done, total) {
+            comeBack()
             if (!ended) shown()?.setBytes(done, total)
         },
         throwIfCancelled() {
             token?.throwIfCancelled()
         },
         done(summary) {
+            comeBack()
             if (ended) return
             ended = true
+            const list = typeof summary === 'string' ? [summary] : [...summary]
             const active = shown()
-            if (active !== null) void active.finish({ headline: def?.doneHeadline ?? language.exportTaskDone, summary: [summary] })
-            else if (!replaced()) alertNormal(summary)
+            if (active !== null) void active.finish({ headline: def?.doneHeadline ?? language.exportTaskDone, summary: list })
+            else if (!replaced()) alertNormal(typeof summary === 'string' ? summary : list.join('\n\n'))
         },
         cancelled(fileKept) {
+            comeBack()
             if (ended) return
             ended = true
             const active = shown()
             if (active !== null) {
                 void (fileKept ? active.settleCancel([language.exportFailedFileIncomplete]) : active.settleCancel())
             }
-            else if (fileKept) alertNormal(language.exportCancelledFileIncomplete)
+            else if (fileKept) alertNormal(def?.cancelledFileKeptNotice ?? language.exportCancelledFileIncomplete)
         },
         failed(error, fileKept) {
+            comeBack()
             if (ended) return
             ended = true
             const active = shown()
@@ -179,6 +227,23 @@ export function createExportTask(def: ExportTaskDef<string> | null): ExportTask<
                 alertError(def.legacyErrorText)
             }
             else alertError(error instanceof Error ? error : exportErrorText(error))
+        },
+        failedWith(detail, fileKept) {
+            comeBack()
+            if (ended) return
+            ended = true
+            const active = shown()
+            if (active !== null) {
+                void active.fail({
+                    headline: def?.failedHeadline ?? language.exportTaskFailed,
+                    dataState: 'same',
+                    ...(detail === '' ? {} : { detail }),
+                })
+            }
+            else if (replaced()) {
+                if (fileKept) alertError(detail)
+            }
+            else alertError(detail)
         },
         endOnError(error, target) {
             if (ended) return
