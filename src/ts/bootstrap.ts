@@ -10,9 +10,9 @@ import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { takePresetIdsMinted } from "./storage/presetMeta";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
-import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
+import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
-import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertInput, alertToast } from "./alert";
+import { alertError, alertMd, alertStaleAccountNotice, waitAlert, alertInput, alertToast } from "./alert";
 import { queueNotice, noticesSettled, askPrompt } from "./alertPrompts";
 import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
@@ -39,7 +39,7 @@ import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepa
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { startInlayCopy } from "./process/files/inlayCopy";
 import { queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
-import { AppStoreUnavailableError, cleanUpCopiedBackOpfs, getAppStore, readMainFile, takeStorageFallbackNotice } from "./storage/store/appStore";
+import { getAppStore, readMainFile } from "./storage/store/appStore";
 import { StoreNotBinaryError } from "./storage/store/errors";
 import { getStore2Boot, type Store2BootNotice, type Store2BootResult } from "./storage/store2/bootActive";
 import { getActiveStore2Save } from "./storage/store2/saveActive";
@@ -70,28 +70,11 @@ import { createReconciler, recoveredText, type ReconcileNotes } from "./nativeRe
 import { reconcileGateOpen } from "./nativeReply/gate";
 import { setParkedReplyAsker, showParkedReplies } from "./nativeReply/parkedDialog";
 import { createReplyStore } from "./nativeReply/store";
-import { isTauri } from "./platform";
+import { isNodeServer, isTauri } from "./platform";
 import { isTauriDesktop } from "./tauriDesktop";
 import { registerModelDynamic } from "./model/modellist";
 
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
-
-/**
- * Resolves the next time the alert store returns to `type: 'none'`, the way
- * the storage-fallback notice below is acknowledged -- reacts to the store write
- * directly instead of polling on a timer, so it settles on the very write
- * that clears the alert regardless of how that write is scheduled.
- */
-function waitForAlertCleared(): Promise<void> {
-    return new Promise<void>((resolve) => {
-        const unsubscribe = alertStore.subscribe((v) => {
-            if (v.type === 'none') {
-                resolve()
-                unsubscribe()
-            }
-        })
-    })
-}
 
 /**
  * Loads the application data.
@@ -111,8 +94,13 @@ export async function loadData() {
         // missing or cannot be saved replaced. Told once, after the install.
         const bootRepairs: BootRepairs = { dropped: 0, changed: 0 }
         try {
-            // First, before any store is touched or any OPFS copy back can run: a page with no dispatch has no profile
-            // to open, so it reports this and stays unloaded.
+            // First, before any store is touched: a page that is neither Tauri nor served by the Node server has no
+            // byte store to open, so it refuses, reads and writes nothing, and stays unloaded. The UI language is not
+            // loaded yet, so the text is the English default.
+            if (!isTauri && !isNodeServer) {
+                throw language.staticBuildUnsupported
+            }
+            // A page with no dispatch has no profile to open, so it reports this and stays unloaded.
             if (getStore2Boot() === null) {
                 throw missingStore2BootError()
             }
@@ -220,27 +208,15 @@ export async function loadData() {
             }
             else {
                 await forageStorage.Init()
-                try {
-                    await getAppStore()
-                } catch (error) {
-                    if (error instanceof AppStoreUnavailableError) {
-                        throw language.browserStorageUnavailable
-                    }
-                    throw error
-                }
+                await getAppStore()
                 const store2Boot = await runStore2Boot()
                 if (store2Boot.kind === 'stopped') {
                     await sleepForever()
                     return
                 }
                 store2Notices = store2Boot.notices
-                // Whether the profile was read from the page's own store, so the OPFS leftovers of a completed copy back may go.
-                let mainFileLoaded = false
                 if (store2Boot.kind === 'store2') {
                     await installStore2Profile(store2Boot, bootRepairs)
-                    // A store2 profile opened from the page's own store: the clean-up itself does nothing unless that store is
-                    // IndexedDB and no copy back ran in this page load.
-                    mainFileLoaded = true
                 } else {
                     // The legacy profile is only read, never written: no archive pass runs and no numbered backup is pruned.
                     noteBootArchiveSession(false)
@@ -251,11 +227,9 @@ export async function loadData() {
                     // takes the backup route.
                     let gotStorage: Uint8Array | null = null
                     let mainReadable = true
-                    let mainFileSeeded = false
                     try {
                         gotStorage = (await readMainFile()).bytes
                         if (gotStorage === null) {
-                            mainFileSeeded = true
                             gotStorage = encodeRisuSaveLegacy({})
                         }
                     } catch (error) {
@@ -302,10 +276,6 @@ export async function loadData() {
                     if (store2Boot.reason === 'opfs-transitional') {
                         opfsReadOnlyNotice = true
                     }
-                    // The OPFS leftovers of a completed copy back are deleted only after a boot that decoded the main file
-                    // (strictly or not), installed it, and did not create the profile. A boot that created an empty profile,
-                    // or fell back to a backup, leaves them: they may be the only copy of the profile.
-                    mainFileLoaded = installed && !mainFileSeeded
                     if (!installed) {
                         const backups = await listBackupTimes()
                         let backupLoaded = false
@@ -330,28 +300,11 @@ export async function loadData() {
                 }
                 assertPageMayGoLive()
 
-                // A page that runs from OPFS because the copy back into
-                // IndexedDB could not run records its reason in the page's
-                // store selection, which runs before setDatabase() above has
-                // picked the boot language. Shown once, after decode, so the
-                // notice is translated. This notice holds the boot until its OK:
-                // it is awaited to clear before the queued notices and the
-                // stale-account check below, so none of them collides with it.
-                const fallbackNotice = takeStorageFallbackNotice()
-                if (fallbackNotice) {
-                    const message = fallbackNotice.reason === 'space' ? language.opfsFallbackNoticeSpace
-                        : fallbackNotice.reason === 'tab' ? language.opfsFallbackNoticeTab
-                        : fallbackNotice.reason === 'noIndexedDb' ? language.opfsFallbackNoticeNoIndexedDb
-                        : language.opfsFallbackNoticeError(fallbackNotice.detail ?? '')
-                    alertNormal(message)
-                    await waitForAlertCleared()
-                }
-
                 // The dispatch's notices and then the OPFS read-only notice are
-                // queued after the notice above, in that order. The notice queue
-                // shows them one at a time in FIFO order, never overwrites one
-                // with another, and ends each only by the person's own close.
-                // They are not awaited here: the boot goes on behind them.
+                // queued in that order. The notice queue shows them one at a
+                // time in FIFO order, never overwrites one with another, and
+                // ends each only by the person's own close. They are not
+                // awaited here: the boot goes on behind them.
                 postStore2Notices(store2Notices)
                 postOpfsReadOnlyNotice(opfsReadOnlyNotice)
                 postLegacyPartialNotice(legacyPartial)
@@ -385,10 +338,6 @@ export async function loadData() {
 
                 if (getDatabase().didFirstSetup) {
                     characterURLImport()
-                }
-                if (mainFileLoaded) {
-                    // Never awaited: the clean-up must not delay the app.
-                    void cleanUpCopiedBackOpfs()
                 }
             }
             // Both boot branches reach here on the non-stale path of a life

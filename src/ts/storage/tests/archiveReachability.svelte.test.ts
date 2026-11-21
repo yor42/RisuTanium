@@ -314,7 +314,7 @@ async function bootStore2Page(kind: AppStoreKind): Promise<() => Promise<void>> 
 beforeEach(() => {
     localStorage.clear()
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     spies.archiveCharacterNow.mockReset()
     spies.putBackStarted.mockReset()
     spies.commitCallbacks.length = 0

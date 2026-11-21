@@ -1,10 +1,9 @@
 /**
  * No non-Tauri page life registers a service worker, asks `/sw/init`, or reloads to be controlled, whether or not the
- * browser exposes `navigator.serviceWorker`. Drives the REAL `loadData()` the way
- * `bootstrap.opfsFallbackNotice.svelte.test.ts` does; the storage fallback notice stands for every boot notice.
+ * browser exposes `navigator.serviceWorker`. Drives the REAL `loadData()` on a Node-served page.
  *
  * Labels: regression reproducers (a page with `navigator.serviceWorker` and a failing `/sw/init` registers and reloads
- * on a boot that still carries the service worker, and that reload life never shows a pending notice), compatibility
+ * on a boot that still carries the service worker), compatibility
  * guard (a stale account profile shows its notice and never registers; passes before and after). A stubbed `navigator.serviceWorker` and `location.reload` are not evidence about a browser.
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
@@ -273,7 +272,7 @@ beforeEach(() => {
     forageState.items.set('database/database.bin', encodeRisuSaveLegacy(baseDb()))
     dbState.current = baseDb()
     platformState.isTauri = false
-    platformState.isNodeServer = false
+    platformState.isNodeServer = true
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
@@ -305,11 +304,7 @@ afterEach(() => {
 })
 
 describe('loadData(): no page life touches a service worker', () => {
-    test.each([
-        { name: 'static page', node: false },
-        { name: 'Node-hosted page', node: true },
-    ])('reproducer: a $name with a failing /sw/init registers nothing, fetches no /sw/ URL, does not reload and finishes', async ({ node }) => {
-        platformState.isNodeServer = node
+    test('reproducer: a Node-hosted page with a failing /sw/init registers nothing, fetches no /sw/ URL, does not reload and finishes', async () => {
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
@@ -317,32 +312,6 @@ describe('loadData(): no page life touches a service worker', () => {
         expect(registerMock).not.toHaveBeenCalled()
         expect(fetchedUrls.filter((u) => u.startsWith('/sw/'))).toEqual([])
         expect(markAppInitiatedReloadMock).not.toHaveBeenCalled()
-        expect(reloadSpy).not.toHaveBeenCalled()
-        expect(dispatchEntered.count).toBe(1)
-        expect(get(loadedStore)).toBe(true)
-    })
-
-    test('reproducer: a pending fallback notice shows once and the boot finishes without a reload', async () => {
-        forageState.fallbackNotice = { reason: 'space' }
-        const { loadData, alertStore, loadedStore } = await freshLoadData()
-        const seenTypes: string[] = []
-        const unsubscribe = alertStore.subscribe((v) => {
-            seenTypes.push(v.type)
-        })
-
-        const loading = loadData()
-        await vi.waitFor(() => {
-            if (get(alertStore).type === 'none') {
-                throw new Error('expected the fallback notice to be showing')
-            }
-        }, { timeout: 500, interval: 5 })
-        alertStore.set({ type: 'none', msg: '' })
-        await loading
-        unsubscribe()
-
-        expect(seenTypes.filter((t) => t !== 'none' && t !== 'toast')).toEqual(['normal'])
-        expect(forageState.fallbackNotice).toBeNull()
-        expect(registerMock).not.toHaveBeenCalled()
         expect(reloadSpy).not.toHaveBeenCalled()
         expect(dispatchEntered.count).toBe(1)
         expect(get(loadedStore)).toBe(true)

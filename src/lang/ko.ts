@@ -3913,11 +3913,6 @@ export const languageKorean = {
     forkPrivacyPolicy: "개인정보 처리방침",
     forkLegalLinksLabel: "법적 문서",
     opfsCopyBackProgress: (done: number, total: number) => `데이터를 브라우저 저장소로 옮기는 중입니다... (${done} / ${total}). 완료될 때까지 이 탭을 열어 두세요.`,
-    opfsFallbackNoticeTab: "이번에는 이 앱의 다른 탭이 열려 있거나 이 브라우저가 다른 탭을 확인할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 다른 탭을 닫아 주세요. 앱을 다음에 시작할 때 다시 시도합니다.",
-    opfsFallbackNoticeSpace: "이번에는 여유 저장 공간이 부족해서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 저장 공간을 확보해 주세요. 앱을 다음에 시작할 때 다시 시도합니다.",
-    opfsFallbackNoticeNoIndexedDb: "이번에는 이 브라우저에서 IndexedDB를 사용할 수 없어서 데이터를 브라우저 저장소로 옮기지 못했습니다. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.",
-    opfsFallbackNoticeError: (detail: string) => `이번에는 데이터를 브라우저 저장소로 옮기지 못했습니다: ${detail}. RisuTanium은 기존 데이터로 실행 중이며 손실된 데이터는 없습니다. 앱을 다음에 시작할 때 다시 시도합니다.`,
-    browserStorageUnavailable: "이 브라우저가 RisuTanium이 데이터를 보관하는 저장소를 열지 못해 아무것도 불러오지 못했고, 아무것도 변경되지 않았습니다. 페이지를 새로고침하세요. 이 메시지가 계속 나타난다면 이 브라우저는 RisuTanium의 데이터를 저장할 수 없는 환경입니다 (시크릿 모드나 매우 오래된 브라우저가 원인일 수 있습니다). 다른 브라우저에서 RisuTanium을 열거나, 시크릿 모드가 아닌 창에서 여세요.",
     saveReadFailed: "RisuTanium이 저장소에서 저장된 데이터를 읽지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요. 계속 이런 일이 발생하면 데이터가 있는 디스크나 서버에 접근할 수 있는지 확인하세요.",
     saveDamageItem: (part: string, name: string, kind: string) => {
         const what = part === 'head' ? '현재 저장본을 가리키는 포인터'
@@ -3959,6 +3954,7 @@ export const languageKorean = {
     saveSeedFailed: "RisuTanium이 첫 저장본을 만들지 못해 아무것도 열지 않았고 아무것도 변경하지 않았습니다. 페이지를 새로고침하여 다시 시도하세요.",
     saveLeftoverNotice: "RisuTanium이 중단된 저장 또는 복원 작업으로 남겨진, 사용하지 않는 저장 데이터를 발견했습니다. 해롭지 않으며, 설정의 정리에서 제거할 수 있습니다.",
     saveMainFileLeftNotice: "데이터가 새 형식으로 이동했지만, 이전 저장 파일이 너무 커서 이 서버가 옆으로 옮기지 못했습니다. 같은 데이터를 여는 업스트림 버전의 RisuAI가 그 이전 파일을 열 수 있습니다. 설정의 정리는 삭제하기 전까지 그 파일을 안전하게 보관합니다.",
+    staticBuildUnsupported: "RisuTanium은 더 이상 일반 웹 호스트에서 실행되지 않아요. Android 앱이나 데스크톱 앱, 또는 RisuTanium Node 서버가 제공하는 페이지를 사용해 주세요.",
     opfsReadOnlyNotice: "RisuTanium이 이번에는 데이터의 임시 사본으로 실행 중이므로 변경 사항을 저장하지 않으며, 백업 복원이나 저장소 정리도 사용할 수 없습니다. 데이터는 사라지지 않았습니다. 이 앱의 다른 탭을 닫고 다시 시작하면 데이터를 브라우저 저장소로 옮길 수 있습니다.",
     legacyPartialCharacters: (count: number) => count === 1 ? "캐릭터 1개" : `캐릭터 ${count}개`,
     legacyPartialUnreadable: (count: number) => count === 1 ? "이 버전에서 읽을 수 없는 기타 부분 1개" : `이 버전에서 읽을 수 없는 기타 부분 ${count}개`,
