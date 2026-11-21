@@ -3,8 +3,7 @@
  *
  * Pins four things, all against the REAL, unmocked
  * `src/ts/globalApi.svelte.ts` -- the module-mock set below is copied
- * verbatim from `src/ts/globalApi.saveSequence.svelte.test.ts` (itself
- * trimmed from `src/ts/globalApiFileCacheAv3.svelte.test.ts`), the
+ * verbatim from `src/ts/globalApi.saveSequence.svelte.test.ts`, the
  * established precedent for loading this module for real in a test.
  *
  * 1. Ordering inside `changeChatTo`: write `chatPage`, call the real
