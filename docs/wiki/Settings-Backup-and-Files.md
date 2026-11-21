@@ -8,52 +8,14 @@ Fork difference: Upstream calls this tab "Account & Files". It has a Risu Accoun
 
 | Control | What it does |
 |---|---|
-| **Save Backup Locally** | The page always shows it. The app asks you to accept ("Do you really want to save backup?"). Then it writes a full local `.bin` backup. The backup holds all assets, all cold-storage payloads, and the database. The app strips any `account` field. Assets come from the appdata `assets/` folder on Tauri, and from the keys of the active storage backend on other builds. The process ends with a Markdown list of skipped or missing assets, or with "Success". |
+| **Save Backup Locally** | The page always shows it. The app asks you to accept ("Do you really want to save backup?"). Then it writes a full local `.bin` backup. The backup holds all assets, all cold-storage payloads, and the database. The app strips any `account` field. Assets come from the appdata `assets/` folder on Tauri, and from the keys of the Node server storage on other builds. The process ends with a Markdown list of skipped or missing assets, or with "Success". |
 | **Save Partial Backup Locally (Excluding Character Assets)** | The page always shows it. The app asks one outer confirm and two more confirms. The backup keeps the database, the images of profiles, personas, folders, and presets, and cold storage. It excludes emotion images, additional assets, VITS voice files, and character-card (CC) assets. |
 | **Load Backup Locally** | The page always shows it. The app asks two confirms ("Do you really want to load backup? All datas will be lost!", then "Do you really, really want to load backup? All datas will be lost!"). Then it restores from a `.bin` file that you pick. For the full restore behavior, see [Load Backup Locally](#load-backup-locally) below. |
-| **Load Internal Backup** | The page always shows it, with a static label. There is no "server backup" variant. That is an upstream account-sync distinction that this fork does not have. The app asks the same two confirms as above. Then it lists the periodic auto-backups (named `dbbackup-<timestamp>`). It finds them in the `database/` folder of Tauri, or in the active storage backend on other builds. Pick one to load it. The app repairs ids, installs the restored database, and shows "Loaded backup". **This does not reload the app.** |
+| **Load Internal Backup** | The page always shows it, with a static label. There is no "server backup" variant. That is an upstream account-sync distinction that this fork does not have. The app asks the same two confirms as above. Then it lists the periodic auto-backups (named `dbbackup-<timestamp>`). It finds them in the `database/` folder of Tauri, or in the Node server storage on other builds. Pick one to load it. The app repairs ids, installs the restored database, and shows "Loaded backup". **This does not reload the app.** |
 | **Clean Unused Cold Storage** | The page always shows it. The app asks you to accept, with a warning that the deletion is permanent. Then it clears the cold-storage entries that no character references any more. It refuses with an error if any character is frozen now (a save is in progress). |
 | **Export Save as Dataset** | The page always shows it. It asks no confirm. It downloads a `dataset.json`. The file has one `{name, description, chats, lorebook}` entry for each saved chat of each character that is not a group. A character with three chats gives three entries. |
-| **Local Storage Backend** panel | See [Local Storage Backend (OPFS)](#local-storage-backend-opfs) below. The page shows it only on the web build, when your browser supports the APIs that it needs. |
 
 <!-- src/lib/Setting/Pages/UserSettings.svelte:12-61; src/ts/drive/backuplocal.ts:22-189; src/ts/process/coldstorage.svelte.ts:437-446; src/ts/storage/exportAsDataset.ts:1-29; src/ts/globalApi.svelte.ts:3141-3191; src/lang/en.ts:1771 -->
-
-## Local Storage Backend (OPFS)
-
-The page shows this panel only when all of these conditions hold. You are on the web build (not Tauri, and not a self-hosted Node server). Your browser supports OPFS, `FileSystemFileHandle.createWritable`, and the Web Locks API (`navigator.locks`). If your browser lacks any of these, the panel does not appear at all.
-
-The page shows this description: "Experimental. OPFS has a stronger write-atomicity story than the default IndexedDB backend. Switching reloads the app and migrates your existing local data automatically."
-
-The button reads **"Switch to OPFS storage (experimental)"** or **"Switch back to default storage"**. Which one it reads depends on the backend that this tab uses right now. It does not depend on the saved switch flag.
-
-### Switching to OPFS
-
-1. The app asks you to accept: "Switch local storage to OPFS (experimental) and reload the app? Your existing local data will be migrated automatically on reload."
-2. A check of free space runs first. Suppose the browser reports less free space than your current usage. Then you get a warning that you can cancel: "The switch may not have enough free space: about X MB in use, and about Y MB free. If it fails partway, you stay on your current storage with no data lost. Continue anyway?" If the browser cannot report an estimate, the app silently skips this check.
-3. The switch takes an exclusive lock across tabs (timeout of 5 seconds). Suppose another tab already holds the lock, or your browser cannot do the check. Then you get this message, and nothing changes: "Another tab of this app appears to be open (or your browser does not support the check needed here). Close all other tabs first, then try again."
-4. If the switch succeeds, the app reloads. The data copy happens on that next boot, not before the reload.
-
-**On the boot after a successful switch request**, one of these outcomes shows as a single notice that blocks you, with an OK button. The notice does not show on Tauri:
-
-| Outcome | What you see | What happens to your data |
-|---|---|---|
-| Unsupported | "The storage backend was not switched: this browser does not support a feature the switch needs. Your data is unchanged, and you can switch again from Backup & Files in Settings." | The app falls back to the default storage backend, unchanged. |
-| Interrupted | "The storage backend was not switched: another tab was open, or a switch was interrupted. Your data is unchanged, and you can switch again from Backup & Files in Settings." | The same fallback. |
-| Quota exceeded | "The storage backend was not switched: the browser ran out of storage space. Your data is unchanged, ..." | The same fallback. The app removes any partially copied OPFS keys on a best-effort basis. |
-| Other error | "The storage backend was not switched: ${detail}. Your data is unchanged, ..." (detail is the raw error message) | The same fallback and cleanup as above. |
-| Success | No notice. | You are on OPFS now. |
-
-### Switching back to the default backend
-
-The app refuses outright with this message: "This tab isn't currently using OPFS storage, so there is nothing to switch back from here." This happens unless the live backend on *this tab* is actually OPFS. Otherwise, the app asks you to accept: "Switch local storage back to the default backend and reload the app? Your existing OPFS data will be migrated automatically before reloading." Then the same exclusive-lock step follows, with the same lock-refusal message as above. If the switch succeeds, the app does these things:
-- It copies every OPFS key back into the default storage.
-- It clears the bookkeeping of the OPFS migration. So a later switch to OPFS migrates fresh, and does not skip keys that are already copied.
-- It removes the OPFS flag.
-- It reloads.
-
-If the copy fails, the app releases the lock and shows the error instead.
-
-<!-- src/ts/storage/autoStorage.ts:140-236; src/ts/bootstrap.ts:185-193 -->
 
 ## Restoring is refused while work is running
 

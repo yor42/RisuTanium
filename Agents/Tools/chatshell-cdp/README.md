@@ -23,6 +23,7 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 | `mock-altmark.mjs` | `device/mock-openai.mjs` plus the ALTMARK replies (three rerolls of the marked prompt return a short, a very long and a medium-long reply). |
 | `tests/lib.accept.mjs` | Accept test of the rules in this README. |
 | `tests/device-kit.accept.mjs` | Accept test of the observer-free device kit in `device/` (adb and node are stand-ins). |
+| `tests/beforeunload.accept.mjs` | Accept test that `connect()` answers the beforeunload prompt (headless Chrome, scratch loopback page; SKIP without Chrome). |
 
 ## Safety rules
 
@@ -143,4 +144,5 @@ Never name a file in this folder `*.test.*` or `*.spec.*`: the root `pnpm test` 
 ```
 node Agents/Tools/chatshell-cdp/tests/lib.accept.mjs
 node Agents/Tools/chatshell-cdp/tests/device-kit.accept.mjs
+node Agents/Tools/chatshell-cdp/tests/beforeunload.accept.mjs
 ```

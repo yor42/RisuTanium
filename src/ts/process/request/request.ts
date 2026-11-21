@@ -892,7 +892,8 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
         const close = () => {
             oobaboogaSocket.close()
         }
-        const stream = new ReadableStream({
+        // Chunks are records keyed "0": the reply consumer reads a chunk's first key, which for a bare string is its first character.
+        const stream = new ReadableStream<StreamResponseChunk>({
             start(controller){
                 let readed = "";
                 oobaboogaSocket.onmessage = (event) => {
@@ -904,7 +905,7 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
                     }
                     if (json.event !== "text_stream") return
                     readed += json.text
-                    controller.enqueue(readed)
+                    controller.enqueue({"0": readed})
                 };
                 oobaboogaSocket.send(JSON.stringify(bodyTemplate));
             },
