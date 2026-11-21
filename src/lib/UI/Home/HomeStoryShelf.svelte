@@ -127,7 +127,8 @@
         <CharListAvatar
             src={entry.image ?? ''}
             busy={opening === entry.chaId}
-            class="{isLead ? (phone ? 'w-[var(--home-lead-portrait-phone)]!' : 'w-[var(--home-lead-portrait)]!') : 'w-[var(--home-avatar-lg)]!'} h-auto! min-h-[var(--home-avatar-lg)]! self-stretch rounded-none! bg-darkbutton! shadow-none!"
+            fallbackStyle="background-color: var(--color-darkbutton)"
+            class="{isLead ? (phone ? 'w-[var(--home-lead-portrait-phone)]!' : 'w-[var(--home-lead-portrait)]!') : 'w-[var(--home-avatar-lg)]!'} h-auto! min-h-[var(--home-avatar-lg)]! self-stretch rounded-none! shadow-none!"
         />
         <span
             class="flex min-w-0 flex-1 flex-col {isLead
