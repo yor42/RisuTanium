@@ -14,7 +14,7 @@
  */
 import { describe, test, expect } from 'vitest'
 import type { character } from '../../storage/database.svelte'
-import { buildColdStub, coldUnitCharacter, enrichLegacyStub } from '../coldCharacter'
+import { buildColdStub, coldUnitCharacter } from '../coldCharacter'
 import { isTrashPurgeDue } from '../../storage/trashPurge'
 
 // Upstream's purge age. It is a literal of the model, not this fork's constant:
@@ -71,23 +71,8 @@ function upstreamListRead(slot: character) {
     }
 }
 
-function legacyUpstreamStub(): character {
-    return {
-        type: 'character',
-        name: 'Alice',
-        image: 'assets/alice.png',
-        chaId: 'cha-alice',
-        chats: [{ message: [{ time: 1, data: '', role: 'char' }], note: '', name: '', localLore: [] }],
-        chatPage: 0,
-        firstMsgIndex: 0,
-        coldstorage: 'unit-1',
-        coldStoragedChats: [],
-    } as unknown as character
-}
-
 const STUBS: [string, () => character][] = [
     ['a stub made by buildColdStub', () => buildColdStub(fullCharacter(), 'unit-1', [])],
-    ['a stub made by enrichLegacyStub from an upstream stub', () => enrichLegacyStub(legacyUpstreamStub(), fullCharacter())],
 ]
 
 describe.each(STUBS)('compatibility guard (model of upstream): %s', (_label, make) => {

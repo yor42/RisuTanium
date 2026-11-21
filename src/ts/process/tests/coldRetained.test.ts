@@ -22,12 +22,12 @@ import {
     dropLoaded,
     dropRetained,
     hasLoaded,
-    hasRetained,
     loadedRecordOf,
     pruneRetained,
     resetRetainedForTest,
     retainOnLoad,
     retainOnRestore,
+    retainedCount,
     retainedRecordOf,
     retainedUnitKeys,
 } from '../coldRetained'
@@ -134,7 +134,7 @@ describe('retainOnRestore', () => {
         retainOnRestore(noKey, { ...stubOf(noKey, 'unit-b'), coldstorage: undefined } as Slot, noKey)
         retainOnRestore(noId, stubOf(noId, 'unit-c'), noId)
 
-        expect(hasRetained()).toBe(false)
+        expect(retainedCount()).toBe(0)
         expect(retainedRecordOf(playground)).toBeUndefined()
     })
 
@@ -146,7 +146,7 @@ describe('retainOnRestore', () => {
 
         expect(() => retainOnRestore(unit as unknown as Slot, stubOf(full('a'), 'unit-a'), unit as unknown as Slot)).not.toThrow()
 
-        expect(hasRetained()).toBe(false)
+        expect(retainedCount()).toBe(0)
         error.mockRestore()
     })
 
@@ -159,11 +159,11 @@ describe('retainOnRestore', () => {
 
         dropRetained(retainedRecordOf(a)!)
         expect(retainedRecordOf(a)).toBeUndefined()
-        expect(hasRetained()).toBe(true)
+        expect(retainedCount()).toBeGreaterThan(0)
 
         DBState.db.characters.splice(1, 1)
         pruneRetained()
-        expect(hasRetained()).toBe(false)
+        expect(retainedCount()).toBe(0)
     })
 })
 
@@ -230,7 +230,7 @@ describe('records of characters a store2 residency loaded', () => {
         retainOnLoad(a, 'a', '0123456789abcdefghijklmnop')
 
         expect(retainedRecordOf(a)).toBeUndefined()
-        expect(hasRetained()).toBe(false)
+        expect(retainedCount()).toBe(0)
         expect(retainedUnitKeys().size).toBe(0)
     })
 
