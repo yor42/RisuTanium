@@ -402,7 +402,7 @@ type LoopOf = ReturnType<typeof runLoopOver>
 
 async function judgedPage(lineage: Store2Lineage | undefined): Promise<{ kit: Store2Kit, loop: LoopOf }> {
     const db = seedProfile()
-    const kit = await startStore2({ db, kind: 'indexeddb' })
+    const kit = await startStore2({ db, kind: 'node' })
     if (lineage !== undefined) {
         kit.context.lineage = lineage
     }
@@ -509,7 +509,7 @@ describe('the baseline is replaced whole by a judged ok and by an own landed com
 
     test('an own commit replaces the baseline from the landed key', async () => {
         const db = seedProfile()
-        const kit = await startStore2({ db, kind: 'indexeddb' })
+        const kit = await startStore2({ db, kind: 'node' })
         kit.context.lineage = { base: 'unknown' }
         const mine = JSON.parse(JSON.stringify(db))
         const loop = runLoopOver(kit.context, mine)

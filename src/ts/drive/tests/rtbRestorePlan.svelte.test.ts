@@ -198,7 +198,7 @@ function assetDeps(over: Partial<AssetPlanDeps> & { listing?: SizedListing | nul
         probePieceStore: async () => { },
         assetLimit: () => Number.MAX_SAFE_INTEGER,
         inlayLimit: () => Number.MAX_SAFE_INTEGER,
-        rule: async () => ({ kind: 'indexeddb', platform: 'posix' }),
+        rule: async () => ({ kind: 'tauri', platform: 'posix' }),
         sizedListing: async () => listing ?? null,
         ...rest,
     })
@@ -781,7 +781,7 @@ describe('the listing gates of the real asset calls (T10)', () => {
         expect(listSized).not.toHaveBeenCalled()
 
         // the page's store is not the Tauri store: no Tauri listing
-        injectAppStore(store, 'indexeddb')
+        injectAppStore(store, 'node')
         vi.mocked(invoke).mockClear()
         expect(await page.plan.realAssetDeps().sizedListing()).toBeNull()
         expect(vi.mocked(invoke)).not.toHaveBeenCalled()

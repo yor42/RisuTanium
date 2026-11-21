@@ -56,7 +56,10 @@ export function chromeArgs({ port = cdpPort(), profile } = {}) {
   return [`--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, `--host-resolver-rules=${hostRules()}`, '--no-first-run', '--no-default-browser-check', ...KEEP_VISIBLE_ARGS]
 }
 
-export async function connect({ port = cdpPort() } = {}) {
+// acceptBeforeUnload: a non-DEV web build guards reload with a beforeunload prompt once the page has user activation (any CDP
+// Input.* event). Unanswered, it holds the navigation and every later evaluate on the page hangs; only the session that enabled Page
+// can answer it, so the handler lives here, before any reload or navigate. Other dialog types are left alone.
+export async function connect({ port = cdpPort(), acceptBeforeUnload = true } = {}) {
   const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
   const pages = list.filter(x => x.type === 'page')
   if (pages.length !== 1) throw new Error('pages=' + pages.length)
@@ -71,6 +74,7 @@ export async function connect({ port = cdpPort() } = {}) {
   const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await sleep(60); await touch('touchEnd', []) }
   const mouse = async (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' || type === 'mouseMoved' ? 0 : 1, clickCount: 1, ...extra })
   const on = (l) => listeners.push(l)
+  if (acceptBeforeUnload) on(m => { if (m.method === 'Page.javascriptDialogOpening' && m.params.type === 'beforeunload') send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}) })
   await send('Page.enable'); await send('Runtime.enable')
   return { ws, send, ev, shot, touch, tap, mouse, on }
 }

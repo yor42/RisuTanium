@@ -184,6 +184,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { bootThroughDispatch, countedBackend, createClock, peerCommit, savedDatabase, seedTree, startStore2, testEnv, type CountedBackend, type DispatchedBoot } from '../store2SaveKit'
 import { buildSmall, type Obj } from './codecFixtures'
 import { storedLogicalModuleIndex } from './descentTable'
+import { flushConfirming } from './flushConfirmBackend'
 import { loadGolden, readerOver } from './legacyFixtures'
 
 type Plain = Record<string, unknown>
@@ -266,9 +267,9 @@ function keysOf(entry: ModuleEntry): string[] {
 }
 
 /** The booted page: the answer, its database installed as the live one. */
-async function boot(backend: Parameters<typeof bootThroughDispatch>[0], lists: Lists = createListDerivation(), env?: ReturnType<typeof testEnv>): Promise<DispatchedBoot & { db: Database }> {
+async function boot(backend: Parameters<typeof bootThroughDispatch>[0], lists: Lists = createListDerivation(), env?: ReturnType<typeof testEnv>, kind?: 'tauri'): Promise<DispatchedBoot & { db: Database }> {
     resetPage()
-    const booted = await bootThroughDispatch(backend, { lists, env })
+    const booted = await bootThroughDispatch(kind === 'tauri' ? flushConfirming(backend).backend : backend, { lists, env, kind })
     const db = opened(booted.result).database
     h.state.db = db
     return Object.assign(booted, { db })
@@ -881,16 +882,16 @@ describe('two tabs over one store', () => {
     }
 
     /** Tab A: a store seeded with the real derivation, booted through the dispatch on the kit's clock. Tab B commits through `peerCommit`. */
-    async function tabs(characters = 2) {
+    async function tabs(characters = 2, kind?: 'tauri') {
         const kit = await startStore2({ db: plain(sourceOf(fiveModules(), REFERENCING, characters)), lists: createListDerivation() })
-        const a = await boot(kit.counted.backend, createListDerivation(), testEnv(kit.clock, 555))
+        const a = await boot(kit.counted.backend, createListDerivation(), testEnv(kit.clock, 555), kind)
         expect(stubIdsOf(a.db)).toEqual(UNREFERENCED)
         return { kit, a }
     }
 
     // No characters, so the minted module stubs are the only stubs of the page: they alone drive the Reload-only prompt.
     test('M a peer commit that drops this tab\'s manifest refuses its carrying commit, and the stubbed page is offered Reload only (MC-621)', async () => {
-        const { kit, a } = await tabs(0)
+        const { kit, a } = await tabs(0, 'tauri')
         const stubNames = slotsOf(a.db).filter(stubbed).map(slot => String(slot.name))
         expect(slotsOf(a.db).filter(stubbed).map(slot => String(slot.id))).toEqual(UNREFERENCED)
         expect(a.db.characters).toHaveLength(0)

@@ -11,7 +11,6 @@
 import { describe, expect, test } from 'vitest'
 import type { CommitKey } from 'src/ts/storage/store2/format'
 import type { CommitOutcome, ReplayActor, ReplayRig, ReplayRigOptions, StepMatch } from './actors'
-import { createIdbReplayRig } from './idbRig'
 import { createNodeReplayRig } from './nodeRig'
 import { createTauriReplayRig } from './tauriRig'
 
@@ -20,7 +19,6 @@ type RigFactory = (options: ReplayRigOptions) => Promise<ReplayRig>
 const BACKENDS: ReadonlyArray<{ name: string, make: RigFactory }> = [
     { name: 'node', make: createNodeReplayRig },
     { name: 'tauri', make: createTauriReplayRig },
-    { name: 'indexeddb', make: createIdbReplayRig },
 ]
 
 const MAX_STEPS = 20_000
@@ -99,12 +97,10 @@ describe.each(BACKENDS)('$name: force on a commit', ({ make }) => {
 
 // A Tauri device has one page: a second tab registers with the page gate and makes the first stale, so the peer interleaving
 // below does not exist there.
-describe.each(BACKENDS.filter((backend) => backend.name !== 'tauri'))('$name: a bulk commit while a peer commits ordinarily under its marker', ({ name, make }) => {
-    // IndexedDB schedules at the backend layer: an ordinary commit is one `commitOrdinary` call, every other commit-key write a `casCommit`.
-    const idb = name === 'indexeddb'
-    const bulkFinal: StepMatch & { actor: string } = idb ? { actor: 'a', op: 'casCommit', context: 'bulk-final' } : { actor: 'a', op: COMMIT_OPS, target: '$commit', context: 'bulk-final' }
-    const bulkBegin: StepMatch = idb ? { actor: 'a', op: 'casCommit', context: 'bulk-begin' } : { actor: 'a', op: COMMIT_OPS, target: '$commit', context: 'bulk-begin' }
-    const peerCommit: StepMatch = idb ? { actor: 'b', op: 'commitOrdinary', context: 'commit' } : { actor: 'b', op: COMMIT_OPS, target: '$commit', context: 'commit' }
+describe.each(BACKENDS.filter((backend) => backend.name !== 'tauri'))('$name: a bulk commit while a peer commits ordinarily under its marker', ({ make }) => {
+    const bulkFinal: StepMatch & { actor: string } = { actor: 'a', op: COMMIT_OPS, target: '$commit', context: 'bulk-final' }
+    const bulkBegin: StepMatch = { actor: 'a', op: COMMIT_OPS, target: '$commit', context: 'bulk-begin' }
+    const peerCommit: StepMatch = { actor: 'b', op: COMMIT_OPS, target: '$commit', context: 'commit' }
 
     /** The bulk commit's final write waits until the peer's commit has landed, so the final write meets the peer's `current`. */
     async function underPeer(forced: boolean) {

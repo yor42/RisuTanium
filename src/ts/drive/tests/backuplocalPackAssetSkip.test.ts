@@ -251,8 +251,6 @@ function same(actual: Uint8Array | undefined, expected: Uint8Array): boolean {
 
 let capturedInput: HTMLInputElement | null = null
 let createElementSpy: ReturnType<typeof vi.spyOn>
-const keptBlobs = new Map<string, Blob>()
-const blobWrites = { keys: [] as string[] }
 let restoreStore: ByteStore
 
 beforeEach(() => {
@@ -273,8 +271,6 @@ beforeEach(() => {
     resetStore2ShellBox(shell)
     setColdStorageItemMock.mockClear()
     acquireExclusiveStorageMigrationLockMock.mockClear()
-    keptBlobs.clear()
-    blobWrites.keys = []
     for (const value of Object.values(alertMocks)) {
         if (typeof value === 'function') {
             (value as ReturnType<typeof vi.fn>).mockClear()
@@ -311,22 +307,12 @@ function desktopPage(options: { pipeline: boolean }): void {
     fakeFs.plant(PACK_KEY, PAGE_BYTES)
 }
 
-/** A browser page over the forage model; `blobs` gives the store the Blob methods of IndexedDB, `node` the Node server's page kind. */
-async function webPage(options: { blobs?: boolean, node?: boolean, piecesRecorded?: boolean } = {}): Promise<void> {
+/** A browser page over the forage model; `node` gives the Node server's page kind. */
+async function webPage(options: { node?: boolean, piecesRecorded?: boolean } = {}): Promise<void> {
     platformBox.isNodeServer = options.node === true
     const base = createForageBackedStore(forageStorage as unknown as ForageLike)
     restoreStore = {
         ...base,
-        ...(options.blobs === true
-            ? {
-                writeBlob: async (key: string, blob: Blob) => {
-                    blobWrites.keys.push(key)
-                    keptBlobs.set(key, blob)
-                    return { version: null }
-                },
-                readBlob: async (key: string) => keptBlobs.get(key) ?? null,
-            }
-            : {}),
         ...(options.node === true
             ? {
                 piecesRecorded: () => options.piecesRecorded === true,
@@ -345,7 +331,7 @@ async function webPage(options: { blobs?: boolean, node?: boolean, piecesRecorde
             : {}),
     } as ByteStore
     // The page's own kind follows the store for the size limits.
-    useStore2RestorePage(restoreStore, options.node === true ? 'node' : 'indexeddb')
+    useStore2RestorePage(restoreStore, options.node === true ? 'node' : 'tauri')
     forageFiles.set(PACK_KEY, PAGE_BYTES)
 }
 
@@ -444,17 +430,6 @@ describe('a desktop restore leaves the page\'s pack file as it is, on every rout
 })
 
 describe('a browser restore leaves the page\'s pack file as it is, on every route', () => {
-    test('T2-16 reproducer: the slice-of-the-file Blob route (an entry at the piece threshold): no Blob is kept for the name, the page\'s bytes stay', async () => {
-        await webPage({ blobs: true })
-
-        await loadBackupBytes(concatChunks([entry(PACK_NAME, 1500, 1), entry('ordinary.png', 1500, 2), databaseEntry()]))
-
-        expect(blobWrites.keys).toEqual(['assets/ordinary.png'])
-        expect(same(forageFiles.get(PACK_KEY), PAGE_BYTES)).toBe(true)
-        expect(notedKeys()).toEqual(['assets/ordinary.png'])
-        expect(shownTexts()).not.toContain('tp-')
-    })
-
     test('T2-16 reproducer: the direct write route: the page\'s bytes stay, only the ordinary entry is written and noted', async () => {
         await webPage()
 

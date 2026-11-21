@@ -35,11 +35,11 @@ const APP_THEME_NAME_LIST: readonly string[] = [
     '--color-success-100', '--color-success-200', '--color-success-300', '--color-success-400', '--color-success-50', '--color-success-500',
     '--color-success-600', '--color-success-700', '--color-success-800', '--color-success-900', '--color-textcolor', '--color-textcolor2',
     '--container-100vw', '--container-14', '--container-24', '--container-36', '--container-80p', '--container-80vw', '--container-half',
-    '--default-ring-color', '--ease-nexus', '--height-110', '--height-124', '--height-138', '--height-96', '--min-height-110', '--min-height-124',
+    '--default-border-width', '--default-ring-color', '--ease-nexus', '--height-110', '--height-124', '--height-138', '--height-96', '--min-height-110', '--min-height-124',
     '--min-height-138', '--min-height-14', '--min-height-2', '--min-height-20', '--min-height-32', '--min-height-4', '--min-height-5',
     '--min-height-8', '--min-height-96', '--min-width-110', '--min-width-12', '--min-width-124', '--min-width-138', '--min-width-14', '--min-width-2',
-    '--min-width-20', '--min-width-5', '--min-width-6', '--min-width-8', '--min-width-96', '--min-width-half', '--width-110', '--width-124',
-    '--width-138', '--width-2xl', '--width-3xl', '--width-4xl', '--width-7xl',
+    '--min-width-20', '--min-width-5', '--min-width-6', '--min-width-8', '--min-width-96', '--min-width-half', '--radius', '--radius-2xl', '--radius-3xl', '--radius-4xl', '--radius-lg', '--radius-md',
+    '--radius-sm', '--radius-xl', '--radius-xs', '--width-110', '--width-124', '--width-138', '--width-2xl', '--width-3xl', '--width-4xl', '--width-7xl',
 ]
 
 const TAILWIND_DEFAULT_NAME_LIST: readonly string[] = [

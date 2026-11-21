@@ -726,7 +726,7 @@ describe('downloadRisuHub PNG download', () => {
     })
 })
 
-describe('PNG card image size on the browser store', () => {
+describe('PNG card image size on the desktop store', () => {
     const MIB = 1024 * 1024
     const imageCard = () => build([ihdr(), chunk('IDAT', new U8(201 * MIB).fill(7)), text('chara', b64(v2Card(0))), iend()], [])
 
@@ -734,7 +734,7 @@ describe('PNG card image size on the browser store', () => {
         noteSelectedStore(null, null)
     })
 
-    /** Imports with the 1 GiB store limit of the desktop, Node and IndexedDB stores in force. */
+    /** Imports with the 1 GiB store limit of the desktop and Node stores in force. */
     async function importUnderGiB(kind: AppStoreKind): Promise<Outcome> {
         noteSelectedStore(kind, {} as unknown as ByteStore)
         const bytes = imageCard().bytes
@@ -750,15 +750,7 @@ describe('PNG card image size on the browser store', () => {
         return describeOutcome(returned, thrown)
     }
 
-    test('reproducer: an image over 200 MiB is refused on IndexedDB even though the store limit is 1 GiB, because it is built and saved whole', async () => {
-        const out = await importUnderGiB('indexeddb')
-        expect(out.thrown).toBeNull()
-        expect(out.saved).toEqual([])
-        expect(out.characters).toEqual([])
-        expect(out.errors).toEqual([language.cardImageTooLarge(200)])
-    })
-
-    test('guard: the same image is taken on the desktop store, which keeps the store limit', async () => {
+    test('guard: an image over 200 MiB is taken on the desktop store, which keeps the store limit', async () => {
         const out = await importUnderGiB('tauri')
         expect(out.errors).toEqual([])
         expect(out.characters).toHaveLength(1)

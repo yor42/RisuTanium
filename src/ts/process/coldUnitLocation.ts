@@ -1,5 +1,5 @@
-import { isNodeServer, isTauri } from '../platform'
-import { indexedDbCreatableViolation, nodeCreatableViolation, tauriCreatableViolation } from '../storage/store/keyRules'
+import { isTauri } from '../platform'
+import { nodeCreatableViolation, tauriCreatableViolation } from '../storage/store/keyRules'
 
 /**
  * Where a cold-storage unit lives, the one place the per-platform names are
@@ -31,7 +31,7 @@ export function coldUnitStoreRefusal(key: string): string | null {
     if (isTauri) {
         return tauriCreatableViolation(storeKey)
     }
-    return isNodeServer ? nodeCreatableViolation(storeKey) : indexedDbCreatableViolation(storeKey)
+    return nodeCreatableViolation(storeKey)
 }
 
 /**

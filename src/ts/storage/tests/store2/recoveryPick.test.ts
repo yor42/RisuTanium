@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * Picking a recovery candidate and installing it, over the memory, IndexedDB
- * (fake-indexeddb) and Node (real server process) backends: the read-only closure
+ * Picking a recovery candidate and installing it, over the memory
+ * and Node (real server process) backends: the read-only closure
  * read after the marker, the MC-291 count of missing images and inlays, the staged
  * re-write under fresh keys, and the final compare-and-write at the marker's
  * token. Tauri is not run.

@@ -565,7 +565,7 @@ describe('fork export, upstream-shaped read, fork import of a chat continued fro
 
         // Another profile imports the file: the residency of the exporting page is not there.
         resetResidencyForTest()
-        useStore2RestorePage(createForageBackedStore(forageOverMap(new Map())), 'indexeddb')
+        useStore2RestorePage(createForageBackedStore(forageOverMap(new Map())), 'tauri')
         await loadBackupBytes(concat(backupSink.writes))
 
         expect(shell.commits).toHaveLength(1)
@@ -591,7 +591,7 @@ describe('fork export, upstream-shaped read, fork import of a chat continued fro
         const read = await upstreamRead()
         expect(read.characters.map((character) => chatsOf(character).length)).toEqual([FIXTURE_CHATS, FIXTURE_CHATS, FIXTURE_CHATS])
         resetResidencyForTest()
-        useStore2RestorePage(createForageBackedStore(forageOverMap(new Map())), 'indexeddb')
+        useStore2RestorePage(createForageBackedStore(forageOverMap(new Map())), 'tauri')
         await loadBackupBytes(concat(backupSink.writes))
         expect(shell.commits).toHaveLength(1)
         expect(alertWaitMock.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)

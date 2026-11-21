@@ -100,6 +100,7 @@ import { loadModule, loadModuleStubsOf } from 'src/ts/process/moduleLoader'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { bootThroughDispatch, countedBackend, createClock, createPeerDouble, fakeLists, savedDatabase, seedTree, testEnv, type CountedBackend, type Hooks } from '../store2SaveKit'
 import { buildSmall, type Obj } from './codecFixtures'
+import { flushConfirming } from './flushConfirmBackend'
 import { storedLogicalModuleIndex } from './descentTable'
 
 type Plain = Record<string, unknown>
@@ -190,8 +191,8 @@ function flipped(memory: MemoryBackend, key: string): void {
     memory.poke(key, copy)
 }
 
-async function bootRig(rig: Rig, options: { lists?: ReturnType<typeof createListDerivation> } = {}) {
-    const booted = await bootThroughDispatch(rig.counted.backend, { lists: options.lists ?? createListDerivation() })
+async function bootRig(rig: Rig, options: { lists?: ReturnType<typeof createListDerivation>, expectReadOnly?: boolean } = {}) {
+    const booted = await bootThroughDispatch(rig.counted.backend, { lists: options.lists ?? createListDerivation(), expectReadOnly: options.expectReadOnly })
     if (booted.result.kind === 'store2') {
         h.state.db = booted.result.database
     }
@@ -519,7 +520,7 @@ describe('guards: what stays resident', () => {
         const rig = await rigOf(fiveModules(), { enabledModules: ['ida'] })
         const key = keyOfRef(entryOf(rig, 'ida').unit as never)
         rig.counted.memory.poke(key, withHeader(rig.counted.memory.snapshot().get(key) as Uint8Array, (header) => { header[4] = 9 }))
-        const boot = await bootRig(rig)
+        const boot = await bootRig(rig, { expectReadOnly: true })
         expect(boot.result.kind).toBe('stopped')
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'too-new', source: 'tree' })
         expect(boot.notices.map(notice => notice.name)).toContain('too-new')
@@ -607,8 +608,8 @@ describe('a converted legacy profile opens through the same stored-tree open', (
                 recovery: async () => { },
                 peer: createPeerDouble(),
             },
-            kind: 'indexeddb',
-            backend: async () => memory,
+            kind: 'tauri',
+            backend: async () => flushConfirming(memory).backend,
             keyEnv: testEnv(createClock(), 9001),
             lists: createListDerivation(),
             decoders: {

@@ -39,6 +39,7 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
 import type { Database } from 'src/ts/storage/database.svelte'
+import { flushConfirming } from './flushConfirmBackend'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { resetStore2BootForTest } from 'src/ts/storage/store2/bootActive'
@@ -61,7 +62,7 @@ import {
 /**
  * The pages of one store, judged by the save loop: a peer's restore, import or install is never offered Save mine, and a
  * commit whose descent from this page's baseline is unproven parks with today's prompt. Page B is booted through the
- * real dispatch as an indexeddb page (the loop's lineage judge is live for indexeddb and node); the peer is built from
+ * real dispatch as a node page; the peer is built from
  * the committer and encoder APIs only. A page that is clean reads its prompt's offers from `peer.clean`, a dirty one from
  * `peer.asked`. An unproven descent parks a clean page with Reload and Export this tab first, and a proven one with
  * Reload only, so the clean offers tell the two verdicts apart. Mocked storage here says nothing about a native backend.
@@ -95,9 +96,10 @@ interface PageB {
     peer: PeerDouble
 }
 
-async function bootB(memory: MemoryBackend, kind: 'indexeddb' | 'node' = 'indexeddb'): Promise<PageB> {
+async function bootB(memory: MemoryBackend, kind: 'node' | 'tauri' = 'node'): Promise<PageB> {
     resetPage()
-    const booted = await bootThroughDispatch(memory, { lists: fakeLists, kind })
+    // A Tauri page offers Save mine on a park; the Node page the rows default to does not.
+    const booted = await bootThroughDispatch(kind === 'tauri' ? flushConfirming(memory).backend : memory, { lists: fakeLists, kind })
     if (booted.result.kind !== 'store2') {
         throw new Error(`The boot answered ${booted.result.kind}.`)
     }
@@ -189,29 +191,6 @@ describe('a peer restore, import or install is never offered Save mine', () => {
         await until(() => b.peer.asked.length >= 1, 'the prompt', 4000)
         expect(b.peer.asked[0]).toMatchObject({ reason: 'tree-replaced', unsaved: true })
         expect(b.peer.asked[0].offers).toEqual(EXPORT_FIRST)
-    })
-
-    test('R11c a late Save mine answer to an earlier question writes nothing over a peer restore, and the re-ask offers no Save mine', async () => {
-        const { memory, clock, page, firstManifest } = await world({ mintLine: true })
-        const b = await bootB(memory)
-        const loop = runLoopOver(b.context, b.db)
-        let release: () => void = () => { }
-        b.peer.hold = new Promise<void>((resolve) => { release = resolve })
-        b.peer.answer = 'save-mine'
-        clock.advance(RETAIN_ADMISSION_MS)
-        await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
-        chars(b.db)[3].personality = 'my edit to the same record'
-        loop.mark(chaIdOf(b.db, 3))
-        await until(() => b.peer.asked.length === 1, 'the first question', 4000)
-        expect(b.peer.asked[0].offers).toEqual(['reload', 'save-mine'])
-        const restored = await page.restore(firstManifest)
-        b.peer.hold = null
-        release()
-        await until(() => b.peer.asked.length >= 2, 'the question after the restore', 4000)
-        expect(b.peer.asked[1].offers).toEqual(EXPORT_FIRST)
-        expect((await parsedKey(memory)).epoch).toBe(restored.epoch)
-        expect((await parsedKey(memory)).current?.key).toBe(firstManifest)
-        expect(loop.state.saved).toBe(0)
     })
 
     test('R12 an ordinary-path import shown to a dirty page offers Reload and Export this tab first, and the key carries the import stamp', async () => {
@@ -316,7 +295,7 @@ describe('a peer restore, import or install is never offered Save mine', () => {
 describe('an unproven descent parks with today\'s prompt', () => {
     test('R24 a peer\'s web Save mine over this page\'s committed edit parks a dirty page, keeping its edits and offering Save mine', async () => {
         const { memory, page } = await world({ mintLine: true })
-        const b = await bootB(memory)
+        const b = await bootB(memory, 'tauri')
         const frozen = await page.freeze()
         const loop = runLoopOver(b.context, b.db)
         await commitOwnEdit(loop, b.db, 1, 'B edit to Y')

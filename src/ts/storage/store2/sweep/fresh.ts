@@ -39,7 +39,7 @@ export async function gateFreshness(
             await backend.casCommit(gate.commitToken, bytes)
         } else {
             const commit = await backend.readCommit()
-            if (node ? !sameRevision(gate.commitToken, commit.token) : !tokenMatches(gate.commitToken, commit.bytes)) {
+            if (!sameRevision(gate.commitToken, commit.token)) {
                 return 'moved'
             }
         }

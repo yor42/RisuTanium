@@ -400,6 +400,16 @@ interface RigOptions {
     importBackup?: (target: BootImportTarget) => Promise<BootImportEnd>
 }
 
+function capableGuarded(): GuardedOperations {
+    const refuse = async () => { throw new Error('not used') }
+    return {
+        probe: async () => ({ checkOnly: true, retire: true, pieces: false }),
+        writeChecked: refuse,
+        removeChecked: refuse,
+        retireChecked: refuse,
+    }
+}
+
 function rig(options: RigOptions = {}): Rig {
     const memory = options.memory ?? createMemoryBackend()
     const store = createMemoryByteStore()
@@ -412,6 +422,10 @@ function rig(options: RigOptions = {}): Rig {
     const mainFile = options.mainFile ?? false
     if (mainFile === true) {
         store.files.set('database/database.bin', new Uint8Array([1, 2, 3]))
+    }
+    if ((options.kind ?? 'node') === 'node') {
+        // A Node page needs the server's guarded operations; the full capability set keeps the default page writable.
+        store.guarded = capableGuarded()
     }
     const ui = uiDouble()
     ui.commitKeyProbe = async () => (await memory.readCommit()).bytes
@@ -433,7 +447,7 @@ function rig(options: RigOptions = {}): Rig {
         },
     }, {
         ui,
-        kind: options.kind ?? 'indexeddb',
+        kind: options.kind ?? 'node',
         backend: async () => {
             const hooks = typeof options.hooks === 'function' ? options.hooks(logs.length + 1) : options.hooks
             const entry = logged(memory, hooks)
@@ -603,14 +617,14 @@ describe('new behaviour: row 5, a normal store2 profile', () => {
         expect(result.session.notice?.reason).toBe('reflush-failed')
     })
 
-    test('only an indexeddb or node page judges on a line: a Tauri page gets no lineage and an indexeddb page does', async () => {
+    test('only a node page judges on a line: a Tauri page gets no lineage and a Node page does', async () => {
         const world = await seedWorld()
         const tauri = rig({ memory: world.memory, kind: 'tauri' })
         expectStoreResult(await tauri.dispatch())
         expect((getActiveStore2Save() as { lineage?: unknown } | null)?.lineage).toBeUndefined()
         resetStore2SaveForTest()
-        const idb = rig({ memory: world.memory, kind: 'indexeddb' })
-        expectStoreResult(await idb.dispatch())
+        const node = rig({ memory: world.memory, kind: 'node' })
+        expectStoreResult(await node.dispatch())
         expect((getActiveStore2Save() as { lineage?: unknown } | null)?.lineage).toBeDefined()
     })
 })
@@ -1878,10 +1892,10 @@ describe('new behaviour: row 9, a seed or convert marker that was left standing'
         }
     })
 
-    test('a web page whose reload gave it a fresh owner id meets its own earlier marker as a foreign one', async () => {
+    test('a page whose reload gave it a fresh owner id meets its own earlier marker as a foreign one', async () => {
         const memory = createMemoryBackend()
         await putCommitKey(memory, await markerKey('seed', device))
-        const test = rig({ memory, kind: 'indexeddb', backups: [] })
+        const test = rig({ memory, backups: [] })
         await test.dispatch()
         expect(test.ui.foreignAsked).toHaveLength(1)
     })
@@ -1909,9 +1923,7 @@ describe('new behaviour: a page that cannot write the store2 backend', () => {
             readColdStorageItem: async () => ({ status: 'missing' }),
             listBackupTimes: async () => [...BACKUP_TIMES],
         }, { ui: test.ui, kind })
-        if (options.capable !== 'none') {
-            test.store.guarded = guarded(options.capable === true)
-        }
+        test.store.guarded = options.capable === 'none' ? undefined : guarded(options.capable === true)
         return { ...test, dispatch }
     }
 

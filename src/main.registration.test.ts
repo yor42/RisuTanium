@@ -25,7 +25,7 @@ const seen = vi.hoisted(() => ({
 vi.mock('./ts/polyfill', () => ({}))
 vi.mock('core-js/actual', () => ({}))
 vi.mock('./ts/storage/database.svelte', () => ({}))
-vi.mock('./ts/globalApi.svelte', () => ({ holdsOwnTabPresence: () => true }))
+vi.mock('./ts/globalApi.svelte', () => ({}))
 vi.mock('./App.svelte', () => ({ default: {} }))
 vi.mock('./ts/bootstrap', () => ({
     loadData: () => {
@@ -89,16 +89,12 @@ describe('new behaviour: the entry module registers the store2 boot', () => {
         })
     })
 
-    test('new behaviour: the marker-owner probe maps each host kind, and a page without navigator.locks gets no proof instead of a throw', async () => {
+    test('new behaviour: the marker-owner probe maps each host kind: Tauri gets none and Node never proves a peer gone', async () => {
         const active = await loadEntry()
         await active.getStore2Boot()?.({} as unknown as Parameters<NonNullable<ReturnType<typeof active.getStore2Boot>>>[0])
         const deps = seen.dispatch.mock.calls[0][1] as { markerOwnerProbe: (kind: AppStoreKind) => MarkerOwnerProbe | null }
         const marker = { owner: 'other-page', prefix: 'bulk-prefix', startedAt: 1, label: 'bulk' } as Parameters<MarkerOwnerProbe>[0]
-        expect(navigator.locks).toBeUndefined()
         expect(deps.markerOwnerProbe('tauri')).toBeNull()
-        const web = deps.markerOwnerProbe('indexeddb')
-        expect(web).not.toBeNull()
-        expect(await web?.(marker)).toBe('unknown')
         expect(await deps.markerOwnerProbe('node')?.(marker)).toBe('unknown')
     })
 

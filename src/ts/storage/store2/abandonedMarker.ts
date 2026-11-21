@@ -1,5 +1,4 @@
 import type { AppStoreKind } from '../store/appStore'
-import { STORAGE_TAB_LOCK_NAME, tabLockSnapshotShowsOthers } from '../storageTabLocks'
 import type { Store2Read } from './backend/types'
 import type { AbandonResult, Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
@@ -72,46 +71,15 @@ export async function clearAbandonedMarker(
 /** The probe of a host that can never prove a peer gone: it answers 'unknown' so that the person is asked instead. */
 const UNPROVABLE: MarkerOwnerProbe = async () => 'unknown'
 
-/** What the page offers the probe: the lock manager's query, and whether this tab holds its own presence lock. */
-export interface MarkerProbeDeps {
-    /** `navigator.locks.query`, bound; undefined without the lock API or outside a secure context. */
-    query: (() => Promise<LockManagerSnapshot>) | undefined
-    /** This tab holds its own shared presence lock right now. */
-    holdsOwnPresence: () => boolean
-}
-
 /**
- * The probe for a host kind. Tauri and the read-only transitional store get none: no foreign marker is judged there.
- * Node never proves a peer gone, because its devices do not share Web Locks. On the web the proof is the tab-lock rule
- * of the superseded-unit sweep plus this tab's own hold: exactly one presence holder and no exclusive operation.
+ * The probe for a host kind. Tauri gets none: no foreign marker is judged there. Node never proves a peer gone, because
+ * its devices do not share Web Locks.
  */
-export function markerOwnerProbeFor(kind: AppStoreKind, deps: MarkerProbeDeps): MarkerOwnerProbe | null {
+export function markerOwnerProbeFor(kind: AppStoreKind): MarkerOwnerProbe | null {
     switch (kind) {
         case 'tauri':
             return null
         case 'node':
             return UNPROVABLE
-        case 'indexeddb': {
-            const query = deps.query
-            if (typeof query !== 'function') {
-                return UNPROVABLE
-            }
-            return async () => {
-                if (!deps.holdsOwnPresence()) {
-                    return 'unknown'
-                }
-                let snapshot: LockManagerSnapshot
-                try {
-                    snapshot = await query()
-                } catch (error) {
-                    return 'unknown'
-                }
-                if (tabLockSnapshotShowsOthers(snapshot)) {
-                    return 'alive'
-                }
-                const holders = (snapshot.held ?? []).filter((lock) => lock.name === STORAGE_TAB_LOCK_NAME).length
-                return holders === 1 ? 'gone' : 'unknown'
-            }
-        }
     }
 }

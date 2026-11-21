@@ -202,7 +202,7 @@ const assetDeps = (over: Partial<AssetPlanDeps> = {}): (() => AssetPlanDeps) => 
     probePieceStore: async () => { },
     assetLimit: () => Number.MAX_SAFE_INTEGER,
     inlayLimit: () => Number.MAX_SAFE_INTEGER,
-    rule: async () => ({ kind: 'indexeddb', platform: 'posix' }),
+    rule: async () => ({ kind: 'node', platform: 'posix' }),
     sizedListing: async () => null,
     ...over,
 })

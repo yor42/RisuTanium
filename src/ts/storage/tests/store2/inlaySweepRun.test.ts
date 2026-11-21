@@ -70,19 +70,17 @@ interface World {
     mentioned: Set<string>
     legacyIds: string[]
     openGate: (deleter: Parameters<AssetSweepSession['openGate']>[0]) => Promise<GateResult>
-    peers: ReturnType<typeof vi.fn<InlaySweepEnv['peers']>>
     residentInlays: ReturnType<typeof vi.fn<InlaySweepEnv['residentInlays']>>
     legacyInlayIds: ReturnType<typeof vi.fn<InlaySweepEnv['legacyInlayIds']>>
     env: InlaySweepEnv
 }
 
-function newWorld(kind: AppStoreKind = 'indexeddb', over: Partial<InlaySweepEnv> = {}): World {
+function newWorld(kind: AppStoreKind = 'tauri', over: Partial<InlaySweepEnv> = {}): World {
     const backend = createMemoryBackend()
     const store = createMemoryByteStore()
     const world: World = {
         backend, store, kind, nextUnit: 1, idleReason: null, marks: 0, stop: false, mentioned: new Set(), legacyIds: [],
         openGate: deleter => openDeleterGate(backend, deleter, { idleReason: world.idleReason }),
-        peers: vi.fn<InlaySweepEnv['peers']>(async () => 'alone'),
         residentInlays: vi.fn<InlaySweepEnv['residentInlays']>(async (): Promise<InlayResident | null> => ({
             mentioned: world.mentioned, sameDatabase: () => true,
         })),
@@ -98,7 +96,6 @@ function newWorld(kind: AppStoreKind = 'indexeddb', over: Partial<InlaySweepEnv>
     world.env = {
         session,
         store,
-        peers: world.peers,
         shouldStop: () => world.stop,
         saveMarks: () => world.marks,
         writtenThisPage: inlayWrittenThisPage,
@@ -184,7 +181,7 @@ async function put(world: World, id: string, keepWritten = false): Promise<{ met
 }
 
 /** The current manifest names A, a retained manifest names R, O (and more) is named by nothing. */
-async function libraryWorld(orphans: readonly string[], kind: AppStoreKind = 'indexeddb', over: Partial<InlaySweepEnv> = {}): Promise<World> {
+async function libraryWorld(orphans: readonly string[], kind: AppStoreKind = 'tauri', over: Partial<InlaySweepEnv> = {}): Promise<World> {
     const world = newWorld(kind, over)
     const current = await addManifest(world, { characters: [{ u: 'a'.repeat(26), il: listNaming(A) }] }, 1)
     const retained = await addManifest(world, { characters: [{ u: 'b'.repeat(26), il: listNaming(R) }] }, 2)
@@ -229,8 +226,8 @@ beforeEach(() => {
 })
 
 describe('what the pass deletes', () => {
-    test.each(['indexeddb', 'tauri'] as const)('AS1/G2: an unreferenced inlay goes with its body; the current and the retained manifest keep theirs (%s)', async (kind) => {
-        const world = await libraryWorld([O], kind)
+    test('AS1/G2: an unreferenced inlay goes with its body; the current and the retained manifest keep theirs, and a tauri page never asks about other tabs', async () => {
+        const world = await libraryWorld([O])
         const o = await put(world, O)
         world.store.deletes.length = 0
 
@@ -246,9 +243,6 @@ describe('what the pass deletes', () => {
         expect(legacy.setItem).not.toHaveBeenCalled()
         expect(legacy.removeItem).not.toHaveBeenCalled()
         expect(legacy.clear).not.toHaveBeenCalled()
-        if (kind === 'tauri') {
-            expect(world.peers).not.toHaveBeenCalled()
-        }
     })
 
     test('T3: an id only the resident walk names is kept', async () => {
@@ -463,24 +457,6 @@ describe('refusals', () => {
         expect(present(world, O)).toBe(true)
     })
 
-    test('T10: web peers: unsupported refuses, others refuses at the start and stops the pass before the next delete', async () => {
-        const unsupported = await libraryWorld([O])
-        unsupported.peers.mockResolvedValue('unsupported')
-        expect(await runInlaySweep(unsupported.env)).toEqual({ status: 'refused', reason: 'no-web-locks' })
-        expect(present(unsupported, O)).toBe(true)
-
-        const others = await libraryWorld([O])
-        others.peers.mockResolvedValue('others')
-        expect(await runInlaySweep(others.env)).toEqual({ status: 'refused', reason: 'other-tab' })
-        expect(present(others, O)).toBe(true)
-
-        const later = await libraryWorld([O, O2])
-        later.peers.mockResolvedValueOnce('alone').mockResolvedValueOnce('alone').mockResolvedValue('others')
-        const result = done(await runInlaySweep(later.env))
-        expect(result).toMatchObject({ deleted: 1, stopped: 'other-tab' })
-        expect(present(later, O) !== present(later, O2)).toBe(true)
-    })
-
     test('T25/G4: a Node session is skipped before any read, listing or gate', async () => {
         const world = await libraryWorld([O], 'node')
         const opened = vi.fn(world.openGate)
@@ -491,7 +467,7 @@ describe('refusals', () => {
 
         expect(result).toEqual({ status: 'skipped' })
         expect(inlaySweepKind('node')).toBe(false)
-        expect(inlaySweepKind('tauri') && inlaySweepKind('indexeddb')).toBe(true)
+        expect(inlaySweepKind('tauri')).toBe(true)
         expect(present(world, O)).toBe(true)
         expect(world.store.lists).toEqual([])
         expect(world.legacyInlayIds).not.toHaveBeenCalled()

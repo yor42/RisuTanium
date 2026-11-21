@@ -65,7 +65,7 @@ afterEach(async () => {
 describe('the open character merges in place on a node page (R1n)', () => {
     test('R1n B shows C/X and has it open; A edits C/Y and C\'s lore: both are taken with no park, X and the objects stay', async () => {
         opened = await openNamed('node')
-        const w = await mergeWorld({ backend: opened.backend, kind: 'node' })
+        const w = await mergeWorld({ backend: opened.backend })
         const { b } = w
         expect(b.context.session.kind).toBe('node')
         hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))

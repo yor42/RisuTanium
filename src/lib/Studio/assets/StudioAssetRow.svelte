@@ -13,7 +13,8 @@
     import StudioAssetMedia from './StudioAssetMedia.svelte'
 
     // One row of a character's asset list. It shows what the list hands it and reports what the person did; every
-    // write, URL request and focus move belongs to the list.
+    // write, URL request and focus move belongs to the list. The list's windowed segment supplies the `li` around it,
+    // so a row that is in the page is a row that is displayed.
     interface Props {
         // Unique among the list's rows and stable while the row's file stays: the list's focus rule and the menu find it by this.
         rowKey: string
@@ -27,8 +28,6 @@
         // The player's URL after Preview, with the same two meanings.
         mediaUrl: string | undefined
         previewing: boolean
-        // Whether the row is on screen: it matches the filter and its folder is open. A row that is not displayed stays mounted, hidden, and holds no player.
-        displayed: boolean
         // Whether the exclude item exists at all (the preview setting), and whether this row is left out.
         excludeShown: boolean
         excluded: boolean
@@ -57,7 +56,7 @@
         onselect?: (on: boolean) => void
     }
 
-    let { rowKey, name, ext, shown, size, thumbUrl, mediaUrl, previewing, displayed, excludeShown, excluded, editable, menuOpen, renamedFrom, usedIn, moveChoices = [], moveNote, joinNote = null, selecting = false, selected = false, oncommit, ondelete, onpreview, ontoggleexclude, onmenutoggle, onmenuclose, onmove, onselect }: Props = $props()
+    let { rowKey, name, ext, shown, size, thumbUrl, mediaUrl, previewing, excludeShown, excluded, editable, menuOpen, renamedFrom, usedIn, moveChoices = [], moveNote, joinNote = null, selecting = false, selected = false, oncommit, ondelete, onpreview, ontoggleexclude, onmenutoggle, onmenuclose, onmove, onselect }: Props = $props()
 
     // The move choices are shown in place of the menu's own items until the person picks one or closes the menu.
     let moveOpen = $state(false)
@@ -75,8 +74,6 @@
 
     const meta = $derived(typeof size === 'number' ? `${ext} · ${assetSizeText(size)}` : ext)
     const playable = $derived(shown === 'audio' || shown === 'video')
-    // One derived value behind the flag: a filter keystroke re-runs the `hidden` and player effects only in the rows that flip.
-    const isShown = $derived(displayed)
 
     function commit(field: HTMLInputElement): void {
         if (field.value === name) return
@@ -106,17 +103,20 @@
     const itemClass = 'min-h-11 rounded px-2 text-start hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50'
 </script>
 
-<li data-part="studio-asset-row" data-row-key={rowKey} hidden={!isShown} class="flex min-h-[var(--studio-form-row-height,var(--studio-size-touch))] flex-col gap-1 rounded-md border border-darkborderc p-2 [content-visibility:auto] [contain-intrinsic-size:auto_5rem]">
+<div data-part="studio-asset-row" data-row-key={rowKey} class="flex min-h-[var(--studio-form-row-height,var(--studio-size-touch))] flex-col gap-1 rounded-md border border-darkborderc p-2">
     <div class="flex items-center gap-2">
         {#if selecting}
-            <input
-                type="checkbox"
-                data-part="studio-asset-select"
-                class="h-5 w-5 shrink-0 cursor-pointer"
-                aria-label={name}
-                checked={selected}
-                onchange={(event) => onselect?.(event.currentTarget.checked)}
-            />
+            <!-- The label is the hit area: a tap anywhere in its 44 px square toggles the 20 px box. -->
+            <label data-part="studio-asset-select-hit" class="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center">
+                <input
+                    type="checkbox"
+                    data-part="studio-asset-select"
+                    class="h-5 w-5 shrink-0 cursor-pointer"
+                    aria-label={name}
+                    checked={selected}
+                    onchange={(event) => onselect?.(event.currentTarget.checked)}
+                />
+            </label>
         {/if}
         {#if shown === 'thumb' && imageState === 'ok' && thumbUrl}
             <img data-part="studio-thumb" data-image="ok" src={thumbUrl} alt={name} loading="lazy" class="h-16 w-16 shrink-0 rounded-md object-cover" onerror={() => { failedUrl = thumbUrl ?? null }} />
@@ -173,7 +173,7 @@
             onclick={onmenutoggle}
         >⋯</button>
     </div>
-    {#if previewing && playable && isShown}
+    {#if previewing && playable}
         {#if mediaUrl}
             <StudioAssetMedia kind={shown === 'video' ? 'video' : 'audio'} url={mediaUrl} />
         {:else if mediaUrl === undefined}
@@ -203,4 +203,4 @@
             {/if}
         </div>
     {/if}
-</li>
+</div>

@@ -15,7 +15,6 @@
  * change (the producer read the whole file or decoded the whole body); `guard`
  * holds before and after.
  */
-import 'fake-indexeddb/auto'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -193,12 +192,11 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({ getColdStorageItem
 
 import { saveAsset, saveAssetFromBlob } from 'src/ts/globalApi.svelte'
 import { postInlayAsset } from 'src/ts/process/files/inlays'
-import { readAppInlay, readAppInlayRecord, writeAppInlay, type InlayAsset } from 'src/ts/process/files/inlayStore'
+import { readAppInlay, readAppInlayRecord } from 'src/ts/process/files/inlayStore'
 import { InlayRestoreCollector } from 'src/ts/drive/inlayBackupImport'
 import { encodeInlayHeader, inlayEntryName, inlayIdHash, type InlayEntryHeader } from 'src/ts/drive/inlayBackupCodec'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
-import { createIndexedDbStore } from 'src/ts/storage/store/indexedDbStore'
 import { createNodeHttpStore, type FetchLike } from 'src/ts/storage/store/nodeHttpStore'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
@@ -219,7 +217,7 @@ afterAll(async () => {
     await main?.stop()
 }, 60_000)
 
-type Leg = 'node' | 'tauri' | 'indexeddb'
+type Leg = 'node' | 'tauri'
 
 beforeEach(() => {
     // The attach path makes an image element only to decode images; audio and video never use it.
@@ -289,15 +287,6 @@ function useTauri(): ByteStore {
     h.fs.setPlatform('windows')
     const store = createTauriFilesStore({ platform: 'windows' })
     injectAppStore(store, 'tauri')
-    return store
-}
-
-function useIndexedDb(): ByteStore {
-    h.platform.isTauri = false
-    h.platform.isNodeServer = false
-    h.state.os = 'web'
-    const store = createIndexedDbStore()
-    injectAppStore(store, 'indexeddb')
     return store
 }
 
@@ -387,24 +376,6 @@ describe('saveAssetFromBlob', () => {
         expect(whole).toBe(expected)
     })
 
-    test('reproducer: the browser store keeps a picked File as a Blob under the key saveAsset gives, and read returns the bytes', async () => {
-        const store = useIndexedDb()
-        expect(store.readBlob).toBeDefined()
-        expect(store.writeBlob).toBeDefined()
-        const bytes = patterned(300, 4)
-
-        const key = await saveAssetFromBlob(new File([bytes as Uint8Array<ArrayBuffer>], 'a.png'), 'png', { minPieceBytes: 1 })
-
-        const kept = await store.readBlob!(key)
-        expect(kept).not.toBeNull()
-        expect(sameBytes(new Uint8Array(await kept!.arrayBuffer()), bytes)).toBe(true)
-        expect(key).toBe(await saveAsset(bytes, '', 'png'))
-        expect(sameBytes((await store.read(key)).bytes, bytes)).toBe(true)
-        // The temporary copy the save makes is gone: only the content key remains.
-        expect((await store.list('assets/incoming-')).length).toBe(0)
-        expect(await store.list('assets/')).toEqual([key])
-    })
-
     test('data safety: a slice that cannot be read reaches the caller as the same error on the Node store, once, and leaves nothing', async () => {
         const spied = await useNode()
         const bytes = patterned(450, 5)
@@ -485,8 +456,7 @@ describe('inlay attach', () => {
     })
 
     test('guard: a Uint8Array attachment is stored as before', async () => {
-        useIndexedDb()
-        const store = useIndexedDb()
+        const store = useTauri()
         const bytes = patterned(300, 8)
 
         const id = await postInlayAsset({ name: 'clip.mp3', data: bytes })
@@ -521,14 +491,14 @@ describe('a restored text inlay', () => {
         return bytes
     }
 
-    const LENGTHS: Record<Leg, number> = { node: 450, tauri: CAP + 4096, indexeddb: 450 }
+    const LENGTHS: Record<Leg, number> = { node: 450, tauri: CAP + 4096 }
 
-    describe.each<Leg>(['node', 'tauri', 'indexeddb'])('on the %s store', (leg) => {
+    describe.each<Leg>(['node', 'tauri'])('on the %s store', (leg) => {
         async function open(): Promise<ByteStore> {
             if (leg === 'node') {
                 return (await useNode()).store
             }
-            return leg === 'tauri' ? useTauri() : useIndexedDb()
+            return useTauri()
         }
 
         test('reproducer: a UTF-8 text inlay is stored from the Blob, never decoded whole, and reads back as the same string with its repr', async () => {
@@ -566,9 +536,9 @@ describe('a restored text inlay', () => {
     })
 
     test('guard: a store without writeBlob stores the same string inlay from bytes', async () => {
-        const base = useIndexedDb()
+        const base = useTauri()
         const bytesOnly: ByteStore = { ...base, writeBlob: undefined, readBlob: undefined }
-        injectAppStore(bytesOnly, 'indexeddb')
+        injectAppStore(bytesOnly, 'tauri')
 
         await restore(bytesOnly, 'text-bytes', 'string', new TextEncoder().encode('hello'))
 
@@ -665,15 +635,4 @@ describe('the Tauri store writeBlob', () => {
         expect(Array.from(h.fs.files.keys()).filter((key) => key.includes('.tmp'))).toEqual([])
     })
 
-    test('IndexedDB writeBlob still keeps the Blob (guard), and a Blob body with a textRepr reads back as a string (reproducer)', async () => {
-        const store = useIndexedDb()
-        const blob = new Blob(['abc'], { type: 'video/mp4' })
-
-        await store.writeBlob!(BODY, blob, 'unconditional')
-
-        expect(await store.readBlob!(BODY)).not.toBeNull()
-        const asset: InlayAsset = { name: 'n', ext: 'txt', type: 'signature', data: new Blob(['héllo']) }
-        await writeAppInlay(store, 'idb-text', asset, { textRepr: 'string' })
-        expect((await readAppInlay('idb-text'))?.data).toBe('héllo')
-    })
 })

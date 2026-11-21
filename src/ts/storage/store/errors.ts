@@ -1,6 +1,6 @@
 /**
  * The typed failures of a `ByteStore`. A failure that is not one of these (a
- * network error, a file system error, an IndexedDB error) rejects with the
+ * network error, a file system error) rejects with the
  * backend's own error: a store never turns a backend failure into a result.
  */
 

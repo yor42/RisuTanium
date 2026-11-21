@@ -6,14 +6,14 @@
  * step runs at a time; nothing starts on a legacy, block, read-only or undecided page.
  *
  * What is a stand-in: the quiet trigger is a double that the test fires by hand (the real one is covered by
- * `putBackQuiet.test.ts`), the sessions are real `Store2Session.open` calls over a memory backend (kind `indexeddb`, which
- * needs no native store), and the deletion is a double except in the one integration case. The engine does not exist on
+ * `putBackQuiet.test.ts`), the sessions are real `Store2Session.open` calls over a flush-confirming memory backend (kind
+ * `tauri`, which needs no native store), and the deletion is a double except in the one integration case. The engine does not exist on
  * the red base (the W5a commit), so a file here fails at import there, which proves nothing by itself; a "reproducer" is
  * red under the mutant named in the hand-back that removes the rule it pins.
  *
- * The clean-up pass that follows the deletion runs only on a `tauri` session, so its cases open one over a flush-confirming
- * wrapper of the memory backend (`flushConfirmBackend.ts`; the plain memory backend never confirms a flush and a `tauri`
- * session over it is idle). The `indexeddb` and `node` sessions above are the "runs nothing" cases.
+ * A `tauri` session over the plain memory backend is idle for ever (it never confirms a flush), so every session here is
+ * opened over the flush-confirming wrapper (`flushConfirmBackend.ts`). The `node` sessions above are the "runs nothing"
+ * cases.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -67,7 +67,7 @@ async function openSession(profile: Profile): Promise<{ session: Store2Session, 
         await backend.casCommit((await backend.readCommit()).token, encodeUnit(UNIT_TYPE.commit, key))
     }
     const store = createMemoryByteStore()
-    const session = await Store2Session.open(store, { kind: 'indexeddb', backend, upstreamMainFile: async () => false })
+    const session = await Store2Session.open(store, { kind: 'tauri', backend: flushConfirming(backend).backend, upstreamMainFile: async () => false })
     return { session, backend, store }
 }
 
@@ -112,10 +112,10 @@ const CLEAN: AutoGcFacts = {
 }
 
 /**
- * The default clean-up facts of the wrapper below: another tab is open, so a web page's pass refuses before any store2
- * read and no case reaches the live facts (and with them `globalApi.svelte`). An app page ignores both web facts.
+ * The default clean-up facts of the wrapper below: a data action is registered, so the pass stops before any store2 read
+ * and no case reaches the live facts (and with them `globalApi.svelte`).
  */
-const REFUSING_GC: AutoGcFacts = { ...CLEAN, restoreInProgress: () => false, peers: async () => 'others', ownBase: () => null }
+const QUIET_GC: AutoGcFacts = { ...CLEAN, isBusy: () => true }
 
 /**
  * The page's facts for the asset sweep, injected so that no case loads the application's `globalApi.svelte` through the
@@ -139,7 +139,6 @@ const ACTIVE_SWEEP: SweepPageFacts = { ...QUIET_SWEEP, shouldStop: () => false, 
  * so no case loads the application's modules through the live path. The inlay cases pass their own facts.
  */
 const QUIET_INLAYS: InlayPageFacts = {
-    peers: async () => 'alone',
     shouldStop: () => true,
     saveMarks: () => 0,
     writtenThisPage: () => false,
@@ -149,7 +148,7 @@ const QUIET_INLAYS: InlayPageFacts = {
 }
 
 function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSeams = {}): ReturnType<typeof startLiveMaintenance> {
-    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, gcPageFacts: REFUSING_GC, inlayFacts: QUIET_INLAYS, ...seams })
+    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, gcPageFacts: QUIET_GC, inlayFacts: QUIET_INLAYS, ...seams })
 }
 
 beforeEach(() => {
@@ -371,8 +370,8 @@ describe('the pace the runner gives the deletion', () => {
         expect(waited).toBe(true)
     })
 
-    test.each<Store2Session['kind']>(['indexeddb', 'tauri'])('guard: a %s page gives no pace (the deletion only yields, as before)', async kind => {
-        expect(await paceGiven(await readyAs(kind))).toBeUndefined()
+    test('guard: a tauri page gives no pace (the deletion only yields, as before)', async () => {
+        expect(await paceGiven(await readyAs('tauri'))).toBeUndefined()
     })
 })
 
@@ -921,34 +920,6 @@ describe('the clean-up pass after the old-data deletion', () => {
         })
     })
 
-    test('reproducer K-web (a): an indexeddb session alone on its own base deletes the orphan and logs one result line', async () => {
-        const { session, backend } = await openSession('ready')
-        const orphan = newUnitKey(env)
-        await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
-        const parsed = classifyCommitRead(await backend.readCommit())
-        const base = parsed.status === 'parsed' && parsed.value.current !== null ? parsed.value.current.key : null
-        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-
-        await fireOnce({ session }, { gcPageFacts: { ...CLEAN, ownBase: () => base } })
-
-        expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=done deleted=1 batches=1/)])
-        expect((await backend.readUnits([orphan])).get(orphan)).toBeNull()
-    })
-
-    test('reproducer K-web (b): an indexeddb session with another tab open lists nothing, logs the refusal and keeps the orphan', async () => {
-        const { session, backend } = await openSession('ready')
-        const orphan = newUnitKey(env)
-        await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
-        const listing = vi.spyOn(backend, 'listStore2')
-        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-
-        await fireOnce({ session }, { gcPageFacts: REFUSING_GC })
-
-        expect(listing).not.toHaveBeenCalled()
-        expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=refused reason=other-tab/)])
-        expect((await backend.readUnits([orphan])).get(orphan)).not.toBeNull()
-    })
-
     test('guard A6: a deletion that fails is logged and the pass still runs; a pass that throws is logged and the registered promise settles', async () => {
         const page = await openTauri(30)
         const error = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -1081,30 +1052,19 @@ describe('the asset sweep after the clean-up pass', () => {
         await getStartupCleanup()
     }
 
-    test('reproducer D1: on an indexeddb session the step deletes the orphan a day-old record names and keeps the asset no record names', async () => {
-        const page = await openSession('ready')
+    test('reproducer D1: on a tauri session the step deletes the orphan after the clean-up pass', async () => {
+        const page = await openTauriPage()
         const store = await plantedStore()
-        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const order: string[] = []
+        const info = vi.spyOn(console, 'info').mockImplementation(line => { order.push(String(line).startsWith('store2 asset sweep') ? 'sweep' : String(line).startsWith('store2 inlay sweep') ? 'inlays' : 'clean-up') })
 
         await fireSweep(page, store)
 
-        expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
-        expect(store.files.has(`assets/${YOUNG}`)).toBe(true)
         const lines = sweepLines(info)
         expect(lines).toHaveLength(1)
         expect(lines[0]).toContain('status=done phase=swept')
         expect(lines[0]).toContain('deleted=1')
         expect(lines[0], 'counts only').not.toContain(ORPHAN)
-    })
-
-    test('reproducer D1: on a tauri session the step deletes the orphan after the clean-up pass', async () => {
-        const page = await openTauriPage()
-        const store = await plantedStore()
-        const order: string[] = []
-        vi.spyOn(console, 'info').mockImplementation(line => { order.push(String(line).startsWith('store2 asset sweep') ? 'sweep' : String(line).startsWith('store2 inlay sweep') ? 'inlays' : 'clean-up') })
-
-        await fireSweep(page, store)
-
         expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
         expect(store.files.has(`assets/${YOUNG}`)).toBe(true)
         expect(order, 'the inlay sweep is the last deleter of the step, after the asset sweep').toEqual(['clean-up', 'sweep', 'inlays'])
@@ -1289,13 +1249,13 @@ describe('the manual clean-up (runManualCleanUp)', () => {
         return { progress: vi.fn(), confirm: vi.fn(async () => true), ...over } as ManualCleanUpUi & { progress: ReturnType<typeof vi.fn>, confirm: ReturnType<typeof vi.fn<(plan: ManualCleanUpPlan) => Promise<boolean>>> }
     }
 
-    /** An indexeddb page over the seeded tree and a page store holding one asset nothing refers to, with a stored-size member. */
+    /** A tauri page over the seeded tree and a page store holding one asset nothing refers to, with a stored-size probe. */
     async function manualPage() {
         const page = await openSession('ready')
         const store = createMemoryByteStore()
         store.files.set(`assets/${MANUAL_ORPHAN}`, new Uint8Array([1, 2, 3]))
-        store.readValue = async key => store.files.get(key) ?? null
-        return { page, store, seams: { session: () => page.session, store: async () => store, sweepFacts: ACTIVE_SWEEP } }
+        const sizeOf = async (key: string): Promise<number | null> => store.files.get(key)?.length ?? null
+        return { page, store, seams: { session: () => page.session, store: async () => store, sweepFacts: ACTIVE_SWEEP, sizeOf } }
     }
 
     test('E1: the confirm receives the plan; Yes deletes the orphan with no record, No deletes nothing and never starts the delete step', async () => {
@@ -1304,7 +1264,7 @@ describe('the manual clean-up (runManualCleanUp)', () => {
         const declining = ui({ confirm: vi.fn(async () => false) })
 
         expect(await runManualCleanUp(declining, seams)).toEqual({ status: 'declined' })
-        expect(declining.confirm).toHaveBeenCalledWith({ kind: 'indexeddb', deletable: 1, later: 0, bytes: 3 })
+        expect(declining.confirm).toHaveBeenCalledWith({ kind: 'tauri', deletable: 1, later: 0, bytes: 3 })
         expect(store.files.has(`assets/${MANUAL_ORPHAN}`)).toBe(true)
         expect(sweepLines(info)).toEqual([expect.stringMatching(/^store2 asset sweep: status=planned /)])
         expect(declining.progress.mock.calls.map(call => call[0])).toEqual(['measuring'])
