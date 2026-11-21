@@ -1663,6 +1663,7 @@ export const languageVietnamese = {
     "triggerInputLabels": {
         "value": "Giá trị",
         "var": "Biến",
+        "operandType": "Loại {label}",
         "varName": "Tên biến",
         "outputVar": "Biến đầu ra",
         "name": "Tên",
@@ -3107,6 +3108,7 @@ export const languageVietnamese = {
     "openAIAudioLeftOut": "Không gửi cho mô hình (chỉ nhận âm thanh WAV hoặc MP3): {names}",
     "openAIAudioUnnamed": "một tệp âm thanh đính kèm",
     "triggerOn": "Kích hoạt bật",
+    "triggerEffectCategory": "Danh mục hiệu ứng",
     "noConfig": "Không có cấu hình",
     "var": "Biến",
     "condition": "Điều kiện",

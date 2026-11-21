@@ -1663,6 +1663,7 @@ export const languageGerman = {
     "triggerInputLabels": {
         "value": "Wert",
         "var": "Variable",
+        "operandType": "{label}-Typ",
         "varName": "Variablenname",
         "outputVar": "Ausgabevariable",
         "name": "Name",
@@ -3109,6 +3110,7 @@ export const languageGerman = {
     "openAIAudioLeftOut": "Nicht an das Modell gesendet (es akzeptiert nur WAV- oder MP3-Audio): {names}",
     "openAIAudioUnnamed": "ein Audioanhang",
     "triggerOn": "Trigger ein",
+    "triggerEffectCategory": "Effektkategorie",
     "noConfig": "Keine Konfiguration",
     "var": "Variable",
     "condition": "Bedingung",
