@@ -133,10 +133,12 @@ describe('once a day', () => {
     test('the first view plays the scene, records the day and ends in the final pose when play settles', async () => {
         let done: () => void = () => {}
         const scene = fakeScene({ play: () => new Promise<void>((r) => { done = r }) })
-        const { ctrl } = mountHost(scene)
+        const { ctrl, fx } = mountHost(scene)
         await settle()
         expect(scene.calls.play).toBe(1)
         expect(ctrl.phase).toBe('playing')
+        // The brand cell reserves room for the final pose's right overflow while an occasion shows.
+        expect(fx.brand.hasAttribute('data-seasonal-active')).toBe(true)
         expect(played.has('2026-12-25')).toBe(true)
         done()
         await settle(1)
@@ -348,6 +350,7 @@ describe('no scene', () => {
         expect(document.querySelector('.rt-sw-markslot')).toBeNull()
         expect(fx.host.querySelector('.rt-sw-word')!.hasAttribute('role')).toBe(false)
         expect(fx.host.querySelector('.rt-sw-sr')!.textContent).toBe('RisuTanium')
+        expect(fx.brand.hasAttribute('data-seasonal-active')).toBe(false)
     })
 
     // Guards: a missing scene module or a failed chunk load leaving a stage, a pending phase or an unhandled rejection.
@@ -483,6 +486,7 @@ describe('destroy', () => {
         expect(fx.anchor.style.position).toBe(positionBefore)
         expect(fx.mark.getAttribute('class') ?? '').toBe('')
         expect(fx.mark.hasAttribute('data-rt-sw-still')).toBe(false)
+        expect(fx.brand.hasAttribute('data-seasonal-active')).toBe(false)
         expect(vi.getTimerCount()).toBe(0)
 
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
