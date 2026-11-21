@@ -2382,3 +2382,7 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2867](Maintainer-Context.md#mc-2867--165-studio-undo-history-and-body-only-residue-are-accepted-limits-2026-11-21) | #165 Studio undo history and body-only residue are accepted limits, 2026-11-21 |
 | [MC-2990](Maintainer-Context.md#mc-2990--455-under-load-the-default-streaming-mode-runs-output-scripts-only-on-the-newest-reply-text-2026-11-21) | #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21 |
 | [MC-2991](Maintainer-Context.md#mc-2991--455-one-posted-message-task-yield-per-pass-is-allowed-in-the-reply-loop-gated-on-a-note-9-hidden-page-row-2026-11-21) | #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21 |
+| [MC-3079](Maintainer-Context.md#mc-3079--424-seasonal-scenes-a-faithful-ts-port-loaded-per-day-2026-11-21) | #424 seasonal scenes: a faithful TS port, loaded per day, 2026-11-21 |
+| [MC-3080](Maintainer-Context.md#mc-3080--424-the-seasonal-logo-toggle-is-saved-on-this-device-only-2026-11-21) | #424 the Seasonal logo toggle is saved on this device only, 2026-11-21 |
+| [MC-3081](Maintainer-Context.md#mc-3081--424-the-top-bar-logo-grows-to-the-prototype-size-every-day-2026-11-21) | #424 the top-bar logo grows to the prototype size every day, 2026-11-21 |
+| [MC-3082](Maintainer-Context.md#mc-3082--424-ports-all-24-occasions-independence-day-included-2026-11-21) | #424 ports all 24 occasions, Independence Day included, 2026-11-21 |
