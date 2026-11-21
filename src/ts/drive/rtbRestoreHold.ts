@@ -42,6 +42,8 @@ export type HoldAcquire =
 export interface HoldOptions {
     /** Called once when the lock is granted, before `acquireRestoreHold` resolves. */
     onGranted?: () => void
+    /** Replaces the other-tabs wait, for a run that reports on the task card; the start-up restore passes none. */
+    checking?: () => void
 }
 
 export async function acquireRestoreHold(busy: BusyHandle, options: HoldOptions = {}): Promise<HoldAcquire> {
@@ -54,7 +56,11 @@ export async function acquireRestoreHold(busy: BusyHandle, options: HoldOptions 
             }
         } else {
             await tabPresenceLockAcquired
-            alertWait(language.restoreCheckingOtherTabs)
+            if (options.checking !== undefined) {
+                options.checking()
+            } else {
+                alertWait(language.restoreCheckingOtherTabs)
+            }
             releaseExclusiveHold = await acquireExclusiveStorageMigrationLock(RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS)
             if (!releaseExclusiveHold) {
                 // A reload already in flight needs no message: this page is on its way out.

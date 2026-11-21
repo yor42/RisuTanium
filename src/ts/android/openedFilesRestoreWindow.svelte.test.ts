@@ -40,6 +40,8 @@ const setDatabaseMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
 const alertWaitMock = vi.hoisted(() => vi.fn())
+// Forwards to the real `requestSaveNow`; it only records whether the restore's save-first step asked for a save.
+const requestSaveNowMock = vi.hoisted(() => vi.fn())
 const openSourceMock = vi.hoisted(() => vi.fn())
 const readOnlyBox = vi.hoisted(() => ({ readOnly: false }))
 const reloadMark = vi.hoisted(() => ({ marked: false, onMark: null as null | (() => void) }))
@@ -138,10 +140,15 @@ vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(
 // The real module with one answer fixed: the page is clean unless a row marks it dirty, so the unsaved-edits question
 // does not take one of the planned confirmations. A row that marks the page dirty uses that question as the restore's
 // inner question.
-vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
-    ...await importOriginal(),
-    isSaveClean: () => cleanBox.clean,
-}))
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => {
+    const original = await importOriginal()
+    requestSaveNowMock.mockImplementation(original.requestSaveNow)
+    return {
+        ...original,
+        isSaveClean: () => cleanBox.clean,
+        requestSaveNow: requestSaveNowMock,
+    }
+})
 
 // A parked save loop is left alone by the restore's save-first step, so a dirty page does not wait out its bound.
 vi.mock(import('src/ts/storage/store2/saveLoop'), async (importOriginal) => ({
@@ -453,6 +460,7 @@ beforeEach(async () => {
     setDatabaseMock.mockReset()
     alertErrorMock.mockReset()
     alertWaitMock.mockReset()
+    requestSaveNowMock.mockClear()
     alertConfirmMock.mockReset().mockResolvedValue(true)
     noticeMock.mockClear()
     importedMock.mockClear()
@@ -482,8 +490,8 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-    // The restore's save-first step returned at its clean check; it never waited out its bound.
-    expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+    // The restore's save-first step returned at its clean check; it never asked for a save or waited out its bound.
+    expect(requestSaveNowMock).not.toHaveBeenCalled()
     stopRefusalWatch()
     resetStartupCleanupForTests()
     dbWriteLockSpy.mockRestore()

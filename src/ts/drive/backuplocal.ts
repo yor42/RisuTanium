@@ -1,6 +1,7 @@
-import { alertError, alertNormalWait, alertStore, alertWait, alertConfirm, alertClear } from "../alert";
+import { alertError, alertNormalWait, alertStore, alertWait, alertConfirm } from "../alert";
 import { takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
-import type { ExportCancelToken } from "../exportCancel";
+import { ExportCancelledError, type ExportCancelToken } from "../exportCancel";
+import { binCardDef, cardRestoreProgress, legacyRestoreProgress, restoreCleanupCardDef, type RestoreProgress } from "./restoreProgress";
 import { localBackupFileName } from "./backupFileName";
 import { assetDeletionSettled } from "../storage/assetDeleteHold";
 import { LocalWriter, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage } from "../globalApi.svelte";
@@ -1786,18 +1787,22 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
         // A restore must not start while a recorded start-up clean-up still runs; the person may stop waiting.
         const startupCleanup = getStartupCleanup();
         if (startupCleanup) {
-            let cancelWait: () => void = () => { };
-            const cancelled = new Promise<'cancelled'>((resolve) => {
-                cancelWait = () => resolve('cancelled');
-            });
-            alertWait(language.internalBackupWaitingForCleanup, () => cancelWait());
-            const outcome = await Promise.race([startupCleanup.then(() => 'settled' as const), cancelled]);
-            if (outcome === 'cancelled') {
-                alertClear();
+            const progress = cardRestoreProgress(restoreCleanupCardDef());
+            try {
+                await progress.race(startupCleanup);
+            } catch (error) {
+                if (!(error instanceof ExportCancelledError)) {
+                    progress.leave();
+                    throw error;
+                }
+            }
+            // A Cancel that came in the turn the clean-up settled still wins: nothing was opened or written.
+            if (progress.cancelRequested) {
+                progress.cancelled();
                 return 'pageLive';
             }
-            // From here the restore cannot be cancelled, so the wait loses its Cancel button.
-            alertWait(language.backupRestoreLoading);
+            // The routed restore opens its own card; this one only covered the wait.
+            progress.leave();
         }
         try {
             source = await openDesktopImportSource(entry.path);
@@ -1814,7 +1819,7 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
         }
         runOutcome = 'failed';
         const { routeOpenedBackup } = await import('./backupRouter');
-        const end = await routeOpenedBackup({ source, name: entry.name, lastModified });
+        const end = await routeOpenedBackup({ source, name: entry.name, lastModified }, {}, { card: true });
         runOutcome = end.outcome;
         switch (end.outcome) {
             case 'committed':
@@ -1889,14 +1894,23 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
 }
 
 /**
- * The `.bin` restore over a file the backup router already picked and recognised, with no picker of its own. It runs the
- * same restore as the picker's own file, so the first-run option and every refusal behave as they do there.
+ * The `.bin` restore over a file another app opened, as `LoadLocalBackup(undefined, opened)`; with `options.card` the
+ * running phases show on the task card, with Cancel offered until the first write.
  */
-export function LoadPickedLocalBackup(file: File, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
-    return loadLocalBackupWith(undefined, undefined, restore, file);
+export function LoadOpenedLocalBackup(opened: OpenedBin, options?: { card?: true }): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(undefined, opened, undefined, undefined, options?.card === true);
 }
 
-function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | undefined, restore: FirstRunRestore | undefined, picked: File | undefined): Promise<LocalBackupEnd> {
+/**
+ * The `.bin` restore over a file the backup router already picked and recognised, with no picker of its own. It runs the
+ * same restore as the picker's own file, so the first-run option and every refusal behave as they do there.
+ * With `options.card` the running phases show on the task card, with Cancel offered until the first write.
+ */
+export function LoadPickedLocalBackup(file: File, restore?: FirstRunRestore, options?: { card?: true }): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(undefined, undefined, restore, file, options?.card === true);
+}
+
+function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | undefined, restore: FirstRunRestore | undefined, picked: File | undefined, card: boolean = false): Promise<LocalBackupEnd> {
     // The option applies to the picker restore only: a boot or opened-file restore always keeps the file's own value.
     const completeFirstSetup = restore?.completeFirstSetup === true && boot === undefined && opened === undefined;
     const operation: OperationName = boot === undefined ? 'import' : 'boot-import';
@@ -1924,13 +1938,31 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
         }
         // What a boot import came to; `cancelled` until the boot's installer answers.
         let bootEnd: BootImportEnd = { kind: 'cancelled' };
+        // The card is taken away however the restore leaves, so no exit can strand it in the slot.
         const restoreSelectedFile = async (busy: BusyHandle): Promise<LocalBackupEnd> => {
+            const run = { progress: legacyRestoreProgress() };
+            try {
+                return await restoreFile(busy, run);
+            } finally {
+                run.progress.leave();
+            }
+        };
+        const restoreFile = async (busy: BusyHandle, run: { progress: RestoreProgress }): Promise<LocalBackupEnd> => {
             const facts = emptyImportFacts();
             let target: string | null = null;
             // Set before the first asset or inlay write: from then on no exit is `canceled`.
             let writeMayHaveBegun = false;
-            const ended = (outcome: OperationOutcome, cause: OperationCause | null = null): LocalBackupEnd =>
-                ({ operation, target, outcome, cause, detail: facts });
+            // The legacy route's raw waits until the card opens; a boot restore never opens one.
+            let progress: RestoreProgress = run.progress;
+            const ended = (outcome: OperationOutcome, cause: OperationCause | null = null): LocalBackupEnd => {
+                progress.leave();
+                return { operation, target, outcome, cause, detail: facts };
+            };
+            // A Cancel that came before the point of no return: nothing was written, so the run ends `canceled`.
+            const cancelExit = (): LocalBackupEnd => {
+                progress.cancelled();
+                return ended('canceled');
+            };
             const refused = (cause: OperationCause | null = null): LocalBackupEnd => ended('nothing-replaced', cause);
             // The person declined a question: nothing was replaced, and nothing was written only while no write may have begun.
             const declined = (): LocalBackupEnd => ended(writeMayHaveBegun ? 'nothing-replaced' : 'canceled');
@@ -1984,7 +2016,13 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     return refused(checked.cause);
                 }
                 store2Target = checked.target;
-                await saveFirst(SAVE_FIRST_BOUND_MS);
+                if (card) {
+                    progress = run.progress = cardRestoreProgress(binCardDef());
+                }
+                await saveFirst(SAVE_FIRST_BOUND_MS, card ? { quiet: true } : undefined);
+                if (progress.cancelRequested) {
+                    return cancelExit();
+                }
             }
 
             // Every write below -- an asset or an inlay, and then the
@@ -2003,11 +2041,14 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 const walk = await indexBackupEntries(file, {
                     oversizeBodyBytes: assetLimit ?? undefined,
                     onProgress: (scanned, total) => {
-                        const progress = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
-                        const progressText = `Checking local backup... (${progress}%)`;
-                        if (progressText !== lastWalkProgressText) {
-                            lastWalkProgressText = progressText;
-                            alertWait(progressText);
+                        const percent = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
+                        const progressText = `Checking local backup... (${percent}%)`;
+                        const changed = progressText !== lastWalkProgressText;
+                        lastWalkProgressText = progressText;
+                        progress.bytes('check', scanned, total, changed ? progressText : null);
+                        // The walk is read-only: a Cancel stops it between two entries, with nothing written.
+                        if (progress.cancelRequested) {
+                            throw new ExportCancelledError();
                         }
                     }
                 });
@@ -2017,9 +2058,16 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 backupNames = walk.names;
                 noteImportPhase(`walked, ${backupEntries.length} entries`);
             } catch (e) {
+                // A Cancel that stopped the walk is the person's choice, not an unreadable file.
+                if (progress.cancelRequested) {
+                    return cancelExit();
+                }
                 console.error(e);
                 alertError(language.backupFileUnreadable);
                 return refused();
+            }
+            if (progress.cancelRequested) {
+                return cancelExit();
             }
             if (hasEncryptionMarker) {
                 alertError(language.encryptedBackupRefused);
@@ -2057,6 +2105,9 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             }
             const store2Import: Store2BinImport = { target: store2Target, boot: boot?.target ?? null, index: scan.index, entry: scan.database, guard: new UnsavedGuard() };
             noteImportPhase('scanned');
+            if (progress.cancelRequested) {
+                return cancelExit();
+            }
             if (!await confirmImportScale(file.size, backupEntries.length, store2Import.entry.dataLength, scan.index.estimatedUnitBytes)) {
                 return declined();
             }
@@ -2077,6 +2128,9 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     console.error(e);
                     alertError(language.backupFileUnreadable);
                     return refused();
+                }
+                if (progress.cancelRequested) {
+                    return cancelExit();
                 }
                 if (oversizedAssetNames.size > 0 || oversizedInlays.length > 0) {
                     const names = Array.from(oversizedAssetNames.values());
@@ -2100,10 +2154,13 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // or whose left-out blocks the person declines, changes nothing.
             // No database bytes or tree are held across the copy that follows:
             // the commit reads the entry from the file again.
-            alertWait(language.backupRestoreReadingDatabase);
+            progress.phase('read', language.backupRestoreReadingDatabase);
             try {
                 const omitted = await readBinDatabaseOmitted(file, store2Import.entry);
                 noteImportPhase('database decoded');
+                if (progress.cancelRequested) {
+                    return cancelExit();
+                }
                 if (!await confirmLeftOut(omitted)) {
                     return declined();
                 }
@@ -2123,6 +2180,9 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             // restore -- the write below must NOT acquire it a second time,
             // which would deadlock against this same hold.
             let releaseExclusiveHold: ((keepWriteLock?: boolean) => Promise<void>) | null = null;
+            if (progress.cancelRequested) {
+                return cancelExit();
+            }
             if (!isTauri) {
                 if (locksSupported === false) {
                     if (!await alertConfirm(language.restoreNoLockWarningConfirm)) {
@@ -2130,7 +2190,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     }
                 } else {
                     await tabPresenceLockAcquired;
-                    alertWait(language.restoreCheckingOtherTabs);
+                    progress.phase('tabs', language.restoreCheckingOtherTabs);
                     releaseExclusiveHold = await acquireExclusiveStorageMigrationLock(RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS);
                     if (!releaseExclusiveHold) {
                         // A reload already in flight (this attempt was overtaken
@@ -2157,10 +2217,19 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
             let restoreInstalled = false;
             let writeLockStaysClosed = false;
             try {
+                // Inside the try, so the hold taken above is released on a Cancel.
+                if (progress.cancelRequested) {
+                    return cancelExit();
+                }
                 // With the tab lock held, the edits this tab could not save are
                 // asked about before the copy, not after hours of it.
                 if (store2Import.boot === null && releaseExclusiveHold && !await store2Import.guard.check()) {
                     return declined();
+                }
+                // The point of no return: the first asset or inlay write follows. A Cancel that came first wins,
+                // and once the lock is granted none can be accepted, so no cancelled card can follow a write.
+                if (!progress.lockCancel()) {
+                    return cancelExit();
                 }
                 const skippedAssets: SkippedAsset[] = [];
                 const skippedInlays: InlaySkipped[] = [];
@@ -2208,8 +2277,21 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 // compared with the file as it is after the walk finished.
                 const copyWindowBytes = backupCopyWindowBytes();
                 const copyReader = createBlobWindowReader(file, copyWindowBytes);
+                // The card's copy line: a running sum that only ever grows, so two streams reading beside the loop add up.
+                // The loop adds each entry it handles itself once it has passed it; a streamed asset adds its header when it
+                // is handed on and its body slice by slice as the streams read.
+                let copyDone = 0;
+                let pendingShare = 0;
+                const addCopied = (bytes: number): void => {
+                    copyDone += bytes;
+                    progress.bytes('copy', copyDone, file.size, null);
+                };
+                // Whether the file held an inlay part: the inlays are written after the loop with no progress source.
+                let sawInlayPart = false;
                 try {
                     for (const entry of backupEntries) {
+                        addCopied(pendingShare);
+                        pendingShare = 0;
                         if (assetPipeline?.failure) {
                             break;
                         }
@@ -2224,10 +2306,10 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         }
                         const entryEnd = entry.headerOffset + entry.headerLength + entry.dataLength;
                         const progressText = `Loading local Backup... (${((entryEnd / file.size) * 100).toFixed(2)}%)`;
-                        if (progressText !== lastProgressText) {
-                            lastProgressText = progressText;
-                            alertWait(progressText);
-                        }
+                        const textChanged = progressText !== lastProgressText;
+                        lastProgressText = progressText;
+                        progress.bytes('copy', copyDone, file.size, textChanged ? progressText : null);
+                        pendingShare = entry.headerLength + entry.dataLength;
 
                         // The header is read and checked first; the data follows only
                         // for an entry that is not left out. For an asset left out for
@@ -2271,6 +2353,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         // of the file until all its parts are in, and is never an asset.
                         const inlayPart = parseInlayEntryName(name);
                         if (inlayPart !== null) {
+                            sawInlayPart = true;
                             const partData = file.slice(dataStart, dataStart + entry.dataLength);
                             const added = partData.size === entry.dataLength
                                 ? await inlayCollector.add(name, inlayPart.hash, inlayPart.index, partData)
@@ -2310,12 +2393,19 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                                 && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
                             const assetKey = 'assets/' + name;
                             noteAssetWrittenThisPage(assetKey);
+                            // The header counts as the entry is handed on; its body counts slice by slice below.
+                            pendingShare = 0;
+                            addCopied(entry.headerLength);
                             const streamed: StreamedAssetEntry = {
                                 key: assetKey,
                                 name,
                                 index: entry.headerOffset,
                                 size: entry.dataLength,
-                                readSlice: async (start, end) => new Uint8Array(await file.slice(dataStart + start, dataStart + end).arrayBuffer()),
+                                readSlice: async (start, end) => {
+                                    const slice = new Uint8Array(await file.slice(dataStart + start, dataStart + end).arrayBuffer());
+                                    addCopied(slice.length);
+                                    return slice;
+                                },
                             };
                             if (assetPipeline) {
                                 if (await assetPipeline.addStreamed(streamed)) {
@@ -2444,6 +2534,10 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 } catch (error) {
                     passFailure = { error };
                 }
+                if (stopMessage === null && passFailure === null) {
+                    addCopied(pendingShare);
+                    pendingShare = 0;
+                }
                 if (assetPipeline) {
                     if (stopMessage !== null || passFailure !== null) {
                         // The loop ended for its own reason: streams still writing stop at their next chunk instead of finishing whole entries.
@@ -2452,7 +2546,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     if (stopMessage === null && passFailure === null && assetPipeline.failure === null
                             && !assetPipeline.sourceChanged && assetPipeline.outstanding) {
                         // Every entry has been read; the percentage stays at its last value until the copies end.
-                        alertWait(language.backupRestoreFinishingFiles);
+                        progress.phase('files', language.backupRestoreFinishingFiles);
                     }
                     await assetPipeline.drain();
                     if (assetPipeline.sourceChanged && stopMessage === null) {
@@ -2474,6 +2568,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         skippedAssets.push({ name: refusedAsset.name, reason: 'invalidName' });
                     }
                 }
+                // Only now are the streams done, so the line fills here and not at the end of the loop.
+                progress.bytes('copy', file.size, file.size, null);
                 // The pipeline has drained: what it was handed less what the store refused by name.
                 facts.assets = { written: assetsSubmitted - (assetPipeline?.invalidAssets().length ?? 0), skipped: skippedAssets };
 
@@ -2485,6 +2581,10 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                 if (await openedFileChanged()) {
                     alertError(language.backupFileChangedWhileReading);
                     return refused();
+                }
+                if (sawInlayPart) {
+                    // The inlays are written here, after the loop, with no progress source of their own.
+                    progress.phase('files', null);
                 }
                 const inlayOutcome = await restoreCollectedInlays(inlayCollector);
                 if (inlayOutcome.changed) {
@@ -2545,7 +2645,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     alertError(language.backupFileChangedWhileReading);
                     return refused();
                 }
-                alertWait(language.backupRestoreLoading);
+                progress.phase('load', language.backupRestoreLoading);
                 noteImportPhase('loading backup');
                 const end = await commitStore2Import({
                     target: store2Import.target,
@@ -2560,6 +2660,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     case 'unconfirmed':
                         // Which state is current is unknown: nothing may save from this page until a reload shows it.
                         writeLockStaysClosed = true;
+                        progress.leave();
                         if (releaseExclusiveHold) {
                             await releaseExclusiveHold(true);
                         }
@@ -2570,6 +2671,8 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                         facts.flushed = end.flushed;
                         facts.repair = end.repair;
                         facts.incomplete = end.incomplete;
+                        // After the flags that keep the write lock closed, in the segment of the first notice.
+                        progress.leave();
                         await announceStore2Import(end, skippedNoticesOf(skippedAssets, skippedInlays, assetLimit), () => reloadOntoRestoredState(releaseExclusiveHold));
                         return ended('committed');
                 }

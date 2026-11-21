@@ -46,7 +46,7 @@ async function restoreFlow(loader: () => Promise<{ outcome: OperationOutcome }>)
  * router reads the file's content to choose the restore, whatever the file is named.
  */
 export function restoreFromBinFile(): Promise<void> {
-    return restoreFlow(() => loadBackupFromPicker())
+    return restoreFlow(() => loadBackupFromPicker({}, { card: true }))
 }
 
 /**
@@ -111,7 +111,7 @@ export function restoreFromBinFileAtFirstRun(): Promise<void> {
     restoreFlow(() => {
         // The picker opens synchronously inside this call, so the watcher is armed only after both confirmations. A picked
         // file stops the watcher before the router reads it: from then on the restore, not a dismissed picker, holds Welcome.
-        const loaded = loadBackupFromPicker({}, { firstRun: true, onPicked: () => stopWatching() })
+        const loaded = loadBackupFromPicker({}, { firstRun: true, card: true, onPicked: () => stopWatching() })
         stopWatching = watchPickerReturn(resolveReturned)
         return loaded
     }).then(settle, (error: unknown) => {
@@ -127,5 +127,5 @@ export function restoreFromBinFileAtFirstRun(): Promise<void> {
 
 /** Settings: restore the internal backup (legacy snapshot) or, on a store2 page, a restore point. */
 export function restoreFromInternalBackup(): Promise<void> {
-    return restoreFlow(() => loadInternalBackup())
+    return restoreFlow(() => loadInternalBackup({ card: true }))
 }
