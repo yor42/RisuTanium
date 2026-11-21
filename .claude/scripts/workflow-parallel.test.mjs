@@ -60,7 +60,7 @@ test('primary records require registered Haiku identity and preserve authority b
   await assert.rejects(hook({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'sonnet-coder', model: 'sonnet', prompt: '[workflow-dispatch:records]' } }, { root }), /role\/model/);
   await hook({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'record-clerk', model: 'haiku', prompt: '[workflow-dispatch:records]' } }, { root });
   assert.equal(loadState(root).dispatches[records.id].status, 'running');
-  for (const file of ['src/a.ts', 'package.json', 'Agents/Maintainer-Context.md', 'Agents/Decision-Index.md', 'Agents/Workflow-State.json', 'docs/workflow/routing.md', 'AGENTS.md', '.gemini/GEMINI.md', '.antigravity/GEMINI.md', 'GEMINI.md', 'nested/AGENTS.md']) {
+  for (const file of ['src/a.ts', 'package.json', 'Agents/Maintainer-Context.md', 'Agents/mc/481.md', 'Agents/Decision-Index.md', 'Agents/Workflow-State.json', 'docs/workflow/routing.md', 'AGENTS.md', '.gemini/GEMINI.md', '.antigravity/GEMINI.md', 'GEMINI.md', 'nested/AGENTS.md']) {
     await assert.rejects(registerDispatch(make('bad', { workClass: 'records', allowedWrites: [file] }), { root }), /clerical Haiku/);
   }
   await assert.rejects(registerDispatch(make('critical', { workClass: 'records', allowedWrites: [], changedContracts: ['save-format'] }), { root }), /Records primary/);
