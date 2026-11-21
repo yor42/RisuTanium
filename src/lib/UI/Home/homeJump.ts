@@ -14,13 +14,20 @@ const USER_INPUT_EVENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as c
  * are observed and the scroll is re-issued with the target's current offset, only when that offset moved by half a pixel or more. The
  * re-aim ends at the end of the window, at the first user input, when `signal` aborts, and where
  * `ResizeObserver` is missing it never starts. It never moves the focus again.
+ *
+ * `onLayout` adjusts something inside the target that the landing offset does not cover (an inner list's own
+ * scroll position). It runs once right after the focus and again on every observer callback of the window,
+ * whether or not the landing offset moved, and stops with the re-aim. `observe` adds elements whose size
+ * changes matter to `onLayout` but need not resize the scroller or the target (a list capped by its section).
  */
-export function jumpToSection({ scroller, target, focus = target, reduced, signal }: {
+export function jumpToSection({ scroller, target, focus = target, reduced, signal, onLayout, observe = [] }: {
     scroller: HTMLElement | null
     target: HTMLElement | null
     focus?: HTMLElement | null
     reduced: boolean
     signal?: AbortSignal
+    onLayout?: () => void
+    observe?: readonly HTMLElement[]
 }): boolean {
     if (!scroller || !target) return false
     const offset = (): number => scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top
@@ -28,12 +35,15 @@ export function jumpToSection({ scroller, target, focus = target, reduced, signa
     let aimed = offset()
     scroller.scrollTo({ top: aimed, behavior })
     ;(focus ?? target).focus({ preventScroll: true })
+    onLayout?.()
     if (typeof ResizeObserver !== 'undefined' && !signal?.aborted) {
         const observer = new ResizeObserver(() => {
             const top = offset()
-            if (Math.abs(top - aimed) < 0.5) return
-            aimed = top
-            scroller.scrollTo({ top, behavior })
+            if (Math.abs(top - aimed) >= 0.5) {
+                aimed = top
+                scroller.scrollTo({ top, behavior })
+            }
+            onLayout?.()
         })
         const inputTargets: EventTarget[] = [scroller, document]
         let timer: ReturnType<typeof setTimeout> | undefined
@@ -47,6 +57,7 @@ export function jumpToSection({ scroller, target, focus = target, reduced, signa
         }
         observer.observe(scroller)
         observer.observe(target)
+        for (const node of observe) observer.observe(node)
         for (const node of inputTargets) {
             for (const type of USER_INPUT_EVENTS) node.addEventListener(type, stop, { passive: true })
         }
@@ -54,6 +65,21 @@ export function jumpToSection({ scroller, target, focus = target, reduced, signa
         signal?.addEventListener('abort', stop)
     }
     return true
+}
+
+/**
+ * The nearest ancestor from `control` up to `section` (the section itself only when it scrolls) whose computed
+ * `overflow-y` is `auto` or `scroll`; null when there is none inside `section`.
+ */
+export function scrollContainerOf(control: HTMLElement, section: HTMLElement): HTMLElement | null {
+    let container: HTMLElement | null = control.parentElement
+    while (container) {
+        const overflowY = getComputedStyle(container).overflowY
+        if (overflowY === 'auto' || overflowY === 'scroll') break
+        if (container === section) return null
+        container = container.parentElement
+    }
+    return container && section.contains(container) ? container : null
 }
 
 /**
@@ -67,14 +93,8 @@ export function jumpToSection({ scroller, target, focus = target, reduced, signa
  * Does nothing when no such container exists.
  */
 export function revealInScrollContainer(control: HTMLElement, section: HTMLElement): void {
-    let container: HTMLElement | null = control.parentElement
-    while (container) {
-        const overflowY = getComputedStyle(container).overflowY
-        if (overflowY === 'auto' || overflowY === 'scroll') break
-        if (container === section) return
-        container = container.parentElement
-    }
-    if (!container || !section.contains(container)) return
+    const container = scrollContainerOf(control, section)
+    if (!container) return
     const box = container.getBoundingClientRect()
     const rect = control.getBoundingClientRect()
     const above = rect.top - box.top

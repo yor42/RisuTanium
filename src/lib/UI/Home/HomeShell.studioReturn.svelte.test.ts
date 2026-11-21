@@ -118,7 +118,7 @@ vi.mock(import('src/ts/alert'), () => ({
 }) as unknown as typeof import('src/ts/alert'))
 
 // The characters whose Studio control the stand-in draws, as the List tab draws one for a row in view.
-const drawnControls = vi.hoisted(() => ({ chaIds: [] as string[], listed: false }))
+const drawnControls = vi.hoisted(() => ({ chaIds: [] as string[], listed: false, listHeight: 698 }))
 const libraryStub = vi.hoisted(() => (anchor: Comment) => {
     const marker = document.createElement('div')
     marker.setAttribute('data-testid', 'library-stub')
@@ -127,7 +127,7 @@ const libraryStub = vi.hoisted(() => (anchor: Comment) => {
     if (drawnControls.listed) {
         holder.setAttribute('data-testid', 'library-list')
         holder.style.overflowY = 'auto'
-        Object.defineProperty(holder, 'clientHeight', { configurable: true, value: 698 })
+        Object.defineProperty(holder, 'clientHeight', { configurable: true, get: () => drawnControls.listHeight })
         holder.getBoundingClientRect = () => ({ top: 0, bottom: 698 } as DOMRect)
     }
     marker.appendChild(holder)
@@ -135,7 +135,8 @@ const libraryStub = vi.hoisted(() => (anchor: Comment) => {
         const control = document.createElement('button')
         control.setAttribute('data-part', 'library-studio')
         control.setAttribute('data-cha-id', chaId)
-        if (drawnControls.listed) control.getBoundingClientRect = () => ({ top: 760, bottom: 784 } as DOMRect)
+        // The control moves up as the list scrolls, as a laid-out control does.
+        if (drawnControls.listed) control.getBoundingClientRect = () => ({ top: 760 - holder.scrollTop, bottom: 784 - holder.scrollTop } as DOMRect)
         holder.appendChild(control)
     }
     anchor.parentNode!.insertBefore(marker, anchor)
@@ -302,6 +303,7 @@ beforeEach(() => {
     scrollSpy.mockClear()
     drawnControls.chaIds = []
     drawnControls.listed = false
+    drawnControls.listHeight = 698
     Object.defineProperty(Element.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollSpy })
     stopBackLayers = $effect.root(() => {
         installStudioBack()
@@ -383,6 +385,42 @@ describe('the landing library after a Home-opened Studio', () => {
         expect(document.activeElement).toBe(controlOf(root, 'one'))
         expect(list.scrollTop).toBe(784 - 698)
         expect(scrollSpy.mock.contexts.every((context) => context === scrollerOf(root))).toBe(true)
+    })
+
+    test('S4b-F4 the list shrinking after the focus (the sidebar column returning) re-brings the control into view in that list', async () => {
+        const observers: Array<{ callback: () => void, observed: Element[] }> = []
+        vi.stubGlobal('ResizeObserver', class {
+            record = { callback: () => {}, observed: [] as Element[] }
+            constructor(callback: () => void) {
+                this.record.callback = callback
+                observers.push(this.record)
+            }
+            observe(node: Element): void { this.record.observed.push(node) }
+            disconnect(): void {}
+        })
+        try {
+            drawnControls.chaIds = ['one']
+            drawnControls.listed = true
+            expect(openStudioFromHome(1, opener())).toBe(true)
+            flushSync()
+
+            closeStudio()
+            const root = mountShell()
+
+            await vi.waitFor(() => expect(scrollSpy).toHaveBeenCalledTimes(1), { timeout: 5000 })
+            const list = root.querySelector<HTMLElement>('[data-testid="library-list"]')!
+            expect(list.scrollTop).toBe(784 - 698)
+            expect(observers).toHaveLength(1)
+            expect(observers[0].observed).toContain(list)
+
+            drawnControls.listHeight = 666
+            observers[0].callback()
+
+            expect(list.scrollTop).toBe(784 - 666)
+            expect(scrollSpy.mock.contexts.every((context) => context === scrollerOf(root))).toBe(true)
+        } finally {
+            vi.unstubAllGlobals()
+        }
     })
 
     test('S4b-R3 (b) with no control drawn for the character the focus falls back to the library heading', async () => {

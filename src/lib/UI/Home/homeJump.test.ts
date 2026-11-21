@@ -245,6 +245,72 @@ describe('jumpToSection re-aim', () => {
         expect(log).toEqual(['scroll', 'focus:'])
     })
 
+    test('S4b-F4 onLayout runs once right after the focus, before any resize', () => {
+        const onLayout = vi.fn(() => { log.push('layout') })
+
+        jumpToSection({ scroller, target, reduced: false, onLayout })
+
+        expect(log).toEqual(['scroll', 'focus:', 'layout'])
+        expect(onLayout).toHaveBeenCalledTimes(1)
+    })
+
+    test('S4b-F4 onLayout runs again on every resize callback, also when the landing offset is unchanged', () => {
+        const onLayout = vi.fn()
+        jumpToSection({ scroller, target, reduced: false, onLayout })
+        const observer = MockResizeObserver.instances[0]
+
+        observer.fire()
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(1)
+        expect(onLayout).toHaveBeenCalledTimes(2)
+
+        tops.target = 150
+        observer.fire()
+        expect(scroller.scrollTo).toHaveBeenCalledTimes(2)
+        expect(onLayout).toHaveBeenCalledTimes(3)
+    })
+
+    test('S4b-F4 the observe elements are observed besides the scroller and the target', () => {
+        const inner = element(log)
+
+        jumpToSection({ scroller, target, reduced: false, observe: [inner] })
+
+        expect(MockResizeObserver.instances[0].observed).toEqual([scroller, target, inner])
+    })
+
+    test.each(['wheel', 'touchstart', 'pointerdown', 'keydown'])('S4b-F4 onLayout does not run after a %s', (type) => {
+        const onLayout = vi.fn()
+        jumpToSection({ scroller, target, reduced: false, onLayout })
+        const observer = MockResizeObserver.instances[0]
+
+        document.dispatchEvent(new Event(type))
+        observer.fire()
+
+        expect(onLayout).toHaveBeenCalledTimes(1)
+    })
+
+    test('S4b-F4 onLayout does not run after the window end', () => {
+        const onLayout = vi.fn()
+        jumpToSection({ scroller, target, reduced: false, onLayout })
+        const observer = MockResizeObserver.instances[0]
+
+        vi.advanceTimersByTime(1000)
+        observer.fire()
+
+        expect(onLayout).toHaveBeenCalledTimes(1)
+    })
+
+    test('S4b-F4 onLayout does not run after the signal aborts', () => {
+        const onLayout = vi.fn()
+        const controller = new AbortController()
+        jumpToSection({ scroller, target, reduced: false, signal: controller.signal, onLayout })
+        const observer = MockResizeObserver.instances[0]
+
+        controller.abort()
+        observer.fire()
+
+        expect(onLayout).toHaveBeenCalledTimes(1)
+    })
+
     test('S4b-F2 compatibility guard: without ResizeObserver the jump scrolls once and sets no timer', () => {
         vi.unstubAllGlobals()
         vi.stubGlobal('ResizeObserver', undefined)

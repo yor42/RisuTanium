@@ -15,7 +15,7 @@
     import { hasLibraryContent } from './homeEmpties'
     import { homeBand } from './homeLayout'
     import { freezeStories, resolveFrozen } from './homeStories'
-    import { jumpToSection, revealInScrollContainer } from './homeJump'
+    import { jumpToSection, revealInScrollContainer, scrollContainerOf } from './homeJump'
     import { engageHomeLibrary, homeView, openHomeLibrary, startHomeView, takeHomeReturnFocus } from './homeView.svelte'
     import { reducedMotionActive } from 'src/ts/chatShell/motionPrefs.svelte'
 
@@ -141,9 +141,19 @@
         if (section) {
             const control = focusChaId === null ? undefined : Array.from(section.querySelectorAll<HTMLElement>('[data-part="library-studio"]'))
                 .find((candidate) => candidate.getAttribute('data-cha-id') === focusChaId)
-            jumpToSection({ scroller, target: section, focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'), reduced, signal })
-            // The focus never scrolls, so a Studio control deep in the library's own list is brought into view there.
-            if (control) revealInScrollContainer(control, section)
+            // The focus never scrolls, so a Studio control deep in the library's own list is brought into view there,
+            // right after the focus and again whenever the layout changes while the jump settles; the list is observed
+            // too, because the section's height cap keeps the section from resizing when only the list shrinks.
+            const inner = control ? scrollContainerOf(control, section) : null
+            jumpToSection({
+                scroller,
+                target: section,
+                focus: control ?? section.querySelector<HTMLElement>('[data-jump-target="library"]'),
+                reduced,
+                signal,
+                onLayout: control ? () => revealInScrollContainer(control, section) : undefined,
+                observe: inner ? [inner] : [],
+            })
             return
         }
         const hero = root.querySelector<HTMLElement>('section[data-part="home-empty-hero"]')
