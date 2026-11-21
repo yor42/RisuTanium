@@ -27,7 +27,7 @@ RisuTanium is an Android-first product fork of RisuAI: an MVP on the maintainer'
 - No configured formatter/linter: match surrounding style by hand. Preserve each file's line endings; no formatter across an edited file.
 - Code/test comments state invariants and consequences, not investigation history. No repository line numbers in comments. Dated reports may cite verified `file:line` evidence.
 - Dirty tracking must retain every mutation dependency. Partition work without dropping dependencies; narrowing can silently omit saved blocks.
-- Persisted kinds use the page's byte store in `storage/store/appStore.ts`; do not add platform bypasses. The web store is IndexedDB; OPFS was removed in #509 and old OPFS data is left untouched. Trace the current code before changing storage.
+- Persisted kinds use the page's byte store in `storage/store/appStore.ts`; do not add platform bypasses. Data is stored by the Tauri files store or the Node server store; a plain web page has no storage. OPFS and the IndexedDB byte store were removed (#509, #542), and data an older build left there is neither read nor deleted. Trace the current code before changing storage.
 - Check the actual build's `src-tauri/Cargo.lock` before citing crate source: `Cargo.toml` ranges do not pin resolved versions. Check `package.json` and the installed dependencies rather than copying dated version claims.
 - Sanitized-markup tests use jsdom (`// @vitest-environment jsdom`); happy-dom sanitizer output is not evidence. Prove an identity sanitizer makes relevant assertions fail (MC-239).
 - Translator owns all non-English locales, including Korean; preserve the maintainer's edits, keys, interpolations, CBS tags and line endings (MC-058).
@@ -62,7 +62,6 @@ RisuTanium is an Android-first product fork of RisuAI: an MVP on the maintainer'
 | Need | Command / source |
 |---|---|
 | Web development / build | `pnpm dev` / `pnpm build` |
-| Hosted web build | `pnpm buildsite` |
 | Desktop development / build | `pnpm tauri dev` / `pnpm tauri build` |
 | Tests / type checks | `pnpm test` / `pnpm check` |
 | Hono build | `pnpm hono:build` |
