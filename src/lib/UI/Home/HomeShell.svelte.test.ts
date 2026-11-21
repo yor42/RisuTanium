@@ -49,6 +49,13 @@ vi.mock('../Realm/RealmMain.svelte', () => ({
 }))
 
 vi.mock('src/ts/alert', () => ({ alertError: alertErrorSpy }))
+vi.mock('src/ts/characters', () => ({
+    getCharImage: vi.fn(async () => ''),
+    archivedMemberIds: () => [],
+    changeCharGeneration: () => 0,
+    supersedeChangeChar: vi.fn(),
+}))
+vi.mock('src/ts/characterPick', () => ({ changeCharOrAlert: vi.fn() }))
 
 const libraryStub = vi.hoisted(() => (anchor: Comment) => {
     const marker = document.createElement('div')

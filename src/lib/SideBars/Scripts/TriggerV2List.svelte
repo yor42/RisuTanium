@@ -2961,9 +2961,9 @@
                         <TextAreaInput labelId="{uid}-value" highlight bind:value={editTrigger.value} />
                     {:else if editTrigger.type === 'v2If' || editTrigger.type === 'v2IfAdvanced'}
 
-                        <span id="{uid}-source" class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.varName : 'A'}</span>
+                        <span id="{uid}-source" class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.varName : language.triggerInputLabels.operandA}</span>
                         {#if editTrigger.type === 'v2IfAdvanced'}
-                            <SelectInput label={operandName('A')} bind:value={editTrigger.sourceType}>
+                            <SelectInput label={operandName(language.triggerInputLabels.operandA)} bind:value={editTrigger.sourceType}>
                                 <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                                 <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                             </SelectInput>
@@ -2995,7 +2995,7 @@
                             {/if}
                         </SelectInput>
 
-                        <span id="{uid}-target" class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.value : 'B'}</span>
+                        <span id="{uid}-target" class="block text-textcolor">{editTrigger.type === 'v2If' ? language.triggerInputLabels.value : language.triggerInputLabels.operandB}</span>
                         {#if editTrigger.condition === '≡'}
                             <SelectInput labelId="{uid}-target" bind:value={editTrigger.target}>
                                 <OptionInput value="true">{language.triggerInputLabels.boolTrue}</OptionInput>
@@ -3003,7 +3003,7 @@
                                 <OptionInput value="null">{language.triggerInputLabels.boolNull}</OptionInput>
                             </SelectInput>
                         {:else}
-                            <SelectInput label={operandName(editTrigger.type === 'v2If' ? language.triggerInputLabels.value : 'B')} bind:value={editTrigger.targetType}>
+                            <SelectInput label={operandName(editTrigger.type === 'v2If' ? language.triggerInputLabels.value : language.triggerInputLabels.operandB)} bind:value={editTrigger.targetType}>
                                 <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                                 <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                             </SelectInput>
@@ -3528,15 +3528,15 @@
                         </SelectInput>
                         <TextInput labelId="{uid}-index" bind:value={editTrigger.index} />
                     {:else if editTrigger.type === 'v2ConcatString'}
-                        <span id="{uid}-source" class="block text-textcolor">A</span>
-                        <SelectInput label={operandName('A')} bind:value={editTrigger.source1Type}>
+                        <span id="{uid}-source" class="block text-textcolor">{language.triggerInputLabels.operandA}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.operandA)} bind:value={editTrigger.source1Type}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>
                         <TextInput labelId="{uid}-source" bind:value={editTrigger.source1} />
 
-                        <span id="{uid}-target" class="block text-textcolor">B</span>
-                        <SelectInput label={operandName('B')} bind:value={editTrigger.source2Type}>
+                        <span id="{uid}-target" class="block text-textcolor">{language.triggerInputLabels.operandB}</span>
+                        <SelectInput label={operandName(language.triggerInputLabels.operandB)} bind:value={editTrigger.source2Type}>
                             <OptionInput value="value">{language.triggerInputLabels.value}</OptionInput>
                             <OptionInput value="var">{language.triggerInputLabels.var}</OptionInput>
                         </SelectInput>

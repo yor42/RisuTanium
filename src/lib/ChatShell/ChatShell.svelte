@@ -57,17 +57,17 @@
     import { treeView } from '../../ts/process/chatTreeView'
     import { inputOf, layoutOf } from '../../ts/gui/rootAttributes'
     import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
-    import { packBaseTone } from '../../ts/gui/surfaceTone'
 
     interface Props {
         openChatList?: boolean
         openModuleList?: boolean
         customStyle?: string
+        // The parent shows a background the user chose; the shell marks itself so the Screenshot export draws no canvas fill.
+        userBackground?: boolean
+        // The user's background is shown under a theme pack: the transcript and the message list paint no background of their own.
+        canvasYield?: boolean
     }
-    let { openChatList = $bindable(false), openModuleList = $bindable(false), customStyle = '' }: Props = $props()
-
-    // While a theme pack is on, the parent's text-screen overlay is not applied: the transcript sits on the pack canvas, not under the user's overlay.
-    const overlayStyle = $derived($packBaseTone === null ? customStyle : '')
+    let { openChatList = $bindable(false), openModuleList = $bindable(false), customStyle = '', userBackground = false, canvasYield = false }: Props = $props()
 
     let ShellHeader: typeof ShellHeaderComponent | null = $state(null)
     let ShellComposer: typeof ShellComposerComponent | null = $state(null)
@@ -1054,14 +1054,15 @@
 
 </script>
 
-<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} style={overlayStyle}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} data-user-background={userBackground ? '' : undefined} style={customStyle}>
     <div bind:this={header} data-part="chat-header-host">
         {#if findOpen && FindBar && findState}<FindBar bind:this={findBar} query={findState.query} count={findState.hits.length} current={findState.current} complete={findState.complete} filters={findState.filters} characterName={character?.name ?? ''} onquery={onFindQuery} oncomposing={(on) => findCtx?.session.setComposing(on)} onstep={(direction) => findCtx?.session.step(direction)} onclose={() => void closeFind('user')} onclearfilters={onFindClearFilters} onfilters={openFindFilters} onseeall={openFindResults} />
         {:else if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
     </div>
-    <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll} onpointerenter={onListPointerEnter} onpointermove={onListPointerMove} onpointerleave={onListPointerLeave}>
+    <!-- While the user's own background shows under a pack, the transcript paints no background of its own, whatever the pack sets (MC-3005). The directives set only the two background longhands, so properties the scroll holds write on this element survive. -->
+    <main bind:this={list} data-part="chat-transcript" style:background-color|important={canvasYield ? 'transparent' : undefined} style:background-image|important={canvasYield ? 'none' : undefined} tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll} onpointerenter={onListPointerEnter} onpointermove={onListPointerMove} onpointerleave={onListPointerLeave}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} searchHit={hitOutline ? searchHit : null} searchHitNote={language.chatShellFindMatchInside} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} {canvasYield} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} searchHit={hitOutline ? searchHit : null} searchHitNote={language.chatShellFindMatchInside} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>

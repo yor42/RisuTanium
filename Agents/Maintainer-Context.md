@@ -33914,6 +33914,127 @@ Triage evidence (one triager and one independent verifier per commit): lane A `b
 - Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-2341`, `MC-2975`, `#454`.
 
 **What the maintainer chose.** The MC-2341 flow again (precedent PRs #137 and #144): one port PR for the taken items (`Refs #454`), then, after it merges, a `git merge -s ours upstream/main` PR that records the range in `Agents/Upstream-Merges.md` and closes #454. The merge PR is merged with a merge commit, not squash or rebase, so upstream's history stays linked.
+
+### MC-2938 — #438 Pack default colours become the user's scheme, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2946`, `MC-2948`.
+
+**What the maintainer chose.** A theme pack may ship its own default colours. Turning the pack on applies them as the user's colour scheme, like importing a scheme. If the user then picks another scheme, that pick wins and the pack keeps its shapes. Split of responsibilities: the colour scheme defines UI colours; Custom HTML / custom colour defines the chat background; the theme pack covers shape and design.
+
+### MC-2939 — #438 The user's chat background wins over the pack canvas, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2437`, `#337`, `MC-2949`, `MC-3005`.
+
+**What the maintainer chose.** The user's Custom HTML, custom colour or card background wins whenever set; a pack may paint the transcript canvas only when the user has none. Amends `MC-2437` ("theme packs own the transcript").
+
+### MC-2940 — #438 Pack method app-wide: shape tokens plus part CSS, critical prompts tokens-only, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-689`, `MC-691`, `MC-1586`, `MC-1608`.
+
+**What the maintainer chose.** Shape tokens (radius, borders, shadows, spacing, density) plus CSS on named parts, checked by pack-lint, extended app-wide. No free CSS (`MC-689` stays). Critical prompts (data loss, save failure, restore, export, permission) stay tokens-only (`MC-691`, DD-149). Amends `MC-1608` and `MC-1586`.
+
+### MC-2941 — #438 Pack scope: every new shell plus popups, toasts and dialogs, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-1608`.
+
+**What the maintainer chose.** Packs cover every new shell (chat, Settings, Home, Studio, sidebar) plus popups, toasts and dialogs, before release. Screens kept only behind the legacy switch stay built-in (`MC-1608` Q2).
+
+### MC-2942 — #438 Pack effects admitted with reduced-motion and reduced-effects fallbacks, 2026-11-21
+
+- Tag: decisions (maintainer with lane A). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-695`, `MC-1610`.
+
+**What the maintainer chose.** Transitions, transforms, animations (@keyframes), filters/blur and layering are admitted, each with a reduced-motion / reduced-effects fallback (`MC-695` item 6). Amends `MC-1610`.
+
+### MC-2944 — #438 Area model: per-area sheets, all on at once, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-1608`, `MC-3002`.
+
+**What the maintainer chose.** Per-area sheets: chat.css, settings.css, home.css, studio.css, sidebar.css and popups.css, each judged against its own part list. All of a pack's sheets are on at once, each reaching only its own parts. A pack may ship any subset; missing areas stay built-in. Amends `MC-1608` Q1 (one sheet at a time).
+
+### MC-2945 — #438 Extend .risutheme v1 additively; no installed pack on the phone, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-1687`, `MC-350`.
+
+**What the maintainer chose.** The format stays 1; new sheets and manifest fields are additive. The maintainer stated that no theme pack is installed on the phone, so `MC-350` does not constrain this change. Amends the v1 freeze recorded with `MC-1687`.
+
+### MC-2946 — #438 Colours declared in a pack sheet become its default scheme, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2938`, `MC-3001`.
+
+**What the maintainer chose.** Colours a pack declares become its default scheme, applied when the pack is turned on; the user's later scheme pick wins and the pack's colour rules then stop applying. Built-ins keep their look on first activation.
+
+### MC-2947 — #438 Critical popups are the MC-691 list, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-691`, `MC-2940`.
+
+**What the maintainer chose.** Tokens-only popups: data-loss and delete confirms, save failure / retry, restore and import, export and backup, permission prompts, and the legacy-switch warning. Everything else (pickers, info alerts, toasts, progress) takes part CSS.
+
+### MC-2948 — #438 Pack colours get their own "Theme pack" scheme tile, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2938`, `MC-2950`, `MC-2952`.
+
+**What the maintainer chose.** Pack colours go to a separate theme-pack scheme entry and picker tile; the user's Custom slot is never written. Chosen over the recommended "write into the Custom slot like an import".
+
+### MC-2949 — #438 A module background embedding counts as the user's chat background, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2939`.
+
+**What the maintainer chose.** Yes: a module's background embedding switches the pack canvas off, like a card background. Known consequence: a style-only embedding also counts, although it shows nothing.
+
+### MC-2950 — #438 Turning the pack off restores the pre-pack scheme, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2938`, `MC-2948`, `MC-2953`.
+
+**What the maintainer chose.** Turning the pack off or removing it restores the scheme the user had before turning it on (a stored snapshot). Chosen over the recommended "keep the scheme as written". Per `MC-2938`, a scheme the user picked meanwhile is not overwritten.
+
+### MC-2951 — #438 Pack text over a user wallpaper: accepted limitation, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2939`.
+
+**What the maintainer chose.** With the pack's colours active and the user's own wallpaper set, pack text colours paint over the wallpaper without a contrast check, as any colour scheme does today.
+
+### MC-2952 — #438 A .bin carries the pre-pack scheme, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-774`, `MC-1587`, `MC-2950`.
+
+**What the maintainer chose.** When the user is on the theme-pack scheme, the .bin export copy carries the scheme that turning the pack off would restore; never the snapshot. Upstream sees the user's own scheme, as if the pack were off. Live data is unchanged.
+
+### MC-2953 — #438 Active-pack update refreshes colours only while following, 2026-11-21
+
+- Tag: decisions (orchestrator, #438 session; designer rule consistent with `MC-2938` and `MC-2950`). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`.
+
+**What was decided.** When the active pack is updated, its new colours replace the stored pack colours only while the user's scheme is still the theme-pack scheme; otherwise nothing is written. If the new version is shape-only, the snapshot is restored.
+
+### MC-3001 — #438 A pack gets a default scheme only if it declares the core colours, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2946`, `MC-3004`.
+
+**What the maintainer chose.** A pack has a default ("Theme pack") scheme only when it declares the core colours (canvas, surface, text) on `:root`. Otherwise turning it on leaves the user's scheme alone and its colours never apply.
+
+### MC-3002 — #438 Non-chat area sheets may carry colours, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2944`.
+
+**What the maintainer chose.** settings.css, home.css, studio.css, sidebar.css and popups.css may carry colours (each needs its own contrast checks in the S4 design). Chosen over the recommended "shapes only".
+
+### MC-3003 — #438 Pack images and gradients count as paint, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2946`.
+
+**What the maintainer chose.** Pack background images and gradients show only while the theme-pack scheme is on; after another scheme pick (shape mode) they are dropped with the other paint.
+
+### MC-3004 — #438 Non-core scheme fields come from the judged base, 2026-11-21
+
+- Tag: decisions (orchestrator, #438 session; designer default, non-blocking). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-3001`.
+
+**What was decided.** For a pack that passes the core gate, scheme fields whose tokens the pack does not set are filled from the fixed base the chat sheet was judged on, so the scheme matches the judged look.
+
+### MC-3005 — #438 Pack canvas parts yield to the user's background, bubbles keep fills, 2026-11-21
+
+- Tag: decisions (maintainer, #438 session, AskUserQuestion). Date: 2026-11-21. Exact times: UNKNOWN. Sweep ref: none. Related: `#438`, `MC-2939`.
+
+**What the maintainer chose.** While the user's own chat background is set, the pack's backgrounds on chat-shell, chat-transcript and chat-message-list (for example Office Sheet's white page) all give way; message bubbles keep their own fills.
+
 ### MC-2858 — #163 manual clean-up: app and web delete at once, Node keeps its age rule, 2026-11-21
 
 - Tag: decisions (maintainer via AskUserQuestion, storage-sweep session). Date: 2026-11-21. Exact times: UNKNOWN. Related: `#163`, `MC-2421`.

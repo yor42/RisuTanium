@@ -51,6 +51,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         PlaygroundStore: writable(0),
         createSimpleCharacter: vi.fn(() => ({ name: 'A' })),
         hypaV3ModalOpen: writable(false),
+        moduleBackgroundEmbedding: writable(''),
         ScrollToMessageStore: scrollToMessage,
         additionalChatMenu,
         additionalFloatingActionButtons,
