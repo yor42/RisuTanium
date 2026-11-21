@@ -228,9 +228,7 @@ async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<
     }
     const enteredByTurnOn = consumeSchemeRequest(status.activeId, prepared.defaultScheme)
     appliedDefault = prepared.defaultScheme
-    const result = commitPackSheet(prepared.text === null ? null : {
-        text: prepared.text, blobs: prepared.blobs, base: prepared.base, shapeText: prepared.shapeText, colours: coloursOn(),
-    })
+    const result = commitPackSheet({ elements: prepared.elements, blobs: prepared.blobs, colours: coloursOn() })
     if (!result.ok) {
         // A turn-on whose sheet could not be committed is a broken turn-on: the scheme it just entered is left again.
         if (enteredByTurnOn) {
@@ -245,7 +243,7 @@ async function run(key: ApplyKey, mine: number, session: JudgeSession): Promise<
         repaintPackScheme()
         return
     }
-    applied = { key, skippedAreas: prepared.skippedAreas, empty: prepared.text === null, defaultScheme: prepared.defaultScheme }
+    applied = { key, skippedAreas: prepared.skippedAreas, empty: prepared.elements.every((element) => element.text === null), defaultScheme: prepared.defaultScheme }
     repaintPackScheme()
     setStatus({ phase: 'applied', skippedAreas: applied.skippedAreas, empty: applied.empty })
 }

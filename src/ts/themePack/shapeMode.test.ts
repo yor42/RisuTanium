@@ -2,7 +2,7 @@
 // Shape mode (MC-3003): the allowlisted strip of a judged chat sheet. T5 pins exact output strings, T5b pins the token and
 // property partition, T6 shows that the stripped text of every real producer and every hostile row still passes the judge
 // and carries no paint.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { strFromU8, unzipSync } from 'fflate'
@@ -12,7 +12,7 @@ import { BUILTIN_PACKS } from './builtins'
 import { classify, decls } from './csslit'
 import { judgeAreaSheet } from './index'
 import { PROP_ALLOW, isAllowedProperty } from './scope'
-import { SHAPE_PROPERTY, SHAPE_TOKEN_NAMES, shapeOnlySheet } from './shapeMode'
+import { SHAPE_PROPERTY, SHAPE_TOKEN_NAMES, shapeOnlySheet, shapeTokenNames } from './shapeMode'
 import { tokenFile } from './tokens'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
@@ -242,5 +242,53 @@ describe('T6 the stripped text of every real producer and hostile row is judged 
         expect(checked).toBeGreaterThan(20)
         expect(refused).toEqual([])
         expect(painted).toEqual([])
+    })
+})
+
+describe('S1 the studio shape token list (MC-3121)', () => {
+    const STUDIO_GEOMETRY = ['--studio-form-row-height', '--studio-size-touch', '--studio-tree-width']
+    const studioSources = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) return studioSources(full)
+        return entry.name.endsWith('.svelte') ? [full] : []
+    })
+    // A Tailwind arbitrary-value utility that sets a size, gap or inset and nothing painted.
+    const GEOMETRY_UTILITY = /^(?:[\w!-]+:)*(?:w|h|min-w|min-h|max-w|max-h|size|gap|basis|p|px|py|m|mx|my)-\[/
+
+    it('the chat list is the pinned set itself', () => {
+        expect(shapeTokenNames('chat')).toBe(SHAPE_TOKEN_NAMES)
+    })
+
+    it('the studio list is the chat list intersected with the studio names plus the live geometry names, all settable and no paint family', () => {
+        const allowed = allowedTokenNames('studio')
+        const names = shapeTokenNames('studio')
+        const expected = new Set([...SHAPE_TOKEN_NAMES].filter((name) => allowed.has(name)))
+        for (const name of STUDIO_GEOMETRY) expected.add(name)
+        expect([...names].sort()).toEqual([...expected].sort())
+        expect([...names].filter((name) => !allowed.has(name))).toEqual([])
+        expect([...names].filter((name) => !SHAPE_TOKEN_NAMES.has(name)).sort()).toEqual(STUDIO_GEOMETRY)
+        expect([...names].filter((name) => /color|colour|-rgb$|^--opacity-|^--alpha-|shadow|selection|^--nexus-(canvas|surface|text|accent|warm|edge)/.test(name))).toEqual([])
+    })
+
+    it('every studio geometry name is read in src/lib/Studio only as the size of a geometry utility', () => {
+        const seen = new Map<string, number>()
+        const outside: string[] = []
+        for (const file of studioSources(path.join(ROOT, 'src/lib/Studio'))) {
+            const text = readFileSync(file, 'utf8')
+            for (const match of text.matchAll(/var\(\s*(--studio-(?:tree-width|size-touch|form-row-height))\b/g)) {
+                const name = match[1]
+                seen.set(name, (seen.get(name) ?? 0) + 1)
+                const token = text.slice(0, match.index).split(/[\s"'`]/).pop() ?? ''
+                if (!GEOMETRY_UTILITY.test(token)) outside.push(`${path.relative(ROOT, file)}: ${name} in ${token}`)
+            }
+        }
+        expect([...seen.keys()].sort()).toEqual(STUDIO_GEOMETRY)
+        expect(outside).toEqual([])
+    })
+
+    it('the studio list keeps a studio geometry token that the chat list drops', () => {
+        const sheet = ':root{--studio-size-touch:40px;--nexus-text:#fff}'
+        expect(shapeOnlySheet(sheet, shapeTokenNames('studio'))).toBe(':root{--studio-size-touch:40px;}')
+        expect(shapeOnlySheet(sheet)).toBe(':root{}')
     })
 })

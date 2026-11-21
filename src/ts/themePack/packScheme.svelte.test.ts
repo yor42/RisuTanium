@@ -16,6 +16,7 @@ import { resetBusyActionsForTest } from '../process/memory/busyActions'
 import { resetRestoreInProgressForTests } from '../drive/restoreInProgress'
 import { resetPageStorageModeForTests } from '../storage/pageStorageMode'
 import { manifestText, PNG_1X1, validPackFiles, zipPack } from './fixtures/packBuilder'
+import studioScratchWhite from '../../../docs/design/studio/themes/scratch-white.css?raw'
 
 //#region module mocks
 
@@ -612,5 +613,43 @@ describe('a pick while a turn-on is pending, and build drift (T32, T33)', () => 
         await settle()
         expect(bgcolor()).toBe('#123456')
         expect(packElements()).toHaveLength(0)
+    })
+})
+
+describe('S4a the swap never gives the studio element a base (MC-3121)', () => {
+    const STUDIO_DESIGN = studioScratchWhite.replace(/\r\n/g, '\n')
+    const studioElement = (): HTMLStyleElement | undefined => packElements().find((element) => element.getAttribute('data-theme-pack') === 'studio')
+
+    it('A4: a scheme pick flips chat to its shape text and leaves studio unchanged; picking the pack scheme back adds no base attribute while Studio is shown', async () => {
+        const releaseStudio = declareSurface('studio')
+        flushSync()
+        await installPack(archive(CORE_V1, 'S', 's', { 'studio.css': STUDIO_DESIGN }))
+        expect(db().colorSchemeName).toBe('theme-pack')
+        const studio = studioElement()
+        expect(studio).toBeDefined()
+        const chat = packElements()[0]
+        const studioText = studio!.textContent
+        expect(studioText).not.toBe('')
+        expect(studio!.getAttribute('media')).toBe('all')
+        expect(baseAttribute()).toBeNull()
+        expect(chat.textContent).toContain('--nexus-canvas')
+
+        changeColorScheme('light')
+        flushSync()
+        expect(chat.textContent).not.toContain('--nexus-canvas')
+        expect(studio!.textContent).toBe(studioText)
+        expect(baseAttribute()).toBeNull()
+
+        adoptActivePackScheme()
+        flushSync()
+        expect(chat.textContent).toContain('--nexus-canvas')
+        expect(studio!.textContent).toBe(studioText)
+        expect(studio!.getAttribute('media')).toBe('all')
+        expect(baseAttribute()).toBeNull()
+
+        releaseStudio()
+        flushSync()
+        expect(chat.getAttribute('media')).toBe('all')
+        expect(baseAttribute()).toBe('')
     })
 })

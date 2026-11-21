@@ -70,7 +70,11 @@ describe('T1-31 golden v1 packs', () => {
             expect(readme).toContain(`${golden.size} bytes`)
         })
 
-        it(`${golden.file} is accepted with its chat sheet judged and the other three areas skipped`, async () => {
+        // The frozen Banana Cocoa studio.css breaks the plain-paint rule; its verdict is pinned below (RG1), so only Origin Navy is accepted whole.
+        if (golden.file !== 'origin-navy.risutheme') {
+            continue
+        }
+        it(`${golden.file} is accepted with its chat and studio sheets judged and the other two areas skipped`, async () => {
             const pack = acceptedPack(await intakePackBytes(bytesOf(golden.file), judge))
             expect(pack.manifest).toStrictEqual({
                 format: 1,
@@ -83,17 +87,31 @@ describe('T1-31 golden v1 packs', () => {
                 fonts: [],
                 tile: { main: { kind: 'absent' }, secondary: { kind: 'absent' }, icon: { kind: 'absent' } },
             })
-            expect(pack.sheets.chat.result.ok).toBe(true)
-            expect(pack.skippedAreas).toEqual(['home', 'settings', 'studio'])
+            expect(pack.sheets.chat?.result.ok).toBe(true)
+            expect(pack.sheets.studio?.result.ok).toBe(true)
+            expect(pack.skippedAreas).toEqual(['home', 'settings'])
             expect(pack.files.size).toBe(0)
             expect(pack.size.warn).toBe(false)
         })
     }
 })
 
-// Intake skips studio.css today, so no installed pack changes verdict. These rows record what the Studio judge says of the frozen sheets, so a build that starts
-// applying Studio sheets settles the Banana Cocoa verdict first (MC-2313, MC-2370).
+// Intake judges studio.css whole at install (MC-3121), so the frozen Banana Cocoa archive is refused by its Studio sheet (MC-2313, MC-2370):
+// MC-2370 accepted that cost; the refusal is pinned so a change to it is deliberate.
 describe('the frozen Studio sheets under the plain-paint rule', () => {
+    it('RG3: intake refuses the frozen Banana Cocoa archive by studio.css alone, with the three plain-paint errors', async () => {
+        const result = await intakePackBytes(bytesOf('banana-cocoa.risutheme'), judge)
+        if (result.ok === true) throw new Error('expected the frozen Banana Cocoa archive to be refused')
+        expect(result.refusals).toHaveLength(1)
+        expect(result.refusals[0]).toMatchObject({ code: 'sheetRefused', sheet: 'studio.css' })
+        const errors = result.refusals[0].code === 'sheetRefused' ? result.refusals[0].errors : []
+        expect(errors.map((e) => `${e.selector} ${e.prop}`).sort()).toEqual([
+            '[data-part="studio-side-tab"] background',
+            '[data-part="studio-tree-row"] background',
+            '[data-part="studio-tree-row"] color',
+        ])
+    })
+
     const PLAIN_PAINT = /\(MC-2313, MC-2370\)/
     const studioSheet = (file: string): string => strFromU8(unzipSync(bytesOf(file))['studio.css'])
 

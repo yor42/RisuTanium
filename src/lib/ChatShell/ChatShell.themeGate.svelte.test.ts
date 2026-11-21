@@ -66,7 +66,7 @@ vi.mock('../Others/ChatList.svelte', () => ({ default: () => ({}) }))
 vi.mock('../Setting/Pages/Module/ModuleChatMenu.svelte', () => ({ default: () => ({}) }))
 
 import { DBState, selectedCharID } from '../../ts/stores.svelte'
-import { installThemePackGate, resetThemePackGateForTests, shownSurface } from '../../ts/themePack/surfaceGate.svelte'
+import { installThemePackGate, resetThemePackGateForTests, shownScreen } from '../../ts/themePack/surfaceGate.svelte'
 import { setShellEnabled } from '../../ts/chatShell/shellSwitch.svelte'
 
 const mounted: Array<{ instance: object, target: HTMLElement }> = []
@@ -114,20 +114,20 @@ afterEach(async () => {
 
 describe('ChatShell declares the chat surface while mounted', () => {
     test('mounting declares chat, and the declaration raises no effect-depth error', async () => {
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         await mountShell()
         await settle()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 
     test('unmounting releases the declaration', async () => {
         const { instance } = await mountShell()
         await settle()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
         await unmount(instance as never)
         mounted.length = 0
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('unmounting one shell while another is mounted keeps the surface declared', async () => {
@@ -137,11 +137,11 @@ describe('ChatShell declares the chat surface while mounted', () => {
         await unmount(first.instance as never)
         mounted.splice(0, 1)
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
         await unmount(second.instance as never)
         mounted.length = 0
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 
     test('an unmount followed by a mount before the flush ends declared', async () => {
@@ -155,11 +155,11 @@ describe('ChatShell declares the chat surface while mounted', () => {
         document.body.appendChild(target)
         mounted.push({ instance: mount(ChatShell, { target }), target })
         flushSync()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
         await unmount(mounted[0].instance as never)
         mounted.length = 0
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
     })
 })
 
@@ -168,15 +168,15 @@ describe('the release runs in the flush that shows the stand-in screen', () => {
         setShellEnabled(true)
         const { target } = await mountScreen()
         await settle()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
         expect(target.querySelector('[data-testid="home-stand-in"]')).toBeNull()
         setShellEnabled(false)
         flushSync()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(target.querySelector('[data-testid="home-stand-in"]')).not.toBeNull()
         setShellEnabled(true)
         flushSync()
         await settle()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
     })
 })

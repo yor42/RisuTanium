@@ -110,7 +110,7 @@ import { resetChatSurfaceForTests } from './lib/ChatScreens/chatSurface.svelte'
 import { resetStubCounts, stubCount } from './App.keepChatCountingStub.svelte'
 import { changeLanguage } from './lang'
 import { resetTopLevelChangesForTests } from './ts/storage/topLevelChanges'
-import { registerThemePackElement, resetThemePackGateForTests, shownSurface, syncThemePackMedia } from './ts/themePack/surfaceGate.svelte'
+import { registerThemePackElement, resetThemePackGateForTests, shownScreen, syncThemePackMedia } from './ts/themePack/surfaceGate.svelte'
 
 const flag = <T,>(store: unknown) => store as Writable<T>
 
@@ -119,7 +119,6 @@ let target: HTMLElement | null = null
 // Whether the StudioScreen chunk of the next mounted app never resolves; applied by `showApp`, which registers the chunk
 // mock once per test.
 let studioChunkPending = false
-
 beforeEach(() => {
     vi.stubEnv('VITE_RISU_LEGAL_CONFIGURED', 'TRUE')
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -155,9 +154,11 @@ afterEach(async () => {
 })
 
 async function showApp() {
+    // Loaded before the mount, so opening Studio never waits on a cold transform of the stand-in.
+    await import('./App.themeGateStudioStub.svelte')
     vi.doMock('./lib/Studio/StudioScreen.svelte', studioChunkPending
         ? () => new Promise(() => { })
-        : () => countingStub('studio')())
+        : () => import('./App.themeGateStudioStub.svelte'))
     const { default: App } = await import('./App.svelte')
     target = document.createElement('div')
     document.body.appendChild(target)
@@ -210,7 +211,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         const element = sheet()
         expect(stubCount('legal').mounts).toBe(1)
         expect(root.querySelector('[data-stub="chat"]')).toBeNull()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -219,7 +220,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         await showApp()
         const element = sheet()
         expect(stubCount('nexus-boot').mounts).toBe(1)
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -228,7 +229,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         await showApp()
         const element = sheet()
         expect(stubCount('custom-gui').mounts).toBe(1)
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -237,7 +238,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         await showApp()
         const element = sheet()
         expect(stubCount('welcome').mounts).toBe(1)
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -247,7 +248,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         expect(media(element)).toBe('all')
         setSettingsOpen(true)
         expect(stubCount('settings').mounts).toBe(1)
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -257,7 +258,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         expect(media(element)).toBe('all')
         await setStudioOpen(true)
         expect(stubCount('studio').mounts).toBe(1)
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBe('studio')
         expect(media(element)).toBe('not all')
     })
 
@@ -269,7 +270,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         flushSync()
         expect(root.querySelector('[data-stub="grid"]')).not.toBeNull()
         expect(root.querySelector('[data-stub="chat"]')).toBeNull()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -278,7 +279,7 @@ describe('the chat sheet is off wherever no shell is shown', () => {
         const root = await showApp()
         const element = sheet()
         expect(root.querySelector('[data-stub="chat"]')).not.toBeNull()
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
     })
 
@@ -297,7 +298,7 @@ describe('the chat sheet is on only in rows 17 to 19', () => {
     test('row 17: the shell is declared and not covered', async () => {
         await showApp()
         const element = sheet()
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
         expect(media(element)).toBe('all')
     })
 
@@ -307,7 +308,7 @@ describe('the chat sheet is on only in rows 17 to 19', () => {
         flag<{ type: string, msg: string }>(alertStore).set({ type: 'normal', msg: 'hello' })
         flushSync()
         expect(stubCount('alert').mounts).toBe(1)
-        expect(shownSurface()).toBe('chat')
+        expect(shownScreen()).toBe('chat')
         expect(media(element)).toBe('all')
     })
 
@@ -355,6 +356,73 @@ describe('the chat sheet is on only in rows 17 to 19', () => {
     })
 })
 
+describe('S4a the studio sheet is on exactly while Studio is open and declared', () => {
+    const BASE = 'data-theme-pack-base'
+
+    test('AG1: opening Studio turns the studio sheet on and the chat sheet off in the same flush', async () => {
+        await showApp()
+        const chat = sheet()
+        const studio = sheet('studio')
+        expect(media(chat)).toBe('all')
+        expect(media(studio)).toBe('not all')
+        await setStudioOpen(true)
+        expect(stubCount('studio').mounts).toBe(1)
+        expect(media(studio)).toBe('all')
+        expect(media(chat)).toBe('not all')
+    })
+
+    test('AG3: Settings and Studio both set: no sheet is on until Settings closes, then only studio', async () => {
+        await showApp()
+        const chat = sheet()
+        const studio = sheet('studio')
+        await setStudioOpen(true)
+        setSettingsOpen(true)
+        await settleLazyImports()
+        expect(media(studio)).toBe('not all')
+        expect(media(chat)).toBe('not all')
+        setSettingsOpen(false)
+        await settleLazyImports()
+        expect(media(studio)).toBe('all')
+        expect(media(chat)).toBe('not all')
+    })
+
+    test('AG4: closing Studio gives chat back in one change and never turns studio on after the close', async () => {
+        await showApp()
+        const chat = sheet()
+        const studio = sheet('studio')
+        await setStudioOpen(true)
+        expect(media(studio)).toBe('all')
+        const records: MutationRecord[] = []
+        const observer = new MutationObserver((batch) => { records.push(...batch) })
+        observer.observe(document.head, { attributes: true, attributeFilter: ['media'], attributeOldValue: true, subtree: true })
+        await setStudioOpen(false)
+        records.push(...observer.takeRecords())
+        observer.disconnect()
+        expect(media(chat)).toBe('all')
+        expect(media(studio)).toBe('not all')
+        expect(records.filter((record) => record.target === chat)).toHaveLength(1)
+        const studioRecords = records.filter((record) => record.target === studio)
+        expect(studioRecords).toHaveLength(1)
+        expect(studioRecords[0].oldValue).toBe('all')
+    })
+
+    test('a studio sheet that carries no base leaves the base attribute off while Studio is shown', async () => {
+        await showApp()
+        const chat = sheet()
+        const studio = document.createElement('style')
+        studio.setAttribute('data-theme-pack', 'studio')
+        studio.setAttribute('media', 'not all')
+        document.head.appendChild(studio)
+        registerThemePackElement(studio, 'studio', null)
+        syncThemePackMedia()
+        expect(media(chat)).toBe('all')
+        expect(document.documentElement.getAttribute(BASE)).toBe('')
+        await setStudioOpen(true)
+        expect(media(studio)).toBe('all')
+        expect(document.documentElement.hasAttribute(BASE)).toBe(false)
+    })
+})
+
 // Last on purpose: a StudioScreen chunk that never resolves stays pending in the module registry for later tests.
 describe('a Studio chunk that is still loading', () => {
     test('row 8: the cover is on and the sheet is off', async () => {
@@ -364,7 +432,20 @@ describe('a Studio chunk that is still loading', () => {
         expect(media(element)).toBe('all')
         await setStudioOpen(true)
         expect(stubCount('studio').mounts).toBe(0)
-        expect(shownSurface()).toBeNull()
+        expect(shownScreen()).toBeNull()
         expect(media(element)).toBe('not all')
+    })
+
+    test('AG2: nothing is on and no base attribute is set while the chunk is pending', async () => {
+        studioChunkPending = true
+        await showApp()
+        const chat = sheet()
+        const studio = sheet('studio')
+        expect(media(chat)).toBe('all')
+        expect(document.documentElement.getAttribute('data-theme-pack-base')).toBe('')
+        await setStudioOpen(true)
+        expect(media(chat)).toBe('not all')
+        expect(media(studio)).toBe('not all')
+        expect(document.documentElement.hasAttribute('data-theme-pack-base')).toBe(false)
     })
 })

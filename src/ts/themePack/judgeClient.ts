@@ -121,18 +121,21 @@ function readAreaSheet(value: unknown): AreaSheetJudgement | null {
     return { result: { ok, errors: errorList, name: typeof name === 'string' ? name : '' }, canonical: value.canonical, resources, fontFaceBlocks, warnings }
 }
 
-/** Narrows a worker answer into a fresh judgement, or null when any part is out of shape. Only the chat area is read. */
+/** Narrows a worker answer into a fresh judgement, or null when any part is out of shape. Only the applied areas are read. */
 export function readJudgement(value: unknown): PackSheetsJudgement | null {
     if (!isRecord(value) || typeof value.ok !== 'boolean' || !isRecord(value.areas)) {
         return null
     }
     const areas: PackSheetsJudgement['areas'] = {}
-    if (value.areas.chat !== undefined) {
-        const chat = readAreaSheet(value.areas.chat)
-        if (chat === null) {
-            return null
+    for (const area of APPLIED_AREAS) {
+        const sheet: unknown = Object.hasOwn(value.areas, area) ? value.areas[area] : undefined
+        if (sheet !== undefined) {
+            const read = readAreaSheet(sheet)
+            if (read === null) {
+                return null
+            }
+            areas[area] = read
         }
-        areas.chat = chat
     }
     return { ok: value.ok, areas }
 }
