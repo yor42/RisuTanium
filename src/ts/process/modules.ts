@@ -1,7 +1,7 @@
 import { language } from "src/lang"
 import { downloadNotice } from "src/ts/exportNotice"
 import { fillLang } from "src/lang/fill"
-import { alertClear, alertConfirm, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
+import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash"
@@ -141,6 +141,12 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
     alertEnd?:boolean
     saveData?:boolean
 } = {}){
+    // An MCP module never leaves the device in a module file: its URL may carry a token or name a private host, and it
+    // is copied into the description too, so no field of the module may be written. Full backups carry it instead.
+    if(module.mcp){
+        alertError(language.errors.mcpModuleConversionUnsupported)
+        return null
+    }
     const alertEnd = arg.alertEnd ?? true
     const saveData = arg.saveData ?? true
 
