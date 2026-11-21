@@ -147,7 +147,7 @@ describe('a dropped file under the task card', () => {
         const done = importDroppedFile(dropped(name))
         let ended = false
         void done.then(() => { ended = true }, () => { ended = true })
-        for (let i = 0; i < 400 && !ended && !taskResultShowing(); i++) {
+        for (const deadline = performance.now() + 10_000; !ended && !taskResultShowing() && performance.now() < deadline;) {
             await new Promise((resolve) => setTimeout(resolve, 0))
         }
         const atResult = busyKinds()

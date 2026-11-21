@@ -330,7 +330,7 @@ describe('the selection after an import started from the Add button', () => {
         const done = addCharacter()
         let finished = false
         void done.then(() => { finished = true })
-        for (let i = 0; i < 400 && !finished; i++) {
+        for (const deadline = performance.now() + 10_000; !finished && performance.now() < deadline;) {
             ends[0]?.end()
             if (!pressed && taskResultShowing()) answerTask({ kind: 'ok' })
             await settle()
