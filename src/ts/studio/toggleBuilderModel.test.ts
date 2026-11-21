@@ -9,6 +9,7 @@ import {
     dropsOptions,
     fieldErrorKeyOf,
     flagsOf,
+    followDefault,
     hasInteriorCr,
     lineIndexAtOffset,
     lineMarksOf,
@@ -160,10 +161,45 @@ describe('message keys', () => {
     })
 
     test('every diagnostic code and row type has a message', () => {
-        const codes = ['unreadable', 'partsBeyondFour', 'unknownType', 'ignoredOptions', 'crInLine', 'duplicateKey', 'keyLookalike', 'keyEdgeSpace', 'keyInteriorSpace', 'selectFewOptions', 'emptyGroup', 'groupReplaced', 'groupOpenAtEnd', 'strayGroupEnd'] as const
+        const codes = ['unreadable', 'partsBeyondFour', 'partsBeyondFive', 'defaultNotOption', 'ignoredDefault', 'unknownType', 'ignoredOptions', 'crInLine', 'duplicateKey', 'keyLookalike', 'keyEdgeSpace', 'keyInteriorSpace', 'selectFewOptions', 'emptyGroup', 'groupReplaced', 'groupOpenAtEnd', 'strayGroupEnd'] as const
         for (const code of codes) expect(diagnosticKeyOf(code)).toMatch(/^studioTg/)
+        expect(diagnosticKeyOf('partsBeyondFive')).toBe('studioTgMarkPartsBeyondFive')
+        expect(diagnosticKeyOf('defaultNotOption')).toBe('studioTgMarkDefaultNotOption')
+        expect(diagnosticKeyOf('ignoredDefault')).toBe('studioTgMarkIgnoredDefault')
+        expect(fieldErrorKeyOf({ code: 'defaultNotOption' })).toBe('studioTgErrDefaultNotOption')
         for (const type of ['check', 'select', 'text', 'textarea', 'group', 'divider', 'caption'] as const) expect(typeKeyOf(type)).toMatch(/^studioTgType/)
         expect(lineById(parseDefinition('a=A\n'), 0 as LineId)).not.toBeNull()
+    })
+})
+
+describe('T4.8 followDefault and kind changes', () => {
+    test('the default follows its option by text', () => {
+        expect(followDefault(['calm', 'angry'], ['angry', 'calm'], 'angry')).toBe('angry')
+        expect(followDefault(['calm', 'angry'], ['calm', 'angry', 'sad'], 'angry')).toBe('angry')
+        expect(followDefault(['calm', 'angry'], ['happy', 'angry'], 'angry')).toBe('angry')
+        expect(followDefault(['calm', 'angry', 'sad'], ['calm', 'angry'], 'angry')).toBe('angry')
+        expect(followDefault(['a', 'a'], ['a', 'a', 'b'], 'a')).toBe('a')
+    })
+
+    test('renaming the default option renames the default; a rename to empty gives empty', () => {
+        expect(followDefault(['calm', 'angry'], ['calm', 'furious'], 'angry')).toBe('furious')
+        expect(followDefault(['calm', 'angry'], ['calm', ''], 'angry')).toBe('')
+    })
+
+    test('removing the default, or changing several options at once, clears it', () => {
+        expect(followDefault(['calm', 'angry'], ['calm'], 'angry')).toBeUndefined()
+        expect(followDefault(['calm', 'angry', 'sad'], ['calm', 'furious', 'glad'], 'angry')).toBeUndefined()
+        expect(followDefault(['calm', 'angry'], ['calm', 'sad', 'x'], 'angry')).toBeUndefined()
+        expect(followDefault(['calm', 'angry'], ['x', 'y'], 'angry')).toBeUndefined()
+        expect(followDefault(['calm', 'angry'], ['calm', 'angry'], undefined)).toBeUndefined()
+    })
+
+    test('a new draft has no default and a kind change drops it', () => {
+        expect(newDraft('check', 'k', 'K')).toEqual({ kind: 'check', key: 'k', label: 'K' })
+        expect(newDraft('select', 'k', 'K')).toEqual({ kind: 'select', key: 'k', label: 'K', options: [] })
+        expect(convertDraft({ kind: 'check', key: 'k', label: 'K', default: '1' }, 'text', 'x')).toEqual({ kind: 'text', key: 'k', label: 'K' })
+        expect(convertDraft({ kind: 'select', key: 'k', label: 'K', options: ['a', 'b'], default: 'a' }, 'check', 'x')).toEqual({ kind: 'check', key: 'k', label: 'K' })
+        expect(convertDraft({ kind: 'check', key: 'k', label: 'K', default: '1' }, 'select', 'x')).toEqual({ kind: 'select', key: 'k', label: 'K', options: [] })
     })
 })
 
@@ -282,8 +318,18 @@ describe('lineMarksOf, caretOffsetOf, lineIndexAtOffset and rowAtLine', () => {
     })
 
     test('R-D3: a line beyond four parts has a warning mark', () => {
-        const marks = lineMarksOf(parseDefinition('a=A=select=x,y=tail\n'))
+        const marks = lineMarksOf(parseDefinition('a=A=text=x=tail\n'))
         expect(marks).toContainEqual({ line: 1, code: 'partsBeyondFour', severity: 'warning' })
+    })
+
+    test('T4.1 a valid default has no mark, and a bad one has a mark of its own', () => {
+        expect(lineMarksOf(parseDefinition('a=A===1\nb=B=select=x,y=y\n'))).toEqual([])
+        const marks = lineMarksOf(parseDefinition('a=A===1=x\nb=B=select=x,y=z\nc=C===yes\n'))
+        expect(marks).toEqual([
+            { line: 1, code: 'partsBeyondFive', severity: 'warning' },
+            { line: 2, code: 'defaultNotOption', severity: 'warning' },
+            { line: 3, code: 'ignoredDefault', severity: 'warning' },
+        ])
     })
 
     test('the caret offset of a row is its start in the display text, carriage returns not counted', () => {

@@ -151,3 +151,5 @@ KO overlap rule (pre-stated): an allude cue may share at most one unit with its 
 Tokeniser corner cases (kept; S1 states which reading it keeps): a mixed Han plus Hangul or Han plus Kana run forms bigrams across the script boundary; a combining mark after a Hangul syllable becomes its own token; NFKC maps compatibility jamo and half-width kana before the split.
 
 Tests: `s0/s0.harness.ts` runs the guards (tokeniser, scorer, generator options, merge, turns, overlap, trim, pack, make-room, recall, counter, statistics, controls, ledger, selection, a tiny tune and gate). It never runs `tune.mjs` or `gate.mjs` on the TUNE, GATE, GATE-R, FALLBACK or FALLBACK-R seeds. Scratch mutants run against a copy of this folder named by `LTM_S0_DIR` (the S0 modules) and `LTM_EVAL_DIR` (the generator).
+
+A change under `s0/` or `gen/` changes the oracle of `src/ts/process/memory/chroMemory/tests/s0Parity.test.ts`, which must then be run by hand, because CI skips `Agents/**`.

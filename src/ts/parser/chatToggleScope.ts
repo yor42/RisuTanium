@@ -5,6 +5,7 @@ import { writeLiveChat } from '../liveCharacterWrite'
 import { getModuleToggles } from '../process/modules'
 import { isChatAltReadable } from '../process/chatTree'
 import { parseToggleSyntax } from '../util'
+import { effectiveGlobalValue, type ToggleDefaults } from './toggleDefaults'
 
 /**
  * The chat-only toggle scope (`Chat.useLocallySetGlobalVariables` with `Chat.GLGlobalVariables`).
@@ -293,13 +294,17 @@ export function revertChatMemory(owner: { chaId: string }, chat: Chat): void {
     }
 }
 
-/** The value `getGlobalChatVar` gives for `chat`: the chat's own non-empty value, else the shared one, else 'null'. */
-export function chatToggleValue(chat: Chat, key: string): string {
-    const local = chat.GLGlobalVariables?.[key]
-    if (local !== 'null' && local) {
-        return local
-    }
-    return DBState.db.globalChatVariables[key] ?? 'null'
+/**
+ * The value `getGlobalChatVar` gives for `chat` and the same definitions: the chat's own set value, else the shared set
+ * value, else the author default of the key, else the shared value or 'null'. A stored '0' is a set value and wins.
+ */
+export function chatToggleValue(chat: Chat, key: string, defaults: ToggleDefaults): string {
+    return effectiveGlobalValue(chat.GLGlobalVariables?.[key], DBState.db.globalChatVariables[key], () => defaults.get(key))
+}
+
+/** What every chat without its own value of `key` reads: the shared set value, else the author default, else 'null'. */
+export function sharedToggleValue(key: string, defaults: ToggleDefaults): string {
+    return effectiveGlobalValue(undefined, DBState.db.globalChatVariables[key], () => defaults.get(key))
 }
 
 /**
@@ -317,6 +322,27 @@ export function writeChatToggle(owner: { chaId: string }, chat: Chat, key: strin
         DBState.db.globalChatVariables[key] = value
     }
     markCharacterForSave(owner.chaId)
+}
+
+/**
+ * The Reset of a check or select: removes the user's stored value of `key`, so the author default (or an untouched
+ * toggle) shows again. A chat's own value goes in either scope (in shared mode it would otherwise outrank the shared
+ * value); the shared value goes only while the chat's scope is off, so a chat-only Reset never touches other chats.
+ * Marks the owner only when something was removed.
+ */
+export function clearChatToggle(owner: { chaId: string }, chat: Chat, key: string): void {
+    let removed = false
+    if (chat.GLGlobalVariables?.[key] !== undefined) {
+        delete chat.GLGlobalVariables[key]
+        removed = true
+    }
+    if (chat.useLocallySetGlobalVariables !== true && DBState.db.globalChatVariables[key] !== undefined) {
+        delete DBState.db.globalChatVariables[key]
+        removed = true
+    }
+    if (removed) {
+        markCharacterForSave(owner.chaId)
+    }
 }
 
 /** Removes the chat's own value of `key`, so the shared value shows again (the old 📌 button). */

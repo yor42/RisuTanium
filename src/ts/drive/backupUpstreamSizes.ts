@@ -59,7 +59,7 @@ export interface OversizeAssetQuery {
  * - the desktop and Android apps: the sized listing the export already made;
  * - the Node page: one `min-size` listing. A server that cannot answer it (an older fork or an upstream server) cannot
  *   hold such an asset either, so nothing is oversize there;
- * - the browser stores (IndexedDB, transitional OPFS): each asset is read once, one at a time, and only its size is
+ * - the browser stores (IndexedDB): each asset is read once, one at a time, and only its size is
  *   kept, so at most one asset's bytes are held and each is dropped before the next is read. A key that cannot be read
  *   is not named here; the export reports it as missing when it reaches it.
  * A desktop page whose sized listing failed has no source and names nothing.

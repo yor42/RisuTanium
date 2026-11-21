@@ -9,6 +9,7 @@ import { trackModuleUpdateDeps } from "./process/moduleUpdateDeps";
 import { ensureSelectedModules } from "./process/moduleEnsure";
 import { resetScriptCache } from "./process/scripts";
 import { runGuiReloadHooks } from "./guiReloadHooks";
+import { alwaysToggleOnApplies } from "./process/memory/memoryEngine";
 import type { hubType } from "./characterCards";
 
 function updateSize(){
@@ -222,7 +223,7 @@ $effect.root(() => {
         selIdState.selId = v
 
         if (DBState?.db?.characters?.[selIdState.selId]) {
-            if (DBState.db.hypaV3 && DBState.db.hypaV3Presets?.[DBState.db.hypaV3PresetId]?.settings?.alwaysToggleOn) {
+            if (alwaysToggleOnApplies(DBState.db)) {
                 DBState.db.characters[selIdState.selId].supaMemory = true;
             }
         }

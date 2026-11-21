@@ -77,10 +77,6 @@ vi.mock(import('src/ts/alert'), () => ({
     alertStore: { set: alertStoreSetMock },
 }) as unknown as typeof import('src/ts/alert'))
 
-vi.mock(import('src/ts/storage/opfsStorage'), () => ({
-    OpfsStorage: class {},
-}) as unknown as typeof import('src/ts/storage/opfsStorage'))
-
 vi.mock(import('src/ts/reloadGuard'), () => ({
     markAppInitiatedReload: vi.fn(),
 }) as unknown as typeof import('src/ts/reloadGuard'))

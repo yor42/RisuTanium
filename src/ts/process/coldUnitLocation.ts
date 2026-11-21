@@ -8,17 +8,11 @@ import { indexedDbCreatableViolation, nodeCreatableViolation, tauriCreatableViol
  * `coldstorage/<key>.json`, so its store key carries the suffix. On the Node
  * server `coldstorage/<key>` is, hex-encoded, the file name the server already
  * uses.
- *
- * On the web, units written before units went through the byte store are files
- * in the OPFS root named `coldstorage_<key>.json`. Those are read and deleted
- * and never written.
  */
 
 export const COLD_UNIT_STORE_PREFIX = 'coldstorage/'
 
 const TAURI_SUFFIX = '.json'
-const LEGACY_OPFS_PREFIX = 'coldstorage_'
-const LEGACY_OPFS_SUFFIX = '.json'
 
 /** The byte-store key of unit `key`. The key must already satisfy `isSafeColdStorageKey`. */
 export function coldUnitStoreKey(key: string): string {
@@ -58,9 +52,4 @@ export function coldUnitKeyOfStoreKey(storeKey: string): string | null {
         name = name.slice(0, -TAURI_SUFFIX.length)
     }
     return name.includes('/') ? null : name
-}
-
-/** The name of the legacy OPFS root file for unit `key`. */
-export function legacyOpfsUnitName(key: string): string {
-    return LEGACY_OPFS_PREFIX + key + LEGACY_OPFS_SUFFIX
 }

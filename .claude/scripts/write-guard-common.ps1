@@ -115,7 +115,7 @@ function Assert-GuardTarget([string]$Role, [string]$Path) {
         if ($Role -cnotin $GuardWriterRoles) { throw 'Read-only role cannot write the repository.' }
         if ($Role -in @('doc-writer', 'record-clerk') -and [IO.Path]::GetExtension($Path) -ine '.md') { throw 'Documentation writers require Markdown repository targets.' }
         if ($Role -eq 'record-clerk') {
-            foreach ($relative in @('.claude', '.github', 'docs/workflow')) {
+            foreach ($relative in @('.claude', '.github', 'docs/workflow', 'Agents/mc')) {
                 if (Test-GuardWithin $Path ([IO.Path]::GetFullPath((Join-Path $GuardRepositoryRoot $relative)))) { throw 'Record clerk cannot edit governance.' }
             }
             foreach ($relative in @('AGENTS.md', 'CLAUDE.md', 'Agents/Maintainer-Context.md', 'Agents/README.md', 'Agents/Decision-Index.md')) {

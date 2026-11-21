@@ -46,7 +46,7 @@
     const line = $derived<DefLine | undefined>(id === null ? undefined : lineById(builder.def, id)?.line)
     const draft = $derived<RowDraft | null>(line ? draftOf(line) : null)
     const loss = $derived(line ? rewriteLoss(line) : null)
-    const hasLoss = $derived(loss !== null && (loss.tail.length > 0 || loss.unknownType !== null || loss.strayOptions !== null || loss.structuralKey !== null))
+    const hasLoss = $derived(loss !== null && (loss.tail.length > 0 || loss.unknownType !== null || loss.strayOptions !== null || loss.droppedDefault !== null || loss.structuralKey !== null))
     const readOnlyCr = $derived.by(() => {
         if (draft === null) return false
         const written = canonicalLine(draft)
@@ -57,6 +57,8 @@
     const off = $derived(!editable || readOnlyCr)
     const failure = $derived<EditFailure | null>(builder.error)
     const options = $derived(draft !== null && draft.kind === 'select' ? draft.options : [])
+    // The first option whose text is the default, as the engine reads it; -1 for none.
+    const defaultIndex = $derived(draft !== null && draft.kind === 'select' && draft.default !== undefined ? options.indexOf(draft.default) : -1)
     const keyText = $derived(draft !== null && draft.kind !== 'divider' && draft.kind !== 'caption' ? draft.key : '')
 
     // The text a refused or held field keeps showing, by field name.
@@ -146,6 +148,10 @@
 
     function writeOption(index: number, value: string): EditOutcome {
         return id === null ? { ok: true } : builder.setOptions(id, options.map((option, at) => (at === index ? value : option)))
+    }
+
+    function writeDefault(rowId: LineId, index: number): void {
+        builder.setDefault(rowId, index < 0 || index >= options.length ? null : options[index])
     }
 
     function addOption(): void {
@@ -241,6 +247,26 @@
                 {/each}
                 <button type="button" data-part="studio-toggle-option-add" class="min-h-11 self-start rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" disabled={off} onclick={addOption}>{language.studioTgAddOption}</button>
             </div>
+        {/if}
+        {#if draft.kind === 'check'}
+            <label class="flex min-h-11 items-center gap-2">
+                <input type="checkbox" data-part="studio-toggle-default-on" aria-label={language.studioTgDefaultOn} checked={draft.default === '1'} disabled={off} onchange={(event) => builder.setDefault(rowId, event.currentTarget.checked ? '1' : null)} />
+                <span>{language.studioTgDefaultOn}</span>
+            </label>
+            <p data-part="studio-toggle-default-note" class="text-sm text-textcolor2">{language.studioTgDefaultUpstream}</p>
+        {:else if draft.kind === 'select'}
+            <label class="flex flex-col gap-1">
+                <span id="{uid}-default-label" class="text-sm text-textcolor2">{language.studioTgDefault}</span>
+                <select data-part="studio-toggle-default" aria-labelledby="{uid}-default-label" aria-describedby="{uid}-default-label" class={FIELD_CLASS} disabled={off} value={String(defaultIndex)} onchange={(event) => writeDefault(rowId, Number(event.currentTarget.value))}>
+                    <option value="-1">{language.studioTgDefaultNone}</option>
+                    {#each options as option, index (index)}
+                        {#if option !== ''}
+                            <option value={String(index)}>{option}</option>
+                        {/if}
+                    {/each}
+                </select>
+            </label>
+            <p data-part="studio-toggle-default-note" class="text-sm text-textcolor2">{language.studioTgDefaultUpstream}</p>
         {/if}
         {#if draft.kind !== 'divider' && draft.kind !== 'caption'}
             <details data-part="studio-toggle-advanced" class="rounded-md border border-darkborderc p-2">

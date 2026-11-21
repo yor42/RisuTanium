@@ -1,12 +1,11 @@
 // @vitest-environment node
 /**
  * The page's byte store (`src/ts/storage/store/appStore.ts`): which store each
- * platform gets, that an OPFS-main profile never reads or writes the IndexedDB
- * copy of its keys, that a browser without usable IndexedDB gets no store and
+ * platform gets, that a browser without usable IndexedDB gets no store and
  * nothing is written, and how the main file reads on the Node server.
  *
  * The Node server is the `FakeNodeServer` stand-in at the `fetch` boundary, the
- * Tauri file system and the OPFS root are in-memory models, and IndexedDB is
+ * Tauri file system is an in-memory model, and IndexedDB is
  * `fake-indexeddb`; a pass is no evidence about a real server, desktop file
  * system or browser. `fake-indexeddb/auto` is imported first because LocalForage
  * captures `indexedDB` once when it loads. A failed IndexedDB open is in

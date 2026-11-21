@@ -54,7 +54,6 @@ function hasMention(text: string): boolean {
 const OWN_PRODUCT_KEYS = [
     'iris.introTip',
     'staticBuildUnsupported',
-    'opfsReadOnlyNotice',
     'personasRepairedNotice',
     'restoreRepairedNotice',
     'saveCharacterNeverSavedNotice',
@@ -95,6 +94,9 @@ const UPSTREAM_NAMING_KEYS = [
     'encryptedBackupRefused',
     'rtbExportConfirm',
     'backupFileNotRecognized',
+    'help.customPromptTemplateToggle',
+    'studioTgDefaultUpstream',
+    'studioTgFormatIntro',
 ]
 
 // Keys that name the upstream app as the product that restores a .bin file.

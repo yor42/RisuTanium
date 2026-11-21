@@ -14,7 +14,8 @@ const scripts = path.join(fixture, '.claude/scripts'); fs.mkdirSync(scripts, { r
 for (const name of ['workflow-control.mjs', 'workflow-hook.ps1']) fs.copyFileSync(path.join(source, '.claude/scripts', name), path.join(scripts, name));
 fs.copyFileSync(path.join(source, '.claude/workflow-policy.json'), path.join(fixture, '.claude/workflow-policy.json'));
 const state = JSON.parse(fs.readFileSync(path.join(source, 'Agents/Workflow-State.json')));
-Object.assign(state, { activation: 'active', activeRevision: state.policyRevision, jobs: {}, dispatches: {}, routeHealth: {} });
+const revision = JSON.parse(fs.readFileSync(path.join(source, '.claude/workflow-policy.json'), 'utf8')).revision;
+Object.assign(state, { activation: 'active', policyRevision: revision, activeRevision: revision, jobs: {}, dispatches: {}, routeHealth: {} });
 state.routeHealth = { agy: { reason: 'fixture', resetAt: null }, codex: { reason: 'fixture', resetAt: null } };
 fs.writeFileSync(path.join(fixture, 'Agents/Workflow-State.json'), JSON.stringify(state));
 await registerDispatch({ id: 'fixture-native', logicalJobId: 'fixture-scout', mode: 'scout', role: 'investigator', question: 'Return fixture completion', acceptance: ['Synthetic only'], owner: 'fixture-child', inputIdentity: 'synthetic', readScope: [], allowedWrites: [] }, { root: fixture });
@@ -62,7 +63,7 @@ try {
   const transcript = JSON.stringify(requests);
   assert.equal(code, 0, `CLI failed; inspect synthetic fixture ${fixture}`);
   assert.ok(broken ? /blocking.*onFailure/.test(debug) : transcript.includes('Register bounded dispatch first'), `No actual Agent hook denial found; inspect ${fixture}`);
-  assert.ok(transcript.includes('Workflow 2026-11-03.1'), `No actual SessionStart context found; inspect ${fixture}`);
+  assert.ok(transcript.includes(`Workflow ${JSON.parse(fs.readFileSync(path.join(fixture, '.claude/workflow-policy.json'), 'utf8')).revision}`), `No actual SessionStart context found; inspect ${fixture}`);
   assert.ok(stdout.includes('SYNTHETIC_HOOK_SMOKE_COMPLETE'), `No synthetic completion; inspect ${fixture}`);
   assert.equal(JSON.parse(fs.readFileSync(path.join(fixture, 'Agents/Workflow-State.json'))).dispatches['fixture-native'].status, broken ? 'registered' : 'running', 'Registered native Agent admission differed');
   console.log(JSON.stringify({ status: 'PASS', scenario: broken ? 'missing hook fails closed' : 'normal allow/deny', claudeRuntime: 'installed CLI', fixture, messages: requests.length, checks: broken ? ['Missing command blocked by actual runtime onFailure:block', 'SessionStart context injected'] : ['SessionStart context in actual runtime', 'PreToolUse Agent unregistered denial', 'Registered native Agent admitted exactly once', 'Synthetic continuation after denial'], limitations: ['Local fake API, no provider inference or quota evidence; CLI displayed costs are synthetic', 'No Desktop UI evidence', 'Compaction context separately exercised with deterministic hook fixtures'] }, null, 2));

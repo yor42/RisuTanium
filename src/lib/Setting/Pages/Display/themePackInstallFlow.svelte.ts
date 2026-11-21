@@ -191,7 +191,7 @@ function mapOutcome(outcome: InstallOutcome<InstallRefusal>, skippedAreas: reado
         case 'listUnreadable':
             return errorMessage(language.themePackListUnreadable)
         case 'readOnly':
-            return errorMessage(outcome.cause === 'opfs' ? language.opfsReadOnlyNotice : language.store2Boot.readOnlyRefusal)
+            return errorMessage(language.store2Boot.readOnlyRefusal)
         case 'refused':
             return outcome.refusal.kind === 'declinedLarge'
                 ? null

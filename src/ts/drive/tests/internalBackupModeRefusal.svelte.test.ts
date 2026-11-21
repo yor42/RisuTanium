@@ -114,7 +114,6 @@ import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
 import { setPageStorageMode, type PageStorageMode } from '../../storage/pageStorageMode'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
-import { injectAppStore } from '../../storage/store/appStore'
 import { beginBusy } from '../../process/memory/busyActions'
 import { language } from 'src/lang'
 
@@ -174,16 +173,6 @@ function expectOnlyRefusal(end: Awaited<ReturnType<typeof loadInternalBackup>>, 
 }
 
 describe('loadInternalBackup on a read-only page', () => {
-    test('guard: a page that runs from OPFS this time shows the localized OPFS notice, not the mode refusal', async () => {
-        injectAppStore(createForageBackedStore(forage), 'opfs-transitional')
-        setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
-
-        const end = await loadInternalBackup()
-
-        expect(end.cause).toBeNull()
-        expectOnlyRefusal(end, [language.opfsReadOnlyNotice])
-    })
-
     test('guard: a read-only page on a normal store shows the localized read-only refusal, not the mode refusal', async () => {
         setPageStorageMode({ kind: 'read-only', reason: 'backend-unavailable' })
 

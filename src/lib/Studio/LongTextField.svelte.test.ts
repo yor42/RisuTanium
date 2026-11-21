@@ -2049,7 +2049,7 @@ function fakeEngine(over: Partial<PreviewEngine> = {}): PreviewEngine {
             varies: text.includes('random'),
         }),
         sandboxKeysOf: (text) => ({ chat: text.includes('{{getvar::hp}}') ? ['hp'] : [], toggles: [] }),
-        sandboxSourceOf: (live) => ({ name: live.name, defaultVariables: '', alternateGreetings: [], texts: {}, bindedPersona: null, modules: [], chatModules: [] }),
+        sandboxSourceOf: (live) => ({ name: live.name, defaultVariables: '', alternateGreetings: [], texts: {}, bindedPersona: null, modules: [], chatModules: [], customModuleToggle: '' }),
         sandboxUserName: () => 'Uma',
         variesIn: (text) => text.includes('random'),
         VARIES_NAMES: [],

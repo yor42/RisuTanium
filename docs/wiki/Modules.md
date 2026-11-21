@@ -94,6 +94,10 @@ key=Text=caption
 
 A line with only `key=Label` is a checkbox. The app stores the value as the global chat variable `toggle_<key>`, so scripts and CBS can read it, for example with `{{getglobalvar::toggle_key}}`. The app shows the toggles of all active modules together with the custom toggles of the prompt preset and of the character.
 
+A toggle can start with a default, written as a fifth field. `key=Label===1` starts a checkbox on. `key=Label=select=Calm,Angry=Angry` starts a choice on **Angry**; the default must be the exact text of one option. Any other default, and a default on a text toggle, is ignored. Until you change the toggle, chats and prompts use the default. **Reset** on a checkbox or choice removes your value, so the toggle follows the default again; on a text toggle it empties the text. Plugins and loadouts see only the value you saved, not the default.
+
+Defaults are a RisuTanium feature. Upstream RisuAI ignores the fifth field, so there the toggle starts off, a choice shows its first option, and prompts read it as unset.
+
 <!-- src/ts/util.ts:1059-1099; src/ts/process/modules.ts:500-512; src/lib/SideBars/Toggles.svelte:70-130 -->
 
 ### Hide Icon UI

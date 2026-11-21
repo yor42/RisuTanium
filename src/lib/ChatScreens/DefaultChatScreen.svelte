@@ -15,6 +15,7 @@
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
+    import { legacyEngineFields } from "../../ts/process/memory/memoryEngine";
     import { runChatScreenshot } from "src/ts/chatScreenshot";
     import { alertError, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
@@ -106,6 +107,7 @@
     })
     let currentCharacter = $derived(DBState.db.characters[$selectedCharID])
     let currentChatObj = $derived(currentCharacter?.chats?.[currentCharacter.chatPage])
+    let lv = $derived(legacyEngineFields(DBState.db))
     let currentChat = $derived(currentChatObj?.message ?? [])
 
     const composerSurface = createComposerSurface({ character: () => currentCharacter, chat: () => currentChatObj })
@@ -1104,16 +1106,16 @@
                     {/each}
 
                     {#if DBState.db.showMenuHypaMemoryModal}
-                        {#if (DBState.db.supaModelType !== 'none' && DBState.db.hypav2) || DBState.db.hypaV3}
+                        {#if (lv.supaModelType !== 'none' && lv.hypav2) || lv.hypaV3}
                             <div class="flex items-center cursor-pointer hover:text-textcolor2 transition-colors" onclick={() => {
-                                if (DBState.db.hypav2) {
+                                if (lv.hypav2) {
                                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data ??= {
                                         lastMainChunkID: 0,
                                         mainChunks: [],
                                         chunks: [],
                                     }
                                     showHypaV2Alert();
-                                } else if (DBState.db.hypaV3) {
+                                } else if (lv.hypaV3) {
                                     $hypaV3ModalOpen = true
                                 }
 
@@ -1121,7 +1123,7 @@
                             }}>
                                 <BrainIcon aria-hidden="true" />
                                 <span class="ml-2">
-                                    {DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}
+                                    {lv.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}
                                 </span>
                             </div>
                         {/if}

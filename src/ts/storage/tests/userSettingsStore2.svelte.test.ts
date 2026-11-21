@@ -110,7 +110,7 @@ describe('UserSettings "Backup & Files" by page storage mode', () => {
 
     test.each([
         { kind: 'store2' },
-        { kind: 'read-only', reason: 'opfs-transitional' },
+        { kind: 'read-only', reason: 'backend-unavailable' },
         { kind: 'unset' },
     ] as const satisfies readonly PageStorageMode[])('guard (passes before and after): the clean-up button is never shown, page mode $kind', (mode) => {
         setPageStorageMode(mode)
@@ -151,16 +151,6 @@ describe('UserSettings "Backup & Files" Clean Up Unused Files button', () => {
         return teardown(target, app)
     })
 
-    test('guard (U1): a store2 page with an opfs-transitional boot session shows no button', () => {
-        setPageStorageMode({ kind: 'store2' })
-        setStore2BootSession(bootSession('opfs-transitional'))
-
-        const { target, app } = mountPage()
-
-        expect(buttonLabels(target)).not.toContain(language.cleanUnusedFiles)
-        return teardown(target, app)
-    })
-
     test('guard (U1): a store2 page with no boot session shows no button', () => {
         setPageStorageMode({ kind: 'store2' })
 
@@ -172,7 +162,7 @@ describe('UserSettings "Backup & Files" Clean Up Unused Files button', () => {
 
     test.each([
         { kind: 'unset' },
-        { kind: 'read-only', reason: 'opfs-transitional' },
+        { kind: 'read-only', reason: 'backend-unavailable' },
     ] as const satisfies readonly PageStorageMode[])('guard (U1): page mode $kind shows no button even with a node boot session', (mode) => {
         setPageStorageMode(mode)
         setStore2BootSession(bootSession('node'))

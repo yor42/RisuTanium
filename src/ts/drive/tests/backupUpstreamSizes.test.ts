@@ -156,7 +156,7 @@ describe('findOversizeAssets, browser pre-pass', () => {
         return storeOf({ 'assets/small': 10, 'assets/exact': LIMIT, 'assets/over': LIMIT + 1, 'assets/gone': 'absent', 'assets/broken': 'error', 'database/main': LIMIT * 3 })
     }
 
-    for (const kind of ['indexeddb', 'opfs-transitional'] as const) {
+    for (const kind of ['indexeddb'] as const) {
         test(`reproducer (${kind}): reads each asset once, one at a time, and names only the ones strictly above 100 MiB`, async () => {
             const probe = browserStore()
             const seen: Array<[number, number]> = []

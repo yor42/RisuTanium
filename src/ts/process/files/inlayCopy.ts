@@ -1,4 +1,4 @@
-import { getAppStore, pageStoreIsIndexedDb, pageStoreIsOpfsTransitional } from 'src/ts/storage/store/appStore'
+import { getAppStore, pageStoreIsIndexedDb } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { getPageStorageMode } from 'src/ts/storage/pageStorageMode'
@@ -200,7 +200,7 @@ export async function runInlayCopy(env: InlayCopyEnvironment = browserEnvironmen
             return 'settled'
         }
         const store = await getAppStore()
-        if (await pageStoreIsOpfsTransitional() || getPageStorageMode().kind === 'read-only') {
+        if (getPageStorageMode().kind === 'read-only') {
             return 'not-run'
         }
         let outcome: InlayCopyOutcome = 'not-run'
@@ -498,7 +498,7 @@ async function cleanOldStore(store: ByteStore, env: InlayCopyEnvironment): Promi
 export async function runInlayOldStoreCleanup(env: InlayCopyEnvironment = browserEnvironment()): Promise<InlayCleanupOutcome> {
     try {
         const store = await getAppStore()
-        if (await pageStoreIsOpfsTransitional() || getPageStorageMode().kind === 'read-only') {
+        if (getPageStorageMode().kind === 'read-only') {
             return 'not-run'
         }
         let outcome: InlayCleanupOutcome = 'not-run'

@@ -7,7 +7,7 @@ import {
 import { LUNAR_TABLE, LUNAR_TABLE_RANGE } from './lunarTable'
 
 // The reference below is written independently from the priority table (Intl directly, Tøndering's Easter), and
-// is compared with the module for every day 2026-2060 in four lunar modes.
+// is compared with the module for every day 2026-2060 in five lunar modes.
 
 const RealDTF = Intl.DateTimeFormat
 const fDangi = new RealDTF('en-u-ca-dangi', { month: 'numeric', day: 'numeric', timeZone: 'UTC' })
@@ -24,6 +24,14 @@ class ThrowingDTF extends RealDTF {
     constructor(locales: string, options: Intl.DateTimeFormatOptions) {
         if (/-u-ca-/.test(locales)) throw new RangeError('no calendar')
         super(locales, options)
+    }
+}
+/** An engine whose Intl zero-pads the numeric month and day ('01', '08bis'), as the Android Note 9 WebView does. */
+class PaddingDTF extends RealDTF {
+    formatToParts(date?: Date | number): Intl.DateTimeFormatPart[] {
+        return super.formatToParts(date).map((p) => (p.type === 'month' || p.type === 'day'
+            ? { ...p, value: p.value.replace(/^\d+/, (n) => n.padStart(2, '0')) }
+            : p))
     }
 }
 
@@ -94,6 +102,7 @@ const MODES: Record<string, ResolveOptions> = {
     table: { lunar: 'table' },
     noIntl: { dateTimeFormat: IgnoringDTF },
     throws: { dateTimeFormat: ThrowingDTF },
+    padded: { dateTimeFormat: PaddingDTF },
 }
 
 describe('seasonal calendar', () => {
@@ -107,6 +116,12 @@ describe('seasonal calendar', () => {
         expect(lunarMonthDay(2026, 9, 25, 'chinese', 'intl', ThrowingDTF)).toBeNull()
         expect(lunarMonthDay(2026, 9, 25, 'dangi', 'auto', IgnoringDTF)?.source).toBe('table')
         expect(lunarMonthDay(2026, 9, 25, 'dangi', 'auto', ThrowingDTF)?.source).toBe('table')
+    })
+
+    // Guards: an engine that zero-pads Intl's numeric parts ('01') never matching a lunar anchor ('1').
+    test('zero-padded Intl months and days read as the unpadded lunar date', () => {
+        expect(lunarMonthDay(2027, 2, 7, 'dangi', 'intl', PaddingDTF)).toEqual({ month: '1', day: 1, source: 'intl' })
+        expect(resolveOccasion(new Date(2027, 1, 7, 12), 'ko', { dateTimeFormat: PaddingDTF })).toBe('seollal')
     })
 
     // The Intl cross-check: the embedded fallback table equals what this Node's Intl says for every anchor.
@@ -163,7 +178,7 @@ describe('seasonal calendar', () => {
             }
         }
         expect(failures).toEqual([])
-        expect(checks).toBe(12784 * LANGS.length * 4)
+        expect(checks).toBe(12784 * LANGS.length * Object.keys(MODES).length)
         // Every occasion shows somewhere in the range, in every mode.
         for (const name of Object.keys(MODES)) {
             for (const key of OCCASION_KEYS) expect(counts[name][key] ?? 0, `${name} ${key}`).toBeGreaterThan(0)

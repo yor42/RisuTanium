@@ -1,0 +1,128 @@
+/*
+  Seasonal scene: chuseok. Classes are prefixed rt-cs-. Final pose = the static .rt-cs-final state on the sky, the mark and
+  the word. Tone: the host stamps [data-rt-sw-tone] on the stage, the mark slot and the root (the word sits inside the
+  root), so every light rule keys on that ancestor attribute.
+  Palette (own picks): night #1b2246 to #283063, moon #f6c945 with #fbe08c patches, shadow #c7922a, roof #2b2631 with
+  #4b4350 tile ends and a #f2c14e rim, persimmon #e9802a / #c9601a, leaves #4f8a55 / #3c7048, wood #6e4b30.
+*/
+
+/* ---------- Families ---------- */
+.rt-cs-ebs {
+  font-family: 'EBS Juseekyung', 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 400;
+  font-size: calc(var(--rt-cs-fs, 24px) * 1.08);
+  font-synthesis: none;
+}
+.rt-cs-fb {
+  font-family: 'NanumSquare Neo Logo', 'NanumSquare Neo', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--rt-cs-fs, 24px) * 0.9);
+  font-synthesis: none;
+}
+
+/* ---------- Stage ---------- */
+.rt-cs-sky { position: absolute; inset: 0; pointer-events: none; }
+.rt-cs-night {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--rt-cs-night-h, 72px);
+  background: linear-gradient(to bottom, #1b2246, #283063);
+  opacity: 0;
+  /* A top-anchored soft ellipse, so the dusk reads as falling from the eave rather than as a box. Static mask, not a filter.
+     The third layer leaves a soft hole over the mark slot (--rt-cs-mx/-my, set by the scene from ctx.stageOffset()), so a
+     non-idle status mark is never tinted by the dusk. */
+  --rt-cs-hole: radial-gradient(circle at var(--rt-cs-mx, -100px) var(--rt-cs-my, -100px), transparent 0 18px, #000 30px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 84%, transparent 100%), radial-gradient(ellipse 70% 100% at 45% 0%, #000 60%, transparent 100%), var(--rt-cs-hole);
+  -webkit-mask-composite: source-in, source-in;
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 84%, transparent 100%), radial-gradient(ellipse 70% 100% at 45% 0%, #000 60%, transparent 100%), var(--rt-cs-hole);
+  mask-composite: intersect;
+}
+/* Light theme: a lighter twilight with a wider feather, so it reads as dusk over a white topbar rather than a dark slab.
+   The greeting keeps its navy edge and the moon keeps its amber limb. */
+[data-rt-sw-tone="light"] .rt-cs-night {
+  background: linear-gradient(to bottom, #2f3b78, #5b6bab);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 74%, transparent 100%), radial-gradient(ellipse 78% 100% at 40% 0%, #000 42%, rgb(0 0 0 / 0.55) 72%, transparent 100%), var(--rt-cs-hole);
+  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 74%, transparent 100%), radial-gradient(ellipse 78% 100% at 40% 0%, #000 42%, rgb(0 0 0 / 0.55) 72%, transparent 100%), var(--rt-cs-hole);
+}
+.rt-cs-stagemoon { position: absolute; }
+.rt-cs-stagemoon.rt-cs-twin-off { visibility: hidden; }
+.rt-cs-twin .rt-cs-every { display: none; }   /* the twin only carries the moon */
+.rt-cs-stars { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rt-cs-stars circle { fill: #fff6dc; opacity: 0.8; }
+
+.rt-cs-eave { position: absolute; left: 0; right: 0; top: 0; transform: translateY(-110%); opacity: 0; }
+.rt-cs-eave-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-cs-roof { fill: #2b2631; }
+.rt-cs-furrow { fill: none; stroke: #3d3644; stroke-width: 1.4; }
+.rt-cs-eave-rim { fill: none; stroke: #f2c14e; stroke-width: 1.3; stroke-linecap: round; opacity: 0.9; }
+.rt-cs-makse circle { fill: #4e4656; stroke: #231f29; stroke-width: 1.1; }
+
+.rt-cs-branch { position: absolute; right: 6px; top: 0; transform-origin: 100% 0; opacity: 0; }
+.rt-cs-branch-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.rt-cs-wood { fill: #6e4b30; }
+.rt-cs-twig { fill: none; stroke: #6e4b30; stroke-width: 1.5; stroke-linecap: round; }
+.rt-cs-leaf { fill: #4f8a55; }
+.rt-cs-leaf-b { fill: #3c7048; }
+.rt-cs-rib { fill: none; stroke: #2e5636; stroke-width: 0.6; stroke-linecap: round; opacity: 0.7; }
+.rt-cs-fruit-shade { fill: #c9601a; }
+.rt-cs-fruit { fill: #e9802a; }
+.rt-cs-fruit-hi { fill: #ffc98f; opacity: 0.85; }
+.rt-cs-calyx { fill: #3f6435; }
+
+.rt-cs-greetbox { position: absolute; display: flex; align-items: center; white-space: nowrap; }
+.rt-cs-greet {
+  display: inline-block;
+  color: #fff3d6;                 /* on the night wash in both themes */
+  -webkit-text-stroke: 0.07em #1b2246;   /* a night-navy edge keeps it legible where the dusk thins out */
+  paint-order: stroke fill;
+  transform-origin: 0 50%;
+  opacity: 0;
+}
+
+.rt-cs-sky.rt-cs-final { display: none; }
+
+/* ---------- Mark slot: moon and the triangle's shadow ---------- */
+.rt-cs-mark { display: block; width: 100%; height: 100%; overflow: visible; --rt-cs-every: #ffffff; }
+[data-rt-sw-tone="light"] .rt-cs-mark { --rt-cs-every: #0f172a; }
+.rt-cs-every { transform-box: view-box; transform-origin: 50% 45.2%; }
+.rt-cs-every-ink { fill: var(--rt-cs-every); }
+.rt-cs-moon, .rt-cs-shadow { transform-box: view-box; transform-origin: 50% 50%; }
+.rt-cs-moon, .rt-cs-halo, .rt-cs-shadow { opacity: 0; }
+.rt-cs-disc { fill: #f6c945; }
+.rt-cs-patch path { fill: #fbe08c; }
+.rt-cs-rim { fill: none; stroke: #fff0b8; stroke-width: 3; opacity: 0.55; }
+.rt-cs-shadow { fill: #c7922a; }
+/* Light theme: an amber limb so the moon holds its edge on white, and no halo (it would only muddy the white). */
+[data-rt-sw-tone="light"] .rt-cs-mark .rt-cs-rim { stroke: #b9800f; stroke-width: 4; opacity: 1; }
+[data-rt-sw-tone="light"] .rt-cs-mark .rt-cs-halo { display: none; }
+
+.rt-cs-mark.rt-cs-final .rt-cs-every { opacity: 0; }
+.rt-cs-mark.rt-cs-final .rt-cs-moon,
+.rt-cs-mark.rt-cs-final .rt-cs-halo,
+.rt-cs-mark.rt-cs-final .rt-cs-shadow { opacity: 1; transform: none; }
+
+/* ---------- Word: five-direction colour groups with a dancheong-style outline (light edge on dark, ink edge on light) ---------- */
+.rt-cs-word { --rt-cs-edge: #f4ecd8; }
+[data-rt-sw-tone="light"] .rt-cs-word { --rt-cs-edge: #1c1917; }
+.rt-cs-obang {
+  position: absolute; left: 0; top: 0; height: 1.2em;
+  display: inline-flex; align-items: center; white-space: nowrap; pointer-events: none;
+}
+.rt-cs-g {
+  display: inline-block;
+  opacity: 0;
+  transform-origin: 50% 80%;
+  -webkit-text-stroke: 0.1em var(--rt-cs-edge);
+  paint-order: stroke fill;
+}
+.rt-cs-cheong { color: #1f63c6; }   /* blue */
+.rt-cs-jeok { color: #d62b33; }     /* red */
+.rt-cs-hwang { color: #f3b71e; }    /* yellow */
+.rt-cs-baek { color: #ffffff; }     /* white */
+/* Black as an ink slate-charcoal rather than #141414: pure black was 1.07:1 on the dark canvas and read as a hollow
+   outline. #2a2d3d still reads as black beside the other four colours, and a thin celadon hairline on the top edge (a
+   static text-shadow, no filter) gives "Tan" a painted body. */
+.rt-cs-heuk { color: #2a2d3d; text-shadow: 0 -0.045em 0 #6fb7a0; }
+/* Light theme: the fill sits on a dark edge (1.2:1), where the hairline read as a stray green line. */
+[data-rt-sw-tone="light"] .rt-cs-heuk { text-shadow: none; }
+
+.rt-cs-word.rt-cs-final .rt-sw-text { visibility: hidden; opacity: 0; }
+.rt-cs-word.rt-cs-final .rt-cs-g { opacity: 1; transform: none; }

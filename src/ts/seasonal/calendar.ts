@@ -96,7 +96,8 @@ function lunarFromIntl(y: number, m: number, d: number, cal: LunarCalendar, ctor
         let month: string | null = null
         let day = NaN
         for (const p of parts) {
-            if (p.type === 'month') month = p.value
+            // Some engines zero-pad the numeric part ('01', '08bis'); the anchors compare unpadded months.
+            if (p.type === 'month') month = p.value.replace(/^0+(?=\d)/, '')
             else if (p.type === 'day') day = parseInt(p.value, 10)
         }
         if (month === null || !Number.isFinite(day)) return null
