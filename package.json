@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:server": "node util/devServer.mjs",
     "build": "vite build --sourcemap",
     "tauribuild": "vite build",
     "preview": "vite preview",

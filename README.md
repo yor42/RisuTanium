@@ -120,6 +120,20 @@ pnpm runserver
 
 The server serves `dist/` and keeps its data in `save/`. Both folders are relative to the folder where you start the server. The server listens on port 6001, or on `PORT` if you set that variable.
 
+To develop the web front end against the Node server without building it, run:
+
+```
+pnpm dev:server
+```
+
+This starts the Node server and the Vite dev server together, and stopping one stops the other. Open the Vite address, http://localhost:5174 by default. Vite forwards the server's own routes (`/api`, `/proxy`, `/proxy2`, `/hub-proxy` and `/proxy-stream-jobs`) to the Node server, and the page runs as a Node-hosted page. These variables change the defaults:
+
+- `RISU_DEV_SERVER_DIR`: the folder the Node server starts in. Its data goes to `save/` inside it. The default is the root of the repository. Use an empty scratch folder for test data.
+- `RISU_DEV_NODE_PORT`: the Node server's port. The default is 6001.
+- `RISU_DEV_NODE_HOST`: the address the Node server binds. The default is `127.0.0.1`, so other devices cannot reach the Node server directly. Vite listens on every address, though, and forwards the Node routes. Other devices on your network can therefore reach the server through Vite, and only its password protects it. Set the password before you share the address, or use a scratch `RISU_DEV_SERVER_DIR`.
+
+Arguments after the script name go to Vite, for example `pnpm dev:server --port 5300`. `pnpm dev` stays a plain Vite server; `pnpm tauri dev` uses it.
+
 ### The legal-documents notice
 
 If `VITE_RISU_LEGAL_CONFIGURED` is empty or unset at build time, the frontend shows a "legal documents not configured" notice instead of the app. In this repository, the variable is on by default, because this fork has its own Terms of Service and Privacy Policy. Settings links to both.
