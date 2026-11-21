@@ -449,11 +449,16 @@ export function saveFailureClassOf(error: unknown, storageFull: boolean): SaveFa
     return 'other'
 }
 
+/** Attempts between two storage-full reminders; attempt 1 always posts. */
+const STORAGE_FULL_REMINDER_EVERY = 12
+
 /** What a failing save tells the person and how long the loop waits; `attempts` counts the failures in a row. */
 export function describeSaveFailure(error: unknown, attempts: number, storageFull: boolean): SaveFailureReport {
     const text = language
     if (storageFull) {
-        return { toast: text.saveStorageFull, alert: null, showRaw: false, waitMs: 5000 }
+        // At the 5 s wait, every 12th attempt is about a minute apart: one reminder a minute, not one per retry.
+        const remind = attempts % STORAGE_FULL_REMINDER_EVERY === 1
+        return { toast: remind ? text.saveStorageFull : null, alert: null, showRaw: false, waitMs: 5000 }
     }
     if (isEditedModuleStub(error)) {
         // The person is asked through the peer handler's own prompt, so neither a toast nor the raw error is shown.
