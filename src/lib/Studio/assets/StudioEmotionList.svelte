@@ -522,34 +522,35 @@
             {/if}
             <ul data-part="studio-emotion-rows" class="flex flex-col gap-2">
                 {#each shownRows as row (row.key)}
-                    <StudioAssetRow
-                        rowKey={row.key}
-                        name={row.name}
-                        ext={row.ext}
-                        shown={row.shown}
-                        size={sizes[row.path]}
-                        thumbUrl={row.shown === 'thumb' ? rowAssetUrl(urls[row.index], row.path, wantedUse(row)) : undefined}
-                        mediaUrl={undefined}
-                        previewing={false}
-                        displayed={true}
-                        excludeShown={false}
-                        excluded={false}
-                        {editable}
-                        menuOpen={menuKey === row.key}
-                        renamedFrom={renamedFrom[row.key] ?? null}
-                        joinNote={null}
-                        {usedIn}
-                        moveChoices={[]}
-                        {selecting}
-                        selected={picked[row.key] === true}
-                        onselect={(on) => pick(row, on)}
-                        oncommit={(value) => rename(row, value)}
-                        ondelete={() => remove(row)}
-                        onpreview={() => {}}
-                        ontoggleexclude={() => {}}
-                        onmenutoggle={() => toggleMenu(row)}
-                        onmenuclose={() => closeMenu(row)}
-                    />
+                    <li>
+                        <StudioAssetRow
+                            rowKey={row.key}
+                            name={row.name}
+                            ext={row.ext}
+                            shown={row.shown}
+                            size={sizes[row.path]}
+                            thumbUrl={row.shown === 'thumb' ? rowAssetUrl(urls[row.index], row.path, wantedUse(row)) : undefined}
+                            mediaUrl={undefined}
+                            previewing={false}
+                            excludeShown={false}
+                            excluded={false}
+                            {editable}
+                            menuOpen={menuKey === row.key}
+                            renamedFrom={renamedFrom[row.key] ?? null}
+                            joinNote={null}
+                            {usedIn}
+                            moveChoices={[]}
+                            {selecting}
+                            selected={picked[row.key] === true}
+                            onselect={(on) => pick(row, on)}
+                            oncommit={(value) => rename(row, value)}
+                            ondelete={() => remove(row)}
+                            onpreview={() => {}}
+                            ontoggleexclude={() => {}}
+                            onmenutoggle={() => toggleMenu(row)}
+                            onmenuclose={() => closeMenu(row)}
+                        />
+                    </li>
                 {/each}
             </ul>
         {/if}
