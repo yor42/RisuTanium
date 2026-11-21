@@ -232,8 +232,8 @@
             </div>
         {:else if toggle.type === 'select'}
             <div class="w-full flex gap-2 mt-2 items-center">
-                <span>{@render getToggleDisplayName(toggle)}</span>
-                <SelectInput className="w-32" value={getGlobalChatVarNH(`toggle_${toggle.key}`)} onchange={(e) => {
+                <span>{@render getToggleDisplayName(toggle, `${uid}-toggle-${path}${index}`)}</span>
+                <SelectInput className="w-32" labelId="{uid}-toggle-{path}{index}" value={getGlobalChatVarNH(`toggle_${toggle.key}`)} onchange={(e) => {
                     setGlobalChatVar(`toggle_${toggle.key}`, e.currentTarget.value)
                 }}>
                     {#each toggle.options as option, i}

@@ -2183,6 +2183,7 @@ export const languageKorean = {
     "triggerMatchRegex": "정규식 매칭",
     "triggerMatchLoose": "느슨한 매칭",
     "triggerMatchStrict": "정확한 매칭",
+    "triggerMatchMode": "매칭 방식",
     "searchDepth": "검색 깊이",
     "equal": "같다면",
     "notEqual": "같지 않다면",

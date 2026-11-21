@@ -2319,6 +2319,7 @@ export const languageJapanese = {
     triggerMatchRegex: "正規表現で一致",
     triggerMatchLoose: "あいまい一致",
     triggerMatchStrict: "厳密に一致",
+    triggerMatchMode: "一致モード",
     searchDepth: "検索深度",
     equal: "等しい",
     notEqual: "等しくない",

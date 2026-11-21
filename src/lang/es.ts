@@ -2185,6 +2185,7 @@ export const languageSpanish = {
     "triggerMatchRegex": "Coincidir con Regex",
     "triggerMatchLoose": "Coincidir Sin Restricciones",
     "triggerMatchStrict": "Coincidir Estrictamente",
+    "triggerMatchMode": "Modo de coincidencia",
     "searchDepth": "Profundidad de Búsqueda",
     "equal": "Igual a",
     "notEqual": "Diferente de",
