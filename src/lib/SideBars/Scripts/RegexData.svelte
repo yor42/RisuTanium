@@ -114,8 +114,8 @@ interface Props {
             <TextInput size="sm" labelId="{uid}-name" bind:value={value.comment} onchange={(e) => {
                 $ReloadGUIPointer += 1
             }} />
-            <span class="text-textcolor mt-4">{language.sidebarUi.modificationType}</span>
-            <SelectInput bind:value={value.type} onchange={(e) => {
+            <span id="{uid}-type" class="text-textcolor mt-4">{language.sidebarUi.modificationType}</span>
+            <SelectInput labelId="{uid}-type" bind:value={value.type} onchange={(e) => {
                 $ReloadGUIPointer += 1
             }}>
                 <OptionInput value="editinput">{language.editInput}</OptionInput>
@@ -152,8 +152,8 @@ interface Props {
                         {/each}
                     </div>
 
-                    <span class="text-textcolor mt-3">{language.sidebarUi.orderFlag}</span>
-                    <NumberInput value={getOrder(value.flag)} onChange={(e)=>{
+                    <span id="{uid}-order" class="text-textcolor mt-3">{language.sidebarUi.orderFlag}</span>
+                    <NumberInput labelId="{uid}-order" value={getOrder(value.flag)} onChange={(e)=>{
                         changeOrder(parseInt(e.currentTarget.value))
                     }} />
                     

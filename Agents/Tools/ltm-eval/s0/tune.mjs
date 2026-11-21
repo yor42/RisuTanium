@@ -36,6 +36,7 @@ export const PROCEDURE = {
   },
   selection: 'O = min over cells of LB95 recall on gating styles; clears, delta, oracle eligibility, loss guards and the snippet floor read gating styles only',
   budgets: { grid: BUDGETS, cap: 'floor(0.15 x (C + 2000)) (MC-2630, MC-2654); the grid ends at the cap of C = 32768; cheapest clearing budget is chosen and its per-send cost reported' },
+  finalBudgetWalk: 'if the final settings do not clear, walk to the next larger budget that cleared at the budget step and redo the later steps, until the final settings clear or no clearing budget remains (MC-2662)',
   gateOnlyIfTunePredictsPass: 'finalFlag = clears() re-run at the final settings; record-settings and every gate run (FIRST, NOISE, DEFECT, OVERRIDE) refuse settings unless evidence.budgetFlag and evidence.finalFlag are null and evidence.oracleFlag is null or absent (MC-2661)',
   controls: {
     kinds: ['ORACLE-RANK', 'ORACLE-QUERY', 'NULL'],

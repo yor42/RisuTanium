@@ -1660,6 +1660,116 @@ describe('S0 selection and tune', () => {
         const fine = SEL.selectSettings(ladderEv(fn), { builder: 'rare', tuneDrawSeed: 510001 })
         expect((fine.evidence as { oracleFlag?: string }).oracleFlag).toBeUndefined()
     })
+
+    // ---- MC-2662: when the final settings do not clear, selection walks to the next larger budget that cleared ----
+    // The delivered-recall column is zeroed so a larger F never costs paired loss: F 4 is chosen wherever the ladder lets it,
+    // and the ladder alone decides whether the final settings clear.
+    const walkEv = (fn: (st: Settings) => Ladder, calls?: Settings[]) => (st: Settings, regime: string) => {
+        const r = ladderEv((s) => fn(s), calls)(st, regime)
+        for (const cell of CELLS) for (const c of r.recs[cell] as { ask: { dl: number }; allude: { dl: number } }[]) { c.ask = { ...c.ask, dl: 0 }; c.allude = { ...c.allude, dl: 0 } }
+        return r
+    }
+    const GOOD: Ladder = { hi: 16, lo: 8, empty: 0 }
+    const BAD_F4: Ladder = { hi: 15, lo: 7, empty: 0 }
+    type Walk = { budget: number; finalOk: boolean }
+    // clears from 1600 up; F 4 drops the final lower bound under 0.5 at the budgets badAt names (a larger budget keeps it above)
+    const walkLadder = (badAt: (budget: number) => boolean) => (st: Settings): Ladder => {
+        const b = st.budget as number
+        const base: Ladder = b >= 1600 ? GOOD : { hi: 10, lo: 2, empty: 0 }
+        const out = st.F === 4 && badAt(b) ? BAD_F4 : base
+        return { ...out, empty: st.tau === null ? 0 : 10 }
+    }
+    const walkOf = (s: Record<string, unknown>) => (s.evidence as { finalWalk: Walk[] }).finalWalk
+
+    it('FW1 (MC-2662): a failing final check walks to the next larger clearing budget and returns its settings', () => {
+        const s = SEL.selectSettings(walkEv(walkLadder((b) => b === 1600)), { builder: 'rare', tuneDrawSeed: 510001 })
+        const evidence = s.evidence as { budgetClears: number[]; finalFlag: string | null }
+        expect(evidence.budgetClears.slice(0, 2)).toEqual([1600, 2400])
+        expect(s.budget).toBe(2400)
+        expect(s.F).toBe(4)
+        expect(evidence.finalFlag).toBeNull()
+        expect(walkOf(s)).toMatchObject([{ budget: 1600, finalOk: false }, { budget: 2400, finalOk: true }])
+    })
+
+    it('FW2 (MC-2662): no clearing budget passes the final check: every larger one is tried, the last is returned and finalFlag stays set', () => {
+        const s = SEL.selectSettings(walkEv(walkLadder(() => true)), { builder: 'rare', tuneDrawSeed: 510001 })
+        const evidence = s.evidence as { budgetClears: number[]; finalFlag: string | null }
+        expect(evidence.budgetClears).toEqual([1600, 2400, 3600, 4800, 5215])
+        expect(walkOf(s).map((w) => w.budget)).toEqual(evidence.budgetClears)
+        expect(walkOf(s).every((w) => !w.finalOk)).toBe(true)
+        expect(s.budget).toBe(5215)
+        expect(evidence.finalFlag).toBe('tune predicts FAIL at the final settings')
+        s.sha256 = GATE.settingsDigest(s)
+        expect(() => GATE.checkGateArgs({ drawSeed: 610001, builder: 'rare', settings: s })).toThrow(/predicts PASS.*finalFlag/)
+    })
+
+    it('FW3 (MC-2662): a first budget whose final settings clear takes no walk step', () => {
+        const s = SEL.selectSettings(walkEv(walkLadder(() => false)), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(s.budget).toBe(1600)
+        expect((s.evidence as { finalFlag: string | null }).finalFlag).toBeNull()
+        expect(walkOf(s)).toMatchObject([{ budget: 1600, finalOk: true }])
+        expect(walkOf(s)).toHaveLength(1)
+    })
+
+    it('FW4 (MC-2662): every later-step evaluation of the walk carries the walked budget and the shipped rareShare', () => {
+        // rareShare 0.02 leads at the default budget and from 1600; F 4 breaks the final check at 1600 only
+        const fn = (st: Settings): Ladder => {
+            if (st.rareShare !== 0.02) return L7_5
+            const b = st.budget as number
+            if (b < 1600) return { hi: 10, lo: 8, empty: 0 }
+            return { ...(st.F === 4 && b === 1600 ? { hi: 11, lo: 7 } : { hi: 16, lo: 12 }), empty: st.tau === null ? 0 : 10 }
+        }
+        const calls: Settings[] = []
+        const s = SEL.selectSettings(walkEv(fn, calls), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(s.budget).toBe(2400)
+        expect(s.rareShare).toBe(0.02)
+        expect(walkOf(s)).toMatchObject([{ budget: 1600, finalOk: false }, { budget: 2400, finalOk: true }])
+        // only steps 3-7 carry queries 3, a tau or a changed F; the snippet floor evaluates at 0.75 x the settled budget
+        const later = calls.filter((c) => c.oracle !== true && (c.queries === 3 || c.tau !== null || c.F !== 2))
+        const atWalk = later.filter((c) => c.budget === 2400 || c.budget === 1800)
+        expect(atWalk.some((c) => c.budget === 2400 && c.queries === 3)).toBe(true)
+        expect(atWalk.some((c) => c.budget === 2400 && c.tau !== null)).toBe(true)
+        expect(atWalk.some((c) => c.budget === 1800)).toBe(true)
+        expect(later.every((c) => c.rareShare === 0.02)).toBe(true)
+        // the recheck at the walked budget is oracle-evaluated at that budget
+        expect(calls.some((c) => c.oracle === true && c.budget === 2400)).toBe(true)
+    })
+
+    it('FW5 (MC-2662): the walk redoes the oracle check at the walked budget; an ineligible walked pick sets oracleFlag', () => {
+        // the first budget fails the final check; ORACLE-RANK is fine at 1600 and under the floor from 2400 up
+        const ladder = walkLadder((b) => b === 1600)
+        const withOracle = (floorAt: number) => (st: Settings, regime: string) => {
+            const r = walkEv(ladder)(st, regime)
+            const o = (st.budget as number) >= floorAt ? 0.5 : 1
+            return { ...r, oracle: Object.fromEntries(CELLS.map((c) => [c, { ask: o, allude: o }])) }
+        }
+        const fine = SEL.selectSettings(withOracle(Infinity), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(fine.budget).toBe(2400)
+        expect((fine.evidence as { oracleFlag?: string }).oracleFlag).toBeUndefined()
+        const flagged = SEL.selectSettings(withOracle(2400), { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(flagged.budget).toBe(2400)
+        expect((flagged.evidence as { oracleFlag?: string }).oracleFlag).toMatch(/no oracle-eligible/)
+    })
+
+    it('FW5b (MC-2662): an oracleFlag set at a rejected earlier walk budget does not leak into the returned settings', () => {
+        // ORACLE-RANK is under the floor only at 1600; F 4 breaks the final check there, so 2400 (eligible) is returned
+        const ladder = walkLadder((b) => b === 1600)
+        const ev = (st: Settings, regime: string) => {
+            const r = walkEv(ladder)(st, regime)
+            const o = (st.budget as number) === 1600 ? 0.5 : 1
+            return { ...r, oracle: Object.fromEntries(CELLS.map((c) => [c, { ask: o, allude: o }])) }
+        }
+        const s = SEL.selectSettings(ev, { builder: 'rare', tuneDrawSeed: 510001 })
+        expect(walkOf(s)).toMatchObject([{ budget: 1600, finalOk: false }, { budget: 2400, finalOk: true }])
+        expect(s.budget).toBe(2400)
+        expect((s.evidence as { oracleFlag?: string }).oracleFlag).toBeUndefined()
+    })
+
+    it('FW6: PROCEDURE carries finalBudgetWalk', () => {
+        const p = TUNE.PROCEDURE as Record<string, string>
+        expect(p.finalBudgetWalk).toMatch(/next larger budget that cleared at the budget step/)
+        expect(p.finalBudgetWalk).toMatch(/MC-2662/)
+    })
 })
 
 describe('S0 diagnostics and end to end', () => {

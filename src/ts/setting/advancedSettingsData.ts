@@ -103,19 +103,6 @@ export const advancedSettingsItems: SettingItem[] = [
         helpKey: 'chatLoadAdditionalPages', options: { min: 1 }
     },
 
-    // Request Location (Non-Node/Tauri)
-    {
-        id: 'adv.reqLoc', type: 'segmented', labelKey: 'requestLocation', bindKey: 'requestLocation',
-        condition: () => !isNodeServer && !isTauri,
-        options: {
-            segmentOptions: [
-                { value: '', label: 'Default', labelKey: 'optDefault' },
-                { value: 'eu', label: 'EU (GDPR)' },
-                { value: 'fedramp', label: 'US (FedRAMP)' }
-            ]
-        }
-    },
-
     // Toggles
     { id: 'adv.sayNothing', type: 'check', labelKey: 'sayNothing', bindKey: 'useSayNothing', helpKey: 'sayNothing', classes: 'mt-4' },
     { id: 'adv.showUnrec', type: 'check', labelKey: 'showUnrecommended', bindKey: 'showUnrecommended', helpKey: 'showUnrecommended', classes: 'mt-4' },
@@ -228,10 +215,6 @@ export const advancedSettingsItems: SettingItem[] = [
     },
 
     // Unrecommended Extra (Condition: showUnrecommended)
-    {
-        id: 'adv.plainFetch', type: 'check', labelKey: 'forcePlainFetch', bindKey: 'usePlainFetch',
-        condition: (ctx) => ctx.db.showUnrecommended, helpKey: 'forcePlainFetch', helpUnrecommended: true, classes: 'mt-4'
-    },
     {
         id: 'adv.depTrig', type: 'check', labelKey: 'showDeprecatedTriggerV1', bindKey: 'showDeprecatedTriggerV1',
         condition: (ctx) => ctx.db.showUnrecommended, helpKey: 'unrecommended', helpUnrecommended: true, classes: 'mt-4'
