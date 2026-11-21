@@ -20,15 +20,16 @@ import {
 } from './toggleDef'
 
 export type RowDraft =
-    | { kind: 'check' | 'text' | 'textarea', key: string, label: string }
-    | { kind: 'select', key: string, label: string, options: readonly string[] }
+    | { kind: 'check', key: string, label: string, default?: '1' }
+    | { kind: 'text' | 'textarea', key: string, label: string }
+    | { kind: 'select', key: string, label: string, options: readonly string[], default?: string }
     | { kind: 'group', key: string, label: string }
     | { kind: 'divider', label: string }
     | { kind: 'caption', text: string }
 export type FieldRefusal =
     | { code: 'fieldHasEquals' | 'fieldHasNewline' | 'fieldHasCr', field: 'key' | 'label' | 'option' | 'text', optionIndex?: number }
     | { code: 'optionHasComma', optionIndex: number }
-    | { code: 'emptyKey' | 'emptyLabel' | 'captionNeedsText' }
+    | { code: 'emptyKey' | 'emptyLabel' | 'captionNeedsText' | 'defaultNotOption' }
 export type Refusal =
     | FieldRefusal
     | { code: 'unknownLine', id: LineId }
@@ -36,9 +37,10 @@ export type Refusal =
     | { code: 'changesRole', from: Role, to: Role }
     | { code: 'changesStructure', affected: readonly LineId[], firstLegal: Position | null }
 export type EditResult = { ok: true, def: Definition, relocatedTo?: Position } | { ok: false, refusal: Refusal }
-export type RewriteLoss = { tail: readonly string[], unknownType: string | null, strayOptions: string | null, trailingCr: boolean, structuralKey: string | null }
+export type RewriteLoss = { tail: readonly string[], unknownType: string | null, strayOptions: string | null, droppedDefault: string | null, trailingCr: boolean, structuralKey: string | null }
 
 const asId = (n: number): LineId => n as LineId
+const withoutCr = (text: string): string => (text.endsWith('\r') ? text.slice(0, -1) : text)
 
 // ---- the canonical writer --------------------------------------------------------------------------------------
 
@@ -72,6 +74,9 @@ function fieldRefusal(draft: RowDraft): FieldRefusal | null {
                 return { code: 'optionHasComma', optionIndex: index }
             }
         }
+        if (draft.default !== undefined && (draft.default === '' || !draft.options.includes(draft.default))) {
+            return { code: 'defaultNotOption' }
+        }
     }
     if (draft.kind === 'group') {
         return null
@@ -93,12 +98,12 @@ export function canonicalLine(draft: RowDraft): string | FieldRefusal {
     }
     switch (draft.kind) {
         case 'check':
-            return `${draft.key}=${draft.label}`
+            return draft.default === undefined ? `${draft.key}=${draft.label}` : `${draft.key}=${draft.label}===${draft.default}`
         case 'text':
         case 'textarea':
             return `${draft.key}=${draft.label}=${draft.kind}`
         case 'select':
-            return `${draft.key}=${draft.label}=select${draft.options.length > 0 ? `=${draft.options.join(',')}` : ''}`
+            return `${draft.key}=${draft.label}=select${draft.options.length > 0 ? `=${draft.options.join(',')}` : ''}${draft.default === undefined ? '' : `=${draft.default}`}`
         case 'group':
             return `${draft.key}=${draft.label}=group`
         case 'divider':
@@ -120,19 +125,30 @@ export function canonicalEndLine(groupLine: DefLine): string {
 /**
  * The draft that rewrites a line canonically, or null for a blank, dropped or group-end line. The kind always comes from
  * the line's form, never from a cleaned part. One trailing `\r` is removed, and only from the last present part when that
- * part is the key, the label or the options text; any other `\r` stays so a later write refuses it.
+ * part is the key, the label, the options text or the default; any other `\r` stays so a later write refuses it.
  */
 export function draftOf(line: DefLine): RowDraft | null {
     const form = line.form
     const last = line.parts.length - 1
     const part = (index: number): string => {
         const value = line.parts[index] ?? ''
-        return index === last && (index === 0 || index === 1 || index === 3) && value.endsWith('\r') ? value.slice(0, -1) : value
+        return index === last && (index === 0 || index === 1 || index === 3 || index === 4) && value.endsWith('\r') ? value.slice(0, -1) : value
     }
     switch (form.kind) {
         case 'value': {
             if (form.valueKind === 'select') {
-                return { kind: 'select', key: part(0), label: part(1), options: line.parts[3] === undefined ? [] : part(3).split(',') }
+                const options = line.parts[3] === undefined ? [] : part(3).split(',')
+                const keptDefault = part(4)
+                return {
+                    kind: 'select',
+                    key: part(0),
+                    label: part(1),
+                    options,
+                    ...(keptDefault !== '' && options.includes(keptDefault) ? { default: keptDefault } : {}),
+                }
+            }
+            if (form.valueKind === 'check') {
+                return { kind: 'check', key: part(0), label: part(1), ...(part(4) === '1' ? { default: '1' as const } : {}) }
             }
             return { kind: form.valueKind, key: part(0), label: part(1) }
         }
@@ -150,17 +166,23 @@ export function draftOf(line: DefLine): RowDraft | null {
 /** What a canonical rewrite of the line would drop. */
 export function rewriteLoss(line: DefLine): RewriteLoss {
     const form = line.form
-    const none: RewriteLoss = { tail: [], unknownType: null, strayOptions: null, trailingCr: false, structuralKey: null }
+    const none: RewriteLoss = { tail: [], unknownType: null, strayOptions: null, droppedDefault: null, trailingCr: false, structuralKey: null }
     if (form.kind === 'blank' || form.kind === 'dropped') {
         return none
     }
     const trailingCr = line.raw.endsWith('\r')
     if (form.kind === 'value') {
         const type = line.parts[2]
+        const takesDefault = form.valueKind === 'check' || form.valueKind === 'select'
+        const stray = withoutCr(line.parts[3] ?? '')
+        // Mirrors `draftOf`: a trailing '\r' belongs to the default only when it is the last part.
+        const fifth = line.parts.length === 5 ? withoutCr(line.parts[4]) : (line.parts[4] ?? '')
+        const keptByDraft = fifth === '' || (form.valueKind === 'check' ? fifth === '1' || fifth === '0' : (line.parts[3]?.split(',') ?? []).includes(fifth))
         return {
-            tail: line.parts.slice(4),
+            tail: line.parts.slice(takesDefault ? 5 : 4),
             unknownType: form.valueKind === 'check' && type !== undefined && type !== '' ? type : null,
-            strayOptions: form.valueKind !== 'select' ? (line.parts[3] ?? null) : null,
+            strayOptions: form.valueKind !== 'select' && stray !== '' ? stray : null,
+            droppedDefault: takesDefault && !keptByDraft ? fifth : null,
             trailingCr,
             structuralKey: null,
         }

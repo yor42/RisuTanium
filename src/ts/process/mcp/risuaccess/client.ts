@@ -29,17 +29,20 @@ Modules are independant packages of lorebooks and scripts. Fields:
 - 'backgroundEmbedding': See below.
 - 'mcp': Optional MCP server URL.
 - 'lowLevelAccess': Must be true to allow LLM or network requests in Lua scripts.
-- 'customModuleToggle': User settings configuration, simply called "toggles". Format: key=label=type=options
+- 'customModuleToggle': User settings configuration, simply called "toggles". Format: key=label=type=options=default
   - Types:
     - (omit): Checkbox, '0'|'1'.
     - select: Dropdown. Index of the selected option.
     - text: Text input. User typed text.
     - group, groupEnd: Collapsible group start and end. Keyless.
     - divider. Keyless.
+  - default (optional 5th field): exactly '1' starts a checkbox on; for select, the exact text of the option to start on. Any other value, and a 5th field on other types, is ignored. Upstream RisuAI ignores defaults.
   - Examples:
     - booleanValue=Check Me
     - selectValue=Select Me=select=opt1,opt2,opt3
     - textValue=Type Me=text
+    - startsOn=Start On===1
+    - startsAngry=Mood=select=calm,angry=angry
     - =Collapsible Group=groupStart
     - =Optional Label=divider
     - ==groupEnd

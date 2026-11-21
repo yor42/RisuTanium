@@ -52,6 +52,7 @@ vi.mock(import('src/ts/process/modules'), () => ({
 
 import {
     chatToggleValue,
+    clearChatToggle,
     currentScopeKeys,
     disableChatScope,
     effectiveJailbreak,
@@ -60,6 +61,7 @@ import {
     restoreChatScope,
     revertChatJailbreak,
     revertChatMemory,
+    sharedToggleValue,
     toggleScopeKeys,
     useSharedToggleValue,
     writeChatJailbreak,
@@ -67,6 +69,7 @@ import {
     writeChatToggle,
 } from 'src/ts/parser/chatToggleScope'
 import { getGlobalChatVar } from 'src/ts/parser/chatVar.svelte'
+import { NO_TOGGLE_DEFAULTS, toggleDefaultsOf } from 'src/ts/parser/toggleDefaults'
 import { createRunSubject, originOf } from 'src/ts/process/chatOrigin'
 import { detachTail, switchTo } from 'src/ts/process/chatTree'
 
@@ -324,7 +327,94 @@ describe('chat toggle accessors act on the given chat, never the selection (S4)'
         const origin = originOf(owner as never, target)!
         const subject = createRunSubject(origin)
 
-        expect(chatToggleValue(target, 'toggle_a')).toBe(getGlobalChatVar('toggle_a', subject))
+        expect(chatToggleValue(target, 'toggle_a', NO_TOGGLE_DEFAULTS)).toBe(getGlobalChatVar('toggle_a', subject))
+    })
+
+    // T3.1: the panel's value and the engine's value agree for the same chat and the same definitions, defaults included
+    test.each([
+        { local: undefined, shared: undefined, expected: '1' },
+        { local: undefined, shared: '', expected: '1' },
+        { local: undefined, shared: 'null', expected: '1' },
+        { local: '', shared: undefined, expected: '1' },
+        { local: 'null', shared: 'null', expected: '1' },
+        { local: undefined, shared: '0', expected: '0' },
+        { local: '0', shared: '1', expected: '0' },
+        { local: '1', shared: '0', expected: '1' },
+    ])('with an author default on, local $local and shared $shared read $expected in the panel and the engine', ({ local, shared, expected }) => {
+        h.db.customPromptTemplateToggle = 'a=A===1'
+        const defaults = toggleDefaultsOf([h.db.customPromptTemplateToggle])
+        const target = makeChat({ GLGlobalVariables: local === undefined ? undefined : { toggle_a: local } })
+        owner.chats = [target]
+        h.db.globalChatVariables = shared === undefined ? {} : { toggle_a: shared }
+        const subject = createRunSubject(originOf(owner as never, target)!)
+
+        expect(chatToggleValue(target, 'toggle_a', defaults)).toBe(expected)
+        expect(getGlobalChatVar('toggle_a', subject)).toBe(expected)
+    })
+
+    test('sharedToggleValue is what a chat without its own value reads: shared set value, else default, else the unset result', () => {
+        const defaults = toggleDefaultsOf(['a=A===1'])
+
+        expect(sharedToggleValue('toggle_a', defaults)).toBe('1')
+        h.db.globalChatVariables = { toggle_a: '0' }
+        expect(sharedToggleValue('toggle_a', defaults)).toBe('0')
+        h.db.globalChatVariables = { toggle_a: '' }
+        expect(sharedToggleValue('toggle_a', defaults)).toBe('1')
+        expect(sharedToggleValue('toggle_b', defaults)).toBe('null')
+        h.db.globalChatVariables = { toggle_b: '' }
+        expect(sharedToggleValue('toggle_b', defaults)).toBe('')
+    })
+})
+
+describe('clearChatToggle (the Reset delete of a check or select)', () => {
+    // T3.4 / T3.5, reproducer: the helper does not exist on the base; its marks are the contract
+    test('shared mode: removes the shared key and a stale chat key and marks the owner once', () => {
+        const target = makeChat({ GLGlobalVariables: { toggle_a: '1', toggle_b: 'keep' } })
+        h.db.globalChatVariables = { toggle_a: '0', toggle_b: '1' }
+
+        clearChatToggle(owner, target, 'toggle_a')
+
+        expect(h.db.globalChatVariables).toEqual({ toggle_b: '1' })
+        expect(target.GLGlobalVariables).toEqual({ toggle_b: 'keep' })
+        expect(h.mark).toHaveBeenCalledTimes(1)
+        expect(h.mark).toHaveBeenCalledWith('char-a')
+    })
+
+    test('shared mode: only the shared key is removed when the chat holds none', () => {
+        const target = makeChat()
+        h.db.globalChatVariables = { toggle_a: '0' }
+
+        clearChatToggle(owner, target, 'toggle_a')
+
+        expect('toggle_a' in h.db.globalChatVariables).toBe(false)
+        expect(h.mark).toHaveBeenCalledWith('char-a')
+    })
+
+    test('chat-only scope: removes only the chat value, leaves the shared map and marks the owner', () => {
+        const target = makeChat({ useLocallySetGlobalVariables: true, GLGlobalVariables: { toggle_a: '0' } })
+        h.db.globalChatVariables = { toggle_a: '1' }
+
+        clearChatToggle(owner, target, 'toggle_a')
+
+        expect(target.GLGlobalVariables).toEqual({})
+        expect(h.db.globalChatVariables).toEqual({ toggle_a: '1' })
+        expect(h.mark).toHaveBeenCalledWith('char-a')
+    })
+
+    test('chat-only scope without its own value: nothing is removed and nothing is marked', () => {
+        const target = makeChat({ useLocallySetGlobalVariables: true })
+        h.db.globalChatVariables = { toggle_a: '1' }
+
+        clearChatToggle(owner, target, 'toggle_a')
+
+        expect(h.db.globalChatVariables).toEqual({ toggle_a: '1' })
+        expect(h.mark).not.toHaveBeenCalled()
+    })
+
+    test('nothing stored: nothing is marked', () => {
+        clearChatToggle(owner, makeChat(), 'toggle_a')
+
+        expect(h.mark).not.toHaveBeenCalled()
     })
 })
 

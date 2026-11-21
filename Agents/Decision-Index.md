@@ -2340,3 +2340,7 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-3000](Maintainer-Context.md#mc-3000--461-playground-uses-the-toolbox-icon-2026-11-21) | #461 Playground uses the toolbox icon, 2026-11-21 |
 | [MC-2975](Maintainer-Context.md#mc-2975--upstream-7ee467abc6db4b681f-dispositions-2026-11-21) | Upstream 7ee467abc..6db4b681f dispositions, 2026-11-21 |
 | [MC-2976](Maintainer-Context.md#mc-2976--upstream-6db4b681f-sync-flow-port-pr-then-a--s-ours-merge-pr-2026-11-21) | Upstream 6db4b681f sync flow: port PR, then a -s ours merge PR, 2026-11-21 |
+| [MC-3011](Maintainer-Context.md#mc-3011--284-closed-as-covered-toggle-default-syntax-split-to-467-with-the-hold-lifted-2026-11-21) | #284 closed as covered; toggle default syntax split to #467 with the hold lifted, 2026-11-21 |
+| [MC-3012](Maintainer-Context.md#mc-3012--467-toggle-defaults-reach-types-syntax-reset-2026-11-21) | #467 toggle defaults: reach, types, syntax, Reset, 2026-11-21 |
+| [MC-3013](Maintainer-Context.md#mc-3013--467-reset-in-chat-only-scope-and-on-toggles-without-a-default-2026-11-21) | #467 Reset in chat-only scope and on toggles without a default, 2026-11-21 |
+| [MC-3014](Maintainer-Context.md#mc-3014--467-the-upstream-prompt-difference-is-accepted-authors-are-warned-2026-11-21) | #467 the upstream prompt difference is accepted; authors are warned, 2026-11-21 |
