@@ -33,6 +33,9 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import { TEST_DESCENT } from './descentTable'
 import { flushConfirming } from './flushConfirmBackend'
 
+// The line a sweep logs when its page yields before listing anything (`shouldStop: () => true`).
+const SWEEP_YIELDED = 'store2 asset sweep: status=done phase=none candidates=0 deleted=0 failed=0 kept-live=0 batches=0 recorded=false stopped=yielded'
+
 vi.setConfig({ testTimeout: 60_000 })
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -282,10 +285,8 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         await getStartupCleanup()
         w.pageMode.setPageStorageMode({ kind: 'unset' })
 
-        // A yielding sweep still logs its own result line; only the clean-up pass's line is this case's subject.
-        const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
-        expect(lines).toHaveLength(1)
-        expect(lines[0]).toContain(`status=done deleted=${deadKeys.size}`)
+        // The step logs exactly the clean-up line and then the sweep line.
+        expect(info.mock.calls.map(call => String(call[0]))).toEqual([expect.stringContaining(`store2 clean-up: status=done deleted=${deadKeys.size} batches=`), SWEEP_YIELDED])
         const after = new Set(await k.memory.listStore2())
         expect([...deadKeys].filter(unit => after.has(unit)), 'orphans and the units of dropped and evicted trees are gone').toEqual([])
         expect([...namedKeys].filter(unit => !after.has(unit)), 'every unit of the current, retained and pinned trees is present').toEqual([])
@@ -306,7 +307,8 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
 
     /**
      * An `indexeddb` page over the same kind of store: the real loop filled it (three edits after an admission advance leave
-     * a dropped tree) and an orphan is planted. The pass runs through the maintenance step with the page facts of a web page.
+     * a dropped tree) and an orphan is planted. The pass runs through the maintenance step with the page facts of a web page,
+     * which logs exactly the clean-up line and then the sweep line.
      */
     async function runWebStep(facts: { alone: boolean, ownBase: 'current' | 'stale' }): Promise<{ k: Store2Kit, deleted: boolean, lines: string[], dead: string[], named: Set<string>, after: Set<string>, droppedBase: string, droppedUnits: string[] }> {
         const { w, k, live, flush } = await startChain()
@@ -378,7 +380,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         ;(fire as (() => void) | null)?.()
         await getStartupCleanup()
         w.pageMode.setPageStorageMode({ kind: 'unset' })
-        const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
+        const lines = info.mock.calls.map(call => String(call[0]))
         const after = new Set(await k.memory.listStore2())
         return { k, deleted: dead.every(unit => !after.has(unit)), lines, dead, named, after, droppedBase, droppedUnits }
     }
@@ -387,8 +389,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         const result = await runWebStep({ alone: true, ownBase: 'current' })
 
         expect(result.dead.length, 'precondition: dead units exist').toBeGreaterThan(1)
-        expect(result.lines).toHaveLength(1)
-        expect(result.lines[0]).toContain(`status=done deleted=${result.dead.length}`)
+        expect(result.lines).toEqual([expect.stringContaining(`store2 clean-up: status=done deleted=${result.dead.length} batches=`), SWEEP_YIELDED])
         expect(result.deleted).toBe(true)
         expect([...result.named].filter(unit => !result.after.has(unit))).toEqual([])
     })
@@ -396,7 +397,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
     test('A4b: an indexeddb page with another tab open deletes nothing', async () => {
         const others = await runWebStep({ alone: false, ownBase: 'current' })
 
-        expect(others.lines).toEqual([expect.stringContaining('status=refused reason=other-tab')])
+        expect(others.lines).toEqual([expect.stringContaining('store2 clean-up: status=refused reason=other-tab'), SWEEP_YIELDED])
         expect(others.dead.every(unit => others.after.has(unit))).toBe(true)
     })
 
@@ -407,7 +408,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         expect([(key.current as { key: string }).key, ...key.retained.map(entry => entry.key), ...key.pins.map(pin => pin.key)], 'precondition: the base is in no list of the commit key').not.toContain(stale.droppedBase)
         expect(stale.droppedUnits.length, 'precondition: the dropped base reaches units no named tree reaches').toBeGreaterThan(0)
         expect(stale.droppedUnits.every(unit => stale.dead.includes(unit)), 'precondition: those units are among the dead').toBe(true)
-        expect(stale.lines).toEqual([expect.stringContaining('status=refused reason=stale-base')])
+        expect(stale.lines).toEqual([expect.stringContaining('store2 clean-up: status=refused reason=stale-base'), SWEEP_YIELDED])
         expect(stale.droppedUnits.filter(unit => !stale.after.has(unit)), 'the dropped base\'s units are still stored').toEqual([])
         expect(stale.dead.every(unit => stale.after.has(unit))).toBe(true)
     })

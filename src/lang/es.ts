@@ -1663,6 +1663,7 @@ export const languageSpanish = {
     "triggerInputLabels": {
         "value": "Valor",
         "var": "Variable",
+        "operandType": "Tipo de {label}",
         "varName": "Nombre de Variable",
         "outputVar": "Variable de Salida",
         "name": "Nombre",
@@ -3109,6 +3110,7 @@ export const languageSpanish = {
     "openAIAudioLeftOut": "No se envió al modelo (solo acepta audio WAV o MP3): {names}",
     "openAIAudioUnnamed": "un archivo de audio adjunto",
     "triggerOn": "Trigger Activado",
+    "triggerEffectCategory": "Categoría de efecto",
     "noConfig": "Sin Configuración",
     "var": "Variable",
     "condition": "Condición",
@@ -3858,6 +3860,29 @@ export const languageSpanish = {
     cleanColdStorage: "Limpiar Datos Archivados y Activos No Utilizados",
     customSidebarConfig: "Configuración Personalizada de la Barra Lateral",
     cleanColdStorageConfirm: "Esto eliminará permanentemente todos los datos archivados (almacenamiento frío) no utilizados y todos los archivos de activos no utilizados, es decir, las imágenes y el audio que ya no usa ningún personaje, módulo, persona ni ajuste. Parte de ello podría ser útil en el futuro y no se puede recuperar. ¿Quieres continuar?",
+    cleanUnusedFiles: "Limpiar Archivos No Utilizados",
+    cleanUnusedFilesMeasuring: "Buscando archivos no utilizados. Puede tardar un rato si la biblioteca es grande.",
+    cleanUnusedFilesDeleting: "Eliminando archivos no utilizados...",
+    cleanUnusedFilesConfirm: (count: number, bytes: number | null) => {
+        const size = bytes === null ? 'tamaño desconocido' : bytes < 0.1 * 1024 * 1024 ? 'menos de 0.1 MiB' : `unos ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `¿Eliminar ${count} archivo(s) no utilizado(s) (${size})? Ningún personaje, módulo, persona, ajuste ni punto de restauración los usa. Cierra primero todas las demás pestañas y ventanas de esta aplicación. Esta acción no se puede deshacer.`
+    },
+    cleanUnusedFilesConfirmNode: (count: number, bytes: number | null, later: number) => {
+        const size = bytes === null ? 'tamaño desconocido' : bytes < 0.1 * 1024 * 1024 ? 'menos de 0.1 MiB' : `unos ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+        return `¿Eliminar ahora ${count} archivo(s) no utilizado(s) (${size})?`
+            + (later > 0 ? ` Se encontraron ${later} archivo(s) no utilizado(s) más. En este servidor un archivo se elimina solo después de que tres limpiezas separadas por al menos un día lo hayan encontrado sin usar, con un máximo de 500 a la vez, por lo que estos quedan anotados para limpiezas posteriores.` : '')
+            + ` Cierra primero todas las demás pestañas y dispositivos que usen este servidor: al pulsar SÍ confirmas que ninguno está abierto. Esta acción no se puede deshacer.`
+    },
+    cleanUnusedFilesNoteNode: (later: number) => `Todavía no se puede eliminar ningún archivo no utilizado. Se encontraron ${later} archivo(s) no utilizado(s). En este servidor un archivo se elimina solo después de que tres limpiezas separadas por al menos un día lo hayan encontrado sin usar, con un máximo de 500 a la vez. ¿Anotarlos ahora para que una limpieza posterior pueda eliminarlos? Cierra primero todas las demás pestañas y dispositivos que usen este servidor: al pulsar SÍ confirmas que ninguno está abierto.`,
+    cleanUnusedFilesNodeWait: "Los archivos no utilizados se comprobaron hace menos de un día. En este servidor un archivo solo se puede eliminar un día después de la última comprobación, así que inténtalo de nuevo más tarde. No se eliminó nada.",
+    cleanUnusedFilesNone: "No se encontraron archivos no utilizados. No se eliminó nada.",
+    cleanUnusedFilesDone: (deleted: number, kept: number) => `Se eliminaron ${deleted} archivo(s) no utilizado(s).${kept > 0 ? ` Se conservaron ${kept} archivo(s) porque volvieron a usarse o no se pudieron eliminar.` : ''}`,
+    cleanUnusedFilesStopped: (deleted: number) => `La limpieza se detuvo porque la aplicación empezó a usar sus datos (guardado, un chat, una restauración u otra pestaña). Se eliminaron ${deleted} archivo(s) antes de detenerse. Inténtalo de nuevo más tarde.`,
+    cleanUnusedFilesCancelled: (deleted: number) => deleted === 0 ? 'Limpieza cancelada. No se eliminó nada.' : `Limpieza cancelada. Se eliminaron ${deleted} archivo(s) antes de detenerse.`,
+    cleanUnusedFilesOtherTab: "Hay otra pestaña de esta aplicación abierta. Cierra todas las demás pestañas de esta aplicación y vuelve a intentarlo. No se eliminó nada.",
+    cleanUnusedFilesNoTabCheck: "Esta página no puede comprobar si hay otras pestañas abiertas (no se abrió mediante HTTPS ni localhost), por lo que no puede limpiar los archivos no utilizados. No se eliminó nada.",
+    cleanUnusedFilesBusy: "Espera a que terminen el guardado, un chat en curso o la limpieza automática y vuelve a intentarlo. No se eliminó nada.",
+    cleanUnusedFilesRefused: "La limpieza no se puede ejecutar ahora (los datos guardados están cambiando, restaurándose o no se pudieron leer). No se eliminó nada. Inténtalo de nuevo más tarde o recarga primero la aplicación.",
     coldStorageCleanupNoLockConfirm: "Tu navegador no puede comprobar si hay otra pestaña de esta aplicación abierta. Si hay otra pestaña de esta aplicación abierta mientras se ejecuta la limpieza, esa pestaña puede perder datos. Cierra primero todas las demás pestañas de esta aplicación y luego continúa. ¿Continuar de todos modos?",
     coldStorageCleanupNodeConfirm: "No ejecutes esta limpieza mientras otro dispositivo o navegador esté usando el mismo servidor. Todo lo que guarden mientras se ejecuta puede perderse o eliminarse. ¿Continuar?",
     coldStorageCleanupCheckingTabs: "Comprobando si hay otras pestañas abiertas de esta aplicación antes de limpiar...",

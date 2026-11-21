@@ -4,6 +4,7 @@
     import type { SettingContext } from '../../ts/setting/types'
     import ShellSectionsPage from './ShellSectionsPage.svelte'
     import DataBackupRow from './data/DataBackupRow.svelte'
+    import DataCleanUpRow from './data/DataCleanUpRow.svelte'
     import DataDatasetRow from './data/DataDatasetRow.svelte'
     import DataRestoreFileRow from './data/DataRestoreFileRow.svelte'
     import DataRestoreSnapshotRow from './data/DataRestoreSnapshotRow.svelte'
@@ -14,6 +15,7 @@
         DataRestoreFileRow,
         DataRestoreSnapshotRow,
         DataDatasetRow,
+        DataCleanUpRow,
     }
 
     let sectionsPage = $state<ReturnType<typeof ShellSectionsPage>>()
