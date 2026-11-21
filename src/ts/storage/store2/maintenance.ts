@@ -14,6 +14,7 @@ import { buildNodeGcAge } from './gc/unitAge'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
 import { sizeAssets } from './sweep/assetSize'
 import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './sweep/run'
+import { inlaySweepKind, runInlaySweep, type InlaySweepEnv, type InlaySweepResult } from './sweep/inlayRun'
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
@@ -26,8 +27,9 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
  * sweep (`sweep/run.ts`; on the web and on Node its tab check is the same sole-tab proof as the collector's, except that
  * the sweep also refuses where Web Locks are missing) that deletes stored assets nothing refers to once a record at least a
  * day old has named them (on Node, twice, each time at the asset's current revision, with the server's clock and guarded
- * routes). All three run inside the one registered step and each logs and swallows its
- * own failure, so a failed deleter never keeps the next one from running.
+ * routes), followed on the app and on the web (`tauri` and `indexeddb` sessions, never a Node server: MC-2865) by one inlay
+ * sweep (`sweep/inlayRun.ts`) that deletes stored inlays nothing refers to, with no age wait. All four run inside the one
+ * registered step and each logs and swallows its own failure, so a failed deleter never keeps the next one from running.
  *
  * - It runs only on a page whose own boot found a normal store2 profile (the "commit key parses with a readable tree" row),
  *   so the converted tree has been opened cold once before anything irreversible is deleted. The runner starts only on a
@@ -37,12 +39,12 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
  * - It waits for the quiet trigger of the character put-back: hidden after a committed save, or 30 s without input.
  * - The step is registered as the startup clean-up when it starts, so a backup load that waits on the startup clean-up
  *   waits for this step to end and no longer; the registered promise always settles and never rejects.
- * - It shows nothing to the person: the asset sweep logs one line of counts and never an asset name.
+ * - It shows nothing to the person: the asset sweep and the inlay sweep each log one line of counts and never a name.
  *
  * The person's own entry, `runManualCleanUp`, runs the same asset sweep on demand (a plan step, the confirm, then the delete
- * step) and excludes this step: a manual run is refused `busy` while the step runs, and a step whose trigger fires while a
- * manual run is in progress starts when that run ends, not at a fresh quiet trigger; every deleter in it checks its own stop
- * facts again.
+ * step), never the inlay sweep (MC-2866), and excludes this step: a manual run is refused `busy` while the step runs,
+ * and a step whose trigger fires while a manual run is in progress starts when that run ends, not at a fresh quiet
+ * trigger; every deleter in it checks its own stop facts again.
  *
  * A measurement build also installs the sweep dry run (`sweep/dryRunMeasure.ts`) on any store2 page; it deletes and writes nothing.
  * It installs the collector run (`gc/gcMeasure.ts`) too, which deletes only on an explicit `confirm: true` and refuses while this
@@ -64,6 +66,8 @@ export interface MaintenanceSeams {
     gcPageFacts?: AutoGcFacts
     /** Replaces the live page's facts for the asset sweep; the default loads the page's own modules on first use. */
     sweepFacts?: SweepPageFacts
+    /** Replaces the live page's facts for the inlay sweep; the default loads the page's own modules on first use. */
+    inlayFacts?: InlayPageFacts
 }
 
 /** What the page contributes to the asset sweep: the rest of the pass's environment is the session, the store and the pace. */
@@ -123,6 +127,64 @@ async function runStore2AssetSweep(env: MaintenanceEnv, session: Store2Session, 
     console.info(formatSweepResult(result))
 }
 
+/** What the page contributes to the inlay sweep: the rest of the pass's environment is the session, the store and the pace. */
+export type InlayPageFacts = Pick<InlaySweepEnv, 'peers' | 'shouldStop' | 'saveMarks' | 'writtenThisPage' | 'legacyInlayIds' | 'residentInlays' | 'lock'>
+
+/** The page's own modules, loaded when the inlay sweep first needs them so that installing the step costs nothing. */
+async function loadInlayFacts(): Promise<InlayPageFacts> {
+    const [api, database, busy, loop, restore, inlayStore, cleanup, resident] = await Promise.all([
+        import('../../globalApi.svelte'),
+        import('../database.svelte'),
+        import('../../process/memory/busyActions'),
+        import('./saveLoop'),
+        import('../../drive/restoreInProgress'),
+        import('../../process/files/inlayStore'),
+        import('../../process/files/inlayCleanup'),
+        import('./sweep/inlayResident'),
+    ])
+    return {
+        peers: () => soleTabAnswer({ query: liveLockQuery(), holdsOwnPresence: api.holdsOwnTabPresence }),
+        shouldStop: () => busy.isBusy() || loop.isSaveLoopParked() || !api.isSaveClean() || restore.restoreInProgress(),
+        saveMarks: () => api.getSaveMarkCount(),
+        writtenThisPage: id => inlayStore.inlayWrittenThisPage(id),
+        // A read only: the pass never writes the legacy store.
+        legacyInlayIds: () => inlayStore.legacyInlayStore.keys(),
+        lock: (id, work) => inlayStore.withInlayLock(id, work),
+        residentInlays: async ids => {
+            const walked = database.getDatabase()
+            const mentioned = await resident.residentInlaysOf(walked, ids, new cleanup.Pacer())
+            return mentioned === null ? null : { mentioned, sameDatabase: () => database.getDatabase() === walked }
+        },
+    }
+}
+
+/** The plain result line of the inlay sweep: the status, the counts and why the pass ended, never an inlay id. */
+export function formatInlaySweepResult(result: InlaySweepResult): string {
+    if (result.status === 'skipped') {
+        return 'store2 inlay sweep: status=skipped'
+    }
+    if (result.status === 'refused') {
+        const earlier = result.deleted === undefined ? '' : ` deleted=${result.deleted} failed=${result.failed ?? 0}`
+        return `store2 inlay sweep: status=refused reason=${result.reason}${earlier}`
+    }
+    const stopped = result.stopped === undefined ? '' : ` stopped=${result.stopped}`
+    return `store2 inlay sweep: status=done candidates=${result.candidates} deleted=${result.deleted} bodies=${result.bodies} failed=${result.failed} kept-live=${result.keptLive} kept-legacy=${result.keptLegacy} batches=${result.batches}${stopped}`
+}
+
+/**
+ * Runs the inlay sweep, or does nothing: only a `tauri` or `indexeddb` session with a backend on a store2 page, and nothing
+ * is loaded, read or logged before that is known. Throws what the pass throws; the caller logs and swallows it.
+ */
+async function runStore2InlaySweep(env: MaintenanceEnv, session: Store2Session, facts?: InlayPageFacts): Promise<void> {
+    if (!inlaySweepKind(session.kind) || session.backend === null || getPageStorageMode().kind !== 'store2') {
+        return
+    }
+    const live = facts ?? await loadInlayFacts()
+    const store = await env.store()
+    const result = await runInlaySweep({ session, store, pace: batchPaceOf(session.kind), ...live })
+    console.info(formatInlaySweepResult(result))
+}
+
 let stepActive = false
 /** A manual clean-up is in progress. */
 let manualActive = false
@@ -140,12 +202,12 @@ export function bootDidNotInstall(session: Store2Session): boolean {
     return decision.row === 5 && decision.mode === 'normal'
 }
 
-async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion, gcPageFacts?: AutoGcFacts, sweepFacts?: SweepPageFacts): Promise<void> {
+async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion, gcPageFacts?: AutoGcFacts, sweepFacts?: SweepPageFacts, inlayFacts?: InlayPageFacts): Promise<void> {
     if (stepActive) {
         return
     }
     if (manualActive) {
-        deferredStep = () => { void runStep(env, session, deletion, gcPageFacts, sweepFacts) }
+        deferredStep = () => { void runStep(env, session, deletion, gcPageFacts, sweepFacts, inlayFacts) }
         return
     }
     stepActive = true
@@ -167,6 +229,12 @@ async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: ty
             // Last, on its own: a thrown sweep (a hold overlap included) is logged and swallowed, and the step still ends.
             try {
                 await runStore2AssetSweep(env, session, sweepFacts)
+            } catch (error) {
+                console.error(error)
+            }
+            // After the asset sweep, on its own: a thrown inlay sweep is logged and swallowed, and the step still ends.
+            try {
+                await runStore2InlaySweep(env, session, inlayFacts)
             } catch (error) {
                 console.error(error)
             }
@@ -201,7 +269,7 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
         const deletion = seams.deletion ?? runOldDataDeletion
         const trigger = (seams.startTrigger ?? startQuietTrigger)(() => {
             trigger.stop()
-            void runStep(env, session, deletion, seams.gcPageFacts, seams.sweepFacts)
+            void runStep(env, session, deletion, seams.gcPageFacts, seams.sweepFacts, seams.inlayFacts)
         })
         trigger.arm()
         return trigger

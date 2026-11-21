@@ -23,6 +23,7 @@ vi.mock(import('src/ts/process/memory/putBackQuiet'), () => ({
 }) as unknown as typeof import('src/ts/process/memory/putBackQuiet'))
 
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
+import { inlayMetaKey } from 'src/ts/process/files/inlayKeys'
 import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { getStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -36,7 +37,7 @@ import {
 } from 'src/ts/storage/store2/format'
 import {
     bootDidNotInstall, formatSweepResult, resetMaintenanceForTests, runManualCleanUp, startStore2Maintenance as startLiveMaintenance,
-    type MaintenanceEnv, type MaintenanceSeams, type ManualCleanUpPlan, type ManualCleanUpUi, type SweepPageFacts,
+    type InlayPageFacts, type MaintenanceEnv, type MaintenanceSeams, type ManualCleanUpPlan, type ManualCleanUpUi, type SweepPageFacts,
 } from 'src/ts/storage/store2/maintenance'
 import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/assetDeleteHold'
 import { readSweepRecord, writeSweepRecord } from 'src/ts/storage/store2/sweep'
@@ -133,8 +134,22 @@ const QUIET_SWEEP: SweepPageFacts = {
 
 const ACTIVE_SWEEP: SweepPageFacts = { ...QUIET_SWEEP, shouldStop: () => false, hold: remove => holdAssetDeletion(remove) }
 
+/**
+ * The page's facts for the inlay sweep, injected for the same reason: the default stops the pass before it reads anything,
+ * so no case loads the application's modules through the live path. The inlay cases pass their own facts.
+ */
+const QUIET_INLAYS: InlayPageFacts = {
+    peers: async () => 'alone',
+    shouldStop: () => true,
+    saveMarks: () => 0,
+    writtenThisPage: () => false,
+    legacyInlayIds: async () => [],
+    residentInlays: async () => null,
+    lock: (_id, work) => work(),
+}
+
 function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSeams = {}): ReturnType<typeof startLiveMaintenance> {
-    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, gcPageFacts: REFUSING_GC, ...seams })
+    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, gcPageFacts: REFUSING_GC, inlayFacts: QUIET_INLAYS, ...seams })
 }
 
 beforeEach(() => {
@@ -291,8 +306,8 @@ describe('the step', () => {
         startStore2Maintenance({ store: async () => { throw new Error('No store.') }, listBackupTimes: async () => [] }, { session: () => session, startTrigger: trigger.start, deletion })
 
         trigger.fire()
-        // The old-data deletion, the clean-up pass and the asset sweep each open the store: each failure is logged on its own.
-        await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(3))
+        // The old-data deletion, the clean-up pass, the asset sweep and the inlay sweep each open the store: each failure is logged on its own.
+        await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(4))
         await getStartupCleanup()
 
         expect(deletion).not.toHaveBeenCalled()
@@ -392,9 +407,13 @@ async function orphansLeft(page: { memory: MemoryBackend, orphans: string[] }): 
     return page.orphans.filter(key => read.get(key) !== null).length
 }
 
-/** The clean-up pass's result lines; the asset sweep's own line is read by its own cases. */
+/** The clean-up pass's result lines; the asset sweep's and the inlay sweep's own lines are read by their own cases. */
 function infoLines(info: { mock: { calls: unknown[][] } }): string[] {
-    return info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
+    return info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep') && !line.startsWith('store2 inlay sweep'))
+}
+
+function inlayLines(info: { mock: { calls: unknown[][] } }): string[] {
+    return info.mock.calls.map(call => String(call[0])).filter(line => line.startsWith('store2 inlay sweep'))
 }
 
 function sweepLines(info: { mock: { calls: unknown[][] } }): string[] {
@@ -441,7 +460,7 @@ describe('the clean-up pass after the old-data deletion', () => {
         const treeBefore = (await page.memory.listStore2()).filter(key => !page.orphans.includes(key))
         const order: string[] = []
         const info = vi.spyOn(console, 'info').mockImplementation(line => {
-            if (!String(line).startsWith('store2 asset sweep')) {
+            if (!String(line).startsWith('store2 asset sweep') && !String(line).startsWith('store2 inlay sweep')) {
                 order.push('pass')
             }
         })
@@ -1082,13 +1101,13 @@ describe('the asset sweep after the clean-up pass', () => {
         const page = await openTauriPage()
         const store = await plantedStore()
         const order: string[] = []
-        vi.spyOn(console, 'info').mockImplementation(line => { order.push(String(line).startsWith('store2 asset sweep') ? 'sweep' : 'clean-up') })
+        vi.spyOn(console, 'info').mockImplementation(line => { order.push(String(line).startsWith('store2 asset sweep') ? 'sweep' : String(line).startsWith('store2 inlay sweep') ? 'inlays' : 'clean-up') })
 
         await fireSweep(page, store)
 
         expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
         expect(store.files.has(`assets/${YOUNG}`)).toBe(true)
-        expect(order, 'the sweep is the last deleter of the step').toEqual(['clean-up', 'sweep'])
+        expect(order, 'the inlay sweep is the last deleter of the step, after the asset sweep').toEqual(['clean-up', 'sweep', 'inlays'])
     })
 
     test('guard D2: a node session over a store without the server clock ends the sweep no-server-time before it reads or lists anything', async () => {
@@ -1173,6 +1192,93 @@ describe('the asset sweep after the clean-up pass', () => {
         await getStartupCleanup()
 
         expect(store.lists).toEqual([])
+    })
+})
+
+describe('the inlay sweep in the step', () => {
+    const O = '0a1b2c3d-1111-4222-8333-000000000003'
+    const metaKey = inlayMetaKey(O) as string
+
+    /** The facts of a quiet page that is the sole tab, with an empty resident database and an empty legacy store. */
+    function activeInlays(over: Partial<InlayPageFacts> = {}): InlayPageFacts {
+        return {
+            ...QUIET_INLAYS,
+            shouldStop: () => false,
+            residentInlays: async () => ({ mentioned: new Set<string>(), sameDatabase: () => true }),
+            ...over,
+        }
+    }
+
+    /** A page store holding the metadata key of an inlay nothing names; the pass lists keys before it reads any record. */
+    function storeWithO(): MemoryByteStore {
+        const store = createMemoryByteStore()
+        store.files.set(metaKey, new Uint8Array([1]))
+        return store
+    }
+
+    async function fireWith(session: Store2Session, store: MemoryByteStore, seams: MaintenanceSeams): Promise<void> {
+        const trigger = fakeTrigger()
+        startStore2Maintenance(
+            { store: async () => store, listBackupTimes: async () => [] },
+            { session: () => session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, ...seams },
+        )
+        trigger.fire()
+        await vi.waitFor(() => expect(getStartupCleanup()).not.toBeNull())
+        await getStartupCleanup()
+    }
+
+    test('guard G4: a Node page whose facts would allow a delete (sole tab, complete keep-set, nothing resident) lists no inlays, opens no inlay gate, reads no legacy store and logs no inlay line', async () => {
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const { session } = await openSession('ready')
+        const gates = vi.spyOn(session, 'openGate')
+        const asNode = Object.create(session, { kind: { value: 'node' } }) as Store2Session
+        const nodeStore = storeWithO()
+        const legacyInlayIds = vi.fn(async (): Promise<string[]> => [])
+
+        await fireWith(asNode, nodeStore, { inlayFacts: activeInlays({ legacyInlayIds }) })
+
+        expect(nodeStore.files.has(metaKey)).toBe(true)
+        expect(inlayLines(info)).toEqual([])
+        expect(nodeStore.lists).not.toContain('inlays/')
+        expect(legacyInlayIds).not.toHaveBeenCalled()
+        expect(gates.mock.calls.filter(call => call[0] === 'inlay-cleanup')).toEqual([])
+    })
+
+    test('guard T21: a manual clean-up asked while the inlay pass is mid-walk is refused busy, and the step then ends', async () => {
+        const { session } = await openSession('ready')
+        const store = storeWithO()
+        const walking = deferred<null>()
+        const walks = vi.fn(() => walking.promise)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const trigger = fakeTrigger()
+        startStore2Maintenance(
+            { store: async () => store, listBackupTimes: async () => [] },
+            { session: () => session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, inlayFacts: activeInlays({ residentInlays: walks }) },
+        )
+        trigger.fire()
+        await vi.waitFor(() => expect(walks).toHaveBeenCalledTimes(1))
+        const asking = { progress: vi.fn(), confirm: vi.fn(async () => true) }
+
+        expect(await runManualCleanUp(asking, { session: () => session, store: async () => store, sweepFacts: ACTIVE_SWEEP })).toEqual({ status: 'busy' })
+
+        expect(asking.progress).not.toHaveBeenCalled()
+        walking.resolve(null)
+        await getStartupCleanup()
+        expect(store.files.has(metaKey), 'a walk that could not finish deletes nothing').toBe(true)
+    })
+
+    test('guard: a manual clean-up never runs the inlay pass (MC-2866)', async () => {
+        const { session } = await openSession('ready')
+        const store = storeWithO()
+        store.files.set('assets/manual-orphan.png', new Uint8Array([1, 2, 3]))
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const outcome = await runManualCleanUp({ progress: vi.fn(), confirm: vi.fn(async () => true) }, { session: () => session, store: async () => store, sweepFacts: ACTIVE_SWEEP })
+
+        expect(outcome).toMatchObject({ status: 'ended', result: { status: 'done', deleted: 1 } })
+        expect(store.files.has('assets/manual-orphan.png')).toBe(false)
+        expect(store.files.has(metaKey)).toBe(true)
+        expect(store.lists).not.toContain('inlays/')
     })
 })
 
