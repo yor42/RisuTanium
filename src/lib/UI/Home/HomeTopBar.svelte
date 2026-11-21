@@ -5,6 +5,7 @@
     import { MARK_VIEWBOX, markInner } from 'src/lib/Nexus/brand/nexusMark'
     import HomeModeSwitcher from './HomeModeSwitcher.svelte'
     import HomePersonaChip from './HomePersonaChip.svelte'
+    import SeasonalBrand from 'src/lib/UI/Seasonal/SeasonalBrand.svelte'
     import type { HomeBand } from './homeLayout'
 
     interface Props {
@@ -20,7 +21,9 @@
     let { band, menuButton = $bindable(null), drawerOpen = false, drawerId, onmenu }: Props = $props()
 
     // The brand mark is decorative and static: it carries no status region, unlike the live status
-    // mark, so the wordmark beside it is the only text alternative.
+    // mark, so the wordmark beside it is the only text alternative. The seasonal logo (SeasonalBrand)
+    // finds the bar, the brand cell and the mark through the data-seasonal-* attributes below; a live
+    // status on the mark later hides the seasonal mark again.
     const uid = $props.id()
     const inner = markInner(uid)
 
@@ -50,7 +53,7 @@
     }
     const barClass: Record<HomeBand, string> = {
         phone: 'flex flex-col items-start gap-2',
-        mid: 'grid grid-cols-[minmax(5.75rem,1fr)_minmax(0,auto)] items-center gap-x-4 gap-y-2',
+        mid: 'grid grid-cols-[minmax(6rem,1fr)_minmax(0,auto)] items-center gap-x-4 gap-y-2',
         wide: 'grid grid-cols-[minmax(2.75rem,1fr)_auto_minmax(2.75rem,1fr)] items-center gap-x-4',
     }
     const switcherClass: Record<HomeBand, string> = {
@@ -63,46 +66,51 @@
         mid: 'col-start-2 row-start-1 flex justify-end *:mt-0!',
         wide: 'flex min-w-0 justify-end -mr-10 *:mt-0!',
     }
-    // Wordmark sliver rule (MC-1443): the brand cell is an inline-size container in mid and wide. The
-    // cell holds the 28 px mark and the 8 px gap, so a cell under 3.75rem (60 px) leaves the wordmark
-    // under 24 px. Below that the wordmark text leaves the layout (visually hidden, not display:none,
+    // Wordmark sliver rule (MC-1443, sizes MC-3081): the brand cell is an inline-size container in mid and
+    // wide. The cell holds the 32 px mark and the 8 px gap, so a cell under 4rem (64 px) leaves the
+    // wordmark under 24 px. Below that the wordmark leaves the layout (visually hidden, not display:none,
     // so the brand keeps its text alternative); this only avoids a sliver. The side tracks stay equal
     // so the switcher stays centred, so the chip does not grow into the freed space (MC-1446). The mid
-    // track minimum (5.75rem) keeps the wordmark above the threshold, and a clipped "Ris…" stays
-    // visible (MC-1436). The phone band is unchanged (MC-1415): no container, no rule.
+    // track minimum (6rem) keeps the wordmark at 56 px or more, above the threshold, so a clipped
+    // "Ris" stays visible (MC-1436). The wordmark is a fixed-width box, so a narrow cell clips it
+    // horizontally (overflow-x-clip on the cell) instead of ellipsising it; the 6 px clip margin keeps the
+    // replay button's focus ring (2 px outline, 3 px offset) visible past the cell edge. The phone band is unchanged
+    // (MC-1415): no container, no rule.
     const brandClass: Record<HomeBand, string> = {
-        phone: 'flex min-h-11 min-w-0 items-center gap-2 text-textcolor',
-        mid: '@container flex min-h-11 min-w-0 items-center gap-2 text-textcolor',
-        wide: '@container flex min-h-11 min-w-0 items-center gap-2 text-textcolor',
+        phone: 'flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] text-textcolor',
+        mid: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] text-textcolor',
+        wide: '@container flex min-h-11 min-w-0 items-center gap-2 overflow-x-clip [overflow-clip-margin:6px] text-textcolor',
     }
     const wordmarkClass: Record<HomeBand, string> = {
-        phone: 'min-w-0 truncate text-lg font-semibold',
-        mid: 'min-w-0 truncate text-lg font-semibold @max-[3.75rem]:sr-only',
-        wide: 'min-w-0 truncate text-lg font-semibold @max-[3.75rem]:sr-only',
+        phone: 'min-w-0',
+        mid: 'min-w-0 @max-[4rem]:sr-only',
+        wide: 'min-w-0 @max-[4rem]:sr-only',
     }
 </script>
 
 {#snippet brand()}
-    <div data-part="home-brand" class={brandClass[band]}>
+    <div data-part="home-brand" data-seasonal-brand class={brandClass[band]}>
         <svg
-            class="nexus-mark shrink-0"
+            class="nexus-mark size-8 shrink-0 max-[639.98px]:size-7"
             viewBox={MARK_VIEWBOX}
-            width="28"
-            height="28"
+            width="32"
+            height="32"
             aria-hidden="true"
             focusable="false"
             data-status="idle"
             data-still=""
+            data-seasonal-mark
         >
             {@html inner}
         </svg>
-        <span class={wordmarkClass[band]}>RisuTanium</span>
+        <SeasonalBrand class={wordmarkClass[band]} />
     </div>
 {/snippet}
 
 <header
     data-part="home-topbar"
     data-layout={band}
+    data-seasonal-anchor
     class="w-full {insetClass[band]} pt-3 pb-2 {barClass[band]}"
 >
     {#if band === 'phone'}

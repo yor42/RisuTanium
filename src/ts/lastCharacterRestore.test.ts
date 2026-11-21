@@ -58,6 +58,7 @@ interface World {
     playground: Writable<number>
     utility: Writable<boolean>
     realm: Writable<boolean>
+    charGrid: Writable<boolean>
     library: Writable<boolean>
 }
 
@@ -87,6 +88,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
     const playground = writable(0)
     const utility = writable(false)
     const realm = writable(false)
+    const charGrid = writable(false)
     const library = writable(false)
     const deps: RestoreDeps = {
         readOnlyPage: () => state.readOnly,
@@ -103,6 +105,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
         playground,
         utilityOpen: utility,
         realmStore: realm,
+        charGrid,
         library: { isOpen: () => get(library), watch: () => library },
         restoreInProgress: () => state.restoring,
         busyKinds: () => state.busy,
@@ -137,7 +140,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
         },
         write: (chaId) => { writes.push(chaId) },
     }
-    return { deps, picks, writes, supersedes, characters, state, selected, settings, studio, customGui, botMaker, playground, utility, realm, library }
+    return { deps, picks, writes, supersedes, characters, state, selected, settings, studio, customGui, botMaker, playground, utility, realm, charGrid, library }
 }
 
 /** A user pick: it counts itself in the generation, as `changeChar` does, and selects at once. */
@@ -225,6 +228,7 @@ describe('the start of a restore', () => {
         ['a realm link in the address', (world) => { world.state.realmUrl = true }],
         ['Utility open', (world) => { world.utility.set(true) }],
         ['the Hub open', (world) => { world.realm.set(true) }],
+        ["the rail's character grid open (#480)", (world) => { world.charGrid.set(true) }],
         ['the Home library open', (world) => { world.library.set(true) }],
     ]
 
@@ -294,6 +298,7 @@ describe('a restore that waits', () => {
         ['the playground', (world) => world.playground.set(2)],
         ['Utility', (world) => world.utility.set(true)],
         ['the Hub', (world) => world.realm.set(true)],
+        ["the rail's character grid (#480)", (world) => world.charGrid.set(true)],
         ['the Home library', (world) => world.library.set(true)],
     ]
 
