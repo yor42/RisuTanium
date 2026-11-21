@@ -2,8 +2,8 @@
 <!-- Svelte doesn't allow two-way binding on an input with a dynamic type, so the value is written back by hand. -->
 
 <!-- The screen-reader-only name goes before the input so the input stays the last sibling. -->
-{#if !labelId && label.trim()}
-    <span id={nameId} class="sr-only">{label}</span>
+{#if ids.srOnly}
+    <span id={ids.nameId} class="sr-only">{label}</span>
 {/if}
 <!-- One element for both states, so the caret and focus survive the masked/plain switch while typing. new-password disables autofill on the masked input. -->
 <input
@@ -36,12 +36,13 @@
     disabled={disabled}
     onchange={onchange}
     list={list}
-    aria-labelledby={nameId}
-    aria-describedby={describedIds}
+    aria-labelledby={ids.nameId}
+    aria-describedby={ids.describedIds}
 />
 
 <script lang="ts">
     import { isSecretRef } from 'src/ts/secretRefPattern'
+    import { fieldNameIds } from './fieldNameIds'
 
     type FormEventHandler<T extends EventTarget> = (event: Event & {
         currentTarget: EventTarget & T;
@@ -98,8 +99,7 @@
     const uid = $props.id();
 
     // TalkBack speaks only the description in the field's own stop, so the naming element is also the first description.
-    let nameId = $derived(labelId || (label.trim() ? `${uid}-label` : undefined));
-    let describedIds = $derived([nameId, describedBy].filter(Boolean).join(' ') || undefined);
+    let ids = $derived(fieldNameIds(uid, labelId, label, describedBy));
 
     // A value that is wholly a ${NAME} reference holds no secret, so it is shown as typed.
     let masked = $derived(hideText && !isSecretRef(value));

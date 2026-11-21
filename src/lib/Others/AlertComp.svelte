@@ -80,6 +80,8 @@
     let cardExportType2 = $state('')
     let cardLicense = $state('')
     let generationInfoMenuIndex = $state(0)
+    // Second selection cue besides the bg-selected fill: an inset ring keeps layout stable.
+    const tabSelectedCue = 'ring-2 ring-inset ring-textcolor'
     let branchHover:null|{
         x:number,
         y:number,
@@ -331,7 +333,7 @@
                     alertStore.set({ type: 'none', msg: message })
                 }} />
             {:else if a.type !== 'select' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'chatOptions'}
-                <span class="text-gray-300 whitespace-pre-wrap">{displayAlertText(a, $busyRefusalLine)}</span>
+                <span id={a.type === 'input' ? `${uid}-alert-message` : undefined} class="text-gray-300 whitespace-pre-wrap">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}
                     <span class="text-gray-500 text-sm">{a.submsg}</span>
                 {/if}
@@ -482,7 +484,7 @@
                     })
                 }}>{language.alertComp.ok}</Button>
             {:else if a.type === 'input'}
-                <TextInput value={a.defaultValue} id="alert-input" autocomplete="off" marginTop list="alert-input-list" />
+                <TextInput value={a.defaultValue} id="alert-input" labelId="{uid}-alert-message" autocomplete="off" marginTop list="alert-input-list" />
                 <Button className="mt-4" onclick={() => {
                     alertStore.set({
                         type: 'none',
@@ -548,16 +550,16 @@
                 </div>
                 {/if}
                 <div class="flex flex-wrap gap-2">
-                    <Button selected={generationInfoMenuIndex === 0} size="sm" onclick={() => {generationInfoMenuIndex = 0}}>
+                    <Button selected={generationInfoMenuIndex === 0} ariaPressed={generationInfoMenuIndex === 0} className={generationInfoMenuIndex === 0 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 0}}>
                         {language.tokens}
                     </Button>
-                    <Button selected={generationInfoMenuIndex === 1} size="sm" onclick={() => {generationInfoMenuIndex = 1}}>
+                    <Button selected={generationInfoMenuIndex === 1} ariaPressed={generationInfoMenuIndex === 1} className={generationInfoMenuIndex === 1 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 1}}>
                         {language.metaData}
                     </Button>
-                    <Button selected={generationInfoMenuIndex === 2} size="sm" onclick={() => {generationInfoMenuIndex = 2}}>
+                    <Button selected={generationInfoMenuIndex === 2} ariaPressed={generationInfoMenuIndex === 2} className={generationInfoMenuIndex === 2 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 2}}>
                         {language.log}
                     </Button>
-                    <Button selected={generationInfoMenuIndex === 3} size="sm" onclick={() => {generationInfoMenuIndex = 3}}>
+                    <Button selected={generationInfoMenuIndex === 3} ariaPressed={generationInfoMenuIndex === 3} className={generationInfoMenuIndex === 3 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 3}}>
                         {language.prompt}
                     </Button>
                     <button class="ml-auto" onclick={() => {
@@ -565,7 +567,7 @@
                             type: 'none',
                             msg: ''
                         })
-                    }}>✖</button>
+                    }} aria-label={language.uiCommon.close}>✖</button>
                 </div>
                 {#if generationInfoMenuIndex === 0}
                     <div class="mt-4 flex justify-center w-full">
@@ -684,10 +686,10 @@
                 {/if}
             {:else if a.type === 'hypaV2'}
                 <div class="flex flex-wrap gap-2 mb-4 max-w-full w-124">
-                    <Button selected={generationInfoMenuIndex === 0} size="sm" onclick={() => {generationInfoMenuIndex = 0}}>
-                        Chunks
+                    <Button selected={generationInfoMenuIndex === 0} ariaPressed={generationInfoMenuIndex === 0} className={generationInfoMenuIndex === 0 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 0}}>
+                        <span id="{uid}-chunks-tab">Chunks</span>
                     </Button>
-                    <Button selected={generationInfoMenuIndex === 1} size="sm" onclick={() => {generationInfoMenuIndex = 1}}>
+                    <Button selected={generationInfoMenuIndex === 1} ariaPressed={generationInfoMenuIndex === 1} className={generationInfoMenuIndex === 1 ? tabSelectedCue : ''} size="sm" onclick={() => {generationInfoMenuIndex = 1}}>
                         {language.alertComp.summarized}
                     </Button>
                     <button class="ml-auto" onclick={() => {
@@ -695,12 +697,12 @@
                             type: 'none',
                             msg: ''
                         })
-                    }}>✖</button>
+                    }} aria-label={language.uiCommon.close}>✖</button>
                 </div>
                 {#if generationInfoMenuIndex === 0}
                     <div class="flex flex-col gap-2 w-full">
                         {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data.chunks as chunk, i}
-                            <TextAreaInput bind:value={chunk.text} />
+                            <TextAreaInput bind:value={chunk.text} labelId="{uid}-chunks-tab" />
                         {/each}
 
                         <!-- Adding non-bound chunk is not okay, change the user flow to edit existing ones. -->
@@ -709,11 +711,11 @@
                     {#each DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].hypaV2Data.mainChunks as chunk, i} <!-- Summarized should be mainChunks, afaik. Be aware of that chunks are created with mainChunks, however this editing would not change related chunks. -->
                         <div class="flex flex-col p-2 rounded-md border-darkborderc border">
                             {#if i === 0}
-                                <span class="text-green-500">{language.active}</span>
+                                <span id="{uid}-summary-{i}" class="text-green-500">{language.active}</span>
                             {:else}
-                                <span>{language.alertComp.inactive}</span>
+                                <span id="{uid}-summary-{i}">{language.alertComp.inactive}</span>
                             {/if}
-                            <TextAreaInput bind:value={chunk.text} />
+                            <TextAreaInput bind:value={chunk.text} labelId="{uid}-summary-{i}" />
                         </div>
                     {/each}
                 {/if}
@@ -858,7 +860,7 @@
                             type2: cardExportType2
                         })
                     })
-                }}>
+                }} aria-label={language.uiCommon.close}>
                     <XIcon />
                 </button>
             </h1>
@@ -887,18 +889,18 @@
             {/if}
             <div class="flex items-center flex-wrap mt-2">
                 {#if a.submsg === 'preset'}
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === ''} onclick={() => {cardExportType = ''}}>Risupreset</button>
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>Risupreset</button>
                 {:else if a.submsg === 'module'}
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === ''} onclick={() => {cardExportType = ''}}>RisuM</button>
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {cardExportType = ''}}>RisuM</button>
                 {:else}
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === ''} onclick={() => {
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg flex-1" class:ring-1={cardExportType === 'realm'} aria-pressed={cardExportType === 'realm'} onclick={() => {cardExportType = 'realm'}}>RisuRealm</button>
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === ''} aria-pressed={cardExportType === ''} onclick={() => {
                         cardExportType = ''
                         cardExportType2 = 'charxJpeg'
                     }}>Character Card V3</button>
-                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === 'ccv2'} onclick={() => {cardExportType = 'ccv2'}}>Character Card V2</button>
+                    <button class="bg-bgcolor px-2 py-4 rounded-lg ml-2 flex-1" class:ring-1={cardExportType === 'ccv2'} aria-pressed={cardExportType === 'ccv2'} onclick={() => {cardExportType = 'ccv2'}}>Character Card V2</button>
                 {/if}
             </div>
             {#if a.submsg === '' && cardExportType === ''}
@@ -962,7 +964,7 @@
                     type: 'none',
                     msg: ''
                 })
-            }}>
+            }} aria-label={language.uiCommon.close}>
                 <XIcon />
             </button>
         </div>
@@ -1039,7 +1041,7 @@
                     </Button>
                     <button class="text-textcolor2 hover:text-textcolor p-1" onclick={() => {
                         alertStore.set({ type: 'none', msg: '' })
-                    }}>
+                    }} aria-label={language.uiCommon.close}>
                         <XIcon />
                     </button>
                 </div>
