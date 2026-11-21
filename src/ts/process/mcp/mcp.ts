@@ -18,6 +18,7 @@ import { sleep } from "src/ts/util";
 import { registeredCustomPluginMCPs } from "./pluginmcp";
 import type { RunSubject } from "../chatOrigin";
 import type { ToolLoopState } from "../request/toolLoop";
+import { authorizeToolCall } from "./toolAuthorize";
 
 export type MCPToolWithURL = MCPTool & {
     mcpURL: string;
@@ -426,25 +427,39 @@ async function callOnClient(url:string, client:MCPClientInstance, methodName:str
     }
 }
 
+/**
+ * A model-driven tool call. The call is decided by `authorizeToolCall` before any client is looked up or
+ * started, so a refused or denied call ensures nothing, and an approval that arrives after a sweep still
+ * ensures a live client. The routing URL is required: a call that names none is refused.
+ */
 export async function callMCPTool(methodName:string, args:any, ctx?:MCPCallContext):Promise<RPCToolCallContent[]> {
     const subject = ctx?.subject;
     const mcpURL = ctx?.mcpURL;
-    const { urls, selectionUrls, owners } = activityUrlsOf(mcpURL ? [mcpURL, ...callOnlyMCPUrls] : callOnlyMCPUrls, subject);
-    const ensured = await beginMCPActivity(urls, selectionUrls, owners, mcpURL ? [mcpURL] : urls);
-    if(mcpURL) {
-        const routed = ensured.find(([url]) => url === mcpURL);
-        if(routed) {
-            return await callOnClient(mcpURL, routed[1], methodName, args, { subject, toolLoop: ctx?.toolLoop });
-        }
+    const refusal = await authorizeToolCall(methodName, args, { subject, mcpURL, toolLoop: ctx?.toolLoop });
+    if(refusal) {
+        return refusal;
     }
-    else {
-        for(const [url, client] of ensured) {
-            stampMCP(url);
-            const tools = await client.getToolList();
-            const tool = tools.find(t => t.name === methodName);
-            if(tool) {
-                return await callOnClient(url, client, methodName, args, { subject, toolLoop: ctx?.toolLoop });
-            }
+    return await dispatchToClient(mcpURL, methodName, args, subject, ctx?.toolLoop);
+}
+
+/**
+ * A call the user made on purpose from the Playground: it asks no approval and is never classified, because
+ * the user typed the arguments and pressed the button.
+ */
+export async function callMCPToolByUser(mcpURL:string, methodName:string, args:any):Promise<RPCToolCallContent[]> {
+    return await dispatchToClient(mcpURL, methodName, args, undefined, undefined);
+}
+
+async function dispatchToClient(mcpURL:string | undefined, methodName:string, args:any, subject:RunSubject | undefined, toolLoop:ToolLoopState | undefined):Promise<RPCToolCallContent[]> {
+    if(mcpURL) {
+        const { urls, selectionUrls, owners } = activityUrlsOf([mcpURL, ...callOnlyMCPUrls], subject);
+        const ensured = await beginMCPActivity(urls, selectionUrls, owners, [mcpURL]);
+        const routed = ensured.find(([url]) => url === mcpURL);
+        if(toolLoop?.signal?.aborted === true) {
+            return [{ type: 'text', text: `Stopped before ${methodName} ran.` }]
+        }
+        if(routed) {
+            return await callOnClient(mcpURL, routed[1], methodName, args, { subject, toolLoop });
         }
     }
     return  [{

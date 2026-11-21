@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
     // Every MCP entry point records, at call time, whether each enabled slot was resident.
     mcp: { init: 0, meta: 0, tools: 0, sawResident: [] as boolean[] },
     alerts: [] as string[],
+    byUser: vi.fn(async (_url: string, _name: string, _args: unknown) => ({})),
+    gated: vi.fn(async () => ({})),
 }))
 
 vi.mock('src/ts/stores.svelte', () => ({
@@ -62,7 +64,8 @@ vi.mock('src/ts/process/mcp/mcp', async () => {
             h.mcp.tools++; note()
             return residentUrls().map((url) => ({ name: 'echo', description: 'echo tool', inputSchema: {}, mcpURL: url }))
         },
-        callMCPTool: async () => ({}),
+        callMCPToolByUser: h.byUser,
+        callMCPTool: h.gated,
     }
 })
 vi.mock('../UI/GUI/TextAreaInput.svelte', () => ({
@@ -144,6 +147,8 @@ beforeEach(() => {
     release = () => {}
     fail = false
     h.alerts.length = 0
+    h.byUser.mockClear()
+    h.gated.mockClear()
     h.mcp.init = 0
     h.mcp.meta = 0
     h.mcp.tools = 0
@@ -286,5 +291,24 @@ describe('no-selection MCP module wait', () => {
         expect(mcpCalls()).toEqual([0, 0, 0])
         release()
         await vi.waitFor(() => { expect(mcpCalls()).toEqual([1, 1, 1]) })
+    })
+})
+
+describe('Playground tool execution', () => {
+    test('P1 the execute button runs the typed arguments through the user-call entry, never the approval-gated one', async () => {
+        h.state.db.modules = [resident('m1', 'Alpha')]
+        await click()
+        await waitMcp(1)
+        const area = target.querySelectorAll('textarea')[1] as HTMLTextAreaElement
+        area.value = '{"text":"hi"}'
+        area.dispatchEvent(new Event('input'))
+        flushSync()
+
+        ;(target.querySelectorAll('button')[0] as HTMLButtonElement).click()
+        await settle()
+
+        expect(h.byUser).toHaveBeenCalledTimes(1)
+        expect(h.byUser).toHaveBeenCalledWith(MCP_URL, 'echo', { text: 'hi' })
+        expect(h.gated).not.toHaveBeenCalled()
     })
 })
