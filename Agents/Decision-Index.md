@@ -2356,3 +2356,4 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2864](Maintainer-Context.md#mc-2864--the-drafted-clean-up-strings-are-accepted-2026-11-21) | the drafted clean-up strings are accepted, 2026-11-21 |
 | [MC-2965](Maintainer-Context.md#mc-2965--443-plain-http-scope-copy-buttons-in-vertex-service-account-login-gets-a-fallback-signer-2026-11-21) | #443 plain-HTTP scope: copy buttons in, Vertex service-account login gets a fallback signer, 2026-11-21 |
 | [MC-2966](Maintainer-Context.md#mc-2966--443-plan-answers-honest-copy-failure-html-embed-left-out-one-invalid-key-message-2026-11-21) | #443 plan answers: honest copy failure, HTML embed left out, one invalid-key message, 2026-11-21 |
+| [MC-2987](Maintainer-Context.md#mc-2987--173-f-arch-delete-the-old-character-archive-path-after-capturing-its-output-2026-11-21) | #173 F-ARCH: delete the old character-archive path after capturing its output, 2026-11-21 |

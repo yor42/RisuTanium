@@ -96,7 +96,7 @@ import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
 import type { Database, character } from 'src/ts/storage/database.svelte'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
-import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { restoreColdCharacter } from 'src/ts/process/coldCharacterRestore'
 import type { RunSubject } from 'src/ts/process/chatOrigin'
 

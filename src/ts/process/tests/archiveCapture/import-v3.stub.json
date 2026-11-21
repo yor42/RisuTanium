@@ -1,0 +1,31 @@
+{
+  "type": "character",
+  "name": "Three",
+  "chaId": "00000000-0000-4000-8000-000000000602",
+  "creatorNotes": "",
+  "coldstorage": "00000000-0000-4000-8000-000000000603",
+  "coldStoragedChats": [],
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000000604",
+      "message": [
+        {
+          "time": 1795262400000,
+          "data": "",
+          "role": "char"
+        }
+      ],
+      "note": "",
+      "name": "",
+      "localLore": []
+    }
+  ],
+  "chatPage": 0,
+  "firstMsgIndex": 0,
+  "coldVersion": 3,
+  "coldChatCount": 1,
+  "tags": [
+    "y"
+  ],
+  "creator": "me"
+}

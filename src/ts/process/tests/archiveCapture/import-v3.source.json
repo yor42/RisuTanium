@@ -1,0 +1,18 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "Three",
+    "description": "d",
+    "first_mes": "hi",
+    "character_version": "1",
+    "extensions": {
+      "risuai": {}
+    },
+    "assets": [],
+    "tags": [
+      "y"
+    ],
+    "creator": "me"
+  }
+}

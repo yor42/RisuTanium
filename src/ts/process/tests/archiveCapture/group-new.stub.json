@@ -1,0 +1,32 @@
+{
+  "type": "group",
+  "name": "Trio",
+  "image": "",
+  "chaId": "cha-group-new",
+  "creatorNotes": "A group",
+  "coldstorage": "00000000-0000-4000-8000-0000000000cb",
+  "coldStoragedChats": [],
+  "chats": [
+    {
+      "id": "00000000-0000-4000-8000-000000001001",
+      "message": [
+        {
+          "time": 1795262400000,
+          "data": "",
+          "role": "char"
+        }
+      ],
+      "note": "",
+      "name": "",
+      "localLore": []
+    }
+  ],
+  "chatPage": 0,
+  "firstMsgIndex": 0,
+  "coldVersion": 3,
+  "coldChatCount": 1,
+  "characters": [
+    "cha-new-alice",
+    "cha-loaded-edited"
+  ]
+}

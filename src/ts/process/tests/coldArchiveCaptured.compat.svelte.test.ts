@@ -2,16 +2,16 @@
  * Compatibility guards: a character the one-character archive wrote is read as the upstream application reads an
  * archived character, and the local backup carries its unit.
  *
- * The engine, `buildColdStub`, the real `setColdStorageItem` / `readColdStorageItem` and
- * `collectColdStorageBackupPayloads` run together; only the page's byte store underneath is a stand-in. The
- * upstream reader below is a MODEL written from what upstream's stub handling does (a slot is a stub when
- * `coldstorage` is truthy; opening it replaces the slot with the unit's character when the `chaId`s agree), not
- * upstream code. Every test here passes with or without later changes to the engine's internals: they pin the shape.
+ * The characters, stubs and unit bytes are the committed capture of the real writer (`archiveCapture/README.md`), loaded
+ * through `archiveFixtures`; the real `readColdStorageItem`, `setColdStorageItem` and `collectColdStorageBackupPayloads`
+ * run over them with only the page's byte store underneath as a stand-in. The upstream reader below is a MODEL written
+ * from what upstream's stub handling does (a slot is a stub when `coldstorage` is truthy; opening it replaces the slot
+ * with the unit's character when the `chaId`s agree), not upstream code. Every test here is a compatibility guard: it
+ * pins the shape of the captured bytes and passes with or without later changes to the writer's internals.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
-
 //#region module mocks
 
 const platformState = vi.hoisted(() => ({ isTauri: false }))
@@ -288,33 +288,14 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 })
 
 //#endregion
-
 import {
     readColdStorageItem,
     collectColdStorageBackupPayloads,
     setColdStorageItem,
 } from '../coldstorage.svelte'
-import { archiveCharacterNow } from '../coldCharacterArchive'
 import { DBState } from 'src/ts/stores.svelte'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from '../memory/bootArchiveState'
-import { resetRetainedForTest } from '../coldRetained'
-import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { character } from 'src/ts/storage/database.svelte'
-
-function fullCharacter(chaId: string): character {
-    return {
-        type: 'character',
-        name: 'Alice',
-        image: 'assets/alice.png',
-        chaId,
-        chatPage: 0,
-        creatorNotes: 'A short note',
-        tags: ['a'],
-        creator: 'Top',
-        chats: [{ id: 'c1', name: 'One', note: '', localLore: [], message: [{ role: 'user', data: 'hello', time: 1 }] }],
-        globalLore: [],
-    } as unknown as character
-}
+import { loadArchiveCase, placeUnits, type ArchivedCase } from './archiveCapture/archiveFixtures'
 
 /** Model: opening a stub replaces the slot wholesale with the unit's character when the `chaId`s agree. */
 async function upstreamOpen(slot: character): Promise<character | 'restore-failed'> {
@@ -326,44 +307,35 @@ async function upstreamOpen(slot: character): Promise<character | 'restore-faile
     return unit?.character && unit.character.chaId === slot.chaId ? unit.character : 'restore-failed'
 }
 
+/** Installs the captured case: its units in the page store and its stub as the list's only slot. */
+function installCase(id: string): { archived: ArchivedCase, stub: character } {
+    const archived = loadArchiveCase(id)
+    placeUnits(unitStore, archived.units)
+    DBState.db.characters.push(archived.stub as never)
+    return { archived, stub: DBState.db.characters[0] as unknown as character }
+}
+
 beforeEach(() => {
     unitStore.clear()
     unitReadLog.length = 0
-    resetRetainedForTest()
-    resetCharacterSaveMarksForTest()
-    resetBootArchiveStateForTest()
-    noteBootArchiveSession(true)
     DBState.db = { formatversion: 5, archiveCharacters: true, plugins: [], characters: [], pluginCustomStorage: {} } as unknown as Database
 })
 
 describe('a character the one-character archive wrote', () => {
     test('guard: upstream sees a stub, opens it from the unit and gets the full character back', async () => {
-        const original = fullCharacter('cha-alice')
-        const before = JSON.stringify(original)
-
-        const result = await archiveCharacterNow({ kind: 'new', character: original })
-        expect(result.ok).toBe(true)
-        if (result.ok === false) {
-            return
-        }
-        const stub = DBState.db.characters[result.index] as unknown as character
+        const { archived, stub } = installCase('new-alice')
 
         expect(stub.coldstorage).toBeTruthy()
-        expect(stub.chaId).toBe('cha-alice')
+        expect(stub.chaId).toBe('cha-new-alice')
         expect(stub.name).toBe('Alice')
         expect(stub.coldStoragedChats).toEqual([])
         const opened = await upstreamOpen(stub)
         expect(opened).not.toBe('restore-failed')
-        expect(JSON.stringify(opened)).toBe(before)
+        expect(JSON.stringify(opened)).toBe(JSON.stringify(archived.source))
     })
 
     test('guard: the local backup carries the unit the stub points at, with nothing missing', async () => {
-        const result = await archiveCharacterNow({ kind: 'new', character: fullCharacter('cha-alice') })
-        expect(result.ok).toBe(true)
-        if (result.ok === false) {
-            return
-        }
-        const stub = DBState.db.characters[result.index] as unknown as character
+        const { stub } = installCase('new-alice')
 
         const collected = await collectColdStorageBackupPayloads(DBState.db)
 
@@ -371,29 +343,26 @@ describe('a character the one-character archive wrote', () => {
         expect(collected.invalidKeys).toEqual([])
         expect(collected.payloads.map((payload) => payload.key)).toContain(stub.coldstorage)
     })
+
+    test('guard: a chat the character points at is archived as its own unit, and the backup carries both units with nothing missing', async () => {
+        const { archived, stub } = installCase('pointer-chat')
+
+        const collected = await collectColdStorageBackupPayloads(DBState.db)
+
+        expect(archived.chatKeys).toHaveLength(1)
+        expect(stub.coldStoragedChats).toEqual(archived.chatKeys)
+        expect(collected.missingKeys).toEqual([])
+        expect(collected.invalidKeys).toEqual([])
+        const keys = collected.payloads.map((payload) => payload.key)
+        expect(keys).toContain(stub.coldstorage)
+        expect(keys).toContain(archived.chatKeys[0])
+    })
 })
 
 describe('a loaded character the engine archived again', () => {
-    /** A character that is in the list as a full object, as a restored or never archived one is. */
-    function loadedCharacter(chaId: string, extra: Record<string, unknown> = {}): character {
-        const cha = { ...fullCharacter(chaId), ...extra } as character
-        DBState.db.characters.push(cha)
-        return DBState.db.characters[DBState.db.characters.length - 1] as unknown as character
-    }
-
     test('guard: after an edit and a trash-then-untrash, upstream opens the stub as the edited character without trashTime, and lists it from the stub', async () => {
-        const live = loadedCharacter('cha-alice')
-        live.name = 'Alice edited'
-        live.creatorNotes = 'An edited note'
-        live.chats.push({ id: 'c2', name: 'Two', note: '', localLore: [], message: [{ role: 'user', data: 'again', time: 2 }] } as never)
-        live.trashTime = 1234
-        delete live.trashTime
-        const edited = JSON.parse(JSON.stringify(live)) as character
+        const { archived, stub } = installCase('loaded-edited')
 
-        const result = await archiveCharacterNow({ kind: 'loaded', character: live, previousUnitKey: 'older-unit' })
-
-        expect(result.ok).toBe(true)
-        const stub = DBState.db.characters[0] as unknown as character
         expect(stub.coldstorage).toBeTruthy()
         expect(stub.trashTime).toBeUndefined()
         expect(stub.name).toBe('Alice edited')
@@ -403,47 +372,32 @@ describe('a loaded character the engine archived again', () => {
         expect(stub.chats[0].message[0].data).toBe('')
         const opened = await upstreamOpen(stub)
         expect(opened).not.toBe('restore-failed')
-        expect(opened).toEqual(edited)
+        expect(opened).toEqual(archived.source)
         expect((opened as character).trashTime).toBeUndefined()
     })
 
     test('guard: a trashed character keeps its trash state on the stub only and the unit never holds trashTime; catches writing the live object instead of coldUnitCharacter(live)', async () => {
-        const live = loadedCharacter('cha-alice', { trashTime: Date.now() })
+        const { stub } = installCase('loaded-trashed')
 
-        const result = await archiveCharacterNow({ kind: 'loaded', character: live })
-
-        expect(result.ok).toBe(true)
-        const stub = DBState.db.characters[0] as unknown as character
         expect(stub.trashTime).toBeGreaterThan(0)
         const opened = await upstreamOpen(stub) as character
+        expect(opened).not.toBe('restore-failed')
         expect(opened.trashTime).toBeUndefined()
     })
 
     test('guard (MC-175, MC-223): the export carries the new unit and not the superseded one, and a fork import of that export restores the edited character', async () => {
-        const first = await archiveCharacterNow({ kind: 'new', character: fullCharacter('cha-alice') })
-        expect(first.ok).toBe(true)
-        if (first.ok === false) {
-            return
-        }
-        const oldKey = (DBState.db.characters[first.index] as unknown as character).coldstorage as string
-        // The user opens it: the slot now holds the unit's full character, which is then edited.
-        const restored = await upstreamOpen(DBState.db.characters[first.index] as unknown as character) as character
-        DBState.db.characters[first.index] = restored as never
-        const live = DBState.db.characters[first.index] as unknown as character
-        live.name = 'Alice edited'
+        const { archived, stub } = installCase('rearchived')
+        const superseded = archived.units.find((unit) => unit.role === 'unit1')
+        const current = archived.units.find((unit) => unit.role === 'unit2')
+        expect(superseded).toBeDefined()
+        expect(current).toBeDefined()
+        expect(stub.coldstorage).toBe(current?.key)
 
-        const second = await archiveCharacterNow({ kind: 'loaded', character: live, previousUnitKey: oldKey })
-
-        expect(second.ok).toBe(true)
-        if (second.ok === false) {
-            return
-        }
-        expect(second.unitKey).not.toBe(oldKey)
-        const stub = DBState.db.characters[second.index] as unknown as character
         const collected = await collectColdStorageBackupPayloads(DBState.db)
+
         expect(collected.missingKeys).toEqual([])
         expect(collected.payloads.map((payload) => payload.key)).toContain(stub.coldstorage)
-        expect(collected.payloads.map((payload) => payload.key)).not.toContain(oldKey)
+        expect(collected.payloads.map((payload) => payload.key)).not.toContain(superseded?.key)
 
         // A fork import writes each payload's unit back before the stub is opened.
         unitStore.clear()

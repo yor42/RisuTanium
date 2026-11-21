@@ -19,7 +19,7 @@ import type { ColdStorageReadResult } from '../coldstorage.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from '../coldstorageData'
 import { DBState } from '../../stores.svelte'
 import { resetRetainedForTest, retainOnRestore } from '../coldRetained'
-import { buildColdStub } from '../coldCharacter'
+import { buildColdStub } from './coldStubFixture'
 import type { Database } from '../../storage/database.svelte'
 
 describe('CHORE-07: readPluginStorageValue', () => {

@@ -221,7 +221,7 @@ vi.mock(import('../../../process/ttsHooks'), () => ({
 import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { getV2PluginAPIs } from '../../plugins.svelte'
 import { DBState, selectedCharID } from '../../../stores.svelte'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { getCurrentCharacter } from '../../../storage/database.svelte'
 
 

@@ -1,10 +1,10 @@
 /**
  * The import Undo through the real character import path (`importCharacter` in `characterCards.ts`): what the caller gets
- * back after an Undo, and which slot an archived import records.
+ * back after an Undo.
  *
  * REAL: `characterCards.ts`, `importBatch.ts`, `importUndo.ts`, `alertTask.svelte.ts`. MOCKED: the character trash writes
  * (`trashImportedCharacters` is a recorder: its real writes have their own tests in `importUndo.svelte.test.ts`), the
- * archive writer (a recorder with the producer's result shape), the toast host and the store seams. The database root is
+ * toast host and the store seams. The database root is
  * one stable object. A mocked store says nothing about native storage.
  *
  * Titles: "reproducer" fails on the code before the change for the named assertion.
@@ -14,8 +14,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const h = vi.hoisted(() => ({
     characters: [] as Array<Record<string, unknown>>,
     files: [] as File[],
-    archive: false,
-    archiveAt: 0 as number,
     trashed: [] as unknown[][],
     toasts: [] as string[],
     db: null as null | Record<string, unknown>,
@@ -99,15 +97,6 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         saveAssetFromPieces: vi.fn(async () => 'saved'),
     } as unknown as typeof import('src/ts/globalApi.svelte')
 })
-vi.mock(import('src/ts/process/coldCharacterArchive'), () => ({
-    archiveCharacterNow: vi.fn(async (target: { character: { chaId: string } }) => {
-        //The producer's shape. The stub lands at the end of the list while `index` names another slot, so a caller that
-        //looks the slot up by index finds the wrong character.
-        const stub = { chaId: target.character.chaId, name: 'archived', coldstorage: 'unit-1' }
-        h.characters.push(stub)
-        return { ok: true, index: h.archiveAt, chaId: stub.chaId, stub, unitKey: 'unit-1', previousUnitKey: null }
-    }),
-}) as unknown as typeof import('src/ts/process/coldCharacterArchive'))
 vi.mock(import('src/ts/media'), () => ({
     compressImage: vi.fn(async (d: unknown) => d),
     getImageType: vi.fn(() => 'png'),
@@ -131,7 +120,6 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({ onOpenUrl: vi.fn(async () => vi
 
 import { importCharacter } from 'src/ts/characterCards'
 import { answerTask, resetTaskHostForTests, setTaskClockForTests, taskHostView, taskResultShowing } from 'src/ts/alertTask.svelte'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
 import type { TaskClock } from 'src/lib/Nexus/pattern/taskProgress'
 
 const OLD_CARD = JSON.stringify({ name: 'Synthetic', description: 'd', first_mes: 'hi' })
@@ -155,13 +143,10 @@ async function importAndPress(press: { kind: 'ok' } | { kind: 'action', id: stri
 beforeEach(() => {
     h.characters = []
     h.files = [new File([OLD_CARD], 'old.json')]
-    h.archive = false
-    h.archiveAt = 0
     h.trashed = []
     h.toasts = []
-    h.db = { get characters() { return h.characters }, modules: [], enabledModules: [], get archiveCharacters() { return h.archive } }
+    h.db = { get characters() { return h.characters }, modules: [], enabledModules: [] }
     vi.stubGlobal('safeStructuredClone', structuredClone)
-    resetBootArchiveStateForTest()
     resetTaskHostForTests()
     let now = 0
     const clock: TaskClock = {
@@ -178,7 +163,6 @@ beforeEach(() => {
 afterEach(() => {
     resetTaskHostForTests()
     setTaskClockForTests(null)
-    resetBootArchiveStateForTest()
     vi.restoreAllMocks()
 })
 
@@ -195,19 +179,5 @@ describe('the import picker after an Undo', () => {
         const { added } = await importAndPress({ kind: 'ok' })
         expect(added).toHaveLength(1)
         expect(h.trashed).toEqual([])
-    })
-
-    test('T25 reproducer: an archived import records the stub the archive placed, not the slot its index names', async () => {
-        h.archive = true
-        noteBootArchiveSession(true)
-        const other = { chaId: 'other', name: 'other' }
-        h.characters.push(other)
-        h.archiveAt = 0
-        const { actions } = await importAndPress({ kind: 'action', id: 'undo' })
-        expect(actions).toEqual(['undo'])
-        expect(h.trashed).toHaveLength(1)
-        const stub = h.characters[1]
-        expect(h.trashed[0]).toEqual([stub])
-        expect(h.trashed[0][0]).not.toBe(other)
     })
 })

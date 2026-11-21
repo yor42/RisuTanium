@@ -1,18 +1,17 @@
 // @vitest-environment happy-dom
 
 /**
- * A card imported straight to the archive, then opened: the unit the import wrote must already hold what the first
- * open would add, or the character would look changed to the put-back and stay in memory.
+ * A stub the archive writer captured for an imported card, opened for the first time: `changeChar` restores the unit's
+ * character, and the format step the import ran before writing is idempotent.
  *
- * The real `characterCards.ts`, `characters.ts` (`changeChar`, `characterFormatUpdate`), the real archive engine,
- * `coldCharacterRestore`, `coldRetained` and a reactive `DBState` built with `$state` run together. The unit store
- * is a map. A pass here says nothing about the real IndexedDB, Tauri or Node stores.
+ * The real `characterCards.ts`, `characters.ts` (`changeChar`, `characterFormatUpdate`), `coldCharacterRestore`,
+ * `coldRetained` and a reactive `DBState` built with `$state` run together over the committed fixtures
+ * (`process/tests/archiveCapture`). The unit store is a map. A pass here says nothing about the real IndexedDB, Tauri or
+ * Node stores.
  *
- * Labels: "new behaviour" fails on the base, where an import writes no unit and leaves no retained record, and
- * additionally fails at its clean-after-open assertion when the import's format step is removed;
- * "diagnostic" establishes a mechanism; "guard" passes with or without the change.
+ * Labels: "diagnostic" establishes a mechanism; "guard" passes with or without the change that removed the writer.
  */
-import { get, writable } from 'svelte/store'
+import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database, character } from 'src/ts/storage/database.svelte'
 
@@ -20,8 +19,6 @@ import type { Database, character } from 'src/ts/storage/database.svelte'
 
 const h = vi.hoisted(() => ({
     units: new Map<string, unknown>(),
-    /** while set, the import's own object-mode format step does nothing */
-    skipImportFormat: false,
     uuid: 0,
     /** The callbacks the save loop would call after the next commit. */
     commits: [] as Array<() => void>,
@@ -225,30 +222,16 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     },
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-/** The import's own format step is the object-mode call; `changeChar` calls the real one inside its module. */
-vi.mock(import('src/ts/characters'), async (importOriginal) => {
-    const actual = await importOriginal()
-    return {
-        ...actual,
-        characterFormatUpdate: (arg: number | character, options?: { updateInteraction?: boolean }) => {
-            if (typeof arg !== 'number' && h.skipImportFormat) {
-                return arg
-            }
-            return actual.characterFormatUpdate(arg, options)
-        },
-    } as unknown as typeof import('src/ts/characters')
-})
-
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { importCharacterProcess } from 'src/ts/characterCards'
 import { changeChar, characterFormatUpdate } from 'src/ts/characters'
-import { contentFingerprint, resetRetainedForTest, retainedRecordOf } from 'src/ts/process/coldRetained'
-import { noteBootArchiveSession, resetBootArchiveStateForTest } from 'src/ts/process/memory/bootArchiveState'
+import { contentFingerprint, resetRetainedForTest } from 'src/ts/process/coldRetained'
 import { resetRestoredBytesForTest } from 'src/ts/process/memory/restoredBytes'
 import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { resetPutBackForTest } from 'src/ts/process/memory/characterPutBack'
+import { decodeUnitBytes, loadArchiveCase, unitCharacterOf } from 'src/ts/process/tests/archiveCapture/archiveFixtures'
 
 const enc = new TextEncoder()
 
@@ -288,19 +271,8 @@ function installDb(): void {
 
 const slot = (index: number): character => DBState.db.characters[index] as unknown as character
 
-/** Imports `card` as `archive` says, opens it as the user would, and reports whether the put-back would call it unchanged. */
-async function importAndOpen(card: unknown, archive: boolean): Promise<{ index: number, cleanAfterOpen: boolean, wasStub: boolean }> {
-    const index = await importCharacterProcess({ name: 'card.json', data: jsonData(card), archive }) as number
-    const wasStub = typeof slot(index).coldstorage === 'string'
-    await changeChar(index)
-    const opened = slot(index)
-    const record = retainedRecordOf(opened)
-    return { index, wasStub, cleanAfterOpen: !!record && contentFingerprint(opened) === record.fp }
-}
-
 beforeEach(() => {
     h.units.clear()
-    h.skipImportFormat = false
     h.uuid = 0
     h.commits.length = 0
     h.writes.length = 0
@@ -308,8 +280,6 @@ beforeEach(() => {
     resetRetainedForTest()
     resetRestoredBytesForTest()
     resetCharacterSaveMarksForTest()
-    resetBootArchiveStateForTest()
-    noteBootArchiveSession(true)
     selectedCharID.set(-1)
     installDb()
     vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -320,55 +290,27 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-describe('an imported card opened for the first time', () => {
-    test.each(cards)('new behaviour: %s imported to the archive is unchanged by its first open', async (_name, card) => {
-        const { index, wasStub, cleanAfterOpen } = await importAndOpen(card, true)
-
-        expect(wasStub).toBe(true)
-        expect(h.units.size).toBe(1)
-        expect(get(selectedCharID)).toBe(index)
-        expect(cleanAfterOpen).toBe(true)
-    })
-
-    //Control for the test above: a unit built without the format step is dirty on first open, which is why the import formats.
-    test('diagnostic: a unit written without the import\'s format step is changed by the first open (V2 and tavern)', async () => {
-        h.skipImportFormat = true
-
-        const v2 = await importAndOpen(v2Card, true)
-        expect(v2.wasStub).toBe(true)
-        expect(v2.cleanAfterOpen).toBe(false)
-
-        installDb()
-        h.units.clear()
-        resetRetainedForTest()
-        const tavern = await importAndOpen(tavernCard, true)
-        expect(tavern.wasStub).toBe(true)
-        expect(tavern.cleanAfterOpen).toBe(false)
-    })
-
-    test('guard: an archived import restores the card the live import would have produced, apart from the volatile fields', async () => {
-        const archived = await importAndOpen(v2Card, true)
-        const archivedChar = JSON.parse(JSON.stringify(slot(archived.index))) as Record<string, unknown>
-
-        installDb()
-        h.units.clear()
-        resetRetainedForTest()
-        noteBootArchiveSession(false)
-        const live = await importAndOpen(v2Card, false)
-        const liveChar = JSON.parse(JSON.stringify(slot(live.index))) as Record<string, unknown>
-
-        for (const volatile of ['lastInteraction', 'trashTime', 'creation_date', 'chaId', 'chats']) {
-            delete archivedChar[volatile]
-            delete liveChar[volatile]
+describe('a captured imported card opened for the first time', () => {
+    test.each(['import-v2', 'import-v3', 'import-tavern'])('guard: the captured stub of %s, opened through changeChar, restores the unit\'s character apart from lastInteraction', async (id) => {
+        const archived = loadArchiveCase(id)
+        for (const unit of archived.units) {
+            h.units.set(unit.key, decodeUnitBytes(unit.bytes))
         }
-        expect(live.wasStub).toBe(false)
-        expect(archivedChar).toEqual(liveChar)
+        DBState.db.characters.push(JSON.parse(JSON.stringify(archived.stub)))
+
+        await changeChar(0)
+
+        const opened = JSON.parse(JSON.stringify(slot(0))) as Record<string, unknown>
+        const expected = JSON.parse(JSON.stringify(unitCharacterOf(archived.units[0]))) as Record<string, unknown>
+        delete opened.lastInteraction
+        delete expected.lastInteraction
+        expect(opened.coldstorage).toBeUndefined()
+        expect(opened).toEqual(expected)
     })
 })
 
 describe('the format step', () => {
     test.each(cards)('diagnostic: formatting %s twice gives the content of formatting it once', async (_name, card) => {
-        noteBootArchiveSession(false)
         const index = await importCharacterProcess({ name: 'card.json', data: jsonData(card) }) as number
         const char = slot(index)
 

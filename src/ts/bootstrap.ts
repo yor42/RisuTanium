@@ -32,7 +32,6 @@ import { updateGuisize } from "./gui/guisize";
 import { startRootAttributeMirror } from "./gui/rootAttributes";
 import { repairModuleListLorebooks } from "./process/moduleLorebookRepair";
 import { startCharacterPutBack } from "./process/memory/characterPutBack";
-import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/bootArchiveState";
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
@@ -131,8 +130,7 @@ export async function loadData() {
                 if (store2Boot.kind === 'store2') {
                     await installStore2Profile(store2Boot, bootRepairs)
                 } else {
-                    // The legacy profile is only read, never written: no archive pass runs and no numbered backup is pruned.
-                    noteBootArchiveSession(false)
+                    // The legacy profile is only read, never written: no numbered backup is pruned.
                     LoadingStatusState.text = "Reading Save File..."
                     setPageStorageMode({ kind: 'read-only', reason: store2Boot.reason })
                     // Any main-file read that fails leaves the file as it is and takes the backup route below.
@@ -170,7 +168,6 @@ export async function loadData() {
                             }
                         }
                     }
-                    noteBootPassCommitted(false)
                     if (!installed) {
                         LoadingStatusState.text = "Reading Backup Files..."
                         const backups = await listBackupTimes()
@@ -218,8 +215,7 @@ export async function loadData() {
                 if (store2Boot.kind === 'store2') {
                     await installStore2Profile(store2Boot, bootRepairs)
                 } else {
-                    // The legacy profile is only read, never written: no archive pass runs and no numbered backup is pruned.
-                    noteBootArchiveSession(false)
+                    // The legacy profile is only read, never written: no numbered backup is pruned.
                     LoadingStatusState.text = "Loading Local Save File..."
                     setPageStorageMode({ kind: 'read-only', reason: store2Boot.reason })
                     // Only an absent main file is replaced by an empty profile, and that profile is only installed, never
@@ -271,7 +267,6 @@ export async function loadData() {
                             }
                         }
                     }
-                    noteBootPassCommitted(false)
                     // A legacy profile this page only reads for another reason says so through the dispatch's own notice.
                     if (store2Boot.reason === 'opfs-transitional') {
                         opfsReadOnlyNotice = true
@@ -520,14 +515,11 @@ async function readColdUnitForConversion(key: string) {
 }
 
 /**
- * Installs the open store2 profile: no archive session ever existed, so none is noted as capable and no pass committed.
- * The repairs the legacy boot makes to a decoded tree apply to the assembled one the same way.
+ * Installs the open store2 profile. The repairs the legacy boot makes to a decoded tree apply to the assembled one the same way.
  * Reports the library step: the repairs, the install and the notices the caller posts after it run under that text.
  */
 async function installStore2Profile(boot: Extract<Store2BootResult, { kind: 'store2' }>, repairs: BootRepairs) {
     LoadingStatusState.text = "Decoding Save File..."
-    noteBootArchiveSession(false)
-    noteBootPassCommitted(false)
     await repairBootTree(boot.database, repairs)
     setDatabase(boot.database)
 }

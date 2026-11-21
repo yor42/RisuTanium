@@ -242,7 +242,7 @@ import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { SandboxHost } from '../factory'
 import { getV2PluginAPIs } from '../../plugins.svelte'
 import { DBState, selectedCharID } from '../../../stores.svelte'
-import { buildColdStub } from '../../../process/coldCharacter'
+import { buildColdStub } from '../../../process/tests/coldStubFixture'
 import { withoutAltIn } from '../../chatAltBridge'
 
 //#region fixtures

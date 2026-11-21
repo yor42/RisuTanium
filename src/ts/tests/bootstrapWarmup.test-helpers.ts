@@ -7,7 +7,7 @@ import type { WorkerGlobalState } from 'vitest'
 // functions, and `loadData` is never called here. `vi.resetModules()` in the file's `beforeEach` clears evaluation
 // but keeps the transform, so later imports only re-evaluate.
 // A file may adopt this only if its mock factories survive one extra evaluation of `bootstrap`: a factory that
-// captures a `vi.fn` consumed by a later assertion (the archive-reachability test's `archiveCharacterNow` spy)
+// captures a `vi.fn` consumed by a later assertion (a spy on a mocked collaborator)
 // would see the warm-up's calls and must stay out.
 //
 // `expectBootstrapTransformed` reads the vitest worker's module-runner cache and asserts that a transformed

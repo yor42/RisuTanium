@@ -560,8 +560,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(shown).toEqual([language.store2Boot.noticeServerCapability])
         expect(installedWhenPosted).toEqual([1])
         expect(shown).not.toContain(language.opfsReadOnlyNotice)
-        const { canBootArchive } = await import('src/ts/process/memory/bootArchiveState')
-        expect(canBootArchive()).toBe(false)
         const { refuseOnReadOnlyPage } = await import('src/ts/storage/readOnlyPage')
         expect(await refuseOnReadOnlyPage()).toBe(true)
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
@@ -680,8 +678,6 @@ describe('loadData(): a normal store2 profile', () => {
         expect(getActiveStore2Save()).not.toBeNull()
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
         expect(getPageStorageMode()).toEqual({ kind: 'store2' })
-        const { canBootArchive } = await import('src/ts/process/memory/bootArchiveState')
-        expect(canBootArchive()).toBe(false)
         // The profile has stubs, so the put-back that unloads a loaded character runs on this page.
         expect(putBackMock, 'the store2 put-back starts').toHaveBeenCalledTimes(1)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
