@@ -2374,3 +2374,5 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2865](Maintainer-Context.md#mc-2865--165-the-automatic-store2-inlay-pass-skips-node-2026-11-21) | #165 the automatic store2 inlay pass skips Node, 2026-11-21 |
 | [MC-2866](Maintainer-Context.md#mc-2866--165-the-clean-up-unused-files-button-stays-files-only-2026-11-21) | #165 the Clean Up Unused Files button stays files-only, 2026-11-21 |
 | [MC-2867](Maintainer-Context.md#mc-2867--165-studio-undo-history-and-body-only-residue-are-accepted-limits-2026-11-21) | #165 Studio undo history and body-only residue are accepted limits, 2026-11-21 |
+| [MC-2990](Maintainer-Context.md#mc-2990--455-under-load-the-default-streaming-mode-runs-output-scripts-only-on-the-newest-reply-text-2026-11-21) | #455 under load, the default streaming mode runs output scripts only on the newest reply text, 2026-11-21 |
+| [MC-2991](Maintainer-Context.md#mc-2991--455-one-posted-message-task-yield-per-pass-is-allowed-in-the-reply-loop-gated-on-a-note-9-hidden-page-row-2026-11-21) | #455 one posted-message task yield per pass is allowed in the reply loop, gated on a Note 9 hidden-page row, 2026-11-21 |
