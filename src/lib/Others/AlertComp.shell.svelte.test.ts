@@ -258,6 +258,7 @@ const SHARED_BOX: Array<[alertData['type'], alertData, Severity, Role]> = [
     ['staleAccountNotice', { type: 'staleAccountNotice', msg: 'stale' }, 'caution', 'alertdialog'],
     ['peerConflicts', { type: 'peerConflicts', msg: 'Conflicts', peerConflicts: [] }, 'caution', 'dialog'],
     ['parkedReply', { type: 'parkedReply', msg: 'A reply', parkedReply: { name: 'Alice', text: 'text' } }, 'caution', 'dialog'],
+    ['updateOffer', { type: 'updateOffer', msg: '', cancelAnswer: 'later', updateOffer: { currentVersion: '0.1.0', version: '0.2.0', notes: 'Notes' } }, 'confirm', 'dialog'],
     ['wait', { type: 'wait', msg: 'Loading...' }, 'notice', 'dialog'],
     ['wait2', { type: 'wait2', msg: 'Stopped' }, 'notice', 'dialog'],
     ['progress', { type: 'progress', msg: 'Saving', submsg: '10' }, 'notice', 'dialog'],
@@ -345,7 +346,24 @@ describe('AlertComp.svelte: the shared box is the pattern dialog', () => {
             await unmount(mountedInstances.pop() as never)
             target.remove()
         }
-        expect(wide.sort()).toEqual(['addchar', 'chatOptions', 'hypaV2', 'markdown', 'parkedReply', 'peerConflicts', 'requestdata', 'selectChar'])
+        expect(wide.sort()).toEqual(['addchar', 'chatOptions', 'hypaV2', 'markdown', 'parkedReply', 'peerConflicts', 'requestdata', 'selectChar', 'updateOffer'])
+    })
+
+    test('an update offer is named by its heading and described by the version list, the only element with the message id', async () => {
+        arrangeDatabase()
+        const target = mountAlertComp()
+        await show({ type: 'updateOffer', msg: '', cancelAnswer: 'later', updateOffer: { currentVersion: '0.1.0', version: '0.2.0', notes: 'Notes' } })
+
+        const dialog = dialogOf(target)
+        expect(target.querySelector('h2[data-part="pattern-warn-headline"]')?.textContent).toBe(language.updateAvailableTitle)
+        const describedBy = dialog.getAttribute('aria-describedby') ?? ''
+        expect(describedBy).not.toBe('')
+        const described = document.getElementById(describedBy)
+        expect(described?.tagName).toBe('DL')
+        expect(described?.textContent).toContain('0.2.0')
+        expect(target.querySelectorAll(`[id="${describedBy}"]`)).toHaveLength(1)
+        const region = target.querySelector('[role="region"]')
+        expect(document.getElementById(region?.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(language.updateReleaseNotes)
     })
 
     test('the card export, branches and request log wrappers carry the pattern layer and keep their close names', async () => {

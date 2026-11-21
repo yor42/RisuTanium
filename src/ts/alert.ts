@@ -19,12 +19,19 @@ export interface PeerConflictRowView {
     note: string | null
 }
 
+/** What an update offer shows. Every field is untrusted remote text. */
+export interface UpdateOffer {
+    currentVersion: string
+    version: string
+    notes: string
+}
+
 export interface alertData{
     type: 'error'|'normal'|'none'|'ask'|'wait'|'selectChar'
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
@@ -34,11 +41,13 @@ export interface alertData{
     peerConflicts?: PeerConflictRowView[],
     /** The reply of a `parkedReply` prompt: the character's name and the reply text, both shown as text. Its answer is `discard` or `later`. */
     parkedReply?: { name: string, text: string },
+    /** The update of an `updateOffer` prompt: the installed version, the offered version and the release notes. All three come from a remote file and render as text only. Its answer is `install` or `later`. */
+    updateOffer?: UpdateOffer,
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */
     onCancel?: () => void
-    /** Set on a select or input prompt whose caller offered a cancel: the answer its Cancel button, Back and Escape write. */
+    /** Set on a select or input prompt whose caller offered a cancel, and always on an `updateOffer` prompt: the answer its Cancel button, Back and Escape write. */
     cancelAnswer?: string
     /** Set on an error alert that has a place to fix it: a button that closes the alert, then runs `open`. */
     link?: { label: string, open: () => void }
@@ -247,6 +256,20 @@ export async function alertSelect(msg:string[], display?:string, options?:Prompt
         data.cancelAnswer = options.cancel
     }
     return await askPrompt(data)
+}
+
+/**
+ * Asks whether to install an update. Any answer other than `install`, including Escape and Back,
+ * is `later`; nothing here installs.
+ */
+export async function alertUpdateOffer(offer: UpdateOffer): Promise<'install' | 'later'>{
+    const answer = await askPrompt({
+        type: 'updateOffer',
+        msg: '',
+        updateOffer: offer,
+        cancelAnswer: 'later',
+    })
+    return answer === 'install' ? 'install' : 'later'
 }
 
 export async function alertErrorWait(msg:string){
