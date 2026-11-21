@@ -351,12 +351,12 @@ export async function alertSelectChar(){
     })
 }
 
-export async function alertConfirm(msg:string){
+export async function alertConfirm(msg:string, options?:{signal?:AbortSignal|null}){
 
     return (await askPrompt({
         'type': 'ask',
         'msg': msg
-    })) === 'yes'
+    }, options)) === 'yes'
 }
 
 export async function alertCardExport(type:string = ''){

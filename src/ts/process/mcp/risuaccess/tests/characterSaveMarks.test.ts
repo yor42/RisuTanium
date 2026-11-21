@@ -5,12 +5,13 @@
  * the REAL `RisuAccessClient.callTool` (`client.ts`), the REAL
  * `CharacterHandler` (`characters.ts`), the REAL `getCharacterForWrite`
  * (`utils.ts`), and the REAL `characterSaveMarks.ts` / `RisuSaveEncoder`
- * (encode -> decode round trip, since the table says "persisted"). Every
- * write here follows an AWAITED `promptAccess()` (`alertConfirm`) -- these
- * tests specifically resolve that confirm AFTER a "save" (tracker trim) has
- * already run, proving the mark (made in `callTool`'s `finally`, after the
- * handler settles) survives into the NEXT save rather than being silently
- * dropped by a save that raced the confirm dialog.
+ * (encode -> decode round trip, since the table says "persisted"). The user's
+ * approval is asked by the gate (`authorizeToolCall`, run by `callMCPTool`
+ * before the client), never by a handler -- these tests resolve that approval
+ * AFTER a "save" (tracker trim) has already run, proving the mark (made in
+ * `callTool`'s `finally`, after the handler settles) survives into the NEXT
+ * save rather than being silently dropped by a save that raced the pending
+ * approval. A save that runs while the approval is pending is the invariant.
  *
  * The last test enumerates `CharacterHandler.getTools()` (the real registry)
  * and spies on the real, unmodified `getCharacterForWrite` to CLASSIFY, by
@@ -92,6 +93,7 @@ import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
+import { authorizeToolCall } from '../../toolAuthorize'
 
 //#region fixtures
 
@@ -148,6 +150,12 @@ function deferred<T>() {
     return { promise, resolve }
 }
 
+/** Runs a tool call the way `callMCPTool` does: the gate decides first, then the client runs the tool. */
+async function callGated(client: RisuAccessClient, name: string, args: Record<string, unknown>) {
+    const refusal = await authorizeToolCall(name, args, { mcpURL: 'internal:risuai' })
+    return refusal ?? await client.callTool(name, args)
+}
+
 beforeEach(() => {
     resetCharacterSaveMarksForTest()
     alertConfirmMock.mockReset()
@@ -201,7 +209,7 @@ const mutatingToolCases: {
 
 describe('risuaccess mutating character tools', () => {
     for (const toolCase of mutatingToolCases) {
-        test(`${toolCase.name}: a mark made AFTER a pending promptAccess resolves survives a save that raced it, and is persisted`, async () => {
+        test(`${toolCase.name}: a mark made AFTER a pending approval resolves survives a save that raced it, and is persisted`, async () => {
             const db = installDb()
             // Pre-seed state so "delete" tools have something to delete.
             if (toolCase.name === 'risu-delete-character-lorebook') {
@@ -226,9 +234,9 @@ describe('risuaccess mutating character tools', () => {
             const gate = deferred<boolean>()
             alertConfirmMock.mockImplementationOnce(() => gate.promise)
 
-            const callPromise = client.callTool(toolCase.name, toolCase.args)
+            const callPromise = callGated(client, toolCase.name, toolCase.args)
 
-            // A save runs WHILE promptAccess is still pending -- the mutation
+            // A save runs WHILE the approval is still pending -- the mutation
             // (and the mark) haven't happened yet. This is the race the F4
             // fix specifically guards: marking only BEFORE the mutation would
             // not survive this trim.
@@ -238,6 +246,7 @@ describe('risuaccess mutating character tools', () => {
 
             gate.resolve(true)
             await callPromise
+            expect(alertConfirmMock).toHaveBeenCalledTimes(1)
 
             // THE MARK -- made in callTool's finally, AFTER the handler (and
             // its mutation) settled, so it lands in the tracker AFTER the
@@ -268,8 +277,8 @@ describe('risuaccess mutating character tools', () => {
         alertConfirmMock.mockImplementationOnce(() => gateA.promise)
         alertConfirmMock.mockImplementationOnce(() => gateB.promise)
 
-        const callA = client.callTool('risu-set-character-info', { id: 'char-0', data: { name: 'A edited' } })
-        const callB = client.callTool('risu-set-character-info', { id: 'char-1', data: { name: 'B edited' } })
+        const callA = callGated(client, 'risu-set-character-info', { id: 'char-0', data: { name: 'A edited' } })
+        const callB = callGated(client, 'risu-set-character-info', { id: 'char-1', data: { name: 'B edited' } })
 
         // Resolve B first, then A -- overlapping, out of order.
         gateB.resolve(true)
@@ -366,6 +375,8 @@ describe('risuaccess mutating character tools', () => {
         // marked it -- an unmarked write is real data loss, independent of
         // whether the table above already knew about this tool.
         expect(wroteWithoutMarking).toEqual([])
+        // The client alone asks nothing: approval belongs to the gate.
+        expect(alertConfirmMock).not.toHaveBeenCalled()
 
         const expectedWriting = new Set(mutatingToolCases.map((c) => c.name))
         expect(actuallyWriting).toEqual(expectedWriting)

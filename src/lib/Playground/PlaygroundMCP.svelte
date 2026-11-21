@@ -1,7 +1,7 @@
 <script lang="ts">
   import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
-    import { type MCPToolWithURL, callMCPTool, getMCPMeta, getMCPTools, initializeMCPs } from "src/ts/process/mcp/mcp";
+    import { type MCPToolWithURL, callMCPToolByUser, getMCPMeta, getMCPTools, initializeMCPs } from "src/ts/process/mcp/mcp";
     import { alertMd } from "src/ts/alert";
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
@@ -48,7 +48,7 @@
       </div>
       <TextAreaInput labelId="{uid}-tool-{index}" bind:value={toolInputs[tool.name]} placeholder={language.playground.toolInputPlaceholder} />
       <Button onclick={async () => {
-        const x = await callMCPTool(tool.name, JSON.parse(toolInputs[tool.name]));
+        const x = await callMCPToolByUser(tool.mcpURL, tool.name, JSON.parse(toolInputs[tool.name]));
         alertMd(fillLang(language.playground.toolExecuted, { name: tool.name, response: JSON.stringify(x, null, 2) }));
       }}>{fillLang(language.playground.executeTool, { name: tool.name })}</Button>
     </div>
