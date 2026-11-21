@@ -580,3 +580,70 @@ describe('T3-19: the tree does not interfere with other keys', () => {
         expect(get(alertStore).type).toBe('branches')
     })
 })
+
+describe('the preview stays inside the visible box of the tree', () => {
+    const TREE_VIEW = { clientWidth: 250, clientHeight: 300, scrollLeft: 0, scrollTop: 0 }
+    const PREVIEW_BOX = { offsetWidth: 100, offsetHeight: 60 }
+
+    /** happy-dom lays nothing out, so the tree's visible box and the preview's size are stubbed per data-part. */
+    function stubLayout(): () => void {
+        const restores: Array<() => void> = []
+        const stub = (property: string, valueOf: (part: string | undefined) => number): void => {
+            let owner: object | null = HTMLElement.prototype
+            while(owner && !Object.getOwnPropertyDescriptor(owner, property)){
+                owner = Object.getPrototypeOf(owner)
+            }
+            if(!owner){
+                throw new Error(`no prototype owns ${property}`)
+            }
+            const original = Object.getOwnPropertyDescriptor(owner, property) as PropertyDescriptor
+            Object.defineProperty(owner, property, {
+                configurable: true,
+                get(this: HTMLElement) {
+                    return valueOf(this.dataset?.part)
+                },
+            })
+            restores.push(() => Object.defineProperty(owner as object, property, original))
+        }
+        const ofTree = (key: keyof typeof TREE_VIEW) => (part: string | undefined) => (part === 'pattern-alert-tree' ? TREE_VIEW[key] : 0)
+        const ofPreview = (key: keyof typeof PREVIEW_BOX) => (part: string | undefined) => (part === 'pattern-alert-tree-preview' ? PREVIEW_BOX[key] : 0)
+        stub('clientWidth', ofTree('clientWidth'))
+        stub('clientHeight', ofTree('clientHeight'))
+        stub('scrollLeft', ofTree('scrollLeft'))
+        stub('scrollTop', ofTree('scrollTop'))
+        stub('offsetWidth', ofPreview('offsetWidth'))
+        stub('offsetHeight', ofPreview('offsetHeight'))
+        return () => restores.splice(0).forEach((restore) => restore())
+    }
+
+    const leftOf = (target: HTMLElement): number => {
+        const preview = target.querySelector<HTMLElement>(PREVIEW_SELECTOR)
+        if(!preview){
+            throw new Error('no preview is shown')
+        }
+        return parseFloat(preview.style.left)
+    }
+
+    test('a right-edge node opens its preview inside the view, and a left-column node still opens to its right', async () => {
+        const restore = stubLayout()
+        try {
+            const target = await openBranches(seedBF2)
+            const nodes = nodesOf(target)
+            const rightEdge = nodes.find((node) => node.style.left !== '24px')
+            const leftColumn = nodes.find((node) => node.style.left === '24px')
+            if(!rightEdge || !leftColumn){
+                throw new Error('the seed has no node in each column')
+            }
+
+            focusNode(leftColumn)
+            expect(leftOf(target), 'a left-column node opens to its right: 24 + 48 + 32').toBe(104)
+
+            focusNode(rightEdge)
+            const left = leftOf(target)
+            expect(left, 'the preview starts inside the view').toBeGreaterThanOrEqual(TREE_VIEW.scrollLeft)
+            expect(left + PREVIEW_BOX.offsetWidth, 'the preview ends inside the view').toBeLessThanOrEqual(TREE_VIEW.scrollLeft + TREE_VIEW.clientWidth)
+        } finally {
+            restore()
+        }
+    })
+})

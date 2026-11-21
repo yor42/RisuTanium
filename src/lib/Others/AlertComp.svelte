@@ -36,7 +36,7 @@
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme";
     import { getChatBranches } from "src/ts/gui/branches";
-    import { branchMoveTarget, branchNodeKey, branchNodeName, branchNodeText, classifyBranchKey, resolveBranchStop, type BranchNodeLike } from "src/ts/gui/branchNode";
+    import { branchMoveTarget, branchNodeKey, branchNodeName, branchNodeText, classifyBranchKey, placeBranchPreview, resolveBranchStop, type BranchNodeLike } from "src/ts/gui/branchNode";
     import { getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { translateStackTrace } from "../../ts/sourcemap";
     import { getDetailedOSLabel, getFallbackOSLabel, getRisuEnvironmentLabel } from "src/ts/platform";
@@ -206,6 +206,30 @@
         y:number,
         content:string,
     } = $state(null)
+    let branchTree: HTMLElement | null = $state(null)
+    let branchPreview: HTMLElement | null = $state(null)
+    // The preview is measured after it renders and placed inside the tree's visible box at its current scroll position.
+    // The effect runs before the next paint, so the unplaced preview is never shown. A scroll while a preview is
+    // shown does not re-place it: the preview leaves with the pointer or the focus.
+    $effect(() => {
+        if(branchHover === null || !branchPreview || !branchTree){
+            return
+        }
+        const placed = placeBranchPreview({
+            nodeLeft: branchHover.x * TREE_CELL + TREE_OFFSET,
+            nodeTop: branchHover.y * TREE_CELL + TREE_OFFSET,
+            nodeSize: TREE_NODE,
+            gap: TREE_CELL - TREE_NODE,
+            previewWidth: branchPreview.offsetWidth,
+            previewHeight: branchPreview.offsetHeight,
+            scrollLeft: branchTree.scrollLeft,
+            scrollTop: branchTree.scrollTop,
+            viewWidth: branchTree.clientWidth,
+            viewHeight: branchTree.clientHeight,
+        })
+        branchPreview.style.left = placed.left + 'px'
+        branchPreview.style.top = placed.top + 'px'
+    })
     // The one node of the tree that takes Tab, remembered by key and by index.
     let branchStop:null|{
         key:string,
@@ -1150,6 +1174,7 @@
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                     data-part="pattern-alert-tree"
+                    bind:this={branchTree}
                     style:height={(nodes.reduce((deepest, node) => Math.max(deepest, node.y), 0) * TREE_CELL + TREE_OFFSET * 2 + TREE_NODE) + 'px'}
                     onkeydown={(e) => onTreeKeydown(e, nodes)}
                 >
@@ -1214,8 +1239,7 @@
                     {#if branchHover !== null}
                         <div
                             data-part="pattern-alert-tree-preview"
-                            style:top={(branchHover.y * TREE_CELL + TREE_OFFSET) + 'px'}
-                            style:left={((branchHover.x + 1) * TREE_CELL + TREE_OFFSET) + 'px'}
+                            bind:this={branchPreview}
                         >{branchHover.content}</div>
                     {/if}
                 </div>

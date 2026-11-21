@@ -15,8 +15,10 @@ import {
     branchNodeName,
     branchNodeText,
     classifyBranchKey,
+    placeBranchPreview,
     resolveBranchStop,
     type BranchMove,
+    type BranchPreviewPlacementInput,
 } from './branchNode'
 
 type ChatSeed = { fmIndex?: number, message: Array<{ role: string, data: string }> }
@@ -229,5 +231,45 @@ describe('resolveBranchStop', () => {
     test('a vanished key falls back to the remembered index, clamped to the last node', () => {
         expect(resolveBranchStop(nodes, { key: '9:9', index: 1 })).toBe(1)
         expect(resolveBranchStop(nodes, { key: '9:9', index: 7 })).toBe(2)
+    })
+})
+
+describe('placeBranchPreview', () => {
+    // A 400 wide, 300 high view; a 48 node; 32 between the node and its preview.
+    const base: BranchPreviewPlacementInput = {
+        nodeLeft: 24, nodeTop: 24, nodeSize: 48, gap: 32,
+        previewWidth: 100, previewHeight: 60,
+        scrollLeft: 0, scrollTop: 0, viewWidth: 400, viewHeight: 300,
+    }
+
+    test('opens to the right of the node when it fits', () => {
+        expect(placeBranchPreview(base)).toEqual({ left: 104, top: 24 })
+    })
+
+    test('opens to the left of the node when the right side overflows the view', () => {
+        expect(placeBranchPreview({ ...base, nodeLeft: 344 })).toEqual({ left: 344 - 32 - 100, top: 24 })
+    })
+
+    test('is pulled into the view when neither side fits', () => {
+        // Right side would end at 380 + 100; the left side would start at 150 - 32 - 260 < 0.
+        expect(placeBranchPreview({ ...base, nodeLeft: 150, previewWidth: 260 })).toEqual({ left: 140, top: 24 })
+    })
+
+    test('keeps its left edge at the scroll position when wider than the view', () => {
+        expect(placeBranchPreview({ ...base, nodeLeft: 150, scrollLeft: 50, previewWidth: 500 }).left).toBe(50)
+    })
+
+    test('reads the view at the scroll position, not at the content origin', () => {
+        // The visible x range is 300..700.
+        expect(placeBranchPreview({ ...base, nodeLeft: 600, scrollLeft: 300 }).left).toBe(600 - 32 - 100)
+        expect(placeBranchPreview({ ...base, nodeLeft: 320, scrollLeft: 300 }).left).toBe(400)
+        expect(placeBranchPreview({ ...base, nodeLeft: 310, scrollLeft: 300, previewWidth: 390 }).left).toBe(310)
+    })
+
+    test('is pulled up from the bottom edge of the view and keeps its top edge when taller than the view', () => {
+        expect(placeBranchPreview({ ...base, nodeTop: 280 }).top).toBe(300 - 60)
+        expect(placeBranchPreview({ ...base, nodeTop: 380, scrollTop: 100 }).top).toBe(400 - 60)
+        expect(placeBranchPreview({ ...base, nodeTop: 10, scrollTop: 100 }).top).toBe(100)
+        expect(placeBranchPreview({ ...base, nodeTop: 280, scrollTop: 100, previewHeight: 500 }).top).toBe(100)
     })
 })

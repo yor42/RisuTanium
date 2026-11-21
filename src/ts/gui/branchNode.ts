@@ -41,6 +41,46 @@ export function branchNodeName(text: string, fallback: string): string {
     return points.slice(0, NAME_LIMIT - 1).join('').trimEnd() + '…'
 }
 
+/** A node's box and the measured preview, with the tree's visible box, all in the tree's content coordinates. */
+export type BranchPreviewPlacementInput = {
+    nodeLeft: number,
+    nodeTop: number,
+    nodeSize: number,
+    /** The space between the node and the preview beside it. */
+    gap: number,
+    previewWidth: number,
+    previewHeight: number,
+    scrollLeft: number,
+    scrollTop: number,
+    viewWidth: number,
+    viewHeight: number,
+}
+
+/**
+ * Where a node's preview goes so it stays inside the tree's visible box. It opens to the right of the node when it
+ * fits there, else to the left when it fits there, else at the right-hand position pulled into the view. Its left edge
+ * wins when it is wider than the view, and its top edge wins when it is taller. The top is the node's, pulled into the
+ * view.
+ */
+export function placeBranchPreview(input: BranchPreviewPlacementInput): { left: number, top: number } {
+    const viewRight = input.scrollLeft + input.viewWidth
+    const viewBottom = input.scrollTop + input.viewHeight
+    const rightSide = input.nodeLeft + input.nodeSize + input.gap
+    const leftSide = input.nodeLeft - input.gap - input.previewWidth
+    let left: number
+    if(rightSide + input.previewWidth <= viewRight){
+        left = rightSide
+    }
+    else if(leftSide >= input.scrollLeft){
+        left = leftSide
+    }
+    else{
+        left = Math.max(input.scrollLeft, Math.min(rightSide, viewRight - input.previewWidth))
+    }
+    const top = Math.max(input.scrollTop, Math.min(input.nodeTop, viewBottom - input.previewHeight))
+    return { left, top }
+}
+
 /**
  * The identity of a node across renders. Each chat adds one path to the prefix tree and the chat that created a node
  * is stored on it, so no two nodes of one render share a `(chatId, y)`.
