@@ -40,6 +40,7 @@
         renameHypaV3Preset,
     } from "src/ts/process/memory/hypaV3Presets";
     import { chroMemoryOn, legacyEngineFields, memoryEngineOf, setMemoryEngine, type MemoryEngine } from "src/ts/process/memory/memoryEngine";
+    import { budgetInputValue, defaultBudgetTokens, normalizeBudgetInput, writeLtmSettings } from "src/ts/process/memory/chroMemory/settings";
 
     // One hold per reference image; they end with the page.
     const lookups = useCharImageLookups();
@@ -1092,7 +1093,15 @@
         </SelectInput>
 
         {#if chroMemoryOn(DBState.db)}
-            <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.chroMemoryPreviewDesc}</span>
+            <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.chroMemoryDesc}</span>
+            <span class="text-textcolor" id="{uid}-chro-budget">{language.chroMemoryBudget}</span>
+            <NumberInput labelId="{uid}-chro-budget" describedBy="{uid}-chro-budget-desc" size="sm" min={1} value={budgetInputValue(DBState.db.ltmSettings)} onChange={(e) => {
+                const input = e.currentTarget
+                const budget = normalizeBudgetInput(input.valueAsNumber)
+                writeLtmSettings(DBState.db, { budgetTokens: budget })
+                input.value = budget === null ? "" : String(budget)
+            }} />
+            <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full" id="{uid}-chro-budget-desc">{fillLang(language.chroMemoryBudgetDesc, { tokens: defaultBudgetTokens(DBState.db.maxContext) })}</span>
         {/if}
         {#if lv.hanuraiEnable}
             <span class="mb-2 text-textcolor2 text-sm text-wrap wrap-break-word max-w-full">{language.hanuraiDesc}</span>

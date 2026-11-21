@@ -40,12 +40,9 @@ export interface ConformanceHarness {
     failDeleteOf?(key: string): () => void
     /** Whether the adapter offers `urlFor`; an adapter that does not must leave it out. */
     offersUrlFor?: boolean
-    /** Whether the adapter keeps Blobs: it offers `writeBlob` and `readBlob`. An adapter that does not must leave `readBlob` out. */
-    offersBlobs?: boolean
     /**
-     * Whether the adapter offers `writeBlob` without keeping Blobs (no `readBlob`): it streams the
-     * Blob to its backend and the value reads back as bytes. An adapter with `offersBlobs` streams too.
-     * An adapter that does neither must leave `writeBlob` out.
+     * Whether the adapter offers `writeBlob`: it streams the Blob to its backend and the value reads
+     * back as bytes. An adapter that does not must leave `writeBlob` out.
      */
     streamsBlobWrites?: boolean
     /** Whether `writeBlob` also takes a key under `assets/`, as the Node store's does; every other key outside the inlay bodies is refused. */
@@ -301,8 +298,8 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
         describe('S13 an adapter that streams Blob writes', () => {
             const BODY = 'inlays/b-clip.0123456789abcdef'
 
-            test('only an adapter that streams or keeps Blobs offers writeBlob', () => {
-                const offers = harness.streamsBlobWrites === true || harness.offersBlobs === true
+            test('only an adapter that streams Blobs offers writeBlob', () => {
+                const offers = harness.streamsBlobWrites === true
                 expect(typeof store.writeBlob).toBe(offers ? 'function' : 'undefined')
             })
 
@@ -377,77 +374,6 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 }
                 await expect(store.writeBlob('assets/x.png', new Blob(['x']), 'unconditional')).rejects.toBeInstanceOf(StoreInvalidKeyError)
                 expect(await store.has('assets/x.png')).toBe(false)
-            })
-        })
-
-        describe('S13 an adapter that keeps Blobs', () => {
-            const BODY = 'inlays/b-clip.0123456789abcdef'
-
-            test('only an adapter that keeps Blobs offers readBlob, and it offers writeBlob too', () => {
-                const keeps = harness.offersBlobs === true
-                expect(typeof store.readBlob).toBe(keeps ? 'function' : 'undefined')
-                if (keeps) {
-                    expect(typeof store.writeBlob).toBe('function')
-                }
-            })
-
-            test('a written Blob reads back as a Blob of the same bytes and type, and as the same bytes through read', async () => {
-                if (store.writeBlob === undefined || store.readBlob === undefined) {
-                    return
-                }
-                const payload = patternBytes(1000, 11)
-                await store.writeBlob(BODY, new Blob([payload as BlobPart], { type: 'video/mp4' }), 'unconditional')
-                const blob = await store.readBlob(BODY)
-                expect(blob).not.toBeNull()
-                expect(blob!.type).toBe('video/mp4')
-                expect(Array.from(new Uint8Array(await blob!.arrayBuffer()))).toEqual(Array.from(payload))
-                expect(await readBytes(store, BODY)).toEqual(Array.from(payload))
-            })
-
-            test('a key written as bytes is not a Blob, and a Blob key rewritten as bytes is not either', async () => {
-                if (store.writeBlob === undefined || store.readBlob === undefined) {
-                    return
-                }
-                await store.write(BODY, bytesOf(1, 2, 3), 'unconditional')
-                expect(await store.readBlob(BODY)).toBeNull()
-                await store.writeBlob(BODY, new Blob(['abc']), 'unconditional')
-                await store.write(BODY, bytesOf(9), 'unconditional')
-                expect(await store.readBlob(BODY)).toBeNull()
-                expect(await readBytes(store, BODY)).toEqual([9])
-                expect(await store.readBlob('inlays/b-absent.0123456789abcdef')).toBeNull()
-            })
-
-            test('an adapter that takes asset keys keeps a Blob there too: readBlob returns it and read returns the same bytes', async () => {
-                if (store.writeBlob === undefined || store.readBlob === undefined || harness.blobWritesTakeAssetKeys !== true) {
-                    return
-                }
-                const payload = patternBytes(500, 5)
-                await store.writeBlob('assets/kept.png', new Blob([payload as BlobPart]), 'unconditional')
-                const blob = await store.readBlob('assets/kept.png')
-                expect(blob).not.toBeNull()
-                expect(Array.from(new Uint8Array(await blob!.arrayBuffer()))).toEqual(Array.from(payload))
-                expect(await readBytes(store, 'assets/kept.png')).toEqual(Array.from(payload))
-            })
-
-            test.each([
-                ['an asset key', 'assets/x.png'],
-                ['the main file', 'database/database.bin'],
-                ['an inlay metadata key', 'inlays/m-clip'],
-                ['a body key with a short token', 'inlays/b-clip.0123'],
-                ['a body key with an upper-case token', 'inlays/b-clip.0123456789ABCDEF'],
-                ['a body key whose id holds a lower-case escape', 'inlays/b-%e3.0123456789abcdef'],
-                ['a body key in a subfolder', 'inlays/b-a/b.0123456789abcdef'],
-            ])('a Blob member refuses %s and writes nothing', async (_label, key) => {
-                if (store.writeBlob === undefined || store.readBlob === undefined) {
-                    return
-                }
-                // An adapter that takes asset keys keeps a Blob there and answers readBlob for it.
-                if (key.startsWith('assets/') && harness.blobWritesTakeAssetKeys === true) {
-                    return
-                }
-                await expect(store.writeBlob(key, new Blob(['x']), 'unconditional')).rejects.toBeInstanceOf(StoreInvalidKeyError)
-                await expect(store.readBlob(key)).rejects.toBeInstanceOf(StoreInvalidKeyError)
-                expect(await store.has(key)).toBe(false)
             })
         })
 

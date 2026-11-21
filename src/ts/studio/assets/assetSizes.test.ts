@@ -38,10 +38,6 @@ function inFlightMeter() {
     return { state, track }
 }
 
-function webSource(store: Partial<ByteStore>): ExportAssetSource {
-    return { kind: 'web', pieces: { node: false, open: async function* () { } }, store: store as ByteStore }
-}
-
 function nativeSource(kind: 'tauri' | 'node'): ExportAssetSource {
     return { kind, pieces: { node: kind === 'node', open: async function* () { } }, store: {} as ByteStore }
 }
@@ -52,22 +48,6 @@ describe('createAssetSizeJob', () => {
         const job = createAssetSizeJob({ source: nativeSource('tauri'), sizeOf })
         expect(sizeOf).not.toHaveBeenCalled()
         expect(job.peek('assets/file0.png')).toBeUndefined()
-    })
-
-    test('on the web at most one whole readValue is in flight, across two callers', async () => {
-        const meter = inFlightMeter()
-        const store = {
-            readValue: async (key: string) => meter.track(async () => { await tick(); return new Uint8Array(key.length) }),
-        }
-        const job = createAssetSizeJob({ source: webSource(store) })
-        const paths = pathsOf(20)
-        const controller = new AbortController()
-        const list = job.ensure(paths.slice(0, 12), controller.signal)
-        const checkBytes = job.ensure(paths.slice(6), controller.signal)
-        expect(await Promise.all([list, checkBytes])).toEqual([true, true])
-        expect(meter.state.max).toBe(1)
-        expect(meter.state.started).toBe(20)
-        expect(job.peek(paths[0])).toBe(paths[0].length)
     })
 
     test('on Tauri and Node up to eight sizes are in flight, and no more', async () => {
@@ -140,7 +120,7 @@ describe('createAssetSizeJob', () => {
         let release: () => void = () => { }
         const gate = new Promise<void>((resolve) => { release = resolve })
         const sizeOf = vi.fn(async (key: string) => { await gate; return key.length })
-        const job = createAssetSizeJob({ source: webSource({}), sizeOf })
+        const job = createAssetSizeJob({ source: nativeSource('node'), sizeOf })
         const paths = pathsOf(4)
         const list = job.ensure(paths, new AbortController().signal)
         const checkSignal = new AbortController()
@@ -159,25 +139,6 @@ describe('createAssetSizeJob', () => {
         expect(await list).toBe(true)
         expect(job.peek(paths[3])).toBe(paths[3].length)
         expect(sizeOf).toHaveBeenCalledTimes(4)
-    })
-
-    test('on the web a cancel leaves the queued whole reads unread', async () => {
-        const controller = new AbortController()
-        let release: () => void = () => { }
-        const gate = new Promise<void>((resolve) => { release = resolve })
-        const sizeOf = vi.fn(async (key: string) => { await gate; return key.length })
-        const job = createAssetSizeJob({ source: webSource({}), sizeOf })
-        const paths = pathsOf(8)
-        const pending = job.ensure(paths, controller.signal)
-        await tick()
-        expect(sizeOf).toHaveBeenCalledTimes(1)
-        controller.abort()
-        release()
-        expect(await pending).toBe(false)
-        await tick()
-        await tick()
-        expect(sizeOf).toHaveBeenCalledTimes(1)
-        expect(job.peek(paths[7])).toBeUndefined()
     })
 
     test('a size the store cannot say is null, and a size not yet read is undefined', async () => {

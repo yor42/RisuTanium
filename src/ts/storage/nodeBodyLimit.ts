@@ -14,6 +14,3 @@ export const NODE_BODY_LIMIT_BYTES: number = 104857600
  * did not record piece support holds only `NODE_BODY_LIMIT_BYTES` per asset.
  */
 export const NODE_ASSET_LIMIT_BYTES: number = 1073741824
-
-/** The largest asset or inlay the browser (IndexedDB) store takes until it keeps large values in pieces. */
-export const WEB_ASSET_LIMIT_BYTES: number = 209715200

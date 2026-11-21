@@ -44,7 +44,11 @@ async function importDropped(file:File, progress:ImportProgress):Promise<ImportO
             progress.throwIfCancelled()
             progress.step('add')
             progress.beforeWrite()
-            await importPreset({ name: file.name, data })
+            const result = await importPreset({ name: file.name, data })
+            //A bundle preview the person cancelled imported nothing: the card closes without a result.
+            if(typeof result === 'object' && result !== null && result.cancelled){
+                return {kind: 'declined'}
+            }
             progress.committed({ kind: 'notUndoable', why: 'preset' })
             progress.notice(language.successImport)
             return {kind: 'imported', index: null}

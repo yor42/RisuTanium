@@ -4,7 +4,7 @@ import { recordOf, type CapturedMessage, type MessageRecord } from '../records'
 
 // Records are built like the producer: from captured refs whose msg objects the app mutates in place.
 function ref(i: number, data: string, chatId = `m${i}`): CapturedMessage {
-    return { msg: { chatId, role: i % 2 ? 'char' : 'user', data }, chatIndex: i, name: 'Bot', preWrap: data }
+    return { msg: { chatId, role: i % 2 ? 'char' : 'user', data }, chatIndex: i, name: 'Bot', preWrap: data, data }
 }
 const recs = (refs: CapturedMessage[]): MessageRecord[] => refs.map((r) => recordOf(r, 'User'))
 const orderOf = (idx: ChatUnitIndex, q: string) => idx.rank(q, RARE_SHARE)
@@ -26,6 +26,7 @@ describe('ChatUnitIndex.reconcile: sync with the chat', () => {
         idx.reconcile(recs(refs))
         expect(textsOf(idx, 'zebra').some((t) => t.includes('zebra'))).toBe(true)
         refs[0].msg.data = 'giraffe necks'
+        refs[0].data = 'giraffe necks'
         refs[0].preWrap = 'giraffe necks'
         const r = idx.reconcile(recs(refs))
         expect(r.removed).toBe(1)
@@ -85,6 +86,7 @@ describe('ChatUnitIndex.reconcile: sync with the chat', () => {
         const idx = new ChatUnitIndex('c')
         idx.reconcile(recs(refs))
         refs[1].msg.data = 'something else entirely'
+        refs[1].data = 'something else entirely'
         const r = idx.reconcile(recs(refs))
         expect(r.removed).toBe(1)
         expect(r.added).toBe(1)

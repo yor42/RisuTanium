@@ -361,6 +361,11 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 const PAINT_YIELD_INTERVAL_MS = 50
 const PAINT_YIELD_COST_FACTOR = 4
 
+/** One real task boundary: the microtask flush that mounts a just-opened card runs first, then the browser may paint. */
+function yieldTask(): Promise<void> {
+    return new Promise<void>((resolve) => setTimeout(resolve, 0))
+}
+
 /**
  * The export card must be able to paint its message count during a long export. Message parsing resolves through
  * microtasks only, so the loop hands the browser a real task boundary once enough wall time has passed since the
@@ -376,7 +381,7 @@ function createPaintYield(): () => Promise<void> {
         if(now - last < Math.max(PAINT_YIELD_INTERVAL_MS, PAINT_YIELD_COST_FACTOR * lastYieldMs)){
             return
         }
-        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        await yieldTask()
         const resumed = performance.now()
         lastYieldMs = resumed - now
         last = resumed
@@ -506,6 +511,8 @@ export async function exportChat(page:number){
             if(total > 0){
                 card.count(0, total)
             }
+            // The card paints before the first parse, so the last menu click is answered without waiting on any message.
+            await yieldTask()
             const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){
@@ -603,6 +610,8 @@ export async function exportChat(page:number){
             if(total > 0){
                 card.count(0, total)
             }
+            // As in the file mode: the card paints before the first parse.
+            await yieldTask()
             const paintYield = createPaintYield()
             let i = 0
             for(const v of chat.message){

@@ -1,7 +1,7 @@
 /**
  * The inlay export of a local backup over in-memory stores: no entry exceeds
- * `PART_DATA_MAX`, the parts of a large body are in order and whole, and a body
- * is read one part at a time. Synthetic data only.
+ * `PART_DATA_MAX` and the parts of a large body are in order and whole.
+ * Synthetic data only.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -147,7 +147,7 @@ beforeEach(() => {
 })
 
 describe('the parts of a large inlay', () => {
-    test('acceptance: an inlay of 200 MiB is written as ordered parts of at most PART_DATA_MAX, whole and read one part at a time', async () => {
+    test('acceptance: an inlay of 200 MiB is written as ordered parts of at most PART_DATA_MAX and whole', async () => {
         const copies = 25
         const blob = patternedBlob(copies)
         expect(blob.size).toBeGreaterThan(200 * MIB)
@@ -183,13 +183,9 @@ describe('the parts of a large inlay', () => {
         }
         expect(position).toBe(blob.size)
         expect(wrong).toBe(0)
-
-        const record = (await readAppInlayRecord(store, 'big'))!
-        expect(store.reads).not.toContain(record.body)
-        expect(store.blobReads).toContain(record.body)
     })
 
-    test('acceptance: on a store without Blob support the body is read once and still split into parts', async () => {
+    test('acceptance: on a store without writeBlob the body is read once and still split into parts', async () => {
         const bytesStore = createMemoryByteStore()
         injectAppStore(bytesStore, 'node')
         const body = new Uint8Array(70 * MIB)
@@ -232,8 +228,6 @@ describe('what an export leaves out', () => {
         await putTo(store, 'good', { name: 'g', ext: 'png', type: 'image', data: new Blob(['good'], { type: 'image/png' }) })
         const bad = (await readAppInlayRecord(store, 'bad'))!
         store.failRead = (key) => (key === bad.body ? new Error('scratch: unreadable') : null)
-        // No Blob to hand over for it, so the bytes are read.
-        store.readBlob = async (key) => (key === bad.body ? null : (store.blobs.get(key) ?? null))
         const { sink, entries } = recordingSink()
 
         const result = await writeInlaysToBackup(sink, store, { streaming: false })
@@ -247,7 +241,6 @@ describe('what an export leaves out', () => {
         legacy.values.set('a', { name: 'old-copy', ext: 'png', type: 'image', data: new Blob(['old!'], { type: 'image/png' }) })
         const record = (await readAppInlayRecord(store, 'a'))!
         store.failRead = (key) => (key === record.body ? new Error('scratch: unreadable') : null)
-        store.readBlob = async () => null
         const { sink, entries } = recordingSink()
 
         const result = await writeInlaysToBackup(sink, store, { streaming: false })
@@ -263,7 +256,6 @@ describe('what an export leaves out', () => {
         await putTo(store, 'a', { name: 'app-copy', ext: 'png', type: 'image', data: new Blob(['app'], { type: 'image/png' }) })
         const record = (await readAppInlayRecord(store, 'a'))!
         store.failRead = (key) => (key === record.body ? new Error('scratch: unreadable') : null)
-        store.readBlob = async () => null
         const { sink, entries } = recordingSink()
 
         const result = await writeInlaysToBackup(sink, store, { streaming: false })

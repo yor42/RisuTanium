@@ -339,6 +339,10 @@ function focusLoss(prop: string, value: string, T: TokenMap): string {
     if (/^(box-shadow|border(-(top|right|bottom|left))?(-color)?)$/.test(prop) && colourWords(v).some((c) => c[3] === 0)) return `${prop}: a fully transparent colour would remove the indication of focus`
     return ''
 }
+/** The pack-settable test of a registry, built once; one call per area replaces one registry rebuild per candidate name. */
+export function packSettableTest(registry?: RegistryInput): (name: string) => boolean {
+    return settableTest({ ...effective(registry), isBounded: VALUES.isBounded })
+}
 // DD-242: is this custom property pack-settable under the registry? (used by the regression fuzz)
 export function isPackSettable(name: string, registry?: RegistryInput): boolean {
     const r = effective(registry)

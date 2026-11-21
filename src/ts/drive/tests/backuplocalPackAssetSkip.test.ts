@@ -68,7 +68,6 @@ vi.mock('@tauri-apps/plugin-os', () => ({ type: () => osBox.os }))
 vi.mock(import('src/ts/storage/nodeBodyLimit'), () => ({
     NODE_BODY_LIMIT_BYTES: 1024 * 1024,
     NODE_ASSET_LIMIT_BYTES: 8 * 1024 * 1024,
-    WEB_ASSET_LIMIT_BYTES: 2 * 1024 * 1024,
 }) as unknown as typeof import('src/ts/storage/nodeBodyLimit'))
 
 vi.mock(import('src/ts/assetHash'), async (importOriginal) => ({

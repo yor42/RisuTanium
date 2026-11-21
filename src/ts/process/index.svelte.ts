@@ -9,6 +9,7 @@ import { alertError, alertToast } from "../alert";
 import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
+import { noteLoreUse, renameLoreUseReply } from "./loreUse";
 import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
@@ -46,9 +47,10 @@ import { runImageEmbedding } from "./transformers";
 import { hanuraiMemory } from "./memory/hanuraiMemory";
 import { hypaMemoryV2 } from "./memory/hypav2";
 import { openMemorySettings } from "./memory/memorySettingsLink";
-import { chroMemoryShadowRuns, memoryTakesChatsOf } from "./memory/memoryEngine";
+import { chroMemoryModeOf, memoryTakesChatsOf } from "./memory/memoryEngine";
 import { createSendCapture, type FirstMessageSource } from "./memory/chroMemory/records";
-import { runShadowSafely } from "./memory/chroMemory/shadow";
+import { HISTORY_FLOOR, markChroMemoryDroppedAtRecheck, runChroMemorySafely } from "./memory/chroMemory/shadow";
+import { recheckToContext } from "./recheck";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
 import { LLMTokenizer } from "../model/types";
@@ -70,6 +72,7 @@ import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
+import { splitAtOpenCbsSpan } from "../chatShell/streamSpans";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitAlerted, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
@@ -1638,8 +1641,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     const countVaries = (DBState.db.aiModel === 'custom' && pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer === 'custom')
         || countTokenizer === LLMTokenizer.GoogleCloud
     const countMessagesInTrim = !memoryTakesChats() && !countVaries
-    // Capture only keeps references; every ChroMemory computation runs later in runShadowSafely.
-    const chroCapture = chroMemoryShadowRuns(DBState.db, effectiveMemory(nowChatroom, currentChat)) ? createSendCapture() : null
+    // Capture only keeps references; every ChroMemory computation runs later in runChroMemorySafely.
+    const chroMode = chroMemoryModeOf(DBState.db, effectiveMemory(nowChatroom, currentChat), DBState.db.ltmSettings)
+    const chroCapture = chroMode !== 'off' ? createSendCapture() : null
+    // True only when this send placed a ChroMemory block; the legacy branch never sets it.
+    let chroPlaced = false
     const firstMessageChat = chats.length
     const tokensBeforeMessages = currentTokens
     const tokensAfterMessages:number[] = []
@@ -1819,11 +1825,16 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             delete chat.multimodals
         }
         if(chroCapture){
-            chroCapture.add(chat, { msg, chatIndex, name, preWrap: chroPreWrap })
+            chroCapture.add(chat, { msg, chatIndex, name, preWrap: chroPreWrap, data: msg.data })
         }
         chats.push(chat)
         if(!countMessagesInTrim){
-            currentTokens += await tokenizer.tokenizeChat(chat)
+            const chatTokens = await tokenizer.tokenizeChat(chat)
+            currentTokens += chatTokens
+            if(chroMode === 'inject'){
+                // The injecting trim takes this count instead of recounting the chat.
+                countedMessages.set(chat, chatTokens)
+            }
         }
         else if(chat.multimodals){
             // A multimodal count is arithmetic on the stored image size and can
@@ -1967,8 +1978,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
         // Both trim forms drop only a prefix, so this copy is the chats the trim started from.
         const chroBefore = chroCapture ? chats.slice() : null
-        if(countMessagesInTrim){
+        let step1: Awaited<ReturnType<typeof trimChatsToContext>> | null = null
+        let chroPlacedBlock: { block: string } | null = null
+        if(countMessagesInTrim || chroMode === 'inject'){
             const trimmed = await trimChatsToContext({ ...countArgs, maxContextTokens })
+            step1 = trimmed
             currentTokens = trimmed.currentTokens
             if(!trimmed.fits){
                 throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokens, { tokens: `${currentTokens}` }))
@@ -1989,22 +2003,76 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             }
         }
         if(chroCapture && chroBefore){
-            await runShadowSafely({
+            // The memory message as the assembly will send it: the wrapped text, or one
+            // entry per memory card with its parsed innerFormat. The role does not change a count.
+            const memoryCards = supaMemoryCardUsed && promptTemplate ? promptTemplate.flatMap((card) => card.type === 'memory' ? [card] : []) : []
+            const parsedInner = new Map<object, string>()
+            const innerOf = (card: (typeof memoryCards)[number]): string => {
+                let parsed = parsedInner.get(card)
+                if(parsed === undefined){
+                    parsed = risuChatParser(card.innerFormat ?? '', {chara: currentChar, subject, promptView})
+                    parsedInner.set(card, parsed)
+                }
+                return parsed
+            }
+            const countMemoryShape = async (block: string): Promise<number> => {
+                const shapes = supaMemoryCardUsed
+                    ? memoryCards.map((card) => card.innerFormat ? innerOf(card).replace('{{slot}}', block) : block)
+                    : [`<Previous Conversation>${block}</Previous Conversation>`]
+                const counted = new Map<string, number>()
+                let total = 0
+                for(const shape of shapes){
+                    let tokens = counted.get(shape)
+                    if(tokens === undefined){
+                        tokens = (await tokenize(shape.trim())) + chatAdditonalTokens
+                        counted.set(shape, tokens)
+                    }
+                    total += tokens
+                }
+                return total
+            }
+            // The character depth prompt is added after the trim and never trimmed, so
+            // make-room keeps its tokens out of the history's room.
+            let reserveTokens = 0
+            const depthPromptText = currentChar.depth_prompt?.prompt
+            if(chroMode === 'inject' && depthPromptText){
+                try{
+                    reserveTokens = await tokenizer.tokenizeChat({
+                        role: 'system',
+                        content: risuChatParser(depthPromptText, {chara: currentChar, subject, promptView})
+                    })
+                }
+                catch{
+                    reserveTokens = 0
+                }
+            }
+            chroPlacedBlock = await runChroMemorySafely({
                 capture: chroCapture, first: chroFirst, charName: currentChar.name,
                 userName: () => getUserName(currentChat),
                 before: chroBefore, kept: chats,
                 ownerId: nowChatroom.chaId, chatId: currentChat.id,
                 ltmSettings: DBState.db.ltmSettings, maxContextTokens, countVaries,
                 tokenizerKey: () => [DBState.db.aiModel, DBState.db.customTokenizer, DBState.db.currentPluginProvider, pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer ?? 'none', DBState.db.googleClaudeTokenizing ? '1' : '0', chatAdditonalTokens].join('|'),
+                inject: chroMode === 'inject' && step1 ? {
+                    chats, step1, firstMessageChat, tokensBeforeMessages, tokensAfterMessages,
+                    reserveTokens, floor: HISTORY_FLOOR,
+                    count: (chat) => tokenizer.tokenizeChat(chat),
+                } : null,
             }, {
                 countText: (t) => tokenize(t),
-                countBlock: async (b) => (await tokenize(b)) + chatAdditonalTokens,
+                countBlock: countMemoryShape,
                 now: () => performance.now(),
             })
         }
+        // The stamp names the first chat make-room kept; the memory message is added after it,
+        // with no await between the two.
         const lastMemoryCtx = subject.resolve()
         if(lastMemoryCtx){
             lastMemoryCtx.chat.lastMemory = chats[0].memo
+        }
+        if(chroPlacedBlock){
+            chats.unshift({ role: 'system', content: chroPlacedBlock.block, memo: 'supaMemory' })
+            chroPlaced = true
         }
     }
 
@@ -2401,28 +2469,20 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
 
     //token rechecking
-    let inputTokens = 0
-
-    for(const chat of formated){
-        inputTokens += await tokenizer.tokenizeChat(chat)
+    const rechecked = await recheckToContext({
+        formated,
+        maxContextTokens,
+        count: (chat) => tokenizer.tokenizeChat(chat),
+        memoryLastResort: chroPlaced,
+    })
+    const inputTokens = rechecked.inputTokens
+    formated = rechecked.formated
+    if(rechecked.droppedMemory && rechecked.fits){
+        markChroMemoryDroppedAtRecheck(`${nowChatroom.chaId}:${currentChat.id ?? ''}`)
     }
-
-    if(inputTokens > maxContextTokens){
-        let pointer = 0
-        while(inputTokens > maxContextTokens){
-            if(pointer >= formated.length){
-                throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokensRecheck, { tokens: `${inputTokens}` }))
-                return false
-            }
-            if(formated[pointer].removable){
-                inputTokens -= await tokenizer.tokenizeChat(formated[pointer])
-                formated[pointer].content = ''
-            }
-            pointer++
-        }
-        formated = formated.filter((v) => {
-            return v.content !== ''  || (v.multimodals && v.multimodals.length > 0)
-        })
+    if(!rechecked.fits){
+        throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokensRecheck, { tokens: `${inputTokens}` }))
+        return false
     }
 
     //estimate tokens
@@ -2431,6 +2491,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         outputTokens = maxContextTokens - inputTokens
     }
     const generationId = v4()
+    // Every path that writes a new reply gives it `generationId` as its `chatId`. A preview writes no reply and a
+    // continue extends an existing one, so neither replaces the list of the latest reply.
+    if(!arg.continue && !arg.preview && !arg.previewPrompt){
+        noteLoreUse(generationId, lorepmt.used ?? [])
+    }
     const generationModel = getGenerationModelString()
 
     generationInfo = {
@@ -2649,15 +2714,26 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             }
             return true
         }
-        const processAndWriteReply = async (text:string, bumpKeys = true):Promise<boolean> => {
+        // The whole text of the last write that held an open CBS block raw, or null when the last write processed all of its
+        // text. The stream end processes it once, so the stored reply is the pass over the whole text.
+        let settleText: string | null = null
+        // With `holdOpenSpan` the text from the opener of a CBS block that is still open stays raw, so the chat view can hide
+        // it until the block closes; only the text before it is processed.
+        const processAndWriteReply = async (text:string, holdOpenSpan:boolean, bumpKeys = true):Promise<boolean> => {
             const before = resolveReply()
             if(!before){
                 return false
             }
+            const { head, held } = holdOpenSpan ? splitAtOpenCbsSpan(text) : { head: text, held: '' }
             // Every text here is a partial or deferred reply that is never looked up again; caching it would only evict entries that are.
-            const processed = await processScriptFull(nowChatroom, text, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
+            const processed = await processScriptFull(nowChatroom, head, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
             emoChanged = processed.emoChanged
-            return writeReplyData(processed.data, bumpKeys)
+            const written = writeReplyData(processed.data + held, bumpKeys)
+            // A pass that threw never reaches here, so the settle text stays the last one that was written.
+            if(written){
+                settleText = held === '' ? null : text
+            }
+            return written
         }
         const flushStreamingDisplay = async () => {
             clearStreamingFlushSchedule()
@@ -2677,7 +2753,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         replyGone = !writeReplyData(reformatContent(prefix + nextResult))
                         continue
                     }
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + nextResult)))
+                    replyGone = !(await processAndWriteReply(reformatContent(prefix + nextResult), true))
                 } while(streamingFlushQueued || pendingStreamingResult !== null)
             })().finally(() => {
                 streamingFlushPromise = null
@@ -2740,7 +2816,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         }
                         scheduleStreamingDisplayFlush()
                     }
-                    else if(!(await processAndWriteReply(reformatContent(prefix + result)))){
+                    else if(!(await processAndWriteReply(reformatContent(prefix + result), true))){
                         replyGone = true
                         break
                     }
@@ -2772,7 +2848,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     throw streamingFlushError
                 }
                 if(deferStreamingPostProcessing && receivedStreamingResult && !replyGone){
-                    replyGone = !(await processAndWriteReply(reformatContent(prefix + result), false))
+                    replyGone = !(await processAndWriteReply(reformatContent(prefix + result), false, false))
+                }
+                // The last write held an open block raw: the stored reply is the pass over its whole text, as when no
+                // block was held. Done, Stop and a reader error all end here; a flush error has already thrown above.
+                if(!replyGone && settleText !== null && !deferStreamingPostProcessing){
+                    replyGone = !(await processAndWriteReply(settleText, false, false))
                 }
             }
             finally {
@@ -2890,6 +2971,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     // the same synchronous run as the swap.
                     if(continuedOldId){
                         renameContinuedMessage(replaceTarget.ctx.chat, continuedOldId, generationId)
+                        renameLoreUseReply(continuedOldId, generationId)
                     }
                     trackReply(replaceTarget.ctx.chat, replaceTarget.index)
                     if(inlayResult.promise){

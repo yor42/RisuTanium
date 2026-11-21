@@ -31,7 +31,7 @@
     // A swipe starts only where the nearest part of the row is one of the message's own parts. Editors, modal layers, the pager and the end row, and anything rendered into the row later, are not listed, so they start nothing until they are named here.
     const SWIPE_START_PARTS: ReadonlySet<string> = new Set([
         'chat-message', 'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
-        'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking', 'chat-stream-placeholder',
+        'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking', 'chat-stream-formatting', 'chat-stream-code', 'chat-stream-styles', 'chat-stream-image', 'chat-stream-placeholder',
         'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-swipe-commit-mark', 'chat-long-press-ring',
         'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
     ])
@@ -99,6 +99,7 @@
     import TranslationEditor from './TranslationEditor.svelte'
     import MessageMeta from './MessageMeta.svelte'
     import AlternativesRow from './AlternativesRow.svelte'
+    import ReplyLoreUse from './ReplyLoreUse.svelte'
     import { chatSurface, isChatSurfaceInstalled } from '../ChatScreens/chatSurface.svelte'
     import { language } from '../../lang'
     import { getCharImage } from '../../ts/characters'
@@ -879,6 +880,7 @@
     {#if showPager || continuation > 0}
         <AlternativesRow bind:this={alternatives} {source} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={(direction) => { void browse(direction) }} onEnd={() => { void bringBackContinuation() }} />
     {/if}
+    {#if idx >= 0 && !streaming}<ReplyLoreUse {chatId} ownerLore={owner?.globalLore} {chat} />{/if}
     {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
         <PartialEditController messageData={message.data} chatIndex={idx} {bodyRoot} blockEditEnabled={DBState.db.enableBlockPartialEdit} dragEditEnabled={DBState.db.enableDragPartialEdit} translatedView={translated} getTranslationEditContext={getTranslationPartialEditContext} on:save={handlePartialEditSave} />

@@ -17,8 +17,6 @@ const store = vi.hoisted(() => ({
     read: vi.fn(),
     urlFor: vi.fn(),
     hasUrlFor: true,
-    readValue: vi.fn(),
-    hasReadValue: false,
 }))
 
 vi.mock('localforage', () => ({
@@ -182,7 +180,6 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     getAppStore: async () => ({
         read: store.read,
         ...(store.hasUrlFor ? { urlFor: store.urlFor } : {}),
-        ...(store.hasReadValue ? { readValue: store.readValue } : {}),
     }),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
@@ -236,8 +233,6 @@ beforeEach(() => {
     store.read.mockResolvedValue({ bytes: Uint8Array.from([1, 2, 3]), version: null })
     store.urlFor.mockReset()
     store.urlFor.mockImplementation(async (key: string) => ROUTE_URL(key))
-    store.readValue.mockReset()
-    store.hasReadValue = false
     fetchSpy = vi.fn(async () => new Response(JSON.stringify({ able: true })))
     vi.stubGlobal('fetch', fetchSpy)
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -347,13 +342,10 @@ describe('getFileSrc on a Node-hosted page', () => {
             expect(store.read).toHaveBeenCalledTimes(2)
         })
 
-        test('regression (4d-R3): a store that offers readValue is not asked, and no blob URL is made', async () => {
+        test('guard: a store without urlFor is read through read and gives a data URL, never a blob URL', async () => {
             store.hasUrlFor = false
-            store.hasReadValue = true
-            store.readValue.mockResolvedValue(new Blob([Uint8Array.from([9, 9])]))
             const src = await getFileSrc('assets/blobby.png')
             expect(src).toBe(dataUrlOf([1, 2, 3]))
-            expect(store.readValue).not.toHaveBeenCalled()
             expect(store.read).toHaveBeenCalledWith('assets/blobby.png')
         })
 

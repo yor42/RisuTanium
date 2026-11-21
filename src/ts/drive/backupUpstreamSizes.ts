@@ -1,6 +1,5 @@
 import type { ByteStore } from '../storage/store/contract'
 import type { AppStoreKind } from '../storage/store/appStore'
-import type { ExportCancelToken } from '../exportCancel'
 
 /**
  * The largest asset an upstream Node server takes in one request (MC-223, MC-532 2). A backup holding
@@ -25,10 +24,6 @@ export interface OversizeAssetQuery {
     sized: readonly SizedKey[] | null
     /** Only these keys are judged (a partial backup); `null` judges every asset. */
     keys: readonly string[] | null
-    /** The keys a full backup holds, which the browser pre-pass reads; unused elsewhere. */
-    listedKeys: readonly string[]
-    cancel: ExportCancelToken
-    onProgress?: (done: number, total: number) => void
 }
 
 /**

@@ -122,3 +122,51 @@ describe('packUnits', () => {
         expect(out.block.split('\n').slice(1).map((l) => l.replace(/^\[#\d+\] Bot: /, ''))).toEqual(['alpha one', 'beta two', 'alpha three'])
     })
 })
+describe('packUnits limit, reserve and headCount', () => {
+    const fiveLines = () => [0, 1, 2, 3, 4].map((i) => lineOf(i, String.fromCharCode(97 + i).repeat(40)))
+
+    test('PK1: a limit below the budget drops lowest-ranked picks until T fits, with at most 2 block counts', async () => {
+        const lines = fiveLines()
+        const s = spies()
+        const out = await packUnits({ lines, budget: 500, limit: 40, maxCounts: Infinity, ...s })
+        expect(out.T).toBeLessThanOrEqual(40)
+        expect(out.picks).toEqual(lines.slice(0, out.picks.length))
+        expect(out.picks.length).toBeLessThan(5)
+        expect(out.picks.length).toBeGreaterThan(0)
+        expect(out.droppedForFit).toBe(5 - out.picks.length)
+        expect(s.countBlock.mock.calls.length).toBeLessThanOrEqual(2)
+    })
+
+    test('PK2: the walk keeps `reserve` slots back, so a first block over budget still leaves a pack', async () => {
+        const lines = [lineOf(0, 'a'.repeat(20)), lineOf(1, 'b'.repeat(20))]
+        let blocks = 0
+        const countBlock = async () => (++blocks === 1 ? 999 : 10)
+        const out = await packUnits({ lines, budget: 100, maxCounts: 12, reserve: 2, countText: async (t) => len(t), countBlock })
+        expect(out.picks.length).toBeGreaterThan(0)
+        expect(out.slots).toBeLessThanOrEqual(12)
+        const noReserve = await packUnits({ lines: Array.from({ length: 40 }, (_, i) => lineOf(i, 'c'.repeat(8))), budget: 100000, maxCounts: 12, reserve: 2, countText: async (t) => len(t), countBlock: async () => 5 })
+        expect(noReserve.slots).toBeLessThanOrEqual(12)
+        expect(noReserve.picks.length).toBe(12 - 1 - 2)
+    })
+
+    test('PK3: headCount is the starting run and takes one slot', async () => {
+        const lines = [lineOf(0, 'a'.repeat(40)), lineOf(1, 'b'.repeat(40))]
+        const headCount = vi.fn(async () => 1000)
+        const s = spies()
+        const out = await packUnits({ lines, budget: 1020, maxCounts: Infinity, headCount, ...s })
+        // 1000 + one line (~14) fits, a second does not.
+        expect(out.picks).toEqual([lines[0]])
+        expect(headCount).toHaveBeenCalledTimes(1)
+        expect(s.countText.mock.calls.map((c) => c[0])).not.toContain(HEADER)
+        expect(out.slots).toBe(3)
+    })
+
+    test('PK4 guard: the defaults reproduce the unlimited walk (passes before and after)', async () => {
+        const lines = fiveLines()
+        const base = await packUnits({ lines, budget: 70, maxCounts: Infinity, ...spies() })
+        const explicit = await packUnits({ lines, budget: 70, limit: 70, reserve: 1, maxCounts: Infinity, ...spies() })
+        expect(explicit.picks).toEqual(base.picks)
+        expect(explicit.T).toBe(base.T)
+        expect(explicit.droppedForFit).toBe(0)
+    })
+})

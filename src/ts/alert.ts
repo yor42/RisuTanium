@@ -31,7 +31,7 @@ export interface alertData{
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer'|'presetBundle',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
@@ -43,6 +43,8 @@ export interface alertData{
     parkedReply?: { name: string, text: string },
     /** The update of an `updateOffer` prompt: the installed version, the offered version and the release notes. All three come from a remote file and render as text only. Its answer is `install` or `later`. */
     updateOffer?: UpdateOffer,
+    /** The rows of a `presetBundle` prompt and the preset names already in the list. Every string comes from a file and renders as text only. Its answer is `cancel` or the JSON of the ticked row indices. */
+    presetBundle?: { rows: { name: string, folder: string | null, aiModel: string }[], existingNames: string[] },
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */
