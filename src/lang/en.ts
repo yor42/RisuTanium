@@ -2304,6 +2304,8 @@ export const languageEnglish = {
     homeStoryArchived: "Archived",
     homeLibraryHeading: "Characters",
     homeLibraryAllTrashed: "All characters are in the Trash.",
+    homeJumpLabel: "Jump to",
+    homeJumpCharacters: (count: number) => `Characters (${count})`,
     homeSourceEmailForkLabel: "Contact the maintainer",
     homeSourceEmailUpstreamLabel: "Contact official support",
     backgroundHTML: "Background Embedding",

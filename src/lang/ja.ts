@@ -2281,6 +2281,8 @@ export const languageJapanese = {
     homeStoryArchived: "アーカイブ済み",
     homeLibraryHeading: "キャラクター",
     homeLibraryAllTrashed: "すべてのキャラクターがゴミ箱に入っています。",
+    homeJumpLabel: "移動先",
+    homeJumpCharacters: (count: number) => `キャラクター (${count})`,
     homeLinkDiscordTitle: "Discord",
     homeLinkDiscordDescription: "Discordサーバーに参加して、他のユーザーや開発者と交流しましょう。",
     homeLinkWebsiteTitle: "ウェブサイト",
