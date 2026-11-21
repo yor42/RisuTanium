@@ -33828,6 +33828,14 @@ All under MC-1676/1677 (commit unasked after Gate 2 + full run; merges only by l
 
 **What the maintainer chose.** "Add the tag (Recommended)". The RisuRealm panel heading gets the same hairline "upstream" tag and screen-reader marker as the other upstream-owned links, reusing the existing upstream label string. Today's Realm card has none.
 
+### MC-2930 — #234 story shelf: no snippet for an archived chat; card text is a snapshot, 2026-11-21
+
+- Tag: decisions (two AskUserQuestion answers to the #234 session on plan-s3). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-2820`, `MC-2833`, `MC-2836`, `#234`.
+
+**What the maintainer chose.**
+- "No snippet (Recommended)": when a loaded character's current chat is itself archived (its messages are not in memory), the card shows the name, chat name and time and no last line. Nothing is loaded.
+- "Snapshot (Recommended)": each card's chat name and last line are fixed together with the order when Home opens, and refresh on the next visit. Only removals, renames and pictures apply live, so no reply text streams into a card.
+
 ### MC-2955 — #442 module share secrets: refuse MCP modules at share points, plugin settings file unchanged, no keep-keys opt-in, 2026-11-21
 
 - Tag: decisions (four AskUserQuestion answers to the #442 session, 2026-11-21; the fourth after Gate 1 round 1). Date: 2026-11-21. Exact times: UNKNOWN. Related: `MC-772` item 2, `MC-901` item 2, `MC-2954`, `#442`, `#154`.

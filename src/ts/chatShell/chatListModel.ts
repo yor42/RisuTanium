@@ -140,6 +140,11 @@ export function previewLine(chat: Chat): string {
     if (typeof data !== 'string' || data === '') {
         return ''
     }
+    return previewText(data)
+}
+
+/** The plain-text reduction `previewLine` applies to a message body: tags and markdown dropped, white space collapsed, at most 200 characters. */
+export function previewText(data: string): string {
     // Only the head can reach the preview, so a huge message is never scanned whole.
     const head = data.slice(0, PREVIEW_LIMIT * 8)
     return stripMarkdown(head

@@ -1708,6 +1708,7 @@ export const languageChineseTraditional = {
     "triggerInputLabels": {
         "value": "值",
         "var": "變數",
+        "operandType": "{label}類型",
         "varName": "變數名稱",
         "outputVar": "輸出變數",
         "name": "名稱",
@@ -3153,6 +3154,7 @@ export const languageChineseTraditional = {
     "openAIAudioLeftOut": "未傳送給模型（僅接受 WAV 或 MP3 音訊）：{names}",
     "openAIAudioUnnamed": "一個音訊附件",
     "triggerOn": "Trigger 時機",
+    "triggerEffectCategory": "效果類別",
     "noConfig": "無設定",
     "var": "變數",
     "condition": "條件",
