@@ -170,7 +170,7 @@ async function restoreOf(bytes: Uint8Array, calls: Calls) {
 
 function okOf(end: Awaited<ReturnType<typeof restoreOf>>) {
     if (end.kind !== 'ok') {
-        throw new Error(`the restore ended ${end.outcome} (${end.cause})`)
+        throw new Error(`the restore ended ${end.kind === 'ended' ? `${end.outcome} (${end.cause})` : end.kind}`)
     }
     return end.verified
 }

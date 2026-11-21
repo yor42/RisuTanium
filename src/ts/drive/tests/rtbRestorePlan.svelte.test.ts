@@ -29,6 +29,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { exportClosure } from 'src/ts/storage/store2/rtb/exportClosure'
 import { inlayFixture, repackRtb, withBrokenCrc, writeRtbFile, type RtbBuild, type WorldLike } from './rtb/rtbRestoreFixtures'
+import { settingsFile } from './rtb/settingsFileKit'
 
 vi.setConfig({ testTimeout: 40_000 })
 
@@ -958,6 +959,56 @@ describe('P.1b: the restore\'s own bulk marker (T-V2, T-R6, T-R12)', () => {
         expect(alertErrorTexts(page)).toContain(language.store2RestoreBulkMarker)
         expect(log).toEqual(['openHeldBulk', 'openHeldBulk'])
         expect((await page.k.commitKey()).staging).toBeNull()
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+})
+
+describe('a settings-only file (T13)', () => {
+    async function settingsBytes(): Promise<Uint8Array> {
+        return (await settingsFile({ settings: [{ key: 'theme', value: 'waifu' }, { key: 'zoomsize', value: 120 }] })).bytes()
+    }
+
+    /** The asset plan, the scale question and every other prompt are unreachable for a file with no store2, assets or inlays. */
+    const unreachable = {
+        assetDeps: () => { throw new Error('the asset plan ran for a settings file') },
+        confirmScale: async (): Promise<boolean> => { throw new Error('the scale question was asked for a settings file') },
+    }
+
+    test('the preparation ends settings after the checks, with the hold released, no write and no prompt (guard; M5 and the missing case fail it)', async () => {
+        const page = await openPage()
+        const run = await prepare(page, await settingsBytes(), { deps: unreachable })
+        expect(run.end.kind).toBe('settings')
+        expect(run.end.kind === 'settings' && run.end.settings.values.map((entry) => entry.key)).toEqual(['theme', 'zoomsize'])
+        expect(run.end.kind === 'settings' && run.end.file.name).toBe('backup.rtb')
+        expect(run.granted).toBe(true)
+        expect(run.writesAfterGrant).toBe(0)
+        expect(run.storageChangedAfterGrant).toBe(false)
+        expect(await writeLockIsFree(page)).toBe(true)
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(confirmTexts(page)).toEqual([])
+    })
+
+    test('the Welcome restore reaches the same end, so the apply can refuse it with its own text (guard)', async () => {
+        const page = await openPage()
+        const run = await prepare(page, await settingsBytes(), { firstRun: true, deps: unreachable })
+        expect(run.end.kind).toBe('settings')
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+
+    test('a Cancel that came first still wins: the card gate refuses the lock and nothing is returned for the apply (guard)', async () => {
+        const page = await openPage()
+        const file = await pick(await settingsBytes())
+        const busy = page.busy.beginBusy('backupLoad')
+        try {
+            const end = await page.plan.prepareRtbRestore(file, busy, {
+                saveBoundMs: 3000,
+                cancel: { cancelRequested: false, lockCancel: () => false },
+                deps: unreachable,
+            })
+            expect(end).toEqual({ kind: 'ended', outcome: 'canceled', cause: 'cancelled' })
+        } finally {
+            busy.end()
+        }
         expect(await writeLockIsFree(page)).toBe(true)
     })
 })

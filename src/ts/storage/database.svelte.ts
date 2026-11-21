@@ -38,6 +38,7 @@ import {
 import { normalizeHideUnusedModes, normalizeVisibleModes, type HomeMode } from './homeModes';
 import { assignPresetIds, carryPresetMeta, freshPresetMeta, migratePresetSlots, withoutPresetMeta } from './presetMeta';
 import { DEFAULT_HYPA_MODEL } from '../process/memory/embeddingModels';
+import type { PRESET_RECORD_FIELDS } from './store2/fastForward/records';
 
 //APP_VERSION_POINT is to locate the app version in the database file for version bumping
 export let appVer = "0.1.0" //<APP_VERSION_POINT>
@@ -2265,8 +2266,17 @@ export const defaultSdDataFunc = () =>{
     return safeStructuredClone(defaultSdData)
 }
 
+/** The working fields a saved preset never carries into a settings file: connection, endpoint and plugin-provider values. */
+type PresetOmittedSourceFields = 'currentPluginProvider' | 'textgenWebUIStreamURL' | 'textgenWebUIBlockingURL' | 'koboldURL' | 'proxyConnectionId'
+
+/**
+ * The database fields presetFromWorkingSettings reads: the preset record's working fields, plus doNotChangeSeperateModels.
+ * The connection and endpoint fields are optional, so a caller that never reads them need not supply them.
+ */
+export type WorkingPresetSource = Pick<Database, Exclude<typeof PRESET_RECORD_FIELDS[number], PresetOmittedSourceFields> | 'doNotChangeSeperateModels'>
+    & Partial<Pick<Database, PresetOmittedSourceFields>>
 /** A preset holding the working settings of `db` under `name`, in the shape `saveCurrentPreset` stores. */
-export function presetFromWorkingSettings(db:Database, name:string, image:string):botPreset{
+export function presetFromWorkingSettings(db:WorkingPresetSource, name:string, image:string):botPreset{
     return {
         name,
         apiType: db.apiType,
@@ -2370,7 +2380,7 @@ export function appendWorkingSettingsPreset(db:Database){
  * id, folder and hotkey slot carried over. The page save and the fast-forward replay both use it, so a concurrent
  * switch compares equal on both sides.
  */
-export function savedPresetFor(db:Database, slot:botPreset):botPreset{
+export function savedPresetFor(db:WorkingPresetSource, slot:botPreset):botPreset{
     return carryPresetMeta(presetFromWorkingSettings(db, slot.name, slot.image ?? ''), slot)
 }
 

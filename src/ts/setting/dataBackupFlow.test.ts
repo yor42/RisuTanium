@@ -36,6 +36,7 @@ function deps(choice: BackupChoice | null, setup: Setup = {}) {
         saveBin: vi.fn(run),
         savePartialBin: vi.fn(async (options: BackupExportOptions, _entry: { assetsExplained: boolean }) => await run(options)),
         startRtb: vi.fn(async (_password?: string) => null),
+        startSettingsRtb: vi.fn(async (_password?: string) => null),
         askLeaveOut: vi.fn(async (_summary: readonly BinLeaveOutEntry[]) => setup.answer ?? null),
         setLeftOut: vi.fn((_text: string | null) => {}),
     }
@@ -44,6 +45,7 @@ function deps(choice: BackupChoice | null, setup: Setup = {}) {
         saveBin: spies.saveBin,
         savePartialBin: spies.savePartialBin,
         startRtb: spies.startRtb,
+        startSettingsRtb: spies.startSettingsRtb,
         askLeaveOut: spies.askLeaveOut,
         setLeftOut: spies.setLeftOut,
     }
@@ -61,15 +63,29 @@ describe('runDataBackup', () => {
         expect(spies.startRtb).not.toHaveBeenCalled()
     })
 
-    test('S1-U1: .rtb starts the .rtb export only, whatever the scope says', async () => {
-        for (const scope of ['full', 'partial'] as const) {
-            const { live, spies } = deps({ format: 'rtb', scope })
-            await runDataBackup(live)
-            expect(spies.startRtb).toHaveBeenCalledTimes(1)
-            expect(spies.saveBin).not.toHaveBeenCalled()
-            expect(spies.savePartialBin).not.toHaveBeenCalled()
-            expect(spies.askLeaveOut).not.toHaveBeenCalled()
-        }
+    test('S1-U1: a full .rtb starts the full .rtb export only', async () => {
+        const { live, spies } = deps({ format: 'rtb', scope: 'full' })
+        await runDataBackup(live)
+        expect(spies.startRtb).toHaveBeenCalledTimes(1)
+        expect(spies.startSettingsRtb).not.toHaveBeenCalled()
+        expect(spies.saveBin).not.toHaveBeenCalled()
+        expect(spies.savePartialBin).not.toHaveBeenCalled()
+        expect(spies.askLeaveOut).not.toHaveBeenCalled()
+    })
+
+    test('R2: a settings-only .rtb starts the settings export only, with the chooser\'s password or none', async () => {
+        const plain = deps({ format: 'rtb', scope: 'settings' })
+        await runDataBackup(plain.live)
+        expect(plain.spies.startSettingsRtb).toHaveBeenCalledTimes(1)
+        expect(plain.spies.startSettingsRtb.mock.calls[0][0]).toBeUndefined()
+        expect(plain.spies.startRtb).not.toHaveBeenCalled()
+        expect(plain.spies.saveBin).not.toHaveBeenCalled()
+        expect(plain.spies.savePartialBin).not.toHaveBeenCalled()
+        expect(plain.spies.askLeaveOut).not.toHaveBeenCalled()
+        const sealed = deps({ format: 'rtb', scope: 'settings', password: ' Pẃ 한 ' })
+        await runDataBackup(sealed.live)
+        expect(sealed.spies.startSettingsRtb).toHaveBeenCalledWith(' Pẃ 한 ')
+        expect(sealed.spies.startRtb).not.toHaveBeenCalled()
     })
 
     test('T-S2-9: .rtb hands the export exactly the chooser\'s password, and undefined when there is none', async () => {

@@ -26,6 +26,10 @@
                 const entry = await import('../../../ts/drive/rtbExportEntry')
                 return entry.startRtbExport({ ...entry.liveRtbEntryDeps(), confirm: async () => true }, { password })
             },
+            startSettingsRtb: async (password) => {
+                const entry = await import('../../../ts/drive/rtbExportEntry')
+                return entry.startSettingsRtbExport(undefined, { password })
+            },
         }))
     }
 </script>

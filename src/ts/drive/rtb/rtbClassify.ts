@@ -16,6 +16,7 @@
  *   damaged one.
  * Units, asset bodies, inlay pairs and side lines are read by later callers.
  */
+import { SETTINGS_ID } from './entryNames'
 import { MANIFEST_NAME, DEFAULT_MANIFEST_CAP, parseManifest, peekNewerRtb, type RtbManifest } from './manifest'
 import { RtbCouldNotReadError, type RangeSource } from './rangeSource'
 import { checkRefs, checkReqTokens } from './refsFingerprint'
@@ -48,6 +49,8 @@ export type NewerReason =
 
 export type RtbClassification =
     | { kind: 'ok', manifest: RtbManifest, rows: SectionRow[], index: ZipIndex, notice: RtbNotice }
+    /** A settings-only file: its section table holds the reserved `settings` row and none of store2, assets or inlays. Never `ok`. */
+    | { kind: 'settings', manifest: RtbManifest, rows: SectionRow[], index: ZipIndex, notice: RtbNotice }
     | { kind: 'newer', reason: NewerReason }
     | { kind: 'damaged', reason: string }
     | { kind: 'not-an-rtb' }
@@ -197,16 +200,13 @@ async function classifyUnguarded(source: RangeSource, cap: number): Promise<RtbC
         return damaged(`section entries: ${entryProblem}`)
     }
 
-    return {
-        kind: 'ok',
-        manifest,
-        rows,
-        index,
-        notice: {
-            unknownOptionalRows: unknownOptionalRows(rows).map((row) => ({ id: row.id, v: row.v })),
-            outsideEntryCount: countOutsideEntries(rows, index),
-        },
+    const notice: RtbNotice = {
+        unknownOptionalRows: unknownOptionalRows(rows).map((row) => ({ id: row.id, v: row.v })),
+        outsideEntryCount: countOutsideEntries(rows, index),
     }
+    // The section table admits a known `settings` row only without store2, assets and inlays rows, so this never
+    // names a whole backup.
+    return { kind: rows.some((row) => row.id === SETTINGS_ID) ? 'settings' : 'ok', manifest, rows, index, notice }
 }
 
 export async function classifyRtb(source: RangeSource, options: ClassifyOptions = {}): Promise<RtbClassification> {

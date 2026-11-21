@@ -14,6 +14,7 @@ import { isTauri } from 'src/ts/platform'
 import { alertClear, alertConfirm, alertError, alertNormal } from '../alert'
 import { shownPromptNames } from './backupUpstreamSizes'
 import type { ExportTaskStepDef } from '../exportTask'
+import { exportSettingsRtb, type SettingsRtbResult } from './rtbSettingsExport'
 import {
     exportRtb, rtbExportRefusal,
     type RtbExportCard, type RtbExportOptions, type RtbExportProgress, type RtbExportRefusal, type RtbExportReport, type RtbExportResult, type RtbStep,
@@ -153,5 +154,45 @@ export async function startRtbExport(deps: RtbEntryDeps = liveRtbEntryDeps(), op
         return result
     } finally {
         inFlight = false
+    }
+}
+
+let settingsInFlight = false
+
+export interface SettingsRtbEntryDeps {
+    run(options: Parameters<typeof exportSettingsRtb>[0]): Promise<SettingsRtbResult>
+    isTauri: boolean
+}
+
+/**
+ * The settings-only entry: the run's task card carries every ending, as for the full export. Nothing is asked first,
+ * because the file holds no data of any other kind, and a failure or a cancel is reported by the shell. Resolves to
+ * `null` when a start is already in flight.
+ */
+export async function startSettingsRtbExport(deps: SettingsRtbEntryDeps = { run: exportSettingsRtb, isTauri }, options: { password?: string } = {}): Promise<SettingsRtbResult | null> {
+    if (settingsInFlight) {
+        return null
+    }
+    settingsInFlight = true
+    try {
+        return await deps.run({
+            progressText: rtbProgressText,
+            card: {
+                def: {
+                    title: language.rtbSettingsExportTaskTitle,
+                    steps: [
+                        { id: 'prepare', label: language.exportStepPrepare },
+                        { id: 'side', label: language.rtbStepSide },
+                        { id: 'finish', label: language.exportStepWrite },
+                    ],
+                    doneHeadline: language.backupTaskDone,
+                    failedHeadline: language.backupTaskFailed,
+                },
+                summary: [deps.isTauri ? language.rtbExportSaved : language.exportDownloadStarted],
+            },
+            password: options.password,
+        })
+    } finally {
+        settingsInFlight = false
     }
 }
