@@ -41,7 +41,7 @@ type Slot = character | groupChat
  * character with another `chaId` than the placeholder (`mismatch`), or the
  * `chaId` is held by several characters (`ambiguous`). Only `missing`,
  * `mismatch` and `ambiguous` are worded as possible data loss
- * (`restoreFailureText`).
+ * (`namedRestoreFailureText`).
  */
 export type ColdRestoreFailure = 'missing' | 'unreadable' | 'unavailable' | 'damaged' | 'mismatch' | 'ambiguous'
 
@@ -161,23 +161,29 @@ export function restoreFailureReason(outcome: Exclude<ColdCopyOutcome, { status:
     return outcome.status === 'unreadable' ? outcome.kind ?? 'unreadable' : outcome.status
 }
 
+/** The name a restore failure message gives `slot`: its own, else the shared fallback for a slot with none. */
+export function restoreFailureName(slot: Slot): string {
+    return slot.name || language.errors.coldStorageUnknownCharacterName
+}
+
 /**
- * The unnamed message for `reason`. Every reason has its own case, so a reason
- * added to `ColdRestoreFailure` without a message fails the type check instead
- * of falling through to the possible-data-loss text.
+ * The message naming the character `name` for `reason`. Every reason has its
+ * own case, so a reason added to `ColdRestoreFailure` without a message fails
+ * the type check instead of falling through to the possible-data-loss text.
+ * Only `missing`, `mismatch` and `ambiguous` claim the data may be lost.
  */
-function restoreFailureText(reason: ColdRestoreFailure): string {
+export function namedRestoreFailureText(name: string, reason: ColdRestoreFailure): string {
     switch (reason) {
         case 'unavailable':
-            return language.errors.coldStorageRestoreUnavailable
+            return language.errors.coldStorageNamedRestoreUnavailable(name)
         case 'damaged':
-            return language.errors.coldStorageRestoreDamaged
+            return language.errors.coldStorageNamedRestoreDamaged(name)
         case 'unreadable':
-            return language.errors.coldStorageRestoreUnreadable
+            return language.errors.coldStorageNamedRestoreUnreadable(name)
         case 'missing':
         case 'mismatch':
         case 'ambiguous':
-            return language.errors.coldStorageRestoreFailed
+            return language.errors.coldStorageNamedRestoreFailed(name)
         default: {
             const unhandled: never = reason
             return unhandled
@@ -185,10 +191,10 @@ function restoreFailureText(reason: ColdRestoreFailure): string {
     }
 }
 
-/** The refusal of a restore, with the user-facing alert unless the request is `quiet`. */
-function refuse(options: ColdRestoreOptions, reason: ColdRestoreFailure): ColdRestoreOutcome {
+/** The refusal of a restore of `slot`, with the user-facing alert naming it unless the request is `quiet`. */
+function refuse(options: ColdRestoreOptions, reason: ColdRestoreFailure, slot: Slot): ColdRestoreOutcome {
     if (!options.quiet) {
-        alertError(restoreFailureText(reason))
+        alertError(namedRestoreFailureText(restoreFailureName(slot), reason))
     }
     return { status: 'refused', reason }
 }
@@ -274,7 +280,7 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
             return { status: 'gone' }
         }
         if (holders.length > 1) {
-            return refuse(options, 'ambiguous')
+            return refuse(options, 'ambiguous', stub)
         }
         index = holders[0]
         const holder = characters[index]
@@ -296,7 +302,7 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
 
     const unit = checkUnit(result, key, target)
     if (unit.status !== 'ok') {
-        return refuse(options, restoreFailureReason(unit))
+        return refuse(options, restoreFailureReason(unit), target)
     }
 
     const restored = applyStubStateOnRestore(target, unit.character)
@@ -364,7 +370,7 @@ export function restoreColdCharacter(stub: Slot, options: ColdRestoreOptions = {
                     return { status: 'gone' }
                 }
                 if (holders > 1) {
-                    return refuse(options, 'ambiguous')
+                    return refuse(options, 'ambiguous', stub)
                 }
             }
             return { ...outcome, installedHere: false }
