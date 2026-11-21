@@ -955,7 +955,8 @@ export function getModules(subject?: RunSubject){
 // The body getters below skip a slot that is marked as a module stub even when it carries body keys (an edited or
 // malformed stub): a stub's body is never read until the loader has replaced the slot. getModules itself still
 // returns stubs, because callers read their id, namespace and icon flags.
-export function getModuleLorebooks(subject?: RunSubject) {
+/** With `owners`, one module id is pushed per returned entry, in the same order. */
+export function getModuleLorebooks(subject?: RunSubject, owners?: string[]) {
     const modules = getModules(subject)
     let lorebooks: loreBook[] = []
     for (const module of modules) {
@@ -964,6 +965,11 @@ export function getModuleLorebooks(subject?: RunSubject) {
         }
         if (module.lorebook) {
             lorebooks = lorebooks.concat(module.lorebook)
+            if(owners){
+                for(let i = 0; i < module.lorebook.length; i++){
+                    owners.push(module.id)
+                }
+            }
         }
     }
     return lorebooks

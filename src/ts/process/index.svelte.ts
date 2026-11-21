@@ -9,6 +9,7 @@ import { alertError, alertToast } from "../alert";
 import { parseChatML } from "../parser/chatML";
 import { promptViewAt, promptViewOf, splitSentMessages, type PromptView, type SentMessages } from "../cbs";
 import { loadLoreBookV3Prompt } from "./lorebook.svelte";
+import { noteLoreUse, renameLoreUseReply } from "./loreUse";
 import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
@@ -2490,6 +2491,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         outputTokens = maxContextTokens - inputTokens
     }
     const generationId = v4()
+    // Every path that writes a new reply gives it `generationId` as its `chatId`. A preview writes no reply and a
+    // continue extends an existing one, so neither replaces the list of the latest reply.
+    if(!arg.continue && !arg.preview && !arg.previewPrompt){
+        noteLoreUse(generationId, lorepmt.used ?? [])
+    }
     const generationModel = getGenerationModelString()
 
     generationInfo = {
@@ -2965,6 +2971,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     // the same synchronous run as the swap.
                     if(continuedOldId){
                         renameContinuedMessage(replaceTarget.ctx.chat, continuedOldId, generationId)
+                        renameLoreUseReply(continuedOldId, generationId)
                     }
                     trackReply(replaceTarget.ctx.chat, replaceTarget.index)
                     if(inlayResult.promise){

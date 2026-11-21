@@ -99,6 +99,7 @@
     import TranslationEditor from './TranslationEditor.svelte'
     import MessageMeta from './MessageMeta.svelte'
     import AlternativesRow from './AlternativesRow.svelte'
+    import ReplyLoreUse from './ReplyLoreUse.svelte'
     import { chatSurface, isChatSurfaceInstalled } from '../ChatScreens/chatSurface.svelte'
     import { language } from '../../lang'
     import { getCharImage } from '../../ts/characters'
@@ -879,6 +880,7 @@
     {#if showPager || continuation > 0}
         <AlternativesRow bind:this={alternatives} {source} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={(direction) => { void browse(direction) }} onEnd={() => { void bringBackContinuation() }} />
     {/if}
+    {#if idx >= 0 && !streaming}<ReplyLoreUse {chatId} ownerLore={owner?.globalLore} {chat} />{/if}
     {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
         <PartialEditController messageData={message.data} chatIndex={idx} {bodyRoot} blockEditEnabled={DBState.db.enableBlockPartialEdit} dragEditEnabled={DBState.db.enableDragPartialEdit} translatedView={translated} getTranslationEditContext={getTranslationPartialEditContext} on:save={handlePartialEditSave} />
