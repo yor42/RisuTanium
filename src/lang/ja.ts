@@ -1796,6 +1796,7 @@ export const languageJapanese = {
     triggerInputLabels: {
         value: "値",
         var: "変数",
+        operandType: "{label}の種類",
         varName: "変数名",
         outputVar: "出力変数",
         name: "名前",
@@ -3246,6 +3247,7 @@ export const languageJapanese = {
     openAIAudioLeftOut: "モデルに送信されませんでした（WAVまたはMP3の音声のみ受け付けます）：{names}",
     openAIAudioUnnamed: "音声の添付ファイル",
     triggerOn: "発動条件",
+    triggerEffectCategory: "効果のカテゴリ",
     noConfig: "設定なし",
     var: "変数",
     condition: "条件",

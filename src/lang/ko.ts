@@ -1663,6 +1663,7 @@ export const languageKorean = {
     "triggerInputLabels": {
         "value": "값",
         "var": "변수",
+        "operandType": "{label} 유형",
         "varName": "변수명",
         "outputVar": "출력 변수",
         "name": "이름",
@@ -3108,6 +3109,7 @@ export const languageKorean = {
     "openAIAudioLeftOut": "WAV나 MP3 오디오만 받는 모델이라 보내지 않았어요: {names}",
     "openAIAudioUnnamed": "오디오 첨부 파일",
     "triggerOn": "활성화 조건",
+    "triggerEffectCategory": "효과 분류",
     "noConfig": "설정 없음",
     "var": "변수",
     "condition": "조건",
