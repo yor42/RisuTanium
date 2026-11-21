@@ -46,6 +46,7 @@ const MANIFEST_SAMPLE: Sample = {
             loadouts: ref('loadouts'), moduleIndex: ref('moduleindex'), moduleBuckets: [ref('mbucket1'), ref('mbucket2')],
             presets: [ref('preset1'), ref('preset2')], taskPresets: [ref('taskpreset1'), ref('taskpreset2')], plugins: [ref('plugin1'), ref('plugin2')],
             pluginStorage: { buckets: 2, refs: [ref('bucket1'), ref('bucket2')] },
+            workspaces: [ref('workspace1'), ref('workspace2')],
             legacyKeep: { unit: ref('legacy'), v: 1, files: [{ key: 'database/database.bin', status: 'ok' }] },
         },
     },
@@ -55,7 +56,8 @@ const MANIFEST_SAMPLE: Sample = {
         ['fixed.moduleBuckets[]', 'mbucket1'], ['fixed.moduleBuckets[]', 'mbucket2'],
         ['fixed.presets[]', 'preset1'], ['fixed.presets[]', 'preset2'], ['fixed.taskPresets[]', 'taskpreset1'], ['fixed.taskPresets[]', 'taskpreset2'],
         ['fixed.plugins[]', 'plugin1'], ['fixed.plugins[]', 'plugin2'],
-        ['fixed.pluginStorage.refs[]', 'bucket1'], ['fixed.pluginStorage.refs[]', 'bucket2'], ['fixed.legacyKeep.unit', 'legacy'],
+        ['fixed.pluginStorage.refs[]', 'bucket1'], ['fixed.pluginStorage.refs[]', 'bucket2'],
+        ['fixed.workspaces[]', 'workspace1'], ['fixed.workspaces[]', 'workspace2'], ['fixed.legacyKeep.unit', 'legacy'],
     ].map(([path, name]) => `${path}:${tailOf(name)}`),
 }
 
@@ -113,7 +115,17 @@ const BUCKET_SAMPLE: Sample = {
     expected: [`entries[].ref:${tailOf('val1')}`, `entries[].ref:${tailOf('val2')}`],
 }
 
-const SAMPLES = [COMMIT_SAMPLE, MANIFEST_SAMPLE, SHARD_SAMPLE, MODULE_INDEX_SAMPLE, MODULE_BUCKET_SAMPLE, BUCKET_SAMPLE]
+const WORKSPACE_SAMPLE: Sample = {
+    type: UNIT_TYPE.workspace,
+    body: {
+        v: 1,
+        ws: { id: 'w1', name: 'n', createdAt: 1 },
+        files: [1, 2].map(n => ({ id: `f${n}`, path: `p${n}`, size: 1, mtime: 1, ref: ref(`wfile${n}`) })),
+    },
+    expected: [`files[].ref:${tailOf('wfile1')}`, `files[].ref:${tailOf('wfile2')}`],
+}
+
+const SAMPLES = [COMMIT_SAMPLE, MANIFEST_SAMPLE, SHARD_SAMPLE, MODULE_INDEX_SAMPLE, MODULE_BUCKET_SAMPLE, BUCKET_SAMPLE, WORKSPACE_SAMPLE]
 
 /** The guard: what `table` finds in the sample against what the sample holds. Empty when they agree. */
 function guardDiff(table: readonly RefRow[], sample: Sample): string[] {
@@ -138,12 +150,13 @@ describe('refsOf guard', () => {
         const required: [UnitType, string[]][] = [
             [UNIT_TYPE.commit, ['current.key', 'retained[].key', 'pins[].key']],
             [UNIT_TYPE.manifest, ['shards[]', 'fixed.config', 'fixed.configAl', 'fixed.il', 'fixed.statics', 'fixed.order', 'fixed.loadouts',
-                'fixed.moduleIndex', 'fixed.moduleBuckets[]', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.legacyKeep.unit']],
+                'fixed.moduleIndex', 'fixed.moduleBuckets[]', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.workspaces[]', 'fixed.legacyKeep.unit']],
             [UNIT_TYPE.shard, ['entries[].core', 'entries[].lore', 'entries[].scripts', 'entries[].al', 'entries[].il',
                 'entries[].chats[].core', 'entries[].chats[].chunks[]', 'entries[].chats[].alt[]']],
             [UNIT_TYPE.moduleIndex, ['entries[].unit', 'entries[].al', 'entries[].il']],
             [UNIT_TYPE.moduleBucket, ['entries[].unit', 'entries[].al', 'entries[].il']],
             [UNIT_TYPE.pluginStorageBucket, ['entries[].ref']],
+            [UNIT_TYPE.workspace, ['files[].ref']],
         ]
         for (const [type, paths] of required) {
             for (const path of paths) {

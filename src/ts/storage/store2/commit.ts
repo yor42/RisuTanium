@@ -323,6 +323,7 @@ export const DESCENT: Readonly<Record<string, UnitType>> = {
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
     'fixed.moduleBuckets[]': UNIT_TYPE.moduleBucket,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
+    'fixed.workspaces[]': UNIT_TYPE.workspace,
 }
 
 export type TreeCheck =

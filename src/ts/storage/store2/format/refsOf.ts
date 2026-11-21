@@ -51,6 +51,7 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.manifest, path: 'fixed.taskPresets[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.plugins[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.pluginStorage.refs[]', mode: 'ref' },
+    { type: UNIT_TYPE.manifest, path: 'fixed.workspaces[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.legacyKeep.unit', mode: 'ref' },
 
     { type: UNIT_TYPE.shard, path: 'entries[].core', mode: 'ref' },
@@ -70,7 +71,20 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.moduleBucket, path: 'entries[].il', mode: 'ref' },
 
     { type: UNIT_TYPE.pluginStorageBucket, path: 'entries[].ref', mode: 'ref' },
+
+    { type: UNIT_TYPE.workspace, path: 'files[].ref', mode: 'ref' },
 ]
+
+/**
+ * The unit types whose bodies name further units besides the commit key and the manifest: every walk (tree read, mark,
+ * recovery, base index, `.rtb` export and restore) descends into exactly these and treats every other type as a leaf.
+ * Derived from `REFS_TABLE`, so a type that gains a row is a parent at every site at once.
+ */
+export const PARENT_UNIT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>(
+    REFS_TABLE
+        .map(row => row.type)
+        .filter(type => type !== UNIT_TYPE.commit && type !== UNIT_TYPE.manifest),
+)
 
 /** Unit types that name no other unit. The fence record and the deletion snapshot name keys inline, which are not references. */
 export const UNITS_WITHOUT_REFS: readonly UnitType[] = UNIT_TYPE_IDS.filter(
