@@ -437,15 +437,16 @@ describe('T3D-2 callers', () => {
         await until(() => status().phase === 'applied', 'the first key addition')
         expect(packElements()).toHaveLength(1)
 
-        // An exactly-light pack is judged a second time for the light base, so Banana Cocoa's apply spawned the judge twice.
+        // An exactly-light pack is judged a second time for the light base, and a sheet with paint declarations a third time for its
+        // shape variant, so Banana Cocoa's apply spawned the judge three times and Origin Navy's twice.
         setActiveThemePack('builtin:origin-navy')
-        await until(() => status().phase === 'applied' && status().activeId === 'builtin:origin-navy' && channel.spawns === 3, 'the setActiveThemePack apply')
+        await until(() => status().phase === 'applied' && status().activeId === 'builtin:origin-navy' && channel.spawns === 5, 'the setActiveThemePack apply')
         expect(packElements()).toHaveLength(1)
         expect(packElements()[0].getAttribute('media')).toBe('all')
 
         const outcome = await installThemePack(installRequestOf(PACK_A, 'Pack A', 'rec-a', [FONT_A]))
         expect(outcome.ok).toBe(true)
-        await until(() => status().phase === 'applied' && status().activeId === 'rec-a' && channel.spawns === 4, 'the install apply')
+        await until(() => status().phase === 'applied' && status().activeId === 'rec-a' && channel.spawns === 6, 'the install apply')
         expect(packElements()).toHaveLength(1)
         expect(packElements()[0].textContent).toContain('blob:http://localhost/1')
         expect(world.reads).toHaveLength(2)

@@ -918,3 +918,51 @@ describe('plugin exposure of the theme pack fields', () => {
         expect(fields().activeThemePack).toBe('pack-1')
     })
 })
+
+describe('onActivate runs after the list write and before the active id is set (T22, T34 premise)', () => {
+    type Seen = { id: string, replacedId: string | null, activeThen: unknown, listIds: unknown[] }
+
+    function watching(): { seen: Seen[], onActivate: NonNullable<InstallRequest<string>['onActivate']> } {
+        const seen: Seen[] = []
+        return {
+            seen,
+            onActivate: ({ id, replacedId }) => {
+                seen.push({ id, replacedId, activeThen: fields().activeThemePack, listIds: (snapshotOf(fields().themePacks) as Slot[]).map((pack) => pack.id) })
+            },
+        }
+    }
+
+    test('a fresh install reports a null replaced id while the previous active id and the new list are visible', async () => {
+        installDb({ themePacks: [recordFixture({ id: 'other', packId: 'other-pack', name: 'Other' })], activeThemePack: 'other' })
+        const watch = watching()
+        const { request } = requestOf({ newId: 'pack-new', manifest: manifestOf({ packId: 'fresh', name: 'Fresh' }) })
+        okOf(await installThemePack({ ...request, onActivate: watch.onActivate }))
+        expect(watch.seen).toEqual([{ id: 'pack-new', replacedId: null, activeThen: 'other', listIds: ['other', 'pack-new'] }])
+        expect(fields().activeThemePack).toBe('pack-new')
+    })
+
+    test('a confirmed replacement reports the replaced record id', async () => {
+        installDb({ themePacks: [recordFixture({ id: 'old-1', name: 'Old name' })], activeThemePack: 'old-1' })
+        const watch = watching()
+        const { request } = requestOf({ newId: 'pack-new' })
+        okOf(await installThemePack({ ...request, onActivate: watch.onActivate }))
+        expect(watch.seen).toEqual([{ id: 'pack-new', replacedId: 'old-1', activeThen: 'old-1', listIds: ['pack-new'] }])
+    })
+
+    test('a throw in the callback is ignored and the install still activates the pack', async () => {
+        const { request } = requestOf({ newId: 'pack-new' })
+        const outcome = await installThemePack({ ...request, onActivate: () => { throw new Error('callback') } })
+        expect(okOf(outcome).record.id).toBe('pack-new')
+        expect(fields().activeThemePack).toBe('pack-new')
+    })
+
+    test('a refusal and a declined replacement never call it', async () => {
+        const watch = watching()
+        const refused = requestOf({ refusal: 'no' }).request
+        await installThemePack({ ...refused, onActivate: watch.onActivate })
+        installDb({ themePacks: [recordFixture({ id: 'old-1' })] })
+        const declined = requestOf({ replaceAnswer: false }).request
+        await installThemePack({ ...declined, onActivate: watch.onActivate })
+        expect(watch.seen).toEqual([])
+    })
+})

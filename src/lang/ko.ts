@@ -195,6 +195,7 @@ export const languageKorean = {
         "slate-light": "슬레이트 라이트",
         "lite": "Lite",
         "nexus": "넥서스",
+        "theme-pack": "테마 팩",
     },
     settingsShellStepNames: {
         "tiniest": "가장 작음",

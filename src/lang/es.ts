@@ -195,6 +195,7 @@ export const languageSpanish = {
         "slate-light": "Pizarra claro",
         "lite": "Lite",
         "nexus": "Nexus",
+        "theme-pack": "Paquete de tema",
     },
     settingsShellStepNames: {
         "tiniest": "Mínimo",

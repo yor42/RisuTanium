@@ -195,6 +195,7 @@ export const languageGerman = {
         "slate-light": "Schiefer Hell",
         "lite": "Lite",
         "nexus": "Nexus",
+        "theme-pack": "Design-Paket",
     },
     "settingsShellStepNames": {
         "tiniest": "Kleinstmöglich",

@@ -195,6 +195,7 @@ export const languageVietnamese = {
         "slate-light": "Xám đá sáng",
         "lite": "Lite",
         "nexus": "Nexus",
+        "theme-pack": "Gói chủ đề",
     },
     settingsShellStepNames: {
         "tiniest": "Nhỏ nhất",
