@@ -4,6 +4,7 @@
     import { v4 } from "uuid";
     import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
     import { copyOrder, foldersLost, postOrderUndo, postTrashUndo, type OrderCopy, type OrderUndoKind } from "../../ts/libraryUndo";
+    import { namedRestoreFailureText, restoreFailureName } from "../../ts/process/coldRestoreText";
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
     import { isAndroidTransport } from "../../ts/storage/tauriByteTransport";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
@@ -281,7 +282,7 @@
             recordCaughtError('grid.pick', error)
             if (mine === pickSeq) {
                 opening = null
-                alertError(language.errors.coldStorageRestoreUnreadable)
+                alertError(namedRestoreFailureText(restoreFailureName(slot), 'unreadable'))
             }
             return
         }
@@ -296,7 +297,8 @@
         } catch (error) {
             console.error('Grid pick failed:', error)
             recordCaughtError('grid.pick', error)
-            alertError(language.errors.coldStorageRestoreUnreadable)
+            const slot = DBState.db?.characters?.[index]
+            alertError(namedRestoreFailureText(slot ? restoreFailureName(slot) : language.errors.coldStorageUnknownCharacterName, 'unreadable'))
         }
     }
 

@@ -2,6 +2,7 @@
     import { language } from "src/lang";
     import { DBState } from "src/ts/stores.svelte";
     import SettingRenderer from "../SettingRenderer.svelte";
+    import SeasonalLogoToggle from "./Display/SeasonalLogoToggle.svelte";
     import {
         displayOtherSettingsItems,
         displaySizeSettingsItems,
@@ -55,4 +56,5 @@
 
 {#if submenu === 2 || submenu === -1}
     <SettingRenderer items={displayOtherSettingsItems} />
+    <SeasonalLogoToggle />
 {/if}

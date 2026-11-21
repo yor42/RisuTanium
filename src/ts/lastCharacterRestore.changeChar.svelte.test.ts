@@ -186,6 +186,7 @@ import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { resetRetainedForTest } from 'src/ts/process/coldRetained'
 import { resetChatOnScreenForTests } from 'src/ts/process/chatOnScreen.svelte'
 import { studioOpen } from 'src/ts/studio/studioOpen'
+import { charGridOpen } from 'src/ts/charGridOpen'
 import { utilityOpen } from 'src/lib/Utility/utilityGate'
 import { homeView, openHomeLibrary, showHomeLanding } from 'src/lib/UI/Home/homeView.svelte'
 import { LAST_CHARACTER_KEY, writeLastChaId } from './lastCharacterMemory'
@@ -260,6 +261,7 @@ async function landAlpha(): Promise<void> {
 function resetSurfaces(): void {
     settingsOpen.set(false)
     studioOpen.set(false)
+    charGridOpen.set(false)
     utilityOpen.set(false)
     OpenRealmStore.set(false)
     PlaygroundStore.set(0)
@@ -321,6 +323,7 @@ describe('the restore of an archived last character, through the real changeChar
         ['Settings', () => settingsOpen.set(true)],
         ['Utility (I1-U)', () => utilityOpen.set(true)],
         ['the Hub (I1-H)', () => OpenRealmStore.set(true)],
+        ["the Sidebar rail's character grid (#480)", () => charGridOpen.set(true)],
         ['the Home library through the real openHomeLibrary (I1-L)', () => openHomeLibrary()],
     ]
 
@@ -354,6 +357,15 @@ describe('the restore of an archived last character, through the real changeChar
     test('I1: a restore that starts with the library already open does not pick at all', async () => {
         writeLastChaId('alpha')
         openHomeLibrary()
+
+        expect(await startLastCharacterRestore()).toBe('skipped')
+        expect(readSpy).not.toHaveBeenCalled()
+        expect(get(selectedCharID)).toBe(-1)
+    })
+
+    test('#480: a restore that starts with the rail\'s character grid already open does not pick at all', async () => {
+        writeLastChaId('alpha')
+        charGridOpen.set(true)
 
         expect(await startLastCharacterRestore()).toBe('skipped')
         expect(readSpy).not.toHaveBeenCalled()

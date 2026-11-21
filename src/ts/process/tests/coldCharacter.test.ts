@@ -553,12 +553,12 @@ describe('applyStubStateOnRestore -- the restored character\'s trash state and l
 })
 
 describe('the restore message for an unreadable unit', () => {
-    test('is a distinct English message that asks to try again and never says data may be lost', () => {
-        const message = language.errors.coldStorageRestoreUnreadable
+    test('is a distinct English message that names the character, asks to try again and never says data may be lost', () => {
+        const message = language.errors.coldStorageNamedRestoreUnreadable('Ann')
 
         expect(typeof message).toBe('string')
-        expect(message.length).toBeGreaterThan(0)
-        expect(message).not.toBe(language.errors.coldStorageRestoreFailed)
+        expect(message).toContain('Ann')
+        expect(message).not.toBe(language.errors.coldStorageNamedRestoreFailed('Ann'))
         expect(message).toMatch(/again/i)
         expect(message).not.toMatch(/lost|loss|permanent/i)
     })
