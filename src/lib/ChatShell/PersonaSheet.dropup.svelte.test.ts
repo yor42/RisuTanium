@@ -50,7 +50,8 @@ vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => val
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
 vi.mock('../ChatScreens/Suggestion.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
-vi.mock('../../ts/media/charImageLookups', () => ({ createCharImageLookups: () => ({ get: async (_slot: string, loc: string) => `background-image: url("${loc}")`, getIf: vi.fn(), dispose: vi.fn() }) }))
+const lookupGet = vi.hoisted(() => vi.fn(async (_slot: string, loc: string, ..._rest: unknown[]) => `background-image: url("${loc}")`))
+vi.mock('../../ts/media/charImageLookups', () => ({ createCharImageLookups: () => ({ get: lookupGet, getIf: vi.fn(), dispose: vi.fn() }) }))
 
 const view = $state({ open: true, variant: 'dropup' as 'dropup' | 'sheet', opener: null as HTMLElement | null })
 const onclose = vi.fn(() => { view.open = false })
@@ -101,6 +102,34 @@ const pressKey = (key: string) => {
 }
 
 describe('PersonaSheet dropup variant', () => {
+    // One icon per case, so the one row that reads an image is the only lookup and nothing waits on another row's import.
+    test('(R) #450: a persona row of the sheet is a list row that queues every size', async () => {
+        lookupGet.mockClear()
+        const personas = DBState.db.personas
+        DBState.db.personas = personas.map((persona, index) => index === 1 ? { ...persona, icon: 'assets/p1.webp' } : persona)
+        try {
+            await showSheet()
+            await vi.waitFor(() => expect(lookupGet).toHaveBeenCalledTimes(1))
+            expect(lookupGet.mock.calls[0].slice(0, 3)).toEqual(['persona:1', 'assets/p1.webp', 'css'])
+            expect(lookupGet.mock.calls[0][3]).toEqual({ everySize: true })
+        } finally {
+            DBState.db.personas = personas
+        }
+    })
+
+    test('(R) #450: the default entry of the sheet is a list row that queues every size', async () => {
+        lookupGet.mockClear()
+        DBState.db.userIcon = 'assets/user.webp'
+        try {
+            await showSheet()
+            await vi.waitFor(() => expect(lookupGet).toHaveBeenCalledTimes(1))
+            expect(lookupGet.mock.calls[0].slice(0, 3)).toEqual(['user', 'assets/user.webp', 'css'])
+            expect(lookupGet.mock.calls[0][3]).toEqual({ everySize: true })
+        } finally {
+            delete DBState.db.userIcon
+        }
+    })
+
     test('T3: a menu at every width with the default entry, each persona and the settings entry last, no heading, named by aria-label', async () => {
         vi.stubGlobal('innerWidth', 375)
         const node = await showSheet()
@@ -246,7 +275,7 @@ describe('PersonaSheet dropup variant', () => {
         view.variant = variant
         DBState.db.username = 'Synthetic User'
         DBState.db.userIcon = 'user.png'
-        const personas = DBState.db.personas as Array<{ id: string, name: string, icon?: string }>
+        const personas = DBState.db.personas
         const saved = personas.map((persona) => ({ ...persona }))
         personas[0].name = 'Synthetic User'
         personas[0].icon = 'ann.png'
