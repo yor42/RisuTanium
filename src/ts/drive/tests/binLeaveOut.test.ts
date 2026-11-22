@@ -10,7 +10,7 @@ function label(key: string, kinds: ForkOnlyKind[], branches?: ForkOnlyChatLabel[
     return { key, text: `Char / ${key}`, kinds, ...(branches !== undefined ? { branches } : {}) }
 }
 
-const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], themePacks: [], usageStats: false, chroMemory: false }
+const NONE: BinLeaveOutInput = { chats: [], taskPresets: [], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
 
 describe('binLeaveOutSummary', () => {
     test('nothing to leave out gives an empty list', () => {
@@ -24,9 +24,11 @@ describe('binLeaveOutSummary', () => {
             themePacks: ['Pack'],
             usageStats: true,
             chroMemory: true,
+            chatDrafts: { drafts: 4, hintChats: 1 },
         })
-        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats', 'chroMemory'])
-        expect(summary.map((entry) => entry.count)).toEqual([1, 1, 2, 1, 1, 1])
+        expect(summary.map((entry) => entry.kind)).toEqual(['alternatives', 'forkChatData', 'taskPresets', 'themePacks', 'usageStats', 'chroMemory', 'chatDrafts'])
+        expect(summary.slice(0, 6).map((entry) => entry.count)).toEqual([1, 1, 2, 1, 1, 1])
+        expect(summary[6]).toEqual({ kind: 'chatDrafts', drafts: 4, hintChats: 1 })
         const forkChat = summary[1]
         expect(forkChat.kind === 'forkChatData' && forkChat.kinds).toEqual(['interruptedNote', 'hideNames'])
     })
@@ -71,8 +73,15 @@ describe('binLeaveOutSummary', () => {
         expect(alternatives.kind === 'alternatives' && alternatives.count).toBe(3)
     })
 
+    test('T2.2 reproducer: the unsent edits are listed last, after ChroMemory, when either count is above zero', () => {
+        expect(binLeaveOutSummary({ ...NONE, chroMemory: true, chatDrafts: { drafts: 2, hintChats: 0 } })).toEqual([{ kind: 'chroMemory', count: 1 }, { kind: 'chatDrafts', drafts: 2, hintChats: 0 }])
+        expect(binLeaveOutSummary({ ...NONE, chatDrafts: { drafts: 0, hintChats: 3 } })).toEqual([{ kind: 'chatDrafts', drafts: 0, hintChats: 3 }])
+        // guard: passes before and after
+        expect(binLeaveOutSummary({ ...NONE, chatDrafts: { drafts: 0, hintChats: 0 } })).toEqual([])
+    })
+
     test('the input is not changed', () => {
-        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], themePacks: [], usageStats: false, chroMemory: false }
+        const input: BinLeaveOutInput = { chats: [label('a', ['alternatives', 'hideNames'])], taskPresets: ['One'], themePacks: [], usageStats: false, chroMemory: false, chatDrafts: { drafts: 0, hintChats: 0 } }
         const before = JSON.stringify(input)
         binLeaveOutSummary(input)
         expect(JSON.stringify(input)).toBe(before)

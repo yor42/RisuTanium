@@ -24,7 +24,8 @@ const PRESETS: BinLeaveOutEntry = { kind: 'taskPresets', count: 2, names: ['Summ
 const PACKS: BinLeaveOutEntry = { kind: 'themePacks', count: 5, names: ['Navy'] }
 const USAGE: BinLeaveOutEntry = { kind: 'usageStats', count: 1 }
 const CHRO: BinLeaveOutEntry = { kind: 'chroMemory', count: 1 }
-const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, PACKS, USAGE, CHRO]
+const DRAFTS: BinLeaveOutEntry = { kind: 'chatDrafts', drafts: 3, hintChats: 2 }
+const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, PACKS, USAGE, CHRO, DRAFTS]
 
 /** The count text each entry must put on a shown line. */
 function countText(entry: BinLeaveOutEntry): string {
@@ -35,6 +36,7 @@ function countText(entry: BinLeaveOutEntry): string {
         case 'themePacks': return language.settingsShellDataLeaveOutThemePacks(entry.count)
         case 'usageStats': return language.settingsShellDataLeaveOutUsage
         case 'chroMemory': return language.settingsShellDataKindChroMemory
+        case 'chatDrafts': return language.settingsShellDataLeaveOutChatDrafts(entry.drafts, entry.hintChats)
     }
 }
 
@@ -47,8 +49,8 @@ function subsets(): BinLeaveOutEntry[][] {
 }
 
 describe('leaveOutSheetDef', () => {
-    test('there are 63 non-empty combinations of the six kinds', () => {
-        expect(subsets()).toHaveLength(63)
+    test('there are 127 non-empty combinations of the seven kinds', () => {
+        expect(subsets()).toHaveLength(127)
     })
 
     test('for every combination at most VISIBLE_CONSEQUENCES lines, and every present kind is named on one of them', () => {
@@ -95,6 +97,14 @@ describe('leaveOutSheetDef', () => {
         expect(leftOutKindLabels([CHRO])).toEqual(['ChroMemory settings'])
     })
 
+    test('T2.3 reproducer: the unsent edits are one app item, named by their counts, and add no consequence line', () => {
+        expect(leaveOutSheetDef([DRAFTS]).consequences).toEqual([language.settingsShellDataLeaveOutAppData('3 unsent message edit(s) and long-chat hints already shown in 2 chat(s)')])
+        expect(leaveOutSheetDef([{ kind: 'chatDrafts', drafts: 0, hintChats: 4 }]).consequences).toEqual([language.settingsShellDataLeaveOutAppData('long-chat hints already shown in 4 chat(s)')])
+        expect(leaveOutSheetDef([{ kind: 'chatDrafts', drafts: 1, hintChats: 0 }]).consequences).toEqual([language.settingsShellDataLeaveOutAppData('1 unsent message edit(s)')])
+        expect((leaveOutSheetDef(ALL).consequences ?? []).length).toBe((leaveOutSheetDef(ALL.filter((entry) => entry.kind !== 'chatDrafts')).consequences ?? []).length)
+        expect(leftOutKindLabels([DRAFTS])).toEqual(['Unsent message edits and long-chat hints'])
+    })
+
     test('the combined app-data line lists the present items in order', () => {
         const lines = leaveOutSheetDef([PRESETS, PACKS, USAGE]).consequences ?? []
         expect(lines).toEqual([
@@ -123,6 +133,7 @@ describe('leftOutKindLabels', () => {
             language.settingsShellDataKindThemePacks,
             language.settingsShellDataKindUsage,
             language.settingsShellDataKindChroMemory,
+            language.settingsShellDataKindChatDrafts,
         ])
     })
 })

@@ -70,6 +70,7 @@ import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 import { binLeaveOutSummary, type BinLeaveOutEntry } from "./binLeaveOut";
 import { chroMemoryOn } from "../process/memory/memoryEngine";
+import { countChatDrafts } from "../chatDraftsModel";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -297,6 +298,9 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // first); both keys are removed, not set to undefined. The legacy engine fields stay as stored, and the page keeps its values.
     delete plain.ltmEngine
     delete plain.ltmSettings
+    // Unsent message edits and the long-chat hint flags are fork-only and have no place in a .bin (the export confirm names them
+    // first); the key is removed, not set to undefined, and the page keeps its value.
+    delete plain.chatDrafts
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -869,7 +873,24 @@ async function confirmOmitChroMemory(session: ExportSession, present: boolean): 
 }
 
 /**
- * The fork-only consent before the writer opens: the six per-kind prompts, or one answer to `options.askLeaveOut` that
+ * What the export leaves out of the unsent message edits and hint flags, counted over the entries a reader can key; both zero when
+ * the profile holds none, so nothing is asked.
+ */
+function chatDraftsLeftOut(db: Database): { drafts: number, hintChats: number } {
+    return countChatDrafts(db.chatDrafts)
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the unsent message edits and the long-chat hints already
+ * shown (a .bin has no place for them). 	rue when the profile holds none or the person confirms; declining writes nothing.
+ */
+async function confirmOmitChatDrafts(session: ExportSession, left: { drafts: number, hintChats: number }): Promise<boolean> {
+    const present = left.drafts > 0 || left.hintChats > 0
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupChatDraftsConfirm(left.drafts, left.hintChats)))
+}
+
+/**
+ * The fork-only consent before the writer opens: the seven per-kind prompts, or one answer to `options.askLeaveOut` that
  * names every present kind. A summary with nothing in it asks nothing. An unanswered summary (`null`) falls back to the
  * per-kind prompts, so a sheet that could not be shown never turns the consent silent. `true` when the export may go on.
  */
@@ -880,11 +901,12 @@ async function confirmForkOnlyLeaveOut(session: ExportSession, options: BackupEx
         && await confirmOmitThemePacks(session, themePackLabels(db))
         && await confirmOmitUsageStats(session, hasUsageData(db))
         && await confirmOmitChroMemory(session, chroMemoryLeftOut(db))
+        && await confirmOmitChatDrafts(session, chatDraftsLeftOut(db))
     const ask = options.askLeaveOut
     if (ask === undefined) {
         return await perKind()
     }
-    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db) })
+    const summary = binLeaveOutSummary({ chats: forkOnlyLabels, taskPresets: taskPresetLabels(db), themePacks: themePackLabels(db), usageStats: hasUsageData(db), chroMemory: chroMemoryLeftOut(db), chatDrafts: chatDraftsLeftOut(db) })
     if (summary.length === 0) {
         return true
     }

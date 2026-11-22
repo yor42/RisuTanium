@@ -3,7 +3,7 @@
  *
  * The definition of the sheet that asks, once, about everything a `.bin` leaves out because upstream has no place for it.
  * The consequences are one line per source group (alternative replies, other chat data only this app uses, this app's
- * own data), so a profile holding all six kinds still shows every kind on screen without a tap. Item names stay behind
+ * own data), so a profile holding all seven kinds still shows every kind on screen without a tap. Item names stay behind
  * the sheet's disclosure.
  *
  * Component-free and engine-free: it imports the sheet's types and the shared prompt-name cut only.
@@ -74,6 +74,9 @@ export function leaveOutSheetDef(summary: readonly BinLeaveOutEntry[]): PatternW
             case 'chroMemory':
                 appItems.push(language.settingsShellDataKindChroMemory);
                 break;
+            case 'chatDrafts':
+                appItems.push(language.settingsShellDataLeaveOutChatDrafts(entry.drafts, entry.hintChats));
+                break;
         }
     }
     if (appItems.length > 0) {
@@ -103,6 +106,7 @@ export function leftOutKindLabels(summary: readonly BinLeaveOutEntry[]): string[
             case 'themePacks': return language.settingsShellDataKindThemePacks;
             case 'usageStats': return language.settingsShellDataKindUsage;
             case 'chroMemory': return language.settingsShellDataKindChroMemory;
+            case 'chatDrafts': return language.settingsShellDataKindChatDrafts;
         }
     });
 }
