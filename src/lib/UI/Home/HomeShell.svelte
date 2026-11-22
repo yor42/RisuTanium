@@ -8,7 +8,10 @@
     import HomeJumpRow from './HomeJumpRow.svelte'
     import HomeLibrary from './HomeLibrary.svelte'
     import '../../../styles/home-tokens.css'
-    import { DBState, OpenRealmStore, sideBarStore } from 'src/ts/stores.svelte'
+    import NexusNetworkBackground from '../../Nexus/network/NexusNetworkBackground.svelte'
+    import { chatSurface } from '../../ChatScreens/chatSurface.svelte'
+    import { coversPage } from 'src/ts/alertEscape'
+    import { DBState, OpenRealmStore, alertStore, sideBarStore } from 'src/ts/stores.svelte'
     import HomeDrawer from './HomeDrawer.svelte'
     import HomeStoryShelf from './HomeStoryShelf.svelte'
     import HomeTopBar from './HomeTopBar.svelte'
@@ -119,6 +122,36 @@
             scroller?.removeEventListener('scroll', onScroll)
         }
     })
+
+    // The network lattice exists from two animation frames after the shell's creation on, so its cost is not
+    // part of the first frames. Once armed it stays armed for the shell's life.
+    let latticeArmed = $state(false)
+    $effect(() => {
+        let second = 0
+        const first = requestAnimationFrame(() => {
+            second = requestAnimationFrame(() => {
+                latticeArmed = true
+            })
+        })
+        return () => {
+            cancelAnimationFrame(first)
+            cancelAnimationFrame(second)
+        }
+    })
+
+    // Only the wide band animates; the phone and mid bands show one coarse still frame. A covered page (a
+    // hidden chat surface, a page-covering alert) runs no field. A user background image replaces the lattice.
+    const latticeStill = $derived(band !== 'wide')
+    const latticePaused = $derived(chatSurface.hidden || coversPage($alertStore.type))
+    const latticeShown = $derived(latticeArmed && !DBState.db.customBackground)
+
+    // A background press may raise a wave; presses on interactive elements and on every named block do not.
+    const WAVE_BLOCKERS = 'button, a, input, select, textarea, label, summary, details, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [contenteditable], [data-part]:not([data-part="home-landing"]):not([data-part="home-body"])'
+    function canWave(event: PointerEvent): boolean {
+        const target = event.target
+        if (!(target instanceof Element) || !landingRoot?.contains(target)) return false
+        return target.closest(WAVE_BLOCKERS) === null
+    }
 
     // The re-aim of the latest jump (jumpToSection): a new reveal and the shell's destruction both end it.
     let reaim: AbortController | null = null
@@ -257,6 +290,16 @@
         </section>
     {/if}
 {/snippet}
+
+{#if latticeShown}
+    <!-- A previous sibling of the landing in a positioned parent: it paints first and all Home content paints over
+         it with no z-index. The part's opacity cannot exceed the inner alpha. -->
+    <div data-part="home-network" aria-hidden="true" class="pointer-events-none absolute inset-0 overflow-hidden text-[color:var(--nexus-edge-strong)] forced-colors:hidden">
+        <div class="absolute inset-0 opacity-[var(--home-network-alpha)]">
+            <NexusNetworkBackground still={latticeStill} lowPower={latticeStill} paused={latticePaused} tint="inherit" {canWave} />
+        </div>
+    </div>
+{/if}
 
 <div bind:this={landingRoot} data-part="home-landing" data-layout={band} class="home-root relative flex h-full w-full flex-col">
     {#if !$OpenRealmStore}
