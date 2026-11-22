@@ -61,6 +61,8 @@ describe('N2: the draft unit at the cap', () => {
         const textBytes = DRAFTS * TEXT_BYTES
 
         expect(unit.type).toBe(30)
+        // A first encode writes every unit; only a written unit carries its bytes.
+        if (unit.reused !== false) throw new Error('the first encode must write the draft unit')
         expect(unit.bytes.length).toBeGreaterThan(textBytes / 2)
         expect(unit.bytes.length).toBeLessThanOrEqual(textBytes + 100_000)
 
