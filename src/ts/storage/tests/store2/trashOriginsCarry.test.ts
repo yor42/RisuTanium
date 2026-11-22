@@ -49,7 +49,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 import { assembleDatabase, checkUnit, unitMapSource } from 'src/ts/storage/store2/codec'
 import { UNIT_TYPE } from 'src/ts/storage/store2/format'
-import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
+import { decodeRisuSave } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { asDatabase, buildSmall, encodeWith, type Obj } from './codecFixtures'
 

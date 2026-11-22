@@ -200,7 +200,8 @@ vi.mock(import('../../../src/ts/stores.svelte'), () => {
 
 import { DBState, selectedCharID } from '../../../src/ts/stores.svelte'
 import { registerDbChangeEffects } from '../../../src/ts/storage/dbChangeEffects.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from '../../../src/ts/storage/risuSave'
+import { decodeRisuSave } from '../../../src/ts/storage/risuSave'
+import { RisuSaveEncoder } from '../../../src/ts/storage/tests/risuSaveEncoder'
 import {
     coldStorageHeader,
     getColdStorageItem,
