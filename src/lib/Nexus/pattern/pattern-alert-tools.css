@@ -29,9 +29,13 @@
 [data-part="pattern-alert-row"][data-emphasis="hero"] > [data-part="pattern-alert-row-title"] { font-size: var(--pattern-warn-headline-size); font-weight: var(--pattern-warn-headline-weight); line-height: var(--pattern-warn-headline-leading); }
 [data-part="pattern-alert-row-desc"] { grid-column: 1; color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
 
-/* ---- chooser: the avatar grid of selectChar ---- */
-[data-part="pattern-alert-chars"] {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--pattern-warn-action-height) * 2), 1fr)); gap: var(--pattern-warn-padding) var(--pattern-warn-gap); justify-items: center;
+/* ---- chooser: the avatar grid of selectChar ----
+   The grid is windowed (SelectCharGrid.svelte): the list inside the part is a column of measured rows,
+   each row one grid line with the same auto-fill tracks, so every row cuts at the same column count.
+   The row gap is the list's gap, never a row margin, because a margin is outside the measured box. */
+[data-part="pattern-alert-chars"] > [role="list"] { display: flex; flex-direction: column; gap: var(--pattern-warn-padding); }
+[data-part="pattern-alert-chars"] > [role="list"] > [role="listitem"] {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--pattern-warn-action-height) * 2), 1fr)); column-gap: var(--pattern-warn-gap); justify-items: center;
 }
 [data-part="pattern-alert-char"] { display: grid; justify-items: center; align-content: start; gap: var(--pattern-warn-gap); width: 100%; min-width: 0; }
 [data-part="pattern-alert-char"] > button:focus-visible { outline: var(--pattern-focus-width) solid var(--nexus-ring); outline-offset: var(--pattern-focus-offset); }
