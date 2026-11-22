@@ -116,9 +116,12 @@ export function createNewChat(cha: character | groupChat): number {
  * file once there; the style is returned only after that read settles, and
  * `onWholeReadQueued` is called when it waited, so the caller does not remember
  * a style whose re-use would start that read outside the queue.
+ * `queueEverySize` drops the 8 MiB floor of that wait, for a row of a list whose
+ * small files together could pass the queue's budget.
  */
 export interface CharImageOptions extends ThumbRequestOptions {
     onWholeReadQueued?: () => void
+    queueEverySize?: boolean
 }
 
 export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss'): Promise<string|null>
@@ -161,7 +164,7 @@ export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgc
     }
     const filesrc = thumbSrc ?? await getFileSrc(loc)
     if(thumbSrc === null && filesrc && options?.signal){
-        const outcome = await awaitQueuedWholeRead(filesrc, options.signal)
+        const outcome = await awaitQueuedWholeRead(filesrc, options.signal, { everySize: options.queueEverySize === true })
         if(outcome === 'aborted'){
             return THUMB_ABORTED
         }

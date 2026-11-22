@@ -46,7 +46,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         changeChatTo: vi.fn(), downloadFile: vi.fn(), openURL: vi.fn(), loadAsset: vi.fn(), saveAsset: vi.fn(),
         readImage: vi.fn(), globalFetch: vi.fn(), fetchNative: vi.fn(), toGetter: vi.fn((o: unknown) => o),
         aiWatermarkingLawApplies: vi.fn(() => false), aiLawApplies: vi.fn(() => false),
-        hubURL: '', usingSw: false, getFetchLogs: vi.fn(() => []), getFetchData: vi.fn(() => ({})),
+        hubURL: '', getFetchLogs: vi.fn(() => []), getFetchData: vi.fn(() => ({})),
     }
     return new Proxy(stub, {
         get: (t, k) => (k in t ? t[k as string] : k === 'then' ? undefined : vi.fn()),

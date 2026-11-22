@@ -52,6 +52,7 @@ export interface World {
     appStore: typeof import('src/ts/storage/store/appStore')
     marks: typeof import('src/ts/storage/characterSaveMarks')
     risuSave: typeof import('src/ts/storage/risuSave')
+    encoderFixture: typeof import('src/ts/storage/tests/risuSaveEncoder')
     pageMode: typeof import('src/ts/storage/pageStorageMode')
     errors: typeof import('src/ts/storage/store/errors')
     start(): void
@@ -114,8 +115,8 @@ export function createWorldKit(env: WorldEnv) {
     }
 
     /** Frames a database as the legacy main file would hold it. */
-    async function encodeMainFile(world: Pick<World, 'risuSave'>, db: Record<string, unknown>): Promise<Uint8Array> {
-        const encoder = new world.risuSave.RisuSaveEncoder()
+    async function encodeMainFile(world: Pick<World, 'encoderFixture'>, db: Record<string, unknown>): Promise<Uint8Array> {
+        const encoder = new world.encoderFixture.RisuSaveEncoder()
         await encoder.init(db as unknown as Database, { compression: false })
         await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
         return new Uint8Array(encoder.encode()!)
@@ -147,6 +148,7 @@ export function createWorldKit(env: WorldEnv) {
         const appStore = await import('src/ts/storage/store/appStore')
         const marks = await import('src/ts/storage/characterSaveMarks')
         const risuSave = await import('src/ts/storage/risuSave')
+        const encoderFixture = await import('src/ts/storage/tests/risuSaveEncoder')
         const pageMode = await import('src/ts/storage/pageStorageMode')
         const errors = await import('src/ts/storage/store/errors')
 
@@ -166,7 +168,7 @@ export function createWorldKit(env: WorldEnv) {
             env.parked.add(earlier)
         }
         const world: World = {
-            id, store, api, appStore, marks, risuSave, pageMode, errors,
+            id, store, api, appStore, marks, risuSave, encoderFixture, pageMode, errors,
             start() {
                 void api.saveDb()
             },

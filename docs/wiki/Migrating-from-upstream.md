@@ -14,6 +14,8 @@ The first time you use Realm, this fork asks you to accept the Terms of Service 
 
 For almost everyone, migration works like a move between any two RisuAI installs. On upstream, go to **Settings → Account & Files → Save Backup Locally** to make a `.bin` file. In this fork, the same tab is **Settings → Backup & Files → Load Backup Locally**. Import the file the same way as on upstream. This works whether or not you used RisuAccount sync, if the backup is not encrypted (see the next section).
 
+If you ran upstream as a static web page, your data lives only in that browser. Make the `.bin` on upstream first. This fork has no static web build, so restore the file in the desktop app, in Android or in a page that the Node server serves.
+
 When you import, keep in mind how the restore of this fork behaves:
 
 - **Close every other tab of this app first.** If your browser supports the check that the restore needs, the app refuses the restore while another tab of the app is open. If your browser cannot do that check, you get a warning before the restore proceeds. A plain-HTTP LAN address and an older browser are two examples. Read the warning. A second tab that is open can silently overwrite the restored data the next time that tab saves.

@@ -182,7 +182,7 @@ function golden(name: string): Uint8Array {
 /** A block-format backup whose last block is damaged: its decode yields a salvage map and the person is asked. */
 async function damagedBackup(page: Page): Promise<Uint8Array> {
     const source = makeDb('backup', ['alpha', 'beta', 'gamma'])
-    const encoder = new page.w.risuSave.RisuSaveEncoder()
+    const encoder = new page.w.encoderFixture.RisuSaveEncoder()
     await encoder.init(source as unknown as Database, { compression: false })
     await encoder.set(source as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
     const damaged = breakDataChecksum(new Uint8Array(encoder.encode()!), 'alpha')

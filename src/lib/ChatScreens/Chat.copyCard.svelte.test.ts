@@ -77,7 +77,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     changeChatTo: vi.fn(),
     foldChatToMessage: vi.fn(),
     // A stored image path resolves to a same-origin app image address.
-    getFileSrc: vi.fn(async (path: string) => (path ? `/sw/img/${path}` : '')),
+    getFileSrc: vi.fn(async (path: string) => (path ? `/api/asset/${path}` : '')),
     createChatCopyName: vi.fn((name: string) => `${name} Branch`),
     downloadFile: vi.fn(),
     fetchNative: vi.fn(),
@@ -622,7 +622,7 @@ describe('a click on "Copy as card"', () => {
 
         expect(encodeAvatar).toHaveBeenCalledTimes(1)
         const [src] = encodeAvatar.mock.calls[0]
-        expect(src).toContain('/sw/img/origavatar')
+        expect(src).toContain('/api/asset/origavatar')
         expect(src).not.toContain('newavatar')
         expect(vi.mocked(getFileSrc).mock.calls.map(([path]) => path)).not.toContain('newavatar')
 
@@ -667,7 +667,7 @@ describe('the avatar of a card', () => {
 
         expect(encodeAvatar).toHaveBeenCalledTimes(1)
         const [src] = encodeAvatar.mock.calls[0]
-        expect(src).toContain('/sw/img/personaicon')
+        expect(src).toContain('/api/asset/personaicon')
         expect(src).not.toContain('characterimage')
         expect(vi.mocked(getFileSrc).mock.calls.map(([path]) => path)).not.toContain('characterimage')
         await writtenCard(clipboard)

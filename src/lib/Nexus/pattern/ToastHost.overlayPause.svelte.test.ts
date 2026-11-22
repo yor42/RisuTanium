@@ -260,7 +260,7 @@ describe('the view while paused', () => {
         postUndo(host, 'Removed while open')
         flushSync()
         expect(document.querySelector('[data-part="toast-live-polite"]')?.textContent).toBe('Removed while open')
-        expect(document.querySelectorAll('[data-part="toast"]')).toHaveLength(1)
+        expect(document.querySelectorAll('[data-part="toast-undo"]')).toHaveLength(1)
         clock.advance(60_000)
         expect(host.visible).toHaveLength(1)
         setOpen(sheet.state, false)
@@ -273,7 +273,7 @@ describe('the view while paused', () => {
         mountView()
         postUndo()
         flushSync()
-        const toast = document.querySelector('[data-part="toast"]')!
+        const toast = document.querySelector('[data-part="toast-host"] > .toast')!
         mouse('pointerenter', toast)
         const sheet = mountSheet({ inertOutside: true })
         setOpen(sheet.state, true)

@@ -99,7 +99,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { RisuSaveEncoder, RisuSaveDecoder, decodeRisuSave } from '../risuSave'
+import { RisuSaveDecoder, decodeRisuSave } from '../risuSave'
+import { RisuSaveEncoder, encodedLayout } from './risuSaveEncoder'
 import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
 import { cacheEntriesOf } from './risuSaveCacheFixture'
@@ -413,49 +414,10 @@ describe('RisuSaveEncoder.set() — marked-but-still-present characters are re-e
     })
 })
 
-// `takeEncodedCharacterProxies()` hands the caller the recorded set AND
-// resets the internal one to a fresh, empty `Set`, so each recorded proxy is
-// consumed exactly once. Used once for the identity-tracker seed at boot,
-// and once per reload by a save pass's post-reload filter.
-describe('RisuSaveEncoder.takeEncodedCharacterProxies() — consume-once proxy release', () => {
-    function buildTwoCharacterDbForProxyTest(): Database {
-        return {
-            formatversion: 5,
-            botPresets: [],
-            botPresetsId: 0,
-            modules: [],
-            loadouts: [],
-            plugins: [],
-            pluginCustomStorage: {},
-            characters: [
-                { chaId: 'char1', type: 'character', name: 'Character One', chats: [] },
-                { chaId: 'char2', type: 'character', name: 'Character Two', chats: [] },
-            ],
-        } as unknown as Database
-    }
-
-    test('after init() on a 2-character database, the first call returns both character objects; a second call returns an empty set', async () => {
-        const db = buildTwoCharacterDbForProxyTest()
-        const encoder = new RisuSaveEncoder()
-        await encoder.init(db)
-
-        const firstTake = encoder.takeEncodedCharacterProxies()
-        expect(firstTake.size).toBe(2)
-        expect(firstTake.has(db.characters[0])).toBe(true)
-        expect(firstTake.has(db.characters[1])).toBe(true)
-
-        const secondTake = encoder.takeEncodedCharacterProxies()
-        expect(secondTake.size).toBe(0)
-    })
-})
-
 // The encoder writes no local block cache entry. A1 pins that an unchanged
-// character causes no cache write. A2c additionally pins that an equal-length
-// change is still caught by the layout comparison -- by choosing a name whose
-// block length lands on a multiple of 4, so the whole comparison runs through
-// the word loop, with no tail bytes left for a coincidental checksum
-// difference to catch the change on the word loop's behalf (see A2c's own
-// comment for why that distinction matters). A2 through A6 pin the behaviour
+// character causes no cache write. A2b and A2c additionally pin that an
+// equal-length change is still re-encoded, including a block whose length is a
+// multiple of 4. A2 through A6 pin the behaviour
 // that must hold without the cache write -- a changed character is encoded, a
 // failing cache never fails a save, a round trip through encode/decode still
 // matches, a corrupted block still recovers from a cache a profile already
@@ -523,18 +485,16 @@ describe('RisuSaveEncoder — the encoder writes no local block cache and still 
         const db = buildOneCharacterDb('Test Character')
         const encoder = new RisuSaveEncoder()
         await encoder.init(db)
-        const before = encoder.snapshotLayout()!
-        encoder.markLayoutCommitted(before)
+        const before = encodedLayout(encoder)!
 
-        // Same length as 'Test Character' -- pins that the layout comparison
-        // compares content, not just length. A comparator that only checked
-        // `a.length === b.length` would wrongly treat this as unchanged.
+        // Same length as 'Test Character' -- pins that a change is detected by
+        // content, not just length.
         db.characters[0].name = 'Test CharacteR'
         await encoder.set(db, makeToSave(['char1']))
 
-        const after = encoder.snapshotLayout()!
+        const after = encodedLayout(encoder)!
         expect(after.blocks[after.keys.indexOf('char1')].length).toBe(before.blocks[before.keys.indexOf('char1')].length)
-        expect(encoder.layoutEqualsCommitted(after)).toBe(false)
+        expect(Buffer.from(after.blocks[after.keys.indexOf('char1')]).equals(Buffer.from(before.blocks[before.keys.indexOf('char1')]))).toBe(false)
         const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
         expect(decoded.characters?.[0]?.name).toBe('Test CharacteR')
     })
@@ -552,13 +512,8 @@ describe('RisuSaveEncoder — the encoder writes no local block cache and still 
     }
 
     test('A2c (guard, word-aligned): an equal-length change is still seen as a change when the block length is a multiple of 4', async () => {
-        // Guards specifically against the `aWords[i] !== bWords[i]` word
-        // check: a block with trailing bytes could still catch a content
-        // difference via the tail-byte comparison instead (coincidentally
-        // including a byte of the CRC32 checksum, which differs whenever the
-        // content does), so only a block length that is an exact multiple of
-        // 4, leaving zero trailing bytes, forces the word loop itself to
-        // catch the difference.
+        // A block length that is an exact multiple of 4 has no trailing bytes,
+        // so the change must show in the block content itself.
         const before = buildOneCharacterDb('Multiple4Length')
         const after = buildOneCharacterDb('Multiple4LengtH') // same length as 'Multiple4Length'
         expect(characterBlockLength('char1', before.characters[0])).toBe(
@@ -568,14 +523,13 @@ describe('RisuSaveEncoder — the encoder writes no local block cache and still 
 
         const encoder = new RisuSaveEncoder()
         await encoder.init(before)
-        const layoutBefore = encoder.snapshotLayout()!
-        encoder.markLayoutCommitted(layoutBefore)
+        const layoutBefore = encodedLayout(encoder)!
 
         await encoder.set(after, makeToSave(['char1']))
 
-        const layoutAfter = encoder.snapshotLayout()!
+        const layoutAfter = encodedLayout(encoder)!
         expect(layoutAfter.blocks[layoutAfter.keys.indexOf('char1')].length % 4).toBe(0)
-        expect(encoder.layoutEqualsCommitted(layoutAfter)).toBe(false)
+        expect(Buffer.from(layoutAfter.blocks[layoutAfter.keys.indexOf('char1')]).equals(Buffer.from(layoutBefore.blocks[layoutBefore.keys.indexOf('char1')]))).toBe(false)
         const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
         expect(decoded.characters?.[0]?.name).toBe('Multiple4LengtH')
     })
@@ -657,7 +611,7 @@ describe('RisuSaveEncoder — the encoder writes no local block cache and still 
         await encoder.init(db)
 
         expect(cacheSetItem).not.toHaveBeenCalled()
-        expect([...encoder.snapshotLayout()!.keys].sort()).toEqual([
+        expect([...encodedLayout(encoder)!.keys].sort()).toEqual([
             'char1',
             'config',
             'loadouts',

@@ -257,7 +257,8 @@ import { DBState, selectedCharID } from '../../stores.svelte'
 import { isWriting, writeAt } from '../chatOrigin'
 import { coldStorageHeader } from '../coldstorageData'
 import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from '../../storage/risuSave'
+import { decodeRisuSave } from '../../storage/risuSave'
+import { RisuSaveEncoder } from '../../storage/tests/risuSaveEncoder'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
 
 //#region fixtures

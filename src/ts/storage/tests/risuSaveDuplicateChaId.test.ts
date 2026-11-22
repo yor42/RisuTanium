@@ -70,7 +70,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { RisuSaveEncoder, decodeRisuSave } from '../risuSave'
+import { decodeRisuSave } from '../risuSave'
+import { RisuSaveEncoder } from './risuSaveEncoder'
 import type { toSaveType } from '../risuSave'
 import type { Database } from '../database.svelte'
 
@@ -293,7 +294,6 @@ describe('RisuSaveEncoder -- a numeric chaId and its string form count as one du
         const matches = decoded.characters?.filter((c: CharacterFixture) => String(c.chaId) === '123')
         expect(matches?.length).toBe(1)
         expect(matches?.[0].name).toBe('Numeric')
-        expect(encoder.getFrozenKeys().has('123')).toBe(true)
     })
 })
 
@@ -350,7 +350,6 @@ describe('RisuSaveEncoder.set() -- a raw numeric mark matches its holder\'s stri
         const decodedChar = decoded.characters?.find((c: CharacterFixture) => String(c.chaId) === '123')
         expect(decodedChar?.name).toBe('Holder1')
         expect(toSave.character.length).toBe(0)
-        expect(encoder.getFrozenKeys().has('123')).toBe(true)
     })
 })
 
@@ -568,16 +567,13 @@ describe('RisuSaveEncoder.set() -- a chaId edited mid-pass still encodes and fre
         // written for the starting duplicate, but its id changed before its
         // turn: its form carries an id other than its block's name, so no
         // block is stored for it (no block existed for the key before this
-        // pass, so none is kept either) and it is reported. holder2 is
+        // pass, so none is kept either). holder2 is
         // skipped entirely by the per-pass dedupe and never gets a block.
         expect(decodedNames.has('Holder1')).toBe(false)
         expect(decodedNames.has('Holder2')).toBe(false)
         // Exactly one block: other. Nothing was created under a key read
         // live mid-pass.
         expect(decoded.characters?.length).toBe(1)
-        expect(encoder.getReport().excluded).toEqual([{ entry: holder1, reason: 'id-changed', id: changedId }])
-        expect(encoder.getFrozenKeys().has(dupId)).toBe(true)
-        expect(encoder.getFrozenKeys().has(changedId)).toBe(false)
     })
 })
 
@@ -616,16 +612,13 @@ describe('RisuSaveEncoder.init() -- a chaId renamed mid-pass still encodes and f
 
         // holder1 -- first in snapshot order -- is the holder that would be
         // written for the starting duplicate, but its id changed before its
-        // turn: no block is built for it and it is reported. holder2 is
+        // turn: no block is built for it. holder2 is
         // skipped entirely by the per-pass dedupe and never gets a block.
         expect(decodedNames.has('Holder1')).toBe(false)
         expect(decodedNames.has('Holder2')).toBe(false)
         // Exactly one block: other. Nothing was created under a key read
         // live mid-pass.
         expect(decoded.characters?.length).toBe(1)
-        expect(encoder.getReport().excluded).toEqual([{ entry: holder1, reason: 'id-changed', id: changedId }])
-        expect(encoder.getFrozenKeys().has(dupId)).toBe(true)
-        expect(encoder.getFrozenKeys().has(changedId)).toBe(false)
     })
 })
 

@@ -175,6 +175,7 @@
                     <div
                         class="toast pointer-events-auto flex items-center gap-2 rounded-md border p-3 text-nexus-text shadow-lg {task.mark === 'error' ? 'border-draculared' : 'border-darkborderc'}"
                         data-part="task-toast"
+                        data-part-critical
                         role="group"
                         aria-label={task.title}
                         data-task-phase={task.phase}
@@ -225,38 +226,64 @@
         <!-- The pointer handlers only feed the hold derivation; the buttons are the controls. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-            class="toast pointer-events-auto flex items-center gap-2 rounded-md border bg-darkbg p-3 text-textcolor shadow-lg {edgeClass(toast.kind)}"
-            data-part="toast"
-            data-kind={toast.kind}
-            data-part-critical={toast.actionLabel !== undefined ? '' : undefined}
+            class="toast pointer-events-auto"
             onpointerenter={onMouseEnterOrMove}
             onpointermove={onMouseEnterOrMove}
             onpointerleave={onMouseLeave}
         >
-            <div class="min-w-0 flex-1 break-words">
-                <div data-part="toast-text">{toast.text}</div>
-                {#if toast.sub !== undefined}
-                    <div class="text-sm text-textcolor2" data-part="toast-sub">{toast.sub}</div>
-                {/if}
-            </div>
             {#if toast.actionLabel !== undefined}
-                <button
-                    type="button"
-                    class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 hover:bg-selected"
-                    data-part="toast-action"
-                    aria-disabled={toast.pending ? 'true' : undefined}
-                    onclick={() => host.activate(toast.id)}
-                >{toast.actionLabel}</button>
+                <div
+                    class="flex items-center gap-2 rounded-md border bg-darkbg p-3 text-textcolor shadow-lg {edgeClass(toast.kind)}"
+                    data-part="toast-undo"
+                    data-kind={toast.kind}
+                    data-part-critical
+                >
+                    <div class="min-w-0 flex-1 break-words">
+                        <div data-part="toast-undo-text">{toast.text}</div>
+                        {#if toast.sub !== undefined}
+                            <div class="text-sm text-textcolor2" data-part="toast-undo-sub">{toast.sub}</div>
+                        {/if}
+                    </div>
+                    <button
+                        type="button"
+                        class="min-h-11 min-w-11 rounded-md bg-darkbutton px-3 hover:bg-selected"
+                        data-part="toast-action"
+                        aria-disabled={toast.pending ? 'true' : undefined}
+                        onclick={() => host.activate(toast.id)}
+                    >{toast.actionLabel}</button>
+                    <button
+                        type="button"
+                        class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-textcolor2 hover:bg-selected"
+                        data-part="toast-undo-dismiss"
+                        aria-label={language.uiCommon.close}
+                        onclick={() => host.dismiss(toast.id)}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            {:else}
+                <div
+                    class="flex items-center gap-2 rounded-md border bg-darkbg p-3 text-textcolor shadow-lg {edgeClass(toast.kind)}"
+                    data-part="toast"
+                    data-kind={toast.kind}
+                >
+                    <div class="min-w-0 flex-1 break-words">
+                        <div data-part="toast-text">{toast.text}</div>
+                        {#if toast.sub !== undefined}
+                            <div class="text-sm text-textcolor2" data-part="toast-sub">{toast.sub}</div>
+                        {/if}
+                    </div>
+                    <button
+                        type="button"
+                        class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-textcolor2 hover:bg-selected"
+                        data-part="toast-dismiss"
+                        aria-label={language.uiCommon.close}
+                        onclick={() => host.dismiss(toast.id)}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                </div>
             {/if}
-            <button
-                type="button"
-                class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-textcolor2 hover:bg-selected"
-                data-part="toast-dismiss"
-                aria-label={language.uiCommon.close}
-                onclick={() => host.dismiss(toast.id)}
-            >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-            </button>
         </div>
     {/each}
 </div>

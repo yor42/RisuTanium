@@ -30,7 +30,7 @@ The fork has its own name and its own app-data folder, so it does not overwrite 
 
 ## Where your API key goes
 
-Requests to AI providers never go through the proxy of upstream RisuAI (`sv.risuai.xyz`). The desktop app and Android send them directly from the device. The Node server sends them through its own `/proxy2`. The static web build, which keeps data only in the browser, is being retired; it no longer has a proxy, so its provider requests fail.
+Requests to AI providers never go through the proxy of upstream RisuAI (`sv.risuai.xyz`). The desktop app and Android send them directly from the device. The Node server sends them through its own `/proxy2`. The static web build, which kept data only in the browser, is retired. A page served by a plain web host now shows the message "RisuTanium no longer runs from a plain web host. Use the Android or desktop app, or the page the RisuTanium Node server serves." and does not load.
 
 The **Request Location** and **Force Plain Fetch** settings are gone. A saved value is kept in backups for upstream, but this app ignores it.
 
@@ -45,7 +45,7 @@ What you see:
 - A recovery screen at startup if a save is damaged, and a list of earlier saved versions to restore from ("Load Internal Backup").
 - A visible indicator when a browser tab has stopped saving. A message names exactly which items the app could not save. Before, the loss was silent.
 - Older saves convert automatically. The app refuses a malformed older save, or offers it without the broken parts. It does not crash.
-- The desktop app and the Node server share one storage contract. A page that neither Tauri nor the Node server serves has no storage for your data. The OPFS switch is gone, and the app no longer uses the browser's OPFS or IndexedDB. If an older build left data there, this build neither reads it nor deletes it. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
+- The desktop app and the Node server share one storage contract. The static web build, which kept data only in the browser, is retired: a page that neither Tauri nor the Node server serves has no storage for your data, and the app refuses to load there. The supported hosts are the desktop app, Android and the Node server. The OPFS switch is gone, and the app no longer uses the browser's OPFS or IndexedDB. If an older build left data there, this build neither reads it nor deletes it. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
 - The Node server checks revisions before it writes. So two clients cannot silently overwrite each other.
 - Saving yields to the interface during long saves. On Android, a hidden page keeps saving.
 
@@ -230,7 +230,7 @@ For details and routes, see [[Migrating from upstream]].
 | Execution of V2.1 plugins | The data stays. Nothing runs. |
 | The settings pages Global Lorebook and Global Regex | The pages are retired. |
 | Picture-in-picture keep-alive | A stored `pip` setting reads as `off`. |
-| OPFS storage switch | Removed, along with browser storage (OPFS and IndexedDB). See Saving and storage. |
+| Static web build and browser storage (the OPFS storage switch, OPFS and IndexedDB) | Removed. A plain web host shows a refusal message and does not load. Use the desktop app, Android or the Node server. See Saving and storage. |
 | Desktop auto-updater | Off until the fork has its own releases. |
 
 ## Bugs fixed

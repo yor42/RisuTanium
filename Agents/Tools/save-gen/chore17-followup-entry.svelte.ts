@@ -98,7 +98,7 @@ const realCreateInstance = localforage.createInstance.bind(localforage)
 }
 
 const risuSaveMod = await import('src/ts/storage/risuSave')
-const { RisuSaveEncoder } = risuSaveMod
+const { RisuSaveEncoder } = await import('src/ts/storage/tests/risuSaveEncoder')
 type ToSaveType = import('src/ts/storage/risuSave').toSaveType
 
 const databaseMod = await import('src/ts/storage/database.svelte')
@@ -264,7 +264,7 @@ async function main() {
     // it at startup, not via a hand-built $state container), THEN register
     // the REAL registerDbChangeEffects (matches saveDb()'s own real
     // ordering: init() -> registerDbChangeEffects seeded from
-    // takeEncodedCharacterProxies()).
+    // the characters init() encoded).
     // -----------------------------------------------------------------
     await cacheForageReadyPromise
     const { characters: rawCharacters, stats } = buildManyCharactersFixture({
@@ -281,7 +281,8 @@ async function main() {
 
     const encoder = new RisuSaveEncoder()
     await encoder.init(DBState.db as unknown as DatabaseType, { compression: false })
-    const seed = encoder.takeEncodedCharacterProxies()
+    // The encoder no longer hands out the proxies it encoded; the live characters are the same objects.
+    const seed = (DBState.db as unknown as DatabaseType).characters
 
     function makeTracker(): ToSaveType {
         return { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }

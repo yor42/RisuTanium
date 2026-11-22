@@ -38,4 +38,21 @@ describe('assembleUtilityPrompt', () => {
 
         expect(turns[0].content).toBe('a')
     })
+
+    test('workspace instruction text follows the preset instructions in one system message', () => {
+        const messages = assembleUtilityPrompt({ instructions: 'Fix.' }, [{ role: 'user', content: 'a' }], 'WS')
+
+        expect(messages).toEqual([
+            { role: 'system', content: 'Fix.\n\nWS' },
+            { role: 'user', content: 'a' },
+        ])
+    })
+
+    test('workspace instruction text alone becomes the system message when the preset has none', () => {
+        expect(assembleUtilityPrompt({ instructions: ' ' }, [], 'WS')).toEqual([{ role: 'system', content: 'WS' }])
+    })
+
+    test('no workspace instruction text leaves the system message as the preset wrote it', () => {
+        expect(assembleUtilityPrompt({ instructions: ' Fix. ' }, [], '')[0].content).toBe(' Fix. ')
+    })
 })

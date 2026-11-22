@@ -1,11 +1,11 @@
 /**
- * `RisuSaveEncoder.encodeRawBlock` awaits `maybeYield()` after every block it
- * encodes. Encoding a block crosses no macrotask boundary by itself, so
- * without a yield a `set()` or `init()` over many blocks would run as a single
- * long task. `createYieldBudget` gives each `RisuSaveEncoder` instance a
- * small, independently-testable budget: `maybeYield` yields to the event loop
- * only after roughly `budgetMs` has elapsed since the last yield, so a run of
- * blocks yields periodically without paying a yield's cost on every block.
+ * A loop over many synchronous steps (a restore copy, a run of encoded blocks)
+ * awaits `maybeYield()` after each step. Such a step crosses no macrotask
+ * boundary by itself, so without a yield the loop would run as a single long
+ * task. `createYieldBudget` gives each caller a small, independently-testable
+ * budget: `maybeYield` yields to the event loop only after roughly `budgetMs`
+ * has elapsed since the last yield, so a run of steps yields periodically
+ * without paying a yield's cost on every step.
  * `noteYielded` resets the clock for a caller that has just crossed a
  * macrotask boundary itself.
  */
