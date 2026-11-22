@@ -171,6 +171,7 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { coldStorageHeader } from '../coldstorageData'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 function makePointerChatDb(coldKey: string): Database {
     return {
@@ -192,7 +193,7 @@ function makePointerChatDb(coldKey: string): Database {
 describe('CHORE-07: sendChat refuses to run on a still-cold-storage-pointer chat', () => {
     beforeEach(() => {
         alertErrorMock.mockClear()
-        doingChat.set(false)
+        clearRunningSends()
     })
 
     test('sendChat returns false, leaves doingChat false, and does not touch messages', async () => {

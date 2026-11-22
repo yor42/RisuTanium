@@ -247,6 +247,7 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 import { sendChat, doingChat, setStreamFlushObserverForTests, type StreamFlushUse } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { resolveOriginWithHint, resolutionCountForTests, resetResolutionCountForTests, type OriginContext } from '../chatOrigin'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -400,7 +401,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
     chatOutputListeners.clear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -563,7 +564,7 @@ describe('the positions a streamed reply is written at equal a full resolution',
         }
 
         const short = await runOnce(2)
-        doingChat.set(false)
+        clearRunningSends()
         const long = await runOnce(40)
 
         expect(long.run.result).toBe(true)
@@ -588,7 +589,7 @@ describe('the positions a streamed reply is written at equal a full resolution',
         }
 
         const short = await runOnce(2)
-        doingChat.set(false)
+        clearRunningSends()
         const long = await runOnce(40)
 
         expect(long.run.result).toBe(true)

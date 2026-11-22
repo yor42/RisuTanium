@@ -509,7 +509,7 @@ beforeEach(() => {
     chatOutputListeners.clear()
     workSpies.beginWork.mockClear()
     workSpies.registerWork.mockClear()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {
@@ -520,6 +520,7 @@ afterEach(() => {
 //#endregion
 
 import { beginInFlight, inFlightKinds, resetInFlightForTest, subscribeInFlight } from 'src/ts/process/inFlightWork'
+import { simulateRunningSend, clearRunningSends } from './activeUnits.test-helpers'
 
 /** Every time the registry went from no 'chat' token to one, over the life of `call`. */
 async function countChatBegins(call: () => Promise<boolean>): Promise<{ begins: number, result: boolean | Error }> {
@@ -656,7 +657,7 @@ describe('the chat in-flight token', () => {
 
     test('a send refused because another holds the flag creates no token', async () => {
         installSingleChat()
-        doingChat.set(true)
+        simulateRunningSend()
 
         const { begins, result } = await countChatBegins(() => sendChat())
 

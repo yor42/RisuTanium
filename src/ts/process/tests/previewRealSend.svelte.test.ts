@@ -261,6 +261,7 @@ import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
 import { alertStore, DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { runLuaEditTrigger } from 'src/ts/process/scriptings'
 import { language } from 'src/lang'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -415,7 +416,7 @@ beforeEach(() => {
     isLastCharPunctuationMock.mockReset()
     isLastCharPunctuationMock.mockReturnValue(true)
     restoreColdCharacterMock.mockReset()
-    doingChat.set(false)
+    clearRunningSends()
     alertStore.set(NONE)
 })
 

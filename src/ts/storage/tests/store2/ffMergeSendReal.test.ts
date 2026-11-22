@@ -180,10 +180,11 @@ vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
 import type { Database } from 'src/ts/storage/database.svelte'
 import { setFastForwardHostForTest, type FastForwardHost } from 'src/ts/storage/store2/fastForward'
 import * as chatOrigin from 'src/ts/process/chatOrigin'
-import { doingChat, sendChat } from 'src/ts/process/index.svelte'
+import { sendChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { chaIdOf, chars, until } from './lineFixtures'
 import { chatsAt, ffSetup, ffTeardown, mergeWorld, personalityOf, signal, type MergeWorld } from './ffFixtures'
+import { clearRunningSends } from '../../../process/tests/activeUnits.test-helpers'
 
 /**
  * Stage 3B rows R-SEND1 to R-SEND6 over the REAL `sendChat` (process/index.svelte.ts) with a stepped provider stream.
@@ -198,7 +199,7 @@ let hostHandle: ReturnType<typeof ffSetup>
 
 beforeEach(() => {
     hostHandle = ffSetup()
-    doingChat.set(false)
+    clearRunningSends()
 })
 
 afterEach(() => {

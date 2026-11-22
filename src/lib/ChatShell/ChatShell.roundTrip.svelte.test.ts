@@ -226,6 +226,7 @@ import { siblingsAt } from 'src/ts/process/chatTree'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { coldStorageHeader } from 'src/ts/process/coldstorageData'
 import { language } from 'src/lang'
+import { clearRunningSends } from '../../ts/process/tests/activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -331,7 +332,7 @@ beforeEach(() => {
     composerDrafts.resetComposerDraftsForTests()
     resetComposerActionsForTests()
     resetLocalDraftsForTest()
-    doingChat.set(false)
+    clearRunningSends()
     localStorage.clear()
     installDb()
 })

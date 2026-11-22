@@ -216,13 +216,14 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 //#endregion
 
-import { sendChat, doingChat } from '../index.svelte'
+import { sendChat } from '../index.svelte'
 import { risuChatParser } from '../scripts'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { MESSAGE_CHUNK_SIZE, registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
 import { decodeRisuSave } from '../../storage/risuSave'
 import { RisuSaveEncoder } from '../../storage/tests/risuSaveEncoder'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
+import { clearRunningSends } from './activeUnits.test-helpers'
 
 //#region fixtures
 
@@ -321,7 +322,7 @@ describe('sendChat — generation after a selection change', () => {
     test('a selection change mid-stream does not lose the reply: the full reply lands in the original character and is persisted', async () => {
         installDb()
         selectedCharID.set(0)
-        doingChat.set(false)
+        clearRunningSends()
 
         const tracker = makeTracker()
         const markChanged = vi.fn()
@@ -415,7 +416,7 @@ interface SendRun {
 async function sendOnce(options: { stream: boolean, chatIds: boolean, messages?: number }): Promise<SendRun> {
     installDb()
     selectedCharID.set(0)
-    doingChat.set(false)
+    clearRunningSends()
     const character = DBState.db.characters[0]
     if (options.messages !== undefined) {
         // A long chat that ends on a user message, every message carrying its id.

@@ -159,7 +159,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID, selIdState } from 'src/ts/stores.svelte'
-import { doingChat } from 'src/ts/process/index.svelte'
+import { doingChat as doingChatStore } from 'src/ts/process/index.svelte'
 import { alertError, alertNormal } from 'src/ts/alert'
 import { buildColdStub } from 'src/ts/process/tests/coldStubFixture'
 import { beginWork, type WorkHandle } from 'src/ts/process/chatOrigin'
@@ -167,6 +167,8 @@ import { changeChar, supersedeChangeChar } from './characters'
 import { changeChatTo } from 'src/ts/globalApi.svelte'
 import { abandonPendingSwitch, clearPending, switchCharacter, switchTarget } from './chatShell/switchTarget.svelte'
 import { installShellSidebarKeys } from './chatShell/shellSidebarKeys'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures and helpers
 

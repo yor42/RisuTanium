@@ -179,11 +179,13 @@ vi.mock(import('./characters'), async (importOriginal) => {
 
 import { initHotkey } from './hotkey'
 import { DBState, PlaygroundStore, OpenRealmStore, selectedCharID } from './stores.svelte'
-import { doingChat } from './process/index.svelte'
+import { doingChat as doingChatStore } from './process/index.svelte'
 import { alertError } from './alert'
 import { recordCaughtError } from './caughtErrors'
 import { language } from '../lang'
 import { changeChar } from './characters'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 //#region fixtures
 

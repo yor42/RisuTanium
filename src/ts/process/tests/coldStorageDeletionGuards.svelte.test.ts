@@ -410,10 +410,12 @@ import {
 } from '../coldstorage.svelte'
 import { isColdChat, formatColdStorageLoadError, mergeRetriedColdChatSideFields } from '../coldstorageData'
 import type { RetryLegacyColdChatSideFields } from '../coldstorageData'
-import { doingChat } from '../index.svelte'
+import { doingChat as doingChatStore } from '../index.svelte'
 import { registerWork } from '../chatOrigin'
 import { readFile as tauriReadFile, exists as tauriExists } from '@tauri-apps/plugin-fs'
 import { DBState, selectedCharID } from '../../stores.svelte'
+import type { Writable } from 'svelte/store'
+const doingChat = doingChatStore as Writable<boolean>
 
 // Units are read and written through the page's byte store: the key/value model
 // behind `forageStorage` on the web build, the desktop store over the file model
