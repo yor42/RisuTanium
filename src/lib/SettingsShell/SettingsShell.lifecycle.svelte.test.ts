@@ -91,7 +91,7 @@ function pressBack(): boolean {
 }
 
 function entry(target: HTMLElement, page: string): HTMLButtonElement {
-    const found = target.querySelector<HTMLButtonElement>(`[data-part="settings-index-entry"][data-page="${page}"]`)
+    const found = target.querySelector<HTMLButtonElement>(`:is([data-part="settings-index-entry"], [data-part="settings-index-display"])[data-page="${page}"]`)
     if (!found) throw new Error(`no index entry ${page}`)
     return found
 }
@@ -167,7 +167,7 @@ describe('T19 a finished open leaves no page request behind', () => {
         settingsOpen.set(true)
         await settle()
         expect(showsIndexList(target)).toBe(true)
-        expect(document.activeElement).toBe(target.querySelector('[data-part="settings-index-entry"]'))
+        expect(document.activeElement).toBe(target.querySelector('[data-part="settings-index-entry"], [data-part="settings-index-display"]'))
     })
 
     test('a wide close followed by narrowing opens on the index list', async () => {

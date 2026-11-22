@@ -10,8 +10,9 @@ const shellDir = path.join(root, 'src/lib/ChatShell')
 // Every component in the directory is scanned, so a new one cannot carry an unlisted protected part.
 const components = readdirSync(shellDir).filter((name) => name.endsWith('.svelte')).map((name) => name.slice(0, -'.svelte'.length))
 // Navigation, input, and ordinary menus are reachable surfaces; the failed-send card and its lines and buttons are the
-// protected prompt (THEME_AUDIT critical surfaces).
-const criticalParts = new Set<string>(['chat-failed-card', 'chat-critical-body', 'chat-critical-action'])
+// protected prompt (THEME_AUDIT critical surfaces). The "All settings" button of the chat sheet is protected as the pack escape
+// route (ESCAPE_ROUTE_PARTS), so a pack can never hide the way to the pack turn-off.
+const criticalParts = new Set<string>(['chat-failed-card', 'chat-critical-body', 'chat-critical-action', 'this-chat-all-settings'])
 
 function object(value: unknown): Record<string, unknown> | null {
     return value !== null && typeof value === 'object' ? value as Record<string, unknown> : null

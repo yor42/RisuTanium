@@ -250,11 +250,4 @@ export function removeThemePackAt(index: number, entry: unknown): RemoveOutcome 
     return { ok: true }
 }
 
-/** Sets or clears the active pack id (a record id or `builtin:<slug>`); `undefined` deletes the key, so no `undefined` value is stored. */
-export function setActiveThemePack(id: string | undefined): void {
-    if (id === undefined) {
-        delete DBState.db.activeThemePack
-    } else {
-        DBState.db.activeThemePack = id
-    }
-}
+export { setActiveThemePack } from './activeThemePackId'
