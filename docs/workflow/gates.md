@@ -195,8 +195,10 @@ Rows marked MC-2744 restate it. Rows marked "derived" are this document's readin
 | Protected paths (`docs/branding/**`, ToS, Privacy, `Legal.svelte`, signing material) | maintainer | Yes | MC-2744 |
 | Close an issue through the merged PR's own closing keyword | ticket session | No | MC-2775 |
 | Closing an issue by hand (any close other than the merged PR's own keyword) | maintainer | Yes | MC-2744, MC-2775 |
+| Archive a finished session (deliverable merged or handed off, closeout clean, nothing running) | lane A | No | MC-3764; the test in parentheses is derived |
+| Start a new session, naming its model ([routing](routing.md#session-and-designer-model-mc-3643-mc-3765)) | maintainer | Yes | MC-3622, MC-3764; naming the model is derived from MC-3643 |
 | Push directly to `main` | nobody | Retired: `main` changes only through merged PRs | MC-2778 (supersedes MC-222 item 4 and the MC-1677 main-push clause) |
 
 **Before an unasked merge** (derived from lane A practice): Gate 2 is APPROVE or EDITORIAL; every gating device row is PASS or waived; `git merge-tree` against `origin/main` is clean; merge with `gh pr merge <n> --repo yor42/RisuTanium --merge --match-head-commit <sha>`; hold while a wait the maintainer asked for is open.
 
-Every ask uses the AskUserQuestion tool (a push notification reaches the phone). While the work runs, other open tickets that could proceed in parallel (disjoint files and resources) are offered to the maintainer as options, as in [routing](routing.md#parallel-options-for-the-maintainer-mc-1069); lane A starts ready tickets for idle lanes without that ask (MC-1676 item 3, made permanent by MC-2744).
+Every ask uses the AskUserQuestion tool (a push notification reaches the phone). While the work runs, other open tickets that could proceed in parallel (disjoint files and resources) are offered to the maintainer as options, as in [routing](routing.md#parallel-options-for-the-maintainer-mc-1069); lane A asks before starting any new session (MC-3622, MC-3764; derived: this replaces the no-ask start of MC-1676 item 3).

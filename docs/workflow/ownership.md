@@ -14,7 +14,7 @@ Documentation writers may share a checkout only with exact nonoverlapping named 
 
 Scheduling class is separate from execution mode: workClass code|records|device|documents, mode scout|implement|review. Each ticket session is one code writer in its own worktree; records drafters and device runners proceed beside them, within the caps in `.claude/workflow-policy.json` and any later maintainer decision. Read-only work and disjoint documents do not consume code-writer slots. Required device results and administrative closeout block affected acceptance/release/COMPLETE only, not the next unrelated ticket.
 
-At start/resume, dispatch completion and parked waits, lane A fills idle lanes with ready tickets. If the next ticket is not ready, name its actual dependency or continue bounded discovery/planning for an already-authorized next item. Do not invent scope to fill a slot. Keep coherent batch gates and serial stage writers inside each worktree.
+At start/resume, dispatch completion and parked waits, lane A proposes ready tickets for idle lanes and asks before starting each session (MC-3764). If the next ticket is not ready, name its actual dependency or continue bounded discovery/planning for an already-authorized next item. Do not invent scope to fill a slot. Keep coherent batch gates and serial stage writers inside each worktree.
 
 ### Ticket sessions and branches
 

@@ -2,7 +2,7 @@
   "version": 1,
   "revision": "2026-11-21.1",
   "previousRevision": "2026-11-03.1",
-  "authority": "MC-1036; cap MC-2753; native-first routes and opt-in MC-2748",
+  "authority": "MC-1036; cap MC-2753; native-first routes and opt-in MC-2748; designer model choice MC-3643",
   "parentModel": "sonnet",
   "maxCorrectionAttempts": 1,
   "maxImplementationTracks": 10,
@@ -38,6 +38,7 @@
   },
   "criticalContracts": ["save-format", "durability-commit-order", "dirty-dependencies", "persisted-read-write-gc", "asset-lifecycle", "migration", "security-boundary"],
   "nativeOnlyRoles": { "designer": "opus", "opus-reviewer": "opus", "deep-investigator": "opus", "senior-advisor": "fable" },
+  "nativeModelChoices": { "designer": ["sonnet"] },
   "nativeFallbackRoles": {
     "scout": { "investigator": "sonnet", "code-reader": "sonnet", "code-searcher": "haiku", "haiku-triager": "haiku", "perf-analyzer": "sonnet" },
     "implement": { "sonnet-coder": "sonnet", "haiku-editor": "haiku", "doc-writer": "sonnet", "record-clerk": "haiku", "translator": "sonnet", "test-warrior": "sonnet" },
