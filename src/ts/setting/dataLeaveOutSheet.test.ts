@@ -21,10 +21,11 @@ const FORK_CHAT: BinLeaveOutEntry = {
     labels: [{ key: 'b', text: 'Bob / Two', kinds: ['interruptedNote', 'hideNames'] }],
 }
 const PRESETS: BinLeaveOutEntry = { kind: 'taskPresets', count: 2, names: ['Summarize', 'Translate'] }
+const WORKSPACES: BinLeaveOutEntry = { kind: 'workspaces', count: 3, names: ['Notes folder', 'Drafts'] }
 const PACKS: BinLeaveOutEntry = { kind: 'themePacks', count: 5, names: ['Navy'] }
 const USAGE: BinLeaveOutEntry = { kind: 'usageStats', count: 1 }
 const CHRO: BinLeaveOutEntry = { kind: 'chroMemory', count: 1 }
-const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, PACKS, USAGE, CHRO]
+const ALL = [ALTERNATIVES, FORK_CHAT, PRESETS, WORKSPACES, PACKS, USAGE, CHRO]
 
 /** The count text each entry must put on a shown line. */
 function countText(entry: BinLeaveOutEntry): string {
@@ -32,6 +33,7 @@ function countText(entry: BinLeaveOutEntry): string {
         case 'alternatives': return language.settingsShellDataLeaveOutAlternatives(entry.count, entry.branchChats)
         case 'forkChatData': return language.settingsShellDataLeaveOutForkChat(entry.count, entry.kinds.map((kind) => language.backupForkChatDataKind(kind)).join(', '))
         case 'taskPresets': return language.settingsShellDataLeaveOutTaskPresets(entry.count)
+        case 'workspaces': return language.settingsShellDataLeaveOutWorkspaces(entry.count)
         case 'themePacks': return language.settingsShellDataLeaveOutThemePacks(entry.count)
         case 'usageStats': return language.settingsShellDataLeaveOutUsage
         case 'chroMemory': return language.settingsShellDataKindChroMemory
@@ -47,8 +49,8 @@ function subsets(): BinLeaveOutEntry[][] {
 }
 
 describe('leaveOutSheetDef', () => {
-    test('there are 63 non-empty combinations of the six kinds', () => {
-        expect(subsets()).toHaveLength(63)
+    test('there are 127 non-empty combinations of the seven kinds', () => {
+        expect(subsets()).toHaveLength(127)
     })
 
     test('for every combination at most VISIBLE_CONSEQUENCES lines, and every present kind is named on one of them', () => {
@@ -79,6 +81,7 @@ describe('leaveOutSheetDef', () => {
         expect(detail[0]).toBe(language.settingsShellDataLeaveOutStays)
         expect(detail.some((line) => line.includes('Summarize') && line.includes('Translate'))).toBe(true)
         expect(detail.some((line) => line.includes('Navy'))).toBe(true)
+        expect(detail.some((line) => line.includes('Notes folder') && line.includes('Drafts'))).toBe(true)
         expect(detail.some((line) => line.includes('Alice / One'))).toBe(true)
         expect(detail.some((line) => line.includes('Bob / Two'))).toBe(true)
     })
@@ -96,10 +99,11 @@ describe('leaveOutSheetDef', () => {
     })
 
     test('the combined app-data line lists the present items in order', () => {
-        const lines = leaveOutSheetDef([PRESETS, PACKS, USAGE]).consequences ?? []
+        const lines = leaveOutSheetDef([PRESETS, WORKSPACES, PACKS, USAGE]).consequences ?? []
         expect(lines).toEqual([
             language.settingsShellDataLeaveOutAppData([
                 language.settingsShellDataLeaveOutTaskPresets(2),
+                language.settingsShellDataLeaveOutWorkspaces(3),
                 language.settingsShellDataLeaveOutThemePacks(5),
                 language.settingsShellDataLeaveOutUsage,
             ].join(', ')),
@@ -120,6 +124,7 @@ describe('leftOutKindLabels', () => {
             language.settingsShellDataKindAlternatives,
             language.settingsShellDataKindForkChat,
             language.settingsShellDataKindTaskPresets,
+            language.settingsShellDataKindWorkspaces,
             language.settingsShellDataKindThemePacks,
             language.settingsShellDataKindUsage,
             language.settingsShellDataKindChroMemory,

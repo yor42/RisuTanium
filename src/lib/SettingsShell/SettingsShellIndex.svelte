@@ -1,6 +1,6 @@
 <script lang="ts">
     import {
-        ChartColumnIcon, CpuIcon, DatabaseIcon, HandIcon, KeyboardIcon, LanguagesIcon, MessageSquareIcon, PaletteIcon, PuzzleIcon,
+        ChartColumnIcon, CpuIcon, DatabaseIcon, HandIcon, KeyboardIcon, KeyRoundIcon, LanguagesIcon, MessageSquareIcon, PaletteIcon, PuzzleIcon,
         SlidersHorizontalIcon, UserRoundIcon,
     } from '@lucide/svelte'
     import { language } from '../../lang'
@@ -16,7 +16,7 @@
 
     // Icons live here, not in the page registry, so the navigation modules stay free of the icon library.
     const ICONS: Record<SettingsPageId, typeof CpuIcon> = {
-        models: CpuIcon, features: MessageSquareIcon, display: PaletteIcon, input: HandIcon, language: LanguagesIcon,
+        models: CpuIcon, connections: KeyRoundIcon, features: MessageSquareIcon, display: PaletteIcon, input: HandIcon, language: LanguagesIcon,
         personas: UserRoundIcon, extensions: PuzzleIcon, data: DatabaseIcon, shortcuts: KeyboardIcon, statistics: ChartColumnIcon, advanced: SlidersHorizontalIcon,
     }
 

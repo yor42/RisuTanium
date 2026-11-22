@@ -16,7 +16,12 @@
 //! an additive optional field keeps `v`, any other change bumps `v` and ships a
 //! migration tested against the fixture. `outcome` `done` implies a `body.bin`
 //! of exactly `bodyBytes`; a `failed` or `stopped` record with a stray body is
-//! valid and consume removes it. A record that cannot be read (unknown format or
+//! valid and consume removes it. `part.bin` is the raw response body received so
+//! far, appended in place and in received order, so any prefix of it is valid
+//! (it may end inside a line or a UTF-8 character). It is never read for a
+//! `done` record, is listed as `partialBytes` for a record that did not finish
+//! (dead, incomplete, failed or stopped) and goes away with the directory. A
+//! record that cannot be read (unknown format or
 //! version, unparsable file, `done` without its body, files without a ticket)
 //! is listed `unreadable` and is never deleted by this module.
 //!
@@ -47,6 +52,7 @@ const TICKET_FILE: &str = "ticket.json";
 const BODY_FILE: &str = "body.bin";
 const END_FILE: &str = "end.json";
 const PARKED_FILE: &str = "parked.json";
+const PART_FILE: &str = "part.bin";
 const TICKET_FORMAT: &str = "risu-native-reply-ticket";
 const END_FORMAT: &str = "risu-native-reply-end";
 const PARK_FORMAT: &str = "risu-native-reply-park";
@@ -150,6 +156,10 @@ pub struct ReplyListing {
     /// Why an `unreadable` record cannot be read, so the page can name the item.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// The length of the raw partial body in `part.bin`, present only for a
+    /// record that did not finish and whose part is a non-empty regular file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partial_bytes: Option<u64>,
 }
 
 impl ReplyListing {
@@ -169,6 +179,7 @@ impl ReplyListing {
             error: None,
             announced: None,
             problem: None,
+            partial_bytes: None,
         }
     }
 
@@ -404,6 +415,20 @@ fn classify(dir: &Path, key: &str, nonce: &str) -> Option<ReplyListing> {
             return Some(ReplyListing::unreadable(key, "the park record has an unknown format or version".to_string()));
         }
         listing.parked = true;
+    }
+    let unfinished = match listing.state {
+        ReplyState::Dead | ReplyState::Incomplete => true,
+        ReplyState::Terminal => matches!(listing.outcome, Some(ReplyOutcome::Failed) | Some(ReplyOutcome::Stopped)),
+        ReplyState::Live | ReplyState::Unreadable => false,
+    };
+    if unfinished && has(PART_FILE) {
+        // The outcome is readable without the part, so a part that cannot be
+        // measured only leaves the listing without `partialBytes`.
+        match fs::metadata(dir.join(PART_FILE)) {
+            Ok(meta) if meta.is_file() && meta.len() > 0 => listing.partial_bytes = Some(meta.len()),
+            Ok(_) => {}
+            Err(error) => eprintln!("could not measure the partial body of reply {}: {}", key, error),
+        }
     }
     Some(listing)
 }
@@ -651,6 +676,29 @@ impl<O: FileOps + Send + Sync + 'static> ReplyStore<O> {
         self.finished_record(base, key)?;
         let path = records_dir(base).join(key).join(BODY_FILE);
         let bytes = read_range(&path, offset, len.min(TEXT_RANGE_MAX_BYTES))?;
+        Ok(general_purpose::STANDARD.encode(bytes))
+    }
+
+    /// A piece of the raw partial body of a record that did not finish, in the
+    /// same reply shape as `read_body`. It is refused for a live record, an
+    /// unreadable one and a record with no `partialBytes` (a `done` record
+    /// included). The check and the read share one live-set hold.
+    pub fn read_partial(&self, base: &Path, key: &str, offset: u64, len: u64) -> Result<String, String> {
+        require_key(key)?;
+        let live = self.inner.live.lock();
+        if live.contains(key) {
+            return Err(format!("live: reply {} is still being received", key));
+        }
+        let dir = records_dir(base).join(key);
+        match classify(&dir, key, &self.inner.nonce) {
+            None => return Err("state: there is no such reply".to_string()),
+            Some(listing) if listing.state == ReplyState::Unreadable => {
+                return Err(format!("unreadable: {}", listing.problem.unwrap_or_default()));
+            }
+            Some(listing) if listing.partial_bytes.is_some() => {}
+            Some(_) => return Err("state: the reply has no partial body".to_string()),
+        }
+        let bytes = read_range(&dir.join(PART_FILE), offset, len.min(TEXT_RANGE_MAX_BYTES))?;
         Ok(general_purpose::STANDARD.encode(bytes))
     }
 
@@ -1277,6 +1325,142 @@ mod tests {
         assert_eq!(rest.len(), 10);
         assert_eq!(total_again, body.len() as u64);
         assert_eq!([first, rest].concat(), body);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    fn stopped_end() -> ReplyEnd {
+        ReplyEnd { outcome: ReplyOutcome::Stopped, ..failed_end(None) }
+    }
+
+    fn put_part(base: &Path, key: &str, bytes: &[u8]) {
+        fs::write(record_dir(base, key).join(PART_FILE), bytes).unwrap();
+    }
+
+    fn listing_of(store: &ReplyStore<FaultOps>, base: &Path, key: &str) -> ReplyListing {
+        store.list(base).unwrap().into_iter().find(|listing| listing.key == key).unwrap()
+    }
+
+    #[test]
+    fn dead_record_lists_partial_bytes() {
+        let base = scratch("partial-dead");
+        let store_a = plain_store();
+        produce_open_only(&store_a, &base, KEY);
+        put_part(&base, KEY, b"data: hello");
+        let store_b = ReplyStore::with_parts(FaultOps::new(), "b".repeat(32), fixed_clock);
+
+        let listing = listing_of(&store_b, &base, KEY);
+
+        assert_eq!(listing.state, ReplyState::Dead);
+        assert_eq!(serde_json::to_value(&listing).unwrap()["partialBytes"], 11);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn partial_bytes_follow_the_unfinished_rule() {
+        let base = scratch("partial-rule");
+        let store = plain_store();
+        let (incomplete, failed, stopped, done, empty, none) = (key_n(1), key_n(2), key_n(3), key_n(4), key_n(5), key_n(6));
+        produce_open_only(&store, &base, &incomplete);
+        put_part(&base, &incomplete, b"abc");
+        for (key, end) in [(&failed, failed_end(None)), (&stopped, stopped_end())] {
+            let mut record = store.open_record(&base, key, 1, "{}").unwrap();
+            record.write_end(&end).unwrap();
+            drop(record);
+            put_part(&base, key, b"abcd");
+        }
+        produce_done(&store, &base, &done, b"body");
+        put_part(&base, &done, b"stray");
+        produce_open_only(&store, &base, &empty);
+        put_part(&base, &empty, b"");
+        produce_open_only(&store, &base, &none);
+
+        assert_eq!(listing_of(&store, &base, &incomplete).partial_bytes, Some(3));
+        assert_eq!(listing_of(&store, &base, &failed).partial_bytes, Some(4));
+        assert_eq!(listing_of(&store, &base, &stopped).partial_bytes, Some(4));
+        assert_eq!(listing_of(&store, &base, &done).partial_bytes, None);
+        assert_eq!(listing_of(&store, &base, &empty).partial_bytes, None);
+        assert_eq!(listing_of(&store, &base, &none).partial_bytes, None);
+
+        let live = key_n(7);
+        let held = store.open_record(&base, &live, 1, "{}").unwrap();
+        put_part(&base, &live, b"growing");
+        assert_eq!(listing_of(&store, &base, &live).state, ReplyState::Live);
+        assert_eq!(listing_of(&store, &base, &live).partial_bytes, None);
+        drop(held);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn read_partial_ranges_and_refusals() {
+        let base = scratch("partial-read");
+        let store = plain_store();
+        let (part, done, bare, live, broken) = (key_n(1), key_n(2), key_n(3), key_n(4), key_n(5));
+        let bytes: Vec<u8> = (0..(TEXT_RANGE_MAX_BYTES as usize + 10)).map(|i| (i % 251) as u8).collect();
+        produce_open_only(&store, &base, &part);
+        put_part(&base, &part, &bytes);
+        produce_done(&store, &base, &done, b"body");
+        put_part(&base, &done, b"stray");
+        produce_open_only(&store, &base, &bare);
+
+        let (first, total) = decode_read(&store.read_partial(&base, &part, 0, u64::MAX).unwrap());
+        assert_eq!(first.len() as u64, TEXT_RANGE_MAX_BYTES);
+        assert_eq!(total, bytes.len() as u64);
+        let (rest, _) = decode_read(&store.read_partial(&base, &part, first.len() as u64, 100).unwrap());
+        assert_eq!([first, rest].concat(), bytes);
+
+        assert!(store.read_partial(&base, &done, 0, 1).unwrap_err().starts_with("state:"));
+        assert!(store.read_partial(&base, &bare, 0, 1).unwrap_err().starts_with("state:"));
+        assert!(store.read_partial(&base, &key_n(9), 0, 1).unwrap_err().starts_with("state:"));
+        assert!(store.read_partial(&base, "not-a-key", 0, 1).unwrap_err().starts_with("invalid-key:"));
+
+        let held = store.open_record(&base, &live, 1, "{}").unwrap();
+        put_part(&base, &live, b"growing");
+        assert!(store.read_partial(&base, &live, 0, 1).unwrap_err().starts_with("live:"));
+        drop(held);
+
+        fs::create_dir_all(record_dir(&base, &broken)).unwrap();
+        put_part(&base, &broken, b"orphan");
+        assert!(store.read_partial(&base, &broken, 0, 1).unwrap_err().starts_with("unreadable:"));
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn v1_fixture_listing_has_no_partial_bytes_key() {
+        let base = scratch("fixture-no-partial");
+        let target = record_dir(&base, KEY);
+        fs::create_dir_all(&target).unwrap();
+        for name in [TICKET_FILE, BODY_FILE, END_FILE] {
+            fs::write(target.join(name), fs::read(fixture_dir().join(name)).unwrap()).unwrap();
+        }
+        let store = ReplyStore::with_parts(FaultOps::new(), "f".repeat(32), fixed_clock);
+
+        let listing = listing_of(&store, &base, KEY);
+
+        assert!(serde_json::to_value(&listing).unwrap().get("partialBytes").is_none());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn part_record_is_readable_swept_and_removed_whole() {
+        let base = scratch("partial-lifecycle");
+        let store = plain_store();
+        let (consumed, discarded) = (key_n(1), key_n(2));
+        for key in [&consumed, &discarded] {
+            produce_open_only(&store, &base, key);
+            put_part(&base, key, b"abc");
+            fs::write(record_dir(&base, key).join("risu-write-0123456789abcdef.tmp"), b"cut").unwrap();
+        }
+
+        for key in [&consumed, &discarded] {
+            let listing = listing_of(&store, &base, key);
+            assert_eq!(listing.state, ReplyState::Incomplete);
+            assert_eq!(listing.partial_bytes, Some(3));
+            assert_eq!(names_in(&record_dir(&base, key)), vec![PART_FILE, TICKET_FILE]);
+        }
+        assert_eq!(store.consume(&base, &consumed).unwrap().result, "removed");
+        assert_eq!(store.discard(&base, &discarded).unwrap().result, "removed");
+        assert!(!record_dir(&base, &consumed).exists());
+        assert!(!record_dir(&base, &discarded).exists());
         fs::remove_dir_all(&base).unwrap();
     }
 

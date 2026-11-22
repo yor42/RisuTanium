@@ -314,6 +314,8 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 module: (entry, source, handle) => residentModules === null || residentModules.has(handle) ? assembleModule(entry, source) : moduleStubOf(entry),
                 // A flagged task preset is left out of the list, so the next pass writes a manifest without its Ref; its bytes stay under their write-once key.
                 skipTaskPresets: fallback?.skipTaskPresets,
+                // A flagged workspace file keeps its entry without text, so the next pass carries its earlier unit and the ref stays in the record.
+                placeholderWorkspaceFiles: fallback?.placeholderWorkspaceFiles,
             })
             previous = previousOfTree(read.tree)
         } catch (error) {

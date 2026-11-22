@@ -120,13 +120,13 @@ afterEach(() => {
 })
 
 describe('T12 the index', () => {
-    test('wide: eleven entries, one aria-current, the landmarks, and focus on the selected entry', async () => {
+    test('wide: twelve entries, one aria-current, the landmarks, and focus on the selected entry', async () => {
         setWidth(1280)
         SettingsMenuIndex.set(3)
         settingsOpen.set(true)
         const target = mountHost()
         await settle()
-        expect(entries(target)).toHaveLength(11)
+        expect(entries(target)).toHaveLength(12)
         const current = entries(target).filter((candidate) => candidate.getAttribute('aria-current') === 'page')
         expect(current.map((candidate) => candidate.dataset.page)).toEqual(['display'])
         expect(document.activeElement).toBe(entry(target, 'display'))

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { AccessibilityIcon, ActivityIcon, PackageIcon, BotIcon, CodeIcon, ContactIcon, LanguagesIcon, MonitorIcon, Sailboat, UserIcon, CircleXIcon, KeyboardIcon, SparkleIcon, ChartColumnIcon } from "@lucide/svelte";
+    import { AccessibilityIcon, ActivityIcon, PackageIcon, BotIcon, CodeIcon, ContactIcon, LanguagesIcon, MonitorIcon, Sailboat, UserIcon, CircleXIcon, KeyboardIcon, SparkleIcon, ChartColumnIcon, KeyRoundIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import DisplaySettings from "./Pages/DisplaySettings.svelte";
     import UserSettings from "./Pages/UserSettings.svelte";
@@ -17,6 +17,7 @@
   import { isLite } from "src/ts/lite";
     import HotkeySettings from "./Pages/HotkeySettings.svelte";
     import UsageStatisticsPage from "./Pages/UsageStatisticsPage.svelte";
+    import ConnectionsShellPage from "../SettingsShell/ConnectionsShellPage.svelte";
     import PluginDefinedIcon from "../Others/PluginDefinedIcon.svelte";
     import SettingsLegalLinks from "./SettingsLegalLinks.svelte";
     import { get } from "svelte/store";
@@ -75,6 +76,15 @@
                     }}>
                         <BotIcon aria-hidden="true" />
                         <span>{language.chatBot}</span>
+                    </button>
+                    <button class="flex gap-2 items-center hover:text-textcolor"
+                        class:text-textcolor={$SettingsMenuIndex === 18 || $SettingsMenuIndex === 19}
+                        class:text-textcolor2={$SettingsMenuIndex !== 18 && $SettingsMenuIndex !== 19}
+                        onclick={() => {
+                            $SettingsMenuIndex = 18
+                    }}>
+                        <KeyRoundIcon aria-hidden="true" />
+                        <span>{language.settingsShellPageConnections}</span>
                     </button>
                     <button class="flex gap-2 items-center hover:text-textcolor"
                         class:text-textcolor={$SettingsMenuIndex === 12}
@@ -251,6 +261,8 @@
                         <HotkeySettings/>
                     {:else if $SettingsMenuIndex === 17 && !$isLite}
                         <UsageStatisticsPage/>
+                    {:else if ($SettingsMenuIndex === 18 || $SettingsMenuIndex === 19) && !$isLite}
+                        <ConnectionsShellPage/>
                     {/if}
             </div>
             {/key}
