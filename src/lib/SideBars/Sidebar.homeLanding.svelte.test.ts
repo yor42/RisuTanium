@@ -111,8 +111,12 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     } as unknown as typeof import('../../ts/stores.svelte')
 })
 
+// The chat panel's list is not under test; a selected character would otherwise mount its full toggle tree.
+vi.mock('./SideChatList.svelte', () => ({ default: () => {} }))
+
 import { DBState, OpenRealmStore, PlaygroundStore, selectedCharID } from '../../ts/stores.svelte'
 import { language } from '../../lang'
+import { homeChrome } from '../UI/Home/homeChrome.svelte'
 import { requestHomeReturnFocus, showHomeLanding, takeHomeReturnFocus } from '../UI/Home/homeView.svelte'
 import Sidebar from './Sidebar.svelte'
 import { resetRailMemory } from './sidebarDnd.testKit'
@@ -232,5 +236,125 @@ describe('Sidebar Home buttons land on Home and drop a pending return focus', ()
         flushSync()
         expect(writes).toEqual(EXPECTED_WRITES)
         expect(takeHomeReturnFocus()).toBeNull()
+    })
+})
+
+describe('Sidebar Home look', () => {
+    const classTokens = (el: Element | null): string[] =>
+        Array.from(el?.classList ?? []).filter((token) => !token.startsWith('svelte-')).sort()
+    const tokensOf = (literal: string): string[] => literal.split(/\s+/).filter(Boolean).sort()
+    const panelOf = (target: HTMLElement) => target.querySelector<HTMLElement>('.setting-area')
+    const rootOf = (target: HTMLElement) => target.querySelector<HTMLElement>('[data-rail-root]')
+
+    const BASE_ROOT = 'h-full w-20 min-w-20 flex-col items-center bg-bgcolor text-textcolor shadow-lg relative rs-sidebar flex'
+    const BASE_TOGGLE_TOP = 'flex h-8 min-h-8 w-14 min-w-14 cursor-pointer text-white mt-2 items-center justify-center rounded-md bg-textcolor2 transition-colors hover:bg-borderc'
+    const BASE_TOGGLE_BOTTOM = 'flex h-8 min-h-8 w-14 min-w-14 cursor-pointer text-white mb-2 mt-2 items-center justify-center rounded-md bg-textcolor2 transition-colors hover:bg-borderc'
+    const BASE_WRAP_TOP = 'mt-2 border-b border-b-selected w-full relative text-white'
+    const BASE_WRAP_BOTTOM = 'border-t border-t-selected w-full relative text-white'
+    const BASE_POPOVER_TOP = 'absolute w-20 min-w-20 flex border-b-selected border-b bg-bgcolor flex-col items-center pt-2 rounded-b-md z-20 pb-2'
+    const BASE_POPOVER_BOTTOM = 'absolute bottom-full w-20 min-w-20 flex border-t-selected border-t bg-bgcolor flex-col items-center pt-2 rounded-t-md z-20 pb-2'
+    const BASE_MENU_BUTTON = 'flex items-center justify-center py-2 flex-col gap-1 w-full'
+
+    beforeEach(() => {
+        homeChrome.landing = false
+        selectedCharID.set(-1)
+        PlaygroundStore.set(0)
+    })
+
+    afterEach(() => {
+        homeChrome.landing = false
+        selectedCharID.set(-1)
+        PlaygroundStore.set(0)
+    })
+
+    test('S5-R1: on Home the panel has no welcome heading and no welcome hint', () => {
+        homeChrome.landing = true
+        const target = mountSidebar({})
+        const panel = panelOf(target)!
+        expect(panel.querySelector('h1')).toBeNull()
+        const texts = Array.from(panel.querySelectorAll('*')).map((el) => el.textContent?.trim())
+        expect(texts).not.toContain(language.sidebarWelcome)
+        expect(texts).not.toContain(language.sidebarWelcomeHint)
+    })
+
+    test('S5-R2: the Home look classes sit on the rail root and the panel in the avatar variant', () => {
+        homeChrome.landing = true
+        const avatar = mountSidebar({})
+        expect(rootOf(avatar)!.classList.contains('home-landing-rail')).toBe(true)
+        expect(panelOf(avatar)!.classList.contains('home-landing-panel')).toBe(true)
+    })
+
+    test('S5-R2: the menu-bar variant carries the same classes', () => {
+        homeChrome.landing = true
+        const target = mountSidebar({ menuSideBar: true })
+        expect(rootOf(target)!.classList.contains('home-landing-rail')).toBe(true)
+        expect(panelOf(target)!.classList.contains('home-landing-panel')).toBe(true)
+    })
+
+    for (const bottom of [false, true]) {
+        test(`S5-R2: the open menu popover is inside the Home rail (hamburgerButtonBottom ${bottom})`, () => {
+            homeChrome.landing = true
+            const target = mountSidebar({ hamburgerButtonBottom: bottom })
+            target.querySelector<HTMLButtonElement>('button.min-w-14')!.click()
+            flushSync()
+            const popover = target.querySelector('[data-rail-menu]')
+            expect(popover).not.toBeNull()
+            expect(rootOf(target)!.classList.contains('home-landing-rail')).toBe(true)
+            expect(rootOf(target)!.contains(popover)).toBe(true)
+            expect(popover!.closest('[data-rail-menu-wrap]')).not.toBeNull()
+        })
+    }
+
+    test('S5-G1: with the flag off the chat path keeps the base class lists and neither Home class appears', () => {
+        selectedCharID.set(0)
+        const target = mountSidebar({
+            characters: [{ chaId: 'c1', name: 'Synthetic', chats: [{ name: 'Chat 1', message: [], id: 'chat-1' }], chatPage: 0, image: '' }],
+        })
+        expect(classTokens(rootOf(target))).toEqual(tokensOf(BASE_ROOT))
+        expect(classTokens(target.querySelector('button.min-w-14'))).toEqual(tokensOf(BASE_TOGGLE_TOP))
+        target.querySelector<HTMLButtonElement>('button.min-w-14')!.click()
+        flushSync()
+        expect(classTokens(target.querySelector('[data-rail-menu-wrap]'))).toEqual(tokensOf(BASE_WRAP_TOP))
+        expect(classTokens(target.querySelector('[data-rail-menu]'))).toEqual(tokensOf(BASE_POPOVER_TOP))
+        expect(target.querySelector('.home-landing-rail')).toBeNull()
+        expect(target.querySelector('.home-landing-panel')).toBeNull()
+    })
+
+    test('S5-G1: with the flag off the bottom menu keeps the base class lists', () => {
+        selectedCharID.set(0)
+        const target = mountSidebar({
+            hamburgerButtonBottom: true,
+            characters: [{ chaId: 'c1', name: 'Synthetic', chats: [{ name: 'Chat 1', message: [], id: 'chat-1' }], chatPage: 0, image: '' }],
+        })
+        const toggle = target.querySelector('button.min-w-14')!
+        expect(classTokens(toggle)).toEqual(tokensOf(BASE_TOGGLE_BOTTOM))
+        ;(toggle as HTMLButtonElement).click()
+        flushSync()
+        expect(classTokens(target.querySelector('[data-rail-menu-wrap]'))).toEqual(tokensOf(BASE_WRAP_BOTTOM))
+        expect(classTokens(target.querySelector('[data-rail-menu]'))).toEqual(tokensOf(BASE_POPOVER_BOTTOM))
+        expect(classTokens(rootOf(target))).toEqual(tokensOf(BASE_ROOT))
+    })
+
+    test('S5-G1: with the flag off the menu-bar variant keeps its base buttons', () => {
+        selectedCharID.set(0)
+        const target = mountSidebar({
+            menuSideBar: true,
+            characters: [{ chaId: 'c1', name: 'Synthetic', chats: [{ name: 'Chat 1', message: [], id: 'chat-1' }], chatPage: 0, image: '' }],
+        })
+        expect(classTokens(rootOf(target))).toEqual(tokensOf(BASE_ROOT))
+        const buttons = Array.from(rootOf(target)!.querySelectorAll(':scope > button'))
+        expect(buttons.length).toBe(4)
+        const allowed = new Set([...tokensOf(BASE_MENU_BUTTON), 'mt-4', 'text-textcolor2'])
+        for (const button of buttons) {
+            expect(classTokens(button).filter((token) => !allowed.has(token))).toEqual([])
+        }
+    })
+
+    test('S5-G1: the Playground keeps the welcome heading and hint with the flag off', () => {
+        PlaygroundStore.set(1)
+        const target = mountSidebar({})
+        const panel = panelOf(target)!
+        expect(panel.querySelector('h1')?.textContent).toBe(language.sidebarWelcome)
+        expect(panel.textContent).toContain(language.sidebarWelcomeHint)
     })
 })
