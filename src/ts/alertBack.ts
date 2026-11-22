@@ -13,7 +13,7 @@ import { alertStore } from './stores.svelte'
  *   a confirming answer.
  * - `cancelWait`: a wait notice offering Cancel; Back runs the cancel action, as Escape does.
  * - `cancelIfOffered`: a prompt whose caller may offer a cancel per instance; Back writes that
- *   instance's `cancelAnswer`, and without one it holds. An `updateOffer` always carries one.
+ *   instance's `cancelAnswer`, and without one it holds. An `updateOffer` and a `toolApproval` always carry one.
  * - `hold`: nothing a user could cancel, or not an alert the page may dismiss; Back does nothing.
  */
 type BackAction =
@@ -58,6 +58,7 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     peerConflicts: HOLD,
     input: CANCEL_IF_OFFERED,
     updateOffer: CANCEL_IF_OFFERED,
+    toolApproval: CANCEL_IF_OFFERED,
     tos: HOLD,
     staleAccountNotice: HOLD,
     progress: HOLD,

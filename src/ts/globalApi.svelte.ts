@@ -38,6 +38,7 @@ import { noteInvoked, noteUnowned, requestReconcile } from "./nativeReply/pageSt
 import { createReplyStore } from "./nativeReply/store";
 import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
+import { interceptorsSuppressed } from "./process/request/interceptorSuppression";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
 import { createLiveCheckGate, type LiveCheckSignal } from "./storage/store2/liveCheckGate";
@@ -1716,7 +1717,7 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}, intern
             return { ok: false, headers: {}, status: 400, data: 'You are trying local request on web version. This is not allowed due to browser security policy. Use the desktop version instead, or use a tunneling service like ngrok and set the CORS to allow all.' };
         }
 
-        if(arg.interceptor){
+        if(arg.interceptor && !interceptorsSuppressed(arg.abortSignal)){
             for (const interceptor of bodyIntercepterStore) {
                 try {
                     arg.body = await interceptor.callback(arg.body, arg.interceptor) || arg.body
@@ -2880,7 +2881,7 @@ export async function fetchNative(url: string, arg: {
 }, internal?: NativeInternal): Promise<Response> {
 
     assertNoSecretRef(arg.headers, url)
-    const useInterceptor = !!arg.interceptor
+    const useInterceptor = !!arg.interceptor && !interceptorsSuppressed(arg.signal)
     if (arg.body === undefined && (arg.method === 'POST' || arg.method === 'PUT')) {
         throw new Error('Body is required for POST and PUT requests')
     }

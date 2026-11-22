@@ -7,6 +7,7 @@ import { DBState } from '../../stores.svelte'
 import { requestChatDataMain, type requestDataResponse } from '../request/request'
 import type { TaskPreset } from './taskPreset'
 import { WORKSPACE_TOOLS } from '../mcp/workspaceclient'
+import { suppressInterceptorsFor } from '../request/interceptorSuppression'
 import { advertisedToolKey, newToolLoop, type ToolLoopState } from '../request/toolLoop'
 import { assembleUtilityPrompt, type UtilityPromptTurn } from './utilityPrompt'
 import { abortUtilityRun, startUtilityRun, type UtilityRun } from './utilityRuns.svelte'
@@ -18,7 +19,7 @@ import { hasWorkspace } from './workspace/workspaceModel.svelte'
  * its request from the preset and the turns alone and calls `requestChatDataMain` with a pinned model, so no chat,
  * character, persona, lorebook or trigger can reach the body. Calling `requestChatDataMain` directly skips the before and
  * after request hooks, and `blockPlugins` refuses plugin model providers. V3 body interceptors with the replacer grant
- * still see and can replace the body, with or without a workspace. Without a workspace, tools are not advertised
+ * still see and can replace the body of a run without a workspace, but never of a run with one. Without a workspace, tools are not advertised
  * (`tools: []`) and the reply streams, but on the non-streaming Anthropic path a tool result can still be appended to
  * the body. A conversation that has picked a workspace advertises only the workspace tools, fixed before any workspace
  * text is read, and is not streamed. The workspace id lives in this state and is never read from a model's output.
@@ -71,7 +72,7 @@ export function setUtilityWorkspace(workspaceId: string | null): boolean {
 }
 
 /** The formats a per-request temperature and the schema switch are honoured for. */
-const ALLOWED_FORMATS: readonly number[] = [
+export const UTILITY_FORMATS: readonly number[] = [
     LLMFormat.OpenAICompatible,
     LLMFormat.Anthropic,
     LLMFormat.GoogleCloud,
@@ -99,7 +100,7 @@ export function utilityRefusal(preset: Pick<TaskPreset, 'model'>, db: Pick<Datab
         return language.utility.refusalPluginModel
     }
     const format = preset.model === 'reverse_proxy' ? db.customAPIFormat : info.format
-    if (!ALLOWED_FORMATS.includes(format)) {
+    if (!UTILITY_FORMATS.includes(format)) {
         return language.utility.refusalFormat
     }
     if (preset.model === 'openrouter' && db.useInstructPrompt) {
@@ -236,6 +237,9 @@ export async function sendUtility(presetId: string, text: string, workspaceId: s
             tools = WORKSPACE_TOOLS.map((tool) => ({ ...tool, mcpURL: WORKSPACE_URL }))
             toolLoop = newToolLoop(run.signal)
             toolLoop.workspace = { id: workspaceId }
+            // Plugin body interceptors never see a request that offers workspace tools: file text and tool arguments
+            // stay away from plugins. Registered only here, so a run without a workspace keeps its interceptors.
+            suppressInterceptorsFor(run.signal)
             toolLoop.advertised = new Set(tools.map((tool) => advertisedToolKey(tool.name, WORKSPACE_URL)))
         }
         const instructions = workspaceId === null ? '' : (await buildWorkspaceInstructions(workspaceId)).text

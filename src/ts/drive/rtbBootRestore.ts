@@ -15,6 +15,7 @@ import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd } from './r
 import { leftOutLines, realSideDeps, restoreSides, stageConnectionKeys } from './rtbRestoreFinish'
 import { acquireRestoreHold, type HoldAcquire, type RestoreHold } from './rtbRestoreHold'
 import { clearPluginGrants, rereadUnits } from './rtbRestoreInstall'
+import { clearToolGrantsForRestore, type ToolGrantsClear } from '../process/mcp/toolGrants'
 import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyEnd, type VerifiedRtb } from './rtbRestorePlan'
 
 /**
@@ -31,7 +32,8 @@ import { realVerifyDeps, verifyAndConfirm, type PickedRtb, type RtbVerifyEnd, ty
  *   caller that may open a profile on this page, and a write lock kept closed would make every save of that page wait forever.
  * - Nothing is written to the profile before every question is answered. The busy re-check is the gate (`beforeFirstWrite`),
  *   the last check before the installer call; it never runs inside `build`, where a throw would leave the marker standing.
- *   The gate then clears the plugin grants and stages `side.connection-keys` (add-only), so every staging record is durable
+ *   The gate then clears the saved tool approvals (MC-3415; a failed clear keeps its own text and the gate returns `false`, so
+ *   nothing is installed and neither the plugin grants nor the staging ran), then the plugin grants, and stages `side.connection-keys` (add-only), so every staging record is durable
  *   before the profile commit can land; every other side section runs after the install landed, and the finish never applies a
  *   connection-keys `restore`. A staging that fails is named in the notice and does not stop the install.
  *   After the gate returned `true` the installer has been handed control: a throw then ends `reclassify`, and the boot
@@ -59,6 +61,8 @@ export interface RtbBootDeps {
     copy(plan: RtbBootPlan, hold: RestoreHold): Promise<CopyEnd>
     reread(plan: RtbBootPlan): ReturnType<typeof rereadUnits>
     planRestore(input: RestorePlanInput): RestoreRequest
+    /** Clears the saved tool approvals and seals them (MC-3415); never rejects. */
+    clearToolGrants(): Promise<ToolGrantsClear>
     clearGrants(plan: RtbBootPlan): Promise<void>
     /** Stages the connection keys inside the gate, before the profile commit can land; never rejects. */
     stageKeys(plan: RtbBootPlan): Promise<SideRestoreResult | null>
@@ -86,6 +90,7 @@ function realBootDeps(): RtbBootDeps {
         copy: (plan, hold) => copyRtbEntries(plan, hold),
         reread: (plan) => rereadUnits(plan),
         planRestore,
+        clearToolGrants: clearToolGrantsForRestore,
         clearGrants: (plan) => clearPluginGrants(plan, defaultSideBackends),
         stageKeys: (plan) => stageConnectionKeys(plan, realSideDeps()),
         applySides: (plan, staged) => restoreSides(plan, realSideDeps(), staged),
@@ -129,6 +134,9 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
     let gatePassed = false
     // The connection-keys staging result of the gate; null when that action is not a `restore`.
     let staged: SideRestoreResult | null = null
+    // The seal of the tool-approvals clear, and the text of a clear that failed.
+    let grantsSeal: (() => void) | null = null
+    let grantsText: string | null = null
     try {
         const own = deps.beginBusy()
         busy = own
@@ -204,6 +212,13 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
                 if (deps.refuseWhileBusy(own)) {
                     return false
                 }
+                const toolGrants = await deps.clearToolGrants()
+                if (toolGrants.ok === false) {
+                    console.error(toolGrants.detail)
+                    grantsText = language.toolGrantsClearFailed(toolGrants.detail)
+                    return false
+                }
+                grantsSeal = toolGrants.release
                 await deps.clearGrants(plan)
                 staged = await deps.stageKeys(plan)
                 gatePassed = true
@@ -212,7 +227,7 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
         })
         const outcome = built.outcome
         if (outcome.status === 'not-started') {
-            deps.error(withCopiedKept(language.backupLoadWorkInProgress))
+            deps.error(withCopiedKept(grantsText ?? language.backupLoadWorkInProgress))
             return CANCELLED
         }
         if (outcome.status !== 'installed') {
@@ -284,6 +299,11 @@ export async function runRtbBootRestore(picked: PickedRtb, target: BootImportTar
     } finally {
         // The one release site: every end that returns, a throw included.
         if (!handedOff) {
+            try {
+                grantsSeal?.()
+            } catch (error) {
+                console.error(error)
+            }
             try {
                 await hold?.release(false)
             } catch (error) {
