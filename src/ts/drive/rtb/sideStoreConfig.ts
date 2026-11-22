@@ -41,6 +41,7 @@ export const UI_PREFS_KEYS: readonly string[] = Object.freeze([
     'risutanium.rail.scroll',
     'risuChatShell.enabled',
     'risuChatShell.haptics',
+    'risutanium.uiSounds',
     'risuChatShell.enterMode',
     'risuChatShell.chatSort',
     'risuChatShell.actionSlots',

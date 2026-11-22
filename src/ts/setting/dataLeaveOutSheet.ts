@@ -64,6 +64,10 @@ export function leaveOutSheetDef(summary: readonly BinLeaveOutEntry[]): PatternW
                 appItems.push(language.settingsShellDataLeaveOutTaskPresets(entry.count));
                 named.push(namedLine(language.settingsShellDataKindTaskPresets, shownPromptNames(entry.names), entry.count));
                 break;
+            case 'workspaces':
+                appItems.push(language.settingsShellDataLeaveOutWorkspaces(entry.count));
+                named.push(namedLine(language.settingsShellDataKindWorkspaces, shownPromptNames(entry.names), entry.count));
+                break;
             case 'themePacks':
                 appItems.push(language.settingsShellDataLeaveOutThemePacks(entry.count));
                 named.push(namedLine(language.settingsShellDataKindThemePacks, shownPromptNames(entry.names), entry.count));
@@ -100,6 +104,7 @@ export function leftOutKindLabels(summary: readonly BinLeaveOutEntry[]): string[
             case 'alternatives': return language.settingsShellDataKindAlternatives;
             case 'forkChatData': return language.settingsShellDataKindForkChat;
             case 'taskPresets': return language.settingsShellDataKindTaskPresets;
+            case 'workspaces': return language.settingsShellDataKindWorkspaces;
             case 'themePacks': return language.settingsShellDataKindThemePacks;
             case 'usageStats': return language.settingsShellDataKindUsage;
             case 'chroMemory': return language.settingsShellDataKindChroMemory;

@@ -20,6 +20,7 @@ import type { FlaggedLeaf } from './treeBytes'
  *   chat chunk      one load-error message in the chunk's position; a damaged tail also loses the per-send state it held
  *   chat alt        no records: the chat keeps every message and gets the alternatives of the units that checked
  *   task preset     the preset is left out of the list; the units that checked keep their order
+ *   workspace file  the entry stays in its workspace without `text`; the encoder carries the earlier unit
  * Only units named by a flag are replaced. Any other unit that fails the check still throws `CodecAssembleError`, because
  * a failure no flag explains is not an empty value.
  */
@@ -34,6 +35,8 @@ export interface LeafFallback {
     items: () => readonly FlaggedItem[]
     /** Keys of the flagged task-preset units; the `skipTaskPresets` option of `assembleDatabase` leaves them out of the list. */
     skipTaskPresets: ReadonlySet<string>
+    /** Keys of the flagged workspace-file units; the `placeholderWorkspaceFiles` option of `assembleDatabase` gives those entries no `text`. */
+    placeholderWorkspaceFiles: ReadonlySet<string>
 }
 
 function copyInto(target: JsonObject, bag: JsonObject): void {
@@ -171,6 +174,7 @@ export function createLeafFallback(flagged: readonly FlaggedLeaf[], now: () => n
     return {
         character,
         skipTaskPresets: new Set(flagged.filter(leaf => leaf.kind === 'task-preset').map(leaf => leaf.key)),
+        placeholderWorkspaceFiles: new Set(flagged.filter(leaf => leaf.kind === 'workspace-file').map(leaf => leaf.key)),
         items: () => flagged.map(leaf => ({ ...leaf, name: names.get(leaf.key) ?? '' })),
     }
 }

@@ -877,6 +877,30 @@ function startNativeReply(): void {
             })
         },
         apply: async (input) => (await import('./process/index.svelte')).applyRecoveredReply(input),
+        replayStream: async (blob, bytes, complete) => {
+            const [{ replayOpenAIChatStream }, { createRunSubject }, { createUsageMeter }] = await Promise.all([
+                import('./nativeReply/streamReplay'),
+                import('./process/chatOrigin'),
+                import('./usage/usageMeter'),
+            ])
+            const meter = createUsageMeter()
+            const { modelText } = await replayOpenAIChatStream({
+                bytes,
+                complete,
+                rule: {
+                    deepSeekThinkingOutput: blob.parse.deepSeekThinkingOutput,
+                    extractJson: blob.parse.extractJson,
+                    jsonSchema: blob.parse.jsonSchema,
+                    multiGen: blob.parse.multiGen,
+                },
+                subject: createRunSubject({ chaId: blob.target.chaId, chatId: blob.target.chatId }),
+            }, meter)
+            return { modelText, meter }
+        },
+        applyStream: async (input) => (await import('./process/index.svelte')).applyRecoveredStreamReply(input),
+        settleUsage: (blob, meter, how, modelText) => {
+            void import('./usage/usageCapture').then(({ settleRecoveredUsage }) => settleRecoveredUsage(blob.usage, meter, how, modelText)).catch((error) => console.error(error))
+        },
         restoreCharacter: async (chaId) => (await import('./process/coldMemberRestore')).restoreColdCharacterByChaId(chaId),
         preLoadChat: async (characterIndex, chatIndex) => (await import('./process/coldstorage.svelte')).preLoadChat(characterIndex, chatIndex),
         showParked: (items) => showParkedReplies(items, {

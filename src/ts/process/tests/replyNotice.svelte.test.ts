@@ -595,9 +595,9 @@ async function sendThenLeaveWith(arg: Parameters<typeof sendChat>[1]): Promise<b
 
 //#region the notice's surroundings
 
-import { toastHost, resetToastHostForTests, type ToastView } from 'src/ts/toast/toastHost.svelte'
+import { toastHost, resetToastHostForTests, setToastSoundSink, type ToastView } from 'src/ts/toast/toastHost.svelte'
 import { state as replyNotificationState } from 'src/ts/android/replyNotifications.svelte'
-import { announceReply, hasChimedFor, hasSilencedFor, nativeNoticeArmOf, prepareReplyNoticeAvatar } from 'src/ts/process/replyNotice'
+import { announceReply, hasChimedFor, hasFailedFor, hasSilencedFor, nativeNoticeArmOf, prepareReplyNoticeAvatar, replySoundFor, type ReplySoundFacts } from 'src/ts/process/replyNotice'
 import { noteAnnounced } from 'src/ts/nativeReply/pageState'
 import { __avatarThumbTestHooks, getAvatarThumbSrc, peekAvatarThumb, THUMB_VERSION } from 'src/ts/media/avatarThumb'
 import { createHostChannelFake, type HostChannelFake } from 'src/ts/android/hostChannelFake'
@@ -1335,5 +1335,68 @@ describe('the notice native posts for the page (T4, T5, T6: guard, new rule)', (
         expect(await sendThenLeave(toB)).toBe(true)
 
         expect(statePayloads()).toHaveLength(1)
+    })
+})
+
+describe('the cues of a send\'s end (#246 S1b: T9, the silent notice toasts, the failed record)', () => {
+    const base: ReplySoundFacts = { completed: true, threw: false, aborted: false, failed: false, silenced: false, chimed: false, playMessage: false }
+    const facts = (over: Partial<ReplySoundFacts>): ReplySoundFacts => ({ ...base, ...over })
+
+    // Guard on a new export (a pre-fix import failure would not count): the whole rule table.
+    test('T9 replySoundFor: stopped is silent, a throw or failure is an error, a sounded or silenced reply adds nothing, the chime beats receive', () => {
+        expect(replySoundFor(facts({}))).toBe('receive')
+        expect(replySoundFor(facts({ completed: false }))).toBeNull()
+        expect(replySoundFor(facts({ playMessage: true }))).toBe('chime')
+        expect(replySoundFor(facts({ playMessage: true, completed: false }))).toBe('chime')
+        expect(replySoundFor(facts({ aborted: true, playMessage: true }))).toBeNull()
+        expect(replySoundFor(facts({ aborted: true, failed: true, threw: true }))).toBeNull()
+        expect(replySoundFor(facts({ threw: true, playMessage: true }))).toBe('error')
+        expect(replySoundFor(facts({ failed: true, silenced: true, playMessage: true }))).toBe('error')
+        expect(replySoundFor(facts({ silenced: true }))).toBeNull()
+        expect(replySoundFor(facts({ chimed: true }))).toBeNull()
+        expect(replySoundFor(facts({ chimed: true, playMessage: true }))).toBeNull()
+    })
+
+    test('reproducer: a failed send is recorded as failed, a stopped or finished one is not', async () => {
+        readyWorld()
+        requestChatDataMock.mockReset()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
+        const failed = new AbortController()
+        expect(await settled(() => sendChat(-1, { signal: failed.signal }))).toBe(false)
+        expect(hasFailedFor(failed.signal)).toBe(true)
+        expect(hasFailedFor(undefined)).toBe(false)
+
+        requestChatDataMock.mockResolvedValueOnce({ type: 'success', result: 'Whole reply.' })
+        const finished = new AbortController()
+        expect(await settled(() => sendChat(-1, { signal: finished.signal }))).toBe(true)
+        expect(hasFailedFor(finished.signal)).toBe(false)
+    })
+
+    test('guard (M7): the notice toast of an off-screen reply reaches no sound sink', async () => {
+        const sink = vi.fn()
+        setToastSoundSink(sink)
+        try {
+            readyWorld()
+            expect(await sendThenLeave(toB)).toBe(true)
+            expect(toasts().map((toast) => toast.kind)).toEqual(['info'])
+            expect(sink).not.toHaveBeenCalled()
+        } finally {
+            setToastSoundSink(null)
+        }
+    })
+
+    test('guard (M7): the notice toast of an off-screen failure reaches no sound sink', async () => {
+        const sink = vi.fn()
+        setToastSoundSink(sink)
+        try {
+            readyWorld({ inlayErrorResponse: true })
+            requestChatDataMock.mockReset()
+            requestChatDataMock.mockResolvedValueOnce({ type: 'fail', result: 'boom' })
+            expect(await sendThenLeave(toB)).toBe(false)
+            expect(toasts().map((toast) => toast.kind)).toEqual(['error'])
+            expect(sink).not.toHaveBeenCalled()
+        } finally {
+            setToastSoundSink(null)
+        }
     })
 })

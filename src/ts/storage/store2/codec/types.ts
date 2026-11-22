@@ -193,6 +193,12 @@ export interface PreviousObjects {
      * merged from it.
      */
     presets?: readonly JsonObject[]
+    /**
+     * The top-level fields of each workspace record (type 28) beside `v`, `ws` and `files`, by workspace id, for the
+     * records that have any. In memory only (never written): a field a newer build wrote is put back on the record the
+     * next encode writes for the same workspace id; a workspace the encode no longer writes loses its entry.
+     */
+    workspaces?: ReadonlyMap<string, JsonObject>
 }
 
 /**

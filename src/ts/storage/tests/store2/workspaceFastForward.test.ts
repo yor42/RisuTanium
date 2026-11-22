@@ -216,3 +216,17 @@ describe('T7b the fast-forward over a store that holds workspaces', () => {
         expect(workspaceList(w.b.db).map(item => item.files.length)).toEqual([2, 1])
     })
 })
+
+describe('T7c advancePrevious keeps the workspace record extras', () => {
+    test('N: the advanced previous holds the old encoding\'s record extras when a peer change elsewhere advanced it', async () => {
+        const first = encodeWith(asDatabase(profile()))
+        const db = profile()
+        ;((db.botPresets as Obj[])[1]).temperature = 999
+        const second = await nextTree(first, db, 2)
+        const old = previousOfTree(fullOf(first))
+        const extras = new Map([['w1', { note: 'from a newer build' }]])
+        old.objects = { ...old.objects, workspaces: extras }
+        const advanced = advancePrevious(old, changedOnly(second))
+        expect(advanced.objects?.workspaces).toEqual(extras)
+    })
+})

@@ -113,5 +113,5 @@ export function reportUndo(result: UndoResult): void {
         postToast({ kind: 'warning', text: language.importUndoRefused })
         return
     }
-    postToast({ kind: 'info', text: language.importUndoDone(result.trashed, result.removed, result.missing) })
+    postToast({ kind: 'info', text: language.importUndoDone(result.trashed, result.removed, result.missing), cue: 'undo' })
 }
