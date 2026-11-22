@@ -31,3 +31,5 @@ Agents/Tools/ltm-eval/** text eol=lf
 # The archive writer's captured units are shipped bytes: the gzip files are never converted, and the JSON stays LF so the manifest's hashes and diffs hold on every checkout.
 src/ts/process/tests/archiveCapture/*.gz binary
 src/ts/process/tests/archiveCapture/*.json text eol=lf
+# The in-app update's frozen v1 fixtures are pinned by hash: they stay LF in every checkout.
+src-tauri/gen/android/app/src/test/resources/app-update-v1/** text eol=lf

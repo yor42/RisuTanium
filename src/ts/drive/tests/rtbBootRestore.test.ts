@@ -153,6 +153,7 @@ function rig(options: Options = {}): Rig {
         copy: async (): Promise<CopyEnd> => { log.push('copy'); return { kind: 'copied', facts: FACTS } },
         reread: async () => { log.push('reread'); return { kind: 'ok', frames: new Map() } },
         planRestore: (input) => { log.push('plan'); planInputs.push(input); return { newUnits: 1, build: () => { throw new Error('not built') } } },
+        clearToolGrants: async () => { log.push('gate:clear-tool-grants'); return { ok: true, release: () => { log.push('grants-seal-released') } } },
         clearGrants: async () => { log.push('gate:clear-grants') },
         stageKeys: async () => { log.push('gate:stage-keys'); return options.staged ?? null },
         applySides: async (_plan, staged) => { log.push('sides'); stagedSeen.push(staged); return [] },
@@ -190,7 +191,7 @@ describe('the order of a successful restore (T-S1)', () => {
         const r = rig()
         expect(await r.run()).toBe(PENDING)
         expect(r.log).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot',
-            'gate:busy-check', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
+            'gate:busy-check', 'gate:clear-tool-grants', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
         expect(r.planInputs).toHaveLength(1)
         expect(r.planInputs[0].target).toEqual({ legacyKeep: null, req: [] })
         expect(r.errors).toEqual([])
@@ -200,7 +201,7 @@ describe('the order of a successful restore (T-S1)', () => {
         const r = rig({ entry: 'exit' })
         expect(await r.run()).toEqual(finished(INSTALLED))
         expect(r.log).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot',
-            'gate:busy-check', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'release:false', 'clear-alert', 'busy-end'])
+            'gate:busy-check', 'gate:clear-tool-grants', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'grants-seal-released', 'release:false', 'clear-alert', 'busy-end'])
     })
 })
 
@@ -224,6 +225,7 @@ describe('the gate (T-S2)', () => {
         expect(await r.run()).toEqual(CANCELLED)
         expect(r.log).not.toContain('mark')
         expect(r.log).not.toContain('commit-start')
+        expect(r.log).not.toContain('gate:clear-tool-grants')
         expect(r.log).not.toContain('gate:clear-grants')
         expect(r.errors).toEqual([withCopiedKept(language.backupLoadWorkInProgress)])
     })
@@ -236,7 +238,7 @@ describe('the gate (T-S2)', () => {
         const passed = rig({ entry: 'exit' })
         await passed.run()
         const gate = passed.log.filter((step) => step.startsWith('gate:'))
-        expect(gate).toEqual(['gate:busy-check', 'gate:clear-grants', 'gate:stage-keys'])
+        expect(gate).toEqual(['gate:busy-check', 'gate:clear-tool-grants', 'gate:clear-grants', 'gate:stage-keys'])
         expect(passed.log.indexOf('gate:stage-keys')).toBeLessThan(passed.log.indexOf('commit-start'))
     })
 
@@ -436,7 +438,7 @@ describe('the restore card (R3, MC-3634)', () => {
         expect(r.log[0]).toBe('card:open')
         expect(r.log.indexOf('card:open')).toBeLessThan(r.log.indexOf('busy'))
         expect(r.log.indexOf('card:leave')).toBeLessThan(r.log.indexOf('wait:reloading'))
-        expect(r.log.filter((item) => !item.startsWith('card:'))).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot', 'gate:busy-check', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
+        expect(r.log.filter((item) => !item.startsWith('card:'))).toEqual(['busy', 'settled', 'read-only', 'busy-check', 'hold', 'verify', 'copy', 'reread', 'plan', 'wait:installing', 'keep', 'snapshot', 'gate:busy-check', 'gate:clear-tool-grants', 'gate:clear-grants', 'gate:stage-keys', 'commit-start', 'mark', 'sides', 'wait:reloading', 'release:true', 'mark-reload', 'reload'])
     })
 
     test('R3c: the card is left before every error, and before the notices on both entries', async () => {

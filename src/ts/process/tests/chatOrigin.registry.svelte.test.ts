@@ -17,7 +17,7 @@ vi.mock(import('../../stores.svelte'), () => {
 })
 
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
+import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, generatingChatIdsIn, stopRepliesOf, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -316,6 +316,48 @@ describe('isGeneratingIn and isBusyIn count registrations by kind', () => {
         expect(isGeneratingIn({ chaId: 'char-a' })).toBe(true)
         expect(isGeneratingIn({ chaId: 'char-a', chatId: 'chat-b' })).toBe(false)
         expect(isGeneratingIn({ chaId: 'char-b', chatId: 'chat-a' })).toBe(false)
+    })
+
+    test('generatingChatIdsIn lists the distinct chats of the owner that write a reply, and no preview or plain work', () => {
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-b' }, undefined, 'reply'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-p' }, undefined, 'preview'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-w' }))
+        open(registerWork({ chaId: 'char-b', chatId: 'chat-z' }, undefined, 'reply'))
+
+        expect(generatingChatIdsIn('char-a').sort()).toEqual(['chat-a', 'chat-b'])
+        expect(generatingChatIdsIn('char-b')).toEqual(['chat-z'])
+        expect(generatingChatIdsIn('char-none')).toEqual([])
+    })
+
+    test('stopRepliesOf stops each writing chat of the owner once, and no preview, plain work or other owner', () => {
+        const stops = { a: vi.fn(), a2: vi.fn(), b: vi.fn(), preview: vi.fn(), plain: vi.fn(), other: vi.fn() }
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, stops.a, 'reply'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, stops.a2, 'reply'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-b' }, stops.b, 'reply'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-p' }, stops.preview, 'preview'))
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-w' }, stops.plain))
+        open(registerWork({ chaId: 'char-b', chatId: 'chat-z' }, stops.other, 'reply'))
+
+        stopRepliesOf('char-a')
+        stopRepliesOf('char-a')
+
+        expect([stops.a, stops.a2, stops.b].map((stop) => stop.mock.calls.length)).toEqual([1, 1, 1])
+        expect([stops.preview, stops.plain, stops.other].map((stop) => stop.mock.calls.length)).toEqual([0, 0, 0])
+    })
+
+    test('generatingChatIdsIn lists a group turn for the group, never for the member it speaks as', () => {
+        installDb([
+            makeGroup('group-1', [makeChat('chat-1')], ['member-a']),
+            makeCharacter('member-a', [makeChat('member-a-chat')]),
+        ])
+        const owner = DBState.db.characters[0]
+        const member = DBState.db.characters[1]
+        open(beginWork(owner, (owner as unknown as { chats: Chat[] }).chats[0], member, undefined, 'reply')!)
+
+        expect(generatingChatIdsIn('group-1')).toEqual(['chat-1'])
+        expect(generatingChatIdsIn('member-a')).toEqual([])
     })
 
     test('T9: a group turn counts for the group owner, never for the member it speaks as', () => {

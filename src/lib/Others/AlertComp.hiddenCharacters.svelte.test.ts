@@ -181,14 +181,21 @@ function makeGroup(chaId: string, name: string): CharacterFixture {
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
 
-function mountPicker(characters: CharacterFixture[]): HTMLElement {
+// The picker's window host reads the grid's geometry in a microtask after the grid mounts; rows mount after that read.
+async function settleWindow(): Promise<void> {
+    flushSync()
+    await Promise.resolve()
+    flushSync()
+}
+
+async function mountPicker(characters: CharacterFixture[]): Promise<HTMLElement> {
     DBState.db = { characters } as unknown as Database
     alertStore.set({ type: 'selectChar', msg: '' } as never)
     const target = document.createElement('div')
     document.body.appendChild(target)
     mountedTargets.push(target)
     mountedInstances.push(mount(AlertComp, { target, props: {} }))
-    flushSync()
+    await settleWindow()
     return target
 }
 
@@ -200,12 +207,12 @@ function avatarButtons(target: HTMLElement): HTMLButtonElement[] {
  * The `chaId` each offered avatar resolves the prompt with, in display order:
  * every avatar is pressed in turn, and the picker is reopened between presses.
  */
-function offeredChaIds(target: HTMLElement): string[] {
+async function offeredChaIds(target: HTMLElement): Promise<string[]> {
     const count = avatarButtons(target).length
     const picked: string[] = []
     for (let i = 0; i < count; i++) {
         alertStore.set({ type: 'selectChar', msg: '' } as never)
-        flushSync()
+        await settleWindow()
         avatarButtons(target)[i].click()
         flushSync()
         picked.push((get(alertStore) as { msg: string }).msg)
@@ -227,8 +234,8 @@ afterEach(async () => {
 //#endregion
 
 describe('AlertComp.svelte selectChar block: which characters are offered', () => {
-    test('offers only the ordinary characters and resolves each with its own chaId, with hidden entries ahead of them', () => {
-        const target = mountPicker([
+    test('offers only the ordinary characters and resolves each with its own chaId, with hidden entries ahead of them', async () => {
+        const target = await mountPicker([
             makeCharacter('§playground', 'assistant', { utilityBot: true }),
             makeCharacter('§temp', 'Temp Copy'),
             makeCharacter('trashed-id', 'Trashed X', { trashTime: Date.now() - 1000 }),
@@ -237,21 +244,21 @@ describe('AlertComp.svelte selectChar block: which characters are offered', () =
             makeCharacter('bob-id', 'Bob'),
         ])
 
-        expect(offeredChaIds(target)).toEqual(['alice-id', 'bob-id'])
+        expect(await offeredChaIds(target)).toEqual(['alice-id', 'bob-id'])
     })
 
-    test('does not offer a trashed system character either', () => {
-        const target = mountPicker([
+    test('does not offer a trashed system character either', async () => {
+        const target = await mountPicker([
             makeCharacter('§playground', 'assistant', { utilityBot: true, trashTime: Date.now() - 1000 }),
             makeCharacter('§temp', 'Temp Copy', { trashTime: Date.now() - 1000 }),
             makeCharacter('alice-id', 'Alice'),
         ])
 
-        expect(offeredChaIds(target)).toEqual(['alice-id'])
+        expect(await offeredChaIds(target)).toEqual(['alice-id'])
     })
 
-    test('does not offer the Playground or the stray copy when they are the only entries', () => {
-        const target = mountPicker([
+    test('does not offer the Playground or the stray copy when they are the only entries', async () => {
+        const target = await mountPicker([
             makeCharacter('§playground', 'assistant', { utilityBot: true }),
             makeCharacter('§temp', 'Temp Copy'),
         ])
@@ -259,24 +266,24 @@ describe('AlertComp.svelte selectChar block: which characters are offered', () =
         expect(avatarButtons(target)).toHaveLength(0)
     })
 
-    test('does not offer a trashed ordinary character', () => {
-        const target = mountPicker([
+    test('does not offer a trashed ordinary character', async () => {
+        const target = await mountPicker([
             makeCharacter('trashed-id', 'Trashed X', { trashTime: Date.now() - 1000 }),
             makeCharacter('alice-id', 'Alice'),
         ])
 
-        expect(offeredChaIds(target)).toEqual(['alice-id'])
+        expect(await offeredChaIds(target)).toEqual(['alice-id'])
     })
 
     // Guard: passes with and without the filter; an ordinary character named
     // 'assistant' is offered, and a group is never offered.
-    test('guard: offers an ordinary character named "assistant" and leaves out a group', () => {
-        const target = mountPicker([
+    test('guard: offers an ordinary character named "assistant" and leaves out a group', async () => {
+        const target = await mountPicker([
             makeGroup('group-id', 'Group G'),
             makeCharacter('named-assistant-id', 'assistant'),
             makeCharacter('alice-id', 'Alice'),
         ])
 
-        expect(offeredChaIds(target)).toEqual(['named-assistant-id', 'alice-id'])
+        expect(await offeredChaIds(target)).toEqual(['named-assistant-id', 'alice-id'])
     })
 })

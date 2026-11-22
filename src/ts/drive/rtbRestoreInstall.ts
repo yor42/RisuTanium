@@ -13,13 +13,15 @@ import { readEntry } from './rtb/zip64Reader'
 import { copyRtbEntries, landedFactsOf, withCopiedKept, type CopyEnd, type RtbCopyCause, type RtbCopyDeps, type RtbCopyPlan, type RtbInstallFacts } from './rtbRestoreCopy'
 import { checkAuthoritativeBase, isRtbBusyAbort, rtbGuardedCommitter, type RestoreHold } from './rtbRestoreHold'
 import { stageConnectionKeys } from './rtbRestoreFinish'
+import { clearToolGrantsForRestore, type ToolGrantsClear } from '../process/mcp/toolGrants'
 import type { RestorePlan } from './rtbRestorePlan'
 import type { Store2ImportRefusal } from './storeImport'
 
 /**
  * The install stage of a `.rtb` restore (CHORE-128 S12a-2): after the copy, the file's units are re-read and checked
  * against what the verification saw (I0), the commit key is read again and the guards re-asked (I1, I2), the restore is
- * planned (I3), the connection keys are staged, the plugin grants are cleared (MC-2252), and the profile is committed (I4).
+ * planned (I3), the saved tool approvals are cleared (MC-3415), the connection keys are staged, the plugin grants are cleared
+ * (MC-2252), and the profile is committed (I4).
  *
  * `installRtbRestore` never rejects. Every throw outside a decided stop becomes an end: `unconfirmed` once the commit was called, because the
  * commit may have landed and the write lock must then stay closed; otherwise `stopped` with `write-failed`. The hold is
@@ -37,6 +39,9 @@ import type { Store2ImportRefusal } from './storeImport'
  *   only adds records, keyed by the file's envelopes, and never removes one. Every other side section, and the
  *   connection-keys `absent`/`newer` clear, runs after the commit landed; the finish never applies a connection-keys `restore`.
  * - The plugin grants are cleared after the guard, the plan and the staging, immediately before the commit, and not before.
+ * - The saved tool approvals are cleared after the plan and before anything is staged or cleared. A clear that fails stops the
+ *   restore with nothing replaced, before the plugin grants and the commit. Its seal is released on every `stopped` end and
+ *   stays on after `landed` or `unconfirmed` until the page reloads.
  * - Every stop after the copy began names what the copy left on this device, unless its message already says so.
  */
 
@@ -47,6 +52,7 @@ export type RtbInstallCause =
     | 'declined'
     | 'damaged'
     | 'unconfirmed'
+    | 'grants-unwritable'
 
 export type RtbInstallEnd =
     /** The commit landed; the hold is still held and the finish stage releases it. `staged` is the connection-keys staging done before the commit, null when that action is not a `restore`. */
@@ -71,6 +77,8 @@ export interface RtbInstallDeps {
     /** The facts of a landed end, built after the commit returned. */
     facts(copied: RtbInstallFacts): RtbInstallFacts
     sideBackends: SideBackends
+    /** Clears the saved tool approvals and seals them (MC-3415); never rejects. */
+    clearToolGrants(): Promise<ToolGrantsClear>
     error(text: string): void
     wait(text: string): void
 }
@@ -81,6 +89,7 @@ function realInstallDeps(): Omit<RtbInstallDeps, 'copy'> {
         planRestore,
         facts: landedFactsOf,
         sideBackends: defaultSideBackends,
+        clearToolGrants: clearToolGrantsForRestore,
         error: alertError,
         wait: alertWait,
     }
@@ -171,6 +180,7 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
     let commitStarted = false
     let facts = emptyFacts()
     let staged: SideRestoreResult | null = null
+    let grantsSeal: (() => void) | null = null
     const decided: Decided = { end: null, message: null }
     const stop = (outcome: 'nothing-replaced' | 'failed', cause: RtbInstallCause, text: string | null): RtbInstallEnd => {
         decided.message = text
@@ -273,6 +283,14 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
             throw error
         }
 
+        // The saved tool approvals go before anything is staged, so a failed clear leaves nothing of this restore behind but the copy.
+        const grants = await deps.clearToolGrants()
+        if (grants.ok === false) {
+            console.error(grants.detail)
+            return keptStop('nothing-replaced', 'grants-unwritable', language.toolGrantsClearFailed(grants.detail))
+        }
+        grantsSeal = grants.release
+
         // The installing wait shows first so the staging time reads as part of the load.
         if (deps.installing !== undefined) {
             deps.installing()
@@ -318,6 +336,7 @@ export async function installRtbRestore(plan: RtbInstallPlan, hold: RestoreHold,
         }
         try {
             if (end.kind === 'stopped') {
+                grantsSeal?.()
                 await hold.release(false)
             } else if (end.kind === 'unconfirmed') {
                 await hold.release(true)
