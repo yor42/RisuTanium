@@ -332,6 +332,45 @@ describe('new behaviour: the full-reload flag and the module flag reach the enco
         healthy(loop)
     })
 
+    // A permanent removal (`removeChar` 'permanent', `removeTrashedCharacters`) splices the list, sets the full-reload
+    // flag and marks the removed id in one synchronous stretch. Landing after a pass has copied the list, the pass may
+    // still store the removed character; the next pass must drop it, whether the first one committed or not.
+    for (const first of ['committed', 'refused'] as const) {
+        test(`a permanent removal during a pass is gone from the store after the next pass (first pass ${first})`, async () => {
+            const db = clone(buildSmall(4))
+            const removedId = chaIdOf(db, 1)
+            const kit = await startStore2({ db })
+            let loopRef: Loop | null = null
+            let storedByFirst: string[] = []
+            script(kit, [async (read, request) => {
+                chars(db).splice(1, 1)
+                loopRef!.reloadFlag.state = true
+                loopRef!.mark(removedId)
+                if (first === 'refused') {
+                    return { status: 'refused', reason: 'marker-present', detail: 'x' } as CommitResult
+                }
+                const result = await kit.committer.commit(read, request)
+                storedByFirst = (await kit.saved()).characters.map((c) => (c as Entry).chaId)
+                return result
+            }])
+            const loop = runLoop(kit, db)
+            loopRef = loop
+            chars(db)[2].personality = 'edited before the removal'
+            loop.mark(chaIdOf(db, 2))
+            await savedBy(loop, first === 'committed' ? 2 : 1)
+            await until(() => !loop.state.saving && !loop.state.due && !loop.reloadFlag.state, 'the loop to settle', 4000)
+            if (first === 'committed') {
+                // The pass had copied the list before the removal, so its commit still holds the removed character.
+                expect(storedByFirst).toContain(removedId)
+            }
+            const stored = await kit.saved()
+            expect(stored.characters.map((c) => (c as Entry).chaId)).not.toContain(removedId)
+            expect(stored.characters).toHaveLength(3)
+            expect(stored.characters[1]).toMatchObject({ personality: 'edited before the removal' })
+            healthy(loop)
+        })
+    }
+
     test('a flagged module is written, an unflagged module edit is carried', async () => {
         const db = clone(buildSmall(4))
         const loop = await startLoop(db)
