@@ -112,7 +112,7 @@ const chipOfRoot = (root: HTMLElement): HTMLButtonElement => {
 const drawerOf = (): HTMLElement | null => document.querySelector('[data-part="home-drawer"]')
 const scrimOf = (): HTMLElement | null => document.querySelector('[data-part="home-drawer-scrim"]')
 const closeButtonOf = (): HTMLElement | null => document.querySelector('[data-part="home-drawer-close"]')
-const itemsOf = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>('[data-part="home-drawer-item"]'))
+const itemsOf = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>('[data-part="home-drawer-item"], [data-part="home-drawer-settings"]'))
 const itemNamed = (label: string): HTMLElement | undefined => itemsOf().find((item) => item.textContent?.trim() === label)
 const siblingOf = (root: HTMLElement): Element | null => root.parentElement!.querySelector('[data-test="sibling"]')
 const preInertOf = (root: HTMLElement): Element | null => root.parentElement!.querySelector('[data-test="pre-inert"]')

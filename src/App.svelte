@@ -5,6 +5,7 @@
     import ChatScreen from './lib/ChatScreens/ChatScreen.svelte';
     import AlertComp from './lib/Others/AlertComp.svelte';
     import AlertInertScope from './lib/UI/GUI/AlertInertScope.svelte';
+    import BootPackEscape from './lib/Others/BootPackEscape.svelte';
     import RealmPopUp from './lib/UI/Realm/RealmPopUp.svelte';
     import GridChars from './lib/Others/GridCatalog.svelte';
     import WelcomeRisu from './lib/Others/WelcomeRisu.svelte';
@@ -304,6 +305,8 @@
         {/if}
     {/if}
     </AlertInertScope>
+    <!-- Outside every inert scope and the screen chain, so the escape is live over the boot screen and over boot alerts. -->
+    <BootPackEscape />
     {#if $alertStore.type !== 'none'}
         <AlertComp />
     {/if}

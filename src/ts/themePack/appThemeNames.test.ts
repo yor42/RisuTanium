@@ -72,8 +72,8 @@ describe('T0a-14: the reserved name lists equal the files they were generated fr
         expect(TAILWIND_DEFAULT_NAMES.size).toBeGreaterThan(300)
     })
 
-    it('I covers every name colorscheme.ts writes on the root, as a pack would spell it', () => {
-        const written = [...read('src/ts/gui/colorscheme.ts').matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)].map((m) => m[1])
+    it('I covers every name colorschemeCore.ts writes on the root, as a pack would spell it', () => {
+        const written = [...read('src/ts/gui/colorschemeCore.ts').matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)].map((m) => m[1])
         expect(written.length).toBeGreaterThan(15)
         for (const n of written) expect(isColourSchemeInlineName(n.toLowerCase()), n).toBe(true)
         expect(isColourSchemeInlineName('--color-textcolor')).toBe(false)

@@ -613,7 +613,7 @@
             <HomeIcon size={20} />
             <span>{language.home}</span>
         </button>
-        <button data-part="sidebar-settings" class={footerClass} onclick={toggleSettings}>
+        <button data-part="sidebar-settings" data-part-critical class={footerClass} onclick={toggleSettings}>
             <SettingsIcon size={20} />
             <span>{language.settings}</span>
         </button>
