@@ -10,6 +10,33 @@ Native first. Ordinary scouting, code, tests, documents and review go to a fresh
 
 The paid-fallback and external-first sections of [subscription-first execution](subscription-first.md) are superseded; that file stays for its batch-scope and durable-acceptance rules until it is archived.
 
+## Session and designer model (MC-3643, MC-3765)
+
+A new ticket orchestrator is Sonnet by default (MC-3765). It is Opus when any of these holds:
+
+- the cause is unclear or the design is open;
+- it changes a critical contract;
+- it is large multi-stage or cross-subsystem work.
+
+Lane A stays on Opus. The designer does not follow that default: it is Opus, or Sonnet for a clear ticket (MC-3643, MC-3765). The test of a clear ticket is derived. A ticket is **clear** when all of these hold:
+
+- its acceptance is settled, with no open product question;
+- the cause or mechanism is known;
+- the change is bounded to one subsystem or a mechanical set of files;
+- it changes no critical contract.
+
+| Dispatch | Sonnet | Opus |
+|---|---|---|
+| Ticket orchestrator (a new session) | the default, in any tier | a trigger above; lane A |
+| `designer` (Tier 2 only) | a clear ticket | anything else, and every revision after a substantive Gate 1 reject |
+
+- Lane A names the model and a one-line reason in the question that asks to start the session, then passes it as `model` to the start. Without a model a new session inherits lane A's.
+- A Sonnet designer registers with `"model": "sonnet"` and its Agent call passes `model: "sonnet"`. The controller refuses that choice with `changedContracts` or an escalation, and refuses the call without the model. With no choice the designer runs on Opus.
+- A Sonnet session that finds an Opus trigger in its ticket does not switch itself (derived): it writes its handoff and tells lane A, which asks the maintainer about a successor.
+- Reviews do not change: critical contracts still get `opus-reviewer`. Running sessions keep their model.
+- Lane A reviews the default after 10 Sonnet-led tickets, or earlier if 2 rejects trace to the orchestrator, and asks the maintainer about rolling back (MC-3765).
+- Sessions are not weighted by model or size (MC-3766). `maxImplementationTracks` counts live code-writing dispatches, not sessions; RAM, devices, file overlap and quota limit sessions.
+
 ## Choose by the question
 
 A tiny, targeted lookup may run inline. Route substantial batched surveys to a native scout; do not pay a dispatch for every grep. Use `rg`/`rg --files` where available, and a bounded alternative if they are unavailable. Search results give locations, not behavioral conclusions.
@@ -22,7 +49,7 @@ These are the default native roles (MC-2748).
 | `investigator` | Sonnet | What happens, and does it matter for this decision? Compact selective evidence packet; default behavioral investigation. |
 | `code-reader` | Sonnet | Describe all user capabilities of a named subsystem, enumerated from dispatch, with defaults, aliases and edge cases; mark TRACED/INFERRED and suspected bugs separately. |
 | `deep-investigator` | Opus | Are we sure? Challenge a prior investigation and reopen primary sources for decision-critical claims. Escalation only. A fresh instance also arbitrates factual and causal disputes (MC-785). |
-| `designer` | Opus | Turn a sizing packet into the proposed plan and the required tests (reproducers that must fail on the base, compatibility guards, mutants to kill); revise it after a Gate 1 reject. Never reviews or arbitrates its own work; the Orchestrator only routes. |
+| `designer` | Opus; Sonnet for a clear ticket (MC-3643) | Turn a sizing packet into the proposed plan and the required tests (reproducers that must fail on the base, compatibility guards, mutants to kill); revise it after a Gate 1 reject. Never reviews or arbitrates its own work; the Orchestrator only routes. |
 | `sonnet-coder` | Sonnet | Implement a bounded change in named files, including new English strings and call sites. |
 | `test-warrior` | Sonnet | Write tests and resolve test failures; distinguish reproducers from guards. |
 | `adversarial-reviewer` | Sonnet | Independently falsify routine plans and code; read-only repository access. |
@@ -60,13 +87,32 @@ Maintainer rules of 2026-10-30 (MC-894, MC-895, MC-896).
 
 **Stage coders (MC-894).** Designers write plans in stage sections, each of which stands alone. After Gate 1, one fresh `sonnet-coder` implements each coherent stage, serially in the batch's one worktree, with an exact per-stage write grant that the Orchestrator revokes before the next coder starts; tiny stages are grouped into one coder. One combined Gate 2 reviews the batch. A Gate 2 `[REJECT]` is remediated by one fresh remediation coder seeded with the verdict file, the diff and the acceptance requirements. Amendment: this replaces "the implementing worker" in [gates](gates.md) (Outcomes and remediation) with that fresh coder. One application-code writer per checkout still holds ([ownership](ownership.md)). The serial stage rule applies inside one ticket worktree; other tickets run in their own sessions.
 
-**Opus economy (MC-895; routing amended 2026-11-03).** Opus-tier or higher calls (`designer`, `opus-reviewer`, `deep-investigator`, `senior-advisor`, the Orchestrator) are for judgement, not for redundant or detailed work. Searches go to a native `code-searcher` or `investigator`. Location output is a lead until a relevant source check confirms its consequential claim. Code edits go to `sonnet-coder` (or `haiku-editor` for exact mechanical edits). The same diff is not given a repeat expensive review: a routine remediation re-check uses a fresh native Sonnet `adversarial-reviewer`, seeded with the verdict, and `opus-reviewer` or `senior-advisor` run only where [gates](gates.md) requires them (actual changed-critical-contract review, including Gate 2 of a change to a single point that enforces a security boundary per MC-912, the senior-advisor challenge and the three-reject escalation; the maintainer's "where gates.md requires" as read in MC-895 and confirmed by MC-899). Amendment: outside those cases this replaces the same-role resume-or-replace rule for a remediation re-check in [gates](gates.md). Decision-critical report claims are independently checked at the consuming decision or accepting gate; reuse adequate checks and do not add a blanket report-of-report review.
+**Opus economy (MC-895; routing amended 2026-11-03).** Opus-tier or higher calls (an Opus `designer`, `opus-reviewer`, `deep-investigator`, `senior-advisor`, an Opus Orchestrator) are for judgement, not for redundant or detailed work. Searches go to a native `code-searcher` or `investigator`. Location output is a lead until a relevant source check confirms its consequential claim. Code edits go to `sonnet-coder` (or `haiku-editor` for exact mechanical edits). The same diff is not given a repeat expensive review: a routine remediation re-check uses a fresh native Sonnet `adversarial-reviewer`, seeded with the verdict, and `opus-reviewer` or `senior-advisor` run only where [gates](gates.md) requires them (actual changed-critical-contract review, including Gate 2 of a change to a single point that enforces a security boundary per MC-912, the senior-advisor challenge and the three-reject escalation; the maintainer's "where gates.md requires" as read in MC-895 and confirmed by MC-899; MC-3767 narrows "changed" at a re-check to the fix, see [Remediation re-checks](#remediation-re-checks-mc-3767)). Amendment: outside those cases this replaces the same-role resume-or-replace rule for a remediation re-check in [gates](gates.md). Decision-critical report claims are independently checked at the consuming decision or accepting gate; reuse adequate checks and do not add a blanket report-of-report review.
 
 **Workflow review (MC-896).** The Orchestrator watches subagent token, tool and time data. When it sees a cheaper or faster way of working it proposes the change with the numbers (or states that a number is unavailable); the maintainer decides whether to adopt it.
+
+### Remediation re-checks (MC-3767)
+
+A first review of a critical contract is Opus, and so is the re-check of any fix that touches the contract. Any other fix re-check goes to a fresh Sonnet `adversarial-reviewer`, even when the whole change is critical. The accepted risk is that a fix which breaks the contract indirectly gets a weaker review.
+
+Derived, for applying it:
+
+- A fix touches the contract when it changes code or plan text that implements or enforces the contract, or removes or weakens one of its tests. When unsure, it touches it.
+- The re-check registers under a new `logicalJobId`, with `changedContracts` naming only what the fix touches (empty for Sonnet): the controller refuses a change of contracts within one job. Its brief names the whole change's contracts, the earlier verdict and the fix diff.
+- A Sonnet reviewer that finds the contract touched says so in its verdict, and that fix then gets an Opus re-check. The round count continues.
+- The mandatory plan challenge and the three-reject escalation are unchanged.
 
 ## Reports and handback
 
 Every subagent writes its full report to a Markdown file and hands back exactly three lines: the report path, `STATUS:` with the verdict or status, and `BLOCKERS/INCIDENTS:` none or the list. The aim is to keep unneeded detail out of the Orchestrator's context. Status values besides the role's own verdict: BLOCKED NEEDS GRANT, AMENDMENT REQUESTED, PARTIAL (a missing report file counts as PARTIAL; never acceptance), WRITE REFUSED (full text follows as the exception) and INCIDENT. The Orchestrator reads the verdict line first, then only the sections a decision needs, by heading or search; it verifies decision-critical claims against source itself, and a handback is never evidence. Reports put the verdict or status on line 1, a short Summary next and stable headings (Findings, Evidence, Open items). Use result.md or <id>-result.md: Claude Code blocks subagent writes named REPORT*, SUMMARY*, FINDINGS* or ANALYSIS*. Briefs name other agents' files as read-only; an agent writes or edits only files it created. The guard does not enforce this: a TEMP file is writable by every scratch role, so the Orchestrator records a verdict file's size and hash in the ledger row at hand-back and re-hashes before citing or acting on it. Scratch Write for read-mostly roles (code-searcher, haiku-triager, doc-verifier, senior-advisor and the designer) is limited to %TEMP% outside every repository; repository writes still need a per-agent exact grant under [ownership](ownership.md).
+
+## Messages between sessions and wakes (MC-3769)
+
+Every message or finished background job wakes a session, which re-reads its whole context.
+
+- Message another session only when blocked, needing a decision, ready to merge or finished, plus the derived cases below. Send no acknowledgements or progress notes.
+- Group background jobs, so that jobs which are used together wake the session once.
+- Derived: these still get a message: an assignment or grant and its result, an answer to a question, an incident, and a correction to a fact the receiver will act on. Put everything the receiver needs in that one message. Grouping never drops the completion notification that CLAUDE.md rule 5 requires.
 
 ## Bounded nesting
 
@@ -88,7 +134,7 @@ Write boundaries and checkout concurrency follow [ownership](ownership.md). Item
 
 ## Parallel options for the maintainer (MC-1069)
 
-At the start of a task, at each completion and whenever a code, device or records track is free, list the open tickets that could run in parallel with the current work (disjoint files and resources, already authorized or ready to size; the Roadmap and Live-State name them) and offer them to the maintainer as options with the AskUserQuestion tool (multiSelect), each with its blocker or decision need in one line. Do not start an unapproved ticket on the strength of being parallel-safe. Lane A starts ready tickets for idle lanes without this ask (MC-1676 item 3, made permanent by MC-2744); other sessions offer rather than leave a free track idle. Every maintainer decision, approval and confirmation goes through AskUserQuestion, never a prose question.
+At the start of a task, at each completion and whenever a code, device or records track is free, list the open tickets that could run in parallel with the current work (disjoint files and resources, already authorized or ready to size; the Roadmap and Live-State name them) and offer them to the maintainer as options with the AskUserQuestion tool (multiSelect), each with its blocker or decision need in one line. Do not start an unapproved ticket on the strength of being parallel-safe. Lane A asks before it starts any new session (MC-3622, MC-3764; derived: this replaces the no-ask start of MC-1676 item 3) and names the model in that ask (derived from MC-3643); other sessions offer rather than leave a free track idle. Every maintainer decision, approval and confirmation goes through AskUserQuestion, never a prose question.
 
 ## Completion notification for external runners (MC-1069)
 

@@ -97,7 +97,7 @@ try {
     $pnpm = (Get-Command pnpm.cmd -CommandType Application | Select-Object -First 1).Source
     $argv = @('tauri', 'android', 'build')
     if ($Kind -eq 'debug') { $argv += '--debug' }
-    $argv += @('--apk', 'true', '--target', $Target)
+    $argv += @('--apk', '--target', $Target)
     if ($Config) { $argv += @('--config', $Config) }
 
     $apkDir = Join-Path $RepoRoot ('src-tauri\gen\android\app\build\outputs\apk\universal\' + $Kind)

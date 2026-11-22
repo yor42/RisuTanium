@@ -15,7 +15,7 @@ Sonnet coordinates the project. Preserve independent discovery, design, implemen
 | Ordinary scouting, location surveys, bounded mechanism investigation and log triage | Antigravity `gemini-3.8-flash-low` or `gemini-3.8-flash-medium`; signed-in Codex `gpt-6-luna` low/medium; eligible paid OpenRouter Flash; designated native role |
 | Supplied-evidence routine records/commit-message drafting | Native record-clerk, Haiku low, directly; no external preflight or self-acceptance |
 | Routine code, tests, other documentation and independent routine review | Signed-in Codex `gpt-6-sol` medium; eligible paid OpenRouter Flash; native Sonnet role |
-| Plans and required-test design | Native Opus `designer`, fresh per substantive revision |
+| Plans and required-test design | Native `designer` (Opus, or Sonnet for a clear ticket per MC-3643), fresh per substantive revision |
 | Changed critical-contract review | Native `opus-reviewer` |
 | Mandatory advisor challenge or disputed factual/verdict arbitration | Existing designated native role under existing escalation conditions |
 
