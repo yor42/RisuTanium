@@ -4,6 +4,7 @@ import type { Origin } from '../process/chatOrigin'
 import { slotHasKey } from '../process/request/secretKey'
 import { checkSendPrerequisites, type SendRefusal } from '../process/sendPrerequisites'
 import { DBState } from '../stores.svelte'
+import { playUiSound } from '../uiSound/uiSound'
 
 /** A refused generation: why, where the fix is, and the action Try again runs again. */
 export interface SendFailure extends SendRefusal {
@@ -38,6 +39,7 @@ export function shellGenerationSource(closeMenu: () => void): ComposerActionsSou
                 return false
             }
             failures[key] = { ...refusal, action: request.action }
+            playUiSound('error')
             return true
         },
         generationSkipped: (request: GenerationRequest) => {

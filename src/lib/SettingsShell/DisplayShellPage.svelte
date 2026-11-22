@@ -19,6 +19,7 @@
     import ReducedMotionRow from './display/ReducedMotionRow.svelte'
     import SeasonalLogoRow from './display/SeasonalLogoRow.svelte'
     import ThemeCards from './display/ThemeCards.svelte'
+    import UiSoundsRow from './display/UiSoundsRow.svelte'
     import ShellSettingRow from './ShellSettingRow.svelte'
 
     interface Props {
@@ -35,6 +36,7 @@
         ReduceCardEffectsRow,
         ReducedMotionRow,
         SeasonalLogoRow,
+        UiSoundsRow,
     }
 
     // One context for every row, built like the legacy renderer's.

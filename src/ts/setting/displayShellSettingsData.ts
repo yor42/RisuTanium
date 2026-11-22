@@ -22,6 +22,7 @@ import {
     storedAnimationOf,
 } from '../settingsShell/displayPresentation';
 import type { Database } from '../storage/database.svelte';
+import { uiSoundsSupported } from '../uiSound/uiSoundPrefs';
 import { displaySettingsItems } from './displaySettingsData.svelte';
 import type { SettingContext, SettingItem } from './types';
 
@@ -34,7 +35,7 @@ export type DisplaySectionId =
     | 'display.advanced';
 
 /** Shell components a row can name; the page maps each to its component. */
-export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReduceCardEffectsRow' | 'ReducedMotionRow' | 'SeasonalLogoRow';
+export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReduceCardEffectsRow' | 'ReducedMotionRow' | 'SeasonalLogoRow' | 'UiSoundsRow';
 
 /** A row that has no effect in the current state: it stays operable and says why. */
 export interface DimRule {
@@ -252,6 +253,7 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
         labelKey: 'settingsShellDisplaySound',
         collapsed: false,
         rows: [
+            { kind: 'shell', id: 'display.uiSounds', component: 'UiSoundsRow', condition: () => uiSoundsSupported() },
             plain('display.playMessage'),
             plain('display.playMessageOnTranslateEnd'),
             plain('display.notification'),
