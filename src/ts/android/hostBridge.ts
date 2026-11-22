@@ -110,6 +110,33 @@ function send(channel: HostChannel, message: { bridge: string; method: string; a
     channel.postMessage(JSON.stringify(message))
 }
 
+/** Bytes received of the update download, and the total the host expects. */
+export interface AppUpdateProgress {
+    received: number
+    total: number
+}
+
+const appUpdateProgressListeners = new Set<(progress: AppUpdateProgress) => void>()
+
+/** A progress report, or null unless both fields are integers with 0 <= received <= total. */
+function readAppUpdateProgress(received: unknown, total: unknown): AppUpdateProgress | null {
+    if (typeof received !== 'number' || typeof total !== 'number' || !Number.isInteger(received) || !Number.isInteger(total)) {
+        return null
+    }
+    if (received < 0 || received > total) {
+        return null
+    }
+    return { received, total }
+}
+
+/** Listens for the host's update download progress; the returned function stops the delivery. */
+export function subscribeAppUpdateProgress(listener: (progress: AppUpdateProgress) => void): () => void {
+    appUpdateProgressListeners.add(listener)
+    return () => {
+        appUpdateProgressListeners.delete(listener)
+    }
+}
+
 /** A keyboard state from the host, or null when either field is not what the host sends. */
 function readImeState(visible: unknown, height: unknown): ImeState | null {
     if (typeof visible !== 'boolean' || typeof height !== 'number' || !Number.isFinite(height) || height < 0) {
@@ -132,6 +159,15 @@ function onHostMessage(event: HostMessageEvent): void {
         return
     }
     const reply = parsed as Record<string, unknown>
+    if (reply.event === 'appUpdateProgress') {
+        const progress = readAppUpdateProgress(reply.received, reply.total)
+        if (progress) {
+            for (const listener of [...appUpdateProgressListeners]) {
+                listener(progress)
+            }
+        }
+        return
+    }
     if (reply.event === 'gestureInset') {
         const value = reply.value
         if (typeof value === 'number' && Number.isFinite(value)) {
@@ -263,6 +299,23 @@ export function hostRequest(bridge: string, method: string, args: unknown[]): Ho
         cancel: () => {
             pending = pending.filter((candidate) => candidate !== entry)
         },
+    }
+}
+
+/**
+ * Sends `{bridge, method, args}` with no id and no reply to wait for. False when there is no channel or the send throws,
+ * so the caller learns the host never got it.
+ */
+export function hostPost(bridge: string, method: string, args: unknown[]): boolean {
+    const channel = bind()
+    if (!channel) {
+        return false
+    }
+    try {
+        send(channel, { bridge, method, args })
+        return true
+    } catch {
+        return false
     }
 }
 

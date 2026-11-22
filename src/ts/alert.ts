@@ -24,6 +24,8 @@ export interface UpdateOffer {
     currentVersion: string
     version: string
     notes: string
+    /** Set on an Android offer, where Install downloads the file first: its size, and whether the connection is metered. Absent on desktop. */
+    download?: { sizeBytes: number, metered: boolean }
 }
 
 export interface alertData{
