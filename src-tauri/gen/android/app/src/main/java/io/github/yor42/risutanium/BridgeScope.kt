@@ -266,7 +266,7 @@ fun encodeVaultReply(id: Int, method: String, result: VaultResult): String {
 
 // Quotes, backslashes, control characters and the line separators U+2028/2029 are escaped; every
 // other character, a supplementary one included, is passed through.
-private fun jsonString(value: String): String {
+internal fun jsonString(value: String): String {
   val out = StringBuilder(value.length + 2).append('"')
   for (char in value) {
     when {

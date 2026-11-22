@@ -1,0 +1,29 @@
+# APK URL rows for latest-android.json v1: `accept <url>` or `reject <url>`. The Kotlin acceptApkUrl
+# and any producer-side twin must agree on every row. v1 is frozen: a new format gets a new file name
+# and a new directory, and these files only grow by new directories.
+accept https://github.com/yor42/RisuTanium/releases/download/v0.2.0/RisuTanium_0.2.0_android-universal.apk
+accept https://github.com/yor42/RisuTanium/releases/download/v0.2.0-rc.1/app.apk
+accept https://GITHUB.COM/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject http://github.com/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://evilgithub.com/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://github.com.evil.io/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://github.com./yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https:///yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://xn--ithub-xxa.com/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://github.com/other/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://github.com/yor42/Other/releases/download/v0.2.0/app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/app.apk?x=1
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/app.apk#frag
+reject https://github.com:443/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://user@github.com/yor42/RisuTanium/releases/download/v0.2.0/app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/%2e%2e/app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/app%2eapk
+reject https://github.com/yor42/RisuTanium/releases/download/../app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/./app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/../app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/app.zip
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/sub/app.apk
+reject https://github.com/yor42/RisuTanium/releases/latest/download/app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/app.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/a b.apk
+reject https://github.com/yor42/RisuTanium/releases/download/v0.2.0/.apk
