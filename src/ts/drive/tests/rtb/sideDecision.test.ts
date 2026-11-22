@@ -58,6 +58,6 @@ describe('decideSideSections', () => {
         expect(actions.map((a) => a.id)).toEqual(SIDE_SECTION_IDS)
         expect(actions.find((a) => a.id === 'side.iris')?.kind).toBe('restore')
         expect(actions.find((a) => a.id === 'side.ui-prefs')).toMatchObject({ kind: 'leave', status: 'omitted' })
-        expect(actions.filter((a) => a.kind === 'clear')).toHaveLength(6)
+        expect(actions.filter((a) => a.kind === 'clear')).toHaveLength(7)
     })
 })

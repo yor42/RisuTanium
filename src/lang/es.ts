@@ -919,9 +919,8 @@ export const languageSpanish = {
         "hordeNotPossible": "No es posible generar la respuesta.",
         "hordeNotPossibleWith": "No es posible generar la respuesta: {message}",
         "hordeNoGenerations": "Proceso terminado, pero no se generó ningún resultado",
-        "webCryptoUnavailable": "La Web Crypto API no está disponible en este entorno. Asegúrate de estar usando HTTPS.",
         "vertexInvalidClientEmail": "Correo electrónico de cliente de Vertex no válido. Debe incluir gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Clave privada de Vertex no válida. Debe incluir los marcadores de clave correctos.",
+        "vertexInvalidPrivateKey": "Clave privada de Vertex no válida. Pega el valor completo de private_key del JSON de la cuenta de servicio, incluidas las líneas BEGIN y END PRIVATE KEY.",
         "googleTokenRefreshFailed": "No se pudo actualizar el token de acceso de Google: {error}",
         "googleNoAccessToken": "No hay token de acceso de Google en la respuesta",
         "googleEmptyResponse": "Se recibió una respuesta vacía: {response}",
@@ -3651,6 +3650,7 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} elemento(s) de esta copia de seguridad superan los 100 MiB. Un servidor Node de RisuAI upstream no puede restaurar un elemento tan grande, por lo que los omitiría al restaurar esta copia allí; esta aplicación y las demás plataformas sí los restauran. ¿Crear la copia de seguridad con ellos incluidos? Si lo rechazas, no se crea ningún archivo de copia de seguridad. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupSizesUncheckedConfirm": 'No se pudo comprobar el tamaño de los recursos de esta copia de seguridad. Un elemento de más de 100 MiB, que un servidor Node de RisuAI upstream no puede restaurar, puede estar incluido sin que se mencione su nombre, y un elemento de 4 GiB o más detendría la copia a mitad de proceso. ¿Crear la copia de seguridad de todos modos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} preset(s) de tarea se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupWorkspacesConfirm": (count: number, names: string[]) =>
@@ -4121,6 +4121,18 @@ export const languageSpanish = {
         `RisuTanium omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
     personaListEmptyNotice: `No quedó ninguna persona utilizable en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario e icono y la seleccionó.`,
     personaSelectionMissingNotice: `La persona seleccionada faltaba en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario, icono, prompt de persona y nota actuales y la seleccionó.`,
+    vaultKeepPlainNotice: `RisuTanium no pudo proteger tus claves de conexión con el almacenamiento seguro de este dispositivo, así que por ahora siguen guardadas como texto sin cifrar. Lo intenta de nuevo en cada inicio y cada vez que cambias una clave.`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `Este dispositivo no puede leer la clave guardada de: ${names}. Vuelve a introducir la clave de cada uno. La clave guardada anterior se conserva intacta hasta que lo hagas.`,
+    vaultNeedsReentryLabel: `Hay que volver a introducir la clave`,
+    vaultKeyTemporarilyUnavailable: `La clave guardada no se puede leer ahora mismo. Inténtalo de nuevo en un momento.`,
+    vaultKeyTemporarilyUnavailableHint: `Clave no disponible temporalmente; aparecerá cuando se descifre.`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `Este dispositivo no puede leer la clave guardada de: ${names}. La copia de seguridad incluiría esas claves vacías y las claves guardadas en este dispositivo no se modifican. ¿Crear la copia de seguridad sin ellas?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `La clave guardada de: ${names} no se puede leer ahora mismo, por lo que la copia de seguridad incluiría esas claves vacías. ¿Crear la copia de seguridad sin ellas?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `Estas claves de conexión no se pudieron leer mientras se escribía la copia de seguridad, por lo que la incluye vacías: ${names}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `La copia de seguridad se cargó después de que RisuTanium reparara su lista de personajes: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : '',
@@ -4238,7 +4250,7 @@ export const languageSpanish = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- Datos sin los que se creó el respaldo: ${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Datos guardados en este dispositivo que no se restauraron: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Datos guardados en este dispositivo que no se pudieron escribir por completo: ${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz" },
+    rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz", connectionKeys: "claves de conexión" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `¿Restaurar los ajustes de este respaldo? Se combinarán en este dispositivo ${fields} ajuste(s), ${presets} preajuste(s) de bots, ${memoryPresets} preajuste(s) de memoria y ${translatorPresets} preajuste(s) nuevo(s) de traductor. Un ajuste que falte en el respaldo se queda como está. No se tocan personajes, chats, claves ni conexiones.${dropped > 0 ? ` ${dropped} valor(es) del respaldo no se pueden usar y se omiten.` : ''} Después la aplicación se recarga.`,
     rtbRestoreSettingsDone: "Los ajustes se restauraron. La aplicación se recarga ahora.",

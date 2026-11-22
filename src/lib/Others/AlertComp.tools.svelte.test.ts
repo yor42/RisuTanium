@@ -177,10 +177,15 @@ import {
     alertRequestLogs,
     alertSelectChar,
     showHypaV2Alert,
+    type alertData,
 } from '../../ts/alert'
 import { getChatBranches } from 'src/ts/gui/branches'
 import { controlName, unnamedControls } from '../a11yNames.test-helpers'
 import AlertComp from './AlertComp.svelte'
+import PeerConflicts from './PeerConflicts.svelte'
+import ParkedReplyPrompt from './ParkedReplyPrompt.svelte'
+import PresetBundlePrompt from './PresetBundlePrompt.svelte'
+import UpdateOfferPrompt from './UpdateOfferPrompt.svelte'
 
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
@@ -1017,6 +1022,113 @@ describe('selectModule stays as it was (MC-3226)', () => {
         expect(target.querySelector('[data-part="pattern-layer"]')).toBeNull()
         expect(target.querySelector('[data-part^="pattern-alert-"]')).toBeNull()
         expect(target.querySelector('[data-part="pattern-dialog"]')).toBeNull()
+    })
+})
+
+//#endregion
+
+//#region critical by alert type (MC-3244, MC-3245)
+
+/**
+ * How each alert type is drawn. Every type is listed, so a new type does not compile until it is classified here and in
+ * `AlertComp.svelte`: a `message` type renders inside one `pattern-warn-root` marked critical, a `tool` type inside an
+ * unmarked one, and an `excluded` type never reaches the dialog markup.
+ */
+const KIND_OF = {
+    error: 'message', normal: 'message', none: 'excluded', ask: 'message', wait: 'message', selectChar: 'tool',
+    input: 'message', toast: 'excluded', wait2: 'message', markdown: 'message', select: 'message',
+    tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
+    chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
+    staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message',
+    updateOffer: 'tool', presetBundle: 'message',
+} satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
+
+const openStored = (data: Record<string, unknown>): Promise<HTMLElement> => openViewer(() => alertStore.set(data as never))
+
+/** Opens one alert of the type, through the producer or the store the way the app does. */
+const OPEN: Record<Exclude<alertData['type'], 'none' | 'toast' | 'selectModule' | 'pukmakkurit'>, () => Promise<HTMLElement>> = {
+    error: () => openStored({ type: 'error', msg: 'Broke', submsg: 'detail' }),
+    normal: () => openStored({ type: 'normal', msg: 'Hello' }),
+    ask: () => openStored({ type: 'ask', msg: 'Sure?' }),
+    wait: () => openStored({ type: 'wait', msg: 'Working' }),
+    wait2: () => openStored({ type: 'wait2', msg: 'Working' }),
+    input: () => openStored({ type: 'input', msg: 'Name', defaultValue: '' }),
+    markdown: () => openStored({ type: 'markdown', msg: 'Hello' }),
+    select: () => openStored({ type: 'select', msg: 'one||two' }),
+    tos: () => openStored({ type: 'tos', msg: '' }),
+    progress: () => openStored({ type: 'progress', msg: 'Copying', submsg: '40' }),
+    pluginconfirm: () => openStored({ type: 'pluginconfirm', msg: 'Plugin\nwarning\n\nInstall?' }),
+    staleAccountNotice: () => openStored({ type: 'staleAccountNotice', msg: 'Notice' }),
+    patternSelect: () => openStored({ type: 'patternSelect', msg: 'Pick', choices: ['a', 'b'] }),
+    patternInput: () => openStored({ type: 'patternInput', msg: 'Type' }),
+    peerConflicts: () => openPeerConflicts(),
+    parkedReply: () => openParkedReply(),
+    presetBundle: () => openStored({ type: 'presetBundle', msg: '', presetBundle: { rows: [{ name: 'A', folder: null, aiModel: 'm' }], existingNames: [] } }),
+    selectChar: () => openChooser(() => alertSelectChar()),
+    cardexport: () => openExport(),
+    requestdata: () => openRequestData(),
+    addchar: () => openChooser(() => alertAddCharacter()),
+    hypaV2: () => openHypa(),
+    chatOptions: () => openChooser(() => alertChatOptions()),
+    branches: () => openBranchTree(),
+    requestlogs: () => openLogs(),
+    updateOffer: () => openStored({ type: 'updateOffer', msg: '', updateOffer: { currentVersion: '1.0.0', version: '1.1.0', notes: 'Notes' } }),
+}
+
+describe('A5 the critical marker follows the alert type', () => {
+    const rendered = Object.entries(KIND_OF).filter((entry): entry is [keyof typeof OPEN, 'message' | 'tool'] => entry[1] !== 'excluded')
+
+    test('the table covers every rendered type', () => {
+        expect(rendered.map(([type]) => type).sort()).toEqual(Object.keys(OPEN).sort())
+    })
+
+    for (const [type, kind] of rendered.filter(([, k]) => k === 'message')) {
+        test(`${type}: the outermost critical element is pattern-warn-root and holds the body and every button`, async () => {
+            const target = await OPEN[type]()
+            const outermost = target.querySelector<HTMLElement>('[data-part-critical]')
+            expect(kind).toBe('message')
+            expect(outermost?.getAttribute('data-part')).toBe('pattern-warn-root')
+            expect(outermost!.querySelector('[data-part="pattern-alert-body"]')).not.toBeNull()
+            expect(outermost!.querySelector('[data-part="pattern-alert-close"]')).toBeNull()
+            const dialog = dialogOf(target)
+            for (const button of Array.from(dialog.querySelectorAll('button'))) {
+                expect(outermost!.contains(button)).toBe(true)
+            }
+        })
+    }
+
+    for (const [type] of rendered.filter(([, k]) => k === 'tool')) {
+        test(`${type}: a tool dialog renders no critical element`, async () => {
+            const target = await OPEN[type]()
+            expect(dialogOf(target)).not.toBeNull()
+            expect(target.querySelectorAll('[data-part-critical]')).toHaveLength(0)
+            expect(target.querySelector('[data-part="pattern-warn-root"]')).not.toBeNull()
+        })
+    }
+})
+
+describe('A6 the prompt roots (MC-3245)', () => {
+    function mountBare(component: unknown, props: Record<string, unknown>): HTMLElement {
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        mountedInstances.push(mount(component as never, { target, props } as never))
+        flushSync()
+        return target
+    }
+    const answer = (): void => {}
+
+    test('PeerConflicts, ParkedReplyPrompt and PresetBundlePrompt mark their root; the update offer does not', () => {
+        const peer = mountBare(PeerConflicts, { rows: PEER_ROWS, title: 'Conflicts', titleId: 't1', onanswer: answer })
+        expect(peer.querySelector('[data-peer-conflicts]')!.hasAttribute('data-part-critical')).toBe(true)
+        const parked = mountBare(ParkedReplyPrompt, { name: PARKED.name, text: PARKED.text, title: 'Reply', titleId: 't2', onanswer: answer })
+        expect(parked.querySelector('[data-parked-reply]')!.hasAttribute('data-part-critical')).toBe(true)
+        const bundle = mountBare(PresetBundlePrompt, { view: { rows: [{ name: 'A', folder: null, aiModel: 'm' }], existingNames: [] }, messageId: 'm1', onanswer: answer })
+        const bundleRoot = bundle.querySelector<HTMLElement>('[data-preset-bundle]')!
+        expect(bundleRoot.hasAttribute('data-part-critical')).toBe(true)
+        expect(bundleRoot.getAttribute('data-part')).toBe('pattern-alert-bundle')
+        const offer = mountBare(UpdateOfferPrompt, { offer: { currentVersion: '1.0.0', version: '1.1.0', notes: 'n' }, messageId: 'm2', onanswer: answer })
+        expect(offer.querySelector('[data-update-offer]')!.hasAttribute('data-part-critical')).toBe(false)
     })
 })
 

@@ -285,7 +285,8 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 // Real and stable across every reset below (a pure, dependency-light module
 // this file never mocks), so it is safe to bind once, unlike `bootstrap.ts`
 // itself.
-const { encodeRisuSaveLegacy, RisuSaveEncoder } = await import('src/ts/storage/risuSave')
+const { encodeRisuSaveLegacy } = await import('src/ts/storage/risuSave')
+const { RisuSaveEncoder } = await import('src/ts/storage/tests/risuSaveEncoder')
 
 // Both modules below are mocked, so (like `stores.svelte`'s `alertStore`)
 // importing them once here gives the exact same object every dynamically

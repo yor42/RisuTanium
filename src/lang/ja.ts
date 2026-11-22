@@ -925,9 +925,8 @@ export const languageJapanese = {
         hordeNotPossible: "応答できません。",
         hordeNotPossibleWith: "応答できません：{message}",
         hordeNoGenerations: "完了時に生成結果がありませんでした",
-        webCryptoUnavailable: "この環境ではWeb Crypto APIが利用できません。HTTPSを使用していることをご確認ください。",
         vertexInvalidClientEmail: "無効なVertexクライアントのメールアドレスです。gserviceaccount.comを含める必要があります。",
-        vertexInvalidPrivateKey: "無効なVertex秘密鍵です。適切なキーマーカーを含める必要があります。",
+        vertexInvalidPrivateKey: "無効なVertex秘密鍵です。サービスアカウントJSONのprivate_keyの値全体を、BEGIN行とEND PRIVATE KEY行を含めて貼り付けてください。",
         googleTokenRefreshFailed: "Googleアクセストークンの更新に失敗しました：{error}",
         googleNoAccessToken: "応答にGoogleアクセストークンが含まれていません",
         googleEmptyResponse: "空の応答を受信しました：{response}",
@@ -3790,6 +3789,7 @@ export const languageJapanese = {
         `${items.length}件の項目が4 GiB以上あり、バックアップファイルの1エントリに収まる容量を超えているため、それらの内容はバックアップに含まれていません（キャラクターにはプレースホルダーのみが残ります）：\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `このバックアップ内の${count}件の項目が100 MiBを超えています。アップストリームのRisuAI Nodeサーバーはこれほど大きな項目を復元できないため、そちらでこのバックアップを復元するとそれらはスキップされます。このアプリや他のプラットフォームでは復元可能です。これらを含めてバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    backupSizesUncheckedConfirm: 'このバックアップ内のアセットのサイズを確認できませんでした。アップストリームのRisuAI Nodeサーバーが復元できない100 MiBを超える項目が、名前が示されないまま含まれている可能性があり、4 GiB以上の項目があるとバックアップは途中で停止します。それでもバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。',
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count}件のタスクプリセットはこのデバイスにのみ保存されており、バックアップファイルには保存できる場所がないため、このバックアップから除外されます。タスクプリセットはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupWorkspacesConfirm: (count: number, names: string[]) =>
@@ -4263,6 +4263,18 @@ export const languageJapanese = {
         `RisuTaniumはデータが無効であった${count}件のペルソナを除外しました。プラグインによって書き込まれた可能性があります。`,
     personaListEmptyNotice: `ペルソナリストに使用可能なペルソナが残っていなかったため、RisuTaniumがユーザー名とアイコンからペルソナを1つ追加して選択しました。`,
     personaSelectionMissingNotice: `選択されていたペルソナがペルソナリストに存在しなかったため、RisuTaniumが現在のユーザー名、アイコン、ペルソナプロンプト、ノートからペルソナを1つ追加して選択しました。`,
+    vaultKeepPlainNotice: `RisuTaniumはこの端末のセキュアストレージで接続キーを保護できなかったため、現在キーは平文のまま保存されています。起動のたび、およびキーを変更するたびに再試行します。`,
+    vaultNeedsReentryNotice: (names: string) =>
+        `この端末では次の保存済みキーを読み取れません: ${names}。それぞれのキーを入力し直してください。入力し直すまで、以前に保存されたキーはそのまま残ります。`,
+    vaultNeedsReentryLabel: `キーの再入力が必要です`,
+    vaultKeyTemporarilyUnavailable: `保存済みのキーを今は読み取れません。しばらくしてからもう一度お試しください。`,
+    vaultKeyTemporarilyUnavailableHint: `キーは一時的に利用できません。復号されると表示されます。`,
+    vaultExportUnreadableKeys: (names: string) =>
+        `このデバイスでは次の保存済みキーを読み取れません: ${names}。バックアップにはこれらのキーが空の状態で含まれ、このデバイスに保存されているキーは変更されません。これらのキーなしでバックアップを作成しますか?`,
+    vaultExportKeysUnavailableNow: (names: string) =>
+        `次の保存済みキーは現在読み取れないため、バックアップにはこれらのキーが空の状態で含まれます: ${names}。これらのキーなしでバックアップを作成しますか?`,
+    vaultExportKeysLeftOutLate: (names: string) =>
+        `バックアップの書き込み中に次の接続キーを読み取れなかったため、空の状態で含まれています: ${names}。`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuTaniumがキャラクターリストを修復した後にバックアップが読み込まれました：${[
             dropped > 0 ? `キャラクターではない${dropped}件のエントリを除外` : '',
@@ -4381,7 +4393,7 @@ export const languageJapanese = {
     rtbRestoreLineOmittedEntries: (names: string[]) => `- バックアップの作成時に含まれなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideNotRestored: (names: string[]) => `- この端末に保持され、復元されなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- この端末に保持され、完全には書き込めなかったデータ：${names.join(', ')}`,
-    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定" },
+    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定", connectionKeys: "接続キー" },
     rtbRestoreSettingsConfirm: (fields: number, presets: number, memoryPresets: number, translatorPresets: number, dropped: number) =>
         `このバックアップの設定を復元しますか？設定 ${fields} 件、ボットプリセット ${presets} 件、メモリプリセット ${memoryPresets} 件、新しい翻訳プリセット ${translatorPresets} 件がこの端末にマージされます。バックアップにない設定はそのまま残ります。キャラクター、チャット、キー、接続には触れません。${dropped > 0 ? ` バックアップ内の ${dropped} 件の値は使用できないためスキップされます。` : ''} その後、アプリが再読み込みされます。`,
     rtbRestoreSettingsDone: "設定を復元しました。アプリを再読み込みします。",

@@ -219,8 +219,15 @@ function chatsOf() {
     return [{ id: 'chat-a', message: [], scriptstate: {}, note: '' }]
 }
 
-function installGroupDb(subMenu: number): void {
-    const members = MEMBER_IMAGES.map((image, index) => ({ type: 'character', chaId: `member-${index}`, name: `member-${index}`, image, chats: chatsOf() }))
+// Ten files under the 8 MiB threshold that together pass the 64 MiB queue budget.
+const SMALL_MEMBER_IMAGES = Array.from({ length: 10 }, (_, index) => `assets/sm${index}.webp`)
+const SMALL_ASSET_IMAGES = Array.from({ length: 10 }, (_, index) => `assets/sa${index}.webp`)
+
+/** Bytes in flight counting every size, since list rows queue small files too. */
+const exposedEverySize = (): number => exposedBytes(document.body)
+
+function installGroupDb(subMenu: number, memberImages: string[] = MEMBER_IMAGES): void {
+    const members = memberImages.map((image, index) => ({ type: 'character', chaId: `member-${index}`, name: `member-${index}`, image, chats: chatsOf() }))
     const group = {
         type: 'group', chaId: 'group-1', name: 'Group', image: GROUP_IMAGE, chatPage: 0, chats: chatsOf(),
         characters: members.map((member) => member.chaId),
@@ -232,10 +239,10 @@ function installGroupDb(subMenu: number): void {
     CharConfigSubMenu.set(subMenu)
 }
 
-function installCharacterDb(): void {
+function installCharacterDb(assetImages: string[] = ASSET_IMAGES): void {
     const character = {
         type: 'character', chaId: 'char-a', name: 'Alpha', image: CHARACTER_IMAGE, chatPage: 0, chats: chatsOf(),
-        ccAssets: ASSET_IMAGES.map((uri) => ({ type: 'image', uri })),
+        ccAssets: assetImages.map((uri) => ({ type: 'image', uri })),
         largePortrait: false, ttsMode: 'none', ttsSpeech: '', vits: null, oaiVoice: 'alloy', bias: [], personality: '', scenario: '',
         additionalData: {}, depth_prompt: { depth: 0, prompt: '' }, alternateGreetings: [], additionalAssets: [], emotionImages: [],
         viewScreen: 'none', desc: '', firstMessage: '', license: '',
@@ -314,6 +321,35 @@ describe('CharConfig group members and icons on Android', () => {
         expect(heldQueuedWholeReadsForTest()).toBe(0)
     })
 
+    test('(R) ten 7 MiB member icons (70 MiB) stay within 64 MiB in flight, and each member paints its own image', async () => {
+        installGroupDb(0, SMALL_MEMBER_IMAGES)
+        seedSizes(SMALL_MEMBER_IMAGES, 7)
+        const target = await showConfig()
+        expect(exposedEverySize()).toBeLessThanOrEqual(WHOLE_READ_BUDGET_BYTES)
+
+        for (let guard = 0; guard < 40 && FakeImage.all.some((image) => !image.settled); guard++) {
+            FakeImage.all.find((image) => !image.settled)!.fire('load')
+            await settleReads()
+            expect(exposedEverySize()).toBeLessThanOrEqual(WHOLE_READ_BUDGET_BYTES)
+        }
+        SMALL_MEMBER_IMAGES.forEach((image, index) => {
+            expect(barIcons(target)[index].getAttribute('style') ?? '').toContain(urlOf(image))
+        })
+
+        await unmountAll()
+        expect(heldQueuedWholeReadsForTest()).toBe(0)
+    })
+
+    test('(G) the single 7 MiB group icon is not queued: it paints at once while a chat image holds the queue', async () => {
+        installGroupDb(1)
+        seedSizes([GROUP_IMAGE], 7)
+        const grant = await holdBudget()
+        const target = await showConfig()
+        expect(iconBoxes(target)[0].getAttribute('style') ?? '').toContain(urlOf(GROUP_IMAGE))
+        expect(FakeImage.all).toHaveLength(0)
+        grant.release()
+    })
+
     test('(G) T17 off Android the member icons paint at once with two-argument calls and no Image', async () => {
         resetAndroidTransport(false)
         installGroupDb(0)
@@ -362,6 +398,37 @@ describe('CharConfig character icon and additional icons on Android', () => {
 
         expect(FakeImage.all).toHaveLength(0)
         expect(heldQueuedWholeReadsForTest()).toBe(0)
+    })
+
+    test('(R) ten 7 MiB alternate portraits (70 MiB) stay within 64 MiB in flight, and each paints its own image', async () => {
+        installCharacterDb(SMALL_ASSET_IMAGES)
+        seedSizes(SMALL_ASSET_IMAGES, 7)
+        const target = await showConfig()
+        expect(exposedEverySize()).toBeLessThanOrEqual(WHOLE_READ_BUDGET_BYTES)
+
+        for (let guard = 0; guard < 40 && FakeImage.all.some((image) => !image.settled); guard++) {
+            FakeImage.all.find((image) => !image.settled)!.fire('load')
+            await settleReads()
+            expect(exposedEverySize()).toBeLessThanOrEqual(WHOLE_READ_BUDGET_BYTES)
+        }
+        const boxes = iconBoxes(target)
+        expect(boxes).toHaveLength(11)
+        SMALL_ASSET_IMAGES.forEach((image, index) => {
+            expect(boxes[index + 1].getAttribute('style') ?? '').toContain(urlOf(image))
+        })
+
+        await unmountAll()
+        expect(heldQueuedWholeReadsForTest()).toBe(0)
+    })
+
+    test('(G) the single 7 MiB character icon is not queued: it paints at once while a chat image holds the queue', async () => {
+        installCharacterDb([])
+        seedSizes([CHARACTER_IMAGE], 7)
+        const grant = await holdBudget()
+        const target = await showConfig()
+        expect(iconBoxes(target)[0].getAttribute('style') ?? '').toContain(urlOf(CHARACTER_IMAGE))
+        expect(FakeImage.all).toHaveLength(0)
+        grant.release()
     })
 
     test('(G) T17 off Android the icons paint at once with two-argument calls and no Image', async () => {

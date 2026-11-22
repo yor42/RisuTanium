@@ -26,15 +26,24 @@ export function resetQueuedWholeReadsForTest(): void {
     held.clear()
 }
 
+export interface QueuedWholeReadOptions {
+    /**
+     * Queue a registered whole read of any size, not only one of at least `ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES`.
+     * A list of rows sets it: each row's file may be small while the rows together pass the queue's budget.
+     */
+    everySize?: boolean
+}
+
 /**
  * Resolves `'direct'` at once when `url` needs no queue: it is not a registered whole read of at least
- * `ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES` (the registry is filled on Android only, and the lookup is skipped
- * elsewhere so a large `data:` URL is never hashed). Otherwise it waits for a slot, loads the URL once and
- * resolves `'queued'` when that read settles (load, error or the timeout), keeping the image referenced
- * until `hold` aborts. `'aborted'` resolves as soon as `hold` aborts; a slot already granted is still given
- * back only when its read settles, and a grant that arrives after the abort is given back without a read.
+ * `ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES` (of any size with `everySize`; the registry is filled on Android
+ * only, and the lookup is skipped elsewhere so a large `data:` URL is never hashed). Otherwise it waits for a
+ * slot, loads the URL once and resolves `'queued'` when that read settles (load, error or the timeout),
+ * keeping the image referenced until `hold` aborts. `'aborted'` resolves as soon as `hold` aborts; a slot
+ * already granted is still given back only when its read settles, and a grant that arrives after the abort
+ * is given back without a read.
  */
-export function awaitQueuedWholeRead(url: string, hold: AbortSignal): Promise<QueuedWholeReadOutcome> {
+export function awaitQueuedWholeRead(url: string, hold: AbortSignal, options: QueuedWholeReadOptions = {}): Promise<QueuedWholeReadOutcome> {
     if (hold.aborted) {
         return Promise.resolve('aborted')
     }
@@ -42,7 +51,8 @@ export function awaitQueuedWholeRead(url: string, hold: AbortSignal): Promise<Qu
         return Promise.resolve('direct')
     }
     const bytes = wholeReadBytesOfUrl(url)
-    if (bytes === undefined || bytes < ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES) {
+    const minBytes = options.everySize === true ? 0 : ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES
+    if (bytes === undefined || bytes < minBytes) {
         return Promise.resolve('direct')
     }
     return new Promise<QueuedWholeReadOutcome>((resolve) => {

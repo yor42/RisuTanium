@@ -24,9 +24,11 @@ describe('custom setters over a $state database', () => {
         await setSlotKey(db, 'customModels:ma', 'new')
         setCustomModelUrl(db, 'ma', 'https://n.invalid')
         expect(db.customModels[1].connectionId).toBe('conn-1')
-        expect(db.connections!.find((c) => c.id === 'conn-1')).toMatchObject({ key: 'K0', url: 'https://c.invalid' })
+        expect(db.connections!.find((c) => c.id === 'conn-1')).toMatchObject({ key: 'K0', url: 'https://c.invalid', keyWrapped: 'w' })
         const clone = slotConnection(db, 'customModels:ma') as Connection & { keyWrapped?: string }
-        expect(clone).toMatchObject({ key: 'new', url: 'https://n.invalid', keyWrapped: 'w' })
+        // The clone carried the envelope, then the typed key replaced it: a plain key and a stale envelope never coexist.
+        expect(clone).toMatchObject({ key: 'new', url: 'https://n.invalid' })
+        expect(clone.keyWrapped).toBeUndefined()
         expect(clone.id).not.toBe('conn-1')
     })
 })

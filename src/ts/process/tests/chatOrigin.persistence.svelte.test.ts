@@ -107,7 +107,8 @@ vi.mock(import('../../stores.svelte'), () => {
 
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from '../../storage/risuSave'
+import { decodeRisuSave } from '../../storage/risuSave'
+import { RisuSaveEncoder } from '../../storage/tests/risuSaveEncoder'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
 import { writeAt } from '../chatOrigin'
 

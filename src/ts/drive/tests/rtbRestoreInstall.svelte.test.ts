@@ -24,7 +24,8 @@ import type { BaseManifest } from 'src/ts/storage/store2/legacy/importTree'
 import type { Store2Backend, Store2Read } from 'src/ts/storage/store2/backend/types'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { PLUGIN_PERMISSIONS_STORE } from 'src/ts/drive/rtb/sideStoreConfig'
+import { PLUGIN_PERMISSIONS_STORE, RESTORED_KEYS_STORE } from 'src/ts/drive/rtb/sideStoreConfig'
+import type { SideBackends } from 'src/ts/drive/rtb/sideStores'
 import type { AssetPlanDeps } from 'src/ts/drive/rtb/rtbAssetPlan'
 import type { BusyHandle } from 'src/ts/process/memory/busyActions'
 import type { RtbInstallDeps, RtbInstallEnd, RtbInstallPlan } from 'src/ts/drive/rtbRestoreInstall'
@@ -32,7 +33,9 @@ import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
 import type { RestorePlan, RtbPrepareDeps } from 'src/ts/drive/rtbRestorePlan'
 import { encodeUnit, keyOfTail, readUnit, refOfFrame, UNIT_TYPE, type Manifest, type Shard } from 'src/ts/storage/store2/format'
 import { repackRtb, withBrokenDeflate, writeRtbFile, type RtbBuild, type WorldLike } from './rtb/rtbRestoreFixtures'
-import { committerAnswering, loggingSideBackends, MemoryByteStore } from './rtb/rtbInstallFixtures'
+import { committerAnswering, loggingSideBackends, MemoryByteStore, StagingForage, stagingSideBackends } from './rtb/rtbInstallFixtures'
+import { CONNECTION_KEYS_ID } from 'src/ts/drive/rtb/entryNames'
+import type { SideInput } from 'src/ts/drive/rtb/rtbWriter'
 
 vi.setConfig({ testTimeout: 40_000 })
 
@@ -972,5 +975,163 @@ describe('the held marker of a Node restore (T-R6, T-R10, T-R11)', () => {
         expect(spied.release).toHaveBeenCalledWith(false)
         expect(errorsOf(page).at(-1)).toBe(withCopiedKept(language.restoreNotHappenedNotice))
         expect(await writeLockIsFree(page)).toBe(true)
+    })
+})
+
+/** Three connections whose envelopes were written on another device, as the real producer lists them (`rtbKeyRecords`). */
+const KEY_ENVELOPES = ['SYNTH-ENV-1', 'SYNTH-ENV-2', 'SYNTH-ENV-3']
+
+async function keySections(): Promise<Record<string, SideInput>> {
+    const { rtbKeyRecords } = await import('src/ts/drive/exportKeys')
+    const connections = KEY_ENVELOPES.map((envelope, at) => ({ id: `conn-${at + 1}`, name: `c${at + 1}`, provider: 'openai' as const, key: '', keyWrapped: envelope }))
+    const snapshot = {
+        values: new Map(KEY_ENVELOPES.map((envelope, at) => [envelope, `SYNTH-PLAIN-${at + 1}`] as const)),
+        unreadable: new Set<string>(),
+        unavailableNow: new Set<string>(),
+        unreadableNames: [],
+        unavailableNames: [],
+    }
+    const { records } = rtbKeyRecords(connections, snapshot)
+    return { [CONNECTION_KEYS_ID]: { records: (async function* () { yield* records })() } }
+}
+
+describe('the connection-key staging is durable before the commit can land (R1, R1b, R3)', () => {
+    const wrapped = async (plain: string): Promise<string> => `WRAPPED(${plain})`
+
+    test('R1 regression reproducer: every staging record is in the store when the commit has landed', async () => {
+        const page = await openPage()
+        const ops: string[] = []
+        const staging = new StagingForage(ops)
+        let atCommit: string[] | null = null
+        const committer = committerAnswering(page.k.committer, async (read, request) => {
+            const result = await page.k.committer.commit(read, request)
+            atCommit = [...staging.data.keys()].sort()
+            ops.push('COMMIT')
+            return result
+        })
+        const prep = await prepared(page, { sides: await keySections() })
+        const end = await install({ plan: withCommitter(prep.plan, committer), hold: prep.hold }, setupOf(), { sideBackends: stagingSideBackends(staging, wrapped) })
+
+        expect(end.kind).toBe('landed')
+        expect(atCommit).toEqual([...KEY_ENVELOPES].sort())
+    })
+
+    test('R1b regression reproducer: a commit that lands and then throws leaves every staging record', async () => {
+        const page = await openPage()
+        const ops: string[] = []
+        const staging = new StagingForage(ops)
+        const committer = committerAnswering(page.k.committer, async (read, request) => {
+            await page.k.committer.commit(read, request)
+            throw new Error('the confirmation was lost')
+        })
+        const prep = await prepared(page, { sides: await keySections() })
+        const end = await install({ plan: withCommitter(prep.plan, committer), hold: prep.hold }, setupOf(), { sideBackends: stagingSideBackends(staging, wrapped) })
+
+        expect(end.kind).toBe('unconfirmed')
+        expect([...staging.data.keys()].sort()).toEqual([...KEY_ENVELOPES].sort())
+    })
+
+    test('R3 regression reproducer: the finish writes nothing to the staging store after the commit and names no connection-keys line', async () => {
+        const page = await openPage()
+        const ops: string[] = []
+        const staging = new StagingForage(ops)
+        const committer = committerAnswering(page.k.committer, async (read, request) => {
+            const result = await page.k.committer.commit(read, request)
+            ops.push('COMMIT')
+            return result
+        })
+        const prep = await prepared(page, { sides: await keySections() })
+        const sideBackends = stagingSideBackends(staging, wrapped)
+        const end = await install({ plan: withCommitter(prep.plan, committer), hold: prep.hold }, setupOf(), { sideBackends })
+        if (end.kind !== 'landed') {
+            throw new Error(`the install ended ${end.kind}`)
+        }
+        const notices: string[] = []
+        const { finishRtbRestore } = await import('src/ts/drive/rtbRestoreFinish')
+        await finishRtbRestore(prep.plan, prep.hold, end, {
+            sideBackends,
+            notice: async (text) => { notices.push(text) },
+            wait: () => { },
+            markReload: () => { },
+            reload: async () => { },
+        })
+
+        expect(ops.slice(ops.indexOf('COMMIT') + 1)).toEqual([])
+        expect(notices.some((text) => text.includes(language.rtbRestoreSideNames.connectionKeys))).toBe(false)
+    })
+})
+
+
+describe('the connection-key staging sits after every question and before the grant clear and the commit (G2u, G4a, G6)', () => {
+    const wrapped = async (plain: string): Promise<string> => `WRAPPED(${plain})`
+
+    test('G2u: a staging write that fails is a named write-failed on the landed end and the commit still runs (guard of a new rule)', async () => {
+        const page = await openPage()
+        const ops: string[] = []
+        const staging = new StagingForage(ops)
+        const setItem = staging.setItem.bind(staging)
+        staging.setItem = async (key, value) => {
+            if (key === 'SYNTH-ENV-2') {
+                throw new Error('disk full')
+            }
+            return await setItem(key, value)
+        }
+        const committer = committerAnswering(page.k.committer, async (read, request) => {
+            ops.push('COMMIT')
+            return await page.k.committer.commit(read, request)
+        })
+        const prep = await prepared(page, { sides: await keySections() })
+        const end = await install({ plan: withCommitter(prep.plan, committer), hold: prep.hold }, setupOf(), { sideBackends: stagingSideBackends(staging, wrapped) })
+
+        if (end.kind !== 'landed') {
+            throw new Error(`the install ended ${end.kind}`)
+        }
+        expect(ops).toContain('COMMIT')
+        expect(end.staged).toMatchObject({ id: CONNECTION_KEYS_ID, status: 'write-failed', phase: 'write', key: 'SYNTH-ENV-2' })
+    })
+
+    test('G4a: a stop before the staging, a damaged plan or a declined guard, writes nothing to the staging store (guard of a new rule)', async () => {
+        const page = await openPage()
+        const ops: string[] = []
+        const prep = await prepared(page, { sides: await keySections() })
+        const damaged = stoppedOf(await install(prep, setupOf(), {
+            sideBackends: stagingSideBackends(new StagingForage(ops), wrapped),
+            planRestore: () => { throw new buildModule.RtbRestoreError('unreadable', 'the unit does not read') },
+        }))
+        expect(damaged.cause).toBe('damaged')
+
+        const second = await openPage()
+        const declining = await prepared(second, { sides: await keySections() })
+        declining.hold.guard.check = async () => false
+        const declined = stoppedOf(await install(declining, setupOf(), { sideBackends: stagingSideBackends(new StagingForage(ops), wrapped) }))
+        expect(declined.cause).toBe('declined')
+
+        expect(ops).toEqual([])
+    })
+
+    test('G6: the order is the guard, the plan, the staging writes, the plugin-grant clear, the commit (guard of a new rule)', async () => {
+        const page = await openPage()
+        const log: string[] = []
+        const staging = new StagingForage(log)
+        const sideBackends: SideBackends = {
+            forage: (config) => (config.name === RESTORED_KEYS_STORE.name
+                ? staging
+                : { clear: async () => { log.push(`clear:${config.name}`) } }) as unknown as ReturnType<SideBackends['forage']>,
+            local: () => localStorage,
+            stageWrap: wrapped,
+        }
+        const prep = await prepared(page, { sides: await keySections() })
+        const committer = committerAnswering(prep.plan.target.committer, async (read, request) => {
+            log.push('commit')
+            return await prep.plan.target.committer.commit(read, request)
+        })
+        prep.hold.guard.check = async () => { log.push('guard'); return true }
+        const end = await install({ plan: withCommitter(prep.plan, committer), hold: prep.hold }, setupOf(), {
+            sideBackends,
+            planRestore: (input) => { log.push('plan'); return buildModule.planRestore(input) },
+        })
+
+        expect(end.kind).toBe('landed')
+        expect(log).toEqual(['guard', 'plan', ...KEY_ENVELOPES.map((envelope) => `set:${envelope}`), `clear:${PLUGIN_PERMISSIONS_STORE.name}`, 'commit'])
     })
 })

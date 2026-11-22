@@ -213,7 +213,7 @@ function binOf(...entries: Uint8Array[]): Uint8Array {
 }
 
 async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
-    const encoder = new page.w.risuSave.RisuSaveEncoder()
+    const encoder = new page.w.encoderFixture.RisuSaveEncoder()
     await encoder.init(db as unknown as Database, { compression: false })
     await encoder.set(db as unknown as Database, { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false })
     return new Uint8Array(encoder.encode()!)
