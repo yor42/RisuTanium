@@ -140,7 +140,7 @@ function input(extra: Partial<RecoveredStreamInput> & { reported?: TokenUsage | 
         meter.report(reported)
     }
     const { reported: _reported, ...rest } = extra
-    return { key: KEY, blob: streamBlob(), modelText: 'Hello, world.', complete: true, outcome: 'done', meter, how: 'finished', ...rest }
+    return { key: KEY, blob: streamBlob(), modelText: 'Hello, world.', complete: true, outcome: 'done', meter, how: 'finished', signatures: [], ...rest }
 }
 
 function msg(role: 'user' | 'char', data: string, extra: Record<string, unknown> = {}): Message {

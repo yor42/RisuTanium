@@ -84,7 +84,7 @@ function rig(listings: ReplyListing[]): Rig {
         notes: { failedElsewhere: (n) => `failed:${n}`, stoppedElsewhere: (n) => `stopped:${n}`, interrupted: (n) => `interrupted:${n}`, unreadable: (k, p) => `unreadable:${k}:${p}` },
         recoverText: async () => 'a reply',
         apply,
-        replayStream: async () => ({ modelText: 'text', meter: createUsageMeter() }),
+        replayStream: async () => ({ modelText: 'text', meter: createUsageMeter(), signatures: [] }),
         applyStream,
         settleUsage: () => {},
         restoreCharacter: async () => false,

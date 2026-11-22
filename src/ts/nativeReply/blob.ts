@@ -1,11 +1,14 @@
 import type { MessageGenerationInfo, MessagePresetInfo } from '../storage/database.svelte'
 import type { OpenAIParseContext, OpenAIStreamParseContext } from '../process/request/openAI/chatBodyParse'
+import type { ResponsesStreamParseContext } from '../process/request/openAI/responsesStreamTransform'
+import type { AnthropicStreamParseContext } from '../process/request/anthropicStreamRead'
 
 /**
  * The page's blob of a native reply record, version 1 (`pageVersion` 1). Rust keeps it opaque in the ticket and hands it
  * back in the listing, so the next launch can place a reply the page that sent the request never saw.
  *
- * The shape of each kind is frozen by its fixture (`tests/fixtures/blob-v1.json`, `blob-openai-chat-stream-v1.json`).
+ * The shape of each kind is frozen by its fixture (`tests/fixtures/blob-v1.json`, `blob-openai-chat-stream-v1.json`,
+ * `blob-openai-responses-stream-v1.json`, `blob-anthropic-stream-v1.json`).
  * - A new parse kind is additive under page version 1: an older page lists it as unreadable, which it keeps and reports
  *   once.
  * - Changing the fields of an existing kind takes `pageVersion` 2 with a migration tested against that kind's fixture.
@@ -42,14 +45,17 @@ export interface ReplyUsageContext {
     inputEstimate: number
 }
 
+/** The parse rule of each recorded stream kind; the kind marker lives in `parse.kind` only. */
+export type StreamParseContext = OpenAIStreamParseContext | ResponsesStreamParseContext | AnthropicStreamParseContext
+
+export type StreamReplyBlob = ReplyBlobBase & { parse: StreamParseContext, usage: ReplyUsageContext }
+
 export type ReplyBlob =
     | (ReplyBlobBase & { parse: OpenAIParseContext })
-    | (ReplyBlobBase & { parse: OpenAIStreamParseContext, usage: ReplyUsageContext })
-
-export type StreamReplyBlob = Extract<ReplyBlob, { parse: OpenAIStreamParseContext }>
+    | StreamReplyBlob
 
 export function isStreamReplyBlob(blob: ReplyBlob): blob is StreamReplyBlob {
-    return blob.parse.kind === 'openai-chat-stream'
+    return blob.parse.kind !== 'openai-chat'
 }
 
 /** The blob text for `base` and the parse context the request was built with; the key order is part of the frozen shape. */
@@ -84,9 +90,31 @@ function isValidUsageContext(usage: ReplyUsageContext): boolean {
  * The blob text of a stream reply. It throws for a usage context the decoder would refuse, so the caller never stores a
  * record it cannot read back; the key order is part of the frozen shape.
  */
-export function encodeStreamReplyBlob(base: ReplyBlobBase, parse: OpenAIStreamParseContext, usage: ReplyUsageContext): string {
+export function encodeStreamReplyBlob(base: ReplyBlobBase, parse: StreamParseContext, usage: ReplyUsageContext): string {
     if (!isValidUsageContext(usage)) {
         throw new Error('the stream reply usage context is not a model key and a finite non-negative input estimate')
+    }
+    let parseFields: Record<string, unknown>
+    switch (parse.kind) {
+        case 'openai-chat-stream':
+            parseFields = {
+                kind: parse.kind,
+                deepSeekThinkingOutput: parse.deepSeekThinkingOutput,
+                extractJson: parse.extractJson,
+                jsonSchema: parse.jsonSchema,
+                multiGen: parse.multiGen,
+            }
+            break
+        case 'openai-responses-stream':
+            parseFields = {
+                kind: parse.kind,
+                extractJson: parse.extractJson,
+                jsonSchema: parse.jsonSchema,
+            }
+            break
+        case 'anthropic-stream':
+            parseFields = { kind: parse.kind }
+            break
     }
     return JSON.stringify({
         format: REPLY_BLOB_FORMAT,
@@ -95,13 +123,7 @@ export function encodeStreamReplyBlob(base: ReplyBlobBase, parse: OpenAIStreamPa
         saying: base.saying,
         generationInfo: base.generationInfo,
         promptInfo: base.promptInfo,
-        parse: {
-            kind: parse.kind,
-            deepSeekThinkingOutput: parse.deepSeekThinkingOutput,
-            extractJson: parse.extractJson,
-            jsonSchema: parse.jsonSchema,
-            multiGen: parse.multiGen,
-        },
+        parse: parseFields,
         usage: { modelKey: usage.modelKey, inputEstimate: usage.inputEstimate },
         escape: base.escape,
         requestedMs: base.requestedMs,
@@ -114,6 +136,48 @@ export type DecodedReplyBlob =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** The extraction path of a rule: a string, or null for none; undefined for any other value. */
+function decodeExtractJson(value: unknown): string | null | undefined {
+    if (value === null) {
+        return null
+    }
+    return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * The rule of one parse kind, checked against exactly the fields that kind holds; null when the kind is unknown or one of
+ * its fields is missing or mistyped.
+ */
+function decodeParseRule(parse: Record<string, unknown>): OpenAIParseContext | StreamParseContext | null {
+    const extractJson = decodeExtractJson(parse.extractJson)
+    switch (parse.kind) {
+        case 'openai-chat':
+        case 'openai-chat-stream':
+            if (typeof parse.deepSeekThinkingOutput !== 'boolean'
+                || typeof parse.jsonSchema !== 'boolean'
+                || typeof parse.multiGen !== 'boolean'
+                || extractJson === undefined) {
+                return null
+            }
+            return {
+                kind: parse.kind,
+                deepSeekThinkingOutput: parse.deepSeekThinkingOutput,
+                extractJson,
+                jsonSchema: parse.jsonSchema,
+                multiGen: parse.multiGen,
+            }
+        case 'openai-responses-stream':
+            if (typeof parse.jsonSchema !== 'boolean' || extractJson === undefined) {
+                return null
+            }
+            return { kind: parse.kind, extractJson, jsonSchema: parse.jsonSchema }
+        case 'anthropic-stream':
+            return { kind: parse.kind }
+        default:
+            return null
+    }
 }
 
 /**
@@ -146,21 +210,8 @@ export function decodeReplyBlob(text: string | undefined, pageVersion: number | 
     if (!isRecord(raw.generationInfo) || !isRecord(raw.promptInfo)) {
         return { ok: false, problem: 'the blob holds no generation info' }
     }
-    const parse = raw.parse
-    if (!isRecord(parse)
-        || (parse.kind !== 'openai-chat' && parse.kind !== 'openai-chat-stream')
-        || typeof parse.deepSeekThinkingOutput !== 'boolean'
-        || typeof parse.jsonSchema !== 'boolean'
-        || typeof parse.multiGen !== 'boolean') {
-        return { ok: false, problem: 'the blob holds no known parse rule' }
-    }
-    const rawExtract = parse.extractJson
-    let extractJson: string | null
-    if (rawExtract === null) {
-        extractJson = null
-    } else if (typeof rawExtract === 'string') {
-        extractJson = rawExtract
-    } else {
+    const rule = isRecord(raw.parse) ? decodeParseRule(raw.parse) : null
+    if (rule === null) {
         return { ok: false, problem: 'the blob holds no known parse rule' }
     }
     if (typeof raw.escape !== 'boolean' || typeof raw.requestedMs !== 'number' || !Number.isFinite(raw.requestedMs)) {
@@ -176,7 +227,7 @@ export function decodeReplyBlob(text: string | undefined, pageVersion: number | 
         escape: raw.escape,
         requestedMs: raw.requestedMs,
     }
-    if (parse.kind === 'openai-chat-stream') {
+    if (rule.kind !== 'openai-chat') {
         const usage = raw.usage
         if (!isRecord(usage)
             || typeof usage.modelKey !== 'string'
@@ -189,13 +240,7 @@ export function decodeReplyBlob(text: string | undefined, pageVersion: number | 
             ok: true,
             blob: {
                 ...base,
-                parse: {
-                    kind: 'openai-chat-stream',
-                    deepSeekThinkingOutput: parse.deepSeekThinkingOutput,
-                    extractJson,
-                    jsonSchema: parse.jsonSchema,
-                    multiGen: parse.multiGen,
-                },
+                parse: rule,
                 usage: { modelKey: usage.modelKey, inputEstimate: usage.inputEstimate },
             },
         }
@@ -204,13 +249,7 @@ export function decodeReplyBlob(text: string | undefined, pageVersion: number | 
         ok: true,
         blob: {
             ...base,
-            parse: {
-                kind: 'openai-chat',
-                deepSeekThinkingOutput: parse.deepSeekThinkingOutput,
-                extractJson,
-                jsonSchema: parse.jsonSchema,
-                multiGen: parse.multiGen,
-            },
+            parse: rule,
         },
     }
 }

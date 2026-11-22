@@ -91,7 +91,7 @@ function rig(listings: ReplyListing[], options: { text?: string, apply?: ApplyOu
     const readBodyBytes = vi.fn(async (_key: string) => BYTES)
     const readPartialBytes = vi.fn(async (_key: string) => BYTES)
     const meter = createUsageMeter()
-    const replayStream = vi.fn(async () => ({ modelText: options.text ?? 'Hello, world.', meter }))
+    const replayStream = vi.fn(async () => ({ modelText: options.text ?? 'Hello, world.', meter, signatures: [] }))
     const applyStream = vi.fn(async (_input: RecoveredStreamInput): Promise<ApplyOutcome> => options.apply ?? 'applied')
     const settleUsage = vi.fn()
     const showParked = vi.fn(async () => {})
@@ -365,6 +365,41 @@ describe('the kind decides the path', () => {
         expect(r.applyStream).not.toHaveBeenCalled()
         expect(r.notices).toEqual(['failed:Alice'])
         expect(r.consume).toHaveBeenCalledWith(K1)
+    })
+
+    // The blob texts of the two new kinds, inlined in the producer's key order so a build that does not know the kind
+    // reads them as unreadable and fails the apply assertions below.
+    const newKindBlob = (parse: Record<string, unknown>) => JSON.stringify({
+        format: 'risu-native-reply-blob', target: { chaId: base.target.chaId, chatId: base.target.chatId },
+        targetName: base.targetName, saying: base.saying, generationInfo: base.generationInfo, promptInfo: base.promptInfo,
+        parse, usage: { modelKey: 'gpt-4o', inputEstimate: 120 },
+        escape: base.escape, requestedMs: base.requestedMs,
+    })
+    const NEW_KIND_BLOBS: [string, string, Record<string, unknown>][] = [
+        ['openai-responses-stream', newKindBlob({ kind: 'openai-responses-stream', extractJson: null, jsonSchema: false }), { kind: 'openai-responses-stream', extractJson: null, jsonSchema: false }],
+        ['anthropic-stream', newKindBlob({ kind: 'anthropic-stream' }), { kind: 'anthropic-stream' }],
+    ]
+
+    test.each(NEW_KIND_BLOBS)('T11: a finished %s record whose message is interrupted reaches the apply once and is not consumed', async (_kind, blobText, parse) => {
+        setChat([{ chatId: K1, data: 'part', interrupted: true }])
+        const r = rig([done({ blob: blobText })])
+        await pass(r)
+        expect(r.applyStream).toHaveBeenCalledTimes(1)
+        expect(r.applyStream.mock.calls[0][0]).toMatchObject({ key: K1, modelText: 'Hello, world.', complete: true, signatures: [], blob: { parse } })
+        expect(r.replayStream.mock.calls[0][0]).toMatchObject({ parse })
+        expect(r.notices).toEqual([])
+        expect(r.consume).not.toHaveBeenCalled()
+    })
+
+    test.each(NEW_KIND_BLOBS)('T19: a dead %s record with a part reads the partial bytes, applies as partial and posts the note once', async (_kind, blobText) => {
+        setChat([{ chatId: K1, data: 'part', interrupted: true }])
+        const r = rig([dead({ blob: blobText })])
+        await pass(r, 2)
+        expect(r.readPartialBytes).toHaveBeenCalledWith(K1)
+        expect(r.readBodyBytes).not.toHaveBeenCalled()
+        expect(r.applyStream.mock.calls[0][0]).toMatchObject({ complete: false })
+        expect(r.notices).toEqual(['interrupted:Alice'])
+        expect(r.consume).not.toHaveBeenCalled()
     })
 
     test('a stream record that decodes badly is unreadable, kept and reported', async () => {

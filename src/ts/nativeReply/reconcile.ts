@@ -3,6 +3,7 @@ import { isColdChat } from '../process/coldstorageData'
 import type { RunSubject } from '../process/chatOrigin'
 import { decodeReplyBlob, isStreamReplyBlob, type ReplyBlob, type StreamReplyBlob } from './blob'
 import type { ParkedReply } from './parkedDialog'
+import type { GeminiSignatureRecord } from './streamReplay'
 import { consumeReply, heldReply } from './pageState'
 import { addRunningReplies, setRunningReplies, takeWaitingForUnit, type RunningReplyEntry, type RunningReplyTarget } from './runningReplies.svelte'
 import type { NativeReplyStore, ReplyListing, ReplyListingState, ReplyOutcome } from './store'
@@ -42,6 +43,8 @@ export interface RecoveredStreamInput {
     outcome: ReplyOutcome | ReplyListingState
     meter: UsageMeterState
     how: 'finished' | 'failed'
+    /** The thought signatures the replay collected; only a Gemini replay has any. */
+    signatures: GeminiSignatureRecord[]
 }
 
 /**
@@ -62,7 +65,7 @@ export interface ReconcileDeps {
     recoverText(listing: ReplyListing, blob: ReplyBlob, bodyText: string): Promise<string | null>
     apply(input: RecoveredReplyInput): Promise<ApplyOutcome>
     /** Reads the bytes of a recorded stream through the transform the live request used; `modelText` is empty when they hold no reply. */
-    replayStream(blob: StreamReplyBlob, bytes: Uint8Array, complete: boolean): Promise<{ modelText: string, meter: UsageMeterState }>
+    replayStream(blob: StreamReplyBlob, bytes: Uint8Array, complete: boolean): Promise<{ modelText: string, meter: UsageMeterState, signatures: GeminiSignatureRecord[] }>
     /** Applies a replayed stream record: upgrades an interrupted message, appends an absent one, or holds a present one. */
     applyStream(input: RecoveredStreamInput): Promise<ApplyOutcome>
     /** Settles the usage of a reply that is parked instead of applied; the apply settles its own. */
@@ -333,7 +336,7 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
         }
         // The live request keeps a stream only for status 200, not any 2xx; a partial implies it.
         const readable = !complete || listing.status === undefined || listing.status === 200
-        let replayed: { modelText: string, meter: UsageMeterState } | null = null
+        let replayed: { modelText: string, meter: UsageMeterState, signatures: GeminiSignatureRecord[] } | null = null
         if (readable) {
             try {
                 replayed = await deps.replayStream(blob, bytes, complete)
@@ -393,6 +396,7 @@ export function createReconciler(deps: ReconcileDeps): Reconciler {
                     outcome: listing.outcome ?? listing.state,
                     meter: replayed.meter,
                     how,
+                    signatures: replayed.signatures,
                 })
                 if (outcome === 'applied' || outcome === 'present') {
                     if (!complete && note !== null) {
