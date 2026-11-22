@@ -45,6 +45,7 @@
     import { installThemePackGate, screenMasked } from './ts/themePack/surfaceGate.svelte';
     import { installChatOnScreen } from './ts/process/chatOnScreen.svelte';
     import { installReplyNotifications } from './ts/android/replyNotifications.svelte';
+    import { startVisibleChatWatcher } from './ts/process/mcp/serverChatGrants.svelte';
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
     import TaskHost from './lib/Nexus/pattern/TaskHost.svelte';
     import { coversPage } from './ts/alertEscape';
@@ -56,6 +57,7 @@
     installChatOnScreen()
     installSettingsOrigin()
     installReplyNotifications()
+    startVisibleChatWatcher()
 
     // The tracker lives as long as App, so the step survives a boot question covering the screen.
     const bootTracker = createLegacyBootTracker()

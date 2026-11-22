@@ -19,6 +19,32 @@ export interface PeerConflictRowView {
     note: string | null
 }
 
+/** A piece of a tool approval's action line: a path is shown isolated from the text around it. */
+export interface ToolApprovalActionPart {
+    text: string
+    path?: boolean
+}
+
+/**
+ * What a tool approval shows. Everything comes from a model's tool call and renders as text only. Its answer is
+ * `once`, `always` (only when `offerAlways`) or `deny`.
+ */
+export interface ToolApprovalView {
+    /** The client the call is routed to. */
+    server: string
+    /** The leading line: what the call will do, with its paths marked. Empty when the tool has none. */
+    action: ToolApprovalActionPart[]
+    /** The call and its arguments as plain text. */
+    summary: string
+    /** The call changes AGENTS.md or SKILL.md, which steer later runs in the workspace. */
+    instructionTarget: boolean
+    offerAlways: boolean
+    /** "Allow this server for the rest of this chat" is offered (a third-party server, in the chat on screen). */
+    offerServer?: boolean
+    /** The text an edit puts in place of the matched text; null for any other call. Empty is shown as empty. */
+    replacement: string | null
+}
+
 /** What an update offer shows. Every field is untrusted remote text. */
 export interface UpdateOffer {
     currentVersion: string
@@ -31,7 +57,7 @@ export interface alertData{
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer'|'presetBundle',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts'|'parkedReply'|'updateOffer'|'presetBundle'|'toolApproval',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
@@ -43,6 +69,8 @@ export interface alertData{
     parkedReply?: { name: string, text: string },
     /** The update of an `updateOffer` prompt: the installed version, the offered version and the release notes. All three come from a remote file and render as text only. Its answer is `install` or `later`. */
     updateOffer?: UpdateOffer,
+    /** The call a `toolApproval` prompt asks about. Its cancel answer is `deny`. */
+    toolApproval?: ToolApprovalView,
     /** The rows of a `presetBundle` prompt and the preset names already in the list. Every string comes from a file and renders as text only. Its answer is `cancel` or the JSON of the ticked row indices. */
     presetBundle?: { rows: { name: string, folder: string | null, aiModel: string }[], existingNames: string[] },
     stackTrace?: string;
@@ -272,6 +300,26 @@ export async function alertUpdateOffer(offer: UpdateOffer): Promise<'install' | 
         cancelAnswer: 'later',
     })
     return answer === 'install' ? 'install' : 'later'
+}
+
+/**
+ * Asks whether one tool call may run. Any answer other than `once`, an offered `always` or an offered `server`,
+ * including Escape, Back and a withdrawn prompt, is `deny`.
+ */
+export async function alertToolApproval(view: ToolApprovalView, options?: { signal?: AbortSignal | null }): Promise<'once' | 'always' | 'server' | 'deny'>{
+    const answer = await askPrompt({
+        type: 'toolApproval',
+        msg: '',
+        toolApproval: view,
+        cancelAnswer: 'deny',
+    }, options)
+    if(answer === 'once'){
+        return 'once'
+    }
+    if(answer === 'server'){
+        return view.offerServer === true ? 'server' : 'deny'
+    }
+    return answer === 'always' && view.offerAlways ? 'always' : 'deny'
 }
 
 export async function alertErrorWait(msg:string){

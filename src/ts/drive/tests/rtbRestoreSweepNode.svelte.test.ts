@@ -247,6 +247,7 @@ async function install(ready: ReturnType<typeof readyOf>, page: Page): Promise<R
     return await installRtbRestore(ready.plan, page.hold, {
         copy: async () => ({ kind: 'copied', facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } } }),
         sideBackends: loggingSideBackends([]),
+        clearToolGrants: async () => ({ ok: true, release: () => { } }),
         error: (text) => { page.errors.push(text) },
         wait: () => { },
     })
@@ -432,6 +433,7 @@ describe('another operation\'s marker met while the restore opens its own (Wait 
                 return { kind: 'copied', facts: { assetsWritten: 0, assetsPresent: 0, skippedAssets: [], inlays: { written: 0, skipped: [], changed: false } } }
             },
             sideBackends: loggingSideBackends([]),
+            clearToolGrants: async () => ({ ok: true, release: () => { } }),
             error: (text) => { page.errors.push(text) },
             wait: () => { },
         })

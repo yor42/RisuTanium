@@ -21,6 +21,7 @@
     import PeerConflicts from './PeerConflicts.svelte';
     import ParkedReplyPrompt from './ParkedReplyPrompt.svelte';
     import UpdateOfferPrompt from './UpdateOfferPrompt.svelte';
+    import ToolApprovalPrompt from './ToolApprovalPrompt.svelte';
     import PresetBundlePrompt from './PresetBundlePrompt.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
@@ -68,6 +69,7 @@
             case 'patternInput':
             case 'updateOffer':
             case 'presetBundle':
+            case 'toolApproval':
                 return 'confirm'
             case 'tos':
             case 'staleAccountNotice':
@@ -82,7 +84,7 @@
     // Types that ask for an answer or report a failure interrupt a screen reader's reading; the rest are plain dialogs.
     const ALERT_DIALOG_TYPES = new Set<alertData['type']>(['error', 'ask', 'select', 'input', 'tos', 'staleAccountNotice'])
     // Reports and tool content need more room than a message.
-    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer', 'presetBundle'])
+    const WIDE_TYPES = new Set<alertData['type']>(['markdown', 'requestdata', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'selectChar', 'addchar', 'chatOptions', 'peerConflicts', 'parkedReply', 'updateOffer', 'presetBundle', 'toolApproval'])
     // Types whose body has no message element of its own; the dialog is named and described by the body instead.
     const NO_MESSAGE_TYPES = new Set<alertData['type']>(['select', 'selectChar', 'requestdata', 'addchar', 'hypaV2', 'requestlogs', 'cardexport', 'branches', 'chatOptions', 'peerConflicts', 'parkedReply'])
     // Viewers the person closes themselves: the head carries a named close, and Escape and Back close them as well.
@@ -95,7 +97,7 @@
         input: 'message', toast: 'excluded', wait2: 'message', markdown: 'message', select: 'message',
         tos: 'message', cardexport: 'tool', requestdata: 'tool', addchar: 'tool', hypaV2: 'tool', selectModule: 'excluded',
         chatOptions: 'tool', pukmakkurit: 'excluded', branches: 'tool', progress: 'message', pluginconfirm: 'message', requestlogs: 'tool',
-        staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message',
+        staleAccountNotice: 'message', patternSelect: 'message', patternInput: 'message', peerConflicts: 'message', parkedReply: 'message', updateOffer: 'tool', presetBundle: 'message', toolApproval: 'message',
     } satisfies Record<alertData['type'], 'message' | 'tool' | 'excluded'>
 
     // The headline of a dialog that has one. A tool dialog is named by it, so every tool dialog that moves into the shared box adds its case here.
@@ -129,6 +131,8 @@
                 return language.updateAvailableTitle
             case 'presetBundle':
                 return language.presetBundleTitle
+            case 'toolApproval':
+                return language.toolApprovalTitle
             default:
                 return null
         }
@@ -565,6 +569,12 @@
                 <ParkedReplyPrompt name={a.parkedReply?.name ?? ''} text={a.parkedReply?.text ?? ''} title={a.msg} titleId={headingId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
                 }} />
+            {:else if a.type === 'toolApproval'}
+                {#if a.toolApproval}
+                    <ToolApprovalPrompt view={a.toolApproval} {messageId} onanswer={(message) => {
+                        alertStore.set({ type: 'none', msg: message })
+                    }} />
+                {/if}
             {:else if a.type === 'presetBundle'}
                 <PresetBundlePrompt view={a.presetBundle ?? { rows: [], existingNames: [] }} {messageId} onanswer={(message) => {
                     alertStore.set({ type: 'none', msg: message })
