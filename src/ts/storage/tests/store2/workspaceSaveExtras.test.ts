@@ -51,4 +51,37 @@ describe('T3c save: record extras across consecutive real saves', () => {
         expect((record(second) as unknown as Obj).note).toBe('from a newer build')
         expect((record(third) as unknown as Obj).note).toBe('from a newer build')
     })
+
+    test('N: a save that holds the workspace whole (it cannot be read) keeps the extras for the save after it is fixed', async () => {
+        let env = 200
+        let mint = 9200
+        let seq = 1
+        const pass = async (previous: PreviousEncoding | null, unreadable: boolean): Promise<EncodedTree> => {
+            seq++
+            const live = db()
+            const ws = (live.utilityWorkspaces as unknown as { name: string, files: Obj[] }[])[0]
+            ws.name = `W${seq}`
+            if (unreadable) {
+                const cycle: Obj = {}
+                cycle.self = cycle
+                ws.files[0] = { ...ws.files[0], cycle }
+            }
+            const plan = await planScopedEncode(live, { env: seededEnv(env++), lists: fakeLists, seq, createdAt: NOW, previous }, SCOPE)
+            const context: BuildContext = { mint: createKeyMint(testEnv(createClock(), mint++), null).mint, seq, now: NOW }
+            return plan.finalize(context)
+        }
+        const first = await pass(null, false)
+        const seeded: PreviousEncoding = {
+            ...previousFrom(first),
+            objects: { ...previousFrom(first).objects, workspaces: new Map([['w1', { note: 'from a newer build' }]]) },
+        }
+        const second = await pass(seeded, false)
+        const held = await pass(previousFrom(second), true)
+        const fixed = await pass(previousFrom(held), false)
+
+        expect(held.manifest.fixed.workspaces?.[0]).toEqual(second.manifest.fixed.workspaces?.[0])
+        const record = bodyIn(unitOf(fixed, 'ws:w1'), first, second, held, fixed) as unknown as Obj
+        expect(record.note).toBe('from a newer build')
+        expect((record.ws as Obj).name).toBe(`W${seq}`)
+    })
 })

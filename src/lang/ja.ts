@@ -4254,7 +4254,11 @@ export const languageJapanese = {
         `RisuTaniumはプリセット${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。他のデータはすべて引き続き保存されますが、修正されるまでプリセットの変更は保存されず、それより前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたプリセットは保持されます。`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTaniumはロードアウト${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。他のデータはすべて引き続き保存されますが、修正されるまでロードアウトの変更は保存されず、それより前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたロードアウトは保持されます。`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTaniumはプラグイン${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。他のデータはすべて引き続き保存されますが、修正されるまでプラグインの変更は保存されず、それより前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたプラグインは保持されます。`,
     saveItemModuleLabel: (name: string) => `モジュール「${name}」`,
+    saveItemWorkspaceLabel: (name: string) => `ワークスペース「${name}」`,
+    saveItemWorkspaceFileLabel: (path: string) => `ワークスペースファイル「${path}」`,
     saveItemSettingLabel: (field: string) => `設定「${field}」`,
     saveItemPluginDataLabel: (key: string) => `プラグインデータ「${key}」`,
     saveItemStaticsLabel: "使用統計",

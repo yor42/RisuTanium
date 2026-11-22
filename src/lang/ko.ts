@@ -4110,7 +4110,11 @@ export const languageKorean = {
         `RisuTanium이 프리셋 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 프리셋 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 프리셋은 유지됩니다.`,
     saveLoadoutsHeldNotice: (name: string) =>
         `RisuTanium이 로드아웃 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 로드아웃 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 로드아웃은 유지됩니다.`,
+    savePluginsHeldNotice: (name: string) =>
+        `RisuTanium이 플러그인 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 플러그인 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 플러그인은 유지됩니다.`,
     saveItemModuleLabel: (name: string) => `모듈 "${name}"`,
+    saveItemWorkspaceLabel: (name: string) => `워크스페이스 "${name}"`,
+    saveItemWorkspaceFileLabel: (path: string) => `워크스페이스 파일 "${path}"`,
     saveItemSettingLabel: (field: string) => `설정 "${field}"`,
     saveItemPluginDataLabel: (key: string) => `플러그인 데이터 "${key}"`,
     saveItemStaticsLabel: "사용 통계",

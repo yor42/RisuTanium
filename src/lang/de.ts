@@ -4129,7 +4129,11 @@ export const languageGerman = {
         `RisuTanium kann das Preset ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Presets werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Presets bleiben erhalten.`,
     "saveLoadoutsHeldNotice": (name: string) =>
         `RisuTanium kann das Loadout ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Loadouts werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Loadouts bleiben erhalten.`,
+    "savePluginsHeldNotice": (name: string) =>
+        `RisuTanium kann das Plugin ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Plugins werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Plugins bleiben erhalten.`,
     "saveItemModuleLabel": (name: string) => `das Modul „${name}“`,
+    "saveItemWorkspaceLabel": (name: string) => `den Workspace „${name}“`,
+    "saveItemWorkspaceFileLabel": (path: string) => `die Workspace-Datei „${path}“`,
     "saveItemSettingLabel": (field: string) => `die Einstellung „${field}“`,
     "saveItemPluginDataLabel": (key: string) => `die Plugin-Daten „${key}“`,
     "saveItemStaticsLabel": "die Nutzungsstatistik",

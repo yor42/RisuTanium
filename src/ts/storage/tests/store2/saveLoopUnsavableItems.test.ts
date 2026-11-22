@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { language } from 'src/lang'
 import { gcPass } from '../../store2/gc/pass'
 import { checkTree } from '../../store2/commit'
-import type { CommitKey } from '../../store2/format'
+import { keyOfRef, readUnit, UNIT_TYPE, type CommitKey, type Manifest, type WorkspaceRecord } from '../../store2/format'
 import type { SkippedItem } from '../../store2/codec'
 import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
 import { PARK_CHECK_MAX_MS, runStore2SaveLoop, type ModuleHold, type Store2LoopPort } from '../../store2/saveLoop'
@@ -256,6 +256,63 @@ async function quietPasses(loop: Loop, count: number): Promise<void> {
 const labelsOf = (items: SkippedItem[]): Array<{ scope: string, key: string, label: string, saved: boolean }> =>
     items.map(({ scope, key, label, saved }) => ({ scope, key, label, saved }))
 
+const MINUTE = 60 * 1000
+
+function keeps(key: CommitKey, manifestKey: string): boolean {
+    return key.current?.key === manifestKey || key.retained.some(entry => entry.key === manifestKey) || key.pins.some(pin => pin.key === manifestKey)
+}
+
+const raw = (db: Database): Entry => db as unknown as Entry
+const pluginList = (db: Database, list: 'plugins' | 'pluginV2'): Entry[] => raw(db)[list] as Entry[]
+const workspaceList = (db: Database): Entry[] => raw(db).utilityWorkspaces as Entry[]
+const workspaceFiles = (db: Database, index: number): Entry[] => workspaceList(db)[index].files as Entry[]
+
+/** A workspace file as `commitWorkspaceChange` produces it: the size is the UTF-8 byte length of the text. */
+const workspaceFile = (id: string, path: string, text: string): Entry => ({
+    id, path, text, size: new TextEncoder().encode(text).length, mtime: 1_700_000_000_000,
+})
+const workspaceOf = (id: string, name: string, files: Entry[]): Entry => ({ id, name, createdAt: 1, files })
+
+/** What the acknowledged encoding of a page holds: one workspace, `Notes`. */
+const seedNotes = (db: Database): void => {
+    raw(db).utilityWorkspaces = [workspaceOf('w1', 'Notes', [workspaceFile('f1', 'a.md', 'alpha'), workspaceFile('f2', 'b.md', 'beta')])]
+}
+
+const refHead = (ref: readonly unknown[]): string => ref.slice(0, 3).join(':')
+
+/**
+ * The loop-level twin of the codec's index check: every `plugin:`, `ws:` and `wsf:` identity the encoder acknowledged is
+ * named by the manifest the store currently holds (a plugin ref, a workspace ref, or a file ref of a named record).
+ */
+async function expectAcknowledgedFrontNamed(loop: Loop): Promise<void> {
+    const entries = loop.kit.memory.snapshot()
+    const key = (await loop.kit.commitKey()).current?.key as string
+    const manifestRead = readUnit(entries.get(key) as Uint8Array, UNIT_TYPE.manifest)
+    if (manifestRead.status !== 'ok') {
+        throw new Error(`The current manifest is ${manifestRead.status}.`)
+    }
+    const manifest = manifestRead.value.body as Manifest
+    const named = new Set<string>()
+    for (const ref of manifest.fixed.plugins) {
+        named.add(refHead(ref))
+    }
+    for (const ref of manifest.fixed.workspaces ?? []) {
+        named.add(refHead(ref))
+        const record = readUnit(entries.get(keyOfRef(ref)) as Uint8Array, UNIT_TYPE.workspace)
+        if (record.status !== 'ok') {
+            throw new Error(`A workspace record is ${record.status}.`)
+        }
+        for (const file of (record.value.body as WorkspaceRecord).files) {
+            named.add(refHead(file.ref))
+        }
+    }
+    for (const [identity, unit] of loop.kit.context.encoder.acknowledged().units) {
+        if (/^(plugin|ws|wsf):/.test(identity)) {
+            expect(named.has(refHead(unit.ref)), `${identity} is named by the manifest`).toBe(true)
+        }
+    }
+}
+
 describe('a module that cannot be stored is skipped and keeps its saved copy', () => {
     test('reproducer: the character edit lands, the module keeps its saved copy, one notice, and no failure, extra pass or wait', async () => {
         const loop = await start({ live: (db) => { modules(db)[1].cyc = cyclic() } })
@@ -453,9 +510,21 @@ describe('a front item is skipped without a mark', () => {
         expect(loop.failures).toEqual([])
     })
 
-    test('guard (passes before and after): a bad value in a part no skip rule covers still fails the pass and is reported', async () => {
-        const loop = await start({ live: (db) => { ((db as unknown as Entry).pluginV2 as Entry[])[0].cycle = cyclic() } })
+    test('reproducer: a cyclic plugin holds its list, the character edit lands, and one notice names the plugin', async () => {
+        const loop = await start({ live: (db) => { pluginList(db, 'pluginV2')[0].cycle = cyclic() } })
         chars(loop.db)[2].personality = 'edited next to the unstorable plugin'
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the unstorable plugin' })
+        expect(saved.pluginV2).toEqual(loop.kit.seedDb.pluginV2)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'plugins', key: 'pluginV2', label: '"Plugin 99"', saved: true }])
+        expect(loop.failures).toEqual([])
+    })
+
+    test('guard (passes before and after): a bad value in a part no skip rule covers still fails the pass and is reported', async () => {
+        const loop = await start({ live: (db) => { raw(db).pluginCustomStorage = 10n } })
+        chars(loop.db)[2].personality = 'edited next to the unstorable plugin storage root'
         loop.mark(chaIdOf(loop.db, 2))
         await until(() => loop.failures.length >= 1, 'the failure report', 4000)
         expect(loop.itemCalls).toEqual([])
@@ -568,15 +637,29 @@ describe('an item that stands keeps the page from reading clean', () => {
         expect(await loop.kit.peer.requests[0]()).toBe('dirty')
         expect(loop.failures).toEqual([])
     })
+
+    test('R5 reproducer: a lone cycle in a saved workspace, with no edit and no mark, is told once without a write and keeps the page dirty', async () => {
+        const loop = await start({
+            seed: seedNotes,
+            live: (db) => { workspaceFiles(db, 0)[0].cycle = cyclic() },
+            options: { idleNet: { intervalMs: 1, moduleIntervalMs: 1 } },
+        })
+        loop.ignoreMarks = true
+        const before = (await loop.kit.commitKey()).current?.key
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'workspaces', key: 'ws:w1', label: '"Notes"', saved: true }])
+        expect(loop.failures).toEqual([])
+        await quietPasses(loop, 10)
+        expect(loop.notices()).toHaveLength(1)
+        expect((await loop.kit.commitKey()).current?.key).toBe(before)
+        await parkOnPeer(loop)
+        expect(loop.kit.peer.clean).toHaveLength(1)
+        expect(await loop.kit.peer.requests[0]()).toBe('dirty')
+        expect(loop.failures).toEqual([])
+    })
 })
 
 describe('Save mine carries an item\'s saved copy only over a base that holds it', () => {
-    const MINUTE = 60 * 1000
-
-    function keeps(key: CommitKey, manifestKey: string): boolean {
-        return key.current?.key === manifestKey || key.retained.some(entry => entry.key === manifestKey) || key.pins.some(pin => pin.key === manifestKey)
-    }
-
     async function dropSeedManifest(kit: Store2Kit, edit: (peerDb: Database) => void): Promise<void> {
         for (let round = 0; round < 22; round++) {
             kit.clock.advance(6 * MINUTE)
@@ -708,6 +791,125 @@ describe('the module hold that rides with each saved notice', () => {
     })
 })
 
+describe('plugins and workspaces that cannot be stored are held whole', () => {
+    test('R1 reproducer: a bigint plugin and a cyclic workspace file are both held, the character edit lands, one call names both, and the fix saves both', async () => {
+        const loop = await start({
+            seed: seedNotes,
+            live: (db) => {
+                pluginList(db, 'pluginV2')[0].big = 10n
+                workspaceFiles(db, 0)[0].cycle = cyclic()
+            },
+        })
+        chars(loop.db)[2].personality = 'edited next to the held items'
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the held items' })
+        expect(saved.pluginV2).toEqual(loop.kit.seedDb.pluginV2)
+        expect(raw(saved).utilityWorkspaces).toEqual(raw(loop.kit.seedDb).utilityWorkspaces)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([
+            { scope: 'plugins', key: 'pluginV2', label: '"Plugin 99"', saved: true },
+            { scope: 'workspaces', key: 'ws:w1', label: '"Notes"', saved: true },
+        ])
+        expect(loop.failures).toEqual([])
+        expect(loop.requested).toBe(0)
+        await quietPasses(loop, 10)
+        expect(loop.notices()).toHaveLength(1)
+        expect(await checkTree(loop.kit.memory, (await loop.kit.commitKey()).current?.key as string)).toMatchObject({ status: 'complete' })
+
+        delete pluginList(loop.db, 'pluginV2')[0].big
+        workspaceFiles(loop.db, 0)[0] = workspaceFile('f1', 'a.md', 'fixed text')
+        chars(loop.db)[3].personality = 'edited after the fix'
+        loop.mark(chaIdOf(loop.db, 3))
+        await until(() => loop.itemCalls.length >= 2, 'the report that clears it', 4000)
+        expect(loop.itemCalls[1].current).toEqual([])
+        const fixed = await loop.kit.saved()
+        expect((raw(fixed).utilityWorkspaces as Entry[])[0].files).toMatchObject([{ id: 'f1', text: 'fixed text' }, { id: 'f2', text: 'beta' }])
+        expect(fixed.pluginV2).toEqual(pluginList(loop.db, 'pluginV2'))
+        expect(loop.failures).toEqual([])
+    })
+
+    test('R2 reproducer: a workspace never saved is left out with the never-saved notice and stays in memory', async () => {
+        const loop = await start({
+            live: (db) => { raw(db).utilityWorkspaces = [workspaceOf('w9', 'Fresh', [{ ...workspaceFile('f1', 'a.md', 'x'), cycle: cyclic() }])] },
+        })
+        chars(loop.db)[2].personality = 'edited next to the new workspace'
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'workspaces', key: 'ws:w9', label: '"Fresh"', saved: false }])
+        const saved = await loop.kit.saved()
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the new workspace' })
+        expect(raw(saved).utilityWorkspaces ?? []).toEqual([])
+        expect(workspaceList(loop.db)).toHaveLength(1)
+        expect(loop.failures).toEqual([])
+    })
+
+    test('R2b reproducer: a lone never-saved cyclic workspace, with no edit and no mark, is found by the idle net and told without a write', async () => {
+        const loop = await start({
+            live: (db) => { raw(db).utilityWorkspaces = [workspaceOf('w9', 'Fresh', [{ ...workspaceFile('f1', 'a.md', 'x'), cycle: cyclic() }])] },
+            options: { idleNet: { intervalMs: 1, moduleIntervalMs: 1 } },
+        })
+        const before = (await loop.kit.commitKey()).current?.key
+        await until(() => loop.itemCalls.length >= 1, 'the item report', 4000)
+        expect(labelsOf(loop.itemCalls[0].newly)).toEqual([{ scope: 'workspaces', key: 'ws:w9', label: '"Fresh"', saved: false }])
+        expect(loop.failures).toEqual([])
+        expect((await loop.kit.commitKey()).current?.key).toBe(before)
+    })
+
+    test('G6 guard (new rule): after the seed manifest is evicted and collected, a restore of the collected content is complete and no front identity is unnamed', async () => {
+        const loop = await start({
+            seed: (db) => {
+                raw(db).utilityWorkspaces = [
+                    workspaceOf('w1', 'Notes', [workspaceFile('f1', 'a.md', 'alpha')]),
+                    workspaceOf('w10', 'Other', [workspaceFile('g1', 'c.md', 'gamma'), workspaceFile('g2', 'd.md', 'delta')]),
+                ]
+            },
+            live: (db) => {
+                pluginList(db, 'pluginV2')[0].big = 10n
+                workspaceFiles(db, 0)[0].cycle = cyclic()
+                workspaceFiles(db, 1).splice(1, 1)
+                pluginList(db, 'plugins').pop()
+            },
+        })
+        const seed = loop.kit.seedDb
+        const deletedKeys = ['wsf:w10:g2', 'plugin:plugins:2'].map(identity => loop.kit.seeded.tree.index.units.get(identity)?.key as string)
+        for (const key of deletedKeys) {
+            expect(typeof key).toBe('string')
+            expect(await loop.kit.memory.listStore2()).toContain(key)
+        }
+        const editChar = async (text: string): Promise<void> => {
+            chars(loop.db)[3].personality = text
+            loop.mark(chaIdOf(loop.db, 3))
+            await until(async () => (await loop.kit.saved()).characters[3].personality === text, `the edit ${text}`, 4000)
+        }
+        await editChar('own 0')
+        expect(loop.itemCalls.length).toBeGreaterThanOrEqual(1)
+        for (let round = 1; round <= 30 && keeps(await loop.kit.commitKey(), loop.kit.seeded.manifestKey); round++) {
+            loop.kit.clock.advance(6 * MINUTE)
+            await editChar(`own ${round}`)
+        }
+        expect(keeps(await loop.kit.commitKey(), loop.kit.seeded.manifestKey)).toBe(false)
+        const collected = await gcPass({ backend: loop.kit.memory, kind: 'tauri', idleReason: () => null })
+        expect(collected.status).toBe('done')
+        const listed = await loop.kit.memory.listStore2()
+        for (const key of deletedKeys) {
+            expect(listed).not.toContain(key)
+        }
+        await expectAcknowledgedFrontNamed(loop)
+
+        workspaceFiles(loop.db, 1).push(JSON.parse(JSON.stringify(workspaceFiles(seed as Database, 1)[1])) as Entry)
+        pluginList(loop.db, 'plugins').push(JSON.parse(JSON.stringify(pluginList(seed, 'plugins')[2])) as Entry)
+        await editChar('after the restore')
+        expect(await checkTree(loop.kit.memory, (await loop.kit.commitKey()).current?.key as string)).toMatchObject({ status: 'complete' })
+        const saved = await loop.kit.saved()
+        expect(raw(saved).utilityWorkspaces).toEqual(raw(seed).utilityWorkspaces)
+        expect(saved.plugins).toEqual(seed.plugins)
+        expect(saved.pluginV2).toEqual(seed.pluginV2)
+        await expectAcknowledgedFrontNamed(loop)
+        expect(loop.failures).toEqual([])
+    })
+})
+
 describe('the notice texts', () => {
     test('guard (new keys): each notice interpolates the label it is given, quoted by the caller', () => {
         expect(language.saveItemModuleLabel('Mod')).toBe('the module "Mod"')
@@ -721,9 +923,12 @@ describe('the notice texts', () => {
         expect(language.saveItemStaticsLabel).toBe('the usage statistics')
         expect(language.saveItemCharacterOrderLabel).toBe('the character order')
         expect(language.saveLoadoutsHeldNotice('"L"')).toContain('"L"')
+        expect(language.savePluginsHeldNotice('"Plugin 99"')).toContain('"Plugin 99"')
+        expect(language.saveItemWorkspaceLabel('Notes')).toBe('the workspace "Notes"')
+        expect(language.saveItemWorkspaceFileLabel('a.md')).toBe('the workspace file "a.md"')
         for (const text of [
             language.saveItemUnsavedNotice('x'), language.saveItemNeverSavedNotice('x'), language.saveModulesHeldNotice('x'), language.savePresetsHeldNotice('x'),
-            language.saveLoadoutsHeldNotice('x'),
+            language.saveLoadoutsHeldNotice('x'), language.savePluginsHeldNotice('x'),
         ]) {
             expect(text).toContain('RisuTanium')
         }
