@@ -230,6 +230,53 @@ describe('player: context lifecycle', () => {
         expect(audio.startedUrls()).toEqual(['/cues/scifi/send.mp3'])
     })
 
+    it('suspends the context 2 s after unlock when no cue plays', async () => {
+        const player = makePlayer()
+        await player.unlock()
+        await flushMicrotasks()
+        const ctx = audio.contexts[0]!
+        clock.advance(IDLE_SUSPEND_MS - 1)
+        expect(ctx.suspendCalls).toBe(0)
+        clock.advance(1)
+        await flushMicrotasks()
+        expect(ctx.suspendCalls).toBe(1)
+        expect(ctx.state).toBe('suspended')
+    })
+
+    it('suspends the context 2 s after a preload decode when no cue plays', async () => {
+        const player = makePlayer()
+        await player.preload('scifi')
+        clock.advance(IDLE_SUSPEND_MS)
+        await flushMicrotasks()
+        expect(audio.contexts[0]!.suspendCalls).toBe(1)
+    })
+
+    it('suspends the context 2 s after a resume that lands too late to play', async () => {
+        const player = await readyPlayer()
+        clock.advance(IDLE_SUSPEND_MS)
+        await flushMicrotasks()
+        const ctx = audio.contexts[0]!
+        expect(ctx.state).toBe('suspended')
+        const before = ctx.suspendCalls
+        let land: () => void = () => {}
+        ctx.resume = () => {
+            ctx.resumeCalls++
+            return new Promise<void>((resolve) => { land = () => { ctx.state = 'running'; resolve() } })
+        }
+        player.play('send')
+        await flushMicrotasks()
+        clock.advance(RESUME_WINDOW_MS)
+        await flushMicrotasks()
+        land()
+        await flushMicrotasks()
+        expect(ctx.state).toBe('running')
+        clock.advance(IDLE_SUSPEND_MS)
+        await flushMicrotasks()
+        expect(audio.started).toEqual([])
+        expect(ctx.suspendCalls).toBe(before + 1)
+        expect(ctx.state).toBe('suspended')
+    })
+
     it('unlock does nothing while sounds are off', async () => {
         const player = makePlayer()
         state.enabled = false

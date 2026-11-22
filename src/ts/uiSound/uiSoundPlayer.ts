@@ -118,6 +118,8 @@ export function createUiSoundPlayer(deps: UiSoundPlayerDeps): UiSoundPlayer {
                 console.warn('UI sound unavailable:', url, error)
             } finally {
                 decoding.delete(url)
+                // Decoding may have created or resumed the context; without a cue it must still go idle.
+                if (context !== null) armIdle()
             }
         })()
         decoding.set(url, run)
@@ -168,7 +170,11 @@ export function createUiSoundPlayer(deps: UiSoundPlayerDeps): UiSoundPlayer {
                 resolve(ok)
             }
             try {
-                ctx.resume().then(() => finish(ctx.state === 'running'), () => finish(false))
+                ctx.resume().then(() => {
+                    // A resume that lands after the window plays nothing, so the running context needs the idle timer.
+                    if (settled) armIdle()
+                    finish(ctx.state === 'running')
+                }, () => finish(false))
             } catch {
                 finish(false)
             }
@@ -212,8 +218,9 @@ export function createUiSoundPlayer(deps: UiSoundPlayerDeps): UiSoundPlayer {
         try {
             if (!deps.enabled()) return
             const ctx = ensureContext()
-            if (ctx.state !== 'running') void ctx.resume().catch(() => {})
+            if (ctx.state !== 'running') void ctx.resume().then(armIdle, () => {})
             await preload(deps.pack())
+            armIdle()
         } catch (error) {
             console.warn('UI sound failed:', error)
         }

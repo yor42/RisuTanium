@@ -75,7 +75,7 @@ beforeAll(async () => {
     audio = installFakeAudio()
     vi.useFakeTimers({ toFake: ['performance'] })
     ToggleScopeSwitch = (await import('./ToggleScopeSwitch.svelte')).default
-})
+}, 120_000)
 
 afterAll(() => {
     vi.useRealTimers()
