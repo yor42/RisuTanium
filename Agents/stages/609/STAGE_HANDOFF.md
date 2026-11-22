@@ -28,9 +28,10 @@
 - N2, i9, later unchanged plans at the cap, ten runs: 7.0-10.0 ms before, 1.3-1.9 ms after, 0.8-1.7 ms without drafts.
 - Gates: Gate 1 [REJECT] then [EDITORIAL]; Gate 2 [EDITORIAL] with closure, and a second Gate 2 pass at xhigh
   [EDITORIAL] (wording only, applied). Dispositions are in the PR body.
-- CI: all seven checks passed on db4ab19a1. Later commits change only this file; the PR's checks show their runs.
-- Device: Note 9 A/B save-pass timing with 200 drafts (boot, no edit, no commit), requested from lane B at PR open.
-  PENDING; merge waits for PASS or a maintainer waiver. The PR body holds the row's state.
+- CI: all seven checks passed on db4ab19a1. Later commits change only this file, which CI skips.
+- Device: DV-609-1 PASS (Note 9, lane B, 2026-11-23). 200 ASCII drafts, 12 unchanged passes per build, none wrote;
+  median splitFinishFixedMs 25.1 ms on main 72a7e32a4, 7.7 ms on db4ab19a1. An edited draft survived a relaunch on B.
+  The no-drafts and Korean arms were not run. The PR body holds the full row.
 
 ## 5. Unresolved
 - The known limitations in the PR body (accepted, no follow-up).
