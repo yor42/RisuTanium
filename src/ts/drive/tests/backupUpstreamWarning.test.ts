@@ -682,8 +682,19 @@ describe('a failed sized listing on the desktop and Android apps', () => {
         expect(uncheckedPrompts()).toEqual([])
     })
 
-    test('guard: a Node page has no sized listing command to fail and is never asked, in a full or a partial export', async () => {
+    test('reproducer: a desktop page whose batch commands are unavailable lists no sizes and is asked too', async () => {
+        sizedBox.listingFails = false
         sizedBox.available = false
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(UNCHECKED_PROMPT))
+
+        const outcome = await SaveLocalBackup()
+
+        expect(uncheckedPrompts()).toHaveLength(1)
+        expect(outcome).toEqual({ status: 'declined', cause: 'oversize-declined' })
+        expect(backupSink.writes).toEqual([])
+    })
+
+    test('guard: a Node page is never asked, even where the batch commands report available, in a full or a partial export', async () => {
         injectStore('node')
         plantAssets(['assets/icon', 10])
         const store = await getAppStore()

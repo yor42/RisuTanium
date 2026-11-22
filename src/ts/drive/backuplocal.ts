@@ -753,11 +753,18 @@ async function confirmUpstreamOversize(session: ExportSession, items: readonly s
 
 /**
  * The desktop and Android apps size a backup's assets only from the sized listing, so when that command fails neither
- * size prompt can name anything (MC-223). Asks, before the writer opens, whether to create the backup without the check.
- * `true` where the listing answered or none was attempted (a Node page asks its own server); declining writes nothing.
+ * size prompt can name anything (MC-223); that includes a page whose batch commands were marked unavailable, where no
+ * listing is attempted. Asks, before the writer opens, whether to create the backup without the check. `true` where the
+ * listing answered or the store is not the files store (a Node page asks its own server); declining writes nothing.
  */
 async function confirmUncheckedSizes(session: ExportSession, sized: readonly SizedAssetKey[] | null): Promise<boolean> {
-    const unchecked = sized === null && await assetBatchReadUsable()
+    let filesStore = false
+    try {
+        filesStore = await getAppStoreKind() === 'tauri'
+    } catch {
+        filesStore = false
+    }
+    const unchecked = sized === null && filesStore
     return await confirmDuringExport(session, unchecked, async () => !unchecked || await alertConfirm(language.backupSizesUncheckedConfirm))
 }
 
