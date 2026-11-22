@@ -203,7 +203,8 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 //#endregion
 
-const { encodeRisuSaveLegacy, RisuSaveEncoder, decodeRisuSave } = await import('src/ts/storage/risuSave')
+const { encodeRisuSaveLegacy, decodeRisuSave } = await import('src/ts/storage/risuSave')
+const { RisuSaveEncoder } = await import('src/ts/storage/tests/risuSaveEncoder')
 
 const MAIN_KEY = 'database/database.bin'
 const SKIPPED_KEY = 'archivePassSkipped'

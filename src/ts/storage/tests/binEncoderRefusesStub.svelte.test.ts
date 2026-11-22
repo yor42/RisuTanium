@@ -74,7 +74,8 @@ vi.mock('src/ts/storage/characterTreeRepair', () => ({ repairCharacterTree: vi.f
 
 //#endregion
 
-import { RisuSaveEncoder, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy } from '../risuSave'
+import { encodeRisuSaveCompressionStream, encodeRisuSaveLegacy } from '../risuSave'
+import { RisuSaveEncoder, encodedLayout } from './risuSaveEncoder'
 import type { toSaveType } from '../risuSave'
 import { writeRisuSaveV0 } from '../risuSaveV0'
 import { SaveParkError } from '../saveHold'
@@ -138,13 +139,13 @@ describe('RisuSaveEncoder.init', () => {
     test('refuses a database holding a stub, before any block is built', async () => {
         const encoder = new RisuSaveEncoder()
         await expectRefusal(() => encoder.init(tree([fullModule(), stubModule()]), { compression: false }))
-        expect(encoder.snapshotLayout()).toBeNull()
+        expect(encodedLayout(encoder)).toBeNull()
     })
 
     test('a database without stubs is encoded', async () => {
         const encoder = new RisuSaveEncoder()
         await encoder.init(tree([fullModule()]), { compression: false })
-        expect(encoder.snapshotLayout()).not.toBeNull()
+        expect(encodedLayout(encoder)).not.toBeNull()
     })
 })
 
@@ -157,7 +158,7 @@ describe('RisuSaveEncoder.set', () => {
     }
 
     function layoutText(encoder: RisuSaveEncoder): string {
-        const layout = encoder.snapshotLayout()
+        const layout = encodedLayout(encoder)
         if (layout === null) {
             throw new Error('no layout')
         }
@@ -197,7 +198,7 @@ describe('RisuSaveEncoder.set', () => {
         const db = tree([fullModule()])
         const encoder = await readyEncoder(db)
         await encoder.set(db, { ...nothingMarked(), modules: true })
-        expect(encoder.snapshotLayout()).not.toBeNull()
+        expect(encodedLayout(encoder)).not.toBeNull()
     })
 })
 

@@ -74,7 +74,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0 },
 }))
 
-import { RisuSaveEncoder, RisuSaveType, type toSaveType } from '../risuSave'
+import { RisuSaveType, type toSaveType } from '../risuSave'
+import { RisuSaveEncoder, encodedLayout } from './risuSaveEncoder'
 import type { Database } from '../database.svelte'
 import { parseBlocks } from './risuSaveBlockFile'
 
@@ -114,7 +115,7 @@ describe('the encoder writes nothing to storage', () => {
         await encoder.set(db, { ...NO_MARKS, character: ['cha-2'], botPreset: true, modules: true, loadouts: true, plugins: true, pluginCustomStorage: true })
         expect(cacheWrites).toEqual([])
         expect(storeWrites).toEqual([])
-        expect(encoder.snapshotLayout()?.keys.length).toBe(6 + 7)
+        expect(encodedLayout(encoder)?.keys.length).toBe(6 + 7)
     })
 
     test.each([

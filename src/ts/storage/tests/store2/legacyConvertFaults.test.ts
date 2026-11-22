@@ -49,8 +49,9 @@ import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/co
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import type { Database } from 'src/ts/storage/database.svelte'
 import {
-    decodeRisuSave, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy, isBlockFormatSave, RisuSaveEncoder, type SalvageOmittedKind,
+    decodeRisuSave, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy, isBlockFormatSave, type SalvageOmittedKind,
 } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { firstLifeGrant } from 'src/ts/storage/store2/firstLife'

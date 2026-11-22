@@ -211,7 +211,7 @@ let DBState: { db: any }
 let selectedCharID: ReturnType<typeof writable<number>>
 let beginWork: typeof import('../chatOrigin').beginWork
 let isWriting: typeof import('../chatOrigin').isWriting
-let RisuSaveEncoder: typeof import('../../storage/risuSave').RisuSaveEncoder
+let RisuSaveEncoder: typeof import('../../storage/tests/risuSaveEncoder').RisuSaveEncoder
 let decodeRisuSave: typeof import('../../storage/risuSave').decodeRisuSave
 let installCharacterSaveMarks: typeof import('../../storage/characterSaveMarks').installCharacterSaveMarks
 let resetCharacterSaveMarksForTest: typeof import('../../storage/characterSaveMarks').resetCharacterSaveMarksForTest
@@ -234,7 +234,8 @@ beforeAll(async () => {
     beginWork = origin.beginWork
     isWriting = origin.isWriting
     const risuSave = await import('../../storage/risuSave')
-    RisuSaveEncoder = risuSave.RisuSaveEncoder
+    const encoderFixture = await import('../../storage/tests/risuSaveEncoder')
+    RisuSaveEncoder = encoderFixture.RisuSaveEncoder
     decodeRisuSave = risuSave.decodeRisuSave
     const marks = await import('../../storage/characterSaveMarks')
     installCharacterSaveMarks = marks.installCharacterSaveMarks
