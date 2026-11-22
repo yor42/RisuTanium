@@ -190,7 +190,7 @@ const realCreateInstance = localforage.createInstance.bind(localforage)
 // `localforage.createInstance('risuSaveCache')` call, which in risuSave.ts
 // runs at module-evaluation time, not lazily).
 const risuSaveMod = await import('src/ts/storage/risuSave')
-const { RisuSaveEncoder } = risuSaveMod
+const { RisuSaveEncoder } = await import('src/ts/storage/tests/risuSaveEncoder')
 type ToSaveType = import('src/ts/storage/risuSave').toSaveType
 
 // ---------------------------------------------------------------------------

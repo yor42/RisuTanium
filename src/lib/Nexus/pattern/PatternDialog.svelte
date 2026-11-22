@@ -110,13 +110,12 @@
 </script>
 
 {#if open}
-    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined} data-part-critical>
+    <div data-part="pattern-layer" data-layout={layout} data-low-power={lowPower ? '' : undefined}>
         <!-- A tap on the scrim does nothing: a dialog is closed only by one of its own answers. -->
-        <div data-part="pattern-scrim" data-part-critical aria-hidden="true"></div>
+        <div data-part="pattern-scrim" aria-hidden="true"></div>
         <div
             bind:this={dialog}
             data-part="pattern-dialog"
-            data-part-critical
             {role}
             aria-modal="true"
             aria-labelledby={labelId}

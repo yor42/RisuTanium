@@ -93,7 +93,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 import { DBState } from 'src/ts/stores.svelte'
 import { RisuAccessClient } from '../client'
-import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
+import { decodeRisuSave } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 import type { Database, character } from 'src/ts/storage/database.svelte'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'

@@ -917,9 +917,8 @@ export const languageChineseTraditional = {
         "hordeNotPossible": "無法產生回應。",
         "hordeNotPossibleWith": "無法產生回應：{message}",
         "hordeNoGenerations": "工作已完成，但沒有產生任何結果",
-        "webCryptoUnavailable": "此環境中無法使用 Web Crypto API。請確保您使用的是 HTTPS。",
         "vertexInvalidClientEmail": "Vertex 用戶端電子郵件無效。必須包含 gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Vertex 私密金鑰無效。必須包含正確的金鑰標記。",
+        "vertexInvalidPrivateKey": "Vertex 私密金鑰無效。請貼上服務帳戶 JSON 中完整的 private_key 值，包括 BEGIN 和 END PRIVATE KEY 行。",
         "googleTokenRefreshFailed": "重新整理 Google 存取權杖失敗：{error}",
         "googleNoAccessToken": "回應中沒有 Google 存取權杖",
         "googleEmptyResponse": "收到空白回應：{response}",
@@ -3692,6 +3691,7 @@ export const languageChineseTraditional = {
         `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此它們的內容不在備份中（角色只保留一個預留位置）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此備份中有 ${count} 個項目大於 100 MiB。上游 RisuAI Node 伺服器無法復原如此大的項目，因此在那裡復原此備份時會略過它們；本應用程式和其他平台則可以復原。是否建立包含這些項目的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "backupSizesUncheckedConfirm": '無法檢查此備份中資源的大小。大於 100 MiB 的項目無法由上游 RisuAI Node 伺服器復原，但這類項目可能在未被列出名稱的情況下被包含進來；而達到或超過 4 GiB 的項目會使備份在中途停止。是否仍要建立備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 個任務預設集僅儲存在此裝置上，而備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>

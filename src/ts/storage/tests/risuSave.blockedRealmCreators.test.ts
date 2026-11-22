@@ -57,7 +57,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 //#endregion
 
-import { RisuSaveEncoder, decodeRisuSave } from '../risuSave'
+import { decodeRisuSave } from '../risuSave'
+import { RisuSaveEncoder } from './risuSaveEncoder'
 import type { toSaveType } from '../risuSave'
 import type { BlockedRealmCreator, Database } from '../database.svelte'
 

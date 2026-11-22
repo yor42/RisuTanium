@@ -184,7 +184,7 @@ interface RemoteBin {
  */
 async function remoteBin(page: Page): Promise<RemoteBin> {
     const db = makeDb('imported', ['plain', REMOTE_ID])
-    const encoder = new page.w.risuSave.RisuSaveEncoder()
+    const encoder = new page.w.encoderFixture.RisuSaveEncoder()
     await encoder.init(db as unknown as Database, { compression: false })
     const block = new Uint8Array(encoder.encode()!)
     const remotes = new Map<string, Uint8Array>()

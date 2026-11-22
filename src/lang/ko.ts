@@ -917,9 +917,8 @@ export const languageKorean = {
         "hordeNotPossible": "응답을 생성할 수 없습니다.",
         "hordeNotPossibleWith": "응답을 생성할 수 없습니다: {message}",
         "hordeNoGenerations": "작업이 완료되었지만 생성된 결과가 없습니다",
-        "webCryptoUnavailable": "이 환경에서는 Web Crypto API를 사용할 수 없습니다. HTTPS를 사용하고 있는지 확인해 주세요.",
         "vertexInvalidClientEmail": "Vertex 클라이언트 이메일이 올바르지 않습니다. gserviceaccount.com이 포함되어야 합니다.",
-        "vertexInvalidPrivateKey": "Vertex 개인 키가 올바르지 않습니다. 올바른 키 마커가 포함되어야 합니다.",
+        "vertexInvalidPrivateKey": "Vertex 개인 키가 올바르지 않습니다. 서비스 계정 JSON의 private_key 값 전체를 BEGIN 및 END PRIVATE KEY 줄까지 포함해서 붙여넣어 주세요.",
         "googleTokenRefreshFailed": "Google 액세스 토큰 갱신에 실패했습니다: {error}",
         "googleNoAccessToken": "응답에 Google 액세스 토큰이 없습니다",
         "googleEmptyResponse": "빈 응답을 받았습니다: {response}",
@@ -3646,6 +3645,7 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupSizesUncheckedConfirm": '이 백업에 포함된 에셋의 크기를 확인하지 못했습니다. 100 MiB보다 큰 항목은 업스트림 RisuAI Node 서버에서 복원할 수 없는데, 그런 항목이 이름이 표시되지 않은 채 포함되어 있을 수 있으며, 4 GiB 이상인 항목이 있으면 백업이 도중에 중단됩니다. 그래도 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `작업 프리셋 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 작업 프리셋은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>

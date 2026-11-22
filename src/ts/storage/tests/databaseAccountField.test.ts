@@ -110,7 +110,8 @@ vi.mock('src/ts/rpack/rpack_js.js', () => ({
 //#endregion
 
 import { setDatabase, getDatabase, type Database } from 'src/ts/storage/database.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
+import { decodeRisuSave } from 'src/ts/storage/risuSave'
+import { RisuSaveEncoder } from 'src/ts/storage/tests/risuSaveEncoder'
 
 /**
  * A minimal fixture carrying an upstream `account` block, shaped like

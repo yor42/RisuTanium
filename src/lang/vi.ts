@@ -917,9 +917,8 @@ export const languageVietnamese = {
         "hordeNotPossible": "Không thể tạo phản hồi.",
         "hordeNotPossibleWith": "Không thể tạo phản hồi: {message}",
         "hordeNoGenerations": "Đã hoàn tất nhưng không có kết quả nào được tạo ra",
-        "webCryptoUnavailable": "Web Crypto API không khả dụng trong môi trường này. Vui lòng đảm bảo bạn đang dùng HTTPS.",
         "vertexInvalidClientEmail": "Email máy khách Vertex không hợp lệ. Phải chứa gserviceaccount.com",
-        "vertexInvalidPrivateKey": "Khóa riêng tư Vertex không hợp lệ. Phải chứa các dấu hiệu khóa hợp lệ.",
+        "vertexInvalidPrivateKey": "Khóa riêng tư Vertex không hợp lệ. Hãy dán toàn bộ giá trị private_key từ JSON của tài khoản dịch vụ, bao gồm các dòng BEGIN và END PRIVATE KEY.",
         "googleTokenRefreshFailed": "Làm mới mã truy cập Google không thành công: {error}",
         "googleNoAccessToken": "Không có mã truy cập Google trong phản hồi",
         "googleEmptyResponse": "Nhận được phản hồi trống: {response}",
@@ -3647,6 +3646,7 @@ export const languageVietnamese = {
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} mục trong bản sao lưu này lớn hơn 100 MiB. Máy chủ Node RisuAI upstream không thể khôi phục mục lớn như vậy, nên sẽ bỏ qua chúng khi bản sao lưu này được khôi phục ở đó; ứng dụng này và các nền tảng khác thì khôi phục được. Bạn có muốn tạo bản sao lưu có bao gồm chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
+    "backupSizesUncheckedConfirm": 'Không thể kiểm tra kích thước của các tài nguyên (asset) trong bản sao lưu này. Một mục lớn hơn 100 MiB, mà máy chủ Node RisuAI upstream không thể khôi phục, có thể được đưa vào mà không được nêu tên, và một mục từ 4 GiB trở lên sẽ khiến quá trình sao lưu dừng giữa chừng. Vẫn tạo bản sao lưu? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.',
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} cài đặt trước tác vụ chỉ được lưu trên thiết bị này, và tệp sao lưu không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này. Chúng vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
